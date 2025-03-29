@@ -1,7 +1,7 @@
 {
   "name": "@devgrid/omnitron",
   "description": "Production process manager for Node.JS applications with a built-in load balancer.",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "author": "LuxQuant",
   "license": "MIT",
   "directories": {

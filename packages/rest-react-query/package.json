@@ -1,6 +1,6 @@
 {
   "name": "@devgrid/rest-react-query",
-  "version": "3.52.2",
+  "version": "3.52.4",
   "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

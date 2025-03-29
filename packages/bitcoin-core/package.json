@@ -1,6 +1,6 @@
 {
   "name": "@devgrid/bitcoin-core",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "author": "LuxQuant",
   "description": "Bitcoin Core API client for Node.js",
   "main": "dist/index.js",

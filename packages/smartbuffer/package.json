@@ -1,6 +1,6 @@
 {
   "name": "@devgrid/smartbuffer",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Smart buffer",
   "author": "LuxQuant",
   "license": "MIT",
@@ -44,5 +44,14 @@
     "binary-data",
     "data-structures",
     "cross-platform"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/d-e-v-grid/dg-monorepo.git",
+    "directory": "packages/smartbuffer"
+  },
+  "bugs": {
+    "url": "https://github.com/d-e-v-grid/dg-monorepo/issues"
+  },
+  "homepage": "https://github.com/d-e-v-grid/dg-monorepo/tree/main/packages/smartbuffer#readme"
 }

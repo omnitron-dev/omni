@@ -1,6 +1,6 @@
 {
   "name": "@devgrid/netron",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Event bus, streams and remote object invocation.",
   "author": "LuxQuant",
   "license": "MIT",
@@ -62,5 +62,14 @@
     "messagepack",
     "cross-platform",
     "websockets"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/d-e-v-grid/dg-monorepo.git",
+    "directory": "packages/netron"
+  },
+  "bugs": {
+    "url": "https://github.com/d-e-v-grid/dg-monorepo/issues"
+  },
+  "homepage": "https://github.com/d-e-v-grid/dg-monorepo/tree/main/packages/netron#readme"
 }

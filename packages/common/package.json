@@ -1,6 +1,6 @@
 {
   "name": "@devgrid/common",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Some useful primitives",
   "author": "LuxQuant",
   "license": "MIT",
@@ -37,5 +37,14 @@
     "cross-platform",
     "type-guards",
     "utility-functions"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/d-e-v-grid/dg-monorepo.git",
+    "directory": "packages/common"
+  },
+  "bugs": {
+    "url": "https://github.com/d-e-v-grid/dg-monorepo/issues"
+  },
+  "homepage": "https://github.com/d-e-v-grid/dg-monorepo/tree/main/packages/common#readme"
 }

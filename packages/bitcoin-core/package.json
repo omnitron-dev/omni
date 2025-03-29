@@ -1,0 +1,43 @@
+{
+  "name": "@devgrid/bitcoin-core",
+  "version": "0.1.0",
+  "author": "LuxQuant",
+  "description": "Bitcoin Core API client for Node.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "module": "dist/esm/index.js",
+  "keywords": [
+    "bitcoin",
+    "bitcoin-core",
+    "bitcoin-api",
+    "bitcoin-client",
+    "cryptocurrency",
+    "blockchain",
+    "nodejs",
+    "api-client",
+    "rpc",
+    "wallet"
+  ],
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p ./tsconfig.build.json && tsc -p ./tsconfig.esm.json",
+    "test": "jest"
+  },
+  "dependencies": {
+    "axios": "^1.8.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/d-e-v-grid/dg-monorepo.git",
+    "directory": "packages/bitcoin-core"
+  },
+  "bugs": {
+    "url": "https://github.com/d-e-v-grid/dg-monorepo/issues"
+  },
+  "homepage": "https://github.com/d-e-v-grid/dg-monorepo/tree/main/packages/bitcoin-core#readme"
+}

@@ -319,16 +319,29 @@ export interface SendToAddressParams {
   verbose?: boolean;
 }
 
+/**
+ * Parameters for sending multiple transactions to multiple addresses.
+ */
 export interface SendManyParams {
+  /** Dummy parameter for backward compatibility */
   dummy?: string;
+  /** The amounts to send */
   amounts: any;
+  /** Minimum number of confirmations */
   minconf?: number;
+  /** Comment for the transaction */
   comment?: string;
+  /** Subtract fee from these outputs */
   subtractfeefrom?: any[];
+  /** Allow transaction replacement */
   replaceable?: boolean;
+  /** Confirmation target */
   conf_target?: number;
+  /** Fee estimation mode */
   estimate_mode?: EstimateMode;
+  /** Fee rate to use */
   fee_rate?: number | string;
+  /** Verbose output */
   verbose?: boolean;
 }
 

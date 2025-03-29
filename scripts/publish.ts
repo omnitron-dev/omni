@@ -5,7 +5,7 @@ import path from 'path';
 import inquirer from 'inquirer';
 import { execSync } from 'child_process';
 
-// Читаем package.json для получения workspaces
+// Read package.json to get workspaces
 const rootPackageJson = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'));
 const workspacePatterns = rootPackageJson.workspaces || ["apps/*", "packages/*"];
 
@@ -27,7 +27,7 @@ const getPackages = () => {
 };
 
 const publishPackage = (packageName: string) => {
-  // Ищем пакет во всех workspace директориях
+  // Search for package in all workspace directories
   const packagePath = workspacePatterns
     .map(pattern => path.join(process.cwd(), pattern.replace('/*', ''), packageName))
     .find(dir => fs.existsSync(dir));

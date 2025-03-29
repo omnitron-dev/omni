@@ -1,7 +1,7 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { execSync } from 'child_process';
-import os from 'os';
 
 const SRC_DIR = path.resolve(__dirname, 'src');
 const TESTS_DIR = path.resolve(__dirname, 'tests');
@@ -17,11 +17,11 @@ export function copyToClipboard(text: string) {
       execSync(`echo "${text}" | clip`);
     }
   } catch (error) {
-    console.error('❌ Ошибка при копировании в буфер обмена:', error);
+    console.error('❌ Error copying to clipboard:', error);
   }
 }
 
-// 🔥 Функция для рекурсивного обхода `src/`
+// 🔥 Function for recursive traversal of `src/`
 function walkDir(dir: string): string[] {
   let results: string[] = [];
   const list = fs.readdirSync(dir);
@@ -37,17 +37,17 @@ function walkDir(dir: string): string[] {
   return results;
 }
 
-// 🔥 Формируем `ChatGPT`-совместимый промпт
+// 🔥 Generate ChatGPT-compatible prompt
 function generatePrompt(): string {
   const files = walkDir(SRC_DIR);
   // const files = walkDir(TESTS_DIR);
-  let prompt = `Вот файлы проекта и их содержимое:\n\n`;
+  let prompt = `Here are the project files and their contents:\n\n`;
 
   files.forEach((file) => {
     const relativePath = path.relative(SRC_DIR, file);
     const content = fs.readFileSync(file, 'utf8');
 
-    prompt += `### Файл: ${relativePath}\n`;
+    prompt += `### File: ${relativePath}\n`;
     prompt += '```\n';
     prompt += content;
     prompt += '\n```\n\n';
@@ -61,8 +61,8 @@ const OUTPUT_FILE = path.resolve(__dirname, 'prompt.txt');
 function savePromptToFile() {
   const prompt = generatePrompt();
   fs.writeFileSync(OUTPUT_FILE, prompt);
-  console.log(`✅ Промпт сохранён в ${OUTPUT_FILE}`);
+  console.log(`✅ Prompt saved to ${OUTPUT_FILE}`);
 }
 
-// Запускаем скрипт
+// Run the script
 savePromptToFile();

@@ -821,10 +821,10 @@ export class BitcoinCore {
 
   /**
    * Create a new wallet.
-   * @param params - Parameters for creating a new wallet.
-   * @returns Promise resolving to the result of the wallet creation.
+   * @param params - Options for creating a new wallet.
+   * @returns Promise resolving to the result of the wallet creation, including the wallet name.
    */
-  public async createWallet(params: CreateWalletOptions): Promise<any> {
+  public async createWallet(params: CreateWalletOptions): Promise<{ name: string }> {
     return this.callMethod('createwallet', params);
   }
 

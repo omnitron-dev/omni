@@ -1,0 +1,10 @@
+[
+  {
+    "name": "frontend",
+    "script": "serve",
+    "env": {
+      "OMNITRON_SERVE_PORT": 8081,
+      "OMNITRON_SERVE_PATH": "."
+    }
+  }
+]

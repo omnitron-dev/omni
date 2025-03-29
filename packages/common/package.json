@@ -1,0 +1,41 @@
+{
+  "name": "@devgrid/common",
+  "version": "0.1.1",
+  "description": "Some useful primitives",
+  "author": "LuxQuant",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "module": "dist/esm/index.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p ./tsconfig.build.json && tsc -p ./tsconfig.esm.json",
+    "test": "jest"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.9.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.6.3"
+  },
+  "keywords": [
+    "utils",
+    "common",
+    "helpers",
+    "typescript",
+    "utilities",
+    "predicates",
+    "type-checking",
+    "validation",
+    "primitives",
+    "functions",
+    "browser",
+    "node",
+    "cross-platform",
+    "type-guards",
+    "utility-functions"
+  ]
+}

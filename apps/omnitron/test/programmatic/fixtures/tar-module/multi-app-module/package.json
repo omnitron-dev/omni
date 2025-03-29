@@ -1,0 +1,20 @@
+{
+  "name": "multi-app-module",
+  "version": "0.1",
+  "omnitron": [
+    {
+      "name": "first_app",
+      "script": "http.js",
+      "env": {
+        "PORT": "8005"
+      }
+    },
+    {
+      "name": "second_app",
+      "script": "./http.js",
+      "env": {
+        "PORT": "8002"
+      }
+    }
+  ]
+}

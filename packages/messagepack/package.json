@@ -1,0 +1,50 @@
+{
+  "name": "@devgrid/messagepack",
+  "version": "0.1.1",
+  "description": "Extandable MessagePack serializer",
+  "author": "LuxQuant",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "module": "dist/esm/index.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p ./tsconfig.build.json && tsc -p ./tsconfig.esm.json",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@devgrid/common": "workspace:*",
+    "@devgrid/smartbuffer": "workspace:*",
+    "es-toolkit": "^1.33.0",
+    "long": "^5.3.1",
+    "type-detect": "^4.1.0"
+  },
+  "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.13.13",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.3.0",
+    "typescript": "^5.8.2"
+  },
+  "keywords": [
+    "messagepack",
+    "msgpack",
+    "serialization",
+    "binary",
+    "protocol",
+    "typescript",
+    "encoding",
+    "decoding",
+    "buffer",
+    "stream",
+    "browser",
+    "node",
+    "performance",
+    "data-format",
+    "binary-protocol",
+    "cross-platform"
+  ]
+}

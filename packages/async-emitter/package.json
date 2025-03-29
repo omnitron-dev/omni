@@ -1,0 +1,48 @@
+{
+  "name": "@devgrid/async-emitter",
+  "version": "0.1.1",
+  "description": "Async event emitter",
+  "author": "LuxQuant",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "module": "dist/esm/index.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p ./tsconfig.build.json && tsc -p ./tsconfig.esm.json",
+    "test": "jest"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.13.13",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.3.0",
+    "typescript": "^5.8.2"
+  },
+  "dependencies": {
+    "@devgrid/common": "workspace:*",
+    "eventemitter3": "^5.0.1",
+    "p-limit": "^3.1.0"
+  },
+  "keywords": [
+    "async",
+    "event",
+    "emitter",
+    "eventemitter",
+    "events",
+    "eventbus",
+    "typescript",
+    "parallel",
+    "serial",
+    "promise",
+    "async/await",
+    "browser",
+    "node",
+    "concurrency",
+    "event-driven",
+    "event-emitter",
+    "event-handler"
+  ]
+}

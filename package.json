@@ -1,0 +1,44 @@
+{
+  "name": "devgrid",
+  "private": true,
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "test": "turbo test",
+    "lint": "eslint \"{apps,packages}/**/*.{js,jsx,ts,tsx}\"",
+    "lint:fix": "eslint --fix \"{apps,packages}/**/*.{js,jsx,ts,tsx}\"",
+    "lint:print": "eslint --print-config eslint.config.mjs > eslint-show-config.json",
+    "fm:check": "prettier --check \"{apps,packages}/**/*.{js,jsx,ts,tsx}\"",
+    "fm:fix": "prettier --write \"{apps,packages}/**/*.{js,jsx,ts,tsx}\"",
+    "fix:all": "npm run lint:fix && npm run fm:fix",
+    "cleanup": "find . -name \"node_modules\" -type d -prune -exec rm -rf '{}' +",
+    "changeset": "changeset",
+    "ai-prompt": "ts-node scripts/generate-prompt.ts"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.28.1",
+    "@types/node": "^22.13.13",
+    "@typescript-eslint/eslint-plugin": "^8.28.0",
+    "@typescript-eslint/parser": "^8.28.0",
+    "eslint": "^9.23.0",
+    "eslint-import-resolver-typescript": "^4.2.4",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-perfectionist": "^4.10.1",
+    "eslint-plugin-unused-imports": "^4.1.4",
+    "prettier": "^3.5.3",
+    "ts-loader": "^9.5.2",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "turbo": "^2.4.4",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.28.0"
+  },
+  "packageManager": "yarn@4.7.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}

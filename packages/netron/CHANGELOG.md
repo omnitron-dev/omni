@@ -1,5 +1,18 @@
 # @devgrid/netron
 
+## 0.3.0
+
+### Minor Changes
+
+- move utils classes to common and add timed-map tests
+
+### Patch Changes
+
+- Updated dependencies
+  - @devgrid/common@0.3.0
+  - @devgrid/async-emitter@0.2.5
+  - @devgrid/messagepack@0.2.3
+
 ## 0.2.4
 
 ### Patch Changes

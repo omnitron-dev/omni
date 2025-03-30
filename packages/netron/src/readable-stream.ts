@@ -1,6 +1,7 @@
+import { ListBuffer } from '@devgrid/common';
+
 import { Packet } from './packet';
 import { RemotePeer } from './remote-peer';
-import { ListBuffer } from './utils/list-buffer';
 
 /**
  * Represents a readable stream that receives data chunks from a remote peer.

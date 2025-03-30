@@ -1,4 +1,4 @@
-import { ListBuffer } from '../src/utils/list-buffer';
+import { ListBuffer } from '../src/list-buffer';
 
 describe('ListBuffer', () => {
   let buffer: ListBuffer<number>;
@@ -74,5 +74,34 @@ describe('ListBuffer', () => {
     expect(buffer.length).toBe(1);
     expect(buffer.shift()).toBe(3);
     expect(buffer.length).toBe(0);
+  });
+
+  it('should clear all elements from the buffer', () => {
+    buffer.push(1);
+    buffer.push(2);
+    buffer.push(3);
+    expect(buffer.length).toBe(3);
+
+    buffer.clear();
+    expect(buffer.length).toBe(0);
+    expect(buffer.shift()).toBeUndefined();
+  });
+
+  it('should allow adding elements after clearing', () => {
+    buffer.push(1);
+    buffer.push(2);
+    buffer.clear();
+
+    buffer.push(3);
+    buffer.push(4);
+    expect(buffer.length).toBe(2);
+    expect(buffer.shift()).toBe(3);
+    expect(buffer.shift()).toBe(4);
+  });
+
+  it('should handle clearing an empty buffer', () => {
+    buffer.clear();
+    expect(buffer.length).toBe(0);
+    expect(buffer.shift()).toBeUndefined();
   });
 });

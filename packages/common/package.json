@@ -1,6 +1,6 @@
 {
   "name": "@devgrid/common",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Some useful primitives",
   "author": "LuxQuant",
   "license": "MIT",
@@ -16,10 +16,10 @@
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",
-    "@types/node": "^22.9.0",
+    "@types/node": "^22.13.14",
     "jest": "^29.7.0",
-    "ts-jest": "^29.2.5",
-    "typescript": "^5.6.3"
+    "ts-jest": "^29.3.0",
+    "typescript": "^5.8.2"
   },
   "keywords": [
     "utils",
@@ -36,7 +36,8 @@
     "node",
     "cross-platform",
     "type-guards",
-    "utility-functions"
+    "utility-functions",
+    "timed-map"
   ],
   "repository": {
     "type": "git",

@@ -1,5 +1,11 @@
 # @devgrid/common
 
+## 0.3.0
+
+### Minor Changes
+
+- move utils classes to common and add timed-map tests
+
 ## 0.2.2
 
 ### Patch Changes

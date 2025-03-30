@@ -1,9 +1,9 @@
 import { WebSocket } from 'ws';
+import { TimedMap } from '@devgrid/common';
 
 import { Netron } from './netron';
 import { Interface } from './interface';
 import { Definition } from './definition';
-import { TimedMap } from './utils/timed-map';
 import { ServiceStub } from './service-stub';
 import { AbstractPeer } from './abstract-peer';
 import { isServiceDefinition } from './predicates';

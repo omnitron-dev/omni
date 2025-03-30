@@ -1,5 +1,12 @@
 # @devgrid/messagepack
 
+## 0.2.3
+
+### Patch Changes
+
+- Updated dependencies
+  - @devgrid/common@0.3.0
+
 ## 0.2.2
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # @devgrid/async-emitter
 
+## 0.2.5
+
+### Patch Changes
+
+- Updated dependencies
+  - @devgrid/common@0.3.0
+
 ## 0.2.4
 
 ### Patch Changes

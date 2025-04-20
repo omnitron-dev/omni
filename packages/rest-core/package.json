@@ -1,6 +1,6 @@
 {
   "name": "@devgrid/rest-core",
-  "version": "3.52.4",
+  "version": "3.53.1",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "module": "./dist/esm/index.js",

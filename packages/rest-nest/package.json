@@ -1,6 +1,6 @@
 {
   "name": "@devgrid/rest-nest",
-  "version": "3.52.4",
+  "version": "4.0.1",
   "license": "MIT",
   "files": [
     "dist"
@@ -11,8 +11,8 @@
   },
   "peerDependencies": {
     "@devgrid/rest-core": "workspace:*",
-    "@nestjs/common": "^11.0.12",
-    "@nestjs/core": "^11.0.12",
+    "@nestjs/common": "^11.0.13",
+    "@nestjs/core": "^11.0.13",
     "fastify": "^5.2.1",
     "rxjs": "^7.8.2",
     "zod": "^3.24.2"
@@ -22,11 +22,11 @@
   "devDependencies": {
     "@devgrid/rest-core": "workspace:*",
     "@jest/globals": "^29.7.0",
-    "@nestjs/common": "^11.0.12",
-    "@nestjs/core": "^11.0.12",
-    "@nestjs/platform-express": "^11.0.12",
-    "@nestjs/platform-fastify": "^11.0.12",
-    "@nestjs/testing": "^10.4.15",
+    "@nestjs/common": "^11.0.13",
+    "@nestjs/core": "^11.0.13",
+    "@nestjs/platform-express": "^11.0.13",
+    "@nestjs/platform-fastify": "^11.0.13",
+    "@nestjs/testing": "^11.0.13",
     "@swc/jest": "^0.2.37",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.13.13",

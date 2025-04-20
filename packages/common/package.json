@@ -1,12 +1,24 @@
 {
   "name": "@devgrid/common",
-  "version": "0.3.0",
+  "version": "0.4.2",
   "description": "Some useful primitives",
   "author": "LuxQuant",
   "license": "MIT",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "module": "dist/esm/index.js",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "module": "./dist/esm/index.js",
+  "exports": {
+    ".": {
+      "require": "./dist/index.js",
+      "import": "./dist/esm/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./cuid": {
+      "require": "./dist/cuid.js",
+      "import": "./dist/esm/cuid.js",
+      "types": "./dist/cuid.d.ts"
+    }
+  },
   "files": [
     "dist"
   ],
@@ -47,5 +59,8 @@
   "bugs": {
     "url": "https://github.com/d-e-v-grid/dg-monorepo/issues"
   },
-  "homepage": "https://github.com/d-e-v-grid/dg-monorepo/tree/main/packages/common#readme"
+  "homepage": "https://github.com/d-e-v-grid/dg-monorepo/tree/main/packages/common#readme",
+  "dependencies": {
+    "@noble/hashes": "^1.7.2"
+  }
 }

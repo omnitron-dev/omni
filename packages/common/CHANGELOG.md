@@ -1,5 +1,29 @@
 # @devgrid/common
 
+## 0.4.2
+
+### Patch Changes
+
+- fix package.json
+
+## 0.4.1
+
+### Patch Changes
+
+- cuid as separated export
+
+## 0.4.0
+
+### Minor Changes
+
+- add common cuid utilites
+
+## 0.3.1
+
+### Patch Changes
+
+- update build config
+
 ## 0.3.0
 
 ### Minor Changes

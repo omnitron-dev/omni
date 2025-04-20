@@ -1,0 +1,2952 @@
+Here are the project files and their contents:
+
+### File: abstract-peer.ts
+```
+import { Netron } from './netron';
+import { Interface } from './interface';
+import { Definition } from './definition';
+import { EventSubscriber } from './types';
+import { isServiceInterface } from './predicates';
+
+export abstract class AbstractPeer {
+  // A map to store interfaces with their reference count, identified by a unique definition ID.
+  protected interfaces = new Map<string, { instance: Interface; refCount: number }>();
+
+  // Constructor to initialize the AbstractPeer with a Netron instance and a unique peer ID.
+  constructor(
+    public netron: Netron,
+    public id: string
+  ) {}
+
+  /**
+   * Abstract method to set a property value or call a method on the peer side.
+   *
+   * @param {string} defId - The unique definition ID associated with the context.
+   * @param {string} name - The name of the property or method to be set or called.
+   * @param {any} value - The value to set or the data to pass to the method.
+   * @returns {Promise<void>} - A promise that resolves when the operation is complete.
+   */
+  abstract set(defId: string, name: string, value: any): Promise<void>;
+
+  /**
+   * Abstract method to get a property value or call a method on the peer side.
+   *
+   * @param {string} defId - The unique definition ID associated with the context.
+   * @param {string} name - The name of the property or method to be retrieved or called.
+   * @returns {Promise<any>} - A promise that resolves with the property value or method result.
+   */
+  abstract get(defId: string, name: string): Promise<any>;
+
+  /**
+   * Abstract method to call a method on the peer side, similar to get().
+   *
+   * @param {string} defId - The unique definition ID associated with the context.
+   * @param {string} method - The name of the method to be called.
+   * @param {any[]} args - The arguments to pass to the method.
+   * @returns {Promise<any>} - A promise that resolves with the result of the method call.
+   */
+  abstract call(defId: string, method: string, args: any[]): Promise<any>;
+
+  /**
+   * Abstract method to subscribe to an event.
+   *
+   * @param {string} eventName - The name of the event to subscribe to.
+   * @param {EventSubscriber} handler - The handler function to be called when the event occurs.
+   * @returns {Promise<void> | void} - A promise that resolves when the subscription is complete, or void.
+   */
+  abstract subscribe(eventName: string, handler: EventSubscriber): Promise<void> | void;
+
+  /**
+   * Abstract method to unsubscribe from an event.
+   *
+   * @param {string} eventName - The name of the event to unsubscribe from.
+   * @param {EventSubscriber} handler - The handler function to be removed.
+   * @returns {Promise<void> | void} - A promise that resolves when the unsubscription is complete, or void.
+   */
+  abstract unsubscribe(eventName: string, handler: EventSubscriber): Promise<void> | void;
+
+  /**
+   * Abstract method to expose a service to the peer.
+   *
+   * @param instance - The instance of the service to be exposed.
+   * @returns {Promise<Definition>} - A promise that resolves with the definition of the exposed service.
+   */
+  abstract exposeService(instance: any): Promise<Definition>;
+
+  /**
+   * Abstract method to unexpose a previously exposed service.
+   *
+   * @param ctxId - The context identifier of the service to be unexposed.
+   * @param releaseOriginated - Optional flag to indicate if originated services should be released.
+   * @returns {Promise<void>} - A promise that resolves when the service is unexposed.
+   */
+  abstract unexposeService(ctxId: string, releaseOriginated?: boolean): Promise<void>;
+
+  /**
+   * Unexposes all services that have been exposed by this peer.
+   */
+  unexposeAllServices() {
+    for (const ctxId of this.getServiceNames()) {
+      this.unexposeService(ctxId);
+    }
+  }
+
+  /**
+   * Abstract method to get the names of all services exposed by this peer.
+   *
+   * @returns {string[]} - An array of service names.
+   */
+  abstract getServiceNames(): string[];
+
+  /**
+   * Queries an interface for a given service name.
+   *
+   * @param {string} serviceName - The name of the service to query.
+   * @returns {Promise<T>} - A promise that resolves with the queried interface.
+   */
+  async queryInterface<T>(serviceName: string): Promise<T> {
+    const def = this.getDefinitionByServiceName(serviceName);
+    return this.queryInterfaceByDefId(def.id, def);
+  }
+
+  /**
+   * Queries an interface by its definition ID.
+   *
+   * @param {string} defId - The definition ID of the interface to query.
+   * @param {Definition} [def] - Optional definition object.
+   * @returns {Promise<T>} - A promise that resolves with the queried interface.
+   */
+  async queryInterfaceByDefId<T>(defId: string, def?: Definition): Promise<T> {
+    if (!def) {
+      def = this.getDefinitionById(defId);
+    }
+
+    let iInfo = this.interfaces.get(defId);
+    if (iInfo !== void 0) {
+      iInfo.refCount++;
+      return iInfo.instance as T;
+    }
+
+    const instance = Interface.create(def, this);
+    iInfo = { instance, refCount: 1 };
+    this.interfaces.set(def.id, iInfo);
+    return instance as T;
+  }
+
+  /**
+   * Releases a previously queried interface.
+   *
+   * @param {T} iInstance - The interface instance to be released.
+   * @returns {Promise<void>} - A promise that resolves when the interface is released.
+   * @throws {Error} - Throws an error if the instance is not a valid service interface.
+   */
+  async releaseInterface<T>(iInstance: T) {
+    if (!isServiceInterface(iInstance)) {
+      throw new Error('Not a service interface');
+    }
+
+    if (!iInstance.$def) {
+      throw new Error('Invalid interface');
+    }
+
+    const iInfo = this.interfaces.get(iInstance.$def.id);
+    if (!iInfo) {
+      throw new Error('Invalid interface');
+    }
+
+    iInfo.refCount--;
+    if (iInfo.refCount === 0) {
+      this.interfaces.delete(iInstance.$def.id);
+
+      const releaseChildInterfaces = (defId: string) => {
+        for (const i of this.interfaces.values()) {
+          if (i.instance.$def?.parentId === defId) {
+            this.releaseInterface(i.instance);
+          }
+        }
+      };
+
+      releaseChildInterfaces(iInstance.$def.id);
+
+      await this.releaseInterfaceInternal(iInstance);
+      iInstance.$def = undefined;
+      iInstance.$peer = undefined;
+    }
+  }
+
+  /**
+   * Abstract method to release an interface internally.
+   *
+   * @param iInstance - The interface instance to be released.
+   * @returns {Promise<void>} - A promise that resolves when the internal release is complete.
+   */
+  protected abstract releaseInterfaceInternal(iInstance: any): Promise<void>;
+
+  /**
+   * Abstract method to get a definition by its ID.
+   *
+   * @param {number} defId - The ID of the definition to retrieve.
+   * @returns {Definition} - The definition associated with the given ID.
+   */
+  protected abstract getDefinitionById(defId: string): Definition;
+
+  /**
+   * Abstract method to get a definition by its service name.
+   *
+   * @param {string} name - The name of the service.
+   * @returns {Definition} - The definition associated with the given service name.
+   */
+  protected abstract getDefinitionByServiceName(name: string): Definition;
+}
+
+```
+
+### File: common.ts
+```
+/* eslint-disable no-bitwise */
+
+import { ServiceMetadata } from './types';
+
+export const MAX_UID_VALUE = Number.MAX_SAFE_INTEGER >>> 0;
+
+export const CONTEXTIFY_SYMBOL = Symbol();
+
+export const SERVICE_ANNOTATION = 'nsvc';
+export const PUBLIC_ANNOTATION = 'nsvc:pub';
+
+export const NETRON_EVENT_SERVICE_EXPOSE = 'service:expose';
+export const NETRON_EVENT_SERVICE_UNEXPOSE = 'service:unexpose';
+
+export const NETRON_EVENT_PEER_CONNECT = 'peer:connect';
+export const NETRON_EVENT_PEER_DISCONNECT = 'peer:disconnect';
+
+export const CONNECT_TIMEOUT = 5000;
+export const REQUEST_TIMEOUT = 5000;
+
+export const getServiceEventName = (serviceName: string) => `svc:${serviceName}`;
+export const getPeerEventName = (peerId: string) => `peer:${peerId}`;
+
+export const getServiceMetadata = (instance: any) =>
+  Reflect.getMetadata(SERVICE_ANNOTATION, instance.constructor) as ServiceMetadata;
+
+```
+
+### File: core-tasks/abilities.ts
+```
+import { Abilities } from '../types';
+import { Definition } from '../definition';
+import { RemotePeer } from '../remote-peer';
+
+// This task is usually called by the connecting peer, which can optionally send its capabilities.
+export function abilities(peer: RemotePeer, remoteAbilities?: Abilities) {
+  if (remoteAbilities) {
+    // Set the abilities of the remote peer.
+    peer.abilities = remoteAbilities;
+
+    if (remoteAbilities.subsribeForServices) {
+      // Subscribe the peer to service exposure events.
+      // peer.subscribe(NETRON_EVENT_SERVICE_EXPOSE);
+    }
+  }
+
+  // TODO: Make tasks and subsribeForServices configurable at the netron level.
+  const result: Abilities = {
+    // List of services available on this netron.
+    services: new Map<string, Definition>(),
+    // List of tasks that can be executed on the current peer.
+    tasks: ['abilities', 'subscribe', 'unsubscribe', 'emit', 'expose', 'unexpose'],
+    ...peer.netron.options?.abilities,
+  };
+
+  // Populate the services map with the services available on the peer's netron.
+  for (const [name, stub] of peer.netron.services.entries()) {
+    result.services?.set(name, stub.definition);
+  }
+
+  return result;
+}
+
+```
+
+### File: core-tasks/create-stream.ts
+```
+import { RemotePeer } from '../remote-peer';
+import { ReadableStream } from '../readable-stream';
+
+export function create_stream(peer: RemotePeer, streamId: number, isLive?: boolean) {
+  return ReadableStream.create(peer, streamId, isLive);
+}
+
+```
+
+### File: core-tasks/emit.ts
+```
+import { RemotePeer } from '../remote-peer';
+
+export function emit(peer: RemotePeer, eventName: string, ...args: any[]) {
+  const handlers = peer.eventSubscribers.get(eventName);
+  if (handlers) {
+    for (const handler of handlers) {
+      handler(...args);
+    }
+  }
+}
+
+```
+
+### File: core-tasks/expose-service.ts
+```
+import { ServiceMetadata } from '../types';
+import { RemotePeer } from '../remote-peer';
+
+export function expose_service(peer: RemotePeer, meta: ServiceMetadata) {
+  return peer.netron.peer.exposeRemoteService(peer, meta);
+}
+
+```
+
+### File: core-tasks/subscribe.ts
+```
+import { RemotePeer } from '../remote-peer';
+
+export function subscribe(peer: RemotePeer, eventName: string) {
+  const fn = (...args: any[]) => peer.runTask('emit', eventName, ...args);
+  peer.remoteSubscriptions.set(eventName, fn);
+  peer.netron.peer.subscribe(eventName, fn);
+}
+
+```
+
+### File: core-tasks/unexpose-service.ts
+```
+import { RemotePeer } from '../remote-peer';
+
+export function unexpose_service(peer: RemotePeer, serviceName: string) {
+  return peer.netron.peer.unexposeRemoteService(peer, serviceName);
+}
+
+```
+
+### File: core-tasks/unref-service.ts
+```
+import { RemotePeer } from '../remote-peer';
+
+export function unref_service(peer: RemotePeer, defId: string) {
+  peer.netron.peer.unrefService(defId);
+}
+
+```
+
+### File: core-tasks/unsubscribe.ts
+```
+import { RemotePeer } from '../remote-peer';
+
+export function unsubscribe(peer: RemotePeer, eventName: string) {
+  const fn = peer.remoteSubscriptions.get(eventName);
+  if (fn) {
+    peer.netron.peer.unsubscribe(eventName, fn);
+    peer.remoteSubscriptions.delete(eventName);
+  }
+}
+
+```
+
+### File: decorators.ts
+```
+import { ServiceMetadata } from './types';
+import { SERVICE_ANNOTATION } from './common';
+
+/**
+ * Decorator to define a service with metadata.
+ *
+ * @param {string} name - The name of the service.
+ * @returns {Function} - A decorator function.
+ */
+export const Service = (name: string) => (target: any) => {
+  const metadata: ServiceMetadata = { name, properties: {}, methods: {} };
+
+  // Extract method information
+  for (const key of Object.getOwnPropertyNames(target.prototype)) {
+    const descriptor = Object.getOwnPropertyDescriptor(target.prototype, key);
+    if (!descriptor) continue;
+
+    // Check if the method is public
+    const isPublic = Reflect.getMetadata('public', target.prototype, key);
+    if (!isPublic) continue;
+
+    // If it is a method
+    if (typeof descriptor.value === 'function') {
+      const paramTypes = Reflect.getMetadata('design:paramtypes', target.prototype, key) || [];
+      const returnType = Reflect.getMetadata('design:returntype', target.prototype, key)?.name || 'void';
+
+      metadata.methods[key] = {
+        type: returnType,
+        arguments: paramTypes.map((type: any) => type?.name || 'unknown'),
+      };
+    }
+  }
+
+  // Extract property information
+  for (const key of Object.keys(new target())) {
+    // Check if the property is public
+    const isPublic = Reflect.getMetadata('public', target.prototype, key);
+    if (!isPublic) continue;
+
+    const type = Reflect.getMetadata('design:type', target.prototype, key)?.name || 'unknown';
+    const isReadonly = Reflect.getMetadata('readonly', target.prototype, key);
+
+    metadata.properties[key] = {
+      type,
+      readonly: !!isReadonly,
+    };
+  }
+
+  // Store the metadata
+  Reflect.defineMetadata(SERVICE_ANNOTATION, metadata, target);
+};
+
+/**
+ * Decorator to mark a property or method as public.
+ *
+ * @param {Object} [options] - Options for the decorator.
+ * @param {boolean} [options.readonly] - Indicates if the property is read-only.
+ * @returns {Function} - A decorator function.
+ */
+export const Public =
+  (options?: { readonly?: boolean }) =>
+  (target: any, propertyKey: string | symbol, descriptor?: PropertyDescriptor) => {
+    Reflect.defineMetadata('public', true, target, propertyKey);
+    if (!descriptor) {
+      // For properties
+      Reflect.defineMetadata('readonly', options?.readonly, target, propertyKey);
+    }
+  };
+
+```
+
+### File: definition.ts
+```
+import cuid from '@bugsnag/cuid';
+
+import { ServiceMetadata } from './types';
+
+/**
+ * The Definition class represents a service definition with a unique identifier, peer identifier, and metadata.
+ */
+export class Definition {
+  // The parentId property is initialized to 0 and can be used to track hierarchical relationships
+  public parentId: string = '';
+
+  /**
+   * Constructs a new Definition instance.
+   * @param {string} id - The unique identifier for the definition.
+   * @param {string} peerId - The identifier of the peer associated with the definition.
+   * @param {ServiceMetadata} meta - The metadata describing the service.
+   */
+  constructor(
+    public id: string,
+    public peerId: string,
+    public meta: ServiceMetadata
+  ) {}
+
+  /**
+   * Generates the next unique identifier.
+   * @returns {number} - The next unique identifier.
+   */
+  static nextId(): string {
+    return cuid();
+  }
+}
+
+```
+
+### File: index.ts
+```
+import 'reflect-metadata';
+
+export * from './uid';
+export * from './types';
+export * from './packet';
+export * from './common';
+export * from './netron';
+export * from './interface';
+export * from './local-peer';
+export * from './definition';
+export * from './decorators';
+export * from './predicates';
+export * from './remote-peer';
+export * from './service-stub';
+export * from './task-manager';
+export * from './readable-stream';
+export * from './writable-stream';
+
+```
+
+### File: interface.ts
+```
+import { Reference } from './reference';
+import { Definition } from './definition';
+import { AbstractPeer } from './abstract-peer';
+import { isNetronService, isServiceInterface } from './predicates';
+
+const INTERNAL_READ_PROPERTIES = ['$def', '$peer', 'waitForAssigned', '$pendingPromises', 'then'];
+const INTERNAL_WRITE_PROPERTIES = ['$def', '$peer'];
+
+/**
+ * Interface provides a proxy mechanism to handle method and property access dynamically.
+ */
+export class Interface {
+  private $pendingPromises = new Map<string, Promise<void>>();
+
+  /**
+   * Constructs an instance of Interface.
+   * @param {Definition} def - The definition object containing metadata about methods and properties.
+   * @param {AbstractPeer} peer - The peer object used for communication and data exchange.
+   */
+  constructor(
+    public $def?: Definition,
+    public $peer?: AbstractPeer
+  ) {
+    // Return a Proxy to intercept get and set operations on the instance
+    return new Proxy(this, {
+      /**
+       * Intercepts property access on the Interface instance.
+       * @param {Interface} target - The target object (Interface instance).
+       * @param {string} prop - The property name being accessed.
+       * @returns {any} - The value of the property or a function if it's a method.
+       */
+      get: (target: Interface, prop: string) => {
+        if (!this.$def) {
+          throw new Error('Invalid interface');
+        }
+        // If the property is a method, return an asynchronous function
+        if (this.$def?.meta.methods[prop]) {
+          // eslint-disable-next-line func-names
+          return async function (...args: any[]) {
+            const processedArgs = target.$processArgs(args);
+            return $peer?.call($def!.id, prop, processedArgs);
+          };
+        }
+
+        // If the property is a regular property, return its value using `peer.get`
+        if ($def?.meta.properties[prop]) {
+          return $peer?.get($def.id, prop);
+        }
+
+        if (!INTERNAL_READ_PROPERTIES.includes(prop)) {
+          throw new Error(`Unknown member: '${prop}'`);
+        }
+
+        return Reflect.get(target, prop);
+      },
+
+      /**
+       * Intercepts property assignment on the Interface instance.
+       * @param {Interface} target - The target object (Interface instance).
+       * @param {string} prop - The property name being set.
+       * @param {any} value - The value being assigned to the property.
+       * @returns {boolean} - True if the property was set successfully, otherwise false.
+       */
+      set: (target: Interface, prop: string, value: any) => {
+        if (INTERNAL_WRITE_PROPERTIES.includes(prop)) {
+          Reflect.set(target, prop, value);
+          return true;
+        }
+
+        if (!this.$def) {
+          throw new Error('Invalid interface');
+        }
+
+        if (!$def?.meta.properties[prop]) {
+          throw new Error(`Unknown member: '${prop}'`);
+        }
+
+        if (this.$def?.meta.properties[prop]?.readonly) {
+          throw new Error(`Property is not writable: ${prop}`);
+        }
+
+        let resolvePromise: () => void = () => { };
+        let rejectPromise: (reason?: any) => void = () => { };
+
+        const promise = new Promise<void>((resolve, reject) => {
+          resolvePromise = resolve;
+          rejectPromise = reject;
+        });
+
+        this.$pendingPromises.set(prop, promise);
+
+        (async () => {
+          try {
+            value = await this.$processValue(value);
+            await $peer?.set($def!.id, prop, value);
+            resolvePromise();
+            this.$pendingPromises.delete(prop);
+          } catch (error) {
+            rejectPromise(error);
+          }
+        })();
+
+        return true;
+      },
+    });
+  }
+
+  public async waitForAssigned(prop: string) {
+    try {
+      const promise = this.$pendingPromises.get(prop);
+      return promise ? await promise : Promise.resolve();
+    } catch (error) {
+      this.$pendingPromises.delete(prop);
+      return Promise.reject(error);
+    }
+  }
+
+  /**
+   * Processes a value to convert it into a suitable format for communication.
+   * @param {any} value - The value to process.
+   * @returns {any} - The processed value.
+   */
+  private $processValue(value: any) {
+    if (isServiceInterface(value)) {
+      if (!value.$def) {
+        throw new Error('Service interface is not valid');
+      }
+      return new Reference(value.$def.id);
+    } else if (isNetronService(value)) {
+      // TODO: Implement this
+      throw Error('Unsupported value type');
+      // return this.$peer?.exposeService(value);
+    }
+    return value;
+  }
+
+  /**
+   * Processes an array of arguments by converting each argument.
+   * @param {any[]} args - The array of arguments to process.
+   * @returns {any[]} - The array of processed arguments.
+   */
+  private $processArgs(args: any[]) {
+    return args.map((arg) => this.$processValue(arg));
+  }
+
+  /**
+   * Factory function to create an Interface instance.
+   * @param {Definition} def - The definition object for the interface.
+   * @param {AbstractPeer} peer - The peer object for communication.
+   * @returns {Interface} - A new instance of Interface.
+   */
+  static create(def: Definition, peer: AbstractPeer) {
+    return new Interface(def, peer);
+  }
+}
+
+```
+
+### File: local-peer.ts
+```
+import { Netron } from './netron';
+import { Interface } from './interface';
+import { Definition } from './definition';
+import { RemotePeer } from './remote-peer';
+import { ServiceStub } from './service-stub';
+import { AbstractPeer } from './abstract-peer';
+import { EventSubscriber, ServiceMetadata } from './types';
+import { isServiceInterface, isServiceDefinition } from './predicates';
+import {
+  getServiceMetadata,
+  getServiceEventName,
+  NETRON_EVENT_SERVICE_EXPOSE,
+  NETRON_EVENT_SERVICE_UNEXPOSE,
+} from './common';
+
+/**
+ * LocalPeer class extends AbstractPeer and manages local services and their stubs.
+ */
+export class LocalPeer extends AbstractPeer {
+  public stubs = new Map<string, ServiceStub>(); // map of definition id to stub
+  public serviceInstances = new Map<InstanceType<any>, ServiceStub>();
+
+  /**
+   * Constructor for LocalPeer.
+   * @param {Netron} netron - The Netron instance.
+   */
+  constructor(netron: Netron) {
+    super(netron, netron.id);
+  }
+
+  /**
+   * Exposes a local service instance.
+   * @param {any} instance - The service instance to expose.
+   * @returns {Promise<Definition>} - The definition of the exposed service.
+   * @throws {Error} - If the service is invalid or already exposed.
+   */
+  async exposeService(instance: any): Promise<Definition> {
+    const meta = getServiceMetadata(instance);
+    if (!meta) {
+      throw new Error('Invalid service');
+    }
+
+    if (this.netron.services.has(meta.name)) {
+      throw new Error(`Service already exposed: ${meta.name}`);
+    }
+
+    const stub = new ServiceStub(this, instance, meta);
+    const def = stub.definition;
+
+    this.stubs.set(def.id, stub);
+    this.netron.services.set(meta.name, stub);
+    this.serviceInstances.set(instance, stub);
+
+    this.netron.emitSpecial(NETRON_EVENT_SERVICE_EXPOSE, getServiceEventName(def.meta.name), {
+      name: def.meta.name,
+      peerId: this.id,
+      definition: def,
+    });
+    return def;
+  }
+
+  /**
+   * Exposes a remote service.
+   * @param {RemotePeer} peer - The remote peer.
+   * @param {ServiceMetadata} meta - The metadata of the service.
+   * @returns {Definition} - The definition of the exposed remote service.
+   */
+  exposeRemoteService(peer: RemotePeer, meta: ServiceMetadata) {
+    const def = new Definition(Definition.nextId(), peer.id, meta);
+    const iInstance = Interface.create(def, peer);
+    const stub = new ServiceStub(this, iInstance, def);
+
+    this.stubs.set(def.id, stub);
+    this.netron.services.set(meta.name, stub);
+    this.serviceInstances.set(iInstance, stub);
+    peer.definitions.set(def.id, def);
+
+    this.netron.emitSpecial(NETRON_EVENT_SERVICE_EXPOSE, getServiceEventName(def.meta.name), {
+      name: def.meta.name,
+      peerId: this.id,
+      remotePeerId: peer.id,
+      definition: def,
+    });
+    return def;
+  }
+
+  /**
+   * Unexposes a local service by its name.
+   * @param {string} serviceName - The name of the service to unexpose.
+   * @returns {Promise<void>}
+   */
+  async unexposeService(serviceName: string) {
+    const def = this.getDefinitionByServiceName(serviceName);
+    const defId = def.id;
+    for (const i of this.interfaces.values()) {
+      if (i.instance.$def?.parentId === defId) {
+        this.releaseInterface(i.instance);
+      }
+    }
+    this.netron.services.delete(serviceName);
+    const stub = this.stubs.get(defId);
+    if (stub) {
+      this.serviceInstances.delete(stub.instance);
+      this.stubs.delete(defId);
+    }
+
+    this.netron.emitSpecial(NETRON_EVENT_SERVICE_UNEXPOSE, getServiceEventName(serviceName), {
+      name: serviceName,
+      peerId: this.id,
+      defId,
+    });
+  }
+
+  /**
+   * Unexposes a remote service by its name.
+   * @param {RemotePeer} peer - The remote peer.
+   * @param {string} serviceName - The name of the service to unexpose.
+   * @returns {string} - The id of the unexposed service definition.
+   */
+  unexposeRemoteService(peer: RemotePeer, serviceName: string) {
+    const def = this.getDefinitionByServiceName(serviceName);
+    const defId = def.id;
+    for (const i of this.interfaces.values()) {
+      if (i.instance.$def?.parentId === defId) {
+        this.releaseInterface(i.instance);
+      }
+    }
+    peer.definitions.delete(defId);
+    this.netron.services.delete(serviceName);
+    const stub = this.stubs.get(defId);
+    if (stub) {
+      this.serviceInstances.delete(stub.instance);
+      this.stubs.delete(defId);
+    }
+
+    this.netron.emitSpecial(NETRON_EVENT_SERVICE_UNEXPOSE, getServiceEventName(serviceName), {
+      name: serviceName,
+      peerId: this.id,
+      remotePeerId: peer.id,
+      defId,
+    });
+
+    return def.id;
+  }
+
+  /**
+   * Releases an interface internally.
+   * @param {Interface} iInstance - The interface instance to release.
+   * @returns {Promise<void>}
+   */
+  protected async releaseInterfaceInternal(iInstance: Interface): Promise<void> {
+    this.unrefService(iInstance.$def?.id);
+  }
+
+  /**
+   * References a service instance.
+   * @param {any} instance - The service instance.
+   * @param {Definition} parentDef - The parent definition.
+   * @returns {Definition} - The definition of the referenced service.
+   */
+  refService(instance: any, parentDef: Definition) {
+    const existingStub = this.serviceInstances.get(instance);
+    if (existingStub) {
+      return existingStub.definition;
+    }
+
+    const meta = isServiceInterface(instance) ? instance.$def!.meta : getServiceMetadata(instance);
+    const stub = new ServiceStub(this, instance, meta);
+    stub.definition.parentId = parentDef.id;
+    this.serviceInstances.set(instance, stub);
+    this.stubs.set(stub.definition.id, stub);
+    return stub.definition;
+  }
+
+  /**
+   * Unreferences a service by its definition id.
+   * @param {string} [defId] - The definition id of the service to unreference.
+   */
+  unrefService(defId?: string) {
+    if (defId) {
+      const stub = this.stubs.get(defId);
+      if (stub) {
+        this.serviceInstances.delete(stub.instance);
+        this.stubs.delete(stub.definition.id);
+      }
+    }
+  }
+
+  /**
+   * Subscribes to an event.
+   * @param {string} eventName - The name of the event.
+   * @param {EventSubscriber} handler - The event handler.
+   */
+  subscribe(eventName: string, handler: EventSubscriber) {
+    this.netron.on(eventName, handler);
+  }
+
+  /**
+   * Unsubscribes from an event.
+   * @param {string} eventName - The name of the event.
+   * @param {EventSubscriber} handler - The event handler.
+   */
+  unsubscribe(eventName: string, handler: EventSubscriber) {
+    this.netron.removeListener(eventName, handler);
+  }
+
+  /**
+   * Sets a value on a service stub.
+   * @param {string} defId - The definition id of the service.
+   * @param {string} name - The name of the property.
+   * @param {any} value - The value to set.
+   * @returns {Promise<void>}
+   */
+  async set(defId: string, name: string, value: any) {
+    return this.getStubByDefinitionId(defId).set(name, value);
+  }
+
+  /**
+   * Gets a value from a service stub.
+   * @param {string} defId - The definition id of the service.
+   * @param {string} name - The name of the property.
+   * @returns {Promise<any>}
+   */
+  async get(defId: string, name: string) {
+    return this.processResult(await this.getStubByDefinitionId(defId).get(name));
+  }
+
+  /**
+   * Calls a method on a service stub.
+   * @param {string} defId - The definition id of the service.
+   * @param {string} method - The name of the method.
+   * @param {any[]} args - The arguments to pass to the method.
+   * @returns {Promise<any>}
+   */
+  async call(defId: string, method: string, args: any[]) {
+    return this.processResult(await this.getStubByDefinitionId(defId).call(method, args));
+  }
+
+  /**
+   * Checks if a stub exists for a given definition id.
+   * @param {string} defId - The definition id.
+   * @returns {boolean} - True if the stub exists, false otherwise.
+   */
+  hasStub(defId: string) {
+    return this.stubs.has(defId);
+  }
+
+  /**
+   * Gets the names of all services.
+   * @returns {string[]} - An array of service names.
+   */
+  getServiceNames() {
+    return this.netron.getServiceNames();
+  }
+
+  /**
+   * Gets a stub by its definition id.
+   * @param {string} defId - The definition id.
+   * @returns {ServiceStub} - The service stub.
+   * @throws {Error} - If the definition is unknown.
+   */
+  getStubByDefinitionId(defId: string) {
+    const stub = this.stubs.get(defId);
+    if (stub === void 0) {
+      throw new Error(`Unknown definition: ${defId}.`);
+    }
+    return stub;
+  }
+
+  /**
+   * Gets a definition by its id.
+   * @param {string} defId - The definition id.
+   * @returns {Definition} - The definition.
+   * @throws {Error} - If the definition is unknown.
+   */
+  protected getDefinitionById(defId: string): Definition {
+    const stub = this.stubs.get(defId);
+    if (stub === void 0) {
+      throw new Error(`Unknown definition: ${defId}.`);
+    }
+    return stub.definition;
+  }
+
+  /**
+   * Gets a definition by the service name.
+   * @param {string} name - The service name.
+   * @returns {Definition} - The definition.
+   * @throws {Error} - If the service is unknown.
+   */
+  protected getDefinitionByServiceName(name: string): Definition {
+    const stub = this.netron.services.get(name);
+    if (stub === void 0) {
+      throw new Error(`Unknown service: ${name}.`);
+    }
+    return stub.definition;
+  }
+
+  /**
+   * Processes the result of a service call.
+   * @param {any} result - The result to process.
+   * @returns {any} - The processed result.
+   */
+  private processResult(result: any) {
+    if (isServiceDefinition(result)) {
+      return this.queryInterfaceByDefId(result.id, result);
+    }
+    return result;
+  }
+}
+
+```
+
+### File: netron.ts
+```
+import path from 'node:path';
+import cuid from '@bugsnag/cuid';
+import { IncomingMessage } from 'node:http';
+import { WebSocket, WebSocketServer } from 'ws';
+import { AsyncEventEmitter } from '@devgrid/async-emitter';
+
+import { LocalPeer } from './local-peer';
+import { RemotePeer } from './remote-peer';
+import { ServiceStub } from './service-stub';
+import { Task, TaskManager } from './task-manager';
+import { Abilities, NetronOptions } from './types';
+import { CONNECT_TIMEOUT, getPeerEventName, NETRON_EVENT_PEER_CONNECT, NETRON_EVENT_PEER_DISCONNECT } from './common';
+
+/**
+ * The Netron class extends AsyncEventEmitter and manages the WebSocket server,
+ * local and remote peers, tasks, and services.
+ */
+export class Netron extends AsyncEventEmitter {
+  public id: string;
+  private wss?: WebSocketServer;
+  private ownEvents: Map<string, { name: string; data: any }[]> = new Map();
+  public peer: LocalPeer;
+  public peers: Map<string, RemotePeer> = new Map();
+  public taskManager: TaskManager;
+  private isStarted: boolean = false; // state of the start
+  public services = new Map<string, ServiceStub>();
+
+  /**
+   * Constructor for the Netron class.
+   * @param {NetronOptions} [options] - Optional configuration options.
+   */
+  constructor(public options?: NetronOptions) {
+    super();
+
+    this.id = options?.id ?? cuid();
+
+    this.taskManager = new TaskManager({
+      timeout: options?.taskTimeout,
+      overwriteStrategy: options?.taskOverwriteStrategy,
+    });
+
+    this.peer = new LocalPeer(this);
+  }
+
+  /**
+   * Starts the Netron instance, initializing the WebSocket server and loading tasks.
+   * @returns {Promise<void>}
+   * @throws {Error} - If Netron is already started.
+   */
+  async start() {
+    if (this.isStarted) {
+      throw new Error('Netron already started');
+    }
+
+    await this.taskManager.loadTasksFromDir(path.join(__dirname, 'core-tasks'));
+
+    if (!this.options?.listenHost || !this.options?.listenPort) {
+      this.isStarted = true;
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      this.wss = new WebSocketServer({
+        host: this.options?.listenHost,
+        port: this.options?.listenPort,
+      });
+
+      this.wss.on('listening', () => {
+        this.isStarted = true;
+        resolve();
+      });
+
+      this.wss.on('error', (err) => {
+        reject(err);
+      });
+
+      this.wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
+        const peerId = new URL(req.url!, 'ws://localhost:8080').searchParams.get('id');
+        if (!peerId) {
+          ws.close();
+          return;
+        }
+        const peer = new RemotePeer(ws, this, peerId);
+        this.peers.set(peer.id, peer);
+
+        ws.send(JSON.stringify({ type: 'id', id: this.id }));
+
+        this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId });
+
+        ws.on('close', () => {
+          this.peers.delete(peerId);
+          this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peerId), { peerId });
+        });
+
+        peer.init(false, this.options?.abilities);
+      });
+    });
+  }
+
+  /**
+   * Stops the Netron instance, closing the WebSocket server.
+   * @returns {Promise<void>}
+   */
+  async stop() {
+    if (this.wss) {
+      this.wss.close();
+      this.wss = undefined;
+    }
+    this.isStarted = false;
+  }
+
+  /**
+   * Connects to a remote peer via WebSocket.
+   * @param {string} address - The address of the remote peer.
+   * @param {Abilities} [abilities] - Optional abilities for the remote peer.
+   * @returns {Promise<RemotePeer>}
+   * @throws {Error} - If connection times out or encounters an error.
+   */
+  async connect(address: string, abilities?: Abilities): Promise<RemotePeer> {
+    return new Promise<RemotePeer>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Connection timeout'));
+      }, this.options?.connectTimeout ?? CONNECT_TIMEOUT);
+
+      const ws = new WebSocket(`${address}?id=${this.id}`);
+      const peer = new RemotePeer(ws, this);
+
+      let isResolved = false;
+
+      ws.on('open', () => {
+        clearTimeout(timeout);
+        const uidHandler = (message: ArrayBuffer, isBinary: boolean) => {
+          if (isBinary) {
+            return;
+          }
+          try {
+            const data = JSON.parse(message.toString()) as { type: 'id'; id: string };
+            if (data.type === 'id') {
+              peer.id = data.id;
+              this.peers.set(peer.id, peer);
+              if (!isResolved) {
+                isResolved = true;
+                peer.init(true, abilities).then(() => {
+                  this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId: peer.id });
+                  resolve(peer);
+                });
+              }
+            } else {
+              ws.close();
+            }
+          } catch (error) {
+            console.error('Message error:', error);
+            ws.close();
+            if (!isResolved) {
+              isResolved = true;
+              reject(new Error('Message error'));
+            }
+          } finally {
+            ws.removeListener('message', uidHandler);
+          }
+        };
+        ws.on('message', uidHandler);
+      });
+
+      ws.on('error', (err) => {
+        console.error(`Connection error to ${address}:`, err);
+        if (!isResolved) {
+          isResolved = true;
+          reject(err);
+        }
+      });
+
+      ws.on('close', () => {
+        if (!isResolved) {
+          console.warn('Connection closed prematurely.');
+          reject(new Error('Connection closed prematurely'));
+        }
+        this.peers.delete(peer.id);
+        this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peer.id), { peerId: peer.id });
+      });
+    });
+  }
+
+  /**
+   * Disconnects a remote peer by its ID.
+   * @param {string} peerId - The ID of the peer to disconnect.
+   */
+  disconnect(peerId: string) {
+    const peer = this.peers.get(peerId);
+    if (peer) {
+      peer.disconnect();
+      this.peers.delete(peerId); // Ensure the peer is removed from the peers map
+      this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peerId), { peerId });
+    }
+  }
+
+  /**
+   * Retrieves the names of all registered services.
+   * @returns {string[]} - An array of service names.
+   */
+  getServiceNames() {
+    return [...this.services.keys()];
+  }
+
+  /**
+   * Adds a task to the task manager.
+   * @param {Task} fn - The task function to add.
+   * @returns {string} - The ID of the added task.
+   */
+  addTask(fn: Task) {
+    return this.taskManager.addTask(fn);
+  }
+
+  /**
+   * Runs a task on a remote peer.
+   * @param {RemotePeer} peer - The remote peer to run the task on.
+   * @param {string} name - The name of the task to run.
+   * @param {...any[]} args - The arguments to pass to the task.
+   * @returns {Promise<any>} - The result of the task.
+   */
+  async runTask(peer: RemotePeer, name: string, ...args: any[]) {
+    return await this.taskManager.runTask(name, peer, ...args);
+  }
+
+  /**
+   * Deletes special events by their ID.
+   * @param {string} id - The ID of the events to delete.
+   */
+  deleteSpecialEvents(id: string) {
+    this.ownEvents.delete(id);
+  }
+
+  /**
+   * Emits a special event, ensuring it is processed sequentially.
+   * @param {string} event - The name of the event.
+   * @param {string} id - The ID of the event.
+   * @param {any} data - The data associated with the event.
+   * @returns {Promise<void>}
+   */
+  async emitSpecial(event: string, id: string, data: any) {
+    const events = this.ownEvents.get(id) || [];
+    events.push({ name: event, data });
+    this.ownEvents.set(id, events);
+
+    if (events.length > 1) {
+      return;
+    }
+
+    while (events.length > 0) {
+      const eventData = events.shift();
+      if (eventData === void 0) {
+        break;
+      }
+      try {
+        const timeoutPromise = new Promise((_, reject) => {
+          const timeoutId = setTimeout(() => {
+            reject(new Error(`Emit timeout for event: ${eventData.name}`));
+          }, 5000);
+          this.emitParallel(eventData.name, eventData.data)
+            .finally(() => clearTimeout(timeoutId))
+            .catch(reject);
+        });
+
+        await timeoutPromise;
+      } catch (err: any) {
+        console.error(`Event emit error: ${err.message}`);
+      }
+    }
+
+    this.ownEvents.delete(id);
+  }
+
+  /**
+   * Factory method to create and start a Netron instance.
+   * @param {NetronOptions} [options] - Optional configuration options.
+   * @returns {Promise<Netron>} - A new instance of Netron.
+   */
+  static async create(options?: NetronOptions) {
+    const netron = new Netron(options);
+    await netron.start();
+    return netron;
+  }
+}
+
+```
+
+### File: packet/index.ts
+```
+import { Buffer } from 'buffer';
+import { SmartBuffer } from '@devgrid/smartbuffer';
+
+import { Packet } from './packet';
+import { serializer } from './serializer';
+import { PacketType, TYPE_STREAM, PacketImpulse } from './types';
+
+export * from './types';
+
+/**
+ * Creates a new packet with the specified parameters.
+ *
+ * @param id - The unique identifier for the packet.
+ * @param impulse - The impulse type of the packet, indicating its purpose or action.
+ * @param action - The type of packet, defining its role in communication.
+ * @param data - The payload or content of the packet.
+ * @returns A new Packet instance with the specified properties.
+ */
+export const createPacket = (id: number, impulse: PacketImpulse, action: PacketType, data: any) => {
+  const packet = new Packet(id);
+  packet.setImpulse(impulse);
+  packet.setType(action);
+  packet.data = data;
+  return packet;
+};
+
+/**
+ * Creates a new stream packet with the specified parameters.
+ *
+ * @param id - The unique identifier for the packet.
+ * @param streamId - The identifier for the stream to which this packet belongs.
+ * @param streamIndex - The index of the packet within the stream.
+ * @param isLast - Indicates if this is the last packet in the stream.
+ * @param isLive - Indicates if the stream is live.
+ * @param data - The payload or content of the packet.
+ * @returns A new Packet instance configured as a stream packet.
+ */
+export const createStreamPacket = (
+  id: number,
+  streamId: number,
+  streamIndex: number,
+  isLast: boolean,
+  isLive: boolean,
+  data: any
+) => {
+  const packet = new Packet(id);
+  packet.setType(TYPE_STREAM);
+  packet.setStreamInfo(streamId, streamIndex, isLast, isLive);
+  packet.data = data;
+  return packet;
+};
+
+/**
+ * Encodes a packet into a buffer for transmission.
+ *
+ * @param packet - The Packet instance to be encoded.
+ * @returns A Buffer containing the encoded packet data.
+ */
+export const encodePacket = (packet: Packet) => {
+  const buf = new SmartBuffer(SmartBuffer.DEFAULT_CAPACITY, true);
+
+  // Write the packet's unique identifier and flags to the buffer.
+  buf.writeUInt32BE(packet.id);
+  buf.writeUInt8(packet.flags);
+
+  // Encode the packet's data using the serializer and write it to the buffer.
+  serializer.encode(packet.data, buf);
+
+  // If the packet is part of a stream, write the stream-specific information.
+  if (packet.isStreamChunk()) {
+    buf.writeUInt32BE(packet.streamId!);
+    buf.writeUInt32BE(packet.streamIndex!);
+  }
+
+  // Convert the SmartBuffer to a standard Buffer and return it.
+  return buf.toBuffer();
+};
+
+/**
+ * Decodes a buffer into a packet.
+ *
+ * @param buf - The Buffer or ArrayBuffer containing the encoded packet data.
+ * @returns A Packet instance reconstructed from the buffer data.
+ * @throws An error if the packet data is invalid or cannot be decoded.
+ */
+export const decodePacket = (buf: Buffer | ArrayBuffer) => {
+  const buffer = SmartBuffer.wrap(buf);
+  const pkt = new Packet(buffer.readUInt32BE());
+  pkt.flags = buffer.readUInt8()!;
+
+  // Attempt to decode the packet's data using the serializer.
+  const result = serializer.decoder.tryDecode(buffer);
+  if (!result) {
+    throw new Error('Invalid packet');
+  }
+  pkt.data = result.value;
+
+  // If the packet is part of a stream, read the stream-specific information.
+  if (pkt.isStreamChunk()) {
+    pkt.streamId = buffer.readUInt32BE();
+    pkt.streamIndex = buffer.readUInt32BE();
+  }
+  return pkt;
+};
+
+export { Packet, serializer };
+
+```
+
+### File: packet/packet.ts
+```
+import { Uid } from '../uid';
+import { PacketType, TYPE_STREAM, PacketImpulse } from './types';
+
+/**
+ * Gets the value of the bit at the specified position.
+ * @param target - The number from which to get the bit.
+ * @param offset - The position of the bit to get.
+ * @returns The value of the bit (0 or 1).
+ */
+const getBit = (target: number, offset: number): number => (target >> offset) & 1;
+
+/**
+ * Clears multiple bits starting from the specified position.
+ * @param target - The number in which to clear the bits.
+ * @param offset - The starting position to clear the bits.
+ * @param count - The number of bits to clear.
+ * @returns A new number with the bits cleared.
+ */
+const clearBits = (target: number, offset: number, count: number): number => {
+  let result = target;
+  for (let i = offset; i < offset + count; ++i) {
+    result &= ~(1 << i);
+  }
+  return result;
+};
+
+/**
+ * Writes multiple bits at the specified position.
+ * @param target - The number in which to write the bits.
+ * @param val - The value to write.
+ * @param offset - The starting position to write the bits.
+ * @param count - The number of bits to write.
+ * @returns A new number with the bits written.
+ */
+const writeBits = (target: number, val: number, offset: number, count: number): number => {
+  let result = target;
+  for (let i = 0; i < count; ++i) {
+    if (val & (1 << i)) {
+      result |= 1 << (offset + i);
+    }
+  }
+  return result;
+};
+
+/**
+ * Reads multiple bits starting from the specified position.
+ * @param target - The number from which to read the bits.
+ * @param offset - The starting position to read the bits.
+ * @param count - The number of bits to read.
+ * @returns The value of the read bits.
+ */
+const readBits = (target: number, offset: number, count: number): number => {
+  let val = 0;
+  for (let i = 0; i < count; ++i) {
+    if (getBit(target, offset + i)) {
+      val |= 1 << i;
+    }
+  }
+  return val;
+};
+
+/**
+ * Represents a netron packet.
+ *
+ * Packet fields in order from left to right:
+ * - flags - control flags (uint8)
+ * - id    - packet identifier (uint32)
+ * - data  - payload
+ *
+ * flags:
+ *
+ *   name    | offset | bits | min-max | description
+ *  -------------------------------------------------------------------------------------------------------------------------------------
+ *   type           0      4      0-15 | Packet type (see ACTION_*)
+ *   eos            4      1       0-1 | End of stream (1 - last packet, 0 - not last packet)
+ *   live           5      1       0-1 | Live stream (1 - live, 0 - not live)
+ *   impulse        6      1       0-1 | Impulse (1 - request, 0 - response) (note: for stream packets, impulse is always 0)
+ *   error          7      1       0-1 | Error (1 - error present, 0 - no error)
+ *
+ */
+
+const IMPULSE_OFFSET = 6; // Offset for the impulse flag
+const ERROR_OFFSET = 7; // Offset for the error flag
+const TYPE_OFFSET = 0; // Offset for the packet type
+const TYPE_SIZE = 4; // Size of the packet type field
+const EOS_OFFSET = 4; // Offset for the end of stream flag
+const LIVE_OFFSET = 5; // Offset for the live flag
+
+const uid = new Uid();
+
+export class Packet {
+  public flags = 0; // Control flags of the packet (uint8)
+  public data: any; // Payload of the packet (any)
+  public streamId?: number; // Unique stream ID (uint32)
+  public streamIndex?: number; // Chunk number (uint32)
+
+  /**
+   * Constructor for the Packet class.
+   * @param id - Packet identifier (uint32).
+   */
+  constructor(public id: number) { }
+
+  /**
+   * Sets the type in the control flags.
+   * @param type - The type to set.
+   */
+  setType(type: PacketType) {
+    this.flags = writeBits(clearBits(this.flags, TYPE_OFFSET, TYPE_SIZE), type, TYPE_OFFSET, TYPE_SIZE);
+  }
+
+  /**
+   * Gets the type from the control flags.
+   * @returns The type set in the control flags.
+   */
+  getType(): PacketType {
+    return readBits(this.flags, TYPE_OFFSET, TYPE_SIZE) as PacketType;
+  }
+
+  /**
+   * Sets the impulse in the control flags.
+   * @param val - The value of the impulse (0 or 1).
+   */
+  setImpulse(val: PacketImpulse) {
+    this.flags = (this.flags & ~(1 << IMPULSE_OFFSET)) | (val << IMPULSE_OFFSET);
+  }
+
+  /**
+   * Gets the impulse from the control flags.
+   * @returns The value of the impulse (0 or 1).
+   */
+  getImpulse(): PacketImpulse {
+    return getBit(this.flags, IMPULSE_OFFSET) as PacketImpulse;
+  }
+
+  /**
+   * Sets the error in the control flags.
+   * @param val - The value of the error (0 or 1).
+   */
+  setError(val: 0 | 1) {
+    this.flags = (this.flags & ~(1 << ERROR_OFFSET)) | (val << ERROR_OFFSET);
+  }
+
+  /**
+   * Gets the error from the control flags.
+   * @returns The value of the error (0 or 1).
+   */
+  getError() {
+    return getBit(this.flags, ERROR_OFFSET);
+  }
+
+  // Methods for working with streams
+  /**
+   * Sets the stream information in the control flags.
+   * @param streamId - The unique stream ID.
+   * @param streamIndex - The chunk number.
+   * @param streamType - The type of the stream.
+   */
+  setStreamInfo(streamId: number, streamIndex: number, isLast: boolean, isLive: boolean) {
+    this.streamId = streamId;
+    this.streamIndex = streamIndex;
+    this.flags = writeBits(writeBits(this.flags, isLast ? 1 : 0, EOS_OFFSET, 1), isLive ? 1 : 0, LIVE_OFFSET, 1);
+  }
+
+  /**
+   * Checks if the packet is a stream chunk.
+   * @returns True if the packet is a stream chunk, false otherwise.
+   */
+  isStreamChunk(): boolean {
+    return this.getType() === TYPE_STREAM;
+  }
+
+  /**
+   * Checks if the packet is the last chunk of a stream.
+   * @returns True if the packet is the last chunk of a stream, false otherwise.
+   */
+  isLastChunk(): boolean {
+    return getBit(this.flags, EOS_OFFSET) === 1;
+  }
+
+  /**
+   * Checks if the stream is live.
+   * @returns True if the stream is live, false otherwise.
+   */
+  isLive(): boolean {
+    return getBit(this.flags, LIVE_OFFSET) === 1;
+  }
+
+  /**
+   * Generates the next packet ID.
+   * @returns The next packet ID.
+   */
+  static nextId(): number {
+    return uid.next();
+  }
+
+  /**
+   * Resets the packet ID generator.
+   */
+  static resetId() {
+    uid.reset();
+  }
+}
+
+```
+
+### File: packet/serializer.ts
+```
+import { SmartBuffer } from '@devgrid/smartbuffer';
+import { Serializer, registerCommonTypesFor } from '@devgrid/messagepack';
+
+import { Reference } from '../reference';
+import { Definition } from '../definition';
+
+// Create a new instance of the Serializer class, which is responsible for encoding and decoding objects.
+export const serializer = new Serializer();
+
+// Register common types for the serializer to handle, ensuring it can process standard data types.
+registerCommonTypesFor(serializer);
+
+// Register custom encoders and decoders specific to the Netron application.
+// These are used to serialize and deserialize complex objects like Definition and Reference.
+
+// Register an encoder/decoder for the Definition class with a unique type identifier 109.
+serializer
+  .register(
+    109,
+    Definition,
+    // Encoder function for Definition objects.
+    (obj: Definition, buf: SmartBuffer) => {
+      // Write the Definition object's id and parentId as 32-bit unsigned integers to the buffer.
+      serializer.encode(obj.id, buf);
+      serializer.encode(obj.parentId, buf);
+      // Use the serializer to encode the peerId and meta properties of the Definition object.
+      serializer.encode(obj.peerId, buf);
+      serializer.encode(obj.meta, buf);
+    },
+    // Decoder function for Definition objects.
+    (buf: SmartBuffer) => {
+      // Read the id and parentId from the buffer as 32-bit unsigned integers.
+      const id = serializer.decode(buf);
+      const parentId = serializer.decode(buf);
+      // Decode the peerId and meta properties using the serializer.
+      const peerId = serializer.decode(buf);
+      const meta = serializer.decode(buf);
+      // Create a new Definition object with the decoded values.
+      const def = new Definition(id, peerId, meta);
+      // Set the parentId of the Definition object.
+      def.parentId = parentId;
+      // Return the reconstructed Definition object.
+      return def;
+    }
+  )
+  .register(
+    108,
+    Reference,
+    // Encoder function for Reference objects.
+    (obj: any, buf: SmartBuffer) => {
+      // Write the defId of the Reference object as a 32-bit unsigned integer to the buffer.
+      serializer.encode(obj.defId, buf);
+    },
+    // Decoder function for Reference objects.
+    (buf: SmartBuffer) =>
+      // Create and return a new Reference object using the defId read from the buffer.
+      new Reference(serializer.decode(buf))
+  );
+
+```
+
+### File: packet/types.ts
+```
+/**
+ * Represents the impulse of a packet, indicating whether it is a request or a response.
+ * 0 - Response
+ * 1 - Request
+ */
+export type PacketImpulse = 0 | 1;
+
+/**
+ * Packet type constants used to define the action or purpose of a packet.
+ * Each constant is represented by a unique hexadecimal value.
+ */
+export const TYPE_PING = 0x00; // Ping operation to check connectivity
+export const TYPE_GET = 0x01; // Request to get the value of a property
+export const TYPE_SET = 0x02; // Request to set the value of a property
+export const TYPE_CALL = 0x03; // Request to call a method
+export const TYPE_TASK = 0x04; // Request to execute a remote task
+export const TYPE_STREAM = 0x05; // Transmission of streaming data
+
+/**
+ * Union type representing all possible packet types.
+ * It includes types for getting, setting, calling, task execution, and streaming.
+ */
+export type PacketType = typeof TYPE_GET | typeof TYPE_SET | typeof TYPE_CALL | typeof TYPE_TASK | typeof TYPE_STREAM;
+
+/**
+ * Union type representing all possible stream types.
+ * It includes types for the first, middle, and last packets in a stream.
+ */
+export enum StreamType {
+  FIRST = 0x01,
+  MIDDLE = 0x02,
+  LAST = 0x03,
+}
+
+```
+
+### File: predicates.ts
+```
+import { isObject, isFunction } from '@devgrid/common';
+
+import { Netron } from './netron';
+import { Interface } from './interface';
+import { Reference } from './reference';
+import { LocalPeer } from './local-peer';
+import { Definition } from './definition';
+import { ServiceStub } from './service-stub';
+import { SERVICE_ANNOTATION } from './common';
+import { AbstractPeer } from './abstract-peer';
+
+/**
+ * Checks if the given object is an instance of the Netron class.
+ * @param obj - The object to check.
+ * @returns True if the object is an instance of Netron, otherwise false.
+ */
+export const isNetron = (obj: any) => obj instanceof Netron;
+
+/**
+ * Checks if the given object is an instance of the Definition class.
+ * @param obj - The object to check.
+ * @returns True if the object is an instance of Definition, otherwise false.
+ */
+export const isServiceDefinition = (obj: any) => obj instanceof Definition;
+
+/**
+ * Checks if the given object is an instance of the Reference class.
+ * @param obj - The object to check.
+ * @returns True if the object is an instance of Reference, otherwise false.
+ */
+export const isServiceReference = (obj: any) => obj instanceof Reference;
+
+/**
+ * Checks if the given object is an instance of the Interface class.
+ * @param obj - The object to check.
+ * @returns True if the object is an instance of Interface, otherwise false.
+ */
+export const isServiceInterface = (obj: any) => obj instanceof Interface;
+
+/**
+ * Checks if the given object is an instance of the ServiceStub class.
+ * @param obj - The object to check.
+ * @returns True if the object is an instance of ServiceStub, otherwise false.
+ */
+export const isServiceStub = (obj: any) => obj instanceof ServiceStub;
+
+/**
+ * Checks if the given object is an instance of the AbstractPeer class.
+ * @param obj - The object to check.
+ * @returns True if the object is an instance of AbstractPeer, otherwise false.
+ */
+export const isNetronPeer = (obj: any) => obj instanceof AbstractPeer;
+
+/**
+ * Checks if the given object is an instance of the LocalPeer class.
+ * @param obj - The object to check.
+ * @returns True if the object is an instance of LocalPeer, otherwise false.
+ */
+export const isNetronOwnPeer = (obj: any) => obj instanceof LocalPeer;
+
+/**
+ * Checks if the specified property of the given object is a method in the context interface.
+ * @param ni - The object to check.
+ * @param name - The name of the property.
+ * @returns True if the property is a method, otherwise false.
+ */
+export const isContextIMethod = (ni: any, name: string) => isFunction(ni[name]) && ni.$def.$[name].method === true;
+
+/**
+ * Checks if the specified property of the given object is a property in the context interface.
+ * @param ni - The object to check.
+ * @param name - The name of the property.
+ * @returns True if the property is a context property, otherwise false.
+ */
+export const isContextIProperty = (ni: any, name: string) =>
+  isObject(ni[name]) && isFunction(ni[name].get) && ni.$def.$[name].method === void 0;
+
+/**
+ * Checks if the given object is a Netron service.
+ * @param obj - The object to check.
+ * @returns True if the object is a Netron service, otherwise false.
+ */
+export const isNetronService = (obj: any) => {
+  if (obj && typeof obj === 'object' && obj.constructor) {
+    return Reflect.hasMetadata(SERVICE_ANNOTATION, obj.constructor);
+  }
+  return false;
+};
+
+```
+
+### File: readable-stream.ts
+```
+import { ListBuffer } from '@devgrid/common';
+
+import { Packet } from './packet';
+import { RemotePeer } from './remote-peer';
+
+/**
+ * Represents a readable stream that receives data chunks from a remote peer.
+ */
+export class ReadableStream {
+  private queue = new ListBuffer<any>(); // ListBuffer is used to store incoming data chunks
+  private resolvers = new ListBuffer<(value: any) => void>(); // List of promise resolvers waiting for data
+  private closed = false; // Flag indicating whether the stream is closed
+  public timeout?: NodeJS.Timeout; // Timeout for the stream
+  private buffer = new Map<number, any>();
+  private expectedIndex = 0;
+  public isComplete = false;
+
+  /**
+   * Constructs a new ReadableStream instance.
+   * @param peer - The remote peer from which data is received.
+   * @param streamId - The unique identifier for the stream.
+   * @param isLive - Indicates if the stream is live (default is false).
+   */
+  constructor(
+    private peer: RemotePeer,
+    public id: number,
+    public isLive = false
+  ) {
+    if (!isLive) {
+      this.timeout = setTimeout(() => {
+        console.warn(`Stream is inactive, deleting: ${this.id}`);
+        this.onEnd();
+      }, this.peer.netron.options?.streamTimeout ?? 60000);
+    }
+  }
+
+  onPacket(packet: Packet) {
+    if (!this.isLive && this.timeout) {
+      clearTimeout(this.timeout);
+      this.timeout = setTimeout(() => {
+        console.warn(`Stream is inactive, deleting: ${this.id}`);
+        this.onEnd();
+      }, 60000);
+    }
+
+    this.buffer.set(packet.streamIndex!, packet.data);
+
+    // Send data to callback if chunks are in order
+    while (this.buffer.has(this.expectedIndex)) {
+      const chunk = this.buffer.get(this.expectedIndex);
+      this.buffer.delete(this.expectedIndex);
+      this.expectedIndex++;
+      this.enqueue(chunk);
+    }
+
+    // If this was the last chunk, end the stream
+    if (packet.isLastChunk()) {
+      this.isComplete = true;
+      this.onEnd();
+    }
+  }
+
+  /**
+   * Ends a stream.
+   * @param {number} streamId - The ID of the stream to end.
+   */
+  private onEnd(force = false) {
+    if (this.isLive && !force) {
+      console.warn(`Attempt to delete live stream, but it is active: ${this.id}`);
+      return;
+    }
+
+    if (this.timeout) clearTimeout(this.timeout);
+    this.isComplete = true;
+    this.peer.readableStreams.delete(this.id);
+  }
+
+  /**
+   * Reads a data chunk from the stream.
+   * @returns A promise that resolves to the next data chunk or null if the stream is closed.
+   */
+  async read(): Promise<any> {
+    // First, process all pending read() requests
+    while (this.resolvers.length > 0 && this.queue.length > 0) {
+      const resolve = this.resolvers.shift();
+      resolve?.(this.queue.shift());
+    }
+
+    // If there is data in the queue, return it immediately
+    if (this.resolvers.length === 0 && this.queue.length > 0) {
+      return this.queue.shift();
+    }
+
+    // If the stream is closed and no more data is available, return null
+    if (this.closed) {
+      this.flush();
+      return null;
+    }
+
+    // If no data is available, wait for a new chunk
+    return new Promise((resolve) => this.resolvers.push(resolve));
+  }
+
+  /**
+   * Closes the stream, preventing further data from being enqueued.
+   */
+  public close() {
+    this.closed = true;
+    this.flush();
+  }
+
+  /**
+   * Enqueues a data chunk into the stream's queue.
+   * @param chunk - The data chunk to be enqueued.
+   */
+  private enqueue(chunk: any) {
+    if (this.closed) return; // Do not enqueue data if the stream is closed
+
+    if (this.queue.length > 0) {
+      this.queue.push(chunk); // If the queue already has chunks, add to the end
+      return;
+    }
+
+    if (this.resolvers.length > 0) {
+      const resolve = this.resolvers.shift();
+      resolve?.(chunk); // If there are waiting resolvers, immediately resolve with the chunk
+    } else {
+      this.queue.push(chunk); // If no resolvers are waiting, add the chunk to the queue
+    }
+  }
+
+  /**
+   * Flushes the queue and resolves all pending promises with the remaining data or null.
+   */
+  private flush() {
+    while (this.resolvers.length > 0) {
+      const resolve = this.resolvers.shift();
+      resolve?.(this.queue.length > 0 ? this.queue.shift() : null);
+    }
+    this.queue.clear();
+  }
+
+  static create(peer: RemotePeer, streamId: number, isLive: boolean = false) {
+    const stream = new ReadableStream(peer, streamId, isLive);
+    peer.readableStreams.set(stream.id, stream);
+    return stream;
+  }
+}
+
+```
+
+### File: reference.ts
+```
+/**
+ * Class representing a reference to a service definition.
+ */
+export class Reference {
+  /**
+   * Creates an instance of Reference.
+   * @param {string} defId - The unique identifier of the service definition.
+   */
+  constructor(public defId: string) {}
+}
+
+```
+
+### File: remote-peer.ts
+```
+import { WebSocket } from 'ws';
+import { TimedMap } from '@devgrid/common';
+
+import { Netron } from './netron';
+import { Interface } from './interface';
+import { Definition } from './definition';
+import { ServiceStub } from './service-stub';
+import { AbstractPeer } from './abstract-peer';
+import { isServiceDefinition } from './predicates';
+import { WritableStream } from './writable-stream';
+import { ReadableStream } from './readable-stream';
+import { Abilities, EventSubscriber, ServiceMetadata, ServiceExposeEvent, ServiceUnexposeEvent } from './types';
+import {
+  REQUEST_TIMEOUT,
+  SERVICE_ANNOTATION,
+  NETRON_EVENT_SERVICE_EXPOSE,
+  NETRON_EVENT_SERVICE_UNEXPOSE,
+} from './common';
+import {
+  Packet,
+  TYPE_GET,
+  TYPE_SET,
+  TYPE_CALL,
+  TYPE_TASK,
+  PacketType,
+  TYPE_STREAM,
+  createPacket,
+  encodePacket,
+  decodePacket,
+  createStreamPacket,
+} from './packet';
+
+/**
+ * Represents a remote peer in the Netron network.
+ */
+export class RemotePeer extends AbstractPeer {
+  private responseHandlers = new TimedMap<
+    number,
+    { successHandler: (response: Packet) => void; errorHandler?: (data: any) => void }
+  >(this.netron.options?.requestTimeout ?? REQUEST_TIMEOUT, (packetId: number) => {
+    const handlers = this.deleteResponseHandler(packetId);
+    if (handlers?.errorHandler) {
+      handlers.errorHandler(new Error('Request timeout exceeded'));
+    }
+  });
+  public writableStreams = new Map<number, WritableStream>();
+  public readableStreams = new Map<number, ReadableStream>();
+  public eventSubscribers = new Map<string, EventSubscriber[]>();
+  public remoteSubscriptions = new Map<string, EventSubscriber>();
+  public abilities: Abilities = {};
+  public services = new Map<string, Definition>();
+  public definitions = new Map<string, Definition>();
+
+  /**
+   * Creates an instance of RemotePeer.
+   * @param {WebSocket} socket - The WebSocket connection.
+   * @param {Netron} netron - The Netron instance.
+   * @param {string} [id=""] - The unique identifier of the remote peer.
+   */
+  constructor(
+    private socket: WebSocket,
+    netron: Netron,
+    id: string = ''
+  ) {
+    super(netron, id);
+  }
+
+  /**
+   * Initializes the remote peer.
+   * @param {boolean} [isConnector] - Indicates if the peer is a connector.
+   * @param {Abilities} [abilities] - The abilities of the peer.
+   */
+  async init(isConnector?: boolean, abilities?: Abilities) {
+    this.socket.on('message', (data: ArrayBuffer, isBinary: boolean) => {
+      if (isBinary) {
+        this.handlePacket(decodePacket(data));
+      } else {
+        console.warn('Received non-binary message:', data);
+      }
+    });
+
+    if (isConnector) {
+      this.abilities = (await this.runTask('abilities', abilities)) as Abilities;
+      if (this.abilities.services) {
+        for (const [name, definition] of this.abilities.services) {
+          this.definitions.set(definition.id, definition);
+          this.services.set(name, definition);
+        }
+      }
+      if (this.abilities.subsribeForServices) {
+        await this.subscribe(NETRON_EVENT_SERVICE_EXPOSE, (event: ServiceExposeEvent) => {
+          this.definitions.set(event.definition.id, event.definition);
+          this.services.set(event.name, event.definition);
+        });
+        await this.subscribe(NETRON_EVENT_SERVICE_UNEXPOSE, (event: ServiceUnexposeEvent) => {
+          this.definitions.delete(event.defId);
+          this.services.delete(event.name);
+        });
+      }
+    }
+  }
+
+  /**
+   * Exposes a service to the remote peer.
+   * @param {any} instance - The service instance to expose.
+   * @returns {Promise<Definition>} The service definition.
+   */
+  async exposeService(instance: any) {
+    const meta = Reflect.getMetadata(SERVICE_ANNOTATION, instance.constructor) as ServiceMetadata;
+    if (!meta) {
+      throw new Error('Invalid service');
+    }
+
+    if (this.services.has(meta.name)) {
+      throw new Error(`Service already exposed: ${meta.name}`);
+    }
+
+    const def = await this.runTask('expose_service', meta);
+
+    const stub = new ServiceStub(this.netron.peer, instance, meta);
+    // this.definitions.set(def.id, def);
+    this.netron.peer.stubs.set(def.id, stub);
+    this.netron.peer.serviceInstances.set(instance, stub);
+
+    return def;
+  }
+
+  /**
+   * Unexposes a service from the remote peer.
+   * @param {string} serviceName - The name of the service to unexpose.
+   */
+  async unexposeService(serviceName: string) {
+    const defId = await this.runTask('unexpose_service', serviceName);
+    for (const i of this.interfaces.values()) {
+      if (i.instance.$def?.parentId === defId) {
+        this.releaseInterface(i.instance);
+      }
+    }
+
+    const stub = this.netron.peer.stubs.get(defId);
+    if (stub) {
+      this.netron.peer.serviceInstances.delete(stub.instance);
+      this.netron.peer.stubs.delete(defId);
+    }
+  }
+
+  /**
+   * Subscribes to an event.
+   * @param {string} eventName - The name of the event to subscribe to.
+   * @param {EventSubscriber} handler - The event handler.
+   */
+  async subscribe(eventName: string, handler: EventSubscriber) {
+    const handlers = this.eventSubscribers.get(eventName);
+    if (!handlers) {
+      this.eventSubscribers.set(eventName, [handler]);
+      await this.runTask('subscribe', eventName);
+    } else if (!handlers.includes(handler)) {
+      handlers.push(handler);
+    }
+  }
+
+  /**
+   * Unsubscribes from an event.
+   * @param {string} eventName - The name of the event to unsubscribe from.
+   * @param {EventSubscriber} handler - The event handler.
+   */
+  async unsubscribe(eventName: string, handler: EventSubscriber) {
+    const handlers = this.eventSubscribers.get(eventName);
+    if (handlers) {
+      const index = handlers.indexOf(handler);
+      if (index >= 0) {
+        handlers.splice(index, 1);
+        if (handlers.length === 0) {
+          this.eventSubscribers.delete(eventName);
+          await this.runTask('unsubscribe', eventName);
+        }
+      }
+    }
+  }
+
+  /**
+   * Gets the names of all services.
+   * @returns {string[]} The names of all services.
+   */
+  getServiceNames() {
+    return [...this.services.keys()];
+  }
+
+  /**
+   * Gets a value from a service definition.
+   * @param {string} defId - The unique identifier of the service definition.
+   * @param {string} name - The name of the value to get.
+   * @returns {Promise<any>} The value.
+   */
+  get(defId: string, name: string) {
+    const def = this.definitions.get(defId);
+    if (!def) {
+      throw new Error(`Unknown definition: ${defId}`);
+    }
+
+    return new Promise<any>((resolve, reject) => {
+      this.sendRequest(
+        TYPE_GET,
+        [defId, name],
+        (result) => {
+          resolve(this.processResult(def, result));
+        },
+        reject
+      ).catch(reject);
+    });
+  }
+
+  /**
+   * Sets a value in a service definition.
+   * @param {string} defId - The unique identifier of the service definition.
+   * @param {string} name - The name of the value to set.
+   * @param {any} value - The value to set.
+   * @returns {Promise<void>}
+   */
+  set(defId: string, name: string, value: any) {
+    const def = this.definitions.get(defId);
+    if (!def) {
+      throw new Error(`Unknown definition: ${defId}`);
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      this.sendRequest(
+        TYPE_SET,
+        [defId, name, value],
+        () => {
+          resolve();
+        },
+        reject
+      ).catch(reject);
+    });
+  }
+
+  /**
+   * Calls a method in a service definition.
+   * @param {string} defId - The unique identifier of the service definition.
+   * @param {string} method - The name of the method to call.
+   * @param {any[]} args - The arguments to pass to the method.
+   * @returns {Promise<any>} The result of the method call.
+   */
+  call(defId: string, method: string, args: any[]) {
+    const def = this.definitions.get(defId);
+    if (!def) {
+      throw new Error(`Unknown definition: ${defId}`);
+    }
+
+    args = this.processArgs(def, args);
+    return new Promise<any>((resolve, reject) => {
+      this.sendRequest(
+        TYPE_CALL,
+        [defId, method, ...args],
+        (result) => {
+          resolve(this.processResult(def, result));
+        },
+        reject
+      ).catch(reject);
+    });
+  }
+
+  /**
+   * Disconnects the remote peer.
+   */
+  disconnect() {
+    this.socket.close();
+
+    this.responseHandlers.clear();
+    this.writableStreams.clear();
+    this.readableStreams.clear();
+    this.eventSubscribers.clear();
+    this.remoteSubscriptions.clear();
+    this.services.clear();
+    this.definitions.clear();
+  }
+
+  /**
+   * Runs a task on the remote peer.
+   * @param {string} name - The name of the task to run.
+   * @param {...any[]} args - The arguments to pass to the task.
+   * @returns {Promise<any>} The result of the task.
+   */
+  runTask(name: string, ...args: any[]) {
+    return new Promise<any>((resolve, reject) => {
+      this.sendRequest(
+        TYPE_TASK,
+        [name, ...args],
+        (result) => {
+          resolve(result);
+        },
+        reject
+      ).catch(reject);
+    });
+  }
+
+  /**
+   * Sends a request to the remote peer.
+   * @param {PacketType} type - The type of the packet.
+   * @param {any} data - The data to send.
+   * @param {(response: Packet) => void} successHandler - The success handler.
+   * @param {(data: any) => void} [errorHandler] - The error handler.
+   * @returns {Promise<void>}
+   */
+  private sendRequest(
+    type: PacketType,
+    data: any,
+    successHandler: (response: Packet) => void,
+    errorHandler?: (data: any) => void
+  ) {
+    const packet = createPacket(Packet.nextId(), 1, type, data);
+    this.responseHandlers.set(packet.id, {
+      successHandler,
+      errorHandler,
+    });
+
+    return this.sendPacket(packet);
+  }
+
+  /**
+   * Sends a response to the remote peer.
+   * @param {Packet} packet - The packet to send.
+   * @param {any} data - The data to send.
+   * @returns {Promise<void>}
+   */
+  private sendResponse(packet: Packet, data: any) {
+    packet.setImpulse(0);
+    packet.data = data;
+    return this.sendPacket(packet);
+  }
+
+  /**
+   * Sends an error response to the remote peer.
+   * @param {Packet} packet - The packet to send.
+   * @param {any} error - The error to send.
+   * @returns {Promise<void>}
+   */
+  private sendErrorResponse(packet: Packet, error: any) {
+    packet.setImpulse(0);
+    packet.setError(1);
+    packet.data = error;
+    return this.sendPacket(packet);
+  }
+
+  /**
+   * Sends a packet to the remote peer.
+   * @param {Packet} packet - The packet to send.
+   * @returns {Promise<void>}
+   */
+  sendPacket(packet: Packet) {
+    return new Promise<void>((resolve, reject) => {
+      if (this.socket.readyState === WebSocket.OPEN) {
+        this.socket.send(encodePacket(packet), { binary: true }, (err) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      } else {
+        reject(new Error('Socket closed'));
+      }
+    });
+  }
+
+  /**
+   * Sends a stream chunk to the remote peer.
+   * @param {number} streamId - The ID of the stream.
+   * @param {any} chunk - The data chunk to send.
+   * @param {number} index - The index of the chunk.
+   * @param {StreamType} streamType - The type of the stream.
+   */
+  sendStreamChunk(streamId: number, chunk: any, index: number, isLast: boolean, isLive: boolean) {
+    return this.sendPacket(createStreamPacket(Packet.nextId(), streamId, index, isLast, isLive, chunk));
+  }
+
+  /**
+   * Handles a response packet from the remote peer.
+   * @param {Packet} packet - The packet to handle.
+   */
+  private handleResponse(packet: Packet) {
+    const id = packet.id;
+    const handlers = this.deleteResponseHandler(id);
+    if (handlers) {
+      const data = packet.data;
+      if (packet.getError() === 0) {
+        handlers.successHandler(data);
+      } else {
+        handlers.errorHandler?.(data);
+      }
+    }
+  }
+
+  /**
+   * Handles a packet from the remote peer.
+   * @param {Packet} packet - The packet to handle.
+   */
+  async handlePacket(packet: Packet) {
+    const pType = packet.getType();
+
+    if (packet.getImpulse() === 0) {
+      this.handleResponse(packet);
+      return;
+    }
+
+    switch (pType) {
+      case TYPE_SET: {
+        const [defId, name, value] = packet.data;
+
+        try {
+          const stub = this.netron.peer.getStubByDefinitionId(defId);
+          await stub.set(name, value);
+          await this.sendResponse(packet, undefined);
+        } catch (err: any) {
+          console.error('Error setting value:', err);
+          try {
+            await this.sendErrorResponse(packet, err);
+          } catch (err_: any) {
+            console.error('Error sending error response:', err_);
+          }
+        }
+        break;
+      }
+      case TYPE_GET: {
+        const [defId, name] = packet.data;
+
+        try {
+          const stub = this.netron.peer.getStubByDefinitionId(defId);
+          await this.sendResponse(packet, await stub.get(name));
+        } catch (err: any) {
+          try {
+            await this.sendErrorResponse(packet, err);
+          } catch (err_) {
+            console.error('Error sending error response:', err_);
+          }
+        }
+        break;
+      }
+      case TYPE_CALL: {
+        const [defId, method, ...args] = packet.data;
+
+        try {
+          const stub = this.netron.peer.getStubByDefinitionId(defId);
+          await this.sendResponse(packet, await stub.call(method, args));
+        } catch (err: any) {
+          try {
+            await this.sendErrorResponse(packet, err);
+          } catch (err_) {
+            console.error('Error sending error response:', err_);
+          }
+        }
+        break;
+      }
+      case TYPE_TASK: {
+        const [name, ...args] = packet.data;
+        try {
+          await this.sendResponse(packet, await this.netron.runTask(this, name, ...args));
+        } catch (err: any) {
+          try {
+            await this.sendErrorResponse(packet, err);
+          } catch (err_) {
+            console.error('Error sending error response:', err_);
+          }
+        }
+        break;
+      }
+      case TYPE_STREAM: {
+        if (!packet.streamId || packet.streamIndex === undefined) return;
+
+        const stream = this.readableStreams.get(packet.streamId);
+        if (!stream) return;
+
+        stream.onPacket(packet);
+        break;
+      }
+      default: {
+        console.warn('Unknown packet type:', pType);
+      }
+    }
+  }
+
+  /**
+   * Releases an interface instance.
+   * @param {Interface} iInstance - The interface instance to release.
+   */
+  protected async releaseInterfaceInternal(iInstance: Interface) {
+    await this.runTask('unref_service', iInstance.$def?.id);
+    this.unrefService(iInstance.$def?.id);
+  }
+
+  /**
+   * References a service definition.
+   * @param {Definition} def - The service definition to reference.
+   * @param {Definition} parentDef - The parent service definition.
+   * @returns {Definition} The referenced service definition.
+   */
+  refService(def: Definition, parentDef: Definition) {
+    const existingDef = this.definitions.get(def.id);
+    if (existingDef) {
+      return existingDef;
+    }
+
+    def.parentId = parentDef.id;
+    this.definitions.set(def.id, def);
+    return def;
+  }
+
+  /**
+   * Unreferences a service definition.
+   * @param {string} [defId] - The unique identifier of the service definition to unreference.
+   */
+  unrefService(defId?: string) {
+    if (defId) {
+      this.definitions.delete(defId);
+    }
+  }
+
+  /**
+   * Processes the result of a service call.
+   * @param {Definition} parentDef - The parent service definition.
+   * @param {any} result - The result to process.
+   * @returns {any} The processed result.
+   */
+  private processResult(parentDef: Definition, result: any) {
+    if (isServiceDefinition(result)) {
+      const def = this.refService(result, parentDef);
+      return this.queryInterfaceByDefId(def.id, def);
+    }
+    return result;
+  }
+
+  /**
+   * Processes arguments before sending them to the remote peer.
+   * @param {Definition} ctxDef - The context service definition.
+   * @param {any} args - The arguments to process.
+   * @returns {any} The processed arguments.
+   */
+  private processArgs(ctxDef: Definition, args: any) {
+    return args;
+  }
+
+  /**
+   * Deletes a response handler.
+   * @param {number} packetId - The unique identifier of the packet.
+   * @returns {any} The deleted response handler.
+   */
+  private deleteResponseHandler(packetId: number) {
+    const handlers = this.responseHandlers.get(packetId);
+    if (handlers) {
+      this.responseHandlers.delete(packetId);
+    }
+    return handlers;
+  }
+
+  /**
+   * Gets a service definition by its unique identifier.
+   * @param {string} defId - The unique identifier of the service definition.
+   * @returns {Definition} The service definition.
+   * @throws {Error} If the service definition is not found.
+   */
+  protected getDefinitionById(defId: string) {
+    const def = this.definitions.get(defId);
+    if (!def) {
+      throw new Error(`Unknown definition: ${defId}.`);
+    }
+    return def;
+  }
+
+  /**
+   * Gets a service definition by its name.
+   * @param {string} name - The name of the service.
+   * @returns {Definition} The service definition.
+   * @throws {Error} If the service definition is not found.
+   */
+  protected getDefinitionByServiceName(name: string) {
+    const def = this.services.get(name);
+    if (def === void 0) {
+      throw new Error(`Unknown service: ${name}.`);
+    }
+    return def;
+  }
+}
+
+```
+
+### File: service-stub.ts
+```
+import { LocalPeer } from './local-peer';
+import { Definition } from './definition';
+import { ServiceMetadata } from './types';
+import { isNetronService, isServiceReference, isServiceInterface, isServiceDefinition } from './predicates';
+
+/**
+ * The ServiceStub class acts as a proxy for a service instance, allowing
+ * interaction with the service's properties and methods while managing
+ * the underlying service definition.
+ */
+export class ServiceStub {
+  public definition;
+
+  /**
+   * Constructs a ServiceStub instance.
+   * @param {LocalPeer} peer - The local peer associated with this service stub.
+   * @param {any} instance - The actual service instance this stub represents.
+   * @param {ServiceMetadata | Definition} metaOrDefinition - Metadata or a definition object for the service.
+   */
+  constructor(
+    public peer: LocalPeer,
+    public instance: any,
+    metaOrDefinition: ServiceMetadata | Definition
+  ) {
+    // Determine if the provided metaOrDefinition is a service definition.
+    if (isServiceDefinition(metaOrDefinition)) {
+      this.definition = metaOrDefinition;
+    } else {
+      // Create a new Definition if metaOrDefinition is not a service definition.
+      this.definition = new Definition(Definition.nextId(), peer.id, metaOrDefinition);
+    }
+  }
+
+  /**
+   * Sets a property on the service instance.
+   * @param {string} prop - The name of the property to set.
+   * @param {any} value - The value to set the property to.
+   */
+  set(prop: string, value: any) {
+    Reflect.set(this.instance, prop, this.processValue(value));
+  }
+
+  /**
+   * Gets a property from the service instance.
+   * @param {string} prop - The name of the property to get.
+   * @returns {any} The processed result of the property.
+   */
+  get(prop: string) {
+    return this.processResult(this.instance[prop]);
+  }
+
+  /**
+   * Calls a method on the service instance.
+   * @param {string} method - The name of the method to call.
+   * @param {any[]} args - The arguments to pass to the method.
+   * @returns {Promise<any>} The processed result of the method call.
+   */
+  async call(method: string, args: any[]) {
+    const processedArgs = this.processArgs(args);
+    let result = this.instance[method](...processedArgs);
+    if (result instanceof Promise) {
+      result = await result;
+    }
+    return this.processResult(result);
+  }
+
+  /**
+   * Processes the result of a service interaction.
+   * @param {any} result - The result to process.
+   * @returns {any} The processed result, potentially a service reference.
+   */
+  private processResult(result: any) {
+    if (isNetronService(result) || isServiceInterface(result)) {
+      return this.peer.refService(result, this.definition);
+    }
+    return result;
+  }
+
+  /**
+   * Processes an array of arguments, transforming each as necessary.
+   * @param {any[]} args - The arguments to process.
+   * @returns {any[]} The processed arguments.
+   */
+  private processArgs(args: any[]) {
+    return args.map((arg: any) => this.processValue(arg));
+  }
+
+  /**
+   * Processes a single value, transforming it if it is a service reference.
+   * @param {any} obj - The value to process.
+   * @returns {any} The processed value.
+   */
+  private processValue(obj: any) {
+    if (isServiceReference(obj)) {
+      return this.peer.queryInterfaceByDefId(obj.defId);
+    }
+    return obj;
+  }
+}
+
+```
+
+### File: task-manager.ts
+```
+import { pathToFileURL } from 'url';
+import { readdir } from 'fs/promises';
+
+// Define a type for tasks, which can be either asynchronous or synchronous functions
+export type Task = (...args: any[]) => Promise<any> | any;
+
+// Class for managing tasks
+export class TaskManager {
+  // Map to store tasks, where the key is the task name and the value is the task function
+  private tasks: Map<string, Task> = new Map();
+  // Timeout for task execution in milliseconds
+  private timeout: number;
+  // Strategy for overwriting tasks: 'replace' - replace, 'skip' - skip, 'throw' - throw an error
+  private overwriteStrategy: 'replace' | 'skip' | 'throw';
+
+  // Constructor for the TaskManager class
+  constructor({
+    timeout = 5000,
+    overwriteStrategy = 'replace',
+  }: { timeout?: number; overwriteStrategy?: 'replace' | 'skip' | 'throw' } = {}) {
+    this.timeout = timeout; // Set the timeout
+    this.overwriteStrategy = overwriteStrategy; // Set the overwrite strategy
+  }
+
+  // Method to add a new task
+  addTask(fn: Task) {
+    // Check if the provided argument is a function
+    if (typeof fn !== 'function') {
+      throw new Error('Task must be a function');
+    }
+    // Check if the function has a name
+    if (!fn.name) {
+      throw new Error('Task function must have a name');
+    }
+
+    // Check if a task with the same name already exists
+    const existingTask = this.tasks.get(fn.name);
+    if (existingTask) {
+      // Actions based on the overwrite strategy
+      switch (this.overwriteStrategy) {
+        case 'replace':
+          this.tasks.set(fn.name, fn); // Replace the existing task
+          break;
+        case 'skip':
+          return; // Skip adding
+        case 'throw':
+          throw new Error(`Task already exists: ${fn.name}`); // Throw an error
+        default:
+          throw new Error(`Unknown overwrite strategy: ${this.overwriteStrategy}`); // Handle unexpected strategy
+      }
+    } else {
+      this.tasks.set(fn.name, fn); // Add the new task
+    }
+  }
+
+  // Method to load tasks from `.js` files in the specified directory
+  async loadTasksFromDir(directory: string) {
+    try {
+      // Read files from the directory and filter only `.js` files
+      const files = (await readdir(directory)).filter((f) => f.endsWith('.js'));
+
+      for (const file of files) {
+        let fileUrl = `${directory}/${file}`;
+        // Convert the file path to a URL if `require` is not available
+        if (typeof require !== 'function') {
+          fileUrl = pathToFileURL(`${directory}/${file}`).href;
+        }
+        // Import the module
+        const module = await import(fileUrl);
+
+        // Register tasks from the module
+        this._registerModule(module);
+      }
+    } catch (error: any) {
+      // Handle errors when loading tasks
+      throw new Error(`Failed to load tasks from directory (${directory}): ${error.message || error}`);
+    }
+  }
+
+  // Method to execute a task with a timeout
+  async runTask(name: string, ...args: any[]): Promise<any> {
+    // Retrieve the task by name
+    const task = this.tasks.get(name);
+    if (!task) {
+      throw new Error(`Task not found: ${name}`); // Throw an error if the task is not found
+    }
+
+    // Return a promise that executes the task with a timeout
+    return new Promise((resolve, reject) => {
+      // Set a timer for the timeout
+      const timer = setTimeout(() => {
+        reject(new Error(`Task timed out: ${name} (${this.timeout}ms)`)); // Reject the promise if the time is up
+      }, this.timeout);
+
+      try {
+        // Execute the task
+        const result = task(...args);
+        if (result instanceof Promise) {
+          // If the task returns a promise, handle it
+          result
+            .then(resolve)
+            .catch(reject)
+            .finally(() => clearTimeout(timer));
+        } else {
+          // If the task is synchronous, resolve the promise immediately
+          clearTimeout(timer);
+          resolve(result);
+        }
+      } catch (error) {
+        // Handle errors during task execution
+        clearTimeout(timer);
+        reject(error);
+      }
+    });
+  }
+
+  // Helper method to register modules
+  private _registerModule(module: Record<string, unknown>) {
+    // Iterate over all exports of the module
+    for (const [name, fn] of Object.entries(module)) {
+      // If the export is a function, add it as a task
+      if (typeof fn === 'function') {
+        this.addTask(fn as Task);
+      }
+    }
+  }
+}
+
+```
+
+### File: types.ts
+```
+import { Definition } from './definition';
+
+export type Abilities = {
+  // List of tasks that are exposed.
+  tasks?: string[];
+  // List of services that are exposed.
+  services?: Map<string, Definition>;
+  // Indicates whether the remote peer should subscribe to service events.
+  subsribeForServices?: boolean;
+};
+
+export type NetronOptions = {
+  id?: string;
+  listenHost?: string;
+  listenPort?: number;
+  taskTimeout?: number;
+  taskOverwriteStrategy?: 'replace' | 'skip' | 'throw';
+  connectTimeout?: number;
+  requestTimeout?: number;
+  abilities?: Abilities;
+  streamTimeout?: number;
+};
+
+export type EventSubscriber = (...args: any[]) => void;
+
+/**
+ * Interface representing information about a method argument.
+ */
+export interface ArgumentInfo {
+  index: number; // The index of the argument in the method signature
+  type: string; // The type of the argument
+}
+
+/**
+ * Interface representing information about a method.
+ */
+export interface MethodInfo {
+  type: string; // The return type of the method
+  arguments: ArgumentInfo[]; // Array of argument information
+}
+
+/**
+ * Interface representing information about a property.
+ */
+export interface PropertyInfo {
+  type: string; // The type of the property
+  readonly: boolean; // Indicates if the property is read-only
+}
+
+/**
+ * Interface representing metadata for a service.
+ */
+export interface ServiceMetadata {
+  name: string; // The name of the service
+  properties: Record<string, PropertyInfo>; // Record of property information
+  methods: Record<string, MethodInfo>; // Record of method information
+}
+
+export type ServiceExposeEvent = {
+  name: string;
+  peerId: string;
+  remotePeerId?: string;
+  definition: Definition;
+};
+
+export type ServiceUnexposeEvent = {
+  name: string;
+  peerId: string;
+  remotePeerId?: string;
+  defId: string;
+};
+
+```
+
+### File: uid.ts
+```
+import { MAX_UID_VALUE } from './common';
+
+/**
+ * Class for generating unique packet identifiers.
+ */
+export class Uid {
+  private value: number = 0 >>> 0;
+
+  constructor(initialValue: number = 0) {
+    this.reset(initialValue);
+  }
+
+  /**
+   * Creates a new unique identifier.
+   * @returns {number} A new unique identifier.
+   */
+  next(): number {
+    this.value = this.value === MAX_UID_VALUE ? 1 : this.value + 1;
+    return this.value;
+  }
+
+  /**
+   * Resets the identifier to the initial value.
+   * @param {number} initialValue - The initial value to reset to.
+   */
+  reset(initialValue: number = 0) {
+    this.value = initialValue >>> 0;
+  }
+}
+
+```
+
+### File: writable-stream.ts
+```
+import { Readable } from 'stream';
+
+import { Uid } from './uid';
+import { RemotePeer } from './remote-peer';
+
+const uid = new Uid();
+
+/**
+ * Represents a writable stream that can send data to a remote peer.
+ */
+export class WritableStream {
+  public id: number; // Unique identifier for the stream
+  public closed = false; // Indicates whether the stream is closed
+  private index = 0; // Index of the current chunk being sent
+  public expectedIndex = 0; // Index of the expected chunk
+
+  /**
+   * Constructs a WritableStream instance.
+   *
+   * @param peer - The remote peer to which the stream will send data.
+   * @param source - An optional source of data, which can be an AsyncIterable or a Readable stream.
+   * @param isLive - A boolean indicating if the stream is live. Defaults to false.
+   */
+  private constructor(
+    private peer: RemotePeer,
+    source?: AsyncIterable<any> | Readable,
+    private isLive: boolean = false
+  ) {
+    this.id = uid.next();
+
+    if (source) {
+      this.pipeFrom(source);
+    }
+  }
+
+  /**
+   * Pipes data from the given source to the stream.
+   *
+   * @param source - The source of data, which can be an AsyncIterable or a Readable stream.
+   */
+  private async pipeFrom(source: AsyncIterable<any> | Readable) {
+    for await (const chunk of source) {
+      if (this.closed) break; // Stop if the stream is closed
+      await this.write(chunk); // Write each chunk to the stream
+    }
+    if (!this.isLive) {
+      this.end(); // End the stream if it is not live
+    }
+  }
+
+  /**
+   * Writes data to the stream.
+   *
+   * @param data - The data to write to the stream.
+   * @throws Error if the stream is closed.
+   */
+  async write(data: any) {
+    if (this.closed) throw new Error('Stream is closed');
+    return this.peer.sendStreamChunk(this.id, data, this.index++, false, this.isLive);
+  }
+
+  /**
+   * Ends the stream by sending a final chunk.
+   */
+  async end(force: boolean = false) {
+    if (this.closed) return;
+
+    if (!this.isLive || force) {
+      await this.peer.sendStreamChunk(this.id, null, this.index, true, this.isLive);
+      this.close();
+    }
+  }
+
+  /**
+   * Closes the stream and notifies the remote peer.
+   */
+  private close() {
+    this.closed = true;
+    this.peer.writableStreams.delete(this.id);
+  }
+
+  static create(peer: RemotePeer, source?: AsyncIterable<any> | Readable, isLive: boolean = false) {
+    const stream = new WritableStream(peer, source, isLive);
+    peer.writableStreams.set(stream.id, stream);
+    return stream;
+  }
+}
+
+```
+

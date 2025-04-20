@@ -3,9 +3,6 @@ import os from 'os';
 import path from 'path';
 import { execSync } from 'child_process';
 
-const SRC_DIR = path.resolve(__dirname, 'src');
-const TESTS_DIR = path.resolve(__dirname, 'tests');
-
 export function copyToClipboard(text: string) {
   const platform = os.platform();
   try {
@@ -21,7 +18,7 @@ export function copyToClipboard(text: string) {
   }
 }
 
-// 🔥 Function for recursive traversal of `src/`
+// 🔥 Function for recursive traversal of directory
 function walkDir(dir: string): string[] {
   let results: string[] = [];
   const list = fs.readdirSync(dir);
@@ -38,13 +35,13 @@ function walkDir(dir: string): string[] {
 }
 
 // 🔥 Generate ChatGPT-compatible prompt
-function generatePrompt(): string {
-  const files = walkDir(SRC_DIR);
-  // const files = walkDir(TESTS_DIR);
+function generatePrompt(projectPath: string): string {
+  const srcDir = path.join(projectPath, 'src');
+  const files = walkDir(srcDir);
   let prompt = `Here are the project files and their contents:\n\n`;
 
   files.forEach((file) => {
-    const relativePath = path.relative(SRC_DIR, file);
+    const relativePath = path.relative(srcDir, file);
     const content = fs.readFileSync(file, 'utf8');
 
     prompt += `### File: ${relativePath}\n`;
@@ -56,13 +53,40 @@ function generatePrompt(): string {
   return prompt;
 }
 
-const OUTPUT_FILE = path.resolve(__dirname, 'prompt.txt');
+function savePromptToFile(projectPath: string) {
+  const outputFile = path.join(projectPath, 'prompt.txt');
+  const prompt = generatePrompt(projectPath);
+  fs.writeFileSync(outputFile, prompt);
+  console.log(`✅ Prompt saved to ${outputFile}`);
+}
 
-function savePromptToFile() {
-  const prompt = generatePrompt();
-  fs.writeFileSync(OUTPUT_FILE, prompt);
-  console.log(`✅ Prompt saved to ${OUTPUT_FILE}`);
+function printUsage() {
+  console.log(`
+Usage:
+  node generate-prompt.js <project-path>
+
+Description:
+  Generates a ChatGPT prompt based on the project source code.
+  Saves the result to prompt.txt in the project root.
+
+Example:
+  node generate-prompt.js /path/to/your/project
+  `);
+}
+
+// Get project path from command line arguments
+const projectPath = process.argv[2];
+if (!projectPath) {
+  printUsage();
+  process.exit(1);
+}
+
+// Check if src directory exists
+const srcDir = path.join(projectPath, 'src');
+if (!fs.existsSync(srcDir)) {
+  console.error('❌ src directory not found in the project');
+  process.exit(1);
 }
 
 // Run the script
-savePromptToFile();
+savePromptToFile(projectPath);

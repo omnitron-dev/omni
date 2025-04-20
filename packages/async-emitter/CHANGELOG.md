@@ -1,5 +1,38 @@
 # @devgrid/async-emitter
 
+## 0.3.2
+
+### Patch Changes
+
+- fix package.json
+- Updated dependencies
+  - @devgrid/common@0.4.2
+
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies
+  - @devgrid/common@0.4.1
+
+## 0.3.0
+
+### Minor Changes
+
+- add common cuid utilites
+
+### Patch Changes
+
+- Updated dependencies
+  - @devgrid/common@0.4.0
+
+## 0.2.6
+
+### Patch Changes
+
+- Updated dependencies
+  - @devgrid/common@0.3.1
+
 ## 0.2.5
 
 ### Patch Changes

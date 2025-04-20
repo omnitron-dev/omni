@@ -1,6 +1,6 @@
 {
   "name": "@devgrid/netron",
-  "version": "0.3.0",
+  "version": "0.4.2",
   "description": "Event bus, streams and remote object invocation.",
   "author": "LuxQuant",
   "license": "MIT",

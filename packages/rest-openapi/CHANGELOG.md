@@ -1,5 +1,32 @@
 # @devgrid/rest-openapi
 
+## 3.53.1
+
+### Patch Changes
+
+- fix package.json
+- Updated dependencies
+  - @devgrid/rest-core@3.53.1
+
+## 3.53.0
+
+### Minor Changes
+
+- add common cuid utilites
+
+### Patch Changes
+
+- Updated dependencies
+  - @devgrid/rest-core@3.53.0
+
+## 3.52.5
+
+### Patch Changes
+
+- update build config
+- Updated dependencies
+  - @devgrid/rest-core@3.52.5
+
 ## 3.52.4
 
 ### Patch Changes

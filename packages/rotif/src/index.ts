@@ -20,3 +20,9 @@ export * from './types';
  * @see middleware
  */
 export * from './middleware';
+
+/**
+ * Exactly-once delivery functionality for message processing.
+ * @see exactly-once
+ */
+export * from './exactly-once';

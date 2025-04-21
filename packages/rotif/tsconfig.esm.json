@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.esm.tsbuildinfo",
+    "baseUrl": "./src",
+    "rootDir": "./src",
+    "outDir": "./dist/esm",
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "**/*spec.ts"
+  ]
+}

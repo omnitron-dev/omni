@@ -28,19 +28,19 @@
 Установка библиотеки производится через npm:
 
 ```bash
-npm install rotif
+npm install @devgrid/rotif
 ```
 
 Или с помощью Yarn:
 
 ```bash
-yarn add rotif
+yarn add @devgrid/rotif
 ```
 
 После установки вы можете импортировать `NotificationManager` в своем проекте:
 
 ```typescript
-import { NotificationManager } from 'rotif';
+import { NotificationManager } from '@devgrid/rotif';
 ```
 
 Библиотека не требует дополнительных зависимостей, кроме клиента Redis. По умолчанию используется официальный клиент **node-redis** (v4+) для подключения к Redis через предоставленный URL. Optionally, rotif может использовать `ioredis` при работе с Redis Cluster (см. раздел про кластер). В минимальной конфигурации достаточно указать URL подключения к Redis.

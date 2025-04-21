@@ -19,6 +19,7 @@ Monorepository with a set of TypeScript libraries for building distributed syste
 - [@devgrid/rest-openapi](packages/rest-openapi) - OpenAPI specification generation from TypeScript types
 - [@devgrid/rest-react-query](packages/rest-react-query) - REST API integration with React Query for state management
 - [@devgrid/rest-nest](packages/rest-nest) - NestJS integration for REST APIs
+- [@devgrid/rotif](packages/rotif) - Robust Redis-based notification system with guaranteed delivery, retry mechanisms, and dead letter queues
 
 ### Applications
 

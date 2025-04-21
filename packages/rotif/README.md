@@ -579,7 +579,7 @@ Contributions are welcome! Submit issues and pull requests on [GitHub](https://g
 
 ## License
 
-MIT © [LuxQuant](https://github.com/d-e-v-grid/dg-monorepo)
+MIT © [DevGrid](https://github.com/d-e-v-grid/dg-monorepo)
 
 ---
 

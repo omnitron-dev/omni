@@ -1,10 +1,9 @@
 import { Module, Global, Provider, DynamicModule } from '@nestjs/common';
-import { APP_FILTER, APP_INTERCEPTOR, DiscoveryModule } from '@nestjs/core';
 import { RedisDedupStore, InMemoryDedupStore, NotificationManager } from '@devgrid/rotif';
+import { APP_FILTER, APP_INTERCEPTOR, DiscoveryModule, MetadataScanner } from '@nestjs/core';
 
 import { RotifService } from './services/rotif.service';
 import { ROTIF_MANAGER, ROTIF_MODULE_OPTIONS } from './constants';
-import { RotifHealthService } from './services/rotif-health.service';
 import { RotifDiscoveryService } from './services/rotif-discovery.service';
 import { RotifModuleOptions } from './interfaces/rotif-module-options.interface';
 import {
@@ -12,48 +11,60 @@ import {
   RotifModuleOptionsFactory,
 } from './interfaces/rotif-module-async-options.interface';
 
+/**
+ * RotifModule integrates Rotif notifications with NestJS applications.
+ * Supports dynamic and static configuration, automatic message handler discovery,
+ * global interceptors, middleware, and exception filters.
+ */
 @Global()
 @Module({})
 export class RotifModule {
+  /**
+   * Registers RotifModule synchronously with provided configuration options.
+   */
   static register(options: RotifModuleOptions): DynamicModule {
     return {
       module: RotifModule,
       imports: [DiscoveryModule],
       providers: [
-        ...this.createRotifProviders(),
         { provide: ROTIF_MODULE_OPTIONS, useValue: options },
+        MetadataScanner,
+        ...this.createCoreProviders(),
         ...this.createGlobalProviders(options),
       ],
-      exports: [RotifService, RotifHealthService],
+      exports: [RotifService],
     };
   }
 
+  /**
+   * Registers RotifModule asynchronously.
+   */
   static registerAsync(options: RotifModuleAsyncOptions): DynamicModule {
     return {
       module: RotifModule,
       imports: [DiscoveryModule, ...(options.imports || [])],
       providers: [
-        ...this.createRotifProviders(),
+        MetadataScanner,
         ...this.createAsyncProviders(options),
+        ...this.createCoreProviders(),
       ],
-      exports: [RotifService, RotifHealthService],
+      exports: [RotifService],
     };
   }
 
   /**
-   * Создание общих провайдеров для Rotif модуля.
+   * Creates core providers necessary for RotifModule.
    */
-  private static createRotifProviders(): Provider[] {
+  private static createCoreProviders(): Provider[] {
     return [
       RotifService,
       RotifDiscoveryService,
-      RotifHealthService,
       this.createRotifManagerProvider(),
     ];
   }
 
   /**
-   * Создание провайдера NotificationManager с поддержкой middleware и deduplication.
+   * Creates provider for NotificationManager including middleware and deduplication.
    */
   private static createRotifManagerProvider(): Provider {
     return {
@@ -79,7 +90,7 @@ export class RotifModule {
   }
 
   /**
-   * Создание глобальных провайдеров для ExceptionFilters и Interceptors.
+   * Creates global NestJS providers for ExceptionFilters and Interceptors.
    */
   private static createGlobalProviders(options: RotifModuleOptions): Provider[] {
     const filters = (options.globalExceptionFilters || []).map((filter) => ({
@@ -96,11 +107,9 @@ export class RotifModule {
   }
 
   /**
-   * Создание провайдеров для асинхронной конфигурации.
+   * Creates asynchronous providers to load module configuration dynamically.
    */
-  private static createAsyncProviders(
-    options: RotifModuleAsyncOptions,
-  ): Provider[] {
+  private static createAsyncProviders(options: RotifModuleAsyncOptions): Provider[] {
     if (options.useFactory) {
       return [
         {
@@ -108,48 +117,31 @@ export class RotifModule {
           useFactory: options.useFactory,
           inject: options.inject || [],
         },
-        ...this.createOptionalGlobalProvidersAsync(),
       ];
     }
 
     const injectToken = options.useExisting || options.useClass;
+
     if (!injectToken) {
       throw new Error('Must provide useFactory, useClass, or useExisting');
     }
 
-    const asyncProvider: Provider = {
-      provide: ROTIF_MODULE_OPTIONS,
-      useFactory: async (factory: RotifModuleOptionsFactory) =>
-        factory.createRotifModuleOptions(),
-      inject: [injectToken],
-    };
-
-    const providers: Provider[] = [asyncProvider];
-
-    if (options.useClass) {
-      providers.push({ provide: options.useClass, useClass: options.useClass });
-    }
-
-    return [...providers, ...this.createOptionalGlobalProvidersAsync()];
-  }
-
-  /**
-   * Создание дополнительных (опциональных) провайдеров глобальных фильтров и интерсепторов для асинхронной конфигурации.
-   */
-  private static createOptionalGlobalProvidersAsync(): Provider[] {
-    return [
+    const asyncProviders: Provider[] = [
       {
-        provide: APP_FILTER,
-        useFactory: (options: RotifModuleOptions) =>
-          options.globalExceptionFilters?.map((filter) => new filter()) || [],
-        inject: [ROTIF_MODULE_OPTIONS],
-      },
-      {
-        provide: APP_INTERCEPTOR,
-        useFactory: (options: RotifModuleOptions) =>
-          options.globalInterceptors?.map((interceptor) => new interceptor()) || [],
-        inject: [ROTIF_MODULE_OPTIONS],
+        provide: ROTIF_MODULE_OPTIONS,
+        useFactory: async (factory: RotifModuleOptionsFactory) =>
+          factory.createRotifModuleOptions(),
+        inject: [injectToken],
       },
     ];
+
+    if (options.useClass) {
+      asyncProviders.push({
+        provide: injectToken,
+        useClass: injectToken,
+      });
+    }
+
+    return asyncProviders;
   }
 }

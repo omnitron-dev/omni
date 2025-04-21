@@ -1,35 +1,14 @@
-import { Reflector, DiscoveryService } from '@nestjs/core';
-import {
-  Logger,
-  Injectable,
-  OnModuleInit,
-} from '@nestjs/common';
+import { Logger, Injectable, OnModuleInit } from '@nestjs/common';
+import { Reflector, MetadataScanner, DiscoveryService } from '@nestjs/core';
 
 import { RotifService } from './rotif.service';
 import { ROTIF_SUBSCRIBE_METADATA } from '../constants';
 import { RotifSubscribeMetadata } from '../decorators/rotif-subscribe.decorator';
 
 /**
- * Service responsible for automatically discovering and registering message handlers
- * decorated with @RotifSubscribe in a NestJS application. This service uses NestJS's
- * discovery system to find all methods decorated with @RotifSubscribe and sets up
- * the appropriate subscriptions during module initialization.
- *
- * The discovery process happens during the onModuleInit lifecycle hook, ensuring
- * that all handlers are registered before the application starts processing requests.
- *
- * @example
- * // Example of a handler that will be automatically discovered
- * ＠Injectable()
- * export class OrdersHandler {
- *   ＠RotifSubscribe('orders.created', {
- *     group: 'order-processor',
- *     maxRetries: 3
- *   })
- *   async handleOrderCreated(message: RotifMessage) {
- *     // Handler implementation
- *   }
- * }
+ * RotifDiscoveryService automatically discovers and registers methods decorated
+ * with the @RotifSubscribe decorator at application startup. It uses NestJS's DiscoveryService
+ * and MetadataScanner to scan controllers and providers reliably.
  */
 @Injectable()
 export class RotifDiscoveryService implements OnModuleInit {
@@ -37,60 +16,93 @@ export class RotifDiscoveryService implements OnModuleInit {
 
   constructor(
     private readonly discoveryService: DiscoveryService,
+    private readonly metadataScanner: MetadataScanner,
     private readonly reflector: Reflector,
     private readonly rotifService: RotifService,
   ) { }
 
   /**
-   * Lifecycle hook that runs when the module is initialized.
-   * This method performs the discovery and registration of all @RotifSubscribe
-   * decorated methods in the application.
-   *
-   * The discovery process:
-   * 1. Finds all providers in the application using DiscoveryService
-   * 2. For each provider, examines its prototype methods
-   * 3. Checks each method for @RotifSubscribe metadata
-   * 4. If metadata is found, registers a subscription using RotifService
-   *
-   * @throws Error if registration of any handler fails
-   *
-   * The discovery process is automatic and requires no additional configuration
-   * beyond decorating methods with @RotifSubscribe. This enables a declarative
-   * approach to setting up message handlers in the application.
+   * This lifecycle hook is executed when the module has been initialized.
+   * It triggers the discovery and registration of Rotif handlers.
    */
-  async onModuleInit() {
-    const providers = this.discoveryService.getProviders();
+  onModuleInit() {
+    this.exploreHandlers();
+  }
 
-    for (const provider of providers) {
-      const { instance } = provider;
+  /**
+   * Explores providers and controllers to find methods annotated with @RotifSubscribe,
+   * and registers them with the RotifService.
+   */
+  private exploreHandlers(): void {
+    const wrappers = [
+      ...this.discoveryService.getProviders(),
+      ...this.discoveryService.getControllers(),
+    ];
 
-      // Skip if provider has no instance or is not an object
-      if (!instance || typeof instance !== 'object') continue;
+    wrappers.forEach((wrapper) => {
+      const { instance, metatype } = wrapper;
+
+      if (!instance || !metatype || typeof instance !== 'object') {
+        return;
+      }
 
       const prototype = Object.getPrototypeOf(instance);
-      // Get all method names except constructor
-      const methods = Object.getOwnPropertyNames(prototype).filter(
-        (method) => method !== 'constructor' && typeof prototype[method] === 'function',
-      );
+      if (!prototype) return;
 
-      // Check each method for @RotifSubscribe metadata
-      methods.forEach((methodName) => {
+      this.metadataScanner.scanFromPrototype(instance, prototype, (methodName: string) => {
+        if (!wrapper.isDependencyTreeStatic()) {
+          this.logger.warn(
+            `Cannot register handler "${wrapper.name}@${methodName}" because it is defined in a non-static provider.`,
+          );
+          return;
+        }
+
+        const handler = prototype[methodName];
         const metadata = this.reflector.get<RotifSubscribeMetadata>(
           ROTIF_SUBSCRIBE_METADATA,
-          prototype[methodName],
+          handler,
         );
 
         if (metadata) {
-          this.logger.debug(`Registering handler for "${metadata.pattern}"`);
+          this.logger.debug(
+            `Registering Rotif handler "${wrapper.name}@${methodName}" for pattern "${metadata.pattern}".`,
+          );
 
-          // Register the subscription with the handler bound to the instance
           this.rotifService.subscribe(
             metadata.pattern,
-            (msg) => instance[methodName](msg),
+            this.wrapHandlerWithErrorHandling(instance, handler, wrapper.name, methodName),
             metadata.options,
           );
         }
       });
-    }
+    });
+  }
+
+  /**
+   * Wraps handler execution in a try-catch block to ensure robust error handling
+   * and prevent unexpected termination of the handler lifecycle.
+   *
+   * @param instance - Instance of the class containing the handler method
+   * @param handler - Method reference of the handler
+   * @param providerName - Name of the provider class
+   * @param methodName - Name of the handler method
+   */
+  private wrapHandlerWithErrorHandling(
+    instance: any,
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+    handler: Function,
+    providerName: string,
+    methodName: string,
+  ) {
+    return async (...args: any[]) => {
+      try {
+        await handler.apply(instance, args);
+      } catch (error: any) {
+        this.logger.error(
+          `Error in Rotif handler "${providerName}@${methodName}": ${error.message}`,
+          error.stack,
+        );
+      }
+    };
   }
 }

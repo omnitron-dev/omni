@@ -29,8 +29,6 @@ export interface RotifMessage {
   attempt: number;
   /** Acknowledges the message, marking it as processed */
   ack: () => Promise<void>;
-  /** Retries processing the message */
-  retry: () => Promise<void>;
 }
 
 /**
@@ -54,6 +52,12 @@ export interface RotifConfig {
   minStreamId?: string;
   /** Block interval in milliseconds for stream reading */
   blockInterval?: number;
+  /** Deduplication TTL (seconds) for exactly-once delivery */
+  deduplicationTTL?: number;
+  /** Maximum number of messages to move from scheduled to stream */
+  scheduledBatchSize?: number;
+  /** Retry delay in milliseconds or function to calculate delay */
+  retryDelay?: number | ((attempt: number, msg: RotifMessage) => number);
   /** Custom function to generate consumer group names */
   groupNameFn?: (pattern: string) => string;
   /** Custom function to generate consumer names */
@@ -71,6 +75,10 @@ export interface Subscription {
   pattern: string;
   /** Consumer group name */
   group: string;
+  /** Message handler function */
+  handler: (msg: RotifMessage) => Promise<void>;
+  /** Subscribe options */
+  options?: SubscribeOptions;
   /** Unsubscribe from the channel */
   unsubscribe(): Promise<void>;
   /** Pause message processing */
@@ -82,6 +90,7 @@ export interface Subscription {
   /** Get subscription statistics */
   stats(): SubscriptionStats;
 }
+
 
 /**
  * Statistics for a subscription.
@@ -109,6 +118,10 @@ export interface PublishOptions {
   deliverAt?: number | Date;
   /** Initial attempt number */
   attempt?: number;
+  /** Enable exactly-once deduplication */
+  exactlyOnce?: boolean;
+  /** Deduplication TTL in seconds */
+  deduplicationTTL?: number;
 }
 
 /**

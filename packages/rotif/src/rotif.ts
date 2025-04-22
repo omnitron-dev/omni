@@ -1,14 +1,17 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { v4 as uuidv4 } from 'uuid';
+import { createHash } from 'crypto';
 import { Redis, RedisOptions } from 'ioredis';
-import { delay as delayMs } from '@devgrid/common';
+import { defer, Deferred, delay as delayMs } from '@devgrid/common';
 
 import { StatsTracker } from './stats';
+import { DedupStore } from './exactly-once';
 import { parseFields } from './utils/common';
 import { defaultLogger } from './utils/logger';
-import { DedupStore, RedisDedupStore } from './exactly-once';
+import { defaultConsumerName } from './options';
 import { Middleware, MiddlewareManager } from './middleware';
-import { defaultGroupName, defaultConsumerName } from './options';
-import { trimStream, getStreamKey, ensureStreamGroup } from './stream-utils';
+import { getStreamKey, ensureStreamGroup } from './stream-utils';
 import { RotifConfig, RotifLogger, RotifMessage, Subscription, PublishOptions, SubscribeOptions } from './types';
 
 /**
@@ -36,6 +39,14 @@ export class NotificationManager {
   private delayTimeoutId?: NodeJS.Timeout;
   /** Set of active operations for graceful shutdown */
   private activeOperations: Set<Promise<any>> = new Set();
+  private centralLoopDefer?: Deferred;
+  private initializationDefer: Deferred;
+
+  private publishScriptSHA?: string;
+  private moveScheduledScriptSHA?: string;
+  private ackScriptSHA?: string;
+  private retryScriptSHA?: string;
+  private moveToDLQScriptSHA?: string;
 
   /**
    * Creates a new NotificationManager instance.
@@ -49,9 +60,44 @@ export class NotificationManager {
     this.redis.on('error', (err) => {
       this.logger.error('Redis connection error', err);
     });
-    if (this.config.enableDelayed !== false) {
-      setImmediate(() => this.startDelayScheduler());
-    }
+
+    this.initializationDefer = defer();
+
+    this.loadLuaScripts().then(() => {
+      if (this.config.enableDelayed !== false) {
+        setImmediate(() => this.startDelayScheduler());
+      }
+      this.initializationDefer.resolve?.(true);
+    });
+  }
+
+  async loadLuaScripts() {
+    this.publishScriptSHA = await this.redis.script(
+      'LOAD',
+      fs.readFileSync(path.join(__dirname, '..', 'lua', 'publish-message.lua'), 'utf-8')
+    ) as string;
+
+    this.moveScheduledScriptSHA = await this.redis.script(
+      'LOAD',
+      fs.readFileSync(path.join(__dirname, '..', 'lua', 'move-scheduled-messages.lua'), 'utf-8')
+    ) as string;
+
+    this.ackScriptSHA = await this.redis.script(
+      'LOAD',
+      fs.readFileSync(path.join(__dirname, '..', 'lua', 'ack-message.lua'), 'utf-8')
+    ) as string;
+
+    this.retryScriptSHA = await this.redis.script(
+      'LOAD',
+      fs.readFileSync(path.join(__dirname, '..', 'lua', 'retry-message.lua'), 'utf-8')
+    ) as string;
+
+    this.moveToDLQScriptSHA = await this.redis.script(
+      'LOAD',
+      fs.readFileSync(path.join(__dirname, '..', 'lua', 'move-to-dlq.lua'), 'utf-8')
+    ) as string;
+
+    this.logger.info('Lua scripts loaded');
   }
 
   /**
@@ -78,6 +124,171 @@ export class NotificationManager {
   }
 
   /**
+   * Starts the central event-loop for processing messages from all subscribed streams.
+   */
+  private async startCentralLoop() {
+    if (this.centralLoopDefer) return;
+    this.centralLoopDefer = defer();
+
+    await this.initializationDefer.promise;
+
+    const consumer = this.config.consumerNameFn?.() || defaultConsumerName();
+
+    while (this.active) {
+      if (this.subscriptions.size === 0) {
+        await delayMs(500);
+        continue;
+      }
+
+      // Составим пары поток-группа с учётом startFrom
+      const streamGroupPairs = new Map<string, Map<string, string>>(); // stream -> (group -> startFrom)
+
+      for (const sub of this.subscriptions.values()) {
+        const stream = getStreamKey(sub.pattern.replace('*', ''));
+        const group = sub.group;
+        const startFrom = sub.options?.startFrom ?? '$';
+
+        if (!streamGroupPairs.has(stream)) streamGroupPairs.set(stream, new Map());
+        const groupMap = streamGroupPairs.get(stream)!;
+
+        // Используем самое раннее startFrom, если несколько подписок указали разные значения
+        if (!groupMap.has(group) || (startFrom !== '$' && groupMap.get(group) === '$')) {
+          groupMap.set(group, startFrom);
+        }
+      }
+
+      // Создание групп с правильным startFrom
+      for (const [stream, groups] of streamGroupPairs.entries()) {
+        for (const [group, startFrom] of groups.entries()) {
+          await ensureStreamGroup(this.redis, stream, group, startFrom);
+        }
+      }
+
+      // Читаем сообщения по всем группам и стримам отдельно
+      const readPromises: Promise<void>[] = [];
+
+      for (const [stream, groups] of streamGroupPairs.entries()) {
+        for (const group of groups.keys()) {
+          readPromises.push(this.trackOperation(this.redis.xreadgroup(
+            'GROUP', group, consumer,
+            'COUNT', 50,
+            'BLOCK', this.config.blockInterval ?? 5000,
+            'STREAMS', stream, '>'
+          ) as Promise<[string, [string, string[]][]][] | null>).then(async entries => {
+            if (!entries) return;
+            for (const [returnedStream, records] of entries) {
+              for (const [id, rawFields] of records) {
+                const fields = parseFields(rawFields);
+                const channel = fields['channel'] ?? '';
+                const payloadStr = fields['payload'] ?? '{}';
+                const timestampStr = fields['timestamp'] ?? '0';
+                const attemptStr = fields['attempt'] ?? '1';
+                const attempt = parseInt(attemptStr, 10);
+
+                const msg: RotifMessage = {
+                  id,
+                  channel,
+                  payload: JSON.parse(payloadStr),
+                  timestamp: parseInt(timestampStr, 10),
+                  attempt,
+                  ack: async () => {
+                    await this.trackOperation(this.redis.evalsha(
+                      this.ackScriptSHA!,
+                      1,
+                      returnedStream,
+                      group,
+                      id,
+                      '1'
+                    ));
+                  },
+                };
+
+                await this.dispatchToSubscribers(channel, msg, returnedStream, payloadStr, timestampStr, attemptStr, group);
+              }
+            }
+          }).catch(err => {
+            this.logger.error(`Error reading stream ${stream} group ${group}`, err);
+          }));
+        }
+      }
+
+      await Promise.all(readPromises);
+    }
+
+    this.centralLoopDefer?.resolve?.(true);
+  }
+
+
+  /**
+   * Dispatches messages to relevant subscribers.
+   */
+  private async dispatchToSubscribers(
+    channel: string,
+    msg: RotifMessage,
+    stream: string,
+    payloadStr: string,
+    timestampStr: string,
+    attemptStr: string,
+    group: string // добавляем сюда группу!
+  ) {
+    const matchingSubs = Array.from(this.subscriptions.values()).filter(sub => {
+      const regexPattern = sub.pattern.replace('*', '.*');
+      return sub.group === group && new RegExp(`^${regexPattern}$`).test(channel);
+    });
+
+    for (const sub of matchingSubs) {
+      if (sub.isPaused) continue;
+      try {
+        await this.middleware.runBeforeProcess(msg);
+        await sub.handler(msg);
+        await msg.ack();
+        await this.middleware.runAfterProcess(msg);
+      } catch (err) {
+        this.logger.warn(`Handler error on message ${msg.id}`, err);
+        await this.middleware.runOnError(msg, err as Error);
+
+        const maxRetries = sub.options?.maxRetries ?? this.config.maxRetries ?? 5;
+
+        if (msg.attempt >= maxRetries) {
+          await this.trackOperation(this.redis.evalsha(
+            this.moveToDLQScriptSHA!,
+            2,
+            stream,
+            'rotif:dlq',
+            group,
+            msg.id,
+            channel,
+            payloadStr,
+            (err as Error).message || 'unknown',
+            msg.timestamp.toString(),
+            msg.attempt.toString()
+          ));
+          this.logger.error(`Message ${msg.id} moved to DLQ`);
+        } else {
+          const retryDelay = typeof sub.options?.retryDelay === 'function'
+            ? sub.options.retryDelay(msg.attempt, msg)
+            : Number(sub.options?.retryDelay ?? this.config.retryDelay ?? 1000);
+
+          await this.trackOperation(this.redis.evalsha(
+            this.retryScriptSHA!,
+            2,
+            stream,
+            'rotif:scheduled',
+            group,
+            msg.id,
+            channel,
+            payloadStr,
+            timestampStr,
+            attemptStr,
+            (Date.now() + retryDelay).toString(),
+            uuidv4(),
+          ));
+        }
+      }
+    }
+  }
+
+  /**
    * Publishes a message to a channel.
    * @param {string} channel - Channel name
    * @param {any} payload - Message payload
@@ -85,6 +296,7 @@ export class NotificationManager {
    * @returns {Promise<string>} Message ID
    */
   async publish(channel: string, payload: any, options?: PublishOptions): Promise<string> {
+    await this.initializationDefer.promise;
     return this.trackOperation(this._publish(channel, payload, options));
   }
 
@@ -96,38 +308,57 @@ export class NotificationManager {
     await this.middleware.runBeforePublish(channel, payload, options);
 
     const streamKey = getStreamKey(channel);
-    const message = {
-      channel,
-      payload: JSON.stringify(payload),
-      timestamp: Date.now().toString(),
-      attempt: String(options?.attempt ?? 1),
-    };
+    const delayedSetKey = 'rotif:scheduled';
+    const timestamp = Date.now().toString();
+    const attempt = String(options?.attempt ?? 1);
+    const deliveryType = options?.delayMs || options?.deliverAt ? 'delayed' : 'normal';
+    const delayTimestamp = options?.deliverAt
+      ? new Date(options.deliverAt).getTime().toString()
+      : options?.delayMs
+        ? (Date.now() + options.delayMs).toString()
+        : '0';
 
-    if (options?.delayMs || options?.deliverAt) {
-      const score = options.deliverAt ? new Date(options.deliverAt).getTime() : Date.now() + (options.delayMs ?? 0);
-      const scheduled = {
-        ...message,
-        due: score.toString(),
-      };
-      await this.redis.zadd('rotif:scheduled', score, JSON.stringify(scheduled));
-      this.logger.debug('Scheduled message', scheduled);
-      await this.middleware.runAfterPublish(channel, payload, 'SCHEDULED', options);
-      return 'SCHEDULED';
+    const maxStreamLength = this.config.maxStreamLength ? String(this.config.maxStreamLength) : '0';
+    const minStreamId = this.config.minStreamId ?? '';
+
+    const dedupKey = options?.exactlyOnce
+      ? `rotif:dedup:${channel}:${this.generateDedupId(payload)}`
+      : '';
+
+    const deduplicationTTL = options?.deduplicationTTL ?? this.config.deduplicationTTL ?? 3600;
+
+    const result = await this.redis.evalsha(
+      this.publishScriptSHA!,
+      2,
+      streamKey,
+      delayedSetKey,
+      JSON.stringify(payload),
+      timestamp,
+      channel,
+      attempt,
+      deliveryType,
+      delayTimestamp,
+      maxStreamLength,
+      minStreamId,
+      dedupKey,
+      deduplicationTTL.toString(),
+      uuidv4(),
+    ) as string;
+
+    if (!result) throw new Error('Publish failed: no ID returned');
+    if (result === 'DUPLICATE') {
+      this.logger.warn(`Duplicate message detected: ${dedupKey}`);
+      return result;
     }
 
-    const id = await this.redis.xadd(
-      streamKey,
-      '*',
-      'channel', message.channel,
-      'payload', message.payload,
-      'timestamp', message.timestamp,
-      'attempt', message.attempt
-    );
-    if (!id) throw new Error('XADD failed: no ID returned');
-    await trimStream(this.redis, streamKey, this.config.maxStreamLength, this.config.minStreamId);
-    this.logger.debug('Published message', { id, ...message });
-    await this.middleware.runAfterPublish(channel, payload, id, options);
-    return id;
+    this.logger.debug('Published message via Lua', { id: result, channel, deliveryType });
+
+    await this.middleware.runAfterPublish(channel, payload, result, options);
+    return result;
+  }
+
+  private generateDedupId(payload: any): string {
+    return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
   }
 
   /**
@@ -138,6 +369,7 @@ export class NotificationManager {
    * @returns {Promise<Subscription>} Subscription instance
    */
   async subscribe(pattern: string, handler: (msg: RotifMessage) => Promise<void>, options?: SubscribeOptions): Promise<Subscription> {
+    await this.initializationDefer.promise;
     return this.trackOperation(this._subscribe(pattern, handler, options));
   }
 
@@ -145,151 +377,37 @@ export class NotificationManager {
    * Internal subscribe implementation.
    * @private
    */
-  private async _subscribe(pattern: string, handler: (msg: RotifMessage) => Promise<void>, options?: SubscribeOptions): Promise<Subscription> {
-    const streamKey = getStreamKey(pattern.replace('*', ''));
-    const group = options?.groupName || this.config.groupNameFn?.(pattern) || defaultGroupName(pattern);
-    const consumer = options?.consumerName || this.config.consumerNameFn?.() || defaultConsumerName();
-
-    await ensureStreamGroup(this.redis, streamKey, group, options?.startFrom || '$');
-
-    const stats = new StatsTracker();
+  private async _subscribe(
+    pattern: string,
+    handler: (msg: RotifMessage) => Promise<void>,
+    options?: SubscribeOptions
+  ): Promise<Subscription> {
+    const group = options?.groupName ?? 'rotif-group';
     const subId = uuidv4();
+    const stats = new StatsTracker();
+
     const sub: Subscription = {
       id: subId,
       pattern,
       group,
+      options,
+      handler, // сохранили обработчик
       unsubscribe: async () => {
         this.subscriptions.delete(subId);
       },
-      pause: () => {
-        (sub as any).paused = true;
-      },
-      resume: () => {
-        (sub as any).paused = false;
-      },
+      pause: () => { sub.isPaused = true; },
+      resume: () => { sub.isPaused = false; },
       isPaused: false,
       stats: () => stats.getStats(),
     };
 
-    (sub as any).paused = false;
-
     this.subscriptions.set(subId, sub);
-    if (options?.exactlyOnce && !this.dedupStore) {
-      this.dedupStore = new RedisDedupStore(this.redis);
+
+    if (!this.centralLoopDefer) {
+      this.startCentralLoop();
     }
-    this.processStream(streamKey, group, consumer, async (msg) => {
-      if (options?.exactlyOnce && this.dedupStore) {
-        const isDup = await this.dedupStore.isDuplicate(msg.id, msg.channel);
-        if (isDup) {
-          this.logger.debug(`Skipping duplicate message ${msg.id} on ${msg.channel}`);
-          await msg.ack();
-          return;
-        }
-        await handler(msg);
-        await this.dedupStore.markProcessed(msg.id, msg.channel);
-      } else {
-        await handler(msg);
-      }
-    }, sub, options, stats);
+
     return sub;
-  }
-
-  /**
-   * Processes messages from a stream.
-   * @private
-   */
-  private async processStream(
-    streamKey: string,
-    group: string,
-    consumer: string,
-    handler: (msg: RotifMessage) => Promise<void>,
-    sub: Subscription,
-    options?: SubscribeOptions,
-    stats?: StatsTracker
-  ) {
-    while (this.active) {
-      if ((sub as any).paused) {
-        await delayMs(1000);
-        continue;
-      }
-
-      const entries = await this.trackOperation(this.redis.xreadgroup(
-        'GROUP', group, consumer,
-        'COUNT', 10,
-        'BLOCK', this.config.blockInterval || 5000,
-        'STREAMS', streamKey, '>'
-      ) as Promise<[string, [string, string[]][]][] | null>);
-
-      if (!entries) continue;
-
-      for (const [, records] of entries) {
-        for (const [id, rawFields] of records) {
-          const fields = parseFields(rawFields);
-
-          const channel = fields['channel'] ?? '';
-          const payloadStr = fields['payload'] ?? '{}';
-          const timestampStr = fields['timestamp'] ?? '0';
-          const attemptStr = fields['attempt'] ?? '1';
-
-          const attempt = parseInt(attemptStr, 10);
-
-          const msg: RotifMessage = {
-            id,
-            channel,
-            payload: JSON.parse(payloadStr),
-            timestamp: parseInt(timestampStr, 10),
-            attempt,
-            ack: async () => {
-              await this.trackOperation(this.redis.xack(streamKey, group, id));
-            },
-            retry: async () => {
-              await this.trackOperation(this.redis.xack(streamKey, group, id));
-              if (!this.active) return;
-              const delay = typeof options?.retryDelay === 'function'
-                ? options.retryDelay(attempt, msg)
-                : options?.retryDelay || 1000;
-              await this.trackOperation(this.redis.zadd(
-                'rotif:scheduled',
-                Date.now() + delay,
-                JSON.stringify({
-                  channel,
-                  payload: payloadStr,
-                  timestamp: timestampStr,
-                  attempt: (attempt + 1).toString(),
-                })
-              ));
-            }
-          };
-
-          try {
-            await this.middleware.runBeforeProcess(msg);
-            await handler(msg);
-            stats?.recordMessage();
-            await msg.ack();
-            await this.middleware.runAfterProcess(msg);
-          } catch (err) {
-            this.logger.warn(`Handler error on message ${id}`, err);
-            stats?.recordRetry();
-            await this.middleware.runOnError(msg, err as Error);
-            if (attempt >= (options?.maxRetries || this.config.maxRetries || 5)) {
-              await this.trackOperation(this.redis.xack(streamKey, group, id));
-              console.log('moving to DLQ', channel, payloadStr);
-              await this.trackOperation(this.redis.xadd(
-                'rotif:dlq',
-                '*',
-                'channel', channel,
-                'payload', payloadStr,
-                'error', (err as Error).message || 'unknown'
-              ));
-              this.logger.error(`Message ${id} moved to DLQ`);
-              stats?.recordFailure();
-            } else {
-              await msg.retry();
-            }
-          }
-        }
-      }
-    }
   }
 
   /**
@@ -299,16 +417,16 @@ export class NotificationManager {
   private async startDelayScheduler() {
     const scheduler = async () => {
       if (!this.active) return;
-      const startTime = Date.now();
       try {
-        const messages = await this.trackOperation(this.redis.zrangebyscore('rotif:scheduled', 0, startTime, 'LIMIT', 0, 10));
-        for (const msg of messages) {
-          const parsed = JSON.parse(msg);
-          await this.publish(parsed.channel, JSON.parse(parsed.payload), {
-            attempt: parseInt(parsed.attempt || '1', 10),
-          });
-          await this.trackOperation(this.redis.zrem('rotif:scheduled', msg));
-        }
+        const movedMessagesCount = await this.trackOperation(this.redis.evalsha(
+          this.moveScheduledScriptSHA!,
+          1,
+          'rotif:scheduled',
+          Date.now().toString(),
+          String(this.config.scheduledBatchSize ?? 1000)
+        ));
+
+        this.logger.debug(`Moved ${movedMessagesCount} scheduled messages`);
       } catch (err) {
         this.logger.error('DelayScheduler error', err);
       }
@@ -321,20 +439,34 @@ export class NotificationManager {
    * Stops all subscriptions and cleans up resources.
    */
   async stopAll() {
+    await this.initializationDefer.promise;
+
     this.logger.info('Stopping all subscriptions');
     this.active = false;
+
     for (const sub of this.subscriptions.values()) {
       await sub.unsubscribe();
     }
+
     if (this.delayTimeoutId) {
       clearInterval(this.delayTimeoutId);
     }
 
+    if (this.centralLoopDefer) {
+      await this.centralLoopDefer.promise;
+    }
+
+    // Дождёмся завершения всех операций, включая текущие xreadgroup
     while (this.activeOperations.size > 0) {
       await delayMs(100);
     }
 
-    await this.redis.quit();
+    // После завершения операций закроем соединение с Redis
+    if (this.redis.status !== 'end') {
+      await this.redis.quit();
+    }
+
+    this.logger.info('All subscriptions stopped');
   }
 
   /**
@@ -342,6 +474,7 @@ export class NotificationManager {
    * @param {(msg: RotifMessage) => Promise<void>} handler - DLQ message handler
    */
   async subscribeToDLQ(handler: (msg: RotifMessage) => Promise<void>) {
+    await this.initializationDefer.promise;
     return this.trackOperation(this._subscribeToDLQ(handler));
   }
 
@@ -378,16 +511,16 @@ export class NotificationManager {
             const fields = parseFields(rawFields);
             const channel = fields['channel'] ?? 'unknown';
             const payloadStr = fields['payload'] ?? '{}';
-            const timestamp = Date.now();
+            const timestamp = parseInt(fields['timestamp'] ?? Date.now().toString(), 10);
+            const attempt = parseInt(fields['attempt'] ?? '1', 10);
 
             const msg: RotifMessage = {
               id,
               channel,
               payload: JSON.parse(payloadStr),
               timestamp,
-              attempt: parseInt(fields['attempt'] || '1', 10),
+              attempt,
               ack: async () => { await this.redis.xack(streamKey, group, id); },
-              retry: async () => { }
             };
 
             try {
@@ -409,6 +542,7 @@ export class NotificationManager {
    * @param {number} [count=10] - Maximum number of messages to requeue
    */
   async requeueFromDLQ(count = 10) {
+    await this.initializationDefer.promise;
     return this.trackOperation(this._requeueFromDLQ(count));
   }
 
@@ -421,15 +555,18 @@ export class NotificationManager {
     for (const [id, fields] of entries) {
       const channel = fields['channel'];
       const payloadStr = fields['payload'];
+      const timestampStr = fields['timestamp'] ?? Date.now().toString();
+      const attemptStr = fields['attempt'] ?? '1';
 
       if (!channel || !payloadStr) continue;
 
       await this.redis.xadd(getStreamKey(channel), '*',
         'channel', channel,
         'payload', payloadStr,
-        'timestamp', Date.now().toString(),
-        'attempt', '1'
+        'timestamp', timestampStr,
+        'attempt', attemptStr,
       );
+
       await this.redis.xdel('rotif:dlq', id);
     }
   }

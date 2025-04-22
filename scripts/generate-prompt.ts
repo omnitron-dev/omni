@@ -19,7 +19,7 @@ export function copyToClipboard(text: string) {
 }
 
 // 🔥 Function for recursive traversal of directory
-function walkDir(dir: string, excludeDirs: string[] = []): string[] {
+function walkDir(dir: string, includeDirs: string[] = [], excludeDirs: string[] = []): string[] {
   let results: string[] = [];
   const list = fs.readdirSync(dir);
 
@@ -28,8 +28,10 @@ function walkDir(dir: string, excludeDirs: string[] = []): string[] {
     const stat = fs.statSync(filePath);
 
     if (stat.isDirectory()) {
-      if (!excludeDirs.includes(file)) {
-        results = results.concat(walkDir(filePath, excludeDirs));
+      if (includeDirs.length === 0 || includeDirs.includes(file)) {
+        if (!excludeDirs.includes(file)) {
+          results = results.concat(walkDir(filePath, includeDirs, excludeDirs));
+        }
       }
     } else {
       if (!excludeDirs.includes(file)) {
@@ -42,12 +44,11 @@ function walkDir(dir: string, excludeDirs: string[] = []): string[] {
 }
 
 // 🔥 Generate ChatGPT-compatible prompt
-function generatePrompt(projectPath: string, isProjectMode: boolean = false): string {
-  const baseDir = isProjectMode ? projectPath : path.join(projectPath, 'src');
-  const excludeDirs = ['dist', 'node_modules', 'coverage'];
-  const excludeFiles = ['LICENSE', '.npmrc', 'package-lock.json'];
+function generatePrompt(projectPath: string, includeDirs: string[] = [], excludeDirs: string[] = []): string {
+  const baseDir = projectPath;
+  const defaultExcludeDirs = ['dist', 'node_modules', 'coverage'];
 
-  const files = walkDir(baseDir, [...excludeDirs, ...excludeFiles]);
+  const files = walkDir(baseDir, includeDirs, [...defaultExcludeDirs, ...excludeDirs]);
   let prompt = `Here are the project files and their contents:\n\n`;
 
   files.forEach((file) => {
@@ -63,9 +64,9 @@ function generatePrompt(projectPath: string, isProjectMode: boolean = false): st
   return prompt;
 }
 
-function savePromptToFile(projectPath: string, isProjectMode: boolean = false) {
+function savePromptToFile(projectPath: string, includeDirs: string[] = [], excludeDirs: string[] = []) {
   const outputFile = path.join(projectPath, 'prompt.txt');
-  const prompt = generatePrompt(projectPath, isProjectMode);
+  const prompt = generatePrompt(projectPath, includeDirs, excludeDirs);
   fs.writeFileSync(outputFile, prompt);
   console.log(`✅ Prompt saved to ${outputFile}`);
 }
@@ -73,25 +74,27 @@ function savePromptToFile(projectPath: string, isProjectMode: boolean = false) {
 function printUsage() {
   console.log(`
 Usage:
-  node generate-prompt.js [--project] <project-path>
+  node generate-prompt.js <project-path> [--include=<dir1,dir2>] [--exclude=<dir1,dir2>]
 
 Description:
   Generates a ChatGPT prompt based on the project source code.
   Saves the result to prompt.txt in the project root.
 
 Options:
-  --project    Process all project files excluding dist, node_modules, etc.
+  --include    Comma-separated list of directories to include (if not specified, all directories are included)
+  --exclude    Comma-separated list of directories to exclude
 
 Example:
   node generate-prompt.js /path/to/your/project
-  node generate-prompt.js --project /path/to/your/project
+  node generate-prompt.js /path/to/your/project --include=src,lib
+  node generate-prompt.js /path/to/your/project --exclude=node_modules,dist
+  node generate-prompt.js /path/to/your/project --include=src --exclude=node_modules
   `);
 }
 
 // Parse command line arguments
 const args = process.argv.slice(2);
-const isProjectMode = args.includes('--project');
-const projectPath = isProjectMode ? args[args.indexOf('--project') + 1] : args[0];
+const projectPath = args[0];
 
 if (!projectPath) {
   printUsage();
@@ -104,5 +107,12 @@ if (!fs.existsSync(projectPath)) {
   process.exit(1);
 }
 
+// Parse include and exclude options
+const includeOption = args.find(arg => arg.startsWith('--include='));
+const excludeOption = args.find(arg => arg.startsWith('--exclude='));
+
+const includeDirs = includeOption ? includeOption.split('=')[1]?.split(',') : [];
+const excludeDirs = excludeOption ? excludeOption.split('=')[1]?.split(',') : [];
+
 // Run the script
-savePromptToFile(projectPath, isProjectMode);
+savePromptToFile(projectPath, includeDirs, excludeDirs);

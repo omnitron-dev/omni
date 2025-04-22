@@ -50,7 +50,7 @@ describe('NotificationManager – Channel Subscription Tests', () => {
     expect(received).toHaveLength(0);
   });
 
-  it('should deliver to multiple subscribers with overlapping patterns', async () => {
+  it.only('should deliver to multiple subscribers with overlapping patterns', async () => {
     const received: string[] = [];
 
     await manager.subscribe('users.signout', async (msg) => {

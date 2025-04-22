@@ -126,8 +126,6 @@ export interface SubscribeOptions {
   maxRetries?: number;
   /** Retry delay in milliseconds or function to calculate delay */
   retryDelay?: number | ((attempt: number, msg: RotifMessage) => number);
-  /** Use Redis pub/sub instead of streams */
-  usePubSub?: boolean;
   /** Enable exactly-once processing */
   exactlyOnce?: boolean;
 }

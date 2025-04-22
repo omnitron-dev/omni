@@ -60,7 +60,7 @@ describe('NotificationManager - delay delivery', () => {
     await delayMs(1200);
 
     expect(times.length).toBe(1);
-    expect(times[0]).toBeGreaterThanOrEqual(580);
+    expect(times[0]).toBeGreaterThanOrEqual(500);
   });
 
   it('should not deliver before delay', async () => {

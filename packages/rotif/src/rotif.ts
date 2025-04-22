@@ -5,7 +5,6 @@ import { delay as delayMs } from '@devgrid/common';
 import { StatsTracker } from './stats';
 import { parseFields } from './utils/common';
 import { defaultLogger } from './utils/logger';
-import { createPubSubSubscription } from './pubsub';
 import { DedupStore, RedisDedupStore } from './exactly-once';
 import { Middleware, MiddlewareManager } from './middleware';
 import { defaultGroupName, defaultConsumerName } from './options';
@@ -105,7 +104,7 @@ export class NotificationManager {
     };
 
     if (options?.delayMs || options?.deliverAt) {
-      const score = options.deliverAt ? new Date(options.deliverAt).getTime() : Date.now() + (options.delayMs || 0);
+      const score = options.deliverAt ? new Date(options.deliverAt).getTime() : Date.now() + (options.delayMs ?? 0);
       const scheduled = {
         ...message,
         due: score.toString(),
@@ -147,12 +146,6 @@ export class NotificationManager {
    * @private
    */
   private async _subscribe(pattern: string, handler: (msg: RotifMessage) => Promise<void>, options?: SubscribeOptions): Promise<Subscription> {
-    if (options?.usePubSub) {
-      const sub = createPubSubSubscription(this.redis, pattern, handler, this.logger);
-      this.subscriptions.set(sub.id, sub);
-      return sub;
-    }
-
     const streamKey = getStreamKey(pattern.replace('*', ''));
     const group = options?.groupName || this.config.groupNameFn?.(pattern) || defaultGroupName(pattern);
     const consumer = options?.consumerName || this.config.consumerNameFn?.() || defaultConsumerName();
@@ -315,17 +308,13 @@ export class NotificationManager {
             attempt: parseInt(parsed.attempt || '1', 10),
           });
           await this.trackOperation(this.redis.zrem('rotif:scheduled', msg));
-          await this.redis.zrem('rotif:scheduled', msg);
         }
       } catch (err) {
         this.logger.error('DelayScheduler error', err);
-      } finally {
-        const executionTime = Date.now() - startTime;
-        const nextDelay = Math.max(10, (this.config.checkDelayInterval || 1000) - executionTime);
-        this.delayTimeoutId = setTimeout(scheduler, nextDelay);
       }
     };
-    this.delayTimeoutId = setTimeout(scheduler, this.config.checkDelayInterval || 1000);
+    scheduler();
+    this.delayTimeoutId = setInterval(scheduler, this.config.checkDelayInterval ?? 1000);
   }
 
   /**
@@ -338,7 +327,7 @@ export class NotificationManager {
       await sub.unsubscribe();
     }
     if (this.delayTimeoutId) {
-      clearTimeout(this.delayTimeoutId);
+      clearInterval(this.delayTimeoutId);
     }
 
     while (this.activeOperations.size > 0) {
@@ -434,7 +423,8 @@ export class NotificationManager {
       const payloadStr = fields['payload'];
 
       if (!channel || !payloadStr) continue;
-      await this.redis.xadd(`rotif:stream:${channel.split('.')[0]}`, '*',
+
+      await this.redis.xadd(getStreamKey(channel), '*',
         'channel', channel,
         'payload', payloadStr,
         'timestamp', Date.now().toString(),

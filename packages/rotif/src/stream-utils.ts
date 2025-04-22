@@ -48,5 +48,5 @@ export async function trimStream(
  * @returns {string} Redis stream key
  */
 export function getStreamKey(channel: string): string {
-  return `rotif:stream:${channel.split('.')[0]}`;
+  return `rotif:stream:${channel}`;
 }

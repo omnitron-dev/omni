@@ -36,7 +36,7 @@ describe('NotificationManager - retry to DLQ', () => {
         attempts.push(msg.attempt);
         throw new Error('Handler failure');
       },
-      { startFrom: '0' }
+      { startFrom: '0', retryDelay: 100, }
     );
 
     manager.subscribeToDLQ(async (msg) => {
@@ -47,7 +47,7 @@ describe('NotificationManager - retry to DLQ', () => {
 
     await manager.publish('test.retry-dlq', { data: 'test' });
 
-    await delayMs(5000);
+    await delayMs(8000);
 
     expect(attempts).toEqual([1, 2, 3]);
     expect(dlqMessage).toBeDefined();

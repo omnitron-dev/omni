@@ -1,3 +1,4 @@
+import { delay } from '@devgrid/common';
 import { it, expect, afterAll, describe, beforeAll } from '@jest/globals';
 
 import { Middleware, NotificationManager } from '../src';
@@ -60,6 +61,8 @@ describe('Middleware - hooks', () => {
     await manager.subscribe('test.middleware', async (msg) => {
       if (msg.payload.data === 'error') throw new Error('test error');
     }, { startFrom: '0' });
+
+    await delay(400);
 
     // Отправляем первое сообщение и ждём его полной обработки
     const id1 = await manager.publish('test.middleware', { data: 'test' });

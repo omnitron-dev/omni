@@ -1,4 +1,6 @@
 
+import { delay } from '@devgrid/common';
+
 import { NotificationManager } from '../src';
 
 const REDIS_URL = process.env['REDIS_URL'] || 'redis://localhost:6379';
@@ -48,6 +50,8 @@ describe('NotificationManager - retry after failure', () => {
         }
       );
     });
+
+    await delay(200);
 
     const payload = { data: 'important' };
     await manager.publish('retry.test', payload);

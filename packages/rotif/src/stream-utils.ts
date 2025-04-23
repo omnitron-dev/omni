@@ -1,27 +1,6 @@
 import { Redis } from 'ioredis';
 
 /**
- * Ensures a consumer group exists for a Redis stream.
- * Creates the group if it doesn't exist, ignores if it already exists.
- * @param {Redis} redis - Redis client
- * @param {string} stream - Stream name
- * @param {string} group - Group name
- * @param {string} [startId='$'] - Starting ID for the group
- */
-export async function ensureStreamGroup(
-  redis: Redis,
-  stream: string,
-  group: string,
-  startId: string = '$'
-) {
-  try {
-    await redis.xgroup('CREATE', stream, group, startId, 'MKSTREAM');
-  } catch (err: any) {
-    if (!err?.message?.includes('BUSYGROUP')) throw err;
-  }
-}
-
-/**
  * Trims a Redis stream to maintain its size.
  * Can trim by maximum length or minimum ID.
  * @param {Redis} redis - Redis client
@@ -49,4 +28,8 @@ export async function trimStream(
  */
 export function getStreamKey(channel: string): string {
   return `rotif:stream:${channel}`;
+}
+
+export function getLoopKey(stream: string, group: string): string {
+  return `${stream}::${group}`;
 }

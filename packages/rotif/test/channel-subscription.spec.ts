@@ -52,20 +52,27 @@ describe('NotificationManager – Channel Subscription Tests', () => {
 
   it.only('should deliver to multiple subscribers with overlapping patterns', async () => {
     const received: string[] = [];
+    const def = defer();
 
     await manager.subscribe('users.signout', async (msg) => {
       received.push(`users.signout:${msg.channel}`);
       await msg.ack();
+      if (received.length === 2) {
+        def.resolve?.(undefined);
+      }
     }, { groupName: 'g1' });
 
     await manager.subscribe('users.signout', async (msg) => {
       received.push(`users.signout:${msg.channel}`);
       await msg.ack();
+      if (received.length === 2) {
+        def.resolve?.(undefined);
+      }
     }, { groupName: 'g2' });
 
     await manager.publish('users.signout', {});
 
-    await delay(500);
+    await def.promise;
 
     expect(received).toEqual(
       expect.arrayContaining(['users.signout:users.signout', 'users.signout:users.signout']),

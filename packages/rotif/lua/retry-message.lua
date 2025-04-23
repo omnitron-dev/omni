@@ -15,7 +15,7 @@ local messageId = ARGV[2]
 local channel = ARGV[3]
 local payload = ARGV[4]
 local originalTimestamp = ARGV[5]
-local attempt = tonumber(ARGV[6]) + 1
+local attempt = ARGV[6]
 local delayTimestamp = tonumber(ARGV[7])
 local messageUUID = ARGV[8]
 
@@ -25,7 +25,7 @@ local delayedMessage = cjson.encode({
   channel = channel,
   payload = payload,
   timestamp = originalTimestamp,
-  attempt = tostring(attempt)
+  attempt = attempt
 })
 
 redis.call("SET", "rotif:delayed:" .. messageUUID, delayedMessage)

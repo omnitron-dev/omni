@@ -30,6 +30,9 @@ if dedupKey ~= "" and redis.call("EXISTS", dedupKey) == 1 then
   return "DUPLICATE"
 end
 
+-- Добавляем канал в индекс
+redis.call('ZADD', 'rotif:channels', 0, channel)
+
 if deliveryType == "delayed" then
   local delayedMessage = cjson.encode({
     channel = channel,

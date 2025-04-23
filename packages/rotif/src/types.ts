@@ -80,7 +80,7 @@ export interface Subscription {
   /** Subscribe options */
   options?: SubscribeOptions;
   /** Unsubscribe from the channel */
-  unsubscribe(): Promise<void>;
+  unsubscribe(removePattern?: boolean): Promise<void>;
   /** Pause message processing */
   pause(): void;
   /** Resume message processing */

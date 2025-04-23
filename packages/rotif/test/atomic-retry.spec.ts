@@ -40,6 +40,8 @@ describe('Lua Atomic Retry Script', () => {
       retryDelay: 500
     });
 
+    await delay(400);
+
     await manager.publish(channel, payload);
 
     await delay(2500); // дать время на retry и обработку

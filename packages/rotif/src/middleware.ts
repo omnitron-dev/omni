@@ -31,7 +31,7 @@ export type Middleware = {
    * @param {string | null} id - Message ID or null if scheduled
    * @param {any} [options] - Publishing options
    */
-  afterPublish?: (channel: string, payload: any, id: string | null, options?: any) => void | Promise<void>;
+  afterPublish?: (channel: string, payload: any, id: string[] | string | null, options?: any) => void | Promise<void>;
 
   /**
    * Called before processing a message.
@@ -88,7 +88,7 @@ export class MiddlewareManager {
    * @param {string | null} id - Message ID or null if scheduled
    * @param {any} [options] - Publishing options
    */
-  async runAfterPublish(channel: string, payload: any, id: string | null, options?: any) {
+  async runAfterPublish(channel: string, payload: any, id: string[] | string | null, options?: any) {
     for (const mw of this.middleware) {
       if (mw.afterPublish) await mw.afterPublish(channel, payload, id, options);
     }

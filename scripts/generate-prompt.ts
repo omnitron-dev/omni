@@ -49,7 +49,7 @@ function generatePrompt(projectPath: string, includeDirs: string[] = [], exclude
   const defaultExcludeDirs = ['dist', 'node_modules', 'coverage'];
 
   const files = walkDir(baseDir, includeDirs, [...defaultExcludeDirs, ...excludeDirs]);
-  let prompt = `Here are the project files and their contents:\n\n`;
+  let prompt = '';
 
   files.forEach((file) => {
     const relativePath = path.relative(baseDir, file);

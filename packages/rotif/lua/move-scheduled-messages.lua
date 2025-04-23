@@ -16,7 +16,7 @@ for _, messageId in ipairs(messageIds) do
   if delayedPayloadJson then
     local delayedPayload = cjson.decode(delayedPayloadJson)
     local channel = delayedPayload.channel
-    local streamKey = "rotif:stream:" .. channel
+    local streamKey = delayedPayload.streamKey or ("rotif:stream:" .. channel)
 
     redis.call("XADD", streamKey, "*",
       "channel", channel,

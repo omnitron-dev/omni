@@ -28,7 +28,8 @@ redis.call("XADD", dlqKey, "*",
   "payload", payload,
   "error", errorMessage,
   "timestamp", originalTimestamp,
-  "attempt", attemptCount
+  "attempt", attemptCount,
+  "streamKey", streamKey
 )
 
 return "MOVED_TO_DLQ"

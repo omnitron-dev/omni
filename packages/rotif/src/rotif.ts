@@ -42,13 +42,7 @@ export class NotificationManager {
   private initializationDefer: Deferred;
   private subClient?: Redis;
   private consumerLoops = new Map<string, { loopPromise: Promise<void>; subscriptions: Set<Subscription> }>();
-
-  private publishScriptSHA?: string;
-  private moveScheduledScriptSHA?: string;
-  private ackScriptSHA?: string;
-  private retryScriptSHA?: string;
-  private moveToDLQScriptSHA?: string;
-  private safeUnsubSHA?: string;
+  private luaScripts = new Map<string, string>();
 
   /**
    * Creates a new NotificationManager instance.
@@ -86,37 +80,32 @@ export class NotificationManager {
   }
 
   async loadLuaScripts() {
-    this.publishScriptSHA = await this.redis.script(
-      'LOAD',
-      fs.readFileSync(path.join(__dirname, '..', 'lua', 'publish-message.lua'), 'utf-8')
-    ) as string;
+    const luaDir = path.resolve(__dirname, '..', 'lua');
+    const luaFiles = fs.readdirSync(luaDir).filter(file => file.endsWith('.lua'));
 
-    this.moveScheduledScriptSHA = await this.redis.script(
-      'LOAD',
-      fs.readFileSync(path.join(__dirname, '..', 'lua', 'move-scheduled-messages.lua'), 'utf-8')
-    ) as string;
+    await Promise.all(luaFiles.map(async (file) => {
+      const scriptPath = path.join(luaDir, file);
+      const scriptName = path.basename(file, '.lua');
+      const scriptContent = fs.readFileSync(scriptPath, 'utf-8');
 
-    this.ackScriptSHA = await this.redis.script(
-      'LOAD',
-      fs.readFileSync(path.join(__dirname, '..', 'lua', 'ack-message.lua'), 'utf-8')
-    ) as string;
-
-    this.retryScriptSHA = await this.redis.script(
-      'LOAD',
-      fs.readFileSync(path.join(__dirname, '..', 'lua', 'retry-message.lua'), 'utf-8')
-    ) as string;
-
-    this.moveToDLQScriptSHA = await this.redis.script(
-      'LOAD',
-      fs.readFileSync(path.join(__dirname, '..', 'lua', 'move-to-dlq.lua'), 'utf-8')
-    ) as string;
-
-    this.safeUnsubSHA = await this.redis.script(
-      'LOAD',
-      fs.readFileSync(path.join(__dirname, '..', 'lua', 'safe-unsubscribe.lua'), 'utf-8')
-    ) as string;
+      const sha = await this.redis.script('LOAD', scriptContent) as string;
+      this.luaScripts.set(scriptName, sha);
+    }));
 
     this.logger.info('Lua scripts loaded');
+  }
+
+  async runLuaScript<T = any>(
+    scriptName: string,
+    keys: string[],
+    args: (string | number)[]
+  ): Promise<T> {
+    const sha = this.luaScripts.get(scriptName);
+    if (!sha) {
+      throw new Error(`Lua script ${scriptName} not loaded.`);
+    }
+
+    return this.redis.evalsha(sha, keys.length, ...keys, ...args) as T;
   }
 
   /**
@@ -170,22 +159,22 @@ export class NotificationManager {
     for (const pattern of matchingPatterns) {
       const streamKey = getStreamKey(pattern);
       try {
-        const result = await this.redis.evalsha(
-          this.publishScriptSHA!,
-          2,
-          streamKey,
-          'rotif:scheduled',
-          JSON.stringify(payload),
-          timestamp,
-          channel,
-          attempt,
-          deliveryType,
-          delayTimestamp,
-          maxStreamLength,
-          minStreamId,
-          dedupKey,
-          deduplicationTTL.toString(),
-          uuidv4(),
+        const result = await this.runLuaScript(
+          'publish-message',
+          [streamKey, 'rotif:scheduled'],
+          [
+            JSON.stringify(payload),
+            timestamp,
+            channel,
+            attempt,
+            deliveryType,
+            delayTimestamp,
+            maxStreamLength,
+            minStreamId,
+            dedupKey,
+            deduplicationTTL.toString(),
+            uuidv4(),
+          ]
         );
 
         if (result === 'DUPLICATE') {
@@ -256,11 +245,10 @@ export class NotificationManager {
         }
 
         if (removePattern) {
-          const newCount = await this.redis.evalsha(
-            this.safeUnsubSHA!,
-            1,
-            'rotif:patterns',
-            pattern
+          const newCount = await this.runLuaScript(
+            'safe-unsubscribe',
+            ['rotif:patterns'],
+            [pattern]
           );
 
           if (Number(newCount) === 0) {
@@ -300,12 +288,10 @@ export class NotificationManager {
     const scheduler = async () => {
       if (!this.active) return;
       try {
-        const movedMessagesCount = await this.redis.evalsha(
-          this.moveScheduledScriptSHA!,
-          1,
-          'rotif:scheduled',
-          Date.now().toString(),
-          String(this.config.scheduledBatchSize ?? 1000)
+        const movedMessagesCount = await this.runLuaScript(
+          'move-scheduled-messages',
+          ['rotif:scheduled'],
+          [Date.now().toString(), String(this.config.scheduledBatchSize ?? 1000)]
         );
 
         this.logger.debug(`Moved ${movedMessagesCount} scheduled messages`);
@@ -410,26 +396,18 @@ export class NotificationManager {
    * Requeues messages from DLQ back to their original streams.
    * @param {number} [count=10] - Maximum number of messages to requeue
    */
-  async requeueFromDLQ(count = 10) {
+  async requeueFromDLQ(count = 10): Promise<number> {
     await this.initializationDefer.promise;
-    const entries = await this.redis.xrange('rotif:dlq', '-', '+', 'COUNT', count);
-    for (const [id, fields] of entries) {
-      const channel = fields['channel'];
-      const payloadStr = fields['payload'];
-      const timestampStr = fields['timestamp'] ?? Date.now().toString();
-      const attemptStr = fields['attempt'] ?? '1';
 
-      if (!channel || !payloadStr) continue;
+    const requeuedCount = await this.runLuaScript(
+      'requeue-from-dlq',
+      ['rotif:dlq'],
+      [count.toString()]
+    );
 
-      await this.redis.xadd(getStreamKey(channel), '*',
-        'channel', channel,
-        'payload', payloadStr,
-        'timestamp', timestampStr,
-        'attempt', attemptStr,
-      );
+    this.logger.info(`Requeued ${requeuedCount} messages from DLQ`);
 
-      await this.redis.xdel('rotif:dlq', id);
-    }
+    return Number(requeuedCount);
   }
 
   private subscribeToPatternUpdates() {
@@ -519,13 +497,10 @@ export class NotificationManager {
                 timestamp: parseInt(timestampStr, 10),
                 attempt,
                 ack: async () => {
-                  await this.redis.evalsha(
-                    this.ackScriptSHA!,
-                    1,
-                    returnedStream,
-                    group,
-                    id,
-                    '1'
+                  await this.runLuaScript(
+                    'ack-message',
+                    [returnedStream],
+                    [group, id, '1']
                   );
                 },
               };
@@ -553,18 +528,10 @@ export class NotificationManager {
                   const maxRetries = sub.options?.maxRetries ?? this.config.maxRetries ?? 5;
 
                   if (msg.attempt >= maxRetries) {
-                    await this.redis.evalsha(
-                      this.moveToDLQScriptSHA!,
-                      2,
-                      returnedStream,
-                      'rotif:dlq',
-                      group,
-                      msg.id,
-                      channel,
-                      payloadStr,
-                      (err as Error).message || 'unknown',
-                      msg.timestamp.toString(),
-                      msg.attempt.toString()
+                    await this.runLuaScript(
+                      'move-to-dlq',
+                      [returnedStream, 'rotif:dlq'],
+                      [group, msg.id, channel, payloadStr, (err as Error).message || 'unknown', msg.timestamp.toString(), msg.attempt.toString()]
                     );
                     this.logger.error(`Message ${msg.id} moved to DLQ`);
                   } else {
@@ -574,19 +541,10 @@ export class NotificationManager {
 
                     const retryStream = `${returnedStream}:retry`;
 
-                    await this.redis.evalsha(
-                      this.retryScriptSHA!,
-                      2,
-                      retryStream,
-                      'rotif:scheduled',
-                      group,
-                      msg.id,
-                      channel,
-                      payloadStr,
-                      timestampStr,
-                      (attempt + 1).toString(),
-                      (Date.now() + (retryDelay as number)).toString(),
-                      uuidv4(),
+                    await this.runLuaScript(
+                      'retry-message',
+                      [retryStream, 'rotif:scheduled'],
+                      [group, msg.id, channel, payloadStr, timestampStr, (attempt + 1).toString(), (Date.now() + (retryDelay as number)).toString(), uuidv4()]
                     );
                   }
                 }

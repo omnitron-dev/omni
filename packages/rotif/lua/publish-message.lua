@@ -35,6 +35,7 @@ redis.call('ZADD', 'rotif:channels', 0, channel)
 
 if deliveryType == "delayed" then
   local delayedMessage = cjson.encode({
+    streamKey = streamKey,
     channel = channel,
     payload = payload,
     timestamp = timestamp,

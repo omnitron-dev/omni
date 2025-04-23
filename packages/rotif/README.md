@@ -347,7 +347,6 @@ describe('NotificationManager Integration', () => {
   beforeEach(async () => {
     manager = new NotificationManager({
       redis: 'redis://localhost:6379/1', // Use separate DB for tests
-      enableDelayed: true,
       maxRetries: 2
     });
     await manager.redis.flushdb(); // Clean test database

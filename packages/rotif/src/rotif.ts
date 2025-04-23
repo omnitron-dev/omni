@@ -1,19 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { v4 as uuidv4 } from 'uuid';
-import { createHash } from 'crypto';
 import { minimatch } from 'minimatch'
+import { randomUUID } from 'node:crypto';
 import { Redis, RedisOptions } from 'ioredis';
 import { defer, Deferred, delay as delayMs } from '@devgrid/common';
 
 import { StatsTracker } from './stats';
-import { DedupStore } from './exactly-once';
-import { parseFields } from './utils/common';
 import { defaultLogger } from './utils/logger';
-import { getLoopKey, getStreamKey } from './stream-utils';
 import { Middleware, MiddlewareManager } from './middleware';
-import { defaultGroupName, defaultConsumerName } from './options';
 import { RotifConfig, RotifLogger, RotifMessage, Subscription, PublishOptions, SubscribeOptions } from './types';
+import { getLoopKey, parseFields, getStreamKey, getGroupName, generateDedupKey, defaultConsumerName } from './utils/common';
 
 /**
  * Main class for managing message queues and subscriptions.
@@ -34,8 +30,6 @@ export class NotificationManager {
   private subscriptions: Map<string, Subscription> = new Map();
   /** Whether the manager is active */
   private active: boolean = true;
-  /** Deduplication store for exactly-once processing */
-  private dedupStore?: DedupStore;
   /** Timeout ID for delayed message scheduler */
   private delayTimeoutId?: NodeJS.Timeout;
   private activePatterns = new Set<string>();
@@ -43,6 +37,7 @@ export class NotificationManager {
   private subClient?: Redis;
   private consumerLoops = new Map<string, { loopPromise: Promise<void>; subscriptions: Set<Subscription> }>();
   private luaScripts = new Map<string, string>();
+  private roundRobinIndices = new Map<string, number>();
 
   /**
    * Creates a new NotificationManager instance.
@@ -69,7 +64,7 @@ export class NotificationManager {
     this.initializationDefer = defer();
 
     this.loadLuaScripts().then(() => {
-      if (this.config.enableDelayed !== false) {
+      if (!this.config.disableDelayed) {
         setImmediate(() => {
           this.startDelayScheduler();
         });
@@ -148,16 +143,15 @@ export class NotificationManager {
     const maxStreamLength = this.config.maxStreamLength ? String(this.config.maxStreamLength) : '0';
     const minStreamId = this.config.minStreamId ?? '';
 
-    const dedupKey = options?.exactlyOnce
-      ? `rotif:dedup:${channel}:${this.generateDedupId(payload)}`
-      : '';
-
     const deduplicationTTL = options?.deduplicationTTL ?? this.config.deduplicationTTL ?? 3600;
 
     const results: string[] = [];
 
     for (const pattern of matchingPatterns) {
       const streamKey = getStreamKey(pattern);
+      const dedupKey = options?.exactlyOnce
+        ? (this.config.generateDedupKey?.({ channel, payload, pattern }) ?? generateDedupKey({ channel, payload, pattern }))
+        : '';
       try {
         const result = await this.runLuaScript(
           'publish-message',
@@ -173,12 +167,13 @@ export class NotificationManager {
             minStreamId,
             dedupKey,
             deduplicationTTL.toString(),
-            uuidv4(),
+            randomUUID(),
+            options?.exactlyOnce ? 'true' : 'false',
           ]
         );
 
         if (result === 'DUPLICATE') {
-          this.logger.warn(`Duplicate message detected: ${dedupKey}`);
+          this.logger.info(`Duplicate message detected: ${dedupKey}`);
         } else {
           results.push(result as string);
         }
@@ -208,12 +203,12 @@ export class NotificationManager {
    */
   async subscribe(pattern: string, handler: (msg: RotifMessage) => Promise<void>, options?: SubscribeOptions): Promise<Subscription> {
     await this.initializationDefer.promise;
-    const group = options?.groupName ?? defaultGroupName(pattern);
+    const group = getGroupName(pattern, options?.groupName);
     const consumer = this.config.consumerNameFn?.() || defaultConsumerName();
     const stream = getStreamKey(pattern);
     const retryStream = `${stream}:retry`;
 
-    const subId = uuidv4();
+    const subId = randomUUID();
     const stats = new StatsTracker();
 
     await this.ensureStreamGroup(stream, group);
@@ -488,6 +483,8 @@ export class NotificationManager {
               const payloadStr = fields['payload'] ?? '{}';
               const timestampStr = fields['timestamp'] ?? '0';
               const attemptStr = fields['attempt'] ?? '1';
+              const exactlyOnce = (fields['exactlyOnce'] ?? 'false') === 'true';
+              const dedupTTL = fields['dedupTTL'];
               const attempt = parseInt(attemptStr, 10);
 
               const msg: RotifMessage = {
@@ -514,39 +511,75 @@ export class NotificationManager {
                 continue;
               }
 
-              for (const sub of matchingSubs) {
-                try {
-                  this.logger.debug(`Processing message ${msg.id} for channel=${channel}`);
-                  await this.middleware.runBeforeProcess(msg);
-                  await sub.handler(msg);
-                  await msg.ack();
-                  await this.middleware.runAfterProcess(msg);
-                } catch (err) {
-                  this.logger.error(`Handler error on message ${msg.id}`, err);
-                  await this.middleware.runOnError(msg, err as Error);
+              const subIndex = this.getRoundRobinIndex(stream, group, matchingSubs.length);
+              const sub = matchingSubs[subIndex]!;
 
-                  const maxRetries = sub.options?.maxRetries ?? this.config.maxRetries ?? 5;
+              let dedupKey = '';
+              if (exactlyOnce) {
+                dedupKey = generateDedupKey({ channel, payload: msg.payload, group });
+                const isDuplicate = !!(await this.redis.exists(dedupKey));
+                if (isDuplicate) {
+                  msg.ack();
+                  this.logger.info(`Duplicate message detected for channel=${channel} and group=${group} msg=${msg.id}`);
+                  continue;
+                }
+              }
 
-                  if (msg.attempt >= maxRetries) {
-                    await this.runLuaScript(
-                      'move-to-dlq',
-                      [returnedStream, 'rotif:dlq'],
-                      [group, msg.id, channel, payloadStr, (err as Error).message || 'unknown', msg.timestamp.toString(), msg.attempt.toString()]
-                    );
-                    this.logger.error(`Message ${msg.id} moved to DLQ`);
-                  } else {
-                    const retryDelay = typeof sub.options?.retryDelay === 'function'
-                      ? sub.options.retryDelay(msg.attempt, msg)
-                      : Number(sub.options?.retryDelay ?? this.config.retryDelay ?? 1000);
+              try {
+                this.logger.debug(`Processing message ${msg.id} for channel=${channel}`);
+                await this.middleware.runBeforeProcess(msg);
+                await sub.handler(msg);
+                await msg.ack();
+                await this.middleware.runAfterProcess(msg);
 
-                    const retryStream = `${returnedStream}:retry`;
+                if (exactlyOnce) {
+                  await this.redis.set(dedupKey, '1', 'EX', dedupTTL ? Number(dedupTTL) : 3600);
+                  this.logger.debug(`Deduplication key set for channel=${channel} and group=${group} msg=${msg.id} dedupKey=${dedupKey}`);
+                }
+              } catch (err) {
+                this.logger.error(`Handler error on message ${msg.id}`, err);
+                await this.middleware.runOnError(msg, err as Error);
 
-                    await this.runLuaScript(
-                      'retry-message',
-                      [retryStream, 'rotif:scheduled'],
-                      [group, msg.id, channel, payloadStr, timestampStr, (attempt + 1).toString(), (Date.now() + (retryDelay as number)).toString(), uuidv4()]
-                    );
-                  }
+                const maxRetries = sub.options?.maxRetries ?? this.config.maxRetries ?? 5;
+
+                if (msg.attempt >= maxRetries) {
+                  await this.runLuaScript(
+                    'move-to-dlq',
+                    [returnedStream, 'rotif:dlq'],
+                    [
+                      group,
+                      msg.id,
+                      channel,
+                      payloadStr,
+                      (err as Error).message || 'unknown',
+                      msg.timestamp.toString(),
+                      msg.attempt.toString(),
+                    ]
+                  );
+                  this.logger.error(`Message ${msg.id} moved to DLQ`);
+                } else {
+                  const retryDelay = typeof sub.options?.retryDelay === 'function'
+                    ? sub.options.retryDelay(msg.attempt, msg)
+                    : Number(sub.options?.retryDelay ?? this.config.retryDelay ?? 1000);
+
+                  const retryStream = `${returnedStream}:retry`;
+
+                  await this.runLuaScript(
+                    'retry-message',
+                    [retryStream, 'rotif:scheduled'],
+                    [
+                      group,
+                      msg.id,
+                      channel,
+                      payloadStr,
+                      timestampStr,
+                      (attempt + 1).toString(),
+                      (Date.now() + (retryDelay as number)).toString(),
+                      randomUUID(),
+                      fields['exactlyOnce'] ?? 'false',
+                      dedupTTL ?? '3600',
+                    ]
+                  );
                 }
               }
             }
@@ -596,34 +629,11 @@ export class NotificationManager {
     }
   }
 
-  async waitForConsumerLoopsReady(patterns: string[], timeout = 10000) {
-    const start = Date.now();
-    const streamsWithGroups = patterns.flatMap(p => {
-      const group = defaultGroupName(p);
-      const stream = getStreamKey(p);
-      return [stream, `${stream}:retry:${group}`];
-    });
-
-    while (Date.now() - start < timeout) {
-      const existingGroups = await Promise.all(
-        streamsWithGroups.map(async stream => {
-          try {
-            const info = await this.redis.xinfo('GROUPS', stream) as { length: number };
-            return info.length > 0;
-          } catch {
-            return false;
-          }
-        })
-      );
-      if (existingGroups.every(Boolean)) {
-        return;
-      }
-      await delayMs(50);
-    }
-    throw new Error('Consumer loops not ready within timeout');
-  }
-
-  private generateDedupId(payload: any): string {
-    return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+  private getRoundRobinIndex(stream: string, group: string, count: number): number {
+    const key = `${stream}:${group}`;
+    const current = this.roundRobinIndices.get(key) || 0;
+    const next = (current + 1) % count;
+    this.roundRobinIndices.set(key, next);
+    return current;
   }
 }

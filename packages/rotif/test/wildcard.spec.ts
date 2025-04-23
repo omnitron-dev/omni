@@ -9,7 +9,6 @@ describe('Rotif Wildcard Subscriptions', () => {
   beforeEach(async () => {
     manager = new NotificationManager({
       redis: 'redis://localhost:6379/1',
-      enableDelayed: true,
       maxRetries: 2,
       checkDelayInterval: 400,
       blockInterval: 100,
@@ -240,23 +239,25 @@ describe('Rotif Wildcard Subscriptions', () => {
   });
 
 
-  // describe('Wildcard Exactly-Once Deduplication', () => {
-  //   it('should deduplicate exactly-once messages across wildcard subscriptions', async () => {
-  //     const messages: number[] = [];
+  describe('Wildcard Exactly-Once Deduplication', () => {
+    it('should deduplicate exactly-once messages across wildcard subscriptions', async () => {
+      const messages: number[] = [];
 
-  //     await manager.subscribe('notifications.*', async (msg) => {
-  //       messages.push(msg.payload.id);
-  //       await msg.ack();
-  //     });
+      await manager.subscribe('notifications.*', async (msg) => {
+        messages.push(msg.payload.id);
+        await msg.ack();
+      });
 
-  //     const payload = { id: 123 };
+      await delay(100);
 
-  //     await manager.publish('notifications.push', payload, { exactlyOnce: true });
-  //     await manager.publish('notifications.push', payload, { exactlyOnce: true });
+      const payload = { id: 123 };
 
-  //     await new Promise(resolve => setTimeout(resolve, 1500));
+      await manager.publish('notifications.push', payload, { exactlyOnce: true });
+      await manager.publish('notifications.push', payload, { exactlyOnce: true });
 
-  //     expect(messages).toEqual([123]); // только одно сообщение принято
-  //   });
-  // });
+      await delay(1500);
+
+      expect(messages).toEqual([123]); // только одно сообщение принято
+    });
+  });
 });

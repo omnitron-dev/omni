@@ -19,7 +19,6 @@ describe('NotificationManager - delay delivery', () => {
         db: 1,
       },
       checkDelayInterval: 100,
-      enableDelayed: true,
       blockInterval: 100,
     });
     await manager.redis.flushdb();

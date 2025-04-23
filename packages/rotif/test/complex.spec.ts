@@ -12,8 +12,7 @@ describe('NotificationManager – Complex Case 1 Tests', () => {
       redis: redisUrl,
       maxRetries: 2,
       blockInterval: 100,
-      checkDelayInterval: 300,
-      enableDelayed: true,
+      checkDelayInterval: 200,
       deduplicationTTL: 60,
     });
     await manager.redis.flushdb();
@@ -37,25 +36,25 @@ describe('NotificationManager – Complex Case 1 Tests', () => {
     });
 
     await manager.subscribe('orders.created', async (msg) => {
-      results.subscriber1.push(msg.payload);
-      await msg.ack();
-    }, { groupName: 'group1', maxRetries: 2 });
-
-    await manager.subscribe('orders.created', async (msg) => {
       if (msg.attempt === 1) throw new Error('Forced retry');
       results.subscriber2.push(msg.payload);
-      await msg.ack();
     }, { groupName: 'group2', maxRetries: 2 });
 
+
+    await manager.subscribe('orders.created', async (msg) => {
+      results.subscriber1.push(msg.payload);
+    }, { groupName: 'group1', maxRetries: 2 });
+
     await manager.subscribe('orders.*', async (msg) => {
+      console.error('wildcard', msg.channel);
       results.wildcard.push(msg.channel);
-      await msg.ack();
     }, { groupName: 'wildcardGroup' });
 
     manager.subscribeToDLQ(async (msg) => {
       results.dlq.push(msg.payload);
-      await msg.ack();
     });
+
+    await delay(2000);
 
     // Публикуем сообщения
     await manager.publish('orders.created', { orderId: 1 }, { exactlyOnce: true });
@@ -66,13 +65,11 @@ describe('NotificationManager – Complex Case 1 Tests', () => {
     await manager.publish('orders.created', { orderId: 1 }, { exactlyOnce: true });
 
     // Ожидаем обработку всех сообщений и retries
-    await delay(3000);
+    await delay(2000);
 
     expect(results.subscriber1).toEqual([{ orderId: 1 }]); // subscriber1 успешно получил 1 сообщение
     expect(results.subscriber2).toEqual([{ orderId: 1 }]); // subscriber2 обработал после retry
     expect(results.wildcard).toEqual(expect.arrayContaining(['orders.created', 'orders.updated', 'orders.failed']));
     expect(results.dlq.length).toBe(0); // retries не превышены, DLQ пуст
-
-    await manager.stopAll();
-  });
+  }, 20000);
 });

@@ -40,8 +40,8 @@ export interface RotifConfig {
   redis: RedisOptions | string;
   /** Custom logger implementation */
   logger?: RotifLogger;
-  /** Enable delayed message delivery */
-  enableDelayed?: boolean;
+  /** Disable delayed message delivery */
+  disableDelayed?: boolean;
   /** Interval in milliseconds to check for delayed messages */
   checkDelayInterval?: number;
   /** Maximum number of retry attempts for failed messages */
@@ -62,6 +62,8 @@ export interface RotifConfig {
   groupNameFn?: (pattern: string) => string;
   /** Custom function to generate consumer names */
   consumerNameFn?: () => string;
+  /** Generate dedup key */
+  generateDedupKey?: ({ channel, payload, group, pattern }: { channel: string, payload: any, group?: string, pattern?: string }) => string;
 }
 
 /**
@@ -139,6 +141,4 @@ export interface SubscribeOptions {
   maxRetries?: number;
   /** Retry delay in milliseconds or function to calculate delay */
   retryDelay?: number | ((attempt: number, msg: RotifMessage) => number);
-  /** Enable exactly-once processing */
-  exactlyOnce?: boolean;
 }

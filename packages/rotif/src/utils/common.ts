@@ -1,4 +1,5 @@
 import os from 'os';
+import { pack } from 'msgpackr';
 import { createHash } from 'crypto';
 
 /**
@@ -32,7 +33,11 @@ export function getStreamKey(channel: string): string {
 }
 
 export function getLoopKey(stream: string, group: string): string {
-  return `${stream}::${group}`;
+  return `${stream}:${group}`;
+}
+
+export function splitLoopKey(loopKey: string): [string, string] {
+  return loopKey.split('::') as [string, string];
 }
 
 /**
@@ -61,6 +66,6 @@ export function defaultConsumerName(): string {
  * @returns {string} Deduplication key
  */
 export function generateDedupKey({ channel, payload, group, pattern }: { channel: string, payload: any, group?: string, pattern?: string }): string {
-  const id = createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+  const id = createHash('sha256').update(pack(payload)).digest('hex');
   return `rotif:dedup:${channel}:${id}:${group ? `${group}` : '*'}:${pattern ? `${pattern}` : '*'}`;
 }

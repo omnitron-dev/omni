@@ -1,5 +1,5 @@
+import { NotificationManager } from '@devgrid/rotif';
 import { Module, Global, Provider, DynamicModule } from '@nestjs/common';
-import { RedisDedupStore, InMemoryDedupStore, NotificationManager } from '@devgrid/rotif';
 import { APP_FILTER, APP_INTERCEPTOR, DiscoveryModule, MetadataScanner } from '@nestjs/core';
 
 import { RotifService } from './services/rotif.service';
@@ -74,13 +74,6 @@ export class RotifModule {
 
         if (options.middleware) {
           options.middleware.forEach((mw) => manager.use(mw));
-        }
-
-        if (options.exactlyOnce) {
-          manager['dedupStore'] =
-            options.deduplication?.type === 'redis'
-              ? new RedisDedupStore(manager.redis, options.deduplication.ttlSeconds)
-              : new InMemoryDedupStore();
         }
 
         return manager;

@@ -43,7 +43,7 @@ export class LoggingMiddleware implements Middleware {
    * @param payload - The message payload that was sent
    * @param id - The message ID assigned by Redis (or null for Pub/Sub)
    */
-  async afterPublish(channel: string, payload: any, id: string | null): Promise<void> {
+  async afterPublish(channel: string, payload: any, id: string | string[] | null, options?: any): Promise<void> {
     this.logger.debug(`Message published to "${channel}", ID: ${id}`);
   }
 

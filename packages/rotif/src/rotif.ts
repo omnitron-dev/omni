@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { minimatch } from 'minimatch'
-import { randomUUID } from 'node:crypto';
 import { Redis, RedisOptions } from 'ioredis';
+import { randomUUID, createHash } from 'node:crypto';
 import { defer, Deferred, delay as delayMs } from '@devgrid/common';
 
 import { StatsTracker } from './stats';
@@ -47,6 +47,16 @@ export class NotificationManager {
     this.config = config;
     this.logger = config.logger || defaultLogger;
     this.redis = new Redis(config.redis as RedisOptions);
+    this.redis.options.retryStrategy = (times) => {
+      const baseDelay = 100; // Базовое время ожидания
+      const maxDelay = 5000; // Максимальное время ожидания
+      const jitter = Math.random() * 100; // Случайное отклонение для предотвращения thundering herd
+
+      // Экспоненциальная задержка с добавлением jitter
+      const delay = Math.min(baseDelay * Math.pow(2, times - 1) + jitter, maxDelay);
+
+      return delay;
+    };
 
     this.redis.on('error', (err) => {
       this.logger.error('Redis connection error', err);
@@ -78,16 +88,20 @@ export class NotificationManager {
     const luaDir = path.resolve(__dirname, '..', 'lua');
     const luaFiles = fs.readdirSync(luaDir).filter(file => file.endsWith('.lua'));
 
-    await Promise.all(luaFiles.map(async (file) => {
-      const scriptPath = path.join(luaDir, file);
+    for (const file of luaFiles) {
+      const scriptContent = fs.readFileSync(path.join(luaDir, file), 'utf-8');
       const scriptName = path.basename(file, '.lua');
-      const scriptContent = fs.readFileSync(scriptPath, 'utf-8');
+      const localSha = createHash('sha1').update(scriptContent).digest('hex');
 
-      const sha = await this.redis.script('LOAD', scriptContent) as string;
-      this.luaScripts.set(scriptName, sha);
-    }));
-
-    this.logger.info('Lua scripts loaded');
+      const existsInRedis = await this.redis.script('EXISTS', localSha) as [number];
+      if (existsInRedis[0]) {
+        this.luaScripts.set(scriptName, localSha);
+      } else {
+        const sha = await this.redis.script('LOAD', scriptContent) as string;
+        this.luaScripts.set(scriptName, sha);
+      }
+    }
+    this.logger.info('Lua scripts loaded or reused');
   }
 
   async runLuaScript<T = any>(
@@ -451,21 +465,129 @@ export class NotificationManager {
     const loop = this.consumerLoops.get(loopKey);
 
     if (loop) {
-      return loop.subscriptions; // Если уже есть, просто возвращаем существующий Set
+      return loop.subscriptions;
     }
 
     const subscriptions = new Set<Subscription>();
 
+    const handleMessage = async (id: string, rawFields: string[]) => {
+      const fields = parseFields(rawFields);
+      const channel = fields['channel'] ?? '';
+      const payloadStr = fields['payload'] ?? '{}';
+      const timestamp = parseInt(fields['timestamp'] ?? '0');
+      const attempt = parseInt(fields['attempt'] ?? '1');
+      const exactlyOnce = (fields['exactlyOnce'] ?? 'false') === 'true';
+      const dedupTTL = fields['dedupTTL'];
+
+      const msg: RotifMessage = {
+        id,
+        channel,
+        payload: JSON.parse(payloadStr),
+        timestamp,
+        attempt,
+        ack: async () => {
+          await this.runLuaScript('ack-message', [stream], [group, id, '1']);
+        },
+      };
+
+      const matchingSubs = Array.from(subscriptions).filter(sub =>
+        !sub.isPaused && minimatch(channel, sub.pattern)
+      );
+
+      if (matchingSubs.length === 0) {
+        this.logger.warn(`No matching subscriptions for channel=${channel}, msg=${id}`);
+        return;
+      }
+
+      let subs: Subscription[];
+      if (this.config.localRoundRobin) {
+        const subIndex = this.getRoundRobinIndex(stream, group, matchingSubs.length);
+        subs = [matchingSubs[subIndex]!];
+      } else {
+        subs = matchingSubs;
+      }
+
+      for (const sub of subs) {
+        let dedupKey = '';
+        if (exactlyOnce) {
+          dedupKey = generateDedupKey({ channel, payload: msg.payload, group });
+          const isDuplicate = !!(await this.redis.exists(dedupKey));
+          if (isDuplicate) {
+            await msg.ack();
+            this.logger.info(`Duplicate message detected for channel=${channel} and group=${group} msg=${id}`);
+            return;
+          }
+        }
+
+        try {
+          await this.middleware.runBeforeProcess(msg);
+          await sub.handler(msg);
+          await msg.ack();
+          await this.middleware.runAfterProcess(msg);
+
+          if (exactlyOnce) {
+            await this.redis.set(dedupKey, '1', 'EX', dedupTTL ? Number(dedupTTL) : 3600);
+          }
+        } catch (err) {
+          await this.middleware.runOnError(msg, err as Error);
+
+          const maxRetries = sub.options?.maxRetries ?? this.config.maxRetries ?? 5;
+
+          if (msg.attempt >= maxRetries) {
+            await this.runLuaScript('move-to-dlq', [stream, 'rotif:dlq'], [
+              group, msg.id, channel, payloadStr,
+              (err as Error).message || 'unknown', msg.timestamp.toString(), msg.attempt.toString(),
+            ]);
+            this.logger.error(`Message ${id} moved to DLQ`);
+          } else {
+            const retryDelay = typeof sub.options?.retryDelay === 'function'
+              ? sub.options.retryDelay(msg.attempt, msg)
+              : Number(sub.options?.retryDelay ?? this.config.retryDelay ?? 1000);
+
+            const retryStream = `${stream}:retry`;
+
+            await this.runLuaScript('retry-message', [retryStream, 'rotif:scheduled'], [
+              group, msg.id, channel, payloadStr, timestamp.toString(), (attempt + 1).toString(),
+              (Date.now() + retryDelay).toString(), randomUUID(), fields['exactlyOnce'] ?? 'false', dedupTTL ?? '3600',
+            ]);
+          }
+        }
+      }
+    };
+
     const loopPromise = (async () => {
       this.logger.info(`Starting shared consumer loop for ${stream}:${group}`);
 
+      let lastPendingCheck = Date.now();
+      const pendingCheckInterval = this.config.pendingCheckInterval ?? 30000;
+      const idleThreshold = this.config.pendingIdleThreshold ?? 60000;
+
       while (this.active) {
         if (subscriptions.size === 0) {
-          await delayMs(100);  // Ждем, если нет подписок
+          await delayMs(100);
           continue;
         }
 
         try {
+          if (!this.config.disablePendingMessageRecovery) {
+            const now = Date.now();
+            if (now - lastPendingCheck >= pendingCheckInterval) {
+              lastPendingCheck = now;
+
+              const pendingEntries = await this.redis.xpending(stream, group, 'IDLE', idleThreshold, '-', '+', 100);
+
+              if (pendingEntries && pendingEntries.length > 0) {
+                const staleIds = pendingEntries.map((entry: any) => entry[0]);
+
+                const claimedMessages = await this.redis.xclaim(stream, group, consumer, idleThreshold, ...staleIds) as [string, string[]][];
+
+                for (const [id, rawFields] of claimedMessages) {
+                  await handleMessage(id, rawFields);
+                }
+              }
+            }
+          }
+
           const entries = await this.redis.xreadgroup(
             'GROUP', group, consumer,
             'COUNT', 5000,
@@ -476,117 +598,13 @@ export class NotificationManager {
           if (!entries) continue;
 
           const typedEntries = entries as [string, [string, string[]][]][];
-          for (const [returnedStream, records] of typedEntries) {
+          for (const [, records] of typedEntries) {
             for (const [id, rawFields] of records) {
-              const fields = parseFields(rawFields);
-              const channel = fields['channel'] ?? '';
-              const payloadStr = fields['payload'] ?? '{}';
-              const timestampStr = fields['timestamp'] ?? '0';
-              const attemptStr = fields['attempt'] ?? '1';
-              const exactlyOnce = (fields['exactlyOnce'] ?? 'false') === 'true';
-              const dedupTTL = fields['dedupTTL'];
-              const attempt = parseInt(attemptStr, 10);
-
-              const msg: RotifMessage = {
-                id,
-                channel,
-                payload: JSON.parse(payloadStr),
-                timestamp: parseInt(timestampStr, 10),
-                attempt,
-                ack: async () => {
-                  await this.runLuaScript(
-                    'ack-message',
-                    [returnedStream],
-                    [group, id, '1']
-                  );
-                },
-              };
-
-              const matchingSubs = Array.from(subscriptions).filter(sub =>
-                !sub.isPaused && minimatch(channel, sub.pattern)
-              );
-
-              if (matchingSubs.length === 0) {
-                this.logger.warn(`No matching subscriptions for channel=${channel}, msg=${msg.id}`);
-                continue;
-              }
-
-              const subIndex = this.getRoundRobinIndex(stream, group, matchingSubs.length);
-              const sub = matchingSubs[subIndex]!;
-
-              let dedupKey = '';
-              if (exactlyOnce) {
-                dedupKey = generateDedupKey({ channel, payload: msg.payload, group });
-                const isDuplicate = !!(await this.redis.exists(dedupKey));
-                if (isDuplicate) {
-                  msg.ack();
-                  this.logger.info(`Duplicate message detected for channel=${channel} and group=${group} msg=${msg.id}`);
-                  continue;
-                }
-              }
-
-              try {
-                this.logger.debug(`Processing message ${msg.id} for channel=${channel}`);
-                await this.middleware.runBeforeProcess(msg);
-                await sub.handler(msg);
-                await msg.ack();
-                await this.middleware.runAfterProcess(msg);
-
-                if (exactlyOnce) {
-                  await this.redis.set(dedupKey, '1', 'EX', dedupTTL ? Number(dedupTTL) : 3600);
-                  this.logger.debug(`Deduplication key set for channel=${channel} and group=${group} msg=${msg.id} dedupKey=${dedupKey}`);
-                }
-              } catch (err) {
-                this.logger.error(`Handler error on message ${msg.id}`, err);
-                await this.middleware.runOnError(msg, err as Error);
-
-                const maxRetries = sub.options?.maxRetries ?? this.config.maxRetries ?? 5;
-
-                if (msg.attempt >= maxRetries) {
-                  await this.runLuaScript(
-                    'move-to-dlq',
-                    [returnedStream, 'rotif:dlq'],
-                    [
-                      group,
-                      msg.id,
-                      channel,
-                      payloadStr,
-                      (err as Error).message || 'unknown',
-                      msg.timestamp.toString(),
-                      msg.attempt.toString(),
-                    ]
-                  );
-                  this.logger.error(`Message ${msg.id} moved to DLQ`);
-                } else {
-                  const retryDelay = typeof sub.options?.retryDelay === 'function'
-                    ? sub.options.retryDelay(msg.attempt, msg)
-                    : Number(sub.options?.retryDelay ?? this.config.retryDelay ?? 1000);
-
-                  const retryStream = `${returnedStream}:retry`;
-
-                  await this.runLuaScript(
-                    'retry-message',
-                    [retryStream, 'rotif:scheduled'],
-                    [
-                      group,
-                      msg.id,
-                      channel,
-                      payloadStr,
-                      timestampStr,
-                      (attempt + 1).toString(),
-                      (Date.now() + (retryDelay as number)).toString(),
-                      randomUUID(),
-                      fields['exactlyOnce'] ?? 'false',
-                      dedupTTL ?? '3600',
-                    ]
-                  );
-                }
-              }
+              await handleMessage(id, rawFields);
             }
           }
         } catch (err) {
           if (!this.active) break;
-
           this.logger.error(`Error reading stream ${stream} group ${group}`, err);
           await delayMs(500);
         }

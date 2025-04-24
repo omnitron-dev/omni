@@ -7,13 +7,6 @@ import { Middleware, RotifConfig } from '@devgrid/rotif';
  */
 export interface RotifDeduplicationOptions {
   /**
-   * Type of deduplication storage to use:
-   * - 'redis': Use Redis for distributed deduplication
-   * - 'memory': Use in-memory storage (per instance)
-   */
-  type: 'redis' | 'memory';
-
-  /**
    * Time-to-live in seconds for deduplication records.
    * After this period, a message with the same ID will be
    * processed again. Defaults to 3600 (1 hour).
@@ -35,7 +28,6 @@ export interface RotifDeduplicationOptions {
  *   globalInterceptors: [RotifLoggingInterceptor],
  *   exactlyOnce: true,
  *   deduplication: {
- *     type: 'redis',
  *     ttlSeconds: 3600
  *   }
  * });

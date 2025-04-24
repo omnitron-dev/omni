@@ -58,6 +58,14 @@ export interface RotifConfig {
   scheduledBatchSize?: number;
   /** Retry delay in milliseconds or function to calculate delay */
   retryDelay?: number | ((attempt: number, msg: RotifMessage) => number);
+  /** Enable local round-robin among subscribers */
+  localRoundRobin?: boolean;
+  /** Enable pending message recovery */
+  disablePendingMessageRecovery?: boolean;
+  /** Pending message recovery check interval */
+  pendingCheckInterval?: number;
+  /** Pending message recovery idle threshold */
+  pendingIdleThreshold?: number;
   /** Custom function to generate consumer group names */
   groupNameFn?: (pattern: string) => string;
   /** Custom function to generate consumer names */

@@ -2,22 +2,23 @@ import { delay } from '@devgrid/common';
 
 import { NotificationManager } from '../src';
 
-let manager: NotificationManager;
 
-beforeEach(async () => {
-  manager = new NotificationManager({
-    redis: 'redis://localhost:6379/1',
-    maxRetries: 2,
-    blockInterval: 100,
+describe('Multiple Subscribers Handling whithin one rotif instance', () => {
+  let manager: NotificationManager;
+
+  beforeEach(async () => {
+    manager = new NotificationManager({
+      redis: 'redis://localhost:6379/1',
+      maxRetries: 2,
+      blockInterval: 100,
+      localRoundRobin: true,
+    });
+    await manager.redis.flushdb();
   });
-  await manager.redis.flushdb();
-});
 
-afterEach(async () => {
-  await manager.stopAll();
-});
-
-describe('Multiple Subscribers Handling', () => {
+  afterEach(async () => {
+    await manager.stopAll();
+  });
 
   it('should deliver messages to multiple subscribers in the same default group once', async () => {
     const receivedA: any[] = [];

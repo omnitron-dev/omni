@@ -76,7 +76,7 @@ export class RotifService implements OnModuleDestroy {
     channel: string,
     payload: any,
     options?: PublishOptions,
-  ): Promise<string> {
+  ): Promise<string[] | string | null> {
     this.logger.debug(`Publishing to channel "${channel}" with payload:`, payload);
     return this.rotifManager.publish(channel, payload, options);
   }

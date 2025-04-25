@@ -24,13 +24,16 @@ export class Netron extends AsyncEventEmitter {
   public taskManager: TaskManager;
   private isStarted: boolean = false; // state of the start
   public services = new Map<string, ServiceStub>();
+  public options: NetronOptions;
 
   /**
    * Constructor for the Netron class.
    * @param {NetronOptions} [options] - Optional configuration options.
    */
-  constructor(public options?: NetronOptions) {
+  constructor(options?: NetronOptions) {
     super();
+
+    this.options = options ?? {};
 
     this.id = options?.id ?? randomUUID();
 
@@ -115,69 +118,101 @@ export class Netron extends AsyncEventEmitter {
    * @returns {Promise<RemotePeer>}
    * @throws {Error} - If connection times out or encounters an error.
    */
-  async connect(address: string): Promise<RemotePeer> {
-    return new Promise<RemotePeer>((resolve, reject) => {
-      const timeout = setTimeout(() => {
+  async connect(address: string, reconnect = true): Promise<RemotePeer> {
+    const baseDelay = 1000;
+    let reconnectAttempts = 0;
+    let manuallyDisconnected = false;
+
+    const connectPeer = (): Promise<RemotePeer> => new Promise<RemotePeer>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
         reject(new Error('Connection timeout'));
       }, this.options?.connectTimeout ?? CONNECT_TIMEOUT);
 
       const ws = new WebSocket(`${address}?id=${this.id}`);
-      const peer = new RemotePeer(ws, this);
+      const peer = new RemotePeer(ws, this, address);
 
-      let isResolved = false;
+      let resolved = false;
 
-      ws.on('open', () => {
-        clearTimeout(timeout);
-        const uidHandler = (message: ArrayBuffer, isBinary: boolean) => {
-          if (isBinary) {
-            return;
-          }
-          try {
-            const data = JSON.parse(message.toString()) as { type: 'id'; id: string };
-            if (data.type === 'id') {
-              peer.id = data.id;
-              this.peers.set(peer.id, peer);
-              if (!isResolved) {
-                isResolved = true;
-                peer.init(true, this.options).then(() => {
-                  this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId: peer.id });
-                  resolve(peer);
+      ws.once('open', () => {
+        clearTimeout(timeoutId);
+        ws.once('message', async (message: ArrayBuffer, isBinary: boolean) => {
+          if (!isBinary) {
+            try {
+              const data = JSON.parse(message.toString()) as { type: 'id'; id: string };
+              if (data.type === 'id') {
+                peer.id = data.id;
+                this.peers.set(peer.id, peer);
+                await peer.init(true, this.options);
+
+                peer.once('manual-disconnect', () => {
+                  manuallyDisconnected = true;
                 });
+
+                ws.once('close', () => {
+                  this.peers.delete(peer.id);
+                  this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peer.id), { peerId: peer.id });
+
+                  if (reconnect && !manuallyDisconnected) {
+                    attemptReconnect();
+                  }
+                });
+
+                resolved = true;
+                reconnectAttempts = 0;
+                this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId: peer.id });
+                resolve(peer);
+              } else {
+                ws.close();
+                reject(new Error('Invalid handshake'));
               }
-            } else {
+            } catch (error) {
               ws.close();
+              reject(error);
             }
-          } catch (error) {
-            console.error('Message error:', error);
+          } else {
             ws.close();
-            if (!isResolved) {
-              isResolved = true;
-              reject(new Error('Message error'));
-            }
-          } finally {
-            ws.removeListener('message', uidHandler);
+            reject(new Error('Invalid handshake'));
           }
-        };
-        ws.on('message', uidHandler);
+        });
       });
 
       ws.on('error', (err) => {
-        console.error(`Connection error to ${address}:`, err);
-        if (!isResolved) {
-          isResolved = true;
+        clearTimeout(timeoutId);
+        if (!resolved) {
           reject(err);
         }
       });
 
       ws.on('close', () => {
-        if (!isResolved) {
-          console.warn('Connection closed prematurely.');
+        clearTimeout(timeoutId);
+        if (!resolved) {
           reject(new Error('Connection closed prematurely'));
         }
-        this.peers.delete(peer.id);
-        this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peer.id), { peerId: peer.id });
       });
     });
+
+    const attemptReconnect = () => {
+      if (this.options.maxReconnectAttempts && reconnectAttempts >= this.options.maxReconnectAttempts) {
+        console.error(`Reconnect attempts exceeded (${this.options.maxReconnectAttempts}). Giving up.`);
+        return;
+      }
+
+      const delay = Math.min(baseDelay * 2 ** reconnectAttempts, 30000);
+      console.info(`Reconnecting to ${address} in ${delay} ms (attempt ${reconnectAttempts + 1}/${this.options.maxReconnectAttempts ?? 'unlimited'})...`);
+
+      setTimeout(async () => {
+        reconnectAttempts++;
+        try {
+          await connectPeer();
+          console.info(`Successfully reconnected to ${address}.`);
+        } catch (err) {
+          console.warn(`Reconnect failed (${reconnectAttempts}/${this.options.maxReconnectAttempts ?? 'unlimited'}):`);
+          attemptReconnect();
+        }
+      }, delay);
+    };
+
+    return connectPeer();
   }
 
   /**

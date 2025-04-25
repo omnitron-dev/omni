@@ -1,4 +1,5 @@
 import { WebSocket } from 'ws';
+import { EventEmitter } from 'events';
 import { TimedMap } from '@devgrid/common';
 
 import { Netron } from './netron';
@@ -35,6 +36,8 @@ import {
  * Represents a remote peer in the Netron network.
  */
 export class RemotePeer extends AbstractPeer {
+  private events = new EventEmitter();
+
   private responseHandlers = new TimedMap<
     number,
     { successHandler: (response: Packet) => void; errorHandler?: (data: any) => void }
@@ -265,8 +268,19 @@ export class RemotePeer extends AbstractPeer {
    * Disconnects the remote peer.
    */
   disconnect() {
-    this.socket.close();
+    this.events.emit('manual-disconnect');
 
+    if (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING) {
+      this.socket.close();
+    }
+    this.cleanup();
+  }
+
+  once(event: 'manual-disconnect', listener: () => void) {
+    this.events.once(event, listener);
+  }
+
+  private cleanup() {
     this.responseHandlers.clear();
     this.writableStreams.clear();
     this.readableStreams.clear();

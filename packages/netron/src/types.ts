@@ -17,6 +17,7 @@ export type NetronOptions = {
   requestTimeout?: number;
   streamTimeout?: number;
   allowServiceEvents?: boolean;
+  maxReconnectAttempts?: number; // if not set, unlimited
 };
 
 export type EventSubscriber = (...args: any[]) => void;

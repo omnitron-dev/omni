@@ -1,4 +1,4 @@
-import cuid from '@bugsnag/cuid';
+import { randomUUID } from 'node:crypto';
 
 import { ServiceMetadata } from './types';
 
@@ -19,13 +19,13 @@ export class Definition {
     public id: string,
     public peerId: string,
     public meta: ServiceMetadata
-  ) {}
+  ) { }
 
   /**
    * Generates the next unique identifier.
    * @returns {number} - The next unique identifier.
    */
   static nextId(): string {
-    return cuid();
+    return randomUUID();
   }
 }

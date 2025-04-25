@@ -7,6 +7,7 @@ describe('Packet', () => {
     const metadata = Reflect.getMetadata(SERVICE_ANNOTATION, Service1);
     expect(JSON.stringify(metadata, null, 2)).toEqual(`{
   "name": "service1",
+  "version": "",
   "properties": {
     "name": {
       "type": "String",
@@ -29,6 +30,12 @@ describe('Packet', () => {
     "greet": {
       "type": "String",
       "arguments": []
+    },
+    "echo": {
+      "type": "String",
+      "arguments": [
+        "String"
+      ]
     },
     "addNumbers": {
       "type": "Number",
@@ -169,6 +176,7 @@ describe('Packet', () => {
     const metadata = Reflect.getMetadata(SERVICE_ANNOTATION, Service2);
     expect(JSON.stringify(metadata, null, 2)).toEqual(`{
   "name": "service2",
+  "version": "",
   "properties": {
     "name": {
       "type": "String",

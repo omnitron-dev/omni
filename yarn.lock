@@ -692,7 +692,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@devgrid/messagepack@workspace:*, @devgrid/messagepack@workspace:packages/messagepack":
+"@devgrid/messagepack@workspace:*, @devgrid/messagepack@workspace:^, @devgrid/messagepack@workspace:packages/messagepack":
   version: 0.0.0-use.local
   resolution: "@devgrid/messagepack@workspace:packages/messagepack"
   dependencies:
@@ -714,7 +714,6 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@devgrid/netron@workspace:packages/netron"
   dependencies:
-    "@bugsnag/cuid": "npm:^3.2.1"
     "@devgrid/async-emitter": "workspace:*"
     "@devgrid/common": "workspace:*"
     "@devgrid/messagepack": "workspace:*"
@@ -722,6 +721,7 @@ __metadata:
     "@jest/globals": "npm:^29.7.0"
     "@types/jest": "npm:^29.5.14"
     "@types/node": "npm:^22.13.13"
+    "@types/semver": "npm:^7.5.8"
     "@types/ws": "npm:^8.18.0"
     bufferutil: "npm:^4.0.9"
     del-cli: "npm:^6.0.0"
@@ -729,6 +729,7 @@ __metadata:
     globals: "npm:^15.14.0"
     jest: "npm:^29.7.0"
     reflect-metadata: "npm:^0.2.2"
+    semver: "npm:^7.7.1"
     source-map-support: "npm:^0.5.21"
     ts-jest: "npm:^29.2.6"
     ts-loader: "npm:^9.5.1"
@@ -957,6 +958,7 @@ __metadata:
   dependencies:
     "@bugsnag/cuid": "npm:^3.2.1"
     "@devgrid/common": "workspace:*"
+    "@devgrid/messagepack": "workspace:^"
     "@jest/globals": "npm:^29.7.0"
     "@msgpack/msgpack": "npm:^3.1.1"
     "@types/benchmark": "npm:^2"

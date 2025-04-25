@@ -1,12 +1,10 @@
 import { Definition } from './definition';
 
 export type Abilities = {
-  // List of tasks that are exposed.
-  tasks?: string[];
   // List of services that are exposed.
   services?: Map<string, Definition>;
   // Indicates whether the remote peer should subscribe to service events.
-  subsribeForServices?: boolean;
+  allowServiceEvents?: boolean;
 };
 
 export type NetronOptions = {
@@ -17,8 +15,8 @@ export type NetronOptions = {
   taskOverwriteStrategy?: 'replace' | 'skip' | 'throw';
   connectTimeout?: number;
   requestTimeout?: number;
-  abilities?: Abilities;
   streamTimeout?: number;
+  allowServiceEvents?: boolean;
 };
 
 export type EventSubscriber = (...args: any[]) => void;
@@ -52,12 +50,15 @@ export interface PropertyInfo {
  */
 export interface ServiceMetadata {
   name: string; // The name of the service
+  version: string; // The version of the service (empty string for latest version)
   properties: Record<string, PropertyInfo>; // Record of property information
   methods: Record<string, MethodInfo>; // Record of method information
 }
 
 export type ServiceExposeEvent = {
   name: string;
+  version: string;
+  qualifiedName: string;
   peerId: string;
   remotePeerId?: string;
   definition: Definition;
@@ -65,6 +66,8 @@ export type ServiceExposeEvent = {
 
 export type ServiceUnexposeEvent = {
   name: string;
+  version: string;
+  qualifiedName: string;
   peerId: string;
   remotePeerId?: string;
   defId: string;

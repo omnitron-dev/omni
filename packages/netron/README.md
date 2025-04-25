@@ -29,7 +29,7 @@ yarn add @devgrid/netron
 ```typescript
 import { Netron, Service, Public } from '@devgrid/netron';
 
-@Service('calculator')
+@Service('calculator', '1.0.0')
 class Calculator {
   @Public()
   add(a: number, b: number): number {
@@ -60,7 +60,9 @@ const client = await Netron.create();
 const remotePeer = await client.connect('ws://localhost:8080');
 
 // Query the calculator interface
-const calculator = await remotePeer.queryInterface('calculator');
+const calculator = await remotePeer.queryInterface<ICalculator>('calculator:1.0.0');
+// or latest version
+const latestCalculator = await peer.queryInterface<ICalculator>('calculator');
 
 // Use remote methods
 const sum = await calculator.add(5, 3);      // 8

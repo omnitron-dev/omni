@@ -1,14 +1,26 @@
+import semver from 'semver';
+
 import { ServiceMetadata } from './types';
 import { SERVICE_ANNOTATION } from './common';
-
 /**
  * Decorator to define a service with metadata.
  *
- * @param {string} name - The name of the service.
+ * @param {string} qualifiedName - The qualified name of the service (name[:version]).
  * @returns {Function} - A decorator function.
  */
-export const Service = (name: string) => (target: any) => {
-  const metadata: ServiceMetadata = { name, properties: {}, methods: {} };
+export const Service = (qualifiedName: string) => (target: any) => {
+  const [name, version] = qualifiedName.split(':');
+  const nameRegex = /^[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*$/;
+
+  if (!name || !nameRegex.test(name)) {
+    throw new Error(`Invalid service name "${name}". Only latin letters and dots are allowed.`);
+  }
+
+  if (version && !semver.valid(version)) {
+    throw new Error(`Invalid version "${version}". Version must follow semver.`);
+  }
+
+  const metadata: ServiceMetadata = { name, version: version ?? '', properties: {}, methods: {} };
 
   // Extract method information
   for (const key of Object.getOwnPropertyNames(target.prototype)) {
@@ -59,10 +71,14 @@ export const Service = (name: string) => (target: any) => {
  */
 export const Public =
   (options?: { readonly?: boolean }) =>
-  (target: any, propertyKey: string | symbol, descriptor?: PropertyDescriptor) => {
-    Reflect.defineMetadata('public', true, target, propertyKey);
-    if (!descriptor) {
-      // For properties
-      Reflect.defineMetadata('readonly', options?.readonly, target, propertyKey);
-    }
-  };
+    (target: any, propertyKey: string | symbol, descriptor?: PropertyDescriptor) => {
+      Reflect.defineMetadata('public', true, target, propertyKey);
+      if (!descriptor) {
+        // For properties
+        Reflect.defineMetadata('readonly', options?.readonly, target, propertyKey);
+      }
+    };
+
+// Aliases for decorators
+export const NetronService = Service;
+export const NetronMethod = Public;

@@ -4,7 +4,7 @@ import { readdir } from 'fs/promises';
 // Define a type for tasks, which can be either asynchronous or synchronous functions
 export type Task = (...args: any[]) => Promise<any> | any;
 
-// Class for managing tasks
+// Class for managing internal tasks of the netron
 export class TaskManager {
   // Map to store tasks, where the key is the task name and the value is the task function
   private tasks: Map<string, Task> = new Map();

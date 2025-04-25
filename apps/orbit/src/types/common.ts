@@ -38,6 +38,6 @@ export interface OrbitContext {
   variables: Variables;
   config: OrbitConfig;
   logger: Logger;
-  errorHandler: ErrorHandler;             // ✅ новое поле
-  alertingService?: AlertingService;      // ✅ новое опциональное поле
+  errorHandler: ErrorHandler;
+  alertingService?: AlertingService;
 }

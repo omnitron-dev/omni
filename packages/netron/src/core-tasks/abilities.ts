@@ -8,19 +8,16 @@ export function abilities(peer: RemotePeer, remoteAbilities?: Abilities) {
     // Set the abilities of the remote peer.
     peer.abilities = remoteAbilities;
 
-    if (remoteAbilities.subsribeForServices) {
+    if (remoteAbilities.allowServiceEvents) {
       // Subscribe the peer to service exposure events.
       // peer.subscribe(NETRON_EVENT_SERVICE_EXPOSE);
     }
   }
 
-  // TODO: Make tasks and subsribeForServices configurable at the netron level.
   const result: Abilities = {
     // List of services available on this netron.
     services: new Map<string, Definition>(),
-    // List of tasks that can be executed on the current peer.
-    tasks: ['abilities', 'subscribe', 'unsubscribe', 'emit', 'expose', 'unexpose'],
-    ...peer.netron.options?.abilities,
+    allowServiceEvents: peer.netron.options?.allowServiceEvents ?? false,
   };
 
   // Populate the services map with the services available on the peer's netron.

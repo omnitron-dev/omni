@@ -9,7 +9,7 @@ import { isNetronService, isServiceReference, isServiceInterface, isServiceDefin
  * the underlying service definition.
  */
 export class ServiceStub {
-  public definition;
+  public definition: Definition;
 
   /**
    * Constructs a ServiceStub instance.

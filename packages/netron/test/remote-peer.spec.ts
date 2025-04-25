@@ -21,9 +21,7 @@ describe('RemotePeer', () => {
       id: 'n1',
       listenHost: 'localhost',
       listenPort: 8080,
-      abilities: {
-        subsribeForServices: true,
-      },
+      allowServiceEvents: true,
     });
   });
 
@@ -75,6 +73,7 @@ describe('RemotePeer', () => {
     );
     expect(await iface.getSet()).toEqual(new Set(['first', 'second']));
     expect(await iface.getPromise()).toEqual('resolved');
+    expect(await iface.echo('test')).toEqual('test');
   }
 
   it('should connect to remote peer', async () => {
@@ -155,11 +154,12 @@ describe('RemotePeer', () => {
 
     expect(peer1.abilities).toEqual({
       services: new Map(),
-      tasks: ['abilities', 'subscribe', 'unsubscribe', 'emit', 'expose', 'unexpose'],
-      subsribeForServices: true,
+      allowServiceEvents: true,
     });
 
-    expect(peer2.abilities).toEqual({});
+    expect(peer2.abilities).toEqual({
+      allowServiceEvents: false,
+    });
 
     peer1.disconnect();
   });
@@ -167,23 +167,19 @@ describe('RemotePeer', () => {
   it('connector side can send abilities', async () => {
     const n2 = await Netron.create({
       id: 'n2',
+      allowServiceEvents: true,
     });
 
-    const peer1 = await n2.connect(`ws://localhost:8080`, {
-      subsribeForServices: true,
-      tasks: ['abilities', 'subscribe', 'unsubscribe', 'emit', 'expose', 'unexpose'],
-    });
+    const peer1 = await n2.connect(`ws://localhost:8080`);
     const peer2 = netron.peers.get('n2')!;
 
     expect(peer1.abilities).toEqual({
       services: new Map(),
-      tasks: ['abilities', 'subscribe', 'unsubscribe', 'emit', 'expose', 'unexpose'],
-      subsribeForServices: true,
+      allowServiceEvents: true,
     });
 
     expect(peer2.abilities).toEqual({
-      tasks: ['abilities', 'subscribe', 'unsubscribe', 'emit', 'expose', 'unexpose'],
-      subsribeForServices: true,
+      allowServiceEvents: true,
     });
 
     await peer1.disconnect();
@@ -717,5 +713,36 @@ describe('RemotePeer', () => {
 
     peer21.disconnect();
     peer31.disconnect();
+  });
+
+  it('should be able to release and re-query interface', async () => {
+    const svc1 = new Service1();
+    const peer = netron.peer;
+    await peer.exposeService(svc1);
+
+    const n2 = await Netron.create();
+    const peer1 = await n2.connect(`ws://localhost:8080`);
+
+    // Запрашиваем интерфейс в первый раз
+    let iface = await peer1.queryInterface<IService1>('service1');
+    expect(iface).toBeInstanceOf(Interface);
+
+    // Вызываем метод
+    const result = await iface.echo('test');
+    expect(result).toBe('test');
+
+    // Релизим интерфейс
+    await peer1.releaseInterface(iface);
+
+    // Запрашиваем интерфейс повторно
+    iface = await peer1.queryInterface<IService1>('service1');
+    expect(iface).toBeInstanceOf(Interface);
+
+    // Проверяем что методы работают
+    const result2 = await iface.echo('test2');
+    expect(result2).toBe('test2');
+
+    await peer1.releaseInterface(iface);
+    await peer1.disconnect();
   });
 });

@@ -3,8 +3,9 @@ const cbor = require('cbor');
 const msgpackr = require('msgpackr');
 const msgpack = require('@msgpack/msgpack');
 const { performance } = require('perf_hooks');
+const { encode, decode } = require('@devgrid/messagepack');
 
-// Создаем тестовые данные
+// Create test data
 const testData = {
   string: 'Hello World',
   number: 12345,
@@ -20,7 +21,7 @@ const testData = {
   undefined
 };
 
-// Функция для измерения производительности
+// Function to measure performance
 function measurePerformance(name, operation) {
   const start = performance.now();
   for (let i = 0; i < 100000; i++) {
@@ -54,7 +55,11 @@ const bsonDeserialize = () => bson.deserialize(bson.serialize(testData));
 const cborSerialize = () => cbor.encode(testData);
 const cborDeserialize = () => cbor.decode(cbor.encode(testData));
 
-// Запускаем бенчмарки
+// DevGrid MessagePack
+const devgridSerialize = () => encode(testData);
+const devgridDeserialize = () => decode(encode(testData));
+
+// Run benchmarks
 const results = [
   measurePerformance('JSON Serialize', jsonSerialize),
   measurePerformance('JSON Deserialize', jsonDeserialize),
@@ -65,10 +70,12 @@ const results = [
   measurePerformance('BSON Serialize', bsonSerialize),
   measurePerformance('BSON Deserialize', bsonDeserialize),
   measurePerformance('CBOR Serialize', cborSerialize),
-  measurePerformance('CBOR Deserialize', cborDeserialize)
+  measurePerformance('CBOR Deserialize', cborDeserialize),
+  measurePerformance('DevGrid MessagePack Serialize', devgridSerialize),
+  measurePerformance('DevGrid MessagePack Deserialize', devgridDeserialize)
 ];
 
-// Выводим результаты
+// Output results
 console.log('\nBenchmark Results:');
 console.log('------------------');
 results.forEach(result => {
@@ -78,7 +85,7 @@ results.forEach(result => {
   console.log('------------------');
 });
 
-// Сравниваем размеры
+// Compare sizes
 console.log('\nSize Comparison:');
 console.log('------------------');
 console.log(`JSON: ${JSON.stringify(testData).length} bytes`);
@@ -86,3 +93,4 @@ console.log(`MessagePack: ${msgpack.encode(testData).length} bytes`);
 console.log(`MessagePackR: ${msgpackr.pack(testData).length} bytes`);
 console.log(`BSON: ${bson.serialize(testData).length} bytes`);
 console.log(`CBOR: ${cbor.encode(testData).length} bytes`);
+console.log(`DevGrid MessagePack: ${encode(testData).length} bytes`);

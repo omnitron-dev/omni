@@ -1,14 +1,14 @@
 import path from 'node:path';
-import cuid from '@bugsnag/cuid';
+import { randomUUID } from 'node:crypto';
 import { IncomingMessage } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { AsyncEventEmitter } from '@devgrid/async-emitter';
 
+import { NetronOptions } from './types';
 import { LocalPeer } from './local-peer';
 import { RemotePeer } from './remote-peer';
 import { ServiceStub } from './service-stub';
 import { Task, TaskManager } from './task-manager';
-import { Abilities, NetronOptions } from './types';
 import { CONNECT_TIMEOUT, getPeerEventName, NETRON_EVENT_PEER_CONNECT, NETRON_EVENT_PEER_DISCONNECT } from './common';
 
 /**
@@ -32,7 +32,7 @@ export class Netron extends AsyncEventEmitter {
   constructor(public options?: NetronOptions) {
     super();
 
-    this.id = options?.id ?? cuid();
+    this.id = options?.id ?? randomUUID();
 
     this.taskManager = new TaskManager({
       timeout: options?.taskTimeout,
@@ -92,7 +92,7 @@ export class Netron extends AsyncEventEmitter {
           this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peerId), { peerId });
         });
 
-        peer.init(false, this.options?.abilities);
+        peer.init(false, this.options);
       });
     });
   }
@@ -112,11 +112,10 @@ export class Netron extends AsyncEventEmitter {
   /**
    * Connects to a remote peer via WebSocket.
    * @param {string} address - The address of the remote peer.
-   * @param {Abilities} [abilities] - Optional abilities for the remote peer.
    * @returns {Promise<RemotePeer>}
    * @throws {Error} - If connection times out or encounters an error.
    */
-  async connect(address: string, abilities?: Abilities): Promise<RemotePeer> {
+  async connect(address: string): Promise<RemotePeer> {
     return new Promise<RemotePeer>((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Connection timeout'));
@@ -140,7 +139,7 @@ export class Netron extends AsyncEventEmitter {
               this.peers.set(peer.id, peer);
               if (!isResolved) {
                 isResolved = true;
-                peer.init(true, abilities).then(() => {
+                peer.init(true, this.options).then(() => {
                   this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId: peer.id });
                   resolve(peer);
                 });
@@ -212,7 +211,7 @@ export class Netron extends AsyncEventEmitter {
   }
 
   /**
-   * Runs a task on a remote peer.
+   * Runs a task on a remote netron.
    * @param {RemotePeer} peer - The remote peer to run the task on.
    * @param {string} name - The name of the task to run.
    * @param {...any[]} args - The arguments to pass to the task.

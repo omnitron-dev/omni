@@ -18,24 +18,41 @@ export function copyToClipboard(text: string) {
   }
 }
 
-// 🔥 Function for recursive traversal of directory
-function walkDir(dir: string, includeDirs: string[] = [], excludeDirs: string[] = []): string[] {
+// 🔥 Function for recursive directory traversal
+function walkDir(projectPath: string, dir: string, includeDirs: string[] = [], excludeDirs: string[] = []): string[] {
   let results: string[] = [];
   const list = fs.readdirSync(dir);
 
   list.forEach((file) => {
     const filePath = path.join(dir, file);
     const stat = fs.statSync(filePath);
+    const relativePath = path.relative(projectPath, filePath);
 
     if (stat.isDirectory()) {
-      if (includeDirs.length === 0 || includeDirs.includes(file)) {
+      if (includeDirs.length > 0) {
+        // Check if path starts with any of the included directories
+        if (includeDirs.some(includedDir => relativePath.startsWith(includedDir))) {
+          if (!excludeDirs.includes(file)) {
+            results = results.concat(walkDir(projectPath, filePath, includeDirs, excludeDirs));
+          }
+        }
+      } else {
         if (!excludeDirs.includes(file)) {
-          results = results.concat(walkDir(filePath, includeDirs, excludeDirs));
+          results = results.concat(walkDir(projectPath, filePath, includeDirs, excludeDirs));
         }
       }
     } else {
-      if (!excludeDirs.includes(file)) {
-        results.push(filePath);
+      // For files also check includeDirs
+      if (includeDirs.length > 0) {
+        if (includeDirs.some(includedDir => relativePath.startsWith(includedDir))) {
+          if (!excludeDirs.includes(file)) {
+            results.push(filePath);
+          }
+        }
+      } else {
+        if (!excludeDirs.includes(file)) {
+          results.push(filePath);
+        }
       }
     }
   });
@@ -46,9 +63,9 @@ function walkDir(dir: string, includeDirs: string[] = [], excludeDirs: string[] 
 // 🔥 Generate ChatGPT-compatible prompt
 function generatePrompt(projectPath: string, includeDirs: string[] = [], excludeDirs: string[] = []): string {
   const baseDir = projectPath;
-  const defaultExcludeDirs = ['dist', 'node_modules', 'coverage'];
+  const defaultExcludeDirs = ['dist', 'node_modules', 'coverage', '.turbo'];
 
-  const files = walkDir(baseDir, includeDirs, [...defaultExcludeDirs, ...excludeDirs]);
+  const files = walkDir(projectPath, baseDir, includeDirs, [...defaultExcludeDirs, ...excludeDirs]);
   let prompt = '';
 
   files.forEach((file) => {
@@ -81,7 +98,7 @@ Description:
   Saves the result to prompt.txt in the project root.
 
 Options:
-  --include    Comma-separated list of directories to include (if not specified, all directories are included)
+  --include    Comma-separated list of directories to include (if specified, only these directories will be scanned)
   --exclude    Comma-separated list of directories to exclude
 
 Example:

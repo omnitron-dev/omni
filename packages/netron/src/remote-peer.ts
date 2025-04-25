@@ -4,12 +4,13 @@ import { TimedMap } from '@devgrid/common';
 import { Netron } from './netron';
 import { Interface } from './interface';
 import { Definition } from './definition';
+import { getQualifiedName } from './utils';
 import { ServiceStub } from './service-stub';
 import { AbstractPeer } from './abstract-peer';
 import { isServiceDefinition } from './predicates';
 import { WritableStream } from './writable-stream';
 import { ReadableStream } from './readable-stream';
-import { Abilities, EventSubscriber, ServiceMetadata, ServiceExposeEvent, ServiceUnexposeEvent } from './types';
+import { Abilities, NetronOptions, EventSubscriber, ServiceMetadata, ServiceExposeEvent, ServiceUnexposeEvent } from './types';
 import {
   REQUEST_TIMEOUT,
   SERVICE_ANNOTATION,
@@ -47,7 +48,6 @@ export class RemotePeer extends AbstractPeer {
   public readableStreams = new Map<number, ReadableStream>();
   public eventSubscribers = new Map<string, EventSubscriber[]>();
   public remoteSubscriptions = new Map<string, EventSubscriber>();
-  public abilities: Abilities = {};
   public services = new Map<string, Definition>();
   public definitions = new Map<string, Definition>();
 
@@ -68,9 +68,9 @@ export class RemotePeer extends AbstractPeer {
   /**
    * Initializes the remote peer.
    * @param {boolean} [isConnector] - Indicates if the peer is a connector.
-   * @param {Abilities} [abilities] - The abilities of the peer.
+   * @param {NetronOptions} [options] - The options of the local netron.
    */
-  async init(isConnector?: boolean, abilities?: Abilities) {
+  async init(isConnector?: boolean, options?: NetronOptions) {
     this.socket.on('message', (data: ArrayBuffer, isBinary: boolean) => {
       if (isBinary) {
         this.handlePacket(decodePacket(data));
@@ -80,21 +80,21 @@ export class RemotePeer extends AbstractPeer {
     });
 
     if (isConnector) {
-      this.abilities = (await this.runTask('abilities', abilities)) as Abilities;
+      this.abilities = (await this.runTask('abilities', this.netron.peer.abilities)) as Abilities;
       if (this.abilities.services) {
         for (const [name, definition] of this.abilities.services) {
           this.definitions.set(definition.id, definition);
           this.services.set(name, definition);
         }
       }
-      if (this.abilities.subsribeForServices) {
+      if (this.abilities.allowServiceEvents) {
         await this.subscribe(NETRON_EVENT_SERVICE_EXPOSE, (event: ServiceExposeEvent) => {
           this.definitions.set(event.definition.id, event.definition);
-          this.services.set(event.name, event.definition);
+          this.services.set(event.qualifiedName, event.definition);
         });
         await this.subscribe(NETRON_EVENT_SERVICE_UNEXPOSE, (event: ServiceUnexposeEvent) => {
           this.definitions.delete(event.defId);
-          this.services.delete(event.name);
+          this.services.delete(event.qualifiedName);
         });
       }
     }
@@ -512,7 +512,12 @@ export class RemotePeer extends AbstractPeer {
    */
   unrefService(defId?: string) {
     if (defId) {
-      this.definitions.delete(defId);
+      const def = this.definitions.get(defId);
+      if (def) {
+        if (!this.services.has(getQualifiedName(def.meta.name, def.meta.version))) {
+          this.definitions.delete(defId);
+        }
+      }
     }
   }
 

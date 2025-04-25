@@ -1,10 +1,14 @@
+import semver from 'semver';
+
 import { Netron } from './netron';
 import { Interface } from './interface';
 import { Definition } from './definition';
-import { EventSubscriber } from './types';
 import { isServiceInterface } from './predicates';
+import { Abilities, EventSubscriber } from './types';
 
 export abstract class AbstractPeer {
+  public abilities: Abilities = {};
+
   // A map to store interfaces with their reference count, identified by a unique definition ID.
   protected interfaces = new Map<string, { instance: Interface; refCount: number }>();
 
@@ -12,7 +16,7 @@ export abstract class AbstractPeer {
   constructor(
     public netron: Netron,
     public id: string
-  ) {}
+  ) { }
 
   /**
    * Abstract method to set a property value or call a method on the peer side.
@@ -97,11 +101,29 @@ export abstract class AbstractPeer {
   /**
    * Queries an interface for a given service name.
    *
-   * @param {string} serviceName - The name of the service to query.
+   * @param {string} qualifiedName - The name of the service to query.
    * @returns {Promise<T>} - A promise that resolves with the queried interface.
    */
-  async queryInterface<T>(serviceName: string): Promise<T> {
-    const def = this.getDefinitionByServiceName(serviceName);
+  async queryInterface<T>(qualifiedName: string): Promise<T> {
+    let name: string;
+    let version: string | undefined;
+
+    if (qualifiedName.includes(':')) {
+      [name, version] = qualifiedName.split(':') as [string, string | undefined];
+    } else {
+      name = qualifiedName;
+      version = '*';
+    }
+
+    let def: Definition;
+
+    if (version === '*' || !version) {
+      def = this.findLatestServiceVersion(name);
+    } else {
+      const exactKey = `${name}:${version}`;
+      def = this.getDefinitionByServiceName(exactKey);
+    }
+
     return this.queryInterfaceByDefId(def.id, def);
   }
 
@@ -112,7 +134,7 @@ export abstract class AbstractPeer {
    * @param {Definition} [def] - Optional definition object.
    * @returns {Promise<T>} - A promise that resolves with the queried interface.
    */
-  async queryInterfaceByDefId<T>(defId: string, def?: Definition): Promise<T> {
+  queryInterfaceByDefId<T>(defId: string, def?: Definition): T {
     if (!def) {
       def = this.getDefinitionById(defId);
     }
@@ -136,33 +158,29 @@ export abstract class AbstractPeer {
    * @returns {Promise<void>} - A promise that resolves when the interface is released.
    * @throws {Error} - Throws an error if the instance is not a valid service interface.
    */
-  async releaseInterface<T>(iInstance: T) {
-    if (!isServiceInterface(iInstance)) {
-      throw new Error('Not a service interface');
-    }
-
-    if (!iInstance.$def) {
+  async releaseInterface<T>(iInstance: T, released = new Set<string>()) {
+    if (!isServiceInterface(iInstance) || !iInstance.$def) {
       throw new Error('Invalid interface');
     }
 
-    const iInfo = this.interfaces.get(iInstance.$def.id);
+    const defId = iInstance.$def.id;
+    if (released.has(defId)) return;
+    released.add(defId);
+
+    const iInfo = this.interfaces.get(defId);
     if (!iInfo) {
       throw new Error('Invalid interface');
     }
 
     iInfo.refCount--;
     if (iInfo.refCount === 0) {
-      this.interfaces.delete(iInstance.$def.id);
+      this.interfaces.delete(defId);
 
-      const releaseChildInterfaces = (defId: string) => {
-        for (const i of this.interfaces.values()) {
-          if (i.instance.$def?.parentId === defId) {
-            this.releaseInterface(i.instance);
-          }
+      for (const i of this.interfaces.values()) {
+        if (i.instance.$def?.parentId === defId) {
+          this.releaseInterface(i.instance);
         }
-      };
-
-      releaseChildInterfaces(iInstance.$def.id);
+      }
 
       await this.releaseInterfaceInternal(iInstance);
       iInstance.$def = undefined;
@@ -193,4 +211,31 @@ export abstract class AbstractPeer {
    * @returns {Definition} - The definition associated with the given service name.
    */
   protected abstract getDefinitionByServiceName(name: string): Definition;
+
+  protected findLatestServiceVersion(serviceName: string): Definition {
+    // Check if the service exists without a version
+    if (!serviceName.includes(':')) {
+      try {
+        return this.getDefinitionByServiceName(serviceName);
+      } catch (_: any) {
+        // If the service is not found, try to find the latest version
+      }
+    }
+
+    const regex = new RegExp(`^${serviceName}:([^:]+)$`);
+    const candidates = Array.from(this.getServiceNames())
+      .map((key) => {
+        const match = key.match(regex);
+        if (match) return { version: match[1], key };
+        return null;
+      })
+      .filter((x): x is { version: string, key: string } => x !== null)
+      .sort((a, b) => semver.rcompare(a.version, b.version));
+
+    if (candidates.length === 0) {
+      throw new Error(`Unknown service: ${serviceName}`);
+    }
+
+    return this.getDefinitionByServiceName(candidates[0]!.key);
+  }
 }

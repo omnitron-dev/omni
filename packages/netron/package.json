@@ -15,7 +15,6 @@
     "test": "jest"
   },
   "dependencies": {
-    "@bugsnag/cuid": "^3.2.1",
     "@devgrid/async-emitter": "workspace:*",
     "@devgrid/common": "workspace:*",
     "@devgrid/messagepack": "workspace:*",
@@ -23,12 +22,14 @@
     "bufferutil": "^4.0.9",
     "es-toolkit": "^1.33.0",
     "reflect-metadata": "^0.2.2",
+    "semver": "^7.7.1",
     "ws": "^8.18.1"
   },
   "devDependencies": {
     "@jest/globals": "^29.7.0",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.13.13",
+    "@types/semver": "^7.5.8",
     "@types/ws": "^8.18.0",
     "del-cli": "^6.0.0",
     "globals": "^15.14.0",

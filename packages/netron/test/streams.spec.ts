@@ -12,9 +12,6 @@ describe.skip('Streams', () => {
       id: 'n1',
       listenHost: 'localhost',
       listenPort: 8080,
-      abilities: {
-        subsribeForServices: true,
-      },
     });
     netron2 = await Netron.create({
       id: 'n2',

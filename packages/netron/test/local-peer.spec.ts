@@ -504,4 +504,31 @@ describe('LocalPeer', () => {
     await peer.releaseInterface(iface);
     await expect(async () => peer.releaseInterface(iface)).rejects.toThrow(/Invalid interface/);
   });
+
+  it('should be able to release and re-query interface', async () => {
+    const svc1 = new Service1();
+    const peer = netron.peer;
+    await peer.exposeService(svc1);
+
+    // Запрашиваем интерфейс в первый раз
+    let iface = await peer.queryInterface<IService1>('service1');
+    expect(iface).toBeInstanceOf(Interface);
+
+    // Вызываем метод
+    const result = await iface.echo('test');
+    expect(result).toBe('test');
+
+    // Релизим интерфейс
+    await peer.releaseInterface(iface);
+
+    // Запрашиваем интерфейс повторно
+    iface = await peer.queryInterface<IService1>('service1');
+    expect(iface).toBeInstanceOf(Interface);
+
+    // Проверяем что методы работают
+    const result2 = await iface.echo('test2');
+    expect(result2).toBe('test2');
+
+    await peer.releaseInterface(iface);
+  });
 });

@@ -2,10 +2,11 @@ import { Netron } from './netron';
 import { Interface } from './interface';
 import { Definition } from './definition';
 import { RemotePeer } from './remote-peer';
+import { getQualifiedName } from './utils';
 import { ServiceStub } from './service-stub';
 import { AbstractPeer } from './abstract-peer';
-import { EventSubscriber, ServiceMetadata } from './types';
 import { isServiceInterface, isServiceDefinition } from './predicates';
+import { EventSubscriber, ServiceMetadata, ServiceExposeEvent } from './types';
 import {
   getServiceMetadata,
   getServiceEventName,
@@ -26,6 +27,9 @@ export class LocalPeer extends AbstractPeer {
    */
   constructor(netron: Netron) {
     super(netron, netron.id);
+    this.abilities = {
+      allowServiceEvents: netron.options?.allowServiceEvents ?? false,
+    };
   }
 
   /**
@@ -40,22 +44,25 @@ export class LocalPeer extends AbstractPeer {
       throw new Error('Invalid service');
     }
 
-    if (this.netron.services.has(meta.name)) {
-      throw new Error(`Service already exposed: ${meta.name}`);
+    const serviceKey = getQualifiedName(meta.name, meta.version);
+    if (this.netron.services.has(serviceKey)) {
+      throw new Error(`Service already exposed: ${serviceKey}`);
     }
 
     const stub = new ServiceStub(this, instance, meta);
     const def = stub.definition;
 
     this.stubs.set(def.id, stub);
-    this.netron.services.set(meta.name, stub);
+    this.netron.services.set(serviceKey, stub);
     this.serviceInstances.set(instance, stub);
 
-    this.netron.emitSpecial(NETRON_EVENT_SERVICE_EXPOSE, getServiceEventName(def.meta.name), {
+    this.netron.emitSpecial(NETRON_EVENT_SERVICE_EXPOSE, getServiceEventName(serviceKey), {
       name: def.meta.name,
+      version: def.meta.version,
+      qualifiedName: serviceKey,
       peerId: this.id,
       definition: def,
-    });
+    } as ServiceExposeEvent);
     return def;
   }
 
@@ -77,10 +84,12 @@ export class LocalPeer extends AbstractPeer {
 
     this.netron.emitSpecial(NETRON_EVENT_SERVICE_EXPOSE, getServiceEventName(def.meta.name), {
       name: def.meta.name,
+      version: def.meta.version,
+      qualifiedName: getQualifiedName(def.meta.name, def.meta.version),
       peerId: this.id,
       remotePeerId: peer.id,
       definition: def,
-    });
+    } as ServiceExposeEvent);
     return def;
   }
 
@@ -105,7 +114,9 @@ export class LocalPeer extends AbstractPeer {
     }
 
     this.netron.emitSpecial(NETRON_EVENT_SERVICE_UNEXPOSE, getServiceEventName(serviceName), {
-      name: serviceName,
+      name: def.meta.name,
+      version: def.meta.version,
+      qualifiedName: serviceName,
       peerId: this.id,
       defId,
     });
@@ -134,7 +145,9 @@ export class LocalPeer extends AbstractPeer {
     }
 
     this.netron.emitSpecial(NETRON_EVENT_SERVICE_UNEXPOSE, getServiceEventName(serviceName), {
-      name: serviceName,
+      name: def.meta.name,
+      version: def.meta.version,
+      qualifiedName: serviceName,
       peerId: this.id,
       remotePeerId: peer.id,
       defId,
@@ -181,7 +194,10 @@ export class LocalPeer extends AbstractPeer {
       const stub = this.stubs.get(defId);
       if (stub) {
         this.serviceInstances.delete(stub.instance);
-        this.stubs.delete(stub.definition.id);
+
+        if (!this.netron.services.has(getQualifiedName(stub.definition.meta.name, stub.definition.meta.version))) {
+          this.stubs.delete(stub.definition.id);
+        }
       }
     }
   }

@@ -43,6 +43,7 @@ export interface IService1 {
   getMap(): Map<string, number>;
   getSet(): Set<string>;
   getPromise(): Promise<string>;
+  echo(value: string): string;
 }
 
 @Service('service1')
@@ -72,6 +73,11 @@ export class Service1 implements IService1 {
   @Public()
   public greet(): string {
     return `Hello, ${this.name}!`;
+  }
+
+  @Public()
+  public echo(value: string): string {
+    return value;
   }
 
   @Public()

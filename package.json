@@ -13,7 +13,7 @@
     "fix:all": "npm run lint:fix && npm run fm:fix",
     "cleanup": "find . -name \"node_modules\" -type d -prune -exec rm -rf '{}' +",
     "changeset": "changeset",
-    "ai-prompt": "ts-node scripts/generate-prompt.ts",
+    "ai-prompt": "ts-node scripts/gen-aiprompt.ts",
     "publish": "ts-node scripts/publish.ts"
   },
   "devDependencies": {

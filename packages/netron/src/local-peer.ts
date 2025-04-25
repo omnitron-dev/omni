@@ -2,17 +2,19 @@ import { Netron } from './netron';
 import { Interface } from './interface';
 import { Definition } from './definition';
 import { RemotePeer } from './remote-peer';
-import { getQualifiedName } from './utils';
 import { ServiceStub } from './service-stub';
 import { AbstractPeer } from './abstract-peer';
 import { isServiceInterface, isServiceDefinition } from './predicates';
 import { EventSubscriber, ServiceMetadata, ServiceExposeEvent } from './types';
 import {
+  getQualifiedName,
   getServiceMetadata,
   getServiceEventName,
+} from './utils';
+import {
   NETRON_EVENT_SERVICE_EXPOSE,
   NETRON_EVENT_SERVICE_UNEXPOSE,
-} from './common';
+} from './constants';
 
 /**
  * LocalPeer class extends AbstractPeer and manages local services and their stubs.
@@ -42,6 +44,11 @@ export class LocalPeer extends AbstractPeer {
     const meta = getServiceMetadata(instance);
     if (!meta) {
       throw new Error('Invalid service');
+    }
+
+    const existingStub = this.serviceInstances.get(instance);
+    if (existingStub) {
+      throw new Error(`Service instance already exposed: ${meta.name}`);
     }
 
     const serviceKey = getQualifiedName(meta.name, meta.version);

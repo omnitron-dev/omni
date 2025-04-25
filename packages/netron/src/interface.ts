@@ -1,7 +1,8 @@
 import { Reference } from './reference';
 import { Definition } from './definition';
 import { AbstractPeer } from './abstract-peer';
-import { isNetronService, isServiceInterface } from './predicates';
+import { StreamReference } from './stream-reference';
+import { isNetronStream, isNetronService, isServiceInterface } from './predicates';
 
 const INTERNAL_READ_PROPERTIES = ['$def', '$peer', 'waitForAssigned', '$pendingPromises', 'then'];
 const INTERNAL_WRITE_PROPERTIES = ['$def', '$peer'];
@@ -130,6 +131,8 @@ export class Interface {
       // TODO: Implement this
       throw Error('Unsupported value type');
       // return this.$peer?.exposeService(value);
+    } else if (isNetronStream(value)) {
+      return StreamReference.from(value);
     }
     return value;
   }

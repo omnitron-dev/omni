@@ -1,148 +1,153 @@
-import { ListBuffer } from '@devgrid/common';
+import { Readable, ReadableOptions } from 'stream';
 
 import { Packet } from './packet';
 import { RemotePeer } from './remote-peer';
 
-/**
- * Represents a readable stream that receives data chunks from a remote peer.
- */
-export class ReadableStream {
-  private queue = new ListBuffer<any>(); // ListBuffer is used to store incoming data chunks
-  private resolvers = new ListBuffer<(value: any) => void>(); // List of promise resolvers waiting for data
-  private closed = false; // Flag indicating whether the stream is closed
-  public timeout?: NodeJS.Timeout; // Timeout for the stream
-  private buffer = new Map<number, any>();
-  private expectedIndex = 0;
-  public isComplete = false;
+const MAX_BUFFER_SIZE = 10_000;
 
-  /**
-   * Constructs a new ReadableStream instance.
-   * @param peer - The remote peer from which data is received.
-   * @param streamId - The unique identifier for the stream.
-   * @param isLive - Indicates if the stream is live (default is false).
-   */
-  constructor(
-    private peer: RemotePeer,
-    public id: number,
-    public isLive = false
-  ) {
-    if (!isLive) {
-      this.timeout = setTimeout(() => {
-        console.warn(`Stream is inactive, deleting: ${this.id}`);
-        this.onEnd();
-      }, this.peer.netron.options?.streamTimeout ?? 60000);
+
+export interface NetronReadableStreamOptions extends ReadableOptions {
+  peer: RemotePeer;
+  streamId: number;
+  isLive?: boolean;
+}
+
+export class NetronReadableStream extends Readable {
+  public readonly peer: RemotePeer;
+  private buffer: Map<number, any> = new Map();
+  private expectedIndex: number = 0;
+  private timeout?: NodeJS.Timeout;
+  public readonly id: number;
+  private isClosed: boolean = false;
+  public isComplete: boolean = false;
+  public isLive: boolean;
+
+  constructor({ peer, streamId, isLive = false, ...opts }: NetronReadableStreamOptions) {
+    super({ ...opts, objectMode: true });
+
+    this.peer = peer;
+    this.id = streamId;
+    this.isLive = isLive;
+
+    this.peer.readableStreams.set(this.id, this);
+
+    if (!this.isLive) {
+      this.resetTimeout();
     }
+
+    this.on('close', this.cleanup);
+    this.on('error', this.handleError);
   }
 
-  onPacket(packet: Packet) {
-    if (!this.isLive && this.timeout) {
-      clearTimeout(this.timeout);
-      this.timeout = setTimeout(() => {
-        console.warn(`Stream is inactive, deleting: ${this.id}`);
-        this.onEnd();
-      }, 60000);
+  /**
+   * Обрабатывает входящие пакеты и управляет порядком получения данных.
+   */
+  public onPacket(packet: Packet): void {
+    if (this.isClosed) return;
+
+    this.resetTimeout();
+
+    if (this.buffer.size > MAX_BUFFER_SIZE) {
+      this.destroy(new Error(`Buffer overflow: more than ${MAX_BUFFER_SIZE} packets buffered`));
+      return;
     }
 
     this.buffer.set(packet.streamIndex!, packet.data);
 
-    // Send data to callback if chunks are in order
     while (this.buffer.has(this.expectedIndex)) {
       const chunk = this.buffer.get(this.expectedIndex);
       this.buffer.delete(this.expectedIndex);
       this.expectedIndex++;
-      this.enqueue(chunk);
+
+      if (!this.push(chunk)) {
+        // Если внутренний буфер полон, ждем следующего события 'readable'
+        break;
+      }
     }
 
-    // If this was the last chunk, end the stream
     if (packet.isLastChunk()) {
       this.isComplete = true;
-      this.onEnd();
+      this.closeStream(true);
     }
   }
 
   /**
-   * Ends a stream.
-   * @param {number} streamId - The ID of the stream to end.
+   * Реализация метода _read интерфейса Readable.
    */
-  private onEnd(force = false) {
-    if (this.isLive && !force) {
-      console.warn(`Attempt to delete live stream, but it is active: ${this.id}`);
-      return;
-    }
+  override _read(): void {
+    // Поскольку данные пушатся в onPacket, тут нам ничего делать не нужно.
+    // Этот метод необходим для корректной работы Readable.
+  }
+
+  /**
+   * Перезапускает таймер неактивности потока.
+   */
+  private resetTimeout(): void {
+    if (this.isLive) return;
 
     if (this.timeout) clearTimeout(this.timeout);
-    this.isComplete = true;
-    this.peer.readableStreams.delete(this.id);
+
+    const timeoutDuration = this.peer.netron.options?.streamTimeout ?? 60000;
+
+    this.timeout = setTimeout(() => {
+      const message = `Stream ${this.id} inactive for ${timeoutDuration}ms, closing.`;
+      console.warn(message);
+      this.destroy(new Error(message));
+    }, timeoutDuration);
   }
 
   /**
-   * Reads a data chunk from the stream.
-   * @returns A promise that resolves to the next data chunk or null if the stream is closed.
+   * Закрывает поток и очищает все ресурсы.
    */
-  async read(): Promise<any> {
-    // First, process all pending read() requests
-    while (this.resolvers.length > 0 && this.queue.length > 0) {
-      const resolve = this.resolvers.shift();
-      resolve?.(this.queue.shift());
-    }
+  public closeStream(force: boolean = false): void {
+    if (this.isClosed) return;
 
-    // If there is data in the queue, return it immediately
-    if (this.resolvers.length === 0 && this.queue.length > 0) {
-      return this.queue.shift();
-    }
-
-    // If the stream is closed and no more data is available, return null
-    if (this.closed) {
-      this.flush();
-      return null;
-    }
-
-    // If no data is available, wait for a new chunk
-    return new Promise((resolve) => this.resolvers.push(resolve));
-  }
-
-  /**
-   * Closes the stream, preventing further data from being enqueued.
-   */
-  public close() {
-    this.closed = true;
-    this.flush();
-  }
-
-  /**
-   * Enqueues a data chunk into the stream's queue.
-   * @param chunk - The data chunk to be enqueued.
-   */
-  private enqueue(chunk: any) {
-    if (this.closed) return; // Do not enqueue data if the stream is closed
-
-    if (this.queue.length > 0) {
-      this.queue.push(chunk); // If the queue already has chunks, add to the end
+    if (this.isLive && !force) {
+      console.warn(`Attempt to close live stream ${this.id}, operation ignored.`);
       return;
     }
 
-    if (this.resolvers.length > 0) {
-      const resolve = this.resolvers.shift();
-      resolve?.(chunk); // If there are waiting resolvers, immediately resolve with the chunk
-    } else {
-      this.queue.push(chunk); // If no resolvers are waiting, add the chunk to the queue
+    this.push(null);
+
+    if (this.isLive && force) {
+      this.destroy(); // вызываем destroy только для live или forced завершения
     }
   }
 
   /**
-   * Flushes the queue and resolves all pending promises with the remaining data or null.
+   * Очищает ресурсы и удаляет поток из управления peer.
    */
-  private flush() {
-    while (this.resolvers.length > 0) {
-      const resolve = this.resolvers.shift();
-      resolve?.(this.queue.length > 0 ? this.queue.shift() : null);
-    }
-    this.queue.clear();
+  private cleanup = (): void => {
+    if (this.timeout) clearTimeout(this.timeout);
+    this.peer.readableStreams.delete(this.id);
+    this.buffer.clear();
+  };
+
+  /**
+   * Обрабатывает ошибку потока.
+   */
+  private handleError = (error: Error): void => {
+    console.error(`NetronReadableStream (id: ${this.id}) error:`, error.message);
+    this.cleanup();
+  };
+
+  /**
+   * Переопределение метода destroy для корректного закрытия потока при ошибках.
+   */
+  public override destroy(error?: Error): this {
+    if (this.isClosed) return this;
+
+    this.isClosed = true;
+    super.destroy(error);
+    this.cleanup();
+
+    return this;
   }
 
-  static create(peer: RemotePeer, streamId: number, isLive: boolean = false) {
-    const stream = new ReadableStream(peer, streamId, isLive);
-    peer.readableStreams.set(stream.id, stream);
-    return stream;
+  /**
+   * Статический фабричный метод для удобного создания инстанса.
+   */
+  public static create(peer: RemotePeer, streamId: number, isLive: boolean = false): NetronReadableStream {
+    return new NetronReadableStream({ peer, streamId, isLive });
   }
 }

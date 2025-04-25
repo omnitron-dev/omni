@@ -1,7 +1,7 @@
 import semver from 'semver';
 
 import { ServiceMetadata } from './types';
-import { SERVICE_ANNOTATION } from './common';
+import { SERVICE_ANNOTATION } from './constants';
 /**
  * Decorator to define a service with metadata.
  *

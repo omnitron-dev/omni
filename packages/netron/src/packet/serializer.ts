@@ -3,7 +3,7 @@ import { Serializer, registerCommonTypesFor } from '@devgrid/messagepack';
 
 import { Reference } from '../reference';
 import { Definition } from '../definition';
-
+import { StreamReference } from '../stream-reference';
 // Create a new instance of the Serializer class, which is responsible for encoding and decoding objects.
 export const serializer = new Serializer();
 
@@ -55,4 +55,23 @@ serializer
     (buf: SmartBuffer) =>
       // Create and return a new Reference object using the defId read from the buffer.
       new Reference(serializer.decode(buf))
+  )
+  .register(
+    107,
+    StreamReference,
+    // Encoder function for StreamReference objects.
+    (obj: any, buf: SmartBuffer) => {
+      serializer.encode(obj.streamId.toString(), buf);
+      buf.writeUInt8(obj.type === 'writable' ? 1 : 0);
+      buf.writeUInt8(obj.isLive ? 1 : 0);
+      serializer.encode(obj.peerId, buf);
+    },
+    // Decoder function for StreamReference objects.
+    (buf: SmartBuffer) => {
+      const streamId = Number(serializer.decode(buf));
+      const streamType = buf.readUInt8() === 1 ? 'writable' : 'readable';
+      const isLive = buf.readUInt8() === 1;
+      const peerId = serializer.decode(buf);
+      return new StreamReference(streamId, streamType, isLive, peerId);
+    }
   );

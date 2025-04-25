@@ -1,4 +1,3 @@
-import { isObject, isFunction } from '@devgrid/common';
 
 import { Netron } from './netron';
 import { Interface } from './interface';
@@ -6,8 +5,11 @@ import { Reference } from './reference';
 import { LocalPeer } from './local-peer';
 import { Definition } from './definition';
 import { ServiceStub } from './service-stub';
-import { SERVICE_ANNOTATION } from './common';
 import { AbstractPeer } from './abstract-peer';
+import { SERVICE_ANNOTATION } from './constants';
+import { StreamReference } from './stream-reference';
+import { NetronWritableStream } from './writable-stream';
+import { NetronReadableStream } from './readable-stream';
 
 /**
  * Checks if the given object is an instance of the Netron class.
@@ -59,23 +61,6 @@ export const isNetronPeer = (obj: any) => obj instanceof AbstractPeer;
 export const isNetronOwnPeer = (obj: any) => obj instanceof LocalPeer;
 
 /**
- * Checks if the specified property of the given object is a method in the context interface.
- * @param ni - The object to check.
- * @param name - The name of the property.
- * @returns True if the property is a method, otherwise false.
- */
-export const isContextIMethod = (ni: any, name: string) => isFunction(ni[name]) && ni.$def.$[name].method === true;
-
-/**
- * Checks if the specified property of the given object is a property in the context interface.
- * @param ni - The object to check.
- * @param name - The name of the property.
- * @returns True if the property is a context property, otherwise false.
- */
-export const isContextIProperty = (ni: any, name: string) =>
-  isObject(ni[name]) && isFunction(ni[name].get) && ni.$def.$[name].method === void 0;
-
-/**
  * Checks if the given object is a Netron service.
  * @param obj - The object to check.
  * @returns True if the object is a Netron service, otherwise false.
@@ -86,3 +71,7 @@ export const isNetronService = (obj: any) => {
   }
   return false;
 };
+
+export const isNetronStream = (obj: any) => obj instanceof NetronReadableStream || obj instanceof NetronWritableStream;
+
+export const isNetronStreamReference = (obj: any) => obj instanceof StreamReference;

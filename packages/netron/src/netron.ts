@@ -7,9 +7,10 @@ import { AsyncEventEmitter } from '@devgrid/async-emitter';
 import { NetronOptions } from './types';
 import { LocalPeer } from './local-peer';
 import { RemotePeer } from './remote-peer';
+import { getPeerEventName } from './utils';
 import { ServiceStub } from './service-stub';
 import { Task, TaskManager } from './task-manager';
-import { CONNECT_TIMEOUT, getPeerEventName, NETRON_EVENT_PEER_CONNECT, NETRON_EVENT_PEER_DISCONNECT } from './common';
+import { CONNECT_TIMEOUT, NETRON_EVENT_PEER_CONNECT, NETRON_EVENT_PEER_DISCONNECT } from './constants';
 
 /**
  * The Netron class extends AsyncEventEmitter and manages the WebSocket server,

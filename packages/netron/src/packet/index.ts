@@ -44,6 +44,7 @@ export const createStreamPacket = (
   data: any
 ) => {
   const packet = new Packet(id);
+  packet.setImpulse(1);
   packet.setType(TYPE_STREAM);
   packet.setStreamInfo(streamId, streamIndex, isLast, isLive);
   packet.data = data;

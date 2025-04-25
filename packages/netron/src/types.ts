@@ -73,3 +73,11 @@ export type ServiceUnexposeEvent = {
   remotePeerId?: string;
   defId: string;
 };
+
+export type PeerConnectEvent = {
+  peerId: string;
+};
+
+export type PeerDisconnectEvent = {
+  peerId: string;
+};

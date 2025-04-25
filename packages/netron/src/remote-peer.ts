@@ -8,16 +8,17 @@ import { Definition } from './definition';
 import { getQualifiedName } from './utils';
 import { ServiceStub } from './service-stub';
 import { AbstractPeer } from './abstract-peer';
-import { isServiceDefinition } from './predicates';
-import { WritableStream } from './writable-stream';
-import { ReadableStream } from './readable-stream';
+import { StreamReference } from './stream-reference';
+import { NetronReadableStream } from './readable-stream';
+import { NetronWritableStream } from './writable-stream';
+import { isServiceDefinition, isNetronStreamReference } from './predicates';
 import { Abilities, NetronOptions, EventSubscriber, ServiceMetadata, ServiceExposeEvent, ServiceUnexposeEvent } from './types';
 import {
   REQUEST_TIMEOUT,
   SERVICE_ANNOTATION,
   NETRON_EVENT_SERVICE_EXPOSE,
   NETRON_EVENT_SERVICE_UNEXPOSE,
-} from './common';
+} from './constants';
 import {
   Packet,
   TYPE_GET,
@@ -29,6 +30,7 @@ import {
   createPacket,
   encodePacket,
   decodePacket,
+  TYPE_STREAM_ERROR,
   createStreamPacket,
 } from './packet';
 
@@ -47,8 +49,8 @@ export class RemotePeer extends AbstractPeer {
       handlers.errorHandler(new Error('Request timeout exceeded'));
     }
   });
-  public writableStreams = new Map<number, WritableStream>();
-  public readableStreams = new Map<number, ReadableStream>();
+  public writableStreams = new Map<number, NetronWritableStream>();
+  public readableStreams = new Map<number, NetronReadableStream>();
   public eventSubscribers = new Map<string, EventSubscriber[]>();
   public remoteSubscriptions = new Map<string, EventSubscriber>();
   public services = new Map<string, Definition>();
@@ -76,7 +78,11 @@ export class RemotePeer extends AbstractPeer {
   async init(isConnector?: boolean, options?: NetronOptions) {
     this.socket.on('message', (data: ArrayBuffer, isBinary: boolean) => {
       if (isBinary) {
-        this.handlePacket(decodePacket(data));
+        try {
+          this.handlePacket(decodePacket(data));
+        } catch (error) {
+          console.error('Packet decode error:', error);
+        }
       } else {
         console.warn('Received non-binary message:', data);
       }
@@ -272,11 +278,13 @@ export class RemotePeer extends AbstractPeer {
 
     if (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING) {
       this.socket.close();
+    } else {
+      console.warn(`Attempt to close WebSocket in unexpected state: ${this.socket.readyState}`);
     }
     this.cleanup();
   }
 
-  once(event: 'manual-disconnect', listener: () => void) {
+  once(event: 'manual-disconnect' | 'stream', listener: (...args: any[]) => void) {
     this.events.once(event, listener);
   }
 
@@ -480,12 +488,23 @@ export class RemotePeer extends AbstractPeer {
         break;
       }
       case TYPE_STREAM: {
-        if (!packet.streamId || packet.streamIndex === undefined) return;
+        if (!packet.streamId) return;
 
-        const stream = this.readableStreams.get(packet.streamId);
-        if (!stream) return;
+        let stream = this.readableStreams.get(packet.streamId);
+        if (!stream) {
+          stream = NetronReadableStream.create(this, packet.streamId, packet.isLive());
+          this.events.emit('stream', stream);
+        }
 
         stream.onPacket(packet);
+        break;
+      }
+      case TYPE_STREAM_ERROR: {
+        const { streamId, message } = packet.data;
+        const stream = this.readableStreams.get(streamId);
+        if (stream) {
+          stream.destroy(new Error(message));
+        }
         break;
       }
       default: {
@@ -545,6 +564,8 @@ export class RemotePeer extends AbstractPeer {
     if (isServiceDefinition(result)) {
       const def = this.refService(result, parentDef);
       return this.queryInterfaceByDefId(def.id, def);
+    } else if (isNetronStreamReference(result)) {
+      return StreamReference.to(result, this);
     }
     return result;
   }

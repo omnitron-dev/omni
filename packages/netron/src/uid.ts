@@ -1,4 +1,4 @@
-import { MAX_UID_VALUE } from './common';
+import { MAX_UID_VALUE } from './constants';
 
 /**
  * Class for generating unique packet identifiers.

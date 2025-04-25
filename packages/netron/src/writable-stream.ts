@@ -1,87 +1,149 @@
-import { Readable } from 'stream';
+import { Writable, Readable, WritableOptions } from 'stream';
 
 import { Uid } from './uid';
 import { RemotePeer } from './remote-peer';
+import { Packet, createPacket, TYPE_STREAM_ERROR } from './packet';
 
 const uid = new Uid();
 
-/**
- * Represents a writable stream that can send data to a remote peer.
- */
-export class WritableStream {
-  public id: number; // Unique identifier for the stream
-  public closed = false; // Indicates whether the stream is closed
-  private index = 0; // Index of the current chunk being sent
-  public expectedIndex = 0; // Index of the expected chunk
+export interface NetronWritableStreamOptions extends WritableOptions {
+  peer: RemotePeer;
+  streamId?: number;
+  isLive?: boolean;
+}
+
+export class NetronWritableStream extends Writable {
+  public readonly id: number;
+  public readonly peer: RemotePeer;
+  private index: number = 0;
+  public isLive: boolean;
+  private isClosed: boolean = false; // переименованное свойство во избежание конфликта
+
+  constructor({ peer, streamId, isLive = false, ...opts }: NetronWritableStreamOptions) {
+    super({ ...opts, objectMode: true });
+
+    this.peer = peer;
+    this.isLive = isLive;
+    this.id = streamId ?? uid.next();
+
+    this.peer.writableStreams.set(this.id, this);
+
+    this.once('close', this.cleanup);
+    this.once('error', this.handleError);
+  }
 
   /**
-   * Constructs a WritableStream instance.
-   *
-   * @param peer - The remote peer to which the stream will send data.
-   * @param source - An optional source of data, which can be an AsyncIterable or a Readable stream.
-   * @param isLive - A boolean indicating if the stream is live. Defaults to false.
+   * Pipes data from an AsyncIterable or Readable stream directly into this stream.
    */
-  private constructor(
-    private peer: RemotePeer,
-    source?: AsyncIterable<any> | Readable,
-    private isLive: boolean = false
-  ) {
-    this.id = uid.next();
+  public async pipeFrom(source: AsyncIterable<any> | Readable): Promise<void> {
+    try {
+      for await (const chunk of source) {
+        if (!this.write(chunk)) {
+          await new Promise((resolve) => this.once('drain', resolve));
+        }
+      }
+      this.end();
+    } catch (error) {
+      this.destroy(error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+
+  /**
+   * Writable _write implementation.
+   */
+  override _write(chunk: any, _: BufferEncoding, callback: (error?: Error | null) => void): void {
+    if (this.isClosed) {
+      callback(new Error('Stream is already closed'));
+      return;
+    }
+
+    this.peer.sendStreamChunk(this.id, chunk, this.index++, false, this.isLive)
+      .then(() => callback())
+      .catch((err: Error) => {
+        this.peer.sendPacket(createPacket(Packet.nextId(), 1, TYPE_STREAM_ERROR, {
+          streamId: this.id,
+          message: err.message,
+        })).finally(() => {
+          callback(err);
+          this.destroy(err);
+        });
+      });
+  }
+
+  /**
+   * Writable _final implementation.
+   */
+  override _final(callback: (error?: Error | null) => void): void {
+    if (this.isClosed) {
+      callback(new Error('Stream is already closed'));
+      return;
+    }
+
+    this.peer.sendStreamChunk(this.id, null, this.index, true, this.isLive)
+      .then(() => callback())
+      .catch((err: Error) => {
+        callback(err);
+        this.destroy(err);
+      })
+      .finally(() => this.closeStream());
+  }
+
+  /**
+   * Cleanly closes the stream.
+   */
+  public closeStream(): void {
+    if (this.isClosed) return;
+
+    this.isClosed = true;
+    this.end();
+    this.cleanup();
+  }
+
+  /**
+   * Overrides destroy method to handle forced closure.
+   */
+  public override destroy(error?: Error): this {
+    if (this.isClosed) return this;
+
+    this.isClosed = true;
+
+    this.peer.sendStreamChunk(this.id, null, this.index, true, this.isLive)
+      .catch((sendError) => {
+        console.error(`Failed to send final stream chunk:`, sendError);
+      })
+      .finally(() => {
+        super.destroy(error);
+        this.cleanup();
+      });
+
+    return this;
+  }
+
+  /**
+   * Removes stream references from peer.
+   */
+  private cleanup = () => {
+    this.peer.writableStreams.delete(this.id);
+  };
+
+  /**
+   * Error handling.
+   */
+  private handleError = (err: Error) => {
+    console.error(`NetronWritableStream (id: ${this.id}) error:`, err.message);
+    this.cleanup();
+  };
+
+  /**
+   * Factory method for creating a NetronWritableStream with optional source.
+   */
+  public static create(peer: RemotePeer, source?: AsyncIterable<any> | Readable, isLive: boolean = false, streamId?: number): NetronWritableStream {
+    const stream = new NetronWritableStream({ peer, streamId, isLive });
 
     if (source) {
-      this.pipeFrom(source);
+      stream.pipeFrom(source);
     }
-  }
 
-  /**
-   * Pipes data from the given source to the stream.
-   *
-   * @param source - The source of data, which can be an AsyncIterable or a Readable stream.
-   */
-  private async pipeFrom(source: AsyncIterable<any> | Readable) {
-    for await (const chunk of source) {
-      if (this.closed) break; // Stop if the stream is closed
-      await this.write(chunk); // Write each chunk to the stream
-    }
-    if (!this.isLive) {
-      this.end(); // End the stream if it is not live
-    }
-  }
-
-  /**
-   * Writes data to the stream.
-   *
-   * @param data - The data to write to the stream.
-   * @throws Error if the stream is closed.
-   */
-  async write(data: any) {
-    if (this.closed) throw new Error('Stream is closed');
-    return this.peer.sendStreamChunk(this.id, data, this.index++, false, this.isLive);
-  }
-
-  /**
-   * Ends the stream by sending a final chunk.
-   */
-  async end(force: boolean = false) {
-    if (this.closed) return;
-
-    if (!this.isLive || force) {
-      await this.peer.sendStreamChunk(this.id, null, this.index, true, this.isLive);
-      this.close();
-    }
-  }
-
-  /**
-   * Closes the stream and notifies the remote peer.
-   */
-  private close() {
-    this.closed = true;
-    this.peer.writableStreams.delete(this.id);
-  }
-
-  static create(peer: RemotePeer, source?: AsyncIterable<any> | Readable, isLive: boolean = false) {
-    const stream = new WritableStream(peer, source, isLive);
-    peer.writableStreams.set(stream.id, stream);
     return stream;
   }
 }

@@ -1,7 +1,8 @@
 import { LocalPeer } from './local-peer';
 import { Definition } from './definition';
 import { ServiceMetadata } from './types';
-import { isNetronService, isServiceReference, isServiceInterface, isServiceDefinition } from './predicates';
+import { StreamReference } from './stream-reference';
+import { isNetronStream, isNetronService, isServiceReference, isServiceInterface, isServiceDefinition, isNetronStreamReference } from './predicates';
 
 /**
  * The ServiceStub class acts as a proxy for a service instance, allowing
@@ -72,6 +73,8 @@ export class ServiceStub {
   private processResult(result: any) {
     if (isNetronService(result) || isServiceInterface(result)) {
       return this.peer.refService(result, this.definition);
+    } else if (isNetronStream(result)) {
+      return StreamReference.from(result);
     }
     return result;
   }
@@ -93,6 +96,8 @@ export class ServiceStub {
   private processValue(obj: any) {
     if (isServiceReference(obj)) {
       return this.peer.queryInterfaceByDefId(obj.defId);
+    } else if (isNetronStreamReference(obj)) {
+      return StreamReference.to(obj, this.peer.netron.peers.get(obj.peerId)!);
     }
     return obj;
   }

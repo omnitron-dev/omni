@@ -4,21 +4,65 @@ import { Uid } from './uid';
 import { RemotePeer } from './remote-peer';
 import { Packet, createPacket, TYPE_STREAM_ERROR } from './packet';
 
+/**
+ * Global UID generator instance for creating unique stream identifiers.
+ * This ensures that each stream gets a unique ID across the application.
+ */
 const uid = new Uid();
 
+/**
+ * Configuration options for creating a NetronWritableStream instance.
+ * Extends Node.js WritableOptions with Netron-specific properties.
+ * 
+ * @interface NetronWritableStreamOptions
+ * @extends {WritableOptions}
+ * @property {RemotePeer} peer - The remote peer this stream is associated with
+ * @property {number} [streamId] - Optional custom stream identifier
+ * @property {boolean} [isLive] - Whether the stream is operating in live/real-time mode
+ */
 export interface NetronWritableStreamOptions extends WritableOptions {
   peer: RemotePeer;
   streamId?: number;
   isLive?: boolean;
 }
 
+/**
+ * A specialized writable stream implementation for the Netron distributed system.
+ * This class extends Node.js Writable stream to provide distributed stream capabilities
+ * with proper error handling, cleanup, and remote peer communication.
+ * 
+ * @class NetronWritableStream
+ * @extends {Writable}
+ * @property {number} id - Unique identifier for this stream instance
+ * @property {RemotePeer} peer - The remote peer this stream is associated with
+ * @property {boolean} isLive - Indicates if the stream is operating in live mode
+ */
 export class NetronWritableStream extends Writable {
+  /** Unique identifier for this stream instance */
   public readonly id: number;
-  public readonly peer: RemotePeer;
-  private index: number = 0;
-  public isLive: boolean;
-  private isClosed: boolean = false; // переименованное свойство во избежание конфликта
 
+  /** The remote peer this stream is associated with */
+  public readonly peer: RemotePeer;
+
+  /** Current chunk index for maintaining write order */
+  private index: number = 0;
+
+  /** Whether the stream is operating in live/real-time mode */
+  public isLive: boolean;
+
+  /** Flag indicating if the stream has been closed */
+  private isClosed: boolean = false;
+
+  /**
+   * Creates a new NetronWritableStream instance.
+   * 
+   * @constructor
+   * @param {NetronWritableStreamOptions} options - Configuration options for the stream
+   * @param {RemotePeer} options.peer - The remote peer this stream is associated with
+   * @param {number} [options.streamId] - Optional custom stream identifier
+   * @param {boolean} [options.isLive=false] - Whether the stream is operating in live mode
+   * @param {WritableOptions} [options] - Additional Node.js stream options
+   */
   constructor({ peer, streamId, isLive = false, ...opts }: NetronWritableStreamOptions) {
     super({ ...opts, objectMode: true });
 
@@ -33,7 +77,12 @@ export class NetronWritableStream extends Writable {
   }
 
   /**
-   * Pipes data from an AsyncIterable or Readable stream directly into this stream.
+   * Pipes data from an AsyncIterable or Readable stream into this stream.
+   * Handles backpressure and ensures proper cleanup on errors.
+   * 
+   * @param {AsyncIterable<any> | Readable} source - The source stream to pipe from
+   * @returns {Promise<void>} A promise that resolves when piping is complete
+   * @throws {Error} If an error occurs during the piping process
    */
   public async pipeFrom(source: AsyncIterable<any> | Readable): Promise<void> {
     try {
@@ -49,7 +98,13 @@ export class NetronWritableStream extends Writable {
   }
 
   /**
-   * Writable _write implementation.
+   * Internal write implementation for handling stream chunks.
+   * Sends data to the remote peer and manages stream state.
+   * 
+   * @override
+   * @param {any} chunk - The data chunk to write
+   * @param {BufferEncoding} _ - Unused encoding parameter
+   * @param {(error?: Error | null) => void} callback - Callback to signal write completion
    */
   override _write(chunk: any, _: BufferEncoding, callback: (error?: Error | null) => void): void {
     if (this.isClosed) {
@@ -71,7 +126,11 @@ export class NetronWritableStream extends Writable {
   }
 
   /**
-   * Writable _final implementation.
+   * Internal final implementation for handling stream completion.
+   * Sends final chunk to remote peer and performs cleanup.
+   * 
+   * @override
+   * @param {(error?: Error | null) => void} callback - Callback to signal finalization completion
    */
   override _final(callback: (error?: Error | null) => void): void {
     if (this.isClosed) {
@@ -89,7 +148,8 @@ export class NetronWritableStream extends Writable {
   }
 
   /**
-   * Cleanly closes the stream.
+   * Gracefully closes the stream and performs cleanup.
+   * This method ensures proper resource cleanup and state management.
    */
   public closeStream(): void {
     if (this.isClosed) return;
@@ -100,7 +160,12 @@ export class NetronWritableStream extends Writable {
   }
 
   /**
-   * Overrides destroy method to handle forced closure.
+   * Overrides the destroy method to ensure proper cleanup and error handling.
+   * Sends a final chunk to the remote peer before destruction.
+   * 
+   * @override
+   * @param {Error} [error] - Optional error that caused the destruction
+   * @returns {this} The stream instance for chaining
    */
   public override destroy(error?: Error): this {
     if (this.isClosed) return this;
@@ -120,14 +185,18 @@ export class NetronWritableStream extends Writable {
   }
 
   /**
-   * Removes stream references from peer.
+   * Internal cleanup method that removes stream references from the peer.
+   * This ensures proper garbage collection and prevents memory leaks.
    */
   private cleanup = () => {
     this.peer.writableStreams.delete(this.id);
   };
 
   /**
-   * Error handling.
+   * Error handler for stream errors.
+   * Logs the error and performs cleanup operations.
+   * 
+   * @param {Error} err - The error that occurred
    */
   private handleError = (err: Error) => {
     console.error(`NetronWritableStream (id: ${this.id}) error:`, err.message);
@@ -135,7 +204,15 @@ export class NetronWritableStream extends Writable {
   };
 
   /**
-   * Factory method for creating a NetronWritableStream with optional source.
+   * Factory method for creating a NetronWritableStream instance.
+   * Optionally pipes data from a source stream if provided.
+   * 
+   * @static
+   * @param {RemotePeer} peer - The remote peer this stream is associated with
+   * @param {AsyncIterable<any> | Readable} [source] - Optional source stream to pipe from
+   * @param {boolean} [isLive=false] - Whether the stream is operating in live mode
+   * @param {number} [streamId] - Optional custom stream identifier
+   * @returns {NetronWritableStream} A new stream instance
    */
   public static create(peer: RemotePeer, source?: AsyncIterable<any> | Readable, isLive: boolean = false, streamId?: number): NetronWritableStream {
     const stream = new NetronWritableStream({ peer, streamId, isLive });

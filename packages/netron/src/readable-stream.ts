@@ -3,25 +3,70 @@ import { Readable, ReadableOptions } from 'stream';
 import { Packet } from './packet';
 import { RemotePeer } from './remote-peer';
 
+/**
+ * Maximum number of packets that can be buffered in the stream before
+ * triggering a buffer overflow error. This limit helps prevent memory
+ * exhaustion in high-throughput scenarios.
+ */
 const MAX_BUFFER_SIZE = 10_000;
 
-
+/**
+ * Configuration options for creating a new NetronReadableStream instance.
+ * Extends the standard Node.js Readable stream options with Netron-specific
+ * parameters required for peer-to-peer communication.
+ * 
+ * @interface NetronReadableStreamOptions
+ * @extends ReadableOptions
+ * @property {RemotePeer} peer - The remote peer this stream is associated with
+ * @property {number} streamId - Unique identifier for this stream
+ * @property {boolean} [isLive=false] - Whether this is a live streaming connection
+ */
 export interface NetronReadableStreamOptions extends ReadableOptions {
   peer: RemotePeer;
   streamId: number;
   isLive?: boolean;
 }
 
+/**
+ * A specialized Readable stream implementation for the Netron distributed system.
+ * This class handles the reception and ordered delivery of data packets from
+ * remote peers, implementing sophisticated buffering and flow control mechanisms.
+ * 
+ * @class NetronReadableStream
+ * @extends Readable
+ * @description Implements a reliable, ordered data stream for peer-to-peer communication
+ */
 export class NetronReadableStream extends Readable {
+  /** The remote peer this stream is associated with */
   public readonly peer: RemotePeer;
+
+  /** Internal buffer for storing out-of-order packets */
   private buffer: Map<number, any> = new Map();
+
+  /** Next expected packet index for ordered delivery */
   private expectedIndex: number = 0;
+
+  /** Timeout handle for stream inactivity detection */
   private timeout?: NodeJS.Timeout;
+
+  /** Unique identifier for this stream */
   public readonly id: number;
+
+  /** Whether the stream has been closed */
   private isClosed: boolean = false;
+
+  /** Whether all data has been successfully received */
   public isComplete: boolean = false;
+
+  /** Whether this is a live streaming connection */
   public isLive: boolean;
 
+  /**
+   * Creates a new NetronReadableStream instance.
+   * 
+   * @param {NetronReadableStreamOptions} options - Configuration options for the stream
+   * @throws {Error} If stream initialization fails
+   */
   constructor({ peer, streamId, isLive = false, ...opts }: NetronReadableStreamOptions) {
     super({ ...opts, objectMode: true });
 
@@ -40,7 +85,16 @@ export class NetronReadableStream extends Readable {
   }
 
   /**
-   * Обрабатывает входящие пакеты и управляет порядком получения данных.
+   * Processes incoming data packets and manages ordered delivery.
+   * This method implements the core packet handling logic, including:
+   * - Buffer overflow protection
+   * - Packet reordering
+   * - Flow control
+   * - Stream completion detection
+   * 
+   * @param {Packet} packet - The incoming data packet
+   * @returns {void}
+   * @throws {Error} If buffer overflow occurs or stream is closed
    */
   public onPacket(packet: Packet): void {
     if (this.isClosed) return;
@@ -60,7 +114,7 @@ export class NetronReadableStream extends Readable {
       this.expectedIndex++;
 
       if (!this.push(chunk)) {
-        // Если внутренний буфер полон, ждем следующего события 'readable'
+        // Internal buffer is full, wait for next 'readable' event
         break;
       }
     }
@@ -72,15 +126,22 @@ export class NetronReadableStream extends Readable {
   }
 
   /**
-   * Реализация метода _read интерфейса Readable.
+   * Implementation of the Readable stream's _read method.
+   * This method is called when the stream's internal buffer is ready to accept more data.
+   * In our implementation, data is pushed in onPacket, so this method is intentionally empty.
+   * 
+   * @returns {void}
    */
   override _read(): void {
-    // Поскольку данные пушатся в onPacket, тут нам ничего делать не нужно.
-    // Этот метод необходим для корректной работы Readable.
+    // Data is pushed in onPacket, no action needed here
   }
 
   /**
-   * Перезапускает таймер неактивности потока.
+   * Resets the stream's inactivity timeout.
+   * This method implements automatic stream cleanup for non-live streams
+   * that have been inactive for too long.
+   * 
+   * @returns {void}
    */
   private resetTimeout(): void {
     if (this.isLive) return;
@@ -97,7 +158,12 @@ export class NetronReadableStream extends Readable {
   }
 
   /**
-   * Закрывает поток и очищает все ресурсы.
+   * Closes the stream and releases associated resources.
+   * This method implements graceful stream termination with support for
+   * both normal and forced closure scenarios.
+   * 
+   * @param {boolean} [force=false] - Whether to force stream closure
+   * @returns {void}
    */
   public closeStream(force: boolean = false): void {
     if (this.isClosed) return;
@@ -110,12 +176,15 @@ export class NetronReadableStream extends Readable {
     this.push(null);
 
     if (this.isLive && force) {
-      this.destroy(); // вызываем destroy только для live или forced завершения
+      this.destroy();
     }
   }
 
   /**
-   * Очищает ресурсы и удаляет поток из управления peer.
+   * Performs cleanup operations when the stream is closed.
+   * This method ensures proper resource deallocation and stream deregistration.
+   * 
+   * @returns {void}
    */
   private cleanup = (): void => {
     if (this.timeout) clearTimeout(this.timeout);
@@ -124,7 +193,11 @@ export class NetronReadableStream extends Readable {
   };
 
   /**
-   * Обрабатывает ошибку потока.
+   * Handles stream error events.
+   * This method implements error logging and cleanup for stream errors.
+   * 
+   * @param {Error} error - The error that occurred
+   * @returns {void}
    */
   private handleError = (error: Error): void => {
     console.error(`NetronReadableStream (id: ${this.id}) error:`, error.message);
@@ -132,7 +205,12 @@ export class NetronReadableStream extends Readable {
   };
 
   /**
-   * Переопределение метода destroy для корректного закрытия потока при ошибках.
+   * Overrides the standard destroy method to ensure proper cleanup.
+   * This method implements a robust stream termination process that
+   * guarantees resource cleanup and error propagation.
+   * 
+   * @param {Error} [error] - Optional error to propagate
+   * @returns {this}
    */
   public override destroy(error?: Error): this {
     if (this.isClosed) return this;
@@ -145,7 +223,14 @@ export class NetronReadableStream extends Readable {
   }
 
   /**
-   * Статический фабричный метод для удобного создания инстанса.
+   * Factory method for creating new NetronReadableStream instances.
+   * This method provides a convenient way to create stream instances
+   * with default configuration.
+   * 
+   * @param {RemotePeer} peer - The remote peer for this stream
+   * @param {number} streamId - Unique identifier for the stream
+   * @param {boolean} [isLive=false] - Whether this is a live stream
+   * @returns {NetronReadableStream}
    */
   public static create(peer: RemotePeer, streamId: number, isLive: boolean = false): NetronReadableStream {
     return new NetronReadableStream({ peer, streamId, isLive });

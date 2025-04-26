@@ -5,56 +5,67 @@ import { StreamReference } from './stream-reference';
 import { isNetronStream, isNetronService, isServiceReference, isServiceInterface, isServiceDefinition, isNetronStreamReference } from './predicates';
 
 /**
- * The ServiceStub class acts as a proxy for a service instance, allowing
- * interaction with the service's properties and methods while managing
- * the underlying service definition.
+ * ServiceStub представляет собой прокси-объект для экземпляра сервиса в системе Netron.
+ * Этот класс обеспечивает прозрачное взаимодействие с удаленными сервисами, 
+ * обрабатывая преобразование данных и управляя жизненным циклом сервисных определений.
+ * 
+ * @class ServiceStub
+ * @description Основной класс для работы с сервисами в распределенной системе Netron
  */
 export class ServiceStub {
+  /** Определение сервиса, содержащее метаданные и спецификацию интерфейса */
   public definition: Definition;
 
   /**
-   * Constructs a ServiceStub instance.
-   * @param {LocalPeer} peer - The local peer associated with this service stub.
-   * @param {any} instance - The actual service instance this stub represents.
-   * @param {ServiceMetadata | Definition} metaOrDefinition - Metadata or a definition object for the service.
+   * Создает новый экземпляр ServiceStub.
+   * 
+   * @param {LocalPeer} peer - Локальный пир, с которым ассоциирован данный сервис
+   * @param {any} instance - Экземпляр сервиса, который представляет данный заглушка
+   * @param {ServiceMetadata | Definition} metaOrDefinition - Метаданные сервиса или готовое определение
+   * @throws {Error} Если не удается создать определение сервиса
    */
   constructor(
     public peer: LocalPeer,
     public instance: any,
     metaOrDefinition: ServiceMetadata | Definition
   ) {
-    // Determine if the provided metaOrDefinition is a service definition.
     if (isServiceDefinition(metaOrDefinition)) {
       this.definition = metaOrDefinition;
     } else {
-      // Create a new Definition if metaOrDefinition is not a service definition.
       this.definition = new Definition(Definition.nextId(), peer.id, metaOrDefinition);
     }
   }
 
   /**
-   * Sets a property on the service instance.
-   * @param {string} prop - The name of the property to set.
-   * @param {any} value - The value to set the property to.
+   * Устанавливает значение свойства сервиса.
+   * 
+   * @param {string} prop - Имя свойства для установки
+   * @param {any} value - Значение для установки
+   * @returns {void}
+   * @throws {Error} Если свойство не существует или недоступно для записи
    */
   set(prop: string, value: any) {
     Reflect.set(this.instance, prop, this.processValue(value));
   }
 
   /**
-   * Gets a property from the service instance.
-   * @param {string} prop - The name of the property to get.
-   * @returns {any} The processed result of the property.
+   * Получает значение свойства сервиса.
+   * 
+   * @param {string} prop - Имя свойства для получения
+   * @returns {any} Обработанное значение свойства
+   * @throws {Error} Если свойство не существует или недоступно для чтения
    */
   get(prop: string) {
     return this.processResult(this.instance[prop]);
   }
 
   /**
-   * Calls a method on the service instance.
-   * @param {string} method - The name of the method to call.
-   * @param {any[]} args - The arguments to pass to the method.
-   * @returns {Promise<any>} The processed result of the method call.
+   * Вызывает метод сервиса с заданными аргументами.
+   * 
+   * @param {string} method - Имя метода для вызова
+   * @param {any[]} args - Аргументы для передачи в метод
+   * @returns {Promise<any>} Обработанный результат вызова метода
+   * @throws {Error} Если метод не существует или вызов завершился с ошибкой
    */
   async call(method: string, args: any[]) {
     const processedArgs = this.processArgs(args);
@@ -66,9 +77,12 @@ export class ServiceStub {
   }
 
   /**
-   * Processes the result of a service interaction.
-   * @param {any} result - The result to process.
-   * @returns {any} The processed result, potentially a service reference.
+   * Обрабатывает результат взаимодействия с сервисом.
+   * Преобразует специальные типы данных (сервисы, потоки) в соответствующие ссылки.
+   * 
+   * @param {any} result - Результат для обработки
+   * @returns {any} Обработанный результат
+   * @private
    */
   private processResult(result: any) {
     if (isNetronService(result) || isServiceInterface(result)) {
@@ -80,18 +94,24 @@ export class ServiceStub {
   }
 
   /**
-   * Processes an array of arguments, transforming each as necessary.
-   * @param {any[]} args - The arguments to process.
-   * @returns {any[]} The processed arguments.
+   * Обрабатывает массив аргументов для вызова метода.
+   * Преобразует каждый аргумент в соответствии с его типом.
+   * 
+   * @param {any[]} args - Аргументы для обработки
+   * @returns {any[]} Обработанные аргументы
+   * @private
    */
   private processArgs(args: any[]) {
     return args.map((arg: any) => this.processValue(arg));
   }
 
   /**
-   * Processes a single value, transforming it if it is a service reference.
-   * @param {any} obj - The value to process.
-   * @returns {any} The processed value.
+   * Обрабатывает отдельное значение.
+   * Преобразует ссылки на сервисы и потоки в соответствующие объекты.
+   * 
+   * @param {any} obj - Значение для обработки
+   * @returns {any} Обработанное значение
+   * @private
    */
   private processValue(obj: any) {
     if (isServiceReference(obj)) {

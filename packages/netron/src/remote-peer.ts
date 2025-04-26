@@ -1,3 +1,7 @@
+/**
+ * Imports required dependencies for the RemotePeer class implementation.
+ * @module remote-peer
+ */
 import { WebSocket } from 'ws';
 import { EventEmitter } from 'events';
 import { TimedMap } from '@devgrid/common';
@@ -36,10 +40,20 @@ import {
 
 /**
  * Represents a remote peer in the Netron network.
+ * This class handles communication with a remote peer over WebSocket,
+ * managing services, streams, and event subscriptions.
+ * 
+ * @class RemotePeer
+ * @extends AbstractPeer
  */
 export class RemotePeer extends AbstractPeer {
+  /** Event emitter for handling internal events */
   private events = new EventEmitter();
 
+  /**
+   * Map of response handlers for pending requests with timeout functionality.
+   * Each handler contains success and error callbacks.
+   */
   private responseHandlers = new TimedMap<
     number,
     { successHandler: (response: Packet) => void; errorHandler?: (data: any) => void }
@@ -49,18 +63,32 @@ export class RemotePeer extends AbstractPeer {
       handlers.errorHandler(new Error('Request timeout exceeded'));
     }
   });
+
+  /** Map of writable streams indexed by stream ID */
   public writableStreams = new Map<number, NetronWritableStream>();
+
+  /** Map of readable streams indexed by stream ID */
   public readableStreams = new Map<number, NetronReadableStream>();
+
+  /** Map of event subscribers indexed by event name */
   public eventSubscribers = new Map<string, EventSubscriber[]>();
+
+  /** Map of remote subscriptions indexed by event name */
   public remoteSubscriptions = new Map<string, EventSubscriber>();
+
+  /** Map of service definitions indexed by service name */
   public services = new Map<string, Definition>();
+
+  /** Map of all definitions indexed by definition ID */
   public definitions = new Map<string, Definition>();
 
   /**
-   * Creates an instance of RemotePeer.
-   * @param {WebSocket} socket - The WebSocket connection.
-   * @param {Netron} netron - The Netron instance.
-   * @param {string} [id=""] - The unique identifier of the remote peer.
+   * Creates a new instance of RemotePeer.
+   * 
+   * @constructor
+   * @param {WebSocket} socket - The WebSocket connection to the remote peer
+   * @param {Netron} netron - The Netron instance this peer belongs to
+   * @param {string} [id=""] - Optional unique identifier for the remote peer
    */
   constructor(
     private socket: WebSocket,
@@ -71,11 +99,16 @@ export class RemotePeer extends AbstractPeer {
   }
 
   /**
-   * Initializes the remote peer.
-   * @param {boolean} [isConnector] - Indicates if the peer is a connector.
-   * @param {NetronOptions} [options] - The options of the local netron.
+   * Initializes the remote peer connection.
+   * Sets up message handlers and initializes service discovery if acting as a connector.
+   * 
+   * @async
+   * @param {boolean} [isConnector] - Whether this peer is acting as a connector
+   * @param {NetronOptions} [options] - Configuration options for the local Netron instance
+   * @returns {Promise<void>}
    */
   async init(isConnector?: boolean, options?: NetronOptions) {
+    // Set up WebSocket message handler
     this.socket.on('message', (data: ArrayBuffer, isBinary: boolean) => {
       if (isBinary) {
         try {
@@ -88,14 +121,20 @@ export class RemotePeer extends AbstractPeer {
       }
     });
 
+    // Initialize service discovery if acting as connector
     if (isConnector) {
+      // Get remote peer's abilities
       this.abilities = (await this.runTask('abilities', this.netron.peer.abilities)) as Abilities;
+
+      // Register available services
       if (this.abilities.services) {
         for (const [name, definition] of this.abilities.services) {
           this.definitions.set(definition.id, definition);
           this.services.set(name, definition);
         }
       }
+
+      // Subscribe to service lifecycle events if supported
       if (this.abilities.allowServiceEvents) {
         await this.subscribe(NETRON_EVENT_SERVICE_EXPOSE, (event: ServiceExposeEvent) => {
           this.definitions.set(event.definition.id, event.definition);
@@ -111,8 +150,12 @@ export class RemotePeer extends AbstractPeer {
 
   /**
    * Exposes a service to the remote peer.
-   * @param {any} instance - The service instance to expose.
-   * @returns {Promise<Definition>} The service definition.
+   * Validates the service metadata and creates necessary stubs.
+   * 
+   * @async
+   * @param {any} instance - The service instance to expose
+   * @returns {Promise<Definition>} The service definition
+   * @throws {Error} If the service is invalid or already exposed
    */
   async exposeService(instance: any) {
     const meta = Reflect.getMetadata(SERVICE_ANNOTATION, instance.constructor) as ServiceMetadata;
@@ -127,7 +170,6 @@ export class RemotePeer extends AbstractPeer {
     const def = await this.runTask('expose_service', meta);
 
     const stub = new ServiceStub(this.netron.peer, instance, meta);
-    // this.definitions.set(def.id, def);
     this.netron.peer.stubs.set(def.id, stub);
     this.netron.peer.serviceInstances.set(instance, stub);
 
@@ -136,16 +178,23 @@ export class RemotePeer extends AbstractPeer {
 
   /**
    * Unexposes a service from the remote peer.
-   * @param {string} serviceName - The name of the service to unexpose.
+   * Cleans up associated interfaces and stubs.
+   * 
+   * @async
+   * @param {string} serviceName - The name of the service to unexpose
+   * @returns {Promise<void>}
    */
   async unexposeService(serviceName: string) {
     const defId = await this.runTask('unexpose_service', serviceName);
+
+    // Clean up interfaces
     for (const i of this.interfaces.values()) {
       if (i.instance.$def?.parentId === defId) {
         this.releaseInterface(i.instance);
       }
     }
 
+    // Clean up stubs
     const stub = this.netron.peer.stubs.get(defId);
     if (stub) {
       this.netron.peer.serviceInstances.delete(stub.instance);
@@ -154,9 +203,12 @@ export class RemotePeer extends AbstractPeer {
   }
 
   /**
-   * Subscribes to an event.
-   * @param {string} eventName - The name of the event to subscribe to.
-   * @param {EventSubscriber} handler - The event handler.
+   * Subscribes to an event from the remote peer.
+   * 
+   * @async
+   * @param {string} eventName - The name of the event to subscribe to
+   * @param {EventSubscriber} handler - The event handler function
+   * @returns {Promise<void>}
    */
   async subscribe(eventName: string, handler: EventSubscriber) {
     const handlers = this.eventSubscribers.get(eventName);
@@ -170,8 +222,11 @@ export class RemotePeer extends AbstractPeer {
 
   /**
    * Unsubscribes from an event.
-   * @param {string} eventName - The name of the event to unsubscribe from.
-   * @param {EventSubscriber} handler - The event handler.
+   * 
+   * @async
+   * @param {string} eventName - The name of the event to unsubscribe from
+   * @param {EventSubscriber} handler - The event handler to remove
+   * @returns {Promise<void>}
    */
   async unsubscribe(eventName: string, handler: EventSubscriber) {
     const handlers = this.eventSubscribers.get(eventName);
@@ -188,8 +243,9 @@ export class RemotePeer extends AbstractPeer {
   }
 
   /**
-   * Gets the names of all services.
-   * @returns {string[]} The names of all services.
+   * Gets the names of all available services.
+   * 
+   * @returns {string[]} Array of service names
    */
   getServiceNames() {
     return [...this.services.keys()];
@@ -197,6 +253,8 @@ export class RemotePeer extends AbstractPeer {
 
   /**
    * Gets a value from a service definition.
+   * 
+   * @param {string} defId - The service definition ID
    * @param {string} defId - The unique identifier of the service definition.
    * @param {string} name - The name of the value to get.
    * @returns {Promise<any>} The value.
@@ -218,13 +276,17 @@ export class RemotePeer extends AbstractPeer {
       ).catch(reject);
     });
   }
-
   /**
    * Sets a value in a service definition.
-   * @param {string} defId - The unique identifier of the service definition.
-   * @param {string} name - The name of the value to set.
-   * @param {any} value - The value to set.
-   * @returns {Promise<void>}
+   * This method allows setting a property value on a remote service instance.
+   * It first validates that the service definition exists, then sends a request
+   * to the remote peer to update the value.
+   * 
+   * @param {string} defId - The unique identifier of the service definition to update
+   * @param {string} name - The name of the property to set
+   * @param {any} value - The new value to assign to the property
+   * @returns {Promise<void>} A promise that resolves when the value has been set
+   * @throws {Error} If the service definition is not found
    */
   set(defId: string, name: string, value: any) {
     const def = this.definitions.get(defId);
@@ -245,11 +307,15 @@ export class RemotePeer extends AbstractPeer {
   }
 
   /**
-   * Calls a method in a service definition.
-   * @param {string} defId - The unique identifier of the service definition.
-   * @param {string} method - The name of the method to call.
-   * @param {any[]} args - The arguments to pass to the method.
-   * @returns {Promise<any>} The result of the method call.
+   * Calls a method on a service definition.
+   * This method invokes a remote procedure call on a service instance.
+   * It processes the arguments, sends the request, and handles the response.
+   * 
+   * @param {string} defId - The unique identifier of the service definition
+   * @param {string} method - The name of the method to invoke
+   * @param {any[]} args - The arguments to pass to the method
+   * @returns {Promise<any>} A promise that resolves with the method's return value
+   * @throws {Error} If the service definition is not found
    */
   call(defId: string, method: string, args: any[]) {
     const def = this.definitions.get(defId);
@@ -271,7 +337,9 @@ export class RemotePeer extends AbstractPeer {
   }
 
   /**
-   * Disconnects the remote peer.
+   * Disconnects the remote peer connection.
+   * This method gracefully closes the WebSocket connection and cleans up resources.
+   * It emits a 'manual-disconnect' event and performs cleanup operations.
    */
   disconnect() {
     this.events.emit('manual-disconnect');
@@ -284,10 +352,22 @@ export class RemotePeer extends AbstractPeer {
     this.cleanup();
   }
 
+  /**
+   * Registers a one-time event listener.
+   * This method allows listening for specific events that will only trigger once.
+   * 
+   * @param {'manual-disconnect' | 'stream'} event - The event name to listen for
+   * @param {(...args: any[]) => void} listener - The callback function to execute
+   */
   once(event: 'manual-disconnect' | 'stream', listener: (...args: any[]) => void) {
     this.events.once(event, listener);
   }
 
+  /**
+   * Cleans up internal resources and state.
+   * This method clears all internal maps and collections used for managing
+   * connections, streams, and service definitions.
+   */
   private cleanup() {
     this.responseHandlers.clear();
     this.writableStreams.clear();
@@ -299,10 +379,12 @@ export class RemotePeer extends AbstractPeer {
   }
 
   /**
-   * Runs a task on the remote peer.
-   * @param {string} name - The name of the task to run.
-   * @param {...any[]} args - The arguments to pass to the task.
-   * @returns {Promise<any>} The result of the task.
+   * Executes a task on the remote peer.
+   * This method sends a task request to the remote peer and handles the response.
+   * 
+   * @param {string} name - The name of the task to execute
+   * @param {...any[]} args - Variable number of arguments to pass to the task
+   * @returns {Promise<any>} A promise that resolves with the task's result
    */
   runTask(name: string, ...args: any[]) {
     return new Promise<any>((resolve, reject) => {
@@ -319,11 +401,13 @@ export class RemotePeer extends AbstractPeer {
 
   /**
    * Sends a request to the remote peer.
-   * @param {PacketType} type - The type of the packet.
-   * @param {any} data - The data to send.
-   * @param {(response: Packet) => void} successHandler - The success handler.
-   * @param {(data: any) => void} [errorHandler] - The error handler.
-   * @returns {Promise<void>}
+   * This method creates a new packet, registers response handlers, and sends it.
+   * 
+   * @param {PacketType} type - The type of packet to send
+   * @param {any} data - The data payload to include in the packet
+   * @param {(response: Packet) => void} successHandler - Callback for successful responses
+   * @param {(data: any) => void} [errorHandler] - Optional callback for error responses
+   * @returns {Promise<void>} A promise that resolves when the packet is sent
    */
   private sendRequest(
     type: PacketType,
@@ -341,10 +425,12 @@ export class RemotePeer extends AbstractPeer {
   }
 
   /**
-   * Sends a response to the remote peer.
-   * @param {Packet} packet - The packet to send.
-   * @param {any} data - The data to send.
-   * @returns {Promise<void>}
+   * Sends a response packet to the remote peer.
+   * This method prepares and sends a response packet with the specified data.
+   * 
+   * @param {Packet} packet - The original packet to respond to
+   * @param {any} data - The response data to send
+   * @returns {Promise<void>} A promise that resolves when the response is sent
    */
   private sendResponse(packet: Packet, data: any) {
     packet.setImpulse(0);
@@ -354,9 +440,11 @@ export class RemotePeer extends AbstractPeer {
 
   /**
    * Sends an error response to the remote peer.
-   * @param {Packet} packet - The packet to send.
-   * @param {any} error - The error to send.
-   * @returns {Promise<void>}
+   * This method prepares and sends an error response packet.
+   * 
+   * @param {Packet} packet - The original packet to respond to
+   * @param {any} error - The error information to send
+   * @returns {Promise<void>} A promise that resolves when the error response is sent
    */
   private sendErrorResponse(packet: Packet, error: any) {
     packet.setImpulse(0);
@@ -367,8 +455,11 @@ export class RemotePeer extends AbstractPeer {
 
   /**
    * Sends a packet to the remote peer.
-   * @param {Packet} packet - The packet to send.
-   * @returns {Promise<void>}
+   * This method handles the actual transmission of packets over the WebSocket connection.
+   * 
+   * @param {Packet} packet - The packet to send
+   * @returns {Promise<void>} A promise that resolves when the packet is sent
+   * @throws {Error} If the WebSocket connection is not open
    */
   sendPacket(packet: Packet) {
     return new Promise<void>((resolve, reject) => {
@@ -388,10 +479,14 @@ export class RemotePeer extends AbstractPeer {
 
   /**
    * Sends a stream chunk to the remote peer.
-   * @param {number} streamId - The ID of the stream.
-   * @param {any} chunk - The data chunk to send.
-   * @param {number} index - The index of the chunk.
-   * @param {StreamType} streamType - The type of the stream.
+   * This method sends a portion of stream data to the remote peer.
+   * 
+   * @param {number} streamId - The unique identifier of the stream
+   * @param {any} chunk - The data chunk to send
+   * @param {number} index - The sequence number of the chunk
+   * @param {boolean} isLast - Whether this is the final chunk in the stream
+   * @param {boolean} isLive - Whether this is a live streaming chunk
+   * @returns {Promise<void>} A promise that resolves when the chunk is sent
    */
   sendStreamChunk(streamId: number, chunk: any, index: number, isLast: boolean, isLive: boolean) {
     return this.sendPacket(createStreamPacket(Packet.nextId(), streamId, index, isLast, isLive, chunk));
@@ -399,7 +494,9 @@ export class RemotePeer extends AbstractPeer {
 
   /**
    * Handles a response packet from the remote peer.
-   * @param {Packet} packet - The packet to handle.
+   * This method processes incoming response packets and invokes the appropriate handlers.
+   * 
+   * @param {Packet} packet - The response packet to handle
    */
   private handleResponse(packet: Packet) {
     const id = packet.id;
@@ -413,19 +510,26 @@ export class RemotePeer extends AbstractPeer {
       }
     }
   }
-
   /**
-   * Handles a packet from the remote peer.
-   * @param {Packet} packet - The packet to handle.
+   * Handles incoming packets from the remote peer.
+   * This method serves as the central packet processing hub, routing different types of packets
+   * to their appropriate handlers. It implements a robust error handling mechanism and supports
+   * various packet types including SET, GET, CALL, TASK, STREAM, and STREAM_ERROR operations.
+   * 
+   * @param {Packet} packet - The incoming packet to be processed
+   * @returns {Promise<void>} Resolves when packet processing is complete
+   * @throws {Error} If packet processing fails and error response cannot be sent
    */
   async handlePacket(packet: Packet) {
     const pType = packet.getType();
 
+    // Handle response packets immediately
     if (packet.getImpulse() === 0) {
       this.handleResponse(packet);
       return;
     }
 
+    // Process different packet types
     switch (pType) {
       case TYPE_SET: {
         const [defId, name, value] = packet.data;
@@ -514,8 +618,12 @@ export class RemotePeer extends AbstractPeer {
   }
 
   /**
-   * Releases an interface instance.
-   * @param {Interface} iInstance - The interface instance to release.
+   * Releases an interface instance and its associated resources.
+   * This method performs cleanup operations by unreferencing the service
+   * and removing it from the internal service registry.
+   * 
+   * @param {Interface} iInstance - The interface instance to be released
+   * @returns {Promise<void>} Resolves when the interface is fully released
    */
   protected async releaseInterfaceInternal(iInstance: Interface) {
     await this.runTask('unref_service', iInstance.$def?.id);
@@ -523,10 +631,12 @@ export class RemotePeer extends AbstractPeer {
   }
 
   /**
-   * References a service definition.
-   * @param {Definition} def - The service definition to reference.
-   * @param {Definition} parentDef - The parent service definition.
-   * @returns {Definition} The referenced service definition.
+   * References a service definition and establishes its relationship with a parent service.
+   * This method manages service definition references and maintains the service hierarchy.
+   * 
+   * @param {Definition} def - The service definition to be referenced
+   * @param {Definition} parentDef - The parent service definition
+   * @returns {Definition} The referenced service definition
    */
   refService(def: Definition, parentDef: Definition) {
     const existingDef = this.definitions.get(def.id);
@@ -540,8 +650,10 @@ export class RemotePeer extends AbstractPeer {
   }
 
   /**
-   * Unreferences a service definition.
-   * @param {string} [defId] - The unique identifier of the service definition to unreference.
+   * Unreferences a service definition and removes it from the registry if no longer needed.
+   * This method performs cleanup of unused service definitions to prevent memory leaks.
+   * 
+   * @param {string} [defId] - The unique identifier of the service definition to unreference
    */
   unrefService(defId?: string) {
     if (defId) {
@@ -555,10 +667,12 @@ export class RemotePeer extends AbstractPeer {
   }
 
   /**
-   * Processes the result of a service call.
-   * @param {Definition} parentDef - The parent service definition.
-   * @param {any} result - The result to process.
-   * @returns {any} The processed result.
+   * Processes the result of a service call, handling special types like service definitions
+   * and stream references. This method ensures proper type conversion and reference management.
+   * 
+   * @param {Definition} parentDef - The parent service definition context
+   * @param {any} result - The raw result to be processed
+   * @returns {any} The processed result with proper type conversion
    */
   private processResult(parentDef: Definition, result: any) {
     if (isServiceDefinition(result)) {
@@ -572,18 +686,22 @@ export class RemotePeer extends AbstractPeer {
 
   /**
    * Processes arguments before sending them to the remote peer.
-   * @param {Definition} ctxDef - The context service definition.
-   * @param {any} args - The arguments to process.
-   * @returns {any} The processed arguments.
+   * This method can be overridden to implement custom argument processing logic.
+   * 
+   * @param {Definition} ctxDef - The context service definition
+   * @param {any} args - The arguments to be processed
+   * @returns {any} The processed arguments
    */
   private processArgs(ctxDef: Definition, args: any) {
     return args;
   }
 
   /**
-   * Deletes a response handler.
-   * @param {number} packetId - The unique identifier of the packet.
-   * @returns {any} The deleted response handler.
+   * Deletes a response handler for a specific packet ID.
+   * This method manages the lifecycle of response handlers and cleans up resources.
+   * 
+   * @param {number} packetId - The unique identifier of the packet
+   * @returns {any} The deleted response handler, if it exists
    */
   private deleteResponseHandler(packetId: number) {
     const handlers = this.responseHandlers.get(packetId);
@@ -594,10 +712,12 @@ export class RemotePeer extends AbstractPeer {
   }
 
   /**
-   * Gets a service definition by its unique identifier.
-   * @param {string} defId - The unique identifier of the service definition.
-   * @returns {Definition} The service definition.
-   * @throws {Error} If the service definition is not found.
+   * Retrieves a service definition by its unique identifier.
+   * This method provides access to service definitions while ensuring they exist.
+   * 
+   * @param {string} defId - The unique identifier of the service definition
+   * @returns {Definition} The requested service definition
+   * @throws {Error} If the service definition cannot be found
    */
   protected getDefinitionById(defId: string) {
     const def = this.definitions.get(defId);
@@ -608,10 +728,12 @@ export class RemotePeer extends AbstractPeer {
   }
 
   /**
-   * Gets a service definition by its name.
-   * @param {string} name - The name of the service.
-   * @returns {Definition} The service definition.
-   * @throws {Error} If the service definition is not found.
+   * Retrieves a service definition by its qualified name.
+   * This method provides access to service definitions using their service names.
+   * 
+   * @param {string} name - The qualified name of the service
+   * @returns {Definition} The requested service definition
+   * @throws {Error} If the service definition cannot be found
    */
   protected getDefinitionByServiceName(name: string) {
     const def = this.services.get(name);

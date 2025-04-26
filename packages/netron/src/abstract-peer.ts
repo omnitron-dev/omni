@@ -6,84 +6,112 @@ import { Definition } from './definition';
 import { isServiceInterface } from './predicates';
 import { Abilities, EventSubscriber } from './types';
 
+/**
+ * Abstract base class representing a peer in the Netron network.
+ * Provides core functionality for service discovery, interface management,
+ * and communication between peers.
+ * 
+ * @abstract
+ */
 export abstract class AbstractPeer {
+  /**
+   * Collection of abilities supported by this peer.
+   * Abilities represent the capabilities and features that this peer can provide.
+   */
   public abilities: Abilities = {};
 
-  // A map to store interfaces with their reference count, identified by a unique definition ID.
+  /**
+   * Internal map storing interface instances and their reference counts.
+   * Key is the definition ID, value contains the interface instance and its reference count.
+   * Used for managing interface lifecycle and preventing memory leaks.
+   */
   protected interfaces = new Map<string, { instance: Interface; refCount: number }>();
 
-  // Constructor to initialize the AbstractPeer with a Netron instance and a unique peer ID.
+  /**
+   * Constructs a new AbstractPeer instance.
+   * 
+   * @param {Netron} netron - The Netron instance this peer belongs to
+   * @param {string} id - Unique identifier for this peer
+   */
   constructor(
     public netron: Netron,
     public id: string
   ) { }
 
   /**
-   * Abstract method to set a property value or call a method on the peer side.
-   *
-   * @param {string} defId - The unique definition ID associated with the context.
-   * @param {string} name - The name of the property or method to be set or called.
-   * @param {any} value - The value to set or the data to pass to the method.
-   * @returns {Promise<void>} - A promise that resolves when the operation is complete.
+   * Sets a property value or calls a method on the remote peer.
+   * 
+   * @param {string} defId - Unique identifier of the definition context
+   * @param {string} name - Name of the property or method
+   * @param {any} value - Value to set or arguments for method call
+   * @returns {Promise<void>} Resolves when operation completes
+   * @abstract
    */
   abstract set(defId: string, name: string, value: any): Promise<void>;
 
   /**
-   * Abstract method to get a property value or call a method on the peer side.
-   *
-   * @param {string} defId - The unique definition ID associated with the context.
-   * @param {string} name - The name of the property or method to be retrieved or called.
-   * @returns {Promise<any>} - A promise that resolves with the property value or method result.
+   * Retrieves a property value or calls a method on the remote peer.
+   * 
+   * @param {string} defId - Unique identifier of the definition context
+   * @param {string} name - Name of the property or method
+   * @returns {Promise<any>} Resolves with the property value or method result
+   * @abstract
    */
   abstract get(defId: string, name: string): Promise<any>;
 
   /**
-   * Abstract method to call a method on the peer side, similar to get().
-   *
-   * @param {string} defId - The unique definition ID associated with the context.
-   * @param {string} method - The name of the method to be called.
-   * @param {any[]} args - The arguments to pass to the method.
-   * @returns {Promise<any>} - A promise that resolves with the result of the method call.
+   * Invokes a method on the remote peer with specified arguments.
+   * 
+   * @param {string} defId - Unique identifier of the definition context
+   * @param {string} method - Name of the method to invoke
+   * @param {any[]} args - Array of arguments to pass to the method
+   * @returns {Promise<any>} Resolves with the method's return value
+   * @abstract
    */
   abstract call(defId: string, method: string, args: any[]): Promise<any>;
 
   /**
-   * Abstract method to subscribe to an event.
-   *
-   * @param {string} eventName - The name of the event to subscribe to.
-   * @param {EventSubscriber} handler - The handler function to be called when the event occurs.
-   * @returns {Promise<void> | void} - A promise that resolves when the subscription is complete, or void.
+   * Subscribes to an event emitted by the remote peer.
+   * 
+   * @param {string} eventName - Name of the event to subscribe to
+   * @param {EventSubscriber} handler - Function to handle event notifications
+   * @returns {Promise<void> | void} Resolves when subscription is complete
+   * @abstract
    */
   abstract subscribe(eventName: string, handler: EventSubscriber): Promise<void> | void;
 
   /**
-   * Abstract method to unsubscribe from an event.
-   *
-   * @param {string} eventName - The name of the event to unsubscribe from.
-   * @param {EventSubscriber} handler - The handler function to be removed.
-   * @returns {Promise<void> | void} - A promise that resolves when the unsubscription is complete, or void.
+   * Unsubscribes from a previously subscribed event.
+   * 
+   * @param {string} eventName - Name of the event to unsubscribe from
+   * @param {EventSubscriber} handler - Handler function to remove
+   * @returns {Promise<void> | void} Resolves when unsubscription is complete
+   * @abstract
    */
   abstract unsubscribe(eventName: string, handler: EventSubscriber): Promise<void> | void;
 
   /**
-   * Abstract method to expose a service to the peer.
-   *
-   * @param instance - The instance of the service to be exposed.
-   * @returns {Promise<Definition>} - A promise that resolves with the definition of the exposed service.
+   * Exposes a service instance to be accessible by other peers.
+   * 
+   * @param {any} instance - The service instance to expose
+   * @returns {Promise<Definition>} Resolves with the service definition
+   * @abstract
    */
   abstract exposeService(instance: any): Promise<Definition>;
 
   /**
-   * Abstract method to unexpose a previously exposed service.
-   *
-   * @param ctxId - The context identifier of the service to be unexposed.
-   * @param releaseOriginated - Optional flag to indicate if originated services should be released.
-   * @returns {Promise<void>} - A promise that resolves when the service is unexposed.
+   * Removes a previously exposed service from accessibility.
+   * 
+   * @param {string} ctxId - Context identifier of the service to unexpose
+   * @param {boolean} [releaseOriginated] - Whether to release originated services
+   * @returns {Promise<void>} Resolves when service is unexposed
+   * @abstract
    */
   abstract unexposeService(ctxId: string, releaseOriginated?: boolean): Promise<void>;
 
   /**
-   * Unexposes all services that have been exposed by this peer.
+   * Removes all services exposed by this peer.
+   * Iterates through all service names and unexposes each one.
    */
   unexposeAllServices() {
     for (const ctxId of this.getServiceNames()) {
@@ -92,17 +120,20 @@ export abstract class AbstractPeer {
   }
 
   /**
-   * Abstract method to get the names of all services exposed by this peer.
-   *
-   * @returns {string[]} - An array of service names.
+   * Retrieves names of all services currently exposed by this peer.
+   * 
+   * @returns {string[]} Array of service names
+   * @abstract
    */
   abstract getServiceNames(): string[];
 
   /**
-   * Queries an interface for a given service name.
-   *
-   * @param {string} qualifiedName - The name of the service to query.
-   * @returns {Promise<T>} - A promise that resolves with the queried interface.
+   * Queries and retrieves an interface for a specified service.
+   * Handles version resolution and interface creation.
+   * 
+   * @template T - Type of the interface to return
+   * @param {string} qualifiedName - Service name with optional version (name:version)
+   * @returns {Promise<T>} Resolves with the requested interface instance
    */
   async queryInterface<T>(qualifiedName: string): Promise<T> {
     let name: string;
@@ -128,11 +159,13 @@ export abstract class AbstractPeer {
   }
 
   /**
-   * Queries an interface by its definition ID.
-   *
-   * @param {string} defId - The definition ID of the interface to query.
-   * @param {Definition} [def] - Optional definition object.
-   * @returns {Promise<T>} - A promise that resolves with the queried interface.
+   * Retrieves an interface instance by its definition ID.
+   * Manages interface caching and reference counting.
+   * 
+   * @template T - Type of the interface to return
+   * @param {string} defId - Definition ID of the interface
+   * @param {Definition} [def] - Optional pre-fetched definition
+   * @returns {T} The interface instance
    */
   queryInterfaceByDefId<T>(defId: string, def?: Definition): T {
     if (!def) {
@@ -153,10 +186,13 @@ export abstract class AbstractPeer {
 
   /**
    * Releases a previously queried interface.
-   *
-   * @param {T} iInstance - The interface instance to be released.
-   * @returns {Promise<void>} - A promise that resolves when the interface is released.
-   * @throws {Error} - Throws an error if the instance is not a valid service interface.
+   * Handles reference counting and cleanup of dependent interfaces.
+   * 
+   * @template T - Type of the interface to release
+   * @param {T} iInstance - Interface instance to release
+   * @param {Set<string>} [released] - Set of already released definition IDs
+   * @returns {Promise<void>} Resolves when interface is released
+   * @throws {Error} If interface is invalid or not found
    */
   async releaseInterface<T>(iInstance: T, released = new Set<string>()) {
     if (!isServiceInterface(iInstance) || !iInstance.$def) {
@@ -189,53 +225,87 @@ export abstract class AbstractPeer {
   }
 
   /**
-   * Abstract method to release an interface internally.
-   *
-   * @param iInstance - The interface instance to be released.
-   * @returns {Promise<void>} - A promise that resolves when the internal release is complete.
+   * Internal method to handle interface release.
+   * 
+   * @param {any} iInstance - Interface instance to release
+   * @returns {Promise<void>} Resolves when internal release is complete
+   * @abstract
    */
   protected abstract releaseInterfaceInternal(iInstance: any): Promise<void>;
 
   /**
-   * Abstract method to get a definition by its ID.
-   *
-   * @param {number} defId - The ID of the definition to retrieve.
-   * @returns {Definition} - The definition associated with the given ID.
+   * Retrieves a definition by its unique identifier.
+   * 
+   * @param {string} defId - Definition ID to look up
+   * @returns {Definition} The definition object
+   * @abstract
    */
   protected abstract getDefinitionById(defId: string): Definition;
 
   /**
-   * Abstract method to get a definition by its service name.
-   *
-   * @param {string} name - The name of the service.
-   * @returns {Definition} - The definition associated with the given service name.
+   * Retrieves a definition by its service name.
+   * 
+   * @param {string} name - Service name to look up
+   * @returns {Definition} The definition object
+   * @abstract
    */
   protected abstract getDefinitionByServiceName(name: string): Definition;
 
+
+  /**
+   * Finds the latest version of a service by its name.
+   * This method implements a sophisticated version resolution strategy that:
+   * 1. First attempts to find an exact match without version specification
+   * 2. If that fails, searches for all versions of the service and returns the latest one
+   * 
+   * @param {string} serviceName - The name of the service to find. Can be either:
+   *                              - A simple name (e.g., 'auth')
+   *                              - A name with version (e.g., 'auth:1.0.0')
+   * @returns {Definition} The Definition object representing the latest version of the service
+   * @throws {Error} If no matching service is found
+   * 
+   * @example
+   * // Returns the latest version of the 'auth' service
+   * const latestAuth = findLatestServiceVersion('auth');
+   * 
+   * @example
+   * // Returns the latest version of the 'auth' service
+   * const latestAuth = findLatestServiceVersion('auth:1.0.0');
+   */
   protected findLatestServiceVersion(serviceName: string): Definition {
-    // Check if the service exists without a version
+    // First, try to find an exact match without version specification
+    // This handles cases where the service name is provided without a version
     if (!serviceName.includes(':')) {
       try {
         return this.getDefinitionByServiceName(serviceName);
       } catch (_: any) {
-        // If the service is not found, try to find the latest version
+        // If no exact match is found, proceed to version resolution
       }
     }
 
+    // Create a regex pattern to match service names with versions
+    // The pattern captures the version number in a group
     const regex = new RegExp(`^${serviceName}:([^:]+)$`);
+
+    // Process all available service names to find matching versions
     const candidates = Array.from(this.getServiceNames())
+      // Map each service name to a version-info object if it matches the pattern
       .map((key) => {
         const match = key.match(regex);
         if (match) return { version: match[1], key };
         return null;
       })
+      // Filter out non-matching services and ensure type safety
       .filter((x): x is { version: string, key: string } => x !== null)
+      // Sort versions in descending order using semver comparison
       .sort((a, b) => semver.rcompare(a.version, b.version));
 
+    // If no matching versions were found, throw an error
     if (candidates.length === 0) {
       throw new Error(`Unknown service: ${serviceName}`);
     }
 
+    // Return the definition for the highest version found
     return this.getDefinitionByServiceName(candidates[0]!.key);
   }
 }

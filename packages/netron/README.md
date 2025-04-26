@@ -13,6 +13,9 @@ A powerful TypeScript library for building distributed systems with event bus, s
 - 🔍 Automatic service discovery
 - ⚡ MessagePack serialization
 - 🎯 Task management system
+- 🔒 Type-safe service interfaces
+- 🔄 Automatic reconnection handling
+- 📡 Service versioning support
 
 ## Installation
 
@@ -40,11 +43,20 @@ class Calculator {
   multiply(a: number, b: number): number {
     return a * b;
   }
+
+  @Public({ readonly: true })
+  version: string = '1.0.0';
 }
 
 const server = await Netron.create({
   listenHost: 'localhost',
-  listenPort: 8080
+  listenPort: 8080,
+  taskTimeout: 5000,
+  connectTimeout: 5000,
+  requestTimeout: 5000,
+  streamTimeout: 5000,
+  allowServiceEvents: true,
+  maxReconnectAttempts: 5
 });
 
 // Expose the calculator service
@@ -67,6 +79,7 @@ const latestCalculator = await peer.queryInterface<ICalculator>('calculator');
 // Use remote methods
 const sum = await calculator.add(5, 3);      // 8
 const product = await calculator.multiply(4, 2); // 8
+const version = await calculator.version;     // '1.0.0'
 ```
 
 ## Advanced Features
@@ -154,57 +167,21 @@ class UserService {
 }
 ```
 
-## Browser Support
-
-The library works seamlessly in modern browsers thanks to WebSocket support:
-
-### Using with Bundlers
+## Configuration Options
 
 ```typescript
-// webpack/rollup/esbuild
-import { Netron } from '@devgrid/netron';
-
-const client = await Netron.create();
-const peer = await client.connect('ws://server.com:8080');
-```
-
-### Browser-Specific Setup
-
-```html
-<!-- Include required dependencies -->
-<script src="https://unpkg.com/reflect-metadata/Reflect.js"></script>
-<script src="path/to/netron.min.js"></script>
-
-<script>
-  const client = await Netron.create();
-  
-  // Connect to server
-  const peer = await client.connect('ws://server.com:8080');
-  
-  // Use services
-  const service = await peer.queryInterface('myService');
-  const result = await service.doSomething();
-</script>
-```
-
-### Bundler Configuration
-
-#### Webpack
-
-```javascript
-module.exports = {
-  resolve: {
-    fallback: {
-      "ws": false, // Browser will use native WebSocket
-      "buffer": require.resolve("buffer/")
-    }
-  },
-  plugins: [
-    new webpack.ProvidePlugin({
-      Buffer: ['buffer', 'Buffer']
-    })
-  ]
-};
+interface NetronOptions {
+  id?: string;                    // Unique identifier for the Netron instance
+  listenHost?: string;            // Host to listen on (server only)
+  listenPort?: number;            // Port to listen on (server only)
+  taskTimeout?: number;           // Timeout for task execution (default: 5000ms)
+  taskOverwriteStrategy?: 'replace' | 'skip' | 'throw'; // How to handle duplicate tasks
+  connectTimeout?: number;        // Connection timeout (default: 5000ms)
+  requestTimeout?: number;        // Request timeout (default: 5000ms)
+  streamTimeout?: number;         // Stream timeout (default: 5000ms)
+  allowServiceEvents?: boolean;   // Enable service events
+  maxReconnectAttempts?: number;  // Maximum reconnection attempts (default: unlimited)
+}
 ```
 
 ## API Reference
@@ -214,10 +191,14 @@ module.exports = {
 ```typescript
 class Netron {
   static create(options?: NetronOptions): Promise<Netron>;
-  connect(address: string, abilities?: Abilities): Promise<RemotePeer>;
+  connect(address: string): Promise<RemotePeer>;
   disconnect(peerId: string): void;
-  addTask(fn: Task): void;
+  addTask(fn: Task): string;
   getServiceNames(): string[];
+  emitParallel(event: string, ...args: any[]): Promise<void>;
+  emitSerial(event: string, ...args: any[]): Promise<void>;
+  emitReduce(event: string, ...args: any[]): Promise<any>;
+  emitReduceRight(event: string, ...args: any[]): Promise<any>;
 }
 ```
 
@@ -226,6 +207,7 @@ class Netron {
 ```typescript
 interface ServiceMetadata {
   name: string;
+  version: string;
   properties: Record<string, PropertyInfo>;
   methods: Record<string, MethodInfo>;
 }
@@ -239,16 +221,24 @@ interface MethodInfo {
   type: string;
   arguments: ArgumentInfo[];
 }
+
+interface ArgumentInfo {
+  index: number;
+  type: string;
+}
 ```
 
 ### RemotePeer Methods
 
 ```typescript
 class RemotePeer {
-  queryInterface<T>(serviceName: string): Promise<T>;
+  queryInterface<T>(qualifiedName: string): Promise<T>;
+  queryInterfaceByDefId<T>(defId: string, def?: Definition): T;
   subscribe(eventName: string, handler: EventSubscriber): Promise<void>;
   unsubscribe(eventName: string, handler: EventSubscriber): Promise<void>;
   runTask(name: string, ...args: any[]): Promise<any>;
+  disconnect(): void;
+  getServiceNames(): string[];
 }
 ```
 
@@ -259,6 +249,8 @@ class RemotePeer {
 - Automatic cleanup of unused services
 - Memory-efficient stream handling
 - Connection pooling for multiple peers
+- Automatic reconnection with exponential backoff
+- Efficient binary protocol for WebSocket communication
 
 ## Browser Compatibility
 
@@ -277,3 +269,5 @@ Built with:
 - [ws](https://github.com/websockets/ws) for WebSocket support
 - [@devgrid/messagepack](https://github.com/devgrid/messagepack) for serialization
 - [@devgrid/async-emitter](https://github.com/devgrid/async-emitter) for event handling
+- [@devgrid/smartbuffer](https://github.com/devgrid/smartbuffer) for efficient binary operations
+- [@devgrid/common](https://github.com/devgrid/common) for utility functions

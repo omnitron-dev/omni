@@ -4,69 +4,142 @@ import { Serializer, registerCommonTypesFor } from '@devgrid/messagepack';
 import { Reference } from '../reference';
 import { Definition } from '../definition';
 import { StreamReference } from '../stream-reference';
-// Create a new instance of the Serializer class, which is responsible for encoding and decoding objects.
+
+/**
+ * Global serializer instance for the Netron application.
+ * This serializer is responsible for converting complex objects into binary format
+ * and vice versa, enabling efficient network transmission and storage.
+ * 
+ * @type {Serializer}
+ * @constant
+ */
 export const serializer = new Serializer();
 
-// Register common types for the serializer to handle, ensuring it can process standard data types.
+/**
+ * Registers common data types with the serializer.
+ * This enables the serializer to handle standard JavaScript types like
+ * numbers, strings, arrays, and objects without additional configuration.
+ */
 registerCommonTypesFor(serializer);
 
-// Register custom encoders and decoders specific to the Netron application.
-// These are used to serialize and deserialize complex objects like Definition and Reference.
-
-// Register an encoder/decoder for the Definition class with a unique type identifier 109.
+/**
+ * Registers custom serialization handlers for Netron-specific types.
+ * Each type is assigned a unique identifier and provided with custom
+ * encoding and decoding functions to handle its specific serialization needs.
+ */
 serializer
+  /**
+   * Registers serialization handlers for the Definition class.
+   * Definition objects represent service definitions in the Netron network
+   * and contain metadata about available services.
+   * 
+   * @param {number} 109 - Unique type identifier for Definition objects
+   * @param {Definition} - The class constructor for Definition objects
+   * @param {Function} - Encoder function that writes Definition properties to buffer
+   * @param {Function} - Decoder function that reconstructs Definition from buffer
+   */
   .register(
     109,
     Definition,
-    // Encoder function for Definition objects.
+    /**
+     * Encodes a Definition object into a binary buffer.
+     * The encoding process preserves the object's identity and relationships
+     * by serializing its id, parentId, peerId, and metadata.
+     * 
+     * @param {Definition} obj - The Definition object to encode
+     * @param {SmartBuffer} buf - The buffer to write the encoded data to
+     */
     (obj: Definition, buf: SmartBuffer) => {
-      // Write the Definition object's id and parentId as 32-bit unsigned integers to the buffer.
       serializer.encode(obj.id, buf);
       serializer.encode(obj.parentId, buf);
-      // Use the serializer to encode the peerId and meta properties of the Definition object.
       serializer.encode(obj.peerId, buf);
       serializer.encode(obj.meta, buf);
     },
-    // Decoder function for Definition objects.
+    /**
+     * Decodes a Definition object from a binary buffer.
+     * Reconstructs the object's state by reading its properties in the same
+     * order they were written during encoding.
+     * 
+     * @param {SmartBuffer} buf - The buffer containing the encoded Definition
+     * @returns {Definition} A new Definition instance with restored properties
+     */
     (buf: SmartBuffer) => {
-      // Read the id and parentId from the buffer as 32-bit unsigned integers.
       const id = serializer.decode(buf);
       const parentId = serializer.decode(buf);
-      // Decode the peerId and meta properties using the serializer.
       const peerId = serializer.decode(buf);
       const meta = serializer.decode(buf);
-      // Create a new Definition object with the decoded values.
       const def = new Definition(id, peerId, meta);
-      // Set the parentId of the Definition object.
       def.parentId = parentId;
-      // Return the reconstructed Definition object.
       return def;
     }
   )
+  /**
+   * Registers serialization handlers for the Reference class.
+   * Reference objects represent service references in the Netron network,
+   * linking to specific service definitions.
+   * 
+   * @param {number} 108 - Unique type identifier for Reference objects
+   * @param {Reference} - The class constructor for Reference objects
+   * @param {Function} - Encoder function that writes Reference properties to buffer
+   * @param {Function} - Decoder function that reconstructs Reference from buffer
+   */
   .register(
     108,
     Reference,
-    // Encoder function for Reference objects.
+    /**
+     * Encodes a Reference object into a binary buffer.
+     * Only the defId property is serialized as it uniquely identifies
+     * the referenced service definition.
+     * 
+     * @param {Reference} obj - The Reference object to encode
+     * @param {SmartBuffer} buf - The buffer to write the encoded data to
+     */
     (obj: any, buf: SmartBuffer) => {
-      // Write the defId of the Reference object as a 32-bit unsigned integer to the buffer.
       serializer.encode(obj.defId, buf);
     },
-    // Decoder function for Reference objects.
-    (buf: SmartBuffer) =>
-      // Create and return a new Reference object using the defId read from the buffer.
-      new Reference(serializer.decode(buf))
+    /**
+     * Decodes a Reference object from a binary buffer.
+     * Creates a new Reference instance using the decoded defId.
+     * 
+     * @param {SmartBuffer} buf - The buffer containing the encoded Reference
+     * @returns {Reference} A new Reference instance with the restored defId
+     */
+    (buf: SmartBuffer) => new Reference(serializer.decode(buf))
   )
+  /**
+   * Registers serialization handlers for the StreamReference class.
+   * StreamReference objects represent stream connections in the Netron network,
+   * containing information about stream type, direction, and associated peer.
+   * 
+   * @param {number} 107 - Unique type identifier for StreamReference objects
+   * @param {StreamReference} - The class constructor for StreamReference objects
+   * @param {Function} - Encoder function that writes StreamReference properties to buffer
+   * @param {Function} - Decoder function that reconstructs StreamReference from buffer
+   */
   .register(
     107,
     StreamReference,
-    // Encoder function for StreamReference objects.
+    /**
+     * Encodes a StreamReference object into a binary buffer.
+     * Serializes the stream's identity, type, liveness status, and associated peer.
+     * 
+     * @param {StreamReference} obj - The StreamReference object to encode
+     * @param {SmartBuffer} buf - The buffer to write the encoded data to
+     */
     (obj: any, buf: SmartBuffer) => {
       serializer.encode(obj.streamId.toString(), buf);
       buf.writeUInt8(obj.type === 'writable' ? 1 : 0);
       buf.writeUInt8(obj.isLive ? 1 : 0);
       serializer.encode(obj.peerId, buf);
     },
-    // Decoder function for StreamReference objects.
+    /**
+     * Decodes a StreamReference object from a binary buffer.
+     * Reconstructs the stream reference with its type, liveness status,
+     * and associated peer information.
+     * 
+     * @param {SmartBuffer} buf - The buffer containing the encoded StreamReference
+     * @returns {StreamReference} A new StreamReference instance with restored properties
+     */
     (buf: SmartBuffer) => {
       const streamId = Number(serializer.decode(buf));
       const streamType = buf.readUInt8() === 1 ? 'writable' : 'readable';

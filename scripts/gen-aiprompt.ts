@@ -1,59 +1,38 @@
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
-import { execSync } from 'child_process';
 
-export function copyToClipboard(text: string) {
-  const platform = os.platform();
-  try {
-    if (platform === 'linux') {
-      execSync(`echo "${text}" | xclip -selection clipboard`);
-    } else if (platform === 'darwin') {
-      execSync(`echo "${text}" | pbcopy`);
-    } else if (platform === 'win32') {
-      execSync(`echo "${text}" | clip`);
-    }
-  } catch (error) {
-    console.error('❌ Error copying to clipboard:', error);
-  }
-}
-
-// 🔥 Function for recursive directory traversal
-function walkDir(projectPath: string, dir: string, includeDirs: string[] = [], excludeDirs: string[] = []): string[] {
+// 🔥 Function for recursive directory traversal with flexible includes/excludes
+function walkDir(
+  baseDir: string,
+  currentDir: string,
+  includePaths: string[],
+  excludePaths: string[]
+): string[] {
   let results: string[] = [];
-  const list = fs.readdirSync(dir);
+  const list = fs.readdirSync(currentDir);
 
   list.forEach((file) => {
-    const filePath = path.join(dir, file);
+    const filePath = path.join(currentDir, file);
     const stat = fs.statSync(filePath);
-    const relativePath = path.relative(projectPath, filePath);
+    const relativePath = path.relative(baseDir, filePath).replace(/\\/g, '/');
+
+    const isIncluded =
+      includePaths.length === 0 ||
+      includePaths.some((incPath) => relativePath.startsWith(incPath));
+
+    const isExcluded = excludePaths.some((excPath) => (
+      relativePath === excPath ||
+      relativePath.startsWith(excPath + '/')
+    ));
+
+    if (isExcluded) {
+      return; // skip explicitly excluded path
+    }
 
     if (stat.isDirectory()) {
-      if (includeDirs.length > 0) {
-        // Check if path starts with any of the included directories
-        if (includeDirs.some(includedDir => relativePath.startsWith(includedDir))) {
-          if (!excludeDirs.includes(file)) {
-            results = results.concat(walkDir(projectPath, filePath, includeDirs, excludeDirs));
-          }
-        }
-      } else {
-        if (!excludeDirs.includes(file)) {
-          results = results.concat(walkDir(projectPath, filePath, includeDirs, excludeDirs));
-        }
-      }
-    } else {
-      // For files also check includeDirs
-      if (includeDirs.length > 0) {
-        if (includeDirs.some(includedDir => relativePath.startsWith(includedDir))) {
-          if (!excludeDirs.includes(file)) {
-            results.push(filePath);
-          }
-        }
-      } else {
-        if (!excludeDirs.includes(file)) {
-          results.push(filePath);
-        }
-      }
+      results = results.concat(walkDir(baseDir, filePath, includePaths, excludePaths));
+    } else if (isIncluded) {
+      results.push(filePath);
     }
   });
 
@@ -61,15 +40,29 @@ function walkDir(projectPath: string, dir: string, includeDirs: string[] = [], e
 }
 
 // 🔥 Generate ChatGPT-compatible prompt
-function generatePrompt(projectPath: string, includeDirs: string[] = [], excludeDirs: string[] = []): string {
-  const baseDir = projectPath;
+function generatePrompt(
+  projectPath: string,
+  includePaths: string[] = [],
+  excludePaths: string[] = []
+): string {
   const defaultExcludeDirs = ['dist', 'node_modules', 'coverage', '.turbo'];
 
-  const files = walkDir(projectPath, baseDir, includeDirs, [...defaultExcludeDirs, ...excludeDirs]);
+  const allExcludePaths = [...defaultExcludeDirs, ...excludePaths].map((p) =>
+    p.replace(/\\/g, '/')
+  );
+  const normalizedIncludePaths = includePaths.map((p) => p.replace(/\\/g, '/'));
+
+  const files = walkDir(
+    projectPath,
+    projectPath,
+    normalizedIncludePaths,
+    allExcludePaths
+  );
+
   let prompt = '';
 
   files.forEach((file) => {
-    const relativePath = path.relative(baseDir, file);
+    const relativePath = path.relative(projectPath, file).replace(/\\/g, '/');
     const content = fs.readFileSync(file, 'utf8');
 
     prompt += `### File: ${relativePath}\n`;
@@ -81,9 +74,13 @@ function generatePrompt(projectPath: string, includeDirs: string[] = [], exclude
   return prompt;
 }
 
-function savePromptToFile(projectPath: string, includeDirs: string[] = [], excludeDirs: string[] = []) {
+function savePromptToFile(
+  projectPath: string,
+  includePaths: string[] = [],
+  excludePaths: string[] = []
+) {
   const outputFile = path.join(projectPath, 'prompt.txt');
-  const prompt = generatePrompt(projectPath, includeDirs, excludeDirs);
+  const prompt = generatePrompt(projectPath, includePaths, excludePaths);
   fs.writeFileSync(outputFile, prompt);
   console.log(`✅ Prompt saved to ${outputFile}`);
 }
@@ -98,14 +95,14 @@ Description:
   Saves the result to prompt.txt in the project root.
 
 Options:
-  --include    Comma-separated list of directories to include (if specified, only these directories will be scanned)
-  --exclude    Comma-separated list of directories to exclude
+  --include    Comma-separated list of directories/files to include (can be nested paths)
+  --exclude    Comma-separated list of directories/files to exclude (can be nested paths)
 
 Example:
-  node generate-prompt.js /path/to/your/project
-  node generate-prompt.js /path/to/your/project --include=src,lib
-  node generate-prompt.js /path/to/your/project --exclude=node_modules,dist
-  node generate-prompt.js /path/to/your/project --include=src --exclude=node_modules
+  node generate-prompt.js /path/to/project
+  node generate-prompt.js /path/to/project --include=src,lib/subdir
+  node generate-prompt.js /path/to/project --exclude=node_modules,dist
+  node generate-prompt.js /path/to/project --include=src/subdir --exclude=node_modules
   `);
 }
 
@@ -118,18 +115,17 @@ if (!projectPath) {
   process.exit(1);
 }
 
-// Check if directory exists
 if (!fs.existsSync(projectPath)) {
   console.error('❌ Project directory not found');
   process.exit(1);
 }
 
 // Parse include and exclude options
-const includeOption = args.find(arg => arg.startsWith('--include='));
-const excludeOption = args.find(arg => arg.startsWith('--exclude='));
+const includeOption = args.find((arg) => arg.startsWith('--include='));
+const excludeOption = args.find((arg) => arg.startsWith('--exclude='));
 
-const includeDirs = includeOption ? includeOption.split('=')[1]?.split(',') : [];
-const excludeDirs = excludeOption ? excludeOption.split('=')[1]?.split(',') : [];
+const includePaths = includeOption ? includeOption.split('=')[1]?.split(',') : [];
+const excludePaths = excludeOption ? excludeOption.split('=')[1]?.split(',') : [];
 
 // Run the script
-savePromptToFile(projectPath, includeDirs, excludeDirs);
+savePromptToFile(projectPath, includePaths, excludePaths);

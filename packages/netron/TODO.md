@@ -84,7 +84,3 @@ private sendRequestWrapper(type: PacketType, data: any) {
   });
 }
 ```
-
-# Service discovery
-
-Using redis

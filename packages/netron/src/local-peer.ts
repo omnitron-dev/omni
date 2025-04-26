@@ -88,6 +88,9 @@ export class LocalPeer extends AbstractPeer {
       peerId: this.id,
       definition: def,
     } as ServiceExposeEvent);
+
+    await this.netron.discovery?.updateServices(this.netron.getExposedServices());
+
     return def;
   }
 
@@ -150,6 +153,8 @@ export class LocalPeer extends AbstractPeer {
       peerId: this.id,
       defId,
     });
+
+    await this.netron.discovery?.updateServices(this.netron.getExposedServices());
   }
 
   /**

@@ -1,0 +1,84 @@
+import { Redis } from 'ioredis';
+import { delay } from '@devgrid/common';
+
+import { ServiceDiscovery } from '../../src/service-discovery';
+
+describe('ServiceDiscovery findNodesByService', () => {
+  let redis: Redis;
+  let discoveryA: ServiceDiscovery;
+  let discoveryB: ServiceDiscovery;
+
+  const nodeIdA = 'node-A';
+  const addressA = '127.0.0.1:3000';
+  const servicesA = [{ name: 'auth-service', version: '1.0.0' }];
+
+  const nodeIdB = 'node-B';
+  const addressB = '127.0.0.1:3001';
+  const servicesB = [
+    { name: 'auth-service', version: '1.0.0' },
+    { name: 'payment-service', version: '2.0.0' },
+  ];
+
+  beforeEach(async () => {
+    redis = new Redis('redis://localhost:6379/2');
+    await redis.flushdb();
+
+    discoveryA = new ServiceDiscovery(redis, nodeIdA, addressA, servicesA, {
+      heartbeatInterval: 500,
+      heartbeatTTL: 1500,
+    });
+
+    discoveryB = new ServiceDiscovery(redis, nodeIdB, addressB, servicesB, {
+      heartbeatInterval: 500,
+      heartbeatTTL: 1500,
+    });
+
+    await discoveryA.startHeartbeat();
+    await discoveryB.startHeartbeat();
+
+    await delay(100); // Wait a bit to ensure heartbeat is published
+  });
+
+  afterEach(async () => {
+    await discoveryA.shutdown();
+    await discoveryB.shutdown();
+    await redis.flushdb();
+    redis.disconnect();
+  });
+
+  it('should find nodes by service name', async () => {
+    const nodes = await discoveryA.findNodesByService('auth-service');
+
+    expect(nodes.length).toBe(2);
+
+    const nodeIds = nodes.map(n => n.nodeId);
+    expect(nodeIds).toContain(nodeIdA);
+    expect(nodeIds).toContain(nodeIdB);
+  });
+
+  it('should find nodes by service name and specific version', async () => {
+    const nodes = await discoveryA.findNodesByService('payment-service', '2.0.0');
+
+    expect(nodes.length).toBe(1);
+    expect(nodes[0]!.nodeId).toBe(nodeIdB);
+  });
+
+  it('should return empty array if service is not found', async () => {
+    const nodes = await discoveryA.findNodesByService('non-existent-service');
+
+    expect(nodes.length).toBe(0);
+  });
+
+  it('should handle node expiration correctly', async () => {
+    await discoveryB.shutdown();
+
+    await delay(2000);
+
+    const nodesAfterExpiration = await discoveryA.findNodesByService('payment-service');
+    expect(nodesAfterExpiration.length).toBe(0);
+
+    const authNodes = await discoveryA.findNodesByService('auth-service');
+    expect(authNodes.length).toBe(1);
+    expect(authNodes[0]!.nodeId).toBe(nodeIdA);
+  });
+});

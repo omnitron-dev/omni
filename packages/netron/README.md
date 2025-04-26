@@ -17,7 +17,6 @@ A powerful TypeScript library for building distributed systems with event bus, s
 - 📡 Service versioning support
 
 ## Installation
-
 ```bash
 npm install @devgrid/netron
 # or

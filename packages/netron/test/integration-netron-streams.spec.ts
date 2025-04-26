@@ -35,17 +35,16 @@ describe('Netron Streams Integration Tests', () => {
     peerB = await netronA.connect('ws://localhost:3002');
     const writableStream = new NetronWritableStream({ peer: peerB });
 
-    // Отправляем данные
+    // Send data
     writableStream.write('chunk-1');
     writableStream.write('chunk-2');
     writableStream.write('chunk-3');
     writableStream.end();
 
-
-    // Ожидаем завершения
+    // Wait for completion
     await new Promise((resolve) => writableStream.on('finish', resolve));
 
-    // Даем небольшое время для передачи данных
+    // Give some time for data transmission
     await delay(100);
 
     expect(receivedChunks).toEqual(['chunk-1', 'chunk-2', 'chunk-3']);
@@ -124,7 +123,7 @@ describe('Netron Streams Integration Tests', () => {
     });
 
     writableStream.write('chunk-1');
-    writableStream.write('chunk-2'); // Ошибка здесь (index === 1)
+    writableStream.write('chunk-2'); // Error occurs here (index === 1)
     writableStream.write('chunk-3');
     writableStream.end();
 
@@ -137,7 +136,7 @@ describe('Netron Streams Integration Tests', () => {
       writableStream.on('finish', resolve);
     });
 
-    // Небольшая задержка для завершения всех асинхронных операций
+    // Small delay for completion of all async operations
     await delay(100);
 
     expect(writableErrored).toBe(true);
@@ -175,7 +174,7 @@ describe('Netron Streams Integration Tests', () => {
 
     await new Promise((resolve) => writableStream.on('finish', resolve));
 
-    // Даем время на обработку последнего пакета и события end
+    // Give time for processing the last packet and end event
     await delay(100);
 
     expect(receivedChunks).toEqual(['chunk-1', 'chunk-2', 'chunk-3']);
@@ -184,7 +183,7 @@ describe('Netron Streams Integration Tests', () => {
 
   it('should correctly send and receive a large amount of data', async () => {
     const receivedChunks: string[] = [];
-    const chunkCount = 100000;  // большое количество пакетов
+    const chunkCount = 100000;  // large number of packets
 
     netronB.once(NETRON_EVENT_PEER_CONNECT, (data: PeerConnectEvent) => {
       const remotePeerA = netronB.peers.get(data.peerId);
@@ -206,7 +205,7 @@ describe('Netron Streams Integration Tests', () => {
     writableStream.end();
 
     await new Promise((resolve) => writableStream.on('finish', resolve));
-    await delay(500);  // увеличиваем задержку из-за большего количества данных
+    await delay(500);  // increase delay due to larger amount of data
 
     expect(receivedChunks.length).toBe(chunkCount);
     expect(receivedChunks[0]).toBe('chunk-0');
@@ -215,7 +214,7 @@ describe('Netron Streams Integration Tests', () => {
 
   it('should correctly handle a live stream with delayed sending', async () => {
     const receivedChunks: string[] = [];
-    const sendIntervals = [500, 1000, 2000]; // задержки между отправкой пакетов
+    const sendIntervals = [500, 1000, 2000]; // delays between packet sending
 
     netronB.once(NETRON_EVENT_PEER_CONNECT, (data: PeerConnectEvent) => {
       const remotePeerA = netronB.peers.get(data.peerId);
@@ -241,7 +240,7 @@ describe('Netron Streams Integration Tests', () => {
     writableStream.end();
 
     await new Promise((resolve) => writableStream.on('finish', resolve));
-    await delay(200); // дополнительное время на обработку данных
+    await delay(200); // additional time for data processing
 
     expect(receivedChunks).toEqual(['chunk-1', 'chunk-2', 'chunk-3']);
   }, 10000);
@@ -268,10 +267,10 @@ describe('Netron Streams Integration Tests', () => {
 
     await delay(300);
 
-    // Явно уничтожаем live-поток
+    // Explicitly destroy live stream
     writableStream.destroy();
 
-    await delay(500); // Ждём обработку события закрытия на удалённом пире
+    await delay(500); // Wait for close event processing on remote peer
 
     expect(writableStream.destroyed).toBe(true);
     expect(readableClosed).toBe(true);

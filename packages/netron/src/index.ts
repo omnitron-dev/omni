@@ -16,3 +16,4 @@ export * from './service-stub';
 export * from './task-manager';
 export * from './readable-stream';
 export * from './writable-stream';
+export * from './service-discovery';

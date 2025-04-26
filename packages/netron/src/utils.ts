@@ -44,9 +44,9 @@ export const getServiceMetadata = (instance: any) =>
  * 
  * @param {string} name - The base name to qualify
  * @param {string} [version] - Optional version string to append
- * @returns {string} A qualified name in the format 'name' or 'name:version'
+ * @returns {string} A qualified name in the format 'name' or 'name@version'
  * @example
- * getQualifiedName('auth', '1.0.0') // returns 'auth:1.0.0'
+ * getQualifiedName('auth', '1.0.0') // returns 'auth@1.0.0'
  * getQualifiedName('auth') // returns 'auth'
  */
-export const getQualifiedName = (name: string, version?: string) => `${name}${version ? `:${version}` : ''}`;
+export const getQualifiedName = (name: string, version?: string) => `${name}${version ? `@${version}` : ''}`;

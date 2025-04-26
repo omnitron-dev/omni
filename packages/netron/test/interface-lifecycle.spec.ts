@@ -17,7 +17,7 @@ describe('Interface Lifecycle Tests', () => {
     increment(): number;
   }
 
-  @Service('testService:1.0.0')
+  @Service('testService@1.0.0')
   class TestService implements ITestService {
     @Public()
     data = 'initial';
@@ -38,7 +38,7 @@ describe('Interface Lifecycle Tests', () => {
     }
   }
 
-  @Service('nestedService:1.0.0')
+  @Service('nestedService@1.0.0')
   class NestedService implements INestedService {
     @Public()
     value = 42;
@@ -65,8 +65,8 @@ describe('Interface Lifecycle Tests', () => {
 
   it('should correctly handle parallel queryInterface calls', async () => {
     const [iface1, iface2] = await Promise.all([
-      remotePeer.queryInterface<ITestService>('testService:1.0.0'),
-      remotePeer.queryInterface<ITestService>('testService:1.0.0'),
+      remotePeer.queryInterface<ITestService>('testService@1.0.0'),
+      remotePeer.queryInterface<ITestService>('testService@1.0.0'),
     ]);
 
     expect(iface1).toBe(iface2);
@@ -79,7 +79,7 @@ describe('Interface Lifecycle Tests', () => {
   });
 
   it('should handle cyclic nested interface releases gracefully', async () => {
-    const iface = await remotePeer.queryInterface<ITestService>('testService:1.0.0');
+    const iface = await remotePeer.queryInterface<ITestService>('testService@1.0.0');
     const nestedIface = await iface.getNestedService();
 
     expect(await nestedIface.increment()).toBe(43);
@@ -91,7 +91,7 @@ describe('Interface Lifecycle Tests', () => {
   });
 
   it('should throw when accessing released interface', async () => {
-    const iface = await remotePeer.queryInterface<ITestService>('testService:1.0.0');
+    const iface = await remotePeer.queryInterface<ITestService>('testService@1.0.0');
     await remotePeer.releaseInterface(iface);
 
     await expect(async () => iface.getData()).rejects.toThrow('Invalid interface');

@@ -9,7 +9,7 @@ import { SERVICE_ANNOTATION } from './constants';
  * and properties, validates the service name and version, and stores the metadata using
  * reflection.
  * 
- * @param {string} qualifiedName - The fully qualified name of the service in the format 'name[:version]'
+ * @param {string} qualifiedName - The fully qualified name of the service in the format 'name[@version]'
  *                                where version is optional and must follow semantic versioning.
  * @returns {ClassDecorator} A decorator function that processes the target class
  * 
@@ -17,7 +17,7 @@ import { SERVICE_ANNOTATION } from './constants';
  * @throws {Error} If the version string is provided but doesn't follow semantic versioning
  * 
  * @example
- * @Service('auth:1.0.0')
+ * @Service('auth@1.0.0')
  * class AuthService {
  *   @Public()
  *   async login(username: string, password: string): Promise<string> {
@@ -27,7 +27,7 @@ import { SERVICE_ANNOTATION } from './constants';
  */
 export const Service = (qualifiedName: string) => (target: any) => {
   // Parse the qualified name into name and version components
-  const [name, version] = qualifiedName.split(':');
+  const [name, version] = qualifiedName.split('@');
 
   // Regular expression to validate service names
   // Allows alphanumeric characters and dots for namespacing

@@ -132,15 +132,15 @@ export abstract class AbstractPeer {
    * Handles version resolution and interface creation.
    * 
    * @template T - Type of the interface to return
-   * @param {string} qualifiedName - Service name with optional version (name:version)
+   * @param {string} qualifiedName - Service name with optional version (name@version)
    * @returns {Promise<T>} Resolves with the requested interface instance
    */
   async queryInterface<T>(qualifiedName: string): Promise<T> {
     let name: string;
     let version: string | undefined;
 
-    if (qualifiedName.includes(':')) {
-      [name, version] = qualifiedName.split(':') as [string, string | undefined];
+    if (qualifiedName.includes('@')) {
+      [name, version] = qualifiedName.split('@') as [string, string | undefined];
     } else {
       name = qualifiedName;
       version = '*';
@@ -151,7 +151,7 @@ export abstract class AbstractPeer {
     if (version === '*' || !version) {
       def = this.findLatestServiceVersion(name);
     } else {
-      const exactKey = `${name}:${version}`;
+      const exactKey = `${name}@${version}`;
       def = this.getDefinitionByServiceName(exactKey);
     }
 
@@ -260,7 +260,7 @@ export abstract class AbstractPeer {
    * 
    * @param {string} serviceName - The name of the service to find. Can be either:
    *                              - A simple name (e.g., 'auth')
-   *                              - A name with version (e.g., 'auth:1.0.0')
+   *                              - A name with version (e.g., 'auth@1.0.0')
    * @returns {Definition} The Definition object representing the latest version of the service
    * @throws {Error} If no matching service is found
    * 
@@ -270,12 +270,12 @@ export abstract class AbstractPeer {
    * 
    * @example
    * // Returns the latest version of the 'auth' service
-   * const latestAuth = findLatestServiceVersion('auth:1.0.0');
+   * const latestAuth = findLatestServiceVersion('auth@1.0.0');
    */
   protected findLatestServiceVersion(serviceName: string): Definition {
     // First, try to find an exact match without version specification
     // This handles cases where the service name is provided without a version
-    if (!serviceName.includes(':')) {
+    if (!serviceName.includes('@')) {
       try {
         return this.getDefinitionByServiceName(serviceName);
       } catch (_: any) {
@@ -285,7 +285,7 @@ export abstract class AbstractPeer {
 
     // Create a regex pattern to match service names with versions
     // The pattern captures the version number in a group
-    const regex = new RegExp(`^${serviceName}:([^:]+)$`);
+    const regex = new RegExp(`^${serviceName}@([^@]+)$`);
 
     // Process all available service names to find matching versions
     const candidates = Array.from(this.getServiceNames())

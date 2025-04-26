@@ -16,7 +16,7 @@ describe('RemotePeer Service Versioning', () => {
     greet(): Promise<string>;
   }
 
-  @Service('versionedService:1.0.0')
+  @Service('versionedService@1.0.0')
   class VersionedServiceV1 implements IVersionedServiceV1 {
     @Public()
     async greet() {
@@ -24,7 +24,7 @@ describe('RemotePeer Service Versioning', () => {
     }
   }
 
-  @Service('versionedService:2.0.0')
+  @Service('versionedService@2.0.0')
   class VersionedServiceV2 implements IVersionedServiceV2 {
     @Public()
     async greet() {
@@ -55,12 +55,12 @@ describe('RemotePeer Service Versioning', () => {
   it('should expose multiple versions of the same service', async () => {
     const availableServices = remotePeer.getServiceNames();
 
-    expect(availableServices).toContain('versionedService:1.0.0');
-    expect(availableServices).toContain('versionedService:2.0.0');
+    expect(availableServices).toContain('versionedService@1.0.0');
+    expect(availableServices).toContain('versionedService@2.0.0');
   });
 
   it('should query specific version of a service (v1.0.0)', async () => {
-    const serviceV1 = await remotePeer.queryInterface<IVersionedServiceV1>('versionedService:1.0.0');
+    const serviceV1 = await remotePeer.queryInterface<IVersionedServiceV1>('versionedService@1.0.0');
 
     expect(await serviceV1.greet()).toBe('Hello from V1');
 
@@ -68,7 +68,7 @@ describe('RemotePeer Service Versioning', () => {
   });
 
   it('should query specific version of a service (v2.0.0)', async () => {
-    const serviceV2 = await remotePeer.queryInterface<IVersionedServiceV2>('versionedService:2.0.0');
+    const serviceV2 = await remotePeer.queryInterface<IVersionedServiceV2>('versionedService@2.0.0');
 
     expect(await serviceV2.greet()).toBe('Hello from V2');
 
@@ -77,12 +77,12 @@ describe('RemotePeer Service Versioning', () => {
 
   it('should throw when querying non-existent version', async () => {
     await expect(async () =>
-      remotePeer.queryInterface('versionedService:3.0.0')
+      remotePeer.queryInterface('versionedService@3.0.0')
     ).rejects.toThrow(/Unknown service/);
   });
 
   it('should handle exposing a service version conflict', async () => {
-    @Service('versionedService:1.0.0')
+    @Service('versionedService@1.0.0')
     class DuplicateVersionService {
       @Public()
       async greet() {
@@ -96,16 +96,16 @@ describe('RemotePeer Service Versioning', () => {
   });
 
   it('should correctly handle unexposing a specific service version', async () => {
-    await localNetron.peer.unexposeService('versionedService:1.0.0');
+    await localNetron.peer.unexposeService('versionedService@1.0.0');
 
     await delay(100);
 
     const services = remotePeer.getServiceNames();
-    expect(services).not.toContain('versionedService:1.0.0');
-    expect(services).toContain('versionedService:2.0.0');
+    expect(services).not.toContain('versionedService@1.0.0');
+    expect(services).toContain('versionedService@2.0.0');
 
     await expect(async () =>
-      remotePeer.queryInterface('versionedService:1.0.0')
+      remotePeer.queryInterface('versionedService@1.0.0')
     ).rejects.toThrow(/Unknown service/);
   });
 
@@ -115,9 +115,9 @@ describe('RemotePeer Service Versioning', () => {
     await delay(100);
 
     const services = remotePeer.getServiceNames();
-    expect(services).toContain('versionedService:1.0.0');
+    expect(services).toContain('versionedService@1.0.0');
 
-    const serviceV1 = await remotePeer.queryInterface<IVersionedServiceV1>('versionedService:1.0.0');
+    const serviceV1 = await remotePeer.queryInterface<IVersionedServiceV1>('versionedService@1.0.0');
     expect(await serviceV1.greet()).toBe('Hello from V1');
 
     await remotePeer.releaseInterface(serviceV1);
@@ -132,8 +132,8 @@ describe('RemotePeer Service Versioning', () => {
   });
 
   it('should correctly handle interface releases for different versions', async () => {
-    const ifaceV1 = await remotePeer.queryInterface<IVersionedServiceV1>('versionedService:1.0.0');
-    const ifaceV2 = await remotePeer.queryInterface<IVersionedServiceV2>('versionedService:2.0.0');
+    const ifaceV1 = await remotePeer.queryInterface<IVersionedServiceV1>('versionedService@1.0.0');
+    const ifaceV2 = await remotePeer.queryInterface<IVersionedServiceV2>('versionedService@2.0.0');
 
     expect(await ifaceV1.greet()).toBe('Hello from V1');
     expect(await ifaceV2.greet()).toBe('Hello from V2');

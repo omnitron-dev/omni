@@ -1,5 +1,23 @@
 # @devgrid/netron
 
+## 0.5.2
+
+### Patch Changes
+
+- fix build
+
+## 0.5.1
+
+### Patch Changes
+
+- fix package.json
+
+## 0.5.0
+
+### Minor Changes
+
+- streams, service discovery, bug fixes
+
 ## 0.4.2
 
 ### Patch Changes

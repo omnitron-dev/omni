@@ -1,6 +1,6 @@
 {
   "name": "@devgrid/netron",
-  "version": "0.4.2",
+  "version": "0.5.2",
   "description": "Event bus, streams and remote object invocation.",
   "author": "LuxQuant",
   "license": "MIT",
@@ -8,10 +8,12 @@
   "types": "dist/index.d.ts",
   "module": "dist/esm/index.js",
   "files": [
-    "dist"
+    "dist",
+    "lua"
   ],
   "scripts": {
-    "build": "tsc --build ./tsconfig.build.json && tsc --build ./tsconfig.esm.json",
+    "build": "tsc --build ./tsconfig.build.json",
+    "build:esm": "tsc --build ./tsconfig.esm.json",
     "test": "jest --runInBand"
   },
   "dependencies": {

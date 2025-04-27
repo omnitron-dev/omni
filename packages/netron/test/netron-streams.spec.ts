@@ -19,7 +19,20 @@ jest.mock('ws', () => ({
 }));
 
 function createMockRemotePeer(): RemotePeer {
-  const mockNetron = {} as unknown as Netron;
+  const mockNetron = {
+    logger: {
+      child: jest.fn().mockReturnValue({
+        error: jest.fn(),
+        warn: jest.fn(),
+        info: jest.fn(),
+        debug: jest.fn(),
+      }),
+      error: jest.fn(),
+      warn: jest.fn(),
+      info: jest.fn(),
+      debug: jest.fn(),
+    },
+  } as unknown as Netron;
 
   const mockSocket = {
     readyState: WebSocket.OPEN,
@@ -182,7 +195,7 @@ describe('Netron Streams', () => {
 
   it('should handle errors correctly', async () => {
     const stream = new NetronReadableStream({ peer, streamId: 7 });
-    const errorHandler = jest.spyOn(console, 'error').mockImplementation(() => { });
+    const errorHandler = jest.spyOn(stream.peer.logger, 'error').mockImplementation(() => { });
 
     expect(stream.destroyed).toBe(false);
 
@@ -252,7 +265,7 @@ describe('Netron Streams', () => {
     const stream = new NetronWritableStream({ peer: peer1 });
 
     const error = new Error('Destroy error');
-    const errorHandler = jest.spyOn(console, 'error').mockImplementation(() => { });
+    const errorHandler = jest.spyOn(stream.peer.logger, 'error').mockImplementation(() => { });
 
     stream.destroy(error);
 

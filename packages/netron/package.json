@@ -1,6 +1,6 @@
 {
   "name": "@devgrid/netron",
-  "version": "0.5.3",
+  "version": "0.6.1",
   "description": "A powerful TypeScript library for building distributed systems with event bus, streaming capabilities, and remote object invocation. Features WebSocket-based bidirectional communication between Node.js and browser environments, service discovery, and type-safe RPC.",
   "author": "LuxQuant",
   "license": "MIT",

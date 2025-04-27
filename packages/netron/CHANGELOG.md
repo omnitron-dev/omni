@@ -1,5 +1,17 @@
 # @devgrid/netron
 
+## 0.6.1
+
+### Patch Changes
+
+- fix tests
+
+## 0.6.0
+
+### Minor Changes
+
+- add pino logger
+
 ## 0.5.3
 
 ### Patch Changes

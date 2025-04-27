@@ -710,7 +710,28 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@devgrid/netron@workspace:packages/netron":
+"@devgrid/netron-nest@workspace:packages/netron-nest":
+  version: 0.0.0-use.local
+  resolution: "@devgrid/netron-nest@workspace:packages/netron-nest"
+  dependencies:
+    "@devgrid/netron": "workspace:*"
+    "@nestjs/common": "npm:^11.1.0"
+    "@nestjs/core": "npm:^11.1.0"
+    "@nestjs/testing": "npm:^11.1.0"
+    "@types/jest": "npm:^29.5.14"
+    "@types/node": "npm:^22.15.2"
+    ioredis: "npm:^5.6.1"
+    jest: "npm:^29.7.0"
+    reflect-metadata: "npm:^0.2.2"
+    ts-jest: "npm:^29.3.2"
+    typescript: "npm:^5.8.3"
+  peerDependencies:
+    "@nestjs/common": ^11.1.0
+    "@nestjs/core": ^11.1.0
+  languageName: unknown
+  linkType: soft
+
+"@devgrid/netron@workspace:*, @devgrid/netron@workspace:packages/netron":
   version: 0.0.0-use.local
   resolution: "@devgrid/netron@workspace:packages/netron"
   dependencies:
@@ -727,6 +748,7 @@ __metadata:
     del-cli: "npm:^6.0.0"
     es-toolkit: "npm:^1.33.0"
     globals: "npm:^15.14.0"
+    ioredis: "npm:^5.6.1"
     jest: "npm:^29.7.0"
     reflect-metadata: "npm:^0.2.2"
     semver: "npm:^7.7.1"
@@ -1935,6 +1957,29 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@nestjs/common@npm:^11.1.0":
+  version: 11.1.0
+  resolution: "@nestjs/common@npm:11.1.0"
+  dependencies:
+    file-type: "npm:20.4.1"
+    iterare: "npm:1.2.1"
+    load-esm: "npm:1.0.2"
+    tslib: "npm:2.8.1"
+    uid: "npm:2.0.2"
+  peerDependencies:
+    class-transformer: "*"
+    class-validator: "*"
+    reflect-metadata: ^0.1.12 || ^0.2.0
+    rxjs: ^7.1.0
+  peerDependenciesMeta:
+    class-transformer:
+      optional: true
+    class-validator:
+      optional: true
+  checksum: 10c0/828665a91d75aa237e871173e9ec70a9a331839fef85d1c1c009c16bc2e94a627ee39f65fe0e560db043345293122657b86a66236459ed219ebcd96ebe14b7e0
+  languageName: node
+  linkType: hard
+
 "@nestjs/core@npm:^11.0.13":
   version: 11.0.20
   resolution: "@nestjs/core@npm:11.0.20"
@@ -1960,6 +2005,34 @@ __metadata:
     "@nestjs/websockets":
       optional: true
   checksum: 10c0/6d823fe897c23db43e1a77c85ca98863d8e52d072516830bef9f46e78575c6646b538af87ad651e03fe79ee80d37e1f1883c20cdb504176a73bb8eec0d48da7f
+  languageName: node
+  linkType: hard
+
+"@nestjs/core@npm:^11.1.0":
+  version: 11.1.0
+  resolution: "@nestjs/core@npm:11.1.0"
+  dependencies:
+    "@nuxt/opencollective": "npm:0.4.1"
+    fast-safe-stringify: "npm:2.1.1"
+    iterare: "npm:1.2.1"
+    path-to-regexp: "npm:8.2.0"
+    tslib: "npm:2.8.1"
+    uid: "npm:2.0.2"
+  peerDependencies:
+    "@nestjs/common": ^11.0.0
+    "@nestjs/microservices": ^11.0.0
+    "@nestjs/platform-express": ^11.0.0
+    "@nestjs/websockets": ^11.0.0
+    reflect-metadata: ^0.1.12 || ^0.2.0
+    rxjs: ^7.1.0
+  peerDependenciesMeta:
+    "@nestjs/microservices":
+      optional: true
+    "@nestjs/platform-express":
+      optional: true
+    "@nestjs/websockets":
+      optional: true
+  checksum: 10c0/6e3be86059c61def3bab943641496275daf2659005620c87b397736a7e3eab88ec25c47d088566b34c16a2c2af2a26a40642635bd2c95780ba9983fe19e8edd4
   languageName: node
   linkType: hard
 
@@ -2021,6 +2094,25 @@ __metadata:
     "@nestjs/platform-express":
       optional: true
   checksum: 10c0/413a3ad10b617e2df115e5d26cd11dbc4a626cd6be7060657591571154e0d4a60c17009402d03e7ee5b23b568b3415925495c7ad5fe8bd5386dcaf9e158ce43d
+  languageName: node
+  linkType: hard
+
+"@nestjs/testing@npm:^11.1.0":
+  version: 11.1.0
+  resolution: "@nestjs/testing@npm:11.1.0"
+  dependencies:
+    tslib: "npm:2.8.1"
+  peerDependencies:
+    "@nestjs/common": ^11.0.0
+    "@nestjs/core": ^11.0.0
+    "@nestjs/microservices": ^11.0.0
+    "@nestjs/platform-express": ^11.0.0
+  peerDependenciesMeta:
+    "@nestjs/microservices":
+      optional: true
+    "@nestjs/platform-express":
+      optional: true
+  checksum: 10c0/21bdad85d718f51c86ceb56ae09f7d0c1ee6da2548c07997a890893741d628438cac05dcb503d0f53e30e2e823992be179c1ebb0e9bc45b14169a5c94b76b499
   languageName: node
   linkType: hard
 
@@ -2483,6 +2575,15 @@ __metadata:
   dependencies:
     undici-types: "npm:~6.20.0"
   checksum: 10c0/fa2ab5b8277bfbcc86c42e46a3ea9871b0d559894cc9d955685d17178c9499f0b1bf03d1d1ea8d92ef2dda818988f4035acb8abf9dc15423a998fa56173ab804
+  languageName: node
+  linkType: hard
+
+"@types/node@npm:^22.15.2":
+  version: 22.15.2
+  resolution: "@types/node@npm:22.15.2"
+  dependencies:
+    undici-types: "npm:~6.21.0"
+  checksum: 10c0/39da31d5fc63b14fabd217bb8a921c4a7fc3d99f233440209f9fc2d5d736e8773f7efc65223e2fd0e8db8390b0baab9c0cd2e951c2ece8b237f07313ab3cf295
   languageName: node
   linkType: hard
 
@@ -10768,6 +10869,13 @@ __metadata:
   version: 6.20.0
   resolution: "undici-types@npm:6.20.0"
   checksum: 10c0/68e659a98898d6a836a9a59e6adf14a5d799707f5ea629433e025ac90d239f75e408e2e5ff086afc3cace26f8b26ee52155293564593fbb4a2f666af57fc59bf
+  languageName: node
+  linkType: hard
+
+"undici-types@npm:~6.21.0":
+  version: 6.21.0
+  resolution: "undici-types@npm:6.21.0"
+  checksum: 10c0/c01ed51829b10aa72fc3ce64b747f8e74ae9b60eafa19a7b46ef624403508a54c526ffab06a14a26b3120d055e1104d7abe7c9017e83ced038ea5cf52f8d5e04
   languageName: node
   linkType: hard
 

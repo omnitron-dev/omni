@@ -1,7 +1,7 @@
 {
   "name": "@devgrid/netron",
-  "version": "0.5.2",
-  "description": "Event bus, streams and remote object invocation.",
+  "version": "0.5.3",
+  "description": "A powerful TypeScript library for building distributed systems with event bus, streaming capabilities, and remote object invocation. Features WebSocket-based bidirectional communication between Node.js and browser environments, service discovery, and type-safe RPC.",
   "author": "LuxQuant",
   "license": "MIT",
   "main": "dist/index.js",
@@ -23,6 +23,7 @@
     "@devgrid/smartbuffer": "workspace:*",
     "bufferutil": "^4.0.9",
     "es-toolkit": "^1.33.0",
+    "ioredis": "^5.6.1",
     "reflect-metadata": "^0.2.2",
     "semver": "^7.7.1",
     "ws": "^8.18.1"
@@ -47,12 +48,12 @@
     "rpc",
     "websocket",
     "network",
-    "distributed",
-    "remote",
+    "distributed-systems",
+    "remote-objects",
     "typescript",
     "event-bus",
     "streaming",
-    "service",
+    "service-discovery",
     "microservices",
     "browser",
     "node",
@@ -60,10 +61,17 @@
     "communication",
     "peer-to-peer",
     "remote-procedure-call",
-    "service-discovery",
+    "redis",
     "messagepack",
     "cross-platform",
-    "websockets"
+    "websockets",
+    "service-registry",
+    "type-safe",
+    "decorators",
+    "async",
+    "binary-protocol",
+    "reconnection",
+    "service-versioning"
   ],
   "repository": {
     "type": "git",
@@ -73,5 +81,8 @@
   "bugs": {
     "url": "https://github.com/d-e-v-grid/dg-monorepo/issues"
   },
-  "homepage": "https://github.com/d-e-v-grid/dg-monorepo/tree/main/packages/netron#readme"
+  "homepage": "https://github.com/d-e-v-grid/dg-monorepo/tree/main/packages/netron#readme",
+  "engines": {
+    "node": ">=20.19.1"
+  }
 }

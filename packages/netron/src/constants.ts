@@ -25,7 +25,7 @@ export const CONTEXTIFY_SYMBOL = Symbol();
  * 
  * @constant {string} SERVICE_ANNOTATION
  */
-export const SERVICE_ANNOTATION = 'nsvc';
+export const SERVICE_ANNOTATION = 'netron:service';
 
 /**
  * Annotation used to mark public methods and properties of Netron services.
@@ -34,7 +34,7 @@ export const SERVICE_ANNOTATION = 'nsvc';
  * 
  * @constant {string} PUBLIC_ANNOTATION
  */
-export const PUBLIC_ANNOTATION = 'nsvc:pub';
+export const PUBLIC_ANNOTATION = 'netron:method';
 
 /**
  * Event emitted when a service is exposed to the network.

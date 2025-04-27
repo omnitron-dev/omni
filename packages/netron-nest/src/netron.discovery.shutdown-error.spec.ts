@@ -1,4 +1,4 @@
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import { Test } from '@nestjs/testing';
 import { delay } from '@devgrid/common';
 import { NetronOptions } from '@devgrid/netron';
@@ -53,7 +53,7 @@ describe('Netron Discovery - Redis Shutdown Error Handling', () => {
   it('should handle Redis errors gracefully during deregistration on shutdown', async () => {
     redisMock.exec.mockRejectedValue(new Error('Redis multi exec failure'));
 
-    const loggerSpy = jest.spyOn(console, 'error').mockImplementation();
+    const loggerSpy = jest.spyOn(netronService.instance.discovery!.logger!, 'error').mockImplementation();
 
     await expect(netronService.instance.discovery?.shutdown()).resolves.not.toThrow();
 
@@ -69,7 +69,7 @@ describe('Netron Discovery - Redis Shutdown Error Handling', () => {
   it('should handle Redis errors gracefully during Pub/Sub unsubscribe on shutdown', async () => {
     redisMock.unsubscribe.mockRejectedValue(new Error('Redis unsubscribe failure'));
 
-    const loggerSpy = jest.spyOn(console, 'error').mockImplementation();
+    const loggerSpy = jest.spyOn(netronService.instance.discovery!.logger!, 'error').mockImplementation();
 
     await expect(netronService.instance.discovery?.shutdown()).resolves.not.toThrow();
 

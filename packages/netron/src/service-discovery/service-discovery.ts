@@ -118,7 +118,33 @@ export class ServiceDiscovery {
    */
   private registered = false;
 
-  private logger: Logger;
+  /**
+   * Logger instance for service discovery operations.
+   * 
+   * @description
+   * This logger is used to record and track service discovery events, errors, and operational
+   * information. It is initialized as a child logger of the main Netron logger, inheriting
+   * its configuration while adding specific context for service discovery operations.
+   * 
+   * @remarks
+   * The logger is configured with the following characteristics:
+   * - Inherits base configuration from the parent Netron logger
+   * - Includes additional context: { serviceDiscovery: true }
+   * - Used throughout the service discovery lifecycle for:
+   *   - Registration and deregistration events
+   *   - Heartbeat operations
+   *   - Error conditions and recovery attempts
+   *   - Pub/Sub message handling
+   *   - Shutdown procedures
+   * 
+   * @example
+   * // Logging a service discovery event
+   * this.logger.info('Node registration successful', { nodeId: this.nodeId });
+   * 
+   * // Logging an error condition
+   * this.logger.error('Failed to publish heartbeat', { error: err });
+   */
+  public logger: Logger;
 
   /**
    * Constructs a new ServiceDiscovery instance with the specified configuration

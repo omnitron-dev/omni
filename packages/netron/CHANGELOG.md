@@ -1,5 +1,11 @@
 # @devgrid/netron
 
+## 0.6.3
+
+### Patch Changes
+
+- fix tests
+
 ## 0.6.2
 
 ### Patch Changes

@@ -1,4 +1,4 @@
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import { Test } from '@nestjs/testing';
 import { NetronOptions } from '@devgrid/netron';
 

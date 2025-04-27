@@ -84,3 +84,11 @@ private sendRequestWrapper(type: PacketType, data: any) {
   });
 }
 ```
+
+# zod paramenters validation
+
+...
+
+# examples
+
+need many many examples

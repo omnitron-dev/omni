@@ -1,3 +1,5 @@
+import { LoggerOptions, DestinationStream } from 'pino';
+
 import { Definition } from './definition';
 
 /**
@@ -125,6 +127,59 @@ export type NetronOptions = {
    * @see ServiceDiscovery
    */
   discoveryPubSubEnabled?: boolean;
+
+  /**
+   * Optional logger configuration based on Pino LoggerOptions.
+   * Allows customizing the logging behavior of the Netron instance.
+   * 
+   * @type {LoggerOptions}
+   * @description Configuration options for the Pino logger instance.
+   * This includes settings such as:
+   * - Log level (debug, info, warn, error)
+   * - Custom formatters for log messages
+   * - Redaction of sensitive information
+   * - Custom serializers for objects
+   * - Timestamp formatting
+   * - Additional context fields
+   * 
+   * @see https://getpino.io/#/docs/api?id=options
+   * @example
+   * {
+   *   level: 'info',
+   *   formatters: {
+   *     level: (label) => ({ level: label })
+   *   },
+   *   redact: ['password', 'token']
+   * }
+   */
+  loggerOptions?: LoggerOptions;
+
+  /**
+   * Optional destination stream for logger output.
+   * If not provided, logs will be written to stdout by default.
+   * 
+   * @type {DestinationStream}
+   * @description A writable stream that receives log messages.
+   * This can be used to:
+   * - Redirect logs to a file
+   * - Send logs to a remote service
+   * - Implement custom log processing
+   * - Integrate with monitoring systems
+   * 
+   * @see https://getpino.io/#/docs/api?id=destination
+   * @example
+   * const fileStream = fs.createWriteStream('app.log');
+   * const netron = new Netron({ loggerDestination: fileStream });
+   */
+  loggerDestination?: DestinationStream;
+
+  /**
+   * Optional context for the logger.
+   * This can be used to add additional context to the logs.
+   * 
+   * @type {Record<string, any>}
+   */
+  loggerContext?: Record<string, any>;
 };
 
 /**

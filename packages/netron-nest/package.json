@@ -1,6 +1,6 @@
 {
   "name": "@devgrid/netron-nest",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "NestJS integration module for @devgrid/netron, providing seamless distributed system capabilities with decorators, dependency injection, and automatic service discovery in NestJS applications.",
   "author": "LuxQuant",
   "license": "MIT",

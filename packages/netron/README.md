@@ -4,7 +4,6 @@ A powerful TypeScript library for building distributed systems with event bus, s
 
 ## Features
 
-- 🌐 Cross-platform (Node.js and Browser)
 - 🔄 Bidirectional WebSocket communication
 - 📦 Remote object invocation (RPC)
 - 🚀 Event bus with parallel and serial execution

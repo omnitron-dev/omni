@@ -171,7 +171,10 @@ export class Netron extends AsyncEventEmitter {
     this.options = options ?? {};
     this.id = options?.id ?? randomUUID();
 
-    this.logger = LoggerFactory.getLogger({ peerId: this.id });
+    if (options?.loggerOptions || options?.loggerDestination) {
+      LoggerFactory.initLogger(options.loggerOptions || {}, options.loggerDestination);
+    }
+    this.logger = LoggerFactory.getLogger(options?.loggerContext);
 
     this.taskManager = new TaskManager({
       timeout: options?.taskTimeout,

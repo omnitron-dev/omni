@@ -48,7 +48,7 @@ export class LocalPeer extends AbstractPeer {
    */
   constructor(netron: Netron) {
     super(netron, netron.id);
-    this.logger = netron.logger;
+    this.logger = netron.logger.child({ peerId: this.id });
     this.abilities = {
       allowServiceEvents: netron.options?.allowServiceEvents ?? false,
     };

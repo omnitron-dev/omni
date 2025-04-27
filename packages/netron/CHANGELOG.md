@@ -1,5 +1,11 @@
 # @devgrid/netron
 
+## 0.6.2
+
+### Patch Changes
+
+- fix logger + tests
+
 ## 0.6.1
 
 ### Patch Changes

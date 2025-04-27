@@ -1,5 +1,6 @@
 import { Redis } from 'ioredis';
 
+import { Netron } from '../../src';
 import { ServiceDiscovery } from '../../src/service-discovery';
 
 import type { ServiceInfo, DiscoveryOptions } from '../../src/service-discovery/types';
@@ -19,9 +20,12 @@ describe('ServiceDiscovery Initialization', () => {
   const nodeId = 'node-1';
   const address = '127.0.0.1:8080';
   const services: ServiceInfo[] = [{ name: 'TestService', version: '1.0' }];
+  const netron = new Netron({
+    id: nodeId,
+  });
 
   it('should initialize correctly with minimal options', () => {
-    const discovery = new ServiceDiscovery(redis, nodeId, address, services);
+    const discovery = new ServiceDiscovery(redis, netron, address, services);
 
     expect(discovery).toBeDefined();
     expect(discovery['nodeId']).toBe(nodeId);
@@ -36,7 +40,7 @@ describe('ServiceDiscovery Initialization', () => {
       heartbeatInterval: 10000,
       heartbeatTTL: 30000,
     };
-    const discovery = new ServiceDiscovery(redis, nodeId, address, services, options);
+    const discovery = new ServiceDiscovery(redis, netron, address, services, options);
 
     expect(discovery).toBeDefined();
     expect(discovery['options'].heartbeatInterval).toBe(10000);
@@ -45,7 +49,7 @@ describe('ServiceDiscovery Initialization', () => {
 
   it('should handle invalid redis instance gracefully', () => {
     expect(() => {
-      new ServiceDiscovery(null as any, nodeId, address, services);
+      new ServiceDiscovery(null as any, netron, address, services);
     }).toThrow();
   });
 });

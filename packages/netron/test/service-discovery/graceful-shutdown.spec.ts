@@ -1,6 +1,7 @@
 import { Redis } from 'ioredis';
 import { delay } from '@devgrid/common';
 
+import { Netron } from '../../src';
 import { ServiceDiscovery } from '../../src/service-discovery';
 
 describe('ServiceDiscovery Graceful Shutdown', () => {
@@ -11,11 +12,15 @@ describe('ServiceDiscovery Graceful Shutdown', () => {
   const address = '127.0.0.1:3000';
   const services = [{ name: 'shutdown-service', version: '1.0.0' }];
 
+  const netron = new Netron({
+    id: nodeId,
+  });
+
   beforeEach(async () => {
     redis = new Redis('redis://localhost:6379/2');
     await redis.flushdb();
 
-    discovery = new ServiceDiscovery(redis, nodeId, address, services, {
+    discovery = new ServiceDiscovery(redis, netron, address, services, {
       heartbeatInterval: 500,
       heartbeatTTL: 1500,
       pubSubEnabled: true,

@@ -1,6 +1,7 @@
 import { Redis } from 'ioredis';
 import { delay } from '@devgrid/common';
 
+import { Netron } from '../../src';
 import { ServiceDiscovery } from '../../src/service-discovery';
 
 describe('ServiceDiscovery Node Re-registration', () => {
@@ -15,11 +16,15 @@ describe('ServiceDiscovery Node Re-registration', () => {
   const newAddress = '127.0.0.1:4000';
   const newServices = [{ name: 'new-service', version: '2.0.0' }];
 
+  const netron = new Netron({
+    id: nodeId,
+  });
+
   beforeEach(async () => {
     redis = new Redis('redis://localhost:6379/2');
     await redis.flushdb();
 
-    discoveryOriginal = new ServiceDiscovery(redis, nodeId, originalAddress, originalServices, {
+    discoveryOriginal = new ServiceDiscovery(redis, netron, originalAddress, originalServices, {
       heartbeatInterval: 500,
       heartbeatTTL: 1500,
     });
@@ -47,7 +52,7 @@ describe('ServiceDiscovery Node Re-registration', () => {
     await delay(2000); // Make sure old heartbeat TTL has expired
 
     // Create new discovery instance
-    discoveryNew = new ServiceDiscovery(redis, nodeId, newAddress, newServices, {
+    discoveryNew = new ServiceDiscovery(redis, netron, newAddress, newServices, {
       heartbeatInterval: 500,
       heartbeatTTL: 1500,
     });

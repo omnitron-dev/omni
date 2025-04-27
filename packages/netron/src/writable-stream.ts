@@ -174,7 +174,7 @@ export class NetronWritableStream extends Writable {
 
     this.peer.sendStreamChunk(this.id, null, this.index, true, this.isLive)
       .catch((sendError) => {
-        console.error(`Failed to send final stream chunk:`, sendError);
+        this.peer.logger.error(`Failed to send final stream chunk:`, sendError);
       })
       .finally(() => {
         super.destroy(error);
@@ -199,7 +199,7 @@ export class NetronWritableStream extends Writable {
    * @param {Error} err - The error that occurred
    */
   private handleError = (err: Error) => {
-    console.error(`NetronWritableStream (id: ${this.id}) error:`, err.message);
+    this.peer.logger.error(`NetronWritableStream (id: ${this.id}) error:`, err.message);
     this.cleanup();
   };
 

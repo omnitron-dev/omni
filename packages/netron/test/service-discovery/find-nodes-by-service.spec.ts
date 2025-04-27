@@ -1,6 +1,7 @@
 import { Redis } from 'ioredis';
 import { delay } from '@devgrid/common';
 
+import { Netron } from '../../src';
 import { ServiceDiscovery } from '../../src/service-discovery';
 
 describe('ServiceDiscovery findNodesByService', () => {
@@ -19,16 +20,24 @@ describe('ServiceDiscovery findNodesByService', () => {
     { name: 'payment-service', version: '2.0.0' },
   ];
 
+  const netronA = new Netron({
+    id: nodeIdA,
+  });
+
+  const netronB = new Netron({
+    id: nodeIdB,
+  });
+
   beforeEach(async () => {
     redis = new Redis('redis://localhost:6379/2');
     await redis.flushdb();
 
-    discoveryA = new ServiceDiscovery(redis, nodeIdA, addressA, servicesA, {
+    discoveryA = new ServiceDiscovery(redis, netronA, addressA, servicesA, {
       heartbeatInterval: 500,
       heartbeatTTL: 1500,
     });
 
-    discoveryB = new ServiceDiscovery(redis, nodeIdB, addressB, servicesB, {
+    discoveryB = new ServiceDiscovery(redis, netronB, addressB, servicesB, {
       heartbeatInterval: 500,
       heartbeatTTL: 1500,
     });

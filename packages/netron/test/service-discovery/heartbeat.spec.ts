@@ -1,6 +1,7 @@
 import { Redis } from 'ioredis';
 import { delay } from '@devgrid/common';
 
+import { Netron } from '../../src';
 import { NodeInfo } from '../../src/service-discovery/types';
 import { ServiceDiscovery } from '../../src/service-discovery';
 
@@ -14,8 +15,11 @@ describe('ServiceDiscovery Heartbeat', () => {
   beforeEach(async () => {
     redis = new Redis('redis://localhost:6379/2');
     await redis.flushdb();
+    const netron = new Netron({
+      id: nodeId,
+    });
 
-    discovery = new ServiceDiscovery(redis, nodeId, address, services, {
+    discovery = new ServiceDiscovery(redis, netron, address, services, {
       heartbeatInterval: 500,
       heartbeatTTL: 1500,
     });

@@ -1,6 +1,7 @@
 import { Redis } from 'ioredis';
 import { delay } from '@devgrid/common';
 
+import { Netron } from '../../src';
 import { ServiceDiscovery } from '../../src/service-discovery';
 
 describe('ServiceDiscovery Node Active Status', () => {
@@ -11,11 +12,15 @@ describe('ServiceDiscovery Node Active Status', () => {
   const address = '127.0.0.1:7000';
   const services = [{ name: 'status-service', version: '1.0.0' }];
 
+  const netron = new Netron({
+    id: nodeId,
+  });
+
   beforeEach(async () => {
     redis = new Redis('redis://localhost:6379/2');
     await redis.flushdb();
 
-    discovery = new ServiceDiscovery(redis, nodeId, address, services, {
+    discovery = new ServiceDiscovery(redis, netron, address, services, {
       heartbeatInterval: 500,
       heartbeatTTL: 1000,
     });

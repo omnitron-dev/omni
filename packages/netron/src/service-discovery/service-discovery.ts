@@ -1,7 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { Logger } from 'pino';
 import { Redis } from 'ioredis';
 
+import { Netron } from '../netron';
 import { NodeInfo, ServiceInfo, DiscoveryEvent, DiscoveryOptions } from './types';
 
 /**
@@ -116,6 +118,8 @@ export class ServiceDiscovery {
    */
   private registered = false;
 
+  private logger: Logger;
+
   /**
    * Constructs a new ServiceDiscovery instance with the specified configuration
    * 
@@ -129,13 +133,14 @@ export class ServiceDiscovery {
    * The constructor applies default values for heartbeat interval and TTL if not specified.
    * These defaults ensure reasonable behavior while allowing customization when needed.
    */
-  constructor(redis: Redis, nodeId: string, address: string, services: ServiceInfo[], options?: DiscoveryOptions) {
+  constructor(redis: Redis, netron: Netron, address: string, services: ServiceInfo[], options?: DiscoveryOptions) {
     if (!redis) {
       throw new Error('Redis instance must be provided');
     }
 
     this.redis = redis;
-    this.nodeId = nodeId;
+    this.nodeId = netron.id;
+    this.logger = netron.logger.child({ serviceDiscovery: true });
     this.address = address;
     this.services = services;
     this.options = {
@@ -199,40 +204,40 @@ export class ServiceDiscovery {
    */
   public async shutdown(): Promise<void> {
     if (this.stopped) {
-      console.info(`Graceful shutdown already initiated for node '${this.nodeId}'`);
+      this.logger.info(`Graceful shutdown already initiated for node '${this.nodeId}'`);
       return this.shutdownPromise;
     }
 
     this.stopped = true;
 
     this.shutdownPromise = (async () => {
-      console.info(`Initiating graceful shutdown for node '${this.nodeId}'`);
+      this.logger.info(`Initiating graceful shutdown for node '${this.nodeId}'`);
 
       // Stop the heartbeat mechanism
       if (this.heartbeatTimer) {
         clearInterval(this.heartbeatTimer);
         this.heartbeatTimer = undefined;
-        console.info(`Heartbeat interval cleared for node '${this.nodeId}'`);
+        this.logger.info(`Heartbeat interval cleared for node '${this.nodeId}'`);
       }
 
       // Deregister the node from the discovery system
       try {
         await this.deregisterNodeById(this.nodeId);
         this.registered = false; // Reset registration state
-        console.info(`Node '${this.nodeId}' successfully deregistered`);
+        this.logger.info(`Node '${this.nodeId}' successfully deregistered`);
       } catch (error) {
-        console.error(`Error during deregistration of node '${this.nodeId}'`, { error });
+        this.logger.error(`Error during deregistration of node '${this.nodeId}'`, { error });
       }
 
       // Clean up Redis Pub/Sub subscriptions
       try {
         await this.unsubscribeFromEvents();
-        console.info(`Unsubscribed from Redis events for node '${this.nodeId}'`);
+        this.logger.info(`Unsubscribed from Redis events for node '${this.nodeId}'`);
       } catch (error) {
-        console.error(`Error during Redis Pub/Sub unsubscribe for node '${this.nodeId}'`, { error });
+        this.logger.error(`Error during Redis Pub/Sub unsubscribe for node '${this.nodeId}'`, { error });
       }
 
-      console.info(`Graceful shutdown completed for node '${this.nodeId}'`);
+      this.logger.info(`Graceful shutdown completed for node '${this.nodeId}'`);
     })();
 
     return this.shutdownPromise;
@@ -270,7 +275,7 @@ export class ServiceDiscovery {
   public async publishHeartbeat(): Promise<void> {
     // Prevent heartbeat publishing if shutdown has been initiated
     if (this.stopped) {
-      console.warn(`Attempted to publish heartbeat after shutdown initiated for node '${this.nodeId}'`);
+      this.logger.warn(`Attempted to publish heartbeat after shutdown initiated for node '${this.nodeId}'`);
       return;
     }
 
@@ -308,7 +313,7 @@ export class ServiceDiscovery {
 
         // Log successful retry if applicable
         if (attempt > 1) {
-          console.info(`Heartbeat succeeded after ${attempt} attempts`);
+          this.logger.info(`Heartbeat succeeded after ${attempt} attempts`);
         }
 
         // Publish the appropriate event
@@ -316,10 +321,10 @@ export class ServiceDiscovery {
         return;
       } catch (error) {
         // Log failure and implement retry logic
-        console.error(`Heartbeat attempt ${attempt} failed`, { error });
+        this.logger.error(`Heartbeat attempt ${attempt} failed`, { error });
 
         if (attempt === maxRetries) {
-          console.error(`All ${maxRetries} heartbeat attempts failed.`);
+          this.logger.error(`All ${maxRetries} heartbeat attempts failed.`);
           throw error;
         }
 
@@ -429,7 +434,7 @@ export class ServiceDiscovery {
 
       return activeNodes;
     } catch (error) {
-      console.error(`Error fetching active nodes`, { error });
+      this.logger.error(`Error fetching active nodes`, { error });
       throw error;
     }
   }
@@ -462,7 +467,7 @@ export class ServiceDiscovery {
         )
       );
     } catch (error) {
-      console.error(`Error finding nodes by service '${name}' (version: ${version})`, { error });
+      this.logger.error(`Error finding nodes by service '${name}' (version: ${version})`, { error });
       throw error;
     }
   }
@@ -491,13 +496,13 @@ export class ServiceDiscovery {
    * await discovery.subscribeToEvents((event) => {
    *   switch (event.type) {
    *     case 'NODE_REGISTERED':
-   *       console.log(`New node registered: ${event.nodeId}`);
+   *       this.logger.log(`New node registered: ${event.nodeId}`);
    *       break;
    *     case 'NODE_UPDATED':
-   *       console.log(`Node updated: ${event.nodeId}`);
+   *       this.logger.log(`Node updated: ${event.nodeId}`);
    *       break;
    *     case 'NODE_DEREGISTERED':
-   *       console.log(`Node deregistered: ${event.nodeId}`);
+   *       this.logger.log(`Node deregistered: ${event.nodeId}`);
    *       break;
    *   }
    * });
@@ -523,7 +528,7 @@ export class ServiceDiscovery {
         handler(event);
       } catch (error) {
         // Log parsing or handler errors without breaking the subscription
-        console.error('Error processing Redis event:', error);
+        this.logger.error('Error processing Redis event:', error);
       }
     });
   }
@@ -558,16 +563,16 @@ export class ServiceDiscovery {
           .exec();
 
         if (attempt > 1) {
-          console.info(`Deregistration of node '${nodeId}' succeeded after ${attempt} attempts`);
+          this.logger.info(`Deregistration of node '${nodeId}' succeeded after ${attempt} attempts`);
         }
 
         await this.publishEvent('NODE_DEREGISTERED');
         return;
       } catch (error) {
-        console.error(`Deregistration attempt ${attempt} for node '${nodeId}' failed`, { error });
+        this.logger.error(`Deregistration attempt ${attempt} for node '${nodeId}' failed`, { error });
 
         if (attempt === maxRetries) {
-          console.error(`All ${maxRetries} deregistration attempts for node '${nodeId}' failed.`);
+          this.logger.error(`All ${maxRetries} deregistration attempts for node '${nodeId}' failed.`);
           throw error;
         }
 
@@ -600,7 +605,7 @@ export class ServiceDiscovery {
       }
       return exists === 1;
     } catch (error) {
-      console.error(`Error checking if node '${nodeId}' is active`, { error });
+      this.logger.error(`Error checking if node '${nodeId}' is active`, { error });
       throw error;
     }
   }
@@ -622,14 +627,14 @@ export class ServiceDiscovery {
    */
   public async updateServices(services: ServiceInfo[]): Promise<void> {
     if (this.stopped) {
-      console.warn(`Attempted to update services after shutdown initiated for node '${this.nodeId}'`);
+      this.logger.warn(`Attempted to update services after shutdown initiated for node '${this.nodeId}'`);
       return;
     }
     this.services = services;
     try {
       await this.publishHeartbeat();
     } catch (error) {
-      console.error(`Error updating services`, { error });
+      this.logger.error(`Error updating services`, { error });
       throw error;
     }
   }
@@ -650,14 +655,14 @@ export class ServiceDiscovery {
    */
   public async updateAddress(address: string): Promise<void> {
     if (this.stopped) {
-      console.warn(`Attempted to update address after shutdown initiated for node '${this.nodeId}'`);
+      this.logger.warn(`Attempted to update address after shutdown initiated for node '${this.nodeId}'`);
       return;
     }
     this.address = address;
     try {
       await this.publishHeartbeat();
     } catch (error) {
-      console.error(`Error updating address to '${address}'`, { error });
+      this.logger.error(`Error updating address to '${address}'`, { error });
       throw error;
     }
   }

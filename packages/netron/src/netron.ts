@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { Logger } from 'pino';
 import { Redis } from 'ioredis';
 import { randomUUID } from 'node:crypto';
 import { IncomingMessage } from 'node:http';
@@ -10,6 +11,7 @@ import { LocalPeer } from './local-peer';
 import { RemotePeer } from './remote-peer';
 import { getPeerEventName } from './utils';
 import { ServiceStub } from './service-stub';
+import LoggerFactory from './logging/logger';
 import { Task, TaskManager } from './task-manager';
 import { ServiceInfo, ServiceDiscovery } from './service-discovery';
 import { CONNECT_TIMEOUT, NETRON_EVENT_PEER_CONNECT, NETRON_EVENT_PEER_DISCONNECT } from './constants';
@@ -147,6 +149,8 @@ export class Netron extends AsyncEventEmitter {
    */
   private discoveryRedis?: Redis;
 
+  public logger: Logger;
+
   /**
    * Creates a new Netron instance with the specified options.
    * Initializes the task manager and local peer.
@@ -166,6 +170,8 @@ export class Netron extends AsyncEventEmitter {
 
     this.options = options ?? {};
     this.id = options?.id ?? randomUUID();
+
+    this.logger = LoggerFactory.getLogger({ peerId: this.id });
 
     this.taskManager = new TaskManager({
       timeout: options?.taskTimeout,
@@ -212,7 +218,7 @@ export class Netron extends AsyncEventEmitter {
           this.discoveryRedis = new Redis(this.options.discoveryRedisUrl);
           this.discovery = new ServiceDiscovery(
             this.discoveryRedis,
-            this.id,
+            this,
             `${this.options.listenHost}:${this.options.listenPort}`,
             this.getExposedServices(),
             {
@@ -394,20 +400,20 @@ export class Netron extends AsyncEventEmitter {
      */
     const attemptReconnect = () => {
       if (this.options.maxReconnectAttempts && reconnectAttempts >= this.options.maxReconnectAttempts) {
-        console.error(`Reconnect attempts exceeded (${this.options.maxReconnectAttempts}). Giving up.`);
+        this.logger.error(`Reconnect attempts exceeded (${this.options.maxReconnectAttempts}). Giving up.`);
         return;
       }
 
       const delay = Math.min(baseDelay * 2 ** reconnectAttempts, 30000);
-      console.info(`Reconnecting to ${address} in ${delay} ms (attempt ${reconnectAttempts + 1}/${this.options.maxReconnectAttempts ?? 'unlimited'})...`);
+      this.logger.info(`Reconnecting to ${address} in ${delay} ms (attempt ${reconnectAttempts + 1}/${this.options.maxReconnectAttempts ?? 'unlimited'})...`);
 
       setTimeout(async () => {
         reconnectAttempts++;
         try {
           await connectPeer();
-          console.info(`Successfully reconnected to ${address}.`);
+          this.logger.info(`Successfully reconnected to ${address}.`);
         } catch (err) {
-          console.warn(`Reconnect failed (${reconnectAttempts}/${this.options.maxReconnectAttempts ?? 'unlimited'}):`);
+          this.logger.warn(`Reconnect failed (${reconnectAttempts}/${this.options.maxReconnectAttempts ?? 'unlimited'}):`);
           attemptReconnect();
         }
       }, delay);
@@ -548,7 +554,7 @@ export class Netron extends AsyncEventEmitter {
 
         await timeoutPromise;
       } catch (err: any) {
-        console.error(`Event emit error: ${err.message}`);
+        this.logger.error(`Event emit error: ${err.message}`);
       }
     }
 

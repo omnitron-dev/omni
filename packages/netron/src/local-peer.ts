@@ -1,3 +1,5 @@
+import { Logger } from 'pino';
+
 import { Netron } from './netron';
 import { Interface } from './interface';
 import { Definition } from './definition';
@@ -24,6 +26,8 @@ import {
  * @extends AbstractPeer
  */
 export class LocalPeer extends AbstractPeer {
+  public logger: Logger;
+
   /**
    * A mapping of service definition IDs to their corresponding ServiceStub instances.
    * This map maintains the relationship between service definitions and their stubs.
@@ -44,6 +48,7 @@ export class LocalPeer extends AbstractPeer {
    */
   constructor(netron: Netron) {
     super(netron, netron.id);
+    this.logger = netron.logger;
     this.abilities = {
       allowServiceEvents: netron.options?.allowServiceEvents ?? false,
     };

@@ -24,6 +24,8 @@
     "bufferutil": "^4.0.9",
     "es-toolkit": "^1.33.0",
     "ioredis": "^5.6.1",
+    "pino": "^9.6.0",
+    "pino-pretty": "^13.0.0",
     "reflect-metadata": "^0.2.2",
     "semver": "^7.7.1",
     "ws": "^8.18.1"
@@ -32,6 +34,7 @@
     "@jest/globals": "^29.7.0",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.13.13",
+    "@types/pino": "^7.0.5",
     "@types/semver": "^7.5.8",
     "@types/ws": "^8.18.0",
     "del-cli": "^6.0.0",

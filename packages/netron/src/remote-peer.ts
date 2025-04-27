@@ -1,3 +1,4 @@
+import { Logger } from 'pino';
 /**
  * Imports required dependencies for the RemotePeer class implementation.
  * @module remote-peer
@@ -50,6 +51,8 @@ export class RemotePeer extends AbstractPeer {
   /** Event emitter for handling internal events */
   private events = new EventEmitter();
 
+  public logger: Logger;
+
   /**
    * Map of response handlers for pending requests with timeout functionality.
    * Each handler contains success and error callbacks.
@@ -96,6 +99,8 @@ export class RemotePeer extends AbstractPeer {
     id: string = ''
   ) {
     super(netron, id);
+
+    this.logger = netron.logger.child({ peerId: this.id, remotePeer: true });
   }
 
   /**
@@ -114,10 +119,10 @@ export class RemotePeer extends AbstractPeer {
         try {
           this.handlePacket(decodePacket(data));
         } catch (error) {
-          console.error('Packet decode error:', error);
+          this.logger.error('Packet decode error:', error);
         }
       } else {
-        console.warn('Received non-binary message:', data);
+        this.logger.warn('Received non-binary message:', data);
       }
     });
 
@@ -347,7 +352,7 @@ export class RemotePeer extends AbstractPeer {
     if (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING) {
       this.socket.close();
     } else {
-      console.warn(`Attempt to close WebSocket in unexpected state: ${this.socket.readyState}`);
+      this.logger.warn(`Attempt to close WebSocket in unexpected state: ${this.socket.readyState}`);
     }
     this.cleanup();
   }
@@ -539,11 +544,11 @@ export class RemotePeer extends AbstractPeer {
           await stub.set(name, value);
           await this.sendResponse(packet, undefined);
         } catch (err: any) {
-          console.error('Error setting value:', err);
+          this.logger.error('Error setting value:', err);
           try {
             await this.sendErrorResponse(packet, err);
           } catch (err_: any) {
-            console.error('Error sending error response:', err_);
+            this.logger.error('Error sending error response:', err_);
           }
         }
         break;
@@ -558,7 +563,7 @@ export class RemotePeer extends AbstractPeer {
           try {
             await this.sendErrorResponse(packet, err);
           } catch (err_) {
-            console.error('Error sending error response:', err_);
+            this.logger.error('Error sending error response:', err_);
           }
         }
         break;
@@ -573,7 +578,7 @@ export class RemotePeer extends AbstractPeer {
           try {
             await this.sendErrorResponse(packet, err);
           } catch (err_) {
-            console.error('Error sending error response:', err_);
+            this.logger.error('Error sending error response:', err_);
           }
         }
         break;
@@ -586,7 +591,7 @@ export class RemotePeer extends AbstractPeer {
           try {
             await this.sendErrorResponse(packet, err);
           } catch (err_) {
-            console.error('Error sending error response:', err_);
+            this.logger.error('Error sending error response:', err_);
           }
         }
         break;
@@ -612,7 +617,7 @@ export class RemotePeer extends AbstractPeer {
         break;
       }
       default: {
-        console.warn('Unknown packet type:', pType);
+        this.logger.warn('Unknown packet type:', pType);
       }
     }
   }

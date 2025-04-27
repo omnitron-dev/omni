@@ -152,7 +152,7 @@ export class NetronReadableStream extends Readable {
 
     this.timeout = setTimeout(() => {
       const message = `Stream ${this.id} inactive for ${timeoutDuration}ms, closing.`;
-      console.warn(message);
+      this.peer.logger.warn(message);
       this.destroy(new Error(message));
     }, timeoutDuration);
   }
@@ -169,7 +169,7 @@ export class NetronReadableStream extends Readable {
     if (this.isClosed) return;
 
     if (this.isLive && !force) {
-      console.warn(`Attempt to close live stream ${this.id}, operation ignored.`);
+      this.peer.logger.warn(`Attempt to close live stream ${this.id}, operation ignored.`);
       return;
     }
 
@@ -200,7 +200,7 @@ export class NetronReadableStream extends Readable {
    * @returns {void}
    */
   private handleError = (error: Error): void => {
-    console.error(`NetronReadableStream (id: ${this.id}) error:`, error.message);
+    this.peer.logger.error(`NetronReadableStream (id: ${this.id}) error:`, error.message);
     this.cleanup();
   };
 

@@ -1,6 +1,7 @@
 import { Redis } from 'ioredis';
 import { delay } from '@devgrid/common';
 
+import { Netron } from '../../src';
 import { ServiceDiscovery } from '../../src/service-discovery';
 
 import type { DiscoveryEvent } from '../../src/service-discovery/types';
@@ -23,15 +24,19 @@ describe('ServiceDiscovery Pub/Sub Event Propagation', () => {
     redis = new Redis('redis://localhost:6379/2');
     await redis.flushdb();
 
+    const netron = new Netron({
+      id: pubNodeId,
+    });
+
     receivedEvent = undefined;
 
-    subscriber = new ServiceDiscovery(redis, subNodeId, addressSub, servicesSub, {
+    subscriber = new ServiceDiscovery(redis, netron, addressSub, servicesSub, {
       heartbeatInterval: 500,
       heartbeatTTL: 1500,
       pubSubEnabled: true,
     });
 
-    publisher = new ServiceDiscovery(redis, pubNodeId, addressPub, servicesPub, {
+    publisher = new ServiceDiscovery(redis, netron, addressPub, servicesPub, {
       heartbeatInterval: 500,
       heartbeatTTL: 1500,
       pubSubEnabled: true,

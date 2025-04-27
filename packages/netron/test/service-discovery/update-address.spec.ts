@@ -1,5 +1,6 @@
 import { Redis } from 'ioredis';
 
+import { Netron } from '../../src';
 import { ServiceDiscovery } from '../../src/service-discovery';
 
 describe('ServiceDiscovery Update Address', () => {
@@ -15,7 +16,11 @@ describe('ServiceDiscovery Update Address', () => {
     redis = new Redis('redis://localhost:6379/2');
     await redis.flushdb();
 
-    discovery = new ServiceDiscovery(redis, nodeId, initialAddress, services, {
+    const netron = new Netron({
+      id: nodeId,
+    });
+
+    discovery = new ServiceDiscovery(redis, netron, initialAddress, services, {
       heartbeatInterval: 500,
       heartbeatTTL: 1500,
     });

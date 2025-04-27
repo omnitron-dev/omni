@@ -1,6 +1,7 @@
 import { Redis } from 'ioredis';
 import { delay } from '@devgrid/common';
 
+import { Netron } from '../../src';
 import { NodeInfo, ServiceDiscovery } from '../../src/service-discovery';
 
 describe('ServiceDiscovery Concurrent Updates', () => {
@@ -11,11 +12,15 @@ describe('ServiceDiscovery Concurrent Updates', () => {
   const initialAddress = '127.0.0.1:4000';
   const initialServices = [{ name: 'initial-service', version: '1.0.0' }];
 
+  const netron = new Netron({
+    id: nodeId,
+  });
+
   beforeEach(async () => {
     redis = new Redis('redis://localhost:6379/2');
     await redis.flushdb();
 
-    discovery = new ServiceDiscovery(redis, nodeId, initialAddress, initialServices, {
+    discovery = new ServiceDiscovery(redis, netron, initialAddress, initialServices, {
       heartbeatInterval: 500,
       heartbeatTTL: 1500,
     });

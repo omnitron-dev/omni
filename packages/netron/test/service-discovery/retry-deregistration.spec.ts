@@ -2,6 +2,7 @@ import { Redis } from 'ioredis';
 import { jest } from '@jest/globals';
 import { delay } from '@devgrid/common';
 
+import { Netron } from '../../src';
 import { ServiceDiscovery } from '../../src/service-discovery';
 
 describe('ServiceDiscovery Retry Deregistration', () => {
@@ -16,7 +17,11 @@ describe('ServiceDiscovery Retry Deregistration', () => {
     redis = new Redis('redis://localhost:6379/2');
     await redis.flushdb();
 
-    discovery = new ServiceDiscovery(redis, nodeId, address, services, {
+    const netron = new Netron({
+      id: nodeId,
+    });
+
+    discovery = new ServiceDiscovery(redis, netron, address, services, {
       heartbeatInterval: 500,
       heartbeatTTL: 1500,
       pubSubEnabled: true,

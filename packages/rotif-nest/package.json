@@ -11,16 +11,16 @@
   },
   "peerDependencies": {
     "@devgrid/rotif": "workspace:*",
-    "@nestjs/common": "^11.0.20",
-    "@nestjs/core": "^11.0.20"
+    "@nestjs/common": "^11.1.0",
+    "@nestjs/core": "^11.1.0"
   },
   "main": "./dist/index.js",
   "typings": "./dist/index.d.ts",
   "devDependencies": {
     "@jest/globals": "^29.7.0",
-    "@nestjs/common": "^11.0.13",
-    "@nestjs/core": "^11.0.13",
-    "@nestjs/testing": "^11.0.13",
+    "@nestjs/common": "^11.1.0",
+    "@nestjs/core": "^11.1.0",
+    "@nestjs/testing": "^11.1.0",
     "@swc/jest": "^0.2.37",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.13.13",

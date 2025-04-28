@@ -1,6 +1,6 @@
 {
   "name": "@devgrid/rotif",
-  "version": "0.1.2",
+  "version": "0.2.1",
   "description": "Redis based notification system.",
   "author": "LuxQuant",
   "license": "MIT",
@@ -8,7 +8,8 @@
   "types": "dist/index.d.ts",
   "module": "dist/esm/index.js",
   "files": [
-    "dist"
+    "dist",
+    "lua"
   ],
   "scripts": {
     "build": "tsc --build ./tsconfig.build.json && tsc --build ./tsconfig.esm.json",

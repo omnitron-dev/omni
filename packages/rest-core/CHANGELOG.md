@@ -1,5 +1,11 @@
 # @devgrid/rest-core
 
+## 3.53.2
+
+### Patch Changes
+
+- update deps
+
 ## 3.53.1
 
 ### Patch Changes

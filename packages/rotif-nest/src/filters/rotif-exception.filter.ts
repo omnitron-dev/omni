@@ -69,9 +69,6 @@ export class RotifExceptionFilter implements ExceptionFilter {
     if (moveToDlq && context.ack) {
       this.logger.warn(`Message "${context.id}" is being acknowledged and moved to DLQ.`);
       await context.ack(); // Acknowledge the message, Rotif will handle DLQ.
-    } else if (context.retry) {
-      this.logger.debug(`Retrying message "${context.id}" due to error.`);
-      await context.retry(); // Retry the message if possible.
     }
   }
 }

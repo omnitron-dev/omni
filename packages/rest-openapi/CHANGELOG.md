@@ -1,5 +1,13 @@
 # @devgrid/rest-openapi
 
+## 3.53.2
+
+### Patch Changes
+
+- update deps
+- Updated dependencies
+  - @devgrid/rest-core@3.53.2
+
 ## 3.53.1
 
 ### Patch Changes

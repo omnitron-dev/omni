@@ -17,12 +17,12 @@
     "test:cov": "jest --coverage"
   },
   "dependencies": {
-    "@devgrid/netron": "workspace:*",
     "@nestjs/common": "^11.1.0",
     "@nestjs/core": "^11.1.0",
     "reflect-metadata": "^0.2.2"
   },
   "devDependencies": {
+    "@devgrid/netron": "workspace:*",
     "@nestjs/testing": "^11.1.0",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.15.2",
@@ -32,6 +32,7 @@
     "typescript": "^5.8.3"
   },
   "peerDependencies": {
+    "@devgrid/netron": "workspace:*",
     "@nestjs/common": "^11.1.0",
     "@nestjs/core": "^11.1.0"
   },

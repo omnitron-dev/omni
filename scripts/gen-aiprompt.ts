@@ -65,7 +65,7 @@ function generatePrompt(
     const relativePath = path.relative(projectPath, file).replace(/\\/g, '/');
     const content = fs.readFileSync(file, 'utf8');
 
-    prompt += `### File: ${relativePath}\n`;
+    prompt += `### ${relativePath}\n`;
     prompt += '```\n';
     prompt += content;
     prompt += '\n```\n\n';

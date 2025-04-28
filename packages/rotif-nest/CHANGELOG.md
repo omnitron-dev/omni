@@ -1,5 +1,29 @@
 # @devgrid/rotif-nest
 
+## 0.2.2
+
+### Patch Changes
+
+- update deps
+
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies
+  - @devgrid/rotif@0.2.1
+
+## 0.2.0
+
+### Minor Changes
+
+- improvements and fixes
+
+### Patch Changes
+
+- Updated dependencies
+  - @devgrid/rotif@0.2.0
+
 ## 0.1.6
 
 ### Patch Changes

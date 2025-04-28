@@ -1,5 +1,13 @@
 # @devgrid/rest-react-query
 
+## 4.0.2
+
+### Patch Changes
+
+- update deps
+- Updated dependencies
+  - @devgrid/rest-core@3.53.2
+
 ## 4.0.1
 
 ### Patch Changes

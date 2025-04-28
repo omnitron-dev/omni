@@ -1,6 +1,6 @@
 {
   "name": "@devgrid/rotif-nest",
-  "version": "0.1.6",
+  "version": "0.2.2",
   "license": "MIT",
   "files": [
     "dist"
@@ -9,10 +9,8 @@
     "build": "tsc --project ./tsconfig.build.json",
     "test": "jest"
   },
-  "dependencies": {
-    "@devgrid/rotif": "workspace:*"
-  },
   "peerDependencies": {
+    "@devgrid/rotif": "workspace:*",
     "@nestjs/common": "^11.0.20",
     "@nestjs/core": "^11.0.20"
   },

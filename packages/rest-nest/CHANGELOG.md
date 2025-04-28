@@ -1,5 +1,19 @@
 # @devgrid/rest-nest
 
+## 4.0.3
+
+### Patch Changes
+
+- update deps
+- Updated dependencies
+  - @devgrid/rest-core@3.53.2
+
+## 4.0.2
+
+### Patch Changes
+
+- fix deps
+
 ## 4.0.1
 
 ### Patch Changes

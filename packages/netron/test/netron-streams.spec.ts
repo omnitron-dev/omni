@@ -205,7 +205,7 @@ describe('Netron Streams', () => {
     await delay(100);
 
     expect(stream.destroyed).toBe(true);
-    expect(errorHandler).toHaveBeenCalledWith(`NetronReadableStream (id: ${stream.id}) error:`, error.message);
+    expect(errorHandler).toHaveBeenCalledWith(`Stream error occurred`, { error, streamId: stream.id });
     expect(peer.readableStreams.has(stream.id)).toBe(false);
 
     errorHandler.mockRestore();
@@ -271,10 +271,7 @@ describe('Netron Streams', () => {
 
     await new Promise((resolve) => stream.on('close', resolve));
 
-    expect(errorHandler).toHaveBeenCalledWith(
-      expect.stringContaining(`NetronWritableStream (id: ${stream.id}) error:`),
-      'Destroy error'
-    );
+    expect(errorHandler).toHaveBeenCalledWith(`Stream error occurred`, { error, streamId: stream.id });
 
     expect(peer1.writableStreams.has(stream.id)).toBeFalsy();
 

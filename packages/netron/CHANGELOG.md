@@ -1,5 +1,11 @@
 # @devgrid/netron
 
+## 0.6.4
+
+### Patch Changes
+
+- fix service discovery for client mode
+
 ## 0.6.3
 
 ### Patch Changes

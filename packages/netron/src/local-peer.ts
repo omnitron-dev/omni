@@ -64,21 +64,26 @@ export class LocalPeer extends AbstractPeer {
    * @throws {Error} If the service metadata cannot be retrieved.
    */
   async exposeService(instance: any): Promise<Definition> {
+    this.logger.info('Exposing service', { instance });
     const meta = getServiceMetadata(instance);
     if (!meta) {
+      this.logger.error('Invalid service: Service metadata could not be retrieved');
       throw new Error('Invalid service: Service metadata could not be retrieved');
     }
 
     const existingStub = this.serviceInstances.get(instance);
     if (existingStub) {
+      this.logger.warn('Service instance already exposed', { name: meta.name });
       throw new Error(`Service instance already exposed: ${meta.name}`);
     }
 
     const serviceKey = getQualifiedName(meta.name, meta.version);
     if (this.netron.services.has(serviceKey)) {
+      this.logger.warn('Service already exposed', { serviceKey });
       throw new Error(`Service already exposed: ${serviceKey}`);
     }
 
+    this.logger.info('Creating service stub', { serviceKey });
     const stub = new ServiceStub(this, instance, meta);
     const def = stub.definition;
 
@@ -95,6 +100,7 @@ export class LocalPeer extends AbstractPeer {
     } as ServiceExposeEvent);
 
     await this.netron.discovery?.updateServices(this.netron.getExposedServices());
+    this.logger.info('Service exposed successfully', { serviceKey });
 
     return def;
   }
@@ -137,10 +143,12 @@ export class LocalPeer extends AbstractPeer {
    * @throws {Error} If the service is not found or if there are issues during cleanup.
    */
   async unexposeService(serviceName: string) {
+    this.logger.info('Unexposing service', { serviceName });
     const def = this.getDefinitionByServiceName(serviceName);
     const defId = def.id;
     for (const i of this.interfaces.values()) {
       if (i.instance.$def?.parentId === defId) {
+        this.logger.debug('Releasing interface', { defId });
         this.releaseInterface(i.instance);
       }
     }
@@ -160,6 +168,7 @@ export class LocalPeer extends AbstractPeer {
     });
 
     await this.netron.discovery?.updateServices(this.netron.getExposedServices());
+    this.logger.info('Service unexposed successfully', { serviceName });
   }
 
   /**
@@ -286,6 +295,7 @@ export class LocalPeer extends AbstractPeer {
    * @throws {Error} If the service definition is unknown or if the property cannot be set.
    */
   async set(defId: string, name: string, value: any) {
+    this.logger.debug('Setting property', { defId, name });
     return this.getStubByDefinitionId(defId).set(name, value);
   }
 
@@ -300,6 +310,7 @@ export class LocalPeer extends AbstractPeer {
    * @throws {Error} If the service definition is unknown or if the property cannot be accessed.
    */
   async get(defId: string, name: string) {
+    this.logger.debug('Getting property', { defId, name });
     return this.processResult(await this.getStubByDefinitionId(defId).get(name));
   }
 
@@ -315,6 +326,7 @@ export class LocalPeer extends AbstractPeer {
    * @throws {Error} If the service definition is unknown or if the method call fails.
    */
   async call(defId: string, method: string, args: any[]) {
+    this.logger.debug('Calling method', { defId, method });
     return this.processResult(await this.getStubByDefinitionId(defId).call(method, args));
   }
 

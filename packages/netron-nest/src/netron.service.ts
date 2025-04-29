@@ -59,12 +59,6 @@ export class NetronService implements OnApplicationBootstrap, OnApplicationShutd
    */
   async onApplicationBootstrap(): Promise<void> {
     await this.netron.start();
-    if (this.options.listenHost || this.options.listenPort) {
-      this.logger.log(`Netron server started at ${this.options.listenHost}:${this.options.listenPort}`);
-    } else {
-      this.logger.log('Netron initialized in client mode.');
-    }
-
     this.registerDiscoveredServices();
   }
 

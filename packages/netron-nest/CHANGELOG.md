@@ -1,5 +1,13 @@
 # @devgrid/netron-nest
 
+## 0.1.6
+
+### Patch Changes
+
+- fix service discovery for client mode
+- Updated dependencies
+  - @devgrid/netron@0.6.4
+
 ## 0.1.5
 
 ### Patch Changes

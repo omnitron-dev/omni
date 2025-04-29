@@ -198,12 +198,21 @@ export class Netron extends AsyncEventEmitter {
    */
   async start() {
     if (this.isStarted) {
+      this.logger.warn('Netron instance already started');
       throw new Error('Netron already started');
     }
 
+    this.logger.info('Starting Netron instance');
     await this.taskManager.loadTasksFromDir(path.join(__dirname, 'core-tasks'));
 
     if (!this.options?.listenHost || !this.options?.listenPort) {
+      this.logger.info('Netron started in client-only mode');
+
+      if (this.options.discoveryEnabled && this.options.discoveryRedisUrl) {
+        this.logger.info('Initializing service discovery in client mode');
+        await this.initServiceDiscovery(true);
+      }
+
       this.isStarted = true;
       return Promise.resolve();
     }
@@ -215,40 +224,29 @@ export class Netron extends AsyncEventEmitter {
       });
 
       this.wss.on('listening', async () => {
+        this.logger.info(`Netron server started at ${this.options.listenHost}:${this.options.listenPort}`);
         this.isStarted = true;
 
         if (this.options.discoveryEnabled && this.options.discoveryRedisUrl) {
-          this.discoveryRedis = new Redis(this.options.discoveryRedisUrl);
-          this.discovery = new ServiceDiscovery(
-            this.discoveryRedis,
-            this,
-            `${this.options.listenHost}:${this.options.listenPort}`,
-            this.getExposedServices(),
-            {
-              heartbeatInterval: this.options.discoveryHeartbeatInterval,
-              heartbeatTTL: this.options.discoveryHeartbeatTTL,
-              pubSubEnabled: this.options.discoveryPubSubEnabled ?? true,
-            }
-          );
-          this.discovery.startHeartbeat();
-          await this.discovery.subscribeToEvents((event) => {
-            this.emit('discovery:event', event);
-          });
+          await this.initServiceDiscovery(false);
         }
 
         resolve();
       });
 
       this.wss.on('error', (err) => {
+        this.logger.error('WebSocket server error', { error: err });
         reject(err);
       });
 
       this.wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
         const peerId = new URL(req.url!, 'ws://localhost').searchParams.get('id');
         if (!peerId) {
+          this.logger.warn('Connection attempt without peer ID, closing');
           ws.close();
           return;
         }
+        this.logger.info('New peer connection', { peerId });
         const peer = new RemotePeer(ws, this, peerId);
         this.peers.set(peer.id, peer);
 
@@ -257,6 +255,7 @@ export class Netron extends AsyncEventEmitter {
         this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId });
 
         ws.on('close', () => {
+          this.logger.info('Peer disconnected', { peerId });
           this.peers.delete(peerId);
           this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peerId), { peerId });
         });
@@ -265,6 +264,31 @@ export class Netron extends AsyncEventEmitter {
       });
     });
   }
+
+  private async initServiceDiscovery(clientMode: boolean): Promise<void> {
+    this.logger.info('Initializing service discovery');
+    this.discoveryRedis = new Redis(this.options.discoveryRedisUrl!);
+    this.discovery = new ServiceDiscovery(
+      this.discoveryRedis,
+      this,
+      clientMode ? '' : `${this.options.listenHost}:${this.options.listenPort}`,
+      clientMode ? [] : this.getExposedServices(),
+      {
+        heartbeatInterval: this.options.discoveryHeartbeatInterval,
+        heartbeatTTL: this.options.discoveryHeartbeatTTL,
+        pubSubEnabled: this.options.discoveryPubSubEnabled ?? true,
+        clientMode,
+      }
+    );
+    this.discovery.startHeartbeat();
+    await this.discovery.subscribeToEvents((event) => {
+      this.logger.debug('Service discovery event received', { event });
+      this.emit('discovery:event', event);
+    });
+
+    this.logger.info(`Service discovery initialized successfully (${clientMode ? 'client mode' : 'server mode'})`);
+  }
+
 
   /**
    * Stops the Netron instance, closing the WebSocket server and cleaning up resources.
@@ -277,12 +301,15 @@ export class Netron extends AsyncEventEmitter {
    * await netron.stop();
    */
   async stop() {
+    this.logger.info('Stopping Netron instance');
     if (this.wss) {
+      this.logger.info('Closing WebSocket server');
       this.wss.close();
       this.wss = undefined;
     }
 
     if (this.discovery) {
+      this.logger.info('Shutting down service discovery');
       await this.discovery.shutdown();
       await this.discoveryRedis!.quit();
       this.discovery = undefined;
@@ -290,6 +317,7 @@ export class Netron extends AsyncEventEmitter {
     }
 
     this.isStarted = false;
+    this.logger.info('Netron instance stopped');
   }
 
   /**
@@ -315,43 +343,41 @@ export class Netron extends AsyncEventEmitter {
    * const peer = await netron.connect('ws://example.com:8080');
    */
   async connect(address: string, reconnect = true): Promise<RemotePeer> {
-    const baseDelay = 1000; // Initial reconnection delay in milliseconds
+    this.logger.info('Connecting to remote peer', { address, reconnect });
+    const baseDelay = 1000;
     let reconnectAttempts = 0;
     let manuallyDisconnected = false;
 
     const connectPeer = (): Promise<RemotePeer> => new Promise<RemotePeer>((resolve, reject) => {
-      // Set up connection timeout
       const timeoutId = setTimeout(() => {
+        this.logger.error('Connection timeout', { address });
         reject(new Error('Connection timeout'));
       }, this.options?.connectTimeout ?? CONNECT_TIMEOUT);
 
-      // Initialize WebSocket connection with peer ID
       const ws = new WebSocket(`${address}?id=${this.id}`);
       const peer = new RemotePeer(ws, this, address);
 
       let resolved = false;
 
-      // Handle successful connection establishment
       ws.once('open', () => {
+        this.logger.debug('WebSocket connection established', { address });
         clearTimeout(timeoutId);
-        // Wait for initial handshake message
         ws.once('message', async (message: ArrayBuffer, isBinary: boolean) => {
           if (!isBinary) {
             try {
               const data = JSON.parse(message.toString()) as { type: 'id'; id: string };
               if (data.type === 'id') {
-                // Complete peer initialization
                 peer.id = data.id;
                 this.peers.set(peer.id, peer);
                 await peer.init(true, this.options);
 
-                // Set up disconnect handling
                 peer.once('manual-disconnect', () => {
+                  this.logger.info('Manual disconnect requested', { peerId: peer.id });
                   manuallyDisconnected = true;
                 });
 
-                // Handle connection closure
                 ws.once('close', () => {
+                  this.logger.info('WebSocket connection closed', { peerId: peer.id });
                   this.peers.delete(peer.id);
                   this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peer.id), { peerId: peer.id });
 
@@ -363,32 +389,36 @@ export class Netron extends AsyncEventEmitter {
                 resolved = true;
                 reconnectAttempts = 0;
                 this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId: peer.id });
+                this.logger.info('Peer connection established', { peerId: peer.id });
                 resolve(peer);
               } else {
+                this.logger.warn('Invalid handshake message type', { type: data.type });
                 ws.close();
                 reject(new Error('Invalid handshake'));
               }
             } catch (error) {
+              this.logger.error('Error parsing handshake message', { error });
               ws.close();
               reject(error);
             }
           } else {
+            this.logger.warn('Received binary handshake message');
             ws.close();
             reject(new Error('Invalid handshake'));
           }
         });
       });
 
-      // Handle connection errors
       ws.on('error', (err) => {
+        this.logger.error('WebSocket connection error', { error: err });
         clearTimeout(timeoutId);
         if (!resolved) {
           reject(err);
         }
       });
 
-      // Handle premature connection closure
       ws.on('close', () => {
+        this.logger.warn('WebSocket connection closed prematurely', { address });
         clearTimeout(timeoutId);
         if (!resolved) {
           reject(new Error('Connection closed prematurely'));

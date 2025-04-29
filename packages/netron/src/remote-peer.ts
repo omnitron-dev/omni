@@ -113,7 +113,7 @@ export class RemotePeer extends AbstractPeer {
    * @returns {Promise<void>}
    */
   async init(isConnector?: boolean, options?: NetronOptions) {
-    // Set up WebSocket message handler
+    this.logger.info('Initializing remote peer', { isConnector });
     this.socket.on('message', (data: ArrayBuffer, isBinary: boolean) => {
       if (isBinary) {
         try {
@@ -126,26 +126,27 @@ export class RemotePeer extends AbstractPeer {
       }
     });
 
-    // Initialize service discovery if acting as connector
     if (isConnector) {
-      // Get remote peer's abilities
+      this.logger.info('Initializing as connector');
       this.abilities = (await this.runTask('abilities', this.netron.peer.abilities)) as Abilities;
 
-      // Register available services
       if (this.abilities.services) {
+        this.logger.info('Registering remote services', { count: this.abilities.services.size });
         for (const [name, definition] of this.abilities.services) {
           this.definitions.set(definition.id, definition);
           this.services.set(name, definition);
         }
       }
 
-      // Subscribe to service lifecycle events if supported
       if (this.abilities.allowServiceEvents) {
+        this.logger.info('Subscribing to service lifecycle events');
         await this.subscribe(NETRON_EVENT_SERVICE_EXPOSE, (event: ServiceExposeEvent) => {
+          this.logger.info('Service exposed event received', { event });
           this.definitions.set(event.definition.id, event.definition);
           this.services.set(event.qualifiedName, event.definition);
         });
         await this.subscribe(NETRON_EVENT_SERVICE_UNEXPOSE, (event: ServiceUnexposeEvent) => {
+          this.logger.info('Service unexposed event received', { event });
           this.definitions.delete(event.defId);
           this.services.delete(event.qualifiedName);
         });
@@ -347,6 +348,7 @@ export class RemotePeer extends AbstractPeer {
    * It emits a 'manual-disconnect' event and performs cleanup operations.
    */
   disconnect() {
+    this.logger.info('Disconnecting remote peer');
     this.events.emit('manual-disconnect');
 
     if (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING) {
@@ -526,18 +528,18 @@ export class RemotePeer extends AbstractPeer {
    * @throws {Error} If packet processing fails and error response cannot be sent
    */
   async handlePacket(packet: Packet) {
+    this.logger.debug('Handling packet', { type: packet.getType() });
     const pType = packet.getType();
 
-    // Handle response packets immediately
     if (packet.getImpulse() === 0) {
       this.handleResponse(packet);
       return;
     }
 
-    // Process different packet types
     switch (pType) {
       case TYPE_SET: {
         const [defId, name, value] = packet.data;
+        this.logger.debug('Processing SET packet', { defId, name });
 
         try {
           const stub = this.netron.peer.getStubByDefinitionId(defId);
@@ -555,11 +557,13 @@ export class RemotePeer extends AbstractPeer {
       }
       case TYPE_GET: {
         const [defId, name] = packet.data;
+        this.logger.debug('Processing GET packet', { defId, name });
 
         try {
           const stub = this.netron.peer.getStubByDefinitionId(defId);
           await this.sendResponse(packet, await stub.get(name));
         } catch (err: any) {
+          this.logger.error('Error getting value:', err);
           try {
             await this.sendErrorResponse(packet, err);
           } catch (err_) {
@@ -570,11 +574,13 @@ export class RemotePeer extends AbstractPeer {
       }
       case TYPE_CALL: {
         const [defId, method, ...args] = packet.data;
+        this.logger.debug('Processing CALL packet', { defId, method });
 
         try {
           const stub = this.netron.peer.getStubByDefinitionId(defId);
           await this.sendResponse(packet, await stub.call(method, args));
         } catch (err: any) {
+          this.logger.error('Error calling method:', err);
           try {
             await this.sendErrorResponse(packet, err);
           } catch (err_) {
@@ -585,9 +591,12 @@ export class RemotePeer extends AbstractPeer {
       }
       case TYPE_TASK: {
         const [name, ...args] = packet.data;
+        this.logger.debug('Processing TASK packet', { name });
+
         try {
           await this.sendResponse(packet, await this.netron.runTask(this, name, ...args));
         } catch (err: any) {
+          this.logger.error('Error running task:', err);
           try {
             await this.sendErrorResponse(packet, err);
           } catch (err_) {
@@ -597,10 +606,14 @@ export class RemotePeer extends AbstractPeer {
         break;
       }
       case TYPE_STREAM: {
-        if (!packet.streamId) return;
+        if (!packet.streamId) {
+          this.logger.warn('Received STREAM packet without streamId');
+          return;
+        }
 
         let stream = this.readableStreams.get(packet.streamId);
         if (!stream) {
+          this.logger.debug('Creating new readable stream', { streamId: packet.streamId });
           stream = NetronReadableStream.create(this, packet.streamId, packet.isLive());
           this.events.emit('stream', stream);
         }
@@ -610,6 +623,7 @@ export class RemotePeer extends AbstractPeer {
       }
       case TYPE_STREAM_ERROR: {
         const { streamId, message } = packet.data;
+        this.logger.error('Stream error received', { streamId, message });
         const stream = this.readableStreams.get(streamId);
         if (stream) {
           stream.destroy(new Error(message));

@@ -74,6 +74,7 @@ export class NetronReadableStream extends Readable {
     this.id = streamId;
     this.isLive = isLive;
 
+    this.peer.logger.info('Creating readable stream', { streamId: this.id, isLive });
     this.peer.readableStreams.set(this.id, this);
 
     if (!this.isLive) {
@@ -97,15 +98,20 @@ export class NetronReadableStream extends Readable {
    * @throws {Error} If buffer overflow occurs or stream is closed
    */
   public onPacket(packet: Packet): void {
-    if (this.isClosed) return;
+    if (this.isClosed) {
+      this.peer.logger.warn('Received packet for closed stream', { streamId: this.id });
+      return;
+    }
 
     this.resetTimeout();
 
     if (this.buffer.size > MAX_BUFFER_SIZE) {
+      this.peer.logger.error('Stream buffer overflow', { streamId: this.id, size: this.buffer.size });
       this.destroy(new Error(`Buffer overflow: more than ${MAX_BUFFER_SIZE} packets buffered`));
       return;
     }
 
+    this.peer.logger.debug('Processing packet', { streamId: this.id, index: packet.streamIndex });
     this.buffer.set(packet.streamIndex!, packet.data);
 
     while (this.buffer.has(this.expectedIndex)) {
@@ -114,12 +120,13 @@ export class NetronReadableStream extends Readable {
       this.expectedIndex++;
 
       if (!this.push(chunk)) {
-        // Internal buffer is full, wait for next 'readable' event
+        this.peer.logger.debug('Stream backpressure detected', { streamId: this.id });
         break;
       }
     }
 
     if (packet.isLastChunk()) {
+      this.peer.logger.info('Received last chunk', { streamId: this.id });
       this.isComplete = true;
       this.closeStream(true);
     }
@@ -149,6 +156,7 @@ export class NetronReadableStream extends Readable {
     if (this.timeout) clearTimeout(this.timeout);
 
     const timeoutDuration = this.peer.netron.options?.streamTimeout ?? 60000;
+    this.peer.logger.debug('Resetting stream timeout', { streamId: this.id, timeoutDuration });
 
     this.timeout = setTimeout(() => {
       const message = `Stream ${this.id} inactive for ${timeoutDuration}ms, closing.`;
@@ -166,13 +174,17 @@ export class NetronReadableStream extends Readable {
    * @returns {void}
    */
   public closeStream(force: boolean = false): void {
-    if (this.isClosed) return;
-
-    if (this.isLive && !force) {
-      this.peer.logger.warn(`Attempt to close live stream ${this.id}, operation ignored.`);
+    if (this.isClosed) {
+      this.peer.logger.warn('Attempt to close already closed stream', { streamId: this.id });
       return;
     }
 
+    if (this.isLive && !force) {
+      this.peer.logger.warn('Attempt to close live stream', { streamId: this.id });
+      return;
+    }
+
+    this.peer.logger.info('Closing stream', { streamId: this.id, force });
     this.push(null);
 
     if (this.isLive && force) {
@@ -187,6 +199,7 @@ export class NetronReadableStream extends Readable {
    * @returns {void}
    */
   private cleanup = (): void => {
+    this.peer.logger.debug('Cleaning up stream resources', { streamId: this.id });
     if (this.timeout) clearTimeout(this.timeout);
     this.peer.readableStreams.delete(this.id);
     this.buffer.clear();
@@ -200,7 +213,7 @@ export class NetronReadableStream extends Readable {
    * @returns {void}
    */
   private handleError = (error: Error): void => {
-    this.peer.logger.error(`NetronReadableStream (id: ${this.id}) error:`, error.message);
+    this.peer.logger.error('Stream error occurred', { streamId: this.id, error });
     this.cleanup();
   };
 
@@ -213,8 +226,12 @@ export class NetronReadableStream extends Readable {
    * @returns {this}
    */
   public override destroy(error?: Error): this {
-    if (this.isClosed) return this;
+    if (this.isClosed) {
+      this.peer.logger.warn('Attempt to destroy already closed stream', { streamId: this.id });
+      return this;
+    }
 
+    this.peer.logger.info('Destroying stream', { streamId: this.id, error });
     this.isClosed = true;
     super.destroy(error);
     this.cleanup();

@@ -174,7 +174,18 @@ export class ServiceDiscovery {
       heartbeatTTL: options?.heartbeatTTL ?? DEFAULT_HEARTBEAT_TTL,
       pubSubEnabled: options?.pubSubEnabled ?? false,
       pubSubChannel: options?.pubSubChannel ?? 'netron:discovery:events',
+      clientMode: options?.clientMode ?? false,
     };
+
+    if (this.options.clientMode) {
+      this.logger.info('ServiceDiscovery started in client mode (no heartbeat or node registration)');
+    } else {
+      this.logger.info('ServiceDiscovery started in server mode', {
+        nodeId: this.nodeId,
+        address: this.address,
+        services: this.services,
+      });
+    }
 
     this.pubSubChannel = this.options.pubSubChannel;
   }
@@ -190,6 +201,11 @@ export class ServiceDiscovery {
    * The heartbeat interval is determined by the configured options.
    */
   public startHeartbeat(): void {
+    if (this.options.clientMode) {
+      this.logger.info(`Heartbeat disabled (clientMode=true) for node '${this.nodeId}'`);
+      return;
+    }
+
     this.publishHeartbeat();
     this.heartbeatTimer = setInterval(
       () => this.publishHeartbeat(),
@@ -233,29 +249,24 @@ export class ServiceDiscovery {
       this.logger.info(`Graceful shutdown already initiated for node '${this.nodeId}'`);
       return this.shutdownPromise;
     }
-
     this.stopped = true;
 
     this.shutdownPromise = (async () => {
       this.logger.info(`Initiating graceful shutdown for node '${this.nodeId}'`);
-
-      // Stop the heartbeat mechanism
       if (this.heartbeatTimer) {
         clearInterval(this.heartbeatTimer);
         this.heartbeatTimer = undefined;
         this.logger.info(`Heartbeat interval cleared for node '${this.nodeId}'`);
       }
 
-      // Deregister the node from the discovery system
       try {
         await this.deregisterNodeById(this.nodeId);
-        this.registered = false; // Reset registration state
-        this.logger.info(`Node '${this.nodeId}' successfully deregistered`);
+        this.registered = false;
+        this.logger.info(`Node '${this.nodeId}' deregistered successfully`);
       } catch (error) {
-        this.logger.error(`Error during deregistration of node '${this.nodeId}'`, { error });
+        this.logger.error(`Error deregistering node '${this.nodeId}'`, { error });
       }
 
-      // Clean up Redis Pub/Sub subscriptions
       try {
         await this.unsubscribeFromEvents();
         this.logger.info(`Unsubscribed from Redis events for node '${this.nodeId}'`);
@@ -300,7 +311,7 @@ export class ServiceDiscovery {
    */
   public async publishHeartbeat(): Promise<void> {
     // Prevent heartbeat publishing if shutdown has been initiated
-    if (this.stopped) {
+    if (this.stopped || this.options.clientMode) {
       this.logger.warn(`Attempted to publish heartbeat after shutdown initiated for node '${this.nodeId}'`);
       return;
     }

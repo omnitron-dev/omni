@@ -52,6 +52,7 @@ export interface DiscoveryOptions {
   heartbeatTTL?: number;
   pubSubEnabled?: boolean;
   pubSubChannel?: string;
+  clientMode?: boolean;
 }
 /**
  * Represents an event that occurs within the service discovery system.

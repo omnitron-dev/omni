@@ -1,5 +1,13 @@
 # @devgrid/rest-openapi
 
+## 3.53.3
+
+### Patch Changes
+
+- update zod
+- Updated dependencies
+  - @devgrid/rest-core@3.53.3
+
 ## 3.53.2
 
 ### Patch Changes

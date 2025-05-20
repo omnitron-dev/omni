@@ -1,5 +1,11 @@
 # @devgrid/rotif-nest
 
+## 0.2.3
+
+### Patch Changes
+
+- update zod
+
 ## 0.2.2
 
 ### Patch Changes

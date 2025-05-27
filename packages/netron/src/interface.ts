@@ -83,12 +83,12 @@ export class Interface {
         if (this.$def?.meta.methods[prop]) {
           return async function (...args: any[]) {
             const processedArgs = target.$processArgs(args);
-            return $peer?.call($def!.id, prop, processedArgs);
+            return this.$peer?.call(this.$def!.id, prop, processedArgs);
           };
         }
 
-        if ($def?.meta.properties[prop]) {
-          return $peer?.get($def.id, prop);
+        if (this.$def?.meta.properties[prop]) {
+          return this.$peer?.get(this.$def.id, prop);
         }
 
         if (!INTERNAL_READ_PROPERTIES.includes(prop)) {
@@ -119,7 +119,7 @@ export class Interface {
           throw new Error('Invalid interface: Service definition is missing');
         }
 
-        if (!$def?.meta.properties[prop]) {
+        if (!this.$def?.meta.properties[prop]) {
           throw new Error(`Unknown member: '${prop}' is not defined in the service interface`);
         }
 
@@ -140,7 +140,7 @@ export class Interface {
         (async () => {
           try {
             value = await this.$processValue(value);
-            await $peer?.set($def!.id, prop, value);
+            await this.$peer?.set(this.$def!.id, prop, value);
             resolvePromise();
             this.$pendingPromises.delete(prop);
           } catch (error) {

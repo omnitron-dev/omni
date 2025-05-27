@@ -1,7 +1,13 @@
 import path from 'path';
 
 import { TaskManager } from '../dist';
-import { syncTask, asyncTask, failingTask, delayedTask } from './fixtures/tasks';
+import {
+  syncTask,
+  asyncTask,
+  failingTask,
+  delayedTask,
+  throwingTask,
+} from './fixtures/tasks';
 
 describe('TaskManager', () => {
   let manager: TaskManager;
@@ -26,6 +32,11 @@ describe('TaskManager', () => {
   it('handling error in a task', async () => {
     manager.addTask(failingTask);
     await expect(manager.runTask('failingTask')).rejects.toThrow('Intentional task failure');
+  });
+
+  it('synchronous task throwing error', async () => {
+    manager.addTask(throwingTask);
+    await expect(manager.runTask('throwingTask')).rejects.toThrow('Intentional sync failure');
   });
 
   // ✅ Test timeout

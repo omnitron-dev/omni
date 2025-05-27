@@ -13,3 +13,7 @@ export function syncTask(a: number, b: number) {
 export async function delayedTask(ms: number) {
   return new Promise((resolve) => setTimeout(() => resolve('done'), ms));
 }
+
+export function throwingTask() {
+  throw new Error('Intentional sync failure');
+}

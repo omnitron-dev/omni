@@ -194,6 +194,17 @@ describe('SmartBuffer', () => {
       expect(bb.capacity).toEqual(21);
     });
 
+    it('fill without args does not extend write offset', () => {
+      const bb = new SmartBuffer(4);
+      bb.fill(0);
+      expect(bb.woffset).toEqual(0);
+
+      const filled = SmartBuffer.wrap('\x01\x02');
+      filled.fill(0);
+      expect(filled.woffset).toEqual(2);
+      expect(filled.toDebug()).toEqual('<01 02]');
+    });
+
     it('slice', () => {
       const b = SmartBuffer.wrap('\x12\x34\x56');
       const b2 = b.slice(1, 3);

@@ -2,7 +2,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const spawn = require('child_process').spawn;
-const chalk = require('chalk');
+const chalk = require('ansis');
 const readline = require('readline');
 
 const cst = require('../../constants').default;

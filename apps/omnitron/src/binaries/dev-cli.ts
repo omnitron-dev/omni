@@ -6,7 +6,7 @@ process.env.OMNITRON_DISCRETE_MODE = 'true';
 
 import os from 'os';
 import path from 'path';
-import chalk from 'chalk';
+import chalk from 'ansis';
 import commander from 'commander';
 import { exec, ExecException } from 'child_process';
 

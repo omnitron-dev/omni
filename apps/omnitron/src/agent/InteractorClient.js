@@ -1,7 +1,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const chalk = require('chalk');
+const chalk = require('ansis');
 const axon = require('pm2-axon');
 const rpc = require('pm2-axon-rpc');
 const childProcess = require('child_process');
@@ -192,7 +192,7 @@ module.exports = class InteractorDaemonizer {
       let prevPid = fs.readFileSync(constants.INTERACTOR_PID_PATH);
       prevPid = parseInt(prevPid);
       process.kill(prevPid);
-    } catch (e) {}
+    } catch (e) { }
 
     let pid = '';
 
@@ -249,7 +249,7 @@ module.exports = class InteractorDaemonizer {
         if (!process.env.OMNITRON_SILENT) {
           console.log(
             chalk.cyan('[OMNITRON.IO]') +
-              ' Server DISABLED BY ADMINISTRATION contact support contact@keymetrics.io with reference to your public and secret keys)'
+            ' Server DISABLED BY ADMINISTRATION contact support contact@keymetrics.io with reference to your public and secret keys)'
           );
         }
         return cb(msg);

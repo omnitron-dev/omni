@@ -777,9 +777,9 @@ __metadata:
     "@types/node": "npm:^22.13.13"
     "@types/pidusage": "npm:^2.0.5"
     "@types/semver": "npm:^7.5.8"
+    ansis: "npm:4.1.0-node10"
     async: "npm:~3.2.6"
     blessed: "npm:0.1.81"
-    chalk: "npm:3.0.0"
     charm: "npm:~0.1.1"
     chokidar: "npm:^3.5.3"
     cli-tableau: "npm:^2.0.1"
@@ -849,7 +849,7 @@ __metadata:
     ts-node: "npm:^10.9.2"
     tsconfig-paths: "npm:^4.2.0"
     typescript: "npm:^5.8.3"
-    zod: "npm:^3.25.7"
+    zod: "npm:3.24.4"
   bin:
     orbit: bin/orbit
   languageName: unknown
@@ -868,10 +868,10 @@ __metadata:
     ts-jest: "npm:^29.3.0"
     tsd: "npm:^0.31.2"
     typescript: "npm:^5.8.3"
-    zod: "npm:^3.25.7"
+    zod: "npm:3.24.4"
   peerDependencies:
     "@types/node": ^18.18.7 || >=20.8.4
-    zod: ^3.25.7
+    zod: 3.24.4
   peerDependenciesMeta:
     "@types/node":
       optional: true
@@ -903,14 +903,14 @@ __metadata:
     rxjs: "npm:^7.8.2"
     supertest: "npm:^6.3.4"
     typescript: "npm:^5.8.3"
-    zod: "npm:^3.25.7"
+    zod: "npm:3.24.4"
   peerDependencies:
     "@devgrid/rest-core": "workspace:*"
     "@nestjs/common": ^11.1.0
     "@nestjs/core": ^11.0.13
     fastify: ^5.3.2
     rxjs: ^7.8.2
-    zod: ^3.25.7
+    zod: 3.24.4
   peerDependenciesMeta:
     zod:
       optional: true
@@ -926,7 +926,7 @@ __metadata:
     openapi3-ts: "npm:^2.0.2"
     typescript: "npm:^5.8.3"
   peerDependencies:
-    zod: ^3.25.7
+    zod: 3.24.4
   languageName: unknown
   linkType: soft
 
@@ -3036,6 +3036,13 @@ __metadata:
   version: 6.2.1
   resolution: "ansi-styles@npm:6.2.1"
   checksum: 10c0/5d1ec38c123984bcedd996eac680d548f31828bd679a66db2bdf11844634dde55fec3efa9c6bb1d89056a5e79c1ac540c4c784d592ea1d25028a92227d2f2d5c
+  languageName: node
+  linkType: hard
+
+"ansis@npm:4.1.0-node10":
+  version: 4.1.0-node10
+  resolution: "ansis@npm:4.1.0-node10"
+  checksum: 10c0/5de1d8748a7dc4d6416b6d5c4e686986c6967c6356cb84f994f4de41214051e34abd757cc77c0f120e1852bb2943fe64a06a355c4a1bf91e3a4001529a713896
   languageName: node
   linkType: hard
 
@@ -11483,9 +11490,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zod@npm:^3.25.7":
-  version: 3.25.7
-  resolution: "zod@npm:3.25.7"
-  checksum: 10c0/9bf497ed9b810d30b84ae032ec7882435d0fb9c94db08427592f56b711227726cfb7551ee7ca9f99135dfaff1fcff5ce261e25a6400f62b651ec23880cb41013
+"zod@npm:3.24.4":
+  version: 3.24.4
+  resolution: "zod@npm:3.24.4"
+  checksum: 10c0/ab3112f017562180a41a0f83d870b333677f7d6b77f106696c56894567051b91154714a088149d8387a4f50806a2520efcb666f108cd384a35c236a191186d91
   languageName: node
   linkType: hard

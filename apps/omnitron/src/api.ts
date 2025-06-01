@@ -3,7 +3,7 @@
 import fs from 'fs';
 import path from 'path';
 import util from 'util';
-import chalk from 'chalk';
+import chalk from 'ansis';
 import dayjs from 'dayjs';
 import crypto from 'crypto';
 import fclone from 'fclone';
@@ -98,8 +98,8 @@ function basicMDHighlight(lines: string) {
     else if (isInner || l.startsWith('```')) {
       if (isInner && l.startsWith('```')) isInner = false;
       else if (isInner == false) isInner = true;
-      console.log(chalk.grey(l));
-    } else if (l.startsWith('`')) console.log(chalk.grey(l));
+      console.log(chalk.gray(l));
+    } else if (l.startsWith('`')) console.log(chalk.gray(l));
     else console.log(l);
   });
   console.log('+-------------------------------------+');
@@ -4378,7 +4378,7 @@ export default class API {
         Common.printError(cst.PREFIX_MSG + 'You have to run this command as root. Execute the following command:');
         Common.printError(
           cst.PREFIX_MSG +
-          chalk.grey(
+          chalk.gray(
             '      sudo env PATH=$PATH:' + path.dirname(process.execPath) + ' omnitron logrotate -u ' + stdout.trim()
           )
         );
@@ -4904,7 +4904,7 @@ export default class API {
       })
       .catch((err) => {
         console.log();
-        console.log(chalk.grey('Raw error=', err.message));
+        console.log(chalk.gray('Raw error=', err.message));
         self.disconnect();
       });
   }

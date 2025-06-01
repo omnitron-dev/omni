@@ -1,5 +1,5 @@
 const cst = require('../../constants').default;
-const chalk = require('chalk');
+const chalk = require('ansis');
 const Table = require('cli-tableau');
 
 const UxHelpers = require('./helpers');
@@ -26,7 +26,7 @@ function checkIfProcessAreDumped(list) {
     } else if (apps_dumped.length != apps_running.length) {
       Common.warn(`Current process list is not synchronized with saved list. Type 'omnitron save' to synchronize.`);
     }
-  } catch (e) {}
+  } catch (e) { }
 }
 
 var proc_id = 0;
@@ -267,7 +267,7 @@ function listModulesAndAppsManaged(list, commander) {
       }
 
       // Watch status
-      if (!CONDENSED_MODE) obj[key].push(l.omnitron_env.watch ? chalk.green.bold('enabled') : chalk.grey('disabled'));
+      if (!CONDENSED_MODE) obj[key].push(l.omnitron_env.watch ? chalk.green.bold('enabled') : chalk.gray('disabled'));
 
       UxHelpers.safe_push(app_table, obj);
     }
@@ -442,7 +442,7 @@ function miniMonitBar(sys_infos) {
 
     disks.forEach((fs) => {
       let use = sys_metrics[`fs:use:${fs}`].value;
-      if (use > 60) sys_summary_line += `${chalk.grey(fs)} ${UxHelpers.colorizedMetric(use, 80, 90, '%')} `;
+      if (use > 60) sys_summary_line += `${chalk.gray(fs)} ${UxHelpers.colorizedMetric(use, 80, 90, '%')} `;
     });
   }
 

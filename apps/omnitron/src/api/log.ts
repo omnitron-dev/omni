@@ -3,7 +3,7 @@
 
 import fs from 'fs';
 import util from 'util';
-import chalk from 'chalk';
+import chalk from 'ansis';
 import dayjs from 'dayjs';
 import forEachLimit from 'async/forEachLimit';
 
@@ -87,7 +87,7 @@ Log.tail = function (
       }
 
       getLastLines(app.path, lines, (output: string[]) => {
-        console.log(chalk.grey('%s last %d lines:'), app.path, lines);
+        console.log(chalk.gray('%s last %d lines:'), app.path, lines);
         output.forEach((out) => {
           if (raw) {
             if (app.type === 'err') {
@@ -130,7 +130,7 @@ Log.stream = function (
   client.launchBus((err, bus, socket) => {
     socket.on('reconnect attempt', () => {
       if (global._auto_exit === true) {
-        if (timestamp) process.stdout.write(chalk['dim'](chalk.grey(dayjs().format(timestamp) + ' ')));
+        if (timestamp) process.stdout.write(chalk['dim'](chalk.gray(dayjs().format(timestamp) + ' ')));
         process.stdout.write(chalk.blue(pad(DEFAULT_PADDING, 'OMNITRON') + ' | ') + '[[[ Target OMNITRON killed. ]]]');
         process.exit(0);
       }
@@ -168,7 +168,7 @@ Log.stream = function (
           return;
         }
 
-        if (timestamp) process.stdout.write(chalk['dim'](chalk.grey(dayjs().format(timestamp) + ' ')));
+        if (timestamp) process.stdout.write(chalk['dim'](chalk.gray(dayjs().format(timestamp) + ' ')));
 
         const name = packet.process.pm_id + '|' + packet.process.name;
 
@@ -223,7 +223,7 @@ Log.devStream = function (Client: Client, id: string, raw: boolean, timestamp: s
           return;
         }
 
-        if (timestamp) process.stdout.write(chalk['dim'](chalk.grey(dayjs().format(timestamp) + ' ')));
+        if (timestamp) process.stdout.write(chalk['dim'](chalk.gray(dayjs().format(timestamp) + ' ')));
 
         const name = packet.process.name + '-' + packet.process.pm_id;
 

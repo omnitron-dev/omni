@@ -1,5 +1,5 @@
 import * as p from 'path';
-import chalk from 'chalk';
+import chalk from 'ansis';
 
 import pathStructure from './paths';
 

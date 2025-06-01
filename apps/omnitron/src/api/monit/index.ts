@@ -6,7 +6,7 @@
 
 import * as os from 'os';
 import * as p from 'path';
-import chalk from 'chalk';
+import chalk from 'ansis';
 
 import UX from '../ux';
 import multimeter from './multimeter';

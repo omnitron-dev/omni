@@ -1,7 +1,7 @@
 // @ts-nocheck
 process.env['OMNITRON_USAGE'] = 'CLI';
 
-import chalk from 'chalk';
+import chalk from 'ansis';
 import semver from 'semver';
 import { Command } from 'commander';
 import { forEachLimit } from 'async';

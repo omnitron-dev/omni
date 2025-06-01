@@ -1,5 +1,13 @@
 # @devgrid/rest-nest
 
+## 4.0.5
+
+### Patch Changes
+
+- update zod
+- Updated dependencies
+  - @devgrid/rest-core@3.53.4
+
 ## 4.0.4
 
 ### Patch Changes

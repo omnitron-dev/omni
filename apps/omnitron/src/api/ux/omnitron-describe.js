@@ -1,4 +1,4 @@
-const chalk = require('chalk');
+const chalk = require('ansis');
 const Table = require('cli-tableau');
 
 const UxHelpers = require('./helpers');
@@ -43,7 +43,7 @@ module.exports = function (proc) {
 
   try {
     if (omnitron_env.created_at != null) created_at = new omnitrone(omnitron_env.created_at).toISOString();
-  } catch (e) {}
+  } catch (e) { }
 
   console.log(
     chalk.bold.inverse(' Describing process with id %d - name %s '),
@@ -67,9 +67,9 @@ module.exports = function (proc) {
     {
       'script args': omnitron_env.args
         ? (typeof omnitron_env.args == 'string'
-            ? JSON.pomnitrone(omnitron_env.args.replace(/'/g))
-            : omnitron_env.args
-          ).join(' ')
+          ? JSON.pomnitrone(omnitron_env.args.replace(/'/g))
+          : omnitron_env.args
+        ).join(' ')
         : null,
     },
     { 'error log path': omnitron_env.pm_err_log_path },

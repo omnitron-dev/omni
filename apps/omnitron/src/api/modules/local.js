@@ -1,6 +1,6 @@
 const path = require('path');
 const spawn = require('child_process').spawn;
-const chalk = require('chalk');
+const chalk = require('ansis');
 const parallel = require('async/parallel');
 
 const cst = require('../../constants').default;

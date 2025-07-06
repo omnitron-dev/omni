@@ -1,7 +1,0 @@
-[
-    {
-      "name"        : "stop_exit_codes_app",
-      "script"      : "./exitcode42.js",
-      "stop_exit_codes" : [12, 42]
-    }
-  ]

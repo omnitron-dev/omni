@@ -1,6 +1,7 @@
 import { inherits } from 'node:util';
 
-import { keys, noop, values, entries } from '../src';
+import { keys, values, entries } from '../src/entries';
+import { noop } from '../src/primitives';
 
 describe("entries", () => {
   test('should return an empty array for an empty object', () => {
@@ -14,7 +15,7 @@ describe("entries", () => {
   });
 
   test('should work with classic classes', () => {
-    function Test() {
+    function Test(this: any) {
       this.a = 2;
     }
     Test.prototype.b = noop;
@@ -24,12 +25,12 @@ describe("entries", () => {
   });
 
   test('should work with inheritance of classic classes', () => {
-    function A() {
+    function A(this: any) {
       this.aProp = 1;
     }
     A.prototype.aMethod = noop;
 
-    function B() {
+    function B(this: any) {
       A.call(this);
       this.bProp = 2;
     }
@@ -130,7 +131,7 @@ describe("entries", () => {
   test('values should work with non-enumerable properties', () => {
     const obj = {};
     Object.defineProperty(obj, 'a', { value: 1, enumerable: false });
-    obj.b = 2;
+    obj['b'] = 2;
     expect(values(obj, { enumOnly: false })).toEqual([1, 2]);
   });
 
@@ -157,7 +158,7 @@ describe("entries", () => {
   test('entries should work with non-enumerable properties', () => {
     const obj = {};
     Object.defineProperty(obj, 'a', { value: 1, enumerable: false });
-    obj.b = 2;
+    obj['b'] = 2;
     expect(entries(obj, { enumOnly: false })).toEqual([['a', 1], ['b', 2]]);
   });
 

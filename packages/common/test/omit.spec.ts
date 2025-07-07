@@ -1,4 +1,4 @@
-import { omit } from "../src";
+import { omit } from "../src/omit";
 
 describe("omit", () => {
   it("should omit a key from the object", () => {
@@ -327,14 +327,14 @@ describe("omit", () => {
     };
 
     const result = omit(obj, ['c'], { deep: true });
-    const descriptor = Object.getOwnPropertyDescriptor(result.a, 'b');
+    const descriptor = Object.getOwnPropertyDescriptor(result['a'], 'b');
 
     expect(descriptor?.get).toBeDefined();
   });
 
   it("should be fast with large arrays of keys", () => {
     const obj = {};
-    const keys = [];
+    const keys: string[] = [];
 
     for (let i = 0; i < 10000; i++) {
       obj[`key${i}`] = i;

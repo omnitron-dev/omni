@@ -1,4 +1,5 @@
-import { noop } from "@devgrid/common";
+// @ts-nocheck
+import { noop } from "../src/primitives";
 
 import {
   props,
@@ -12,7 +13,7 @@ import {
   callbackify,
   promisifyAll,
   finally as _finally,
-} from "../src";
+} from "../src/promise";
 
 describe("defer", () => {
   it("should have a promise", () => {
@@ -32,15 +33,15 @@ describe("defer", () => {
 
   it("should resolve the promise", async () => {
     const d = defer();
-    d.resolve(5);
+    d.resolve!(5);
     expect(await d.promise).toEqual(5);
   });
 
   it("should reject the promise", async () => {
     const d = defer();
-    d.reject(10);
+    d.reject!(10);
     expect(
-      await d.promise.then(
+      await d.promise!.then(
         () => null,
         (x) => x
       )

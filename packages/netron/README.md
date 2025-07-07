@@ -1,63 +1,62 @@
 # @devgrid/netron
 
-A powerful TypeScript library for building distributed systems with event bus, streams, and remote object invocation capabilities. Built with WebSocket for real-time bidirectional communication between Node.js and browser environments.
+A powerful TypeScript library for building distributed systems with WebSocket-based communication, remote procedure calls (RPC), event bus capabilities, and service discovery. Designed for real-time bidirectional communication between Node.js services and browser clients.
 
 ## Features
 
-- 🔄 Bidirectional WebSocket communication
-- 📦 Remote object invocation (RPC)
-- 🚀 Event bus with parallel and serial execution
-- 💫 Streaming support
-- 🛡️ TypeScript decorators for service definitions
-- 🔍 Automatic service discovery
-- ⚡ MessagePack serialization
-- 🔒 Type-safe service interfaces
-- 🔄 Automatic reconnection handling
-- 📡 Service versioning support
+- 🔄 **Bidirectional Communication** - Full-duplex WebSocket connections
+- 📦 **Type-Safe RPC** - Remote object invocation with TypeScript support
+- 🚀 **Event Bus** - Multiple emission patterns (parallel, serial, reduce)
+- 💫 **Streaming Support** - Efficient handling of large data transfers
+- 🛡️ **Decorators** - Simple service definition with TypeScript decorators
+- 🔍 **Service Discovery** - Redis-based automatic service discovery
+- ⚡ **MessagePack** - Efficient binary serialization
+- 🔄 **Auto Reconnection** - Resilient connection handling
+- 📡 **Service Versioning** - Version-aware service resolution
+- 🌐 **Cross-Platform** - Works in Node.js and modern browsers
 
 ## Installation
+
 ```bash
 npm install @devgrid/netron
 # or
 yarn add @devgrid/netron
+# or
+pnpm add @devgrid/netron
 ```
 
-## Basic Usage
+## Quick Start
 
-### Creating a Server
+### Creating a Service
 
 ```typescript
 import { Netron, Service, Public } from '@devgrid/netron';
 
+// Define a service with decorators
 @Service('calculator@1.0.0')
-class Calculator {
+class CalculatorService {
   @Public()
   add(a: number, b: number): number {
     return a + b;
   }
 
   @Public()
-  multiply(a: number, b: number): number {
+  async multiply(a: number, b: number): Promise<number> {
     return a * b;
   }
 
   @Public({ readonly: true })
-  version: string = '1.0.0';
+  pi = 3.14159;
 }
 
+// Create server and expose service
 const server = await Netron.create({
   listenHost: 'localhost',
-  listenPort: 8080,
-  taskTimeout: 5000,
-  connectTimeout: 5000,
-  requestTimeout: 5000,
-  streamTimeout: 5000,
-  allowServiceEvents: true,
-  maxReconnectAttempts: 5
+  listenPort: 8080
 });
 
-// Expose the calculator service
-await server.peer.exposeService(new Calculator());
+await server.peer.exposeService(new CalculatorService());
+console.log('Server running on ws://localhost:8080');
 ```
 
 ### Connecting from Client
@@ -65,206 +64,353 @@ await server.peer.exposeService(new Calculator());
 ```typescript
 import { Netron } from '@devgrid/netron';
 
+// Connect to server
 const client = await Netron.create();
-const remotePeer = await client.connect('ws://localhost:8080');
+const peer = await client.connect('ws://localhost:8080');
 
-// Query the calculator interface
-const calculator = await remotePeer.queryInterface<ICalculator>('calculator@1.0.0');
-// or latest version
-const latestCalculator = await peer.queryInterface<ICalculator>('calculator');
+// Query and use remote service
+interface ICalculator {
+  add(a: number, b: number): Promise<number>;
+  multiply(a: number, b: number): Promise<number>;
+  pi: Promise<number>;
+}
 
-// Use remote methods
-const sum = await calculator.add(5, 3);      // 8
-const product = await calculator.multiply(4, 2); // 8
-const version = await calculator.version;     // '1.0.0'
+const calc = await peer.queryInterface<ICalculator>('calculator@1.0.0');
+
+// Call remote methods
+const sum = await calc.add(5, 3);        // 8
+const product = await calc.multiply(4, 2); // 8
+const piValue = await calc.pi;            // 3.14159
 ```
 
 ## Advanced Features
 
-### Event Bus
+### Service Discovery with Redis
+
+Enable automatic service discovery across your distributed system:
 
 ```typescript
-// Server side
-@Service('notifications')
-class NotificationService {
-  @Public()
-  async broadcast(message: string) {
-    await this.netron.emitParallel('notification', { message });
-  }
-}
-
-// Client side
-remotePeer.subscribe('notification', (data) => {
-  console.log('New notification:', data.message);
+const netron = await Netron.create({
+  listenPort: 8080,
+  discoveryEnabled: true,
+  discoveryRedisUrl: 'redis://localhost:6379',
+  discoveryHeartbeatInterval: 5000,
+  discoveryCleanupInterval: 10000
 });
 
-// Different emission patterns
-await netron.emitParallel('event');  // Execute handlers in parallel
-await netron.emitSerial('event');    // Execute handlers sequentially
-await netron.emitReduce('event');    // Reduce pattern (left to right)
-await netron.emitReduceRight('event'); // Reduce pattern (right to left)
+// Services are automatically registered and discovered
+// Query available nodes
+const nodes = await netron.discovery.getActiveNodes();
+
+// Find specific service
+const serviceNode = await netron.discovery.findService('calculator@1.0.0');
+if (serviceNode) {
+  const peer = await netron.connect(serviceNode.address);
+  const calc = await peer.queryInterface('calculator@1.0.0');
+}
 ```
 
-### Streaming Support
+### Event Bus Patterns
+
+Netron provides multiple event emission patterns:
 
 ```typescript
-@Service('fileService')
+// Subscribe to events
+peer.subscribe('user:login', async (data) => {
+  console.log('User logged in:', data.userId);
+});
+
+// Emit events with different patterns
+// Parallel - all handlers execute simultaneously
+await netron.emitParallel('user:login', { userId: 123 });
+
+// Serial - handlers execute one after another
+await netron.emitSerial('process:step', { step: 1 });
+
+// Reduce - accumulate results left-to-right
+const result = await netron.emitReduce('calculate:sum', [1, 2, 3, 4]);
+
+// ReduceRight - accumulate results right-to-left
+const reversed = await netron.emitReduceRight('process:reverse', 'hello');
+```
+
+### Streaming Large Data
+
+Handle large file transfers or continuous data streams:
+
+```typescript
+// Server-side streaming service
+@Service('fileService@1.0.0')
 class FileService {
   @Public()
-  async streamFile(filename: string) {
-    const stream = createReadStream(filename);
-    return new ReadableStream(stream);
+  async downloadFile(filename: string): Promise<ReadableStream> {
+    const stream = fs.createReadStream(filename);
+    return stream;
   }
 
   @Public()
-  async uploadFile(filename: string) {
-    const stream = createWriteStream(filename);
-    return new WritableStream(stream);
+  async uploadFile(filename: string, stream: WritableStream): Promise<void> {
+    const writeStream = fs.createWriteStream(filename);
+    await pipeline(stream, writeStream);
   }
 }
 
-// Client usage
-const fileService = await remotePeer.queryInterface('fileService');
-const readStream = await fileService.streamFile('large.file');
+// Client-side usage
+const fileService = await peer.queryInterface('fileService@1.0.0');
 
+// Download
+const readStream = await fileService.downloadFile('large-video.mp4');
 for await (const chunk of readStream) {
-  console.log('Received chunk:', chunk);
+  // Process chunks
 }
+
+// Upload
+const uploadStream = await fileService.uploadFile('upload.zip');
+await pipeline(fs.createReadStream('local.zip'), uploadStream);
 ```
 
-### Task Management
+### Task System
+
+Define and execute tasks across peers:
 
 ```typescript
-// Define a task
-netron.addTask(async function pingTask(peer) {
-  return { status: 'ok', timestamp: Date.now() };
+// Register a task
+netron.addTask(async function healthCheck(peer) {
+  return {
+    status: 'healthy',
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    timestamp: Date.now()
+  };
 });
 
 // Execute task on remote peer
-const result = await remotePeer.runTask('pingTask');
+const health = await remotePeer.runTask('healthCheck');
+console.log('Remote peer health:', health);
+
+// Task with arguments
+netron.addTask(async function processData(peer, data: any, options: any) {
+  // Process data with options
+  return processedResult;
+});
+
+const result = await remotePeer.runTask('processData', rawData, { mode: 'fast' });
 ```
 
-### Service Decorators
+### Service Lifecycle & Events
+
+Monitor service lifecycle events:
 
 ```typescript
-@Service('users')
-class UserService {
+// Enable service events
+const netron = await Netron.create({
+  allowServiceEvents: true
+});
+
+// Listen for service events
+netron.on('service:exposed', ({ service, peer }) => {
+  console.log(`Service ${service} exposed by ${peer.id}`);
+});
+
+netron.on('service:concealed', ({ service, peer }) => {
+  console.log(`Service ${service} concealed by ${peer.id}`);
+});
+
+netron.on('peer:connected', (peer) => {
+  console.log(`Peer connected: ${peer.id}`);
+});
+
+netron.on('peer:disconnected', (peer) => {
+  console.log(`Peer disconnected: ${peer.id}`);
+});
+```
+
+### Advanced Service Definitions
+
+```typescript
+@Service('advanced@2.0.0')
+class AdvancedService {
+  // Readonly properties
+  @Public({ readonly: true })
+  version = '2.0.0';
+  
+  @Public({ readonly: true })
+  startTime = Date.now();
+
+  // Async methods with complex types
   @Public()
-  async getUser(id: number): Promise<User> {
-    return this.database.findUser(id);
+  async processUser(user: User): Promise<ProcessedUser> {
+    // Complex processing
+    return processedUser;
   }
 
-  @Public({ readonly: true })
-  currentUser: User;
+  // Methods with multiple parameters
+  @Public()
+  async batchProcess(
+    items: Item[],
+    options: ProcessOptions = {}
+  ): Promise<BatchResult> {
+    // Batch processing logic
+  }
 
-  // Private methods/properties are not exposed
-  private async validateUser(user: User) {
-    // ...
+  // Private methods are not exposed
+  private validateUser(user: User): boolean {
+    // Internal validation
   }
 }
 ```
 
-## Configuration Options
+## Configuration
 
 ```typescript
 interface NetronOptions {
-  id?: string;                    // Unique identifier for the Netron instance
-  listenHost?: string;            // Host to listen on (server only)
-  listenPort?: number;            // Port to listen on (server only)
-  taskTimeout?: number;           // Timeout for task execution (default: 5000ms)
-  taskOverwriteStrategy?: 'replace' | 'skip' | 'throw'; // How to handle duplicate tasks
-  connectTimeout?: number;        // Connection timeout (default: 5000ms)
-  requestTimeout?: number;        // Request timeout (default: 5000ms)
-  streamTimeout?: number;         // Stream timeout (default: 5000ms)
-  allowServiceEvents?: boolean;   // Enable service events
-  maxReconnectAttempts?: number;  // Maximum reconnection attempts (default: unlimited)
+  // Identification
+  id?: string;                      // Unique instance ID
+  
+  // Server options
+  listenHost?: string;              // Host to listen on
+  listenPort?: number;              // Port to listen on
+  
+  // Timeouts (in milliseconds)
+  taskTimeout?: number;             // Task execution timeout (default: 5000)
+  connectTimeout?: number;          // Connection timeout (default: 5000)
+  requestTimeout?: number;          // Request timeout (default: 5000)
+  streamTimeout?: number;           // Stream timeout (default: 5000)
+  
+  // Task handling
+  taskOverwriteStrategy?: 'replace' | 'skip' | 'throw';
+  
+  // Features
+  allowServiceEvents?: boolean;     // Enable service lifecycle events
+  
+  // Reconnection
+  maxReconnectAttempts?: number;    // Max reconnection attempts
+  reconnectDelay?: number;          // Initial reconnect delay
+  
+  // Service Discovery (Redis)
+  discoveryEnabled?: boolean;       // Enable service discovery
+  discoveryRedisUrl?: string;       // Redis connection URL
+  discoveryHeartbeatInterval?: number; // Heartbeat interval (ms)
+  discoveryCleanupInterval?: number;   // Cleanup interval (ms)
+  
+  // Logging
+  logger?: Logger;                  // Custom logger instance
 }
 ```
 
-## API Reference
+## Best Practices
 
-### Netron Class
+### 1. Service Versioning
+
+Always version your services to ensure compatibility:
 
 ```typescript
-class Netron {
-  static create(options?: NetronOptions): Promise<Netron>;
-  connect(address: string): Promise<RemotePeer>;
-  disconnect(peerId: string): void;
-  addTask(fn: Task): string;
-  getServiceNames(): string[];
-  emitParallel(event: string, ...args: any[]): Promise<void>;
-  emitSerial(event: string, ...args: any[]): Promise<void>;
-  emitReduce(event: string, ...args: any[]): Promise<any>;
-  emitReduceRight(event: string, ...args: any[]): Promise<any>;
-}
+@Service('api@1.0.0')  // Good - includes version
+@Service('api')        // Bad - no version
 ```
 
-### Service Decorator Options
+### 2. Error Handling
+
+Implement proper error handling in services:
 
 ```typescript
-interface ServiceMetadata {
-  name: string;
-  version: string;
-  properties: Record<string, PropertyInfo>;
-  methods: Record<string, MethodInfo>;
-}
-
-interface PropertyInfo {
-  type: string;
-  readonly: boolean;
-}
-
-interface MethodInfo {
-  type: string;
-  arguments: ArgumentInfo[];
-}
-
-interface ArgumentInfo {
-  index: number;
-  type: string;
+@Service('userService@1.0.0')
+class UserService {
+  @Public()
+  async getUser(id: string): Promise<User> {
+    try {
+      const user = await db.findUser(id);
+      if (!user) {
+        throw new Error('User not found');
+      }
+      return user;
+    } catch (error) {
+      // Log error
+      logger.error('Failed to get user:', error);
+      throw error; // Re-throw for client handling
+    }
+  }
 }
 ```
 
-### RemotePeer Methods
+### 3. Resource Cleanup
+
+Always clean up resources properly:
 
 ```typescript
-class RemotePeer {
-  queryInterface<T>(qualifiedName: string): Promise<T>;
-  queryInterfaceByDefId<T>(defId: string, def?: Definition): T;
-  subscribe(eventName: string, handler: EventSubscriber): Promise<void>;
-  unsubscribe(eventName: string, handler: EventSubscriber): Promise<void>;
-  runTask(name: string, ...args: any[]): Promise<any>;
-  disconnect(): void;
-  getServiceNames(): string[];
+const netron = await Netron.create({ listenPort: 8080 });
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  await netron.stop();
+  process.exit(0);
+});
+```
+
+### 4. Type Safety
+
+Define interfaces for your services:
+
+```typescript
+// Shared types
+interface IUserService {
+  getUser(id: string): Promise<User>;
+  createUser(data: CreateUserDto): Promise<User>;
+  updateUser(id: string, data: UpdateUserDto): Promise<User>;
+}
+
+// Client usage with full type safety
+const userService = await peer.queryInterface<IUserService>('userService@1.0.0');
+const user = await userService.getUser('123'); // Fully typed!
+```
+
+## Performance Tips
+
+1. **Use MessagePack** - Netron uses MessagePack by default for efficient serialization
+2. **Batch Operations** - Group multiple operations when possible
+3. **Stream Large Data** - Use streaming for files or large datasets
+4. **Connection Pooling** - Reuse connections instead of creating new ones
+5. **Service Discovery Caching** - Cache discovered services to reduce Redis queries
+
+## Troubleshooting
+
+### Connection Issues
+
+```typescript
+// Enable debug logging
+const netron = await Netron.create({
+  logger: {
+    debug: console.log,
+    info: console.log,
+    warn: console.warn,
+    error: console.error
+  }
+});
+
+// Handle connection errors
+try {
+  const peer = await netron.connect('ws://localhost:8080');
+} catch (error) {
+  console.error('Connection failed:', error);
 }
 ```
 
-## Performance Considerations
+### Service Not Found
 
-- Uses MessagePack for efficient serialization
-- Supports parallel execution of event handlers
-- Automatic cleanup of unused services
-- Memory-efficient stream handling
-- Connection pooling for multiple peers
-- Automatic reconnection with exponential backoff
-- Efficient binary protocol for WebSocket communication
+```typescript
+// List available services
+const services = peer.getServiceNames();
+console.log('Available services:', services);
 
-## Browser Compatibility
+// Check service metadata
+const metadata = await peer.getServiceMetadata('calculator@1.0.0');
+console.log('Service metadata:', metadata);
+```
 
-- Modern browsers (Chrome, Firefox, Safari, Edge)
-- WebSocket support required
-- ES2018+ features used
-- Some features may require polyfills in older browsers
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-MIT
-
-## Credits
-
-Built with:
-- [ws](https://github.com/websockets/ws) for WebSocket support
-- [@devgrid/messagepack](https://github.com/devgrid/messagepack) for serialization
-- [@devgrid/async-emitter](https://github.com/devgrid/async-emitter) for event handling
-- [@devgrid/smartbuffer](https://github.com/devgrid/smartbuffer) for efficient binary operations
-- [@devgrid/common](https://github.com/devgrid/common) for utility functions
+MIT © DevGrid

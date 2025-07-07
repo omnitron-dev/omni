@@ -1,14 +1,14 @@
 // A function that does nothing
-export const noop = () => { };
+export const noop = (...args: any[]) => { };
 
 // A function that returns the same value that is passed to it
 export const identity = <T>(x: T): T => x;
 
 // A function that always returns true
-export const truly = (): boolean => true;
+export const truly = (...args: any[]): boolean => true;
 
 // A function that always returns false
-export const falsely = (): boolean => false;
+export const falsely = (...args: any[]): boolean => false;
 
 // A function that converts a value to an array
 // If the value is null or undefined, it returns an empty array

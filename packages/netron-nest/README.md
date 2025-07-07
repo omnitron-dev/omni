@@ -1,201 +1,364 @@
-# Netron NestJS Integration
+# @devgrid/netron-nest
 
-**Netron NestJS Integration** provides seamless integration between the **Netron** distributed framework and **NestJS**, making it easy to develop scalable, reliable, and fault-tolerant microservices.
+NestJS integration module for [@devgrid/netron](../netron), providing seamless integration between the Netron distributed framework and NestJS applications. Build scalable microservices with WebSocket-based RPC, event streaming, and service discovery.
 
-## 📖 About the Project
+## Features
 
-Netron NestJS serves as a powerful alternative to built-in NestJS transports (e.g., gRPC, Kafka, Redis, RabbitMQ). It offers a declarative approach to microservice development with advanced Redis-based service discovery, automatic heartbeats, and fault tolerance.
+- 🏗️ **Seamless NestJS Integration** - Works naturally with NestJS dependency injection
+- 🔌 **Service Decorators** - Simple decorators for exposing services
+- 📡 **Automatic Service Registration** - Services are automatically exposed via Netron
+- 🔍 **Service Discovery** - Built-in Redis-based service discovery support
+- 🎯 **Type-Safe RPC** - Full TypeScript support for remote procedure calls
+- 🚀 **Event Streaming** - Real-time event streaming between services
+- 🛡️ **Graceful Shutdown** - Proper cleanup on application shutdown
+- 💉 **Dependency Injection** - Use NestJS DI to inject Netron instance
 
----
-
-## 🚀 Features
-
-- 🚦 **Redis-based service discovery** with automatic heartbeats
-- 📡 **RPC and Event Streams** for inter-service communication
-- 🔧 **Declarative service definition and exposure**
-- 🔄 **Seamless NestJS DI container integration**
-- 💡 **Automatic service registration**
-- 🔄 **Graceful shutdown** and robust error handling
-- 🧪 **Comprehensive test coverage**
-
----
-
-## 📦 Installation
+## Installation
 
 ```bash
 npm install @devgrid/netron @devgrid/netron-nest
+# or
+yarn add @devgrid/netron @devgrid/netron-nest
+# or
+pnpm add @devgrid/netron @devgrid/netron-nest
 ```
 
----
+## Quick Start
 
-## 🎯 Usage Examples
-
-### Creating a Microservice with Netron
+### 1. Configure NetronModule
 
 ```typescript
 import { Module } from '@nestjs/common';
 import { NetronModule } from '@devgrid/netron-nest';
-import { AuthService } from './auth.service';
 
 @Module({
   imports: [
     NetronModule.forRoot({
       listenHost: 'localhost',
-      listenPort: 4000,
+      listenPort: 8080,
       discoveryEnabled: true,
-      discoveryRedisUrl: 'redis://localhost:6379/0',
+      discoveryRedisUrl: 'redis://localhost:6379',
     }),
   ],
-  providers: [AuthService],
 })
 export class AppModule {}
 ```
 
-### Exposing Services with Decorators
+### 2. Create and Expose a Service
 
 ```typescript
 import { Injectable } from '@nestjs/common';
 import { Service } from '@devgrid/netron-nest';
 
 @Injectable()
-@Service('auth@1.0.0')
-export class AuthService {
-  login(user: string, pass: string) {
-    return user === 'admin' && pass === 'admin';
+@Service('calculator@1.0.0')
+export class CalculatorService {
+  add(a: number, b: number): number {
+    return a + b;
+  }
+
+  multiply(a: number, b: number): number {
+    return a * b;
   }
 }
 ```
 
-### Invoking Remote Services
+### 3. Use Remote Services
 
 ```typescript
 import { Injectable } from '@nestjs/common';
-import { InjectNetron, Netron } from '@devgrid/netron-nest';
+import { InjectNetron } from '@devgrid/netron-nest';
+import { Netron } from '@devgrid/netron';
 
 @Injectable()
-export class RemoteService {
+export class MathController {
   constructor(@InjectNetron() private readonly netron: Netron) {}
 
-  async authenticate(user: string, pass: string): Promise<boolean> {
-    const authService = await this.netron.getService('auth@1.0.0');
-    return authService.login(user, pass);
+  async calculate() {
+    // Connect to remote service
+    const peer = await this.netron.connect('ws://remote-service:8080');
+    
+    // Query remote service interface
+    const calculator = await peer.queryInterface<{
+      add(a: number, b: number): Promise<number>;
+      multiply(a: number, b: number): Promise<number>;
+    }>('calculator@1.0.0');
+    
+    // Use remote methods
+    const sum = await calculator.add(10, 20); // 30
+    const product = await calculator.multiply(5, 6); // 30
+    
+    return { sum, product };
   }
 }
 ```
 
----
+## Advanced Configuration
 
-## 🔍 Comparison with NestJS Microservices (gRPC)
-
-| Feature                            | NestJS (gRPC)                            | Netron NestJS                             |
-| ---------------------------------- | ---------------------------------------- | ----------------------------------------- |
-| Transport                          | HTTP/2                                   | WebSocket                                 |
-| Service Discovery                  | Not included (external solutions needed) | Built-in (Redis-based)                    |
-| Automatic Service Registration     | No                                       | Yes                                       |
-| Node Availability Detection        | Requires load balancing                  | Automatic (heartbeat, TTL)                |
-| Graceful Shutdown                  | Limited                                  | Full support                              |
-| Performance                        | High                                     | High                                      |
-| Streaming and Event-driven Support | Limited streaming (HTTP/2)               | Full WebSocket-based streams              |
-| Ease of Setup                      | Medium (requires proto files)            | High (declarative decorators)             |
-
-### When to Choose Netron over gRPC?
-
-- 📌 **If automatic service discovery and registration** are desired without additional middleware.
-- 📌 **If ease of setup and development simplicity** are priorities, avoiding `.proto` files and complex tooling.
-- 📌 **If robust automatic error handling** and node health checks (heartbeat) are essential.
-- 📌 **If rich streaming capabilities and event-driven communication** over WebSocket are required.
-
----
-
-## 🛠️ Redis-based Service Discovery
-
-Netron leverages Redis for robust service discovery:
-
-- Automatic node registration at startup.
-- Heartbeat (TTL keys) for detecting node availability.
-- Redis Pub/Sub for rapid event broadcasting.
-
----
-
-## ✅ Comprehensive Test Coverage
-
-Tests include:
-
-- Unit and integration tests for all components.
-- Error handling and Redis retry logic tests.
-- Lifecycle management tests (startup, graceful shutdown).
-
-Run tests with Jest:
-
-```bash
-npm run test
-```
-
----
-
-## 📌 Key Decorators and DI Tokens
-
-- `@Service(name@version)` – Service exposure
-- `@InjectNetron()` – Inject Netron instance
-- `NETRON_OPTIONS`, `NETRON_INSTANCE` – DI tokens for NestJS integration
-
----
-
-## 📚 Complete NestJS + Netron Microservice Example
-
-### Server (Microservice):
+### Module Configuration Options
 
 ```typescript
-import { Module } from '@nestjs/common';
-import { NetronModule } from '@devgrid/netron-nest';
-
 @Module({
   imports: [
     NetronModule.forRoot({
+      // Server options
       listenHost: 'localhost',
-      listenPort: 5000,
+      listenPort: 8080,
+      
+      // Service discovery
       discoveryEnabled: true,
-      discoveryRedisUrl: 'redis://localhost:6379/1',
+      discoveryRedisUrl: 'redis://localhost:6379',
+      discoveryHeartbeatInterval: 5000,
+      discoveryCleanupInterval: 10000,
+      
+      // Timeouts
+      connectTimeout: 5000,
+      requestTimeout: 5000,
+      streamTimeout: 30000,
+      
+      // Features
+      allowServiceEvents: true,
+      
+      // Custom logger
+      logger: new CustomLogger(),
     }),
   ],
 })
-export class UserServiceModule {}
+export class AppModule {}
 ```
 
-### Service Implementation:
+### Async Configuration
 
 ```typescript
-import { Injectable } from '@nestjs/common';
-import { Service } from '@devgrid/netron-nest';
-
-@Injectable()
-@Service('user.service@1.0.0')
-export class UserService {
-  getUser(id: string) {
-    return { id, name: 'John Doe' };
-  }
-}
+@Module({
+  imports: [
+    NetronModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        listenPort: configService.get('NETRON_PORT'),
+        discoveryRedisUrl: configService.get('REDIS_URL'),
+        discoveryEnabled: configService.get('DISCOVERY_ENABLED'),
+      }),
+      inject: [ConfigService],
+    }),
+  ],
+})
+export class AppModule {}
 ```
 
-### Client (Another Microservice):
+## Service Discovery
+
+With Redis-based service discovery, services automatically register and can find each other:
 
 ```typescript
-import { Injectable } from '@nestjs/common';
-import { InjectNetron, Netron } from '@devgrid/netron-nest';
-
 @Injectable()
-export class ClientService {
+export class ServiceDiscovery {
   constructor(@InjectNetron() private readonly netron: Netron) {}
 
-  async fetchUser(id: string) {
-    const userService = await this.netron.getService('user.service@1.0.0');
-    return userService.getUser(id);
+  async findService(serviceName: string) {
+    // Discovery is handled automatically when enabled
+    const nodes = await this.netron.discovery?.getActiveNodes();
+    
+    for (const node of nodes || []) {
+      if (node.services.includes(serviceName)) {
+        const peer = await this.netron.connect(node.address);
+        return peer.queryInterface(serviceName);
+      }
+    }
+    
+    throw new Error(`Service ${serviceName} not found`);
   }
 }
 ```
 
----
+## Event Streaming
 
-## ⚖️ License
+Subscribe to and emit events between services:
 
-MIT © LuxQuant
+```typescript
+@Injectable()
+@Service('events@1.0.0')
+export class EventService {
+  constructor(@InjectNetron() private readonly netron: Netron) {}
+
+  async broadcastEvent(event: string, data: any) {
+    // Emit to all connected peers
+    await this.netron.emitParallel(event, data);
+  }
+
+  async onModuleInit() {
+    // Subscribe to events
+    this.netron.on('user:created', async (user) => {
+      console.log('New user created:', user);
+    });
+  }
+}
+```
+
+## Testing
+
+### Unit Testing
+
+```typescript
+import { Test } from '@nestjs/testing';
+import { NetronModule } from '@devgrid/netron-nest';
+
+describe('CalculatorService', () => {
+  let service: CalculatorService;
+
+  beforeEach(async () => {
+    const module = await Test.createTestingModule({
+      imports: [
+        NetronModule.forRoot({
+          listenPort: 0, // Random port for testing
+        }),
+      ],
+      providers: [CalculatorService],
+    }).compile();
+
+    service = module.get<CalculatorService>(CalculatorService);
+  });
+
+  it('should add numbers', () => {
+    expect(service.add(2, 3)).toBe(5);
+  });
+});
+```
+
+### Integration Testing
+
+```typescript
+describe('Service Integration', () => {
+  let app: INestApplication;
+  let netron: Netron;
+
+  beforeAll(async () => {
+    const module = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = module.createNestApplication();
+    await app.init();
+    
+    netron = module.get<Netron>(NETRON_INSTANCE);
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('should expose service via Netron', async () => {
+    const services = netron.peer.getServiceNames();
+    expect(services).toContain('calculator@1.0.0');
+  });
+});
+```
+
+## Best Practices
+
+### 1. Service Versioning
+
+Always version your services for backward compatibility:
+
+```typescript
+@Service('users@1.0.0')  // Good - versioned
+@Service('users')        // Bad - no version
+```
+
+### 2. Error Handling
+
+Implement proper error handling in services:
+
+```typescript
+@Injectable()
+@Service('users@1.0.0')
+export class UserService {
+  async getUser(id: string) {
+    try {
+      const user = await this.userRepository.findOne(id);
+      if (!user) {
+        throw new NotFoundException(`User ${id} not found`);
+      }
+      return user;
+    } catch (error) {
+      this.logger.error(`Failed to get user ${id}:`, error);
+      throw error;
+    }
+  }
+}
+```
+
+### 3. Graceful Shutdown
+
+NetronModule handles graceful shutdown automatically, but you can add custom cleanup:
+
+```typescript
+@Injectable()
+export class AppService implements OnModuleDestroy {
+  constructor(@InjectNetron() private readonly netron: Netron) {}
+
+  async onModuleDestroy() {
+    // Custom cleanup logic
+    await this.saveState();
+    // Netron cleanup is handled automatically
+  }
+}
+```
+
+### 4. Type Safety
+
+Define interfaces for your services:
+
+```typescript
+// shared/interfaces/calculator.interface.ts
+export interface ICalculatorService {
+  add(a: number, b: number): Promise<number>;
+  multiply(a: number, b: number): Promise<number>;
+}
+
+// Use in both service and client
+@Service('calculator@1.0.0')
+export class CalculatorService implements ICalculatorService {
+  // Implementation
+}
+
+// Client
+const calculator = await peer.queryInterface<ICalculatorService>('calculator@1.0.0');
+```
+
+## Comparison with NestJS Microservices
+
+| Feature | NestJS Microservices | @devgrid/netron-nest |
+|---------|---------------------|---------------------|
+| Transport | TCP, Redis, NATS, etc. | WebSocket |
+| Service Discovery | Manual/External | Built-in (Redis) |
+| Streaming | Limited | Full WebSocket streaming |
+| Browser Support | No | Yes (via Netron) |
+| Type Safety | Partial | Full TypeScript support |
+| Setup Complexity | Medium | Low |
+| Performance | High | High |
+
+## API Reference
+
+### Decorators
+
+- `@Service(name: string)` - Mark a class as a Netron service
+- `@InjectNetron()` - Inject the Netron instance
+
+### Module Methods
+
+- `NetronModule.forRoot(options)` - Configure Netron synchronously
+- `NetronModule.forRootAsync(options)` - Configure Netron asynchronously
+
+### Constants
+
+- `NETRON_OPTIONS` - Injection token for Netron options
+- `NETRON_INSTANCE` - Injection token for Netron instance
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+MIT © DevGrid

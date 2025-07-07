@@ -2,10 +2,10 @@ import { Redis } from 'ioredis';
 
 import { Netron } from '../../src';
 import { ServiceDiscovery } from '../../src/service-discovery';
-
+import { createTestRedisClient, cleanupRedis } from '../helpers/test-utils';
 describe('ServiceDiscovery Update Services', () => {
-  let redis: Redis;
-  let discovery: ServiceDiscovery;
+  let redis: Redis | undefined;
+  let discovery: ServiceDiscovery | undefined;
 
   const nodeId = 'update-services-node';
   const address = '127.0.0.1:8000';
@@ -16,8 +16,8 @@ describe('ServiceDiscovery Update Services', () => {
   ];
 
   beforeEach(async () => {
-    redis = new Redis('redis://localhost:6379/2');
-    await redis.flushdb();
+    redis = createTestRedisClient(2);
+    await cleanupRedis(redis);
     const netron = new Netron({
       id: nodeId,
     });
@@ -31,15 +31,15 @@ describe('ServiceDiscovery Update Services', () => {
   });
 
   afterEach(async () => {
-    await discovery.shutdown();
-    await redis.flushdb();
-    redis.disconnect();
+    if (discovery) { await discovery.shutdown(); }
+    if (redis) { await cleanupRedis(redis); }
+    if (redis) { redis.disconnect(); }
   });
 
   it('should update node services correctly', async () => {
-    await discovery.updateServices(updatedServices);
+    await discovery!.updateServices(updatedServices);
 
-    const nodeData = await redis.hgetall(`netron:discovery:nodes:${nodeId}`);
+    const nodeData = await redis!.hgetall(`netron:discovery:nodes:${nodeId}`);
 
     const servicesRaw = nodeData['services'];
     expect(servicesRaw).toBeDefined();

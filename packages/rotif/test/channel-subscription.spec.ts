@@ -2,15 +2,15 @@
 import { delay, defer } from '@devgrid/common';
 
 import { NotificationManager } from '../src';
+import { createTestConfig } from './helpers/test-utils';
 
 describe('NotificationManager – Channel Subscription Tests', () => {
   let manager: NotificationManager;
 
   beforeEach(async () => {
-    manager = new NotificationManager({
-      redis: { db: 1 },
+    manager = new NotificationManager(createTestConfig(1, {
       blockInterval: 100,
-    });
+    }));
     await manager.redis.flushdb();
   });
 

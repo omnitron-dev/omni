@@ -2,13 +2,14 @@ import Redis from 'ioredis';
 import { delay, defer } from '@devgrid/common';
 
 import { NotificationManager } from '../src';
+import { createTestConfig } from './helpers/test-utils';
 
 describe('Lua Atomic Ack Script', () => {
   let manager: NotificationManager;
   let redis: Redis;
 
   beforeAll(async () => {
-    manager = new NotificationManager({ redis: { db: 1 }, blockInterval: 100 });
+    manager = new NotificationManager(createTestConfig(1, { blockInterval: 100 }));
     redis = manager.redis;
     await redis.flushdb();
     await delay(1000); // Дождёмся загрузки скриптов

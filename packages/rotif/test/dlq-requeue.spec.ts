@@ -1,16 +1,16 @@
 import { delay as delayMs } from '@devgrid/common';
 
 import { NotificationManager } from '../src';
+import { createTestConfig } from './helpers/test-utils';
 
 describe('DLQ - Requeue from DLQ', () => {
   let manager: NotificationManager;
 
   beforeAll(async () => {
-    manager = new NotificationManager({
-      redis: { db: 1 },
+    manager = new NotificationManager(createTestConfig(1, {
       checkDelayInterval: 100,
       blockInterval: 100,
-    });
+    }));
     await manager.redis.flushdb();
   });
 

@@ -4,18 +4,18 @@ import { delay } from '@devgrid/common';
 
 import { Netron } from '../../src';
 import { ServiceDiscovery } from '../../src/service-discovery';
-
+import { createTestRedisClient, cleanupRedis } from '../helpers/test-utils';
 describe('ServiceDiscovery Retry Deregistration', () => {
-  let redis: Redis;
-  let discovery: ServiceDiscovery;
+  let redis: Redis | undefined;
+  let discovery: ServiceDiscovery | undefined;
 
   const nodeId = 'retry-deregistration-node';
   const address = '127.0.0.1:3000';
   const services = [{ name: 'retry-dereg-service', version: '1.0.0' }];
 
   beforeEach(async () => {
-    redis = new Redis('redis://localhost:6379/2');
-    await redis.flushdb();
+    redis = createTestRedisClient(2);
+    await cleanupRedis(redis);
 
     const netron = new Netron({
       id: nodeId,
@@ -27,22 +27,22 @@ describe('ServiceDiscovery Retry Deregistration', () => {
       pubSubEnabled: true,
     });
 
-    discovery.startHeartbeat();
+    discovery!.startHeartbeat();
     await delay(100); // ensure initial heartbeat
   });
 
   afterEach(async () => {
-    await discovery.shutdown();
-    await redis.flushdb();
-    redis.disconnect();
+    if (discovery) { await discovery.shutdown(); }
+    if (redis) { await cleanupRedis(redis); }
+    if (redis) { redis.disconnect(); }
   });
 
   it('should retry deregistration if Redis fails temporarily', async () => {
     // Mock Redis multi to fail on the first attempt
-    const originalMulti = redis.multi.bind(redis);
+    const originalMulti = redis!.multi.bind(redis);
     let failOnce = true;
 
-    jest.spyOn(redis, 'multi').mockImplementation(() => {
+    jest.spyOn(redis!, 'multi').mockImplementation(() => {
       const transaction = originalMulti();
       if (failOnce) {
         failOnce = false;
@@ -51,11 +51,11 @@ describe('ServiceDiscovery Retry Deregistration', () => {
       return transaction;
     });
 
-    await expect(discovery.shutdown()).resolves.not.toThrow();
+    await expect(discovery!.shutdown()).resolves.not.toThrow();
 
-    const nodeExists = await redis.exists(`netron:discovery:nodes:${nodeId}`);
-    const heartbeatExists = await redis.exists(`netron:discovery:heartbeat:${nodeId}`);
-    const nodeIndexed = await redis.sismember('netron:discovery:index:nodes', nodeId);
+    const nodeExists = await redis!.exists(`netron:discovery:nodes:${nodeId}`);
+    const heartbeatExists = await redis!.exists(`netron:discovery:heartbeat:${nodeId}`);
+    const nodeIndexed = await redis!.sismember('netron:discovery:index:nodes', nodeId);
 
     expect(nodeExists).toBe(0);
     expect(heartbeatExists).toBe(0);

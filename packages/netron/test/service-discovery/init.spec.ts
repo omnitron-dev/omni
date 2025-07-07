@@ -2,19 +2,20 @@ import { Redis } from 'ioredis';
 
 import { Netron } from '../../src';
 import { ServiceDiscovery } from '../../src/service-discovery';
+import { createTestRedisClient, cleanupRedis } from '../helpers/test-utils';
 
 import type { ServiceInfo, DiscoveryOptions } from '../../src/service-discovery/types';
 
 describe('ServiceDiscovery Initialization', () => {
-  let redis: Redis;
+  let redis: Redis | undefined;
 
   beforeEach(() => {
-    redis = new Redis("redis://localhost:6379/2");
+    redis = createTestRedisClient(2);
   });
 
   afterEach(async () => {
-    await redis.flushall();
-    redis.disconnect();
+    if (redis) { await cleanupRedis(redis); }
+    if (redis) { redis.disconnect(); }
   });
 
   const nodeId = 'node-1';
@@ -25,7 +26,7 @@ describe('ServiceDiscovery Initialization', () => {
   });
 
   it('should initialize correctly with minimal options', () => {
-    const discovery = new ServiceDiscovery(redis, netron, address, services);
+    const discovery = new ServiceDiscovery(redis!, netron, address, services);
 
     expect(discovery).toBeDefined();
     expect(discovery['nodeId']).toBe(nodeId);
@@ -40,7 +41,7 @@ describe('ServiceDiscovery Initialization', () => {
       heartbeatInterval: 10000,
       heartbeatTTL: 30000,
     };
-    const discovery = new ServiceDiscovery(redis, netron, address, services, options);
+    const discovery = new ServiceDiscovery(redis!, netron, address, services, options);
 
     expect(discovery).toBeDefined();
     expect(discovery['options'].heartbeatInterval).toBe(10000);

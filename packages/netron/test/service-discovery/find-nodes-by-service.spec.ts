@@ -2,12 +2,12 @@ import { Redis } from 'ioredis';
 import { delay } from '@devgrid/common';
 
 import { Netron } from '../../src';
+import { createTestRedisClient, cleanupRedis } from '../helpers/test-utils';
 import { ServiceDiscovery } from '../../src/service-discovery';
-
 describe('ServiceDiscovery findNodesByService', () => {
-  let redis: Redis;
-  let discoveryA: ServiceDiscovery;
-  let discoveryB: ServiceDiscovery;
+  let redis: Redis | undefined;
+  let discoveryA: ServiceDiscovery | undefined;
+  let discoveryB: ServiceDiscovery | undefined;
 
   const nodeIdA = 'node-A';
   const addressA = '127.0.0.1:3000';
@@ -29,8 +29,8 @@ describe('ServiceDiscovery findNodesByService', () => {
   });
 
   beforeEach(async () => {
-    redis = new Redis('redis://localhost:6379/2');
-    await redis.flushdb();
+    redis = createTestRedisClient(2);
+    await cleanupRedis(redis);
 
     discoveryA = new ServiceDiscovery(redis, netronA, addressA, servicesA, {
       heartbeatInterval: 500,
@@ -49,14 +49,21 @@ describe('ServiceDiscovery findNodesByService', () => {
   });
 
   afterEach(async () => {
-    await discoveryA.shutdown();
-    await discoveryB.shutdown();
-    await redis.flushdb();
-    redis.disconnect();
+    if (discoveryA) {
+      await discoveryA.shutdown();
+    }
+    if (discoveryB) {
+      await discoveryB.shutdown();
+    }
+    if (redis) {
+      await cleanupRedis(redis);
+      redis.disconnect();
+    }
   });
 
   it('should find nodes by service name', async () => {
-    const nodes = await discoveryA.findNodesByService('auth-service');
+    expect(discoveryA).toBeDefined();
+    const nodes = await discoveryA!.findNodesByService('auth-service');
 
     expect(nodes.length).toBe(2);
 
@@ -66,27 +73,31 @@ describe('ServiceDiscovery findNodesByService', () => {
   });
 
   it('should find nodes by service name and specific version', async () => {
-    const nodes = await discoveryA.findNodesByService('payment-service', '2.0.0');
+    expect(discoveryA).toBeDefined();
+    const nodes = await discoveryA!.findNodesByService('payment-service', '2.0.0');
 
     expect(nodes.length).toBe(1);
     expect(nodes[0]!.nodeId).toBe(nodeIdB);
   });
 
   it('should return empty array if service is not found', async () => {
-    const nodes = await discoveryA.findNodesByService('non-existent-service');
+    expect(discoveryA).toBeDefined();
+    const nodes = await discoveryA!.findNodesByService('non-existent-service');
 
     expect(nodes.length).toBe(0);
   });
 
   it('should handle node expiration correctly', async () => {
-    await discoveryB.shutdown();
+    expect(discoveryA).toBeDefined();
+    expect(discoveryB).toBeDefined();
+    await discoveryB!.shutdown();
 
     await delay(2000);
 
-    const nodesAfterExpiration = await discoveryA.findNodesByService('payment-service');
+    const nodesAfterExpiration = await discoveryA!.findNodesByService('payment-service');
     expect(nodesAfterExpiration.length).toBe(0);
 
-    const authNodes = await discoveryA.findNodesByService('auth-service');
+    const authNodes = await discoveryA!.findNodesByService('auth-service');
     expect(authNodes.length).toBe(1);
     expect(authNodes[0]!.nodeId).toBe(nodeIdA);
   });

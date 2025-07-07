@@ -2,12 +2,13 @@
 import { delay } from '@devgrid/common';
 
 import { NotificationManager } from '../src/rotif';
+import { getTestRedisUrl } from './helpers/test-utils';
 
 let manager: NotificationManager;
 
 beforeEach(async () => {
   manager = new NotificationManager({
-    redis: 'redis://localhost:6379/1',
+    redis: getTestRedisUrl(1),
     deduplicationTTL: 3600,
     blockInterval: 100,
   });

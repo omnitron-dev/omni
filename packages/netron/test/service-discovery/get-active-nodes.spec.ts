@@ -4,11 +4,11 @@ import { delay } from '@devgrid/common';
 import { Netron } from '../../src';
 import { NodeInfo } from '../../src/service-discovery/types';
 import { ServiceDiscovery } from '../../src/service-discovery';
-
+import { createTestRedisClient, cleanupRedis } from '../helpers/test-utils';
 describe('ServiceDiscovery getActiveNodes', () => {
-  let redis: Redis;
-  let discoveryA: ServiceDiscovery;
-  let discoveryB: ServiceDiscovery;
+  let redis: Redis | undefined;
+  let discoveryA: ServiceDiscovery | undefined;
+  let discoveryB: ServiceDiscovery | undefined;
 
   const nodeIdA = 'node-a';
   const addressA = '127.0.0.1:3000';
@@ -27,8 +27,8 @@ describe('ServiceDiscovery getActiveNodes', () => {
   });
 
   beforeEach(async () => {
-    redis = new Redis('redis://localhost:6379/2');
-    await redis.flushdb();
+    redis = createTestRedisClient(2);
+    await cleanupRedis(redis);
 
     discoveryA = new ServiceDiscovery(redis, netronA, addressA, servicesA, {
       heartbeatInterval: 500,
@@ -45,14 +45,14 @@ describe('ServiceDiscovery getActiveNodes', () => {
   });
 
   afterEach(async () => {
-    await discoveryA.shutdown();
-    await discoveryB.shutdown();
-    await redis.flushdb();
-    redis.disconnect();
+    if (discoveryA) { await discoveryA.shutdown(); }
+    if (discoveryB) { await discoveryB.shutdown(); }
+    if (redis) { await cleanupRedis(redis); }
+    if (redis) { redis.disconnect(); }
   });
 
   it('should return all active nodes correctly', async () => {
-    const activeNodes: NodeInfo[] = await discoveryA.getActiveNodes();
+    const activeNodes: NodeInfo[] = await discoveryA!.getActiveNodes();
 
     expect(activeNodes.length).toBe(2);
 
@@ -70,14 +70,14 @@ describe('ServiceDiscovery getActiveNodes', () => {
   });
 
   it('should automatically deregister inactive nodes', async () => {
-    await discoveryB.shutdown();
+    await discoveryB!.shutdown();
     await delay(2000); // Wait longer than heartbeatTTL
 
-    const activeNodes: NodeInfo[] = await discoveryA.getActiveNodes();
+    const activeNodes: NodeInfo[] = await discoveryA!.getActiveNodes();
     expect(activeNodes.length).toBe(1);
     expect(activeNodes[0]!.nodeId).toBe(nodeIdA);
 
-    const nodeBExists = await redis.exists(`netron:discovery:nodes:${nodeIdB}`);
+    const nodeBExists = await redis!.exists(`netron:discovery:nodes:${nodeIdB}`);
     expect(nodeBExists).toBe(0);
   });
 });

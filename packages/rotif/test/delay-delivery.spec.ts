@@ -2,9 +2,7 @@ import { delay as delayMs } from '@devgrid/common';
 import { it, expect, describe, afterAll, beforeAll } from '@jest/globals';
 
 import { NotificationManager } from '../src';
-
-const REDIS_URL = process.env['REDIS_URL'] || 'redis://localhost:6379';
-const parsed = new URL(REDIS_URL);
+import { createTestConfig } from './helpers/test-utils';
 
 describe('NotificationManager - delay delivery', () => {
   let manager: NotificationManager;
@@ -12,12 +10,7 @@ describe('NotificationManager - delay delivery', () => {
   jest.setTimeout(10000);
 
   beforeAll(async () => {
-    manager = new NotificationManager({
-      redis: {
-        host: parsed.hostname,
-        port: parseInt(parsed.port || '6379'),
-        db: 1,
-      },
+    manager = new NotificationManager(createTestConfig(1, {
       checkDelayInterval: 100,
       blockInterval: 100,
     });

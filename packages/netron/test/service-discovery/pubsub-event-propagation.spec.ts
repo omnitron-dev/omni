@@ -3,11 +3,10 @@ import { delay } from '@devgrid/common';
 
 import { Netron } from '../../src';
 import { ServiceDiscovery } from '../../src/service-discovery';
-
 import type { DiscoveryEvent } from '../../src/service-discovery/types';
-
+import { createTestRedisClient, cleanupRedis } from '../helpers/test-utils';
 describe('ServiceDiscovery Pub/Sub Event Propagation', () => {
-  let redis: Redis;
+  let redis: Redis | undefined;
   let publisher: ServiceDiscovery;
   let subscriber: ServiceDiscovery;
 
@@ -21,8 +20,8 @@ describe('ServiceDiscovery Pub/Sub Event Propagation', () => {
   let receivedEvent: DiscoveryEvent | undefined;
 
   beforeEach(async () => {
-    redis = new Redis('redis://localhost:6379/2');
-    await redis.flushdb();
+    redis = createTestRedisClient(2);
+    await cleanupRedis(redis);
 
     const netron = new Netron({
       id: pubNodeId,
@@ -60,8 +59,8 @@ describe('ServiceDiscovery Pub/Sub Event Propagation', () => {
   afterEach(async () => {
     await publisher.shutdown();
     await subscriber.shutdown();
-    await redis.flushdb();
-    redis.disconnect();
+    if (redis) { await cleanupRedis(redis); }
+    if (redis) { redis.disconnect(); }
   });
 
   it('should propagate NODE_UPDATED event via Redis Pub/Sub', async () => {

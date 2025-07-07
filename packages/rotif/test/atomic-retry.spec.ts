@@ -2,18 +2,18 @@ import Redis from 'ioredis';
 import { delay } from '@devgrid/common';
 
 import { NotificationManager } from '../src';
+import { createTestConfig } from './helpers/test-utils';
 
 describe('Lua Atomic Retry Script', () => {
   let manager: NotificationManager;
   let redis: Redis;
 
   beforeAll(async () => {
-    manager = new NotificationManager({
-      redis: { db: 1 },
+    manager = new NotificationManager(createTestConfig(1, {
       blockInterval: 100,
       scheduledBatchSize: 1000,
       checkDelayInterval: 100,
-    });
+    }));
     redis = manager.redis;
     await redis.flushdb();
   });

@@ -1,8 +1,7 @@
 import { delay } from '@devgrid/common';
 
 import { NotificationManager } from '../src';
-
-const REDIS_URL = 'redis://localhost:6379/1';
+import { getTestRedisUrl } from './helpers/test-utils';
 
 describe('Distributed Rotif Instances – Consumer Group Handling', () => {
   let managerA: NotificationManager;
@@ -14,8 +13,8 @@ describe('Distributed Rotif Instances – Consumer Group Handling', () => {
   });
 
   it('Multiple instances, same consumer group, localRoundRobin = false', async () => {
-    managerA = new NotificationManager({ redis: REDIS_URL, localRoundRobin: false, blockInterval: 100 });
-    managerB = new NotificationManager({ redis: REDIS_URL, localRoundRobin: false, blockInterval: 100 });
+    managerA = new NotificationManager({ redis: getTestRedisUrl(1), localRoundRobin: false, blockInterval: 100 });
+    managerB = new NotificationManager({ redis: getTestRedisUrl(1), localRoundRobin: false, blockInterval: 100 });
 
     const receivedA: any[] = [];
     const receivedB: any[] = [];
@@ -32,8 +31,8 @@ describe('Distributed Rotif Instances – Consumer Group Handling', () => {
   });
 
   it('Multiple instances, same consumer group, localRoundRobin = true', async () => {
-    managerA = new NotificationManager({ redis: REDIS_URL, localRoundRobin: true, blockInterval: 100 });
-    managerB = new NotificationManager({ redis: REDIS_URL, localRoundRobin: true, blockInterval: 100 });
+    managerA = new NotificationManager({ redis: getTestRedisUrl(1), localRoundRobin: true, blockInterval: 100 });
+    managerB = new NotificationManager({ redis: getTestRedisUrl(1), localRoundRobin: true, blockInterval: 100 });
 
     const receivedA1: any[] = [];
     const receivedA2: any[] = [];
@@ -60,8 +59,8 @@ describe('Distributed Rotif Instances – Consumer Group Handling', () => {
   });
 
   it('Multiple instances, different consumer groups, localRoundRobin = false', async () => {
-    managerA = new NotificationManager({ redis: REDIS_URL, localRoundRobin: false, blockInterval: 100 });
-    managerB = new NotificationManager({ redis: REDIS_URL, localRoundRobin: false, blockInterval: 100 });
+    managerA = new NotificationManager({ redis: getTestRedisUrl(1), localRoundRobin: false, blockInterval: 100 });
+    managerB = new NotificationManager({ redis: getTestRedisUrl(1), localRoundRobin: false, blockInterval: 100 });
 
     const receivedA: any[] = [];
     const receivedB: any[] = [];
@@ -79,8 +78,8 @@ describe('Distributed Rotif Instances – Consumer Group Handling', () => {
   });
 
   it('Multiple instances, different consumer groups, localRoundRobin = true', async () => {
-    managerA = new NotificationManager({ redis: REDIS_URL, localRoundRobin: true, blockInterval: 100 });
-    managerB = new NotificationManager({ redis: REDIS_URL, localRoundRobin: true, blockInterval: 100 });
+    managerA = new NotificationManager({ redis: getTestRedisUrl(1), localRoundRobin: true, blockInterval: 100 });
+    managerB = new NotificationManager({ redis: getTestRedisUrl(1), localRoundRobin: true, blockInterval: 100 });
 
     const receivedA1: any[] = [];
     const receivedA2: any[] = [];

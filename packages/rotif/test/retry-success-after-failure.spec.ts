@@ -2,20 +2,13 @@
 import { delay } from '@devgrid/common';
 
 import { NotificationManager } from '../src';
-
-const REDIS_URL = process.env['REDIS_URL'] || 'redis://localhost:6379';
-const parsed = new URL(REDIS_URL);
+import { createTestConfig } from './helpers/test-utils';
 
 describe('NotificationManager - retry after failure', () => {
   let manager: NotificationManager;
 
   beforeAll(async () => {
-    manager = new NotificationManager({
-      redis: {
-        host: parsed.hostname,
-        port: parseInt(parsed.port || '6379'),
-        db: 1,
-      },
+    manager = new NotificationManager(createTestConfig(1, {
       checkDelayInterval: 100,
       maxRetries: 3,
       blockInterval: 100,

@@ -2,13 +2,14 @@ import Redis from 'ioredis';
 import { delay } from '@devgrid/common';
 
 import { NotificationManager } from '../src';
+import { createTestConfig } from './helpers/test-utils';
 
 describe('Lua Script - Atomic Publish', () => {
   let manager: NotificationManager;
   let redis: Redis;
 
   beforeAll(async () => {
-    manager = new NotificationManager({ redis: { db: 1 }, blockInterval: 100 });
+    manager = new NotificationManager(createTestConfig(1, { blockInterval: 100 }));
     redis = manager.redis;
     await redis.flushdb();
 

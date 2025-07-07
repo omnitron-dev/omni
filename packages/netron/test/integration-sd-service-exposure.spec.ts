@@ -2,6 +2,7 @@ import Redis from 'ioredis';
 import { delay } from '@devgrid/common';
 
 import { Netron, Service } from '../dist';
+import { createTestRedisClient, getTestRedisUrl, cleanupRedis } from './helpers/test-utils';
 
 @Service('test.service@1.0.0')
 class TestService {
@@ -15,14 +16,14 @@ describe('ServiceDiscovery Integration - Service Exposure & Unexposure', () => {
   let netron: Netron;
 
   beforeAll(async () => {
-    redis = new Redis(process.env['REDIS_URL'] || 'redis://localhost:6379', { db: 2 });
-    await redis.flushdb();
+    redis = createTestRedisClient(2);
+    await cleanupRedis(redis);
 
     netron = await Netron.create({
       listenHost: 'localhost',
       listenPort: 4004,
       discoveryEnabled: true,
-      discoveryRedisUrl: process.env['REDIS_URL'] || 'redis://localhost:6379/2',
+      discoveryRedisUrl: getTestRedisUrl(2),
       discoveryHeartbeatInterval: 500,
       discoveryHeartbeatTTL: 3000,
     });

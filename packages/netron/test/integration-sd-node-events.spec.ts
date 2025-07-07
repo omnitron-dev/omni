@@ -1,19 +1,18 @@
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import { delay } from '@devgrid/common';
-
+import { createTestRedisClient, getTestRedisUrl, cleanupRedis } from './helpers/test-utils';
 import { Netron } from '../dist/netron';
 import { DiscoveryEvent } from '../dist/service-discovery/types';
-
 describe('ServiceDiscovery Integration - Node Registration & Deregistration Events', () => {
   let redisPub: Redis;
   let netron: Netron;
   const receivedEvents: DiscoveryEvent[] = [];
 
   beforeAll(async () => {
-    redisPub = new Redis(process.env['REDIS_URL'] || 'redis://localhost:6379', { db: 2 });
-    await redisPub.flushdb();
+    redisPub = createTestRedisClient(2);
+    await cleanupRedis(redisPub);
 
-    const redisSub = new Redis(process.env['REDIS_URL'] || 'redis://localhost:6379', { db: 2 });
+    const redisSub = createTestRedisClient(2);
 
     await redisSub.subscribe('netron:discovery:events');
     redisSub.on('message', (_, message) => {
@@ -24,7 +23,7 @@ describe('ServiceDiscovery Integration - Node Registration & Deregistration Even
       listenHost: 'localhost',
       listenPort: 4002,
       discoveryEnabled: true,
-      discoveryRedisUrl: process.env['REDIS_URL'] || 'redis://localhost:6379/2',
+      discoveryRedisUrl: getTestRedisUrl(2),
       discoveryHeartbeatInterval: 500,
       discoveryHeartbeatTTL: 3000,
       discoveryPubSubEnabled: true, // Enable PubSub

@@ -2,6 +2,7 @@ import Redis from 'ioredis';
 import { delay } from '@devgrid/common';
 
 import { Netron } from '../dist';
+import { createTestRedisClient, getTestRedisUrl, cleanupRedis } from './helpers/test-utils';
 
 describe('ServiceDiscovery Integration - Node Registration & Deregistration Events', () => {
   let redis: Redis;
@@ -11,8 +12,8 @@ describe('ServiceDiscovery Integration - Node Registration & Deregistration Even
   const eventsReceivedByB: any[] = [];
 
   beforeAll(async () => {
-    redis = new Redis(process.env['REDIS_URL'] || 'redis://localhost:6379', { db: 2 });
-    await redis.flushdb();
+    redis = createTestRedisClient(2);
+    await cleanupRedis(redis);
 
     // First start nodeB and subscribe to events
     nodeB = await Netron.create({
@@ -20,7 +21,7 @@ describe('ServiceDiscovery Integration - Node Registration & Deregistration Even
       listenHost: 'localhost',
       listenPort: 4006,
       discoveryEnabled: true,
-      discoveryRedisUrl: process.env['REDIS_URL'] || 'redis://localhost:6379/2',
+      discoveryRedisUrl: getTestRedisUrl(2),
       discoveryHeartbeatInterval: 500,
       discoveryHeartbeatTTL: 3000,
       discoveryPubSubEnabled: true,
@@ -38,7 +39,7 @@ describe('ServiceDiscovery Integration - Node Registration & Deregistration Even
       listenHost: 'localhost',
       listenPort: 4005,
       discoveryEnabled: true,
-      discoveryRedisUrl: process.env['REDIS_URL'] || 'redis://localhost:6379/2',
+      discoveryRedisUrl: getTestRedisUrl(2),
       discoveryHeartbeatInterval: 500,
       discoveryHeartbeatTTL: 3000,
       discoveryPubSubEnabled: true,

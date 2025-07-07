@@ -2,20 +2,21 @@ import Redis from 'ioredis';
 import { delay } from '@devgrid/common';
 
 import { Netron } from '../dist';
+import { createTestRedisClient, getTestRedisUrl, cleanupRedis } from './helpers/test-utils';
 
 describe('ServiceDiscovery Integration - Heartbeat Retry & Recovery', () => {
   let redis: Redis;
   let netron: Netron;
 
   beforeAll(async () => {
-    redis = new Redis(process.env['REDIS_URL'] || 'redis://localhost:6379', { db: 2 });
-    await redis.flushdb();
+    redis = createTestRedisClient(2);
+    await cleanupRedis(redis);
 
     netron = await Netron.create({
       listenHost: 'localhost',
       listenPort: 4007,
       discoveryEnabled: true,
-      discoveryRedisUrl: process.env['REDIS_URL'] || 'redis://localhost:6379/2',
+      discoveryRedisUrl: getTestRedisUrl(2),
       discoveryHeartbeatInterval: 500,
       discoveryHeartbeatTTL: 3000,
     });
@@ -40,7 +41,7 @@ describe('ServiceDiscovery Integration - Heartbeat Retry & Recovery', () => {
     await delay(1500);
 
     // Restore Redis
-    redis = new Redis(process.env['REDIS_URL'] || 'redis://localhost:6379', { db: 2 });
+    redis = createTestRedisClient(2);
 
     // Wait for heartbeat recovery
     await delay(2000);

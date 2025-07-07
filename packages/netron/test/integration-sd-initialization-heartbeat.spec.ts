@@ -1,5 +1,6 @@
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import { delay } from '@devgrid/common';
+import { createTestRedisClient, getTestRedisUrl, cleanupRedis } from './helpers/test-utils';
 
 import { Service } from '../dist';
 import { Netron } from '../dist/netron';
@@ -16,14 +17,14 @@ describe('ServiceDiscovery Integration - Initialization & Heartbeat', () => {
   let redis: Redis;
 
   beforeAll(async () => {
-    redis = new Redis(process.env['REDIS_URL'] || 'redis://localhost:6379', { db: 2 });
-    await redis.flushdb();
+    redis = createTestRedisClient(2);
+    await cleanupRedis(redis);
 
     netron = await Netron.create({
       listenHost: 'localhost',
       listenPort: 4000,
       discoveryEnabled: true,
-      discoveryRedisUrl: process.env['REDIS_URL'] || 'redis://localhost:6379/2',
+      discoveryRedisUrl: getTestRedisUrl(2),
       discoveryHeartbeatInterval: 500, // speed up heartbeat for testing
       discoveryHeartbeatTTL: 3000,
     });
@@ -57,7 +58,7 @@ describe('ServiceDiscovery Integration - Initialization & Heartbeat', () => {
   it('should not register node in client mode', async () => {
     const clientNetron = await Netron.create({
       discoveryEnabled: true,
-      discoveryRedisUrl: process.env['REDIS_URL'] || 'redis://localhost:6379/2',
+      discoveryRedisUrl: getTestRedisUrl(2),
 
     });
 
@@ -85,7 +86,7 @@ describe('ServiceDiscovery Integration - Initialization & Heartbeat', () => {
       listenHost: 'localhost',
       listenPort: 4001,
       discoveryEnabled: true,
-      discoveryRedisUrl: process.env['REDIS_URL'] || 'redis://localhost:6379/2',
+      discoveryRedisUrl: getTestRedisUrl(2),
       discoveryHeartbeatInterval: 500,
       discoveryHeartbeatTTL: 3000,
     });
@@ -93,7 +94,7 @@ describe('ServiceDiscovery Integration - Initialization & Heartbeat', () => {
     // Create client netron
     const clientNetron = await Netron.create({
       discoveryEnabled: true,
-      discoveryRedisUrl: process.env['REDIS_URL'] || 'redis://localhost:6379/2',
+      discoveryRedisUrl: getTestRedisUrl(2),
     });
 
     try {

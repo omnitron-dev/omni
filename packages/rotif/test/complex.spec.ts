@@ -1,15 +1,14 @@
 import { delay } from '@devgrid/common';
 
 import { NotificationManager } from '../src/rotif';
-
-const redisUrl = 'redis://localhost:6379/1';
+import { getTestRedisUrl } from './helpers/test-utils';
 
 describe('NotificationManager – Complex Case 1 Tests', () => {
   let manager: NotificationManager;
 
   beforeEach(async () => {
     manager = new NotificationManager({
-      redis: redisUrl,
+      redis: getTestRedisUrl(1),
       maxRetries: 2,
       blockInterval: 100,
       checkDelayInterval: 200,

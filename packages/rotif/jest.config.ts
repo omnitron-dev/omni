@@ -6,6 +6,8 @@ const tsConfig = JSON.parse(readFileSync(join(__dirname, 'tsconfig.test.json'), 
 
 export default {
   preset: 'ts-jest',
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+  forceExit: true,
   testEnvironment: 'node', // Or 'jsdom' for frontend
   verbose: true, // Show detailed test logs
   clearMocks: true, // Clear mocks between tests

@@ -2,13 +2,14 @@
 import { delay } from '@devgrid/common';
 
 import { NotificationManager } from '../src';
+import { getTestRedisUrl } from './helpers/test-utils';
 
 describe('Rotif Wildcard Subscriptions', () => {
   let manager: NotificationManager;
 
   beforeEach(async () => {
     manager = new NotificationManager({
-      redis: 'redis://localhost:6379/1',
+      redis: getTestRedisUrl(1),
       maxRetries: 2,
       checkDelayInterval: 400,
       blockInterval: 100,

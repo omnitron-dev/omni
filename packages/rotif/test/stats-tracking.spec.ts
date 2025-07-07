@@ -1,21 +1,14 @@
 import { delay as delayMs } from '@devgrid/common';
 
 import { NotificationManager } from '../src';
-
-const REDIS_URL = process.env['REDIS_URL'] || 'redis://localhost:6379';
-const parsed = new URL(REDIS_URL);
+import { createTestConfig } from './helpers/test-utils';
 
 describe('Stats - tracking', () => {
   describe('should correctly track subscription stats', () => {
     let manager: NotificationManager;
 
     beforeAll(async () => {
-      manager = new NotificationManager({
-        redis: {
-          host: parsed.hostname,
-          port: parseInt(parsed.port || '6379'),
-          db: 1,
-        },
+      manager = new NotificationManager(createTestConfig(1, {
         checkDelayInterval: 50,
         blockInterval: 100,
       });

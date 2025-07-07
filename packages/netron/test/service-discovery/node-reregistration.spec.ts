@@ -3,9 +3,9 @@ import { delay } from '@devgrid/common';
 
 import { Netron } from '../../src';
 import { ServiceDiscovery } from '../../src/service-discovery';
-
+import { createTestRedisClient, cleanupRedis } from '../helpers/test-utils';
 describe('ServiceDiscovery Node Re-registration', () => {
-  let redis: Redis;
+  let redis: Redis | undefined;
   let discoveryOriginal: ServiceDiscovery;
   let discoveryNew: ServiceDiscovery;
 
@@ -21,8 +21,8 @@ describe('ServiceDiscovery Node Re-registration', () => {
   });
 
   beforeEach(async () => {
-    redis = new Redis('redis://localhost:6379/2');
-    await redis.flushdb();
+    redis = createTestRedisClient(2);
+    await cleanupRedis(redis);
 
     discoveryOriginal = new ServiceDiscovery(redis, netron, originalAddress, originalServices, {
       heartbeatInterval: 500,
@@ -36,8 +36,8 @@ describe('ServiceDiscovery Node Re-registration', () => {
   afterEach(async () => {
     await discoveryOriginal.shutdown();
     if (discoveryNew) await discoveryNew.shutdown();
-    await redis.flushdb();
-    redis.disconnect();
+    if (redis) { await cleanupRedis(redis); }
+    if (redis) { redis.disconnect(); }
   });
 
   it('should correctly handle node re-registration with updated details', async () => {
@@ -52,7 +52,7 @@ describe('ServiceDiscovery Node Re-registration', () => {
     await delay(2000); // Make sure old heartbeat TTL has expired
 
     // Create new discovery instance
-    discoveryNew = new ServiceDiscovery(redis, netron, newAddress, newServices, {
+    discoveryNew = new ServiceDiscovery(redis!, netron, newAddress, newServices, {
       heartbeatInterval: 500,
       heartbeatTTL: 1500,
     });

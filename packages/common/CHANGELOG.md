@@ -1,5 +1,11 @@
 # @devgrid/common
 
+## 0.4.3
+
+### Patch Changes
+
+- update deps, tests improvements
+
 ## 0.4.2
 
 ### Patch Changes

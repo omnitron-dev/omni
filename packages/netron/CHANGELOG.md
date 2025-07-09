@@ -1,5 +1,16 @@
 # @devgrid/netron
 
+## 0.6.5
+
+### Patch Changes
+
+- update deps, tests improvements
+- Updated dependencies
+  - @devgrid/async-emitter@0.3.3
+  - @devgrid/messagepack@0.3.3
+  - @devgrid/smartbuffer@0.2.3
+  - @devgrid/common@0.4.3
+
 ## 0.6.4
 
 ### Patch Changes

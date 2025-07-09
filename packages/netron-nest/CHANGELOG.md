@@ -1,5 +1,13 @@
 # @devgrid/netron-nest
 
+## 0.1.7
+
+### Patch Changes
+
+- update deps, tests improvements
+- Updated dependencies
+  - @devgrid/netron@0.6.5
+
 ## 0.1.6
 
 ### Patch Changes

@@ -1,8 +1,8 @@
 {
   "name": "@devgrid/orbit",
   "description": "Orchestration system",
-  "version": "0.0.0",
-  "author": "LuxQuant",
+  "version": "0.0.1",
+  "author": "DevGrid",
   "license": "MIT",
   "directories": {
     "bin": "./bin",

@@ -1,8 +1,8 @@
 {
   "name": "@devgrid/rotif",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Redis based notification system.",
-  "author": "LuxQuant",
+  "author": "DevGrid",
   "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

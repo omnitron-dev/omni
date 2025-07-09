@@ -1,5 +1,13 @@
 # @devgrid/rotif
 
+## 0.2.2
+
+### Patch Changes
+
+- update deps, tests improvements
+- Updated dependencies
+  - @devgrid/common@0.4.3
+
 ## 0.2.1
 
 ### Patch Changes

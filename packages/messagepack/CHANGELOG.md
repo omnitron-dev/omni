@@ -1,5 +1,14 @@
 # @devgrid/messagepack
 
+## 0.3.3
+
+### Patch Changes
+
+- update deps, tests improvements
+- Updated dependencies
+  - @devgrid/smartbuffer@0.2.3
+  - @devgrid/common@0.4.3
+
 ## 0.3.2
 
 ### Patch Changes

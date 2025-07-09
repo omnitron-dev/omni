@@ -1,8 +1,8 @@
 {
   "name": "@devgrid/async-emitter",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Async event emitter",
-  "author": "LuxQuant",
+  "author": "DevGrid",
   "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

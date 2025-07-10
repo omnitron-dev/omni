@@ -55,7 +55,7 @@ yarn workspace @devgrid/[package-name] test path/to/test.spec.ts
 ## Architecture Overview
 
 ### Monorepo Structure
-- `/apps/*` - Applications (e.g., orbit orchestration system)
+- `/apps/*` - Applications (e.g., onix orchestration system)
 - `/packages/*` - Reusable libraries
 - `/scripts` - Build and utility scripts
 
@@ -73,7 +73,7 @@ yarn workspace @devgrid/[package-name] test path/to/test.spec.ts
 - Retry mechanisms
 - Consumer groups for scaling
 
-**@devgrid/orbit** - Infrastructure orchestration (Ansible-like)
+**@devgrid/onix** - Infrastructure orchestration (Ansible-like)
 - SSH-based task execution
 - Playbook and inventory management
 - Pluggable task system

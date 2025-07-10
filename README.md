@@ -78,7 +78,7 @@ A comprehensive TypeScript monorepo containing libraries for building distribute
 
 ## 🚀 Applications
 
-- [**orbit**](apps/orbit) - Infrastructure orchestration and configuration management
+- [**onix**](apps/onix) - Infrastructure orchestration and configuration management
   - SSH-based task execution
   - Playbook system (similar to Ansible)
   - Inventory management

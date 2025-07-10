@@ -917,12 +917,12 @@ __metadata:
     "@jest/globals": "npm:^30.0.4"
     "@types/jest": "npm:^30.0.0"
     "@types/node": "npm:^24.0.10"
-    "@types/pino": "npm:^7.0.5"
+    "@types/pino": "npm:7.0.4"
     "@types/semver": "npm:^7.7.0"
     "@types/ws": "npm:^8.18.1"
     bufferutil: "npm:^4.0.9"
     del-cli: "npm:^6.0.0"
-    es-toolkit: "npm:^1.39.6"
+    es-toolkit: "npm:1.39.7"
     globals: "npm:^16.3.0"
     ioredis: "npm:^5.6.1"
     jest: "npm:^30.0.4"
@@ -940,9 +940,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@devgrid/orbit@workspace:apps/orbit":
+"@devgrid/onix@workspace:apps/onix":
   version: 0.0.0-use.local
-  resolution: "@devgrid/orbit@workspace:apps/orbit"
+  resolution: "@devgrid/onix@workspace:apps/onix"
   dependencies:
     "@jest/globals": "npm:^30.0.4"
     "@types/jest": "npm:^30.0.0"
@@ -962,9 +962,9 @@ __metadata:
     ts-node: "npm:^10.9.2"
     tsconfig-paths: "npm:^4.2.0"
     typescript: "npm:^5.8.3"
-    zod: "npm:^3.25.74"
+    zod: "npm:3.25.76"
   bin:
-    orbit: bin/orbit
+    onix: bin/onix
   languageName: unknown
   linkType: soft
 
@@ -2494,12 +2494,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/pino@npm:^7.0.5":
-  version: 7.0.5
-  resolution: "@types/pino@npm:7.0.5"
+"@types/pino@npm:7.0.4":
+  version: 7.0.4
+  resolution: "@types/pino@npm:7.0.4"
   dependencies:
     pino: "npm:*"
-  checksum: 10c0/f4c5593d2ac113b7ea1e2ad70fa7f4c4b51ea55cf088ece7d2ffb8f39af4cfea718b077cd83f871608031132961288e536b1a82940e82f2b81a9da712bec09cd
+  checksum: 10c0/03b91f2c085e73ff7db5acafb3761ca2460175daf63214c046bcb6de9f95d97aa28a76dd71db2747ff1f2a671e591b96e88ffac131269a5230241455294c317a
   languageName: node
   linkType: hard
 
@@ -4210,6 +4210,18 @@ __metadata:
     is-date-object: "npm:^1.0.5"
     is-symbol: "npm:^1.0.4"
   checksum: 10c0/c7e87467abb0b438639baa8139f701a06537d2b9bc758f23e8622c3b42fd0fdb5bde0f535686119e446dd9d5e4c0f238af4e14960f4771877cf818d023f6730b
+  languageName: node
+  linkType: hard
+
+"es-toolkit@npm:1.39.7":
+  version: 1.39.7
+  resolution: "es-toolkit@npm:1.39.7"
+  dependenciesMeta:
+    "@trivago/prettier-plugin-sort-imports@4.3.0":
+      unplugged: true
+    prettier-plugin-sort-re-exports@0.0.1:
+      unplugged: true
+  checksum: 10c0/dde082b76d22430bdef383bf60abb893ec4ebb50da9a900005e9b57481837b9118398897670cf33c5cdf473375345dc1e897820ede4ee58482407e9626b67ba3
   languageName: node
   linkType: hard
 
@@ -9193,9 +9205,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zod@npm:^3.25.74":
-  version: 3.25.74
-  resolution: "zod@npm:3.25.74"
-  checksum: 10c0/59e38b046ac333b5bd1ba325a83b6798721227cbfb1e69dfc7159bd7824b904241ab923026edb714fafefec3624265ae374a70aee9a5a45b365bd31781ffa105
+"zod@npm:3.25.76":
+  version: 3.25.76
+  resolution: "zod@npm:3.25.76"
+  checksum: 10c0/5718ec35e3c40b600316c5b4c5e4976f7fee68151bc8f8d90ec18a469be9571f072e1bbaace10f1e85cf8892ea12d90821b200e980ab46916a6166a4260a983c
   languageName: node
   linkType: hard

@@ -11,8 +11,9 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p ./tsconfig.build.json && tsc -p ./tsconfig.esm.json",
-    "test": "jest"
+    "build": "tsc -p ./tsconfig.build.json && tsc -p ./tsconfig.esm.json && node fix-esm-imports.js",
+    "test": "jest",
+    "test:bun": "bun test"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

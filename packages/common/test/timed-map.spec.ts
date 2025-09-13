@@ -1,15 +1,16 @@
 import { TimedMap } from '../src/timed-map';
+import { setupFakeTimers, teardownFakeTimers, advanceTimersByTime, isBun, sleep } from './test-utils';
 
 describe('TimedMap', () => {
   let map: TimedMap<string, number>;
 
   beforeEach(() => {
-    jest.useFakeTimers();
+    setupFakeTimers();
     map = new TimedMap(1000);
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    teardownFakeTimers();
   });
 
   describe('constructor', () => {
@@ -38,32 +39,32 @@ describe('TimedMap', () => {
 
     it('should delete value after timeout', () => {
       map.set('key1', 100);
-      jest.advanceTimersByTime(1000);
+      advanceTimersByTime(1000);
       expect(map.get('key1')).toBeUndefined();
     });
 
     it('should use custom timeout', () => {
       map.set('key1', 100, undefined, 2000);
-      jest.advanceTimersByTime(1000);
+      advanceTimersByTime(1000);
       expect(map.get('key1')).toBe(100);
-      jest.advanceTimersByTime(1000);
+      advanceTimersByTime(1000);
       expect(map.get('key1')).toBeUndefined();
     });
 
     it('should call custom callback after timeout', () => {
       const callback = jest.fn();
       map.set('key1', 100, callback);
-      jest.advanceTimersByTime(1000);
+      advanceTimersByTime(1000);
       expect(callback).toHaveBeenCalledWith('key1');
     });
 
     it('should reset timer when setting value again', () => {
       map.set('key1', 100);
-      jest.advanceTimersByTime(500);
+      advanceTimersByTime(500);
       map.set('key1', 200);
-      jest.advanceTimersByTime(500);
+      advanceTimersByTime(500);
       expect(map.get('key1')).toBe(200);
-      jest.advanceTimersByTime(500);
+      advanceTimersByTime(500);
       expect(map.get('key1')).toBeUndefined();
     });
   });
@@ -83,7 +84,7 @@ describe('TimedMap', () => {
       const callback = jest.fn();
       map.set('key1', 100, callback);
       map.delete('key1');
-      jest.advanceTimersByTime(1000);
+      advanceTimersByTime(1000);
       expect(callback).not.toHaveBeenCalled();
     });
   });
@@ -103,7 +104,7 @@ describe('TimedMap', () => {
       map.set('key1', 100, callback1);
       map.set('key2', 200, callback2);
       map.clear();
-      jest.advanceTimersByTime(1000);
+      advanceTimersByTime(1000);
       expect(callback1).not.toHaveBeenCalled();
       expect(callback2).not.toHaveBeenCalled();
     });
@@ -160,7 +161,7 @@ describe('TimedMap', () => {
       expect(map.get('key2')).toBe(200);
 
       // Partial time advancement
-      jest.advanceTimersByTime(500);
+      advanceTimersByTime(500);
       map.set('key3', 300);
 
       // Updating existing value
@@ -172,17 +173,17 @@ describe('TimedMap', () => {
       expect(map.get('key3')).toBe(300);
 
       // Advance time to full timeout
-      jest.advanceTimersByTime(500);
+      advanceTimersByTime(500);
       expect(map.get('key2')).toBeUndefined();
       expect(map.get('key1')).toBe(150);
       expect(map.get('key3')).toBe(300);
 
       // Final time advancement
-      jest.advanceTimersByTime(500);
+      advanceTimersByTime(500);
       expect(map.get('key1')).toBeUndefined();
       expect(map.get('key3')).toBeUndefined();
 
-      jest.advanceTimersByTime(500);
+      advanceTimersByTime(500);
       expect(map.get('key3')).toBeUndefined();
     });
   });

@@ -24,9 +24,13 @@
   ],
   "scripts": {
     "build": "tsc -p ./tsconfig.build.json && tsc -p ./tsconfig.esm.json",
-    "test": "jest"
+    "test": "jest",
+    "test:node": "jest",
+    "test:bun": "bun test test/primitives.spec.ts test/list-buffer.spec.ts test/entries.spec.ts test/omit.spec.ts test/predicates.spec.ts test/promise.spec.ts test/timed-map-bun-compat.spec.ts",
+    "test:all": "npm run test:node && npm run test:bun"
   },
   "devDependencies": {
+    "@types/bun": "latest",
     "@types/jest": "^30.0.0",
     "@types/node": "24.3.3",
     "jest": "30.1.3",

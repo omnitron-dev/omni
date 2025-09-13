@@ -2,15 +2,17 @@
 
 [![npm version](https://img.shields.io/npm/v/@devgrid/common.svg)](https://www.npmjs.com/package/@devgrid/common)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8.3-blue)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9.2-blue)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org)
+[![Bun](https://img.shields.io/badge/bun-compatible-f472b6)](https://bun.sh)
 
-A comprehensive utility library providing essential JavaScript/TypeScript functions for everyday development tasks. This package contains type-safe implementations of common utilities with zero external dependencies.
+A comprehensive utility library providing essential JavaScript/TypeScript functions for everyday development tasks. This package contains type-safe implementations of common utilities with minimal external dependencies.
 
 ## Table of Contents
 
 - [Features](#features)
 - [Installation](#installation)
+- [Runtime Compatibility](#runtime-compatibility)
 - [Quick Start](#quick-start)
 - [Core Usage](#core-usage)
   - [Primitives](#primitives)
@@ -18,7 +20,6 @@ A comprehensive utility library providing essential JavaScript/TypeScript functi
   - [Promise Utilities](#promise-utilities)
   - [Object Utilities](#object-utilities)
   - [Data Structures](#data-structures)
-  - [Cryptography](#cryptography)
 - [API Reference](#api-reference)
 - [Advanced Features](#advanced-features)
 - [TypeScript Support](#typescript-support)
@@ -30,11 +31,11 @@ A comprehensive utility library providing essential JavaScript/TypeScript functi
 ## Features
 
 - 🎯 **Type-Safe** - Full TypeScript support with proper type inference
-- 📦 **Zero Dependencies** - Minimal footprint (except @noble/hashes for crypto)
+- 📦 **Minimal Dependencies** - Only `@noble/hashes` for cryptographic operations
 - 🌳 **Tree-Shakeable** - Import only what you need
 - ✅ **Comprehensive** - Wide range of utility functions
 - 🚀 **Optimized** - Performance-focused implementations
-- 🌐 **Cross-Platform** - Works in Node.js and browsers
+- 🌐 **Cross-Runtime** - Works in Node.js and Bun
 - 🔍 **Well-Tested** - Extensive test coverage
 - 📚 **Well-Documented** - Clear examples and API documentation
 
@@ -46,7 +47,39 @@ npm install @devgrid/common
 yarn add @devgrid/common
 # or
 pnpm add @devgrid/common
+# or (for Bun)
+bun add @devgrid/common
 ```
+
+## Runtime Compatibility
+
+This package is fully compatible with both **Node.js** and **Bun** runtimes.
+
+### Running Tests
+
+```bash
+# Node.js
+yarn test:node
+
+# Bun
+yarn test:bun
+
+# Both runtimes
+yarn test:all
+```
+
+### Compatibility Notes
+
+- **Timer-based functionality**: Bun doesn't support Jest's fake timers. For timer-dependent features like `TimedMap`, we provide separate test suites for each runtime.
+- **Promise tests**: Bun handles promise rejections slightly differently than Jest, but all functionality works identically.
+- **No runtime-specific APIs**: The package doesn't use any Node.js or Bun-specific APIs, ensuring complete compatibility.
+
+### Build Output
+
+The package provides both CommonJS and ESM builds:
+- CommonJS: `dist/index.js`
+- ESM: `dist/esm/index.js`
+- TypeScript definitions included
 
 ## Quick Start
 
@@ -110,11 +143,18 @@ Comprehensive type checking and validation functions.
 ```typescript
 import { 
   isString, isNumber, isBoolean, isSymbol, isBigInt,
-  isArray, isObject, isFunction, isPromise,
-  isNull, isUndefined, isNullish,
-  isDate, isRegExp, isError,
-  isEmpty, isPlainObject, isPrimitive,
-  isSubstring, isPrefix, isSuffix
+  isArray, isObject, isFunction, isPromise, isAsyncFunction,
+  isNull, isUndefined, isNil, isExist,
+  isDate, isRegexp, isError, isMap, isSet,
+  isPlainObject, isPrimitive, isBuffer,
+  isEmptyString, isEmptyObject,
+  isNumeral, isNumeralInteger, isNumeralBigInt,
+  isFinite, isInfinite, isInteger, isSafeInteger,
+  isFloat, isOdd, isEven, isNegativeZero,
+  isSubstring, isPrefix, isSuffix,
+  isAsyncGenerator, isClass, isNan,
+  isPropertyOwned, isPropertyDefined,
+  getTag, getTagSimple
 } from '@devgrid/common';
 
 // Basic type checks with type narrowing
@@ -144,18 +184,58 @@ isPrimitive(42);         // true
 isPrimitive('hello');    // true
 isPrimitive({});         // false
 
+// Nil checks
+isNil(null);             // true
+isNil(undefined);        // true
+isNil('');               // false
+isExist('');             // true (not null/undefined)
+
 // Empty checks
-isEmpty([]);             // true
-isEmpty('');             // true
-isEmpty({});             // true
-isEmpty(new Map());      // true
-isEmpty(new Set());      // true
+isEmptyString('   ');    // true (whitespace only)
+isEmptyObject({});       // true
+isEmptyObject({ a: 1 }); // false
+
+// Numeric checks
+isNumeral('42');         // true
+isNumeral('42.5');       // true
+isNumeral('abc');        // false
+isNumeralInteger('42');  // true
+isNumeralInteger('42.5'); // false
+isNumeralBigInt('123n'); // true
+
+// Number properties
+isOdd(3);                // true
+isEven(4);               // true
+isFloat(3.14);           // true
+isNegativeZero(-0);      // true
 
 // String utilities
 isSubstring('world', 'hello world');  // true
 isPrefix('hello', 'hello world');     // true
 isSuffix('world', 'hello world');     // true
 isSubstring('foo', 'hello world');    // false
+
+// Advanced checks
+isAsyncFunction(async () => {});      // true
+isAsyncGenerator(async function* () {}()); // true
+isClass(class MyClass {});            // true
+
+// Property checks
+const obj = { a: 1 };
+isPropertyOwned(obj, 'a');            // true
+isPropertyOwned(obj, 'toString');     // false (inherited)
+isPropertyDefined(obj, 'a');          // true
+isPropertyDefined(obj, 'toString');   // true (includes inherited)
+
+// Platform checks
+import { isWindows, linux, darwin, freebsd, openbsd, sunos, aix, isNodejs } from '@devgrid/common';
+
+if (isWindows) {
+  // Windows-specific code
+}
+if (darwin) {
+  // macOS-specific code
+}
 ```
 
 ### Promise Utilities
@@ -165,7 +245,9 @@ Advanced promise handling and control flow utilities.
 ```typescript
 import { 
   defer, delay, timeout, retry, props,
-  promisify, callbackify, nodeify
+  promisify, promisifyAll, callbackify, nodeify,
+  universalify, universalifyFromPromise,
+  finally as finallyUtil, try as tryUtil
 } from '@devgrid/common';
 
 // defer - Create a deferred promise
@@ -183,8 +265,8 @@ console.log('Starting...');
 await delay(2000);
 console.log('2 seconds later');
 
-// With value
-const delayedValue = await delay(1000, 'Hello');
+// With value and unref option
+const delayedValue = await delay(1000, 'Hello', { unref: true });
 console.log(delayedValue); // 'Hello' (after 1 second)
 
 // timeout - Add timeout to any promise
@@ -192,18 +274,21 @@ try {
   const response = await timeout(
     fetch('https://slow-api.example.com/data'),
     5000, // 5 second timeout
-    { message: 'Request timed out after 5 seconds' }
+    { 
+      unref: true,  // Allow process to exit
+      signal: abortController.signal  // AbortSignal support
+    }
   );
 } catch (error) {
-  if (error.message.includes('timed out')) {
+  if (error.message.includes('exceeded')) {
     console.log('Request was too slow');
   }
 }
 
 // retry - Retry failed operations with exponential backoff
 const fetchWithRetry = await retry(
-  async ({ current, total }) => {
-    console.log(`Attempt ${current} of ${total}`);
+  async ({ current }) => {
+    console.log(`Attempt ${current}`);
     
     const response = await fetch('/api/data');
     if (!response.ok) {
@@ -214,12 +299,14 @@ const fetchWithRetry = await retry(
   },
   {
     max: 3,                    // Maximum 3 attempts
+    timeout: 5000,             // Timeout per attempt
     backoffBase: 1000,         // Start with 1s delay
-    backoffExponent: 2,        // Double delay each time
+    backoffExponent: 1.1,      // Multiply delay by 1.1 each time
     match: [/HTTP 5\d\d/],     // Only retry on 5xx errors
-    report: (message, meta, error) => {
+    report: (message, options, error) => {
       console.log(`${message}: ${error?.message}`);
-    }
+    },
+    name: 'fetchData'          // Name for logging
   }
 );
 
@@ -243,6 +330,17 @@ import { readFile } from 'fs';
 const readFileAsync = promisify(readFile);
 const content = await readFileAsync('config.json', 'utf8');
 
+// With context
+const boundPromisify = promisify(obj.method, { context: obj });
+
+// promisifyAll - Promisify entire object
+const fs = require('fs');
+const fsAsync = promisifyAll(fs, { 
+  suffix: 'Async',
+  filter: (key) => !key.startsWith('_')
+});
+await fsAsync.readFileAsync('file.txt', 'utf8');
+
 // callbackify - Convert promise-based to callback-based
 const fetchCallback = callbackify(fetch);
 
@@ -253,6 +351,34 @@ fetchCallback('https://api.example.com', (err, response) => {
     console.log('Response:', response);
   }
 });
+
+// nodeify - Add callback support to promise
+const promise = fetch('/api/data');
+nodeify(promise, (err, result) => {
+  if (err) console.error(err);
+  else console.log(result);
+});
+
+// universalify - Support both callback and promise styles
+const readFileUniversal = universalify(readFile);
+
+// Use as promise
+const data = await readFileUniversal('file.txt');
+
+// Use with callback
+readFileUniversal('file.txt', (err, data) => {
+  // ...
+});
+
+// finally - Execute cleanup regardless of outcome
+const connection = await openConnection();
+await finallyUtil(
+  performOperation(connection),
+  () => connection.close()
+);
+
+// try - Wrap sync function in promise
+const result = await tryUtil(() => JSON.parse(jsonString));
 ```
 
 ### Object Utilities
@@ -271,11 +397,21 @@ const user = {
   ssn: '123-45-6789'
 };
 
+// Single key
 const publicUser = omit(user, 'password');
 // { id: 1, name: 'John Doe', email: 'john@example.com', ssn: '123-45-6789' }
 
+// Multiple keys
 const safeUser = omit(user, ['password', 'ssn']);
 // { id: 1, name: 'John Doe', email: 'john@example.com' }
+
+// Using predicate function
+const filtered = omit(user, (key, value) => {
+  return key.startsWith('_') || value === null;
+});
+
+// Using regex pattern
+const withoutPrivate = omit(user, /^_/);
 
 // Deep omit
 const nested = {
@@ -289,28 +425,25 @@ const nested = {
         apiKey: 'xyz123'
       }
     }
-  },
-  system: {
-    version: '1.0',
-    secret: 'system-secret'
   }
 };
 
-const cleaned = omit(nested, ['password', 'apiKey', 'secret'], { deep: true });
-// {
-//   user: {
-//     id: 1,
-//     profile: {
-//       name: 'John',
-//       settings: {
-//         theme: 'dark'
-//       }
-//     }
-//   },
-//   system: {
-//     version: '1.0'
-//   }
-// }
+const cleaned = omit(nested, ['password', 'apiKey'], { deep: true });
+// Removes password and apiKey at any depth
+
+// Path-based omit
+const config = {
+  app: {
+    name: 'MyApp',
+    secret: {
+      key: 'secret123',
+      token: 'abc'
+    }
+  }
+};
+
+const publicConfig = omit(config, 'app.secret.key', { path: true });
+// Removes only the specific nested key
 
 // entries/keys/values with advanced options
 const obj = { a: 1, b: 2 };
@@ -334,8 +467,12 @@ class Child extends Parent {
 const instance = new Child();
 
 keys(instance);                         // ['own', 'inherited']
-keys(instance, { followProto: false }); // ['own']
+keys(instance, { followProto: false }); // ['own', 'inherited']
+keys(instance, { followProto: true });  // Includes prototype chain
+keys(instance, { all: true });          // All properties including non-enumerable
+
 values(instance);                       // ['child property', 'from parent']
+values(instance, { enumOnly: false });  // Includes non-enumerable values
 ```
 
 ### Data Structures
@@ -345,68 +482,77 @@ Specialized data structures for common use cases.
 ```typescript
 import { ListBuffer, TimedMap } from '@devgrid/common';
 
-// ListBuffer - Efficient list operations
+// ListBuffer - Efficient linked list implementation
 const buffer = new ListBuffer<string>();
 
-// Add items
-buffer.push('first', 'second', 'third');
-buffer.unshift('zero');
+// Add items to the end
+buffer.push('first');
+buffer.push('second');
+buffer.push('third');
 
-// Access items
-console.log(buffer.get(0));  // 'zero'
-console.log(buffer.length);  // 4
+// Remove items from the beginning
+const first = buffer.shift();  // 'first'
+const second = buffer.shift(); // 'second'
 
-// Convert to array when needed
-const items = buffer.toArray(); // ['zero', 'first', 'second', 'third']
+// Check size
+console.log(buffer.length);    // 1
 
-// Iterate
-for (const item of buffer) {
-  console.log(item);
+// Clear all items
+buffer.clear();
+console.log(buffer.length);    // 0
+
+// Use for queue-like operations
+class MessageQueue {
+  private queue = new ListBuffer<Message>();
+  
+  enqueue(message: Message) {
+    this.queue.push(message);
+  }
+  
+  dequeue(): Message | undefined {
+    return this.queue.shift();
+  }
+  
+  get pending(): number {
+    return this.queue.length;
+  }
 }
 
 // TimedMap - Map with automatic expiration
-const cache = new TimedMap<string, any>(60000); // 60 second TTL
+const cache = new TimedMap<string, any>(60000); // 60 second default TTL
 
-// Store data
+// Store data with default timeout
 cache.set('user:123', { name: 'John', role: 'admin' });
-cache.set('session:abc', { token: 'xyz' }, 30000); // Custom 30s TTL
+
+// Store with custom timeout
+cache.set('session:abc', { token: 'xyz' }, undefined, 30000); // 30s TTL
+
+// Store with custom callback on expiration
+cache.set('temp:data', data, (key) => {
+  console.log(`Key ${key} expired`);
+}, 5000);
 
 // Retrieve data
 const user = cache.get('user:123'); // { name: 'John', role: 'admin' }
 
-// After 60 seconds
-setTimeout(() => {
-  const expired = cache.get('user:123'); // undefined
-}, 61000);
+// Iterate over entries
+for (const [key, value] of cache.entries()) {
+  console.log(key, value);
+}
+
+// Iterate over values
+for (const value of cache.values()) {
+  console.log(value);
+}
 
 // Manual cleanup
 cache.delete('session:abc');
 cache.clear(); // Remove all entries
-```
 
-### Cryptography
-
-Secure random ID generation.
-
-```typescript
-import { cuid } from '@devgrid/common';
-
-// Generate collision-resistant unique identifiers
-const id1 = cuid(); // "clh3qzm8h0000a65z8byfqhox"
-const id2 = cuid(); // "clh3qzm8h0001a65z5nj3qhst"
-
-// Use for database IDs, session tokens, etc.
-const user = {
-  id: cuid(),
-  sessionId: cuid(),
-  apiKey: cuid()
-};
-
-// IDs are:
-// - URL-safe
-// - Collision-resistant
-// - Cryptographically secure
-// - Sortable by creation time
+// Use forEach
+cache.forEach((value, key, map) => {
+  console.log(`${key}: ${JSON.stringify(value)}`);
+}, thisArg);
 ```
 
 ## API Reference
@@ -428,37 +574,97 @@ const user = {
 | `isString(value)` | Checks if value is string | `value is string` |
 | `isNumber(value)` | Checks if value is number | `value is number` |
 | `isBoolean(value)` | Checks if value is boolean | `value is boolean` |
+| `isBigInt(value)` | Checks if value is BigInt | `value is bigint` |
+| `isSymbol(value)` | Checks if value is Symbol | `boolean` |
 | `isArray(value)` | Checks if value is array | `value is any[]` |
-| `isObject(value)` | Checks if value is object | `value is object` |
-| `isFunction(value)` | Checks if value is function | `value is Function` |
-| `isPromise(value)` | Checks if value is Promise | `value is Promise<any>` |
-| `isNull(value)` | Checks if value is null | `value is null` |
-| `isUndefined(value)` | Checks if value is undefined | `value is undefined` |
-| `isNullish(value)` | Checks if value is null or undefined | `value is null \| undefined` |
-| `isEmpty(value)` | Checks if value is empty | `boolean` |
+| `isObject(value)` | Checks if value is object | `boolean` |
+| `isFunction(value)` | Checks if value is function | `boolean` |
+| `isAsyncFunction(value)` | Checks if value is async function | `boolean` |
+| `isAsyncGenerator(value)` | Checks if value is async generator | `value is AsyncGenerator` |
+| `isPromise(value)` | Checks if value is Promise | `boolean` |
+| `isClass(value)` | Checks if value is class | `boolean` |
+| `isNull(value)` | Checks if value is null | `boolean` |
+| `isUndefined(value)` | Checks if value is undefined | `boolean` |
+| `isNil(value)` | Checks if value is null or undefined | `boolean` |
+| `isExist(value)` | Checks if value exists (not null/undefined) | `boolean` |
 | `isPlainObject(value)` | Checks if value is plain object | `boolean` |
 | `isPrimitive(value)` | Checks if value is primitive | `boolean` |
+| `isEmptyString(value)` | Checks if string is empty or whitespace | `boolean` |
+| `isEmptyObject(value)` | Checks if object has no own properties | `boolean` |
+| `isBuffer(value)` | Checks if value is Buffer | `boolean` |
+| `isDate(value)` | Checks if value is Date | `boolean` |
+| `isRegexp(value)` | Checks if value is RegExp | `boolean` |
+| `isError(value)` | Checks if value is Error | `boolean` |
+| `isMap(value)` | Checks if value is Map | `boolean` |
+| `isSet(value)` | Checks if value is Set | `boolean` |
+| `isArrayBuffer(value)` | Checks if value is ArrayBuffer | `boolean` |
+| `isArrayBufferView(value)` | Checks if value is ArrayBufferView | `boolean` |
+| `isNumeral(value)` | Checks if value represents a finite number | `boolean` |
+| `isNumeralInteger(value)` | Checks if value represents an integer | `boolean` |
+| `isNumeralBigInt(value)` | Checks if string represents BigInt | `boolean` |
+| `isFinite(value)` | Checks if number is finite | `boolean` |
+| `isInfinite(value)` | Checks if number is infinite | `boolean` |
+| `isInteger(value)` | Checks if number is integer | `boolean` |
+| `isSafeInteger(value)` | Checks if number is safe integer | `boolean` |
+| `isFloat(value)` | Checks if number is float | `boolean` |
+| `isOdd(value)` | Checks if number is odd | `boolean` |
+| `isEven(value)` | Checks if number is even | `boolean` |
+| `isNan(value)` | Checks if value is NaN | `boolean` |
+| `isNegativeZero(value)` | Checks if value is negative zero | `boolean` |
+| `isSubstring(substr, str, offset?)` | Checks if substr exists in str | `boolean` |
+| `isPrefix(prefix, str)` | Checks if str starts with prefix | `boolean` |
+| `isSuffix(suffix, str)` | Checks if str ends with suffix | `boolean` |
+| `isPropertyOwned(obj, key)` | Checks if property is own (not inherited) | `boolean` |
+| `isPropertyDefined(obj, path)` | Checks if property path exists | `boolean` |
+| `getTag(value)` | Gets detailed type tag | `string` |
+| `getTagSimple(value)` | Gets simple type tag | `string` |
+
+### Platform Predicates
+
+| Constant | Description | Type |
+|----------|-------------|------|
+| `isWindows` | Running on Windows | `boolean` |
+| `linux` | Running on Linux | `boolean` |
+| `darwin` | Running on macOS | `boolean` |
+| `freebsd` | Running on FreeBSD | `boolean` |
+| `openbsd` | Running on OpenBSD | `boolean` |
+| `sunos` | Running on SunOS | `boolean` |
+| `aix` | Running on AIX | `boolean` |
+| `isNodejs` | Running in Node.js | `boolean` |
 
 ### Promise Utilities
 
 | Function | Description |
 |----------|-------------|
-| `defer<T>()` | Creates a deferred promise |
-| `delay(ms, value?)` | Delays execution with optional value |
+| `defer<T>()` | Creates a deferred promise with resolve/reject methods |
+| `delay(ms, value?, options?)` | Delays execution with optional value |
 | `timeout(promise, ms, options?)` | Adds timeout to promise |
-| `retry(fn, options?)` | Retries function with backoff |
+| `retry(fn, options)` | Retries function with backoff |
 | `props(object)` | Resolves object of promises |
-| `promisify(fn)` | Converts callback to promise |
+| `promisify(fn, options?)` | Converts callback to promise |
+| `promisifyAll(obj, options?)` | Promisifies all methods in object |
 | `callbackify(fn)` | Converts promise to callback |
+| `nodeify(promise, callback)` | Adds callback support to promise |
+| `universalify(fn)` | Supports both callback and promise |
+| `universalifyFromPromise(fn)` | Universal wrapper for promise function |
+| `finally(promise, onFinally)` | Execute cleanup regardless of outcome |
+| `try(fn, ...args)` | Wrap sync function in promise |
 
 ### Object Utilities
 
 | Function | Description |
 |----------|-------------|
-| `omit(obj, keys, options?)` | Creates object without keys |
-| `entries(obj, options?)` | Gets object entries |
-| `keys(obj, options?)` | Gets object keys |
-| `values(obj, options?)` | Gets object values |
+| `omit(obj, keys, options?)` | Creates object without specified keys |
+| `entries(obj, options?)` | Gets object entries with options |
+| `keys(obj, options?)` | Gets object keys with options |
+| `values(obj, options?)` | Gets object values with options |
+
+### Data Structures
+
+| Class | Description |
+|-------|-------------|
+| `ListBuffer<T>` | Efficient linked list for queue operations |
+| `TimedMap<K, V>` | Map with automatic key expiration |
 
 ## Advanced Features
 
@@ -481,8 +687,8 @@ const fetchWithJitter = async (url: string) => {
       max: 5,
       backoffBase: 1000,
       backoffExponent: 2,
-      report: (msg, meta) => {
-        console.log(`Retry ${meta.current}/${meta.total} with ${meta.delay}ms delay`);
+      report: (msg, options) => {
+        console.log(`Retry ${options.$current}/${options.max}`);
       }
     }
   );
@@ -496,7 +702,7 @@ const resilientFetch = async (url: string) => {
       
       if (!response.ok) {
         const error = new Error(`HTTP ${response.status}`);
-        error.status = response.status;
+        (error as any).status = response.status;
         throw error;
       }
       
@@ -506,7 +712,8 @@ const resilientFetch = async (url: string) => {
       max: 3,
       match: [
         // Only retry on network errors or 5xx
-        (err) => !err.status || err.status >= 500
+        /NetworkError/,
+        /HTTP 5\d\d/
       ]
     }
   );
@@ -540,21 +747,9 @@ function extractStrings<T extends object>(obj: T): Partial<T> {
   return Object.fromEntries(stringEntries) as Partial<T>;
 }
 
-// Deep filtering
+// Deep filtering with predicate
 function removeNullish<T extends object>(obj: T): T {
-  const clean = {} as T;
-  
-  for (const [key, value] of entries(obj)) {
-    if (value !== null && value !== undefined) {
-      if (isObject(value) && !isArray(value)) {
-        clean[key] = removeNullish(value);
-      } else {
-        clean[key] = value;
-      }
-    }
-  }
-  
-  return clean;
+  return omit(obj, (key, value) => isNil(value), { deep: true });
 }
 ```
 
@@ -605,12 +800,12 @@ class RateLimiter {
 function createAsyncDebounce<T>(fn: () => Promise<T>, wait: number) {
   let pending: Promise<T> | null = null;
   let timer: NodeJS.Timeout | null = null;
+  const deferred = defer<T>();
   
   return async (): Promise<T> => {
     if (timer) clearTimeout(timer);
     
     if (!pending) {
-      const deferred = defer<T>();
       pending = deferred.promise;
       
       timer = setTimeout(async () => {
@@ -667,7 +862,7 @@ const config = {
 };
 
 const publicConfig = omit(config, ['secret']);
-// Type: { name: string, version: string, debug: boolean }
+// Type is inferred correctly
 
 // Async utilities maintain types
 const data = await retry(
@@ -697,7 +892,7 @@ const data = await retry(
 
 3. **Memory Management**
    - `TimedMap` automatically cleans expired entries
-   - `ListBuffer` provides efficient array-like operations
+   - `ListBuffer` provides O(1) push/shift operations
    - No memory leaks in async utilities
 
 ### Benchmarks
@@ -707,7 +902,8 @@ Performance characteristics:
 - Type predicates: ~2-5ns per check
 - Object utilities: O(n) where n is number of keys
 - Promise utilities: Minimal overhead over native promises
-- Data structures: Optimized for their specific use cases
+- ListBuffer: O(1) push/shift operations
+- TimedMap: O(1) get/set with automatic cleanup
 
 ## Best Practices
 
@@ -721,8 +917,8 @@ const safeRetry = async <T>(operation: () => Promise<T>) => {
   try {
     return await retry(operation, {
       max: 3,
-      report: (msg, meta, error) => {
-        logger.warn(`Retry ${meta.current}: ${error?.message}`);
+      report: (msg, options, error) => {
+        logger.warn(`Retry ${options.$current}: ${error?.message}`);
       }
     });
   } catch (finalError) {
@@ -751,11 +947,11 @@ function handleApiResponse(response: unknown) {
     throw new Error('Invalid response format');
   }
   
-  if (!isString(response.status)) {
+  if (!isPropertyDefined(response, 'status')) {
     throw new Error('Missing status field');
   }
   
-  if (response.data && !isArray(response.data)) {
+  if (isPropertyDefined(response, 'data') && !isArray(response.data)) {
     throw new Error('Data must be an array');
   }
   
@@ -773,9 +969,10 @@ function handleApiResponse(response: unknown) {
 // Use TimedMap for automatic cache expiration
 const cache = new TimedMap<string, any>(300000); // 5 minutes
 
-// Use ListBuffer for frequent array operations
-const eventLog = new ListBuffer<LogEntry>();
-eventLog.push({ timestamp: Date.now(), message: 'Started' });
+// Use ListBuffer for queue operations
+const eventQueue = new ListBuffer<Event>();
+eventQueue.push(event);
+const next = eventQueue.shift();
 
 // Clean up when done
 cache.clear();

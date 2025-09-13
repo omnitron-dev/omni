@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { noop } from "../src/primitives";
+import { clearAllTimers, expectAsync, isBun } from './test-utils';
 import {
   props,
   defer,
@@ -66,7 +67,7 @@ describe("delay", () => {
 
 describe("timeout", () => {
   afterEach(() => {
-    jest.clearAllTimers();
+    clearAllTimers();
   });
 
   it("should throw if the first argument is not a promise", () => {
@@ -570,9 +571,16 @@ describe("props", () => {
       b: Promise.reject(new Error("oops")),
     };
 
-    await expect(async () => {
-      await props(obj);
-    }).rejects.toThrow(new Error("oops"));
+    if (isBun) {
+      try {
+        await props(obj);
+        throw new Error('Expected promise to reject');
+      } catch (error: any) {
+        expect(error.message).toBe("oops");
+      }
+    } else {
+      await expect(props(obj)).rejects.toThrow(new Error("oops"));
+    }
   });
 
   it("should handle empty objects", async () => {
@@ -611,13 +619,31 @@ describe("try", () => {
   it("main", async () => {
     expect(await _try(() => fixture)).toEqual(fixture);
 
-    await expect(async () => _try(() => Promise.reject(fixtureError))).rejects.toThrow(new Error("fixture"));
+    if (isBun) {
+      try {
+        await _try(() => Promise.reject(fixtureError));
+        throw new Error('Expected promise to reject');
+      } catch (error: any) {
+        expect(error.message).toBe("fixture");
+      }
+    } else {
+      await expect(_try(() => Promise.reject(fixtureError))).rejects.toThrow(new Error("fixture"));
+    }
 
-    await expect(async () =>
-      _try(() => {
+    if (isBun) {
+      try {
+        await _try(() => {
+          throw fixtureError;
+        });
+        throw new Error('Expected promise to reject');
+      } catch (error: any) {
+        expect(error.message).toBe("fixture");
+      }
+    } else {
+      await expect(_try(() => {
         throw fixtureError;
-      })
-    ).rejects.toThrow(new Error("fixture"));
+      })).rejects.toThrow(new Error("fixture"));
+    }
   });
 
   it("allows passing arguments through", async () => {

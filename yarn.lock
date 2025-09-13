@@ -845,6 +845,7 @@ __metadata:
   resolution: "@devgrid/common@workspace:packages/common"
   dependencies:
     "@noble/hashes": "npm:2.0.0"
+    "@types/bun": "npm:^1.2.21"
     "@types/jest": "npm:^30.0.0"
     "@types/node": "npm:24.3.3"
     jest: "npm:30.1.3"
@@ -2336,6 +2337,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/bun@npm:^1.2.21":
+  version: 1.2.21
+  resolution: "@types/bun@npm:1.2.21"
+  dependencies:
+    bun-types: "npm:1.2.21"
+  checksum: 10c0/51689dd72b56d86b6682bb62cc19b6959bd03ea5453e252cd06e25c246be2c77d241f41614c8e9e8172060de10f97961287c00ef4919807cee48679ec87c3bb8
+  languageName: node
+  linkType: hard
+
 "@types/cookiejar@npm:^2.1.5":
   version: 2.1.5
   resolution: "@types/cookiejar@npm:2.1.5"
@@ -3361,6 +3371,17 @@ __metadata:
     node-gyp: "npm:latest"
     node-gyp-build: "npm:^4.3.0"
   checksum: 10c0/f8a93279fc9bdcf32b42eba97edc672b39ca0fe5c55a8596099886cffc76ea9dd78e0f6f51ecee3b5ee06d2d564aa587036b5d4ea39b8b5ac797262a363cdf7d
+  languageName: node
+  linkType: hard
+
+"bun-types@npm:1.2.21":
+  version: 1.2.21
+  resolution: "bun-types@npm:1.2.21"
+  dependencies:
+    "@types/node": "npm:*"
+  peerDependencies:
+    "@types/react": ^19
+  checksum: 10c0/26c3d9f822970ba792a70aff33306cf92f15a14c04ffa3d39c44855a3839e12008447c4336c88e9449ec6ff433b044559a3f145e0e68b3ce5f87956cb0a120a8
   languageName: node
   linkType: hard
 

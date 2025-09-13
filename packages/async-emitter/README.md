@@ -28,7 +28,7 @@ A powerful asynchronous event emitter built on top of [eventemitter3](https://gi
 
 - 🚀 **High Performance** - Built on the fast and lightweight eventemitter3
 - 🔄 **Multiple Emission Patterns** - Parallel, serial, reduce, and reduceRight patterns
-- ⚡ **Concurrency Control** - Limit concurrent listener executions with p-limit
+- ⚡ **Concurrency Control** - Limit concurrent listener executions with built-in optimized limiter
 - 🎯 **Type Safety** - Full TypeScript support with proper type inference
 - 🌐 **Cross-Platform** - Works in both Node.js and browsers
 - 💪 **Promise-Based** - Async/await friendly API

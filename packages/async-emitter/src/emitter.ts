@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-function-type */
 import { EventEmitter } from "eventemitter3";
-import pLimit, { type Limit } from "p-limit";
+import { pLimit, type Limit } from "@devgrid/common";
 
 export class AsyncEventEmitter extends EventEmitter {
   private onceListeners = new WeakMap<Function, Function>(); // Map to store listeners that should only be called once

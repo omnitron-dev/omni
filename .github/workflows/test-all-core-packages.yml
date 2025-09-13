@@ -1,0 +1,156 @@
+name: Test All Core Packages
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  push:
+    branches: [main]
+
+jobs:
+  test-all:
+    name: Test All Core Packages
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [20.x, 22.x]
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Get yarn cache directory path
+        id: yarn-cache-dir-path
+        run: echo "dir=$(yarn config get cacheFolder)" >> $GITHUB_OUTPUT
+
+      - name: Cache yarn dependencies
+        uses: actions/cache@v4
+        id: yarn-cache
+        with:
+          path: |
+            ${{ steps.yarn-cache-dir-path.outputs.dir }}
+            .yarn/cache
+            .yarn/unplugged
+            .yarn/install-state.gz
+          key: ${{ runner.os }}-yarn-${{ matrix.node-version }}-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-${{ matrix.node-version }}-
+            ${{ runner.os }}-yarn-
+
+      - name: Cache turbo build
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-all-${{ matrix.node-version }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-all-${{ matrix.node-version }}-
+            ${{ runner.os }}-turbo-all-
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build all packages
+        run: yarn build
+
+      - name: Test @devgrid/common
+        run: yarn workspace @devgrid/common test
+        continue-on-error: true
+        id: test-common
+
+      - name: Test @devgrid/eventemitter
+        run: yarn workspace @devgrid/eventemitter test
+        continue-on-error: true
+        id: test-eventemitter
+
+      - name: Test @devgrid/smartbuffer
+        run: yarn workspace @devgrid/smartbuffer test
+        continue-on-error: true
+        id: test-smartbuffer
+
+      - name: Test @devgrid/messagepack
+        run: yarn workspace @devgrid/messagepack test
+        continue-on-error: true
+        id: test-messagepack
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          echo "## Test Results Summary (Node ${{ matrix.node-version }})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Package | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.test-common.outcome }}" == "success" ]; then
+            echo "| @devgrid/common | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| @devgrid/common | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ steps.test-eventemitter.outcome }}" == "success" ]; then
+            echo "| @devgrid/eventemitter | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| @devgrid/eventemitter | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ steps.test-smartbuffer.outcome }}" == "success" ]; then
+            echo "| @devgrid/smartbuffer | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| @devgrid/smartbuffer | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ steps.test-messagepack.outcome }}" == "success" ]; then
+            echo "| @devgrid/messagepack | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| @devgrid/messagepack | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Check overall status
+        if: always()
+        run: |
+          failed=0
+          if [ "${{ steps.test-common.outcome }}" != "success" ]; then
+            echo "❌ @devgrid/common tests failed"
+            failed=1
+          fi
+          if [ "${{ steps.test-eventemitter.outcome }}" != "success" ]; then
+            echo "❌ @devgrid/eventemitter tests failed"
+            failed=1
+          fi
+          if [ "${{ steps.test-smartbuffer.outcome }}" != "success" ]; then
+            echo "❌ @devgrid/smartbuffer tests failed"
+            failed=1
+          fi
+          if [ "${{ steps.test-messagepack.outcome }}" != "success" ]; then
+            echo "❌ @devgrid/messagepack tests failed"
+            failed=1
+          fi
+          
+          if [ $failed -eq 1 ]; then
+            exit 1
+          else
+            echo "✅ All tests passed!"
+          fi
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports-node-${{ matrix.node-version }}
+          path: |
+            packages/common/coverage
+            packages/eventemitter/coverage
+            packages/smartbuffer/coverage
+            packages/messagepack/coverage
+          retention-days: 7

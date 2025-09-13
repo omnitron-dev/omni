@@ -1,6 +1,10 @@
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { readFileSync } from 'fs';
 import { pathsToModuleNameMapper } from 'ts-jest';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const tsConfig = JSON.parse(readFileSync(join(__dirname, "..", '..', 'tsconfig.json'), 'utf-8'));
 

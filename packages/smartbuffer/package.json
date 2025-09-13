@@ -12,7 +12,9 @@
   ],
   "scripts": {
     "build": "tsc -p ./tsconfig.build.json && tsc -p ./tsconfig.esm.json",
-    "test": "jest"
+    "test": "jest",
+    "test:bun": "bun test",
+    "test:all": "npm run test && npm run test:bun"
   },
   "dependencies": {
     "buffer": "^6.0.3",

@@ -1,0 +1,13 @@
+# Bun configuration for @devgrid/messagepack
+
+[test]
+# Use the same test patterns as Jest
+root = "."
+
+[install]
+# Disable auto-install to maintain compatibility with the yarn monorepo
+auto = false
+
+[run]
+# Enable source maps for better debugging
+smol = true

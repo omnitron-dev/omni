@@ -12,7 +12,10 @@
   ],
   "scripts": {
     "build": "tsc -p ./tsconfig.build.json && tsc -p ./tsconfig.esm.json",
-    "test": "jest"
+    "test": "jest",
+    "test:bun": "bun test",
+    "test:node": "jest",
+    "test:all": "npm run test:node && npm run test:bun"
   },
   "dependencies": {
     "@devgrid/common": "workspace:*",

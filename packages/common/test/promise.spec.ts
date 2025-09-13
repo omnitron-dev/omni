@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { noop } from "../src/primitives";
-import { clearAllTimers, expectAsync, isBun } from './test-utils';
+import { isBun, clearAllTimers } from './test-utils';
 import {
   props,
   defer,

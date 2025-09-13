@@ -68,11 +68,13 @@ yarn workspace @devgrid/[package-name] test path/to/test.spec.ts
 - Data structures (ListBuffer, TimedMap)
 - Bun runtime support
 
-**@devgrid/async-emitter** - Advanced asynchronous event emitter
-- Parallel and sequential event execution
+**@devgrid/eventemitter** - Universal event emitter with sync and async patterns
+- Standard EventEmitter API (on, off, emit, once)
+- Parallel and sequential async event execution
 - Reduce patterns for event accumulation
 - Concurrency control with p-limit
 - Promise-based event handling
+- Works in Node.js, Bun, and browsers
 - Bun runtime support
 
 **@devgrid/smartbuffer** - Enhanced binary data manipulation

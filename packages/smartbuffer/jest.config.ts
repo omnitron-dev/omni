@@ -1,7 +1,7 @@
-import { join, dirname } from 'path';
 import { readFileSync } from 'fs';
-import { pathsToModuleNameMapper } from 'ts-jest';
 import { fileURLToPath } from 'url';
+import { join, dirname } from 'path';
+import { pathsToModuleNameMapper } from 'ts-jest';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

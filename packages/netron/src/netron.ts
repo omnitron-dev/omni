@@ -4,7 +4,7 @@ import { Redis } from 'ioredis';
 import { randomUUID } from 'node:crypto';
 import { IncomingMessage } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
-import { AsyncEventEmitter } from '@devgrid/async-emitter';
+import { EventEmitter } from '@devgrid/eventemitter';
 
 import { NetronOptions } from './types';
 import { LocalPeer } from './local-peer';
@@ -19,10 +19,10 @@ import { CONNECT_TIMEOUT, NETRON_EVENT_PEER_CONNECT, NETRON_EVENT_PEER_DISCONNEC
 /**
  * The main Netron class that manages WebSocket connections, services, and peer communication.
  * This class serves as the central hub for creating and managing distributed system components.
- * It extends AsyncEventEmitter to provide asynchronous event handling capabilities.
+ * It extends EventEmitter to provide asynchronous event handling capabilities.
  * 
  * @class Netron
- * @extends AsyncEventEmitter
+ * @extends EventEmitter
  * @description Core class for managing distributed system components and peer-to-peer communication
  * @example
  * // Create a new Netron instance
@@ -33,7 +33,7 @@ import { CONNECT_TIMEOUT, NETRON_EVENT_PEER_CONNECT, NETRON_EVENT_PEER_DISCONNEC
  *   discoveryRedisUrl: 'redis://localhost:6379'
  * });
  */
-export class Netron extends AsyncEventEmitter {
+export class Netron extends EventEmitter {
   /**
    * Unique identifier for this Netron instance.
    * Generated automatically using randomUUID() if not provided in options.

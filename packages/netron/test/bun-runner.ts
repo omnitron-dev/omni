@@ -5,7 +5,6 @@
  * This script helps run tests with Bun runtime
  */
 
-import { spawn } from 'child_process';
 import { resolve } from 'path';
 
 // Check if running with Bun

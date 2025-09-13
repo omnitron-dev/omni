@@ -29,12 +29,14 @@ Essential utilities and helper functions for TypeScript/JavaScript projects.
 - Data structures (ListBuffer, TimedMap)
 - ✅ Bun compatible
 
-#### [@devgrid/async-emitter](packages/async-emitter)
-Advanced asynchronous event emitter with multiple emission patterns.
-- Parallel and sequential event execution
+#### [@devgrid/eventemitter](packages/eventemitter)
+Universal event emitter with both synchronous and asynchronous emission patterns.
+- Standard EventEmitter API (on, off, emit, once)
+- Parallel and sequential async event execution
 - Reduce patterns for event accumulation
 - Concurrency control with p-limit
 - Promise-based event handling
+- Works in Node.js, Bun, and browsers
 - ✅ Bun compatible
 
 #### [@devgrid/smartbuffer](packages/smartbuffer)
@@ -135,7 +137,7 @@ yarn workspace @devgrid/netron dev
 devgrid/
 ├── packages/           # All published packages
 │   ├── common/        # Shared utilities
-│   ├── async-emitter/ # Event emitter
+│   ├── eventemitter/  # Event emitter
 │   ├── smartbuffer/   # Binary data handling
 │   ├── messagepack/   # Serialization
 │   ├── netron/        # Distributed framework
@@ -171,7 +173,7 @@ devgrid/
 Each package contains detailed documentation:
 
 - [Common Utilities Guide](packages/common/README.md)
-- [Async Event Emitter Guide](packages/async-emitter/README.md)
+- [Event Emitter Guide](packages/eventemitter/README.md)
 - [SmartBuffer Guide](packages/smartbuffer/README.md)
 - [MessagePack Guide](packages/messagepack/README.md)
 - [Netron Framework Guide](packages/netron/README.md)
@@ -209,18 +211,22 @@ const decoded = decode(encoded); // Original data
 ### Advanced Event Handling
 
 ```typescript
-import { AsyncEventEmitter } from '@devgrid/async-emitter';
+import { EventEmitter } from '@devgrid/eventemitter';
 
-const emitter = new AsyncEventEmitter();
+const emitter = new EventEmitter();
 
-// Sequential processing
-await emitter.emitSeq('process', data);
+// Synchronous emission (standard EventEmitter)
+emitter.emit('process', data);
 
-// Parallel processing with concurrency limit
-await emitter.emitParallel('process', data, { concurrency: 5 });
+// Sequential async processing
+await emitter.emitSerial('process', data);
+
+// Parallel async processing with optional concurrency
+emitter.setConcurrency(5);
+await emitter.emitParallel('process', data);
 
 // Reduce pattern for aggregation
-const result = await emitter.emitReduce('calculate', 0, (acc, val) => acc + val);
+const result = await emitter.emitReduce('calculate', initialValue);
 ```
 
 ## 🤝 Contributing

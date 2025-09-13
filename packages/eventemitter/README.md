@@ -48,9 +48,9 @@ pnpm add @devgrid/async-emitter
 ## Quick Start
 
 ```typescript
-import { AsyncEventEmitter } from '@devgrid/async-emitter';
+import { EventEmitter } from '@devgrid/async-emitter';
 
-const emitter = new AsyncEventEmitter();
+const emitter = new EventEmitter();
 
 // Add async listener
 emitter.on('event', async (data) => {
@@ -71,7 +71,7 @@ await emitter.emitParallel('event', { message: 'Hello World' });
 Execute all listeners concurrently. Best for independent operations.
 
 ```typescript
-const emitter = new AsyncEventEmitter();
+const emitter = new EventEmitter();
 
 emitter.on('user:login', async (user) => {
   await analytics.track('login', user);
@@ -94,7 +94,7 @@ await emitter.emitParallel('user:login', { id: 123, name: 'John' });
 Execute listeners one after another. Useful when order matters.
 
 ```typescript
-const emitter = new AsyncEventEmitter();
+const emitter = new EventEmitter();
 
 emitter.on('pipeline', async (data) => {
   console.log('Step 1: Validate');
@@ -128,7 +128,7 @@ const results = await emitter.emitSerial('pipeline', { value: 'test' });
 Process events with accumulated results, left to right.
 
 ```typescript
-const emitter = new AsyncEventEmitter();
+const emitter = new EventEmitter();
 
 emitter.on('calculate', async (accumulator, value) => {
   return accumulator + value;
@@ -149,7 +149,7 @@ console.log(result); // 30
 Process events with accumulated results, right to left.
 
 ```typescript
-const emitter = new AsyncEventEmitter();
+const emitter = new EventEmitter();
 
 emitter.on('compose', async (fn) => (x) => fn(x) + 1);
 emitter.on('compose', async (fn) => (x) => fn(x) * 2);
@@ -164,7 +164,7 @@ Limit the number of concurrent listener executions to prevent resource exhaustio
 
 ```typescript
 // Limit to 2 concurrent executions
-const emitter = new AsyncEventEmitter(2);
+const emitter = new EventEmitter(2);
 
 // Add 10 listeners
 for (let i = 0; i < 10; i++) {
@@ -187,7 +187,7 @@ emitter.setConcurrency(5);
 #### One-time Listeners
 
 ```typescript
-const emitter = new AsyncEventEmitter();
+const emitter = new EventEmitter();
 
 // Method 1: Using once
 emitter.once('startup', async () => {
@@ -207,7 +207,7 @@ await emitter.emitParallel('startup');
 #### Dynamic Subscription
 
 ```typescript
-const emitter = new AsyncEventEmitter();
+const emitter = new EventEmitter();
 
 // Subscribe and get unsubscribe function
 const unsubscribe = emitter.subscribe('data', async (data) => {
@@ -228,7 +228,7 @@ await emitter.emitParallel('data', { value: 3 }); // This won't be logged
 ### Constructor
 
 ```typescript
-new AsyncEventEmitter(concurrency?: number)
+new EventEmitter(concurrency?: number)
 ```
 
 - `concurrency` - Maximum number of concurrent listener executions (default: Infinity)
@@ -271,10 +271,10 @@ new AsyncEventEmitter(concurrency?: number)
 ### Type Guards
 
 ```typescript
-import { isAsyncEventEmitter } from '@devgrid/async-emitter';
+import { isEventEmitter } from '@devgrid/eventemitter';
 
-if (isAsyncEventEmitter(obj)) {
-  // obj is AsyncEventEmitter instance
+if (isEventEmitter(obj)) {
+  // obj is EventEmitter instance
   await obj.emitParallel('event');
 }
 ```
@@ -284,7 +284,7 @@ if (isAsyncEventEmitter(obj)) {
 ### Error Handling
 
 ```typescript
-const emitter = new AsyncEventEmitter();
+const emitter = new EventEmitter();
 
 emitter.on('task', async () => {
   throw new Error('Task failed');
@@ -313,7 +313,7 @@ try {
 ### Listener Context
 
 ```typescript
-const emitter = new AsyncEventEmitter();
+const emitter = new EventEmitter();
 
 class Service {
   name = 'MyService';
@@ -335,7 +335,7 @@ emitter.on('event', async (data) => service.handleEvent(data));
 ### Event Namespacing
 
 ```typescript
-const emitter = new AsyncEventEmitter();
+const emitter = new EventEmitter();
 
 // Use namespaced events
 emitter.on('user:created', async (user) => { /* ... */ });
@@ -357,7 +357,7 @@ interface Events {
   'calculate': (a: number, b: number) => Promise<number>;
 }
 
-class TypedEmitter extends AsyncEventEmitter {
+class TypedEmitter extends EventEmitter {
   on<K extends keyof Events>(event: K, listener: Events[K]): this {
     return super.on(event, listener);
   }
@@ -398,7 +398,7 @@ emitter.on('user:login', async (user) => {
 
 ### Benchmarks
 
-AsyncEventEmitter adds minimal overhead to eventemitter3:
+EventEmitter adds minimal overhead to eventemitter3:
 
 - Event emission: ~5% overhead for async handling
 - Memory usage: Minimal (WeakMap for once listeners)
@@ -417,7 +417,7 @@ Works in all modern browsers with ES2015+ support:
 <script src="path/to/async-emitter.js"></script>
 
 <script>
-  const emitter = new AsyncEventEmitter();
+  const emitter = new EventEmitter();
   
   emitter.on('click', async (event) => {
     const response = await fetch('/api/click');
@@ -435,7 +435,7 @@ Works in all modern browsers with ES2015+ support:
 With webpack/rollup/vite, no special configuration needed:
 
 ```javascript
-import { AsyncEventEmitter } from '@devgrid/async-emitter';
+import { EventEmitter } from '@devgrid/async-emitter';
 ```
 
 ## Contributing

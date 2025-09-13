@@ -1,7 +1,7 @@
 {
-  "name": "@devgrid/async-emitter",
+  "name": "@devgrid/eventemitter",
   "version": "0.3.3",
-  "description": "Async event emitter",
+  "description": "Universal event emitter with synchronous and asynchronous emission patterns",
   "author": "DevGrid",
   "license": "MIT",
   "main": "dist/index.js",
@@ -23,8 +23,7 @@
     "typescript": "5.9.2"
   },
   "dependencies": {
-    "@devgrid/common": "workspace:*",
-    "eventemitter3": "^5.0.1"
+    "@devgrid/common": "workspace:*"
   },
   "keywords": [
     "async",
@@ -48,10 +47,10 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/d-e-v-grid/devgrid.git",
-    "directory": "packages/async-emitter"
+    "directory": "packages/eventemitter"
   },
   "bugs": {
     "url": "https://github.com/d-e-v-grid/devgrid/issues"
   },
-  "homepage": "https://github.com/d-e-v-grid/devgrid/tree/main/packages/async-emitter#readme"
+  "homepage": "https://github.com/d-e-v-grid/devgrid/tree/main/packages/eventemitter#readme"
 }

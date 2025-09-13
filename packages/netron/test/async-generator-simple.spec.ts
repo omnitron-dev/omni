@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+
 import { Netron, Public, Service } from '../dist';
 
 // Simple service with async generator

@@ -377,7 +377,7 @@ await netron.loadTasksFromDirectory('./tasks', {
 
 ### Netron Class
 
-Main orchestration class extending AsyncEventEmitter.
+Main orchestration class extending EventEmitter.
 
 #### Static Methods
 

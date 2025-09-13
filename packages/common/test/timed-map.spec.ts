@@ -1,5 +1,5 @@
 import { TimedMap } from '../src/timed-map';
-import { setupFakeTimers, teardownFakeTimers, advanceTimersByTime, isBun, sleep } from './test-utils';
+import { setupFakeTimers, teardownFakeTimers, advanceTimersByTime } from './test-utils';
 
 describe('TimedMap', () => {
   let map: TimedMap<string, number>;

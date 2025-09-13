@@ -2018,10 +2018,9 @@ export class SmartBuffer {
     if (_isString(value) && value.length > 0) {
       value = value.charCodeAt(0);
     }
-    let lend =
-      end === void 0
-        ? this.buffer.length // ??? may be woffset
-        : end;
+    // When end is not specified, determine the appropriate default:
+    // Use buffer.length to maintain backward compatibility
+    let lend = end === void 0 ? this.buffer.length : end;
 
     if (!this.noAssert) {
       if (typeof value !== 'number' || value % 1 !== 0) {

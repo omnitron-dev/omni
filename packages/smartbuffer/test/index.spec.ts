@@ -1,4 +1,3 @@
- 
 import Long from 'long';
 
 import { SLong, SNumber, SmartBuffer } from '../src';
@@ -800,6 +799,33 @@ describe('SmartBuffer', () => {
       expect(Infinity | 0).toEqual(0);
       expect(-Infinity >>> 0).toEqual(0);
       expect(-Infinity | 0).toEqual(0);
+    });
+
+    it('fill behavior with default parameters', () => {
+      // Test new buffer - fill from woffset (0) to buffer.length
+      const bb = new SmartBuffer(4);
+      bb.fill(0);
+      expect(bb.woffset).toEqual(4); // woffset moves to end after fill
+      expect(bb.toDebug()).toEqual('<00 00 00 00]'); // All filled, woffset at capacity
+
+      // Test buffer created with wrap - woffset is already at end
+      const filled = SmartBuffer.wrap('\x01\x02');
+      expect(filled.woffset).toEqual(2); // wrap sets woffset to buffer.length
+      filled.fill(0); // This fills from woffset (2) to buffer.length (2) - nothing to fill
+      expect(filled.woffset).toEqual(2); // woffset stays at 2
+      expect(filled.toDebug()).toEqual('<01 02]'); // Buffer unchanged since nothing was filled
+      
+      // Test filling with explicit range
+      filled.fill(0, 0, 2); // Fill from 0 to 2
+      expect(filled.toDebug()).toEqual('<00 00]'); // Now buffer is filled with zeros
+      
+      // Test that fill doesn't extend buffer capacity
+      const bb2 = new SmartBuffer(2);
+      bb2.writeUInt8(1);
+      bb2.fill(0); // Fills from position 1 to end
+      expect(bb2.capacity).toEqual(2); // Capacity unchanged
+      expect(bb2.woffset).toEqual(2);
+      expect(bb2.toDebug()).toEqual('<01 00]');
     });
   });
 });

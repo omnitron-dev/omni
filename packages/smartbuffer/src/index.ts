@@ -1,6 +1,5 @@
 /* eslint-disable no-fallthrough */
 import Long from 'long';
-import * as utfx from 'utfx';
 import { Buffer } from 'buffer';
 
 // Interface representing a number with its length
@@ -27,28 +26,7 @@ const EMPTY_BUFFER = Buffer.allocUnsafe(0);
 // Function to check if a value is a string
 const _isString = (value: any): boolean => typeof value === 'string' || value instanceof String;
 
-// Function to create a source for a string
-const stringSource = (s: string) => {
-  let i = 0;
-  return () => (i < s.length ? s.charCodeAt(i++) : null);
-};
-
-// Function to create a destination for a string
-const stringDestination = () => {
-  const cs: number[] = [];
-  const ps: string[] = [];
-  // eslint-disable-next-line consistent-return
-  return (...args: any[]): any => {
-    if (args.length === 0) {
-      return `${ps.join('')}${String.fromCharCode(...cs)}`;
-    }
-    if (cs.length + args.length > 1024) {
-      ps.push(String.fromCharCode(...cs));
-      cs.length = 0;
-    }
-    cs.push(...args);
-  };
-};
+// Helper functions for UTF-8 handling removed - now using TextEncoder/TextDecoder
 
 // Function to check if an object is an instance of SmartBuffer
 export const isSmartBuffer = (obj: any): boolean => obj instanceof SmartBuffer;
@@ -1698,27 +1676,52 @@ export class SmartBuffer {
         throw new RangeError(`Illegal offset: 0 <= ${loffset} (0) <= ${this.buffer.length}`);
       }
     }
-    let i = 0;
+
     const start = loffset;
     let temp;
-    let sd: any;
     if (metrics === SmartBuffer.METRICS_CHARS) {
-      sd = stringDestination();
-      utfx.decodeUTF8(
-        () => (i < length && loffset < this.buffer.length ? this.buffer[loffset++] : null),
-        (cp: any) => {
-          ++i;
-          utfx.UTF8toUTF16(cp, sd);
+      // Modern implementation using TextDecoder for UTF-8 decoding
+      const decoder = new TextDecoder('utf-8', { fatal: false });
+      let charCount = 0;
+      let result = '';
+
+      // Read UTF-8 bytes and decode them character by character
+      while (charCount < length && loffset < this.buffer.length) {
+        // Try to decode one character at a time
+        let bytesToRead = 1;
+        let decoded = '';
+
+        // UTF-8 can be 1-4 bytes per character
+        while (bytesToRead <= 4 && loffset + bytesToRead <= this.buffer.length) {
+          const bytes = this.buffer.subarray(loffset, loffset + bytesToRead);
+          decoded = decoder.decode(bytes, { stream: false });
+
+          // Check if we got a valid character (not replacement character U+FFFD)
+          if (decoded && decoded !== '\uFFFD') {
+            break;
+          }
+          bytesToRead++;
         }
-      );
-      if (i !== length) {
-        throw new RangeError(`Illegal range: Truncated data, ${i} == ${length}`);
+
+        if (decoded && decoded !== '\uFFFD') {
+          result += decoded;
+          charCount += [...decoded].length; // Count actual characters (handles surrogate pairs)
+          loffset += bytesToRead;
+        } else {
+          // Invalid UTF-8 sequence or end of buffer
+          break;
+        }
       }
+
+      if (charCount !== length) {
+        throw new RangeError(`Illegal range: Truncated data, ${charCount} == ${length}`);
+      }
+
       if (offset === void 0) {
         this.roffset = loffset;
-        return sd();
+        return result;
       }
-      return { string: sd(), length: loffset - start };
+      return { string: result, length: loffset - start };
     } else if (metrics === SmartBuffer.METRICS_BYTES) {
       if (!this.noAssert) {
         if (typeof loffset !== 'number' || loffset % 1 !== 0) {
@@ -2727,7 +2730,9 @@ export class SmartBuffer {
    * @returns {number}
    */
   static calculateUTF8Chars(str: string) {
-    return utfx.calculateUTF16asUTF8(stringSource(str))[0];
+    // Modern implementation: count actual Unicode code points
+    // This handles surrogate pairs correctly
+    return [...str].length;
   }
 
   /**

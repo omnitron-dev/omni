@@ -932,7 +932,6 @@ __metadata:
     long: "npm:^5.3.2"
     ts-jest: "npm:^29.4.1"
     typescript: "npm:^5.9.2"
-    utfx: "npm:^1.0.1"
   languageName: unknown
   linkType: soft
 
@@ -8385,13 +8384,6 @@ __metadata:
   dependencies:
     punycode: "npm:^2.1.0"
   checksum: 10c0/4ef57b45aa820d7ac6496e9208559986c665e49447cb072744c13b66925a362d96dd5a46c4530a6b8e203e5db5fe849369444440cb22ecfc26c679359e5dfa3c
-  languageName: node
-  linkType: hard
-
-"utfx@npm:^1.0.1":
-  version: 1.0.1
-  resolution: "utfx@npm:1.0.1"
-  checksum: 10c0/5021c67018bd9e42272fd91681e16c900bec26015aa01ccdbc6b9cb83b96d8a978633628ad7be41535c362e0ce835afef4045cc45892e8a7052339a3b46f3452
   languageName: node
   linkType: hard
 

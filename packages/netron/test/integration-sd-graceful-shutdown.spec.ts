@@ -2,7 +2,7 @@ import Redis from 'ioredis';
 import { delay } from '@devgrid/common';
 
 import { Netron } from '../dist/netron';
-import { createTestRedisClient, getTestRedisUrl, cleanupRedis } from './helpers/test-utils';
+import { cleanupRedis, getTestRedisUrl, createTestRedisClient } from './helpers/test-utils';
 
 describe('ServiceDiscovery Integration - Graceful Shutdown', () => {
   let netron: Netron;

@@ -1,5 +1,5 @@
 import { IService1 } from './service1';
-import { Public, Service } from '../../src';
+import { Public, Service } from '../../dist';
 
 export interface IService4 {
   setService(svc: IService1): boolean;

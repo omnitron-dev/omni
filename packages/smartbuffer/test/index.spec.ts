@@ -1,4 +1,4 @@
-/* eslint-disable no-bitwise */
+ 
 import Long from 'long';
 
 import { SLong, SNumber, SmartBuffer } from '../src';

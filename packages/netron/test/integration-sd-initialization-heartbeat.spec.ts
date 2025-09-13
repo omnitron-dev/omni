@@ -1,9 +1,9 @@
 import { Redis } from 'ioredis';
 import { delay } from '@devgrid/common';
-import { createTestRedisClient, getTestRedisUrl, cleanupRedis } from './helpers/test-utils';
 
 import { Service } from '../dist';
 import { Netron } from '../dist/netron';
+import { cleanupRedis, getTestRedisUrl, createTestRedisClient } from './helpers/test-utils';
 
 @Service('test.service@1.0.0')
 class TestService {

@@ -1,7 +1,6 @@
 import { delay } from '@devgrid/common';
 
-import { Public, Service } from '../src';
-import { Netron, RemotePeer } from '../dist';
+import { Public, Netron , Service, RemotePeer } from '../dist';
 
 describe('RemotePeer Service Versioning', () => {
   let localNetron: Netron;

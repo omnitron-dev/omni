@@ -1,9 +1,9 @@
 import { Redis } from 'ioredis';
 import { delay } from '@devgrid/common';
 
-import { Netron } from '../../src';
-import { createTestRedisClient, cleanupRedis } from '../helpers/test-utils';
-import { ServiceDiscovery } from '../../src/service-discovery';
+import { Netron , ServiceDiscovery } from '../../dist';
+import { cleanupRedis, createTestRedisClient } from '../helpers/test-utils';
+
 describe('ServiceDiscovery findNodesByService', () => {
   let redis: Redis | undefined;
   let discoveryA: ServiceDiscovery | undefined;

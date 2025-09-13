@@ -1,7 +1,7 @@
 import { inherits } from 'node:util';
 
-import { keys, values, entries } from '../src/entries';
 import { noop } from '../src/primitives';
+import { keys, values, entries } from '../src/entries';
 
 describe("entries", () => {
   test('should return an empty array for an empty object', () => {

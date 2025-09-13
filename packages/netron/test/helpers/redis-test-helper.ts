@@ -1,9 +1,9 @@
-import { spawn, ChildProcess } from 'child_process';
-import { Redis } from 'ioredis';
-import * as net from 'net';
 import * as fs from 'fs';
-import * as path from 'path';
 import * as os from 'os';
+import * as net from 'net';
+import * as path from 'path';
+import { Redis } from 'ioredis';
+import { spawn, ChildProcess } from 'child_process';
 
 export interface RedisTestConfig {
   port?: number;

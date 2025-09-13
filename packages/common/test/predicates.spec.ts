@@ -43,6 +43,7 @@ import {
   isNumeralBigInt,
   isAsyncFunction,
   isNumeralInteger,
+  isAsyncGenerator,
   isArrayBufferView,
   isPropertyDefined
 } from "../src/predicates";
@@ -326,6 +327,70 @@ describe("predicates", () => {
     it("should check async functions", () => {
       expect(isAsyncFunction(async () => { })).toBe(true);
       expect(isAsyncFunction(() => { })).toBe(false);
+    });
+
+    it("should check async generators", () => {
+      // Create actual async generator
+      async function* asyncGenFunc() {
+        yield 1;
+        yield 2;
+        yield 3;
+      }
+      const asyncGen = asyncGenFunc();
+      expect(isAsyncGenerator(asyncGen)).toBe(true);
+
+      // Create another async generator with different implementation
+      async function* emptyAsyncGen() {
+        // Empty async generator
+      }
+      expect(isAsyncGenerator(emptyAsyncGen())).toBe(true);
+
+      // Regular generator should return false
+      function* regularGen() {
+        yield 1;
+      }
+      expect(isAsyncGenerator(regularGen())).toBe(false);
+
+      // Async function should return false
+      expect(isAsyncGenerator(async () => { })).toBe(false);
+      
+      // Regular function should return false
+      expect(isAsyncGenerator(() => { })).toBe(false);
+
+      // Promise should return false
+      expect(isAsyncGenerator(Promise.resolve())).toBe(false);
+
+      // Objects that look like async generators but aren't
+      const fakeAsyncGen = {
+        next: () => { },
+        return: () => { },
+        throw: () => { },
+        // Missing Symbol.asyncIterator
+      };
+      expect(isAsyncGenerator(fakeAsyncGen)).toBe(false);
+
+      const anotherFakeAsyncGen = {
+        next: () => { },
+        return: () => { },
+        throw: () => { },
+        [Symbol.asyncIterator]: "not a function" // Wrong type
+      };
+      expect(isAsyncGenerator(anotherFakeAsyncGen)).toBe(false);
+
+      // Primitive values should return false
+      expect(isAsyncGenerator(null)).toBe(false);
+      expect(isAsyncGenerator(undefined)).toBe(false);
+      expect(isAsyncGenerator(42)).toBe(false);
+      expect(isAsyncGenerator("string")).toBe(false);
+      expect(isAsyncGenerator(true)).toBe(false);
+      expect(isAsyncGenerator(Symbol("test"))).toBe(false);
+
+      // Regular objects should return false
+      expect(isAsyncGenerator({})).toBe(false);
+      expect(isAsyncGenerator([])).toBe(false);
+      expect(isAsyncGenerator(new Map())).toBe(false);
+      expect(isAsyncGenerator(new Set())).toBe(false);
+      expect(isAsyncGenerator(new Date())).toBe(false);
     });
 
     it("should check promises", () => {

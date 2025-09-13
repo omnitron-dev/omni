@@ -2,7 +2,7 @@ import Redis from 'ioredis';
 import { delay } from '@devgrid/common';
 
 import { Netron } from '../dist';
-import { createTestRedisClient, getTestRedisUrl, cleanupRedis } from './helpers/test-utils';
+import { cleanupRedis, getTestRedisUrl, createTestRedisClient } from './helpers/test-utils';
 
 describe('ServiceDiscovery Integration - Heartbeat Retry & Recovery', () => {
   let redis: Redis;

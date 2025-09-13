@@ -139,10 +139,10 @@ export class ServiceDiscovery {
    * 
    * @example
    * // Logging a service discovery event
-   * this.logger.info('Node registration successful', { nodeId: this.nodeId });
+   * this.logger.info({ nodeId: this.nodeId }, 'Node registration successful');
    * 
    * // Logging an error condition
-   * this.logger.error('Failed to publish heartbeat', { error: err });
+   * this.logger.error({ error: err }, 'Failed to publish heartbeat');
    */
   public logger: Logger;
 
@@ -180,11 +180,11 @@ export class ServiceDiscovery {
     if (this.options.clientMode) {
       this.logger.info('ServiceDiscovery started in client mode (no heartbeat or node registration)');
     } else {
-      this.logger.info('ServiceDiscovery started in server mode', {
+      this.logger.info({
         nodeId: this.nodeId,
         address: this.address,
         services: this.services,
-      });
+      }, 'ServiceDiscovery started in server mode');
     }
 
     this.pubSubChannel = this.options.pubSubChannel;
@@ -264,14 +264,14 @@ export class ServiceDiscovery {
         this.registered = false;
         this.logger.info(`Node '${this.nodeId}' deregistered successfully`);
       } catch (error) {
-        this.logger.error(`Error deregistering node '${this.nodeId}'`, { error });
+        this.logger.error({ error }, `Error deregistering node '${this.nodeId}'`);
       }
 
       try {
         await this.unsubscribeFromEvents();
         this.logger.info(`Unsubscribed from Redis events for node '${this.nodeId}'`);
       } catch (error) {
-        this.logger.error(`Error during Redis Pub/Sub unsubscribe for node '${this.nodeId}'`, { error });
+        this.logger.error({ error }, `Error during Redis Pub/Sub unsubscribe for node '${this.nodeId}'`);
       }
 
       this.logger.info(`Graceful shutdown completed for node '${this.nodeId}'`);
@@ -358,7 +358,7 @@ export class ServiceDiscovery {
         return;
       } catch (error) {
         // Log failure and implement retry logic
-        this.logger.error(`Heartbeat attempt ${attempt} failed`, { error });
+        this.logger.error({ error }, `Heartbeat attempt ${attempt} failed`);
 
         if (attempt === maxRetries) {
           this.logger.error(`All ${maxRetries} heartbeat attempts failed.`);
@@ -471,7 +471,7 @@ export class ServiceDiscovery {
 
       return activeNodes;
     } catch (error) {
-      this.logger.error(`Error fetching active nodes`, { error });
+      this.logger.error({ error }, `Error fetching active nodes`);
       throw error;
     }
   }
@@ -504,7 +504,7 @@ export class ServiceDiscovery {
         )
       );
     } catch (error) {
-      this.logger.error(`Error finding nodes by service '${name}' (version: ${version})`, { error });
+      this.logger.error({ error }, `Error finding nodes by service '${name}' (version: ${version})`);
       throw error;
     }
   }
@@ -565,7 +565,7 @@ export class ServiceDiscovery {
         handler(event);
       } catch (error) {
         // Log parsing or handler errors without breaking the subscription
-        this.logger.error('Error processing Redis event:', error);
+        this.logger.error({ error }, 'Error processing Redis event:');
       }
     });
   }
@@ -606,7 +606,7 @@ export class ServiceDiscovery {
         await this.publishEvent('NODE_DEREGISTERED');
         return;
       } catch (error) {
-        this.logger.error(`Deregistration attempt ${attempt} for node '${nodeId}' failed`, { error });
+        this.logger.error({ error }, `Deregistration attempt ${attempt} for node '${nodeId}' failed`);
 
         if (attempt === maxRetries) {
           this.logger.error(`All ${maxRetries} deregistration attempts for node '${nodeId}' failed.`);
@@ -642,7 +642,7 @@ export class ServiceDiscovery {
       }
       return exists === 1;
     } catch (error) {
-      this.logger.error(`Error checking if node '${nodeId}' is active`, { error });
+      this.logger.error({ error }, `Error checking if node '${nodeId}' is active`);
       throw error;
     }
   }
@@ -671,7 +671,7 @@ export class ServiceDiscovery {
     try {
       await this.publishHeartbeat();
     } catch (error) {
-      this.logger.error(`Error updating services`, { error });
+      this.logger.error({ error }, `Error updating services`);
       throw error;
     }
   }
@@ -699,7 +699,7 @@ export class ServiceDiscovery {
     try {
       await this.publishHeartbeat();
     } catch (error) {
-      this.logger.error(`Error updating address to '${address}'`, { error });
+      this.logger.error({ error }, `Error updating address to '${address}'`);
       throw error;
     }
   }

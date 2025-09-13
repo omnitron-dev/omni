@@ -113,16 +113,16 @@ export class RemotePeer extends AbstractPeer {
    * @returns {Promise<void>}
    */
   async init(isConnector?: boolean, options?: NetronOptions) {
-    this.logger.info('Initializing remote peer', { isConnector });
+    this.logger.info({ isConnector }, 'Initializing remote peer');
     this.socket.on('message', (data: ArrayBuffer, isBinary: boolean) => {
       if (isBinary) {
         try {
           this.handlePacket(decodePacket(data));
         } catch (error) {
-          this.logger.error('Packet decode error:', error);
+          this.logger.error({ error }, 'Packet decode error:');
         }
       } else {
-        this.logger.warn('Received non-binary message:', data);
+        this.logger.warn({ data }, 'Received non-binary message:');
       }
     });
 
@@ -131,7 +131,7 @@ export class RemotePeer extends AbstractPeer {
       this.abilities = (await this.runTask('abilities', this.netron.peer.abilities)) as Abilities;
 
       if (this.abilities.services) {
-        this.logger.info('Registering remote services', { count: this.abilities.services.size });
+        this.logger.info({ count: this.abilities.services.size }, 'Registering remote services');
         for (const [name, definition] of this.abilities.services) {
           this.definitions.set(definition.id, definition);
           this.services.set(name, definition);
@@ -141,12 +141,12 @@ export class RemotePeer extends AbstractPeer {
       if (this.abilities.allowServiceEvents) {
         this.logger.info('Subscribing to service lifecycle events');
         await this.subscribe(NETRON_EVENT_SERVICE_EXPOSE, (event: ServiceExposeEvent) => {
-          this.logger.info('Service exposed event received', { event });
+          this.logger.info({ event }, 'Service exposed event received');
           this.definitions.set(event.definition.id, event.definition);
           this.services.set(event.qualifiedName, event.definition);
         });
         await this.subscribe(NETRON_EVENT_SERVICE_UNEXPOSE, (event: ServiceUnexposeEvent) => {
-          this.logger.info('Service unexposed event received', { event });
+          this.logger.info({ event }, 'Service unexposed event received');
           this.definitions.delete(event.defId);
           this.services.delete(event.qualifiedName);
         });
@@ -528,7 +528,7 @@ export class RemotePeer extends AbstractPeer {
    * @throws {Error} If packet processing fails and error response cannot be sent
    */
   async handlePacket(packet: Packet) {
-    this.logger.debug('Handling packet', { type: packet.getType() });
+    this.logger.debug({ type: packet.getType() }, 'Handling packet');
     const pType = packet.getType();
 
     if (packet.getImpulse() === 0) {
@@ -539,68 +539,68 @@ export class RemotePeer extends AbstractPeer {
     switch (pType) {
       case TYPE_SET: {
         const [defId, name, value] = packet.data;
-        this.logger.debug('Processing SET packet', { defId, name });
+        this.logger.debug({ defId, name }, 'Processing SET packet');
 
         try {
           const stub = this.netron.peer.getStubByDefinitionId(defId);
           await stub.set(name, value);
           await this.sendResponse(packet, undefined);
         } catch (err: any) {
-          this.logger.error('Error setting value:', err);
+          this.logger.error({ value: err }, 'Error setting value:');
           try {
             await this.sendErrorResponse(packet, err);
           } catch (err_: any) {
-            this.logger.error('Error sending error response:', err_);
+            this.logger.error({ value: err_ }, 'Error sending error response:');
           }
         }
         break;
       }
       case TYPE_GET: {
         const [defId, name] = packet.data;
-        this.logger.debug('Processing GET packet', { defId, name });
+        this.logger.debug({ defId, name }, 'Processing GET packet');
 
         try {
           const stub = this.netron.peer.getStubByDefinitionId(defId);
           await this.sendResponse(packet, await stub.get(name));
         } catch (err: any) {
-          this.logger.error('Error getting value:', err);
+          this.logger.error({ value: err }, 'Error getting value:');
           try {
             await this.sendErrorResponse(packet, err);
           } catch (err_) {
-            this.logger.error('Error sending error response:', err_);
+            this.logger.error({ value: err_ }, 'Error sending error response:');
           }
         }
         break;
       }
       case TYPE_CALL: {
         const [defId, method, ...args] = packet.data;
-        this.logger.debug('Processing CALL packet', { defId, method });
+        this.logger.debug({ defId, method }, 'Processing CALL packet');
 
         try {
           const stub = this.netron.peer.getStubByDefinitionId(defId);
-          await this.sendResponse(packet, await stub.call(method, args));
+          await this.sendResponse(packet, await stub.call(method, args, this));
         } catch (err: any) {
-          this.logger.error('Error calling method:', err);
+          this.logger.error({ value: err }, 'Error calling method:');
           try {
             await this.sendErrorResponse(packet, err);
           } catch (err_) {
-            this.logger.error('Error sending error response:', err_);
+            this.logger.error({ value: err_ }, 'Error sending error response:');
           }
         }
         break;
       }
       case TYPE_TASK: {
         const [name, ...args] = packet.data;
-        this.logger.debug('Processing TASK packet', { name });
+        this.logger.debug({ name }, 'Processing TASK packet');
 
         try {
           await this.sendResponse(packet, await this.netron.runTask(this, name, ...args));
         } catch (err: any) {
-          this.logger.error('Error running task:', err);
+          this.logger.error({ value: err }, 'Error running task:');
           try {
             await this.sendErrorResponse(packet, err);
           } catch (err_) {
-            this.logger.error('Error sending error response:', err_);
+            this.logger.error({ value: err_ }, 'Error sending error response:');
           }
         }
         break;
@@ -613,7 +613,7 @@ export class RemotePeer extends AbstractPeer {
 
         let stream = this.readableStreams.get(packet.streamId);
         if (!stream) {
-          this.logger.debug('Creating new readable stream', { streamId: packet.streamId });
+          this.logger.debug({ streamId: packet.streamId }, 'Creating new readable stream');
           stream = NetronReadableStream.create(this, packet.streamId, packet.isLive());
           this.events.emit('stream', stream);
         }
@@ -623,7 +623,7 @@ export class RemotePeer extends AbstractPeer {
       }
       case TYPE_STREAM_ERROR: {
         const { streamId, message } = packet.data;
-        this.logger.error('Stream error received', { streamId, message });
+        this.logger.error({ streamId, message }, 'Stream error received');
         const stream = this.readableStreams.get(streamId);
         if (stream) {
           stream.destroy(new Error(message));
@@ -631,7 +631,7 @@ export class RemotePeer extends AbstractPeer {
         break;
       }
       default: {
-        this.logger.warn('Unknown packet type:', pType);
+        this.logger.warn({ value: pType }, 'Unknown packet type:');
       }
     }
   }

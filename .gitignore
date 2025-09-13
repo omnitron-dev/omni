@@ -37,3 +37,8 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
+
+CLAUDE.md
+GEMINI.md
+
+experiments/

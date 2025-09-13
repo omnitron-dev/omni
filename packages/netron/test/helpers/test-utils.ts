@@ -1,4 +1,5 @@
 import { Redis } from 'ioredis';
+
 import { getTestRedis } from './redis-test-helper';
 
 /**

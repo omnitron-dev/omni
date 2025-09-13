@@ -1,10 +1,11 @@
 import { Redis } from 'ioredis';
 import { delay } from '@devgrid/common';
 
-import { Netron } from '../../src';
-import { ServiceDiscovery } from '../../src/service-discovery';
-import type { DiscoveryEvent } from '../../src/service-discovery/types';
-import { createTestRedisClient, cleanupRedis } from '../helpers/test-utils';
+import { Netron , ServiceDiscovery } from '../../dist';
+import { cleanupRedis, createTestRedisClient } from '../helpers/test-utils';
+
+import type { DiscoveryEvent } from '../../dist';
+
 describe('ServiceDiscovery Pub/Sub Event Propagation', () => {
   let redis: Redis | undefined;
   let publisher: ServiceDiscovery;

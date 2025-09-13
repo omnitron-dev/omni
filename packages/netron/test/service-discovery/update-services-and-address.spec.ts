@@ -1,9 +1,8 @@
 import { Redis } from 'ioredis';
 
-import { Netron } from '../../src';
-import { NodeInfo } from '../../src/service-discovery/types';
-import { ServiceDiscovery } from '../../src/service-discovery';
-import { createTestRedisClient, cleanupRedis } from '../helpers/test-utils';
+import { Netron , NodeInfo , ServiceDiscovery } from '../../dist';
+import { cleanupRedis, createTestRedisClient } from '../helpers/test-utils';
+
 describe('ServiceDiscovery updateServices and updateAddress', () => {
   let redis: Redis | undefined;
   let discovery: ServiceDiscovery | undefined;

@@ -20,12 +20,12 @@
     "utfx": "^1.0.1"
   },
   "devDependencies": {
-    "@jest/globals": "^30.0.4",
+    "@jest/globals": "^30.1.2",
     "@types/jest": "^30.0.0",
-    "@types/node": "^24.0.10",
-    "jest": "^30.0.4",
-    "ts-jest": "^29.4.0",
-    "typescript": "^5.8.3"
+    "@types/node": "^24.3.3",
+    "jest": "^30.1.3",
+    "ts-jest": "^29.4.1",
+    "typescript": "^5.9.2"
   },
   "keywords": [
     "buffer",
@@ -47,11 +47,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/d-e-v-grid/dg-monorepo.git",
+    "url": "git+https://github.com/d-e-v-grid/devgrid.git",
     "directory": "packages/smartbuffer"
   },
   "bugs": {
-    "url": "https://github.com/d-e-v-grid/dg-monorepo/issues"
+    "url": "https://github.com/d-e-v-grid/devgrid/issues"
   },
-  "homepage": "https://github.com/d-e-v-grid/dg-monorepo/tree/main/packages/smartbuffer#readme"
+  "homepage": "https://github.com/d-e-v-grid/devgrid/tree/main/packages/smartbuffer#readme"
 }

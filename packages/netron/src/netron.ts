@@ -203,7 +203,17 @@ export class Netron extends AsyncEventEmitter {
     }
 
     this.logger.info('Starting Netron instance');
-    await this.taskManager.loadTasksFromDir(path.join(__dirname, 'core-tasks'));
+    // Try to load from dist/core-tasks first (for tests), then from __dirname/core-tasks
+    let coreTasksPath = path.join(__dirname, '..', 'dist', 'core-tasks');
+    try {
+      await this.taskManager.loadTasksFromDir(coreTasksPath);
+      this.logger.debug({ coreTasksPath }, 'Loaded core tasks from dist');
+    } catch {
+      // Fallback to __dirname/core-tasks
+      coreTasksPath = path.join(__dirname, 'core-tasks');
+      this.logger.debug({ coreTasksPath }, 'Loading core tasks from source');
+      await this.taskManager.loadTasksFromDir(coreTasksPath);
+    }
 
     if (!this.options?.listenHost || !this.options?.listenPort) {
       this.logger.info('Netron started in client-only mode');
@@ -235,7 +245,7 @@ export class Netron extends AsyncEventEmitter {
       });
 
       this.wss.on('error', (err) => {
-        this.logger.error('WebSocket server error', { error: err });
+        this.logger.error({ error: err }, 'WebSocket server error');
         reject(err);
       });
 
@@ -246,7 +256,7 @@ export class Netron extends AsyncEventEmitter {
           ws.close();
           return;
         }
-        this.logger.info('New peer connection', { peerId });
+        this.logger.info({ peerId }, 'New peer connection');
         const peer = new RemotePeer(ws, this, peerId);
         this.peers.set(peer.id, peer);
 
@@ -255,7 +265,7 @@ export class Netron extends AsyncEventEmitter {
         this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId });
 
         ws.on('close', () => {
-          this.logger.info('Peer disconnected', { peerId });
+          this.logger.info({ peerId }, 'Peer disconnected');
           this.peers.delete(peerId);
           this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peerId), { peerId });
         });
@@ -282,7 +292,7 @@ export class Netron extends AsyncEventEmitter {
     );
     this.discovery.startHeartbeat();
     await this.discovery.subscribeToEvents((event) => {
-      this.logger.debug('Service discovery event received', { event });
+      this.logger.debug({ event }, 'Service discovery event received');
       this.emit('discovery:event', event);
     });
 
@@ -343,14 +353,14 @@ export class Netron extends AsyncEventEmitter {
    * const peer = await netron.connect('ws://example.com:8080');
    */
   async connect(address: string, reconnect = true): Promise<RemotePeer> {
-    this.logger.info('Connecting to remote peer', { address, reconnect });
+    this.logger.info({ address, reconnect }, 'Connecting to remote peer');
     const baseDelay = 1000;
     let reconnectAttempts = 0;
     let manuallyDisconnected = false;
 
     const connectPeer = (): Promise<RemotePeer> => new Promise<RemotePeer>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
-        this.logger.error('Connection timeout', { address });
+        this.logger.error({ address }, 'Connection timeout');
         reject(new Error('Connection timeout'));
       }, this.options?.connectTimeout ?? CONNECT_TIMEOUT);
 
@@ -360,7 +370,7 @@ export class Netron extends AsyncEventEmitter {
       let resolved = false;
 
       ws.once('open', () => {
-        this.logger.debug('WebSocket connection established', { address });
+        this.logger.debug({ address }, 'WebSocket connection established');
         clearTimeout(timeoutId);
         ws.once('message', async (message: ArrayBuffer, isBinary: boolean) => {
           if (!isBinary) {
@@ -372,12 +382,12 @@ export class Netron extends AsyncEventEmitter {
                 await peer.init(true, this.options);
 
                 peer.once('manual-disconnect', () => {
-                  this.logger.info('Manual disconnect requested', { peerId: peer.id });
+                  this.logger.info({ peerId: peer.id }, 'Manual disconnect requested');
                   manuallyDisconnected = true;
                 });
 
                 ws.once('close', () => {
-                  this.logger.info('WebSocket connection closed', { peerId: peer.id });
+                  this.logger.info({ peerId: peer.id }, 'WebSocket connection closed');
                   this.peers.delete(peer.id);
                   this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peer.id), { peerId: peer.id });
 
@@ -389,15 +399,15 @@ export class Netron extends AsyncEventEmitter {
                 resolved = true;
                 reconnectAttempts = 0;
                 this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId: peer.id });
-                this.logger.info('Peer connection established', { peerId: peer.id });
+                this.logger.info({ peerId: peer.id }, 'Peer connection established');
                 resolve(peer);
               } else {
-                this.logger.warn('Invalid handshake message type', { type: data.type });
+                this.logger.warn({ type: data.type }, 'Invalid handshake message type');
                 ws.close();
                 reject(new Error('Invalid handshake'));
               }
             } catch (error) {
-              this.logger.error('Error parsing handshake message', { error });
+              this.logger.error({ error }, 'Error parsing handshake message');
               ws.close();
               reject(error);
             }
@@ -410,7 +420,7 @@ export class Netron extends AsyncEventEmitter {
       });
 
       ws.on('error', (err) => {
-        this.logger.error('WebSocket connection error', { error: err });
+        this.logger.error({ error: err }, 'WebSocket connection error');
         clearTimeout(timeoutId);
         if (!resolved) {
           reject(err);
@@ -418,7 +428,7 @@ export class Netron extends AsyncEventEmitter {
       });
 
       ws.on('close', () => {
-        this.logger.warn('WebSocket connection closed prematurely', { address });
+        this.logger.warn({ address }, 'WebSocket connection closed prematurely');
         clearTimeout(timeoutId);
         if (!resolved) {
           reject(new Error('Connection closed prematurely'));

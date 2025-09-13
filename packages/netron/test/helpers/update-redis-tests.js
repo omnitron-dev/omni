@@ -66,18 +66,14 @@ function updateTestFile(filePath) {
     }
     
     // Replace with getTestRedisUrl
-    content = content.replace(envPattern, (match, dbNum) => {
-      return dbNum ? `getTestRedisUrl(${dbNum})` : 'getTestRedisUrl()';
-    });
+    content = content.replace(envPattern, (match, dbNum) => dbNum ? `getTestRedisUrl(${dbNum})` : 'getTestRedisUrl()');
     updated = true;
   }
 
   // Pattern 6: Replace discoveryRedisUrl: 'redis://localhost:6379/X' in Netron.create
   const discoveryPattern = /discoveryRedisUrl:\s*['"]redis:\/\/localhost:6379(?:\/(\d+))?['"]/g;
   if (discoveryPattern.test(content)) {
-    content = content.replace(discoveryPattern, (match, dbNum) => {
-      return dbNum ? `discoveryRedisUrl: getTestRedisUrl(${dbNum})` : 'discoveryRedisUrl: getTestRedisUrl()';
-    });
+    content = content.replace(discoveryPattern, (match, dbNum) => dbNum ? `discoveryRedisUrl: getTestRedisUrl(${dbNum})` : 'discoveryRedisUrl: getTestRedisUrl()');
     updated = true;
   }
 

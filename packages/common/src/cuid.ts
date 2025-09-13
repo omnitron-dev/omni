@@ -29,10 +29,10 @@ export function bufToBigInt(buf: Uint8Array<ArrayBufferLike>) {
 }
 
 const hash = (input = '') =>
-  // Drop the first character because it will bias the histogram
-  // to the left.
-  bufToBigInt(sha3(input)).toString(36).slice(1);
-const alphabet = Array.from({ length: 26 }, (x, i) => String.fromCharCode(i + 97));
+  // Отбрасываем первый символ, чтобы не было смещения гистограммы влево.
+  bufToBigInt(sha3(new TextEncoder().encode(input))).toString(36).slice(1);
+
+const alphabet = Array.from({ length: 26 }, (_, i) => String.fromCharCode(i + 97));
 
 const randomLetter = (random: () => number) => alphabet[Math.floor(random() * alphabet.length)];
 

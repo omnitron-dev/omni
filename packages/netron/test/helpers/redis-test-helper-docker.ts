@@ -1,6 +1,6 @@
-import { spawn, ChildProcess } from 'child_process';
-import { Redis } from 'ioredis';
 import * as net from 'net';
+import { Redis } from 'ioredis';
+import { spawn, ChildProcess } from 'child_process';
 
 /**
  * Alternative Redis test helper that uses Docker if redis-server is not available

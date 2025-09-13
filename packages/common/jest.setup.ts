@@ -2,7 +2,7 @@
 jest.setTimeout(30000);
 
 // Force exit after tests
-afterAll(() => {
+afterAll(() =>
   // Give a small delay for cleanup
-  return new Promise(resolve => setTimeout(resolve, 100));
-});
+  new Promise(resolve => setTimeout(resolve, 100))
+);

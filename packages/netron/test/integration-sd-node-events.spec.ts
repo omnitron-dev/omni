@@ -1,8 +1,10 @@
 import { Redis } from 'ioredis';
 import { delay } from '@devgrid/common';
-import { createTestRedisClient, getTestRedisUrl, cleanupRedis } from './helpers/test-utils';
+
 import { Netron } from '../dist/netron';
 import { DiscoveryEvent } from '../dist/service-discovery/types';
+import { cleanupRedis, getTestRedisUrl, createTestRedisClient } from './helpers/test-utils';
+
 describe('ServiceDiscovery Integration - Node Registration & Deregistration Events', () => {
   let redisPub: Redis;
   let netron: Netron;

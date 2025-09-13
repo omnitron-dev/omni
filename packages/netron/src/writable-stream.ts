@@ -70,7 +70,7 @@ export class NetronWritableStream extends Writable {
     this.isLive = isLive;
     this.id = streamId ?? uid.next();
 
-    this.peer.logger.info('Creating writable stream', { streamId: this.id, isLive });
+    this.peer.logger.info({ streamId: this.id, isLive }, 'Creating writable stream');
     this.peer.writableStreams.set(this.id, this);
 
     this.once('close', this.cleanup);
@@ -86,18 +86,18 @@ export class NetronWritableStream extends Writable {
    * @throws {Error} If an error occurs during the piping process
    */
   public async pipeFrom(source: AsyncIterable<any> | Readable): Promise<void> {
-    this.peer.logger.debug('Starting pipe operation', { streamId: this.id });
+    this.peer.logger.debug({ streamId: this.id }, 'Starting pipe operation');
     try {
       for await (const chunk of source) {
         if (!this.write(chunk)) {
-          this.peer.logger.debug('Stream backpressure detected', { streamId: this.id });
+          this.peer.logger.debug({ streamId: this.id }, 'Stream backpressure detected');
           await new Promise((resolve) => this.once('drain', resolve));
         }
       }
       this.end();
-      this.peer.logger.debug('Pipe operation completed', { streamId: this.id });
+      this.peer.logger.debug({ streamId: this.id }, 'Pipe operation completed');
     } catch (error) {
-      this.peer.logger.error('Pipe operation failed', { streamId: this.id, error });
+      this.peer.logger.error({ streamId: this.id, error }, 'Pipe operation failed');
       this.destroy(error instanceof Error ? error : new Error(String(error)));
     }
   }
@@ -113,16 +113,16 @@ export class NetronWritableStream extends Writable {
    */
   override _write(chunk: any, _: BufferEncoding, callback: (error?: Error | null) => void): void {
     if (this.isClosed) {
-      this.peer.logger.warn('Attempt to write to closed stream', { streamId: this.id });
+      this.peer.logger.warn({ streamId: this.id }, 'Attempt to write to closed stream');
       callback(new Error('Stream is already closed'));
       return;
     }
 
-    this.peer.logger.debug('Writing chunk', { streamId: this.id, index: this.index });
+    this.peer.logger.debug({ streamId: this.id, index: this.index }, 'Writing chunk');
     this.peer.sendStreamChunk(this.id, chunk, this.index++, false, this.isLive)
       .then(() => callback())
       .catch((err: Error) => {
-        this.peer.logger.error('Error sending stream chunk', { streamId: this.id, error: err });
+        this.peer.logger.error({ streamId: this.id, error: err }, 'Error sending stream chunk');
         this.peer.sendPacket(createPacket(Packet.nextId(), 1, TYPE_STREAM_ERROR, {
           streamId: this.id,
           message: err.message,
@@ -142,16 +142,16 @@ export class NetronWritableStream extends Writable {
    */
   override _final(callback: (error?: Error | null) => void): void {
     if (this.isClosed) {
-      this.peer.logger.warn('Attempt to finalize closed stream', { streamId: this.id });
+      this.peer.logger.warn({ streamId: this.id }, 'Attempt to finalize closed stream');
       callback(new Error('Stream is already closed'));
       return;
     }
 
-    this.peer.logger.debug('Sending final chunk', { streamId: this.id, index: this.index });
+    this.peer.logger.debug({ streamId: this.id, index: this.index }, 'Sending final chunk');
     this.peer.sendStreamChunk(this.id, null, this.index, true, this.isLive)
       .then(() => callback())
       .catch((err: Error) => {
-        this.peer.logger.error('Error sending final chunk', { streamId: this.id, error: err });
+        this.peer.logger.error({ streamId: this.id, error: err }, 'Error sending final chunk');
         callback(err);
         this.destroy(err);
       })
@@ -164,11 +164,11 @@ export class NetronWritableStream extends Writable {
    */
   public closeStream(): void {
     if (this.isClosed) {
-      this.peer.logger.warn('Attempt to close already closed stream', { streamId: this.id });
+      this.peer.logger.warn({ streamId: this.id }, 'Attempt to close already closed stream');
       return;
     }
 
-    this.peer.logger.info('Closing stream', { streamId: this.id });
+    this.peer.logger.info({ streamId: this.id }, 'Closing stream');
     this.isClosed = true;
     this.end();
     this.cleanup();
@@ -184,16 +184,16 @@ export class NetronWritableStream extends Writable {
    */
   public override destroy(error?: Error): this {
     if (this.isClosed) {
-      this.peer.logger.warn('Attempt to destroy already closed stream', { streamId: this.id });
+      this.peer.logger.warn({ streamId: this.id }, 'Attempt to destroy already closed stream');
       return this;
     }
 
-    this.peer.logger.info('Destroying stream', { streamId: this.id, error });
+    this.peer.logger.info({ streamId: this.id, error }, 'Destroying stream');
     this.isClosed = true;
 
     this.peer.sendStreamChunk(this.id, null, this.index, true, this.isLive)
       .catch((sendError) => {
-        this.peer.logger.error('Failed to send final stream chunk', { streamId: this.id, error: sendError });
+        this.peer.logger.error({ streamId: this.id, error: sendError }, 'Failed to send final stream chunk');
       })
       .finally(() => {
         super.destroy(error);
@@ -208,7 +208,7 @@ export class NetronWritableStream extends Writable {
    * This ensures proper garbage collection and prevents memory leaks.
    */
   private cleanup = () => {
-    this.peer.logger.debug('Cleaning up stream resources', { streamId: this.id });
+    this.peer.logger.debug({ streamId: this.id }, 'Cleaning up stream resources');
     this.peer.writableStreams.delete(this.id);
   };
 
@@ -219,7 +219,7 @@ export class NetronWritableStream extends Writable {
    * @param {Error} err - The error that occurred
    */
   private handleError = (err: Error) => {
-    this.peer.logger.error('Stream error occurred', { streamId: this.id, error: err });
+    this.peer.logger.error({ streamId: this.id, error: err }, 'Stream error occurred');
     this.cleanup();
   };
 

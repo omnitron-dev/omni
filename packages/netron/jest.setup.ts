@@ -1,5 +1,5 @@
 // Jest setup for netron tests
-import { setupRedisForTests, teardownRedisForTests, getTestRedis } from './test/helpers/redis-test-helper';
+import { setupRedisForTests, teardownRedisForTests } from './test/helpers/redis-test-helper';
 
 // Set test timeout
 jest.setTimeout(30000);

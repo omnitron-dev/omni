@@ -302,5 +302,23 @@ export const isPropertyDefined = (obj: any, path: string) => {
 // Checks whether given function is an async function.
 export const isAsyncFunction = (fn: any) => fn && toString.call(fn).slice(8, -1) === "AsyncFunction";
 
+/**
+ * Determines whether the provided object is an AsyncGenerator.
+ * This predicate is used to identify async generator functions that can be streamed
+ * over the network in the Netron system.
+ * 
+ * @param {any} obj - The object to be evaluated for AsyncGenerator membership
+ * @returns {boolean} Returns true if the object is an AsyncGenerator, false otherwise
+ * @example
+ * async function* generate() { yield 1; }
+ * const gen = generate();
+ * isAsyncGenerator(gen); // returns true
+ */
+export const isAsyncGenerator = (obj: any): obj is AsyncGenerator => !!(obj && typeof obj === 'object' &&
+  typeof obj.next === 'function' &&
+  typeof obj.return === 'function' &&
+  typeof obj.throw === 'function' &&
+  typeof obj[Symbol.asyncIterator] === 'function');
+
 // Checks whether given value is a Promise.
 export const isPromise = (obj: any) => !isNil(obj) && isFunction(obj.then);

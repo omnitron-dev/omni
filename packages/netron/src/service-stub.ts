@@ -1,28 +1,31 @@
+import { isAsyncGenerator } from '@devgrid/common';
+
 import { LocalPeer } from './local-peer';
 import { Definition } from './definition';
 import { ServiceMetadata } from './types';
 import { StreamReference } from './stream-reference';
+import { NetronWritableStream } from './writable-stream';
 import { isNetronStream, isNetronService, isServiceReference, isServiceInterface, isServiceDefinition, isNetronStreamReference } from './predicates';
 
 /**
- * ServiceStub представляет собой прокси-объект для экземпляра сервиса в системе Netron.
- * Этот класс обеспечивает прозрачное взаимодействие с удаленными сервисами, 
- * обрабатывая преобразование данных и управляя жизненным циклом сервисных определений.
+ * ServiceStub is a proxy object for a service instance in the Netron system.
+ * This class provides transparent interaction with remote services,
+ * handling data transformation and managing the lifecycle of service definitions.
  * 
  * @class ServiceStub
- * @description Основной класс для работы с сервисами в распределенной системе Netron
+ * @description Main class for working with services in the distributed Netron system
  */
 export class ServiceStub {
-  /** Определение сервиса, содержащее метаданные и спецификацию интерфейса */
+  /** Service definition containing metadata and interface specification */
   public definition: Definition;
 
   /**
-   * Создает новый экземпляр ServiceStub.
+   * Creates a new ServiceStub instance.
    * 
-   * @param {LocalPeer} peer - Локальный пир, с которым ассоциирован данный сервис
-   * @param {any} instance - Экземпляр сервиса, который представляет данный заглушка
-   * @param {ServiceMetadata | Definition} metaOrDefinition - Метаданные сервиса или готовое определение
-   * @throws {Error} Если не удается создать определение сервиса
+   * @param {LocalPeer} peer - Local peer associated with this service
+   * @param {any} instance - Service instance that this stub represents
+   * @param {ServiceMetadata | Definition} metaOrDefinition - Service metadata or ready-made definition
+   * @throws {Error} If unable to create service definition
    */
   constructor(
     public peer: LocalPeer,
@@ -37,39 +40,75 @@ export class ServiceStub {
   }
 
   /**
-   * Устанавливает значение свойства сервиса.
+   * Sets the value of a service property.
    * 
-   * @param {string} prop - Имя свойства для установки
-   * @param {any} value - Значение для установки
+   * @param {string} prop - Property name to set
+   * @param {any} value - Value to set
    * @returns {void}
-   * @throws {Error} Если свойство не существует или недоступно для записи
+   * @throws {Error} If property does not exist or is not writable
    */
   set(prop: string, value: any) {
     Reflect.set(this.instance, prop, this.processValue(value));
   }
 
   /**
-   * Получает значение свойства сервиса.
+   * Gets the value of a service property.
    * 
-   * @param {string} prop - Имя свойства для получения
-   * @returns {any} Обработанное значение свойства
-   * @throws {Error} Если свойство не существует или недоступно для чтения
+   * @param {string} prop - Property name to get
+   * @returns {any} Processed property value
+   * @throws {Error} If property does not exist or is not readable
    */
   get(prop: string) {
     return this.processResult(this.instance[prop]);
   }
 
   /**
-   * Вызывает метод сервиса с заданными аргументами.
+   * Calls a service method with the given arguments.
    * 
-   * @param {string} method - Имя метода для вызова
-   * @param {any[]} args - Аргументы для передачи в метод
-   * @returns {Promise<any>} Обработанный результат вызова метода
-   * @throws {Error} Если метод не существует или вызов завершился с ошибкой
+   * @param {string} method - Method name to call
+   * @param {any[]} args - Arguments to pass to the method
+   * @returns {Promise<any>} Processed result of the method call
+   * @throws {Error} If method does not exist or call fails with an error
    */
-  async call(method: string, args: any[]) {
+  async call(method: string, args: any[], callerPeer?: any) {
     const processedArgs = this.processArgs(args);
     let result = this.instance[method](...processedArgs);
+
+    // Check if result is an AsyncGenerator before awaiting Promise
+    if (isAsyncGenerator(result)) {
+      // If callerPeer is null, this is a local call - return the generator directly
+      if (callerPeer === null) {
+        // For local calls within the same process, we can return the generator directly
+        return result;
+      }
+
+      // We need a RemotePeer to create a stream
+      if (!callerPeer) {
+        // Try to get the first connected remote peer (not LocalPeer)
+        const peers = Array.from(this.peer.netron.peers.values());
+        callerPeer = peers.find(p => p.id !== this.peer.id);
+        if (!callerPeer) {
+          // If no remote peer, but not explicitly local call, return the generator
+          return result;
+        }
+      }
+
+      // Create a writable stream and pipe the generator to it
+      const stream = new NetronWritableStream({
+        peer: callerPeer,
+        isLive: true
+      });
+
+      // Start piping in background (don't await)
+      stream.pipeFrom(result).catch(error => {
+        this.peer.logger.error({ error }, 'Failed to pipe AsyncGenerator');
+        stream.destroy(error);
+      });
+
+      // Return stream reference immediately
+      return StreamReference.from(stream);
+    }
+
     if (result instanceof Promise) {
       result = await result;
     }
@@ -77,11 +116,11 @@ export class ServiceStub {
   }
 
   /**
-   * Обрабатывает результат взаимодействия с сервисом.
-   * Преобразует специальные типы данных (сервисы, потоки) в соответствующие ссылки.
+   * Processes the result of service interaction.
+   * Converts special data types (services, streams) into corresponding references.
    * 
-   * @param {any} result - Результат для обработки
-   * @returns {any} Обработанный результат
+   * @param {any} result - Result to process
+   * @returns {any} Processed result
    * @private
    */
   private processResult(result: any) {
@@ -94,11 +133,11 @@ export class ServiceStub {
   }
 
   /**
-   * Обрабатывает массив аргументов для вызова метода.
-   * Преобразует каждый аргумент в соответствии с его типом.
+   * Processes an array of arguments for method call.
+   * Converts each argument according to its type.
    * 
-   * @param {any[]} args - Аргументы для обработки
-   * @returns {any[]} Обработанные аргументы
+   * @param {any[]} args - Arguments to process
+   * @returns {any[]} Processed arguments
    * @private
    */
   private processArgs(args: any[]) {
@@ -106,11 +145,11 @@ export class ServiceStub {
   }
 
   /**
-   * Обрабатывает отдельное значение.
-   * Преобразует ссылки на сервисы и потоки в соответствующие объекты.
+   * Processes a single value.
+   * Converts service and stream references into corresponding objects.
    * 
-   * @param {any} obj - Значение для обработки
-   * @returns {any} Обработанное значение
+   * @param {any} obj - Value to process
+   * @returns {any} Processed value
    * @private
    */
   private processValue(obj: any) {

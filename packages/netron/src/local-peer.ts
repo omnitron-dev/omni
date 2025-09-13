@@ -64,7 +64,7 @@ export class LocalPeer extends AbstractPeer {
    * @throws {Error} If the service metadata cannot be retrieved.
    */
   async exposeService(instance: any): Promise<Definition> {
-    this.logger.info('Exposing service', { instance });
+    this.logger.info({ instance }, 'Exposing service');
     const meta = getServiceMetadata(instance);
     if (!meta) {
       this.logger.error('Invalid service: Service metadata could not be retrieved');
@@ -73,17 +73,17 @@ export class LocalPeer extends AbstractPeer {
 
     const existingStub = this.serviceInstances.get(instance);
     if (existingStub) {
-      this.logger.warn('Service instance already exposed', { name: meta.name });
+      this.logger.warn({ name: meta.name }, 'Service instance already exposed');
       throw new Error(`Service instance already exposed: ${meta.name}`);
     }
 
     const serviceKey = getQualifiedName(meta.name, meta.version);
     if (this.netron.services.has(serviceKey)) {
-      this.logger.warn('Service already exposed', { serviceKey });
+      this.logger.warn({ serviceKey }, 'Service already exposed');
       throw new Error(`Service already exposed: ${serviceKey}`);
     }
 
-    this.logger.info('Creating service stub', { serviceKey });
+    this.logger.info({ serviceKey }, 'Creating service stub');
     const stub = new ServiceStub(this, instance, meta);
     const def = stub.definition;
 
@@ -100,7 +100,7 @@ export class LocalPeer extends AbstractPeer {
     } as ServiceExposeEvent);
 
     await this.netron.discovery?.updateServices(this.netron.getExposedServices());
-    this.logger.info('Service exposed successfully', { serviceKey });
+    this.logger.info({ serviceKey }, 'Service exposed successfully');
 
     return def;
   }
@@ -143,12 +143,12 @@ export class LocalPeer extends AbstractPeer {
    * @throws {Error} If the service is not found or if there are issues during cleanup.
    */
   async unexposeService(serviceName: string) {
-    this.logger.info('Unexposing service', { serviceName });
+    this.logger.info({ serviceName }, 'Unexposing service');
     const def = this.getDefinitionByServiceName(serviceName);
     const defId = def.id;
     for (const i of this.interfaces.values()) {
       if (i.instance.$def?.parentId === defId) {
-        this.logger.debug('Releasing interface', { defId });
+        this.logger.debug({ defId }, 'Releasing interface');
         this.releaseInterface(i.instance);
       }
     }
@@ -168,7 +168,7 @@ export class LocalPeer extends AbstractPeer {
     });
 
     await this.netron.discovery?.updateServices(this.netron.getExposedServices());
-    this.logger.info('Service unexposed successfully', { serviceName });
+    this.logger.info({ serviceName }, 'Service unexposed successfully');
   }
 
   /**
@@ -295,7 +295,7 @@ export class LocalPeer extends AbstractPeer {
    * @throws {Error} If the service definition is unknown or if the property cannot be set.
    */
   async set(defId: string, name: string, value: any) {
-    this.logger.debug('Setting property', { defId, name });
+    this.logger.debug({ defId, name }, 'Setting property');
     return this.getStubByDefinitionId(defId).set(name, value);
   }
 
@@ -310,7 +310,7 @@ export class LocalPeer extends AbstractPeer {
    * @throws {Error} If the service definition is unknown or if the property cannot be accessed.
    */
   async get(defId: string, name: string) {
-    this.logger.debug('Getting property', { defId, name });
+    this.logger.debug({ defId, name }, 'Getting property');
     return this.processResult(await this.getStubByDefinitionId(defId).get(name));
   }
 
@@ -326,8 +326,9 @@ export class LocalPeer extends AbstractPeer {
    * @throws {Error} If the service definition is unknown or if the method call fails.
    */
   async call(defId: string, method: string, args: any[]) {
-    this.logger.debug('Calling method', { defId, method });
-    return this.processResult(await this.getStubByDefinitionId(defId).call(method, args));
+    this.logger.debug({ defId, method }, 'Calling method');
+    // For local peer, pass null as callerPeer since we're calling within the same process
+    return this.processResult(await this.getStubByDefinitionId(defId).call(method, args, null));
   }
 
   /**

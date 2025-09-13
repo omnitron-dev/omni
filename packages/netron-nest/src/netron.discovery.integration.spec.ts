@@ -56,7 +56,7 @@ describe('Netron Discovery Integration', () => {
 
   it('should update services on expose and unexpose', async () => {
     @Service('test.service@1.0.0')
-    class TestService { }
+    class TestService {}
 
     await netronService.instance.peer.exposeService(new TestService());
 
@@ -109,6 +109,4 @@ describe('Netron Discovery Integration', () => {
     expect(nodeInfoAfterUnexpose).toBeDefined();
     expect(nodeInfoAfterUnexpose.services).not.toContainEqual({ name: 'test.service', version: '1.0.0' });
   }, 20000); // increased timeout for reliability
-
-
 });

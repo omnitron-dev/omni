@@ -1,7 +1,7 @@
 import { Redis } from 'ioredis';
 import { delay } from '@devgrid/common';
 
-import { Netron , ServiceDiscovery } from '../../dist';
+import { Netron, ServiceDiscovery } from '../../dist';
 import { cleanupRedis, createTestRedisClient } from '../helpers/test-utils';
 
 describe('ServiceDiscovery Redis Failure Handling', () => {
@@ -30,9 +30,15 @@ describe('ServiceDiscovery Redis Failure Handling', () => {
   });
 
   afterEach(async () => {
-    if (discovery) { await discovery.shutdown(); }
-    if (redis) { await cleanupRedis(redis); }
-    if (redis) { redis.disconnect(); }
+    if (discovery) {
+      await discovery.shutdown();
+    }
+    if (redis) {
+      await cleanupRedis(redis);
+    }
+    if (redis) {
+      redis.disconnect();
+    }
   });
 
   it('should handle Redis failures gracefully during getActiveNodes', async () => {
@@ -43,7 +49,7 @@ describe('ServiceDiscovery Redis Failure Handling', () => {
 
     // Reconnect Redis
     redis = createTestRedisClient(2);
-    discovery!['redis'] = redis;  // Restore connection to ServiceDiscovery
+    discovery!['redis'] = redis; // Restore connection to ServiceDiscovery
 
     // Retry after recovery
     const activeNodes = await discovery!.getActiveNodes();

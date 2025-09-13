@@ -31,8 +31,8 @@ if (typeof global !== 'undefined') {
 // Force cleanup after all tests
 afterAll(async () => {
   // Wait for pending operations
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
   // Close WebSocket connections
   if (activeConnections.size > 0) {
     console.warn(`Found ${activeConnections.size} unclosed WebSocket connections`);
@@ -47,7 +47,7 @@ afterAll(async () => {
     }
     activeConnections.clear();
   }
-  
+
   // Close servers
   if (activeServers.size > 0) {
     console.warn(`Found ${activeServers.size} unclosed servers`);

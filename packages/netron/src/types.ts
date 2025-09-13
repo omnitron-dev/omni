@@ -114,13 +114,13 @@ export type NetronOptions = {
    * - Service availability changes
    * - Node health status updates
    * - Network topology changes
-   * 
+   *
    * This feature is particularly useful for:
    * - Building reactive systems that need immediate awareness of service changes
    * - Implementing dynamic load balancing
    * - Creating real-time monitoring dashboards
    * - Enabling automatic failover mechanisms
-   * 
+   *
    * @default true
    * @type {boolean}
    * @see DiscoveryOptions
@@ -131,7 +131,7 @@ export type NetronOptions = {
   /**
    * Optional logger configuration based on Pino LoggerOptions.
    * Allows customizing the logging behavior of the Netron instance.
-   * 
+   *
    * @type {LoggerOptions}
    * @description Configuration options for the Pino logger instance.
    * This includes settings such as:
@@ -141,7 +141,7 @@ export type NetronOptions = {
    * - Custom serializers for objects
    * - Timestamp formatting
    * - Additional context fields
-   * 
+   *
    * @see https://getpino.io/#/docs/api?id=options
    * @example
    * {
@@ -157,7 +157,7 @@ export type NetronOptions = {
   /**
    * Optional destination stream for logger output.
    * If not provided, logs will be written to stdout by default.
-   * 
+   *
    * @type {DestinationStream}
    * @description A writable stream that receives log messages.
    * This can be used to:
@@ -165,7 +165,7 @@ export type NetronOptions = {
    * - Send logs to a remote service
    * - Implement custom log processing
    * - Integrate with monitoring systems
-   * 
+   *
    * @see https://getpino.io/#/docs/api?id=destination
    * @example
    * const fileStream = fs.createWriteStream('app.log');
@@ -176,7 +176,7 @@ export type NetronOptions = {
   /**
    * Optional context for the logger.
    * This can be used to add additional context to the logs.
-   * 
+   *
    * @type {Record<string, any>}
    */
   loggerContext?: Record<string, any>;

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-function-type */
-import { pLimit, type Limit } from "@devgrid/common";
+import { pLimit, type Limit } from '@devgrid/common';
 
 // Type for event listener
 type EventListener = {
@@ -42,7 +42,7 @@ export class EventEmitter {
       return [handlers.fn];
     }
 
-    return handlers.map(h => h.fn);
+    return handlers.map((h) => h.fn);
   }
 
   /**
@@ -105,7 +105,7 @@ export class EventEmitter {
     const listener: EventListener = {
       fn,
       context: context || this,
-      once: once || false
+      once: once || false,
     };
 
     const existing = this._events.get(event);
@@ -168,7 +168,7 @@ export class EventEmitter {
       }
     } else {
       // Multiple handlers
-      const filtered = handlers.filter(h => h.fn !== fn);
+      const filtered = handlers.filter((h) => h.fn !== fn);
 
       if (filtered.length === 0) {
         this._events.delete(event);
@@ -223,7 +223,7 @@ export class EventEmitter {
    * Emit events in parallel, returning a promise that resolves when all listeners have been executed
    */
   emitParallel(event: any, ...args: any[]) {
-    const promises = this.listeners(event).map(listener => this._executeListener(listener, args));
+    const promises = this.listeners(event).map((listener) => this._executeListener(listener, args));
     return Promise.all(promises);
   }
 

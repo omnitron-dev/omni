@@ -105,18 +105,22 @@ export class RedisDockerTestHelper {
     console.log(`Starting Redis in Docker on port ${this.port}...`);
 
     // Remove any existing container with the same name
-    await this.runCommand('docker', ['rm', '-f', this.containerName]).catch(() => { });
+    await this.runCommand('docker', ['rm', '-f', this.containerName]).catch(() => {});
 
     // Start Redis container
     this.dockerProcess = spawn('docker', [
       'run',
       '--rm',
-      '--name', this.containerName,
-      '-p', `${this.port}:6379`,
+      '--name',
+      this.containerName,
+      '-p',
+      `${this.port}:6379`,
       'redis:7-alpine',
       'redis-server',
-      '--save', '',
-      '--appendonly', 'no'
+      '--save',
+      '',
+      '--appendonly',
+      'no',
     ]);
 
     this.dockerProcess.on('error', (error) => {
@@ -132,7 +136,7 @@ export class RedisDockerTestHelper {
       port: this.port,
       host: '127.0.0.1',
       lazyConnect: false,
-      maxRetriesPerRequest: 3
+      maxRetriesPerRequest: 3,
     });
 
     this.isStarted = true;
@@ -159,7 +163,7 @@ export class RedisDockerTestHelper {
           port: this.port,
           host: '127.0.0.1',
           lazyConnect: true,
-          retryStrategy: () => null
+          retryStrategy: () => null,
         });
 
         await testClient.connect();
@@ -167,7 +171,7 @@ export class RedisDockerTestHelper {
         testClient.disconnect();
         return;
       } catch {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
     }
 
@@ -187,13 +191,13 @@ export class RedisDockerTestHelper {
       } catch {
         // Ignore errors
       }
-      
+
       try {
         await this.runCommand('docker', ['rm', '-f', this.containerName]);
       } catch {
         // Ignore errors
       }
-      
+
       this.dockerProcess = null;
     }
 
@@ -224,7 +228,7 @@ export class RedisDockerTestHelper {
       host: '127.0.0.1',
       db,
       lazyConnect: false,
-      maxRetriesPerRequest: 3
+      maxRetriesPerRequest: 3,
     });
   }
 }

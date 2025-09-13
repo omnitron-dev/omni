@@ -1,7 +1,7 @@
 /**
  * Represents information about a network node in the service discovery system.
  * This interface encapsulates all essential metadata required to identify and connect to a node.
- * 
+ *
  * @interface NodeInfo
  * @property {string} nodeId - Unique identifier of the node within the network
  * @property {string} address - Network address where the node can be reached (e.g., "host:port")
@@ -18,7 +18,7 @@ export interface NodeInfo {
 /**
  * Describes a service available in the network.
  * This interface provides the basic identification information for a service.
- * 
+ *
  * @interface ServiceInfo
  * @property {string} name - Unique name of the service
  * @property {string} [version] - Optional version identifier of the service
@@ -32,7 +32,7 @@ export interface ServiceInfo {
  * Configuration options for the service discovery mechanism.
  * These parameters control the behavior of the heartbeat system and event propagation
  * within the distributed service discovery system.
- * 
+ *
  * @interface DiscoveryOptions
  * @property {number} [heartbeatInterval] - Time interval in milliseconds between consecutive heartbeat messages.
  *                                         This determines how frequently a node announces its presence to the network.
@@ -58,7 +58,7 @@ export interface DiscoveryOptions {
  * Represents an event that occurs within the service discovery system.
  * This interface defines the structure of events that are published when nodes
  * register, update their status, or deregister from the network.
- * 
+ *
  * @interface DiscoveryEvent
  * @property {'NODE_REGISTERED' | 'NODE_UPDATED' | 'NODE_DEREGISTERED'} type - The type of discovery event.
  *                                                                           NODE_REGISTERED: A new node has joined the network.

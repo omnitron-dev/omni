@@ -18,12 +18,13 @@ function updateTestFile(filePath) {
       const match = content.match(importPattern);
       if (match) {
         const lastImportIndex = content.lastIndexOf(match[0]) + match[0].length;
-        content = content.slice(0, lastImportIndex) + 
+        content =
+          content.slice(0, lastImportIndex) +
           "\nimport { createTestRedisClient, cleanupRedis } from '../helpers/test-utils';" +
           content.slice(lastImportIndex);
       }
     }
-    
+
     // Replace Redis initialization
     content = content.replace(pattern1, 'createTestRedisClient($1)');
     updated = true;
@@ -58,22 +59,27 @@ function updateTestFile(filePath) {
       if (match) {
         const lastImportIndex = content.lastIndexOf(match[0]) + match[0].length;
         if (!content.includes('test-utils')) {
-          content = content.slice(0, lastImportIndex) + 
+          content =
+            content.slice(0, lastImportIndex) +
             "\nimport { getTestRedisUrl } from '../helpers/test-utils';" +
             content.slice(lastImportIndex);
         }
       }
     }
-    
+
     // Replace with getTestRedisUrl
-    content = content.replace(envPattern, (match, dbNum) => dbNum ? `getTestRedisUrl(${dbNum})` : 'getTestRedisUrl()');
+    content = content.replace(envPattern, (match, dbNum) =>
+      dbNum ? `getTestRedisUrl(${dbNum})` : 'getTestRedisUrl()'
+    );
     updated = true;
   }
 
   // Pattern 6: Replace discoveryRedisUrl: 'redis://localhost:6379/X' in Netron.create
   const discoveryPattern = /discoveryRedisUrl:\s*['"]redis:\/\/localhost:6379(?:\/(\d+))?['"]/g;
   if (discoveryPattern.test(content)) {
-    content = content.replace(discoveryPattern, (match, dbNum) => dbNum ? `discoveryRedisUrl: getTestRedisUrl(${dbNum})` : 'discoveryRedisUrl: getTestRedisUrl()');
+    content = content.replace(discoveryPattern, (match, dbNum) =>
+      dbNum ? `discoveryRedisUrl: getTestRedisUrl(${dbNum})` : 'discoveryRedisUrl: getTestRedisUrl()'
+    );
     updated = true;
   }
 

@@ -1,3 +1,3 @@
-export * from "./emitter";
+export * from './emitter';
 
-export * from "./predicates";
+export * from './predicates';

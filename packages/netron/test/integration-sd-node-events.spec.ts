@@ -42,7 +42,7 @@ describe('ServiceDiscovery Integration - Node Registration & Deregistration Even
   it('should emit NODE_REGISTERED and NODE_DEREGISTERED events', async () => {
     expect(receivedEvents.length).toBeGreaterThanOrEqual(1);
 
-    const registerEvent = receivedEvents.find(e => e.type === 'NODE_REGISTERED');
+    const registerEvent = receivedEvents.find((e) => e.type === 'NODE_REGISTERED');
     expect(registerEvent).toBeDefined();
     expect(registerEvent!.nodeId).toBe(netron.id);
     expect(registerEvent!.address).toBe('localhost:4002');
@@ -52,7 +52,7 @@ describe('ServiceDiscovery Integration - Node Registration & Deregistration Even
 
     await delay(1000); // Give time for event publication
 
-    const deregisterEvent = receivedEvents.find(e => e.type === 'NODE_DEREGISTERED');
+    const deregisterEvent = receivedEvents.find((e) => e.type === 'NODE_DEREGISTERED');
     expect(deregisterEvent).toBeDefined();
     expect(deregisterEvent!.nodeId).toBe(netron.id);
   }, 10000);

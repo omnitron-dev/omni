@@ -59,7 +59,6 @@ describe('ServiceDiscovery Integration - Initialization & Heartbeat', () => {
     const clientNetron = await Netron.create({
       discoveryEnabled: true,
       discoveryRedisUrl: getTestRedisUrl(2),
-
     });
 
     try {
@@ -111,9 +110,7 @@ describe('ServiceDiscovery Integration - Initialization & Heartbeat', () => {
       expect(activeNodes).toHaveLength(2);
       expect(activeNodes[1]?.nodeId).toBe(serverNetron.id);
       expect(activeNodes[1]?.address).toBe('localhost:4001');
-      expect(activeNodes[1]?.services).toEqual([
-        { name: 'test.service', version: '1.0.0' }
-      ]);
+      expect(activeNodes[1]?.services).toEqual([{ name: 'test.service', version: '1.0.0' }]);
     } finally {
       await serverNetron.stop();
       await clientNetron.stop();

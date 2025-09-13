@@ -12,7 +12,7 @@ export default class Serializer {
   public encoder = new Encoder(this.encodingTypes);
   public decoder = new Decoder(this.decodingTypes);
 
-  constructor(private initialCapacity = 64) { }
+  constructor(private initialCapacity = 64) {}
 
   registerEncoder(type: number, check: any, encode: EncodeFunction): Serializer {
     this.encodingTypes.set(type, { check, encode });

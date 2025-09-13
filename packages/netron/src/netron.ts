@@ -20,7 +20,7 @@ import { CONNECT_TIMEOUT, NETRON_EVENT_PEER_CONNECT, NETRON_EVENT_PEER_DISCONNEC
  * The main Netron class that manages WebSocket connections, services, and peer communication.
  * This class serves as the central hub for creating and managing distributed system components.
  * It extends EventEmitter to provide asynchronous event handling capabilities.
- * 
+ *
  * @class Netron
  * @extends EventEmitter
  * @description Core class for managing distributed system components and peer-to-peer communication
@@ -38,7 +38,7 @@ export class Netron extends EventEmitter {
    * Unique identifier for this Netron instance.
    * Generated automatically using randomUUID() if not provided in options.
    * Used for peer identification and connection management.
-   * 
+   *
    * @type {string}
    * @public
    * @example
@@ -49,7 +49,7 @@ export class Netron extends EventEmitter {
   /**
    * WebSocket server instance for handling incoming connections.
    * Only initialized when running in server mode (when listenHost and listenPort are provided).
-   * 
+   *
    * @type {WebSocketServer | undefined}
    * @private
    * @description Manages WebSocket connections and handles the WebSocket protocol
@@ -60,7 +60,7 @@ export class Netron extends EventEmitter {
    * Map of special events that need to be processed sequentially.
    * Used to ensure ordered processing of related events and prevent race conditions.
    * Key: event ID, Value: array of {name, data} pairs
-   * 
+   *
    * @type {Map<string, { name: string; data: any }[]>}
    * @private
    * @description Maintains event queue for ordered processing and prevents race conditions
@@ -70,7 +70,7 @@ export class Netron extends EventEmitter {
   /**
    * The local peer instance representing this Netron instance.
    * Used for exposing local services and handling local operations.
-   * 
+   *
    * @type {LocalPeer}
    * @public
    * @description Represents the local node in the distributed network
@@ -81,7 +81,7 @@ export class Netron extends EventEmitter {
    * Map of connected remote peers.
    * Key: peer ID, Value: RemotePeer instance
    * Used to track and manage all active peer connections.
-   * 
+   *
    * @type {Map<string, RemotePeer>}
    * @public
    * @description Registry of all active peer connections in the network
@@ -91,7 +91,7 @@ export class Netron extends EventEmitter {
   /**
    * Task manager instance for handling remote task execution.
    * Manages task registration, execution, and timeout handling.
-   * 
+   *
    * @type {TaskManager}
    * @public
    * @description Orchestrates distributed task execution across the network
@@ -101,7 +101,7 @@ export class Netron extends EventEmitter {
   /**
    * Flag indicating whether the Netron instance has been started.
    * Used to prevent multiple start attempts and ensure proper initialization.
-   * 
+   *
    * @type {boolean}
    * @private
    * @description Prevents multiple initialization attempts and tracks instance state
@@ -112,7 +112,7 @@ export class Netron extends EventEmitter {
    * Map of exposed services.
    * Key: qualified service name (name:version), Value: ServiceStub instance
    * Used to track and manage all available services.
-   * 
+   *
    * @type {Map<string, ServiceStub>}
    * @public
    * @description Registry of all available services in the network
@@ -122,7 +122,7 @@ export class Netron extends EventEmitter {
   /**
    * Configuration options for this Netron instance.
    * Contains settings for timeouts, reconnection, and other behaviors.
-   * 
+   *
    * @type {NetronOptions}
    * @public
    * @description Configuration parameters for the Netron instance
@@ -132,7 +132,7 @@ export class Netron extends EventEmitter {
   /**
    * Service discovery instance for managing service registration and discovery.
    * Only initialized when discovery is enabled in options.
-   * 
+   *
    * @type {ServiceDiscovery | undefined}
    * @public
    * @description Manages service discovery and registration in the distributed network
@@ -142,7 +142,7 @@ export class Netron extends EventEmitter {
   /**
    * Redis client instance for service discovery.
    * Only initialized when discovery is enabled in options.
-   * 
+   *
    * @type {Redis | undefined}
    * @private
    * @description Redis client for service discovery coordination
@@ -154,7 +154,7 @@ export class Netron extends EventEmitter {
   /**
    * Creates a new Netron instance with the specified options.
    * Initializes the task manager and local peer.
-   * 
+   *
    * @constructor
    * @param {NetronOptions} [options] - Configuration options for the Netron instance
    * @throws {Error} If required options are missing or invalid
@@ -187,7 +187,7 @@ export class Netron extends EventEmitter {
   /**
    * Starts the Netron instance, initializing the WebSocket server and loading tasks.
    * Loads core tasks from the specified directory and sets up the WebSocket server if configured.
-   * 
+   *
    * @method start
    * @async
    * @throws {Error} If Netron is already started
@@ -299,11 +299,10 @@ export class Netron extends EventEmitter {
     this.logger.info(`Service discovery initialized successfully (${clientMode ? 'client mode' : 'server mode'})`);
   }
 
-
   /**
    * Stops the Netron instance, closing the WebSocket server and cleaning up resources.
    * Properly shuts down all connections and services.
-   * 
+   *
    * @method stop
    * @async
    * @returns {Promise<void>} Resolves when shutdown is complete
@@ -338,11 +337,11 @@ export class Netron extends EventEmitter {
    * - Automatic reconnection with exponential backoff
    * - Connection state tracking and cleanup
    * - Event emission for connection lifecycle events
-   * 
+   *
    * The reconnection mechanism uses an exponential backoff strategy starting at 1 second,
    * doubling each attempt up to a maximum of 30 seconds. The maximum number of attempts
    * can be configured through the Netron options.
-   * 
+   *
    * @method connect
    * @async
    * @param {string} address - The WebSocket URL of the remote peer to connect to
@@ -358,83 +357,84 @@ export class Netron extends EventEmitter {
     let reconnectAttempts = 0;
     let manuallyDisconnected = false;
 
-    const connectPeer = (): Promise<RemotePeer> => new Promise<RemotePeer>((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        this.logger.error({ address }, 'Connection timeout');
-        reject(new Error('Connection timeout'));
-      }, this.options?.connectTimeout ?? CONNECT_TIMEOUT);
+    const connectPeer = (): Promise<RemotePeer> =>
+      new Promise<RemotePeer>((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          this.logger.error({ address }, 'Connection timeout');
+          reject(new Error('Connection timeout'));
+        }, this.options?.connectTimeout ?? CONNECT_TIMEOUT);
 
-      const ws = new WebSocket(`${address}?id=${this.id}`);
-      const peer = new RemotePeer(ws, this, address);
+        const ws = new WebSocket(`${address}?id=${this.id}`);
+        const peer = new RemotePeer(ws, this, address);
 
-      let resolved = false;
+        let resolved = false;
 
-      ws.once('open', () => {
-        this.logger.debug({ address }, 'WebSocket connection established');
-        clearTimeout(timeoutId);
-        ws.once('message', async (message: ArrayBuffer, isBinary: boolean) => {
-          if (!isBinary) {
-            try {
-              const data = JSON.parse(message.toString()) as { type: 'id'; id: string };
-              if (data.type === 'id') {
-                peer.id = data.id;
-                this.peers.set(peer.id, peer);
-                await peer.init(true, this.options);
+        ws.once('open', () => {
+          this.logger.debug({ address }, 'WebSocket connection established');
+          clearTimeout(timeoutId);
+          ws.once('message', async (message: ArrayBuffer, isBinary: boolean) => {
+            if (!isBinary) {
+              try {
+                const data = JSON.parse(message.toString()) as { type: 'id'; id: string };
+                if (data.type === 'id') {
+                  peer.id = data.id;
+                  this.peers.set(peer.id, peer);
+                  await peer.init(true, this.options);
 
-                peer.once('manual-disconnect', () => {
-                  this.logger.info({ peerId: peer.id }, 'Manual disconnect requested');
-                  manuallyDisconnected = true;
-                });
+                  peer.once('manual-disconnect', () => {
+                    this.logger.info({ peerId: peer.id }, 'Manual disconnect requested');
+                    manuallyDisconnected = true;
+                  });
 
-                ws.once('close', () => {
-                  this.logger.info({ peerId: peer.id }, 'WebSocket connection closed');
-                  this.peers.delete(peer.id);
-                  this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peer.id), { peerId: peer.id });
+                  ws.once('close', () => {
+                    this.logger.info({ peerId: peer.id }, 'WebSocket connection closed');
+                    this.peers.delete(peer.id);
+                    this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peer.id), { peerId: peer.id });
 
-                  if (reconnect && !manuallyDisconnected) {
-                    attemptReconnect();
-                  }
-                });
+                    if (reconnect && !manuallyDisconnected) {
+                      attemptReconnect();
+                    }
+                  });
 
-                resolved = true;
-                reconnectAttempts = 0;
-                this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId: peer.id });
-                this.logger.info({ peerId: peer.id }, 'Peer connection established');
-                resolve(peer);
-              } else {
-                this.logger.warn({ type: data.type }, 'Invalid handshake message type');
+                  resolved = true;
+                  reconnectAttempts = 0;
+                  this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId: peer.id });
+                  this.logger.info({ peerId: peer.id }, 'Peer connection established');
+                  resolve(peer);
+                } else {
+                  this.logger.warn({ type: data.type }, 'Invalid handshake message type');
+                  ws.close();
+                  reject(new Error('Invalid handshake'));
+                }
+              } catch (error) {
+                this.logger.error({ error }, 'Error parsing handshake message');
                 ws.close();
-                reject(new Error('Invalid handshake'));
+                reject(error);
               }
-            } catch (error) {
-              this.logger.error({ error }, 'Error parsing handshake message');
+            } else {
+              this.logger.warn('Received binary handshake message');
               ws.close();
-              reject(error);
+              reject(new Error('Invalid handshake'));
             }
-          } else {
-            this.logger.warn('Received binary handshake message');
-            ws.close();
-            reject(new Error('Invalid handshake'));
+          });
+        });
+
+        ws.on('error', (err) => {
+          this.logger.error({ error: err }, 'WebSocket connection error');
+          clearTimeout(timeoutId);
+          if (!resolved) {
+            reject(err);
+          }
+        });
+
+        ws.on('close', () => {
+          this.logger.warn({ address }, 'WebSocket connection closed prematurely');
+          clearTimeout(timeoutId);
+          if (!resolved) {
+            reject(new Error('Connection closed prematurely'));
           }
         });
       });
-
-      ws.on('error', (err) => {
-        this.logger.error({ error: err }, 'WebSocket connection error');
-        clearTimeout(timeoutId);
-        if (!resolved) {
-          reject(err);
-        }
-      });
-
-      ws.on('close', () => {
-        this.logger.warn({ address }, 'WebSocket connection closed prematurely');
-        clearTimeout(timeoutId);
-        if (!resolved) {
-          reject(new Error('Connection closed prematurely'));
-        }
-      });
-    });
 
     /**
      * Implements the reconnection logic with exponential backoff.
@@ -448,15 +448,19 @@ export class Netron extends EventEmitter {
       }
 
       const delay = Math.min(baseDelay * 2 ** reconnectAttempts, 30000);
-      this.logger.info(`Reconnecting to ${address} in ${delay} ms (attempt ${reconnectAttempts + 1}/${this.options.maxReconnectAttempts ?? 'unlimited'})...`);
+      this.logger.info(
+        `Reconnecting to ${address} in ${delay} ms (attempt ${reconnectAttempts + 1}/${this.options.maxReconnectAttempts ?? 'unlimited'})...`
+      );
 
       setTimeout(async () => {
         reconnectAttempts++;
         try {
           await connectPeer();
           this.logger.info(`Successfully reconnected to ${address}.`);
-        } catch (err) {
-          this.logger.warn(`Reconnect failed (${reconnectAttempts}/${this.options.maxReconnectAttempts ?? 'unlimited'}):`);
+        } catch {
+          this.logger.warn(
+            `Reconnect failed (${reconnectAttempts}/${this.options.maxReconnectAttempts ?? 'unlimited'}):`
+          );
           attemptReconnect();
         }
       }, delay);
@@ -472,7 +476,7 @@ export class Netron extends EventEmitter {
    * 2. Initiating the disconnect sequence
    * 3. Removing the peer from the active peers registry
    * 4. Emitting a disconnect event to notify other components
-   * 
+   *
    * @param {string} peerId - The unique identifier of the peer to disconnect
    * @returns {void}
    * @throws {Error} If the peer cannot be found or if the disconnect process fails
@@ -492,7 +496,7 @@ export class Netron extends EventEmitter {
    * Retrieves a list of all service names currently registered in the Netron network.
    * This method provides a snapshot of all available services at the time of invocation.
    * The returned array is a shallow copy to prevent external modifications to the internal service registry.
-   * 
+   *
    * @returns {string[]} An array containing the qualified names of all registered services
    * @example
    * const services = netron.getServiceNames();
@@ -507,7 +511,7 @@ export class Netron extends EventEmitter {
    * This method allows for the addition of custom tasks that can be executed
    * across the network. The task function should be designed to be serializable
    * and should handle its own error cases appropriately.
-   * 
+   *
    * @param {Task} fn - The task function to be registered
    * @returns {string} The unique identifier assigned to the newly registered task
    * @throws {Error} If the task registration fails or if the task function is invalid
@@ -527,7 +531,7 @@ export class Netron extends EventEmitter {
    * - Task serialization and transmission
    * - Result collection and deserialization
    * - Error handling and propagation
-   * 
+   *
    * @param {RemotePeer} peer - The remote peer instance where the task should be executed
    * @param {string} name - The name of the task to execute
    * @param {...any} args - Variable number of arguments to be passed to the task
@@ -544,7 +548,7 @@ export class Netron extends EventEmitter {
    * Removes special events associated with a specific ID from the event queue.
    * This method is used to clean up event queues when they are no longer needed
    * or when the associated operation has been completed or cancelled.
-   * 
+   *
    * @param {string} id - The unique identifier of the events to be removed
    * @returns {void}
    * @example
@@ -561,10 +565,10 @@ export class Netron extends EventEmitter {
    * 2. Implements a timeout mechanism for event processing
    * 3. Handles error cases gracefully
    * 4. Ensures proper cleanup of event queues
-   * 
+   *
    * The method maintains event order and prevents race conditions by processing
    * events in a first-in-first-out manner with a maximum processing time of 5 seconds.
-   * 
+   *
    * @param {string} event - The name of the event to emit
    * @param {string} id - The unique identifier for this event sequence
    * @param {any} data - The data payload to be emitted with the event
@@ -613,7 +617,7 @@ export class Netron extends EventEmitter {
    * - Network initialization
    * - Service registration
    * - Event system setup
-   * 
+   *
    * @param {NetronOptions} [options] - Optional configuration parameters for the Netron instance
    * @returns {Promise<Netron>} A promise that resolves with the initialized Netron instance
    * @throws {Error} If initialization fails or if required resources are unavailable
@@ -628,29 +632,29 @@ export class Netron extends EventEmitter {
    * This method provides a standardized way to access service metadata for discovery
    * and registration purposes. The returned information includes both service names
    * and versions, which are essential for service matching and version compatibility.
-   * 
+   *
    * @method getExposedServices
    * @public
    * @returns {ServiceInfo[]} An array of ServiceInfo objects containing:
    *                         - name: The unique identifier of the service
    *                         - version: The semantic version of the service
-   * 
+   *
    * @example
    * // Get all exposed services
    * const services = netron.getExposedServices();
    * // Result: [{ name: 'auth', version: '1.0.0' }, { name: 'storage', version: '2.1.0' }]
-   * 
+   *
    * @remarks
    * This method is primarily used by the service discovery system to:
    * 1. Register services with the discovery mechanism
    * 2. Provide service information to connecting peers
    * 3. Enable service version compatibility checking
-   * 
+   *
    * The returned array is derived from the internal services Map, ensuring that
    * the information is always up-to-date with the current service registry.
    */
   public getExposedServices(): ServiceInfo[] {
-    return Array.from(this.services.values()).map(stub => ({
+    return Array.from(this.services.values()).map((stub) => ({
       name: stub.definition.meta.name,
       version: stub.definition.meta.version,
     }));

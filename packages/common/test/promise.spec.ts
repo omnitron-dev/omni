@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { noop } from "../src/primitives";
+import { noop } from '../src/primitives';
 import { isBun, clearAllTimers } from './test-utils';
 import {
   props,
@@ -13,31 +13,31 @@ import {
   callbackify,
   promisifyAll,
   finally as _finally,
-} from "../src/promise";
+} from '../src/promise';
 
-describe("defer", () => {
-  it("should have a promise", () => {
+describe('defer', () => {
+  it('should have a promise', () => {
     const d = defer();
     expect(d.promise).toBeInstanceOf(Promise);
   });
 
-  it("should have a resolve function", () => {
+  it('should have a resolve function', () => {
     const d = defer();
     expect(d.resolve).toBeInstanceOf(Function);
   });
 
-  it("should have a reject function", () => {
+  it('should have a reject function', () => {
     const d = defer();
     expect(d.reject).toBeInstanceOf(Function);
   });
 
-  it("should resolve the promise", async () => {
+  it('should resolve the promise', async () => {
     const d = defer();
     d.resolve!(5);
     expect(await d.promise).toEqual(5);
   });
 
-  it("should reject the promise", async () => {
+  it('should reject the promise', async () => {
     const d = defer();
     d.reject!(10);
     expect(
@@ -49,34 +49,34 @@ describe("defer", () => {
   });
 });
 
-describe("delay", () => {
-  it("should be a promise", () => {
+describe('delay', () => {
+  it('should be a promise', () => {
     expect(delay(100)).toBeInstanceOf(Promise);
   });
 
-  it("should be delayed", async () => {
-    const past = (new Date()).getTime();
+  it('should be delayed', async () => {
+    const past = new Date().getTime();
     await delay(100);
-    expect((new Date()).getTime() - past).toBeGreaterThan(95);
+    expect(new Date().getTime() - past).toBeGreaterThan(95);
   });
 
-  it("should be resolves with a value", async () => {
+  it('should be resolves with a value', async () => {
     expect(await delay(50, 10)).toEqual(10);
   });
 });
 
-describe("timeout", () => {
+describe('timeout', () => {
   afterEach(() => {
     clearAllTimers();
   });
 
-  it("should throw if the first argument is not a promise", () => {
+  it('should throw if the first argument is not a promise', () => {
     expect(() => {
       timeout(5 as any);
-    }).toThrow(new TypeError("The first argument must be a promise"));
+    }).toThrow(new TypeError('The first argument must be a promise'));
   });
 
-  it("should reject the promise after the delay", async () => {
+  it('should reject the promise after the delay', async () => {
     const p = delay(500);
     const q = timeout(p, 200);
     const res = await q.then(
@@ -84,46 +84,44 @@ describe("timeout", () => {
       (x) => x
     );
     expect(res).toBeInstanceOf(Error);
-    expect(res.message).toEqual("Timeout of 200ms exceeded");
+    expect(res.message).toEqual('Timeout of 200ms exceeded');
   });
 
-  it("should not reject the promise if it resolves", async () => {
+  it('should not reject the promise if it resolves', async () => {
     const p = delay(10, 10);
     expect(await timeout(p, 100)).toEqual(10);
   });
 
-  it("should be rejected by itself", async () => {
-    const error = new Error("hello");
+  it('should be rejected by itself', async () => {
+    const error = new Error('hello');
     const p = delay(10).then(() => {
       throw error;
     });
 
     try {
       await timeout(p, 100);
-      throw new Error("Should have thrown");
+      throw new Error('Should have thrown');
     } catch (e) {
       expect(e).toBe(error);
-      expect(e.message).toBe("hello");
+      expect(e.message).toBe('hello');
     }
   });
 
-  it("should throw on invalid timeout value", () => {
+  it('should throw on invalid timeout value', () => {
     expect(() => timeout(Promise.resolve(), -1)).toThrow(TypeError);
     expect(() => timeout(Promise.resolve(), 0)).toThrow(TypeError);
-    expect(() => timeout(Promise.resolve(), "100" as any)).toThrow(TypeError);
+    expect(() => timeout(Promise.resolve(), '100' as any)).toThrow(TypeError);
   });
 
-  it("should handle multiple timeouts concurrently", async () => {
-    const promises = Array.from({ length: 10 }, (_, i) =>
-      timeout(delay(i < 5 ? 50 : 150), 100)
-    );
+  it('should handle multiple timeouts concurrently', async () => {
+    const promises = Array.from({ length: 10 }, (_, i) => timeout(delay(i < 5 ? 50 : 150), 100));
 
     const results = await Promise.allSettled(promises);
-    expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(5);
-    expect(results.filter(r => r.status === 'rejected')).toHaveLength(5);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(5);
+    expect(results.filter((r) => r.status === 'rejected')).toHaveLength(5);
   });
 
-  it("should not leak memory", async () => {
+  it('should not leak memory', async () => {
     // Сначала запустим сборщик мусора
     if (global.gc) {
       global.gc();
@@ -132,10 +130,7 @@ describe("timeout", () => {
     const initialMemory = process.memoryUsage().heapUsed;
 
     // Создаем меньше итераций и используем Promise.all для параллельного выполнения
-    const promises = Array.from({ length: 100 }, () =>
-      timeout(Promise.resolve(), 10)
-        .catch(() => { })
-    );
+    const promises = Array.from({ length: 100 }, () => timeout(Promise.resolve(), 10).catch(() => {}));
 
     await Promise.all(promises);
 
@@ -149,7 +144,7 @@ describe("timeout", () => {
     expect(memoryDiff).toBeLessThan(5000000); // 5MB
   });
 
-  it("should support abort signal", async () => {
+  it('should support abort signal', async () => {
     const controller = new AbortController();
     const promise = timeout(delay(10), 500, { signal: controller.signal });
 
@@ -158,7 +153,7 @@ describe("timeout", () => {
     await expect(promise).rejects.toThrow('Timeout aborted');
   });
 
-  it("should support unref option", async () => {
+  it('should support unref option', async () => {
     const p = delay(200);
     const promise = timeout(p, 100, { unref: true });
 
@@ -166,54 +161,54 @@ describe("timeout", () => {
   });
 });
 
-describe("nodeify", () => {
-  it("should pass the value as the second argument", (done) => {
+describe('nodeify', () => {
+  it('should pass the value as the second argument', (done) => {
     nodeify(Promise.resolve(10), (err, value) => {
       expect(value).toEqual(10);
       done();
     });
   });
 
-  it("should pass null as the first argument if there is no error", (done) => {
+  it('should pass null as the first argument if there is no error', (done) => {
     nodeify(Promise.resolve(), (err) => {
       expect(err).toBeNull();
       done();
     });
   });
 
-  it("should pass the error as the first argument", (done) => {
+  it('should pass the error as the first argument', (done) => {
     nodeify(Promise.reject(10), (err) => {
       expect(err).toEqual(10);
       done();
     });
   });
 
-  it("should not pass the second argument if there is an error", (done) => {
+  it('should not pass the second argument if there is an error', (done) => {
     nodeify(Promise.reject(10), (...args) => {
       expect(args).toHaveLength(1);
       done();
     });
   });
 
-  it("should return the passed promise", async () => {
+  it('should return the passed promise', async () => {
     const p = Promise.resolve(10);
     expect(nodeify(p, noop)).toEqual(p);
   });
 
-  it("should throw if the first argument is not a promise", () => {
+  it('should throw if the first argument is not a promise', () => {
     expect(() => {
       nodeify();
-    }).toThrow(new TypeError("The first argument must be a promise"));
+    }).toThrow(new TypeError('The first argument must be a promise'));
   });
 
-  it("should return the promise if the second argument is not a function", () => {
+  it('should return the promise if the second argument is not a function', () => {
     const p = Promise.resolve();
     expect(nodeify(p)).toEqual(p);
   });
 });
 
-describe("callbackify", () => {
-  it("should convert an async function to a callback-based function", async () => {
+describe('callbackify', () => {
+  it('should convert an async function to a callback-based function', async () => {
     const fn = async (a, b) => a + b;
     const fn2 = callbackify(fn);
     const [err, res] = await new Promise((resolve) => {
@@ -225,7 +220,7 @@ describe("callbackify", () => {
     expect(res).toEqual(3);
   });
 
-  it("should correctly handle errors", async () => {
+  it('should correctly handle errors', async () => {
     const fn = async (a, b) => {
       throw new Error(`hello ${a} + ${b}`);
     };
@@ -236,11 +231,11 @@ describe("callbackify", () => {
       });
     });
     expect(err).toBeInstanceOf(Error);
-    expect(err.message).toEqual("hello 1 + 2");
+    expect(err.message).toEqual('hello 1 + 2');
     expect(res).toBeUndefined();
   });
 
-  it("should not pop the last argument if it is not a callback", async () => {
+  it('should not pop the last argument if it is not a callback', async () => {
     const fn = async (a, b) => a + b;
     const fn2 = callbackify(fn);
     const res = await fn2(1, 2);
@@ -248,8 +243,8 @@ describe("callbackify", () => {
   });
 });
 
-describe("promisify", () => {
-  it("should turn a callback-based function into an async function", async () => {
+describe('promisify', () => {
+  it('should turn a callback-based function into an async function', async () => {
     const getSecrets = (cb) => {
       cb(null, 123);
     };
@@ -258,7 +253,7 @@ describe("promisify", () => {
     expect(await getSecretsAsync()).toEqual(123);
   });
 
-  it("should throw if the first argument of the callback truthy", async () => {
+  it('should throw if the first argument of the callback truthy', async () => {
     const getSecrets = (cb) => {
       cb(1);
     };
@@ -271,9 +266,9 @@ describe("promisify", () => {
     ).toEqual(1);
   });
 
-  it("should correctly handle synchronous errors", async () => {
+  it('should correctly handle synchronous errors', async () => {
     const getSecrets = () => {
-      throw new Error("Nooo");
+      throw new Error('Nooo');
     };
     const f = promisify(getSecrets);
     const err = await f().then(
@@ -281,10 +276,10 @@ describe("promisify", () => {
       (x) => x
     );
     expect(err).toBeInstanceOf(Error);
-    expect(err.message).toEqual("Nooo");
+    expect(err.message).toEqual('Nooo');
   });
 
-  it("should pass arguments", async () => {
+  it('should pass arguments', async () => {
     const getSecrets = (a, b, cb) => {
       cb(null, a + b);
     };
@@ -292,7 +287,7 @@ describe("promisify", () => {
     expect(await f(1, 2)).toEqual(3);
   });
 
-  it("should pass the context", async () => {
+  it('should pass the context', async () => {
     const getSecrets = function _(cb) {
       cb(null, this.a + this.b);
     };
@@ -300,13 +295,13 @@ describe("promisify", () => {
     expect(await f.call({ a: 1, b: 2 })).toEqual(3);
   });
 
-  it("should throw if the first argument is not a function", () => {
+  it('should throw if the first argument is not a function', () => {
     expect(() => {
       promisify();
-    }).toThrow(new TypeError("The first argument must be a function"));
+    }).toThrow(new TypeError('The first argument must be a function'));
   });
 
-  it("should use a custom context", async () => {
+  it('should use a custom context', async () => {
     const f = function _(cb) {
       cb(null, this.a + this.b);
     };
@@ -318,21 +313,21 @@ describe("promisify", () => {
     expect(await g.call(ctx)).toEqual(4);
   });
 
-  describe("multiArgs", () => {
-    it("normal", async () => {
-      const fn = (cb) => setImmediate(() => cb(null, "a", "b"));
-      expect(await promisify(fn, { multiArgs: true })()).toStrictEqual(["a", "b"]);
+  describe('multiArgs', () => {
+    it('normal', async () => {
+      const fn = (cb) => setImmediate(() => cb(null, 'a', 'b'));
+      expect(await promisify(fn, { multiArgs: true })()).toStrictEqual(['a', 'b']);
     });
 
-    it("rejection", async () => {
-      const fixture1 = (cb) => setImmediate(() => cb("e", "a", "b"));
-      expect(await promisify(fixture1, { multiArgs: true })().catch((error) => error)).toStrictEqual(["e", "a", "b"]);
+    it('rejection', async () => {
+      const fixture1 = (cb) => setImmediate(() => cb('e', 'a', 'b'));
+      expect(await promisify(fixture1, { multiArgs: true })().catch((error) => error)).toStrictEqual(['e', 'a', 'b']);
     });
   });
 });
 
-describe("promisifyAll", () => {
-  it("should promisify nested functions", async () => {
+describe('promisifyAll', () => {
+  it('should promisify nested functions', async () => {
     const a = {
       f: (cb) => cb(null, 1),
       b: (cb) => cb(null, 2),
@@ -342,7 +337,7 @@ describe("promisifyAll", () => {
     expect(await b.bAsync()).toEqual(2);
   });
 
-  it("should not modify the prev functions", () => {
+  it('should not modify the prev functions', () => {
     const a = {
       f: (cb) => cb(null, 1),
       b: (cb) => cb(null, 2),
@@ -352,7 +347,7 @@ describe("promisifyAll", () => {
     expect(b.b).toEqual(a.b);
   });
 
-  it("should wrap the source object", () => {
+  it('should wrap the source object', () => {
     const a = {
       f: (cb) => cb(null, 1),
       b: (cb) => cb(null, 2),
@@ -365,39 +360,39 @@ describe("promisifyAll", () => {
     expect(a.new).toEqual(1);
   });
 
-  it("should change the suffix", async () => {
+  it('should change the suffix', async () => {
     const a = {
       f: (cb) => cb(null, 1),
       b: (cb) => cb(null, 2),
     };
-    const b = promisifyAll(a, { suffix: "_" });
+    const b = promisifyAll(a, { suffix: '_' });
     expect(await b.f_()).toEqual(1);
     expect(await b.b_()).toEqual(2);
   });
 
-  it("should touch only functions", () => {
+  it('should touch only functions', () => {
     const a = {
-      s: "123",
+      s: '123',
       f: (cb) => cb(null, 1),
     };
     const b = promisifyAll(a);
-    expect(b).toHaveProperty("fAsync");
-    expect(b).not.toHaveProperty("sAsync");
+    expect(b).toHaveProperty('fAsync');
+    expect(b).not.toHaveProperty('sAsync');
   });
 
-  it("should filter properties", () => {
+  it('should filter properties', () => {
     const a = {
       f: (cb) => cb(null, 1),
       b: (cb) => cb(null, 2),
     };
     const b = promisifyAll(a, {
-      filter: (key) => key !== "b",
+      filter: (key) => key !== 'b',
     });
-    expect(b).toHaveProperty("fAsync");
-    expect(b).not.toHaveProperty("bAsync");
+    expect(b).toHaveProperty('fAsync');
+    expect(b).not.toHaveProperty('bAsync');
   });
 
-  it("should use a custom context", async () => {
+  it('should use a custom context', async () => {
     const a = {
       a: 1,
       b: 2,
@@ -414,15 +409,15 @@ describe("promisifyAll", () => {
   });
 });
 
-describe("finally", () => {
-  const fixture = Symbol("fixture");
-  const fixtureErr = new Error("err");
+describe('finally', () => {
+  const fixture = Symbol('fixture');
+  const fixtureErr = new Error('err');
 
-  it("does nothing when nothing is passed", async () => {
+  it('does nothing when nothing is passed', async () => {
     expect(await _finally(Promise.resolve(fixture))).toEqual(fixture);
   });
 
-  it("callback is called when promise is fulfilled", async () => {
+  it('callback is called when promise is fulfilled', async () => {
     let called = false;
 
     const val = await _finally(Promise.resolve(fixture), () => {
@@ -433,7 +428,7 @@ describe("finally", () => {
     expect(called).toBeTruthy();
   });
 
-  it("callback is called when promise is rejected", async () => {
+  it('callback is called when promise is rejected', async () => {
     let called = false;
 
     await _finally(Promise.reject(fixtureErr), () => {
@@ -445,10 +440,10 @@ describe("finally", () => {
     expect(called).toBeTruthy();
   });
 
-  it("returning a rejected promise in the callback rejects the promise", async () => {
+  it('returning a rejected promise in the callback rejects the promise', async () => {
     await _finally(Promise.resolve(fixture), () => Promise.reject(fixtureErr)).then(
       () => {
-        throw new Error("Should have thrown");
+        throw new Error('Should have thrown');
       },
       (err) => {
         expect(err).toEqual(fixtureErr);
@@ -456,61 +451,72 @@ describe("finally", () => {
     );
   });
 
-  it("returning a rejected promise in the callback for an already rejected promise changes the rejection reason", async () => {
-    await _finally(Promise.reject(new Error("orig err")), () => Promise.reject(fixtureErr)).catch((err) => {
+  it('returning a rejected promise in the callback for an already rejected promise changes the rejection reason', async () => {
+    await _finally(Promise.reject(new Error('orig err')), () => Promise.reject(fixtureErr)).catch((err) => {
       expect(err).toEqual(fixtureErr);
     });
   });
 });
 
-describe("retry", () => {
-  it("should handle synchronous functions", async () => {
+describe('retry', () => {
+  it('should handle synchronous functions', async () => {
     let count = 0;
-    const result = await retry(() => {
-      count++;
-      if (count < 3) throw new Error("fail");
-      return "success";
-    }, { max: 5 });
+    const result = await retry(
+      () => {
+        count++;
+        if (count < 3) throw new Error('fail');
+        return 'success';
+      },
+      { max: 5 }
+    );
 
-    expect(result).toBe("success");
+    expect(result).toBe('success');
     expect(count).toBe(3);
   });
 
-  it("should respect custom backoff settings", async () => {
+  it('should respect custom backoff settings', async () => {
     const start = Date.now();
     let count = 0;
 
-    await retry(() => {
-      count++;
-      if (count < 3) throw new Error("fail");
-      return "success";
-    }, {
-      max: 5,
-      backoffBase: 50,
-      backoffExponent: 2
-    });
+    await retry(
+      () => {
+        count++;
+        if (count < 3) throw new Error('fail');
+        return 'success';
+      },
+      {
+        max: 5,
+        backoffBase: 50,
+        backoffExponent: 2,
+      }
+    );
 
     const duration = Date.now() - start;
     expect(duration).toBeGreaterThanOrEqual(150); // 50 + 100
   });
 
-  it("should handle custom match patterns", async () => {
+  it('should handle custom match patterns', async () => {
     let count = 0;
-    const customError = new Error("CustomError");
+    const customError = new Error('CustomError');
 
-    await expect(retry(() => {
-      count++;
-      throw customError;
-    }, {
-      max: 3,
-      match: [/Different/, Error],
-      backoffBase: 0
-    })).rejects.toThrow(customError);
+    await expect(
+      retry(
+        () => {
+          count++;
+          throw customError;
+        },
+        {
+          max: 3,
+          match: [/Different/, Error],
+          backoffBase: 0,
+        }
+      )
+    ).rejects.toThrow(customError);
 
     expect(count).toBe(3);
   });
 
-  it("should call report function with correct arguments", async () => {
+  it('should call report function with correct arguments', async () => {
     const reportMock = jest.fn();
     let attempts = 0;
 
@@ -518,33 +524,33 @@ describe("retry", () => {
       () => {
         attempts++;
         if (attempts === 1) {
-          throw new Error("First attempt failed");
+          throw new Error('First attempt failed');
         }
-        return "success";
+        return 'success';
       },
       {
         max: 3,
         backoffBase: 0,
-        report: reportMock
+        report: reportMock,
       }
     );
 
     expect(reportMock).toHaveBeenCalledTimes(4); // Attempt, Fail, Attempt, Success
 
     // Проверяем последовательность вызовов
-    expect(reportMock.mock.calls[0][0]).toContain("Attempt");
-    expect(reportMock.mock.calls[1][0]).toContain("Failed");
-    expect(reportMock.mock.calls[2][0]).toContain("Attempt");
-    expect(reportMock.mock.calls[3][0]).toContain("Success");
+    expect(reportMock.mock.calls[0][0]).toContain('Attempt');
+    expect(reportMock.mock.calls[1][0]).toContain('Failed');
+    expect(reportMock.mock.calls[2][0]).toContain('Attempt');
+    expect(reportMock.mock.calls[3][0]).toContain('Success');
 
     // Проверяем параметры
     expect(reportMock.mock.calls[1][2]).toBeInstanceOf(Error);
-    expect(reportMock.mock.calls[1][2].message).toBe("First attempt failed");
+    expect(reportMock.mock.calls[1][2].message).toBe('First attempt failed');
   });
 });
 
-describe("props", () => {
-  it("should return a promise that is fulfilled when all the values are fulfilled", async () => {
+describe('props', () => {
+  it('should return a promise that is fulfilled when all the values are fulfilled', async () => {
     const obj = await props({
       a: Promise.resolve(1),
       b: Promise.resolve(2),
@@ -554,7 +560,7 @@ describe("props", () => {
     expect(obj.b).toEqual(2);
   });
 
-  it("should return a new object", async () => {
+  it('should return a new object', async () => {
     const obj = {
       a: Promise.resolve(1),
       b: Promise.resolve(2),
@@ -565,10 +571,10 @@ describe("props", () => {
     expect(obj.b).toBeInstanceOf(Promise);
   });
 
-  it("should throw if something goes wrong", async () => {
+  it('should throw if something goes wrong', async () => {
     const obj = {
       a: Promise.resolve(1),
-      b: Promise.reject(new Error("oops")),
+      b: Promise.reject(new Error('oops')),
     };
 
     if (isBun) {
@@ -576,34 +582,34 @@ describe("props", () => {
         await props(obj);
         throw new Error('Expected promise to reject');
       } catch (error: any) {
-        expect(error.message).toBe("oops");
+        expect(error.message).toBe('oops');
       }
     } else {
-      await expect(props(obj)).rejects.toThrow(new Error("oops"));
+      await expect(props(obj)).rejects.toThrow(new Error('oops'));
     }
   });
 
-  it("should handle empty objects", async () => {
+  it('should handle empty objects', async () => {
     const result = await props({});
     expect(result).toEqual({});
   });
 
-  it("should handle non-promise values", async () => {
+  it('should handle non-promise values', async () => {
     const result = await props({
       a: 1,
       b: Promise.resolve(2),
-      c: "3"
+      c: '3',
     });
-    expect(result).toEqual({ a: 1, b: 2, c: "3" });
+    expect(result).toEqual({ a: 1, b: 2, c: '3' });
   });
 
-  it("should preserve property descriptors", async () => {
+  it('should preserve property descriptors', async () => {
     const obj = {
-      a: Promise.resolve(1)
+      a: Promise.resolve(1),
     };
     Object.defineProperty(obj, 'b', {
       enumerable: true,
-      get: () => Promise.resolve(2)
+      get: () => Promise.resolve(2),
     });
 
     const result = await props(obj);
@@ -612,11 +618,11 @@ describe("props", () => {
   });
 });
 
-describe("try", () => {
-  const fixture = Symbol("fixture");
-  const fixtureError = new Error("fixture");
+describe('try', () => {
+  const fixture = Symbol('fixture');
+  const fixtureError = new Error('fixture');
 
-  it("main", async () => {
+  it('main', async () => {
     expect(await _try(() => fixture)).toEqual(fixture);
 
     if (isBun) {
@@ -624,10 +630,10 @@ describe("try", () => {
         await _try(() => Promise.reject(fixtureError));
         throw new Error('Expected promise to reject');
       } catch (error: any) {
-        expect(error.message).toBe("fixture");
+        expect(error.message).toBe('fixture');
       }
     } else {
-      await expect(_try(() => Promise.reject(fixtureError))).rejects.toThrow(new Error("fixture"));
+      await expect(_try(() => Promise.reject(fixtureError))).rejects.toThrow(new Error('fixture'));
     }
 
     if (isBun) {
@@ -637,16 +643,18 @@ describe("try", () => {
         });
         throw new Error('Expected promise to reject');
       } catch (error: any) {
-        expect(error.message).toBe("fixture");
+        expect(error.message).toBe('fixture');
       }
     } else {
-      await expect(_try(() => {
-        throw fixtureError;
-      })).rejects.toThrow(new Error("fixture"));
+      await expect(
+        _try(() => {
+          throw fixtureError;
+        })
+      ).rejects.toThrow(new Error('fixture'));
     }
   });
 
-  it("allows passing arguments through", async () => {
+  it('allows passing arguments through', async () => {
     expect(await _try((argument) => argument, fixture)).toEqual(fixture);
   });
 });

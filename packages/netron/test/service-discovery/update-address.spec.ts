@@ -1,6 +1,6 @@
 import { Redis } from 'ioredis';
 
-import { Netron , ServiceDiscovery } from '../../dist';
+import { Netron, ServiceDiscovery } from '../../dist';
 import { cleanupRedis, createTestRedisClient } from '../helpers/test-utils';
 
 describe('ServiceDiscovery Update Address', () => {
@@ -29,9 +29,15 @@ describe('ServiceDiscovery Update Address', () => {
   });
 
   afterEach(async () => {
-    if (discovery) { await discovery.shutdown(); }
-    if (redis) { await cleanupRedis(redis); }
-    if (redis) { redis.disconnect(); }
+    if (discovery) {
+      await discovery.shutdown();
+    }
+    if (redis) {
+      await cleanupRedis(redis);
+    }
+    if (redis) {
+      redis.disconnect();
+    }
   });
 
   it('should update node address correctly', async () => {

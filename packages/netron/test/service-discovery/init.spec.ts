@@ -1,6 +1,6 @@
 import { Redis } from 'ioredis';
 
-import { Netron , ServiceDiscovery } from '../../dist';
+import { Netron, ServiceDiscovery } from '../../dist';
 import { cleanupRedis, createTestRedisClient } from '../helpers/test-utils';
 
 import type { ServiceInfo, DiscoveryOptions } from '../../dist';
@@ -13,8 +13,12 @@ describe('ServiceDiscovery Initialization', () => {
   });
 
   afterEach(async () => {
-    if (redis) { await cleanupRedis(redis); }
-    if (redis) { redis.disconnect(); }
+    if (redis) {
+      await cleanupRedis(redis);
+    }
+    if (redis) {
+      redis.disconnect();
+    }
   });
 
   const nodeId = 'node-1';

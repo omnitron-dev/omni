@@ -30,9 +30,9 @@ const _keys = (obj: any, enumOnly: boolean, followProto: boolean): string[] => {
 
   // Process each object in the prototype chain
   for (const proto of protoChain) {
-    const keys = enumOnly ?
-      Object.keys(proto) : // Get enumerable keys
-      Object.getOwnPropertyNames(proto); // Get all keys
+    const keys = enumOnly
+      ? Object.keys(proto) // Get enumerable keys
+      : Object.getOwnPropertyNames(proto); // Get all keys
 
     for (const key of keys) {
       // Add key if it hasn't been seen and isn't a default object property
@@ -56,10 +56,7 @@ const _keys = (obj: any, enumOnly: boolean, followProto: boolean): string[] => {
  * @param {boolean} [options.all=false] - If true, overrides other options to include all keys.
  * @returns {string[]} - An array of keys.
  */
-export const keys = (
-  obj: any,
-  { enumOnly = true, followProto = false, all = false } = {},
-): string[] => {
+export const keys = (obj: any, { enumOnly = true, followProto = false, all = false } = {}): string[] => {
   // Return empty array if object is null or undefined
   if (isNil(obj)) {
     return [];
@@ -84,10 +81,7 @@ export const keys = (
  * @param {boolean} [options.all=false] - If true, overrides other options to include all values.
  * @returns {any[]} - An array of values.
  */
-export const values = (
-  obj: any,
-  { enumOnly = true, followProto = false, all = false } = {},
-): any[] => {
+export const values = (obj: any, { enumOnly = true, followProto = false, all = false } = {}): any[] => {
   // Return empty array if object is null or undefined
   if (isNil(obj)) {
     return [];
@@ -105,7 +99,7 @@ export const values = (
   }
 
   // Map keys to their corresponding values
-  return _keys(obj, enumOnly, followProto).map(key => obj[key]);
+  return _keys(obj, enumOnly, followProto).map((key) => obj[key]);
 };
 
 /**
@@ -118,10 +112,7 @@ export const values = (
  * @param {boolean} [options.all=false] - If true, overrides other options to include all entries.
  * @returns {Array<[string, any]>} - An array of key-value pairs.
  */
-export const entries = (
-  obj: any,
-  { enumOnly = true, followProto = false, all = false } = {},
-): Array<[string, any]> => {
+export const entries = (obj: any, { enumOnly = true, followProto = false, all = false } = {}): Array<[string, any]> => {
   // Return empty array if object is null or undefined
   if (isNil(obj)) {
     return [];
@@ -134,5 +125,5 @@ export const entries = (
   }
 
   // Map keys to key-value pairs
-  return _keys(obj, enumOnly, followProto).map(key => [key, obj[key]]);
+  return _keys(obj, enumOnly, followProto).map((key) => [key, obj[key]]);
 };

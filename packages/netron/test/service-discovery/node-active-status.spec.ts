@@ -1,7 +1,7 @@
 import { Redis } from 'ioredis';
 import { delay } from '@devgrid/common';
 
-import { Netron , ServiceDiscovery } from '../../dist';
+import { Netron, ServiceDiscovery } from '../../dist';
 import { cleanupRedis, createTestRedisClient } from '../helpers/test-utils';
 
 describe('ServiceDiscovery Node Active Status', () => {
@@ -29,9 +29,15 @@ describe('ServiceDiscovery Node Active Status', () => {
   });
 
   afterEach(async () => {
-    if (discovery) { await discovery.shutdown(); }
-    if (redis) { await cleanupRedis(redis); }
-    if (redis) { redis.disconnect(); }
+    if (discovery) {
+      await discovery.shutdown();
+    }
+    if (redis) {
+      await cleanupRedis(redis);
+    }
+    if (redis) {
+      redis.disconnect();
+    }
   });
 
   it('should return true when node is active', async () => {

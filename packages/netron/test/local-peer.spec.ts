@@ -3,13 +3,7 @@ import { Service2, IService2 } from './fixtures/service2';
 import { Service3, IService3 } from './fixtures/service3';
 import { Service4, IService4 } from './fixtures/service4';
 import { Service5, IService5 } from './fixtures/service5';
-import {
-  Netron,
-  Interface,
-  LocalPeer,
-  NETRON_EVENT_SERVICE_EXPOSE,
-  NETRON_EVENT_SERVICE_UNEXPOSE,
-} from '../dist';
+import { Netron, Interface, LocalPeer, NETRON_EVENT_SERVICE_EXPOSE, NETRON_EVENT_SERVICE_UNEXPOSE } from '../dist';
 
 describe('LocalPeer', () => {
   let netron: Netron;

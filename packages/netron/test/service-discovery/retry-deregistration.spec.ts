@@ -2,7 +2,7 @@ import { Redis } from 'ioredis';
 import { jest } from '@jest/globals';
 import { delay } from '@devgrid/common';
 
-import { Netron , ServiceDiscovery } from '../../dist';
+import { Netron, ServiceDiscovery } from '../../dist';
 import { cleanupRedis, createTestRedisClient } from '../helpers/test-utils';
 
 describe('ServiceDiscovery Retry Deregistration', () => {
@@ -32,9 +32,15 @@ describe('ServiceDiscovery Retry Deregistration', () => {
   });
 
   afterEach(async () => {
-    if (discovery) { await discovery.shutdown(); }
-    if (redis) { await cleanupRedis(redis); }
-    if (redis) { redis.disconnect(); }
+    if (discovery) {
+      await discovery.shutdown();
+    }
+    if (redis) {
+      await cleanupRedis(redis);
+    }
+    if (redis) {
+      redis.disconnect();
+    }
   });
 
   it('should retry deregistration if Redis fails temporarily', async () => {

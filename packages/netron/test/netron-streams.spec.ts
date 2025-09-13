@@ -42,9 +42,9 @@ function createMockRemotePeer(): RemotePeer {
 
   const peer = new RemotePeer(mockSocket, mockNetron, 'mock-peer-id');
 
-  peer.sendStreamChunk = jest.fn<
-    (streamId: number, chunk: any, offset: number, isLast: boolean, isLive: boolean) => Promise<void>
-  >().mockResolvedValue(undefined);
+  peer.sendStreamChunk = jest
+    .fn<(streamId: number, chunk: any, offset: number, isLast: boolean, isLive: boolean) => Promise<void>>()
+    .mockResolvedValue(undefined);
 
   return peer;
 }
@@ -56,7 +56,9 @@ describe('Netron Streams', () => {
   beforeEach(async () => {
     netron = await Netron.create({ streamTimeout: 100 }); // таймаут поменьше для скорости тестов
     peer = new RemotePeer(new WebSocket('ws://localhost'), netron);
-    peer.sendStreamChunk = jest.fn<(streamId: number, chunk: any, offset: number, isLast: boolean, isError: boolean) => Promise<void>>().mockResolvedValue(undefined);
+    peer.sendStreamChunk = jest
+      .fn<(streamId: number, chunk: any, offset: number, isLast: boolean, isError: boolean) => Promise<void>>()
+      .mockResolvedValue(undefined);
   });
 
   afterEach(async () => {
@@ -84,7 +86,7 @@ describe('Netron Streams', () => {
       createStreamPacket(3, 1, 2, true, false, 'chunk3'),
     ];
 
-    packets.forEach(packet => stream.onPacket(packet));
+    packets.forEach((packet) => stream.onPacket(packet));
   });
 
   it('should correctly handle unordered packets', async () => {
@@ -99,7 +101,7 @@ describe('Netron Streams', () => {
     stream.onPacket({ streamIndex: 1, data: 'chunk-1', isLastChunk: () => false } as any);
     stream.onPacket({ streamIndex: 3, data: 'chunk-3', isLastChunk: () => true } as any);
 
-    await new Promise(resolve => stream.on('end', resolve));
+    await new Promise((resolve) => stream.on('end', resolve));
 
     expect(dataHandler).toHaveBeenNthCalledWith(1, 'chunk-0');
     expect(dataHandler).toHaveBeenNthCalledWith(2, 'chunk-1');
@@ -194,7 +196,7 @@ describe('Netron Streams', () => {
 
   it('should handle errors correctly', async () => {
     const stream = new NetronReadableStream({ peer, streamId: 7 });
-    const errorHandler = jest.spyOn(stream.peer.logger, 'error').mockImplementation(() => { });
+    const errorHandler = jest.spyOn(stream.peer.logger, 'error').mockImplementation(() => {});
 
     expect(stream.destroyed).toBe(false);
 
@@ -212,9 +214,9 @@ describe('Netron Streams', () => {
 
   it('NetronWritableStream should correctly send data in sequence', async () => {
     const peer1 = createMockRemotePeer();
-    peer1.sendStreamChunk = jest.fn<
-      (streamId: number, chunk: any, offset: number, isLast: boolean, isLive: boolean) => Promise<void>
-    >().mockResolvedValue(undefined);
+    peer1.sendStreamChunk = jest
+      .fn<(streamId: number, chunk: any, offset: number, isLast: boolean, isLive: boolean) => Promise<void>>()
+      .mockResolvedValue(undefined);
 
     const writableStream = new NetronWritableStream({ peer: peer1, isLive: false });
 
@@ -236,9 +238,8 @@ describe('Netron Streams', () => {
     const peer1 = createMockRemotePeer();
     const error = new Error('Failed to send chunk');
 
-    peer1.sendStreamChunk = jest.fn<
-      (streamId: number, chunk: any, index: number, isLast: boolean, isLive: boolean) => Promise<void>
-    >()
+    peer1.sendStreamChunk = jest
+      .fn<(streamId: number, chunk: any, index: number, isLast: boolean, isLive: boolean) => Promise<void>>()
       .mockRejectedValueOnce(error)
       .mockResolvedValueOnce(undefined);
 
@@ -264,7 +265,7 @@ describe('Netron Streams', () => {
     const stream = new NetronWritableStream({ peer: peer1 });
 
     const error = new Error('Destroy error');
-    const errorHandler = jest.spyOn(stream.peer.logger, 'error').mockImplementation(() => { });
+    const errorHandler = jest.spyOn(stream.peer.logger, 'error').mockImplementation(() => {});
 
     stream.destroy(error);
 
@@ -289,9 +290,9 @@ describe('Netron Streams', () => {
       },
     };
 
-    peer.sendStreamChunk = jest.fn<
-      (streamId: number, chunk: any, index: number, isLast: boolean, isLive: boolean) => Promise<void>
-    >().mockResolvedValue(undefined);
+    peer.sendStreamChunk = jest
+      .fn<(streamId: number, chunk: any, index: number, isLast: boolean, isLive: boolean) => Promise<void>>()
+      .mockResolvedValue(undefined);
 
     await writableStream.pipeFrom(asyncIterable);
 

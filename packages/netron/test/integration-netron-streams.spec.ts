@@ -1,6 +1,13 @@
 import { delay } from '@devgrid/common';
 
-import { Netron, RemotePeer, PeerConnectEvent, NetronReadableStream, NetronWritableStream, NETRON_EVENT_PEER_CONNECT } from '../dist';
+import {
+  Netron,
+  RemotePeer,
+  PeerConnectEvent,
+  NetronReadableStream,
+  NetronWritableStream,
+  NETRON_EVENT_PEER_CONNECT,
+} from '../dist';
 
 describe('Netron Streams Integration Tests', () => {
   let netronA: Netron;
@@ -183,7 +190,7 @@ describe('Netron Streams Integration Tests', () => {
 
   it('should correctly send and receive a large amount of data', async () => {
     const receivedChunks: string[] = [];
-    const chunkCount = 100000;  // large number of packets
+    const chunkCount = 100000; // large number of packets
 
     netronB.once(NETRON_EVENT_PEER_CONNECT, (data: PeerConnectEvent) => {
       const remotePeerA = netronB.peers.get(data.peerId);
@@ -205,7 +212,7 @@ describe('Netron Streams Integration Tests', () => {
     writableStream.end();
 
     await new Promise((resolve) => writableStream.on('finish', resolve));
-    await delay(500);  // increase delay due to larger amount of data
+    await delay(500); // increase delay due to larger amount of data
 
     expect(receivedChunks.length).toBe(chunkCount);
     expect(receivedChunks[0]).toBe('chunk-0');

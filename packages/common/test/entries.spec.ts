@@ -3,7 +3,7 @@ import { inherits } from 'node:util';
 import { noop } from '../src/primitives';
 import { keys, values, entries } from '../src/entries';
 
-describe("entries", () => {
+describe('entries', () => {
   test('should return an empty array for an empty object', () => {
     const props = keys({});
     expect(props).toEqual([]);
@@ -57,13 +57,13 @@ describe("entries", () => {
     class A {
       public aProp = 1;
 
-      aMethod() { }
+      aMethod() {}
     }
 
     class B extends A {
       public bProp = 2;
 
-      bMethod() { }
+      bMethod() {}
     }
 
     const t = new B();
@@ -80,7 +80,11 @@ describe("entries", () => {
   test('should return the entries of the object', () => {
     const obj = { a: 1, b: 2, c: 3 };
     const entries = Object.entries(obj);
-    expect(entries).toEqual([['a', 1], ['b', 2], ['c', 3]]);
+    expect(entries).toEqual([
+      ['a', 1],
+      ['b', 2],
+      ['c', 3],
+    ]);
   });
 
   test('should return only enumerable own properties', () => {
@@ -159,14 +163,20 @@ describe("entries", () => {
     const obj = {};
     Object.defineProperty(obj, 'a', { value: 1, enumerable: false });
     obj['b'] = 2;
-    expect(entries(obj, { enumOnly: false })).toEqual([['a', 1], ['b', 2]]);
+    expect(entries(obj, { enumOnly: false })).toEqual([
+      ['a', 1],
+      ['b', 2],
+    ]);
   });
 
   test('entries should work with inherited properties', () => {
     const parent = { a: 1 };
     const obj = Object.create(parent);
     obj.b = 2;
-    expect(entries(obj, { followProto: true })).toEqual([['a', 1], ['b', 2]]);
+    expect(entries(obj, { followProto: true })).toEqual([
+      ['a', 1],
+      ['b', 2],
+    ]);
   });
 
   test('entries should work with all option', () => {
@@ -174,6 +184,10 @@ describe("entries", () => {
     const obj = Object.create(parent);
     Object.defineProperty(obj, 'b', { value: 2, enumerable: false });
     obj.c = 3;
-    expect(entries(obj, { all: true })).toEqual([['a', 1], ['b', 2], ['c', 3]]);
+    expect(entries(obj, { all: true })).toEqual([
+      ['a', 1],
+      ['b', 2],
+      ['c', 3],
+    ]);
   });
 });

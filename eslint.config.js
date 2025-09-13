@@ -134,9 +134,28 @@ const customConfig = {
 // ----------------------------------------------------------------------
 
 module.exports = [
-  { files: ['{apps,packages}/*/*.{js,mjs,cjs,ts,jsx,tsx}'] },
-  { ignores: ['!apps/*/src/**/*', '!packages/*/src/**/*', 'eslint.config.*'] },
+  // Игнорировать все эти директории и файлы
   {
+    ignores: [
+      '**/dist/**',
+      '**/build/**',
+      '**/coverage/**',
+      '**/node_modules/**',
+      '**/.next/**',
+      '**/.turbo/**',
+      '**/out/**',
+      '**/*.config.js',
+      '**/*.config.ts',
+      '**/jest.setup.ts',
+      '**/jest.setup.global.ts',
+      'packages/rotif/**', // Временно игнорируем rotif так как он перемещен
+      'scripts/**',
+      'experiments/**'
+    ]
+  },
+  // Базовая конфигурация
+  {
+    files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
     languageOptions: {
       parser: eslintTs.parser,
       parserOptions: {
@@ -146,7 +165,19 @@ module.exports = [
       globals: { ...globals.browser, ...globals.node },
     },
   },
-  eslintJs.configs.recommended,
-  ...eslintTs.configs.recommended,
-  customConfig,
+  // Рекомендованные правила JavaScript
+  {
+    files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
+    ...eslintJs.configs.recommended,
+  },
+  // Рекомендованные правила TypeScript
+  ...eslintTs.configs.recommended.map(config => ({
+    ...config,
+    files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}']
+  })),
+  // Наша кастомная конфигурация (должна быть последней, чтобы переопределить предыдущие правила)
+  {
+    files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
+    ...customConfig,
+  },
 ];

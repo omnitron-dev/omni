@@ -1191,7 +1191,7 @@ describe('Serializer', () => {
   });
 
   it('should not encode a function inside a map', () => {
-    const noop = function () { };
+    const noop = function () {};
 
     const toEncode = {
       hello: 'world',

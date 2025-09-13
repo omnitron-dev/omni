@@ -1,6 +1,6 @@
 import { Redis } from 'ioredis';
 
-import { Netron , ServiceDiscovery } from '../../dist';
+import { Netron, ServiceDiscovery } from '../../dist';
 import { cleanupRedis, createTestRedisClient } from '../helpers/test-utils';
 
 describe('ServiceDiscovery Retry Heartbeat', () => {
@@ -25,15 +25,22 @@ describe('ServiceDiscovery Retry Heartbeat', () => {
   });
 
   afterEach(async () => {
-    if (discovery) { await discovery.shutdown(); }
-    if (redis) { await cleanupRedis(redis); }
-    if (redis) { redis.disconnect(); }
+    if (discovery) {
+      await discovery.shutdown();
+    }
+    if (redis) {
+      await cleanupRedis(redis);
+    }
+    if (redis) {
+      redis.disconnect();
+    }
   });
 
   it('should retry heartbeat if Redis fails temporarily', async () => {
     const originalEval = redis!.eval.bind(redis);
 
-    const mockEval = jest.spyOn(redis!, 'eval')
+    const mockEval = jest
+      .spyOn(redis!, 'eval')
       .mockRejectedValueOnce(new Error('Temporary Redis Error')) // первая попытка всегда падает
       .mockImplementationOnce(originalEval); // вторая попытка вызывает оригинал
 

@@ -1,7 +1,7 @@
 import { Redis } from 'ioredis';
 import { delay } from '@devgrid/common';
 
-import { Netron , ServiceDiscovery } from '../../dist';
+import { Netron, ServiceDiscovery } from '../../dist';
 import { cleanupRedis, createTestRedisClient } from '../helpers/test-utils';
 
 describe('ServiceDiscovery findNodesByService', () => {
@@ -67,7 +67,7 @@ describe('ServiceDiscovery findNodesByService', () => {
 
     expect(nodes.length).toBe(2);
 
-    const nodeIds = nodes.map(n => n.nodeId);
+    const nodeIds = nodes.map((n) => n.nodeId);
     expect(nodeIds).toContain(nodeIdA);
     expect(nodeIds).toContain(nodeIdB);
   });

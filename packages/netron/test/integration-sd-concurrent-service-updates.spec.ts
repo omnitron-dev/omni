@@ -5,10 +5,10 @@ import { Netron, Service } from '../dist';
 import { cleanupRedis, getTestRedisUrl, createTestRedisClient } from './helpers/test-utils';
 
 @Service('service.alpha@1.0.0')
-class ServiceAlpha { }
+class ServiceAlpha {}
 
 @Service('service.beta@1.0.0')
-class ServiceBeta { }
+class ServiceBeta {}
 
 describe('ServiceDiscovery Integration - Concurrent Service Updates', () => {
   let redis: Redis;

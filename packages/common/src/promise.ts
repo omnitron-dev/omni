@@ -1,6 +1,6 @@
-import { entries } from "./entries";
-import { noop, truly } from "./primitives";
-import { isNumber, isPromise, isFunction } from "./predicates";
+import { entries } from './entries';
+import { noop, truly } from './primitives';
+import { isNumber, isPromise, isFunction } from './predicates';
 
 // Define the Deferred type
 export type Deferred = {
@@ -45,7 +45,7 @@ export const defer = (): Deferred => {
 export const delay = <T>(ms: number, value?: T, options?: { unref?: boolean }): Promise<T> =>
   new Promise((resolve) => {
     const timer = setTimeout(resolve, ms, value);
-    if (options?.unref && typeof (timer as any).unref === "function") {
+    if (options?.unref && typeof (timer as any).unref === 'function') {
       (timer as any).unref();
     }
   });
@@ -57,7 +57,7 @@ interface TimeoutOptions {
 
 /**
  * Creates a promise that will be rejected after given milliseconds if the given promise is not fulfilled
- * 
+ *
  * @template T Type of the promise result
  * @param {Promise<T>} promise Promise to wrap
  * @param {number} ms Timeout in milliseconds
@@ -70,29 +70,25 @@ interface TimeoutOptions {
  * ```typescript
  * // Basic usage
  * const result = await timeout(fetch('https://api.example.com'), 5000);
- * 
+ *
  * // With unref option
  * const result = await timeout(longOperation(), 1000, { unref: true });
- * 
+ *
  * // With abort signal
  * const controller = new AbortController();
- * const result = await timeout(fetch('https://api.example.com'), 5000, { 
- *   signal: controller.signal 
+ * const result = await timeout(fetch('https://api.example.com'), 5000, {
+ *   signal: controller.signal
  * });
  * // Later...
  * controller.abort();
  * ```
  */
-export const timeout = <T>(
-  promise: Promise<T>,
-  ms: number,
-  options: TimeoutOptions = {}
-): Promise<T> => {
+export const timeout = <T>(promise: Promise<T>, ms: number, options: TimeoutOptions = {}): Promise<T> => {
   if (!isPromise(promise)) {
-    throw new TypeError("The first argument must be a promise");
+    throw new TypeError('The first argument must be a promise');
   }
   if (!isNumber(ms) || ms <= 0) {
-    throw new TypeError("Timeout must be a positive number");
+    throw new TypeError('Timeout must be a positive number');
   }
 
   return new Promise<T>((resolve, reject) => {
@@ -152,7 +148,7 @@ export const timeout = <T>(
  */
 export const nodeify = <T>(promise: Promise<T>, cb: (err: any, result?: T) => void): Promise<T> => {
   if (!isPromise(promise)) {
-    throw new TypeError("The first argument must be a promise");
+    throw new TypeError('The first argument must be a promise');
   }
   if (!isFunction(cb)) {
     return promise;
@@ -174,9 +170,9 @@ export const nodeify = <T>(promise: Promise<T>, cb: (err: any, result?: T) => vo
  * @param {Function} fn Function to convert
  * @returns {Function} The converted function
  */
-export const callbackify = <T>(fn: (...args: any[]) => Promise<T>): (...args: any[]) => any => {
+export const callbackify = <T>(fn: (...args: any[]) => Promise<T>): ((...args: any[]) => any) => {
   if (!isFunction(fn)) {
-    throw new TypeError("The first argument must be a function");
+    throw new TypeError('The first argument must be a function');
   }
   return function _(this: any, ...args: any[]) {
     if (args.length && isFunction(args[args.length - 1])) {
@@ -238,21 +234,21 @@ const processFn = (
 export const promisify = (
   fn: (...args: any[]) => void,
   options?: { context?: any; multiArgs?: boolean }
-): (...args: any[]) => Promise<any> => {
+): ((...args: any[]) => Promise<any>) => {
   if (!isFunction(fn)) {
-    throw new TypeError("The first argument must be a function");
+    throw new TypeError('The first argument must be a function');
   }
 
   return options && options.context
     ? (...args: any[]) =>
-      new Promise((resolve, reject) => {
-        processFn(fn, options.context, args, options && Boolean(options.multiArgs), resolve, reject);
-      })
+        new Promise((resolve, reject) => {
+          processFn(fn, options.context, args, options && Boolean(options.multiArgs), resolve, reject);
+        })
     : function _(this: any, ...args: any[]) {
-      return new Promise((resolve, reject) => {
-        processFn(fn, this, args, Boolean(options?.multiArgs), resolve, reject);
-      });
-    };
+        return new Promise((resolve, reject) => {
+          processFn(fn, this, args, Boolean(options?.multiArgs), resolve, reject);
+        });
+      };
 };
 
 /**
@@ -269,8 +265,8 @@ export const promisifyAll = (
   source: any,
   options?: { suffix?: string; filter?: (key: string) => boolean; context?: any }
 ): any => {
-  const suffix = options && options.suffix ? options.suffix : "Async";
-  const filter = options && typeof options.filter === "function" ? options.filter : truly;
+  const suffix = options && options.suffix ? options.suffix : 'Async';
+  const filter = options && typeof options.filter === 'function' ? options.filter : truly;
 
   if (isFunction(source)) {
     return promisify(source, options);
@@ -336,10 +332,10 @@ export const retry = async <T>(
   options: RetryOptions | number
 ): Promise<T> => {
   if (!callback || !options) {
-    throw new Error("requires a callback and an options set or a number");
+    throw new Error('requires a callback and an options set or a number');
   }
 
-  const opts: RetryOptions = isNumber(options) ? { max: options as number } : options as RetryOptions;
+  const opts: RetryOptions = isNumber(options) ? { max: options as number } : (options as RetryOptions);
 
   const config = {
     $current: opts.$current || 1,
@@ -349,7 +345,7 @@ export const retry = async <T>(
     backoffBase: opts.backoffBase ?? 100,
     backoffExponent: opts.backoffExponent || 1.1,
     report: opts.report || null,
-    name: opts.name || callback.name || "unknown"
+    name: opts.name || callback.name || 'unknown',
   };
 
   const shouldRetry = (error: Error, attempt: number): boolean => {
@@ -357,11 +353,12 @@ export const retry = async <T>(
 
     if (config.match.length === 0) return true;
 
-    return config.match.some(match =>
-      match === error.toString() ||
-      match === error.message ||
-      (isFunction(match) && error instanceof (match as new (...args: any[]) => any)) ||
-      (match instanceof RegExp && (match.test(error.message) || match.test(error.toString())))
+    return config.match.some(
+      (match) =>
+        match === error.toString() ||
+        match === error.message ||
+        (isFunction(match) && error instanceof (match as new (...args: any[]) => any)) ||
+        (match instanceof RegExp && (match.test(error.message) || match.test(error.toString())))
     );
   };
 
@@ -399,9 +396,7 @@ export const retry = async <T>(
         throw lastError;
       }
 
-      const retryDelay = Math.floor(
-        config.backoffBase * Math.pow(config.backoffExponent ?? 1.1, config.$current - 1)
-      );
+      const retryDelay = Math.floor(config.backoffBase * Math.pow(config.backoffExponent ?? 1.1, config.$current - 1));
 
       config.$current++;
 
@@ -454,7 +449,7 @@ export { try_ as try };
  * @param {Function} fn Function to universalify
  * @returns {Function} The universalified function
  */
-export const universalify = (fn: (...args: any[]) => void): (...args: any[]) => any =>
+export const universalify = (fn: (...args: any[]) => void): ((...args: any[]) => any) =>
   Object.defineProperties(
     function _(this: any, ...args: any[]) {
       if (isFunction(args[args.length - 1])) {
@@ -491,7 +486,7 @@ export const universalify = (fn: (...args: any[]) => void): (...args: any[]) => 
  * @param {Function} fn Function to universalify
  * @returns {Function} The universalified function
  */
-export const universalifyFromPromise = (fn: (...args: any[]) => Promise<any>): (...args: any[]) => any =>
+export const universalifyFromPromise = (fn: (...args: any[]) => Promise<any>): ((...args: any[]) => any) =>
   Object.defineProperty(
     function _(this: any, ...args: any[]) {
       const cb = args[args.length - 1];
@@ -500,6 +495,6 @@ export const universalifyFromPromise = (fn: (...args: any[]) => Promise<any>): (
       }
       return fn.apply(this, args).then((r: any) => cb(null, r), cb);
     },
-    "name",
+    'name',
     { value: fn.name }
   );

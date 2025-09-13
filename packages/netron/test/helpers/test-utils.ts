@@ -14,7 +14,7 @@ export function createTestRedisClient(db: number = 0): Redis {
     const finalUrl = db !== 0 ? `${url}/${db}` : url;
     return new Redis(finalUrl);
   }
-  
+
   const redisHelper = getTestRedis();
   return redisHelper.createClient(db);
 }
@@ -30,7 +30,7 @@ export function getTestRedisUrl(db?: number): string {
     const baseUrl = process.env['REDIS_URL'];
     return db !== undefined ? `${baseUrl}/${db}` : baseUrl;
   }
-  
+
   const redisHelper = getTestRedis();
   const baseUrl = redisHelper.getConnectionString();
   return db !== undefined ? `${baseUrl}/${db}` : baseUrl;

@@ -68,7 +68,7 @@ const isValidDataSize = (dataLength: number, bufLength: number, headerLength: nu
   bufLength >= headerLength + dataLength;
 
 export default class Decoder {
-  constructor(private decodingTypes: Map<number, DecodeFunction>) { }
+  constructor(private decodingTypes: Map<number, DecodeFunction>) {}
 
   decode(buf: BufferType) {
     const smartBuf: SmartBuffer = isSmartBuffer(buf) ? (buf as SmartBuffer) : SmartBuffer.wrap(buf, undefined, true);

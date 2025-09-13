@@ -8,21 +8,14 @@ import { ServiceStub } from './service-stub';
 import { AbstractPeer } from './abstract-peer';
 import { isServiceInterface, isServiceDefinition } from './predicates';
 import { EventSubscriber, ServiceMetadata, ServiceExposeEvent } from './types';
-import {
-  getQualifiedName,
-  getServiceMetadata,
-  getServiceEventName,
-} from './utils';
-import {
-  NETRON_EVENT_SERVICE_EXPOSE,
-  NETRON_EVENT_SERVICE_UNEXPOSE,
-} from './constants';
+import { getQualifiedName, getServiceMetadata, getServiceEventName } from './utils';
+import { NETRON_EVENT_SERVICE_EXPOSE, NETRON_EVENT_SERVICE_UNEXPOSE } from './constants';
 
 /**
  * LocalPeer is a concrete implementation of AbstractPeer that manages local service instances
  * and their corresponding stubs within the Netron network. It handles service exposure,
  * unexposure, and provides methods for service interaction and event management.
- * 
+ *
  * @extends AbstractPeer
  */
 export class LocalPeer extends AbstractPeer {
@@ -42,7 +35,7 @@ export class LocalPeer extends AbstractPeer {
 
   /**
    * Constructs a new LocalPeer instance.
-   * 
+   *
    * @param {Netron} netron - The Netron network instance this peer belongs to.
    * @throws {Error} If the provided Netron instance is invalid.
    */
@@ -57,7 +50,7 @@ export class LocalPeer extends AbstractPeer {
   /**
    * Exposes a local service instance to the network, making it available for remote access.
    * This method performs several validations and creates necessary service artifacts.
-   * 
+   *
    * @param {any} instance - The service instance to expose.
    * @returns {Promise<Definition>} The definition of the newly exposed service.
    * @throws {Error} If the service is invalid, already exposed, or if the service name is already in use.
@@ -108,7 +101,7 @@ export class LocalPeer extends AbstractPeer {
   /**
    * Exposes a remote service from another peer, creating necessary local artifacts
    * to interact with the remote service.
-   * 
+   *
    * @param {RemotePeer} peer - The remote peer providing the service.
    * @param {ServiceMetadata} meta - The metadata describing the remote service.
    * @returns {Definition} The definition of the exposed remote service.
@@ -137,7 +130,7 @@ export class LocalPeer extends AbstractPeer {
 
   /**
    * Unexposes a local service, removing it from the network and cleaning up associated resources.
-   * 
+   *
    * @param {string} serviceName - The name of the service to unexpose.
    * @returns {Promise<void>}
    * @throws {Error} If the service is not found or if there are issues during cleanup.
@@ -173,7 +166,7 @@ export class LocalPeer extends AbstractPeer {
 
   /**
    * Unexposes a remote service, cleaning up local resources and notifying the remote peer.
-   * 
+   *
    * @param {RemotePeer} peer - The remote peer providing the service.
    * @param {string} serviceName - The name of the service to unexpose.
    * @returns {string} The ID of the unexposed service definition.
@@ -209,7 +202,7 @@ export class LocalPeer extends AbstractPeer {
 
   /**
    * Internal method to release an interface and clean up associated resources.
-   * 
+   *
    * @param {Interface} iInstance - The interface instance to release.
    * @returns {Promise<void>}
    * @protected
@@ -221,7 +214,7 @@ export class LocalPeer extends AbstractPeer {
   /**
    * Creates a reference to a service instance, establishing necessary relationships
    * between the instance and its definition.
-   * 
+   *
    * @param {any} instance - The service instance to reference.
    * @param {Definition} parentDef - The parent definition this service belongs to.
    * @returns {Definition} The definition of the referenced service.
@@ -244,7 +237,7 @@ export class LocalPeer extends AbstractPeer {
   /**
    * Removes a reference to a service, cleaning up associated resources if no other
    * references exist.
-   * 
+   *
    * @param {string} [defId] - The definition ID of the service to unreference.
    */
   unrefService(defId?: string) {
@@ -273,7 +266,7 @@ export class LocalPeer extends AbstractPeer {
    * Removes an event listener from the Netron network event system.
    * This method allows a peer to stop receiving notifications for specific events
    * by removing the previously registered event handler.
-   * 
+   *
    * @param {string} eventName - The name of the event to unsubscribe from.
    *                            This should match the event name used in the corresponding subscribe() call.
    * @param {EventSubscriber} handler - The event handler function to remove.
@@ -287,7 +280,7 @@ export class LocalPeer extends AbstractPeer {
   /**
    * Sets a property value on a service stub identified by its definition ID.
    * This method provides a way to update service properties remotely through the network.
-   * 
+   *
    * @param {string} defId - The unique identifier of the service definition.
    * @param {string} name - The name of the property to set.
    * @param {any} value - The new value to assign to the property.
@@ -303,7 +296,7 @@ export class LocalPeer extends AbstractPeer {
    * Retrieves a property value from a service stub identified by its definition ID.
    * This method handles the asynchronous nature of remote property access and
    * processes the result appropriately.
-   * 
+   *
    * @param {string} defId - The unique identifier of the service definition.
    * @param {string} name - The name of the property to retrieve.
    * @returns {Promise<any>} A promise that resolves with the property value.
@@ -318,7 +311,7 @@ export class LocalPeer extends AbstractPeer {
    * Invokes a method on a service stub identified by its definition ID.
    * This method handles remote method calls, including parameter passing and
    * result processing.
-   * 
+   *
    * @param {string} defId - The unique identifier of the service definition.
    * @param {string} method - The name of the method to invoke.
    * @param {any[]} args - An array of arguments to pass to the method.
@@ -335,7 +328,7 @@ export class LocalPeer extends AbstractPeer {
    * Checks whether a service stub exists for a given definition ID.
    * This method provides a way to verify the existence of a service before
    * attempting operations on it.
-   * 
+   *
    * @param {string} defId - The unique identifier of the service definition to check.
    * @returns {boolean} True if a stub exists for the given definition ID, false otherwise.
    */
@@ -346,7 +339,7 @@ export class LocalPeer extends AbstractPeer {
   /**
    * Retrieves the names of all services available in the Netron network.
    * This method provides a way to discover available services in the network.
-   * 
+   *
    * @returns {string[]} An array of service names available in the network.
    */
   getServiceNames() {
@@ -357,7 +350,7 @@ export class LocalPeer extends AbstractPeer {
    * Retrieves a service stub by its definition ID.
    * This method is a core utility for accessing service stubs and includes
    * error handling for unknown definitions.
-   * 
+   *
    * @param {string} defId - The unique identifier of the service definition.
    * @returns {ServiceStub} The service stub associated with the given definition ID.
    * @throws {Error} If no stub exists for the given definition ID.
@@ -374,7 +367,7 @@ export class LocalPeer extends AbstractPeer {
    * Retrieves a service definition by its unique identifier.
    * This protected method is used internally to access service definitions
    * and includes error handling for unknown definitions.
-   * 
+   *
    * @param {string} defId - The unique identifier of the service definition.
    * @returns {Definition} The service definition associated with the given ID.
    * @throws {Error} If no definition exists for the given ID.
@@ -391,7 +384,7 @@ export class LocalPeer extends AbstractPeer {
    * Retrieves a service definition by its service name.
    * This protected method provides a way to look up service definitions
    * using their human-readable names.
-   * 
+   *
    * @param {string} name - The name of the service to look up.
    * @returns {Definition} The service definition associated with the given name.
    * @throws {Error} If no service exists with the given name.
@@ -408,7 +401,7 @@ export class LocalPeer extends AbstractPeer {
    * Processes the result of a service call or property access.
    * This private method handles special cases in service results, such as
    * converting service definitions into appropriate interface objects.
-   * 
+   *
    * @param {any} result - The raw result to process.
    * @returns {any} The processed result, which may be transformed based on its type.
    */

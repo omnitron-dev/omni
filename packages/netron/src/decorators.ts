@@ -8,14 +8,14 @@ import { SERVICE_ANNOTATION } from './constants';
  * This decorator processes the service class to extract metadata about its public methods
  * and properties, validates the service name and version, and stores the metadata using
  * reflection.
- * 
+ *
  * @param {string} qualifiedName - The fully qualified name of the service in the format 'name[@version]'
  *                                where version is optional and must follow semantic versioning.
  * @returns {ClassDecorator} A decorator function that processes the target class
- * 
+ *
  * @throws {Error} If the service name is invalid or doesn't match the required pattern
  * @throws {Error} If the version string is provided but doesn't follow semantic versioning
- * 
+ *
  * @example
  * @Service('auth@1.0.0')
  * class AuthService {
@@ -48,7 +48,7 @@ export const Service = (qualifiedName: string) => (target: any) => {
     name,
     version: version ?? '',
     properties: {},
-    methods: {}
+    methods: {},
   };
 
   // Process class methods to extract metadata
@@ -99,16 +99,16 @@ export const Service = (qualifiedName: string) => (target: any) => {
  * Public decorator factory that creates a property or method decorator.
  * This decorator marks class members as publicly accessible in the Netron service
  * and can optionally mark properties as read-only.
- * 
+ *
  * @param {Object} [options] - Configuration options for the decorator
  * @param {boolean} [options.readonly] - If true, marks the property as read-only
  * @returns {PropertyDecorator | MethodDecorator} A decorator function that processes the target member
- * 
+ *
  * @example
  * class ExampleService {
  *   @Public({ readonly: true })
  *   public readonly value: string;
- * 
+ *
  *   @Public()
  *   public method(): void {
  *     // Implementation
@@ -117,15 +117,15 @@ export const Service = (qualifiedName: string) => (target: any) => {
  */
 export const Public =
   (options?: { readonly?: boolean }) =>
-    (target: any, propertyKey: string | symbol, descriptor?: PropertyDescriptor) => {
-      // Mark the member as public
-      Reflect.defineMetadata('public', true, target, propertyKey);
+  (target: any, propertyKey: string | symbol, descriptor?: PropertyDescriptor) => {
+    // Mark the member as public
+    Reflect.defineMetadata('public', true, target, propertyKey);
 
-      // For properties (when descriptor is undefined), handle readonly flag
-      if (!descriptor) {
-        Reflect.defineMetadata('readonly', options?.readonly, target, propertyKey);
-      }
-    };
+    // For properties (when descriptor is undefined), handle readonly flag
+    if (!descriptor) {
+      Reflect.defineMetadata('readonly', options?.readonly, target, propertyKey);
+    }
+  };
 
 /**
  * Alias for the Service decorator, providing an alternative naming convention.

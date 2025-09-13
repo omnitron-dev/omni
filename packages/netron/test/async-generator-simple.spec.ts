@@ -20,14 +20,14 @@ describe('AsyncGenerator Basic Test', () => {
 
   beforeEach(async () => {
     serverPort = 9000 + Math.floor(Math.random() * 1000);
-    
+
     // Create and start server
     server = new Netron({
       listenHost: 'localhost',
-      listenPort: serverPort
+      listenPort: serverPort,
     });
     await server.start();
-    
+
     // Expose service
     const service = new TestService();
     await server.peer.exposeService(service);
@@ -43,19 +43,19 @@ describe('AsyncGenerator Basic Test', () => {
     client = new Netron();
     await client.start();
     const peer = await client.connect(`ws://localhost:${serverPort}`);
-    
+
     // Query the service
     const testService = await peer.queryInterface<TestService>('test@1.0.0');
-    
+
     // Call the generator method
     const stream = await testService.generate();
-    
+
     // Collect results
     const results: number[] = [];
     for await (const num of stream as any) {
       results.push(num);
     }
-    
+
     // Verify results
     expect(results).toEqual([1, 2, 3]);
   });

@@ -1,5 +1,5 @@
 // A function that does nothing
-export const noop = (...args: any[]) => { };
+export const noop = (...args: any[]) => {};
 
 // A function that returns the same value that is passed to it
 export const identity = <T>(x: T): T => x;

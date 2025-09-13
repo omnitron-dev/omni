@@ -13,7 +13,7 @@ const uid = new Uid();
 /**
  * Configuration options for creating a NetronWritableStream instance.
  * Extends Node.js WritableOptions with Netron-specific properties.
- * 
+ *
  * @interface NetronWritableStreamOptions
  * @extends {WritableOptions}
  * @property {RemotePeer} peer - The remote peer this stream is associated with
@@ -30,7 +30,7 @@ export interface NetronWritableStreamOptions extends WritableOptions {
  * A specialized writable stream implementation for the Netron distributed system.
  * This class extends Node.js Writable stream to provide distributed stream capabilities
  * with proper error handling, cleanup, and remote peer communication.
- * 
+ *
  * @class NetronWritableStream
  * @extends {Writable}
  * @property {number} id - Unique identifier for this stream instance
@@ -55,7 +55,7 @@ export class NetronWritableStream extends Writable {
 
   /**
    * Creates a new NetronWritableStream instance.
-   * 
+   *
    * @constructor
    * @param {NetronWritableStreamOptions} options - Configuration options for the stream
    * @param {RemotePeer} options.peer - The remote peer this stream is associated with
@@ -80,7 +80,7 @@ export class NetronWritableStream extends Writable {
   /**
    * Pipes data from an AsyncIterable or Readable stream into this stream.
    * Handles backpressure and ensures proper cleanup on errors.
-   * 
+   *
    * @param {AsyncIterable<any> | Readable} source - The source stream to pipe from
    * @returns {Promise<void>} A promise that resolves when piping is complete
    * @throws {Error} If an error occurs during the piping process
@@ -105,7 +105,7 @@ export class NetronWritableStream extends Writable {
   /**
    * Internal write implementation for handling stream chunks.
    * Sends data to the remote peer and manages stream state.
-   * 
+   *
    * @override
    * @param {any} chunk - The data chunk to write
    * @param {BufferEncoding} _ - Unused encoding parameter
@@ -119,24 +119,29 @@ export class NetronWritableStream extends Writable {
     }
 
     this.peer.logger.debug({ streamId: this.id, index: this.index }, 'Writing chunk');
-    this.peer.sendStreamChunk(this.id, chunk, this.index++, false, this.isLive)
+    this.peer
+      .sendStreamChunk(this.id, chunk, this.index++, false, this.isLive)
       .then(() => callback())
       .catch((err: Error) => {
         this.peer.logger.error({ streamId: this.id, error: err }, 'Error sending stream chunk');
-        this.peer.sendPacket(createPacket(Packet.nextId(), 1, TYPE_STREAM_ERROR, {
-          streamId: this.id,
-          message: err.message,
-        })).finally(() => {
-          callback(err);
-          this.destroy(err);
-        });
+        this.peer
+          .sendPacket(
+            createPacket(Packet.nextId(), 1, TYPE_STREAM_ERROR, {
+              streamId: this.id,
+              message: err.message,
+            })
+          )
+          .finally(() => {
+            callback(err);
+            this.destroy(err);
+          });
       });
   }
 
   /**
    * Internal final implementation for handling stream completion.
    * Sends final chunk to remote peer and performs cleanup.
-   * 
+   *
    * @override
    * @param {(error?: Error | null) => void} callback - Callback to signal finalization completion
    */
@@ -148,7 +153,8 @@ export class NetronWritableStream extends Writable {
     }
 
     this.peer.logger.debug({ streamId: this.id, index: this.index }, 'Sending final chunk');
-    this.peer.sendStreamChunk(this.id, null, this.index, true, this.isLive)
+    this.peer
+      .sendStreamChunk(this.id, null, this.index, true, this.isLive)
       .then(() => callback())
       .catch((err: Error) => {
         this.peer.logger.error({ streamId: this.id, error: err }, 'Error sending final chunk');
@@ -177,7 +183,7 @@ export class NetronWritableStream extends Writable {
   /**
    * Overrides the destroy method to ensure proper cleanup and error handling.
    * Sends a final chunk to the remote peer before destruction.
-   * 
+   *
    * @override
    * @param {Error} [error] - Optional error that caused the destruction
    * @returns {this} The stream instance for chaining
@@ -191,7 +197,8 @@ export class NetronWritableStream extends Writable {
     this.peer.logger.info({ streamId: this.id, error }, 'Destroying stream');
     this.isClosed = true;
 
-    this.peer.sendStreamChunk(this.id, null, this.index, true, this.isLive)
+    this.peer
+      .sendStreamChunk(this.id, null, this.index, true, this.isLive)
       .catch((sendError) => {
         this.peer.logger.error({ streamId: this.id, error: sendError }, 'Failed to send final stream chunk');
       })
@@ -215,7 +222,7 @@ export class NetronWritableStream extends Writable {
   /**
    * Error handler for stream errors.
    * Logs the error and performs cleanup operations.
-   * 
+   *
    * @param {Error} err - The error that occurred
    */
   private handleError = (err: Error) => {
@@ -226,7 +233,7 @@ export class NetronWritableStream extends Writable {
   /**
    * Factory method for creating a NetronWritableStream instance.
    * Optionally pipes data from a source stream if provided.
-   * 
+   *
    * @static
    * @param {RemotePeer} peer - The remote peer this stream is associated with
    * @param {AsyncIterable<any> | Readable} [source] - Optional source stream to pipe from
@@ -234,7 +241,12 @@ export class NetronWritableStream extends Writable {
    * @param {number} [streamId] - Optional custom stream identifier
    * @returns {NetronWritableStream} A new stream instance
    */
-  public static create(peer: RemotePeer, source?: AsyncIterable<any> | Readable, isLive: boolean = false, streamId?: number): NetronWritableStream {
+  public static create(
+    peer: RemotePeer,
+    source?: AsyncIterable<any> | Readable,
+    isLive: boolean = false,
+    streamId?: number
+  ): NetronWritableStream {
     const stream = new NetronWritableStream({ peer, streamId, isLive });
 
     if (source) {

@@ -7,11 +7,11 @@ import { RemotePeer } from '../remote-peer';
  * This function is responsible for:
  * 1. Processing and storing the remote peer's capabilities
  * 2. Building and returning the local peer's capabilities
- * 
+ *
  * @param {RemotePeer} peer - The remote peer instance requesting capabilities exchange
  * @param {Abilities} [remoteAbilities] - Optional capabilities provided by the remote peer
  * @returns {Abilities} The local peer's capabilities including available services and event support
- * 
+ *
  * @example
  * // Exchange capabilities with a connecting peer
  * const localAbilities = abilities(remotePeer, {

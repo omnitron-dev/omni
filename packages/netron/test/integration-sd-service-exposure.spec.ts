@@ -44,9 +44,7 @@ describe('ServiceDiscovery Integration - Service Exposure & Unexposure', () => {
     const activeNodes = await netron.discovery!.getActiveNodes();
 
     expect(activeNodes).toHaveLength(1);
-    expect(activeNodes[0]?.services).toEqual([
-      { name: 'test.service', version: '1.0.0' },
-    ]);
+    expect(activeNodes[0]?.services).toEqual([{ name: 'test.service', version: '1.0.0' }]);
 
     // Now unexpose the service
     await netron.peer.unexposeService('test.service@1.0.0');

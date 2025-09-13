@@ -30,7 +30,9 @@ export function bufToBigInt(buf: Uint8Array<ArrayBufferLike>) {
 
 const hash = (input = '') =>
   // Отбрасываем первый символ, чтобы не было смещения гистограммы влево.
-  bufToBigInt(sha3(new TextEncoder().encode(input))).toString(36).slice(1);
+  bufToBigInt(sha3(new TextEncoder().encode(input)))
+    .toString(36)
+    .slice(1);
 
 const alphabet = Array.from({ length: 26 }, (_, i) => String.fromCharCode(i + 97));
 

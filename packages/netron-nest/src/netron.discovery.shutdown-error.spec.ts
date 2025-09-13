@@ -46,7 +46,7 @@ describe('Netron Discovery - Redis Shutdown Error Handling', () => {
   });
 
   afterEach(async () => {
-    await netronService.onApplicationShutdown();  // explicitly stop Netron
+    await netronService.onApplicationShutdown(); // explicitly stop Netron
     jest.clearAllMocks();
   });
 
@@ -60,7 +60,7 @@ describe('Netron Discovery - Redis Shutdown Error Handling', () => {
     expect(redisMock.multi).toHaveBeenCalled();
     expect(loggerSpy).toHaveBeenCalledWith(
       expect.stringContaining(`Error during deregistration of node '${options.id}'`),
-      expect.any(Object),
+      expect.any(Object)
     );
 
     loggerSpy.mockRestore();
@@ -76,7 +76,7 @@ describe('Netron Discovery - Redis Shutdown Error Handling', () => {
     expect(redisMock.unsubscribe).toHaveBeenCalled();
     expect(loggerSpy).toHaveBeenCalledWith(
       expect.stringContaining(`Error during Redis Pub/Sub unsubscribe for node '${options.id}'`),
-      expect.any(Object),
+      expect.any(Object)
     );
 
     loggerSpy.mockRestore();

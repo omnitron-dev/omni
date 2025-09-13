@@ -13,13 +13,7 @@ const config: Config = {
   transform: {
     '^.+\\.ts$': 'ts-jest',
   },
-  coveragePathIgnorePatterns: [
-    '/node_modules/',
-    '.module.ts$',
-    '.interface.ts$',
-    '.constants.ts$',
-    '.decorator.ts$',
-  ],
+  coveragePathIgnorePatterns: ['/node_modules/', '.module.ts$', '.interface.ts$', '.constants.ts$', '.decorator.ts$'],
 };
 
 export default config;

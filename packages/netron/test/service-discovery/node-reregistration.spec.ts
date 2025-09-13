@@ -1,7 +1,7 @@
 import { Redis } from 'ioredis';
 import { delay } from '@devgrid/common';
 
-import { Netron , ServiceDiscovery } from '../../dist';
+import { Netron, ServiceDiscovery } from '../../dist';
 import { cleanupRedis, createTestRedisClient } from '../helpers/test-utils';
 
 describe('ServiceDiscovery Node Re-registration', () => {
@@ -36,8 +36,12 @@ describe('ServiceDiscovery Node Re-registration', () => {
   afterEach(async () => {
     await discoveryOriginal.shutdown();
     if (discoveryNew) await discoveryNew.shutdown();
-    if (redis) { await cleanupRedis(redis); }
-    if (redis) { redis.disconnect(); }
+    if (redis) {
+      await cleanupRedis(redis);
+    }
+    if (redis) {
+      redis.disconnect();
+    }
   });
 
   it('should correctly handle node re-registration with updated details', async () => {

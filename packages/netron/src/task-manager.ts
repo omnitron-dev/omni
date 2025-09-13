@@ -4,7 +4,7 @@ import { readdir } from 'fs/promises';
 /**
  * Represents a task function that can be either synchronous or asynchronous.
  * Tasks are the fundamental units of work in the TaskManager system.
- * 
+ *
  * @typedef {(...args: any[]) => Promise<any> | any} Task
  * @description A function that can be executed by the TaskManager, supporting both
  * synchronous and asynchronous operations with variable arguments and return types.
@@ -15,7 +15,7 @@ export type Task = (...args: any[]) => Promise<any> | any;
  * Manages the lifecycle and execution of tasks within the Netron system.
  * This class provides a robust framework for registering, loading, and executing
  * tasks with configurable timeout and conflict resolution strategies.
- * 
+ *
  * @class TaskManager
  * @description Central task management system for handling both synchronous and
  * asynchronous operations with proper error handling and timeout mechanisms.
@@ -24,7 +24,7 @@ export class TaskManager {
   /**
    * Internal storage for registered tasks.
    * Maps task names to their corresponding function implementations.
-   * 
+   *
    * @private
    * @type {Map<string, Task>}
    */
@@ -32,7 +32,7 @@ export class TaskManager {
 
   /**
    * Maximum execution time in milliseconds before a task is considered timed out.
-   * 
+   *
    * @private
    * @type {number}
    */
@@ -40,7 +40,7 @@ export class TaskManager {
 
   /**
    * Strategy for handling task registration conflicts.
-   * 
+   *
    * @private
    * @type {'replace' | 'skip' | 'throw'}
    * @description Determines behavior when registering a task with an existing name:
@@ -52,7 +52,7 @@ export class TaskManager {
 
   /**
    * Creates a new TaskManager instance with configurable parameters.
-   * 
+   *
    * @constructor
    * @param {Object} options - Configuration options for the TaskManager
    * @param {number} [options.timeout=5000] - Default timeout in milliseconds
@@ -69,7 +69,7 @@ export class TaskManager {
   /**
    * Registers a new task with the TaskManager.
    * Validates the task function and handles registration according to the configured strategy.
-   * 
+   *
    * @param {Task} fn - The task function to register
    * @throws {Error} If the provided argument is not a function
    * @throws {Error} If the function has no name
@@ -104,7 +104,7 @@ export class TaskManager {
   /**
    * Loads tasks from JavaScript files in the specified directory.
    * Supports both CommonJS and ES modules through dynamic import.
-   * 
+   *
    * @param {string} directory - Path to the directory containing task files
    * @throws {Error} If directory access or module loading fails
    */
@@ -128,7 +128,7 @@ export class TaskManager {
   /**
    * Executes a registered task with the provided arguments.
    * Implements timeout handling and proper cleanup of resources.
-   * 
+   *
    * @param {string} name - Name of the task to execute
    * @param {...any} args - Arguments to pass to the task
    * @returns {Promise<any>} Result of the task execution
@@ -167,12 +167,12 @@ export class TaskManager {
 
   /**
    * Registers all functions exported by a module as tasks.
-   * 
+   *
    * @private
    * @param {Record<string, unknown>} module - The module containing task functions
    */
   private _registerModule(module: Record<string, unknown>) {
-    for (const [name, fn] of Object.entries(module)) {
+    for (const [, fn] of Object.entries(module)) {
       if (typeof fn === 'function') {
         this.addTask(fn as Task);
       }

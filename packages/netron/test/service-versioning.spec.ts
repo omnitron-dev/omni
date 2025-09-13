@@ -1,6 +1,6 @@
 import { delay } from '@devgrid/common';
 
-import { Public, Netron , Service, RemotePeer } from '../dist';
+import { Public, Netron, Service, RemotePeer } from '../dist';
 
 describe('RemotePeer Service Versioning', () => {
   let localNetron: Netron;
@@ -38,7 +38,7 @@ describe('RemotePeer Service Versioning', () => {
       allowServiceEvents: true,
     });
 
-    remoteNetron = await Netron.create({ id: 'remote', });
+    remoteNetron = await Netron.create({ id: 'remote' });
     await localNetron.peer.exposeService(new VersionedServiceV1());
     await localNetron.peer.exposeService(new VersionedServiceV2());
 
@@ -75,9 +75,7 @@ describe('RemotePeer Service Versioning', () => {
   });
 
   it('should throw when querying non-existent version', async () => {
-    await expect(async () =>
-      remotePeer.queryInterface('versionedService@3.0.0')
-    ).rejects.toThrow(/Unknown service/);
+    await expect(async () => remotePeer.queryInterface('versionedService@3.0.0')).rejects.toThrow(/Unknown service/);
   });
 
   it('should handle exposing a service version conflict', async () => {
@@ -89,9 +87,9 @@ describe('RemotePeer Service Versioning', () => {
       }
     }
 
-    await expect(async () =>
-      localNetron.peer.exposeService(new DuplicateVersionService())
-    ).rejects.toThrow(/Service already exposed/);
+    await expect(async () => localNetron.peer.exposeService(new DuplicateVersionService())).rejects.toThrow(
+      /Service already exposed/
+    );
   });
 
   it('should correctly handle unexposing a specific service version', async () => {
@@ -103,9 +101,7 @@ describe('RemotePeer Service Versioning', () => {
     expect(services).not.toContain('versionedService@1.0.0');
     expect(services).toContain('versionedService@2.0.0');
 
-    await expect(async () =>
-      remotePeer.queryInterface('versionedService@1.0.0')
-    ).rejects.toThrow(/Unknown service/);
+    await expect(async () => remotePeer.queryInterface('versionedService@1.0.0')).rejects.toThrow(/Unknown service/);
   });
 
   it('should re-expose a previously unexposed service version', async () => {

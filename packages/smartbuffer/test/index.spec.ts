@@ -814,11 +814,11 @@ describe('SmartBuffer', () => {
       filled.fill(0); // This fills from woffset (2) to buffer.length (2) - nothing to fill
       expect(filled.woffset).toEqual(2); // woffset stays at 2
       expect(filled.toDebug()).toEqual('<01 02]'); // Buffer unchanged since nothing was filled
-      
+
       // Test filling with explicit range
       filled.fill(0, 0, 2); // Fill from 0 to 2
       expect(filled.toDebug()).toEqual('<00 00]'); // Now buffer is filled with zeros
-      
+
       // Test that fill doesn't extend buffer capacity
       const bb2 = new SmartBuffer(2);
       bb2.writeUInt8(1);

@@ -1,7 +1,7 @@
 import { Redis } from 'ioredis';
 import { delay } from '@devgrid/common';
 
-import { Netron , NodeInfo, ServiceDiscovery } from '../../dist';
+import { Netron, NodeInfo, ServiceDiscovery } from '../../dist';
 import { cleanupRedis, createTestRedisClient } from '../helpers/test-utils';
 
 describe('ServiceDiscovery Concurrent Updates', () => {
@@ -30,9 +30,15 @@ describe('ServiceDiscovery Concurrent Updates', () => {
   });
 
   afterEach(async () => {
-    if (discovery) { await discovery.shutdown(); }
-    if (redis) { await cleanupRedis(redis); }
-    if (redis) { redis.disconnect(); }
+    if (discovery) {
+      await discovery.shutdown();
+    }
+    if (redis) {
+      await cleanupRedis(redis);
+    }
+    if (redis) {
+      redis.disconnect();
+    }
   });
 
   it('should handle concurrent address and service updates', async () => {
@@ -48,7 +54,7 @@ describe('ServiceDiscovery Concurrent Updates', () => {
     const activeNodes: NodeInfo[] = await discovery!.getActiveNodes();
     expect(activeNodes.length).toBe(1);
 
-    const currentNode = activeNodes.find(node => node.nodeId === nodeId);
+    const currentNode = activeNodes.find((node) => node.nodeId === nodeId);
     expect(currentNode).toBeDefined();
     expect(currentNode!.address).toMatch(/^127\.0\.0\.1:400\d$/);
     expect(currentNode!.services[0]?.name).toMatch(/^service-\d$/);

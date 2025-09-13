@@ -32,7 +32,7 @@ const REGISTER_HEARTBEAT_SCRIPT = fs.readFileSync(path.join(__dirname, '../../lu
  * - Service discovery and lookup
  * - Automatic cleanup of inactive nodes
  * - Dynamic service and address updates
- * 
+ *
  * @remarks
  * The implementation uses Redis keys with the following patterns:
  * - `netron:discovery:nodes:{nodeId}` - Hash containing node metadata
@@ -61,7 +61,7 @@ export class ServiceDiscovery {
    * Redis PubSub channel name used for broadcasting service discovery events.
    * This channel is used to notify other nodes about changes in the service discovery system,
    * such as node registration, deregistration, or service updates.
-   * 
+   *
    * @private
    * @readonly
    */
@@ -71,7 +71,7 @@ export class ServiceDiscovery {
    * Redis subscriber instance for receiving PubSub events.
    * This subscriber is used to listen for service discovery events from other nodes
    * and react to changes in the distributed system state.
-   * 
+   *
    * @private
    * @optional
    */
@@ -81,7 +81,7 @@ export class ServiceDiscovery {
    * Flag indicating whether the service discovery instance has been stopped.
    * This flag is used to prevent operations after shutdown and ensure
    * proper cleanup of resources.
-   * 
+   *
    * @private
    */
   private stopped = false;
@@ -91,7 +91,7 @@ export class ServiceDiscovery {
    * This promise is used to coordinate graceful shutdown operations
    * and ensure all resources are properly cleaned up before the instance
    * is considered fully stopped.
-   * 
+   *
    * @private
    * @optional
    */
@@ -99,17 +99,17 @@ export class ServiceDiscovery {
   /**
    * Flag indicating whether the current node has been successfully registered in the service discovery system.
    * This flag is used to track the registration state of the node and prevent duplicate registrations.
-   * 
+   *
    * @private
    * @type {boolean}
-   * 
+   *
    * @remarks
    * The registration state is managed as follows:
    * - Set to true after successful initial registration
    * - Set to false when the node is deregistered or during shutdown
    * - Used to prevent duplicate registration attempts
    * - Helps maintain consistency in the distributed system state
-   * 
+   *
    * @example
    * // Checking registration status
    * if (!this.registered) {
@@ -120,12 +120,12 @@ export class ServiceDiscovery {
 
   /**
    * Logger instance for service discovery operations.
-   * 
+   *
    * @description
    * This logger is used to record and track service discovery events, errors, and operational
    * information. It is initialized as a child logger of the main Netron logger, inheriting
    * its configuration while adding specific context for service discovery operations.
-   * 
+   *
    * @remarks
    * The logger is configured with the following characteristics:
    * - Inherits base configuration from the parent Netron logger
@@ -136,11 +136,11 @@ export class ServiceDiscovery {
    *   - Error conditions and recovery attempts
    *   - Pub/Sub message handling
    *   - Shutdown procedures
-   * 
+   *
    * @example
    * // Logging a service discovery event
    * this.logger.info({ nodeId: this.nodeId }, 'Node registration successful');
-   * 
+   *
    * // Logging an error condition
    * this.logger.error({ error: err }, 'Failed to publish heartbeat');
    */
@@ -148,13 +148,13 @@ export class ServiceDiscovery {
 
   /**
    * Constructs a new ServiceDiscovery instance with the specified configuration
-   * 
+   *
    * @param redis - Redis client instance for distributed coordination
    * @param nodeId - Unique identifier for this node instance
    * @param address - Network address where this node can be reached
    * @param services - Array of services provided by this node
    * @param options - Optional configuration overrides for discovery behavior
-   * 
+   *
    * @remarks
    * The constructor applies default values for heartbeat interval and TTL if not specified.
    * These defaults ensure reasonable behavior while allowing customization when needed.
@@ -180,11 +180,14 @@ export class ServiceDiscovery {
     if (this.options.clientMode) {
       this.logger.info('ServiceDiscovery started in client mode (no heartbeat or node registration)');
     } else {
-      this.logger.info({
-        nodeId: this.nodeId,
-        address: this.address,
-        services: this.services,
-      }, 'ServiceDiscovery started in server mode');
+      this.logger.info(
+        {
+          nodeId: this.nodeId,
+          address: this.address,
+          services: this.services,
+        },
+        'ServiceDiscovery started in server mode'
+      );
     }
 
     this.pubSubChannel = this.options.pubSubChannel;
@@ -192,12 +195,12 @@ export class ServiceDiscovery {
 
   /**
    * Initiates the heartbeat mechanism for this node
-   * 
+   *
    * @remarks
    * This method performs two key operations:
    * 1. Immediately publishes the initial heartbeat
    * 2. Sets up a periodic timer to maintain node registration
-   * 
+   *
    * The heartbeat interval is determined by the configured options.
    */
   public startHeartbeat(): void {
@@ -207,40 +210,37 @@ export class ServiceDiscovery {
     }
 
     this.publishHeartbeat();
-    this.heartbeatTimer = setInterval(
-      () => this.publishHeartbeat(),
-      this.options.heartbeatInterval
-    );
+    this.heartbeatTimer = setInterval(() => this.publishHeartbeat(), this.options.heartbeatInterval);
   }
 
   /**
    * Initiates a graceful shutdown sequence for the service discovery instance.
    * This method ensures proper cleanup of all resources and deregistration from the network.
-   * 
+   *
    * @returns {Promise<void>} A promise that resolves when the shutdown sequence is complete.
    *                         If shutdown was already initiated, returns the existing shutdown promise.
-   * 
+   *
    * @remarks
    * The shutdown sequence is idempotent and follows a specific order:
    * 1. Checks if shutdown was already initiated to prevent duplicate operations
    * 2. Stops the heartbeat mechanism by clearing the interval timer
    * 3. Deregisters the node from the discovery system
    * 4. Unsubscribes from Redis Pub/Sub events
-   * 
+   *
    * Error Handling:
    * - Each major operation is wrapped in a try-catch block
    * - Errors are logged but don't prevent the shutdown sequence from continuing
    * - The method maintains a single shutdown promise to ensure consistent state
-   * 
+   *
    * State Management:
    * - Sets the 'stopped' flag to prevent further operations
    * - Resets the 'registered' state after successful deregistration
    * - Cleans up all timer and subscription resources
-   * 
+   *
    * @example
    * // Initiating a graceful shutdown
    * await serviceDiscovery.shutdown();
-   * 
+   *
    * @throws {Error} If the shutdown sequence encounters critical errors
    *                that prevent proper cleanup
    */
@@ -282,29 +282,29 @@ export class ServiceDiscovery {
 
   /**
    * Publishes a heartbeat signal to Redis using a Lua script to maintain node presence in the discovery system.
-   * 
+   *
    * @returns {Promise<void>} A promise that resolves when the heartbeat is successfully published
-   * 
+   *
    * @throws {Error} If all retry attempts fail to publish the heartbeat
-   * 
+   *
    * @remarks
    * The heartbeat mechanism is crucial for maintaining node presence in the distributed system.
    * This method implements a robust retry mechanism with exponential backoff to handle transient failures.
-   * 
+   *
    * The heartbeat operation is performed atomically using a Lua script that:
    * 1. Updates the node's metadata hash with current information (address, services, timestamp)
    * 2. Sets the heartbeat key with the configured TTL to indicate node liveness
    * 3. Adds the node to the global index if not already present
-   * 
+   *
    * Event Publishing:
    * - On first successful heartbeat: NODE_REGISTERED event
    * - On subsequent heartbeats: NODE_UPDATED event
-   * 
+   *
    * Retry Strategy:
    * - Maximum of 3 retry attempts
    * - Exponential backoff delay between attempts (500ms * attempt number)
    * - Detailed logging of retry attempts and failures
-   * 
+   *
    * @example
    * // Publishing a heartbeat with automatic retries
    * await serviceDiscovery.publishHeartbeat();
@@ -373,16 +373,16 @@ export class ServiceDiscovery {
 
   /**
    * Retrieves information about all currently active nodes
-   * 
+   *
    * @returns Promise that resolves to an array of NodeInfo objects
-   * 
+   *
    * @remarks
    * This method implements a robust node discovery process:
    * 1. Retrieves all node IDs from the global index
    * 2. Uses Redis pipeline to efficiently fetch node data and heartbeat status
    * 3. Validates and parses node information
    * 4. Automatically cleans up inactive or invalid nodes
-   * 
+   *
    * The method handles various edge cases including:
    * - Missing or corrupted node data
    * - Invalid JSON in service descriptions
@@ -422,13 +422,7 @@ export class ServiceDiscovery {
         const [nodeDataErr, nodeData] = nodeDataResult;
         const [heartbeatErr, heartbeatExists] = heartbeatResult;
 
-        if (
-          nodeDataErr ||
-          heartbeatErr ||
-          !heartbeatExists ||
-          !nodeData ||
-          typeof nodeData !== 'object'
-        ) {
+        if (nodeDataErr || heartbeatErr || !heartbeatExists || !nodeData || typeof nodeData !== 'object') {
           nodesToDeregister.push(nodeId);
           continue;
         }
@@ -480,28 +474,26 @@ export class ServiceDiscovery {
    * Discovers nodes that provide a specific service within the distributed network.
    * This method performs a filtered search across all active nodes to find those
    * that match the specified service criteria.
-   * 
+   *
    * @param {string} name - The unique identifier of the service to search for
    * @param {string} [version] - Optional version constraint to filter service providers.
    *                            If specified, only nodes providing the exact version will be returned.
    * @returns {Promise<NodeInfo[]>} A promise that resolves to an array of NodeInfo objects,
    *                               each representing a node that provides the requested service.
    *                               The array will be empty if no matching nodes are found.
-   * 
+   *
    * @example
    * // Find all nodes providing the 'auth' service
    * const authNodes = await discovery.findNodesByService('auth');
-   * 
+   *
    * // Find nodes providing version 1.0.0 of the 'auth' service
    * const specificAuthNodes = await discovery.findNodesByService('auth', '1.0.0');
    */
   public async findNodesByService(name: string, version?: string): Promise<NodeInfo[]> {
     try {
       const activeNodes = await this.getActiveNodes();
-      return activeNodes.filter(node =>
-        node.services.some(svc =>
-          svc.name === name && (!version || svc.version === version)
-        )
+      return activeNodes.filter((node) =>
+        node.services.some((svc) => svc.name === name && (!version || svc.version === version))
       );
     } catch (error) {
       this.logger.error({ error }, `Error finding nodes by service '${name}' (version: ${version})`);
@@ -513,21 +505,21 @@ export class ServiceDiscovery {
    * Subscribes to service discovery events published through Redis PubSub.
    * This method establishes a dedicated Redis subscriber connection and sets up
    * event handling for service discovery notifications.
-   * 
+   *
    * @param {function} handler - Callback function that processes incoming discovery events.
    *                            The handler receives a parsed DiscoveryEvent object containing
    *                            details about node registration, updates, or deregistration.
    * @returns {Promise<void>} A promise that resolves when the subscription is established.
-   * 
+   *
    * @remarks
    * The subscription process:
    * 1. Validates that PubSub is enabled and the instance hasn't been stopped
    * 2. Creates a new Redis subscriber instance with the same configuration as the main client
    * 3. Subscribes to the configured PubSub channel
    * 4. Sets up message handling with error protection and state validation
-   * 
+   *
    * @throws {Error} If Redis subscription fails
-   * 
+   *
    * @example
    * // Subscribing to service discovery events
    * await discovery.subscribeToEvents((event) => {
@@ -574,16 +566,16 @@ export class ServiceDiscovery {
    * Removes a node from the service discovery system and cleans up all associated data.
    * This method performs an atomic transaction to ensure consistent removal of all
    * node-related data from Redis.
-   * 
+   *
    * @param {string} nodeId - The unique identifier of the node to deregister
    * @returns {Promise<void>} A promise that resolves when the deregistration is complete
-   * 
+   *
    * @remarks
    * The deregistration process:
    * 1. Removes the node's metadata from the nodes hash
    * 2. Deletes the node's heartbeat key
    * 3. Removes the node ID from the global node index
-   * 
+   *
    * All operations are performed within a single Redis transaction to maintain consistency.
    */
   private async deregisterNodeById(nodeId: string): Promise<void> {
@@ -593,11 +585,7 @@ export class ServiceDiscovery {
     const maxRetries = 3;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        await this.redis
-          .multi()
-          .del(nodeKey, heartbeatKey)
-          .srem('netron:discovery:index:nodes', nodeId)
-          .exec();
+        await this.redis.multi().del(nodeKey, heartbeatKey).srem('netron:discovery:index:nodes', nodeId).exec();
 
         if (attempt > 1) {
           this.logger.info(`Deregistration of node '${nodeId}' succeeded after ${attempt} attempts`);
@@ -622,11 +610,11 @@ export class ServiceDiscovery {
    * Verifies the current status of a specific node in the discovery system.
    * This method checks the node's heartbeat and automatically cleans up
    * the node's data if it's found to be inactive.
-   * 
+   *
    * @param {string} nodeId - The unique identifier of the node to check
    * @returns {Promise<boolean>} A promise that resolves to true if the node is active,
    *                            false if the node is inactive or has been deregistered
-   * 
+   *
    * @remarks
    * The check process:
    * 1. Verifies the existence of the node's heartbeat key
@@ -651,11 +639,11 @@ export class ServiceDiscovery {
    * Updates the service registry for the current node.
    * This method updates the local service list and immediately publishes
    * the changes to the discovery system.
-   * 
+   *
    * @param {ServiceInfo[]} services - An array of ServiceInfo objects representing
    *                                  the updated list of services provided by this node
    * @returns {Promise<void>} A promise that resolves when the update is complete
-   * 
+   *
    * @remarks
    * The update process:
    * 1. Updates the local service registry
@@ -680,10 +668,10 @@ export class ServiceDiscovery {
    * Updates the network address of the current node.
    * This method changes the node's address and immediately notifies
    * the discovery system of the change.
-   * 
+   *
    * @param {string} address - The new network address where this node can be reached
    * @returns {Promise<void>} A promise that resolves when the update is complete
-   * 
+   *
    * @remarks
    * The update process:
    * 1. Updates the local address
@@ -708,12 +696,12 @@ export class ServiceDiscovery {
    * Publishes a service discovery event to the Redis PubSub channel.
    * This method is responsible for broadcasting node state changes to all
    * subscribers in the distributed system.
-   * 
+   *
    * @param {('NODE_REGISTERED' | 'NODE_UPDATED' | 'NODE_DEREGISTERED')} type - The type of event being published
    * @returns {Promise<void>} A promise that resolves when the event has been published
-   * 
+   *
    * @private
-   * 
+   *
    * @remarks
    * The event payload includes:
    * - Event type indicating the nature of the change
@@ -721,9 +709,9 @@ export class ServiceDiscovery {
    * - Current network address of the node
    * - Array of services provided by the node
    * - Timestamp of the event for temporal ordering
-   * 
+   *
    * @throws {Error} If Redis publish operation fails
-   * 
+   *
    * @example
    * // Publishing a node registration event
    * await publishEvent('NODE_REGISTERED');
@@ -749,20 +737,20 @@ export class ServiceDiscovery {
    * Unsubscribes from Redis PubSub events and cleans up the subscriber instance.
    * This method is part of the graceful shutdown process and ensures proper cleanup
    * of Redis PubSub resources.
-   * 
+   *
    * @returns {Promise<void>} A promise that resolves when the unsubscribe operation is complete
-   * 
+   *
    * @private
-   * 
+   *
    * @remarks
    * The method performs the following operations in sequence:
    * 1. Checks if a subscriber instance exists
    * 2. Unsubscribes from the configured PubSub channel
    * 3. Disconnects the Redis subscriber client
    * 4. Clears the subscriber reference to allow garbage collection
-   * 
+   *
    * @throws {Error} If Redis unsubscribe or disconnect operations fail
-   * 
+   *
    * @example
    * // Unsubscribing from events during shutdown
    * await unsubscribeFromEvents();

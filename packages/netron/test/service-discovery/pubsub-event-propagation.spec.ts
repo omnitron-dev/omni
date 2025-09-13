@@ -1,7 +1,7 @@
 import { Redis } from 'ioredis';
 import { delay } from '@devgrid/common';
 
-import { Netron , ServiceDiscovery } from '../../dist';
+import { Netron, ServiceDiscovery } from '../../dist';
 import { cleanupRedis, createTestRedisClient } from '../helpers/test-utils';
 
 import type { DiscoveryEvent } from '../../dist';
@@ -60,8 +60,12 @@ describe('ServiceDiscovery Pub/Sub Event Propagation', () => {
   afterEach(async () => {
     await publisher.shutdown();
     await subscriber.shutdown();
-    if (redis) { await cleanupRedis(redis); }
-    if (redis) { redis.disconnect(); }
+    if (redis) {
+      await cleanupRedis(redis);
+    }
+    if (redis) {
+      redis.disconnect();
+    }
   });
 
   it('should propagate NODE_UPDATED event via Redis Pub/Sub', async () => {

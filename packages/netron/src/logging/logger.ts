@@ -8,7 +8,7 @@ import { defaultLoggingOptions } from './config';
  * across the application while allowing for child loggers with specific contexts.
  */
 class LoggerFactory {
-  /** 
+  /**
    * The root logger instance that serves as the base for all child loggers.
    * Initialized with default logging options from the configuration.
    * @private
@@ -19,7 +19,7 @@ class LoggerFactory {
    * Creates and returns a logger instance, optionally with a specific context.
    * If a context is provided, returns a child logger with the specified context.
    * Otherwise, returns the root logger instance.
-   * 
+   *
    * @param context - Optional context object containing metadata to be included in all log messages
    * @returns A Pino logger instance, either a child logger with context or the root logger
    */
@@ -37,12 +37,12 @@ class LoggerFactory {
    * - Merging custom options with default logging configuration
    * - Supporting custom destination streams for log output
    * - Maintaining backward compatibility with default configuration
-   * 
+   *
    * The method follows a fallback pattern where:
    * 1. If both options and destination are provided, creates a logger with custom options and destination
    * 2. If only options are provided, creates a logger with custom options and default destination
    * 3. In both cases, default options are preserved and merged with custom ones
-   * 
+   *
    * @param {LoggerOptions} [options] - Optional custom Pino logger configuration options.
    *                                   These options will be merged with defaultLoggingOptions.
    *                                   Can include settings like:
@@ -61,7 +61,7 @@ class LoggerFactory {
    * @example
    * // Initialize with custom options
    * LoggerFactory.initLogger({ level: 'debug' });
-   * 
+   *
    * // Initialize with custom options and destination
    * const fileStream = fs.createWriteStream('app.log');
    * LoggerFactory.initLogger({ level: 'info' }, fileStream);

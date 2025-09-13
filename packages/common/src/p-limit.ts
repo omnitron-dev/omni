@@ -96,7 +96,7 @@ export interface PLimitOptions {
 
 /**
  * Run multiple promise-returning & async functions with limited concurrency
- * 
+ *
  * @param concurrency - Concurrency limit. Minimum: 1
  * @returns A limit function
  */
@@ -168,9 +168,10 @@ export function pLimit(concurrency: number): PLimitFunction {
   const generator = <Arguments extends unknown[], ReturnType>(
     function_: (...arguments_: Arguments) => PromiseLike<ReturnType> | ReturnType,
     ...arguments_: Arguments
-  ): Promise<ReturnType> => new Promise<ReturnType>(resolve => {
-    enqueue(function_, resolve, arguments_);
-  });
+  ): Promise<ReturnType> =>
+    new Promise<ReturnType>((resolve) => {
+      enqueue(function_, resolve, arguments_);
+    });
 
   // Define properties on the generator function
   Object.defineProperties(generator, {
@@ -192,9 +193,8 @@ export function pLimit(concurrency: number): PLimitFunction {
         currentConcurrency = newConcurrency;
 
         // Use queueMicrotask for optimal scheduling (works in all environments)
-        const processQueue = typeof queueMicrotask !== 'undefined'
-          ? queueMicrotask
-          : (fn: () => void) => Promise.resolve().then(fn);
+        const processQueue =
+          typeof queueMicrotask !== 'undefined' ? queueMicrotask : (fn: () => void) => Promise.resolve().then(fn);
 
         processQueue(() => {
           while (activeCount < currentConcurrency && queue.size > 0) {
@@ -209,9 +209,7 @@ export function pLimit(concurrency: number): PLimitFunction {
         array: readonly Input[],
         mapperFunction: (input: Input, index: number) => PromiseLike<ReturnType> | ReturnType
       ): Promise<ReturnType[]> {
-        const promises = array.map((value, index) =>
-          this(mapperFunction, value, index)
-        );
+        const promises = array.map((value, index) => this(mapperFunction, value, index));
         return Promise.all(promises);
       },
     },
@@ -222,7 +220,7 @@ export function pLimit(concurrency: number): PLimitFunction {
 
 /**
  * Returns a function with limited concurrency
- * 
+ *
  * @param function_ - Promise-returning/async function
  * @param options - Options including concurrency limit
  * @returns Function with limited concurrency

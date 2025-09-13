@@ -14,7 +14,7 @@ const MAX_BUFFER_SIZE = 10_000;
  * Configuration options for creating a new NetronReadableStream instance.
  * Extends the standard Node.js Readable stream options with Netron-specific
  * parameters required for peer-to-peer communication.
- * 
+ *
  * @interface NetronReadableStreamOptions
  * @extends ReadableOptions
  * @property {RemotePeer} peer - The remote peer this stream is associated with
@@ -31,7 +31,7 @@ export interface NetronReadableStreamOptions extends ReadableOptions {
  * A specialized Readable stream implementation for the Netron distributed system.
  * This class handles the reception and ordered delivery of data packets from
  * remote peers, implementing sophisticated buffering and flow control mechanisms.
- * 
+ *
  * @class NetronReadableStream
  * @extends Readable
  * @description Implements a reliable, ordered data stream for peer-to-peer communication
@@ -63,7 +63,7 @@ export class NetronReadableStream extends Readable {
 
   /**
    * Creates a new NetronReadableStream instance.
-   * 
+   *
    * @param {NetronReadableStreamOptions} options - Configuration options for the stream
    * @throws {Error} If stream initialization fails
    */
@@ -92,7 +92,7 @@ export class NetronReadableStream extends Readable {
    * - Packet reordering
    * - Flow control
    * - Stream completion detection
-   * 
+   *
    * @param {Packet} packet - The incoming data packet
    * @returns {void}
    * @throws {Error} If buffer overflow occurs or stream is closed
@@ -112,7 +112,7 @@ export class NetronReadableStream extends Readable {
     }
 
     this.peer.logger.debug({ streamId: this.id, index: packet.streamIndex }, 'Processing packet');
-    
+
     // Don't buffer the last packet's data if it's null
     if (!packet.isLastChunk() || packet.data !== null) {
       this.buffer.set(packet.streamIndex!, packet.data);
@@ -132,7 +132,7 @@ export class NetronReadableStream extends Readable {
     if (packet.isLastChunk()) {
       this.peer.logger.info({ streamId: this.id }, 'Received last chunk');
       this.isComplete = true;
-      
+
       // Push null to signal end of stream (Node.js convention)
       this.push(null);
       // Don't close immediately - let the stream finish naturally
@@ -143,7 +143,7 @@ export class NetronReadableStream extends Readable {
    * Implementation of the Readable stream's _read method.
    * This method is called when the stream's internal buffer is ready to accept more data.
    * In our implementation, data is pushed in onPacket, so this method is intentionally empty.
-   * 
+   *
    * @returns {void}
    */
   override _read(): void {
@@ -154,7 +154,7 @@ export class NetronReadableStream extends Readable {
    * Resets the stream's inactivity timeout.
    * This method implements automatic stream cleanup for non-live streams
    * that have been inactive for too long.
-   * 
+   *
    * @returns {void}
    */
   private resetTimeout(): void {
@@ -176,7 +176,7 @@ export class NetronReadableStream extends Readable {
    * Closes the stream and releases associated resources.
    * This method implements graceful stream termination with support for
    * both normal and forced closure scenarios.
-   * 
+   *
    * @param {boolean} [force=false] - Whether to force stream closure
    * @returns {void}
    */
@@ -202,7 +202,7 @@ export class NetronReadableStream extends Readable {
   /**
    * Performs cleanup operations when the stream is closed.
    * This method ensures proper resource deallocation and stream deregistration.
-   * 
+   *
    * @returns {void}
    */
   private cleanup = (): void => {
@@ -215,7 +215,7 @@ export class NetronReadableStream extends Readable {
   /**
    * Handles stream error events.
    * This method implements error logging and cleanup for stream errors.
-   * 
+   *
    * @param {Error} error - The error that occurred
    * @returns {void}
    */
@@ -228,7 +228,7 @@ export class NetronReadableStream extends Readable {
    * Overrides the standard destroy method to ensure proper cleanup.
    * This method implements a robust stream termination process that
    * guarantees resource cleanup and error propagation.
-   * 
+   *
    * @param {Error} [error] - Optional error to propagate
    * @returns {this}
    */
@@ -250,7 +250,7 @@ export class NetronReadableStream extends Readable {
    * Factory method for creating new NetronReadableStream instances.
    * This method provides a convenient way to create stream instances
    * with default configuration.
-   * 
+   *
    * @param {RemotePeer} peer - The remote peer for this stream
    * @param {number} streamId - Unique identifier for the stream
    * @param {boolean} [isLive=false] - Whether this is a live stream

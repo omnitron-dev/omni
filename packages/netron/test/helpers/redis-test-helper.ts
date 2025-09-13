@@ -102,16 +102,26 @@ export class RedisTestHelper {
     }
 
     // Start Redis server
-    this.redisProcess = spawn('redis-server', [
-      '--port', this.port.toString(),
-      '--bind', '127.0.0.1',
-      '--dir', this.dataDir,
-      '--save', '', // Disable persistence for tests
-      '--appendonly', 'no',
-      '--loglevel', 'warning'
-    ], {
-      stdio: 'pipe'
-    });
+    this.redisProcess = spawn(
+      'redis-server',
+      [
+        '--port',
+        this.port.toString(),
+        '--bind',
+        '127.0.0.1',
+        '--dir',
+        this.dataDir,
+        '--save',
+        '', // Disable persistence for tests
+        '--appendonly',
+        'no',
+        '--loglevel',
+        'warning',
+      ],
+      {
+        stdio: 'pipe',
+      }
+    );
 
     this.redisProcess.on('error', (error) => {
       console.error('Failed to start Redis:', error);
@@ -132,7 +142,7 @@ export class RedisTestHelper {
           return null;
         }
         return Math.min(times * 50, 200);
-      }
+      },
     });
 
     this.isStarted = true;
@@ -141,25 +151,25 @@ export class RedisTestHelper {
 
   private async waitForRedis(timeout: number = 5000): Promise<void> {
     const startTime = Date.now();
-    
+
     while (Date.now() - startTime < timeout) {
       try {
         const testClient = new Redis({
           port: this.port,
           host: '127.0.0.1',
           lazyConnect: true,
-          retryStrategy: () => null
+          retryStrategy: () => null,
         });
-        
+
         await testClient.connect();
         await testClient.ping();
         testClient.disconnect();
         return;
       } catch {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
     }
-    
+
     throw new Error(`Redis failed to start within ${timeout}ms`);
   }
 
@@ -173,7 +183,7 @@ export class RedisTestHelper {
       await new Promise<void>((resolve) => {
         this.redisProcess!.on('exit', () => resolve());
         this.redisProcess!.kill('SIGTERM');
-        
+
         // Force kill after 2 seconds if not terminated
         setTimeout(() => {
           if (this.redisProcess && !this.redisProcess.killed) {
@@ -182,7 +192,7 @@ export class RedisTestHelper {
           resolve();
         }, 2000);
       });
-      
+
       this.redisProcess = null;
     }
 
@@ -228,7 +238,7 @@ export class RedisTestHelper {
       host: '127.0.0.1',
       db,
       lazyConnect: false,
-      maxRetriesPerRequest: 3
+      maxRetriesPerRequest: 3,
     });
   }
 }
@@ -247,7 +257,7 @@ export async function teardownRedisForTests(): Promise<void> {
     await globalRedisHelper.stop();
     globalRedisHelper = null;
   }
-  
+
   // Also stop any Docker instances
   try {
     const dockerHelper = await import('./redis-test-helper-docker');

@@ -1,5 +1,5 @@
-import { falsely } from "./primitives";
-import { isArray, isObject, isString, isFunction } from "./predicates";
+import { falsely } from './primitives';
+import { isArray, isObject, isString, isFunction } from './predicates';
 
 // Define the options for the omit function
 type OmitOptions = {
@@ -29,13 +29,16 @@ export const omit = (obj?: any, options?: any, omitOptions?: OmitOptions): Recor
     // If options is an array, create a set for quick lookup
     if (omitOptions?.path) {
       // If path option is true, handle dot notation paths
-      return options.reduce((acc, path) => {
-        if (isString(path) && path.includes('.')) {
-          return omitByPath(acc, path.split('.'));
-        }
-        const optionsSet = new Set([path]);
-        return omit(acc, (name: string | symbol) => optionsSet.has(name));
-      }, { ...obj });
+      return options.reduce(
+        (acc, path) => {
+          if (isString(path) && path.includes('.')) {
+            return omitByPath(acc, path.split('.'));
+          }
+          const optionsSet = new Set([path]);
+          return omit(acc, (name: string | symbol) => optionsSet.has(name));
+        },
+        { ...obj }
+      );
     }
     const optionsSet = new Set(options);
     isShouldOmit = (name: string | symbol) => optionsSet.has(name);
@@ -58,7 +61,7 @@ export const omit = (obj?: any, options?: any, omitOptions?: OmitOptions): Recor
     isShouldOmit = falsely;
   } else {
     // Throw an error for invalid options type
-    throw new Error("Invalid options type");
+    throw new Error('Invalid options type');
   }
 
   // Get all property names and symbols of the object
@@ -81,7 +84,7 @@ export const omit = (obj?: any, options?: any, omitOptions?: OmitOptions): Recor
         if (omitOptions?.deep && isObject(val)) {
           Object.defineProperty(result, key as PropertyKey, {
             ...descr,
-            value: omit(val, options, omitOptions)
+            value: omit(val, options, omitOptions),
           });
         } else {
           // Otherwise, copy the property descriptor

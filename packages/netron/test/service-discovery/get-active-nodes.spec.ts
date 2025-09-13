@@ -1,7 +1,7 @@
 import { Redis } from 'ioredis';
 import { delay } from '@devgrid/common';
 
-import { Netron , NodeInfo , ServiceDiscovery } from '../../dist';
+import { Netron, NodeInfo, ServiceDiscovery } from '../../dist';
 import { cleanupRedis, createTestRedisClient } from '../helpers/test-utils';
 
 describe('ServiceDiscovery getActiveNodes', () => {
@@ -44,10 +44,18 @@ describe('ServiceDiscovery getActiveNodes', () => {
   });
 
   afterEach(async () => {
-    if (discoveryA) { await discoveryA.shutdown(); }
-    if (discoveryB) { await discoveryB.shutdown(); }
-    if (redis) { await cleanupRedis(redis); }
-    if (redis) { redis.disconnect(); }
+    if (discoveryA) {
+      await discoveryA.shutdown();
+    }
+    if (discoveryB) {
+      await discoveryB.shutdown();
+    }
+    if (redis) {
+      await cleanupRedis(redis);
+    }
+    if (redis) {
+      redis.disconnect();
+    }
   });
 
   it('should return all active nodes correctly', async () => {
@@ -59,11 +67,11 @@ describe('ServiceDiscovery getActiveNodes', () => {
     expect(nodeIds).toContain(nodeIdA);
     expect(nodeIds).toContain(nodeIdB);
 
-    const nodeA = activeNodes.find(node => node.nodeId === nodeIdA)!;
+    const nodeA = activeNodes.find((node) => node.nodeId === nodeIdA)!;
     expect(nodeA.address).toBe(addressA);
     expect(nodeA.services).toEqual(servicesA);
 
-    const nodeB = activeNodes.find(node => node.nodeId === nodeIdB)!;
+    const nodeB = activeNodes.find((node) => node.nodeId === nodeIdB)!;
     expect(nodeB.address).toBe(addressB);
     expect(nodeB.services).toEqual(servicesB);
   });

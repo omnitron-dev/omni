@@ -10,13 +10,13 @@ export * from './types';
 /**
  * Creates a new packet with the specified parameters.
  * This function serves as a factory method for creating Packet instances with predefined properties.
- * 
+ *
  * @param {number} id - A unique numeric identifier for the packet. Used for tracking and correlation.
  * @param {PacketImpulse} impulse - The impulse type that determines the packet's behavior and processing rules.
  * @param {PacketType} action - The type of packet, defining its role in the communication protocol.
  * @param {any} data - The payload data to be encapsulated within the packet. Can be of any type.
  * @returns {Packet} A newly instantiated Packet object with the specified properties set.
- * 
+ *
  * @example
  * const packet = createPacket(123, PacketImpulse.REQUEST, PacketType.DATA, { message: 'Hello' });
  */
@@ -32,7 +32,7 @@ export const createPacket = (id: number, impulse: PacketImpulse, action: PacketT
  * Creates a new stream packet with stream-specific parameters.
  * This specialized factory method creates packets designed for streaming data,
  * with additional metadata for stream management and control.
- * 
+ *
  * @param {number} id - A unique numeric identifier for the packet.
  * @param {number} streamId - The unique identifier of the stream this packet belongs to.
  * @param {number} streamIndex - The sequential position of this packet within the stream.
@@ -40,7 +40,7 @@ export const createPacket = (id: number, impulse: PacketImpulse, action: PacketT
  * @param {boolean} isLive - Flag indicating if this is a live streaming packet.
  * @param {any} data - The actual payload data to be transmitted in the stream.
  * @returns {Packet} A Packet instance configured for streaming with the specified properties.
- * 
+ *
  * @example
  * const streamPacket = createStreamPacket(123, 456, 0, false, true, { video: 'chunk1' });
  */
@@ -64,17 +64,17 @@ export const createStreamPacket = (
  * Encodes a Packet instance into a binary buffer for network transmission.
  * This function handles the serialization of packet data into a format suitable
  * for network transmission, including proper byte ordering and stream metadata.
- * 
+ *
  * @param {Packet} packet - The Packet instance to be encoded.
  * @returns {Buffer} A Buffer containing the binary representation of the packet.
- * 
+ *
  * @remarks
  * The encoding process follows this structure:
  * 1. Packet ID (4 bytes, big-endian)
  * 2. Flags (1 byte)
  * 3. Serialized data payload
  * 4. Stream metadata (if applicable)
- * 
+ *
  * @throws {Error} If the packet data cannot be properly serialized.
  */
 export const encodePacket = (packet: Packet) => {
@@ -101,18 +101,18 @@ export const encodePacket = (packet: Packet) => {
  * Decodes a binary buffer into a Packet instance.
  * This function handles the deserialization of network data back into a Packet object,
  * including proper parsing of headers and stream metadata.
- * 
+ *
  * @param {Buffer | ArrayBuffer} buf - The binary data to decode into a packet.
  * @returns {Packet} A reconstructed Packet instance from the binary data.
  * @throws {Error} If the packet data is invalid or cannot be decoded.
- * 
+ *
  * @remarks
  * The decoding process follows this structure:
  * 1. Read packet ID (4 bytes, big-endian)
  * 2. Read flags (1 byte)
  * 3. Deserialize data payload
  * 4. Read stream metadata (if applicable)
- * 
+ *
  * @example
  * const packet = decodePacket(receivedBuffer);
  */

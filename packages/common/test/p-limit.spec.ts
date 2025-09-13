@@ -10,17 +10,12 @@ describe('p-limit', () => {
       const createTask = (duration: number) => async () => {
         activeCount++;
         maxActiveCount = Math.max(maxActiveCount, activeCount);
-        await new Promise(resolve => setTimeout(resolve, duration));
+        await new Promise((resolve) => setTimeout(resolve, duration));
         activeCount--;
         return duration;
       };
 
-      const tasks = [
-        limit(createTask(100)),
-        limit(createTask(50)),
-        limit(createTask(100)),
-        limit(createTask(50)),
-      ];
+      const tasks = [limit(createTask(100)), limit(createTask(50)), limit(createTask(100)), limit(createTask(50))];
 
       await Promise.all(tasks);
 
@@ -32,9 +27,9 @@ describe('p-limit', () => {
       const limit = pLimit(1);
       const results: number[] = [];
 
-      const tasks = [1, 2, 3].map(n =>
+      const tasks = [1, 2, 3].map((n) =>
         limit(async () => {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           results.push(n);
           return n;
         })
@@ -54,11 +49,13 @@ describe('p-limit', () => {
       const createTask = () => async () => {
         activeCount++;
         maxActiveCount = Math.max(maxActiveCount, activeCount);
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         activeCount--;
       };
 
-      const tasks = Array(10).fill(null).map(() => limit(createTask()));
+      const tasks = Array(10)
+        .fill(null)
+        .map(() => limit(createTask()));
       await Promise.all(tasks);
 
       expect(maxActiveCount).toBe(10);
@@ -71,7 +68,9 @@ describe('p-limit', () => {
 
       const tasks = [
         limit(async () => 'success'),
-        limit(async () => { throw error; }),
+        limit(async () => {
+          throw error;
+        }),
         limit(async () => 'another success'),
       ];
 
@@ -88,15 +87,15 @@ describe('p-limit', () => {
       expect(limit.activeCount).toBe(0);
 
       const promise1 = limit(async () => {
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
       });
 
       const promise2 = limit(async () => {
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
       });
 
       // Wait a bit for tasks to start
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
       expect(limit.activeCount).toBe(2);
 
       await Promise.all([promise1, promise2]);
@@ -108,14 +107,16 @@ describe('p-limit', () => {
 
       expect(limit.pendingCount).toBe(0);
 
-      const promises = Array(3).fill(null).map(() =>
-        limit(async () => {
-          await new Promise(resolve => setTimeout(resolve, 50));
-        })
-      );
+      const promises = Array(3)
+        .fill(null)
+        .map(() =>
+          limit(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          })
+        );
 
       // Wait a bit for first task to start and others to queue
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
       expect(limit.pendingCount).toBe(2);
 
       await Promise.all(promises);
@@ -127,14 +128,16 @@ describe('p-limit', () => {
 
       expect(limit.concurrency).toBe(1);
 
-      const promises = Array(3).fill(null).map(() =>
-        limit(async () => {
-          await new Promise(resolve => setTimeout(resolve, 50));
-        })
-      );
+      const promises = Array(3)
+        .fill(null)
+        .map(() =>
+          limit(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          })
+        );
 
       // Wait a bit then increase concurrency
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
       limit.concurrency = 2;
 
       expect(limit.concurrency).toBe(2);
@@ -145,32 +148,34 @@ describe('p-limit', () => {
     it('should clear queue', async () => {
       const limit = pLimit(1);
       const results: number[] = [];
-      
+
       // Start multiple tasks
-      Array(3).fill(null).forEach((_, i) => {
-        limit(async () => {
-          await new Promise(resolve => setTimeout(resolve, 100));
-          results.push(i + 1);
+      Array(3)
+        .fill(null)
+        .forEach((_, i) => {
+          limit(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            results.push(i + 1);
+          });
         });
-      });
 
       // Wait for first task to start
-      await new Promise(resolve => setTimeout(resolve, 10));
-      
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
       // Verify there are pending tasks
       expect(limit.pendingCount).toBe(2);
       expect(limit.activeCount).toBe(1);
 
       // Clear the queue
       limit.clearQueue();
-      
+
       // Verify queue was cleared
       expect(limit.pendingCount).toBe(0);
       expect(limit.activeCount).toBe(1); // First task still running
-      
+
       // Wait for the first task to complete
-      await new Promise(resolve => setTimeout(resolve, 150));
-      
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
       // Only the first task should have completed
       expect(results.length).toBe(1);
       expect(limit.activeCount).toBe(0);
@@ -181,7 +186,7 @@ describe('p-limit', () => {
       const input = [1, 2, 3, 4, 5];
 
       const results = await limit.map(input, async (value, index) => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         return value * 2 + index;
       });
 
@@ -233,7 +238,7 @@ describe('p-limit', () => {
       ];
 
       const results = await Promise.allSettled(promises);
-      
+
       expect(results[0]).toEqual({ status: 'rejected', reason: error });
       expect(results[1]).toEqual({ status: 'fulfilled', value: 'success' });
       expect(ran).toBe(true);
@@ -245,17 +250,17 @@ describe('p-limit', () => {
 
       // Use async functions that take some time to ensure we can check activeCount
       const one = limit(async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         return 1;
       });
       const two = limit(async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         return value;
       });
 
       // Tasks should be running now
-      await new Promise(resolve => setTimeout(resolve, 0));
-      
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
       expect(limit.activeCount).toBe(2);
 
       value = 2;
@@ -269,11 +274,11 @@ describe('p-limit', () => {
       expect(limit.activeCount).toBe(0);
       expect(limit.pendingCount).toBe(0);
 
-      const runningPromise1 = limit(() => new Promise(resolve => setTimeout(resolve, 100)));
-      
+      const runningPromise1 = limit(() => new Promise((resolve) => setTimeout(resolve, 100)));
+
       // Wait for the task to actually start
-      await new Promise(resolve => setTimeout(resolve, 10));
-      
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
       expect(limit.activeCount).toBe(1);
       expect(limit.pendingCount).toBe(0);
 
@@ -281,24 +286,24 @@ describe('p-limit', () => {
       expect(limit.activeCount).toBe(0);
       expect(limit.pendingCount).toBe(0);
 
-      const immediatePromises = Array(5).fill(null).map(() =>
-        limit(() => new Promise(resolve => setTimeout(resolve, 100)))
-      );
-      const delayedPromises = Array(3).fill(null).map(() =>
-        limit(() => new Promise(resolve => setTimeout(resolve, 100)))
-      );
+      const immediatePromises = Array(5)
+        .fill(null)
+        .map(() => limit(() => new Promise((resolve) => setTimeout(resolve, 100))));
+      const delayedPromises = Array(3)
+        .fill(null)
+        .map(() => limit(() => new Promise((resolve) => setTimeout(resolve, 100))));
 
       // Wait for tasks to be queued
-      await new Promise(resolve => setTimeout(resolve, 10));
-      
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
       expect(limit.activeCount).toBe(5);
       expect(limit.pendingCount).toBe(3);
 
       await Promise.all(immediatePromises);
-      
+
       // Wait a bit for pending tasks to start
-      await new Promise(resolve => setTimeout(resolve, 10));
-      
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
       expect(limit.activeCount).toBe(3);
       expect(limit.pendingCount).toBe(0);
 
@@ -311,25 +316,27 @@ describe('p-limit', () => {
       const limit = pLimit(4);
       let running = 0;
       const log: number[] = [];
-      
-      const promises = Array(10).fill(null).map(() =>
-        limit(async () => {
-          running++;
-          log.push(running);
-          await new Promise(resolve => setTimeout(resolve, 50));
-          running--;
-        })
-      );
+
+      const promises = Array(10)
+        .fill(null)
+        .map(() =>
+          limit(async () => {
+            running++;
+            log.push(running);
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            running--;
+          })
+        );
 
       // Wait for initial tasks to start
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
       expect(running).toBe(4);
 
       // Reduce concurrency
       limit.concurrency = 2;
 
       await Promise.all(promises);
-      
+
       // After reducing to 2, no more than 2 should run concurrently
       const maxAfterReduction = Math.max(...log.slice(4));
       expect(maxAfterReduction).toBeLessThanOrEqual(2);
@@ -339,26 +346,28 @@ describe('p-limit', () => {
       const limit = pLimit(2);
       let running = 0;
       const log: number[] = [];
-      
-      const promises = Array(10).fill(null).map(() =>
-        limit(async () => {
-          running++;
-          log.push(running);
-          await new Promise(resolve => setTimeout(resolve, 50));
-          running--;
-        })
-      );
+
+      const promises = Array(10)
+        .fill(null)
+        .map(() =>
+          limit(async () => {
+            running++;
+            log.push(running);
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            running--;
+          })
+        );
 
       // Wait for initial tasks to start
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
       expect(running).toBe(2);
 
       // Increase concurrency
       limit.concurrency = 4;
 
       // Wait a bit for new tasks to start
-      await new Promise(resolve => setTimeout(resolve, 10));
-      
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
       // Should now have 4 running
       expect(running).toBeLessThanOrEqual(4);
 
@@ -367,15 +376,27 @@ describe('p-limit', () => {
 
     it('should validate concurrency on setter', () => {
       const limit = pLimit(1);
-      
-      expect(() => { limit.concurrency = 0; }).toThrow(TypeError);
-      expect(() => { limit.concurrency = -1; }).toThrow(TypeError);
-      expect(() => { limit.concurrency = 1.5; }).toThrow(TypeError);
-      expect(() => { limit.concurrency = NaN; }).toThrow(TypeError);
-      
+
+      expect(() => {
+        limit.concurrency = 0;
+      }).toThrow(TypeError);
+      expect(() => {
+        limit.concurrency = -1;
+      }).toThrow(TypeError);
+      expect(() => {
+        limit.concurrency = 1.5;
+      }).toThrow(TypeError);
+      expect(() => {
+        limit.concurrency = NaN;
+      }).toThrow(TypeError);
+
       // Valid values should not throw
-      expect(() => { limit.concurrency = 2; }).not.toThrow();
-      expect(() => { limit.concurrency = Number.POSITIVE_INFINITY; }).not.toThrow();
+      expect(() => {
+        limit.concurrency = 2;
+      }).not.toThrow();
+      expect(() => {
+        limit.concurrency = Number.POSITIVE_INFINITY;
+      }).not.toThrow();
     });
   });
 
@@ -383,32 +404,36 @@ describe('p-limit', () => {
     it('should handle rapid concurrent calls', async () => {
       const limit = pLimit(2);
       const results: number[] = [];
-      
+
       // Create many tasks rapidly
-      const promises = Array(20).fill(null).map((_, i) =>
-        limit(async () => {
-          await new Promise(resolve => setTimeout(resolve, Math.random() * 10));
-          results.push(i);
-          return i;
-        })
-      );
+      const promises = Array(20)
+        .fill(null)
+        .map((_, i) =>
+          limit(async () => {
+            await new Promise((resolve) => setTimeout(resolve, Math.random() * 10));
+            results.push(i);
+            return i;
+          })
+        );
 
       const values = await Promise.all(promises);
-      
+
       // All tasks should complete
       expect(values.length).toBe(20);
       expect(results.length).toBe(20);
-      
+
       // Results should contain all indices
       expect(results.sort((a, b) => a - b)).toEqual(
-        Array(20).fill(null).map((_, i) => i)
+        Array(20)
+          .fill(null)
+          .map((_, i) => i)
       );
     });
 
     it('should handle empty function arguments', async () => {
       const limit = pLimit(1);
       const fn = async () => 'no args';
-      
+
       const result = await limit(fn);
       expect(result).toBe('no args');
     });
@@ -416,7 +441,7 @@ describe('p-limit', () => {
     it('should handle queue after error', async () => {
       const limit = pLimit(1);
       const results: string[] = [];
-      
+
       const promises = [
         limit(async () => {
           results.push('first');
@@ -433,7 +458,7 @@ describe('p-limit', () => {
       ];
 
       const settled = await Promise.allSettled(promises);
-      
+
       // All tasks should have been attempted
       expect(results).toEqual(['first', 'error', 'last']);
       expect(settled[0]?.status).toBe('fulfilled');
@@ -450,16 +475,13 @@ describe('p-limit', () => {
     it('should preserve this context in map', async () => {
       const limit = pLimit(2);
       const context = { multiplier: 2 };
-      
-      const results = await limit.map(
-        [1, 2, 3],
-        async function(this: typeof context, value: number) {
-          // Note: arrow functions don't have their own 'this', so we use regular function
-          // But p-limit doesn't preserve 'this' context, so this test verifies that behavior
-          return value * 2;
-        }
-      );
-      
+
+      const results = await limit.map([1, 2, 3], async function (this: typeof context, value: number) {
+        // Note: arrow functions don't have their own 'this', so we use regular function
+        // But p-limit doesn't preserve 'this' context, so this test verifies that behavior
+        return value * 2;
+      });
+
       expect(results).toEqual([2, 4, 6]);
     });
   });
@@ -474,19 +496,14 @@ describe('p-limit', () => {
         callCount++;
         activeCount++;
         maxActiveCount = Math.max(maxActiveCount, activeCount);
-        await new Promise(resolve => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 20));
         activeCount--;
         return value * 2;
       };
 
       const limitedFn = limitFunction(fn, { concurrency: 2 });
 
-      const results = await Promise.all([
-        limitedFn(1),
-        limitedFn(2),
-        limitedFn(3),
-        limitedFn(4),
-      ]);
+      const results = await Promise.all([limitedFn(1), limitedFn(2), limitedFn(3), limitedFn(4)]);
 
       expect(results).toEqual([2, 4, 6, 8]);
       expect(callCount).toBe(4);

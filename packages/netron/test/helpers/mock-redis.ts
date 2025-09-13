@@ -161,7 +161,7 @@ export class MockRedis {
 
   async publish(channel: string, message: string): Promise<number> {
     const callbacks = this.pubsubCallbacks.get(channel) || [];
-    callbacks.forEach(cb => cb(message));
+    callbacks.forEach((cb) => cb(message));
     return callbacks.length;
   }
 

@@ -59,12 +59,12 @@ describe('AsyncGenerator Support', () => {
     // Create server with both host and port
     server = new Netron({
       listenHost: 'localhost',
-      listenPort: serverPort
+      listenPort: serverPort,
     });
     await server.start();
 
     // Wait for server to be ready
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     // Expose the calculator service
     const service = new CalculatorService();
@@ -219,7 +219,7 @@ describe('AsyncGenerator Support', () => {
     const [stream1, stream2, stream3] = await Promise.all([
       calc.fibonacci(5),
       calc.streamNumbers(3),
-      calc.fibonacci(3)
+      calc.fibonacci(3),
     ]);
 
     // Collect results from all streams
@@ -243,7 +243,7 @@ describe('AsyncGenerator Support', () => {
         for await (const num of stream3 as any) {
           results3.push(num);
         }
-      })()
+      })(),
     ]);
 
     // Verify all streams produced correct results

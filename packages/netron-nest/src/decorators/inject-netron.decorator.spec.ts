@@ -10,14 +10,11 @@ describe('@InjectNetron Decorator', () => {
 
     @Injectable()
     class TestService {
-      constructor(@InjectNetron() public readonly netron: any) { }
+      constructor(@InjectNetron() public readonly netron: any) {}
     }
 
     const moduleRef = await Test.createTestingModule({
-      providers: [
-        TestService,
-        { provide: NETRON_INSTANCE, useValue: mockNetronInstance },
-      ],
+      providers: [TestService, { provide: NETRON_INSTANCE, useValue: mockNetronInstance }],
     }).compile();
 
     const testService = moduleRef.get(TestService);

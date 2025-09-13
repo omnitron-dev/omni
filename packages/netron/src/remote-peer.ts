@@ -17,13 +17,20 @@ import { StreamReference } from './stream-reference';
 import { NetronReadableStream } from './readable-stream';
 import { NetronWritableStream } from './writable-stream';
 import { isServiceDefinition, isNetronStreamReference } from './predicates';
-import { Abilities, NetronOptions, EventSubscriber, ServiceMetadata, ServiceExposeEvent, ServiceUnexposeEvent } from './types';
 import {
   REQUEST_TIMEOUT,
   SERVICE_ANNOTATION,
   NETRON_EVENT_SERVICE_EXPOSE,
   NETRON_EVENT_SERVICE_UNEXPOSE,
 } from './constants';
+import {
+  Abilities,
+  NetronOptions,
+  EventSubscriber,
+  ServiceMetadata,
+  ServiceExposeEvent,
+  ServiceUnexposeEvent,
+} from './types';
 import {
   Packet,
   TYPE_GET,
@@ -43,7 +50,7 @@ import {
  * Represents a remote peer in the Netron network.
  * This class handles communication with a remote peer over WebSocket,
  * managing services, streams, and event subscriptions.
- * 
+ *
  * @class RemotePeer
  * @extends AbstractPeer
  */
@@ -87,7 +94,7 @@ export class RemotePeer extends AbstractPeer {
 
   /**
    * Creates a new instance of RemotePeer.
-   * 
+   *
    * @constructor
    * @param {WebSocket} socket - The WebSocket connection to the remote peer
    * @param {Netron} netron - The Netron instance this peer belongs to
@@ -106,7 +113,7 @@ export class RemotePeer extends AbstractPeer {
   /**
    * Initializes the remote peer connection.
    * Sets up message handlers and initializes service discovery if acting as a connector.
-   * 
+   *
    * @async
    * @param {boolean} [isConnector] - Whether this peer is acting as a connector
    * @param {NetronOptions} [options] - Configuration options for the local Netron instance
@@ -157,7 +164,7 @@ export class RemotePeer extends AbstractPeer {
   /**
    * Exposes a service to the remote peer.
    * Validates the service metadata and creates necessary stubs.
-   * 
+   *
    * @async
    * @param {any} instance - The service instance to expose
    * @returns {Promise<Definition>} The service definition
@@ -185,7 +192,7 @@ export class RemotePeer extends AbstractPeer {
   /**
    * Unexposes a service from the remote peer.
    * Cleans up associated interfaces and stubs.
-   * 
+   *
    * @async
    * @param {string} serviceName - The name of the service to unexpose
    * @returns {Promise<void>}
@@ -210,7 +217,7 @@ export class RemotePeer extends AbstractPeer {
 
   /**
    * Subscribes to an event from the remote peer.
-   * 
+   *
    * @async
    * @param {string} eventName - The name of the event to subscribe to
    * @param {EventSubscriber} handler - The event handler function
@@ -228,7 +235,7 @@ export class RemotePeer extends AbstractPeer {
 
   /**
    * Unsubscribes from an event.
-   * 
+   *
    * @async
    * @param {string} eventName - The name of the event to unsubscribe from
    * @param {EventSubscriber} handler - The event handler to remove
@@ -250,7 +257,7 @@ export class RemotePeer extends AbstractPeer {
 
   /**
    * Gets the names of all available services.
-   * 
+   *
    * @returns {string[]} Array of service names
    */
   getServiceNames() {
@@ -259,7 +266,7 @@ export class RemotePeer extends AbstractPeer {
 
   /**
    * Gets a value from a service definition.
-   * 
+   *
    * @param {string} defId - The service definition ID
    * @param {string} defId - The unique identifier of the service definition.
    * @param {string} name - The name of the value to get.
@@ -287,7 +294,7 @@ export class RemotePeer extends AbstractPeer {
    * This method allows setting a property value on a remote service instance.
    * It first validates that the service definition exists, then sends a request
    * to the remote peer to update the value.
-   * 
+   *
    * @param {string} defId - The unique identifier of the service definition to update
    * @param {string} name - The name of the property to set
    * @param {any} value - The new value to assign to the property
@@ -316,7 +323,7 @@ export class RemotePeer extends AbstractPeer {
    * Calls a method on a service definition.
    * This method invokes a remote procedure call on a service instance.
    * It processes the arguments, sends the request, and handles the response.
-   * 
+   *
    * @param {string} defId - The unique identifier of the service definition
    * @param {string} method - The name of the method to invoke
    * @param {any[]} args - The arguments to pass to the method
@@ -362,7 +369,7 @@ export class RemotePeer extends AbstractPeer {
   /**
    * Registers a one-time event listener.
    * This method allows listening for specific events that will only trigger once.
-   * 
+   *
    * @param {'manual-disconnect' | 'stream'} event - The event name to listen for
    * @param {(...args: any[]) => void} listener - The callback function to execute
    */
@@ -388,7 +395,7 @@ export class RemotePeer extends AbstractPeer {
   /**
    * Executes a task on the remote peer.
    * This method sends a task request to the remote peer and handles the response.
-   * 
+   *
    * @param {string} name - The name of the task to execute
    * @param {...any[]} args - Variable number of arguments to pass to the task
    * @returns {Promise<any>} A promise that resolves with the task's result
@@ -409,7 +416,7 @@ export class RemotePeer extends AbstractPeer {
   /**
    * Sends a request to the remote peer.
    * This method creates a new packet, registers response handlers, and sends it.
-   * 
+   *
    * @param {PacketType} type - The type of packet to send
    * @param {any} data - The data payload to include in the packet
    * @param {(response: Packet) => void} successHandler - Callback for successful responses
@@ -434,7 +441,7 @@ export class RemotePeer extends AbstractPeer {
   /**
    * Sends a response packet to the remote peer.
    * This method prepares and sends a response packet with the specified data.
-   * 
+   *
    * @param {Packet} packet - The original packet to respond to
    * @param {any} data - The response data to send
    * @returns {Promise<void>} A promise that resolves when the response is sent
@@ -448,7 +455,7 @@ export class RemotePeer extends AbstractPeer {
   /**
    * Sends an error response to the remote peer.
    * This method prepares and sends an error response packet.
-   * 
+   *
    * @param {Packet} packet - The original packet to respond to
    * @param {any} error - The error information to send
    * @returns {Promise<void>} A promise that resolves when the error response is sent
@@ -463,7 +470,7 @@ export class RemotePeer extends AbstractPeer {
   /**
    * Sends a packet to the remote peer.
    * This method handles the actual transmission of packets over the WebSocket connection.
-   * 
+   *
    * @param {Packet} packet - The packet to send
    * @returns {Promise<void>} A promise that resolves when the packet is sent
    * @throws {Error} If the WebSocket connection is not open
@@ -487,7 +494,7 @@ export class RemotePeer extends AbstractPeer {
   /**
    * Sends a stream chunk to the remote peer.
    * This method sends a portion of stream data to the remote peer.
-   * 
+   *
    * @param {number} streamId - The unique identifier of the stream
    * @param {any} chunk - The data chunk to send
    * @param {number} index - The sequence number of the chunk
@@ -502,7 +509,7 @@ export class RemotePeer extends AbstractPeer {
   /**
    * Handles a response packet from the remote peer.
    * This method processes incoming response packets and invokes the appropriate handlers.
-   * 
+   *
    * @param {Packet} packet - The response packet to handle
    */
   private handleResponse(packet: Packet) {
@@ -522,7 +529,7 @@ export class RemotePeer extends AbstractPeer {
    * This method serves as the central packet processing hub, routing different types of packets
    * to their appropriate handlers. It implements a robust error handling mechanism and supports
    * various packet types including SET, GET, CALL, TASK, STREAM, and STREAM_ERROR operations.
-   * 
+   *
    * @param {Packet} packet - The incoming packet to be processed
    * @returns {Promise<void>} Resolves when packet processing is complete
    * @throws {Error} If packet processing fails and error response cannot be sent
@@ -640,7 +647,7 @@ export class RemotePeer extends AbstractPeer {
    * Releases an interface instance and its associated resources.
    * This method performs cleanup operations by unreferencing the service
    * and removing it from the internal service registry.
-   * 
+   *
    * @param {Interface} iInstance - The interface instance to be released
    * @returns {Promise<void>} Resolves when the interface is fully released
    */
@@ -652,7 +659,7 @@ export class RemotePeer extends AbstractPeer {
   /**
    * References a service definition and establishes its relationship with a parent service.
    * This method manages service definition references and maintains the service hierarchy.
-   * 
+   *
    * @param {Definition} def - The service definition to be referenced
    * @param {Definition} parentDef - The parent service definition
    * @returns {Definition} The referenced service definition
@@ -671,7 +678,7 @@ export class RemotePeer extends AbstractPeer {
   /**
    * Unreferences a service definition and removes it from the registry if no longer needed.
    * This method performs cleanup of unused service definitions to prevent memory leaks.
-   * 
+   *
    * @param {string} [defId] - The unique identifier of the service definition to unreference
    */
   unrefService(defId?: string) {
@@ -688,7 +695,7 @@ export class RemotePeer extends AbstractPeer {
   /**
    * Processes the result of a service call, handling special types like service definitions
    * and stream references. This method ensures proper type conversion and reference management.
-   * 
+   *
    * @param {Definition} parentDef - The parent service definition context
    * @param {any} result - The raw result to be processed
    * @returns {any} The processed result with proper type conversion
@@ -706,7 +713,7 @@ export class RemotePeer extends AbstractPeer {
   /**
    * Processes arguments before sending them to the remote peer.
    * This method can be overridden to implement custom argument processing logic.
-   * 
+   *
    * @param {Definition} ctxDef - The context service definition
    * @param {any} args - The arguments to be processed
    * @returns {any} The processed arguments
@@ -718,7 +725,7 @@ export class RemotePeer extends AbstractPeer {
   /**
    * Deletes a response handler for a specific packet ID.
    * This method manages the lifecycle of response handlers and cleans up resources.
-   * 
+   *
    * @param {number} packetId - The unique identifier of the packet
    * @returns {any} The deleted response handler, if it exists
    */
@@ -733,7 +740,7 @@ export class RemotePeer extends AbstractPeer {
   /**
    * Retrieves a service definition by its unique identifier.
    * This method provides access to service definitions while ensuring they exist.
-   * 
+   *
    * @param {string} defId - The unique identifier of the service definition
    * @returns {Definition} The requested service definition
    * @throws {Error} If the service definition cannot be found
@@ -749,7 +756,7 @@ export class RemotePeer extends AbstractPeer {
   /**
    * Retrieves a service definition by its qualified name.
    * This method provides access to service definitions using their service names.
-   * 
+   *
    * @param {string} name - The qualified name of the service
    * @returns {Definition} The requested service definition
    * @throws {Error} If the service definition cannot be found

@@ -138,7 +138,7 @@ describe('TimedMap', () => {
       const entries = Array.from(map.entries());
       expect(entries).toEqual([
         ['key1', 100],
-        ['key2', 200]
+        ['key2', 200],
       ]);
     });
   });

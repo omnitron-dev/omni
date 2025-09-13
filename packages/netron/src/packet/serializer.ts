@@ -9,7 +9,7 @@ import { StreamReference } from '../stream-reference';
  * Global serializer instance for the Netron application.
  * This serializer is responsible for converting complex objects into binary format
  * and vice versa, enabling efficient network transmission and storage.
- * 
+ *
  * @type {Serializer}
  * @constant
  */
@@ -32,7 +32,7 @@ serializer
    * Registers serialization handlers for the Definition class.
    * Definition objects represent service definitions in the Netron network
    * and contain metadata about available services.
-   * 
+   *
    * @param {number} 109 - Unique type identifier for Definition objects
    * @param {Definition} - The class constructor for Definition objects
    * @param {Function} - Encoder function that writes Definition properties to buffer
@@ -45,7 +45,7 @@ serializer
      * Encodes a Definition object into a binary buffer.
      * The encoding process preserves the object's identity and relationships
      * by serializing its id, parentId, peerId, and metadata.
-     * 
+     *
      * @param {Definition} obj - The Definition object to encode
      * @param {SmartBuffer} buf - The buffer to write the encoded data to
      */
@@ -59,7 +59,7 @@ serializer
      * Decodes a Definition object from a binary buffer.
      * Reconstructs the object's state by reading its properties in the same
      * order they were written during encoding.
-     * 
+     *
      * @param {SmartBuffer} buf - The buffer containing the encoded Definition
      * @returns {Definition} A new Definition instance with restored properties
      */
@@ -77,7 +77,7 @@ serializer
    * Registers serialization handlers for the Reference class.
    * Reference objects represent service references in the Netron network,
    * linking to specific service definitions.
-   * 
+   *
    * @param {number} 108 - Unique type identifier for Reference objects
    * @param {Reference} - The class constructor for Reference objects
    * @param {Function} - Encoder function that writes Reference properties to buffer
@@ -90,7 +90,7 @@ serializer
      * Encodes a Reference object into a binary buffer.
      * Only the defId property is serialized as it uniquely identifies
      * the referenced service definition.
-     * 
+     *
      * @param {Reference} obj - The Reference object to encode
      * @param {SmartBuffer} buf - The buffer to write the encoded data to
      */
@@ -100,7 +100,7 @@ serializer
     /**
      * Decodes a Reference object from a binary buffer.
      * Creates a new Reference instance using the decoded defId.
-     * 
+     *
      * @param {SmartBuffer} buf - The buffer containing the encoded Reference
      * @returns {Reference} A new Reference instance with the restored defId
      */
@@ -110,7 +110,7 @@ serializer
    * Registers serialization handlers for the StreamReference class.
    * StreamReference objects represent stream connections in the Netron network,
    * containing information about stream type, direction, and associated peer.
-   * 
+   *
    * @param {number} 107 - Unique type identifier for StreamReference objects
    * @param {StreamReference} - The class constructor for StreamReference objects
    * @param {Function} - Encoder function that writes StreamReference properties to buffer
@@ -122,7 +122,7 @@ serializer
     /**
      * Encodes a StreamReference object into a binary buffer.
      * Serializes the stream's identity, type, liveness status, and associated peer.
-     * 
+     *
      * @param {StreamReference} obj - The StreamReference object to encode
      * @param {SmartBuffer} buf - The buffer to write the encoded data to
      */
@@ -136,7 +136,7 @@ serializer
      * Decodes a StreamReference object from a binary buffer.
      * Reconstructs the stream reference with its type, liveness status,
      * and associated peer information.
-     * 
+     *
      * @param {SmartBuffer} buf - The buffer containing the encoded StreamReference
      * @returns {StreamReference} A new StreamReference instance with restored properties
      */

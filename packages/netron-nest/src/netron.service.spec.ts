@@ -77,7 +77,7 @@ describe('NetronService', () => {
   });
 
   describe('registerDiscoveredServices', () => {
-    class TestService { }
+    class TestService {}
 
     beforeEach(() => {
       discoveryServiceMock.getProviders.mockReturnValue([
@@ -95,9 +95,7 @@ describe('NetronService', () => {
     it('should expose discovered services', () => {
       (netronService as any).registerDiscoveredServices();
 
-      expect(netronInstanceMock.peer.exposeService).toHaveBeenCalledWith(
-        expect.any(TestService),
-      );
+      expect(netronInstanceMock.peer.exposeService).toHaveBeenCalledWith(expect.any(TestService));
     });
 
     it('should handle errors during service exposure gracefully', () => {
@@ -110,7 +108,7 @@ describe('NetronService', () => {
       (netronService as any).registerDiscoveredServices();
 
       expect(loggerErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Error exposing service "test.service@1.0.0": Exposure failed'),
+        expect.stringContaining('Error exposing service "test.service@1.0.0": Exposure failed')
       );
     });
 
@@ -129,7 +127,7 @@ describe('NetronService', () => {
       (netronService as any).registerDiscoveredServices();
 
       expect(loggerWarnSpy).toHaveBeenCalledWith(
-        'Service "TestService" cannot be exposed because it is defined in a non-static provider.',
+        'Service "TestService" cannot be exposed because it is defined in a non-static provider.'
       );
       expect(netronInstanceMock.peer.exposeService).not.toHaveBeenCalled();
     });

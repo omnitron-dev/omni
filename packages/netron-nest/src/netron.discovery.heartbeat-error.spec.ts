@@ -35,7 +35,7 @@ describe('Netron Discovery - publishHeartbeat Redis Error Handling', () => {
 
     // Expose service to ensure discovery is created
     @Service('dummy.heartbeat.service@1.0.0')
-    class DummyHeartbeatService { }
+    class DummyHeartbeatService {}
     await netronService.instance.peer.exposeService(new DummyHeartbeatService());
 
     // Replace redis with mock
@@ -50,9 +50,7 @@ describe('Netron Discovery - publishHeartbeat Redis Error Handling', () => {
   it('should handle Redis errors gracefully in publishHeartbeat()', async () => {
     redisMock.eval.mockRejectedValue(new Error('Redis eval failure'));
 
-    await expect(
-      netronService.instance.discovery?.publishHeartbeat(),
-    ).rejects.toThrow('Redis eval failure');
+    await expect(netronService.instance.discovery?.publishHeartbeat()).rejects.toThrow('Redis eval failure');
 
     expect(redisMock.eval).toHaveBeenCalledTimes(3);
   });
@@ -63,9 +61,7 @@ describe('Netron Discovery - publishHeartbeat Redis Error Handling', () => {
       .mockRejectedValueOnce(new Error('Temporary Redis failure'))
       .mockResolvedValueOnce('OK');
 
-    await expect(
-      netronService.instance.discovery?.publishHeartbeat(),
-    ).resolves.not.toThrow();
+    await expect(netronService.instance.discovery?.publishHeartbeat()).resolves.not.toThrow();
 
     expect(redisMock.eval).toHaveBeenCalledTimes(3);
     expect(redisMock.publish).toHaveBeenCalledTimes(1);
@@ -74,9 +70,7 @@ describe('Netron Discovery - publishHeartbeat Redis Error Handling', () => {
   it('should fail publishHeartbeat after maximum retries', async () => {
     redisMock.eval.mockRejectedValue(new Error('Persistent Redis failure'));
 
-    await expect(
-      netronService.instance.discovery?.publishHeartbeat(),
-    ).rejects.toThrow('Persistent Redis failure');
+    await expect(netronService.instance.discovery?.publishHeartbeat()).rejects.toThrow('Persistent Redis failure');
 
     expect(redisMock.eval).toHaveBeenCalledTimes(3);
     expect(redisMock.publish).toHaveBeenCalledTimes(0);

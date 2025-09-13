@@ -5,13 +5,20 @@ import { Definition } from './definition';
 import { ServiceMetadata } from './types';
 import { StreamReference } from './stream-reference';
 import { NetronWritableStream } from './writable-stream';
-import { isNetronStream, isNetronService, isServiceReference, isServiceInterface, isServiceDefinition, isNetronStreamReference } from './predicates';
+import {
+  isNetronStream,
+  isNetronService,
+  isServiceReference,
+  isServiceInterface,
+  isServiceDefinition,
+  isNetronStreamReference,
+} from './predicates';
 
 /**
  * ServiceStub is a proxy object for a service instance in the Netron system.
  * This class provides transparent interaction with remote services,
  * handling data transformation and managing the lifecycle of service definitions.
- * 
+ *
  * @class ServiceStub
  * @description Main class for working with services in the distributed Netron system
  */
@@ -21,7 +28,7 @@ export class ServiceStub {
 
   /**
    * Creates a new ServiceStub instance.
-   * 
+   *
    * @param {LocalPeer} peer - Local peer associated with this service
    * @param {any} instance - Service instance that this stub represents
    * @param {ServiceMetadata | Definition} metaOrDefinition - Service metadata or ready-made definition
@@ -41,7 +48,7 @@ export class ServiceStub {
 
   /**
    * Sets the value of a service property.
-   * 
+   *
    * @param {string} prop - Property name to set
    * @param {any} value - Value to set
    * @returns {void}
@@ -53,7 +60,7 @@ export class ServiceStub {
 
   /**
    * Gets the value of a service property.
-   * 
+   *
    * @param {string} prop - Property name to get
    * @returns {any} Processed property value
    * @throws {Error} If property does not exist or is not readable
@@ -64,7 +71,7 @@ export class ServiceStub {
 
   /**
    * Calls a service method with the given arguments.
-   * 
+   *
    * @param {string} method - Method name to call
    * @param {any[]} args - Arguments to pass to the method
    * @returns {Promise<any>} Processed result of the method call
@@ -86,7 +93,7 @@ export class ServiceStub {
       if (!callerPeer) {
         // Try to get the first connected remote peer (not LocalPeer)
         const peers = Array.from(this.peer.netron.peers.values());
-        callerPeer = peers.find(p => p.id !== this.peer.id);
+        callerPeer = peers.find((p) => p.id !== this.peer.id);
         if (!callerPeer) {
           // If no remote peer, but not explicitly local call, return the generator
           return result;
@@ -96,11 +103,11 @@ export class ServiceStub {
       // Create a writable stream and pipe the generator to it
       const stream = new NetronWritableStream({
         peer: callerPeer,
-        isLive: true
+        isLive: true,
       });
 
       // Start piping in background (don't await)
-      stream.pipeFrom(result).catch(error => {
+      stream.pipeFrom(result).catch((error) => {
         this.peer.logger.error({ error }, 'Failed to pipe AsyncGenerator');
         stream.destroy(error);
       });
@@ -118,7 +125,7 @@ export class ServiceStub {
   /**
    * Processes the result of service interaction.
    * Converts special data types (services, streams) into corresponding references.
-   * 
+   *
    * @param {any} result - Result to process
    * @returns {any} Processed result
    * @private
@@ -135,7 +142,7 @@ export class ServiceStub {
   /**
    * Processes an array of arguments for method call.
    * Converts each argument according to its type.
-   * 
+   *
    * @param {any[]} args - Arguments to process
    * @returns {any[]} Processed arguments
    * @private
@@ -147,7 +154,7 @@ export class ServiceStub {
   /**
    * Processes a single value.
    * Converts service and stream references into corresponding objects.
-   * 
+   *
    * @param {any} obj - Value to process
    * @returns {any} Processed value
    * @private

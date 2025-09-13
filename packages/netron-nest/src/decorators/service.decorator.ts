@@ -11,22 +11,22 @@ export const NETRON_SERVICE_METADATA = 'NETRON_SERVICE_METADATA';
 /**
  * A NestJS-compatible class decorator that integrates the original Netron service decorator
  * with NestJS's dependency injection system.
- * 
+ *
  * This decorator serves as a bridge between Netron's service registration system and NestJS's
  * dependency injection container. It applies both the original Netron service decorator and
  * adds necessary metadata for NestJS to properly handle the service.
- * 
+ *
  * @param qualifiedName - A string representing the fully qualified service name in the format
  *                       'serviceName@version'. This name is used for service discovery and
  *                       version management within the Netron ecosystem.
- * 
+ *
  * @returns A class decorator that applies both Netron and NestJS metadata to the target class.
- * 
+ *
  * @remarks
  * The decorator performs two main operations:
  * 1. Applies the original Netron service decorator to register the service with Netron
  * 2. Adds NestJS metadata using SetMetadata to enable proper dependency injection
- * 
+ *
  * @example
  * ```typescript
  * @Injectable()
@@ -35,7 +35,7 @@ export const NETRON_SERVICE_METADATA = 'NETRON_SERVICE_METADATA';
  *   // Service implementation
  * }
  * ```
- * 
+ *
  * @throws {Error} If the qualifiedName parameter is not provided or is invalid
  */
 export function Service(qualifiedName: string): ClassDecorator {

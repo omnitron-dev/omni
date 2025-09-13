@@ -5,7 +5,7 @@ import { RemotePeer } from '../remote-peer';
  * Exposes a service to a remote peer in the Netron network.
  * This function acts as a bridge between the core task layer and the peer implementation,
  * delegating the actual service exposure to the peer's exposeRemoteService method.
- * 
+ *
  * @param {RemotePeer} peer - The remote peer instance to which the service should be exposed.
  *                           This peer must be connected and authenticated in the Netron network.
  * @param {ServiceMetadata} meta - The metadata describing the service to be exposed.
@@ -16,7 +16,7 @@ import { RemotePeer } from '../remote-peer';
  *                         - The peer is not connected
  *                         - The service metadata is invalid
  *                         - The peer does not have permission to expose services
- * 
+ *
  * @example
  * // Expose a service to a connected peer
  * const serviceMeta = {

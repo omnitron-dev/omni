@@ -26,15 +26,21 @@ describe('ServiceDiscovery Graceful Shutdown', () => {
       pubSubEnabled: true,
     });
 
-    await discovery!.subscribeToEvents(() => { });
+    await discovery!.subscribeToEvents(() => {});
     discovery!.startHeartbeat();
     await delay(100); // ensure heartbeat and subscription started
   });
 
   afterEach(async () => {
-    if (discovery) { await discovery.shutdown(); }
-    if (redis) { await cleanupRedis(redis); }
-    if (redis) { redis.disconnect(); }
+    if (discovery) {
+      await discovery.shutdown();
+    }
+    if (redis) {
+      await cleanupRedis(redis);
+    }
+    if (redis) {
+      redis.disconnect();
+    }
   });
 
   it('should gracefully shutdown heartbeat timer and unsubscribe from events', async () => {

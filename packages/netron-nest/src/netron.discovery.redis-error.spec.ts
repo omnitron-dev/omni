@@ -35,7 +35,7 @@ describe('Netron Discovery - Redis Error Handling', () => {
 
     // Important: expose test service to ensure discovery is created
     @Service('dummy.service@1.0.0')
-    class DummyService { }
+    class DummyService {}
     await netronService.instance.peer.exposeService(new DummyService());
 
     // Now discovery exists, we can replace redis with mock
@@ -50,9 +50,7 @@ describe('Netron Discovery - Redis Error Handling', () => {
   it('should handle Redis connection errors gracefully in getActiveNodes()', async () => {
     redisMock.smembers.mockRejectedValue(new Error('Redis connection lost'));
 
-    await expect(
-      netronService.instance.discovery?.getActiveNodes(),
-    ).rejects.toThrow('Redis connection lost');
+    await expect(netronService.instance.discovery?.getActiveNodes()).rejects.toThrow('Redis connection lost');
 
     expect(redisMock.smembers).toHaveBeenCalledWith('netron:discovery:index:nodes');
   });
@@ -65,9 +63,7 @@ describe('Netron Discovery - Redis Error Handling', () => {
       exec: jest.fn().mockRejectedValue(new Error('Pipeline error')),
     } as any);
 
-    await expect(
-      netronService.instance.discovery?.getActiveNodes(),
-    ).rejects.toThrow('Pipeline error');
+    await expect(netronService.instance.discovery?.getActiveNodes()).rejects.toThrow('Pipeline error');
 
     expect(redisMock.pipeline).toHaveBeenCalled();
   });

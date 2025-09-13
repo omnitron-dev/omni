@@ -1,6 +1,6 @@
 import { Redis } from 'ioredis';
 
-import { Netron , NodeInfo , ServiceDiscovery } from '../../dist';
+import { Netron, NodeInfo, ServiceDiscovery } from '../../dist';
 import { cleanupRedis, createTestRedisClient } from '../helpers/test-utils';
 
 describe('ServiceDiscovery updateServices and updateAddress', () => {
@@ -28,9 +28,15 @@ describe('ServiceDiscovery updateServices and updateAddress', () => {
   });
 
   afterEach(async () => {
-    if (discovery) { await discovery.shutdown(); }
-    if (redis) { await cleanupRedis(redis); }
-    if (redis) { redis.disconnect(); }
+    if (discovery) {
+      await discovery.shutdown();
+    }
+    if (redis) {
+      await cleanupRedis(redis);
+    }
+    if (redis) {
+      redis.disconnect();
+    }
   });
 
   it('should update services and reflect changes in Redis immediately', async () => {
@@ -46,7 +52,7 @@ describe('ServiceDiscovery updateServices and updateAddress', () => {
     expect(JSON.parse(nodeData['services']!)).toEqual(updatedServices);
 
     const activeNodes: NodeInfo[] = await discovery!.getActiveNodes();
-    const currentNode = activeNodes.find(node => node.nodeId === nodeId)!;
+    const currentNode = activeNodes.find((node) => node.nodeId === nodeId)!;
     expect(currentNode.services).toEqual(updatedServices);
   });
 
@@ -59,7 +65,7 @@ describe('ServiceDiscovery updateServices and updateAddress', () => {
     expect(nodeData['address']).toBe(updatedAddress);
 
     const activeNodes: NodeInfo[] = await discovery!.getActiveNodes();
-    const currentNode = activeNodes.find(node => node.nodeId === nodeId)!;
+    const currentNode = activeNodes.find((node) => node.nodeId === nodeId)!;
     expect(currentNode.address).toBe(updatedAddress);
   });
 
@@ -67,10 +73,7 @@ describe('ServiceDiscovery updateServices and updateAddress', () => {
     const newAddress = '10.10.10.10:7000';
     const newServices = [{ name: 'simultaneous-service', version: '4.2.0' }];
 
-    await Promise.all([
-      discovery!.updateAddress(newAddress),
-      discovery!.updateServices(newServices),
-    ]);
+    await Promise.all([discovery!.updateAddress(newAddress), discovery!.updateServices(newServices)]);
 
     const nodeData = await redis!.hgetall(`netron:discovery:nodes:${nodeId}`);
 
@@ -78,7 +81,7 @@ describe('ServiceDiscovery updateServices and updateAddress', () => {
     expect(JSON.parse(nodeData['services']!)).toEqual(newServices);
 
     const activeNodes: NodeInfo[] = await discovery!.getActiveNodes();
-    const currentNode = activeNodes.find(node => node.nodeId === nodeId)!;
+    const currentNode = activeNodes.find((node) => node.nodeId === nodeId)!;
 
     expect(currentNode.address).toBe(newAddress);
     expect(currentNode.services).toEqual(newServices);

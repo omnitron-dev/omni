@@ -153,7 +153,7 @@ export default class Decoder {
         buf.skipRead(length);
         return buildDecodeResult(result, 2 + length);
       case 0xda:
-        // strings up to 2^16 - 2 bytes
+        // strings up to 2^16 - 1 bytes
         length = buf.readUInt16BE();
         if (!isValidDataSize(length, bufLength, 3)) {
           return null;
@@ -162,7 +162,7 @@ export default class Decoder {
         buf.skipRead(length);
         return buildDecodeResult(result, 3 + length);
       case 0xdb:
-        // strings up to 2^32 - 4 bytes
+        // strings up to 2^32 - 1 bytes
         length = buf.readUInt32BE();
         if (!isValidDataSize(length, bufLength, 5)) {
           return null;
@@ -198,7 +198,7 @@ export default class Decoder {
         buf.skipRead(length);
         return buildDecodeResult(result, 5 + length);
       case 0xdc:
-        // array up to 2^16 elements - 2 bytes
+        // array up to 2^16 - 1 elements
         if (bufLength < 3) {
           return null;
         }
@@ -206,7 +206,7 @@ export default class Decoder {
         length = buf.readUInt16BE();
         return this.decodeArray(buf, length, 3);
       case 0xdd:
-        // array up to 2^32 elements - 4 bytes
+        // array up to 2^32 - 1 elements
         if (bufLength < 5) {
           return null;
         }
@@ -214,7 +214,7 @@ export default class Decoder {
         length = buf.readUInt32BE();
         return this.decodeArray(buf, length, 5);
       case 0xde:
-        // maps up to 2^16 elements - 2 bytes
+        // maps up to 2^16 - 1 elements
         length = buf.readUInt16BE();
         return this.decodeMap(buf, length, 3);
       case 0xdf:

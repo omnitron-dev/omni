@@ -7,6 +7,14 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "module": "dist/esm/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/esm/index.js",
+      "bun": "./dist/esm/index.js"
+    }
+  },
   "files": [
     "dist",
     "lua"
@@ -14,7 +22,10 @@
   "scripts": {
     "build": "tsc --build ./tsconfig.build.json",
     "build:esm": "tsc --build ./tsconfig.esm.json",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand",
+    "test:node": "jest --runInBand",
+    "test:bun": "bun test",
+    "test:all": "npm run test:node && npm run test:bun"
   },
   "dependencies": {
     "@devgrid/async-emitter": "workspace:*",
@@ -32,6 +43,7 @@
   },
   "devDependencies": {
     "@jest/globals": "^30.1.2",
+    "@types/bun": "latest",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.3.3",
     "@types/pino": "7.0.4",
@@ -86,6 +98,7 @@
   },
   "homepage": "https://github.com/d-e-v-grid/devgrid/tree/main/packages/netron#readme",
   "engines": {
-    "node": ">=20.19.1"
+    "node": ">=20.19.1",
+    "bun": ">=1.0.0"
   }
 }

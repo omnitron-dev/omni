@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a TypeScript monorepo for the DevGrid project, containing distributed systems libraries, data processing tools, and blockchain interaction utilities. The monorepo uses Turborepo for build orchestration and Yarn 4.7.0 for package management.
+This is a TypeScript monorepo for the DevGrid project, containing distributed systems libraries and data processing tools. The monorepo uses Turborepo for build orchestration and Yarn 4.9.2 for package management.
 
 ## Key Commands
 
@@ -55,39 +55,74 @@ yarn workspace @devgrid/[package-name] test path/to/test.spec.ts
 ## Architecture Overview
 
 ### Monorepo Structure
-- `/apps/*` - Applications (e.g., onix orchestration system)
 - `/packages/*` - Reusable libraries
 - `/scripts` - Build and utility scripts
+- `/experiments` - Experimental code and documentation
 
-### Core Packages
+### Current Packages
+
+**@devgrid/common** - Essential utilities and helper functions
+- Promise utilities (defer, delay, retry, timeout)
+- Object manipulation (omit, entries, keys, values)
+- Type predicates and guards
+- Data structures (ListBuffer, TimedMap)
+- Bun runtime support
+
+**@devgrid/async-emitter** - Advanced asynchronous event emitter
+- Parallel and sequential event execution
+- Reduce patterns for event accumulation
+- Concurrency control with p-limit
+- Promise-based event handling
+- Bun runtime support
+
+**@devgrid/smartbuffer** - Enhanced binary data manipulation
+- Efficient buffer operations
+- Support for various data types (int8-64, float, double, varint)
+- Big-endian and little-endian support
+- String encoding/decoding utilities
+- Bun runtime support
+
+**@devgrid/messagepack** - High-performance MessagePack serialization
+- Full MessagePack specification support
+- Custom type extensions
+- Efficient binary serialization
+- Stream processing capabilities
+- Bun runtime support
 
 **@devgrid/netron** - WebSocket-based distributed systems framework
-- RPC with type safety
+- Type-safe RPC with decorators
 - Event bus with multiple emission patterns
 - Service discovery via Redis
 - Automatic reconnection and versioning
+- Streaming support for large data transfers
+- Bun runtime support (with test coverage)
 
-**@devgrid/rotif** - Redis-based reliable notification system
-- Guaranteed message delivery
-- Dead Letter Queue support
-- Retry mechanisms
-- Consumer groups for scaling
+**@devgrid/netron-nest** - NestJS integration for Netron framework
+- Seamless NestJS dependency injection
+- Service decorators for easy exposure
+- Module configuration
+- Health checks and graceful shutdown
 
-**@devgrid/onix** - Infrastructure orchestration (Ansible-like)
-- SSH-based task execution
-- Playbook and inventory management
-- Pluggable task system
+### Recently Moved/Removed Packages
+
+The following packages have been moved to separate repositories:
+- **@devgrid/rotif** - Redis-based reliable notification system (moved to separate monorepo)
+- **@devgrid/rotif-nest** - NestJS integration for Rotif (moved with rotif)
+- **@devgrid/bitcoin-core** - Bitcoin Core RPC client (moved to separate repo)
+- **@devgrid/onix** - Infrastructure orchestration (removed)
+- **omnitron** codebase (removed)
+- **ts-rest** forks (removed)
 
 ### Technology Stack
-- **Language**: TypeScript 5.8.3 with strict mode
-- **Runtime**: Node.js 22+
+- **Language**: TypeScript 5.8.3 - 5.9.2 with strict mode
+- **Runtime**: Node.js 22+ and Bun support
 - **Build**: Turborepo
-- **Package Manager**: Yarn 4.7.0 with workspaces
-- **Testing**: Jest with ts-jest
+- **Package Manager**: Yarn 4.9.2 with workspaces
+- **Testing**: Jest 30.x with ts-jest
 - **Linting**: ESLint v9 with flat config
 - **Formatting**: Prettier
 - **Serialization**: MessagePack
-- **Messaging**: Redis for service discovery and queuing
+- **Messaging**: Redis for service discovery
 
 ### Development Patterns
 
@@ -102,7 +137,7 @@ export class CalculatorService {
 }
 ```
 
-**Event-Driven Architecture**: Both Netron and Rotif use event-driven patterns extensively
+**Event-Driven Architecture**: Netron uses event-driven patterns extensively
 
 **Type Safety**: All packages maintain strict TypeScript types with proper exports
 
@@ -119,8 +154,13 @@ export class CalculatorService {
 - Some packages also have `tsconfig.esm.json` for ESM builds
 
 **Jest**: Each package has its own `jest.config.ts` with coverage enabled
+- Note: Jest 30.x requires ES module compatibility for config files
 
 **Turbo Pipeline**: Defined in `turbo.json` with proper task dependencies and caching
+
+**Bun Support**: Several packages now include:
+- `bunfig.toml` - Bun configuration
+- Bun-specific test files for compatibility testing
 
 ### Code Quality Standards
 
@@ -137,3 +177,22 @@ export class CalculatorService {
 3. Follow existing package structure when creating new packages
 4. Ensure all packages build successfully before committing
 5. Use changesets for version management when making changes
+
+### Recent Breaking Changes
+
+**Pino Logger v9.9.x**: The logger methods now require object parameters first, then message string:
+```typescript
+// Old (v9.7.x and below)
+logger.info('message', { data });
+
+// New (v9.9.x)
+logger.info({ data }, 'message');
+```
+
+### Notes for AI Assistants
+
+- The repository focuses on core distributed systems utilities
+- Many specialized packages have been moved to separate repositories for better maintainability
+- Bun support is being actively added across packages
+- TypeScript versions may vary slightly between packages (5.8.3 - 5.9.2)
+- When fixing compilation errors after dependency updates, check for breaking changes in logger libraries (especially Pino)

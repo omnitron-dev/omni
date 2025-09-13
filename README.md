@@ -3,17 +3,18 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Turborepo](https://img.shields.io/badge/maintained%20with-turborepo-cc00ff.svg)](https://turbo.build/)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8.3-blue)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8.3--5.9.2-blue)](https://www.typescriptlang.org/)
 [![Yarn](https://img.shields.io/badge/yarn-4.9.2-2C8EBB)](https://yarnpkg.com/)
+[![Bun](https://img.shields.io/badge/bun-compatible-f472b6)](https://bun.sh/)
 
-A comprehensive TypeScript monorepo containing libraries for building distributed systems, data processing, and blockchain interaction.
+A comprehensive TypeScript monorepo containing libraries for building distributed systems and data processing applications.
 
 ## 🎯 Vision
 
 DevGrid provides a suite of production-ready TypeScript packages for building scalable, distributed applications with focus on:
 - **Real-time Communication** - WebSocket-based RPC and event streaming
-- **Reliable Messaging** - Redis-backed message queues with guarantees
 - **Data Processing** - Efficient serialization and buffer manipulation
+- **Cross-Runtime Support** - Works with both Node.js and Bun
 - **Developer Experience** - Type safety, great APIs, and comprehensive docs
 
 ## 📦 Packages
@@ -26,6 +27,7 @@ Essential utilities and helper functions for TypeScript/JavaScript projects.
 - Object manipulation (omit, entries, keys, values)
 - Type predicates and guards
 - Data structures (ListBuffer, TimedMap)
+- ✅ Bun compatible
 
 #### [@devgrid/async-emitter](packages/async-emitter)
 Advanced asynchronous event emitter with multiple emission patterns.
@@ -33,6 +35,7 @@ Advanced asynchronous event emitter with multiple emission patterns.
 - Reduce patterns for event accumulation
 - Concurrency control with p-limit
 - Promise-based event handling
+- ✅ Bun compatible
 
 #### [@devgrid/smartbuffer](packages/smartbuffer)
 Enhanced binary data manipulation based on ByteBuffer.js.
@@ -40,6 +43,17 @@ Enhanced binary data manipulation based on ByteBuffer.js.
 - Support for various data types (int8-64, float, double, varint)
 - Big-endian and little-endian support
 - String encoding/decoding utilities
+- ✅ Bun compatible
+
+### Data Processing
+
+#### [@devgrid/messagepack](packages/messagepack)
+High-performance MessagePack serialization with TypeScript support.
+- Full MessagePack specification support
+- Custom type extensions
+- Efficient binary serialization
+- Stream processing capabilities
+- ✅ Bun compatible
 
 ### Distributed Systems
 
@@ -50,6 +64,7 @@ WebSocket-based distributed systems framework for building microservices.
 - Service discovery via Redis
 - Automatic reconnection and versioning
 - Streaming support for large data transfers
+- ✅ Bun compatible with test coverage
 
 #### [@devgrid/netron-nest](packages/netron-nest)
 NestJS integration for Netron framework.
@@ -58,38 +73,11 @@ NestJS integration for Netron framework.
 - Module configuration
 - Health checks and graceful shutdown
 
-### Message Queue & Notifications
-
-#### [@devgrid/rotif](packages/rotif)
-Redis-based reliable notification system with advanced features.
-- Guaranteed message delivery
-- Dead Letter Queue (DLQ) support
-- Retry mechanisms with exponential backoff
-- Consumer groups for horizontal scaling
-- Delayed message delivery
-- Middleware hooks system
-
-#### [@devgrid/rotif-nest](packages/rotif-nest)
-NestJS integration for Rotif messaging system.
-- Decorator-based message handlers
-- Exception filters and interceptors
-- Health indicators
-- Async module configuration
-
-### Data Processing
-
-#### [@devgrid/messagepack](packages/messagepack)
-High-performance MessagePack serialization with TypeScript support.
-- Full MessagePack specification support
-- Custom type extensions
-- Efficient binary serialization
-- Stream processing capabilities
-
 ## 🚀 Getting Started
 
 ### Prerequisites
 
-- Node.js >= 22
+- Node.js >= 22 or Bun >= 1.0
 - Yarn 4.9.2
 
 ### Installation
@@ -130,7 +118,7 @@ yarn cleanup
 ```bash
 # Run commands for specific package
 yarn workspace @devgrid/netron test
-yarn workspace @devgrid/rotif build
+yarn workspace @devgrid/common build
 
 # Add dependencies to specific package
 yarn workspace @devgrid/common add lodash
@@ -151,21 +139,20 @@ devgrid/
 │   ├── smartbuffer/   # Binary data handling
 │   ├── messagepack/   # Serialization
 │   ├── netron/        # Distributed framework
-│   ├── netron-nest/   # NestJS integration
-│   ├── rotif/         # Message queue
-│   └── rotif-nest/    # NestJS integration
+│   └── netron-nest/   # NestJS integration
 ├── scripts/           # Build and utility scripts
+├── experiments/       # Experimental code and docs
 ├── .changeset/        # Version management
 └── turbo.json        # Turborepo configuration
 ```
 
 ### Technology Stack
 
-- **Language**: TypeScript 5.8.3 with strict mode
-- **Runtime**: Node.js 22+
+- **Language**: TypeScript 5.8.3 - 5.9.2 with strict mode
+- **Runtime**: Node.js 22+ and Bun 1.0+
 - **Build System**: Turborepo for monorepo orchestration
 - **Package Manager**: Yarn 4.9.2 with workspaces
-- **Testing**: Jest with ts-jest
+- **Testing**: Jest 30.x with ts-jest
 - **Linting**: ESLint v9 with flat config
 - **Formatting**: Prettier
 - **Versioning**: Changesets
@@ -175,8 +162,9 @@ devgrid/
 1. **Type Safety First** - Full TypeScript with strict typing
 2. **Zero/Minimal Dependencies** - Keep packages lightweight
 3. **Performance Focused** - Optimized for production use
-4. **Developer Experience** - Clear APIs and comprehensive docs
-5. **Modular Architecture** - Use only what you need
+4. **Cross-Runtime Support** - Works with Node.js and Bun
+5. **Developer Experience** - Clear APIs and comprehensive docs
+6. **Modular Architecture** - Use only what you need
 
 ## 📚 Documentation
 
@@ -187,7 +175,7 @@ Each package contains detailed documentation:
 - [SmartBuffer Guide](packages/smartbuffer/README.md)
 - [MessagePack Guide](packages/messagepack/README.md)
 - [Netron Framework Guide](packages/netron/README.md)
-- [Rotif Messaging Guide](packages/rotif/README.md)
+- [Netron-Nest Integration Guide](packages/netron-nest/README.md)
 
 ## 🔧 Common Use Cases
 
@@ -208,22 +196,6 @@ const netron = await Netron.create({ listenPort: 8080 });
 await netron.peer.exposeService(new UserService());
 ```
 
-### Reliable Message Processing
-
-```typescript
-import { NotificationManager } from '@devgrid/rotif';
-
-const manager = new NotificationManager({
-  redis: 'redis://localhost:6379',
-  maxRetries: 3
-});
-
-await manager.subscribe('orders.*', async (msg) => {
-  await processOrder(msg.payload);
-  await msg.ack();
-});
-```
-
 ### Efficient Data Serialization
 
 ```typescript
@@ -232,6 +204,23 @@ import { encode, decode } from '@devgrid/messagepack';
 const data = { user: 'John', scores: [1, 2, 3] };
 const encoded = encode(data); // Buffer
 const decoded = decode(encoded); // Original data
+```
+
+### Advanced Event Handling
+
+```typescript
+import { AsyncEventEmitter } from '@devgrid/async-emitter';
+
+const emitter = new AsyncEventEmitter();
+
+// Sequential processing
+await emitter.emitSeq('process', data);
+
+// Parallel processing with concurrency limit
+await emitter.emitParallel('process', data, { concurrency: 5 });
+
+// Reduce pattern for aggregation
+const result = await emitter.emitReduce('calculate', 0, (acc, val) => acc + val);
 ```
 
 ## 🤝 Contributing
@@ -255,10 +244,19 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 ## 📈 Roadmap
 
 - [ ] gRPC transport for Netron
-- [ ] Kafka adapter for Rotif
 - [ ] Browser bundle optimizations
 - [ ] Performance benchmarks suite
 - [ ] Additional NestJS integrations
+- [ ] WebAssembly support for data processing
+- [ ] Deno compatibility
+
+## 🔄 Recently Moved Packages
+
+The following packages have been moved to separate repositories for better maintainability:
+
+- **@devgrid/rotif** - Redis-based reliable notification system → [Separate monorepo](https://github.com/d-e-v-grid/rotif)
+- **@devgrid/bitcoin-core** - Bitcoin Core RPC client → [Separate repository](https://github.com/d-e-v-grid/bitcoin-core)
+- **@devgrid/onix** - Infrastructure orchestration (discontinued)
 
 ## 📄 License
 

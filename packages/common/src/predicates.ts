@@ -68,15 +68,35 @@ export const isBuffer = (obj: any): boolean =>
 
 // Check if the value is a plain object
 export const isPlainObject = (value: any): boolean => {
-  if (!(value != null && typeof value === "object") || getTag(value) !== "[object Object]") {
+  // Early return for null/undefined and non-objects
+  if (!value || typeof value !== "object") {
     return false;
   }
+  
+  // Get the prototype
   const proto = Object.getPrototypeOf(value);
+  
+  // Objects created with Object.create(null) are plain objects
   if (proto === null) {
     return true;
   }
-  const Ctor = hasOwnProperty.call(proto, "constructor") && proto.constructor;
-  return typeof Ctor === "function" && Ctor instanceof Ctor && funcToString.call(Ctor) === objectCtorString;
+  
+  // Check if it has Object.prototype as its direct prototype or
+  // if its prototype is Object.create(null)
+  const hasObjectPrototype = 
+    proto === Object.prototype ||
+    Object.getPrototypeOf(proto) === null;
+  
+  if (!hasObjectPrototype) {
+    return false;
+  }
+  
+  // Use toString to check the internal [[Class]]
+  const stringTag = objectProto.toString.call(value);
+  
+  // Return true only if it's tagged as [object Object]
+  // This will exclude Arguments, Arrays, and other built-in types
+  return stringTag === "[object Object]";
 };
 
 // Checks whether `field` is a field owned by `object`.

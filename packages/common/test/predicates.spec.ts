@@ -122,10 +122,97 @@ describe("predicates", () => {
     });
 
     it("should check plain objects", () => {
+      // Basic plain objects
       expect(isPlainObject({})).toBe(true);
+      expect(isPlainObject({ key: 'value' })).toBe(true);
+      expect(isPlainObject({ key: new Date() })).toBe(true);
+      expect(isPlainObject(new Object())).toBe(true);
       expect(isPlainObject(Object.create(null))).toBe(true);
+      expect(isPlainObject({ nested: { key: true } })).toBe(true);
+      expect(isPlainObject({ [Symbol('tag')]: 'A' })).toBe(true);
+      
+      // Objects with various properties
+      const objWithGetter = Object.create(null);
+      Object.defineProperty(objWithGetter, 'prop', {
+        get() { return 42; }
+      });
+      expect(isPlainObject(objWithGetter)).toBe(true);
+      
+      // Proxy objects
+      expect(isPlainObject(new Proxy({}, {}))).toBe(true);
+      expect(isPlainObject(new Proxy(Object.create(null), {}))).toBe(true);
+      
+      // NOT plain objects - Arrays and typed arrays
       expect(isPlainObject([])).toBe(false);
-      expect(isPlainObject(new class Test { })).toBe(false);
+      expect(isPlainObject([1, 2, 3])).toBe(false);
+      expect(isPlainObject(new Uint8Array([1]))).toBe(false);
+      expect(isPlainObject(new Int32Array([1]))).toBe(false);
+      expect(isPlainObject(Buffer.from('ABC'))).toBe(false);
+      
+      // NOT plain objects - Built-in objects
+      expect(isPlainObject(new Date())).toBe(false);
+      expect(isPlainObject(new Map())).toBe(false);
+      expect(isPlainObject(new Set())).toBe(false);
+      expect(isPlainObject(new WeakMap())).toBe(false);
+      expect(isPlainObject(new WeakSet())).toBe(false);
+      expect(isPlainObject(new RegExp('test'))).toBe(false);
+      expect(isPlainObject(/test/)).toBe(false);
+      expect(isPlainObject(new Error('test'))).toBe(false);
+      expect(isPlainObject(Promise.resolve({}))).toBe(false);
+      
+      // NOT plain objects - Functions and classes
+      expect(isPlainObject(() => {})).toBe(false);
+      expect(isPlainObject(function() {})).toBe(false);
+      expect(isPlainObject(async () => {})).toBe(false);
+      expect(isPlainObject(function* () {})).toBe(false);
+      expect(isPlainObject(async function* () {})).toBe(false);
+      class Test {}
+      expect(isPlainObject(Test)).toBe(false);
+      expect(isPlainObject(new Test())).toBe(false);
+      expect(isPlainObject(new (class Cls {}))).toBe(false);
+      
+      // NOT plain objects - Primitives
+      expect(isPlainObject(null)).toBe(false);
+      expect(isPlainObject(undefined)).toBe(false);
+      expect(isPlainObject(10)).toBe(false);
+      expect(isPlainObject('hello')).toBe(false);
+      expect(isPlainObject(true)).toBe(false);
+      expect(isPlainObject(false)).toBe(false);
+      expect(isPlainObject(Symbol('test'))).toBe(false);
+      expect(isPlainObject(BigInt(123))).toBe(false);
+      
+      // NOT plain objects - Object.create with prototype
+      const proto = { a: 1 };
+      expect(isPlainObject(Object.create(proto))).toBe(false);
+      
+      // NOT plain objects - global objects
+      if (typeof globalThis !== 'undefined') {
+        expect(isPlainObject(globalThis)).toBe(false);
+      }
+      
+      // Objects with Symbol.toStringTag
+      const objWithTag = {};
+      Object.defineProperty(objWithTag, Symbol.toStringTag, {
+        value: 'CustomObject'
+      });
+      // Objects with custom Symbol.toStringTag are not considered plain objects
+      // This aligns with es-toolkit and lodash behavior
+      expect(isPlainObject(objWithTag)).toBe(false);
+      
+      // Arguments object
+      (function(...args: any[]) {
+        expect(isPlainObject(arguments)).toBe(false);
+      })(1, 2, 3);
+      
+      // DOM-like objects (if available)
+      if (typeof document !== 'undefined') {
+        expect(isPlainObject(document.createElement('div'))).toBe(false);
+      }
+      
+      // String and Number wrapper objects
+      expect(isPlainObject(new String('test'))).toBe(false);
+      expect(isPlainObject(new Number(42))).toBe(false);
+      expect(isPlainObject(new Boolean(true))).toBe(false);
     });
 
     it("should check property ownership", () => {

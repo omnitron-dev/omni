@@ -1,10 +1,25 @@
 import { Buffer } from 'buffer';
-import typeOf from 'type-detect';
-import { isPlainObject } from 'es-toolkit';
-import { isBuffer } from '@devgrid/common';
 import { SmartBuffer } from '@devgrid/smartbuffer';
+import { isBuffer, isPlainObject } from '@devgrid/common';
 
 import { EncoderInfo, EncodeFunction } from './types';
+
+/**
+ * Get a human-readable type name for a value.
+ * Replaces type-detect library with a lightweight implementation.
+ */
+const getType = (value: any): string => {
+  if (value === null) return 'null';
+  if (value === undefined) return 'undefined';
+
+  const type = typeof value;
+  if (type !== 'object') return type;
+
+  // Use Object.prototype.toString for more specific object types
+  const stringTag = Object.prototype.toString.call(value);
+  const match = stringTag.match(/\[object (\w+)\]/);
+  return match ? match[1].toLowerCase() : 'object';
+};
 
 const encodeString = (x: any, buf: SmartBuffer) => {
   const len = Buffer.byteLength(x);
@@ -182,7 +197,7 @@ export default class Encoder {
               return;
             }
           }
-          throw new Error(`Not supported: ${typeOf(x)}`);
+          throw new Error(`Not supported: ${getType(x)}`);
         }
       }
     }

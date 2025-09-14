@@ -1,11 +1,11 @@
 import { Test } from '@nestjs/testing';
-import { Netron, NetronOptions } from '@devgrid/netron';
+import { Netron, NetronOptions } from '@omnitron-dev/netron';
 import { Reflector, DiscoveryService } from '@nestjs/core';
 
 import { NETRON_OPTIONS } from './constants';
 import { NetronService } from './netron.service';
 
-jest.mock('@devgrid/netron');
+jest.mock('@omnitron-dev/netron');
 
 describe('NetronService', () => {
   let netronService: NetronService;

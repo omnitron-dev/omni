@@ -1,6 +1,6 @@
 import { WebSocket } from 'ws';
 import { jest } from '@jest/globals';
-import { delay } from '@devgrid/common';
+import { delay } from '@omnitron-dev/common';
 
 import { Netron, Packet, RemotePeer, createStreamPacket, NetronReadableStream, NetronWritableStream } from '../dist';
 

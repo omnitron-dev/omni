@@ -4,7 +4,7 @@ import { Redis } from 'ioredis';
 import { randomUUID } from 'node:crypto';
 import { IncomingMessage } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
-import { EventEmitter } from '@devgrid/eventemitter';
+import { EventEmitter } from '@omnitron-dev/eventemitter';
 
 import { NetronOptions } from './types';
 import { LocalPeer } from './local-peer';

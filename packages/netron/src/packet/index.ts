@@ -1,5 +1,5 @@
 import { Buffer } from 'buffer';
-import { SmartBuffer } from '@devgrid/smartbuffer';
+import { SmartBuffer } from '@omnitron-dev/smartbuffer';
 
 import { Packet } from './packet';
 import { serializer } from './serializer';

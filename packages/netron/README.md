@@ -1,6 +1,6 @@
-# @devgrid/netron
+# @omnitron-dev/netron
 
-[![npm version](https://img.shields.io/npm/v/@devgrid/netron.svg)](https://www.npmjs.com/package/@devgrid/netron)
+[![npm version](https://img.shields.io/npm/v/@omnitron-dev/netron.svg)](https://www.npmjs.com/package/@omnitron-dev/netron)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9.2-blue)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20.19.1-brightgreen)](https://nodejs.org)
@@ -57,16 +57,16 @@ A powerful TypeScript framework for building distributed systems with WebSocket-
 
 ```bash
 # npm
-npm install @devgrid/netron
+npm install @omnitron-dev/netron
 
 # yarn
-yarn add @devgrid/netron
+yarn add @omnitron-dev/netron
 
 # pnpm
-pnpm add @devgrid/netron
+pnpm add @omnitron-dev/netron
 
 # bun
-bun add @devgrid/netron
+bun add @omnitron-dev/netron
 ```
 
 ## Runtime Compatibility
@@ -129,7 +129,7 @@ The package provides proper exports for different module systems:
 
 ```typescript
 // server.ts
-import { Netron, Service, Public } from '@devgrid/netron';
+import { Netron, Service, Public } from '@omnitron-dev/netron';
 
 @Service('calculator@1.0.0')
 class CalculatorService {
@@ -163,7 +163,7 @@ console.log('Server running on ws://localhost:8080');
 
 ```typescript
 // client.ts
-import { Netron } from '@devgrid/netron';
+import { Netron } from '@omnitron-dev/netron';
 
 const client = await Netron.create();
 const peer = await client.connect('ws://localhost:8080');
@@ -189,7 +189,7 @@ console.log(`Version: ${calc.version}`); // Prints "1.0.0"
 Services are defined using decorators for clean, declarative syntax:
 
 ```typescript
-import { Service, Public } from '@devgrid/netron';
+import { Service, Public } from '@omnitron-dev/netron';
 
 @Service('userService@1.0.0')
 export class UserService {
@@ -1302,7 +1302,7 @@ class GracefulShutdown {
 ### Unit Testing
 
 ```typescript
-import { Netron, Service, Public } from '@devgrid/netron';
+import { Netron, Service, Public } from '@omnitron-dev/netron';
 
 describe('UserService', () => {
   let netron: Netron;
@@ -1501,8 +1501,8 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 ```bash
 # Clone the repository
-git clone https://github.com/d-e-v-grid/devgrid.git
-cd devgrid/packages/netron
+git clone https://github.com/omnitron-dev/omni.git
+cd omni/packages/netron
 
 # Install dependencies
 npm install
@@ -1524,11 +1524,11 @@ npm run build
 
 ## License
 
-MIT © DevGrid
+MIT © Omnitron
 
 ## Links
 
-- [GitHub Repository](https://github.com/d-e-v-grid/devgrid/tree/main/packages/netron)
-- [npm Package](https://www.npmjs.com/package/@devgrid/netron)
-- [Issue Tracker](https://github.com/d-e-v-grid/devgrid/issues)
-- [Changelog](https://github.com/d-e-v-grid/devgrid/blob/main/packages/netron/CHANGELOG.md)
+- [GitHub Repository](https://github.com/omnitron-dev/omni/tree/main/packages/netron)
+- [npm Package](https://www.npmjs.com/package/@omnitron-dev/netron)
+- [Issue Tracker](https://github.com/omnitron-dev/omni/issues)
+- [Changelog](https://github.com/omnitron-dev/omni/blob/main/packages/netron/CHANGELOG.md)

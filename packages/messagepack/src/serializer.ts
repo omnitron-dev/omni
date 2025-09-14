@@ -1,5 +1,5 @@
 // Start of Selection
-import { SmartBuffer } from '@devgrid/smartbuffer';
+import { SmartBuffer } from '@omnitron-dev/smartbuffer';
 
 import Encoder from './encoder';
 import Decoder from './decoder';

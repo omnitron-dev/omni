@@ -116,10 +116,10 @@ jobs:
 
       - name: Run tests for core packages
         run: |
-          yarn workspace @devgrid/common test
-          yarn workspace @devgrid/eventemitter test
-          yarn workspace @devgrid/smartbuffer test
-          yarn workspace @devgrid/messagepack test
+          yarn workspace @omnitron-dev/common test
+          yarn workspace @omnitron-dev/eventemitter test
+          yarn workspace @omnitron-dev/smartbuffer test
+          yarn workspace @omnitron-dev/messagepack test
         env:
           NODE_OPTIONS: --max-old-space-size=4096
 
@@ -184,10 +184,10 @@ jobs:
           echo "Checking build artifacts..."
           for package in common eventemitter smartbuffer messagepack; do
             if [ ! -d "packages/$package/dist" ]; then
-              echo "❌ Missing dist directory for @devgrid/$package"
+              echo "❌ Missing dist directory for @omnitron-dev/$package"
               exit 1
             fi
-            echo "✅ @devgrid/$package built successfully"
+            echo "✅ @omnitron-dev/$package built successfully"
           done
 
   ci-summary:

@@ -1,5 +1,5 @@
 import { Buffer } from 'buffer';
-import { SmartBuffer } from '@devgrid/smartbuffer';
+import { SmartBuffer } from '@omnitron-dev/smartbuffer';
 
 export type EncodeFunction = (obj: any, buf: SmartBuffer) => any;
 export type DecodeFunction = (buf: SmartBuffer) => any;

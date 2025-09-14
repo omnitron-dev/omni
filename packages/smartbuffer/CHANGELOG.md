@@ -1,4 +1,4 @@
-# @devgrid/smartbuffer
+# @omnitron-dev/smartbuffer
 
 ## 0.2.3
 

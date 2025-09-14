@@ -1,6 +1,6 @@
-# @devgrid/common
+# @omnitron-dev/common
 
-[![npm version](https://img.shields.io/npm/v/@devgrid/common.svg)](https://www.npmjs.com/package/@devgrid/common)
+[![npm version](https://img.shields.io/npm/v/@omnitron-dev/common.svg)](https://www.npmjs.com/package/@omnitron-dev/common)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9.2-blue)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org)
@@ -42,13 +42,13 @@ A comprehensive utility library providing essential JavaScript/TypeScript functi
 ## Installation
 
 ```bash
-npm install @devgrid/common
+npm install @omnitron-dev/common
 # or
-yarn add @devgrid/common
+yarn add @omnitron-dev/common
 # or
-pnpm add @devgrid/common
+pnpm add @omnitron-dev/common
 # or (for Bun)
-bun add @devgrid/common
+bun add @omnitron-dev/common
 ```
 
 ## Runtime Compatibility
@@ -84,7 +84,7 @@ The package provides both CommonJS and ESM builds:
 ## Quick Start
 
 ```typescript
-import { delay, isString, omit, retry } from '@devgrid/common';
+import { delay, isString, omit, retry } from '@omnitron-dev/common';
 
 // Use type predicates
 if (isString(value)) {
@@ -112,7 +112,7 @@ const data = await retry(
 Basic utility functions for common operations.
 
 ```typescript
-import { noop, identity, truly, falsely, arrify } from '@devgrid/common';
+import { noop, identity, truly, falsely, arrify } from '@omnitron-dev/common';
 
 // noop - A function that does nothing (useful for default callbacks)
 button.onClick = noop;
@@ -155,7 +155,7 @@ import {
   isAsyncGenerator, isClass, isNan,
   isPropertyOwned, isPropertyDefined,
   getTag, getTagSimple
-} from '@devgrid/common';
+} from '@omnitron-dev/common';
 
 // Basic type checks with type narrowing
 function processValue(value: unknown) {
@@ -228,7 +228,7 @@ isPropertyDefined(obj, 'a');          // true
 isPropertyDefined(obj, 'toString');   // true (includes inherited)
 
 // Platform checks
-import { isWindows, linux, darwin, freebsd, openbsd, sunos, aix, isNodejs } from '@devgrid/common';
+import { isWindows, linux, darwin, freebsd, openbsd, sunos, aix, isNodejs } from '@omnitron-dev/common';
 
 if (isWindows) {
   // Windows-specific code
@@ -248,7 +248,7 @@ import {
   promisify, promisifyAll, callbackify, nodeify,
   universalify, universalifyFromPromise,
   finally as finallyUtil, try as tryUtil
-} from '@devgrid/common';
+} from '@omnitron-dev/common';
 
 // defer - Create a deferred promise
 const deferred = defer<string>();
@@ -386,7 +386,7 @@ const result = await tryUtil(() => JSON.parse(jsonString));
 Functions for working with objects and their properties.
 
 ```typescript
-import { omit, entries, keys, values } from '@devgrid/common';
+import { omit, entries, keys, values } from '@omnitron-dev/common';
 
 // omit - Create object copy without specified keys
 const user = {
@@ -480,7 +480,7 @@ values(instance, { enumOnly: false });  // Includes non-enumerable values
 Specialized data structures for common use cases.
 
 ```typescript
-import { ListBuffer, TimedMap } from '@devgrid/common';
+import { ListBuffer, TimedMap } from '@omnitron-dev/common';
 
 // ListBuffer - Efficient linked list implementation
 const buffer = new ListBuffer<string>();
@@ -671,7 +671,7 @@ cache.forEach((value, key, map) => {
 ### Custom Retry Strategies
 
 ```typescript
-import { retry, delay } from '@devgrid/common';
+import { retry, delay } from '@omnitron-dev/common';
 
 // Custom retry with jitter
 const fetchWithJitter = async (url: string) => {
@@ -723,7 +723,7 @@ const resilientFetch = async (url: string) => {
 ### Type-Safe Object Filtering
 
 ```typescript
-import { omit, entries, isString, isNumber } from '@devgrid/common';
+import { omit, entries, isString, isNumber } from '@omnitron-dev/common';
 
 // Type-safe configuration filtering
 interface Config {
@@ -756,7 +756,7 @@ function removeNullish<T extends object>(obj: T): T {
 ### Advanced Timing Patterns
 
 ```typescript
-import { delay, timeout, defer, TimedMap } from '@devgrid/common';
+import { delay, timeout, defer, TimedMap } from '@omnitron-dev/common';
 
 // Polling with timeout
 async function pollEndpoint(url: string, interval = 1000, maxTime = 30000) {
@@ -879,10 +879,10 @@ const data = await retry(
 1. **Tree Shaking** - Import only what you need
    ```typescript
    // Good - only imports what's needed
-   import { delay, retry } from '@devgrid/common';
+   import { delay, retry } from '@omnitron-dev/common';
    
    // Avoid - imports entire library
-   import * as common from '@devgrid/common';
+   import * as common from '@omnitron-dev/common';
    ```
 
 2. **Efficient Type Checking** - Predicates use optimal checks
@@ -910,7 +910,7 @@ Performance characteristics:
 ### Error Handling
 
 ```typescript
-import { retry, isError, timeout } from '@devgrid/common';
+import { retry, isError, timeout } from '@omnitron-dev/common';
 
 // Always handle errors in retry operations
 const safeRetry = async <T>(operation: () => Promise<T>) => {
@@ -990,10 +990,10 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 
 ## License
 
-MIT © DevGrid
+MIT © Omnitron
 
 ## Links
 
-- [GitHub Repository](https://github.com/d-e-v-grid/devgrid/tree/main/packages/common)
-- [npm Package](https://www.npmjs.com/package/@devgrid/common)
-- [Issue Tracker](https://github.com/d-e-v-grid/devgrid/issues)
+- [GitHub Repository](https://github.com/omnitron-dev/omni/tree/main/packages/common)
+- [npm Package](https://www.npmjs.com/package/@omnitron-dev/common)
+- [Issue Tracker](https://github.com/omnitron-dev/omni/issues)

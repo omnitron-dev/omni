@@ -1,5 +1,5 @@
-import { SmartBuffer } from '@devgrid/smartbuffer';
-import { Serializer, registerCommonTypesFor } from '@devgrid/messagepack';
+import { SmartBuffer } from '@omnitron-dev/smartbuffer';
+import { Serializer, registerCommonTypesFor } from '@omnitron-dev/messagepack';
 
 import { Reference } from '../reference';
 import { Definition } from '../definition';

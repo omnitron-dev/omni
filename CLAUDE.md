@@ -105,11 +105,29 @@ yarn workspace @devgrid/[package-name] test path/to/test.spec.ts
 - Module configuration
 - Health checks and graceful shutdown
 
+**@devgrid/rotif** - Redis-based reliable notification and messaging system
+- Exactly-once processing with deduplication
+- Configurable retry mechanisms with exponential backoff
+- Delayed message delivery and scheduling
+- Dead Letter Queue (DLQ) for failed messages
+- Built-in statistics and monitoring
+- Extensible middleware system
+- Consumer groups for horizontal scaling
+- Full TypeScript support
+
+**@devgrid/rotif-nest** - NestJS integration for Rotif messaging
+- Seamless NestJS DI integration
+- Decorator-based message handlers (@RotifSubscribe)
+- Automatic dependency injection
+- Health checks and monitoring
+- Custom exception filters
+- Built-in interceptors for logging and metrics
+- NestJS-style middleware support
+- Auto-discovery of decorated handlers
+
 ### Recently Moved/Removed Packages
 
 The following packages have been moved to separate repositories:
-- **@devgrid/rotif** - Redis-based reliable notification system (moved to separate monorepo)
-- **@devgrid/rotif-nest** - NestJS integration for Rotif (moved with rotif)
 - **@devgrid/bitcoin-core** - Bitcoin Core RPC client (moved to separate repo)
 - **@devgrid/onix** - Infrastructure orchestration (removed)
 - **omnitron** codebase (removed)
@@ -139,7 +157,19 @@ export class CalculatorService {
 }
 ```
 
-**Event-Driven Architecture**: Netron uses event-driven patterns extensively
+**Event-Driven Architecture**: Both Netron and Rotif use event-driven patterns extensively
+
+**Message Handler Definition**: Use decorators for declarative message handling with Rotif
+```typescript
+@Injectable()
+export class OrderService {
+  @RotifSubscribe('orders.created')
+  async handleOrderCreated(message: RotifMessage) {
+    await this.processOrder(message.payload);
+    await message.ack();
+  }
+}
+```
 
 **Type Safety**: All packages maintain strict TypeScript types with proper exports
 
@@ -194,7 +224,7 @@ logger.info({ data }, 'message');
 ### Notes for AI Assistants
 
 - The repository focuses on core distributed systems utilities
-- Many specialized packages have been moved to separate repositories for better maintainability
+- Rotif and Rotif-Nest packages have been restored to the monorepo for Redis-based messaging functionality
 - Bun support is being actively added across packages
 - TypeScript versions may vary slightly between packages (5.8.3 - 5.9.2)
 - When fixing compilation errors after dependency updates, check for breaking changes in logger libraries (especially Pino)

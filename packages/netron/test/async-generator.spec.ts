@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 
-import { delay } from '@devgrid/common';
+import { delay } from '@omnitron-dev/common';
 
 import { Netron, Public, Service, NetronReadableStream } from '../dist';
 

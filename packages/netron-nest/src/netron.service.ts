@@ -1,4 +1,4 @@
-import { Netron, NetronOptions } from '@devgrid/netron';
+import { Netron, NetronOptions } from '@omnitron-dev/netron';
 import { Reflector, DiscoveryService } from '@nestjs/core';
 import { Inject, Logger, Injectable, OnApplicationShutdown, OnApplicationBootstrap } from '@nestjs/common';
 

@@ -1,6 +1,6 @@
-# @devgrid/smartbuffer
+# @omnitron-dev/smartbuffer
 
-[![npm version](https://img.shields.io/npm/v/@devgrid/smartbuffer.svg)](https://www.npmjs.com/package/@devgrid/smartbuffer)
+[![npm version](https://img.shields.io/npm/v/@omnitron-dev/smartbuffer.svg)](https://www.npmjs.com/package/@omnitron-dev/smartbuffer)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.3-blue)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org)
@@ -41,17 +41,17 @@ An enhanced and modernized version of [ByteBuffer.js](https://github.com/protobu
 ## Installation
 
 ```bash
-npm install @devgrid/smartbuffer
+npm install @omnitron-dev/smartbuffer
 # or
-yarn add @devgrid/smartbuffer
+yarn add @omnitron-dev/smartbuffer
 # or
-pnpm add @devgrid/smartbuffer
+pnpm add @omnitron-dev/smartbuffer
 ```
 
 ## Quick Start
 
 ```typescript
-import { SmartBuffer } from '@devgrid/smartbuffer';
+import { SmartBuffer } from '@omnitron-dev/smartbuffer';
 
 // Create a new buffer
 const buffer = new SmartBuffer();
@@ -320,7 +320,7 @@ new SmartBuffer(capacity?: number, noAssert?: boolean)
 ### Custom Encoding/Decoding
 
 ```typescript
-import { SmartBuffer } from '@devgrid/smartbuffer';
+import { SmartBuffer } from '@omnitron-dev/smartbuffer';
 
 // Custom data structure
 interface Packet {
@@ -366,7 +366,7 @@ const packet = buffer.readPacket();
 ### Streaming Operations
 
 ```typescript
-import { SmartBuffer } from '@devgrid/smartbuffer';
+import { SmartBuffer } from '@omnitron-dev/smartbuffer';
 import { Readable, Writable } from 'stream';
 
 // Stream writer
@@ -467,7 +467,7 @@ class FlagBuffer extends SmartBuffer {
 ### Memory-Mapped Operations
 
 ```typescript
-import { SmartBuffer } from '@devgrid/smartbuffer';
+import { SmartBuffer } from '@omnitron-dev/smartbuffer';
 
 // Efficient memory views
 const buffer = new SmartBuffer(1024);
@@ -497,7 +497,7 @@ console.log(buffer.readInt32LE()); // 999
 SmartBuffer is written in TypeScript and provides comprehensive type definitions:
 
 ```typescript
-import { SmartBuffer } from '@devgrid/smartbuffer';
+import { SmartBuffer } from '@omnitron-dev/smartbuffer';
 
 // Type-safe buffer operations
 interface Message {
@@ -789,12 +789,12 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 
 ## License
 
-MIT © DevGrid
+MIT © Omnitron
 
 Based on [ByteBuffer.js](https://github.com/protobufjs/bytebuffer.js) by Daniel Wirtz.
 
 ## Links
 
-- [GitHub Repository](https://github.com/d-e-v-grid/devgrid/tree/main/packages/smartbuffer)
-- [npm Package](https://www.npmjs.com/package/@devgrid/smartbuffer)
+- [GitHub Repository](https://github.com/omnitron-dev/omni/tree/main/packages/smartbuffer)
+- [npm Package](https://www.npmjs.com/package/@omnitron-dev/smartbuffer)
 - [ByteBuffer.js](https://github.com/protobufjs/bytebuffer.js) (Original inspiration)

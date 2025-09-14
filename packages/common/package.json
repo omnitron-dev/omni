@@ -1,8 +1,8 @@
 {
-  "name": "@devgrid/common",
+  "name": "@omnitron-dev/common",
   "version": "0.4.3",
   "description": "Some useful primitives",
-  "author": "DevGrid",
+  "author": "Omnitron",
   "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -57,13 +57,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/d-e-v-grid/devgrid.git",
+    "url": "git+https://github.com/omnitron-dev/omni.git",
     "directory": "packages/common"
   },
   "bugs": {
-    "url": "https://github.com/d-e-v-grid/devgrid/issues"
+    "url": "https://github.com/omnitron-dev/omni/issues"
   },
-  "homepage": "https://github.com/d-e-v-grid/devgrid/tree/main/packages/common#readme",
+  "homepage": "https://github.com/omnitron-dev/omni/tree/main/packages/common#readme",
   "dependencies": {
     "@noble/hashes": "2.0.0"
   }

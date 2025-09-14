@@ -1,6 +1,6 @@
 # GitHub Actions Workflows
 
-This directory contains GitHub Actions workflows for the DevGrid monorepo.
+This directory contains GitHub Actions workflows for the Omnitron monorepo.
 
 ## Workflows
 
@@ -16,10 +16,10 @@ Comprehensive CI pipeline that runs:
 **Trigger**: On push/PR when core package files change
 
 Tests individual core packages in parallel:
-- `@devgrid/common`
-- `@devgrid/eventemitter`
-- `@devgrid/smartbuffer`
-- `@devgrid/messagepack`
+- `@omnitron-dev/common`
+- `@omnitron-dev/eventemitter`
+- `@omnitron-dev/smartbuffer`
+- `@omnitron-dev/messagepack`
 
 Features:
 - Matrix strategy for testing on Node.js 20.x and 22.x
@@ -52,10 +52,10 @@ Tests are run on:
 - **Node.js versions**: 20.x, 22.x
 - **Operating System**: Ubuntu latest
 - **Packages covered**:
-  - `@devgrid/common` - Core utilities and helpers
-  - `@devgrid/eventemitter` - Event emitter implementation
-  - `@devgrid/smartbuffer` - Binary buffer operations
-  - `@devgrid/messagepack` - MessagePack serialization
+  - `@omnitron-dev/common` - Core utilities and helpers
+  - `@omnitron-dev/eventemitter` - Event emitter implementation
+  - `@omnitron-dev/smartbuffer` - Binary buffer operations
+  - `@omnitron-dev/messagepack` - MessagePack serialization
 
 ## Running Workflows Locally
 
@@ -79,8 +79,8 @@ act -W .github/workflows/test-core-packages.yml -j test
 Add these badges to your README:
 
 ```markdown
-![CI](https://github.com/d-e-v-grid/devgrid/workflows/CI/badge.svg)
-![Test Core Packages](https://github.com/d-e-v-grid/devgrid/workflows/Test%20Core%20Packages/badge.svg)
+![CI](https://github.com/omnitron-dev/omni/workflows/CI/badge.svg)
+![Test Core Packages](https://github.com/omnitron-dev/omni/workflows/Test%20Core%20Packages/badge.svg)
 ```
 
 ## Troubleshooting

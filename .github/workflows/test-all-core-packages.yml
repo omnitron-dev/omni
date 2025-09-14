@@ -64,23 +64,23 @@ jobs:
       - name: Build all packages
         run: yarn build
 
-      - name: Test @devgrid/common
-        run: yarn workspace @devgrid/common test
+      - name: Test @omnitron-dev/common
+        run: yarn workspace @omnitron-dev/common test
         continue-on-error: true
         id: test-common
 
-      - name: Test @devgrid/eventemitter
-        run: yarn workspace @devgrid/eventemitter test
+      - name: Test @omnitron-dev/eventemitter
+        run: yarn workspace @omnitron-dev/eventemitter test
         continue-on-error: true
         id: test-eventemitter
 
-      - name: Test @devgrid/smartbuffer
-        run: yarn workspace @devgrid/smartbuffer test
+      - name: Test @omnitron-dev/smartbuffer
+        run: yarn workspace @omnitron-dev/smartbuffer test
         continue-on-error: true
         id: test-smartbuffer
 
-      - name: Test @devgrid/messagepack
-        run: yarn workspace @devgrid/messagepack test
+      - name: Test @omnitron-dev/messagepack
+        run: yarn workspace @omnitron-dev/messagepack test
         continue-on-error: true
         id: test-messagepack
 
@@ -93,27 +93,27 @@ jobs:
           echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
           
           if [ "${{ steps.test-common.outcome }}" == "success" ]; then
-            echo "| @devgrid/common | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+            echo "| @omnitron-dev/common | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
           else
-            echo "| @devgrid/common | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+            echo "| @omnitron-dev/common | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
           fi
           
           if [ "${{ steps.test-eventemitter.outcome }}" == "success" ]; then
-            echo "| @devgrid/eventemitter | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+            echo "| @omnitron-dev/eventemitter | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
           else
-            echo "| @devgrid/eventemitter | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+            echo "| @omnitron-dev/eventemitter | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
           fi
           
           if [ "${{ steps.test-smartbuffer.outcome }}" == "success" ]; then
-            echo "| @devgrid/smartbuffer | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+            echo "| @omnitron-dev/smartbuffer | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
           else
-            echo "| @devgrid/smartbuffer | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+            echo "| @omnitron-dev/smartbuffer | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
           fi
           
           if [ "${{ steps.test-messagepack.outcome }}" == "success" ]; then
-            echo "| @devgrid/messagepack | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+            echo "| @omnitron-dev/messagepack | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
           else
-            echo "| @devgrid/messagepack | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+            echo "| @omnitron-dev/messagepack | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Check overall status
@@ -121,19 +121,19 @@ jobs:
         run: |
           failed=0
           if [ "${{ steps.test-common.outcome }}" != "success" ]; then
-            echo "❌ @devgrid/common tests failed"
+            echo "❌ @omnitron-dev/common tests failed"
             failed=1
           fi
           if [ "${{ steps.test-eventemitter.outcome }}" != "success" ]; then
-            echo "❌ @devgrid/eventemitter tests failed"
+            echo "❌ @omnitron-dev/eventemitter tests failed"
             failed=1
           fi
           if [ "${{ steps.test-smartbuffer.outcome }}" != "success" ]; then
-            echo "❌ @devgrid/smartbuffer tests failed"
+            echo "❌ @omnitron-dev/smartbuffer tests failed"
             failed=1
           fi
           if [ "${{ steps.test-messagepack.outcome }}" != "success" ]; then
-            echo "❌ @devgrid/messagepack tests failed"
+            echo "❌ @omnitron-dev/messagepack tests failed"
             failed=1
           fi
           

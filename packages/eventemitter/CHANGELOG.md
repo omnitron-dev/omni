@@ -1,4 +1,4 @@
-# @devgrid/async-emitter
+# @omnitron-dev/async-emitter
 
 ## 0.3.3
 
@@ -6,7 +6,7 @@
 
 - update deps, tests improvements
 - Updated dependencies
-  - @devgrid/common@0.4.3
+  - @omnitron-dev/common@0.4.3
 
 ## 0.3.2
 
@@ -14,14 +14,14 @@
 
 - fix package.json
 - Updated dependencies
-  - @devgrid/common@0.4.2
+  - @omnitron-dev/common@0.4.2
 
 ## 0.3.1
 
 ### Patch Changes
 
 - Updated dependencies
-  - @devgrid/common@0.4.1
+  - @omnitron-dev/common@0.4.1
 
 ## 0.3.0
 
@@ -32,21 +32,21 @@
 ### Patch Changes
 
 - Updated dependencies
-  - @devgrid/common@0.4.0
+  - @omnitron-dev/common@0.4.0
 
 ## 0.2.6
 
 ### Patch Changes
 
 - Updated dependencies
-  - @devgrid/common@0.3.1
+  - @omnitron-dev/common@0.3.1
 
 ## 0.2.5
 
 ### Patch Changes
 
 - Updated dependencies
-  - @devgrid/common@0.3.0
+  - @omnitron-dev/common@0.3.0
 
 ## 0.2.4
 
@@ -54,7 +54,7 @@
 
 - fix deps versions
 - Updated dependencies
-  - @devgrid/common@0.2.2
+  - @omnitron-dev/common@0.2.2
 
 ## 0.2.3
 
@@ -74,7 +74,7 @@
 
 - fix deps versions
 - Updated dependencies
-  - @devgrid/common@0.2.1
+  - @omnitron-dev/common@0.2.1
 
 ## 0.2.0
 
@@ -85,7 +85,7 @@
 ### Patch Changes
 
 - Updated dependencies
-  - @devgrid/common@0.2.0
+  - @omnitron-dev/common@0.2.0
 
 ## 0.1.1
 
@@ -93,7 +93,7 @@
 
 - add initial readme
 - Updated dependencies
-  - @devgrid/common@0.1.1
+  - @omnitron-dev/common@0.1.1
 
 ## 0.1.0
 
@@ -104,4 +104,4 @@
 ### Patch Changes
 
 - Updated dependencies
-  - @devgrid/common@0.1.0
+  - @omnitron-dev/common@0.1.0

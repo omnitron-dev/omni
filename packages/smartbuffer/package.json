@@ -1,8 +1,8 @@
 {
-  "name": "@devgrid/smartbuffer",
+  "name": "@omnitron-dev/smartbuffer",
   "version": "0.2.3",
   "description": "Smart buffer",
-  "author": "DevGrid",
+  "author": "Omnitron",
   "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -48,11 +48,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/d-e-v-grid/devgrid.git",
+    "url": "git+https://github.com/omnitron-dev/omni.git",
     "directory": "packages/smartbuffer"
   },
   "bugs": {
-    "url": "https://github.com/d-e-v-grid/devgrid/issues"
+    "url": "https://github.com/omnitron-dev/omni/issues"
   },
-  "homepage": "https://github.com/d-e-v-grid/devgrid/tree/main/packages/smartbuffer#readme"
+  "homepage": "https://github.com/omnitron-dev/omni/tree/main/packages/smartbuffer#readme"
 }

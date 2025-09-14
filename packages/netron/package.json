@@ -1,8 +1,8 @@
 {
-  "name": "@devgrid/netron",
+  "name": "@omnitron-dev/netron",
   "version": "0.6.5",
   "description": "A powerful TypeScript library for building distributed systems with event bus, streaming capabilities, and remote object invocation. Features WebSocket-based bidirectional communication between Node.js and browser environments, service discovery, and type-safe RPC.",
-  "author": "DevGrid",
+  "author": "Omnitron",
   "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -28,10 +28,10 @@
     "test:all": "npm run test:node && npm run test:bun"
   },
   "dependencies": {
-    "@devgrid/common": "workspace:*",
-    "@devgrid/eventemitter": "workspace:*",
-    "@devgrid/messagepack": "workspace:*",
-    "@devgrid/smartbuffer": "workspace:*",
+    "@omnitron-dev/common": "workspace:*",
+    "@omnitron-dev/eventemitter": "workspace:*",
+    "@omnitron-dev/messagepack": "workspace:*",
+    "@omnitron-dev/smartbuffer": "workspace:*",
     "ioredis": "^5.7.0",
     "pino": "^9.9.5",
     "pino-pretty": "^13.1.1",
@@ -88,13 +88,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/d-e-v-grid/devgrid.git",
+    "url": "git+https://github.com/omnitron-dev/omni.git",
     "directory": "packages/netron"
   },
   "bugs": {
-    "url": "https://github.com/d-e-v-grid/devgrid/issues"
+    "url": "https://github.com/omnitron-dev/omni/issues"
   },
-  "homepage": "https://github.com/d-e-v-grid/devgrid/tree/main/packages/netron#readme",
+  "homepage": "https://github.com/omnitron-dev/omni/tree/main/packages/netron#readme",
   "engines": {
     "node": ">=20.19.1",
     "bun": ">=1.0.0"

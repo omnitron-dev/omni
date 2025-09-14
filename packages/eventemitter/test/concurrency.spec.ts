@@ -389,7 +389,7 @@ describe('EventEmitter - Concurrency with pLimit', () => {
     });
   });
 
-  describe('Integration with pLimit from @devgrid/common', () => {
+  describe('Integration with pLimit from @omnitron-dev/common', () => {
     it('should properly use pLimit function signature', async () => {
       const emitter = new EventEmitter(2);
       const limiter = (emitter as any).limiter;

@@ -1,4 +1,4 @@
-# @devgrid/netron
+# @omnitron-dev/netron
 
 ## 0.6.5
 
@@ -6,10 +6,10 @@
 
 - update deps, tests improvements
 - Updated dependencies
-  - @devgrid/async-emitter@0.3.3
-  - @devgrid/messagepack@0.3.3
-  - @devgrid/smartbuffer@0.2.3
-  - @devgrid/common@0.4.3
+  - @omnitron-dev/async-emitter@0.3.3
+  - @omnitron-dev/messagepack@0.3.3
+  - @omnitron-dev/smartbuffer@0.2.3
+  - @omnitron-dev/common@0.4.3
 
 ## 0.6.4
 
@@ -71,18 +71,18 @@
 
 - fix package.json
 - Updated dependencies
-  - @devgrid/async-emitter@0.3.2
-  - @devgrid/messagepack@0.3.2
-  - @devgrid/common@0.4.2
+  - @omnitron-dev/async-emitter@0.3.2
+  - @omnitron-dev/messagepack@0.3.2
+  - @omnitron-dev/common@0.4.2
 
 ## 0.4.1
 
 ### Patch Changes
 
 - Updated dependencies
-  - @devgrid/common@0.4.1
-  - @devgrid/async-emitter@0.3.1
-  - @devgrid/messagepack@0.3.1
+  - @omnitron-dev/common@0.4.1
+  - @omnitron-dev/async-emitter@0.3.1
+  - @omnitron-dev/messagepack@0.3.1
 
 ## 0.4.0
 
@@ -93,18 +93,18 @@
 ### Patch Changes
 
 - Updated dependencies
-  - @devgrid/async-emitter@0.3.0
-  - @devgrid/messagepack@0.3.0
-  - @devgrid/common@0.4.0
+  - @omnitron-dev/async-emitter@0.3.0
+  - @omnitron-dev/messagepack@0.3.0
+  - @omnitron-dev/common@0.4.0
 
 ## 0.3.1
 
 ### Patch Changes
 
 - Updated dependencies
-  - @devgrid/common@0.3.1
-  - @devgrid/async-emitter@0.2.6
-  - @devgrid/messagepack@0.2.4
+  - @omnitron-dev/common@0.3.1
+  - @omnitron-dev/async-emitter@0.2.6
+  - @omnitron-dev/messagepack@0.2.4
 
 ## 0.3.0
 
@@ -115,9 +115,9 @@
 ### Patch Changes
 
 - Updated dependencies
-  - @devgrid/common@0.3.0
-  - @devgrid/async-emitter@0.2.5
-  - @devgrid/messagepack@0.2.3
+  - @omnitron-dev/common@0.3.0
+  - @omnitron-dev/async-emitter@0.2.5
+  - @omnitron-dev/messagepack@0.2.3
 
 ## 0.2.4
 
@@ -125,24 +125,24 @@
 
 - fix deps versions
 - Updated dependencies
-  - @devgrid/async-emitter@0.2.4
-  - @devgrid/messagepack@0.2.2
-  - @devgrid/smartbuffer@0.2.2
-  - @devgrid/common@0.2.2
+  - @omnitron-dev/async-emitter@0.2.4
+  - @omnitron-dev/messagepack@0.2.2
+  - @omnitron-dev/smartbuffer@0.2.2
+  - @omnitron-dev/common@0.2.2
 
 ## 0.2.3
 
 ### Patch Changes
 
 - Updated dependencies
-  - @devgrid/async-emitter@0.2.3
+  - @omnitron-dev/async-emitter@0.2.3
 
 ## 0.2.2
 
 ### Patch Changes
 
 - Updated dependencies
-  - @devgrid/async-emitter@0.2.2
+  - @omnitron-dev/async-emitter@0.2.2
 
 ## 0.2.1
 
@@ -150,10 +150,10 @@
 
 - fix deps versions
 - Updated dependencies
-  - @devgrid/async-emitter@0.2.1
-  - @devgrid/common@0.2.1
-  - @devgrid/messagepack@0.2.1
-  - @devgrid/smartbuffer@0.2.1
+  - @omnitron-dev/async-emitter@0.2.1
+  - @omnitron-dev/common@0.2.1
+  - @omnitron-dev/messagepack@0.2.1
+  - @omnitron-dev/smartbuffer@0.2.1
 
 ## 0.2.0
 
@@ -164,10 +164,10 @@
 ### Patch Changes
 
 - Updated dependencies
-  - @devgrid/async-emitter@0.2.0
-  - @devgrid/messagepack@0.2.0
-  - @devgrid/smartbuffer@0.2.0
-  - @devgrid/common@0.2.0
+  - @omnitron-dev/async-emitter@0.2.0
+  - @omnitron-dev/messagepack@0.2.0
+  - @omnitron-dev/smartbuffer@0.2.0
+  - @omnitron-dev/common@0.2.0
 
 ## 0.1.1
 
@@ -175,10 +175,10 @@
 
 - add initial readme
 - Updated dependencies
-  - @devgrid/async-emitter@0.1.1
-  - @devgrid/messagepack@0.1.1
-  - @devgrid/smartbuffer@0.1.1
-  - @devgrid/common@0.1.1
+  - @omnitron-dev/async-emitter@0.1.1
+  - @omnitron-dev/messagepack@0.1.1
+  - @omnitron-dev/smartbuffer@0.1.1
+  - @omnitron-dev/common@0.1.1
 
 ## 0.1.0
 
@@ -189,7 +189,7 @@
 ### Patch Changes
 
 - Updated dependencies
-  - @devgrid/async-emitter@0.1.0
-  - @devgrid/messagepack@0.1.0
-  - @devgrid/smartbuffer@0.1.0
-  - @devgrid/common@0.1.0
+  - @omnitron-dev/async-emitter@0.1.0
+  - @omnitron-dev/messagepack@0.1.0
+  - @omnitron-dev/smartbuffer@0.1.0
+  - @omnitron-dev/common@0.1.0

@@ -1,6 +1,6 @@
 # Netron NestJS Integration
 
-**@devgrid/netron-nest** обеспечивает лёгкую интеграцию распределённого фреймворка **Netron** с приложениями на основе **NestJS**, позволяя легко разрабатывать масштабируемые, надёжные и отказоустойчивые микросервисы.
+**@omnitron-dev/netron-nest** обеспечивает лёгкую интеграцию распределённого фреймворка **Netron** с приложениями на основе **NestJS**, позволяя легко разрабатывать масштабируемые, надёжные и отказоустойчивые микросервисы.
 
 ## 📖 О проекте
 
@@ -23,7 +23,7 @@ Netron NestJS — это мощная альтернатива встроенн�
 ## 📦 Установка
 
 ```bash
-npm install @devgrid/netron @devgrid/netron-nest
+npm install @omnitron-dev/netron @omnitron-dev/netron-nest
 ```
 
 ---
@@ -34,7 +34,7 @@ npm install @devgrid/netron @devgrid/netron-nest
 
 ```typescript
 import { Module } from '@nestjs/common';
-import { NetronModule } from '@devgrid/netron-nest';
+import { NetronModule } from '@omnitron-dev/netron-nest';
 import { AuthService } from './auth.service';
 
 @Module({
@@ -55,7 +55,7 @@ export class AppModule {}
 
 ```typescript
 import { Injectable } from '@nestjs/common';
-import { Service } from '@devgrid/netron-nest';
+import { Service } from '@omnitron-dev/netron-nest';
 
 @Injectable()
 @Service('auth@1.0.0')
@@ -70,7 +70,7 @@ export class AuthService {
 
 ```typescript
 import { Injectable } from '@nestjs/common';
-import { InjectNetron, Netron } from '@devgrid/netron-nest';
+import { InjectNetron, Netron } from '@omnitron-dev/netron-nest';
 
 @Injectable()
 export class RemoteService {
@@ -147,7 +147,7 @@ npm run test
 
 ```typescript
 import { Module } from '@nestjs/common';
-import { NetronModule } from '@devgrid/netron-nest';
+import { NetronModule } from '@omnitron-dev/netron-nest';
 
 @Module({
   imports: [
@@ -166,7 +166,7 @@ export class UserServiceModule {}
 
 ```typescript
 import { Injectable } from '@nestjs/common';
-import { Service } from '@devgrid/netron-nest';
+import { Service } from '@omnitron-dev/netron-nest';
 
 @Injectable()
 @Service('user.service@1.0.0')
@@ -181,7 +181,7 @@ export class UserService {
 
 ```typescript
 import { Injectable } from '@nestjs/common';
-import { InjectNetron, Netron } from '@devgrid/netron-nest';
+import { InjectNetron, Netron } from '@omnitron-dev/netron-nest';
 
 @Injectable()
 export class ClientService {

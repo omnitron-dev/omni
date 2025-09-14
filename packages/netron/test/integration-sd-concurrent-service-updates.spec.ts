@@ -1,5 +1,5 @@
 import Redis from 'ioredis';
-import { delay } from '@devgrid/common';
+import { delay } from '@omnitron-dev/common';
 
 import { Netron, Service } from '../dist';
 import { cleanupRedis, getTestRedisUrl, createTestRedisClient } from './helpers/test-utils';

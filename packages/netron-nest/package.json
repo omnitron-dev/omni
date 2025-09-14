@@ -1,8 +1,8 @@
 {
-  "name": "@devgrid/netron-nest",
+  "name": "@omnitron-dev/netron-nest",
   "version": "0.1.7",
-  "description": "NestJS integration module for @devgrid/netron, providing seamless distributed system capabilities with decorators, dependency injection, and automatic service discovery in NestJS applications.",
-  "author": "DevGrid",
+  "description": "NestJS integration module for @omnitron-dev/netron, providing seamless distributed system capabilities with decorators, dependency injection, and automatic service discovery in NestJS applications.",
+  "author": "Omnitron",
   "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -22,8 +22,8 @@
     "reflect-metadata": "^0.2.2"
   },
   "devDependencies": {
-    "@devgrid/netron": "workspace:*",
     "@nestjs/testing": "^11.1.6",
+    "@omnitron-dev/netron": "workspace:*",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.3.3",
     "ioredis": "^5.7.0",
@@ -32,9 +32,9 @@
     "typescript": "^5.9.2"
   },
   "peerDependencies": {
-    "@devgrid/netron": "workspace:*",
     "@nestjs/common": "^11.1.6",
-    "@nestjs/core": "^11.1.6"
+    "@nestjs/core": "^11.1.6",
+    "@omnitron-dev/netron": "workspace:*"
   },
   "keywords": [
     "nestjs",
@@ -60,13 +60,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/d-e-v-grid/devgrid.git",
+    "url": "git+https://github.com/omnitron-dev/omni.git",
     "directory": "packages/netron-nest"
   },
   "bugs": {
-    "url": "https://github.com/d-e-v-grid/devgrid/issues"
+    "url": "https://github.com/omnitron-dev/omni/issues"
   },
-  "homepage": "https://github.com/d-e-v-grid/devgrid/tree/main/packages/netron-nest#readme",
+  "homepage": "https://github.com/omnitron-dev/omni/tree/main/packages/netron-nest#readme",
   "engines": {
     "node": ">=20.19.1"
   }

@@ -1,6 +1,6 @@
 import { LoggerOptions } from 'pino';
 import { Writable } from 'node:stream';
-import { delay } from '@devgrid/common';
+import { delay } from '@omnitron-dev/common';
 
 import { Netron } from '../dist';
 

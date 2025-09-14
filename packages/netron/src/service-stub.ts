@@ -1,4 +1,4 @@
-import { isAsyncGenerator } from '@devgrid/common';
+import { isAsyncGenerator } from '@omnitron-dev/common';
 
 import { LocalPeer } from './local-peer';
 import { Definition } from './definition';

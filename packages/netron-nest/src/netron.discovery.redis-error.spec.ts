@@ -1,6 +1,6 @@
 import { Redis } from 'ioredis';
 import { Test } from '@nestjs/testing';
-import { NetronOptions } from '@devgrid/netron';
+import { NetronOptions } from '@omnitron-dev/netron';
 
 import { Service, NetronModule, NetronService } from './';
 

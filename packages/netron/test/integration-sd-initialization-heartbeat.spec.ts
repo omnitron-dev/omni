@@ -1,5 +1,5 @@
 import { Redis } from 'ioredis';
-import { delay } from '@devgrid/common';
+import { delay } from '@omnitron-dev/common';
 
 import { Service } from '../dist';
 import { Netron } from '../dist/netron';

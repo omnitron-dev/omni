@@ -1,7 +1,7 @@
 import { Redis } from 'ioredis';
 import { Test } from '@nestjs/testing';
-import { delay } from '@devgrid/common';
-import { NetronOptions } from '@devgrid/netron';
+import { delay } from '@omnitron-dev/common';
+import { NetronOptions } from '@omnitron-dev/netron';
 
 import { Service, NetronModule, NetronService } from './';
 

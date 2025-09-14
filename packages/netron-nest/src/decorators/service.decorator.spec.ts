@@ -1,4 +1,4 @@
-import { SERVICE_ANNOTATION } from '@devgrid/netron';
+import { SERVICE_ANNOTATION } from '@omnitron-dev/netron';
 
 import { Service } from './service.decorator';
 

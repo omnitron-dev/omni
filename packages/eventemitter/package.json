@@ -1,8 +1,8 @@
 {
-  "name": "@devgrid/eventemitter",
+  "name": "@omnitron-dev/eventemitter",
   "version": "0.3.3",
   "description": "Universal event emitter with synchronous and asynchronous emission patterns",
-  "author": "DevGrid",
+  "author": "Omnitron",
   "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -23,7 +23,7 @@
     "typescript": "5.9.2"
   },
   "dependencies": {
-    "@devgrid/common": "workspace:*"
+    "@omnitron-dev/common": "workspace:*"
   },
   "keywords": [
     "async",
@@ -46,11 +46,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/d-e-v-grid/devgrid.git",
+    "url": "git+https://github.com/omnitron-dev/omni.git",
     "directory": "packages/eventemitter"
   },
   "bugs": {
-    "url": "https://github.com/d-e-v-grid/devgrid/issues"
+    "url": "https://github.com/omnitron-dev/omni/issues"
   },
-  "homepage": "https://github.com/d-e-v-grid/devgrid/tree/main/packages/eventemitter#readme"
+  "homepage": "https://github.com/omnitron-dev/omni/tree/main/packages/eventemitter#readme"
 }

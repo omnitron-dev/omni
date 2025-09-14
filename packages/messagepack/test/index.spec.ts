@@ -1,7 +1,7 @@
 import Long from 'long';
 import * as fs from 'fs';
 import * as path from 'path';
-import { SmartBuffer } from '@devgrid/smartbuffer';
+import { SmartBuffer } from '@omnitron-dev/smartbuffer';
 
 import { Serializer, serializer } from '../src';
 

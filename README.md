@@ -1,4 +1,4 @@
-# DevGrid Monorepo
+# Omnitron Monorepo
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Turborepo](https://img.shields.io/badge/maintained%20with-turborepo-cc00ff.svg)](https://turbo.build/)
@@ -11,7 +11,7 @@ A comprehensive TypeScript monorepo containing libraries for building distribute
 
 ## 🎯 Vision
 
-DevGrid provides a suite of production-ready TypeScript packages for building scalable, distributed applications with focus on:
+Omnitron provides a suite of production-ready TypeScript packages for building scalable, distributed applications with focus on:
 - **Real-time Communication** - WebSocket-based RPC and event streaming
 - **Data Processing** - Efficient serialization and buffer manipulation
 - **Cross-Runtime Support** - Works with both Node.js and Bun
@@ -21,7 +21,7 @@ DevGrid provides a suite of production-ready TypeScript packages for building sc
 
 ### Core Utilities
 
-#### [@devgrid/common](packages/common)
+#### [@omnitron-dev/common](packages/common)
 Essential utilities and helper functions for TypeScript/JavaScript projects.
 - Promise utilities (defer, delay, retry, timeout)
 - Object manipulation (omit, entries, keys, values)
@@ -29,7 +29,7 @@ Essential utilities and helper functions for TypeScript/JavaScript projects.
 - Data structures (ListBuffer, TimedMap)
 - ✅ Bun compatible
 
-#### [@devgrid/eventemitter](packages/eventemitter)
+#### [@omnitron-dev/eventemitter](packages/eventemitter)
 Universal event emitter with both synchronous and asynchronous emission patterns.
 - Standard EventEmitter API (on, off, emit, once)
 - Parallel and sequential async event execution
@@ -39,7 +39,7 @@ Universal event emitter with both synchronous and asynchronous emission patterns
 - Works in Node.js, Bun, and browsers
 - ✅ Bun compatible
 
-#### [@devgrid/smartbuffer](packages/smartbuffer)
+#### [@omnitron-dev/smartbuffer](packages/smartbuffer)
 Enhanced binary data manipulation based on ByteBuffer.js.
 - Efficient buffer operations
 - Support for various data types (int8-64, float, double, varint)
@@ -49,7 +49,7 @@ Enhanced binary data manipulation based on ByteBuffer.js.
 
 ### Data Processing
 
-#### [@devgrid/messagepack](packages/messagepack)
+#### [@omnitron-dev/messagepack](packages/messagepack)
 High-performance MessagePack serialization with TypeScript support.
 - Full MessagePack specification support
 - Custom type extensions
@@ -59,7 +59,7 @@ High-performance MessagePack serialization with TypeScript support.
 
 ### Distributed Systems
 
-#### [@devgrid/netron](packages/netron)
+#### [@omnitron-dev/netron](packages/netron)
 WebSocket-based distributed systems framework for building microservices.
 - Type-safe RPC with decorators
 - Event bus with multiple emission patterns
@@ -68,12 +68,36 @@ WebSocket-based distributed systems framework for building microservices.
 - Streaming support for large data transfers
 - ✅ Bun compatible with test coverage
 
-#### [@devgrid/netron-nest](packages/netron-nest)
+#### [@omnitron-dev/netron-nest](packages/netron-nest)
 NestJS integration for Netron framework.
 - Seamless NestJS dependency injection
 - Service decorators for easy exposure
 - Module configuration
 - Health checks and graceful shutdown
+
+### Messaging & Notifications
+
+#### [@omnitron-dev/rotif](packages/rotif)
+Redis-based reliable notification and messaging system with guaranteed delivery.
+- ✅ Exactly-once processing with deduplication
+- 🔄 Configurable retry mechanisms with exponential backoff
+- ⏲️ Delayed message delivery
+- 💀 Dead Letter Queue (DLQ) for failed messages
+- 📊 Built-in statistics and monitoring
+- 🔧 Extensible middleware system
+- 🚀 Consumer groups for horizontal scaling
+- 🛡️ Full TypeScript support
+
+#### [@omnitron-dev/rotif-nest](packages/rotif-nest)
+NestJS integration for Rotif messaging system.
+- 🎯 Seamless NestJS DI integration
+- 🏷️ Decorator-based message handlers
+- 💉 Automatic dependency injection
+- 🏥 Health checks and monitoring
+- 🛡️ Custom exception filters
+- 📊 Built-in interceptors for logging and metrics
+- 🔧 NestJS-style middleware support
+- 🚀 Auto-discovery of decorated handlers
 
 ## 🚀 Getting Started
 
@@ -86,8 +110,8 @@ NestJS integration for Netron framework.
 
 ```bash
 # Clone the repository
-git clone https://github.com/d-e-v-grid/devgrid.git
-cd devgrid
+git clone https://github.com/omnitron-dev/omni.git
+cd omni
 
 # Install dependencies
 yarn install
@@ -119,14 +143,14 @@ yarn cleanup
 
 ```bash
 # Run commands for specific package
-yarn workspace @devgrid/netron test
-yarn workspace @devgrid/common build
+yarn workspace @omnitron-dev/netron test
+yarn workspace @omnitron-dev/common build
 
 # Add dependencies to specific package
-yarn workspace @devgrid/common add lodash
+yarn workspace @omnitron-dev/common add lodash
 
 # Run package-specific scripts
-yarn workspace @devgrid/netron dev
+yarn workspace @omnitron-dev/netron dev
 ```
 
 ## 🏗️ Architecture
@@ -134,14 +158,16 @@ yarn workspace @devgrid/netron dev
 ### Monorepo Structure
 
 ```
-devgrid/
+omni/
 ├── packages/           # All published packages
 │   ├── common/        # Shared utilities
 │   ├── eventemitter/  # Event emitter
 │   ├── smartbuffer/   # Binary data handling
 │   ├── messagepack/   # Serialization
 │   ├── netron/        # Distributed framework
-│   └── netron-nest/   # NestJS integration
+│   ├── netron-nest/   # NestJS integration
+│   ├── rotif/         # Redis messaging system
+│   └── rotif-nest/    # NestJS integration for Rotif
 ├── scripts/           # Build and utility scripts
 ├── experiments/       # Experimental code and docs
 ├── .changeset/        # Version management
@@ -178,13 +204,15 @@ Each package contains detailed documentation:
 - [MessagePack Guide](packages/messagepack/README.md)
 - [Netron Framework Guide](packages/netron/README.md)
 - [Netron-Nest Integration Guide](packages/netron-nest/README.md)
+- [Rotif Messaging Guide](packages/rotif/README.md)
+- [Rotif-Nest Integration Guide](packages/rotif-nest/README.md)
 
 ## 🔧 Common Use Cases
 
 ### Building a Microservice
 
 ```typescript
-import { Netron, Service, Public } from '@devgrid/netron';
+import { Netron, Service, Public } from '@omnitron-dev/netron';
 
 @Service('users@1.0.0')
 class UserService {
@@ -201,7 +229,7 @@ await netron.peer.exposeService(new UserService());
 ### Efficient Data Serialization
 
 ```typescript
-import { encode, decode } from '@devgrid/messagepack';
+import { encode, decode } from '@omnitron-dev/messagepack';
 
 const data = { user: 'John', scores: [1, 2, 3] };
 const encoded = encode(data); // Buffer
@@ -211,7 +239,7 @@ const decoded = decode(encoded); // Original data
 ### Advanced Event Handling
 
 ```typescript
-import { EventEmitter } from '@devgrid/eventemitter';
+import { EventEmitter } from '@omnitron-dev/eventemitter';
 
 const emitter = new EventEmitter();
 
@@ -227,6 +255,26 @@ await emitter.emitParallel('process', data);
 
 // Reduce pattern for aggregation
 const result = await emitter.emitReduce('calculate', initialValue);
+```
+
+### Reliable Message Processing
+
+```typescript
+import { NotificationManager } from '@omnitron-dev/rotif';
+
+const manager = new NotificationManager({
+  redis: 'redis://localhost:6379',
+  maxRetries: 3,
+});
+
+// Publish with guaranteed delivery
+await manager.publish('order.created', { orderId: '123' });
+
+// Subscribe with automatic retry
+await manager.subscribe('order.*', async (msg) => {
+  await processOrder(msg.payload);
+  await msg.ack(); // Acknowledge on success
+});
 ```
 
 ## 🤝 Contributing
@@ -247,36 +295,19 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 - Add changeset for version bumps
 - Ensure all tests pass
 
-## 📈 Roadmap
-
-- [ ] gRPC transport for Netron
-- [ ] Browser bundle optimizations
-- [ ] Performance benchmarks suite
-- [ ] Additional NestJS integrations
-- [ ] WebAssembly support for data processing
-- [ ] Deno compatibility
-
-## 🔄 Recently Moved Packages
-
-The following packages have been moved to separate repositories for better maintainability:
-
-- **@devgrid/rotif** - Redis-based reliable notification system → [Separate monorepo](https://github.com/d-e-v-grid/rotif)
-- **@devgrid/bitcoin-core** - Bitcoin Core RPC client → [Separate repository](https://github.com/d-e-v-grid/bitcoin-core)
-- **@devgrid/onix** - Infrastructure orchestration (discontinued)
-
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 🔗 Links
 
-- [GitHub Repository](https://github.com/d-e-v-grid/devgrid)
-- [Issue Tracker](https://github.com/d-e-v-grid/devgrid/issues)
-- [Discussions](https://github.com/d-e-v-grid/devgrid/discussions)
+- [GitHub Repository](https://github.com/omnitron-dev/omni)
+- [Issue Tracker](https://github.com/omnitron-dev/omni/issues)
+- [Discussions](https://github.com/omnitron-dev/omni/discussions)
 
 ## 👥 Team
 
-Created and maintained by the DevGrid team.
+Created and maintained by the Omnitron team.
 
 ---
 

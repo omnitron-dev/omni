@@ -1,5 +1,5 @@
 import { Inject } from '@nestjs/common';
-import { Netron } from '@devgrid/netron';
+import { Netron } from '@omnitron-dev/netron';
 
 import { NETRON_INSTANCE } from '../constants';
 
@@ -29,7 +29,7 @@ import { NETRON_INSTANCE } from '../constants';
 export const InjectNetron = () => Inject(NETRON_INSTANCE);
 
 /**
- * Re-exports the Netron type from '@devgrid/netron' to ensure consistent type definitions
+ * Re-exports the Netron type from '@omnitron-dev/netron' to ensure consistent type definitions
  * across the application when using the Netron instance.
  *
  * @remarks

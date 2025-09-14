@@ -1,4 +1,4 @@
-# @devgrid/common
+# @omnitron-dev/common
 
 ## 0.4.3
 

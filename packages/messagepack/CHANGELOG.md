@@ -1,4 +1,4 @@
-# @devgrid/messagepack
+# @omnitron-dev/messagepack
 
 ## 0.3.3
 
@@ -6,8 +6,8 @@
 
 - update deps, tests improvements
 - Updated dependencies
-  - @devgrid/smartbuffer@0.2.3
-  - @devgrid/common@0.4.3
+  - @omnitron-dev/smartbuffer@0.2.3
+  - @omnitron-dev/common@0.4.3
 
 ## 0.3.2
 
@@ -15,14 +15,14 @@
 
 - fix package.json
 - Updated dependencies
-  - @devgrid/common@0.4.2
+  - @omnitron-dev/common@0.4.2
 
 ## 0.3.1
 
 ### Patch Changes
 
 - Updated dependencies
-  - @devgrid/common@0.4.1
+  - @omnitron-dev/common@0.4.1
 
 ## 0.3.0
 
@@ -33,21 +33,21 @@
 ### Patch Changes
 
 - Updated dependencies
-  - @devgrid/common@0.4.0
+  - @omnitron-dev/common@0.4.0
 
 ## 0.2.4
 
 ### Patch Changes
 
 - Updated dependencies
-  - @devgrid/common@0.3.1
+  - @omnitron-dev/common@0.3.1
 
 ## 0.2.3
 
 ### Patch Changes
 
 - Updated dependencies
-  - @devgrid/common@0.3.0
+  - @omnitron-dev/common@0.3.0
 
 ## 0.2.2
 
@@ -55,8 +55,8 @@
 
 - fix deps versions
 - Updated dependencies
-  - @devgrid/smartbuffer@0.2.2
-  - @devgrid/common@0.2.2
+  - @omnitron-dev/smartbuffer@0.2.2
+  - @omnitron-dev/common@0.2.2
 
 ## 0.2.1
 
@@ -64,8 +64,8 @@
 
 - fix deps versions
 - Updated dependencies
-  - @devgrid/common@0.2.1
-  - @devgrid/smartbuffer@0.2.1
+  - @omnitron-dev/common@0.2.1
+  - @omnitron-dev/smartbuffer@0.2.1
 
 ## 0.2.0
 
@@ -76,8 +76,8 @@
 ### Patch Changes
 
 - Updated dependencies
-  - @devgrid/smartbuffer@0.2.0
-  - @devgrid/common@0.2.0
+  - @omnitron-dev/smartbuffer@0.2.0
+  - @omnitron-dev/common@0.2.0
 
 ## 0.1.1
 
@@ -85,8 +85,8 @@
 
 - add initial readme
 - Updated dependencies
-  - @devgrid/smartbuffer@0.1.1
-  - @devgrid/common@0.1.1
+  - @omnitron-dev/smartbuffer@0.1.1
+  - @omnitron-dev/common@0.1.1
 
 ## 0.1.0
 
@@ -97,5 +97,5 @@
 ### Patch Changes
 
 - Updated dependencies
-  - @devgrid/smartbuffer@0.1.0
-  - @devgrid/common@0.1.0
+  - @omnitron-dev/smartbuffer@0.1.0
+  - @omnitron-dev/common@0.1.0

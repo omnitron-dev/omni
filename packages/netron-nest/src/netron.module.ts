@@ -1,5 +1,5 @@
 import { DiscoveryModule } from '@nestjs/core';
-import { NetronOptions } from '@devgrid/netron';
+import { NetronOptions } from '@omnitron-dev/netron';
 import { Module, Global, Provider, DynamicModule } from '@nestjs/common';
 
 import { NetronService } from './netron.service';

@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { Netron, NetronOptions } from '@devgrid/netron';
+import { Netron, NetronOptions } from '@omnitron-dev/netron';
 
 import { NetronModule } from './netron.module';
 import { NetronService } from './netron.service';

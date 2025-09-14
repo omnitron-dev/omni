@@ -1,12 +1,12 @@
-# @devgrid/netron-nest
+# @omnitron-dev/netron-nest
 
-[![npm version](https://img.shields.io/npm/v/@devgrid/netron-nest.svg)](https://www.npmjs.com/package/@devgrid/netron-nest)
+[![npm version](https://img.shields.io/npm/v/@omnitron-dev/netron-nest.svg)](https://www.npmjs.com/package/@omnitron-dev/netron-nest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.3-blue)](https://www.typescriptlang.org/)
 [![NestJS](https://img.shields.io/badge/NestJS-11.1.3-red)](https://nestjs.com/)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20.19.1-brightgreen)](https://nodejs.org)
 
-NestJS integration module for [@devgrid/netron](https://github.com/d-e-v-grid/devgrid/tree/main/packages/netron), providing seamless distributed system capabilities with decorators, dependency injection, and automatic service discovery in NestJS applications.
+NestJS integration module for [@omnitron-dev/netron](https://github.com/omnitron-dev/omni/tree/main/packages/netron), providing seamless distributed system capabilities with decorators, dependency injection, and automatic service discovery in NestJS applications.
 
 ## Table of Contents
 
@@ -45,11 +45,11 @@ NestJS integration module for [@devgrid/netron](https://github.com/d-e-v-grid/de
 ## Installation
 
 ```bash
-npm install @devgrid/netron @devgrid/netron-nest
+npm install @omnitron-dev/netron @omnitron-dev/netron-nest
 # or
-yarn add @devgrid/netron @devgrid/netron-nest
+yarn add @omnitron-dev/netron @omnitron-dev/netron-nest
 # or
-pnpm add @devgrid/netron @devgrid/netron-nest
+pnpm add @omnitron-dev/netron @omnitron-dev/netron-nest
 ```
 
 ## Quick Start
@@ -57,7 +57,7 @@ pnpm add @devgrid/netron @devgrid/netron-nest
 ```typescript
 // app.module.ts
 import { Module } from '@nestjs/common';
-import { NetronModule } from '@devgrid/netron-nest';
+import { NetronModule } from '@omnitron-dev/netron-nest';
 import { CalculatorService } from './calculator.service';
 
 @Module({
@@ -75,7 +75,7 @@ export class AppModule {}
 
 // calculator.service.ts
 import { Injectable } from '@nestjs/common';
-import { Service } from '@devgrid/netron-nest';
+import { Service } from '@omnitron-dev/netron-nest';
 
 @Injectable()
 @Service('calculator@1.0.0')
@@ -91,8 +91,8 @@ export class CalculatorService {
 
 // client.controller.ts
 import { Controller, Get } from '@nestjs/common';
-import { InjectNetron } from '@devgrid/netron-nest';
-import { Netron } from '@devgrid/netron';
+import { InjectNetron } from '@omnitron-dev/netron-nest';
+import { Netron } from '@omnitron-dev/netron';
 
 @Controller('math')
 export class MathController {
@@ -187,7 +187,7 @@ export class AnalyticsService {
 
 ```typescript
 import { Injectable } from '@nestjs/common';
-import { Service } from '@devgrid/netron-nest';
+import { Service } from '@omnitron-dev/netron-nest';
 
 @Injectable()
 @Service('userService@1.0.0')
@@ -1607,7 +1607,7 @@ export class DeduplicationService {
 
 ## Comparison with NestJS Microservices
 
-| Feature | NestJS Microservices | @devgrid/netron-nest |
+| Feature | NestJS Microservices | @omnitron-dev/netron-nest |
 |---------|---------------------|---------------------|
 | **Transport** | TCP, Redis, NATS, RabbitMQ, Kafka, gRPC | WebSocket |
 | **Service Discovery** | Manual/External (Consul, Eureka) | Built-in (Redis) |
@@ -1619,7 +1619,7 @@ export class DeduplicationService {
 | **Message Patterns** | Request-Response, Event-Based | RPC, Events, Streaming |
 | **Learning Curve** | Moderate | Low (familiar NestJS patterns) |
 
-### When to Use @devgrid/netron-nest
+### When to Use @omnitron-dev/netron-nest
 
 - ✅ Need WebSocket-based real-time communication
 - ✅ Want built-in service discovery
@@ -1647,12 +1647,12 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 
 ## License
 
-MIT © DevGrid
+MIT © Omnitron
 
 ## Links
 
-- [GitHub Repository](https://github.com/d-e-v-grid/devgrid/tree/main/packages/netron-nest)
-- [npm Package](https://www.npmjs.com/package/@devgrid/netron-nest)
-- [Netron Documentation](https://github.com/d-e-v-grid/devgrid/tree/main/packages/netron)
+- [GitHub Repository](https://github.com/omnitron-dev/omni/tree/main/packages/netron-nest)
+- [npm Package](https://www.npmjs.com/package/@omnitron-dev/netron-nest)
+- [Netron Documentation](https://github.com/omnitron-dev/omni/tree/main/packages/netron)
 - [NestJS Documentation](https://docs.nestjs.com)
-- [Issue Tracker](https://github.com/d-e-v-grid/devgrid/issues)
+- [Issue Tracker](https://github.com/omnitron-dev/omni/issues)

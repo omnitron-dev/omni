@@ -1,6 +1,6 @@
 import { Buffer } from 'buffer';
-import { SmartBuffer } from '@devgrid/smartbuffer';
-import { isBuffer, isPlainObject } from '@devgrid/common';
+import { SmartBuffer } from '@omnitron-dev/smartbuffer';
+import { isBuffer, isPlainObject } from '@omnitron-dev/common';
 
 import { EncoderInfo, EncodeFunction } from './types';
 

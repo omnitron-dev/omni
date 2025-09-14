@@ -1,4 +1,4 @@
-import { SmartBuffer, isSmartBuffer } from '@devgrid/smartbuffer';
+import { SmartBuffer, isSmartBuffer } from '@omnitron-dev/smartbuffer';
 
 import { BufferType, DecodeFunction } from './types';
 

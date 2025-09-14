@@ -1,5 +1,5 @@
 {
-  "name": "devgrid",
+  "name": "omnitron-dev",
   "private": true,
   "scripts": {
     "build": "turbo build",

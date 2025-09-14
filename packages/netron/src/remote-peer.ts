@@ -5,7 +5,7 @@ import { Logger } from 'pino';
  */
 import { WebSocket } from 'ws';
 import { EventEmitter } from 'events';
-import { TimedMap } from '@devgrid/common';
+import { TimedMap } from '@omnitron-dev/common';
 
 import { Netron } from './netron';
 import { Interface } from './interface';

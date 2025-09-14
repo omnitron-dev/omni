@@ -1,4 +1,4 @@
-import { delay } from '@devgrid/common';
+import { delay } from '@omnitron-dev/common';
 
 import { Service1, IService1 } from './fixtures/service1';
 import { Service2, IService2 } from './fixtures/service2';

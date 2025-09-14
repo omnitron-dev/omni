@@ -1,5 +1,5 @@
 import { SetMetadata } from '@nestjs/common';
-import { Service as NetronServiceDecorator } from '@devgrid/netron';
+import { Service as NetronServiceDecorator } from '@omnitron-dev/netron';
 
 /**
  * A constant that serves as a unique identifier for Netron service metadata within the NestJS

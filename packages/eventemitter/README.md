@@ -1,6 +1,6 @@
-# @devgrid/async-emitter
+# @omnitron-dev/async-emitter
 
-[![npm version](https://img.shields.io/npm/v/@devgrid/async-emitter.svg)](https://www.npmjs.com/package/@devgrid/async-emitter)
+[![npm version](https://img.shields.io/npm/v/@omnitron-dev/async-emitter.svg)](https://www.npmjs.com/package/@omnitron-dev/async-emitter)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.3-blue)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org)
@@ -38,17 +38,17 @@ A powerful asynchronous event emitter built on top of [eventemitter3](https://gi
 ## Installation
 
 ```bash
-npm install @devgrid/async-emitter
+npm install @omnitron-dev/async-emitter
 # or
-yarn add @devgrid/async-emitter
+yarn add @omnitron-dev/async-emitter
 # or
-pnpm add @devgrid/async-emitter
+pnpm add @omnitron-dev/async-emitter
 ```
 
 ## Quick Start
 
 ```typescript
-import { EventEmitter } from '@devgrid/async-emitter';
+import { EventEmitter } from '@omnitron-dev/async-emitter';
 
 const emitter = new EventEmitter();
 
@@ -271,7 +271,7 @@ new EventEmitter(concurrency?: number)
 ### Type Guards
 
 ```typescript
-import { isEventEmitter } from '@devgrid/eventemitter';
+import { isEventEmitter } from '@omnitron-dev/eventemitter';
 
 if (isEventEmitter(obj)) {
   // obj is EventEmitter instance
@@ -435,7 +435,7 @@ Works in all modern browsers with ES2015+ support:
 With webpack/rollup/vite, no special configuration needed:
 
 ```javascript
-import { EventEmitter } from '@devgrid/async-emitter';
+import { EventEmitter } from '@omnitron-dev/async-emitter';
 ```
 
 ## Contributing
@@ -450,10 +450,10 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 
 ## License
 
-MIT © DevGrid
+MIT © Omnitron
 
 ## Links
 
-- [GitHub Repository](https://github.com/d-e-v-grid/devgrid/tree/main/packages/async-emitter)
-- [npm Package](https://www.npmjs.com/package/@devgrid/async-emitter)
-- [Issue Tracker](https://github.com/d-e-v-grid/devgrid/issues)
+- [GitHub Repository](https://github.com/omnitron-dev/omni/tree/main/packages/async-emitter)
+- [npm Package](https://www.npmjs.com/package/@omnitron-dev/async-emitter)
+- [Issue Tracker](https://github.com/omnitron-dev/omni/issues)

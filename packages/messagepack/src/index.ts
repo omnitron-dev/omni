@@ -1,5 +1,5 @@
 import Long from 'long';
-import { SmartBuffer } from '@devgrid/smartbuffer';
+import { SmartBuffer } from '@omnitron-dev/smartbuffer';
 
 import { BufferType } from './types';
 import Serializer from './serializer';

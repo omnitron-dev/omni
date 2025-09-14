@@ -86,13 +86,13 @@ jobs:
       - name: Build dependencies for ${{ matrix.package }}
         run: |
           # Build only the dependencies needed for the target package
-          yarn turbo build --filter=@devgrid/${{ matrix.package }}^...
+          yarn turbo build --filter=@omnitron-dev/${{ matrix.package }}^...
 
-      - name: Build @devgrid/${{ matrix.package }}
-        run: yarn workspace @devgrid/${{ matrix.package }} build
+      - name: Build @omnitron-dev/${{ matrix.package }}
+        run: yarn workspace @omnitron-dev/${{ matrix.package }} build
 
-      - name: Run tests for @devgrid/${{ matrix.package }}
-        run: yarn workspace @devgrid/${{ matrix.package }} test
+      - name: Run tests for @omnitron-dev/${{ matrix.package }}
+        run: yarn workspace @omnitron-dev/${{ matrix.package }} test
         env:
           NODE_OPTIONS: --max-old-space-size=4096
 

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-function-type */
-import { pLimit, type Limit } from '@devgrid/common';
+import { pLimit, type Limit } from '@omnitron-dev/common';
 
 // Type for event listener
 type EventListener = {

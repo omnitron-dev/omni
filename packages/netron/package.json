@@ -32,7 +32,6 @@
     "@devgrid/eventemitter": "workspace:*",
     "@devgrid/messagepack": "workspace:*",
     "@devgrid/smartbuffer": "workspace:*",
-    "bufferutil": "^4.0.9",
     "ioredis": "^5.7.0",
     "pino": "^9.9.5",
     "pino-pretty": "^13.1.1",

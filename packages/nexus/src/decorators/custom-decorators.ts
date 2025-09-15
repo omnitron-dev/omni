@@ -384,6 +384,7 @@ export class CustomDecoratorBuilder<TOptions = any> {
         if (config.compose) {
           for (let i = config.compose.length - 1; i >= 0; i--) {
             const decorator = config.compose[i];
+            if (!decorator) continue;
             const result = decorator(target, propertyKey, descriptorOrIndex);
             if (result !== undefined && result !== target) {
               if (propertyKey !== undefined && descriptorOrIndex !== undefined) {
@@ -541,7 +542,9 @@ export function combineDecorators(
   return function (target: any, propertyKey?: string | symbol, descriptor?: any) {
     // Apply decorators in reverse order for proper composition
     for (let i = decorators.length - 1; i >= 0; i--) {
-      const result = decorators[i](target, propertyKey, descriptor);
+      const decorator = decorators[i];
+      if (!decorator) continue;
+      const result = decorator(target, propertyKey, descriptor);
       if (result !== undefined && result !== target) {
         if (propertyKey !== undefined && descriptor !== undefined) {
           descriptor = result;
@@ -731,6 +734,7 @@ export const Validate = createDecorator<{ schema: any }>()
     if (!options?.schema) {
       return 'Schema is required for @Validate decorator';
     }
+    return undefined;
   })
   .build();
 

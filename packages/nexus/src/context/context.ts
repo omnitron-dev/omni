@@ -200,11 +200,11 @@ export class EnvironmentStrategy implements ResolutionStrategy {
   name = 'environment';
   
   applies(token: InjectionToken<any>, context: ResolutionContext): boolean {
-    return context.metadata?.environment !== undefined;
+    return context.metadata?.['environment'] !== undefined;
   }
   
   select<T>(providers: any[], context: ResolutionContext): any {
-    const env = context.metadata?.environment;
+    const env = context.metadata?.['environment'];
     
     for (const provider of providers) {
       if (provider.environment === env) {
@@ -224,11 +224,11 @@ export class FeatureFlagStrategy implements ResolutionStrategy {
   name = 'feature-flag';
   
   applies(token: InjectionToken<any>, context: ResolutionContext): boolean {
-    return context.metadata?.features !== undefined;
+    return context.metadata?.['features'] !== undefined;
   }
   
   select<T>(providers: any[], context: ResolutionContext): any {
-    const features = context.metadata?.features as string[] || [];
+    const features = context.metadata?.['features'] as string[] || [];
     
     for (const provider of providers) {
       if (provider.feature && features.includes(provider.feature)) {
@@ -248,11 +248,11 @@ export class TenantStrategy implements ResolutionStrategy {
   name = 'tenant';
   
   applies(token: InjectionToken<any>, context: ResolutionContext): boolean {
-    return context.metadata?.tenant !== undefined;
+    return context.metadata?.['tenant'] !== undefined;
   }
   
   select<T>(providers: any[], context: ResolutionContext): any {
-    const tenant = context.metadata?.tenant;
+    const tenant = context.metadata?.['tenant'];
     
     for (const provider of providers) {
       if (provider.tenant === tenant?.id || provider.tenant === tenant) {
@@ -272,11 +272,11 @@ export class RoleBasedStrategy implements ResolutionStrategy {
   name = 'role-based';
   
   applies(token: InjectionToken<any>, context: ResolutionContext): boolean {
-    return context.metadata?.user?.roles !== undefined;
+    return context.metadata?.['user']?.roles !== undefined;
   }
   
   select<T>(providers: any[], context: ResolutionContext): any {
-    const roles = context.metadata?.user?.roles as string[] || [];
+    const roles = context.metadata?.['user']?.roles as string[] || [];
     
     // Find provider with matching required role
     for (const provider of providers) {

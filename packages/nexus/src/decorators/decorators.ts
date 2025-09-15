@@ -540,7 +540,7 @@ export class DecoratorContainer extends Container {
   /**
    * Override register to handle decorator metadata
    */
-  register<T>(
+  override register<T>(
     token: InjectionToken<T>,
     provider: Provider<T>,
     options?: RegistrationOptions
@@ -661,7 +661,7 @@ export class DecoratorContainer extends Container {
   /**
    * Override resolve to handle decorator-specific features
    */
-  resolve<T>(token: InjectionToken<T>, context?: Partial<import('../types/core').ResolutionContext>): T {
+  override resolve<T>(token: InjectionToken<T>, context?: Partial<import('../types/core').ResolutionContext>): T {
     // Handle value injections
     if (typeof token === 'string' && token.startsWith('__VALUE_')) {
       const path = token.substring(8, token.length - 2); // Remove __VALUE_ and __
@@ -697,7 +697,7 @@ export class DecoratorContainer extends Container {
   /**
    * Override initialize to handle lifecycle hooks
    */
-  async initialize(): Promise<void> {
+  override async initialize(): Promise<void> {
     await super.initialize();
 
     // Call PostConstruct hooks on all initialized instances
@@ -707,7 +707,7 @@ export class DecoratorContainer extends Container {
   /**
    * Override dispose to handle lifecycle hooks
    */
-  async dispose(): Promise<void> {
+  override async dispose(): Promise<void> {
     // Call PreDestroy hooks before disposing
     await this.callLifecycleHooks('preDestroy');
 

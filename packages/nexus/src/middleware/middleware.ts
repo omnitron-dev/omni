@@ -146,6 +146,9 @@ export class MiddlewarePipeline {
       }
       
       const middleware = applicable[i];
+      if (!middleware) {
+        return dispatch(i + 1);
+      }
       
       try {
         return await middleware.execute(context, () => dispatch(i + 1));
@@ -188,6 +191,9 @@ export class MiddlewarePipeline {
       }
       
       const middleware = applicable[i];
+      if (!middleware) {
+        return dispatch(i + 1);
+      }
       
       try {
         const result = middleware.execute(context, () => dispatch(i + 1));
@@ -328,8 +334,8 @@ export const RetryMiddleware = createMiddleware({
   priority: 80,
   
   execute: (context, next) => {
-    const maxRetries = context.maxRetries || 3;
-    const retryDelay = context.retryDelay || 1000;
+    const maxRetries = context['maxRetries'] || 3;
+    const retryDelay = context['retryDelay'] || 1000;
     
     // For sync execution, we can't retry with delays
     // Just try once and return
@@ -381,8 +387,8 @@ export const ValidationMiddleware = createMiddleware({
   
   execute: (context, next) => {
     // Pre-validation
-    if (context.validate) {
-      const validation = context.validate(context);
+    if (context['validate']) {
+      const validation = context['validate'](context);
       if (validation === false) {
         throw new Error('Validation failed');
       }
@@ -394,8 +400,8 @@ export const ValidationMiddleware = createMiddleware({
     if (result instanceof Promise) {
       return result.then((value) => {
         // Post-validation
-        if (context.validateResult) {
-          const validation = context.validateResult(value);
+        if (context['validateResult']) {
+          const validation = context['validateResult'](value);
           if (validation === false) {
             throw new Error('Result validation failed');
           }
@@ -405,8 +411,8 @@ export const ValidationMiddleware = createMiddleware({
     }
     
     // Post-validation for sync result
-    if (context.validateResult) {
-      const validation = context.validateResult(result);
+    if (context['validateResult']) {
+      const validation = context['validateResult'](result);
       if (validation === false) {
         throw new Error('Result validation failed');
       }
@@ -425,7 +431,7 @@ export const TransactionMiddleware = createMiddleware({
   
   execute: (context, next) => {
     // Check if transaction support is available
-    const tx = context.transaction;
+    const tx = context['transaction'];
     if (!tx) {
       return next();
     }
@@ -573,7 +579,7 @@ export class RateLimitMiddleware implements Middleware {
   ) {}
   
   execute: MiddlewareFunction = async (context, next) => {
-    const key = context.rateLimitKey || 'global';
+    const key = context['rateLimitKey'] || 'global';
     const now = Date.now();
     
     // Get request timestamps for this key
@@ -583,8 +589,8 @@ export class RateLimitMiddleware implements Middleware {
     timestamps = timestamps.filter(t => now - t < this.window);
     
     // Check rate limit
-    if (timestamps.length >= this.limit) {
-      const resetTime = timestamps[0] + this.window;
+    if (timestamps && timestamps.length >= this.limit) {
+      const resetTime = (timestamps[0] || now) + this.window;
       const retryAfter = Math.ceil((resetTime - now) / 1000);
       throw new Error(`Rate limit exceeded. Retry after ${retryAfter} seconds`);
     }

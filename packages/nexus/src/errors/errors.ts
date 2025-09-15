@@ -23,7 +23,7 @@ export class ResolutionError extends NexusError {
   constructor(
     public readonly token: InjectionToken<any>,
     public readonly chain: InjectionToken<any>[] = [],
-    public readonly cause?: Error
+    public override readonly cause?: Error
   ) {
     super(ResolutionError.formatMessage(token, chain, cause), 'RESOLUTION_ERROR');
   }
@@ -176,7 +176,7 @@ export class AsyncResolutionError extends NexusError {
 export class DisposalError extends NexusError {
   constructor(
     public readonly token: InjectionToken<any>,
-    public readonly cause: Error
+    public override readonly cause: Error
   ) {
     super(
       `Failed to dispose '${getTokenName(token)}': ${cause.message}`,
@@ -207,7 +207,7 @@ export class ModuleError extends NexusError {
 export class InitializationError extends NexusError {
   constructor(
     public readonly token: InjectionToken<any>,
-    public readonly cause: Error
+    public override readonly cause: Error
   ) {
     super(
       `Failed to initialize '${getTokenName(token)}': ${cause.message}`,

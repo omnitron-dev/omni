@@ -313,9 +313,9 @@ export class PluginManager {
       const [curMajor, curMinor = '0', curPatch = '0'] = version.split('.');
 
       // Major version must match, minor and patch can be higher
-      return parseInt(curMajor) === parseInt(reqMajor) &&
-        (parseInt(curMinor) > parseInt(reqMinor) ||
-          (parseInt(curMinor) === parseInt(reqMinor) && parseInt(curPatch) >= parseInt(reqPatch)));
+      return parseInt(curMajor || '0') === parseInt(reqMajor || '0') &&
+        (parseInt(curMinor || '0') > parseInt(reqMinor || '0') ||
+          (parseInt(curMinor || '0') === parseInt(reqMinor || '0') && parseInt(curPatch || '0') >= parseInt(reqPatch || '0')));
     }
 
     // Exact version match

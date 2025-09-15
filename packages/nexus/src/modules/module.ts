@@ -574,7 +574,7 @@ export function createFeatureModule(
     forFeature(options: ModuleOptions): DynamicModule {
       const filteredProviders = providers.filter(p => {
         const token = extractToken(p);
-        return !options.exclude || !options.exclude.includes(token);
+        return !options['exclude'] || !options['exclude'].includes(token);
       });
       
       return {

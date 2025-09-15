@@ -4,15 +4,15 @@
   "description": "Redis based notification system.",
   "author": "Omnitron",
   "license": "MIT",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "module": "dist/esm/index.js",
   "files": [
     "dist",
     "lua"
   ],
   "scripts": {
-    "build": "tsc --build ./tsconfig.build.json && tsc --build ./tsconfig.esm.json",
+    "build": "tsc -p ./tsconfig.json",
     "test": "jest --runInBand --forceExit"
   },
   "dependencies": {

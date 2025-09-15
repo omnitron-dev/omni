@@ -4,14 +4,14 @@
   "description": "Smart buffer",
   "author": "Omnitron",
   "license": "MIT",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "module": "dist/esm/index.js",
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p ./tsconfig.build.json && tsc -p ./tsconfig.esm.json",
+    "build": "tsc -p ./tsconfig.json",
     "test": "jest",
     "test:bun": "bun test",
     "test:all": "npm run test && npm run test:bun"

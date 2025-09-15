@@ -2,16 +2,16 @@
   "name": "@omnitron-dev/common",
   "version": "0.4.3",
   "description": "Some useful primitives",
-  "author": "Omnitron",
+  "author": "LuxQuant",
   "license": "MIT",
+  "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "module": "./dist/esm/index.js",
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p ./tsconfig.build.json && tsc -p ./tsconfig.esm.json",
+    "build": "tsc -p ./tsconfig.json",
     "test": "jest",
     "test:node": "jest",
     "test:bun": "bun test test/primitives.spec.ts test/list-buffer.spec.ts test/entries.spec.ts test/omit.spec.ts test/predicates.spec.ts test/promise.spec.ts test/timed-map-bun-compat.spec.ts",

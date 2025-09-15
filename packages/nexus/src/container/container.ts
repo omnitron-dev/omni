@@ -620,7 +620,7 @@ export class Container implements IContainer {
    * Resolve scoped
    */
   private resolveScoped<T>(registration: Registration): T {
-    const scopeId = this.context.metadata?.scopeId || 'default';
+    const scopeId = this.context.metadata?.['scopeId'] || 'default';
 
     // Each scope maintains its own instances - don't share with parent
     if (!this.scopedInstances.has(scopeId)) {
@@ -644,7 +644,7 @@ export class Container implements IContainer {
    */
   private resolveRequest<T>(registration: Registration): T {
     // For request scope, use scopeId or requestId to identify the request context
-    const requestContext = this.context.metadata?.scopeId || this.context.metadata?.requestId;
+    const requestContext = this.context.metadata?.['scopeId'] || this.context.metadata?.['requestId'];
 
     if (!requestContext) {
       // Fallback to transient if no request context
@@ -750,7 +750,7 @@ export class Container implements IContainer {
 
         // Handle context injection
         if (depObj.token === 'CONTEXT' && depObj.type === 'context') {
-          return this.context.resolveContext || this.context;
+          return this.context['resolveContext'] || this.context;
         }
 
         if (depObj.optional) {
@@ -769,7 +769,7 @@ export class Container implements IContainer {
 
       // Handle string context token directly
       if (dep === 'CONTEXT') {
-        return this.context.resolveContext || this.context;
+        return this.context['resolveContext'] || this.context;
       }
 
       // Regular token - set module context and resolve
@@ -1171,7 +1171,7 @@ export class Container implements IContainer {
         const resultObj: any = {};
         keys.forEach((key, index) => {
           const result = results[index];
-          resultObj[key] = result.status === 'fulfilled' ? result.value : undefined;
+          resultObj[key] = result && result.status === 'fulfilled' ? (result as PromiseFulfilledResult<any>).value : undefined;
         });
         return resultObj;
       });
@@ -1238,8 +1238,8 @@ export class Container implements IContainer {
       metadata: {
         ...(this.context.metadata || {}),
         ...(context.metadata || {}),
-        scopeId: context.metadata?.scopeId || uniqueId,
-        requestId: context.metadata?.requestId || context.request?.id
+        scopeId: context.metadata?.['scopeId'] || uniqueId,
+        requestId: context.metadata?.['requestId'] || context['request']?.id
       }
     };
 
@@ -1507,7 +1507,7 @@ export class Container implements IContainer {
 
     // If this is a child container, also clear its scopeId from parent's scoped instances
     if (this.parent && (this.parent as any).scopedInstances) {
-      const scopeId = this.context.metadata?.scopeId;
+      const scopeId = this.context.metadata?.['scopeId'];
       if (scopeId) {
         (this.parent as any).scopedInstances.delete(scopeId);
       }

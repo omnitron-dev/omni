@@ -940,7 +940,7 @@ export class DevToolsPlugin implements Plugin {
           if (!resolutionsByToken[resolution.token]) {
             resolutionsByToken[resolution.token] = [];
           }
-          resolutionsByToken[resolution.token].push(resolution.duration);
+          resolutionsByToken[resolution.token]?.push(resolution.duration);
         });
         
         // Calculate averages

@@ -4,24 +4,15 @@
   "description": "A powerful TypeScript library for building distributed systems with event bus, streaming capabilities, and remote object invocation. Features WebSocket-based bidirectional communication between Node.js and browser environments, service discovery, and type-safe RPC.",
   "author": "Omnitron",
   "license": "MIT",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "module": "dist/esm/index.js",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "require": "./dist/index.js",
-      "import": "./dist/esm/index.js",
-      "bun": "./dist/esm/index.js"
-    }
-  },
   "files": [
     "dist",
     "lua"
   ],
   "scripts": {
-    "build": "tsc --build ./tsconfig.build.json",
-    "build:esm": "tsc --build ./tsconfig.esm.json",
+    "build": "tsc -p ./tsconfig.json",
     "test": "jest --runInBand",
     "test:node": "jest --runInBand",
     "test:bun": "bun test",

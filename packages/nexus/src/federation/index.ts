@@ -396,8 +396,8 @@ export class ModuleFederationContainer {
   private isVersionCompatible(actual: string, required: string): boolean {
     // Simple version compatibility check
     if (required.startsWith('^')) {
-      const requiredMajor = parseInt(required.substring(1).split('.')[0]);
-      const actualMajor = parseInt(actual.split('.')[0]);
+      const requiredMajor = parseInt(required.substring(1).split('.')[0] || '0');
+      const actualMajor = parseInt(actual.split('.')[0] || '0');
       return actualMajor === requiredMajor;
     }
     if (required.startsWith('~')) {
@@ -760,8 +760,8 @@ export class SharedDependencyManager {
    */
   private satisfiesVersion(version: string, required: string): boolean {
     // Simplified version check - in production use a proper semver library
-    const [major1, minor1] = version.split('.').map(Number);
-    const [major2, minor2] = required.replace(/[^0-9.]/g, '').split('.').map(Number);
+    const [major1, minor1 = 0] = version.split('.').map(Number);
+    const [major2, minor2 = 0] = required.replace(/[^0-9.]/g, '').split('.').map(Number);
     
     if (required.startsWith('^')) {
       return major1 === major2 && minor1 >= minor2;

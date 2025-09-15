@@ -277,7 +277,7 @@ export class ConsulServiceDiscovery implements ServiceDiscovery {
   
   private extractVersion(tags: string[]): string {
     const versionTag = tags?.find(t => t.startsWith('version:'));
-    return versionTag ? versionTag.split(':')[1] : '1.0.0';
+    return versionTag ? versionTag.split(':')[1] || '1.0.0' : '1.0.0';
   }
   
   private notifyWatchers(serviceName: string): void {
@@ -434,19 +434,19 @@ export class LoadBalancer {
   }
   
   private roundRobin(): ServiceInstance {
-    const instance = this.instances[this.currentIndex];
+    const instance = this.instances[this.currentIndex]!;
     this.currentIndex = (this.currentIndex + 1) % this.instances.length;
     return instance;
   }
   
   private random(): ServiceInstance {
     const index = Math.floor(Math.random() * this.instances.length);
-    return this.instances[index];
+    return this.instances[index]!;
   }
   
   private leastConnections(): ServiceInstance {
     let minConnections = Infinity;
-    let selected = this.instances[0];
+    let selected = this.instances[0]!;
     
     for (const instance of this.instances) {
       const connections = this.connections.get(instance.id) || 0;
@@ -464,7 +464,7 @@ export class LoadBalancer {
       this.buildWeightedSequence();
     }
     
-    const instance = this.weightedSequence[this.weightedIndex];
+    const instance = this.weightedSequence[this.weightedIndex]!;
     this.weightedIndex = (this.weightedIndex + 1) % this.weightedSequence.length;
     return instance;
   }
@@ -482,7 +482,7 @@ export class LoadBalancer {
   
   private responseTime(): ServiceInstance {
     let minTime = Infinity;
-    let selected = this.instances[0];
+    let selected = this.instances[0]!;
     
     for (const instance of this.instances) {
       const times = this.responseTimes.get(instance.id) || [];
@@ -511,9 +511,9 @@ export class LoadBalancer {
         hash = ((hash << 5) - hash + key.charCodeAt(i)) & 0xffffffff;
       }
       const index = Math.abs(hash) % this.instances.length;
-      return this.instances[index];
+      return this.instances[index]!;
     }
-    return this.instances[0];
+    return this.instances[0]!;
   }
 }
 

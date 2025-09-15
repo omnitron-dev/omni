@@ -4,44 +4,32 @@
   "description": "Next-generation dependency injection container for TypeScript - the architectural foundation for any application",
   "author": "Omnitron",
   "license": "MIT",
+  "type": "module",
   "main": "./dist/index.js",
-  "module": "./dist/esm/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/esm/index.js",
-      "require": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./decorators": {
       "types": "./dist/decorators/index.d.ts",
-      "import": "./dist/esm/decorators/index.js",
-      "require": "./dist/decorators/index.js",
       "default": "./dist/decorators/index.js"
     },
     "./federation": {
       "types": "./dist/federation/index.d.ts",
-      "import": "./dist/esm/federation/index.js",
-      "require": "./dist/federation/index.js",
       "default": "./dist/federation/index.js"
     },
     "./mesh": {
       "types": "./dist/mesh/index.d.ts",
-      "import": "./dist/esm/mesh/index.js",
-      "require": "./dist/mesh/index.js",
       "default": "./dist/mesh/index.js"
     },
     "./tracing": {
       "types": "./dist/tracing/index.d.ts",
-      "import": "./dist/esm/tracing/index.js",
-      "require": "./dist/tracing/index.js",
       "default": "./dist/tracing/index.js"
     },
     "./devtools": {
       "types": "./dist/devtools/index.d.ts",
-      "import": "./dist/esm/devtools/index.js",
-      "require": "./dist/devtools/index.js",
       "default": "./dist/devtools/index.js"
     }
   },
@@ -49,7 +37,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p ./tsconfig.build.json && tsc -p ./tsconfig.esm.json",
+    "build": "tsc -p ./tsconfig.json",
     "test": "jest --passWithNoTests",
     "test:coverage": "jest --coverage",
     "test:node": "jest",

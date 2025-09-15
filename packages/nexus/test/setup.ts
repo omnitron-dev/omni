@@ -20,7 +20,7 @@ const originalConsole = {
 
 beforeAll(() => {
   // Suppress console output during tests unless DEBUG is set
-  if (!process.env.DEBUG) {
+  if (!process.env['DEBUG']) {
     console.log = jest.fn();
     console.warn = jest.fn();
     console.error = jest.fn();
@@ -63,7 +63,6 @@ process.on('unhandledRejection', (reason, promise) => {
 declare global {
   function createMockFunction<T extends (...args: any[]) => any>(): jest.Mock<ReturnType<T>, Parameters<T>>;
   function delay(ms: number): Promise<void>;
-  var fetch: jest.Mock;
 }
 
 export {};

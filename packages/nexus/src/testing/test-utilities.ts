@@ -139,7 +139,7 @@ export class SnapshotContainer extends Container {
   /**
    * Override register to clear cached instances on override
    */
-  register<T>(token: Token<T>, provider: Provider<T>, options?: any): this {
+  override register<T>(token: Token<T>, provider: Provider<T>, options?: any): this {
     if (options?.override && 'instances' in this) {
       // Clear cached instance when overriding
       (this as any).instances.delete(token);

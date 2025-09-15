@@ -4,13 +4,12 @@
   "description": "High-performance reactive state management system",
   "type": "module",
   "main": "./dist/index.js",
-  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p ./tsconfig.build.json && tsc -p ./tsconfig.esm.json",
+    "build": "tsc -p ./tsconfig.json",
     "test": "vitest",
     "test:unit": "vitest run test/unit",
     "test:integration": "vitest run test/integration",

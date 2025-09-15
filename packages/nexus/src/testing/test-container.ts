@@ -446,7 +446,7 @@ export class TestContainer extends Container {
   /**
    * Override register to track registered tokens for leak detection
    */
-  register<T>(token: InjectionToken<T>, provider: Provider<T>, options?: any): this {
+  override register<T>(token: InjectionToken<T>, provider: Provider<T>, options?: any): this {
     // Track registered tokens for leak detection and memory tracking
     if (this.detectLeaks || this.trackMemory) {
       this.registeredTokens.add(token);
@@ -458,7 +458,7 @@ export class TestContainer extends Container {
   /**
    * Override resolve to handle auto-mocking and leak detection
    */
-  resolve<T>(token: InjectionToken<T>): T {
+  override resolve<T>(token: InjectionToken<T>): T {
     try {
       // Track resolved tokens for leak detection
       if (this.detectLeaks) {

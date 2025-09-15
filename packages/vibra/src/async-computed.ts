@@ -3,11 +3,12 @@
  * Provides support for asynchronous computed values with loading states
  */
 
-import { signal, type WritableSignal } from './signal.js';
-import { computed } from './computed.js';
 import { effect } from './effect.js';
 import { createRoot } from './batch.js';
-import type { Signal, Disposable } from './types.js';
+import { computed } from './computed.js';
+import { signal, type WritableSignal } from './signal.js';
+
+import type { Signal } from './types.js';
 
 /**
  * Options for async computed values

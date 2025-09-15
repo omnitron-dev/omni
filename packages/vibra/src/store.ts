@@ -5,8 +5,8 @@
 
 import { batch } from './batch.js';
 import { computed } from './computed.js';
-import { signal, type WritableSignal } from './signal.js';
 import { ProxyRegistry } from './proxy-registry.js';
+import { signal, type WritableSignal } from './signal.js';
 
 export interface StoreOptions {
   shallow?: string[];  // Paths that should not be deeply reactive
@@ -109,9 +109,7 @@ export class Store<T extends object> {
         // Return unproxified value for consistency with tests
         return storeInstance.unproxify(value);
       },
-      getState: (): T => {
-        return storeInstance.root();
-      },
+      getState: (): T => storeInstance.root(),
       set: (key: string | number | symbol, value: any | ((prev: any) => any)): void => {
         // Calculate new value if it's a function
         const newValue = typeof value === 'function'

@@ -2,12 +2,12 @@
  * Computed - Derived reactive values with automatic memoization
  */
 
-import { context, onCleanup, UpdatePriority, ComputationImpl, ComputationType } from './context.js';
-import type { DiamondResolvable } from './diamond-resolver.js';
 import { calculateDependencyDepth } from './diamond-resolver.js';
+import { context, onCleanup, UpdatePriority, ComputationImpl, ComputationType } from './context.js';
 import { globalCircularResolver, CircularDependencyError, type ResolvableComputation } from './circular-dependency-resolver.js';
 
 import type { Signal, ComputedOptions } from './types.js';
+import type { DiamondResolvable } from './diamond-resolver.js';
 
 /**
  * Default equality check for computed values

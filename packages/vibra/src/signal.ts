@@ -7,8 +7,8 @@
 import type { Signal, WritableSignal } from './types.js';
 
 export type { WritableSignal };
-import { context, ComputationImpl, incrementUpdateVersion, queueSubscriberNotification } from './context.js';
 import { resolveDiamondDependencies } from './diamond-resolver.js';
+import { context, ComputationImpl, incrementUpdateVersion, queueSubscriberNotification } from './context.js';
 
 /**
  * Default equality check

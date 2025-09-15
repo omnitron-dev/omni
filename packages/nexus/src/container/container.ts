@@ -75,7 +75,7 @@ export class Container implements IContainer {
   private moduleImports = new Map<string, Set<string>>();
   private context: ResolutionContext;
   private pendingPromises = new Map<InjectionToken<any>, Promise<any>>();
-  
+
   // Phase 2 features
   private pluginManager: PluginManager;
   private middlewarePipeline: MiddlewarePipeline;
@@ -106,22 +106,22 @@ export class Container implements IContainer {
         ...context
       };
     }
-    
-    
+
+
     // Initialize Phase 2 features
     this.pluginManager = new PluginManager(this);
     this.middlewarePipeline = new MiddlewarePipeline();
     this.lifecycleManager = new LifecycleManager();
     this.contextManager = new ContextManager();
     this.moduleCompiler = new ModuleCompiler();
-    
+
     // Create context provider (child contexts inherit from parent)
     if (this.parent && 'getContext' in this.parent && typeof this.parent.getContext === 'function') {
       this.contextProvider = this.contextManager.createScopedContext(this.parent.getContext());
     } else {
       this.contextProvider = this.contextManager.createScopedContext();
     }
-    
+
     // Emit container created event
     this.lifecycleManager.emitSync(LifecycleEvent.ContainerCreated, { context: this.context });
   }
@@ -141,17 +141,17 @@ export class Container implements IContainer {
       const configToken = token as any;
       if ('useValue' in provider) {
         let value = provider.useValue;
-        
+
         // Apply defaults if available
         if (configToken.defaults) {
           value = { ...configToken.defaults, ...value };
         }
-        
+
         // Validate the config value if validator exists
         if (configToken.validate) {
           configToken.validate(value);
         }
-        
+
         // Update the provider with merged value
         provider = { useValue: value } as any;
       }
@@ -171,7 +171,7 @@ export class Container implements IContainer {
     this.registrations.set(token, registration);
 
     // Emit after register event
-    this.lifecycleManager.emitSync(LifecycleEvent.AfterRegister, { 
+    this.lifecycleManager.emitSync(LifecycleEvent.AfterRegister, {
       token,
       metadata: { provider, registration }
     });
@@ -194,7 +194,7 @@ export class Container implements IContainer {
     this.registrations.set(token, registration);
 
     // Emit after register event
-    this.lifecycleManager.emitSync(LifecycleEvent.AfterRegister, { 
+    this.lifecycleManager.emitSync(LifecycleEvent.AfterRegister, {
       token,
       metadata: { provider, registration }
     });
@@ -222,7 +222,7 @@ export class Container implements IContainer {
     }
 
     // Emit after register event
-    this.lifecycleManager.emitSync(LifecycleEvent.AfterRegister, { 
+    this.lifecycleManager.emitSync(LifecycleEvent.AfterRegister, {
       token,
       metadata: { provider, registration }
     });
@@ -306,7 +306,7 @@ export class Container implements IContainer {
           }
           throw error;
         }
-        
+
         if (conditionalProvider.fallback) {
           const fallbackFactory = this.createFactory(token, conditionalProvider.fallback);
           return fallbackFactory();
@@ -335,10 +335,10 @@ export class Container implements IContainer {
     }
 
     return 'useValue' in provider ||
-           'useClass' in provider ||
-           'useFactory' in provider ||
-           'useToken' in provider ||
-           ('when' in provider && 'useFactory' in provider);
+      'useClass' in provider ||
+      'useFactory' in provider ||
+      'useToken' in provider ||
+      ('when' in provider && 'useFactory' in provider);
   }
 
   /**
@@ -354,7 +354,7 @@ export class Container implements IContainer {
         resolved: new Map()
       };
     }
-    
+
     // Store resolution context temporarily
     const previousContext = this.context;
     if (context) {
@@ -363,11 +363,11 @@ export class Container implements IContainer {
 
     try {
       // Emit before resolve event
-      this.lifecycleManager.emitSync(LifecycleEvent.BeforeResolve, { 
-        token, 
-        context: this.context 
+      this.lifecycleManager.emitSync(LifecycleEvent.BeforeResolve, {
+        token,
+        context: this.context
       });
-      
+
       // Execute plugin hooks
       this.pluginManager.executeHooksSync('beforeResolve', token, this.context);
 
@@ -406,38 +406,38 @@ export class Container implements IContainer {
 
       // Cache the result
       this.resolutionState.resolved.set(token, result);
-      
+
       // Emit after resolve event
-      this.lifecycleManager.emitSync(LifecycleEvent.AfterResolve, { 
-        token, 
+      this.lifecycleManager.emitSync(LifecycleEvent.AfterResolve, {
+        token,
         instance: result,
-        context: this.context 
+        context: this.context
       });
 
       return result;
     } catch (error: any) {
       // Emit resolve failed event
-      this.lifecycleManager.emitSync(LifecycleEvent.ResolveFailed, { 
-        token, 
+      this.lifecycleManager.emitSync(LifecycleEvent.ResolveFailed, {
+        token,
         error,
-        context: this.context 
+        context: this.context
       });
-      
+
       // Execute plugin error hooks
       this.pluginManager.executeHooksSync('onError', error, token, this.context);
-      
+
       throw error;
     } finally {
       // Remove from resolution chain (check if resolutionState exists in case of early error)
       if (this.resolutionState && this.resolutionState.chain.length > 0) {
         this.resolutionState.chain.pop();
       }
-      
+
       // Clean up resolution state if we're back at the top level
       if (this.resolutionState && this.resolutionState.chain.length === 0) {
         this.resolutionState = undefined;
       }
-      
+
       // Restore previous context
       if (context) {
         this.context = previousContext;
@@ -498,7 +498,7 @@ export class Container implements IContainer {
       let tokenModule: string | undefined;
       let isGlobal = false;
       let isExported = false;
-      
+
       for (const [moduleName, providerMap] of this.moduleProviders) {
         const tokenKey = this.getTokenKey(token);
         if (providerMap.has(tokenKey)) {
@@ -510,28 +510,28 @@ export class Container implements IContainer {
           break;
         }
       }
-      
+
       if (foundInModule && tokenModule) {
         // Check if we're resolving from within the same module
         const resolvingModule = (this.context as any).__resolvingModule;
         const isSameModule = resolvingModule && resolvingModule === tokenModule;
-        
+
         // Check if resolving module imports the token's module  
         let canAccessFromImport = false;
         if (resolvingModule && this.moduleImports.has(resolvingModule)) {
           canAccessFromImport = this.moduleImports.get(resolvingModule)!.has(tokenModule) && isExported;
         }
-        
+
         // If no resolving module (resolving from main container), allow if exported or global
         const isFromMainContainer = !resolvingModule;
         const canAccessFromMain = isFromMainContainer && (isExported || isGlobal);
-        
+
         // Access rules:
         // 1. Global providers are accessible everywhere
         // 2. Exported providers are accessible to importing modules and main container
         // 3. Non-exported providers are only accessible within the same module
         const hasAccess = isGlobal || isSameModule || canAccessFromImport || canAccessFromMain;
-        
+
         if (!hasAccess) {
           throw new DependencyNotFoundError(token);
         }
@@ -573,34 +573,34 @@ export class Container implements IContainer {
     if (registration.options?.multi && 'useValue' in registration.provider) {
       return (registration.provider as any).useValue;
     }
-    
+
     // Check if instance already exists in registration
     if (registration.instance !== undefined) {
       // Emit cache hit for singleton reuse
-      this.lifecycleManager.emitSync(LifecycleEvent.CacheHit, { 
-        token: registration.token 
+      this.lifecycleManager.emitSync(LifecycleEvent.CacheHit, {
+        token: registration.token
       });
       return registration.instance;
     }
-    
+
     // For individual registrations (not multi-token), check if already resolved
     if (!isMultiToken(registration.token) && !registration.options?.multi) {
       if (this.instances.has(registration.token)) {
         // Emit cache hit for singleton reuse
-        this.lifecycleManager.emitSync(LifecycleEvent.CacheHit, { 
-          token: registration.token 
+        this.lifecycleManager.emitSync(LifecycleEvent.CacheHit, {
+          token: registration.token
         });
         return this.instances.get(registration.token);
       }
     }
 
     const instance = this.createInstance(registration);
-    
+
     // Don't cache instance for multi-tokens
     if (!registration.options?.multi) {
       registration.instance = instance;
     }
-    
+
     // Only cache in instances map for non-multi-tokens
     if (!isMultiToken(registration.token) && !registration.options?.multi) {
       this.instances.set(registration.token, instance);
@@ -621,14 +621,14 @@ export class Container implements IContainer {
    */
   private resolveScoped<T>(registration: Registration): T {
     const scopeId = this.context.metadata?.scopeId || 'default';
-    
+
     // Each scope maintains its own instances - don't share with parent
     if (!this.scopedInstances.has(scopeId)) {
       this.scopedInstances.set(scopeId, new Map());
     }
 
     const scopeCache = this.scopedInstances.get(scopeId)!;
-    
+
     if (scopeCache.has(registration.token)) {
       return scopeCache.get(registration.token);
     }
@@ -645,7 +645,7 @@ export class Container implements IContainer {
   private resolveRequest<T>(registration: Registration): T {
     // For request scope, use scopeId or requestId to identify the request context
     const requestContext = this.context.metadata?.scopeId || this.context.metadata?.requestId;
-    
+
     if (!requestContext) {
       // Fallback to transient if no request context
       return this.resolveTransient(registration);
@@ -665,7 +665,7 @@ export class Container implements IContainer {
     try {
       // Resolve dependencies
       const dependencies = this.resolveDependencies(registration);
-      
+
       // Create instance
       const instance = registration.factory(...dependencies);
 
@@ -673,7 +673,7 @@ export class Container implements IContainer {
       if (instance && typeof instance.onInit === 'function') {
         this.initializableInstances.add(instance);
       }
-      
+
       if (instance && (typeof instance.onDestroy === 'function' || this.isDisposable(instance))) {
         this.disposableInstances.add(instance);
       }
@@ -692,12 +692,12 @@ export class Container implements IContainer {
           instance,
           context: this.context
         });
-        
+
         const result = instance.initialize();
         if (result instanceof Promise) {
           throw new AsyncResolutionError(registration.token);
         }
-        
+
         this.lifecycleManager.emitSync(LifecycleEvent.InstanceInitialized, {
           token: registration.token,
           instance,
@@ -707,14 +707,14 @@ export class Container implements IContainer {
 
       return instance;
     } catch (error: any) {
-      if (error instanceof ResolutionError || 
-          error instanceof AsyncResolutionError ||
-          error instanceof CircularDependencyError ||
-          error instanceof DependencyNotFoundError ||
-          error instanceof ContainerDisposedError ||
-          error instanceof InvalidProviderError ||
-          error instanceof DuplicateRegistrationError ||
-          error instanceof DisposalError) {
+      if (error instanceof ResolutionError ||
+        error instanceof AsyncResolutionError ||
+        error instanceof CircularDependencyError ||
+        error instanceof DependencyNotFoundError ||
+        error instanceof ContainerDisposedError ||
+        error instanceof InvalidProviderError ||
+        error instanceof DuplicateRegistrationError ||
+        error instanceof DisposalError) {
         throw error;
       }
       // Factory errors should be wrapped as ResolutionError with chain
@@ -730,7 +730,7 @@ export class Container implements IContainer {
     if (!registration.dependencies || registration.dependencies.length === 0) {
       return [];
     }
-    
+
     // Find which module this registration belongs to
     let currentModule: string | undefined;
     if (this.moduleProviders) {
@@ -747,16 +747,16 @@ export class Container implements IContainer {
       // Handle optional dependencies and context injection
       if (typeof dep === 'object' && dep !== null && 'token' in dep) {
         const depObj = dep as any;
-        
+
         // Handle context injection
         if (depObj.token === 'CONTEXT' && depObj.type === 'context') {
           return this.context.resolveContext || this.context;
         }
-        
+
         if (depObj.optional) {
           return this.resolveOptional(depObj.token);
         }
-        
+
         // Set module context and resolve
         const prevModule = (this.context as any).__resolvingModule;
         try {
@@ -766,12 +766,12 @@ export class Container implements IContainer {
           (this.context as any).__resolvingModule = prevModule;
         }
       }
-      
+
       // Handle string context token directly
       if (dep === 'CONTEXT') {
         return this.context.resolveContext || this.context;
       }
-      
+
       // Regular token - set module context and resolve
       const prevModule = (this.context as any).__resolvingModule;
       try {
@@ -818,11 +818,11 @@ export class Container implements IContainer {
 
     try {
       // Emit before resolve event
-      this.lifecycleManager.emitSync(LifecycleEvent.BeforeResolve, { 
-        token, 
-        context: this.context 
+      this.lifecycleManager.emitSync(LifecycleEvent.BeforeResolve, {
+        token,
+        context: this.context
       });
-      
+
       // Execute plugin hooks (async for async resolution)
       await this.pluginManager.executeHooks('beforeResolve', token, middlewareContext);
 
@@ -851,24 +851,24 @@ export class Container implements IContainer {
         middlewareContext,
         () => this.resolveAsyncInternal(token)
       );
-      
+
       this.pendingPromises.set(token, resolutionPromise);
-      
+
       // Resolve through async middleware pipeline
-      let result = await resolutionPromise;
+      const result = await resolutionPromise;
 
       // Cache the result
       if (this.resolutionState) {
         this.resolutionState.resolved.set(token, result);
       }
-      
+
       // Emit after resolve event
-      this.lifecycleManager.emitSync(LifecycleEvent.AfterResolve, { 
-        token, 
+      this.lifecycleManager.emitSync(LifecycleEvent.AfterResolve, {
+        token,
         instance: result,
-        context: middlewareContext 
+        context: middlewareContext
       });
-      
+
       // Execute afterResolve hooks (async for async resolution)
       await this.pluginManager.executeHooks('afterResolve', token, result, middlewareContext);
 
@@ -882,25 +882,25 @@ export class Container implements IContainer {
       return result;
     } catch (error: any) {
       // Emit resolve failed event
-      this.lifecycleManager.emitSync(LifecycleEvent.ResolveFailed, { 
-        token, 
+      this.lifecycleManager.emitSync(LifecycleEvent.ResolveFailed, {
+        token,
         error,
-        context: middlewareContext 
+        context: middlewareContext
       });
-      
+
       // Execute onError hooks (async for async resolution)
       await this.pluginManager.executeHooks('onError', error, token, middlewareContext);
-      
+
       // On error, always delete the pending promise
       this.pendingPromises.delete(token);
-      
+
       throw error;
     } finally {
       // Remove from resolution chain
       if (this.resolutionState && this.resolutionState.chain.length > 0) {
         this.resolutionState.chain.pop();
       }
-      
+
       // Clean up resolution state
       if (this.resolutionState && this.resolutionState.chain.length === 0) {
         this.resolutionState = undefined;
@@ -937,7 +937,7 @@ export class Container implements IContainer {
       // Check if this is an async provider before calling factory
       const asyncProvider = registration.provider as AsyncFactoryProvider<T>;
       const isAsync = registration.isAsync || (asyncProvider.useFactory && asyncProvider.useFactory.constructor.name === 'AsyncFunction');
-      
+
       if (isAsync) {
         // Apply retry logic if specified
         if (asyncProvider.retry) {
@@ -945,7 +945,7 @@ export class Container implements IContainer {
             // Re-resolve dependencies on each retry attempt (in case they have changed)
             const freshDependencies = await this.resolveAsyncDependencies(registration);
             let result = registration.factory!(...freshDependencies);
-            
+
             // Apply timeout to individual attempts if specified
             if (asyncProvider.timeout && asyncProvider.timeout > 0) {
               const timeoutPromise = new Promise<never>((_, reject) => {
@@ -953,7 +953,7 @@ export class Container implements IContainer {
               });
               result = Promise.race([result, timeoutPromise]);
             }
-            
+
             return await result;
           };
 
@@ -965,7 +965,7 @@ export class Container implements IContainer {
         } else {
           // Single attempt with optional timeout
           let factoryResult = registration.factory!(...dependencies);
-          
+
           // Apply timeout if specified (no retry)
           if (asyncProvider.timeout && asyncProvider.timeout > 0) {
             const timeoutPromise = new Promise<never>((_, reject) => {
@@ -973,7 +973,7 @@ export class Container implements IContainer {
             });
             factoryResult = Promise.race([factoryResult, timeoutPromise]);
           }
-          
+
           instance = await factoryResult;
         }
       } else {
@@ -1009,7 +1009,7 @@ export class Container implements IContainer {
     if (instance && typeof (instance as any).onInit === 'function') {
       this.initializableInstances.add(instance);
     }
-    
+
     if (instance && (typeof (instance as any).onDestroy === 'function' || this.isDisposable(instance))) {
       this.disposableInstances.add(instance);
     }
@@ -1037,7 +1037,7 @@ export class Container implements IContainer {
         if (this.resolutionState?.chain.includes(dep)) {
           throw new CircularDependencyError([...this.resolutionState.chain, dep]);
         }
-        
+
         const depReg = this.getRegistration(dep);
         if (depReg?.isAsync) {
           return this.resolveAsync(dep);
@@ -1054,7 +1054,7 @@ export class Container implements IContainer {
     this.checkDisposed();
 
     const registrations = this.registrations.get(token);
-    
+
     if (!registrations) {
       if (this.parent) {
         return this.parent.resolveMany(token);
@@ -1091,7 +1091,7 @@ export class Container implements IContainer {
         filter: (provider as any).filter,
         batch: (provider as any).batch
       };
-      
+
       // Create a new provider that applies filtering and batching
       const wrappedProvider: Provider<AsyncIterable<T>> = {
         ...originalProvider,
@@ -1100,14 +1100,14 @@ export class Container implements IContainer {
           return this.applyStreamProcessing(originalStream, streamOptions) as AsyncIterable<T>;
         }
       } as Provider<AsyncIterable<T>>;
-      
+
       // Remove the streaming options from the provider before registering
       delete (wrappedProvider as any).filter;
       delete (wrappedProvider as any).batch;
-      
+
       return this.register(token, wrappedProvider, options);
     }
-    
+
     return this.register(token, provider, options);
   }
 
@@ -1150,18 +1150,18 @@ export class Container implements IContainer {
     options: { timeout?: number; failFast?: boolean } = {}
   ): Promise<T extends InjectionToken<any>[] ? any[] : { [K in keyof T]: T[K] extends InjectionToken<infer V> ? V | undefined : never }> {
     const { timeout = 5000, failFast = false } = options;
-    
+
     // Handle object map format
     if (!Array.isArray(tokens)) {
       const keys = Object.keys(tokens);
       const tokenArray = keys.map(key => (tokens as any)[key]);
-      
+
       const resolvePromise = Promise.allSettled(
-        tokenArray.map(token => 
-          timeout > 0 ? 
+        tokenArray.map(token =>
+          timeout > 0 ?
             Promise.race([
               this.resolveAsync(token),
-              new Promise<never>((_, reject) => 
+              new Promise<never>((_, reject) =>
                 setTimeout(() => reject(new Error('Timeout')), timeout)
               )
             ]) :
@@ -1175,14 +1175,14 @@ export class Container implements IContainer {
         });
         return resultObj;
       });
-      
+
       return resolvePromise as any;
     }
-    
+
     // Handle array format
-    const resolvePromise = failFast ? 
+    const resolvePromise = failFast ?
       this.resolveParallel(tokens) :
-      this.resolveParallelSettled(tokens).then(results => 
+      this.resolveParallelSettled(tokens).then(results =>
         results.map(result => {
           if (result.status === 'rejected') {
             throw result.reason;
@@ -1195,7 +1195,7 @@ export class Container implements IContainer {
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => reject(new Error(`Batch resolution timed out after ${timeout}ms`)), timeout);
       });
-      
+
       return Promise.race([resolvePromise, timeoutPromise]) as any;
     }
 
@@ -1228,10 +1228,10 @@ export class Container implements IContainer {
    */
   createScope(context: Partial<ResolutionContext> = {}): IContainer {
     this.checkDisposed();
-    
+
     // Generate unique scope ID with a counter to ensure uniqueness even within same millisecond
     const uniqueId = `scope-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
+
     const newContext = {
       ...this.context,
       ...context,
@@ -1242,7 +1242,7 @@ export class Container implements IContainer {
         requestId: context.metadata?.requestId || context.request?.id
       }
     };
-    
+
     return new Container(this, newContext);
   }
 
@@ -1284,21 +1284,21 @@ export class Container implements IContainer {
       if (!this.moduleImports.has(module.name)) {
         this.moduleImports.set(module.name, new Set());
       }
-      
+
       for (const imported of module.imports) {
         const { module: resolvedImport, isForwardRef } = this.resolveModule(imported);
         const newHasForwardRefs = hasForwardRefs || isForwardRef;
-        
+
         // Check if this creates a circular dependency (but allow if any forward refs are involved)
         if (!newHasForwardRefs && loadingStack.has(resolvedImport.name)) {
           throw new Error(`Circular module dependency detected: ${Array.from(loadingStack).join(' -> ')} -> ${resolvedImport.name}`);
         }
-        
+
         // Skip loading if already in the loading stack (forward reference cycle)
         if (!loadingStack.has(resolvedImport.name)) {
           this.loadModuleInternal(resolvedImport, loadingStack, newHasForwardRefs);
         }
-        
+
         // Track that this module imports the other module
         this.moduleImports.get(module.name)!.add(resolvedImport.name);
       }
@@ -1309,12 +1309,12 @@ export class Container implements IContainer {
     // Second pass: evaluate and register conditional providers
     if (module.providers) {
       const conditionalProviders: Array<{ token: any; providerObj: any }> = [];
-      
+
       // First pass: non-conditional providers
       for (const provider of module.providers) {
         let token: any;
         let providerObj: any;
-        
+
         if (Array.isArray(provider) && provider.length === 2) {
           // Handle [token, provider] tuples
           token = provider[0];
@@ -1338,7 +1338,7 @@ export class Container implements IContainer {
           // Try to handle it as a provider object that might be converted from the test format
           throw new Error('Module provider must be either [token, provider] tuple, a class constructor, or a provider object with "provide" property');
         }
-        
+
         // Check if it's conditional
         if (providerObj && typeof providerObj === 'object' && providerObj.conditional) {
           // Save for second pass
@@ -1362,7 +1362,7 @@ export class Container implements IContainer {
           this.register(token, providerObj);
         }
       }
-      
+
       // Track all providers (both conditional and non-conditional) for export filtering
       if (!this.moduleProviders) {
         this.moduleProviders = new Map();
@@ -1370,22 +1370,20 @@ export class Container implements IContainer {
       if (!this.moduleProviders.has(module.name)) {
         this.moduleProviders.set(module.name, new Map());
       }
-      
+
       // Track non-conditional providers
       for (const provider of module.providers) {
         if (!Array.isArray(provider) || provider.length !== 2) continue;
         const [token, providerObj] = provider;
-        
+
         // Skip if it's a conditional provider (will be tracked separately)
         if (providerObj && typeof providerObj === 'object' && (providerObj as any).conditional) {
           continue;
         }
-        
+
         // Check if token is exported
-        const isExported = !module.exports || module.exports.length === 0 || module.exports.some(exportedToken => {
-          return this.getTokenKey(exportedToken) === this.getTokenKey(token);
-        });
-        
+        const isExported = !module.exports || module.exports.length === 0 || module.exports.some(exportedToken => this.getTokenKey(exportedToken) === this.getTokenKey(token));
+
         const tokenKey = this.getTokenKey(token);
         this.moduleProviders.get(module.name)!.set(tokenKey, {
           token,
@@ -1393,30 +1391,28 @@ export class Container implements IContainer {
           global: module.global || false
         });
       }
-      
+
       // Second pass: conditional providers
       for (const { token, providerObj } of conditionalProviders) {
         const condition = providerObj.condition;
         const originalProvider = providerObj.originalProvider;
-        
+
         // Check if token is exported
-        const isExported = !module.exports || module.exports.length === 0 || module.exports.some(exportedToken => {
-          return this.getTokenKey(exportedToken) === this.getTokenKey(token);
-        });
-        
+        const isExported = !module.exports || module.exports.length === 0 || module.exports.some(exportedToken => this.getTokenKey(exportedToken) === this.getTokenKey(token));
+
         const tokenKey = this.getTokenKey(token);
-        
+
         // Track the provider even if condition is not met
         this.moduleProviders.get(module.name)!.set(tokenKey, {
           token,
           exported: isExported,
           global: module.global || false
         });
-        
+
         // Temporarily mark we're resolving from this module to allow internal access
         const previousModule = (this.context as any).__resolvingModule;
         (this.context as any).__resolvingModule = module.name;
-        
+
         try {
           // Evaluate condition
           if (condition && condition(this)) {
@@ -1435,18 +1431,18 @@ export class Container implements IContainer {
     if (module.exports) {
       for (const exportedToken of module.exports) {
         const tokenKey = this.getTokenKey(exportedToken);
-        
+
         // Check if this module provides the token
         const providesToken = this.moduleProviders?.get(module.name)?.has(tokenKey);
-        
+
         if (!providesToken) {
           // This is a re-export, find which imported module provides it
           for (const importedModuleName of this.moduleImports.get(module.name) || []) {
             const importedProviders = this.moduleProviders?.get(importedModuleName);
-            
+
             if (importedProviders?.has(tokenKey)) {
               const providerInfo = importedProviders.get(tokenKey)!;
-              
+
               if (providerInfo.exported || providerInfo.global) {
                 // Re-export: mark this token as exported from the current module too
                 if (!this.moduleProviders!.get(module.name)!.has(tokenKey)) {
@@ -1462,7 +1458,7 @@ export class Container implements IContainer {
         }
       }
     }
-    
+
     // Store module
     this.modules.set(module.name, module);
 
@@ -1487,7 +1483,7 @@ export class Container implements IContainer {
    */
   clearCache(): void {
     this.checkDisposed();
-    
+
     // Clear singleton instances except values
     for (const [, registration] of this.registrations) {
       if (Array.isArray(registration)) {
@@ -1502,13 +1498,13 @@ export class Container implements IContainer {
         }
       }
     }
-    
+
     // Clear instance cache
     this.instances.clear();
-    
+
     // Clear scoped instances (including parent's scoped instances if it's a child container)
     this.scopedInstances.clear();
-    
+
     // If this is a child container, also clear its scopeId from parent's scoped instances
     if (this.parent && (this.parent as any).scopedInstances) {
       const scopeId = this.context.metadata?.scopeId;
@@ -1523,12 +1519,12 @@ export class Container implements IContainer {
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
-    
+
     this.initialized = true;
 
     // Initialize all initializable instances that have been resolved
     const initPromises: Promise<void>[] = [];
-    
+
     for (const instance of this.initializableInstances) {
       if (instance && typeof instance.onInit === 'function') {
         try {
@@ -1572,7 +1568,7 @@ export class Container implements IContainer {
 
     // Dispose instances in reverse order (dispose dependents before dependencies)
     const disposableEntries = Array.from(this.instances.entries()).reverse();
-    
+
     for (const [token, instance] of disposableEntries) {
       // Call onDestroy lifecycle hook first
       if (instance && typeof instance.onDestroy === 'function') {
@@ -1585,7 +1581,7 @@ export class Container implements IContainer {
           console.error(`Failed to call onDestroy for ${getTokenName(token)}:`, error);
         }
       }
-      
+
       // Then call dispose if available
       if (this.isDisposable(instance)) {
         try {
@@ -1599,7 +1595,7 @@ export class Container implements IContainer {
     // Dispose scoped instances
     for (const scopeCache of this.scopedInstances.values()) {
       const scopedEntries = Array.from(scopeCache.entries()).reverse();
-      
+
       for (const [token, instance] of scopedEntries) {
         // Call onDestroy lifecycle hook first
         if (instance && typeof instance.onDestroy === 'function') {
@@ -1612,7 +1608,7 @@ export class Container implements IContainer {
             console.error(`Failed to call onDestroy for scoped ${getTokenName(token)}:`, error);
           }
         }
-        
+
         // Then call dispose if available
         if (this.isDisposable(instance)) {
           try {
@@ -1662,27 +1658,27 @@ export class Container implements IContainer {
   private getModuleDisposeOrder(): string[] {
     const visited = new Set<string>();
     const order: string[] = [];
-    
+
     const visit = (moduleName: string) => {
       if (visited.has(moduleName)) return;
       visited.add(moduleName);
-      
+
       // Visit all modules that depend on this module first
       for (const [otherModuleName, imports] of this.moduleImports.entries()) {
         if (imports.has(moduleName)) {
           visit(otherModuleName);
         }
       }
-      
+
       // Add this module to the order (dependents are added first)
       order.push(moduleName);
     };
-    
+
     // Visit all modules
     for (const moduleName of this.modules.keys()) {
       visit(moduleName);
     }
-    
+
     return order;
   }
 
@@ -1725,36 +1721,36 @@ export class Container implements IContainer {
     delay: number
   ): Promise<T> {
     let lastError: Error;
-    
+
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         return await operation();
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
-        
+
         if (attempt === maxAttempts) {
           break;
         }
-        
+
         // Wait before retrying
         if (delay > 0) {
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
     }
-    
+
     throw lastError!;
   }
-  
+
   /**
    * Install a plugin
    */
   use(plugin: Plugin): this {
     this.pluginManager.install(plugin);
-    
+
     // Note: Plugin hooks are now handled entirely via the plugin manager's executeHooks system
     // to avoid conflicts and double execution. The lifecycle events are separate from plugin hooks.
-    
+
     return this;
   }
 
@@ -1764,21 +1760,21 @@ export class Container implements IContainer {
   hasPlugin(pluginName: string): boolean {
     return this.pluginManager.hasPlugin(pluginName);
   }
-  
+
   /**
    * Add middleware
    */
   addMiddleware(middleware: Middleware): this {
     this.middlewarePipeline.use(middleware);
-    
+
     // Emit middleware added event
     this.lifecycleManager.emitSync(LifecycleEvent.MiddlewareAdded, {
       metadata: { middlewareName: middleware.name }
     });
-    
+
     return this;
   }
-  
+
   /**
    * Remove middleware
    */
@@ -1786,7 +1782,7 @@ export class Container implements IContainer {
     this.middlewarePipeline.remove(name);
     return this;
   }
-  
+
   /**
    * Add lifecycle hook
    */
@@ -1794,7 +1790,7 @@ export class Container implements IContainer {
     this.lifecycleManager.on(event, hook);
     return this;
   }
-  
+
   /**
    * Remove lifecycle hook
    */
@@ -1802,21 +1798,21 @@ export class Container implements IContainer {
     this.lifecycleManager.off(event, hook);
     return this;
   }
-  
+
   /**
    * Get context provider
    */
   getContext(): ContextProvider {
     return this.contextProvider;
   }
-  
+
   /**
    * With context
    */
   withContext<T>(fn: () => T): T {
     return this.contextManager.runWithContext(this.contextProvider, fn);
   }
-  
+
   /**
    * Add a lifecycle hook
    */
@@ -1826,7 +1822,7 @@ export class Container implements IContainer {
       this.pluginManager.addHook('afterResolve', handler as any);
       return this;
     }
-    
+
     // Map common plugin hook names to lifecycle events with parameter mapping
     const eventMap: { [key: string]: { event: LifecycleEvent; wrapper: (data: any) => any[] } } = {
       'beforeResolve': {
@@ -1854,7 +1850,7 @@ export class Container implements IContainer {
         wrapper: () => []
       }
     };
-    
+
     const mapping = eventMap[event];
     if (mapping) {
       // Still add to lifecycle manager for non-modifying hooks
@@ -1864,40 +1860,40 @@ export class Container implements IContainer {
           return handler(...args);
         });
       }
-      
+
       // Add to plugin manager for all hooks
       this.pluginManager.addHook(event as any, handler as any);
     } else {
       console.warn(`Unknown hook event: ${event}`);
     }
-    
+
     return this;
   }
-  
+
   /**
    * Load enhanced module
    */
   loadEnhancedModule(module: any): this {
     const moduleRef = this.moduleCompiler.compile(module);
-    
+
     // Emit module loading event
-    this.lifecycleManager.emitSync(LifecycleEvent.ModuleLoading, { 
-      metadata: { moduleName: moduleRef.name } 
+    this.lifecycleManager.emitSync(LifecycleEvent.ModuleLoading, {
+      metadata: { moduleName: moduleRef.name }
     });
-    
+
     // Register providers from the module
     for (const [token, provider] of moduleRef.providers) {
       this.register(token, provider);
     }
-    
+
     // Store module reference
     (moduleRef as any).container = this;
-    
+
     // Emit module loaded event
     this.lifecycleManager.emitSync(LifecycleEvent.ModuleLoaded, {
       metadata: { moduleName: moduleRef.name }
     });
-    
+
     return this;
   }
 
@@ -1907,13 +1903,13 @@ export class Container implements IContainer {
   resolveLazy<T>(token: InjectionToken<T>): T {
     let instance: T | undefined;
     let error: Error | undefined;
-    
+
     const handler: ProxyHandler<any> = {
       get: (target, prop) => {
         if (error) {
           throw error;
         }
-        
+
         if (instance === undefined) {
           try {
             instance = this.resolve(token);
@@ -1922,16 +1918,16 @@ export class Container implements IContainer {
             throw error;
           }
         }
-        
+
         if (instance && typeof instance === 'object') {
           const value = (instance as any)[prop];
           return typeof value === 'function' ? value.bind(instance) : value;
         }
-        
+
         return (instance as any)[prop];
       }
     };
-    
+
     return new Proxy({}, handler) as T;
   }
 
@@ -1941,13 +1937,13 @@ export class Container implements IContainer {
   async resolveLazyAsync<T>(token: InjectionToken<T>): Promise<T> {
     let instance: T | undefined;
     let error: Error | undefined;
-    
+
     const handler: ProxyHandler<any> = {
       get: (target, prop) => {
         if (error) {
           throw error;
         }
-        
+
         if (instance === undefined) {
           // For async lazy, we need to return a promise
           return this.resolveAsync(token).then(resolved => {
@@ -1962,16 +1958,16 @@ export class Container implements IContainer {
             throw error;
           });
         }
-        
+
         if (instance && typeof instance === 'object') {
           const value = (instance as any)[prop];
           return typeof value === 'function' ? value.bind(instance) : value;
         }
-        
+
         return (instance as any)[prop];
       }
     };
-    
+
     return new Proxy({}, handler) as T;
   }
 
@@ -1979,26 +1975,26 @@ export class Container implements IContainer {
    * Apply stream processing options like filtering and batching
    */
   private async* applyStreamProcessing<T>(
-    stream: AsyncIterable<T>, 
+    stream: AsyncIterable<T>,
     options: { filter?: (value: T) => boolean; batch?: { size: number } }
   ): AsyncIterable<T | T[]> {
     const { filter, batch } = options;
-    
+
     if (batch) {
       // Apply batching
       let currentBatch: T[] = [];
-      
+
       for await (const item of stream) {
         if (!filter || filter(item)) {
           currentBatch.push(item);
-          
+
           if (currentBatch.length >= batch.size) {
             yield currentBatch as any;
             currentBatch = [];
           }
         }
       }
-      
+
       // Yield remaining items in batch
       if (currentBatch.length > 0) {
         yield currentBatch as any;

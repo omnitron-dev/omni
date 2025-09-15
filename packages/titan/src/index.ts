@@ -4,12 +4,11 @@
  * @packageDocumentation
  */
 
-import type { Token } from '@omnitron-dev/nexus';
 
 import { createApp } from './application';
 
 // Import types for internal use
-import type { Module, IApplication, HealthStatus } from './types';
+import type { Module, IApplication } from './types';
 
 // Re-export useful utilities from common
 export {

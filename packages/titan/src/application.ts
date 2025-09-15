@@ -229,14 +229,14 @@ export class Application implements IApplication {
       if (this.has(LoggerModuleToken)) {
         const loggerModule = this.get(LoggerModuleToken);
         this._logger?.debug({ module: loggerModule.name }, 'Stopping module');
-        await loggerModule.onStop?.();
+        await loggerModule.onStop?.(this);
         this.emit('module:stopped', { module: loggerModule.name });
       }
       
       // Stop config module last
       if (this.has(ConfigModuleToken)) {
         const configModule = this.get(ConfigModuleToken);
-        await configModule.onStop?.();
+        await configModule.onStop?.(this);
         this.emit('module:stopped', { module: configModule.name });
       }
       
@@ -437,7 +437,7 @@ export class Application implements IApplication {
   /**
    * Register start hook
    */
-  onStart(hook: LifecycleHook | (() => void | Promise<void>)): void {
+  onStart(hook: LifecycleHook | (() => void | Promise<void>)): this {
     if (typeof hook === 'function') {
       this._startHooks.push({
         handler: hook,
@@ -449,12 +449,13 @@ export class Application implements IApplication {
 
     // Sort by priority
     this._startHooks.sort((a, b) => (a.priority || 100) - (b.priority || 100));
+    return this;
   }
 
   /**
    * Register stop hook
    */
-  onStop(hook: LifecycleHook | (() => void | Promise<void>)): void {
+  onStop(hook: LifecycleHook | (() => void | Promise<void>)): this {
     if (typeof hook === 'function') {
       this._stopHooks.push({
         handler: hook,
@@ -466,13 +467,15 @@ export class Application implements IApplication {
 
     // Sort by priority
     this._stopHooks.sort((a, b) => (a.priority || 100) - (b.priority || 100));
+    return this;
   }
 
   /**
    * Register error handler
    */
-  onError(handler: (error: Error) => void): void {
+  onError(handler: (error: Error) => void): this {
     this._errorHandlers.push(handler);
+    return this;
   }
 
   /**

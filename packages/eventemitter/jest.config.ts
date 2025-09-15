@@ -19,7 +19,18 @@ export default {
   moduleFileExtensions: ['ts', 'js', 'json'], // Which files to use
   testMatch: ['<rootDir>/test/**/*.test.ts', '<rootDir>/test/**/*.spec.ts'], // Where to find tests
   transform: {
-    '^.+\\.(t|j)s$': 'ts-jest', // Transform TypeScript files
+    '^.+\\.(t|j)s$': ['ts-jest', {
+      tsconfig: {
+        allowJs: true,
+        esModuleInterop: true,
+      }
+    }]
   },
-  moduleNameMapper: pathsToModuleNameMapper(tsConfig.compilerOptions?.paths || {}, { prefix: '<rootDir>/' }),
+  transformIgnorePatterns: [
+    'node_modules/(?!@omnitron-dev/.*)'
+  ],
+  moduleNameMapper: {
+    ...pathsToModuleNameMapper(tsConfig.compilerOptions?.paths || {}, { prefix: '<rootDir>/' }),
+    '^@omnitron-dev/common$': '<rootDir>/../common/src/index.ts'
+  },
 };

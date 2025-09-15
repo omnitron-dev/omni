@@ -828,6 +828,9 @@ export {
   createParameterizedDecorator
 } from './custom-decorators';
 
+// Re-export common types for convenience
+export type { Scope, Provider, InjectionToken } from '../types/core';
+
 // Re-export types from custom decorators
 export type {
   DecoratorHook,
@@ -838,6 +841,3 @@ export type {
   DecoratorTransform,
   CustomDecoratorConfig
 } from './custom-decorators';
-
-// Re-export common types for convenience
-export type { Scope, Provider, InjectionToken } from '../types/core';

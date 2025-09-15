@@ -16,7 +16,7 @@ import {
   getGlobalObject,
   PerformanceTimer,
   getMemoryUsage
-} from '../src';
+} from '../../src';
 
 describe('Runtime Detection', () => {
   describe('detectRuntime', () => {

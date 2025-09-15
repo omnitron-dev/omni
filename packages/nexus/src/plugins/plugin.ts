@@ -2,7 +2,8 @@
  * Plugin system for Nexus DI Container
  */
 
-import { IContainer, ResolutionContext, InjectionToken } from '../types/core';
+import { IContainer, InjectionToken, ResolutionContext } from '../types/core';
+import { createMiddleware } from '../middleware/middleware';
 
 /**
  * Plugin lifecycle hooks
@@ -84,6 +85,11 @@ export interface Plugin {
   dependencies?: string[];
   
   /**
+   * Plugin requirements (version ranges)
+   */
+  requires?: Record<string, string>;
+  
+  /**
    * Plugin configuration
    */
   config?: Record<string, any>;
@@ -110,11 +116,25 @@ export class PluginManager {
       throw new Error(`Plugin ${plugin.name} is already installed`);
     }
     
+    // Check requirements (compatibility)
+    if (plugin.requires) {
+      for (const [requirement, versionRange] of Object.entries(plugin.requires)) {
+        if (requirement === 'nexus') {
+          // Check nexus version compatibility
+          const nexusVersion = '2.0.0'; // Current version
+          if (!this.isCompatibleVersion(nexusVersion, versionRange)) {
+            throw new Error(`Plugin ${plugin.name} requires nexus ${versionRange}, but ${nexusVersion} is installed`);
+          }
+        }
+        // Add other requirement checks as needed
+      }
+    }
+    
     // Check dependencies
     if (plugin.dependencies) {
       for (const dep of plugin.dependencies) {
         if (!this.plugins.has(dep)) {
-          throw new Error(`Plugin ${plugin.name} requires ${dep} to be installed first`);
+          throw new Error(`Plugin ${plugin.name} depends on ${dep}`);
         }
       }
     }
@@ -222,14 +242,41 @@ export class PluginManager {
   
   /**
    * Execute hooks synchronously
+   * For afterResolve hooks, returns the potentially modified value
    */
-  executeHooksSync(name: keyof PluginHooks, ...args: any[]): void {
+  executeHooksSync(name: keyof PluginHooks, ...args: any[]): any {
     const hooks = this.hooks.get(name);
     if (hooks) {
+      // Special handling for afterResolve to allow value modification
+      if (name === 'afterResolve' && args.length >= 2) {
+        let value = args[1]; // The resolved instance is the second argument
+        for (const hook of hooks) {
+          const result = hook(args[0], value, ...args.slice(2));
+          // If hook returns a value, use it as the new value
+          if (result !== undefined) {
+            value = result;
+          }
+        }
+        return value;
+      }
+      
+      // Regular hook execution
       for (const hook of hooks) {
         hook(...args);
       }
     }
+    
+    // For afterResolve, return the original value if no hooks
+    if (name === 'afterResolve' && args.length >= 2) {
+      return args[1];
+    }
+  }
+
+  /**
+   * Check if a plugin is installed
+   */
+  hasPlugin(pluginName: string): boolean {
+    return this.plugins.has(pluginName);
   }
   
   /**
@@ -253,6 +300,27 @@ export class PluginManager {
     this.plugins.clear();
     this.hooks.clear();
   }
+
+  /**
+   * Check if a version satisfies a version range
+   */
+  private isCompatibleVersion(version: string, range: string): boolean {
+    // Simple version compatibility check
+    // This is a basic implementation - in production, use a proper semver library
+    if (range.startsWith('^')) {
+      const requiredVersion = range.substring(1);
+      const [reqMajor, reqMinor = '0', reqPatch = '0'] = requiredVersion.split('.');
+      const [curMajor, curMinor = '0', curPatch = '0'] = version.split('.');
+      
+      // Major version must match, minor and patch can be higher
+      return parseInt(curMajor) === parseInt(reqMajor) &&
+             (parseInt(curMinor) > parseInt(reqMinor) ||
+              (parseInt(curMinor) === parseInt(reqMinor) && parseInt(curPatch) >= parseInt(reqPatch)));
+    }
+    
+    // Exact version match
+    return version === range;
+  }
 }
 
 /**
@@ -263,214 +331,328 @@ export function createPlugin(config: Plugin): Plugin {
 }
 
 /**
- * Built-in validation plugin
+ * Built-in validation plugin factory
  */
-export const ValidationPlugin = createPlugin({
-  name: 'validation',
-  version: '1.0.0',
-  description: 'Provides validation for registered providers',
-  
-  install(container: IContainer) {
-    // Add validation logic
-    console.log('Validation plugin installed');
-  },
-  
-  hooks: {
-    beforeResolve: (token, context) => {
-      // Validate token metadata
-      if (token && typeof token === 'object' && 'metadata' in token) {
-        const metadata = (token as any).metadata;
-        if (metadata.validate) {
-          metadata.validate(context);
-        }
-      }
-    }
-  }
-});
-
-/**
- * Built-in metrics plugin
- */
-export const MetricsPlugin = createPlugin({
-  name: 'metrics',
-  version: '1.0.0',
-  description: 'Collects metrics about dependency resolution',
-  
-  install(container: IContainer) {
-    const metrics = new Map<string, number>();
-    (container as any).__metrics = metrics;
+export function ValidationPlugin(options: { validators?: Record<string, (value: any) => boolean> } = {}): Plugin {
+  return createPlugin({
+    name: 'validation',
+    version: '1.0.0',
+    description: 'Provides validation for registered providers',
     
-    // Store reference for hooks to access
-    (MetricsPlugin as any).__container = container;
-  },
-  
-  hooks: {
-    afterResolve: (token, instance, context) => {
-      const container = (MetricsPlugin as any).__container;
-      if (container && container.__metrics) {
-        const name = typeof token === 'string' ? token : 
-                     typeof token === 'symbol' ? token.toString() :
-                     token?.name || 'unknown';
-        const count = container.__metrics.get(name) || 0;
-        container.__metrics.set(name, count + 1);
-      }
-    }
-  }
-});
-
-/**
- * Built-in logging plugin
- */
-export const LoggingPlugin = createPlugin({
-  name: 'logging',
-  version: '1.0.0',
-  description: 'Logs dependency resolution',
-  
-  config: {
-    logLevel: 'info'
-  },
-  
-  install(container: IContainer) {
-    console.log('[Nexus] Logging plugin installed');
-  },
-  
-  hooks: {
-    beforeResolve: (token) => {
-      const name = typeof token === 'string' ? token :
-                   typeof token === 'symbol' ? token.toString() :
-                   token?.name || 'unknown';
-      console.log(`[Nexus] Resolving: ${name}`);
-    },
-    
-    afterResolve: (token, instance) => {
-      const name = typeof token === 'string' ? token :
-                   typeof token === 'symbol' ? token.toString() :
-                   token?.name || 'unknown';
-      console.log(`[Nexus] Resolved: ${name}`, instance?.constructor?.name || typeof instance);
-    },
-    
-    onError: (error, token) => {
-      const name = token ? (typeof token === 'string' ? token :
-                           typeof token === 'symbol' ? token.toString() :
-                           token?.name || 'unknown') : 'unknown';
-      console.error(`[Nexus] Error resolving ${name}:`, error);
-    }
-  }
-});
-
-/**
- * Performance monitoring plugin
- */
-export const PerformancePlugin = createPlugin({
-  name: 'performance',
-  version: '1.0.0',
-  description: 'Monitors resolution performance',
-  
-  install(container: IContainer) {
-    const timings = new Map<string, number[]>();
-    (container as any).__timings = timings;
-    (container as any).__activeTimers = new Map<string, number>();
-  },
-  
-  hooks: {
-    beforeResolve: (token) => {
-      const container = this as any;
-      if (container.__activeTimers) {
-        const name = typeof token === 'string' ? token :
-                     typeof token === 'symbol' ? token.toString() :
-                     token?.name || 'unknown';
-        container.__activeTimers.set(name, Date.now());
-      }
-    },
-    
-    afterResolve: (token) => {
-      const container = this as any;
-      if (container.__activeTimers && container.__timings) {
-        const name = typeof token === 'string' ? token :
-                     typeof token === 'symbol' ? token.toString() :
-                     token?.name || 'unknown';
-        const start = container.__activeTimers.get(name);
-        if (start) {
-          const duration = Date.now() - start;
-          const timings = container.__timings.get(name) || [];
-          timings.push(duration);
-          container.__timings.set(name, timings);
-          container.__activeTimers.delete(name);
+    install(container: IContainer) {
+      // Add validation middleware that checks for provider-level validation
+      const validationMiddleware = createMiddleware({
+        name: 'validation-plugin',
+        priority: 95,
+        
+        execute: (context, next) => {
+          const result = next();
           
-          if (duration > 100) {
-            console.warn(`[Nexus] Slow resolution: ${name} took ${duration}ms`);
+          // Helper function to validate result
+          const validateResult = (value: any) => {
+            // Get the registration to check for validation
+            const registration = (container as any).getRegistration?.(context.token);
+            if (registration) {
+              // Check provider-level validation
+              if ((registration.provider as any).validate) {
+                try {
+                  (registration.provider as any).validate(value);
+                } catch (error) {
+                  throw error;
+                }
+              }
+              // Check options-level validation
+              if (registration.options?.validate) {
+                try {
+                  registration.options.validate(value);
+                } catch (error) {
+                  throw error;
+                }
+              }
+            }
+            return value;
+          };
+          
+          // Handle both sync and async results
+          if (result instanceof Promise) {
+            return result.then(validateResult);
+          }
+          
+          return validateResult(result);
+        }
+      });
+      
+      container.addMiddleware(validationMiddleware);
+    },
+    
+    hooks: {
+      beforeResolve: (token, context) => {
+        // Validate token metadata
+        if (token && typeof token === 'object' && 'metadata' in token) {
+          const metadata = (token as any).metadata;
+          if (metadata.validate) {
+            metadata.validate(context);
+          }
+        }
+        // Apply custom validators if provided
+        if (options.validators) {
+          for (const [key, validator] of Object.entries(options.validators)) {
+            if (context && context[key]) {
+              if (!validator(context[key])) {
+                throw new Error(`Validation failed for ${key}`);
+              }
+            }
           }
         }
       }
     }
-  }
-});
+  });
+}
 
 /**
- * Caching plugin for aggressive caching strategies
+ * Built-in metrics plugin factory
  */
-export const CachingPlugin = createPlugin({
-  name: 'caching',
-  version: '1.0.0',
-  description: 'Advanced caching strategies',
+export function MetricsPlugin(options: { enabled?: boolean } = {}): Plugin {
+  const metrics = new Map<string, number>();
   
-  config: {
-    ttl: 60000, // 1 minute default
-    maxSize: 1000
-  },
-  
-  install(container: IContainer) {
-    const cache = new Map<string, { value: any; timestamp: number }>();
-    const config = this.config!;
+  const plugin = createPlugin({
+    name: 'metrics',
+    version: '1.0.0',
+    description: 'Collects metrics about dependency resolution',
     
-    (container as any).__cache = cache;
-    (container as any).__cacheConfig = config;
-    
-    // Periodic cleanup
-    const interval = setInterval(() => {
-      const now = Date.now();
-      for (const [key, entry] of cache.entries()) {
-        if (now - entry.timestamp > config.ttl) {
-          cache.delete(key);
-        }
-      }
-      
-      // Size limit
-      if (cache.size > config.maxSize) {
-        const toDelete = cache.size - config.maxSize;
-        const keys = Array.from(cache.keys());
-        for (let i = 0; i < toDelete; i++) {
-          cache.delete(keys[i]);
-        }
-      }
-    }, 30000); // Check every 30 seconds
-    
-    (container as any).__cacheInterval = interval;
-  },
-  
-  uninstall(container: IContainer) {
-    const interval = (container as any).__cacheInterval;
-    if (interval) {
-      clearInterval(interval);
-    }
-    delete (container as any).__cache;
-    delete (container as any).__cacheConfig;
-    delete (container as any).__cacheInterval;
-  },
-  
-  hooks: {
-    onDispose: () => {
-      const container = this as any;
-      if (container.__cacheInterval) {
-        clearInterval(container.__cacheInterval);
+    install(container: IContainer) {
+      if (options.enabled !== false) {
+        console.log('[Nexus] Metrics plugin installed');
       }
     },
     
-    onCacheClear: () => {
-      const container = this as any;
-      if (container.__cache) {
-        container.__cache.clear();
+    hooks: {
+      afterResolve: (token, instance, context) => {
+        const name = typeof token === 'string' ? token : 
+                     typeof token === 'symbol' ? token.toString() :
+                     token?.name || 'unknown';
+        const count = metrics.get(name) || 0;
+        metrics.set(name, count + 1);
       }
     }
-  }
-});
+  });
+  
+  // Add getMetrics method to the plugin
+  (plugin as any).getMetrics = () => {
+    return {
+      totalResolutions: Array.from(metrics.values()).reduce((a, b) => a + b, 0),
+      resolutionCounts: Object.fromEntries(metrics),
+      cacheHits: 0,
+      cacheMisses: 0
+    };
+  };
+  
+  return plugin;
+}
+
+/**
+ * Built-in logging plugin factory
+ */
+export function LoggingPlugin(options: { level?: 'debug' | 'info' | 'warn' | 'error' } = {}): Plugin {
+  const level = options.level || 'info';
+  
+  return createPlugin({
+    name: 'logging',
+    version: '1.0.0',
+    description: 'Logs dependency resolution',
+    
+    config: {
+      logLevel: level
+    },
+    
+    install(container: IContainer) {
+      if (level === 'debug' || level === 'info') {
+        console.log('[Nexus] Logging plugin installed');
+      }
+    },
+    
+    hooks: {
+      beforeResolve: (token) => {
+        if (level === 'debug') {
+          const name = typeof token === 'string' ? token :
+                       typeof token === 'symbol' ? token.toString() :
+                       token?.name || 'unknown';
+          console.log(`[Nexus] Resolving: ${name}`);
+        }
+      },
+      
+      afterResolve: (token, instance) => {
+        if (level === 'debug' || level === 'info') {
+          const name = typeof token === 'string' ? token :
+                       typeof token === 'symbol' ? token.toString() :
+                       token?.name || 'unknown';
+          console.log(`[Nexus] Resolved: ${name}`, instance?.constructor?.name || typeof instance);
+        }
+      },
+      
+      onError: (error, token) => {
+        const name = token ? (typeof token === 'string' ? token :
+                             typeof token === 'symbol' ? token.toString() :
+                             token?.name || 'unknown') : 'unknown';
+        console.error(`[Nexus] Error resolving ${name}:`, error);
+      }
+    }
+  });
+}
+
+/**
+ * Performance monitoring plugin factory
+ */
+export function PerformancePlugin(options: { threshold?: number } = {}): Plugin {
+  const threshold = options.threshold || 100;
+  const timings = new Map<any, number>();
+  
+  return createPlugin({
+    name: 'performance',
+    version: '1.0.0',
+    description: 'Monitors resolution performance',
+    
+    install(container: IContainer) {
+      console.log('[Nexus] Performance plugin installed');
+    },
+    
+    hooks: {
+      beforeResolve: (token, context) => {
+        // Track resolution start time
+        timings.set(token, performance.now());
+      },
+      
+      afterResolve: (token, instance, context) => {
+        // Calculate resolution time
+        const startTime = timings.get(token);
+        if (startTime) {
+          const duration = performance.now() - startTime;
+          const name = typeof token === 'string' ? token :
+                       typeof token === 'symbol' ? token.toString() :
+                       token?.name || 'unknown';
+          
+          if (duration > threshold) {
+            console.warn(`[Nexus] Slow resolution: ${name} took ${duration.toFixed(2)}ms`);
+          }
+          timings.delete(token);
+        }
+      }
+    }
+  });
+}
+
+/**
+ * Caching plugin factory
+ */
+export function CachingPlugin(options: { ttl?: number; maxSize?: number } = {}): Plugin {
+  const ttl = options.ttl || 60000;
+  const maxSize = options.maxSize || 1000;
+  const cache = new Map<any, { value: any; timestamp: number }>();
+  let interval: any;
+  
+  const plugin = createPlugin({
+    name: 'caching',
+    version: '1.0.0',
+    description: 'Advanced caching strategies',
+    
+    config: {
+      ttl,
+      maxSize
+    },
+    
+    install(container: IContainer) {
+      console.log('[Nexus] Caching plugin installed');
+      
+      // Periodic cleanup
+      interval = setInterval(() => {
+        const now = Date.now();
+        for (const [key, entry] of cache.entries()) {
+          if (now - entry.timestamp > ttl) {
+            cache.delete(key);
+          }
+        }
+        
+        // Size limit
+        if (cache.size > maxSize) {
+          const toDelete = cache.size - maxSize;
+          const keys = Array.from(cache.keys());
+          for (let i = 0; i < toDelete; i++) {
+            cache.delete(keys[i]);
+          }
+        }
+      }, 30000); // Check every 30 seconds
+    },
+    
+    uninstall(container: IContainer) {
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+      cache.clear();
+    },
+    
+    hooks: {
+      beforeResolve: (token, context) => {
+        // Check cache for token
+        const cached = cache.get(token);
+        if (cached && (Date.now() - cached.timestamp) < ttl) {
+          // Return cached value by setting it in context
+          (context as any).__cached = cached.value;
+        }
+      },
+      
+      afterResolve: (token, instance, context) => {
+        // Only cache if not already cached
+        if (!(context as any).__cached) {
+          cache.set(token, { value: instance, timestamp: Date.now() });
+        }
+      },
+      
+      onDispose: () => {
+        if (interval) {
+          clearInterval(interval);
+        }
+      }
+    }
+  });
+  
+  // Add clearCache method
+  (plugin as any).clearCache = () => {
+    cache.clear();
+  };
+  
+  // Add getCacheStats method
+  (plugin as any).getCacheStats = () => {
+    return {
+      size: cache.size,
+      entries: Array.from(cache.keys())
+    };
+  };
+  
+  return plugin;
+}
+
+/**
+ * Strict validation plugin factory
+ */
+export function StrictValidationPlugin(options: { strict?: boolean } = {}): Plugin {
+  return createPlugin({
+    name: 'strict-validation',
+    version: '1.0.0',
+    description: 'Provider validation with strict mode',
+    
+    install(container: IContainer) {
+      console.log('[Nexus] Strict validation plugin installed');
+    },
+    
+    hooks: {
+      afterResolve: (token, instance, context) => {
+        // Check if provider has validation
+        const registration = (context as any).registration;
+        if (registration?.provider?.validate) {
+          registration.provider.validate(instance);
+        }
+      }
+    }
+  });
+}

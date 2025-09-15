@@ -7,115 +7,107 @@
 // Import for internal use
 import { Container } from './container/container';
 
-// Core Types
-export {
-  // Type definitions
-  Constructor,
-  AbstractConstructor,
-  ServiceIdentifier,
-  Scope,
-  Factory,
-  AsyncFactory,
-  InjectionToken,
-  
-  // Interfaces
-  Token,
-  MultiToken,
-  TokenMetadata,
-  ResolutionContext,
-  IContainer,
-  ContainerMetadata,
-  IModule,
-  DynamicModule,
-  Disposable,
-  Initializable,
-  
-  // Provider types
-  Provider,
-  ClassProvider,
-  ValueProvider,
-  FactoryProvider,
-  AsyncFactoryProvider,
-  TokenProvider,
-  ConditionalProvider,
-  RegistrationOptions
-} from './types/core';
-
-// Token System
-export {
-  createToken,
-  createMultiToken,
-  createOptionalToken,
-  createScopedToken,
-  isToken,
-  isMultiToken,
-  isOptionalToken,
-  getTokenName,
-  tokenFromClass,
-  TokenRegistry
-} from './token/token';
-
 // Container
 export {
   Container
 } from './container/container';
 
-// Error System
-export {
-  NexusError,
-  ResolutionError,
-  CircularDependencyError,
-  RegistrationError,
-  DuplicateRegistrationError,
-  DependencyNotFoundError,
-  ScopeMismatchError,
-  InvalidProviderError,
-  AsyncResolutionError,
-  DisposalError,
-  ModuleError,
-  InitializationError,
-  ContainerDisposedError,
-  NotInjectableError,
-  AggregateError,
-  isNexusError,
-  getRootCause,
-  ErrorHandler
-} from './errors/errors';
+export { createToken as token } from './token/token';
 
-// Runtime Detection
-export {
-  Runtime,
-  RuntimeInfo,
-  detectRuntime,
-  getRuntimeInfo,
-  isNode,
-  isBun,
-  isDeno,
-  isBrowser,
-  isServer,
-  hasESMSupport,
-  hasWorkerSupport,
-  getGlobalObject,
-  loadRuntimeModule,
-  PerformanceTimer,
-  getMemoryUsage
-} from './utils/runtime';
-
-// Testing Utilities
-export {
-  TestContainer,
-  TestContainerOptions,
-  MockConfig,
-  Interaction,
-  createTestContainer,
-  createIsolatedTestContainer,
-  TestModuleBuilder
-} from './testing/test-container';
+export { createMultiToken as multiToken } from './token/token';
 
 // Convenience exports
 export { Container as NexusContainer } from './container/container';
-export { createToken as token } from './token/token';
-export { createMultiToken as multiToken } from './token/token';
+
+// Plugin System
+export {
+  type Plugin,
+  type PluginHooks,
+  createPlugin,
+  PluginManager,
+  MetricsPlugin,
+  LoggingPlugin,
+  CachingPlugin,
+  ValidationPlugin,
+  PerformancePlugin
+} from './plugins/plugin';
+
+// Testing Utilities
+export {
+  type MockConfig,
+  type Interaction,
+  TestContainer,
+  TestModuleBuilder,
+  createTestContainer,
+  type TestContainerOptions,
+  createIsolatedTestContainer
+} from './testing/test-container';
+
+export {
+  type TestModule,
+  TestHarness,
+  type SnapshotContainer,
+  type IsolatedContainer,
+  expectResolution,
+  expectRejection,
+  expectDependency,
+  expectLifecycle,
+  createTestModule,
+  createTestHarness
+} from './testing/test-utilities';
+
+export {
+  MockProvider,
+  SpyProvider,
+  StubProvider
+} from './testing/mock-provider';
+
+// Lifecycle Management
+export {
+  type LifecycleHook,
+  AuditObserver,
+  LifecycleEvent,
+  MemoryObserver,
+  LifecycleManager,
+  type LifecycleObserver,
+  type LifecycleEventData,
+  PerformanceObserver
+} from './lifecycle/lifecycle';
+// Runtime Detection
+export {
+  isBun,
+  isNode,
+  isDeno,
+  Runtime,
+  isServer,
+  isBrowser,
+  type RuntimeInfo,
+  detectRuntime,
+  hasESMSupport,
+  getRuntimeInfo,
+  getMemoryUsage,
+  getGlobalObject,
+  hasWorkerSupport,
+  PerformanceTimer,
+  loadRuntimeModule
+} from './utils/runtime';
+// Enhanced Module System
+export {
+  Module,
+  type ModuleRef,
+  type ForwardRef,
+  forwardRef,
+  createModule,
+  type ModuleOptions,
+  type ModuleFactory,
+  ModuleBuilder,
+  moduleBuilder,
+  type ModuleMetadata,
+  type ModuleCompiler,
+  createConfigModule,
+  createDynamicModule,
+  createFeatureModule
+} from './modules/module';
 
 /**
  * Default container instance for simple use cases
@@ -134,83 +126,119 @@ export function createContainer(): Container {
  */
 export const VERSION = '2.0.0';
 
-// Plugin System
+// Token System
 export {
-  Plugin,
-  PluginHooks,
-  PluginManager,
-  createPlugin,
-  ValidationPlugin,
-  MetricsPlugin,
-  LoggingPlugin,
-  PerformancePlugin,
-  CachingPlugin
-} from './plugins/plugin';
-
-// Middleware System
-export {
-  Middleware,
-  MiddlewareContext,
-  MiddlewareFunction,
-  MiddlewareNext,
-  MiddlewareResult,
-  MiddlewarePipeline,
-  createMiddleware,
-  LoggingMiddleware,
-  CachingMiddleware,
-  RetryMiddleware,
-  ValidationMiddleware,
-  TransactionMiddleware,
-  CircuitBreakerMiddleware,
-  RateLimitMiddleware,
-  composeMiddleware
-} from './middleware/middleware';
-
-// Lifecycle Management
-export {
-  LifecycleEvent,
-  LifecycleEventData,
-  LifecycleHook,
-  LifecycleObserver,
-  LifecycleManager,
-  PerformanceObserver,
-  MemoryObserver,
-  AuditObserver
-} from './lifecycle/lifecycle';
+  isToken,
+  createToken,
+  isMultiToken,
+  getTokenName,
+  type TokenRegistry,
+  tokenFromClass,
+  createLazyToken,
+  isOptionalToken,
+  createMultiToken,
+  createAsyncToken,
+  createConfigToken,
+  createScopedToken,
+  createStreamToken,
+  createOptionalToken
+} from './token/token';
 
 // Advanced Context System
 export {
-  ContextKey,
+  type ContextKey,
   ContextKeys,
-  ContextProvider,
-  DefaultContextProvider,
-  ResolutionStrategy,
+  InjectContext,
+  TenantStrategy,
+  ContextManager,
+  type ContextProvider,
+  createContextKey,
+  RoleBasedStrategy,
+  type ResolutionStrategy,
   EnvironmentStrategy,
   FeatureFlagStrategy,
-  TenantStrategy,
-  RoleBasedStrategy,
-  ContextManager,
-  ContextAwareProvider,
-  createContextKey,
-  createContextAwareProvider,
-  InjectContext
+  type ContextAwareProvider,
+  DefaultContextProvider,
+  createContextAwareProvider
 } from './context/context';
 
-// Enhanced Module System
+// Middleware System
 export {
-  ModuleMetadata,
-  ModuleOptions,
-  ModuleFactory,
-  ModuleRef,
-  ModuleCompiler,
-  ModuleBuilder,
-  createModule,
-  createDynamicModule,
-  moduleBuilder,
-  createConfigModule,
-  createFeatureModule,
-  Module
-} from './modules/module';
+  type Middleware,
+  type MiddlewareNext,
+  type MiddlewareResult,
+  createMiddleware,
+  type MiddlewareContext,
+  LoggingMiddleware,
+  CachingMiddleware,
+  composeMiddleware,
+  type MiddlewareFunction,
+  MiddlewarePipeline,
+  RateLimitMiddleware,
+  ValidationMiddleware,
+  TransactionMiddleware,
+  CircuitBreakerMiddleware,
+  RetryMiddleware,
+  CacheMiddleware,
+  RetryMiddlewareClass,
+  ValidationMiddlewareClass
+} from './middleware/middleware';
+
+// Error System
+export {
+  NexusError,
+  ModuleError,
+  isNexusError,
+  getRootCause,
+  type ErrorHandler,
+  DisposalError,
+  AggregateError,
+  ResolutionError,
+  RegistrationError,
+  ScopeMismatchError,
+  NotInjectableError,
+  InitializationError,
+  InvalidProviderError,
+  AsyncResolutionError,
+  ContainerDisposedError,
+  CircularDependencyError,
+  DependencyNotFoundError,
+  DuplicateRegistrationError
+} from './errors/errors';
+
+// Core Types
+export {
+  Scope,
+  // Interfaces
+  type Token,
+  type Factory,
+  type IModule,
+  // Provider types
+  type Provider,
+  type MultiToken,
+  type IContainer,
+  
+  type Disposable,
+  // Type definitions
+  type Constructor,
+  type AsyncFactory,
+  type TokenMetadata,
+  type DynamicModule,
+  type Initializable,
+  type ClassProvider,
+  type ValueProvider,
+  type TokenProvider,
+  type InjectionToken,
+  
+  type FactoryProvider,
+  type ServiceIdentifier,
+  type ResolutionContext,
+  type ContainerMetadata,
+  type AbstractConstructor,
+  type ConditionalProvider,
+  type RegistrationOptions,
+  type AsyncFactoryProvider
+} from './types/core';
 
 /**
  * Feature flags for all phases
@@ -252,3 +280,18 @@ export const FEATURES = {
  * - Tracing: import from '@omnitron-dev/nexus/tracing'
  * - DevTools: import from '@omnitron-dev/nexus/devtools'
  */
+
+// Export Federation
+export * from './federation';
+
+// Export Service Mesh
+export * from './mesh';
+
+// Export Tracing
+export * from './tracing';
+
+// Export DevTools
+export * from './devtools';
+
+// Export Decorators
+export * from './decorators';

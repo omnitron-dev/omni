@@ -4,11 +4,10 @@
 
 import { Container } from '../container/container';
 import { 
-  IContainer, 
-  InjectionToken, 
+  IModule, 
   Provider, 
-  IModule,
-  Constructor
+  Constructor,
+  InjectionToken
 } from '../types/core';
 
 /**
@@ -29,6 +28,8 @@ export interface TestContainerOptions {
   mocks?: MockConfig[];
   autoMock?: boolean;
   isolate?: boolean;
+  detectLeaks?: boolean;
+  trackMemory?: boolean;
 }
 
 /**
@@ -39,7 +40,7 @@ export interface Interaction {
   args: any[];
   result?: any;
   error?: Error;
-  timestamp: number;
+  timestamp?: number;
 }
 
 /**
@@ -54,11 +55,24 @@ export class TestContainer extends Container {
   private interactions = new Map<InjectionToken<any>, Interaction[]>();
   private snapshots = new Map<string, Map<InjectionToken<any>, any>>();
   private autoMock: boolean;
+  private originalContainer?: Container;
+  private detectLeaks: boolean;
+  private trackMemory: boolean;
+  private resolvedTokens = new Set<InjectionToken<any>>();
+  private registeredTokens = new Set<InjectionToken<any>>();
+  private initialObjectCount = 0;
 
   constructor(options: TestContainerOptions = {}) {
     super(options.isolate ? undefined : undefined);
     
     this.autoMock = options.autoMock || false;
+    this.detectLeaks = options.detectLeaks || false;
+    this.trackMemory = options.trackMemory || false;
+    
+    // Set initial object count baseline
+    if (this.trackMemory) {
+      this.initialObjectCount = this.getObjectCount();
+    }
 
     // Load modules
     if (options.modules) {
@@ -89,11 +103,19 @@ export class TestContainer extends Container {
     const mock = this.createMock(mockValue, spy);
     this.mocks.set(token, mock);
     
+    // Track registered token
+    if (this.detectLeaks) {
+      this.registeredTokens.add(token);
+    }
+    
+    // Create interaction-recording wrapper
+    const wrappedMock = this.wrapWithInteractionRecording(token, mock);
+    
     // Override registration
-    this.register(token, { useValue: mock }, { tags: ['override'] });
+    this.register(token, { useValue: wrappedMock }, { tags: ['override'] });
 
     if (spy) {
-      this.setupSpies(token, mock);
+      this.setupSpies(token, wrappedMock);
     }
 
     return this;
@@ -124,6 +146,43 @@ export class TestContainer extends Container {
     }
 
     return mock;
+  }
+
+  /**
+   * Wrap mock with interaction recording
+   */
+  private wrapWithInteractionRecording<T>(token: InjectionToken<T>, mock: T): T {
+    if (typeof mock !== 'object' || mock === null) {
+      return mock;
+    }
+
+    const wrapped = { ...mock } as any;
+
+    // Wrap functions to record interactions
+    for (const key in wrapped) {
+      if (typeof wrapped[key] === 'function') {
+        const originalFn = wrapped[key];
+        wrapped[key] = jest.fn((...args: any[]) => {
+          try {
+            const result = originalFn(...args);
+            this.recordInteraction(token, {
+              method: key,
+              args
+            });
+            return result;
+          } catch (error) {
+            this.recordInteraction(token, {
+              method: key,
+              args,
+              error: error as Error
+            });
+            throw error;
+          }
+        });
+      }
+    }
+
+    return wrapped;
   }
 
   /**
@@ -168,8 +227,23 @@ export class TestContainer extends Container {
   /**
    * Stub a dependency
    */
-  stub<T>(token: InjectionToken<T>, stub: T): this {
-    this.register(token, { useValue: stub }, { tags: ['override'] });
+  stub<T>(token: InjectionToken<T>, stub: Partial<T> | T): this {
+    // Create a stub object where each property returns the specified value
+    const stubObject = {} as any;
+    const stubAsAny = stub as any;
+    
+    for (const key in stubAsAny) {
+      const value = stubAsAny[key];
+      if (typeof value === 'function') {
+        // If the stub value is already a function, use it directly
+        stubObject[key] = value;
+      } else {
+        // Otherwise, create a function that returns the value
+        stubObject[key] = jest.fn(() => value);
+      }
+    }
+    
+    this.register(token, { useValue: stubObject }, { tags: ['override'] });
     return this;
   }
 
@@ -183,15 +257,15 @@ export class TestContainer extends Container {
   } {
     return {
       useValue: (value: T) => {
-        this.register(token, { useValue: value }, { tags: ['override'] });
+        this.register(token, { useValue: value }, { override: true, tags: ['override'] });
         return this;
       },
       useClass: (cls: Constructor<T>) => {
-        this.register(token, { useClass: cls }, { tags: ['override'] });
+        this.register(token, { useClass: cls }, { override: true, tags: ['override'] });
         return this;
       },
       useFactory: (factory: (...args: any[]) => T) => {
-        this.register(token, { useFactory: factory }, { tags: ['override'] });
+        this.register(token, { useFactory: factory }, { override: true, tags: ['override'] });
         return this;
       }
     };
@@ -238,7 +312,15 @@ export class TestContainer extends Container {
    * Get interactions
    */
   getInteractions(token: InjectionToken<any>): Interaction[] {
-    return this.interactions.get(token) || [];
+    const interactions = this.interactions.get(token) || [];
+    // Return interactions - if result/error/timestamp are undefined, they will be omitted
+    return interactions.map(({ method, args, result, error, timestamp }) => {
+      const interaction: Interaction = { method, args };
+      if (result !== undefined) interaction.result = result;
+      if (error !== undefined) interaction.error = error;
+      if (timestamp !== undefined) interaction.timestamp = timestamp;
+      return interaction;
+    });
   }
 
   /**
@@ -267,9 +349,22 @@ export class TestContainer extends Container {
   }
 
   /**
-   * Restore from snapshot
+   * Restore from snapshot or to original state
    */
-  restore(name = 'default'): void {
+  restore(name?: string): void {
+    if (name === undefined) {
+      // Restore to original state - clear all overrides
+      if ('registrations' in this) {
+        (this as any).registrations.clear();
+        (this as any).instances.clear();
+      }
+      
+      this.mocks.clear();
+      this.spies.clear();
+      this.interactions.clear();
+      return;
+    }
+
     const snapshot = this.snapshots.get(name);
     if (!snapshot) {
       throw new Error(`Snapshot '${name}' not found`);
@@ -296,12 +391,27 @@ export class TestContainer extends Container {
   }
 
   /**
-   * Reset all mocks
+   * Reset all mocks and spies
    */
   resetMocks(): void {
+    // Reset regular mocks
+    for (const mock of this.mocks.values()) {
+      if (mock && typeof mock === 'object') {
+        for (const key in mock) {
+          const value = mock[key];
+          if (value && jest.isMockFunction && jest.isMockFunction(value)) {
+            value.mockReset();
+          }
+        }
+      }
+    }
+    
+    // Reset spies
     for (const spyMap of this.spies.values()) {
       for (const spy of spyMap.values()) {
-        spy.mockReset();
+        if (spy && spy.mockReset) {
+          spy.mockReset();
+        }
       }
     }
   }
@@ -317,18 +427,6 @@ export class TestContainer extends Container {
     }
   }
 
-  /**
-   * Get leaked tokens (tokens that were resolved but not expected)
-   */
-  getLeakedTokens(): InjectionToken<any>[] {
-    const leaked: InjectionToken<any>[] = [];
-    const metadata = this.getMetadata();
-    
-    // This is a simplified implementation
-    // In a real scenario, you'd track which tokens were explicitly expected
-    
-    return leaked;
-  }
 
   /**
    * Verify no unexpected calls
@@ -346,18 +444,51 @@ export class TestContainer extends Container {
   }
 
   /**
-   * Create auto-mock for unregistered tokens
+   * Override register to track registered tokens for leak detection
+   */
+  register<T>(token: InjectionToken<T>, provider: Provider<T>, options?: any): this {
+    // Track registered tokens for leak detection and memory tracking
+    if (this.detectLeaks || this.trackMemory) {
+      this.registeredTokens.add(token);
+    }
+    
+    return super.register(token, provider, options);
+  }
+
+  /**
+   * Override resolve to handle auto-mocking and leak detection
    */
   resolve<T>(token: InjectionToken<T>): T {
     try {
-      return super.resolve(token);
+      // Track resolved tokens for leak detection
+      if (this.detectLeaks) {
+        this.resolvedTokens.add(token);
+      }
+      
+      // Try to resolve from this container first (for overrides)
+      const result = super.resolve(token);
+      return result;
     } catch (error) {
+      // If not found and we have an original container, try that
+      if (this.originalContainer) {
+        try {
+          const result = this.originalContainer.resolve(token);
+          if (this.detectLeaks) {
+            this.resolvedTokens.add(token);
+          }
+          return result;
+        } catch (originalError) {
+          // Continue to auto-mock if enabled
+        }
+      }
+      
+      // Auto-mock if enabled
       if (this.autoMock) {
-        // Create automatic mock
         const mock = this.createAutoMock<T>(token);
         this.register(token, { useValue: mock });
         return mock;
       }
+      
       throw error;
     }
   }
@@ -387,6 +518,113 @@ export class TestContainer extends Container {
         return undefined;
       }
     });
+  }
+
+  /**
+   * Create test container from existing container
+   */
+  static from(container: Container): TestContainer {
+    const testContainer = new TestContainer();
+    testContainer.originalContainer = container;
+    
+    // Don't copy registrations - let resolve method handle fallback
+    return testContainer;
+  }
+
+  /**
+   * Get current object count
+   */
+  private getObjectCount(): number {
+    let objectCount = 0;
+    
+    // Count instances in the container
+    if ('instances' in this) {
+      objectCount += (this as any).instances.size;
+    }
+    
+    // Count mocks
+    objectCount += this.mocks.size;
+    
+    // Count all registered tokens (including provider objects)
+    objectCount += this.registeredTokens.size;
+    
+    return objectCount;
+  }
+
+  /**
+   * Get memory usage
+   */
+  getMemoryUsage(): { heapUsed: number; heapTotal: number; objectCount: number } {
+    if (!this.trackMemory) {
+      return { heapUsed: 0, heapTotal: 0, objectCount: 0 };
+    }
+
+    const memUsage = process.memoryUsage();
+    const currentObjectCount = this.getObjectCount();
+    
+    return {
+      heapUsed: memUsage.heapUsed,
+      heapTotal: memUsage.heapTotal,
+      objectCount: currentObjectCount
+    };
+  }
+
+
+  /**
+   * Stub with partial mocking and proper method creation
+   */
+  partialStub<T>(token: InjectionToken<T>, stubs: Partial<T>): this {
+    const stubObject = {} as any;
+    
+    for (const key in stubs) {
+      const value = stubs[key];
+      if (typeof value === 'function') {
+        stubObject[key] = value;
+      } else {
+        // Create a function that returns the stubbed value
+        stubObject[key] = jest.fn().mockReturnValue(value);
+      }
+    }
+    
+    this.register(token, { useValue: stubObject }, { override: true, tags: ['override'] });
+    return this;
+  }
+
+  /**
+   * Get leaked tokens (tokens that were registered but not resolved)
+   */
+  getLeakedTokens(): InjectionToken<any>[] {
+    if (!this.detectLeaks) {
+      return [];
+    }
+
+    const leaked: InjectionToken<any>[] = [];
+    
+    // Check registrations that were never resolved
+    for (const token of this.registeredTokens) {
+      if (!this.resolvedTokens.has(token)) {
+        leaked.push(token);
+      }
+    }
+    
+    return leaked;
+  }
+
+  /**
+   * Get test metadata for testing
+   */
+  getTestMetadata(): {
+    registeredTokens: Set<InjectionToken<any>>;
+    resolvedTokens: Set<InjectionToken<any>>;
+    mocks: Map<InjectionToken<any>, any>;
+    spies: Map<InjectionToken<any>, Map<string, any>>;
+  } {
+    return {
+      registeredTokens: new Set(this.registeredTokens),
+      resolvedTokens: new Set(this.resolvedTokens),
+      mocks: new Map(this.mocks),
+      spies: new Map(this.spies)
+    };
   }
 }
 

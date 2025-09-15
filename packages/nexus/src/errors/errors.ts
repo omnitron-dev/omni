@@ -2,8 +2,8 @@
  * Comprehensive error handling for Nexus DI Container
  */
 
-import { InjectionToken, Token } from '../types/core';
 import { getTokenName } from '../token/token';
+import { InjectionToken } from '../types/core';
 
 /**
  * Base error class for all Nexus errors

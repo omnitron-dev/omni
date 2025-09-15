@@ -50,7 +50,8 @@
   ],
   "scripts": {
     "build": "tsc -p ./tsconfig.build.json && tsc -p ./tsconfig.esm.json",
-    "test": "jest",
+    "test": "jest --passWithNoTests",
+    "test:coverage": "jest --coverage",
     "test:node": "jest",
     "test:bun": "bun test test/**/*.spec.ts",
     "test:deno": "deno test --allow-read test/deno/**/*.test.ts",

@@ -42,7 +42,7 @@ export enum Scope {
  * Token metadata for enhanced type safety and debugging
  */
 export interface TokenMetadata {
-  name: string;
+  name?: string;
   description?: string;
   scope?: Scope;
   tags?: string[];
@@ -58,6 +58,7 @@ export interface Token<T = any> {
   readonly name: string;
   readonly metadata: TokenMetadata;
   readonly type?: T;
+  toString(): string;
 }
 
 /**
@@ -104,6 +105,7 @@ export interface ClassProvider<T = any> {
 
 export interface ValueProvider<T = any> {
   useValue: T;
+  validate?: string | ((value: T) => void);
 }
 
 export interface FactoryProvider<T = any> {
@@ -116,6 +118,12 @@ export interface AsyncFactoryProvider<T = any> {
   useFactory: AsyncFactory<T>;
   inject?: InjectionToken[];
   scope?: Scope;
+  timeout?: number;
+  retry?: {
+    maxAttempts: number;
+    delay: number;
+  };
+  async?: boolean;
 }
 
 export interface TokenProvider<T = any> {
@@ -126,6 +134,14 @@ export interface ConditionalProvider<T = any> {
   useFactory: (context: ResolutionContext) => T;
   when: (context: ResolutionContext) => boolean;
   fallback?: Provider<T>;
+}
+
+export interface StreamProvider<T = any> {
+  useFactory: Factory<AsyncIterable<T>>;
+  inject?: InjectionToken[];
+  scope?: Scope;
+  filter?: (value: T) => boolean;
+  batch?: { size: number };
 }
 
 /**
@@ -141,6 +157,14 @@ export type Provider<T = any> =
   | Constructor<T>;
 
 /**
+ * Stream options for streaming providers
+ */
+export interface StreamOptions<T = any> {
+  filter?: (value: T) => boolean;
+  batch?: { size: number };
+}
+
+/**
  * Registration options
  */
 export interface RegistrationOptions {
@@ -148,6 +172,9 @@ export interface RegistrationOptions {
   tags?: string[];
   condition?: (context: ResolutionContext) => boolean;
   dispose?: (instance: any) => void | Promise<void>;
+  validate?: (instance: any) => void;
+  override?: boolean;
+  multi?: boolean;
 }
 
 /**
@@ -167,7 +194,7 @@ export interface IContainer {
   /**
    * Resolve a dependency
    */
-  resolve<T>(token: InjectionToken<T>): T;
+  resolve<T>(token: InjectionToken<T>, context?: any): T;
 
   /**
    * Resolve a dependency asynchronously
@@ -185,6 +212,35 @@ export interface IContainer {
   resolveOptional<T>(token: InjectionToken<T>): T | undefined;
 
   /**
+   * Register a stream provider
+   */
+  registerStream<T>(token: InjectionToken<AsyncIterable<T>>, provider: Provider<AsyncIterable<T>>, options?: RegistrationOptions): this;
+
+  /**
+   * Resolve a stream dependency
+   */
+  resolveStream<T>(token: InjectionToken<AsyncIterable<T>>): AsyncIterable<T>;
+
+  /**
+   * Resolve multiple tokens in parallel
+   */
+  resolveParallel<T>(tokens: InjectionToken<T>[]): Promise<T[]>;
+
+  /**
+   * Resolve multiple tokens with settled results
+   */
+  resolveParallelSettled<T>(tokens: InjectionToken<T>[]): Promise<Array<{ status: 'fulfilled', value: T } | { status: 'rejected', reason: any }>>;
+
+  /**
+   * Resolve multiple tokens in batch with options
+   * Supports both array and object map formats
+   */
+  resolveBatch<T extends Record<string, InjectionToken<any>> | InjectionToken<any>[]>(
+    tokens: T,
+    options?: { timeout?: number; failFast?: boolean }
+  ): Promise<T extends InjectionToken<any>[] ? any[] : { [K in keyof T]: T[K] extends InjectionToken<infer V> ? V | undefined : never }>;
+
+  /**
    * Check if a token is registered
    */
   has(token: InjectionToken<any>): boolean;
@@ -193,6 +249,11 @@ export interface IContainer {
    * Create a child scope
    */
   createScope(context?: Partial<ResolutionContext>): IContainer;
+
+  /**
+   * Initialize the container and call onInit on all resolved instances
+   */
+  initialize(): Promise<void>;
 
   /**
    * Dispose of the container and its resources
@@ -213,6 +274,26 @@ export interface IContainer {
    * Get context provider
    */
   getContext(): ContextProvider;
+
+  /**
+   * Create a lazy proxy for a dependency
+   */
+  resolveLazy<T>(token: InjectionToken<T>): T;
+
+  /**
+   * Create an async lazy proxy for a dependency
+   */
+  resolveLazyAsync<T>(token: InjectionToken<T>): Promise<T>;
+  
+  /**
+   * Add middleware to the container
+   */
+  addMiddleware(middleware: any): this;
+  
+  /**
+   * Install a plugin
+   */
+  use(plugin: any): this;
 }
 
 /**
@@ -233,6 +314,14 @@ export interface IModule {
   imports?: IModule[];
   providers?: Array<Provider<any> | [InjectionToken<any>, Provider<any>]>;
   exports?: InjectionToken<any>[];
+  global?: boolean;
+  requires?: string[];
+  metadata?: {
+    version?: string;
+    description?: string;
+    author?: string;
+    tags?: string[];
+  };
   onModuleInit?(): Promise<void> | void;
   onModuleDestroy?(): Promise<void> | void;
 }

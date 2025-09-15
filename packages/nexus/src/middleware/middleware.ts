@@ -2,7 +2,7 @@
  * Middleware system for Nexus DI Container
  */
 
-import { ResolutionContext, InjectionToken } from '../types/core';
+import { InjectionToken, ResolutionContext } from '../types/core';
 
 /**
  * Middleware execution result
@@ -32,6 +32,7 @@ export type MiddlewareFunction<T = any> = (
  */
 export interface MiddlewareContext extends ResolutionContext {
   token: InjectionToken<any>;
+  container: any;  // Required in ResolutionContext
   attempt?: number;
   startTime?: number;
   [key: string]: any;
@@ -113,13 +114,31 @@ export class MiddlewarePipeline {
     
     // Build the chain
     let index = -1;
+    let retryContext = false;
     
     const dispatch = async (i: number): Promise<T> => {
-      if (i <= index) {
+      // Check if we're in a retry context - detect if current middleware is retry
+      const currentMiddleware = applicable[i];
+      const isRetryMiddleware = currentMiddleware && (
+        currentMiddleware.name?.includes('Retry') || 
+        currentMiddleware.name?.includes('retry') ||
+        (currentMiddleware as any)?.isRetryMiddleware ||
+        currentMiddleware.constructor?.name?.includes('Retry')
+      );
+      
+      if (isRetryMiddleware) {
+        retryContext = true;
+      }
+      
+      // Only enforce the "no multiple calls" rule for non-retry scenarios
+      if (!retryContext && i <= index) {
         throw new Error('Middleware called next() multiple times');
       }
       
-      index = i;
+      // Update index for non-retry middleware
+      if (!retryContext || i > index) {
+        index = i;
+      }
       
       if (i === applicable.length) {
         // Final handler
@@ -174,7 +193,7 @@ export class MiddlewarePipeline {
         const result = middleware.execute(context, () => dispatch(i + 1));
         // Check if it's a promise (which shouldn't happen in sync mode)
         if (result instanceof Promise) {
-          throw new Error(`Middleware ${middleware.name} returned a promise in sync mode`);
+          throw new Error(`Middleware ${middleware.name} returned a promise in sync mode. Use resolveAsync() instead.`);
         }
         return result as T;
       } catch (error: any) {
@@ -224,7 +243,7 @@ export const LoggingMiddleware = createMiddleware({
   name: 'logging',
   priority: 100,
   
-  execute: async (context, next) => {
+  execute: (context, next) => {
     const name = typeof context.token === 'string' ? context.token :
                  typeof context.token === 'symbol' ? context.token.toString() :
                  context.token?.name || 'unknown';
@@ -233,7 +252,22 @@ export const LoggingMiddleware = createMiddleware({
     const start = Date.now();
     
     try {
-      const result = await next();
+      const result = next();
+      
+      // Handle both sync and async results
+      if (result instanceof Promise) {
+        return result.then(
+          (value) => {
+            console.log(`[Middleware] Resolved: ${name} in ${Date.now() - start}ms`);
+            return value;
+          },
+          (error) => {
+            console.error(`[Middleware] Failed: ${name} after ${Date.now() - start}ms`, error);
+            throw error;
+          }
+        );
+      }
+      
       console.log(`[Middleware] Resolved: ${name} in ${Date.now() - start}ms`);
       return result;
     } catch (error) {
@@ -250,7 +284,7 @@ export const CachingMiddleware = createMiddleware({
   name: 'caching',
   priority: 90,
   
-  execute: async (context, next) => {
+  execute: (context, next) => {
     // Check if caching is enabled
     const cache = (context.container as any).__middlewareCache;
     if (!cache) {
@@ -269,10 +303,19 @@ export const CachingMiddleware = createMiddleware({
     }
     
     // Execute and cache
-    const result = await next();
+    const result = next();
+    
+    // Handle both sync and async results
+    if (result instanceof Promise) {
+      return result.then((value) => {
+        cache.set(key, value);
+        console.log(`[Cache] Miss: ${key}`);
+        return value;
+      });
+    }
+    
     cache.set(key, result);
     console.log(`[Cache] Miss: ${key}`);
-    
     return result;
   }
 });
@@ -284,27 +327,48 @@ export const RetryMiddleware = createMiddleware({
   name: 'retry',
   priority: 80,
   
-  execute: async (context, next) => {
+  execute: (context, next) => {
     const maxRetries = context.maxRetries || 3;
     const retryDelay = context.retryDelay || 1000;
     
-    let lastError: Error | undefined;
-    
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    // For sync execution, we can't retry with delays
+    // Just try once and return
+    const firstAttempt = () => {
+      context.attempt = 1;
       try {
-        context.attempt = attempt;
-        return await next();
-      } catch (error: any) {
-        lastError = error;
-        
-        if (attempt < maxRetries) {
-          console.log(`[Retry] Attempt ${attempt} failed, retrying in ${retryDelay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, retryDelay));
-        }
+        return next();
+      } catch (error) {
+        // In sync mode, we can't wait to retry, so just throw
+        throw error;
       }
+    };
+    
+    const result = firstAttempt();
+    
+    // For async results, we can properly retry
+    if (result instanceof Promise) {
+      return (async () => {
+        let lastError: Error | undefined;
+        
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          try {
+            context.attempt = attempt;
+            return await next();
+          } catch (error: any) {
+            lastError = error;
+            
+            if (attempt < maxRetries) {
+              console.log(`[Retry] Attempt ${attempt} failed, retrying in ${retryDelay}ms...`);
+              await new Promise(resolve => setTimeout(resolve, retryDelay));
+            }
+          }
+        }
+        
+        throw lastError || new Error('All retry attempts failed');
+      })();
     }
     
-    throw lastError || new Error('All retry attempts failed');
+    return result;
   }
 });
 
@@ -315,7 +379,7 @@ export const ValidationMiddleware = createMiddleware({
   name: 'validation',
   priority: 95,
   
-  execute: async (context, next) => {
+  execute: (context, next) => {
     // Pre-validation
     if (context.validate) {
       const validation = context.validate(context);
@@ -324,9 +388,23 @@ export const ValidationMiddleware = createMiddleware({
       }
     }
     
-    const result = await next();
+    const result = next();
     
-    // Post-validation
+    // Handle both sync and async results
+    if (result instanceof Promise) {
+      return result.then((value) => {
+        // Post-validation
+        if (context.validateResult) {
+          const validation = context.validateResult(value);
+          if (validation === false) {
+            throw new Error('Result validation failed');
+          }
+        }
+        return value;
+      });
+    }
+    
+    // Post-validation for sync result
     if (context.validateResult) {
       const validation = context.validateResult(result);
       if (validation === false) {
@@ -345,20 +423,45 @@ export const TransactionMiddleware = createMiddleware({
   name: 'transaction',
   priority: 70,
   
-  execute: async (context, next) => {
+  execute: (context, next) => {
     // Check if transaction support is available
     const tx = context.transaction;
     if (!tx) {
       return next();
     }
     
+    // For async transactions
+    if (tx.begin && typeof tx.begin === 'function') {
+      const beginResult = tx.begin();
+      if (beginResult instanceof Promise) {
+        return beginResult.then(() => {
+          const result = next();
+          if (result instanceof Promise) {
+            return result.then(
+              async (value) => {
+                await tx.commit();
+                return value;
+              },
+              async (error) => {
+                await tx.rollback();
+                throw error;
+              }
+            );
+          }
+          tx.commit();
+          return result;
+        });
+      }
+    }
+    
+    // Sync transaction handling
     try {
-      await tx.begin();
-      const result = await next();
-      await tx.commit();
+      if (tx.begin) tx.begin();
+      const result = next();
+      if (tx.commit) tx.commit();
       return result;
     } catch (error) {
-      await tx.rollback();
+      if (tx.rollback) tx.rollback();
       throw error;
     }
   }
@@ -370,18 +473,23 @@ export const TransactionMiddleware = createMiddleware({
 export class CircuitBreakerMiddleware implements Middleware {
   name = 'circuit-breaker';
   priority = 85;
+  version = '1.0.0';
   
   private failures = new Map<string, number>();
   private lastFailureTime = new Map<string, number>();
   private state = new Map<string, 'closed' | 'open' | 'half-open'>();
   
-  constructor(
-    private threshold = 5,
-    private timeout = 60000,
-    private resetTimeout = 30000
-  ) {}
+  constructor(options: { threshold?: number; timeout?: number; resetTimeout?: number } = {}) {
+    this.threshold = options.threshold || 5;
+    this.timeout = options.timeout || 60000;
+    this.resetTimeout = options.resetTimeout || 30000;
+  }
   
-  execute: MiddlewareFunction = async (context, next) => {
+  private threshold: number;
+  private timeout: number;
+  private resetTimeout: number;
+  
+  execute: MiddlewareFunction = (context, next) => {
     const key = typeof context.token === 'string' ? context.token :
                 typeof context.token === 'symbol' ? context.token.toString() :
                 context.token?.name || 'unknown';
@@ -396,35 +504,58 @@ export class CircuitBreakerMiddleware implements Middleware {
     
     // Check circuit state
     if (this.state.get(key) === 'open') {
-      throw new Error(`Circuit breaker is open for ${key}`);
+      throw new Error(`Circuit breaker is open`);
     }
     
     try {
-      const result = await next();
+      const result = next();
       
-      // Success - reset failures if in half-open state
-      if (this.state.get(key) === 'half-open') {
-        this.state.set(key, 'closed');
-        this.failures.delete(key);
-        this.lastFailureTime.delete(key);
+      // Handle both sync and async results
+      if (result instanceof Promise) {
+        return result.then(res => {
+          // Success - reset failures if in half-open state
+          if (this.state.get(key) === 'half-open') {
+            this.state.set(key, 'closed');
+            this.failures.delete(key);
+            this.lastFailureTime.delete(key);
+          }
+          return res;
+        }).catch(error => {
+          this.handleFailure(key);
+          throw error;
+        });
+      } else {
+        // Synchronous success - reset failures if in half-open state
+        if (this.state.get(key) === 'half-open') {
+          this.state.set(key, 'closed');
+          this.failures.delete(key);
+          this.lastFailureTime.delete(key);
+        }
+        return result;
       }
-      
-      return result;
     } catch (error) {
-      // Record failure
-      const failures = (this.failures.get(key) || 0) + 1;
-      this.failures.set(key, failures);
-      this.lastFailureTime.set(key, Date.now());
-      
-      // Open circuit if threshold exceeded
-      if (failures >= this.threshold) {
-        this.state.set(key, 'open');
-        console.error(`[CircuitBreaker] Opening circuit for ${key} after ${failures} failures`);
-      }
-      
+      this.handleFailure(key);
       throw error;
     }
   };
+  
+  private handleFailure(key: string): void {
+    // Record failure
+    const failures = (this.failures.get(key) || 0) + 1;
+    this.failures.set(key, failures);
+    this.lastFailureTime.set(key, Date.now());
+    
+    // Open circuit if threshold exceeded
+    if (failures >= this.threshold) {
+      this.state.set(key, 'open');
+      console.error(`[CircuitBreaker] Opening circuit for ${key} after ${failures} failures`);
+    }
+  }
+
+  // Plugin interface implementation
+  install(container: any): void {
+    container.addMiddleware(this);
+  }
 }
 
 /**
@@ -464,6 +595,132 @@ export class RateLimitMiddleware implements Middleware {
     
     return next();
   };
+}
+
+/**
+ * Built-in retry middleware class
+ */
+export class RetryMiddlewareClass implements Middleware {
+  name = 'retry';
+  priority = 80;
+  version = '1.0.0';
+  isRetryMiddleware = true;
+  
+  constructor(private options: { maxAttempts: number; delay: number }) {}
+  
+  execute: MiddlewareFunction = async (context, next) => {
+    let lastError: Error | null = null;
+    
+    for (let attempt = 1; attempt <= this.options.maxAttempts; attempt++) {
+      try {
+        context.attempt = attempt;
+        return await next();
+      } catch (error) {
+        lastError = error as Error;
+        
+        if (attempt < this.options.maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, this.options.delay));
+        }
+      }
+    }
+    
+    throw lastError || new Error('All retry attempts failed');
+  };
+
+  // Plugin interface implementation
+  install(container: any): void {
+    container.addMiddleware(this);
+  }
+}
+
+/**
+ * Built-in cache middleware class
+ */
+export class CacheMiddleware implements Middleware {
+  name = 'cache';
+  priority = 90;
+  version = '1.0.0';
+  
+  private cache = new Map<string, { value: any; expires: number }>();
+  
+  constructor(private options: { ttl: number; keyGenerator: (context: MiddlewareContext) => string }) {}
+  
+  execute: MiddlewareFunction = (context, next) => {
+    const key = this.options.keyGenerator(context);
+    const now = Date.now();
+    
+    // Check cache
+    const cached = this.cache.get(key);
+    if (cached && cached.expires > now) {
+      return cached.value;
+    }
+    
+    // Execute and cache result
+    const result = next();
+    
+    // Handle both sync and async results
+    if (result instanceof Promise) {
+      return result.then(value => {
+        this.cache.set(key, {
+          value,
+          expires: now + this.options.ttl
+        });
+        return value;
+      });
+    } else {
+      this.cache.set(key, {
+        value: result,
+        expires: now + this.options.ttl
+      });
+      return result;
+    }
+  };
+
+  // Plugin interface implementation
+  install(container: any): void {
+    container.addMiddleware(this);
+  }
+}
+
+/**
+ * Built-in validation middleware class
+ */
+export class ValidationMiddlewareClass implements Middleware {
+  name = 'validation';
+  priority = 95;
+  version = '1.0.0';
+  
+  constructor(private options: { validators: Record<string, (value: any) => boolean> }) {}
+  
+  execute: MiddlewareFunction = (context, next) => {
+    const result = next();
+    
+    // Helper function for post-validation
+    const validateResult = (value: any) => {
+      // Get the registration to check for validation key
+      const registration = (context as any).container?.getRegistration?.(context.token);
+      if (registration?.provider?.validate) {
+        const validatorKey = registration.provider.validate;
+        const validator = this.options.validators[validatorKey];
+        if (validator) {
+          validator(value); // This can throw an error
+        }
+      }
+      return value;
+    };
+    
+    // Handle both sync and async results
+    if (result instanceof Promise) {
+      return result.then(validateResult);
+    } else {
+      return validateResult(result);
+    }
+  };
+
+  // Plugin interface implementation
+  install(container: any): void {
+    container.addMiddleware(this);
+  }
 }
 
 /**

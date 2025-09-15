@@ -10,6 +10,7 @@ import { InjectionToken, ResolutionContext } from '../types/core';
 export enum LifecycleEvent {
   // Container lifecycle
   ContainerCreated = 'container:created',
+  ContainerInitialized = 'container:initialized',
   ContainerDisposing = 'container:disposing',
   ContainerDisposed = 'container:disposed',
   

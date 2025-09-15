@@ -4,11 +4,12 @@
 
 import {
   IModule,
-  DynamicModule,
-  Constructor,
   Provider,
+  IContainer,
+  Constructor,
+  DynamicModule,
   InjectionToken,
-  IContainer
+  ServiceIdentifier
 } from '../types/core';
 
 /**
@@ -319,29 +320,56 @@ export class ModuleCompiler {
  * Create a module
  */
 export function createModule(metadata: ModuleMetadata & { name: string }): IModule {
-  return {
+  const module: IModule = {
     name: metadata.name,
     imports: metadata.imports as IModule[],
     providers: metadata.providers?.map(p => {
       if (typeof p === 'function') {
         return [p, { useClass: p }] as [InjectionToken<any>, Provider<any>];
       }
+      // Handle TestProvider format { provide: token, useValue/useClass/useFactory/useToken: ... }
+      if (p && typeof p === 'object' && 'provide' in p) {
+        const token = (p as any).provide;
+        const provider: any = {};
+        if ('useValue' in p) provider.useValue = (p as any).useValue;
+        if ('useClass' in p) provider.useClass = (p as any).useClass;
+        if ('useFactory' in p) provider.useFactory = (p as any).useFactory;
+        if ('useToken' in p) provider.useToken = (p as any).useToken;
+        if ('inject' in p) provider.inject = (p as any).inject;
+        if ('scope' in p) provider.scope = (p as any).scope;
+        return [token, provider] as [InjectionToken<any>, Provider<any>];
+      }
       return p;
     }),
-    exports: metadata.exports as InjectionToken<any>[]
+    exports: metadata.exports as InjectionToken<any>[],
+    global: metadata.global,
+    requires: (metadata as any).requires,
+    metadata: {
+      version: (metadata as any).version,
+      description: (metadata as any).description,
+      author: (metadata as any).author,
+      tags: (metadata as any).tags
+    },
+    onModuleInit: (metadata as any).onModuleInit,
+    onModuleDestroy: (metadata as any).onModuleDestroy
   };
+  
+  return module;
 }
 
 /**
  * Create a dynamic module
  */
 export function createDynamicModule(
-  module: Constructor<any> | IModule,
-  metadata: Omit<DynamicModule, 'module'>
+  metadata: ModuleMetadata & { name: string }
 ): DynamicModule {
+  const module = createModule(metadata);
   return {
     module,
-    ...metadata
+    providers: metadata.providers,
+    imports: metadata.imports as IModule[] | undefined,
+    exports: metadata.exports as ServiceIdentifier<any>[] | undefined,
+    global: metadata.global
   };
 }
 
@@ -365,15 +393,33 @@ export class ModuleBuilder {
    * Add providers
    */
   providers(...providers: Array<Provider<any> | Constructor<any> | [InjectionToken<any>, Provider<any>]>): this {
-    this.metadata.providers = [...(this.metadata.providers || []), ...providers];
+    const processedProviders = providers.map(p => {
+      // Handle TestProvider format { provide: token, useValue/useClass/useFactory/useToken: ... }
+      if (p && typeof p === 'object' && 'provide' in p) {
+        const token = (p as any).provide;
+        const provider: any = {};
+        if ('useValue' in p) provider.useValue = (p as any).useValue;
+        if ('useClass' in p) provider.useClass = (p as any).useClass;
+        if ('useFactory' in p) provider.useFactory = (p as any).useFactory;
+        if ('useToken' in p) provider.useToken = (p as any).useToken;
+        if ('inject' in p) provider.inject = (p as any).inject;
+        if ('scope' in p) provider.scope = (p as any).scope;
+        return [token, provider] as [InjectionToken<any>, Provider<any>];
+      }
+      return p;
+    });
+    
+    this.metadata.providers = [...(this.metadata.providers || []), ...processedProviders];
     return this;
   }
   
   /**
    * Add exports
    */
-  exports(...tokens: Array<InjectionToken<any> | Provider<any>>): this {
-    this.metadata.exports = [...(this.metadata.exports || []), ...tokens];
+  exports(...tokens: Array<InjectionToken<any> | Provider<any> | InjectionToken<any>[]>): this {
+    // Flatten any arrays passed in
+    const flatTokens = tokens.flat();
+    this.metadata.exports = [...(this.metadata.exports || []), ...flatTokens];
     return this;
   }
   
@@ -390,6 +436,46 @@ export class ModuleBuilder {
    */
   global(isGlobal = true): this {
     this.metadata.global = isGlobal;
+    return this;
+  }
+  
+  /**
+   * Provide a single token
+   */
+  provide<T>(token: InjectionToken<T>, provider: Provider<T>): this {
+    if (!this.metadata.providers) {
+      this.metadata.providers = [];
+    }
+    this.metadata.providers.push([token, provider] as [InjectionToken<any>, Provider<any>]);
+    return this;
+  }
+  
+  /**
+   * Conditionally provide a token
+   */
+  provideIf<T>(
+    condition: (container?: any) => boolean, 
+    token: InjectionToken<T>, 
+    provider: Provider<T>
+  ): this {
+    if (!this.metadata.providers) {
+      this.metadata.providers = [];
+    }
+    
+    // Mark the provider as conditional for later evaluation during module loading
+    const conditionalProvider: [InjectionToken<T>, Provider<T> & { conditional?: boolean; condition?: Function; originalProvider?: Provider<T> }] = [
+      token,
+      {
+        conditional: true,
+        condition,
+        originalProvider: provider,
+        useFactory: () => {
+          throw new Error(`Conditional provider for ${String(token)} should not be resolved directly`);
+        }
+      }
+    ];
+    
+    this.metadata.providers.push(conditionalProvider as [InjectionToken<any>, Provider<any>]);
     return this;
   }
   
@@ -415,29 +501,42 @@ export function moduleBuilder(name: string): ModuleBuilder {
 /**
  * Create a config module
  */
-export function createConfigModule<T = any>(
-  name: string,
-  configFactory: () => T | Promise<T>
-): ModuleFactory {
-  return {
-    forRoot(options: ModuleOptions): DynamicModule {
-      const configToken = Symbol(`${name}:config`);
+export function createConfigModule<T = any>(options: {
+  name: string;
+  load: () => T | Promise<T>;
+  validate?: (config: T) => boolean | void;
+}): IModule & { config?: T } {
+  let config: T | undefined;
+  
+  const module: IModule & { config?: T } = {
+    name: options.name,
+    providers: [],
+    imports: [],
+    exports: [],
+    config,
+    
+    async onModuleInit() {
+      // Load configuration
+      config = await options.load();
       
-      return {
-        module: { name },
-        providers: [
-          [configToken, {
-            useFactory: async () => {
-              const config = await configFactory();
-              return { ...config, ...options };
-            }
-          }] as [InjectionToken<any>, Provider<any>]
-        ],
-        exports: [configToken],
-        global: true
-      };
+      // Validate if validator provided
+      if (options.validate) {
+        try {
+          const isValid = options.validate(config);
+          if (isValid === false) {
+            throw new Error(`Configuration validation failed for ${options.name}`);
+          }
+        } catch (error) {
+          throw new Error(`Configuration validation failed for ${options.name}: ${error}`);
+        }
+      }
+      
+      // Update the config property
+      this.config = config;
     }
   };
+  
+  return module;
 }
 
 /**
@@ -447,9 +546,7 @@ export function createFeatureModule(
   name: string,
   providers: Array<[InjectionToken<any>, Provider<any>]>
 ): ModuleFactory {
-  const extractToken = (provider: [InjectionToken<any>, Provider<any>]): InjectionToken<any> => {
-    return provider[0];
-  };
+  const extractToken = (provider: [InjectionToken<any>, Provider<any>]): InjectionToken<any> => provider[0];
   
   return {
     forRoot(options: ModuleOptions): DynamicModule {
@@ -502,4 +599,18 @@ export function Module(metadata: ModuleMetadata): ClassDecorator {
     }
     return target;
   };
+}
+
+/**
+ * Forward reference interface
+ */
+export interface ForwardRef<T> {
+  (): T;
+}
+
+/**
+ * Create a forward reference
+ */
+export function forwardRef<T>(fn: () => T): ForwardRef<T> {
+  return fn as ForwardRef<T>;
 }

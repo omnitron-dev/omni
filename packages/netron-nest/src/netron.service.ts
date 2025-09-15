@@ -1,5 +1,5 @@
-import { Netron, NetronOptions } from '@omnitron-dev/netron';
 import { Reflector, DiscoveryService } from '@nestjs/core';
+import { Netron, NetronOptions } from '@omnitron-dev/netron';
 import { Inject, Logger, Injectable, OnApplicationShutdown, OnApplicationBootstrap } from '@nestjs/common';
 
 import { NETRON_OPTIONS } from './constants';

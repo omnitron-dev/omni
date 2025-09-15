@@ -30,7 +30,7 @@ describe('Plugin System', () => {
   beforeEach(() => {
     container = new Container();
   });
-
+  
   afterEach(async () => {
     await container.dispose();
   });
@@ -278,7 +278,7 @@ describe('Middleware System', () => {
   beforeEach(() => {
     container = new Container();
   });
-
+  
   afterEach(async () => {
     await container.dispose();
   });

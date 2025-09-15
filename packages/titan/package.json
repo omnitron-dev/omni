@@ -1,0 +1,90 @@
+{
+  "name": "@devgrid/titan",
+  "version": "0.0.1",
+  "description": "Enterprise backend framework built on Nexus DI",
+  "keywords": [
+    "backend",
+    "framework",
+    "server",
+    "http",
+    "rest",
+    "graphql",
+    "websocket",
+    "microservices",
+    "dependency-injection",
+    "nexus"
+  ],
+  "author": "DevGrid Team",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./http": {
+      "types": "./dist/http/index.d.ts",
+      "import": "./dist/http/index.mjs",
+      "require": "./dist/http/index.js"
+    },
+    "./graphql": {
+      "types": "./dist/graphql/index.d.ts",
+      "import": "./dist/graphql/index.mjs",
+      "require": "./dist/graphql/index.js"
+    },
+    "./websocket": {
+      "types": "./dist/websocket/index.d.ts",
+      "import": "./dist/websocket/index.mjs",
+      "require": "./dist/websocket/index.js"
+    },
+    "./microservices": {
+      "types": "./dist/microservices/index.d.ts",
+      "import": "./dist/microservices/index.mjs",
+      "require": "./dist/microservices/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.mjs",
+      "require": "./dist/testing/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist coverage"
+  },
+  "dependencies": {
+    "@omnitron-dev/nexus": "workspace:*",
+    "@omnitron-dev/common": "workspace:*",
+    "zod": "^4.1.8"
+  },
+  "devDependencies": {
+    "@types/jest": "30.0.0",
+    "@types/node": "24.4.0",
+    "@typescript-eslint/eslint-plugin": "8.43.0",
+    "@typescript-eslint/parser": "8.43.0",
+    "jest": "^30.0.0-alpha.8",
+    "ts-jest": "^30.0.0-alpha.4",
+    "tsup": "^8.3.5",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/devgrid/titan.git",
+    "directory": "packages/titan"
+  }
+}

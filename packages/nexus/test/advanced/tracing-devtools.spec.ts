@@ -282,25 +282,29 @@ describe('Tracing', () => {
         batchSize: 1
       });
       
-      const span = tracer.startSpan('test-span');
-      span.setAttribute('test.attribute', 'value');
-      span.end();
-      
-      const mockFetch = jest.fn().mockResolvedValue({ ok: true });
-      global.fetch = mockFetch;
-      
-      await exporter.export([span]);
-      
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:14268/api/traces',
-        expect.objectContaining({
-          method: 'POST',
-          headers: expect.objectContaining({
-            'Content-Type': 'application/json'
-          }),
-          body: expect.stringContaining('test-span')
-        })
-      );
+      try {
+        const span = tracer.startSpan('test-span');
+        span.setAttribute('test.attribute', 'value');
+        span.end();
+        
+        const mockFetch = jest.fn().mockResolvedValue({ ok: true });
+        global.fetch = mockFetch;
+        
+        await exporter.export([span]);
+        
+        expect(mockFetch).toHaveBeenCalledWith(
+          'http://localhost:14268/api/traces',
+          expect.objectContaining({
+            method: 'POST',
+            headers: expect.objectContaining({
+              'Content-Type': 'application/json'
+            }),
+            body: expect.stringContaining('test-span')
+          })
+        );
+      } finally {
+        exporter.stop();
+      }
     });
 
     it('should export to Zipkin format', async () => {

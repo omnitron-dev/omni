@@ -296,6 +296,7 @@ describe('Service Mesh', () => {
 
   afterEach(async () => {
     await container.dispose();
+    discovery.stop();
     await discovery.close();
   });
 

@@ -462,6 +462,16 @@ export class JaegerExporter implements TraceExporter {
       this.flush().catch(console.error);
     }, this.flushInterval);
   }
+  
+  /**
+   * Stop the batch timer and clean up resources
+   */
+  stop(): void {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = undefined;
+    }
+  }
 }
 
 /**

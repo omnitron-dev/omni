@@ -100,6 +100,7 @@ export class ConsulServiceDiscovery implements ServiceDiscovery {
   private consul: any; // Can be mocked in tests
   private services = new Map<string, ServiceInstance[]>();
   private watchers = new Map<string, Set<(instances: ServiceInstance[]) => void>>();
+  private healthCheckInterval?: NodeJS.Timeout;
   
   constructor(config: string | ConsulConfig = 'http://localhost:8500') {
     if (typeof config === 'string') {
@@ -288,7 +289,7 @@ export class ConsulServiceDiscovery implements ServiceDiscovery {
   }
   
   private startHealthChecking(): void {
-    setInterval(async () => {
+    this.healthCheckInterval = setInterval(async () => {
       for (const [name, instances] of this.services) {
         for (const instance of instances) {
           try {
@@ -299,6 +300,16 @@ export class ConsulServiceDiscovery implements ServiceDiscovery {
         }
       }
     }, 30000); // Check every 30 seconds
+  }
+  
+  /**
+   * Stop health checking and clean up resources
+   */
+  stop(): void {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = undefined;
+    }
   }
 
   /**

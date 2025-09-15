@@ -93,29 +93,29 @@ export function Injectable(options: InjectableOptions = {}) {
     // Store injectable metadata
     Reflect.defineMetadata(METADATA_KEYS.INJECTABLE, true, target);
     Reflect.defineMetadata(METADATA_KEYS.SCOPE, options.scope || Scope.Transient, target);
-    
+
     if (options.multi) {
       Reflect.defineMetadata(METADATA_KEYS.MULTI, true, target);
     }
-    
+
     if (options.metadata) {
       Reflect.defineMetadata(METADATA_KEYS.PROVIDER_METADATA, options.metadata, target);
     }
-    
+
     // Get constructor parameter types
     const paramTypes = Reflect.getMetadata('design:paramtypes', target) || [];
     const injectParams = Reflect.getMetadata(METADATA_KEYS.INJECT_PARAMS, target) || {};
     const optionalParams = Reflect.getMetadata(METADATA_KEYS.OPTIONAL, target) || {};
     const valueParams = Reflect.getMetadata(METADATA_KEYS.VALUE_INJECTIONS, target) || {};
     const multiParams = Reflect.getMetadata(METADATA_KEYS.MULTI_INJECTIONS, target) || {};
-    
+
     // Store dependency information
     const dependencies: InjectionToken<any>[] = [];
     for (let i = 0; i < paramTypes.length; i++) {
       const injectToken = injectParams[i];
       const valueConfig = valueParams[i];
       const multiToken = multiParams[i];
-      
+
       if (injectToken) {
         dependencies.push(injectToken);
       } else if (valueConfig) {
@@ -131,9 +131,9 @@ export function Injectable(options: InjectableOptions = {}) {
         dependencies.push(undefined as any);
       }
     }
-    
+
     Reflect.defineMetadata(METADATA_KEYS.INJECT, dependencies, target);
-    
+
     return target;
   };
 }
@@ -212,11 +212,11 @@ export function Lazy<T>(tokenFactory: () => InjectionToken<T>) {
       const lazyToken = createToken(`__LAZY_${target.name}_${parameterIndex}__`);
       existingParams[parameterIndex] = lazyToken;
       Reflect.defineMetadata(METADATA_KEYS.INJECT_PARAMS, existingParams, target);
-      
+
       // Store the lazy factory in our registry using a unique key
       const factoryKey = `${target.name}:${parameterIndex}`;
       lazyFactoryRegistry.set(factoryKey, tokenFactory);
-      
+
       // Also store an indicator in metadata that this parameter has a lazy factory
       const existingLazy = Reflect.getMetadata(METADATA_KEYS.LAZY_INJECTIONS, target) || {};
       existingLazy[parameterIndex] = true; // Just store a boolean to indicate lazy factory exists
@@ -224,7 +224,7 @@ export function Lazy<T>(tokenFactory: () => InjectionToken<T>) {
     } else if (propertyKey !== undefined) {
       // Property injection
       let cachedValue: T | undefined;
-      
+
       Object.defineProperty(target, propertyKey, {
         get() {
           if (cachedValue === undefined) {
@@ -249,12 +249,12 @@ export function Lazy<T>(tokenFactory: () => InjectionToken<T>) {
 export function Module(options: ModuleDecoratorOptions) {
   return function <T extends Constructor<any>>(target: T): T {
     Reflect.defineMetadata(METADATA_KEYS.MODULE, options, target);
-    
+
     // Add getModule static method
-    (target as any).getModule = function() {
+    (target as any).getModule = function () {
       return {
         name: options.name,
-        imports: (options.imports || []).map((importedModule: any) => 
+        imports: (options.imports || []).map((importedModule: any) =>
           importedModule.getModule ? importedModule.getModule() : importedModule
         ),
         providers: options.providers || [],
@@ -262,7 +262,7 @@ export function Module(options: ModuleDecoratorOptions) {
         global: options.global || false
       };
     };
-    
+
     return target;
   };
 }
@@ -332,7 +332,7 @@ export function Factory<T>(name: string) {
     if (typeof method !== 'function') {
       throw new Error('Factory decorator can only be applied to methods');
     }
-    
+
     // Store factory metadata
     const factories = Reflect.getMetadata(METADATA_KEYS.FACTORY_METHODS, target.constructor) || new Map();
     factories.set(name, propertyKey);
@@ -437,7 +437,7 @@ export class DecoratorContainer extends Container {
   getConfigValue(path: string, defaultValue?: any): any {
     const parts = path.split('.');
     let value = this.config;
-    
+
     for (const part of parts) {
       if (value && typeof value === 'object' && part in value) {
         value = value[part];
@@ -445,7 +445,7 @@ export class DecoratorContainer extends Container {
         return defaultValue;
       }
     }
-    
+
     return value;
   }
 
@@ -475,23 +475,23 @@ export class DecoratorContainer extends Container {
     if (!Reflect.getMetadata(METADATA_KEYS.INJECTABLE, target)) {
       throw new Error(`Class ${target.name} is not decorated with @Injectable`);
     }
-    
+
     const scope = Reflect.getMetadata(METADATA_KEYS.SCOPE, target) || Scope.Transient;
     const dependencies = Reflect.getMetadata(METADATA_KEYS.INJECT, target) || [];
     const serviceName = Reflect.getMetadata(METADATA_KEYS.SERVICE_NAME, target);
-    
+
     // Use service name if available, otherwise use class-based token
     const token = serviceName ? createToken<T>(serviceName) : tokenFromClass(target);
-    
+
     this.register(token, {
       useClass: target,
       scope,
       inject: dependencies
     });
-    
+
     return this;
   }
-  
+
   /**
    * Auto-register all decorated classes
    */
@@ -503,7 +503,7 @@ export class DecoratorContainer extends Container {
     }
     return this;
   }
-  
+
   /**
    * Load a decorated module
    */
@@ -512,16 +512,16 @@ export class DecoratorContainer extends Container {
     if (!metadata) {
       throw new Error(`Class ${moduleClass.name} is not decorated with @Module`);
     }
-    
+
     const moduleOptions = metadata as ModuleDecoratorOptions;
-    
+
     // Register imports
     if (moduleOptions.imports) {
       for (const importedModule of moduleOptions.imports) {
         this.loadDecoratedModule(importedModule);
       }
     }
-    
+
     // Register providers
     if (moduleOptions.providers) {
       for (const provider of moduleOptions.providers) {
@@ -533,7 +533,7 @@ export class DecoratorContainer extends Container {
         }
       }
     }
-    
+
     return this;
   }
 
@@ -549,22 +549,22 @@ export class DecoratorContainer extends Container {
     if ('useClass' in provider && provider.useClass) {
       const classConstructor = provider.useClass;
       const metadata = getInjectableMetadata(classConstructor);
-      
+
       if (metadata.isInjectable) {
         // Build dependency list and register value injections first
         const dependencies = this.buildDependencyList(classConstructor);
-        
+
         // Override provider with decorator metadata
         const decoratorProvider: Provider<T> = {
           ...provider,
           scope: provider.scope || (metadata.scope as Scope),
           inject: dependencies
         };
-        
+
         return super.register(token, decoratorProvider, options || {});
       }
     }
-    
+
     return super.register(token, provider, options || {});
   }
 
@@ -578,37 +578,37 @@ export class DecoratorContainer extends Container {
     const valueParams = Reflect.getMetadata(METADATA_KEYS.VALUE_INJECTIONS, classConstructor) || {};
     const multiParams = Reflect.getMetadata(METADATA_KEYS.MULTI_INJECTIONS, classConstructor) || {};
     const lazyParams = Reflect.getMetadata(METADATA_KEYS.LAZY_INJECTIONS, classConstructor) || {};
-    
+
     const dependencies: InjectionToken<any>[] = [];
-    
+
     for (let i = 0; i < paramTypes.length; i++) {
       const injectToken = injectParams[i];
       const valueConfig = valueParams[i];
       const multiToken = multiParams[i];
       const lazyFactory = lazyParams[i];
       const isOptional = optionalParams[i];
-      
+
       // Remove debug for now
-      
+
       if (injectToken) {
         // Handle lazy injection tokens
         if (typeof injectToken === 'object' && injectToken.name && injectToken.name.startsWith('__LAZY_') && injectToken.name.includes(`${classConstructor.name}_`)) {
           const lazyToken = injectToken;
-          
+
           // Get the factory function from our registry
           const factoryKey = `${classConstructor.name}:${i}`;
           const lazyFactory = lazyFactoryRegistry.get(factoryKey);
-          
+
           if (!lazyFactory) {
             throw new Error(`No lazy factory found for ${factoryKey}. Available keys: ${Array.from(lazyFactoryRegistry.keys()).join(', ')}`);
           }
-          
+
           // Register lazy provider
           super.register(lazyToken, {
             useFactory: () => () => {
-                const actualToken = lazyFactory();
-                return this.resolve(actualToken);
-              }
+              const actualToken = lazyFactory();
+              return this.resolve(actualToken);
+            }
           });
           dependencies.push(lazyToken);
         } else if (isOptional) {
@@ -654,7 +654,7 @@ export class DecoratorContainer extends Container {
         dependencies.push(null as any);
       }
     }
-    
+
     return dependencies;
   }
 
@@ -667,30 +667,30 @@ export class DecoratorContainer extends Container {
       const path = token.substring(8, token.length - 2); // Remove __VALUE_ and __
       return this.getConfigValue(path) as T;
     }
-    
+
     // Handle optional parameters
     if (typeof token === 'string' && token.startsWith('__OPTIONAL_')) {
       return undefined as T;
     }
-    
+
     // Handle lazy tokens - they should return a function
     if (typeof token === 'string' && token.startsWith('__LAZY_')) {
       return super.resolve(token, context);
     }
-    
+
     const instance = super.resolve(token, context);
-    
+
     // Handle property injections and container metadata if instance exists and has a constructor
     if (instance && instance.constructor) {
       this.injectProperties(instance, instance.constructor as Constructor<any>);
-      
+
       // Track instances that have lifecycle hooks
       const lifecycleHooks: LifecycleHooks = Reflect.getMetadata(METADATA_KEYS.LIFECYCLE_HOOKS, instance.constructor) || {};
       if (lifecycleHooks.postConstruct || lifecycleHooks.preDestroy) {
         this.lifecycleInstances.add(instance);
       }
     }
-    
+
     return instance;
   }
 
@@ -699,7 +699,7 @@ export class DecoratorContainer extends Container {
    */
   async initialize(): Promise<void> {
     await super.initialize();
-    
+
     // Call PostConstruct hooks on all initialized instances
     await this.callLifecycleHooks('postConstruct');
   }
@@ -710,7 +710,7 @@ export class DecoratorContainer extends Container {
   async dispose(): Promise<void> {
     // Call PreDestroy hooks before disposing
     await this.callLifecycleHooks('preDestroy');
-    
+
     await super.dispose();
   }
 
@@ -721,21 +721,21 @@ export class DecoratorContainer extends Container {
     // The issue is that we're trying to find instances in caches, but for transient instances
     // they won't be cached. We need a different approach - we need to track instances that
     // have been created and have lifecycle hooks.
-    
+
     // For now, we'll use a simple approach - track instances that have been resolved
     // and have lifecycle hooks in a dedicated Set.
     if (!this.lifecycleInstances) {
       this.lifecycleInstances = new Set<any>();
     }
-    
+
     // Call hooks on tracked instances
     for (const instance of this.lifecycleInstances) {
       if (!instance || !instance.constructor) continue;
-      
+
       const classConstructor = instance.constructor as Constructor<any>;
       const lifecycleHooks: LifecycleHooks = Reflect.getMetadata(METADATA_KEYS.LIFECYCLE_HOOKS, classConstructor) || {};
       const hooks = lifecycleHooks[hookType];
-      
+
       if (hooks && hooks.length > 0) {
         for (const methodName of hooks) {
           if (typeof instance[methodName] === 'function') {
@@ -776,7 +776,7 @@ export class DecoratorContainer extends Container {
         }
       }
     }
-    
+
     // Store container reference for lazy injections - use try/catch to handle edge cases
     try {
       Reflect.defineMetadata('container', this, instance);
@@ -809,6 +809,35 @@ export function getInjectableMetadata(target: Constructor<any>) {
  * Export metadata keys and utilities
  */
 export { DecoratorContainer as Container };
+
+// Re-export custom decorator API
+export {
+  Retry,
+  Memoize,
+  Validate,
+  Deprecated,
+  hasDecorator,
+  createDecorator,
+  getCustomMetadata,
+  combineDecorators,
+  getDecoratorOptions,
+  getAllCustomMetadata,
+  CustomDecoratorBuilder,
+  createMethodInterceptor,
+  createPropertyInterceptor,
+  createParameterizedDecorator
+} from './custom-decorators';
+
+// Re-export types from custom decorators
+export type {
+  DecoratorHook,
+  DecoratorTarget,
+  DecoratorContext,
+  OptionsValidator,
+  MetadataTransform,
+  DecoratorTransform,
+  CustomDecoratorConfig
+} from './custom-decorators';
 
 // Re-export common types for convenience
 export type { Scope, Provider, InjectionToken } from '../types/core';

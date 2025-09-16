@@ -643,6 +643,14 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
   }
 
   /**
+   * Emit events sequentially (alias for emitSerial from base class)
+   * This method ensures that event handlers are executed one after another
+   */
+  emitSequential(event: string | symbol, ...args: any[]): Promise<any[]> {
+    return this.emitSerial(event, ...args);
+  }
+
+  /**
    * Clean up resources
    */
   dispose(): void {

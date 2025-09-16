@@ -4,10 +4,10 @@
  * Schedules events for delayed or recurring emission
  */
 
-import { Inject, Injectable } from '@omnitron-dev/nexus';
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
+import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
 
-import { EVENT_EMITTER_TOKEN } from './events.module';
+import { LOGGER_TOKEN, EVENT_EMITTER_TOKEN } from './events.module';
 
 import type { EventSchedulerJob } from './types';
 
@@ -20,10 +20,95 @@ export class EventSchedulerService {
   private timers: Map<string, NodeJS.Timeout> = new Map();
   private intervals: Map<string, NodeJS.Timeout> = new Map();
   private jobIdCounter = 0;
+  private initialized = false;
+  private destroyed = false;
 
   constructor(
-    @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter
+    @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
+    @Optional() @Inject(LOGGER_TOKEN) private readonly logger?: any
   ) { }
+
+  /**
+   * Initialize the service
+   */
+  async onInit(): Promise<void> {
+    if (this.initialized) return;
+    this.initialized = true;
+    this.logger?.info('EventSchedulerService initialized');
+  }
+
+  /**
+   * Destroy the service
+   */
+  async onDestroy(): Promise<void> {
+    if (this.destroyed) return;
+    this.destroyed = true;
+
+    // Clean up all timers and intervals
+    this.dispose();
+
+    this.logger?.info('EventSchedulerService destroyed');
+  }
+
+  /**
+   * Get health status
+   */
+  async health(): Promise<{ status: 'healthy' | 'degraded' | 'unhealthy'; details?: any }> {
+    const stats = this.getStatistics();
+
+    return {
+      status: this.initialized && !this.destroyed ? 'healthy' : 'unhealthy',
+      details: {
+        initialized: this.initialized,
+        destroyed: this.destroyed,
+        totalJobs: stats.total,
+        pendingJobs: stats.pending,
+        runningJobs: stats.running,
+        completedJobs: stats.completed,
+        failedJobs: stats.failed,
+        activeTimers: this.timers.size,
+        activeIntervals: this.intervals.size
+      }
+    };
+  }
+
+  /**
+   * Schedule an event (alias for scheduleEvent)
+   */
+  schedule(
+    event: string,
+    data: any,
+    delay: number
+  ): string {
+    return this.scheduleEvent(event, data, { delay });
+  }
+
+  /**
+   * Cancel a scheduled job (alias for cancelJob)
+   */
+  cancel(jobId: string): boolean {
+    return this.cancelJob(jobId);
+  }
+
+  /**
+   * Get scheduled jobs (first implementation)
+   */
+  getScheduledJobs(filter?: {
+    status?: EventSchedulerJob['status'];
+    event?: string;
+  }): EventSchedulerJob[] {
+    let jobs = Array.from(this.jobs.values());
+
+    if (filter?.status) {
+      jobs = jobs.filter(j => j.status === filter.status);
+    }
+
+    if (filter?.event) {
+      jobs = jobs.filter(j => j.event === filter.event);
+    }
+
+    return jobs;
+  }
 
   /**
    * Schedule an event for later emission
@@ -109,6 +194,50 @@ export class EventSchedulerService {
     }
 
     return jobs;
+  }
+
+  /**
+   * Register a handler for scheduled events
+   */
+  onScheduledEvent(event: string, handler: (data: any) => void): void {
+    this.emitter.on(event, handler);
+  }
+
+  /**
+   * Schedule a recurring event
+   */
+  scheduleRecurring(event: string, data: any, interval: number): string {
+    return this.scheduleEvent(event, data, { cron: this.intervalToCron(interval) });
+  }
+
+  /**
+   * Schedule a cron-based event
+   */
+  scheduleCron(event: string, data: any, cron: string): string {
+    return this.scheduleEvent(event, data, { cron });
+  }
+
+  /**
+   * Get active jobs
+   */
+  getActiveJobs(): string[] {
+    return Array.from(this.jobs.entries())
+      .filter(([, job]) => job.status === 'pending' || job.status === 'running')
+      .map(([id]) => id);
+  }
+
+  /**
+   * Convert interval (ms) to simple cron expression
+   */
+  private intervalToCron(interval: number): string {
+    const seconds = Math.floor(interval / 1000);
+    if (seconds < 60) return `*/${seconds} * * * * *`;
+
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `*/${minutes} * * * *`;
+
+    const hours = Math.floor(minutes / 60);
+    return `0 */${hours} * * *`;
   }
 
   /**

@@ -5,10 +5,10 @@
  */
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
-import { Inject, Container, Injectable } from '@omnitron-dev/nexus';
+import { Inject, Optional, Container, Injectable } from '@omnitron-dev/nexus';
 
 import { EventMetadataService } from './event-metadata.service';
-import { EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN } from './events.module';
+import { LOGGER_TOKEN, EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN } from './events.module';
 
 import type {
   EventHandlerMetadata,
@@ -30,17 +30,191 @@ export const EVENT_EMITTER_METADATA = Symbol('event:emitter');
 export class EventDiscoveryService {
   private discoveredHandlers: Map<string, EventHandlerMetadata[]> = new Map();
   private registeredHandlers: Map<any, Map<string, Function>> = new Map();
+  private initialized = false;
+  private destroyed = false;
 
   constructor(
     @Inject(Container) private readonly container: Container,
     @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
-    @Inject(EVENT_METADATA_SERVICE_TOKEN) private readonly metadataService: EventMetadataService
+    @Inject(EVENT_METADATA_SERVICE_TOKEN) private readonly metadataService: EventMetadataService,
+    @Optional() @Inject(LOGGER_TOKEN) private readonly logger?: any
   ) { }
+
+  /**
+   * Initialize the service
+   */
+  async onInit(): Promise<void> {
+    if (this.initialized) return;
+    this.initialized = true;
+    this.logger?.info('EventDiscoveryService initialized');
+  }
+
+  /**
+   * Discover event handlers in a class
+   */
+  discoverHandlers(target: any): EventHandlerMetadata[] {
+    const handlers: EventHandlerMetadata[] = [];
+    const prototype = target.prototype || target;
+
+    // Get all method names
+    const methodNames = Object.getOwnPropertyNames(prototype).filter(
+      name => name !== 'constructor' && typeof prototype[name] === 'function'
+    );
+
+    for (const methodName of methodNames) {
+      // Check for event handler metadata
+      const handlerMetadata = Reflect.getMetadata(EVENT_HANDLER_METADATA, prototype, methodName) ||
+                              Reflect.getMetadata('event:handler', prototype, methodName);
+
+      if (handlerMetadata) {
+        handlers.push({
+          method: methodName,
+          event: handlerMetadata.event || methodName,
+          options: handlerMetadata.options || {},
+          target
+        });
+      }
+
+      // Check for once handler metadata
+      const onceMetadata = Reflect.getMetadata(EVENT_ONCE_METADATA, prototype, methodName) ||
+                          Reflect.getMetadata('event:once', prototype, methodName);
+
+      if (onceMetadata) {
+        handlers.push({
+          method: methodName,
+          event: onceMetadata.event || methodName,
+          options: { ...onceMetadata.options, once: true },
+          target,
+          once: true
+        });
+      }
+    }
+
+    return handlers;
+  }
+
+  /**
+   * Discover event emitters in a class
+   */
+  discoverEmitters(target: any): Array<{ methodName: string; events: string[] }> {
+    const emitters: Array<{ methodName: string; events: string[] }> = [];
+    const prototype = target.prototype || target;
+
+    // Get all method names
+    const methodNames = Object.getOwnPropertyNames(prototype).filter(
+      name => name !== 'constructor' && typeof prototype[name] === 'function'
+    );
+
+    for (const methodName of methodNames) {
+      // Check for event emitter metadata
+      const emitterMetadata = Reflect.getMetadata(EVENT_EMITTER_METADATA, prototype, methodName) ||
+                              Reflect.getMetadata('event:emitter', prototype, methodName);
+
+      if (emitterMetadata) {
+        emitters.push({
+          methodName,
+          events: emitterMetadata.events || []
+        });
+      }
+    }
+
+    return emitters;
+  }
+
+  /**
+   * Scan a module for event providers
+   */
+  async scanModule(module: any): Promise<EventDiscoveryResult> {
+    const result: EventDiscoveryResult = {
+      handlers: [],
+      emitters: [],
+      dependencies: new Map(),
+      stats: {
+        totalHandlers: 0,
+        totalEmitters: 0,
+        totalEvents: 0,
+        wildcardHandlers: 0
+      }
+    };
+
+    // Get module metadata
+    const moduleMetadata = Reflect.getMetadata('nexus:module', module) || {};
+    const providers = moduleMetadata.providers || [];
+
+    for (const provider of providers) {
+      const target = typeof provider === 'function' ? provider : provider.useClass;
+
+      if (target) {
+        // Discover handlers
+        const handlers = this.discoverHandlers(target);
+        result.handlers.push(...handlers);
+
+        // Discover emitters
+        const emitters = this.discoverEmitters(target);
+        for (const emitter of emitters) {
+          for (const event of emitter.events) {
+            result.emitters.push({
+              class: target.name,
+              method: emitter.methodName,
+              event
+            });
+          }
+        }
+      }
+    }
+
+    // Update stats
+    result.stats.totalHandlers = result.handlers.length;
+    result.stats.totalEmitters = result.emitters.length;
+    result.stats.totalEvents = new Set([
+      ...result.handlers.map(h => h.event),
+      ...result.emitters.map(e => e.event)
+    ]).size;
+    result.stats.wildcardHandlers = result.handlers.filter(h => h.event.includes('*')).length;
+
+    return result;
+  }
+
+  /**
+   * Destroy the service
+   */
+  async onDestroy(): Promise<void> {
+    if (this.destroyed) return;
+    this.destroyed = true;
+
+    // Unregister all handlers
+    this.unregisterAllHandlers();
+    this.discoveredHandlers.clear();
+
+    this.logger?.info('EventDiscoveryService destroyed');
+  }
+
+  /**
+   * Get health status
+   */
+  async health(): Promise<{ status: 'healthy' | 'degraded' | 'unhealthy'; details?: any }> {
+    const totalHandlers = Array.from(this.discoveredHandlers.values())
+      .reduce((acc, handlers) => acc + handlers.length, 0);
+    const totalRegistered = Array.from(this.registeredHandlers.values())
+      .reduce((acc, handlerMap) => acc + handlerMap.size, 0);
+
+    return {
+      status: this.initialized && !this.destroyed ? 'healthy' : 'unhealthy',
+      details: {
+        initialized: this.initialized,
+        destroyed: this.destroyed,
+        discoveredEvents: this.discoveredHandlers.size,
+        totalHandlers,
+        registeredTargets: this.registeredHandlers.size,
+        totalRegistered
+      }
+    };
+  }
 
   /**
    * Discover all event handlers in the application
    */
-  async discoverHandlers(): Promise<EventDiscoveryResult> {
+  async discoverAllHandlers(): Promise<EventDiscoveryResult> {
     const handlers: EventHandlerMetadata[] = [];
     const emitters: Array<{ class: string; method: string; event: string }> = [];
     const dependencies = new Map<string, string[]>();
@@ -312,16 +486,38 @@ export class EventDiscoveryService {
   /**
    * Get all providers from container
    */
-  private getAllProviders(): any[] {
-    // This would need to be implemented based on actual Container API
-    // For now, return empty array
+  getAllProviders(): any[] {
+    // Try to get providers from container if available
+    try {
+      // Check container's internal structure
+      if (this.container) {
+        // Check for internal instances map (private property)
+        if ((this.container as any).instances) {
+          return Array.from((this.container as any).instances.values());
+        }
+
+        // Fallback to checking other possible internal structures
+        if ((this.container as any)._instances) {
+          return Array.from((this.container as any)._instances.values());
+        }
+
+        // If container has providers property
+        if ((this.container as any).providers) {
+          return Array.from((this.container as any).providers.values());
+        }
+      }
+    } catch (error) {
+      this.logger?.warn({ error }, 'Failed to get providers from container');
+    }
+
+    // Return empty array as fallback
     return [];
   }
 
   /**
    * Get all property names from prototype chain
    */
-  private getAllPropertyNames(obj: any): string[] {
+  getAllPropertyNames(obj: any): string[] {
     const props: Set<string> = new Set();
 
     do {

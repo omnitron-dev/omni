@@ -356,9 +356,10 @@ export class CustomDecoratorBuilder<TOptions = any> {
         // Check for stacking if not stackable
         if (!config.stackable) {
           const metadataKey = `custom:${config.name}`;
+          // Use getOwnMetadata to avoid conflicts with inherited metadata
           const existingMetadata = propertyKey
-            ? Reflect.getMetadata(metadataKey, target, propertyKey)
-            : Reflect.getMetadata(metadataKey, target);
+            ? Reflect.getOwnMetadata(metadataKey, target, propertyKey)
+            : Reflect.getOwnMetadata(metadataKey, target);
 
           if (existingMetadata) {
             throw new Error(`@${config.name} has already been applied and is not stackable`);
@@ -424,13 +425,15 @@ export class CustomDecoratorBuilder<TOptions = any> {
           };
 
           if (propertyKey !== undefined) {
-            const existing = Reflect.getMetadata(applicationKey, target, propertyKey) || [];
-            existing.push(applicationData);
-            Reflect.defineMetadata(applicationKey, existing, target, propertyKey);
+            const existing = Reflect.getMetadata(applicationKey, target, propertyKey);
+            const metadata = Array.isArray(existing) ? existing : (existing ? [existing] : []);
+            metadata.push(applicationData);
+            Reflect.defineMetadata(applicationKey, metadata, target, propertyKey);
           } else {
-            const existing = Reflect.getMetadata(applicationKey, target) || [];
-            existing.push(applicationData);
-            Reflect.defineMetadata(applicationKey, existing, target);
+            const existing = Reflect.getMetadata(applicationKey, target);
+            const metadata = Array.isArray(existing) ? existing : (existing ? [existing] : []);
+            metadata.push(applicationData);
+            Reflect.defineMetadata(applicationKey, metadata, target);
           }
         }
 

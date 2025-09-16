@@ -1,13 +1,18 @@
 /**
  * Event Bus Service
- * 
+ *
  * Provides a message bus for inter-module communication
  */
 
-import { Inject, Injectable } from '@omnitron-dev/nexus';
-import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
+import type { EventMetadata } from '@omnitron-dev/eventemitter';
 
-import { EVENT_EMITTER_TOKEN } from './events.module';
+import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
+import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
+
+// Define EventHandler locally since it's not exported from eventemitter
+type EventHandler = (...args: any[]) => void | Promise<void>;
+
+import { LOGGER_TOKEN, EVENT_EMITTER_TOKEN } from './events.module';
 
 import type { EventBusMessage, EventSubscription } from './types';
 
@@ -19,13 +24,371 @@ export class EventBusService {
   private channels: Map<string, Set<Function>> = new Map();
   private messageQueue: Map<string, EventBusMessage[]> = new Map();
   private messageIdCounter = 0;
+  private subscriptions: Map<string, Set<Function>> = new Map();
+  private onceHandlers: Set<Function> = new Set();
+  private emittedEvents = 0;
+  private initialized = false;
+  private destroyed = false;
+  private middlewares: Array<(data: any, next: (data: any) => any) => any> = [];
+  private replayEnabled = false;
+  private replayBuffer: Array<{ event: string; data: any }> = [];
+  private maxReplayBufferSize = 100;
 
   constructor(
-    @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter
+    @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
+    @Optional() @Inject(LOGGER_TOKEN) private readonly logger?: any
   ) { }
 
   /**
-   * Publish a message to the bus
+   * Initialize the service
+   */
+  async onInit(): Promise<void> {
+    if (this.initialized) return;
+    this.initialized = true;
+    this.logger?.info('EventBusService initialized');
+  }
+
+  /**
+   * Add middleware to the event bus
+   */
+  use(middleware: (data: any, next: (data: any) => any) => any): void {
+    this.middlewares.push(middleware);
+  }
+
+  /**
+   * Enable event replay
+   */
+  enableReplay(enabled: boolean = true, maxBufferSize?: number): void {
+    this.replayEnabled = enabled;
+    if (maxBufferSize !== undefined) {
+      this.maxReplayBufferSize = maxBufferSize;
+    }
+    if (!enabled) {
+      this.replayBuffer = [];
+    }
+  }
+
+  /**
+   * Apply middleware chain to data
+   */
+  private applyMiddleware(data: any): any {
+    let index = 0;
+    const middlewares = this.middlewares;
+
+    function next(currentData: any): any {
+      if (index >= middlewares.length) {
+        return currentData;
+      }
+      const middleware = middlewares[index++];
+      return middleware ? middleware(currentData, next) : currentData;
+    }
+
+    return next(data);
+  }
+
+  /**
+   * Destroy the service
+   */
+  async onDestroy(): Promise<void> {
+    if (this.destroyed) return;
+    this.destroyed = true;
+
+    // Clear all subscriptions
+    this.channels.clear();
+    this.messageQueue.clear();
+    this.subscriptions.clear();
+    this.onceHandlers.clear();
+    this.emitter.removeAllListeners();
+
+    this.logger?.info('EventBusService destroyed');
+  }
+
+  /**
+   * Get health status
+   */
+  async health(): Promise<{ status: 'healthy' | 'degraded' | 'unhealthy'; details?: any }> {
+    const listenerCount = Array.from(this.subscriptions.values())
+      .reduce((acc, handlers) => acc + handlers.size, 0);
+
+    const eventCount = this.subscriptions.size;
+
+    return {
+      status: this.initialized && !this.destroyed ? 'healthy' : 'unhealthy',
+      details: {
+        eventCount,  // Number of unique events with handlers
+        listenerCount  // Total number of listeners
+      }
+    };
+  }
+
+  /**
+   * Subscribe to an event (alias for subscribe)
+   */
+  on(event: string, handler: Function): EventSubscription {
+    if (!this.subscriptions.has(event)) {
+      this.subscriptions.set(event, new Set());
+    }
+    this.subscriptions.get(event)!.add(handler);
+
+    // Don't duplicate subscription to internal emitter - we handle it ourselves
+
+    return {
+      unsubscribe: () => {
+        this.off(event, handler);
+      },
+      isActive: () => this.subscriptions.get(event)?.has(handler) || false,
+      event,
+      handler
+    };
+  }
+
+  /**
+   * Unsubscribe from an event
+   */
+  off(event: string, handler?: Function): void {
+    if (!handler) {
+      // Remove all handlers for this event
+      this.subscriptions.delete(event);
+      this.emitter.removeAllListeners(event);
+      return;
+    }
+
+    const handlers = this.subscriptions.get(event);
+    if (handlers) {
+      handlers.delete(handler);
+      if (handlers.size === 0) {
+        this.subscriptions.delete(event);
+      }
+    }
+
+    // Remove from emitter as well
+    this.emitter.off(event, handler as EventHandler);
+  }
+
+  /**
+   * Subscribe to an event once
+   */
+  once(event: string, handler: Function): EventSubscription {
+    const wrappedHandler = async (data: any, metadata?: EventMetadata) => {
+      this.off(event, wrappedHandler);
+      this.onceHandlers.delete(wrappedHandler);
+      return handler(data, metadata);
+    };
+
+    this.onceHandlers.add(wrappedHandler);
+    return this.on(event, wrappedHandler);
+  }
+
+  /**
+   * Emit an event
+   */
+  async emit(event: string, data?: any, metadata?: Partial<EventMetadata>): Promise<void> {
+    this.emittedEvents++;
+
+    // Apply middleware chain to data
+    const processedData = this.applyMiddleware(data);
+
+    const fullMetadata: EventMetadata = {
+      id: this.generateMessageId(),
+      timestamp: Date.now(),
+      ...metadata
+    } as EventMetadata;
+
+    // Store in replay buffer if enabled
+    if (this.replayEnabled) {
+      this.replayBuffer.push({ event, data: processedData });
+      if (this.replayBuffer.length > this.maxReplayBufferSize) {
+        this.replayBuffer.shift();
+      }
+    }
+
+    // Call registered handlers directly (not through emitter to avoid duplication)
+    const handlers = this.subscriptions.get(event);
+    if (handlers) {
+      const handlerPromises = Array.from(handlers).map(async handler => {
+        try {
+          await Promise.resolve(handler(processedData, fullMetadata));
+        } catch (err) {
+          this.logger?.error({ err, event }, 'Error in event handler');
+          // Emit error event to error handlers
+          if (event !== 'error') {
+            // Use direct emit to ensure error handlers are called
+            const errorHandlers = this.subscriptions.get('error');
+            if (errorHandlers) {
+              errorHandlers.forEach(errorHandler => {
+                try {
+                  errorHandler(err);
+                } catch (errorHandlerErr) {
+                  // Ignore errors in error handlers to prevent infinite loops
+                  this.logger?.error({ err: errorHandlerErr }, 'Error in error handler');
+                }
+              });
+            }
+          }
+        }
+      });
+
+      await Promise.all(handlerPromises);
+    }
+
+    // Handle wildcard patterns
+    for (const [pattern, patternHandlers] of this.subscriptions.entries()) {
+      if (pattern.includes('*') && this.matchesPattern(event, pattern)) {
+        const wildcardPromises = Array.from(patternHandlers).map(async handler => {
+          try {
+            await Promise.resolve(handler(processedData, fullMetadata));
+          } catch (err) {
+            this.logger?.error({ err, event, pattern }, 'Error in wildcard handler');
+            // Emit error event to error handlers
+            if (event !== 'error') {
+              // Use direct emit to ensure error handlers are called
+              const errorHandlers = this.subscriptions.get('error');
+              if (errorHandlers) {
+                errorHandlers.forEach(errorHandler => {
+                  try {
+                    errorHandler(err);
+                  } catch (errorHandlerErr) {
+                    // Ignore errors in error handlers to prevent infinite loops
+                    this.logger?.error({ err: errorHandlerErr }, 'Error in error handler');
+                  }
+                });
+              }
+            }
+          }
+        });
+
+        await Promise.all(wildcardPromises);
+      }
+    }
+  }
+
+  /**
+   * Emit an event asynchronously (parallel)
+   */
+  async emitAsync(event: string, data?: any, metadata?: Partial<EventMetadata>): Promise<void> {
+    return this.emit(event, data, metadata);
+  }
+
+  /**
+   * Emit an event in parallel (alias for emitAsync)
+   */
+  async emitParallel(event: string, data?: any, metadata?: Partial<EventMetadata>): Promise<void> {
+    return this.emit(event, data, metadata);
+  }
+
+  /**
+   * Emit an event sequentially (alias for emitSync)
+   */
+  async emitSequential(event: string, data?: any, metadata?: Partial<EventMetadata>): Promise<void> {
+    return this.emitSync(event, data, metadata);
+  }
+
+  /**
+   * Emit an event synchronously (sequential)
+   */
+  async emitSync(event: string, data?: any, metadata?: Partial<EventMetadata>): Promise<void> {
+    this.emittedEvents++;
+
+    const fullMetadata: EventMetadata = {
+      id: this.generateMessageId(),
+      timestamp: Date.now(),
+      ...metadata
+    } as EventMetadata;
+
+    // Emit through internal emitter sequentially
+    await (this.emitter as any).emitSequential(event, data);
+
+    // Also call registered handlers sequentially
+    const handlers = this.subscriptions.get(event);
+    if (handlers) {
+      for (const handler of handlers) {
+        try {
+          await handler(data, fullMetadata);
+        } catch (err) {
+          this.logger?.error({ err, event }, 'Error in event handler');
+          // Emit error event
+          if (event !== 'error') {
+            await this.emit('error', err);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Emit an event with reduce pattern
+   */
+  async emitReduce<T, R>(
+    event: string,
+    data: T,
+    reducer: (acc: R, result: any) => R,
+    initialValue: R,
+    metadata?: Partial<EventMetadata>
+  ): Promise<R> {
+    this.emittedEvents++;
+
+    const fullMetadata: EventMetadata = {
+      id: this.generateMessageId(),
+      timestamp: Date.now(),
+      ...metadata
+    } as EventMetadata;
+
+    // Get handlers
+    const handlers = this.subscriptions.get(event);
+    if (!handlers || handlers.size === 0) {
+      return initialValue;
+    }
+
+    // Reduce results
+    let accumulator = initialValue;
+    for (const handler of handlers) {
+      try {
+        const result = await handler(data, fullMetadata);
+        accumulator = reducer(accumulator, result);
+      } catch (err) {
+        this.logger?.error({ err, event }, 'Error in reduce handler');
+      }
+    }
+
+    return accumulator;
+  }
+
+  /**
+   * Get all event names
+   */
+  eventNames(): string[] {
+    return Array.from(this.subscriptions.keys());
+  }
+
+  /**
+   * Get listener count for an event
+   */
+  listenerCount(event: string): number {
+    return this.subscriptions.get(event)?.size || 0;
+  }
+
+  /**
+   * Remove all listeners
+   */
+  removeAllListeners(event?: string): void {
+    if (event) {
+      this.off(event);
+    } else {
+      this.subscriptions.clear();
+      this.emitter.removeAllListeners();
+    }
+  }
+
+  /**
+   * Check if event matches pattern
+   */
+  private matchesPattern(event: string, pattern: string): boolean {
+    const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+    return regex.test(event);
+  }
+
+  /**
+   * Publish a message to the bus (alternative API)
    */
   async publish<T = any>(
     channel: string,
@@ -232,6 +595,7 @@ export class EventBusService {
   clearQueue(target: string): void {
     this.messageQueue.delete(target);
   }
+
 
   /**
    * Get channel statistics

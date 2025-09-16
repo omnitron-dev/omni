@@ -115,6 +115,7 @@ export const IConfigModule = {} as any;
 export class ConfigModule extends ApplicationModule implements IConfigModule {
   override readonly name = 'config';
   override readonly version = '1.0.0';
+  private readonly __isConfigModule = true; // Marker for type identification
 
   private config: Record<string, any> = {};
   private environment: string = process.env['NODE_ENV'] || 'development';
@@ -753,6 +754,7 @@ export function createConfigModule<T = any>(
   options?: ConfigModuleOptions<T>
 ): ConfigModule {
   const module = new ConfigModule();
+  (module as any).__isConfigModule = true; // Ensure marker is set
 
   if (options?.environment) {
     module.setEnvironment(options.environment);

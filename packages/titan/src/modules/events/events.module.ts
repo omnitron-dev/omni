@@ -36,6 +36,7 @@ export const EVENT_SCHEDULER_SERVICE_TOKEN = createToken<EventSchedulerService>(
 export const EVENT_VALIDATION_SERVICE_TOKEN = createToken<EventValidationService>('EventValidationService');
 export const EVENT_HISTORY_SERVICE_TOKEN = createToken<EventHistoryService>('EventHistoryService');
 export const EVENT_OPTIONS_TOKEN = createToken<EventEmitterOptions>('EventEmitterOptions');
+export const LOGGER_TOKEN = createToken<any>('Logger');
 
 /**
  * Events module configuration
@@ -217,7 +218,96 @@ export class EventsModule {
         // Provide options
         [EVENT_OPTIONS_TOKEN, {
           useValue: options
+        }] as any,
+
+        // Enhanced Event Emitter
+        [EVENT_EMITTER_TOKEN, {
+          useFactory: (opts: EventEmitterOptions) => {
+            const emitter = new EnhancedEventEmitter({
+              wildcard: opts.wildcard !== false,
+              delimiter: opts.delimiter || '.',
+              maxListeners: opts.maxListeners || 100,
+              concurrency: opts.concurrency || 10
+            });
+
+            // Enable history if configured
+            if (opts.history?.enabled) {
+              emitter.enableHistory({
+                maxSize: opts.history.maxSize || 1000,
+                ttl: opts.history.ttl
+              });
+            }
+
+            // Enable metrics if configured
+            if (opts.metrics?.enabled) {
+              emitter.enableMetrics({
+                slowThreshold: opts.metrics.slowThreshold || 100,
+                sampleRate: opts.metrics.sampleRate || 1.0
+              });
+            }
+
+            return emitter;
+          },
+          inject: [EVENT_OPTIONS_TOKEN],
+          scope: 'singleton'
+        }] as any,
+
+        // Core Events Service
+        [EVENTS_SERVICE_TOKEN, {
+          useClass: EventsService,
+          inject: [EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN],
+          scope: 'singleton'
+        }] as any,
+
+        // Event Metadata Service
+        [EVENT_METADATA_SERVICE_TOKEN, {
+          useClass: EventMetadataService,
+          scope: 'singleton'
+        }] as any,
+
+        // Event Discovery Service
+        [EVENT_DISCOVERY_SERVICE_TOKEN, {
+          useClass: EventDiscoveryService,
+          inject: [Container, EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN],
+          scope: 'singleton'
+        }] as any,
+
+        // Event Bus Service
+        [EVENT_BUS_SERVICE_TOKEN, {
+          useClass: EventBusService,
+          inject: [EVENT_EMITTER_TOKEN],
+          scope: 'singleton'
+        }] as any,
+
+        // Event Scheduler Service
+        [EVENT_SCHEDULER_SERVICE_TOKEN, {
+          useClass: EventSchedulerService,
+          inject: [EVENT_EMITTER_TOKEN],
+          scope: 'singleton'
+        }] as any,
+
+        // Event Validation Service
+        [EVENT_VALIDATION_SERVICE_TOKEN, {
+          useClass: EventValidationService,
+          scope: 'singleton'
+        }] as any,
+
+        // Event History Service
+        [EVENT_HISTORY_SERVICE_TOKEN, {
+          useClass: EventHistoryService,
+          inject: [EVENT_EMITTER_TOKEN],
+          scope: 'singleton'
         }] as any
+      ],
+      exports: [
+        EVENT_EMITTER_TOKEN,
+        EVENTS_SERVICE_TOKEN,
+        EVENT_METADATA_SERVICE_TOKEN,
+        EVENT_DISCOVERY_SERVICE_TOKEN,
+        EVENT_BUS_SERVICE_TOKEN,
+        EVENT_SCHEDULER_SERVICE_TOKEN,
+        EVENT_VALIDATION_SERVICE_TOKEN,
+        EVENT_HISTORY_SERVICE_TOKEN
       ]
     };
   }
@@ -239,6 +329,114 @@ export class EventsModule {
         [Symbol('FEATURE_SCHEMAS'), {
           useValue: options.schemas || {}
         }] as any
+      ]
+    };
+  }
+
+  /**
+   * Configure the Events module asynchronously
+   */
+  static forRootAsync(options: {
+    useFactory: (...args: any[]) => Promise<EventsModuleOptions> | EventsModuleOptions;
+    inject?: any[];
+  }): any {
+    return {
+      module: EventsModule,
+      providers: [
+        // Provide async options
+        [EVENT_OPTIONS_TOKEN, {
+          useFactory: options.useFactory,
+          inject: options.inject || []
+        }] as any,
+
+        // Enhanced Event Emitter with async options
+        [EVENT_EMITTER_TOKEN, {
+          useFactory: async (opts: EventsModuleOptions) => {
+            const emitter = new EnhancedEventEmitter({
+              wildcard: opts.wildcard !== false,
+              delimiter: opts.delimiter || '.',
+              maxListeners: opts.maxListeners || 100,
+              concurrency: opts.concurrency || 10
+            });
+
+            // Enable history if configured
+            if (opts.history?.enabled) {
+              emitter.enableHistory({
+                maxSize: opts.history.maxSize || 1000,
+                ttl: opts.history.ttl
+              });
+            }
+
+            // Enable metrics if configured
+            if (opts.metrics?.enabled) {
+              emitter.enableMetrics({
+                slowThreshold: opts.metrics.slowThreshold || 100,
+                sampleRate: opts.metrics.sampleRate || 1.0
+              });
+            }
+
+            return emitter;
+          },
+          inject: [EVENT_OPTIONS_TOKEN],
+          scope: 'singleton'
+        }] as any,
+
+        // Core Events Service
+        [EVENTS_SERVICE_TOKEN, {
+          useClass: EventsService,
+          inject: [EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN],
+          scope: 'singleton'
+        }] as any,
+
+        // Metadata Service
+        [EVENT_METADATA_SERVICE_TOKEN, {
+          useClass: EventMetadataService,
+          scope: 'singleton'
+        }] as any,
+
+        // Event Bus Service
+        [EVENT_BUS_SERVICE_TOKEN, {
+          useClass: EventBusService,
+          inject: [EVENT_EMITTER_TOKEN, [LOGGER_TOKEN, { optional: true }]],
+          scope: 'singleton'
+        }] as any,
+
+        // Discovery Service
+        [EVENT_DISCOVERY_SERVICE_TOKEN, {
+          useClass: EventDiscoveryService,
+          inject: [Container, EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN, [LOGGER_TOKEN, { optional: true }]],
+          scope: 'singleton'
+        }] as any,
+
+        // Scheduler Service
+        [EVENT_SCHEDULER_SERVICE_TOKEN, {
+          useClass: EventSchedulerService,
+          inject: [EVENT_EMITTER_TOKEN, [LOGGER_TOKEN, { optional: true }]],
+          scope: 'singleton'
+        }] as any,
+
+        // Validation Service
+        [EVENT_VALIDATION_SERVICE_TOKEN, {
+          useClass: EventValidationService,
+          scope: 'singleton'
+        }] as any,
+
+        // History Service
+        [EVENT_HISTORY_SERVICE_TOKEN, {
+          useClass: EventHistoryService,
+          inject: [EVENT_EMITTER_TOKEN, [LOGGER_TOKEN, { optional: true }]],
+          scope: 'singleton'
+        }] as any
+      ],
+      exports: [
+        EVENTS_SERVICE_TOKEN,
+        EVENT_BUS_SERVICE_TOKEN,
+        EVENT_EMITTER_TOKEN,
+        EVENT_METADATA_SERVICE_TOKEN,
+        EVENT_DISCOVERY_SERVICE_TOKEN,
+        EVENT_SCHEDULER_SERVICE_TOKEN,
+        EVENT_VALIDATION_SERVICE_TOKEN,
+        EVENT_HISTORY_SERVICE_TOKEN
       ]
     };
   }

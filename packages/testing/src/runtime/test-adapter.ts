@@ -74,9 +74,7 @@ export const isNode = RUNTIME === 'node';
 export const isJest = isNode && typeof (globalThis as any).jest !== 'undefined' && typeof (globalThis as any).jest.useFakeTimers === 'function';
 
 // Check if fake timers are supported
-export const supportsFakeTimers = () => {
-  return isJest;
-};
+export const supportsFakeTimers = () => isJest;
 
 // Timer utilities
 export const setupFakeTimers = () => {

@@ -4,11 +4,11 @@
  */
 
 // @ts-ignore - Deno specific imports
-import { describe as denoDescribe, it as denoIt } from "https://deno.land/std@0.208.0/testing/bdd.ts";
+import { FakeTime } from "https://deno.land/std@0.208.0/testing/time.ts";
 // @ts-ignore - Deno specific imports
 import { expect as denoExpect } from "https://deno.land/x/expect@v0.3.0/mod.ts";
 // @ts-ignore - Deno specific imports
-import { FakeTime } from "https://deno.land/std@0.208.0/testing/time.ts";
+import { it as denoIt, describe as denoDescribe } from "https://deno.land/std@0.208.0/testing/bdd.ts";
 
 // Polyfill for node:util inherits
 function inherits(ctor: any, superCtor: any) {
@@ -268,4 +268,4 @@ expect.extend = (matchers: Record<string, any>) => {
 };
 
 // Export everything
-export { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, mockFn, inherits };
+export { it, expect, mockFn, describe, afterAll, inherits, afterEach, beforeAll, beforeEach };

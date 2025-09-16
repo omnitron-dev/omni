@@ -598,7 +598,8 @@ describe('Titan Application Integration Tests', () => {
         name: 'user-service',
         config: {
           service: { port: 3001, name: 'users' }
-        }
+        },
+        debug: true // Enable debug to auto-create logger
       });
 
       // Service B - Order Service
@@ -606,7 +607,8 @@ describe('Titan Application Integration Tests', () => {
         name: 'order-service',
         config: {
           service: { port: 3002, name: 'orders' }
-        }
+        },
+        debug: true // Enable debug to auto-create logger
       });
 
       // Service C - Notification Service
@@ -614,7 +616,8 @@ describe('Titan Application Integration Tests', () => {
         name: 'notification-service',
         config: {
           service: { port: 3003, name: 'notifications' }
-        }
+        },
+        debug: true // Enable debug to auto-create logger
       });
 
       // Message queue for inter-service communication
@@ -746,7 +749,7 @@ describe('Titan Application Integration Tests', () => {
     });
 
     it('should recover from transient failures', async () => {
-      app = createApp();
+      app = createApp({ debug: true }); // Enable debug to auto-create logger
 
       // Simulate network module with transient failures
       class NetworkModule extends ApplicationModule {
@@ -837,7 +840,7 @@ describe('Titan Application Integration Tests', () => {
     });
 
     it('should handle concurrent module operations', async () => {
-      app = createApp();
+      app = createApp({ debug: true }); // Enable debug to auto-create logger
 
       const cacheModule = new CacheModule();
       app.container.register(CacheModuleToken, { useValue: cacheModule });

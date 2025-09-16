@@ -17,17 +17,19 @@
  * - Activity logging
  */
 
-import { 
-  TitanApplication, 
-  Module, 
+import {
+  TitanApplication,
+  Module,
   Service,
   EventHandler,
   OnInit,
   OnDestroy,
   ConfigValue,
-  LoggerService
-} from '@omnitron-dev/titan';
-import { Injectable, Inject, Singleton } from '@omnitron-dev/nexus';
+  LoggerService,
+  Injectable,
+  Inject,
+  Singleton
+} from '../src/index.js';
 
 // ============================
 // Domain Models
@@ -123,10 +125,10 @@ const appConfig = {
 @Singleton()
 export class UserService implements OnInit {
   private users: Map<string, User> = new Map();
-  
+
   @Inject(LoggerService)
   private logger!: LoggerService;
-  
+
   @ConfigValue('features.activityTracking')
   private activityTrackingEnabled!: boolean;
 
@@ -160,7 +162,7 @@ export class UserService implements OnInit {
         createdAt: new Date()
       }
     ];
-    
+
     mockUsers.forEach(user => this.users.set(user.id, user));
     this.logger.debug(`Loaded ${this.users.size} users`);
   }
@@ -183,10 +185,10 @@ export class UserService implements OnInit {
       id: this.generateId(),
       createdAt: new Date()
     };
-    
+
     this.users.set(user.id, user);
     this.logger.info(`User created: ${user.username}`);
-    
+
     return user;
   }
 
@@ -203,13 +205,13 @@ export class UserService implements OnInit {
 export class TaskService implements OnInit, OnDestroy {
   private tasks: Map<string, Task> = new Map();
   private tasksByUser: Map<string, Set<string>> = new Map();
-  
+
   @Inject(LoggerService)
   private logger!: LoggerService;
-  
+
   @Inject(UserService)
   private userService!: UserService;
-  
+
   @ConfigValue('features.taskAssignment')
   private assignmentEnabled!: boolean;
 
@@ -264,14 +266,14 @@ export class TaskService implements OnInit, OnDestroy {
         tags: ['database', 'architecture']
       }
     ];
-    
+
     mockTasks.forEach(task => {
       this.tasks.set(task.id, task);
       if (task.assignedTo) {
         this.addTaskToUser(task.assignedTo, task.id);
       }
     });
-    
+
     this.logger.debug(`Loaded ${this.tasks.size} tasks`);
   }
 
@@ -287,15 +289,15 @@ export class TaskService implements OnInit, OnDestroy {
       createdAt: new Date(),
       updatedAt: new Date()
     };
-    
+
     this.tasks.set(task.id, task);
-    
+
     if (task.assignedTo) {
       this.addTaskToUser(task.assignedTo, task.id);
     }
-    
+
     this.logger.info(`Task created: ${task.title} by user ${task.createdBy}`);
-    
+
     return task;
   }
 
@@ -304,7 +306,7 @@ export class TaskService implements OnInit, OnDestroy {
     if (!task) {
       return undefined;
     }
-    
+
     const oldAssignee = task.assignedTo;
     const updatedTask = {
       ...task,
@@ -313,7 +315,7 @@ export class TaskService implements OnInit, OnDestroy {
       createdAt: task.createdAt, // Ensure creation date cannot be changed
       updatedAt: new Date()
     };
-    
+
     // Handle assignee change
     if (oldAssignee !== updatedTask.assignedTo) {
       if (oldAssignee) {
@@ -323,10 +325,10 @@ export class TaskService implements OnInit, OnDestroy {
         this.addTaskToUser(updatedTask.assignedTo, id);
       }
     }
-    
+
     this.tasks.set(id, updatedTask);
     this.logger.info(`Task updated: ${updatedTask.title}`);
-    
+
     return updatedTask;
   }
 
@@ -335,14 +337,14 @@ export class TaskService implements OnInit, OnDestroy {
     if (!task) {
       return false;
     }
-    
+
     if (task.assignedTo) {
       this.removeTaskFromUser(task.assignedTo, id);
     }
-    
+
     this.tasks.delete(id);
     this.logger.info(`Task deleted: ${task.title}`);
-    
+
     return true;
   }
 
@@ -357,7 +359,7 @@ export class TaskService implements OnInit, OnDestroy {
     createdBy?: string;
   }): Promise<Task[]> {
     let tasks = Array.from(this.tasks.values());
-    
+
     if (filters) {
       if (filters.status) {
         tasks = tasks.filter(t => t.status === filters.status);
@@ -372,7 +374,7 @@ export class TaskService implements OnInit, OnDestroy {
         tasks = tasks.filter(t => t.createdBy === filters.createdBy);
       }
     }
-    
+
     return tasks;
   }
 
@@ -381,7 +383,7 @@ export class TaskService implements OnInit, OnDestroy {
     if (!taskIds) {
       return [];
     }
-    
+
     return Array.from(taskIds)
       .map(id => this.tasks.get(id))
       .filter(task => task !== undefined) as Task[];
@@ -391,12 +393,12 @@ export class TaskService implements OnInit, OnDestroy {
     if (!this.assignmentEnabled) {
       throw new Error('Task assignment feature is disabled');
     }
-    
+
     const user = await this.userService.findById(userId);
     if (!user) {
       throw new Error(`User ${userId} not found`);
     }
-    
+
     return this.update(taskId, { assignedTo: userId });
   }
 
@@ -434,7 +436,7 @@ export class TaskService implements OnInit, OnDestroy {
   }> {
     const tasks = Array.from(this.tasks.values());
     const now = new Date();
-    
+
     const stats = {
       total: tasks.length,
       byStatus: {
@@ -451,16 +453,16 @@ export class TaskService implements OnInit, OnDestroy {
       },
       overdue: 0
     };
-    
+
     tasks.forEach(task => {
       stats.byStatus[task.status]++;
       stats.byPriority[task.priority]++;
-      
+
       if (task.dueDate && task.dueDate < now && task.status !== 'completed') {
         stats.overdue++;
       }
     });
-    
+
     return stats;
   }
 }
@@ -473,21 +475,21 @@ export class TaskService implements OnInit, OnDestroy {
 export class NotificationService {
   @Inject(LoggerService)
   private logger!: LoggerService;
-  
+
   @ConfigValue('notifications.email.enabled')
   private emailEnabled!: boolean;
-  
+
   @ConfigValue('notifications.realtime.enabled')
   private realtimeEnabled!: boolean;
 
   async sendTaskAssigned(task: Task, user: User): Promise<void> {
     this.logger.info(`Sending task assigned notification to ${user.email}`);
-    
+
     if (this.emailEnabled) {
-      await this.sendEmail(user.email, 'Task Assigned', 
+      await this.sendEmail(user.email, 'Task Assigned',
         `You have been assigned task: ${task.title}`);
     }
-    
+
     if (this.realtimeEnabled) {
       await this.sendRealtimeNotification(user.id, {
         type: 'task-assigned',
@@ -499,7 +501,7 @@ export class NotificationService {
 
   async sendTaskStatusChanged(task: Task, oldStatus: Task['status'], user: User): Promise<void> {
     this.logger.info(`Task ${task.id} status changed from ${oldStatus} to ${task.status}`);
-    
+
     if (this.realtimeEnabled) {
       await this.sendRealtimeNotification(user.id, {
         type: 'task-status-changed',
@@ -512,11 +514,11 @@ export class NotificationService {
 
   async sendTaskDueReminder(task: Task, user: User): Promise<void> {
     if (!task.dueDate) return;
-    
+
     const daysUntilDue = Math.ceil((task.dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-    
+
     this.logger.info(`Sending due reminder for task ${task.id} to ${user.email}`);
-    
+
     if (this.emailEnabled) {
       await this.sendEmail(user.email, 'Task Due Soon',
         `Task "${task.title}" is due in ${daysUntilDue} days`);
@@ -541,17 +543,17 @@ export class NotificationService {
 @Service('ActivityService@1.0.0')
 export class ActivityService {
   private activities: TaskEvent[] = [];
-  
+
   @Inject(LoggerService)
   private logger!: LoggerService;
-  
+
   @ConfigValue('features.activityTracking')
   private trackingEnabled!: boolean;
 
   @EventHandler('task.created')
   async onTaskCreated(data: { task: Task; userId: string }): Promise<void> {
     if (!this.trackingEnabled) return;
-    
+
     await this.recordActivity({
       taskId: data.task.id,
       userId: data.userId,
@@ -564,7 +566,7 @@ export class ActivityService {
   @EventHandler('task.updated')
   async onTaskUpdated(data: { task: Task; userId: string; changes: Partial<Task> }): Promise<void> {
     if (!this.trackingEnabled) return;
-    
+
     await this.recordActivity({
       taskId: data.task.id,
       userId: data.userId,
@@ -577,7 +579,7 @@ export class ActivityService {
   @EventHandler('task.deleted')
   async onTaskDeleted(data: { taskId: string; userId: string }): Promise<void> {
     if (!this.trackingEnabled) return;
-    
+
     await this.recordActivity({
       taskId: data.taskId,
       userId: data.userId,
@@ -589,7 +591,7 @@ export class ActivityService {
   @EventHandler('task.assigned')
   async onTaskAssigned(data: { task: Task; assignedBy: string; assignedTo: string }): Promise<void> {
     if (!this.trackingEnabled) return;
-    
+
     await this.recordActivity({
       taskId: data.task.id,
       userId: data.assignedBy,
@@ -602,7 +604,7 @@ export class ActivityService {
   private async recordActivity(event: TaskEvent): Promise<void> {
     this.activities.push(event);
     this.logger.debug(`Activity recorded: ${event.action} on task ${event.taskId} by user ${event.userId}`);
-    
+
     // Keep only last 1000 activities in memory
     if (this.activities.length > 1000) {
       this.activities = this.activities.slice(-1000);
@@ -616,7 +618,7 @@ export class ActivityService {
     to?: Date;
   }): Promise<TaskEvent[]> {
     let activities = [...this.activities];
-    
+
     if (filters) {
       if (filters.taskId) {
         activities = activities.filter(a => a.taskId === filters.taskId);
@@ -631,7 +633,7 @@ export class ActivityService {
         activities = activities.filter(a => a.timestamp <= filters.to!);
       }
     }
-    
+
     return activities.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   }
 
@@ -650,13 +652,13 @@ export class ActivityService {
 export class TaskOrchestrator {
   @Inject(TaskService)
   private taskService!: TaskService;
-  
+
   @Inject(NotificationService)
   private notificationService!: NotificationService;
-  
+
   @Inject(UserService)
   private userService!: UserService;
-  
+
   @Inject(LoggerService)
   private logger!: LoggerService;
 
@@ -665,10 +667,10 @@ export class TaskOrchestrator {
       ...taskData,
       createdBy: userId
     });
-    
+
     // Emit event
     await this.emitEvent('task.created', { task, userId });
-    
+
     // Send notification if assigned
     if (task.assignedTo) {
       const assignedUser = await this.userService.findById(task.assignedTo);
@@ -676,36 +678,36 @@ export class TaskOrchestrator {
         await this.notificationService.sendTaskAssigned(task, assignedUser);
       }
     }
-    
+
     return task;
   }
 
   async updateTask(userId: string, taskId: string, updates: Partial<Task>): Promise<Task | undefined> {
     const oldTask = await this.taskService.findById(taskId);
     if (!oldTask) return undefined;
-    
+
     const updatedTask = await this.taskService.update(taskId, updates);
     if (!updatedTask) return undefined;
-    
+
     // Emit event
-    await this.emitEvent('task.updated', { 
-      task: updatedTask, 
-      userId, 
-      changes: updates 
+    await this.emitEvent('task.updated', {
+      task: updatedTask,
+      userId,
+      changes: updates
     });
-    
+
     // Handle status change notification
     if (oldTask.status !== updatedTask.status && updatedTask.assignedTo) {
       const assignedUser = await this.userService.findById(updatedTask.assignedTo);
       if (assignedUser) {
         await this.notificationService.sendTaskStatusChanged(
-          updatedTask, 
-          oldTask.status, 
+          updatedTask,
+          oldTask.status,
           assignedUser
         );
       }
     }
-    
+
     // Handle assignment change
     if (oldTask.assignedTo !== updatedTask.assignedTo && updatedTask.assignedTo) {
       const assignedUser = await this.userService.findById(updatedTask.assignedTo);
@@ -718,17 +720,17 @@ export class TaskOrchestrator {
         });
       }
     }
-    
+
     return updatedTask;
   }
 
   async deleteTask(userId: string, taskId: string): Promise<boolean> {
     const success = await this.taskService.delete(taskId);
-    
+
     if (success) {
       await this.emitEvent('task.deleted', { taskId, userId });
     }
-    
+
     return success;
   }
 
@@ -753,7 +755,7 @@ export class TaskOrchestrator {
   ],
   exports: [UserService, TaskService]
 })
-export class CoreModule {}
+export class CoreModule { }
 
 /**
  * Notification Module
@@ -766,7 +768,7 @@ export class CoreModule {}
   ],
   exports: [NotificationService]
 })
-export class NotificationModule {}
+export class NotificationModule { }
 
 /**
  * Activity Module
@@ -779,7 +781,7 @@ export class NotificationModule {}
   ],
   exports: [ActivityService]
 })
-export class ActivityModule {}
+export class ActivityModule { }
 
 /**
  * Orchestration Module
@@ -792,7 +794,7 @@ export class ActivityModule {}
   ],
   exports: [TaskOrchestrator]
 })
-export class OrchestrationModule {}
+export class OrchestrationModule { }
 
 /**
  * Main Application Module
@@ -806,7 +808,7 @@ export class OrchestrationModule {}
     OrchestrationModule
   ]
 })
-export class AppModule {}
+export class AppModule { }
 
 // ============================
 // Application Bootstrap
@@ -916,8 +918,8 @@ async function bootstrap() {
   console.log('Application is running. Press Ctrl+C to stop.\n');
 }
 
-// Run the application
-if (require.main === module) {
+// Run the application when executed directly
+if (import.meta.url === `file://${process.argv[1]}`) {
   bootstrap().catch(error => {
     console.error('Failed to start application:', error);
     process.exit(1);

@@ -6,10 +6,10 @@
 
 import type { EventRecord, EventFilter } from '@omnitron-dev/eventemitter';
 
-import { Inject, Injectable } from '@omnitron-dev/nexus';
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
+import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
 
-import { EVENT_EMITTER_TOKEN } from './events.module';
+import { LOGGER_TOKEN, EVENT_EMITTER_TOKEN } from './events.module';
 
 import type { EventReplayOptions } from './types';
 
@@ -21,10 +21,158 @@ export class EventHistoryService {
   private isRecording = false;
   private isPaused = false;
   private customStorage?: any;
+  private historyStore: Map<string, EventRecord[]> = new Map();
+  private maxHistorySize = 1000;
+  private initialized = false;
+  private destroyed = false;
 
   constructor(
-    @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter
+    @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
+    @Optional() @Inject(LOGGER_TOKEN) private readonly logger?: any
   ) { }
+
+  /**
+   * Initialize the service
+   */
+  async onInit(): Promise<void> {
+    if (this.initialized) return;
+    this.initialized = true;
+    this.logger?.info('EventHistoryService initialized');
+  }
+
+  /**
+   * Destroy the service
+   */
+  async onDestroy(): Promise<void> {
+    if (this.destroyed) return;
+    this.destroyed = true;
+
+    // Clear all history data
+    this.historyStore.clear();
+    this.customStorage = undefined;
+
+    this.logger?.info('EventHistoryService destroyed');
+  }
+
+  /**
+   * Get health status
+   */
+  async health(): Promise<{ status: 'healthy' | 'degraded' | 'unhealthy'; details?: any }> {
+    const totalRecords = Array.from(this.historyStore.values())
+      .reduce((acc, records) => acc + records.length, 0);
+
+    return {
+      status: this.initialized && !this.destroyed ? 'healthy' : 'unhealthy',
+      details: {
+        initialized: this.initialized,
+        destroyed: this.destroyed,
+        isRecording: this.isRecording,
+        isPaused: this.isPaused,
+        totalRecords,
+        maxHistorySize: this.maxHistorySize,
+        eventCount: this.historyStore.size
+      }
+    };
+  }
+
+  /**
+   * Record an event in history
+   */
+  record(record: {
+    event: string;
+    data: any;
+    timestamp: number;
+    metadata?: any;
+    duration?: number;
+    error?: Error;
+  }): void {
+    if (!this.isRecording || this.isPaused) return;
+
+    const fullRecord: EventRecord = {
+      event: record.event,
+      data: record.data,
+      timestamp: record.timestamp,
+      metadata: record.metadata,
+      duration: record.duration,
+      error: record.error
+    };
+
+    // Get or create event history array
+    const eventHistory = this.historyStore.get(record.event) || [];
+    eventHistory.push(fullRecord);
+
+    // Limit history size
+    if (eventHistory.length > this.maxHistorySize) {
+      eventHistory.shift(); // Remove oldest
+    }
+
+    this.historyStore.set(record.event, eventHistory);
+  }
+
+  /**
+   * Get event history (synchronous)
+   */
+  getHistorySync(event?: string): EventRecord[] {
+    if (event) {
+      return this.historyStore.get(event) || [];
+    }
+
+    // Return all history
+    const allHistory: EventRecord[] = [];
+    for (const records of this.historyStore.values()) {
+      allHistory.push(...records);
+    }
+
+    // Sort by timestamp
+    return allHistory.sort((a, b) => a.timestamp - b.timestamp);
+  }
+
+
+  /**
+   * Clear event history (synchronous)
+   */
+  clearSync(event?: string): void {
+    if (event) {
+      this.historyStore.delete(event);
+    } else {
+      this.historyStore.clear();
+    }
+  }
+
+  /**
+   * Clear event history (alias for compatibility)
+   */
+  clear(event?: string): void {
+    this.clearSync(event);
+  }
+
+  /**
+   * Set maximum history size
+   */
+  setMaxHistory(maxSize: number): void {
+    this.maxHistorySize = maxSize;
+
+    // Trim existing histories if needed
+    for (const [event, records] of this.historyStore.entries()) {
+      if (records.length > maxSize) {
+        const trimmed = records.slice(-maxSize);
+        this.historyStore.set(event, trimmed);
+      }
+    }
+  }
+
+  /**
+   * Get history statistics (synchronous)
+   */
+  getStatisticsSync(): Record<string, number> {
+    const stats: Record<string, number> = {};
+
+    for (const [event, records] of this.historyStore.entries()) {
+      stats[event] = records.length;
+    }
+
+    return stats;
+  }
 
   /**
    * Start recording events
@@ -71,10 +219,20 @@ export class EventHistoryService {
   }
 
   /**
-   * Get event history
+   * Get filtered event history (async)
    */
-  async getHistory(filter?: EventFilter): Promise<EventRecord[]> {
+  async getFilteredHistory(filter?: EventFilter): Promise<EventRecord[]> {
     return this.emitter.getHistory(filter);
+  }
+
+  /**
+   * Get event history (unified method)
+   */
+  getHistory(eventOrFilter?: string | EventFilter): EventRecord[] | Promise<EventRecord[]> {
+    if (typeof eventOrFilter === 'string' || eventOrFilter === undefined) {
+      return this.getHistorySync(eventOrFilter);
+    }
+    return this.getFilteredHistory(eventOrFilter);
   }
 
   /**
@@ -154,14 +312,14 @@ export class EventHistoryService {
   async replay(options?: EventReplayOptions): Promise<void> {
     // Convert filter to EventFilter format
     const filter: EventFilter | undefined = options?.filter ? {
-      event: Array.isArray(options.filter.event) 
+      event: Array.isArray(options.filter.event)
         ? new RegExp(options.filter.event.join('|'))
         : options.filter.event,
       from: options.filter.from,
       to: options.filter.to
     } : undefined;
-    
-    const records = await this.getHistory(filter);
+
+    const records = await this.getFilteredHistory(filter);
 
     if (options?.dryRun) {
       console.log(`Would replay ${records.length} events`);
@@ -210,10 +368,10 @@ export class EventHistoryService {
     count: number;
     events: string[];
   }>> {
-    const records = await this.getHistory({
+    const records = await this.getFilteredHistory({
       from: options?.from,
       to: options?.to,
-      event: options?.events 
+      event: options?.events
         ? new RegExp(options.events.join('|'))
         : undefined
     });
@@ -249,7 +407,7 @@ export class EventHistoryService {
     to?: Date;
     hasError?: boolean;
   }): Promise<EventRecord[]> {
-    const records = await this.getHistory({
+    const records = await this.getFilteredHistory({
       event: query.event,
       from: query.from,
       to: query.to

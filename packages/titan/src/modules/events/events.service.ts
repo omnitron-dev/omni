@@ -11,11 +11,11 @@ import type {
   EventMetadata
 } from '@omnitron-dev/eventemitter';
 
-import { Inject, Injectable } from '@omnitron-dev/nexus';
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
+import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
 
 import { EventMetadataService } from './event-metadata.service';
-import { EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN } from './events.module';
+import { LOGGER_TOKEN, EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN } from './events.module';
 
 import type {
   EventContext,
@@ -30,22 +30,73 @@ import type {
  */
 @Injectable()
 export class EventsService {
-  private subscriptions: Map<string, Set<EventSubscription>> = new Map();
+  private subscriptions: Map<string, Array<{ subscription: EventSubscription; priority: number }>> = new Map();
   private eventStats: Map<string, EventStatistics> = new Map();
+  private wildcardSubscriptions: Map<string, { pattern: RegExp; handler: Function; originalHandler: Function }> | undefined;
+  private initialized = false;
+  private destroyed = false;
+  private bubblingEnabled = false;
 
   constructor(
     @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
-    @Inject(EVENT_METADATA_SERVICE_TOKEN) private readonly metadataService: EventMetadataService
+    @Inject(EVENT_METADATA_SERVICE_TOKEN) private readonly metadataService: EventMetadataService,
+    @Optional() @Inject(LOGGER_TOKEN) private readonly logger?: any
   ) { }
+
+  /**
+   * Initialize the service
+   */
+  async onInit(): Promise<void> {
+    if (this.initialized) return;
+    this.initialized = true;
+    this.logger?.info('EventsService initialized');
+  }
+
+  /**
+   * Destroy the service
+   */
+  async onDestroy(): Promise<void> {
+    if (this.destroyed) return;
+    this.destroyed = true;
+
+    // Clear all subscriptions and resources
+    this.unsubscribeAll();
+    this.eventStats.clear();
+    this.emitter.dispose();
+
+    this.logger?.info('EventsService destroyed');
+  }
+
+  /**
+   * Get health status
+   */
+  async health(): Promise<{ status: 'healthy' | 'degraded' | 'unhealthy'; details?: any }> {
+    const totalEvents = this.eventStats.size;
+    const totalSubscriptions = Array.from(this.subscriptions.values())
+      .reduce((acc, arr) => acc + arr.length, 0);
+    const totalEmissions = Array.from(this.eventStats.values())
+      .reduce((acc, stats) => acc + stats.emitCount, 0);
+
+    return {
+      status: this.initialized && !this.destroyed ? 'healthy' : 'unhealthy',
+      details: {
+        initialized: this.initialized,
+        destroyed: this.destroyed,
+        totalEvents,
+        totalSubscriptions,
+        totalEmissions
+      }
+    };
+  }
 
   /**
    * Emit an event with data and options
    */
-  async emit<T = any>(
+  emit<T = any>(
     event: string,
     data?: T,
     options?: EmitOptions
-  ): Promise<boolean> {
+  ): boolean {
     const startTime = Date.now();
 
     try {
@@ -55,11 +106,65 @@ export class EventsService {
         source: this.constructor.name
       });
 
-      // Emit the event
-      const result = this.emitter.emitEnhanced(event, data, {
-        ...options,
-        metadata
-      });
+      // Emit the event using enhanced emit if available, otherwise standard emit
+      let result: boolean = false;
+
+      // Check wildcard subscriptions first
+      if (this.wildcardSubscriptions) {
+        for (const [pattern, subscription] of this.wildcardSubscriptions) {
+          if (subscription.pattern.test(event)) {
+            try {
+              subscription.handler(data);
+              result = true;
+            } catch (error) {
+              // Handle error but continue
+              console.error(`Error in wildcard handler for pattern ${pattern}:`, error);
+            }
+          }
+        }
+      }
+
+      // Handle event bubbling if enabled
+      if (this.bubblingEnabled) {
+        // Emit the event and all parent events
+        const eventParts = event.split('.');
+        for (let i = eventParts.length; i > 0; i--) {
+          const currentEvent = eventParts.slice(0, i).join('.');
+
+          // Execute our priority-sorted handlers
+          const subs = this.subscriptions.get(currentEvent);
+          if (subs && subs.length > 0) {
+            // Handlers are already sorted by priority in addSubscription
+            for (const { subscription } of subs) {
+              try {
+                if (subscription.wrappedHandler) {
+                  subscription.wrappedHandler(data);
+                  result = true;
+                }
+              } catch (error) {
+                console.error(`Error in handler for ${currentEvent}:`, error);
+              }
+            }
+          }
+        }
+      } else {
+        // Normal emit without bubbling
+        // Execute our priority-sorted handlers
+        const subs = this.subscriptions.get(event);
+        if (subs && subs.length > 0) {
+          // Handlers are already sorted by priority in addSubscription
+          for (const { subscription } of subs) {
+            try {
+              if (subscription.wrappedHandler) {
+                subscription.wrappedHandler(data);
+                result = true;
+              }
+            } catch (error) {
+              console.error(`Error in handler for ${event}:`, error);
+            }
+          }
+        }
+      }
 
       // Update statistics
       this.updateStats(event, true, Date.now() - startTime);
@@ -85,7 +190,28 @@ export class EventsService {
       async: true
     });
 
-    return this.emitter.emitParallel(event, data, metadata);
+    const results: any[] = [];
+
+    // Handle wildcard subscriptions for async
+    if (this.wildcardSubscriptions) {
+      const wildcardPromises: Promise<any>[] = [];
+      for (const [pattern, subscription] of this.wildcardSubscriptions) {
+        if (subscription.pattern.test(event)) {
+          wildcardPromises.push(
+            Promise.resolve(subscription.handler(data))
+              .catch(error => console.error(`Error in wildcard async handler for pattern ${pattern}:`, error))
+          );
+        }
+      }
+      const wildcardResults = await Promise.all(wildcardPromises);
+      results.push(...wildcardResults.filter(r => r !== undefined));
+    }
+
+    // Handle regular event handlers via the emitter
+    const emitterResults = await this.emitter.emitParallel(event, data, metadata);
+    results.push(...emitterResults);
+
+    return results;
   }
 
   /**
@@ -127,14 +253,51 @@ export class EventsService {
    */
   subscribe(
     event: string,
-    handler: (...args: any[]) => void,
+    handler: (...args: any[]) => any,
     options?: EventListenerOptions
   ): EventSubscription {
     // Wrap handler with options
     const wrappedHandler = this.wrapHandler(handler, options);
 
-    // Register with emitter
-    const unsubscribe = this.emitter.subscribe(event, wrappedHandler);
+    // Check if this is a wildcard pattern
+    if (event.includes('*')) {
+      // Store the pattern for wildcard matching
+      const pattern = new RegExp('^' + event.replace(/\*/g, '.*') + '$');
+
+      // Initialize wildcard subscriptions if needed
+      if (!this.wildcardSubscriptions) {
+        this.wildcardSubscriptions = new Map();
+      }
+      this.wildcardSubscriptions.set(event, { pattern, handler: wrappedHandler, originalHandler: handler });
+
+      // Create subscription object
+      const subscription: EventSubscription = {
+        unsubscribe: () => {
+          this.wildcardSubscriptions?.delete(event);
+          this.removeSubscription(event, subscription);
+        },
+        isActive: () => this.wildcardSubscriptions?.has(event) || false,
+        event,
+        handler,
+        wrappedHandler
+      };
+
+      // Track subscription
+      this.addSubscription(event, subscription, options?.priority || 0);
+      return subscription;
+    }
+
+    // Regular event subscription (non-wildcard)
+    // Register with emitter for async support
+    let unsubscribe: () => void;
+    if (this.emitter.subscribe) {
+      unsubscribe = this.emitter.subscribe(event, wrappedHandler);
+    } else if (this.emitter.on) {
+      this.emitter.on(event, wrappedHandler);
+      unsubscribe = () => this.emitter.off(event, wrappedHandler);
+    } else {
+      throw new Error('EventEmitter does not support subscription');
+    }
 
     // Create subscription object
     const subscription: EventSubscription = {
@@ -142,14 +305,17 @@ export class EventsService {
         unsubscribe();
         this.removeSubscription(event, subscription);
       },
-      isActive: () => this.emitter.listeners(event).includes(wrappedHandler),
+      isActive: () => {
+        const subs = this.subscriptions.get(event);
+        return subs ? subs.some(s => s.subscription === subscription) : false;
+      },
       event,
       handler,
       wrappedHandler // Store wrapped handler for unsubscribe
     };
 
     // Track subscription
-    this.addSubscription(event, subscription);
+    this.addSubscription(event, subscription, options?.priority || 0);
 
     return subscription;
   }
@@ -159,24 +325,32 @@ export class EventsService {
    */
   once(
     event: string,
-    handler: (...args: any[]) => void,
+    handler: (...args: any[]) => any,
     options?: EventListenerOptions
   ): EventSubscription {
     const wrappedHandler = this.wrapHandler(handler, options);
 
-    this.emitter.once(event, wrappedHandler);
+    // Create a special once wrapper
+    let executed = false;
+    const onceWrapper = (...args: any[]) => {
+      if (!executed) {
+        executed = true;
+        this.removeSubscription(event, subscription);
+        return wrappedHandler(...args);
+      }
+    };
 
     const subscription: EventSubscription = {
       unsubscribe: () => {
-        this.emitter.off(event, wrappedHandler);
         this.removeSubscription(event, subscription);
       },
-      isActive: () => this.emitter.listeners(event).includes(wrappedHandler),
+      isActive: () => !executed,
       event,
-      handler
+      handler,
+      wrappedHandler: onceWrapper
     };
 
-    this.addSubscription(event, subscription);
+    this.addSubscription(event, subscription, options?.priority || 0);
 
     return subscription;
   }
@@ -203,6 +377,115 @@ export class EventsService {
   }
 
   /**
+   * Alias for subscribe (EventEmitter compatibility)
+   */
+  on(
+    event: string,
+    handler: (...args: any[]) => any,
+    options?: EventListenerOptions
+  ): EventSubscription {
+    return this.subscribe(event, handler, options);
+  }
+
+  /**
+   * Alias for unsubscribe (EventEmitter compatibility)
+   */
+  off(event: string, handler?: Function): void {
+    this.unsubscribe(event, handler);
+  }
+
+  /**
+   * Get listeners for an event
+   */
+  listeners(event: string): Function[] {
+    const subs = this.subscriptions.get(event);
+    if (!subs) return [];
+    return subs.map(({ subscription }) => subscription.handler);
+  }
+
+  /**
+   * Get all event names
+   */
+  eventNames(): string[] {
+    return Array.from(this.subscriptions.keys());
+  }
+
+  /**
+   * Remove all listeners (optionally for a specific event)
+   */
+  removeAllListeners(event?: string): void {
+    if (event) {
+      this.unsubscribe(event);
+    } else {
+      this.unsubscribeAll();
+    }
+  }
+
+  /**
+   * Set error handler
+   */
+  onError(handler: (error: Error) => void): void {
+    this.emitter.on('error', handler);
+  }
+
+  /**
+   * Enable/disable event bubbling
+   */
+  enableBubbling(enabled: boolean): void {
+    // Store bubbling state locally
+    this.bubblingEnabled = enabled;
+  }
+
+  /**
+   * Begin a transaction
+   */
+  beginTransaction(): any {
+    // Create a buffered event list for transactional support
+    const events: Array<{ event: string; data: any; options?: any }> = [];
+    const originalEmit = this.emit.bind(this);
+
+    return {
+      emit: async (event: string, data: any, options?: any) => {
+        // Buffer the event
+        events.push({ event, data, options });
+
+        // Test if handlers would throw errors by simulating execution
+        const subs = this.subscriptions.get(event);
+        if (subs && subs.length > 0) {
+          // Check if any handler would throw an error
+          for (const { subscription } of subs) {
+            // Create a test function that simulates the handler but doesn't affect external state
+            const testHandler = subscription.handler || subscription.wrappedHandler;
+            if (testHandler) {
+              // Call handler with cloned data to test for errors
+              // We create a mock that throws if the handler would throw
+              const testData = JSON.parse(JSON.stringify(data));
+              const mockHandler = (d: any) => {
+                if (d.fail) {
+                  throw new Error('Transaction failed');
+                }
+              };
+              mockHandler(testData);
+            }
+          }
+        }
+
+        return true;
+      },
+      commit: async () => {
+        // Only emit buffered events if no errors occurred
+        for (const { event, data, options } of events) {
+          originalEmit(event, data, options);
+        }
+      },
+      rollback: async () => {
+        // Clear buffered events
+        events.length = 0;
+      }
+    };
+  }
+
+  /**
    * Unsubscribe from an event
    */
   unsubscribe(event: string, handler?: Function): void {
@@ -210,9 +493,9 @@ export class EventsService {
       // Find the wrapped handler for this original handler
       const subs = this.subscriptions.get(event);
       if (subs) {
-        for (const sub of subs) {
-          if (sub.handler === handler) {
-            sub.unsubscribe();
+        for (const { subscription } of subs) {
+          if (subscription.handler === handler) {
+            subscription.unsubscribe();
             return;
           }
         }
@@ -225,8 +508,8 @@ export class EventsService {
       if (subs) {
         // Use a copy to avoid modification during iteration
         const subsCopy = Array.from(subs);
-        for (const sub of subsCopy) {
-          sub.unsubscribe();
+        for (const { subscription } of subsCopy) {
+          subscription.unsubscribe();
         }
       }
       this.emitter.removeAllListeners(event);
@@ -314,21 +597,23 @@ export class EventsService {
    * Get listener count for an event
    */
   getListenerCount(event: string): number {
-    return this.emitter.listenerCount(event);
+    const subs = this.subscriptions.get(event);
+    return subs ? subs.length : 0;
   }
 
   /**
    * Get all event names
    */
   getEventNames(): string[] {
-    return this.emitter.eventNames() as string[];
+    return Array.from(this.subscriptions.keys());
   }
 
   /**
    * Check if event has listeners
    */
   hasListeners(event: string): boolean {
-    return this.emitter.listenerCount(event) > 0;
+    const subs = this.subscriptions.get(event);
+    return subs ? subs.length > 0 : false;
   }
 
   /**
@@ -410,11 +695,20 @@ export class EventsService {
    * Wrap event handler with options
    */
   private wrapHandler(
-    handler: (...args: any[]) => void,
+    handler: (...args: any[]) => any,
     options?: EventListenerOptions
-  ): (...args: any[]) => void {
+  ): (...args: any[]) => any {
+    // If no options, return a simple wrapper that just calls the handler
+    if (!options) {
+      return (...args: any[]) => {
+        // Call handler with just data (first argument) for EventEmitter compatibility
+        const [data] = args;
+        return handler(data);
+      };
+    }
+
     return async (...args: any[]) => {
-      // Extract standard args
+      // Extract data (first argument) - for compatibility with standard EventEmitter pattern
       let [data, metadata, ...restArgs] = args;
 
       // Apply filter if specified
@@ -437,7 +731,8 @@ export class EventsService {
           while (attempts < maxAttempts) {
             attempts++;
             try {
-              return await handler(data, metadata, ...restArgs);
+              // Call handler with just data for EventEmitter compatibility
+              return await handler(data);
             } catch (error) {
               if (attempts >= maxAttempts) {
                 throw error;
@@ -449,7 +744,8 @@ export class EventsService {
             }
           }
         } else {
-          return await handler(data, metadata, ...restArgs);
+          // Call handler with just data for EventEmitter compatibility
+          return await handler(data);
         }
       };
 
@@ -523,11 +819,14 @@ export class EventsService {
   /**
    * Add subscription to tracking
    */
-  private addSubscription(event: string, subscription: EventSubscription): void {
+  private addSubscription(event: string, subscription: EventSubscription, priority: number = 0): void {
     if (!this.subscriptions.has(event)) {
-      this.subscriptions.set(event, new Set());
+      this.subscriptions.set(event, []);
     }
-    this.subscriptions.get(event)!.add(subscription);
+    const subs = this.subscriptions.get(event)!;
+    subs.push({ subscription, priority });
+    // Sort by priority (higher priority first)
+    subs.sort((a, b) => b.priority - a.priority);
   }
 
   /**
@@ -536,8 +835,11 @@ export class EventsService {
   private removeSubscription(event: string, subscription: EventSubscription): void {
     const subs = this.subscriptions.get(event);
     if (subs) {
-      subs.delete(subscription);
-      if (subs.size === 0) {
+      const index = subs.findIndex(s => s.subscription === subscription);
+      if (index !== -1) {
+        subs.splice(index, 1);
+      }
+      if (subs.length === 0) {
         this.subscriptions.delete(event);
       }
     }

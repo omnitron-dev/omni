@@ -191,8 +191,8 @@ describe('Titan Application', () => {
       expect(resolved).toBe(app);
     });
 
-    it('should register core modules by default', () => {
-      app = createApp();
+    it('should register core modules by default when debug is enabled', () => {
+      app = createApp({ debug: true });
       expect(app.has(ConfigModuleToken)).toBe(true);
       expect(app.has(LoggerModuleToken)).toBe(true);
     });
@@ -227,7 +227,7 @@ describe('Titan Application', () => {
 
   describe('Lifecycle Management', () => {
     it('should start and stop application', async () => {
-      app = createApp();
+      app = createApp({ debug: true }); // Enable debug to auto-create core modules
 
       expect(app.state).toBe(ApplicationState.Created);
 
@@ -412,7 +412,7 @@ describe('Titan Application', () => {
     });
 
     it('should emit module events', async () => {
-      app = createApp();
+      app = createApp({ debug: true }); // Enable debug to auto-create core modules
       const module = new TestModule();
       const events: any[] = [];
 
@@ -492,7 +492,7 @@ describe('Titan Application', () => {
     });
 
     it('should stop modules in reverse order', async () => {
-      app = createApp();
+      app = createApp({ debug: true }); // Enable debug to auto-create core modules
 
       class Module1 extends ApplicationModule {
         override readonly name = 'module1';
@@ -1011,7 +1011,7 @@ describe('Titan Application', () => {
     });
 
     it('should create child loggers', async () => {
-      app = createApp();
+      app = createApp({ debug: true }); // Enable debug to auto-create logger
       await app.start();
 
       const loggerModule = app.get(LoggerModuleToken);
@@ -1022,7 +1022,7 @@ describe('Titan Application', () => {
     });
 
     it('should handle logger module health check', async () => {
-      app = createApp();
+      app = createApp({ debug: true }); // Enable debug to auto-create logger
       await app.start();
 
       const loggerModule = app.get(LoggerModuleToken);
@@ -1123,7 +1123,7 @@ describe('Titan Application', () => {
     });
 
     it('should handle concurrent module operations', async () => {
-      app = createApp();
+      app = createApp({ debug: true }); // Enable debug to auto-create logger
 
       const promises: Promise<void>[] = [];
 

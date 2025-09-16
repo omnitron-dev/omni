@@ -39,6 +39,9 @@ export interface ApplicationConfig {
   version?: string;
   environment?: string;
   debug?: boolean;
+  config?: any; // Configuration for config module
+  logging?: any; // Configuration for logger module
+  logger?: any; // Alias for logging
   [key: string]: any;
 }
 
@@ -205,6 +208,9 @@ export interface ApplicationOptions {
   gracefulShutdownTimeout?: number;
   disableCoreModules?: boolean; // Allow disabling automatic core module registration
   disableGracefulShutdown?: boolean; // Disable automatic graceful shutdown handlers (useful for tests)
+  // Additional options for logging (shorthand for config.logging)
+  logging?: any;
+  [key: string]: any; // Allow other options like config properties at root level
 }
 
 /**
@@ -221,6 +227,11 @@ export interface IApplication {
   get<T extends Module>(token: Token<T>): T;
   has(token: Token<any>): boolean;
   replaceModule<T extends Module>(token: Token<T>, module: T): this;
+
+  // Dependency Injection
+  register<T>(token: Token<T>, provider: any, options?: { override?: boolean }): this;
+  resolve<T>(token: Token<T>): T;
+  hasProvider(token: Token<any>): boolean;
 
   // Configuration
   configure<T = any>(config: T): this;
@@ -254,3 +265,50 @@ export type ModuleConstructor<T extends Module = Module> = new (...args: any[]) 
  * Module factory function
  */
 export type ModuleFactory<T extends Module = Module> = (app: IApplication) => T | Promise<T>;
+
+/**
+ * Dynamic module interface - for modules with providers
+ */
+export interface DynamicModule extends Module {
+  module: ModuleConstructor;
+  providers?: Provider[];
+  imports?: ModuleInput[];
+  exports?: Token<any>[];
+  global?: boolean;
+}
+
+/**
+ * Provider definition for modules
+ */
+export interface Provider {
+  provide: Token<any>;
+  useClass?: any;
+  useValue?: any;
+  useFactory?: (...args: any[]) => any;
+  inject?: Token<any>[];
+  scope?: 'singleton' | 'transient';
+}
+
+/**
+ * Module input types - supports various module definition patterns
+ */
+export type ModuleInput =
+  | Module                        // Module instance
+  | ModuleConstructor             // Module class
+  | DynamicModule                 // Dynamic module with providers
+  | (() => Module)                // Module factory function
+  | (() => Promise<Module>)       // Async module factory
+  | (() => DynamicModule)         // Dynamic module factory
+  | (() => Promise<DynamicModule>); // Async dynamic module factory
+
+/**
+ * Static module interface - for modules with forRoot patterns
+ */
+export interface StaticModuleInterface {
+  forRoot?(config?: any): DynamicModule;
+  forRootAsync?(options: {
+    useFactory?: (...args: any[]) => any | Promise<any>;
+    inject?: Token<any>[];
+    imports?: ModuleInput[];
+  }): DynamicModule;
+}

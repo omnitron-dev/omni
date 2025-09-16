@@ -5,5 +5,6 @@ jest.setTimeout(30000);
 afterAll(
   () =>
     // Give a small delay for cleanup
-    new Promise((resolve) => setTimeout(resolve, 100))
+    new Promise((resolve) => setTimeout(resolve, 100)),
+  1000  // Add explicit timeout
 );

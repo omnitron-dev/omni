@@ -1315,7 +1315,7 @@ export class SmartBuffer {
         });
         throw err;
       }
-      b = this.buffer[loffset++];
+      b = this.buffer[loffset++]!;
       if (c < 5) {
         value |= (b & 0x7f) << (7 * c);
       }
@@ -1809,9 +1809,9 @@ export class SmartBuffer {
     loffset += str.length;
     if (offset === void 0) {
       this.roffset = loffset;
-      return str.string;
+      return (str as any).string;
     }
-    return { string: str.string, length: loffset - start };
+    return { string: (str as any).string, length: loffset - start };
   }
 
   /**
@@ -2394,7 +2394,7 @@ export class SmartBuffer {
     let out = '';
     while (i < k) {
       if (i !== -1) {
-        b = this.buffer[i];
+        b = this.buffer[i]!;
         if (b < 0x10) {
           hex += `0${b.toString(16).toUpperCase()}`;
         } else {

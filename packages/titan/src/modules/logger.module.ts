@@ -175,6 +175,7 @@ export class LoggerModule extends ApplicationModule implements ILoggerModule {
   override readonly name = 'logger';
   override readonly version = '1.0.0';
   override readonly dependencies = [ConfigModuleToken];
+  private readonly __isLoggerModule = true; // Marker for type identification
 
   private rootLogger!: PinoLogger;
   private globalLogger!: Logger;
@@ -355,6 +356,7 @@ export function createLoggerModule(options?: {
   context?: object;
 }): LoggerModule {
   const module = new LoggerModule();
+  (module as any).__isLoggerModule = true; // Ensure marker is set
 
   // These will be applied during onStart
   if (options) {

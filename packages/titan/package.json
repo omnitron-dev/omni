@@ -57,7 +57,7 @@
   ],
   "scripts": {
     "build": "tsc -p ./tsconfig.json",
-    "test": "jest",
+    "test": "jest --forceExit",
     "test:node": "jest",
     "test:bun": "/Users/taaliman/.bun/bin/bun test test/runtime/bun-all.test.ts",
     "test:deno": "/Users/taaliman/.deno/bin/deno test --no-check --allow-read --allow-write --allow-env --allow-sys --allow-net --unstable-sloppy-imports test/runtime/deno-all.test.ts",

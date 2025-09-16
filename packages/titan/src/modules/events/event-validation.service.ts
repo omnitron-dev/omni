@@ -4,7 +4,9 @@
  * Validates event data against schemas
  */
 
-import { Injectable } from '@omnitron-dev/nexus';
+import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
+
+import { LOGGER_TOKEN } from './events.module';
 
 import type { EventValidationResult } from './types';
 
@@ -22,6 +24,112 @@ export interface SchemaValidator {
 export class EventValidationService {
   private schemas: Map<string, SchemaValidator> = new Map();
   private validators: Map<string, Function> = new Map();
+  private initialized = false;
+  private destroyed = false;
+
+  constructor(
+    @Optional() @Inject(LOGGER_TOKEN) private readonly logger?: any
+  ) { }
+
+  /**
+   * Initialize the service
+   */
+  async onInit(): Promise<void> {
+    if (this.initialized) return;
+    this.initialized = true;
+    this.logger?.info('EventValidationService initialized');
+  }
+
+  /**
+   * Destroy the service
+   */
+  async onDestroy(): Promise<void> {
+    if (this.destroyed) return;
+    this.destroyed = true;
+
+    // Clear all schemas and validators
+    this.schemas.clear();
+    this.validators.clear();
+
+    this.logger?.info('EventValidationService destroyed');
+  }
+
+  /**
+   * Get health status
+   */
+  async health(): Promise<{ status: 'healthy' | 'degraded' | 'unhealthy'; details?: any }> {
+    return {
+      status: this.initialized && !this.destroyed ? 'healthy' : 'unhealthy',
+      details: {
+        initialized: this.initialized,
+        destroyed: this.destroyed,
+        registeredSchemas: this.schemas.size,
+        registeredValidators: this.validators.size
+      }
+    };
+  }
+
+  /**
+   * Validate event name format
+   */
+  isValidEventName(eventName: string): boolean {
+    if (!eventName || typeof eventName !== 'string') {
+      return false;
+    }
+
+    // Check for empty string
+    if (eventName.trim().length === 0) {
+      return false;
+    }
+
+    // Check if starts with number
+    if (/^\d/.test(eventName)) {
+      return false;
+    }
+
+    // Check for double dots or other invalid patterns
+    if (eventName.includes('..')) {
+      return false;
+    }
+
+    // Valid pattern: letters, numbers, dots, underscores, hyphens
+    return /^[a-zA-Z][a-zA-Z0-9._-]*$/.test(eventName);
+  }
+
+  /**
+   * Validate event data against registered schema
+   */
+  validateData(event: string, data: any): boolean {
+    const result = this.validate(event, data);
+    return result.valid;
+  }
+
+  /**
+   * Validate handler function signature
+   */
+  isValidHandler(handler: any): boolean {
+    return typeof handler === 'function';
+  }
+
+  /**
+   * Sanitize event data by removing sensitive information
+   */
+  sanitizeData(data: any): any {
+    if (!data || typeof data !== 'object') {
+      return data;
+    }
+
+    const sanitized = { ...data };
+    const sensitiveFields = ['password', 'ssn', 'secret', 'token', 'key'];
+
+    for (const field of sensitiveFields) {
+      if (field in sanitized) {
+        sanitized[field] = '[REDACTED]';
+      }
+    }
+
+    return sanitized;
+  }
 
   /**
    * Register a schema for an event
@@ -191,18 +299,51 @@ export class EventValidationService {
       return schema;
     }
 
-    // If it's a plain object, create a simple validator
+    // Create a JSON schema validator
     return {
       validate: (data: any) => {
-        // Simple validation logic
-        if (schema.type && typeof data !== schema.type) {
-          return {
-            valid: false,
-            errors: [`Expected type ${schema.type}, got ${typeof data}`]
-          };
+        const errors: string[] = [];
+
+        // Check type
+        if (schema.type) {
+          const expectedType = schema.type;
+          const actualType = Array.isArray(data) ? 'array' : typeof data;
+
+          if (expectedType !== actualType) {
+            return {
+              valid: false,
+              errors: [`Expected type ${expectedType}, got ${actualType}`]
+            };
+          }
         }
 
-        return { valid: true };
+        // Check required fields
+        if (schema.required && Array.isArray(schema.required) && typeof data === 'object') {
+          for (const field of schema.required) {
+            if (!(field in data) || data[field] === undefined) {
+              errors.push(`Missing required property: ${field}`);
+            }
+          }
+        }
+
+        // Check properties
+        if (schema.properties && typeof data === 'object') {
+          for (const [prop, propSchema] of Object.entries(schema.properties)) {
+            if (prop in data) {
+              const propType = (propSchema as any).type;
+              const actualType = Array.isArray(data[prop]) ? 'array' : typeof data[prop];
+
+              if (propType && actualType !== propType) {
+                errors.push(`Property '${prop}' should be ${propType}, got ${actualType}`);
+              }
+            }
+          }
+        }
+
+        return {
+          valid: errors.length === 0,
+          errors: errors.length > 0 ? errors : undefined
+        };
       }
     };
   }

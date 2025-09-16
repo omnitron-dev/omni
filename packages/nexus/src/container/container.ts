@@ -260,6 +260,20 @@ export class Container implements IContainer {
     let dependencies: InjectionToken<any>[] | undefined;
     if ('inject' in provider && provider.inject) {
       dependencies = provider.inject;
+    } else if ('useClass' in provider) {
+      // Extract dependencies from class metadata
+      const METADATA_KEYS = {
+        INJECT: 'nexus:inject',
+        INJECT_PARAMS: 'nexus:inject:params',
+        OPTIONAL: 'nexus:optional',
+        PROPERTY_INJECTIONS: 'nexus:property:injections'
+      };
+
+      const classConstructor = provider.useClass;
+      const injectedDependencies = Reflect.getMetadata(METADATA_KEYS.INJECT, classConstructor);
+      if (injectedDependencies) {
+        dependencies = injectedDependencies;
+      }
     }
 
     // Create factory function
@@ -404,8 +418,10 @@ export class Container implements IContainer {
       // Execute afterResolve hooks which may modify the result
       result = this.pluginManager.executeHooksSync('afterResolve', token, result, this.context);
 
-      // Cache the result
-      this.resolutionState.resolved.set(token, result);
+      // Cache the result if resolutionState still exists
+      if (this.resolutionState) {
+        this.resolutionState.resolved.set(token, result);
+      }
 
       // Emit after resolve event
       this.lifecycleManager.emitSync(LifecycleEvent.AfterResolve, {
@@ -668,6 +684,29 @@ export class Container implements IContainer {
 
       // Create instance
       const instance = registration.factory(...dependencies);
+
+      // Apply property injections if it's a class instance
+      if (instance && registration.provider && 'useClass' in registration.provider) {
+        const METADATA_KEYS = {
+          PROPERTY_INJECTIONS: 'nexus:property:injections'
+        };
+
+        const classConstructor = registration.provider.useClass;
+        const propertyInjections = Reflect.getMetadata(METADATA_KEYS.PROPERTY_INJECTIONS, classConstructor);
+
+        if (propertyInjections) {
+          for (const [propertyKey, token] of Object.entries(propertyInjections)) {
+            try {
+              instance[propertyKey] = this.resolve(token as InjectionToken<any>);
+            } catch (error) {
+              // Ignore optional property injection errors
+              if (!(error instanceof DependencyNotFoundError)) {
+                throw error;
+              }
+            }
+          }
+        }
+      }
 
       // Track instances for lifecycle management
       if (instance && typeof instance.onInit === 'function') {

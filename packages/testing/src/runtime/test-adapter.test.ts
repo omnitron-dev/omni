@@ -3,13 +3,13 @@
  */
 
 import {
-  RUNTIME,
   isBun,
+  sleep,
   isDeno,
   isNode,
+  RUNTIME,
   timerUtils,
   supportsFakeTimers,
-  sleep,
   skipIfNoFakeTimers,
   normalizeGlobalChecks
 } from './test-adapter';

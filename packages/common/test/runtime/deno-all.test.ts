@@ -3,8 +3,8 @@
  * This file imports and runs all *.spec.ts tests
  */
 
-import './deno-adapter.ts';
-import { describe, it, expect } from './deno-adapter.ts';
+import '@omnitron-dev/testing/runtime/deno';
+import { describe, it, expect } from '@omnitron-dev/testing/runtime/deno';
 
 // Import all test files
 // Order matters - tests with timers/promises should be last

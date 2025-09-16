@@ -3,8 +3,9 @@
  * Provides compatibility layer for Jest API
  */
 
+// @ts-ignore - Bun specific imports
 import { describe as bunDescribe, test as bunTest, expect as bunExpect, beforeEach as bunBeforeEach, afterEach as bunAfterEach, beforeAll as bunBeforeAll, afterAll as bunAfterAll, mock } from "bun:test";
-import { timerUtils } from './test-adapter';
+import { timerUtils } from './test-adapter.js';
 
 // Make Jest-compatible APIs globally available
 (global as any).describe = bunDescribe;

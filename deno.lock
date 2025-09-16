@@ -262,6 +262,19 @@
           ]
         }
       },
+      "packages/testing": {
+        "packageJson": {
+          "dependencies": [
+            "npm:@types/bun@^1.2.3",
+            "npm:@types/jest@^29.5.14",
+            "npm:@types/node@^22.10.5",
+            "npm:jest@^30.1.0",
+            "npm:ts-jest@^29.2.5",
+            "npm:ts-node@^10.9.2",
+            "npm:typescript@~5.8.3"
+          ]
+        }
+      },
       "packages/titan": {
         "packageJson": {
           "dependencies": [

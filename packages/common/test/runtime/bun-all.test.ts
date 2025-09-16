@@ -3,7 +3,7 @@
  * This file imports and runs all *.spec.ts tests
  */
 
-import './bun-adapter';
+import '@omnitron-dev/testing/runtime/bun';
 import { describe, test, expect } from "bun:test";
 
 // Import all test files

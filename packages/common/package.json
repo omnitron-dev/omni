@@ -19,6 +19,7 @@
     "test:legacy": "jest && bun test test/primitives.spec.ts test/list-buffer.spec.ts test/entries.spec.ts test/omit.spec.ts test/predicates.spec.ts test/promise.spec.ts test/timed-map-bun-compat.spec.ts"
   },
   "devDependencies": {
+    "@omnitron-dev/testing": "workspace:*",
     "@types/bun": "latest",
     "@types/jest": "^30.0.0",
     "@types/node": "24.3.3",

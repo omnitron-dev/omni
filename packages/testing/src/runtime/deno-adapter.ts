@@ -3,8 +3,11 @@
  * Provides compatibility layer for Jest API
  */
 
+// @ts-ignore - Deno specific imports
 import { describe as denoDescribe, it as denoIt } from "https://deno.land/std@0.208.0/testing/bdd.ts";
+// @ts-ignore - Deno specific imports
 import { expect as denoExpect } from "https://deno.land/x/expect@v0.3.0/mod.ts";
+// @ts-ignore - Deno specific imports
 import { FakeTime } from "https://deno.land/std@0.208.0/testing/time.ts";
 
 // Polyfill for node:util inherits

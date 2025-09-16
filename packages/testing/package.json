@@ -1,0 +1,91 @@
+{
+  "name": "@omnitron-dev/testing",
+  "version": "0.0.1",
+  "description": "Cross-runtime testing utilities for DevGrid monorepo",
+  "author": "DevGrid Team",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./runtime/bun": {
+      "types": "./dist/runtime/bun-adapter.d.ts",
+      "import": "./dist/runtime/bun-adapter.js",
+      "require": "./dist/runtime/bun-adapter.cjs"
+    },
+    "./runtime/deno": {
+      "types": "./dist/runtime/deno-adapter.d.ts",
+      "import": "./dist/runtime/deno-adapter.js",
+      "require": "./dist/runtime/deno-adapter.cjs"
+    },
+    "./runtime/node": {
+      "types": "./dist/runtime/node-adapter.d.ts",
+      "import": "./dist/runtime/node-adapter.js",
+      "require": "./dist/runtime/node-adapter.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "lint": "eslint src --max-warnings=0",
+    "lint:fix": "eslint src --fix",
+    "test": "jest",
+    "test:bun": "bun test src/**/*.test.ts",
+    "test:deno": "deno test --allow-all src/**/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@types/node": "^22.10.5"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.3",
+    "@types/jest": "^29.5.14",
+    "jest": "^30.1.0",
+    "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.8.3"
+  },
+  "peerDependencies": {
+    "bun": "*",
+    "jest": "^30.0.0 || ^29.0.0"
+  },
+  "peerDependenciesMeta": {
+    "bun": {
+      "optional": true
+    },
+    "jest": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "bun": ">=1.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/devgrid/devgrid.git",
+    "directory": "packages/testing"
+  },
+  "keywords": [
+    "testing",
+    "cross-runtime",
+    "bun",
+    "deno",
+    "node",
+    "jest",
+    "test-utilities"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -67,13 +67,13 @@ export const AppLifecycle = createDecorator<{
 }>()
   .withName('AppLifecycle')
   .forMethod()
-  .withMetadata((context) => ({
+  .withMetadata((context: any) => ({
     phase: context.options?.phase,
     priority: context.options?.priority ?? 0,
     lifecycle: true
   }))
   .withHooks({
-    afterApply: (context) => {
+    afterApply: (context: any) => {
       // Register with Titan's lifecycle manager
       const phase = context.options?.phase;
       const method = context.propertyKey;
@@ -131,7 +131,7 @@ export interface HealthCheckOptions {
 export const HealthCheck = createDecorator<HealthCheckOptions>()
   .withName('HealthCheck')
   .forMethod()
-  .withMetadata((context) => ({
+  .withMetadata((context: any) => ({
     healthCheck: true,
     name: context.options?.name,
     critical: context.options?.critical ?? false,
@@ -470,7 +470,7 @@ export const OnEvent = createDecorator<{
 }>()
   .withName('OnEvent')
   .forMethod()
-  .withMetadata((context) => ({
+  .withMetadata((context: any) => ({
     event: context.options?.event,
     handler: true,
     async: context.options?.async,
@@ -482,7 +482,7 @@ export const OnEvent = createDecorator<{
     onError: context.options?.onError
   }))
   .withHooks({
-    afterApply: (context) => {
+    afterApply: (context: any) => {
       // Store metadata for discovery
       const EVENT_HANDLER_METADATA = Symbol.for('event:handler');
       Reflect.defineMetadata(
@@ -509,7 +509,7 @@ export const OnceEvent = createDecorator<{
 }>()
   .withName('OnceEvent')
   .forMethod()
-  .withMetadata((context) => ({
+  .withMetadata((context: any) => ({
     event: context.options?.event,
     once: true,
     timeout: context.options?.timeout,
@@ -517,7 +517,7 @@ export const OnceEvent = createDecorator<{
     transform: context.options?.transform
   }))
   .withHooks({
-    afterApply: (context) => {
+    afterApply: (context: any) => {
       // Store metadata for discovery
       const EVENT_ONCE_METADATA = Symbol.for('event:once');
       Reflect.defineMetadata(
@@ -542,7 +542,7 @@ export const OnAnyEvent = createDecorator<{
 }>()
   .withName('OnAnyEvent')
   .forMethod()
-  .withMetadata((context) => ({
+  .withMetadata((context: any) => ({
     event: '*',
     handler: true,
     anyEvent: true,
@@ -550,7 +550,7 @@ export const OnAnyEvent = createDecorator<{
     priority: context.options?.priority || 0
   }))
   .withHooks({
-    afterApply: (context) => {
+    afterApply: (context: any) => {
       // Store metadata for discovery
       const EVENT_HANDLER_METADATA = Symbol.for('event:handler');
       Reflect.defineMetadata(
@@ -576,14 +576,14 @@ export const EventEmitter = createDecorator<{
 }>()
   .withName('EventEmitter')
   .forClass()
-  .withMetadata((context) => ({
+  .withMetadata((context: any) => ({
     eventEmitter: true,
     namespace: context.options?.namespace,
     wildcard: context.options?.wildcard !== false,
     delimiter: context.options?.delimiter || '.'
   }))
   .withHooks({
-    afterApply: (context) => {
+    afterApply: (context: any) => {
       // Store metadata for discovery
       Reflect.defineMetadata(
         'metadata',
@@ -610,7 +610,7 @@ export const ScheduleEvent = createDecorator<{
 }>()
   .withName('ScheduleEvent')
   .forMethod()
-  .withMetadata((context) => ({
+  .withMetadata((context: any) => ({
     scheduled: true,
     event: context.options?.event,
     cron: context.options?.cron,
@@ -618,7 +618,7 @@ export const ScheduleEvent = createDecorator<{
     at: context.options?.at
   }))
   .withHooks({
-    afterApply: (context) => {
+    afterApply: (context: any) => {
       // Store metadata for discovery
       Reflect.defineMetadata(
         'metadata',
@@ -646,14 +646,14 @@ export const BatchEvents = createDecorator<{
 }>()
   .withName('BatchEvents')
   .forMethod()
-  .withMetadata((context) => ({
+  .withMetadata((context: any) => ({
     batch: true,
     event: context.options?.event,
     maxSize: context.options?.maxSize,
     maxWait: context.options?.maxWait
   }))
   .withHooks({
-    afterApply: (context) => {
+    afterApply: (context: any) => {
       // Store metadata for batch processing
       const BATCH_HANDLER_METADATA = Symbol.for('event:batch');
       Reflect.defineMetadata(

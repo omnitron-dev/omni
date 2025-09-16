@@ -104,6 +104,12 @@ export interface IConfigModule {
 export const ConfigModuleToken = createToken<ConfigModule>('ConfigModule');
 
 /**
+ * Export IConfigModule interface as a value for Bun compatibility
+ * This is a workaround for Bun's module resolution
+ */
+export const IConfigModule = {} as any;
+
+/**
  * Configuration module implementation
  */
 export class ConfigModule extends ApplicationModule implements IConfigModule {
@@ -111,7 +117,7 @@ export class ConfigModule extends ApplicationModule implements IConfigModule {
   override readonly version = '1.0.0';
 
   private config: Record<string, any> = {};
-  private environment: string = process.env.NODE_ENV || 'development';
+  private environment: string = process.env['NODE_ENV'] || 'development';
   private watchers = new Map<string, Set<(value: any) => void>>();
   private schemas = new Map<string, ZodType>();
   private sources: ConfigSource[] = [];
@@ -876,7 +882,7 @@ export function createEnvConfig<T>(
     sources: [
       { type: 'env', prefix },
       { type: 'file', path: '.env', optional: true },
-      { type: 'file', path: `.env.${process.env.NODE_ENV}`, optional: true }
+      { type: 'file', path: `.env.${process.env['NODE_ENV']}`, optional: true }
     ],
     schema,
     validateOnLoad: true

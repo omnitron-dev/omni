@@ -58,7 +58,7 @@ export class Application implements IApplication {
     this._config = {
       name: options.name || 'titan-app',
       version: options.version || '0.0.0',
-      environment: process.env.NODE_ENV || 'development',
+      environment: process.env['NODE_ENV'] || 'development',
       debug: options.debug || false,
       ...options.config
     };
@@ -286,7 +286,7 @@ export class Application implements IApplication {
 
     // Unregister from container if exists (using internal method)
     if (this._container.has(token)) {
-      const providers = this._container['_providers'] || this._container['providers'];
+      const providers = (this._container as any)['_providers'] || (this._container as any)['providers'];
       if (providers && providers instanceof Map) {
         providers.delete(token);
       }

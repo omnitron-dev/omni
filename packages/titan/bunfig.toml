@@ -1,8 +1,9 @@
 [test]
 # Test configuration for Bun
-preload = []
-coverage = true
-coverageReporter = ["text", "lcov"]
+preload = ["./test/test-utils.ts"]
+coverage = false
+# TypeScript configuration
+smol = false
 
 [install]
 # Package installation settings

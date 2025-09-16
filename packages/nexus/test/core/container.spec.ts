@@ -14,7 +14,7 @@ import {
   ContainerDisposedError,
   InvalidProviderError,
   DuplicateRegistrationError
-} from '../../src';
+} from '../../src/index.js';
 
 describe('Core Container', () => {
   let container: Container;
@@ -40,7 +40,7 @@ describe('Core Container', () => {
 
     it('should register factory provider', () => {
       const token = createToken<number>('TestFactory');
-      
+
       container.register(token, {
         useFactory: () => 42
       });
@@ -74,9 +74,9 @@ describe('Core Container', () => {
 
     it('should prevent duplicate registration by default', () => {
       const token = createToken<string>('Duplicate');
-      
+
       container.register(token, { useValue: 'first' });
-      
+
       expect(() => {
         container.register(token, { useValue: 'second' });
       }).toThrow(DuplicateRegistrationError);
@@ -84,16 +84,16 @@ describe('Core Container', () => {
 
     it('should allow duplicate registration with override option', () => {
       const token = createToken<string>('Override');
-      
+
       container.register(token, { useValue: 'first' });
       container.register(token, { useValue: 'second' }, { override: true });
-      
+
       expect(container.resolve(token)).toBe('second');
     });
 
     it('should validate provider structure', () => {
       const token = createToken<any>('Invalid');
-      
+
       expect(() => {
         container.register(token, {} as Provider<any>);
       }).toThrow(InvalidProviderError);
@@ -130,7 +130,7 @@ describe('Core Container', () => {
 
     it('should resolve many (multi-token)', () => {
       const multiToken = createToken<string>('Multi');
-      
+
       container.register(multiToken, { useValue: 'first' }, { multi: true });
       container.register(multiToken, { useValue: 'second' }, { multi: true });
       container.register(multiToken, { useValue: 'third' }, { multi: true });
@@ -158,13 +158,13 @@ describe('Core Container', () => {
 
     it('should throw for unregistered dependencies', () => {
       const unknownToken = createToken<any>('Unknown');
-      
+
       expect(() => container.resolve(unknownToken)).toThrow(DependencyNotFoundError);
     });
 
     it('should handle resolution with context', () => {
       const contextToken = createToken<string>('Context');
-      
+
       container.register(contextToken, {
         useFactory: (context) => context.value,
         inject: [{ token: 'CONTEXT', type: 'context' }]
@@ -256,7 +256,7 @@ describe('Core Container', () => {
   describe('Lifecycle Management', () => {
     it('should call onInit lifecycle hook', async () => {
       const onInit = jest.fn();
-      
+
       class TestService {
         async onInit() {
           onInit();
@@ -274,7 +274,7 @@ describe('Core Container', () => {
 
     it('should call onDestroy lifecycle hook', async () => {
       const onDestroy = jest.fn();
-      
+
       class TestService {
         async onDestroy() {
           onDestroy();
@@ -282,9 +282,9 @@ describe('Core Container', () => {
       }
 
       const token = createToken<TestService>('TestService');
-      container.register(token, { 
+      container.register(token, {
         useClass: TestService,
-        scope: Scope.Singleton 
+        scope: Scope.Singleton
       });
 
       container.resolve(token);
@@ -303,7 +303,7 @@ describe('Core Container', () => {
       }
 
       class ServiceB {
-        constructor(public a: ServiceA) {}
+        constructor(public a: ServiceA) { }
         async onDestroy() {
           disposeOrder.push('B');
         }
@@ -313,7 +313,7 @@ describe('Core Container', () => {
       const tokenB = createToken<ServiceB>('B');
 
       container.register(tokenA, { useClass: ServiceA, scope: Scope.Singleton });
-      container.register(tokenB, { 
+      container.register(tokenB, {
         useFactory: (a) => new ServiceB(a),
         inject: [tokenA],
         scope: Scope.Singleton
@@ -378,7 +378,7 @@ describe('Core Container', () => {
       const contextValue = 'context-value';
 
       const child = container.createScope({ [contextKey]: contextValue });
-      
+
       const token = createToken<string>('ContextAware');
       child.register(token, {
         useFactory: (ctx) => ctx[contextKey],
@@ -427,7 +427,7 @@ describe('Core Container', () => {
       });
 
       expect(() => container.resolve(token)).toThrow(ResolutionError);
-      
+
       try {
         container.resolve(token);
       } catch (error) {
@@ -437,7 +437,7 @@ describe('Core Container', () => {
 
     it('should validate token types', () => {
       expect(() => createToken('')).toThrow('Token name cannot be empty');
-      
+
       const token = createToken<string>('Test');
       expect(token.name).toBe('Test');
       expect(token.toString()).toBe('[Token: Test]');

@@ -16,7 +16,7 @@ import {
   Retry,
   Deprecated,
   Validate
-} from '../../src/decorators/custom-decorators';
+} from '../../src/decorators/index.js';
 
 describe('Custom Decorators', () => {
   describe('createDecorator', () => {
@@ -71,13 +71,13 @@ describe('Custom Decorators', () => {
       // Test that a property decorator can be created and applied
       let decoratorApplied = false;
       let decoratorOptions: any = null;
-      
+
       const TestDecorator = createDecorator<{ testValue: string }>()
         .withName('TestDecorator')
         .forProperty((context) => {
           decoratorApplied = true;
           decoratorOptions = context.options;
-          
+
           // Add metadata to verify decorator was applied
           Reflect.defineMetadata('test-decorator', true, context.target, context.propertyKey!);
         })
@@ -91,7 +91,7 @@ describe('Custom Decorators', () => {
       // Verify decorator was applied during class definition
       expect(decoratorApplied).toBe(true);
       expect(decoratorOptions).toEqual({ testValue: 'test' });
-      
+
       // Verify metadata was set
       const metadata = Reflect.getMetadata('test-decorator', TestClass.prototype, 'name');
       expect(metadata).toBe(true);

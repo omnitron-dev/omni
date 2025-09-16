@@ -1,3 +1,3 @@
-export * from './mock-provider';
-export * from './test-container';
-export * from './test-utilities';
+export * from './mock-provider.js';
+export * from './test-container.js';
+export * from './test-utilities.js';

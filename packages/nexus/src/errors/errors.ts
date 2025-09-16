@@ -2,8 +2,8 @@
  * Comprehensive error handling for Nexus DI Container
  */
 
-import { getTokenName } from '../token/token';
-import { InjectionToken } from '../types/core';
+import { getTokenName } from '../token/token.js';
+import { InjectionToken } from '../types/core.js';
 
 /**
  * Base error class for all Nexus errors
@@ -122,7 +122,7 @@ export class DependencyNotFoundError extends NexusError {
     const message = dependent
       ? `Dependency '${getTokenName(token)}' required by '${getTokenName(dependent)}' not found`
       : `Dependency '${getTokenName(token)}' not found`;
-    
+
     super(message, 'DEPENDENCY_NOT_FOUND');
   }
 }
@@ -296,7 +296,7 @@ export class ErrorHandler {
 
     // Default handling
     console.error('[Nexus Error]', error.message);
-    if (process.env.NODE_ENV === 'development' && error.stack) {
+    if (process.env['NODE_ENV'] === 'development' && error.stack) {
       console.error(error.stack);
     }
   }

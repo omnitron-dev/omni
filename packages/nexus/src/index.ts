@@ -5,48 +5,48 @@
  */
 
 // Import for internal use
-import { Container } from './container/container';
+import { Container } from './container/container.js';
 
 // Export Service Mesh
-export * from './mesh';
+export * from './mesh/index.js';
 
 // Export Tracing
-export * from './tracing';
+export * from './tracing/index.js';
 
 // Export DevTools
-export * from './devtools';
+export * from './devtools/index.js';
 
 // Export Federation
-export * from './federation';
+export * from './federation/index.js';
 
 // Export Decorators
-export * from './decorators';
+export * from './decorators/index.js';
 
 // Container
 export {
   Container
-} from './container/container';
+} from './container/container.js';
 
-export { createToken as token } from './token/token';
+export { createToken as token } from './token/token.js';
 
-export { createMultiToken as multiToken } from './token/token';
+export { createMultiToken as multiToken } from './token/token.js';
 
 // Convenience exports
-export { Container as NexusContainer } from './container/container';
+export { Container as NexusContainer } from './container/container.js';
 
 export {
   SpyProvider,
   MockProvider,
   StubProvider
-} from './testing/mock-provider';
+} from './testing/mock-provider.js';
 
 // Export decorator utilities and creators
 export {
   createDecorator,
-  DecoratorContext,
   createMethodInterceptor,
   createPropertyInterceptor
-} from './decorators/custom-decorators';
+} from './decorators/custom-decorators.js';
+
 // Plugin System
 export {
   type Plugin,
@@ -58,7 +58,20 @@ export {
   type PluginHooks,
   ValidationPlugin,
   PerformancePlugin
-} from './plugins/plugin';
+} from './plugins/plugin.js';
+export {
+  Global,
+  Inject,
+  Service,
+  Optional,
+  Singleton,
+  Injectable,
+  PreDestroy,
+  Controller,
+  Repository,
+  PostConstruct,
+  Module as ModuleDecorator
+} from './decorators/decorators.js';
 // Testing Utilities
 export {
   TestContainer,
@@ -68,7 +81,7 @@ export {
   createTestContainer,
   type TestContainerOptions,
   createIsolatedTestContainer
-} from './testing/test-container';
+} from './testing/test-container.js';
 
 /**
  * Default container instance for simple use cases
@@ -92,22 +105,7 @@ export {
   PerformanceObserver,
   type LifecycleObserver,
   type LifecycleEventData
-} from './lifecycle/lifecycle';
-
-export {
-  Global,
-  Inject,
-  Service,
-  Optional,
-  Singleton,
-  Injectable,
-  PreDestroy,
-  Controller,
-  Repository,
-  PostConstruct,
-  ModuleDecoratorOptions,
-  Module as ModuleDecorator
-} from './decorators/decorators';
+} from './lifecycle/lifecycle.js';
 
 export {
   TestHarness,
@@ -120,7 +118,7 @@ export {
   createTestHarness,
   type SnapshotContainer,
   type IsolatedContainer
-} from './testing/test-utilities';
+} from './testing/test-utilities.js';
 
 // Runtime Detection
 export {
@@ -139,7 +137,7 @@ export {
   hasWorkerSupport,
   PerformanceTimer,
   loadRuntimeModule
-} from './utils/runtime';
+} from './utils/runtime.js';
 
 // Token System
 export {
@@ -157,7 +155,43 @@ export {
   createStreamToken,
   type TokenRegistry,
   createOptionalToken
-} from './token/token';
+} from './token/token.js';
+
+// Enhanced Module System
+export {
+  Module,
+  forwardRef,
+  createModule,
+  ModuleBuilder,
+  moduleBuilder,
+  type ModuleRef,
+  type ForwardRef,
+  type ModuleOptions,
+  type ModuleFactory,
+  createConfigModule,
+  type ModuleMetadata,
+  type ModuleCompiler,
+  createDynamicModule,
+  createFeatureModule
+} from './modules/module.js';
+
+// Advanced Context System
+export {
+  ContextKeys,
+  InjectContext,
+  TenantStrategy,
+  ContextManager,
+  type ContextKey,
+  createContextKey,
+  RoleBasedStrategy,
+  EnvironmentStrategy,
+  FeatureFlagStrategy,
+  type ContextProvider,
+  DefaultContextProvider,
+  type ResolutionStrategy,
+  type ContextAwareProvider,
+  createContextAwareProvider
+} from './context/context.js';
 
 /**
  * Feature flags for all phases
@@ -200,42 +234,6 @@ export const FEATURES = {
  * - DevTools: import from '@omnitron-dev/nexus/devtools'
  */
 
-// Enhanced Module System
-export {
-  Module,
-  forwardRef,
-  createModule,
-  ModuleBuilder,
-  moduleBuilder,
-  type ModuleRef,
-  type ForwardRef,
-  type ModuleOptions,
-  type ModuleFactory,
-  createConfigModule,
-  type ModuleMetadata,
-  type ModuleCompiler,
-  createDynamicModule,
-  createFeatureModule
-} from './modules/module';
-
-// Advanced Context System
-export {
-  ContextKeys,
-  InjectContext,
-  TenantStrategy,
-  ContextManager,
-  type ContextKey,
-  createContextKey,
-  RoleBasedStrategy,
-  EnvironmentStrategy,
-  FeatureFlagStrategy,
-  type ContextProvider,
-  DefaultContextProvider,
-  type ResolutionStrategy,
-  type ContextAwareProvider,
-  createContextAwareProvider
-} from './context/context';
-
 // Error System
 export {
   NexusError,
@@ -256,7 +254,7 @@ export {
   CircularDependencyError,
   DependencyNotFoundError,
   DuplicateRegistrationError
-} from './errors/errors';
+} from './errors/errors.js';
 
 // Middleware System
 export {
@@ -278,7 +276,7 @@ export {
   type MiddlewareFunction,
   CircuitBreakerMiddleware,
   ValidationMiddlewareClass
-} from './middleware/middleware';
+} from './middleware/middleware.js';
 
 // Core Types
 export {
@@ -312,4 +310,13 @@ export {
   type ConditionalProvider,
   type RegistrationOptions,
   type AsyncFactoryProvider
-} from './types/core';
+} from './types/core.js';
+
+export type {
+  ModuleDecoratorOptions
+} from './decorators/decorators.js';
+
+// Export types separately
+export type {
+  DecoratorContext
+} from './decorators/custom-decorators.js';

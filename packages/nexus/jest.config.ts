@@ -1,11 +1,13 @@
-import type { Config } from 'jest';
+import type { JestConfigWithTsJest } from 'ts-jest';
 
-const config: Config = {
-  preset: 'ts-jest',
+const config: JestConfigWithTsJest = {
+  preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
-  roots: ['<rootDir>/test'],
-  testMatch: ['**/*.spec.ts'],
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   forceExit: true,
+  verbose: true,
+  clearMocks: true,
+  collectCoverage: true,
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',
@@ -23,26 +25,42 @@ const config: Config = {
       statements: 57
     }
   },
-  moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/$1'
-  },
-  transform: {
-    '^.+\\.ts$': ['ts-jest', {
-      tsconfig: {
-        experimentalDecorators: true,
-        emitDecoratorMetadata: true
-      },
-      diagnostics: {
-        warnOnly: true
-      }
-    }]
-  },
+  moduleFileExtensions: ['ts', 'js', 'json'],
+  testMatch: ['<rootDir>/test/**/*.spec.ts'],
   testPathIgnorePatterns: [
     '/node_modules/',
-    '/dist/',
-    '/bun/'
+    '/test/runtime/'
   ],
-  setupFilesAfterEnv: ['<rootDir>/test/setup.ts']
+  transform: {
+    '^.+\\.ts$': [
+      'ts-jest',
+      {
+        tsconfig: {
+          experimentalDecorators: true,
+          emitDecoratorMetadata: true,
+          allowJs: true,
+          module: 'esnext',
+          moduleResolution: 'node',
+          isolatedModules: true,
+          esModuleInterop: true,
+          allowSyntheticDefaultImports: true
+        },
+        useESM: true
+      },
+    ],
+  },
+  transformIgnorePatterns: [
+    'node_modules/(?!(@noble)/)',
+  ],
+  extensionsToTreatAsEsm: ['.ts'],
+  moduleNameMapper: {
+    '^(\\.{1,2}/.*)\\.js$': '$1',
+    '^(\\.{1,2}/.*)\\.ts$': '$1',
+    '^@/(.*)$': '<rootDir>/src/$1',
+    '^@omnitron-dev/testing$': '<rootDir>/../testing/src/index.ts',
+    '^@omnitron-dev/testing/(.*)$': '<rootDir>/../testing/src/$1'
+  },
+  resolver: 'ts-jest-resolver'
 };
 
 export default config;

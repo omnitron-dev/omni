@@ -2,7 +2,7 @@
  * Middleware system for Nexus DI Container
  */
 
-import { InjectionToken, ResolutionContext } from '../types/core';
+import { InjectionToken, ResolutionContext } from '../types/core.js';
 
 /**
  * Middleware execution result
@@ -46,22 +46,22 @@ export interface Middleware<T = any> {
    * Middleware name
    */
   name: string;
-  
+
   /**
    * Execute the middleware
    */
   execute: MiddlewareFunction<T>;
-  
+
   /**
    * Priority (higher executes first)
    */
   priority?: number;
-  
+
   /**
    * Condition to apply middleware
    */
   condition?: (context: MiddlewareContext) => boolean;
-  
+
   /**
    * Error handler
    */
@@ -73,7 +73,7 @@ export interface Middleware<T = any> {
  */
 export class MiddlewarePipeline {
   private middlewares: Middleware[] = [];
-  
+
   /**
    * Add middleware to pipeline
    */
@@ -83,7 +83,7 @@ export class MiddlewarePipeline {
     this.middlewares.sort((a, b) => (b.priority || 0) - (a.priority || 0));
     return this;
   }
-  
+
   /**
    * Remove middleware from pipeline
    */
@@ -91,7 +91,7 @@ export class MiddlewarePipeline {
     this.middlewares = this.middlewares.filter(m => m.name !== name);
     return this;
   }
-  
+
   /**
    * Clear all middleware
    */
@@ -99,7 +99,7 @@ export class MiddlewarePipeline {
     this.middlewares = [];
     return this;
   }
-  
+
   /**
    * Execute the middleware pipeline
    */
@@ -108,48 +108,48 @@ export class MiddlewarePipeline {
     finalHandler: () => T | Promise<T>
   ): Promise<T> {
     // Filter applicable middleware
-    const applicable = this.middlewares.filter(m => 
+    const applicable = this.middlewares.filter(m =>
       !m.condition || m.condition(context)
     );
-    
+
     // Build the chain
     let index = -1;
     let retryContext = false;
-    
+
     const dispatch = async (i: number): Promise<T> => {
       // Check if we're in a retry context - detect if current middleware is retry
       const currentMiddleware = applicable[i];
       const isRetryMiddleware = currentMiddleware && (
-        currentMiddleware.name?.includes('Retry') || 
+        currentMiddleware.name?.includes('Retry') ||
         currentMiddleware.name?.includes('retry') ||
         (currentMiddleware as any)?.isRetryMiddleware ||
         currentMiddleware.constructor?.name?.includes('Retry')
       );
-      
+
       if (isRetryMiddleware) {
         retryContext = true;
       }
-      
+
       // Only enforce the "no multiple calls" rule for non-retry scenarios
       if (!retryContext && i <= index) {
         throw new Error('Middleware called next() multiple times');
       }
-      
+
       // Update index for non-retry middleware
       if (!retryContext || i > index) {
         index = i;
       }
-      
+
       if (i === applicable.length) {
         // Final handler
         return finalHandler();
       }
-      
+
       const middleware = applicable[i];
       if (!middleware) {
         return dispatch(i + 1);
       }
-      
+
       try {
         return await middleware.execute(context, () => dispatch(i + 1));
       } catch (error: any) {
@@ -159,10 +159,10 @@ export class MiddlewarePipeline {
         throw error;
       }
     };
-    
+
     return dispatch(0);
   }
-  
+
   /**
    * Execute synchronously (for sync operations)
    */
@@ -171,30 +171,30 @@ export class MiddlewarePipeline {
     finalHandler: () => T
   ): T {
     // Filter applicable middleware
-    const applicable = this.middlewares.filter(m => 
+    const applicable = this.middlewares.filter(m =>
       !m.condition || m.condition(context)
     );
-    
+
     // Build the chain
     let index = -1;
-    
+
     const dispatch = (i: number): T => {
       if (i <= index) {
         throw new Error('Middleware called next() multiple times');
       }
-      
+
       index = i;
-      
+
       if (i === applicable.length) {
         // Final handler
         return finalHandler();
       }
-      
+
       const middleware = applicable[i];
       if (!middleware) {
         return dispatch(i + 1);
       }
-      
+
       try {
         const result = middleware.execute(context, () => dispatch(i + 1));
         // Check if it's a promise (which shouldn't happen in sync mode)
@@ -209,24 +209,24 @@ export class MiddlewarePipeline {
         throw error;
       }
     };
-    
+
     return dispatch(0);
   }
-  
+
   /**
    * Get middleware by name
    */
   get(name: string): Middleware | undefined {
     return this.middlewares.find(m => m.name === name);
   }
-  
+
   /**
    * Check if middleware exists
    */
   has(name: string): boolean {
     return this.middlewares.some(m => m.name === name);
   }
-  
+
   /**
    * Get all middleware
    */
@@ -248,18 +248,18 @@ export function createMiddleware<T = any>(config: Middleware<T>): Middleware<T> 
 export const LoggingMiddleware = createMiddleware({
   name: 'logging',
   priority: 100,
-  
+
   execute: (context, next) => {
     const name = typeof context.token === 'string' ? context.token :
-                 typeof context.token === 'symbol' ? context.token.toString() :
-                 context.token?.name || 'unknown';
-    
+      typeof context.token === 'symbol' ? context.token.toString() :
+        context.token?.name || 'unknown';
+
     console.log(`[Middleware] Resolving: ${name}`);
     const start = Date.now();
-    
+
     try {
       const result = next();
-      
+
       // Handle both sync and async results
       if (result instanceof Promise) {
         return result.then(
@@ -273,7 +273,7 @@ export const LoggingMiddleware = createMiddleware({
           }
         );
       }
-      
+
       console.log(`[Middleware] Resolved: ${name} in ${Date.now() - start}ms`);
       return result;
     } catch (error) {
@@ -289,28 +289,28 @@ export const LoggingMiddleware = createMiddleware({
 export const CachingMiddleware = createMiddleware({
   name: 'caching',
   priority: 90,
-  
+
   execute: (context, next) => {
     // Check if caching is enabled
     const cache = (context.container as any).__middlewareCache;
     if (!cache) {
       return next();
     }
-    
+
     const key = typeof context.token === 'string' ? context.token :
-                typeof context.token === 'symbol' ? context.token.toString() :
-                context.token?.name || 'unknown';
-    
+      typeof context.token === 'symbol' ? context.token.toString() :
+        context.token?.name || 'unknown';
+
     // Check cache
     if (cache.has(key)) {
       const cached = cache.get(key);
       console.log(`[Cache] Hit: ${key}`);
       return cached;
     }
-    
+
     // Execute and cache
     const result = next();
-    
+
     // Handle both sync and async results
     if (result instanceof Promise) {
       return result.then((value) => {
@@ -319,7 +319,7 @@ export const CachingMiddleware = createMiddleware({
         return value;
       });
     }
-    
+
     cache.set(key, result);
     console.log(`[Cache] Miss: ${key}`);
     return result;
@@ -332,11 +332,11 @@ export const CachingMiddleware = createMiddleware({
 export const RetryMiddleware = createMiddleware({
   name: 'retry',
   priority: 80,
-  
+
   execute: (context, next) => {
     const maxRetries = context['maxRetries'] || 3;
     const retryDelay = context['retryDelay'] || 1000;
-    
+
     // For sync execution, we can't retry with delays
     // Just try once and return
     const firstAttempt = () => {
@@ -348,32 +348,32 @@ export const RetryMiddleware = createMiddleware({
         throw error;
       }
     };
-    
+
     const result = firstAttempt();
-    
+
     // For async results, we can properly retry
     if (result instanceof Promise) {
       return (async () => {
         let lastError: Error | undefined;
-        
+
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
           try {
             context.attempt = attempt;
             return await next();
           } catch (error: any) {
             lastError = error;
-            
+
             if (attempt < maxRetries) {
               console.log(`[Retry] Attempt ${attempt} failed, retrying in ${retryDelay}ms...`);
               await new Promise(resolve => setTimeout(resolve, retryDelay));
             }
           }
         }
-        
+
         throw lastError || new Error('All retry attempts failed');
       })();
     }
-    
+
     return result;
   }
 });
@@ -384,7 +384,7 @@ export const RetryMiddleware = createMiddleware({
 export const ValidationMiddleware = createMiddleware({
   name: 'validation',
   priority: 95,
-  
+
   execute: (context, next) => {
     // Pre-validation
     if (context['validate']) {
@@ -393,9 +393,9 @@ export const ValidationMiddleware = createMiddleware({
         throw new Error('Validation failed');
       }
     }
-    
+
     const result = next();
-    
+
     // Handle both sync and async results
     if (result instanceof Promise) {
       return result.then((value) => {
@@ -409,7 +409,7 @@ export const ValidationMiddleware = createMiddleware({
         return value;
       });
     }
-    
+
     // Post-validation for sync result
     if (context['validateResult']) {
       const validation = context['validateResult'](result);
@@ -417,7 +417,7 @@ export const ValidationMiddleware = createMiddleware({
         throw new Error('Result validation failed');
       }
     }
-    
+
     return result;
   }
 });
@@ -428,14 +428,14 @@ export const ValidationMiddleware = createMiddleware({
 export const TransactionMiddleware = createMiddleware({
   name: 'transaction',
   priority: 70,
-  
+
   execute: (context, next) => {
     // Check if transaction support is available
     const tx = context['transaction'];
     if (!tx) {
       return next();
     }
-    
+
     // For async transactions
     if (tx.begin && typeof tx.begin === 'function') {
       const beginResult = tx.begin();
@@ -459,7 +459,7 @@ export const TransactionMiddleware = createMiddleware({
         });
       }
     }
-    
+
     // Sync transaction handling
     try {
       if (tx.begin) tx.begin();
@@ -480,42 +480,42 @@ export class CircuitBreakerMiddleware implements Middleware {
   name = 'circuit-breaker';
   priority = 85;
   version = '1.0.0';
-  
+
   private failures = new Map<string, number>();
   private lastFailureTime = new Map<string, number>();
   private state = new Map<string, 'closed' | 'open' | 'half-open'>();
-  
+
   constructor(options: { threshold?: number; timeout?: number; resetTimeout?: number } = {}) {
     this.threshold = options.threshold || 5;
     this.timeout = options.timeout || 60000;
     this.resetTimeout = options.resetTimeout || 30000;
   }
-  
+
   private threshold: number;
   private timeout: number;
   private resetTimeout: number;
-  
+
   execute: MiddlewareFunction = (context, next) => {
     const key = typeof context.token === 'string' ? context.token :
-                typeof context.token === 'symbol' ? context.token.toString() :
-                context.token?.name || 'unknown';
-    
+      typeof context.token === 'symbol' ? context.token.toString() :
+        context.token?.name || 'unknown';
+
     const currentState = this.state.get(key) || 'closed';
     const lastFailure = this.lastFailureTime.get(key) || 0;
-    
+
     // Check if circuit should be reset
     if (currentState === 'open' && Date.now() - lastFailure > this.resetTimeout) {
       this.state.set(key, 'half-open');
     }
-    
+
     // Check circuit state
     if (this.state.get(key) === 'open') {
       throw new Error(`Circuit breaker is open`);
     }
-    
+
     try {
       const result = next();
-      
+
       // Handle both sync and async results
       if (result instanceof Promise) {
         return result.then(res => {
@@ -544,13 +544,13 @@ export class CircuitBreakerMiddleware implements Middleware {
       throw error;
     }
   };
-  
+
   private handleFailure(key: string): void {
     // Record failure
     const failures = (this.failures.get(key) || 0) + 1;
     this.failures.set(key, failures);
     this.lastFailureTime.set(key, Date.now());
-    
+
     // Open circuit if threshold exceeded
     if (failures >= this.threshold) {
       this.state.set(key, 'open');
@@ -570,35 +570,35 @@ export class CircuitBreakerMiddleware implements Middleware {
 export class RateLimitMiddleware implements Middleware {
   name = 'rate-limit';
   priority = 88;
-  
+
   private requests = new Map<string, number[]>();
-  
+
   constructor(
     private limit = 100,
     private window = 60000 // 1 minute
-  ) {}
-  
+  ) { }
+
   execute: MiddlewareFunction = async (context, next) => {
     const key = context['rateLimitKey'] || 'global';
     const now = Date.now();
-    
+
     // Get request timestamps for this key
     let timestamps = this.requests.get(key) || [];
-    
+
     // Remove old timestamps outside the window
     timestamps = timestamps.filter(t => now - t < this.window);
-    
+
     // Check rate limit
     if (timestamps && timestamps.length >= this.limit) {
       const resetTime = (timestamps[0] || now) + this.window;
       const retryAfter = Math.ceil((resetTime - now) / 1000);
       throw new Error(`Rate limit exceeded. Retry after ${retryAfter} seconds`);
     }
-    
+
     // Add current request
     timestamps.push(now);
     this.requests.set(key, timestamps);
-    
+
     return next();
   };
 }
@@ -611,25 +611,25 @@ export class RetryMiddlewareClass implements Middleware {
   priority = 80;
   version = '1.0.0';
   isRetryMiddleware = true;
-  
-  constructor(private options: { maxAttempts: number; delay: number }) {}
-  
+
+  constructor(private options: { maxAttempts: number; delay: number }) { }
+
   execute: MiddlewareFunction = async (context, next) => {
     let lastError: Error | null = null;
-    
+
     for (let attempt = 1; attempt <= this.options.maxAttempts; attempt++) {
       try {
         context.attempt = attempt;
         return await next();
       } catch (error) {
         lastError = error as Error;
-        
+
         if (attempt < this.options.maxAttempts) {
           await new Promise(resolve => setTimeout(resolve, this.options.delay));
         }
       }
     }
-    
+
     throw lastError || new Error('All retry attempts failed');
   };
 
@@ -646,24 +646,24 @@ export class CacheMiddleware implements Middleware {
   name = 'cache';
   priority = 90;
   version = '1.0.0';
-  
+
   private cache = new Map<string, { value: any; expires: number }>();
-  
-  constructor(private options: { ttl: number; keyGenerator: (context: MiddlewareContext) => string }) {}
-  
+
+  constructor(private options: { ttl: number; keyGenerator: (context: MiddlewareContext) => string }) { }
+
   execute: MiddlewareFunction = (context, next) => {
     const key = this.options.keyGenerator(context);
     const now = Date.now();
-    
+
     // Check cache
     const cached = this.cache.get(key);
     if (cached && cached.expires > now) {
       return cached.value;
     }
-    
+
     // Execute and cache result
     const result = next();
-    
+
     // Handle both sync and async results
     if (result instanceof Promise) {
       return result.then(value => {
@@ -695,12 +695,12 @@ export class ValidationMiddlewareClass implements Middleware {
   name = 'validation';
   priority = 95;
   version = '1.0.0';
-  
-  constructor(private options: { validators: Record<string, (value: any) => boolean> }) {}
-  
+
+  constructor(private options: { validators: Record<string, (value: any) => boolean> }) { }
+
   execute: MiddlewareFunction = (context, next) => {
     const result = next();
-    
+
     // Helper function for post-validation
     const validateResult = (value: any) => {
       // Get the registration to check for validation key
@@ -714,7 +714,7 @@ export class ValidationMiddlewareClass implements Middleware {
       }
       return value;
     };
-    
+
     // Handle both sync and async results
     if (result instanceof Promise) {
       return result.then(validateResult);

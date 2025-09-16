@@ -20,4 +20,5 @@
  * ```
  */
 
-export * from './decorators';
+export * from './decorators.js';
+export * from './custom-decorators.js';

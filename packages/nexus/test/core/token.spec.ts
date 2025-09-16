@@ -14,13 +14,13 @@ import {
   isOptionalToken,
   TokenMetadata,
   Container
-} from '../../src';
+} from '../../src/index.js';
 
 describe('Token System', () => {
   describe('createToken', () => {
     it('should create a basic token', () => {
       const token = createToken<string>('TestToken');
-      
+
       expect(token.name).toBe('TestToken');
       expect(token.toString()).toBe('[Token: TestToken]');
       expect(isToken(token)).toBe(true);
@@ -34,7 +34,7 @@ describe('Token System', () => {
       };
 
       const token = createToken<string>('TestToken', metadata);
-      
+
       expect(token.metadata).toEqual(metadata);
       expect(token.metadata?.scope).toBe('singleton');
       expect(token.metadata?.tags).toContain('service');
@@ -57,11 +57,11 @@ describe('Token System', () => {
     it('should preserve token identity', () => {
       const token1 = createToken<string>('Token');
       const token2 = createToken<string>('Token');
-      
+
       // Same instances with same name (token registry ensures consistency)
       expect(token1).toBe(token2);
       expect(token1.symbol).toBe(token2.symbol);
-      
+
       // Different tokens with different names
       const token3 = createToken<string>('DifferentToken');
       expect(token1).not.toBe(token3);
@@ -76,7 +76,7 @@ describe('Token System', () => {
 
       const token = createToken<User>('UserToken');
       const container = new Container();
-      
+
       container.register(token, {
         useValue: { id: '1', name: 'Test' }
       });
@@ -90,7 +90,7 @@ describe('Token System', () => {
   describe('createMultiToken', () => {
     it('should create a multi-token', () => {
       const token = createMultiToken<string>('MultiToken');
-      
+
       expect(token.name).toBe('MultiToken');
       expect(isMultiToken(token)).toBe(true);
       expect(token.isMulti).toBe(true);
@@ -130,7 +130,7 @@ describe('Token System', () => {
 
       container.register(token, { useClass: ServiceA }, { multi: true });
       container.register(token, { useValue: { type: 'B' } }, { multi: true });
-      container.register(token, { 
+      container.register(token, {
         useFactory: () => ({ type: 'C' }),
       }, { multi: true });
 
@@ -142,7 +142,7 @@ describe('Token System', () => {
   describe('createOptionalToken', () => {
     it('should create an optional token', () => {
       const token = createOptionalToken<string>('OptionalToken');
-      
+
       expect(token.name).toBe('OptionalToken');
       expect(isOptionalToken(token)).toBe(true);
       expect(token.isOptional).toBe(true);
@@ -181,7 +181,7 @@ describe('Token System', () => {
 
       // Now register the optional dependency
       container.register(optToken, { useValue: 'now-exists' });
-      
+
       // Re-resolve (transient by default)
       const service2 = container.resolve(serviceToken);
       expect(service2.dep).toBe('now-exists');
@@ -197,7 +197,7 @@ describe('Token System', () => {
       }
 
       const token = createConfigToken<AppConfig>('AppConfig');
-      
+
       expect(token.name).toBe('AppConfig');
       expect(token.isConfig).toBe(true);
     });
@@ -355,7 +355,7 @@ describe('Token System', () => {
       });
 
       const container = new Container();
-      
+
       // Child can fulfill parent requirement
       container.register(childToken, {
         useValue: { name: 'John', age: 30 }
@@ -394,7 +394,7 @@ describe('Token System', () => {
 
     it('should support tagged tokens for filtering', () => {
       const container = new Container();
-      
+
       const tokens = [
         createToken('Service1', { tags: ['http', 'public'] }),
         createToken('Service2', { tags: ['grpc', 'internal'] }),
@@ -409,7 +409,7 @@ describe('Token System', () => {
       // Filter tokens by tag
       const httpTokens = tokens.filter(t => t.metadata?.tags?.includes('http'));
       const httpServices = httpTokens.map(t => container.resolve(t));
-      
+
       expect(httpServices).toEqual(['service1', 'service3']);
     });
   });

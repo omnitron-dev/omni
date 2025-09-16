@@ -22,7 +22,7 @@ import {
   CircuitBreakerMiddleware,
   CacheMiddleware,
   ValidationMiddlewareClass
-} from '../../src';
+} from '../../src/index.js';
 
 describe('Plugin System', () => {
   let container: Container;
@@ -30,7 +30,7 @@ describe('Plugin System', () => {
   beforeEach(() => {
     container = new Container();
   });
-  
+
   afterEach(async () => {
     await container.dispose();
   });
@@ -38,7 +38,7 @@ describe('Plugin System', () => {
   describe('Plugin Installation', () => {
     it('should install a basic plugin', () => {
       const installed = jest.fn();
-      
+
       const plugin = createPlugin({
         name: 'TestPlugin',
         version: '1.0.0',
@@ -93,7 +93,7 @@ describe('Plugin System', () => {
       // Should work with base plugin
       container.use(basePlugin);
       container.use(dependentPlugin);
-      
+
       expect(container.hasPlugin('BasePlugin')).toBe(true);
       expect(container.hasPlugin('DependentPlugin')).toBe(true);
     });
@@ -114,12 +114,12 @@ describe('Plugin System', () => {
       });
 
       container.use(plugin);
-      
+
       const token = createToken<string>('Test');
       container.register(token, { useValue: 'test' });
-      
+
       const result = container.resolve(token);
-      
+
       expect(beforeResolve).toHaveBeenCalledWith(token, expect.any(Object));
       expect(afterResolve).toHaveBeenCalledWith(token, result, expect.any(Object));
     });
@@ -138,10 +138,10 @@ describe('Plugin System', () => {
       });
 
       container.use(plugin);
-      
+
       const token = createToken<string>('Test');
       container.register(token, { useValue: 'test' });
-      
+
       await container.resolveAsync(token);
       expect(asyncHook).toHaveBeenCalled();
     });
@@ -161,10 +161,10 @@ describe('Plugin System', () => {
       });
 
       container.use(plugin);
-      
+
       const token = createToken<string>('Test');
       container.register(token, { useValue: 'lowercase' });
-      
+
       const result = container.resolve(token);
       expect(result).toBe('LOWERCASE');
     });
@@ -173,13 +173,13 @@ describe('Plugin System', () => {
   describe('Built-in Plugins', () => {
     it('should use LoggingPlugin', () => {
       const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-      
+
       container.use(LoggingPlugin({ level: 'debug' }));
-      
+
       const token = createToken<string>('Test');
       container.register(token, { useValue: 'test' });
       container.resolve(token);
-      
+
       expect(consoleSpy).toHaveBeenCalled();
       consoleSpy.mockRestore();
     });
@@ -187,15 +187,15 @@ describe('Plugin System', () => {
     it('should use MetricsPlugin', () => {
       const metricsPlugin = MetricsPlugin();
       container.use(metricsPlugin);
-      
+
       const token = createToken<string>('Test');
       container.register(token, { useValue: 'test' });
-      
+
       // Resolve multiple times
       for (let i = 0; i < 5; i++) {
         container.resolve(token);
       }
-      
+
       const metrics = metricsPlugin.getMetrics();
       expect(metrics.resolutionCounts[token.name]).toBe(5);
     });
@@ -203,9 +203,9 @@ describe('Plugin System', () => {
     it('should use PerformancePlugin', () => {
       const perfPlugin = PerformancePlugin({ threshold: 10 });
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
-      
+
       container.use(perfPlugin);
-      
+
       const token = createToken<string>('SlowService');
       container.register(token, {
         useFactory: () => {
@@ -217,9 +217,9 @@ describe('Plugin System', () => {
           return 'slow';
         }
       });
-      
+
       container.resolve(token);
-      
+
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('SlowService took'));
       warnSpy.mockRestore();
     });
@@ -240,31 +240,31 @@ describe('Plugin System', () => {
       };
 
       container.use(ValidationPlugin());
-      
+
       const token = createToken<User>('User');
       container.register(token, {
         useValue: { name: 'ab', age: 30 }, // Invalid name
         validate: validateUser
       });
-      
+
       expect(() => container.resolve(token)).toThrow('Name must be at least 3 characters');
     });
 
     it('should use CachingPlugin', () => {
       let counter = 0;
       const cachingPlugin = CachingPlugin({ ttl: 100 });
-      
+
       container.use(cachingPlugin);
-      
+
       const token = createToken<number>('Cached');
       container.register(token, {
         useFactory: () => ++counter,
         scope: 'singleton' // Use singleton scope for caching behavior
       });
-      
+
       const first = container.resolve(token);
       const second = container.resolve(token);
-      
+
       expect(first).toBe(1);
       expect(second).toBe(1); // Cached
       expect(counter).toBe(1); // Factory called only once
@@ -278,7 +278,7 @@ describe('Middleware System', () => {
   beforeEach(() => {
     container = new Container();
   });
-  
+
   afterEach(async () => {
     await container.dispose();
   });
@@ -287,7 +287,7 @@ describe('Middleware System', () => {
     it('should create and apply middleware', async () => {
       const beforeExecute = jest.fn();
       const afterExecute = jest.fn();
-      
+
       const middleware = createMiddleware({
         name: 'TestMiddleware',
         execute(context, next) {
@@ -299,12 +299,12 @@ describe('Middleware System', () => {
       });
 
       container.addMiddleware(middleware);
-      
+
       const token = createToken<string>('Test');
       container.register(token, { useValue: 'test' });
-      
+
       const result = container.resolve(token);
-      
+
       expect(beforeExecute).toHaveBeenCalled();
       expect(afterExecute).toHaveBeenCalledWith('test');
       expect(result).toBe('test');
@@ -312,7 +312,7 @@ describe('Middleware System', () => {
 
     it('should compose multiple middleware', () => {
       const executionOrder: string[] = [];
-      
+
       const middleware1 = createMiddleware({
         name: 'First',
         execute(context, next) {
@@ -335,11 +335,11 @@ describe('Middleware System', () => {
 
       container.addMiddleware(middleware1);
       container.addMiddleware(middleware2);
-      
+
       const token = createToken<string>('Test');
       container.register(token, { useValue: 'test' });
       container.resolve(token);
-      
+
       expect(executionOrder).toEqual([
         'first-before',
         'second-before',
@@ -361,10 +361,10 @@ describe('Middleware System', () => {
       });
 
       container.addMiddleware(transformMiddleware);
-      
+
       const token = createToken<string>('Test');
       container.register(token, { useValue: 'lowercase' });
-      
+
       const result = await container.resolveAsync(token);
       expect(result).toBe('LOWERCASE');
     });
@@ -378,10 +378,10 @@ describe('Middleware System', () => {
       });
 
       container.addMiddleware(errorMiddleware);
-      
+
       const token = createToken<string>('Test');
       container.register(token, { useValue: 'test' });
-      
+
       await expect(container.resolveAsync(token)).rejects.toThrow('Middleware error');
     });
   });
@@ -389,13 +389,13 @@ describe('Middleware System', () => {
   describe('Built-in Middleware', () => {
     it('should use LoggingMiddleware', () => {
       const logSpy = jest.spyOn(console, 'log').mockImplementation();
-      
+
       container.addMiddleware(LoggingMiddleware);
-      
+
       const token = createToken<string>('Test');
       container.register(token, { useValue: 'test' });
       container.resolve(token);
-      
+
       expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Test'));
       logSpy.mockRestore();
     });
@@ -406,9 +406,9 @@ describe('Middleware System', () => {
         maxAttempts: 3,
         delay: 10
       });
-      
+
       container.addMiddleware(retryMiddleware);
-      
+
       const token = createToken<string>('Flaky');
       container.register(token, {
         useFactory: () => {
@@ -419,7 +419,7 @@ describe('Middleware System', () => {
           return 'success';
         }
       });
-      
+
       const result = await container.resolveAsync(token);
       expect(result).toBe('success');
       expect(attempts).toBe(3);
@@ -430,12 +430,12 @@ describe('Middleware System', () => {
         threshold: 2,
         resetTimeout: 100
       });
-      
+
       container.addMiddleware(circuitBreaker);
-      
+
       const token = createToken<string>('Unreliable');
       let shouldFail = true;
-      
+
       container.register(token, {
         useFactory: () => {
           if (shouldFail) {
@@ -444,17 +444,17 @@ describe('Middleware System', () => {
           return 'success';
         }
       });
-      
+
       // First two attempts should fail and open the circuit
       expect(() => container.resolve(token)).toThrow();
       expect(() => container.resolve(token)).toThrow();
-      
+
       // Circuit should be open now
       expect(() => container.resolve(token)).toThrow('Circuit breaker is open');
-      
+
       // Fix the service
       shouldFail = false;
-      
+
       // Wait for reset timeout
       setTimeout(() => {
         const result = container.resolve(token);
@@ -468,18 +468,18 @@ describe('Middleware System', () => {
         ttl: 100,
         keyGenerator: (context) => context.token.name
       });
-      
+
       container.addMiddleware(cacheMiddleware);
-      
+
       const token = createToken<number>('Cached');
       container.register(token, {
         useFactory: () => ++counter
       });
-      
+
       const first = container.resolve(token);
       const second = container.resolve(token);
       const third = container.resolve(token);
-      
+
       expect(first).toBe(1);
       expect(second).toBe(1); // From cache
       expect(third).toBe(1); // From cache
@@ -501,23 +501,23 @@ describe('Middleware System', () => {
           }
         }
       });
-      
+
       container.addMiddleware(validationMiddleware);
-      
+
       const emailToken = createToken<string>('Email');
       container.register(emailToken, {
         useValue: 'invalid-email',
         validate: 'email'
       });
-      
+
       expect(() => container.resolve(emailToken)).toThrow('Invalid email');
-      
+
       const ageToken = createToken<number>('Age');
       container.register(ageToken, {
         useValue: 200,
         validate: 'age'
       });
-      
+
       expect(() => container.resolve(ageToken)).toThrow('Invalid age');
     });
   });
@@ -525,7 +525,7 @@ describe('Middleware System', () => {
   describe('Middleware Context', () => {
     it('should provide context to middleware', () => {
       let capturedContext: MiddlewareContext | null = null;
-      
+
       const contextMiddleware = createMiddleware({
         name: 'ContextCapture',
         execute(context, next) {
@@ -533,13 +533,13 @@ describe('Middleware System', () => {
           return next();
         }
       });
-      
+
       container.addMiddleware(contextMiddleware);
-      
+
       const token = createToken<string>('Test');
       container.register(token, { useValue: 'test' });
       container.resolve(token);
-      
+
       expect(capturedContext).toBeDefined();
       expect(capturedContext?.token).toBe(token);
       expect(capturedContext?.container).toBe(container);
@@ -555,7 +555,7 @@ describe('Middleware System', () => {
           return next();
         }
       });
-      
+
       const validateMiddleware = createMiddleware({
         name: 'Validate',
         execute(context, next) {
@@ -565,13 +565,13 @@ describe('Middleware System', () => {
           return next();
         }
       });
-      
+
       container.addMiddleware(enrichMiddleware);
       container.addMiddleware(validateMiddleware);
-      
+
       const token = createToken<string>('Test');
       container.register(token, { useValue: 'test' });
-      
+
       expect(() => container.resolve(token)).not.toThrow();
     });
   });
@@ -586,15 +586,15 @@ describe('Middleware System', () => {
           return `[SPECIAL] ${result}`;
         }
       });
-      
+
       container.addMiddleware(conditionalMiddleware);
-      
+
       const specialToken = createToken<string>('SpecialService');
       const normalToken = createToken<string>('NormalService');
-      
+
       container.register(specialToken, { useValue: 'special' });
       container.register(normalToken, { useValue: 'normal' });
-      
+
       expect(container.resolve(specialToken)).toBe('[SPECIAL] special');
       expect(container.resolve(normalToken)).toBe('normal');
     });
@@ -603,7 +603,7 @@ describe('Middleware System', () => {
   describe('Middleware Priority', () => {
     it('should execute middleware in priority order', () => {
       const executionOrder: string[] = [];
-      
+
       const highPriority = createMiddleware({
         name: 'High',
         priority: 100,
@@ -612,7 +612,7 @@ describe('Middleware System', () => {
           return next();
         }
       });
-      
+
       const lowPriority = createMiddleware({
         name: 'Low',
         priority: 1,
@@ -621,7 +621,7 @@ describe('Middleware System', () => {
           return next();
         }
       });
-      
+
       const mediumPriority = createMiddleware({
         name: 'Medium',
         priority: 50,
@@ -630,16 +630,16 @@ describe('Middleware System', () => {
           return next();
         }
       });
-      
+
       // Add in random order
       container.addMiddleware(lowPriority);
       container.addMiddleware(highPriority);
       container.addMiddleware(mediumPriority);
-      
+
       const token = createToken<string>('Test');
       container.register(token, { useValue: 'test' });
       container.resolve(token);
-      
+
       expect(executionOrder).toEqual(['high', 'medium', 'low']);
     });
   });

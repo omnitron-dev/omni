@@ -2,7 +2,7 @@
  * Lifecycle management for Nexus DI Container
  */
 
-import { InjectionToken, ResolutionContext } from '../types/core';
+import { InjectionToken, ResolutionContext } from '../types/core.js';
 
 /**
  * Lifecycle events
@@ -13,16 +13,16 @@ export enum LifecycleEvent {
   ContainerInitialized = 'container:initialized',
   ContainerDisposing = 'container:disposing',
   ContainerDisposed = 'container:disposed',
-  
+
   // Registration lifecycle
   BeforeRegister = 'register:before',
   AfterRegister = 'register:after',
-  
+
   // Resolution lifecycle
   BeforeResolve = 'resolve:before',
   AfterResolve = 'resolve:after',
   ResolveFailed = 'resolve:failed',
-  
+
   // Instance lifecycle
   InstanceCreating = 'instance:creating',
   InstanceCreated = 'instance:created',
@@ -30,7 +30,7 @@ export enum LifecycleEvent {
   InstanceInitialized = 'instance:initialized',
   InstanceDisposing = 'instance:disposing',
   InstanceDisposed = 'instance:disposed',
-  
+
   // Module lifecycle
   ModuleLoading = 'module:loading',
   ModuleLoaded = 'module:loaded',
@@ -38,25 +38,25 @@ export enum LifecycleEvent {
   ModuleInitialized = 'module:initialized',
   ModuleDestroying = 'module:destroying',
   ModuleDestroyed = 'module:destroyed',
-  
+
   // Cache lifecycle
   CacheHit = 'cache:hit',
   CacheMiss = 'cache:miss',
   CacheSet = 'cache:set',
   CacheClearing = 'cache:clearing',
   CacheCleared = 'cache:cleared',
-  
+
   // Scope lifecycle
   ScopeCreated = 'scope:created',
   ScopeDisposing = 'scope:disposing',
   ScopeDisposed = 'scope:disposed',
-  
+
   // Middleware lifecycle
   MiddlewareAdded = 'middleware:added',
   MiddlewareRemoved = 'middleware:removed',
   MiddlewareExecuting = 'middleware:executing',
   MiddlewareExecuted = 'middleware:executed',
-  
+
   // Plugin lifecycle
   PluginInstalling = 'plugin:installing',
   PluginInstalled = 'plugin:installed',
@@ -90,7 +90,7 @@ export interface LifecycleObserver {
    * Called when an event occurs
    */
   onEvent(data: LifecycleEventData): void | Promise<void>;
-  
+
   /**
    * Events to observe (if not specified, observes all)
    */
@@ -106,7 +106,7 @@ export class LifecycleManager {
   private eventHistory: LifecycleEventData[] = [];
   private maxHistorySize = 1000;
   private enabled = true;
-  
+
   /**
    * Register a lifecycle hook
    */
@@ -116,7 +116,7 @@ export class LifecycleManager {
     }
     this.hooks.get(event)!.add(hook);
   }
-  
+
   /**
    * Unregister a lifecycle hook
    */
@@ -126,7 +126,7 @@ export class LifecycleManager {
       hooks.delete(hook);
     }
   }
-  
+
   /**
    * Register a one-time lifecycle hook
    */
@@ -139,22 +139,22 @@ export class LifecycleManager {
     };
     this.on(event, wrappedHook);
   }
-  
+
   /**
    * Emit a lifecycle event
    */
   async emit(event: LifecycleEvent, data?: Partial<LifecycleEventData>): Promise<void> {
     if (!this.enabled) return;
-    
+
     const eventData: LifecycleEventData = {
       event,
       timestamp: Date.now(),
       ...data
     };
-    
+
     // Store in history
     this.addToHistory(eventData);
-    
+
     // Execute hooks
     const hooks = this.hooks.get(event);
     if (hooks) {
@@ -166,7 +166,7 @@ export class LifecycleManager {
         }
       }
     }
-    
+
     // Notify observers
     for (const observer of this.observers) {
       if (!observer.events || observer.events.includes(event)) {
@@ -178,22 +178,22 @@ export class LifecycleManager {
       }
     }
   }
-  
+
   /**
    * Emit a lifecycle event synchronously
    */
   emitSync(event: LifecycleEvent, data?: Partial<LifecycleEventData>): void {
     if (!this.enabled) return;
-    
+
     const eventData: LifecycleEventData = {
       event,
       timestamp: Date.now(),
       ...data
     };
-    
+
     // Store in history
     this.addToHistory(eventData);
-    
+
     // Execute hooks
     const hooks = this.hooks.get(event);
     if (hooks) {
@@ -210,7 +210,7 @@ export class LifecycleManager {
         }
       }
     }
-    
+
     // Notify observers
     for (const observer of this.observers) {
       if (!observer.events || observer.events.includes(event)) {
@@ -227,21 +227,21 @@ export class LifecycleManager {
       }
     }
   }
-  
+
   /**
    * Add an observer
    */
   addObserver(observer: LifecycleObserver): void {
     this.observers.add(observer);
   }
-  
+
   /**
    * Remove an observer
    */
   removeObserver(observer: LifecycleObserver): void {
     this.observers.delete(observer);
   }
-  
+
   /**
    * Get event history
    */
@@ -251,28 +251,28 @@ export class LifecycleManager {
     }
     return [...this.eventHistory];
   }
-  
+
   /**
    * Clear event history
    */
   clearHistory(): void {
     this.eventHistory = [];
   }
-  
+
   /**
    * Enable/disable lifecycle events
    */
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
   }
-  
+
   /**
    * Check if enabled
    */
   isEnabled(): boolean {
     return this.enabled;
   }
-  
+
   /**
    * Set max history size
    */
@@ -280,7 +280,7 @@ export class LifecycleManager {
     this.maxHistorySize = size;
     this.trimHistory();
   }
-  
+
   /**
    * Add event to history
    */
@@ -288,7 +288,7 @@ export class LifecycleManager {
     this.eventHistory.push(data);
     this.trimHistory();
   }
-  
+
   /**
    * Trim history to max size
    */
@@ -297,7 +297,7 @@ export class LifecycleManager {
       this.eventHistory = this.eventHistory.slice(-this.maxHistorySize);
     }
   }
-  
+
   /**
    * Clear all hooks and observers
    */
@@ -318,16 +318,16 @@ export class LifecycleManager {
 export class PerformanceObserver implements LifecycleObserver {
   private metrics = new Map<string, { count: number; totalTime: number; avgTime: number }>();
   private activeTimers = new Map<string, number>();
-  
+
   events = [
     LifecycleEvent.BeforeResolve,
     LifecycleEvent.AfterResolve,
     LifecycleEvent.ResolveFailed
   ];
-  
+
   onEvent(data: LifecycleEventData): void {
     const key = this.getKey(data.token);
-    
+
     if (data.event === LifecycleEvent.BeforeResolve) {
       this.activeTimers.set(key, Date.now());
     } else if (data.event === LifecycleEvent.AfterResolve || data.event === LifecycleEvent.ResolveFailed) {
@@ -336,14 +336,14 @@ export class PerformanceObserver implements LifecycleObserver {
         const duration = Date.now() - start;
         this.updateMetrics(key, duration);
         this.activeTimers.delete(key);
-        
+
         if (duration > 100) {
           console.warn(`[Performance] Slow resolution: ${key} took ${duration}ms`);
         }
       }
     }
   }
-  
+
   private getKey(token?: InjectionToken<any>): string {
     if (!token) return 'unknown';
     if (typeof token === 'string') return token;
@@ -352,7 +352,7 @@ export class PerformanceObserver implements LifecycleObserver {
     if (token && typeof token === 'object' && 'name' in token) return token.name;
     return 'unknown';
   }
-  
+
   private updateMetrics(key: string, duration: number): void {
     const current = this.metrics.get(key) || { count: 0, totalTime: 0, avgTime: 0 };
     current.count++;
@@ -360,11 +360,11 @@ export class PerformanceObserver implements LifecycleObserver {
     current.avgTime = current.totalTime / current.count;
     this.metrics.set(key, current);
   }
-  
+
   getMetrics(): Map<string, { count: number; totalTime: number; avgTime: number }> {
     return new Map(this.metrics);
   }
-  
+
   clearMetrics(): void {
     this.metrics.clear();
     this.activeTimers.clear();
@@ -378,15 +378,15 @@ export class MemoryObserver implements LifecycleObserver {
   private instanceCounts = new Map<string, number>();
   private lastGC = Date.now();
   private gcInterval = 60000; // 1 minute
-  
+
   events = [
     LifecycleEvent.InstanceCreated,
     LifecycleEvent.InstanceDisposed
   ];
-  
+
   onEvent(data: LifecycleEventData): void {
     const key = this.getKey(data.token);
-    
+
     if (data.event === LifecycleEvent.InstanceCreated) {
       const count = this.instanceCounts.get(key) || 0;
       this.instanceCounts.set(key, count + 1);
@@ -396,7 +396,7 @@ export class MemoryObserver implements LifecycleObserver {
         this.instanceCounts.set(key, count - 1);
       }
     }
-    
+
     // Check if GC should be suggested
     if (Date.now() - this.lastGC > this.gcInterval) {
       const totalInstances = Array.from(this.instanceCounts.values()).reduce((a, b) => a + b, 0);
@@ -409,7 +409,7 @@ export class MemoryObserver implements LifecycleObserver {
       }
     }
   }
-  
+
   private getKey(token?: InjectionToken<any>): string {
     if (!token) return 'unknown';
     if (typeof token === 'string') return token;
@@ -418,11 +418,11 @@ export class MemoryObserver implements LifecycleObserver {
     if (token && typeof token === 'object' && 'name' in token) return token.name;
     return 'unknown';
   }
-  
+
   getInstanceCounts(): Map<string, number> {
     return new Map(this.instanceCounts);
   }
-  
+
   clearCounts(): void {
     this.instanceCounts.clear();
   }
@@ -439,14 +439,14 @@ export class AuditObserver implements LifecycleObserver {
     user?: string;
     metadata?: any;
   }> = [];
-  
+
   constructor(
-    private getUserContext?: () => { user?: string; [key: string]: any }
-  ) {}
-  
+    private getUserContext?: () => { user?: string;[key: string]: any }
+  ) { }
+
   async onEvent(data: LifecycleEventData): Promise<void> {
     const userContext = this.getUserContext ? this.getUserContext() : {};
-    
+
     const entry = {
       timestamp: data.timestamp,
       event: data.event,
@@ -457,13 +457,13 @@ export class AuditObserver implements LifecycleObserver {
         ...userContext
       }
     };
-    
+
     this.auditLog.push(entry);
-    
+
     // Could also send to external audit service
     // await this.sendToAuditService(entry);
   }
-  
+
   private getTokenName(token?: InjectionToken<any>): string | undefined {
     if (!token) return undefined;
     if (typeof token === 'string') return token;
@@ -472,11 +472,11 @@ export class AuditObserver implements LifecycleObserver {
     if (token && typeof token === 'object' && 'name' in token) return token.name;
     return 'unknown';
   }
-  
+
   getAuditLog(): typeof this.auditLog {
     return [...this.auditLog];
   }
-  
+
   clearLog(): void {
     this.auditLog = [];
   }

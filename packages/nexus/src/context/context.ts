@@ -2,7 +2,7 @@
  * Advanced contextual injection for Nexus DI Container
  */
 
-import { Scope, InjectionToken, ResolutionContext } from '../types/core';
+import { Scope, InjectionToken, ResolutionContext } from '../types/core.js';
 
 /**
  * Context key for typed context access
@@ -51,37 +51,37 @@ export interface ContextProvider {
    * Get context value
    */
   get<T>(key: ContextKey<T>): T | undefined;
-  
+
   /**
    * Set context value
    */
   set<T>(key: ContextKey<T>, value: T): void;
-  
+
   /**
    * Check if context has key
    */
   has(key: ContextKey<any>): boolean;
-  
+
   /**
    * Delete context value
    */
   delete(key: ContextKey<any>): void;
-  
+
   /**
    * Clear all context
    */
   clear(): void;
-  
+
   /**
    * Get all context keys
    */
   keys(): ContextKey<any>[];
-  
+
   /**
    * Get all context as object
    */
   toObject(): Record<string, any>;
-  
+
   /**
    * Create child context
    */
@@ -94,38 +94,38 @@ export interface ContextProvider {
 export class DefaultContextProvider implements ContextProvider {
   private context = new Map<symbol, any>();
   private parent?: ContextProvider;
-  
+
   constructor(parent?: ContextProvider) {
     this.parent = parent;
   }
-  
+
   get<T>(key: ContextKey<T>): T | undefined {
     if (this.context.has(key.id)) {
       return this.context.get(key.id);
     }
     return this.parent?.get(key);
   }
-  
+
   set<T>(key: ContextKey<T>, value: T): void {
     this.context.set(key.id, value);
   }
-  
+
   has(key: ContextKey<any>): boolean {
     return this.context.has(key.id) || (this.parent?.has(key) ?? false);
   }
-  
+
   delete(key: ContextKey<any>): void {
     this.context.delete(key.id);
   }
-  
+
   clear(): void {
     this.context.clear();
   }
-  
+
   keys(): ContextKey<any>[] {
     const keys: ContextKey<any>[] = [];
     const seen = new Set<symbol>();
-    
+
     // Add local keys
     for (const [id] of this.context) {
       if (!seen.has(id)) {
@@ -133,7 +133,7 @@ export class DefaultContextProvider implements ContextProvider {
         seen.add(id);
       }
     }
-    
+
     // Add parent keys
     if (this.parent) {
       for (const key of this.parent.keys()) {
@@ -143,27 +143,27 @@ export class DefaultContextProvider implements ContextProvider {
         }
       }
     }
-    
+
     return keys;
   }
-  
+
   toObject(): Record<string, any> {
     const obj: Record<string, any> = {};
-    
+
     // Add parent context
     if (this.parent) {
       Object.assign(obj, this.parent.toObject());
     }
-    
+
     // Add local context
     for (const [id, value] of this.context) {
       const key = id.toString().replace(/^Symbol\((.*)\)$/, '$1');
       obj[key] = value;
     }
-    
+
     return obj;
   }
-  
+
   createChild(): ContextProvider {
     return new DefaultContextProvider(this);
   }
@@ -177,12 +177,12 @@ export interface ResolutionStrategy {
    * Strategy name
    */
   name: string;
-  
+
   /**
    * Check if strategy applies
    */
   applies(token: InjectionToken<any>, context: ResolutionContext): boolean;
-  
+
   /**
    * Select provider based on context
    */
@@ -198,20 +198,20 @@ export interface ResolutionStrategy {
  */
 export class EnvironmentStrategy implements ResolutionStrategy {
   name = 'environment';
-  
+
   applies(token: InjectionToken<any>, context: ResolutionContext): boolean {
     return context.metadata?.['environment'] !== undefined;
   }
-  
+
   select<T>(providers: any[], context: ResolutionContext): any {
     const env = context.metadata?.['environment'];
-    
+
     for (const provider of providers) {
       if (provider.environment === env) {
         return provider;
       }
     }
-    
+
     // Fallback to first provider
     return providers[0];
   }
@@ -222,20 +222,20 @@ export class EnvironmentStrategy implements ResolutionStrategy {
  */
 export class FeatureFlagStrategy implements ResolutionStrategy {
   name = 'feature-flag';
-  
+
   applies(token: InjectionToken<any>, context: ResolutionContext): boolean {
     return context.metadata?.['features'] !== undefined;
   }
-  
+
   select<T>(providers: any[], context: ResolutionContext): any {
     const features = context.metadata?.['features'] as string[] || [];
-    
+
     for (const provider of providers) {
       if (provider.feature && features.includes(provider.feature)) {
         return provider;
       }
     }
-    
+
     // Return default provider
     return providers.find(p => !p.feature) || providers[0];
   }
@@ -246,20 +246,20 @@ export class FeatureFlagStrategy implements ResolutionStrategy {
  */
 export class TenantStrategy implements ResolutionStrategy {
   name = 'tenant';
-  
+
   applies(token: InjectionToken<any>, context: ResolutionContext): boolean {
     return context.metadata?.['tenant'] !== undefined;
   }
-  
+
   select<T>(providers: any[], context: ResolutionContext): any {
     const tenant = context.metadata?.['tenant'];
-    
+
     for (const provider of providers) {
       if (provider.tenant === tenant?.id || provider.tenant === tenant) {
         return provider;
       }
     }
-    
+
     // Return multi-tenant provider or first
     return providers.find(p => p.multiTenant) || providers[0];
   }
@@ -270,21 +270,21 @@ export class TenantStrategy implements ResolutionStrategy {
  */
 export class RoleBasedStrategy implements ResolutionStrategy {
   name = 'role-based';
-  
+
   applies(token: InjectionToken<any>, context: ResolutionContext): boolean {
     return context.metadata?.['user']?.roles !== undefined;
   }
-  
+
   select<T>(providers: any[], context: ResolutionContext): any {
     const roles = context.metadata?.['user']?.roles as string[] || [];
-    
+
     // Find provider with matching required role
     for (const provider of providers) {
       if (provider.requiredRole && roles.includes(provider.requiredRole)) {
         return provider;
       }
     }
-    
+
     // Return public provider or first
     return providers.find(p => !p.requiredRole) || providers[0];
   }
@@ -297,10 +297,10 @@ export class ContextManager {
   private strategies = new Map<string, ResolutionStrategy>();
   private globalContext: ContextProvider;
   private asyncLocalStorage?: any; // AsyncLocalStorage for Node.js
-  
+
   constructor() {
     this.globalContext = new DefaultContextProvider();
-    
+
     // Try to use AsyncLocalStorage if available (Node.js)
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -309,28 +309,28 @@ export class ContextManager {
     } catch {
       // Not available, will use global context only
     }
-    
+
     // Register default strategies
     this.registerStrategy(new EnvironmentStrategy());
     this.registerStrategy(new FeatureFlagStrategy());
     this.registerStrategy(new TenantStrategy());
     this.registerStrategy(new RoleBasedStrategy());
   }
-  
+
   /**
    * Register a resolution strategy
    */
   registerStrategy(strategy: ResolutionStrategy): void {
     this.strategies.set(strategy.name, strategy);
   }
-  
+
   /**
    * Unregister a strategy
    */
   unregisterStrategy(name: string): void {
     this.strategies.delete(name);
   }
-  
+
   /**
    * Get current context
    */
@@ -343,7 +343,7 @@ export class ContextManager {
     }
     return this.globalContext;
   }
-  
+
   /**
    * Run with context
    */
@@ -351,7 +351,7 @@ export class ContextManager {
     if (this.asyncLocalStorage) {
       return this.asyncLocalStorage.run({ context }, fn);
     }
-    
+
     // Fallback: temporarily replace global context
     const prev = this.globalContext;
     this.globalContext = context;
@@ -361,14 +361,14 @@ export class ContextManager {
       this.globalContext = prev;
     }
   }
-  
+
   /**
    * Create scoped context
    */
   createScopedContext(parent?: ContextProvider): ContextProvider {
     return new DefaultContextProvider(parent || this.getCurrentContext());
   }
-  
+
   /**
    * Apply strategies to select provider
    */
@@ -380,11 +380,11 @@ export class ContextManager {
     if (providers.length === 0) {
       return undefined;
     }
-    
+
     if (providers.length === 1) {
       return providers[0];
     }
-    
+
     // Apply strategies
     for (const strategy of this.strategies.values()) {
       if (strategy.applies(token, context)) {
@@ -394,11 +394,11 @@ export class ContextManager {
         }
       }
     }
-    
+
     // Default to first provider
     return providers[0];
   }
-  
+
   /**
    * Create resolution context
    */
@@ -408,7 +408,7 @@ export class ContextManager {
     metadata?: Record<string, any>
   ): ResolutionContext {
     const contextProvider = this.getCurrentContext();
-    
+
     return {
       container,
       scope,
@@ -427,9 +427,9 @@ export function InjectContext<T>(key: ContextKey<T>): ParameterDecorator {
   return (target: any, propertyKey: string | symbol | undefined, parameterIndex: number) => {
     const existingTokens = Reflect.getMetadata('design:paramtypes', target, propertyKey!) || [];
     const contextTokens = Reflect.getMetadata('context:inject', target, propertyKey!) || {};
-    
+
     contextTokens[parameterIndex] = key;
-    
+
     Reflect.defineMetadata('context:inject', contextTokens, target, propertyKey!);
   };
 }
@@ -442,7 +442,7 @@ export interface ContextAwareProvider<T = any> {
    * Provide value based on context
    */
   provide(context: ResolutionContext): T | Promise<T>;
-  
+
   /**
    * Check if provider can handle context
    */

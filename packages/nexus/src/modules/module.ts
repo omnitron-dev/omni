@@ -10,7 +10,7 @@ import {
   DynamicModule,
   InjectionToken,
   ServiceIdentifier
-} from '../types/core';
+} from '../types/core.js';
 
 /**
  * Module metadata decorator options
@@ -47,42 +47,42 @@ export interface ModuleRef {
    * Module name
    */
   readonly name: string;
-  
+
   /**
    * Module providers
    */
   readonly providers: Map<InjectionToken<any>, Provider<any>>;
-  
+
   /**
    * Module exports
    */
   readonly exports: Set<InjectionToken<any>>;
-  
+
   /**
    * Module imports
    */
   readonly imports: Set<ModuleRef>;
-  
+
   /**
    * Module container
    */
   readonly container: IContainer;
-  
+
   /**
    * Check if provider is exported
    */
   isExported(token: InjectionToken<any>): boolean;
-  
+
   /**
    * Get provider
    */
   getProvider<T>(token: InjectionToken<T>): Provider<T> | undefined;
-  
+
   /**
    * Resolve provider
    */
   resolve<T>(token: InjectionToken<T>): T;
-  
+
   /**
    * Resolve async provider
    */
@@ -95,30 +95,30 @@ export interface ModuleRef {
 export class ModuleCompiler {
   private compiledModules = new Map<string, ModuleRef>();
   private globalModules = new Set<ModuleRef>();
-  
+
   /**
    * Compile a module
    */
   compile(module: IModule | Constructor<any> | DynamicModule): ModuleRef {
     const metadata = this.extractMetadata(module);
     const name = metadata.name || this.generateModuleName(module);
-    
+
     // Check if already compiled
     if (this.compiledModules.has(name)) {
       return this.compiledModules.get(name)!;
     }
-    
+
     // Create module reference
     const moduleRef = this.createModuleRef(name, metadata);
-    
+
     // Register as global if needed
     if (metadata.global) {
       this.globalModules.add(moduleRef);
     }
-    
+
     // Store compiled module
     this.compiledModules.set(name, moduleRef);
-    
+
     // Compile imports
     if (metadata.imports) {
       for (const imported of metadata.imports) {
@@ -126,10 +126,10 @@ export class ModuleCompiler {
         (moduleRef.imports as Set<ModuleRef>).add(importedRef);
       }
     }
-    
+
     return moduleRef;
   }
-  
+
   /**
    * Extract metadata from module
    */
@@ -144,12 +144,12 @@ export class ModuleCompiler {
         name: baseMetadata.name
       } as ModuleMetadata & { name: string };
     }
-    
+
     // Handle module with metadata
     if (this.isModuleWithMetadata(module)) {
       return module as ModuleMetadata & { name: string };
     }
-    
+
     // Handle class constructor with decorator metadata
     if (typeof module === 'function') {
       // Try Reflect metadata first (if available)
@@ -164,7 +164,7 @@ export class ModuleCompiler {
         return { name: module.name, ...(module as any).__moduleMetadata };
       }
     }
-    
+
     // Default module structure
     return {
       name: this.generateModuleName(module),
@@ -172,7 +172,7 @@ export class ModuleCompiler {
       exports: []
     };
   }
-  
+
   /**
    * Create module reference
    */
@@ -180,7 +180,7 @@ export class ModuleCompiler {
     const providers = new Map<InjectionToken<any>, Provider<any>>();
     const exports = new Set<InjectionToken<any>>();
     const imports = new Set<ModuleRef>();
-    
+
     // Process providers
     if (metadata.providers) {
       for (const provider of metadata.providers) {
@@ -194,7 +194,7 @@ export class ModuleCompiler {
         }
       }
     }
-    
+
     // Process exports
     if (metadata.exports) {
       for (const exported of metadata.exports) {
@@ -202,32 +202,32 @@ export class ModuleCompiler {
         exports.add(token);
       }
     }
-    
+
     // Create container for this module
     const container = null as any; // Will be set by the container
-    
+
     return {
       name,
       providers,
       exports,
       imports,
       container,
-      
+
       isExported(token: InjectionToken<any>): boolean {
         return exports.has(token);
       },
-      
+
       getProvider<T>(token: InjectionToken<T>): Provider<T> | undefined {
         return providers.get(token) as Provider<T> | undefined;
       },
-      
+
       resolve<T>(token: InjectionToken<T>): T {
         if (!this.container) {
           throw new Error('Module container not initialized');
         }
         return this.container.resolve(token);
       },
-      
+
       async resolveAsync<T>(token: InjectionToken<T>): Promise<T> {
         if (!this.container) {
           throw new Error('Module container not initialized');
@@ -236,7 +236,7 @@ export class ModuleCompiler {
       }
     };
   }
-  
+
   /**
    * Extract token from provider
    */
@@ -245,11 +245,11 @@ export class ModuleCompiler {
     if (Array.isArray(provider) && provider.length === 2) {
       return provider[0];
     }
-    
+
     if (typeof provider === 'function') {
       return provider;
     }
-    
+
     if (typeof provider === 'object' && provider !== null) {
       if ('provide' in provider) {
         return provider.provide;
@@ -258,24 +258,24 @@ export class ModuleCompiler {
         return provider.useClass;
       }
     }
-    
+
     return provider;
   }
-  
+
   /**
    * Check if dynamic module
    */
   private isDynamicModule(module: any): module is DynamicModule {
     return module && typeof module === 'object' && 'module' in module;
   }
-  
+
   /**
    * Check if module with metadata
    */
   private isModuleWithMetadata(module: any): boolean {
     return module && typeof module === 'object' && 'name' in module;
   }
-  
+
   /**
    * Get module name
    */
@@ -285,28 +285,28 @@ export class ModuleCompiler {
     if (module && typeof module === 'object' && 'name' in module) return module.name;
     return this.generateModuleName(module);
   }
-  
+
   /**
    * Generate unique module name
    */
   private generateModuleName(module: any): string {
     return `Module_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
-  
+
   /**
    * Get all global modules
    */
   getGlobalModules(): ModuleRef[] {
     return Array.from(this.globalModules);
   }
-  
+
   /**
    * Get compiled module
    */
   getModule(name: string): ModuleRef | undefined {
     return this.compiledModules.get(name);
   }
-  
+
   /**
    * Clear compiled modules
    */
@@ -353,7 +353,7 @@ export function createModule(metadata: ModuleMetadata & { name: string }): IModu
     onModuleInit: (metadata as any).onModuleInit,
     onModuleDestroy: (metadata as any).onModuleDestroy
   };
-  
+
   return module;
 }
 
@@ -378,9 +378,9 @@ export function createDynamicModule(
  */
 export class ModuleBuilder {
   private metadata: ModuleMetadata = {};
-  
-  constructor(private name: string) {}
-  
+
+  constructor(private name: string) { }
+
   /**
    * Add imports
    */
@@ -388,7 +388,7 @@ export class ModuleBuilder {
     this.metadata.imports = [...(this.metadata.imports || []), ...modules];
     return this;
   }
-  
+
   /**
    * Add providers
    */
@@ -408,11 +408,11 @@ export class ModuleBuilder {
       }
       return p;
     });
-    
+
     this.metadata.providers = [...(this.metadata.providers || []), ...processedProviders];
     return this;
   }
-  
+
   /**
    * Add exports
    */
@@ -422,7 +422,7 @@ export class ModuleBuilder {
     this.metadata.exports = [...(this.metadata.exports || []), ...flatTokens];
     return this;
   }
-  
+
   /**
    * Add controllers
    */
@@ -430,7 +430,7 @@ export class ModuleBuilder {
     this.metadata.controllers = [...(this.metadata.controllers || []), ...controllers];
     return this;
   }
-  
+
   /**
    * Set as global module
    */
@@ -438,7 +438,7 @@ export class ModuleBuilder {
     this.metadata.global = isGlobal;
     return this;
   }
-  
+
   /**
    * Provide a single token
    */
@@ -449,19 +449,19 @@ export class ModuleBuilder {
     this.metadata.providers.push([token, provider] as [InjectionToken<any>, Provider<any>]);
     return this;
   }
-  
+
   /**
    * Conditionally provide a token
    */
   provideIf<T>(
-    condition: (container?: any) => boolean, 
-    token: InjectionToken<T>, 
+    condition: (container?: any) => boolean,
+    token: InjectionToken<T>,
     provider: Provider<T>
   ): this {
     if (!this.metadata.providers) {
       this.metadata.providers = [];
     }
-    
+
     // Mark the provider as conditional for later evaluation during module loading
     const conditionalProvider: [InjectionToken<T>, Provider<T> & { conditional?: boolean; condition?: Function; originalProvider?: Provider<T> }] = [
       token,
@@ -474,11 +474,11 @@ export class ModuleBuilder {
         }
       }
     ];
-    
+
     this.metadata.providers.push(conditionalProvider as [InjectionToken<any>, Provider<any>]);
     return this;
   }
-  
+
   /**
    * Build the module
    */
@@ -507,18 +507,18 @@ export function createConfigModule<T = any>(options: {
   validate?: (config: T) => boolean | void;
 }): IModule & { config?: T } {
   let config: T | undefined;
-  
+
   const module: IModule & { config?: T } = {
     name: options.name,
     providers: [],
     imports: [],
     exports: [],
     config,
-    
+
     async onModuleInit() {
       // Load configuration
       config = await options.load();
-      
+
       // Validate if validator provided
       if (options.validate) {
         try {
@@ -530,12 +530,12 @@ export function createConfigModule<T = any>(options: {
           throw new Error(`Configuration validation failed for ${options.name}: ${error}`);
         }
       }
-      
+
       // Update the config property
       this.config = config;
     }
   };
-  
+
   return module;
 }
 
@@ -547,7 +547,7 @@ export function createFeatureModule(
   providers: Array<[InjectionToken<any>, Provider<any>]>
 ): ModuleFactory {
   const extractToken = (provider: [InjectionToken<any>, Provider<any>]): InjectionToken<any> => provider[0];
-  
+
   return {
     forRoot(options: ModuleOptions): DynamicModule {
       return {
@@ -570,13 +570,13 @@ export function createFeatureModule(
         exports: providers.map(p => extractToken(p))
       };
     },
-    
+
     forFeature(options: ModuleOptions): DynamicModule {
       const filteredProviders = providers.filter(p => {
         const token = extractToken(p);
         return !options['exclude'] || !options['exclude'].includes(token);
       });
-      
+
       return {
         module: { name: `${name}:feature` },
         providers: filteredProviders,

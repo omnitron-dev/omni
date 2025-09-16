@@ -22,9 +22,9 @@
 
 import 'reflect-metadata';
 
-import { Container } from '../container/container';
-import { createToken, tokenFromClass } from '../token/token';
-import { Scope, Provider, Constructor, InjectionToken, RegistrationOptions } from '../types/core';
+import { Container } from '../container/container.js';
+import { createToken, tokenFromClass } from '../token/token.js';
+import { Scope, Provider, Constructor, InjectionToken, RegistrationOptions } from '../types/core.js';
 
 /**
  * Lazy factory registry for storing factory functions
@@ -680,7 +680,7 @@ export class DecoratorContainer extends Container {
   /**
    * Override resolve to handle decorator-specific features
    */
-  override resolve<T>(token: InjectionToken<T>, context?: Partial<import('../types/core').ResolutionContext>): T {
+  override resolve<T>(token: InjectionToken<T>, context?: Partial<import('../types/core.js').ResolutionContext>): T {
     // Handle value injections
     if (typeof token === 'string' && token.startsWith('__VALUE_')) {
       const path = token.substring(8, token.length - 2); // Remove __VALUE_ and __
@@ -845,10 +845,10 @@ export {
   createMethodInterceptor,
   createPropertyInterceptor,
   createParameterizedDecorator
-} from './custom-decorators';
+} from './custom-decorators.js';
 
 // Re-export common types for convenience
-export type { Scope, Provider, InjectionToken } from '../types/core';
+export type { Scope, Provider, InjectionToken } from '../types/core.js';
 
 // Re-export types from custom decorators
 export type {
@@ -859,4 +859,4 @@ export type {
   MetadataTransform,
   DecoratorTransform,
   CustomDecoratorConfig
-} from './custom-decorators';
+} from './custom-decorators.js';

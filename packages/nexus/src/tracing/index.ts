@@ -7,10 +7,10 @@
  * Provides OpenTelemetry integration and distributed tracing capabilities
  */
 
-import { createToken } from '../token/token';
-import { Container } from '../container/container';
-import { Plugin, PluginHooks } from '../plugins/plugin';
-import { InjectionToken, ResolutionContext } from '../types/core';
+import { createToken } from '../token/token.js';
+import { Container } from '../container/container.js';
+import { Plugin, PluginHooks } from '../plugins/plugin.js';
+import { InjectionToken, ResolutionContext } from '../types/core.js';
 
 /**
  * Span attributes
@@ -149,7 +149,7 @@ class SimpleSpan implements Span {
   public status?: SpanStatusValue;
   private recording = true;
   private context: SpanContext;
-  
+
   constructor(
     name: string,
     context: SpanContext,
@@ -162,43 +162,43 @@ class SimpleSpan implements Span {
     this.traceId = context.traceId;
     this.parentId = options?.parent ? options.parent.spanId : undefined;
     this.startTime = options?.startTime || Date.now();
-    
+
     if (options?.attributes) {
       this.attributes = { ...options.attributes };
     }
-    
+
     if (options?.kind !== undefined) {
       this.setAttribute('span.kind', SpanKind[options.kind]);
     }
   }
-  
+
   get duration(): number | undefined {
     if (this.endTime) {
       return this.endTime - this.startTime;
     }
     return undefined;
   }
-  
+
   spanContext(): SpanContext {
     return this.context;
   }
-  
+
   getContext(): SpanContext {
     return this.context;
   }
-  
+
   setAttribute(key: string, value: string | number | boolean): void {
     if (this.recording) {
       this.attributes[key] = value;
     }
   }
-  
+
   setAttributes(attributes: SpanAttributes): void {
     if (this.recording) {
       Object.assign(this.attributes, attributes);
     }
   }
-  
+
   addEvent(name: string, attributes?: SpanAttributes): void {
     if (this.recording) {
       this.events.push({
@@ -208,29 +208,29 @@ class SimpleSpan implements Span {
       });
     }
   }
-  
+
   setStatus(status: SpanStatusValue): void {
     if (this.recording) {
       this.status = status;
     }
   }
-  
+
   end(endTime?: number): void {
     if (this.recording) {
       this.endTime = endTime || Date.now();
       this.recording = false;
-      
+
       // Export the span if exporter is available
       if (this.exporter) {
         this.exporter.export([this]).catch(console.error);
       }
     }
   }
-  
+
   isRecording(): boolean {
     return this.recording;
   }
-  
+
   toJSON(): any {
     return {
       name: this.name,
@@ -256,38 +256,38 @@ export class SimpleTracer implements Tracer {
   private exporter?: TraceExporter;
   private spans: Span[] = [];
   private static currentTracer?: SimpleTracer;
-  
+
   constructor(exporter?: TraceExporter) {
     this.exporter = exporter;
   }
-  
+
   startSpan(name: string, options?: SpanOptions): Span {
     let traceId: string;
     const parentSpan: Span | undefined = options?.parent || this.activeSpan;
-    
+
     if (parentSpan) {
       traceId = parentSpan.traceId;
     } else {
       traceId = this.generateTraceId();
     }
-    
+
     const context: SpanContext = {
       traceId,
       spanId: this.generateSpanId(),
       traceFlags: TraceFlags.SAMPLED
     };
-    
+
     const span = new SimpleSpan(name, context, options, this.exporter);
     this.spans.push(span);
-    
+
     return span;
   }
-  
+
   startActiveSpan<T>(name: string, fn: (span: Span) => T): T {
     const span = this.startSpan(name);
     const previousSpan = this.activeSpan;
     this.activeSpan = span;
-    
+
     try {
       const result = fn(span);
       span.setStatus({ code: SpanStatus.OK });
@@ -300,12 +300,12 @@ export class SimpleTracer implements Tracer {
       this.activeSpan = previousSpan;
     }
   }
-  
+
   async startActiveSpanAsync<T>(name: string, fn: (span: Span) => Promise<T>): Promise<T> {
     const span = this.startSpan(name);
     const previousSpan = this.activeSpan;
     this.activeSpan = span;
-    
+
     try {
       const result = await fn(span);
       span.setStatus({ code: SpanStatus.OK });
@@ -318,42 +318,42 @@ export class SimpleTracer implements Tracer {
       this.activeSpan = previousSpan;
     }
   }
-  
+
   getActiveSpan(): Span | undefined {
     return this.activeSpan;
   }
-  
+
   getSpans(): Span[] {
     return [...this.spans];
   }
-  
+
   clearSpans(): void {
     this.spans = [];
   }
-  
+
   withSpan<T>(span: Span): T {
     const previousSpan = this.activeSpan;
     this.activeSpan = span;
     // Return a context object that includes the active span
     return { activeSpan: span } as any;
   }
-  
+
   setCurrentTracer(tracer: SimpleTracer): void {
     SimpleTracer.currentTracer = tracer;
   }
-  
+
   static getCurrentTracer(): SimpleTracer | undefined {
     return SimpleTracer.currentTracer;
   }
-  
+
   private generateTraceId(): string {
-    return Array.from({ length: 32 }, () => 
+    return Array.from({ length: 32 }, () =>
       Math.floor(Math.random() * 16).toString(16)
     ).join('');
   }
-  
+
   private generateSpanId(): string {
-    return Array.from({ length: 16 }, () => 
+    return Array.from({ length: 16 }, () =>
       Math.floor(Math.random() * 16).toString(16)
     ).join('');
   }
@@ -369,7 +369,7 @@ export class JaegerExporter implements TraceExporter {
   private batchSize = 100;
   private flushInterval = 5000;
   private timer?: NodeJS.Timeout;
-  
+
   constructor(config: {
     endpoint: string;
     serviceName: string;
@@ -380,29 +380,29 @@ export class JaegerExporter implements TraceExporter {
     this.serviceName = config.serviceName;
     this.batchSize = config.batchSize || this.batchSize;
     this.flushInterval = config.flushInterval || this.flushInterval;
-    
+
     this.startBatchTimer();
   }
-  
+
   async export(spans: Span[]): Promise<void> {
     this.batch.push(...spans);
-    
+
     if (this.batch.length >= this.batchSize) {
       await this.flush();
     }
   }
-  
+
   async flush(): Promise<void> {
     if (this.batch.length === 0) {
       return;
     }
-    
+
     const spans = this.batch;
     this.batch = [];
-    
+
     try {
       const jaegerSpans = spans.map(span => this.convertToJaegerSpan(span));
-      
+
       await fetch(this.endpoint, {
         method: 'POST',
         headers: {
@@ -422,14 +422,14 @@ export class JaegerExporter implements TraceExporter {
       console.error('Failed to export spans to Jaeger:', error);
     }
   }
-  
+
   async shutdown(): Promise<void> {
     if (this.timer) {
       clearInterval(this.timer);
     }
     await this.flush();
   }
-  
+
   private convertToJaegerSpan(span: Span): any {
     const spanData = (span as any).toJSON();
     return {
@@ -456,13 +456,13 @@ export class JaegerExporter implements TraceExporter {
       parentSpanID: spanData.parentId || undefined
     };
   }
-  
+
   private startBatchTimer(): void {
     this.timer = setInterval(() => {
       this.flush().catch(console.error);
     }, this.flushInterval);
   }
-  
+
   /**
    * Stop the batch timer and clean up resources
    */
@@ -480,7 +480,7 @@ export class JaegerExporter implements TraceExporter {
 export class ZipkinExporter implements TraceExporter {
   private endpoint: string;
   private serviceName: string;
-  
+
   constructor(config: {
     endpoint: string;
     serviceName: string;
@@ -488,16 +488,16 @@ export class ZipkinExporter implements TraceExporter {
     this.endpoint = config.endpoint;
     this.serviceName = config.serviceName;
   }
-  
+
   async export(spans: Span[]): Promise<void> {
     const zipkinSpans = spans.map(span => this.convertToZipkinSpan(span));
-    
+
     try {
       // Check if endpoint already includes the path
-      const url = this.endpoint.endsWith('/api/v2/spans') 
-        ? this.endpoint 
+      const url = this.endpoint.endsWith('/api/v2/spans')
+        ? this.endpoint
         : `${this.endpoint}/api/v2/spans`;
-      
+
       await fetch(url, {
         method: 'POST',
         headers: {
@@ -509,11 +509,11 @@ export class ZipkinExporter implements TraceExporter {
       console.error('Failed to export spans to Zipkin:', error);
     }
   }
-  
+
   async shutdown(): Promise<void> {
     // No cleanup needed
   }
-  
+
   private convertToZipkinSpan(span: Span): any {
     const spanData = (span as any).toJSON();
     return {
@@ -542,23 +542,23 @@ export class W3CTraceContextPropagator implements Propagator {
   inject(context: SpanContext, carrier: any): void {
     const traceparent = `00-${context.traceId}-${context.spanId}-${context.traceFlags.toString(16).padStart(2, '0')}`;
     carrier['traceparent'] = traceparent;
-    
+
     if (context.traceState) {
       carrier['tracestate'] = context.traceState;
     }
   }
-  
+
   extract(carrier: any): SpanContext | null {
     const traceparent = carrier['traceparent'];
     if (!traceparent) {
       return null;
     }
-    
+
     const parts = traceparent.split('-');
     if (parts.length !== 4) {
       return null;
     }
-    
+
     return {
       traceId: parts[1],
       spanId: parts[2],
@@ -575,12 +575,12 @@ export class TracingPlugin implements Plugin {
   name = 'tracing';
   version = '1.0.0';
   hooks?: PluginHooks;
-  
+
   private tracer: Tracer;
   private propagator: Propagator;
   private activeSpans = new WeakMap<ResolutionContext, Span>();
   private spansByToken = new Map<string, Span>();
-  
+
   constructor(config?: {
     tracer?: Tracer;
     exporter?: TraceExporter;
@@ -588,7 +588,7 @@ export class TracingPlugin implements Plugin {
   }) {
     this.tracer = config?.tracer || new SimpleTracer(config?.exporter);
     this.propagator = config?.propagator || new W3CTraceContextPropagator();
-    
+
     // Set up plugin hooks
     this.hooks = {
       beforeResolve: this.beforeResolve.bind(this),
@@ -596,7 +596,7 @@ export class TracingPlugin implements Plugin {
       onError: this.onError.bind(this)
     };
   }
-  
+
   install(container: Container): void {
     // Register tracer in container
     container.register(TracerToken, { useValue: this.tracer });
@@ -607,12 +607,12 @@ export class TracingPlugin implements Plugin {
    */
   private beforeResolve<T>(token: InjectionToken<T>, context: ResolutionContext): void | Promise<void> {
     const tokenName = typeof token === 'string' ? token :
-                      typeof token === 'symbol' ? token.toString() :
-                      (token as any)?.name || 'unknown';
-    
+      typeof token === 'symbol' ? token.toString() :
+        (token as any)?.name || 'unknown';
+
     // Check for trace context propagation
     let parentSpan: Span | undefined;
-    
+
     // Check if traceContext was passed in resolveContext
     if (context && (context as any).resolveContext && (context as any).resolveContext.traceContext) {
       const traceContext = (context as any).resolveContext.traceContext;
@@ -620,7 +620,7 @@ export class TracingPlugin implements Plugin {
         parentSpan = (traceContext as any).activeSpan;
       }
     }
-    
+
     // Also check direct traceContext property
     if (!parentSpan && context && (context as any).traceContext) {
       const traceContext = (context as any).traceContext;
@@ -628,7 +628,7 @@ export class TracingPlugin implements Plugin {
         parentSpan = (traceContext as any).activeSpan;
       }
     }
-    
+
     const span = this.tracer.startSpan(`resolve:${tokenName}`, {
       kind: SpanKind.INTERNAL,
       parent: parentSpan,
@@ -637,18 +637,18 @@ export class TracingPlugin implements Plugin {
         'container.id': 'unknown'
       }
     });
-    
+
     // Store span using multiple approaches - the WeakMap should work for the same context object
     this.activeSpans.set(context, span);
-    
+
     // Also store by token as backup - using token's string representation as key
     const tokenKey = this.getTokenKey(token);
     this.spansByToken.set(tokenKey, span);
-    
+
     // Store span directly in context for most reliable access
     (context as any).__tracingSpan = span;
   }
-  
+
   private getTokenKey<T>(token: InjectionToken<T>): string {
     if (typeof token === 'string') return token;
     if (typeof token === 'symbol') return token.toString();
@@ -660,20 +660,20 @@ export class TracingPlugin implements Plugin {
   private afterResolve<T>(token: InjectionToken<T>, instance: T, context: ResolutionContext): void | Promise<void> {
     // Try to get span using multiple strategies
     let span = (context as any).__tracingSpan;
-    
+
     if (!span) {
       span = this.activeSpans.get(context);
     }
-    
+
     if (!span) {
       const tokenKey = this.getTokenKey(token);
       span = this.spansByToken.get(tokenKey);
     }
-    
+
     if (span) {
       span.setStatus({ code: SpanStatus.OK });
       span.end();
-      
+
       // Clean up all references
       this.activeSpans.delete(context);
       const tokenKey = this.getTokenKey(token);
@@ -685,20 +685,20 @@ export class TracingPlugin implements Plugin {
   private onError(error: Error, token?: InjectionToken<any>, context?: ResolutionContext): void | Promise<void> {
     // Try to get span using multiple strategies
     let span: Span | undefined;
-    
+
     if (context) {
       span = (context as any).__tracingSpan;
-      
+
       if (!span) {
         span = this.activeSpans.get(context);
       }
     }
-    
+
     if (!span && token) {
       const tokenKey = this.getTokenKey(token);
       span = this.spansByToken.get(tokenKey);
     }
-    
+
     if (span) {
       span.setStatus({ code: SpanStatus.ERROR, message: error?.message || 'Unknown error' });
       span.addEvent('error', {
@@ -707,7 +707,7 @@ export class TracingPlugin implements Plugin {
         'error.stack': error.stack || ''
       });
       span.end();
-      
+
       // Clean up all references
       if (context) {
         this.activeSpans.delete(context);
@@ -719,8 +719,8 @@ export class TracingPlugin implements Plugin {
       }
     }
   }
-  
-  
+
+
   /**
    * Create traced version of a function
    */
@@ -730,15 +730,15 @@ export class TracingPlugin implements Plugin {
   ): T {
     const tracer = this.tracer;
     const spanName = name || fn.name || 'anonymous';
-    
+
     return function traced(this: any, ...args: any[]) {
       return tracer.startActiveSpan(spanName, (span) => {
         span.setAttribute('function.name', spanName);
         span.setAttribute('function.args.count', args.length);
-        
+
         try {
           const result = fn.apply(this, args);
-          
+
           if (result && typeof result.then === 'function') {
             // Handle promises
             return result.then(
@@ -752,7 +752,7 @@ export class TracingPlugin implements Plugin {
               }
             );
           }
-          
+
           return result;
         } catch (error) {
           span.setStatus({ code: SpanStatus.ERROR, message: String(error) });
@@ -774,19 +774,19 @@ export function Trace(name?: string) {
   ) {
     const originalMethod = descriptor.value;
     const spanName = name || `${target.constructor.name}.${propertyKey}`;
-    
+
     descriptor.value = function (this: any, ...args: any[]) {
       // Get tracer from container if available
       const tracer = (this as any).__tracer || SimpleTracer.getCurrentTracer() || new SimpleTracer();
-      
+
       return tracer.startActiveSpan(spanName, (span: Span) => {
         span.setAttribute('class.name', target.constructor.name);
         span.setAttribute('method.name', propertyKey);
         span.setAttribute('args.count', args.length);
-        
+
         try {
           const result = originalMethod.apply(this, args);
-          
+
           if (result && typeof result.then === 'function') {
             return result.then(
               (value: any) => {
@@ -799,7 +799,7 @@ export function Trace(name?: string) {
               }
             );
           }
-          
+
           return result;
         } catch (error) {
           span.setStatus({ code: SpanStatus.ERROR, message: String(error) });
@@ -807,7 +807,7 @@ export function Trace(name?: string) {
         }
       });
     };
-    
+
     return descriptor;
   };
 }
@@ -821,7 +821,7 @@ export function createTracerProvider(config: {
   endpoint?: string;
 }): Tracer {
   let exporter: TraceExporter;
-  
+
   switch (config.exporter) {
     case 'jaeger':
       exporter = new JaegerExporter({
@@ -829,24 +829,24 @@ export function createTracerProvider(config: {
         serviceName: config.serviceName
       });
       break;
-    
+
     case 'zipkin':
       exporter = new ZipkinExporter({
         endpoint: config.endpoint || 'http://localhost:9411',
         serviceName: config.serviceName
       });
       break;
-    
+
     case 'console':
     default:
       exporter = {
         async export(spans: Span[]) {
           console.log('Exported spans:', spans);
         },
-        async shutdown() {}
+        async shutdown() { }
       };
   }
-  
+
   return new SimpleTracer(exporter);
 }
 
@@ -871,15 +871,15 @@ export async function withSpan<T>(
   fn: (span: Span) => Promise<T> | T
 ): Promise<T> {
   const span = tracer.startSpan(name);
-  
+
   try {
     const result = await fn(span);
     span.setStatus({ code: SpanStatus.OK });
     return result;
   } catch (error) {
-    span.setStatus({ 
-      code: SpanStatus.ERROR, 
-      message: error instanceof Error ? error.message : String(error) 
+    span.setStatus({
+      code: SpanStatus.ERROR,
+      message: error instanceof Error ? error.message : String(error)
     });
     throw error;
   } finally {

@@ -2,7 +2,7 @@
  * Core types and interfaces for Nexus DI Container
  */
 
-import { ContextProvider } from '../context/context';
+import { ContextProvider } from '../context/context.js';
 
 /**
  * Constructor type for creating instances
@@ -17,7 +17,7 @@ export type AbstractConstructor<T = {}> = abstract new (...args: any[]) => T;
 /**
  * Service identifier that can be a constructor, string, or symbol
  */
-export type ServiceIdentifier<T = any> = 
+export type ServiceIdentifier<T = any> =
   | Constructor<T>
   | AbstractConstructor<T>
   | string
@@ -284,12 +284,12 @@ export interface IContainer {
    * Create an async lazy proxy for a dependency
    */
   resolveLazyAsync<T>(token: InjectionToken<T>): Promise<T>;
-  
+
   /**
    * Add middleware to the container
    */
   addMiddleware(middleware: any): this;
-  
+
   /**
    * Install a plugin
    */

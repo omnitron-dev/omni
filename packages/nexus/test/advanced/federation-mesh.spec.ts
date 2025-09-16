@@ -6,14 +6,14 @@
 import {
   Container,
   createToken
-} from '../../src';
+} from '../../src/index.js';
 import {
   ModuleFederationContainer,
   createFederatedModule,
   createLazyModule,
   RemoteModule,
   SharedDependencies
-} from '../../src/federation';
+} from '../../src/federation/index.js';
 import {
   ConsulServiceDiscovery,
   LoadBalancer,
@@ -23,7 +23,7 @@ import {
   createRemoteProxy,
   HealthCheck,
   ServiceEndpoint
-} from '../../src/mesh';
+} from '../../src/mesh/index.js';
 
 describe('Module Federation', () => {
   let federation: ModuleFederationContainer;
@@ -39,7 +39,7 @@ describe('Module Federation', () => {
   describe('Remote Module Loading', () => {
     it('should load remote module', async () => {
       const remoteUrl = 'http://remote-service/module';
-      
+
       // Mock fetch for remote module
       global.fetch = jest.fn().mockResolvedValue({
         ok: true,
@@ -57,7 +57,7 @@ describe('Module Federation', () => {
       });
 
       await federation.loadRemoteModule(remoteModule);
-      
+
       expect(federation.hasModule('remote')).toBe(true);
       expect(global.fetch).toHaveBeenCalledWith(remoteUrl, expect.objectContaining({
         headers: expect.objectContaining({
@@ -86,13 +86,13 @@ describe('Module Federation', () => {
       });
 
       const loaded = await federation.loadRemoteModule(remoteModule);
-      
+
       expect(loaded.name).toBe('FallbackModule');
     });
 
     it('should retry failed remote module loading', async () => {
       let attempts = 0;
-      
+
       global.fetch = jest.fn().mockImplementation(() => {
         attempts++;
         if (attempts < 3) {
@@ -114,7 +114,7 @@ describe('Module Federation', () => {
       });
 
       await federation.loadRemoteModule(remoteModule);
-      
+
       expect(attempts).toBe(3);
       expect(federation.hasModule('remote')).toBe(true);
     });
@@ -124,7 +124,7 @@ describe('Module Federation', () => {
         ok: true,
         json: async () => ({ name: 'CachedModule' })
       });
-      
+
       global.fetch = fetchMock;
 
       const remoteModule = await createFederatedModule({
@@ -138,7 +138,7 @@ describe('Module Federation', () => {
       // Load twice
       await federation.loadRemoteModule(remoteModule);
       await federation.loadRemoteModule(remoteModule);
-      
+
       // Should only fetch once due to caching
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
@@ -147,7 +147,7 @@ describe('Module Federation', () => {
   describe('Lazy Module Loading', () => {
     it('should load module lazily on first access', async () => {
       let loaded = false;
-      
+
       const lazyModule = createLazyModule(() => {
         loaded = true;
         return Promise.resolve({
@@ -162,21 +162,21 @@ describe('Module Federation', () => {
       });
 
       expect(loaded).toBe(false);
-      
+
       await federation.loadLazyModule(lazyModule);
-      
+
       expect(loaded).toBe(false); // Still not loaded
-      
+
       // Access module triggers loading
       const module = await lazyModule.load();
-      
+
       expect(loaded).toBe(true);
       expect(module.name).toBe('LazyModule');
     });
 
     it('should support conditional lazy loading', async () => {
       const condition = { shouldLoad: false };
-      
+
       const lazyModule = createLazyModule(
         () => import('./test-module'),
         {
@@ -186,9 +186,9 @@ describe('Module Federation', () => {
 
       const result1 = await lazyModule.shouldLoad();
       expect(result1).toBe(false);
-      
+
       condition.shouldLoad = true;
-      
+
       const result2 = await lazyModule.shouldLoad();
       expect(result2).toBe(true);
     });
@@ -197,7 +197,7 @@ describe('Module Federation', () => {
   describe('Shared Dependencies', () => {
     it('should share dependencies between modules', async () => {
       const sharedToken = createToken<string>('Shared');
-      
+
       const moduleA = {
         name: 'ModuleA',
         providers: [
@@ -208,7 +208,7 @@ describe('Module Federation', () => {
           }
         ]
       };
-      
+
       const moduleB = {
         name: 'ModuleB',
         providers: [
@@ -230,26 +230,26 @@ describe('Module Federation', () => {
 
       await federation.loadModuleWithShared(moduleA, shared);
       await federation.loadModuleWithShared(moduleB, shared);
-      
+
       const container = federation.createContainer();
-      
+
       const serviceA = container.resolve(createToken('ServiceA'));
       const serviceB = container.resolve(createToken('ServiceB'));
-      
+
       expect(serviceA).toBe('A-shared-value');
       expect(serviceB).toBe('B-shared-value');
     });
 
     it('should handle version conflicts in shared dependencies', async () => {
       const sharedToken = createToken('Shared');
-      
+
       const moduleA = {
         name: 'ModuleA',
         requiredShared: {
           [sharedToken.toString()]: '^1.0.0'
         }
       };
-      
+
       const moduleB = {
         name: 'ModuleB',
         requiredShared: {
@@ -266,15 +266,15 @@ describe('Module Federation', () => {
       };
 
       await federation.loadModuleWithShared(moduleA, shared);
-      
+
       // Should warn about version conflict
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
       await federation.loadModuleWithShared(moduleB, shared);
-      
+
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining('Version conflict')
       );
-      
+
       warnSpy.mockRestore();
     });
   });
@@ -309,7 +309,7 @@ describe('Service Mesh', () => {
           }
         }
       };
-      
+
       discovery['consul'] = mockConsul as any;
 
       await discovery.register({
@@ -360,11 +360,11 @@ describe('Service Mesh', () => {
           ])
         }
       };
-      
+
       discovery['consul'] = mockConsul as any;
 
       const services = await discovery.discover('test-service');
-      
+
       expect(services).toHaveLength(2);
       expect(services[0]).toMatchObject({
         id: 'service-1',
@@ -382,7 +382,7 @@ describe('Service Mesh', () => {
 
     it('should watch service changes', async () => {
       const changes: any[] = [];
-      
+
       // Mock the agent service register for this test
       const mockConsul = {
         agent: {
@@ -391,7 +391,7 @@ describe('Service Mesh', () => {
           }
         }
       };
-      
+
       discovery['consul'] = mockConsul as any;
 
       // Set up a watcher
@@ -512,7 +512,7 @@ describe('Service Mesh', () => {
 
       // Circuit should be open
       expect(breaker.getState()).toBe('open');
-      
+
       // Next call should fail immediately
       await expect(breaker.call(failingCall)).rejects.toThrow('Circuit breaker is open');
     });
@@ -586,7 +586,7 @@ describe('Service Mesh', () => {
         ok: true,
         json: async () => ({ id: '1', name: 'John' })
       });
-      
+
       global.fetch = mockFetch;
 
       const proxy = createRemoteProxy<ApiService>({
@@ -599,7 +599,7 @@ describe('Service Mesh', () => {
       });
 
       const user = await proxy.getUser('1');
-      
+
       expect(user).toEqual({ id: '1', name: 'John' });
       expect(mockFetch).toHaveBeenCalled();
     });
@@ -620,7 +620,7 @@ describe('Service Mesh', () => {
           json: async () => 'success'
         });
       });
-      
+
       global.fetch = mockFetch;
 
       const proxy = createRemoteProxy<Service>({
@@ -633,7 +633,7 @@ describe('Service Mesh', () => {
       });
 
       const result = await proxy.call();
-      
+
       expect(result).toBe('success');
       expect(attempts).toBe(3);
     });
@@ -653,7 +653,7 @@ describe('Service Mesh', () => {
       });
 
       const result = await healthCheck.check();
-      
+
       expect(result.healthy).toBe(true);
       expect(result.status).toBe('healthy');
     });
@@ -666,7 +666,7 @@ describe('Service Mesh', () => {
       global.fetch = jest.fn().mockRejectedValue(new Error('Connection refused'));
 
       const result = await healthCheck.check();
-      
+
       expect(result.healthy).toBe(false);
       expect(result.error).toBe('Connection refused');
     });
@@ -682,7 +682,7 @@ describe('Service Mesh', () => {
       for (let i = 0; i < 3; i++) {
         await healthCheck.check();
       }
-      
+
       expect(healthCheck.isHealthy()).toBe(false);
       expect(healthCheck.getConsecutiveFailures()).toBe(3);
     });

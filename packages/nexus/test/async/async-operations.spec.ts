@@ -13,7 +13,7 @@ import {
   createAsyncToken,
   createStreamToken,
   createLazyToken
-} from '../../src';
+} from '../../src/index.js';
 
 describe('Async Operations', () => {
   let container: Container;
@@ -29,7 +29,7 @@ describe('Async Operations', () => {
   describe('Async Providers', () => {
     it('should register and resolve async provider', async () => {
       const token = createAsyncToken<string>('AsyncService');
-      
+
       container.registerAsync(token, {
         useFactory: async () => {
           await new Promise(resolve => setTimeout(resolve, 10));
@@ -118,7 +118,7 @@ describe('Async Operations', () => {
       }
 
       const token = createAsyncToken<AsyncService>('AsyncClass');
-      
+
       container.registerAsync(token, {
         useClass: AsyncService,
         async: true
@@ -126,7 +126,7 @@ describe('Async Operations', () => {
 
       const service = await container.resolveAsync(token);
       await container.initialize();
-      
+
       expect(service.isInitialized()).toBe(true);
     });
 
@@ -204,12 +204,12 @@ describe('Async Operations', () => {
       });
 
       const proxy = container.resolveLazy(token);
-      
+
       expect(created).toBe(false); // Not created yet
-      
+
       // Access property triggers creation
       const value = proxy.value;
-      
+
       expect(created).toBe(true);
       expect(value).toBe('lazy');
     });
@@ -228,10 +228,10 @@ describe('Async Operations', () => {
       });
 
       const proxy = container.resolveLazy(token);
-      
+
       const first = proxy.getValue();
       const second = proxy.getValue();
-      
+
       expect(first).toBe(1);
       expect(second).toBe(1);
       expect(createCount).toBe(1);
@@ -261,7 +261,7 @@ describe('Async Operations', () => {
       });
 
       const proxy = container.resolveLazy(token);
-      
+
       expect(() => proxy.someProperty).toThrow('Lazy initialization failed');
     });
 
@@ -277,7 +277,7 @@ describe('Async Operations', () => {
 
       const proxy = await container.resolveLazyAsync(token);
       const value = await proxy.value;
-      
+
       expect(value).toBe('async-lazy');
     });
   });
@@ -297,11 +297,11 @@ describe('Async Operations', () => {
 
       const stream = container.resolveStream(token);
       const values: number[] = [];
-      
+
       for await (const value of stream) {
         values.push(value);
       }
-      
+
       expect(values).toEqual([0, 1, 2, 3, 4]);
     });
 
@@ -318,7 +318,7 @@ describe('Async Operations', () => {
 
       const stream = container.resolveStream(token);
       const values: number[] = [];
-      
+
       try {
         for await (const value of stream) {
           values.push(value);
@@ -326,7 +326,7 @@ describe('Async Operations', () => {
       } catch (error) {
         expect(error.message).toBe('Stream error');
       }
-      
+
       expect(values).toEqual([1, 2]);
     });
 
@@ -351,11 +351,11 @@ describe('Async Operations', () => {
 
       const stream = container.resolveStream(transformedToken);
       const values: string[] = [];
-      
+
       for await (const value of stream) {
         values.push(value);
       }
-      
+
       expect(values).toEqual([
         'Number: 1',
         'Number: 2',
@@ -379,11 +379,11 @@ describe('Async Operations', () => {
 
       const stream = container.resolveStream(token);
       const values: number[] = [];
-      
+
       for await (const value of stream) {
         values.push(value);
       }
-      
+
       expect(values).toEqual([0, 2, 4, 6, 8]);
     });
 
@@ -401,11 +401,11 @@ describe('Async Operations', () => {
 
       const stream = container.resolveStream(token);
       const batches: number[][] = [];
-      
+
       for await (const batch of stream) {
         batches.push(batch);
       }
-      
+
       expect(batches).toEqual([
         [0, 1, 2],
         [3, 4, 5],
@@ -433,15 +433,15 @@ describe('Async Operations', () => {
 
       const stream = container.resolveStream(token);
       const values: number[] = [];
-      
+
       for await (const value of stream) {
         values.push(value);
         if (value === 4) break; // Cancel early
       }
-      
+
       // Give time for cleanup
       await new Promise(resolve => setTimeout(resolve, 50));
-      
+
       expect(values).toEqual([0, 1, 2, 3, 4]);
       expect(cancelled).toBe(true);
     });
@@ -473,9 +473,9 @@ describe('Async Operations', () => {
           // Simple merge - interleave streams
           const iter1 = s1[Symbol.asyncIterator]();
           const iter2 = s2[Symbol.asyncIterator]();
-          
+
           let done1 = false, done2 = false;
-          
+
           while (!done1 || !done2) {
             if (!done1) {
               const result1 = await iter1.next();
@@ -485,7 +485,7 @@ describe('Async Operations', () => {
                 yield result1.value;
               }
             }
-            
+
             if (!done2) {
               const result2 = await iter2.next();
               if (result2.done) {
@@ -501,11 +501,11 @@ describe('Async Operations', () => {
 
       const stream = container.resolveStream(mergedToken);
       const values: string[] = [];
-      
+
       for await (const value of stream) {
         values.push(value);
       }
-      
+
       expect(values).toContain('a1');
       expect(values).toContain('a2');
       expect(values).toContain('b1');
@@ -515,7 +515,7 @@ describe('Async Operations', () => {
 
   describe('Parallel Resolution', () => {
     it('should resolve multiple tokens in parallel', async () => {
-      const tokens = Array.from({ length: 5 }, (_, i) => 
+      const tokens = Array.from({ length: 5 }, (_, i) =>
         createAsyncToken<number>(`Parallel${i}`)
       );
 
@@ -551,7 +551,7 @@ describe('Async Operations', () => {
       });
 
       const results = await container.resolveParallelSettled([successToken, failToken]);
-      
+
       expect(results).toHaveLength(2);
       expect(results[0].status).toBe('fulfilled');
       expect(results[0].value).toBe('success');

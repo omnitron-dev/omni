@@ -3,12 +3,16 @@
  * Global test configuration and setup
  */
 
+import { isJest, sleep } from './test-utils.js';
+
 // Increase test timeout for async operations
-jest.setTimeout(10000);
+if (isJest) {
+  jest.setTimeout(10000);
+}
 
 // Mock global fetch for Node.js environment
-if (typeof global.fetch === 'undefined') {
-  (global as any).fetch = jest.fn();
+if (typeof global !== 'undefined' && typeof global.fetch === 'undefined') {
+  (global as any).fetch = isJest ? jest.fn() : () => Promise.reject(new Error('fetch not available'));
 }
 
 // Mock console methods to reduce noise in tests
@@ -21,9 +25,15 @@ const originalConsole = {
 beforeAll(() => {
   // Suppress console output during tests unless DEBUG is set
   if (!process.env['DEBUG']) {
-    console.log = jest.fn();
-    console.warn = jest.fn();
-    console.error = jest.fn();
+    if (isJest) {
+      console.log = jest.fn();
+      console.warn = jest.fn();
+      console.error = jest.fn();
+    } else {
+      console.log = () => {};
+      console.warn = () => {};
+      console.error = () => {};
+    }
   }
 });
 
@@ -35,33 +45,50 @@ afterAll(() => {
 });
 
 // Global test utilities
-global.createMockFunction = <T extends (...args: any[]) => any>(): jest.Mock<ReturnType<T>, Parameters<T>> => {
-  return jest.fn<ReturnType<T>, Parameters<T>>();
-};
+if (typeof global !== 'undefined') {
+  (global as any).createMockFunction = <T extends (...args: any[]) => any>(): any => {
+    if (isJest) {
+      return jest.fn<ReturnType<T>, Parameters<T>>();
+    }
+    // For non-Jest environments, return a simple spy
+    const calls: Parameters<T>[] = [];
+    const results: ReturnType<T>[] = [];
+    const fn = ((...args: Parameters<T>) => {
+      calls.push(args);
+      const result = undefined as ReturnType<T>;
+      results.push(result);
+      return result;
+    }) as any;
+    fn.mock = { calls, results };
+    return fn;
+  };
 
-global.delay = (ms: number): Promise<void> => {
-  return new Promise(resolve => setTimeout(resolve, ms));
-};
+  (global as any).delay = sleep;
+}
 
 // Ensure all async operations complete
 afterEach(async () => {
-  await new Promise(resolve => setImmediate(resolve));
+  await new Promise(resolve => setImmediate ? setImmediate(resolve) : setTimeout(resolve, 0));
 });
 
 // Clean up any hanging timers
 afterEach(() => {
-  jest.clearAllTimers();
+  if (isJest) {
+    jest.clearAllTimers();
+  }
 });
 
 // Ensure proper error handling
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection in tests:', reason);
-  throw reason;
-});
+if (typeof process !== 'undefined') {
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection in tests:', reason);
+    throw reason;
+  });
+}
 
 // Type declarations for global test utilities
 declare global {
-  function createMockFunction<T extends (...args: any[]) => any>(): jest.Mock<ReturnType<T>, Parameters<T>>;
+  function createMockFunction<T extends (...args: any[]) => any>(): any;
   function delay(ms: number): Promise<void>;
 }
 

@@ -32,7 +32,7 @@
 
 import 'reflect-metadata';
 
-import { Container } from '../container/container';
+import { Container } from '../container/container.js';
 
 /**
  * Decorator target types
@@ -290,12 +290,12 @@ export class CustomDecoratorBuilder<TOptions = any> {
       const isPropertyDecorator = propertyKey !== undefined && descriptorOrIndex === undefined;
       const isMethodDecorator = propertyKey !== undefined && descriptorOrIndex !== undefined && !isParameterDecorator;
       const isClassDecorator = propertyKey === undefined && descriptorOrIndex === undefined;
-      
+
       // Check if this is a decorator factory call with options
       // If we have exactly one argument and it's not a function (constructor), it's likely options
-      const isDecoratorFactory = arguments.length === 0 || 
+      const isDecoratorFactory = arguments.length === 0 ||
         (arguments.length === 1 && (
-          typeof optionsOrTarget !== 'function' || 
+          typeof optionsOrTarget !== 'function' ||
           (optionsOrTarget && typeof optionsOrTarget === 'object' && !optionsOrTarget.prototype)
         ));
 

@@ -2,12 +2,12 @@
  * Core container implementation for Nexus DI
  */
 
-import { ModuleCompiler } from '../modules/module';
-import { Plugin, PluginManager } from '../plugins/plugin';
-import { ContextManager, ContextProvider } from '../context/context';
-import { LifecycleEvent, LifecycleManager } from '../lifecycle/lifecycle';
-import { isToken, isMultiToken, getTokenName, isOptionalToken } from '../token/token';
-import { Middleware, MiddlewareContext, MiddlewarePipeline } from '../middleware/middleware';
+import { ModuleCompiler } from '../modules/module.js';
+import { Plugin, PluginManager } from '../plugins/plugin.js';
+import { ContextManager, ContextProvider } from '../context/context.js';
+import { LifecycleEvent, LifecycleManager } from '../lifecycle/lifecycle.js';
+import { isToken, isMultiToken, getTokenName, isOptionalToken } from '../token/token.js';
+import { Middleware, MiddlewareContext, MiddlewarePipeline } from '../middleware/middleware.js';
 import {
   DisposalError,
   ResolutionError,
@@ -17,7 +17,7 @@ import {
   CircularDependencyError,
   DependencyNotFoundError,
   DuplicateRegistrationError
-} from '../errors/errors';
+} from '../errors/errors.js';
 import {
   Scope,
   IModule,
@@ -33,7 +33,7 @@ import {
   ConditionalProvider,
   RegistrationOptions,
   AsyncFactoryProvider
-} from '../types/core';
+} from '../types/core.js';
 
 /**
  * Registration metadata

@@ -24,7 +24,7 @@ import {
   PreDestroy,
   Lazy,
   Container
-} from '../../src/decorators';
+} from '../../src/decorators/index.js';
 
 describe('Decorator Support', () => {
   let container: Container;
@@ -58,11 +58,11 @@ describe('Decorator Support', () => {
 
       @Injectable()
       class ServiceWithDep {
-        constructor(@Inject(depToken) public dep: string) {}
+        constructor(@Inject(depToken) public dep: string) { }
       }
 
       container.register(depToken, { useValue: 'injected-value' });
-      
+
       const token = createToken<ServiceWithDep>('ServiceWithDep');
       container.register(token, { useClass: ServiceWithDep });
 
@@ -81,7 +81,7 @@ describe('Decorator Support', () => {
           @Inject(token1) public dep1: string,
           @Inject(token2) public dep2: number,
           @Inject(token3) public dep3: boolean
-        ) {}
+        ) { }
       }
 
       container.register(token1, { useValue: 'string' });
@@ -108,7 +108,7 @@ describe('Decorator Support', () => {
         constructor(
           @Inject(requiredToken) public required: string,
           @Optional() @Inject(optionalToken) public optional?: string
-        ) {}
+        ) { }
       }
 
       container.register(requiredToken, { useValue: 'required' });
@@ -129,7 +129,7 @@ describe('Decorator Support', () => {
       class ServiceWithOptional {
         constructor(
           @Optional() @Inject(optionalToken) public optional?: string
-        ) {}
+        ) { }
       }
 
       container.register(optionalToken, { useValue: 'optional-value' });
@@ -227,7 +227,7 @@ describe('Decorator Support', () => {
 
       @Service('UserRepository')
       class UserRepository {
-        constructor(@Inject(dbToken) private db: any) {}
+        constructor(@Inject(dbToken) private db: any) { }
 
         findAll() {
           return this.db.query();
@@ -269,7 +269,7 @@ describe('Decorator Support', () => {
       class HandlerManager {
         constructor(
           @InjectAll(handlerToken) public handlers: Array<{ handle: () => string }>
-        ) {}
+        ) { }
 
         handleAll() {
           return this.handlers.map(h => h.handle()).join(',');
@@ -364,11 +364,11 @@ describe('Decorator Support', () => {
 
       container.resolve(token);
       await container.initialize();
-      
+
       expect(callOrder).toEqual(['init1', 'init2']);
-      
+
       await container.dispose();
-      
+
       expect(callOrder).toEqual(['init1', 'init2', 'cleanup1', 'cleanup2']);
     });
   });
@@ -434,14 +434,14 @@ describe('Decorator Support', () => {
           @Value('app.name') public appName: string,
           @Value('app.port') public appPort: number,
           @Value('database.host') public dbHost: string
-        ) {}
+        ) { }
       }
 
       const token = createToken<ConfigurableService>('ConfigurableService');
       container.register(token, { useClass: ConfigurableService });
 
       const service = container.resolve(token);
-      
+
       expect(service.appName).toBe('TestApp');
       expect(service.appPort).toBe(3000);
       expect(service.dbHost).toBe('localhost');
@@ -458,14 +458,14 @@ describe('Decorator Support', () => {
           @Value('app.name') public appName: string,
           @Value('app.description', 'No description') public description: string,
           @Value('app.port', 3000) public port: number
-        ) {}
+        ) { }
       }
 
       const token = createToken<ServiceWithDefaults>('ServiceWithDefaults');
       container.register(token, { useClass: ServiceWithDefaults });
 
       const service = container.resolve(token);
-      
+
       expect(service.appName).toBe('TestApp');
       expect(service.description).toBe('No description');
       expect(service.port).toBe(3000);
@@ -486,7 +486,7 @@ describe('Decorator Support', () => {
         ],
         exports: [serviceToken]
       })
-      class TestModule {}
+      class TestModule { }
 
       const module = TestModule.getModule();
       container.loadModule(module);
@@ -508,14 +508,14 @@ describe('Decorator Support', () => {
         ],
         exports: [sharedToken]
       })
-      class SharedModule {}
+      class SharedModule { }
 
       @Module({
         name: 'AppModule',
         imports: [SharedModule],
         providers: []
       })
-      class AppModule {}
+      class AppModule { }
 
       const module = AppModule.getModule();
       container.loadModule(module);
@@ -568,8 +568,8 @@ describe('Decorator Support', () => {
 
       @Injectable()
       class ServiceA {
-        constructor(@Lazy(() => tokenB) private getB: () => any) {}
-        
+        constructor(@Lazy(() => tokenB) private getB: () => any) { }
+
         callB() {
           return this.getB().getName();
         }
@@ -577,8 +577,8 @@ describe('Decorator Support', () => {
 
       @Injectable()
       class ServiceB {
-        constructor(@Lazy(() => tokenA) private getA: () => any) {}
-        
+        constructor(@Lazy(() => tokenA) private getA: () => any) { }
+
         getName() {
           return 'ServiceB';
         }

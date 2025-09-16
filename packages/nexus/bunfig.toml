@@ -1,6 +1,5 @@
 [test]
 # Test configuration for Bun
-preload = []
 coverage = true
 coverageReporter = ["text", "lcov"]
 

@@ -2,7 +2,7 @@
  * Token system for type-safe dependency identification
  */
 
-import { Token, Scope, MultiToken, TokenMetadata } from '../types/core';
+import { Token, Scope, MultiToken, TokenMetadata } from '../types/core.js';
 
 /**
  * Token registry for caching tokens by name
@@ -67,20 +67,20 @@ export function createToken<T = any>(
   if (!name || (typeof name === 'string' && name.trim() === '')) {
     throw new Error('Token name cannot be empty');
   }
-  
+
   // Create a registry key based on name only for consistent token identity
   // Tokens with the same name should be the same token instance
   const registryKey = name;
-  
+
   // Check if token already exists in registry
   // Only reuse if no metadata is provided (for backward compatibility)
   if (tokenRegistry.has(registryKey) && Object.keys(metadata).length === 0) {
     return tokenRegistry.get(registryKey) as EnhancedToken<T>;
   }
-  
+
   const symbol = Symbol(name);
   const id = Symbol.for(`nexus:token:${name}`);
-  
+
   const token: EnhancedToken<T> = {
     id,
     symbol,
@@ -114,12 +114,12 @@ export function createToken<T = any>(
       };
     }
   };
-  
+
   // Cache the token only if it has no metadata (to avoid conflicts)
   if (Object.keys(metadata).length === 0) {
     tokenRegistry.set(registryKey, token);
   }
-  
+
   return token;
 }
 
@@ -134,14 +134,14 @@ export function createMultiToken<T = any>(
   metadata: Partial<TokenMetadata> = {}
 ): EnhancedMultiToken<T> {
   const tokenName = name || `MultiToken_${Math.random().toString(36).substr(2, 9)}`;
-  
+
   if (!tokenName || tokenName.trim() === '') {
     throw new Error('Token name cannot be empty');
   }
-  
+
   const symbol = Symbol(tokenName);
   const id = Symbol.for(`nexus:multi-token:${tokenName}`);
-  
+
   const token: EnhancedMultiToken<T> = {
     id,
     symbol,
@@ -178,7 +178,7 @@ export function createMultiToken<T = any>(
       };
     }
   };
-  
+
   return token;
 }
 
@@ -195,10 +195,10 @@ export function createOptionalToken<T = any>(
   if (!name || name.trim() === '') {
     throw new Error('Token name cannot be empty');
   }
-  
+
   const symbol = Symbol(name);
   const id = Symbol.for(`nexus:optional-token:${name}`);
-  
+
   const token: EnhancedOptionalToken<T> = {
     id,
     symbol,
@@ -234,7 +234,7 @@ export function createOptionalToken<T = any>(
       };
     }
   };
-  
+
   return token;
 }
 
@@ -254,10 +254,10 @@ export function createConfigToken<T = any>(
   if (!name || name.trim() === '') {
     throw new Error('Token name cannot be empty');
   }
-  
+
   const symbol = Symbol(name);
   const id = Symbol.for(`nexus:config-token:${name}`);
-  
+
   const token: ConfigToken<T> = {
     id,
     symbol,
@@ -295,7 +295,7 @@ export function createConfigToken<T = any>(
       };
     }
   };
-  
+
   return token;
 }
 
@@ -312,10 +312,10 @@ export function createLazyToken<T = any>(
   if (!name || name.trim() === '') {
     throw new Error('Token name cannot be empty');
   }
-  
+
   const symbol = Symbol(name);
   const id = Symbol.for(`nexus:lazy-token:${name}`);
-  
+
   const token: LazyToken<T> = {
     id,
     symbol,
@@ -352,7 +352,7 @@ export function createLazyToken<T = any>(
       };
     }
   };
-  
+
   return token;
 }
 
@@ -371,10 +371,10 @@ export function createScopedToken<T = any>(
   if (!name || name.trim() === '') {
     throw new Error('Token name cannot be empty');
   }
-  
+
   const symbol = Symbol(`${name}:${scope}`);
   const id = Symbol.for(`nexus:scoped-token:${name}:${scope}`);
-  
+
   const token: EnhancedToken<T> = {
     id,
     symbol,
@@ -410,7 +410,7 @@ export function createScopedToken<T = any>(
       };
     }
   };
-  
+
   return token;
 }
 
@@ -427,10 +427,10 @@ export function createAsyncToken<T = any>(
   if (!name || name.trim() === '') {
     throw new Error('Token name cannot be empty');
   }
-  
+
   const symbol = Symbol(name);
   const id = Symbol.for(`nexus:async-token:${name}`);
-  
+
   const token: EnhancedToken<T> = {
     id,
     symbol,
@@ -466,7 +466,7 @@ export function createAsyncToken<T = any>(
       };
     }
   };
-  
+
   return token;
 }
 
@@ -483,10 +483,10 @@ export function createStreamToken<T = any>(
   if (!name || name.trim() === '') {
     throw new Error('Token name cannot be empty');
   }
-  
+
   const symbol = Symbol(name);
   const id = Symbol.for(`nexus:stream-token:${name}`);
-  
+
   const token: EnhancedToken<AsyncIterable<T>> = {
     id,
     symbol,
@@ -522,7 +522,7 @@ export function createStreamToken<T = any>(
       };
     }
   };
-  
+
   return token;
 }
 
@@ -532,9 +532,9 @@ export function createStreamToken<T = any>(
  * @returns True if the value is a Token
  */
 export function isToken(value: any): value is Token {
-  return !!value && 
-    typeof value === 'object' && 
-    'id' in value && 
+  return !!value &&
+    typeof value === 'object' &&
+    'id' in value &&
     typeof value.id === 'symbol' &&
     'name' in value &&
     'metadata' in value;
@@ -598,30 +598,30 @@ export function tokenFromClass<T>(
 export class TokenRegistry {
   private static instance: TokenRegistry;
   private tokens = new Map<symbol, Token>();
-  
-  private constructor() {}
-  
+
+  private constructor() { }
+
   static getInstance(): TokenRegistry {
     if (!TokenRegistry.instance) {
       TokenRegistry.instance = new TokenRegistry();
     }
     return TokenRegistry.instance;
   }
-  
+
   /**
    * Register a token globally
    */
   register(token: Token): void {
     this.tokens.set(token.id, token);
   }
-  
+
   /**
    * Get a token by its ID
    */
   get(id: symbol): Token | undefined {
     return this.tokens.get(id);
   }
-  
+
   /**
    * Get a token by its name
    */
@@ -633,14 +633,14 @@ export class TokenRegistry {
     }
     return undefined;
   }
-  
+
   /**
    * Get all registered tokens
    */
   getAll(): Token[] {
     return Array.from(this.tokens.values());
   }
-  
+
   /**
    * Clear all registered tokens
    */

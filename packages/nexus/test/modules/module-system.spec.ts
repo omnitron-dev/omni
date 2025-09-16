@@ -15,7 +15,7 @@ import {
   ModuleMetadata,
   ForwardRef,
   forwardRef
-} from '../../src';
+} from '../../src/index.js';
 
 describe('Module System', () => {
   let container: Container;
@@ -46,7 +46,7 @@ describe('Module System', () => {
 
     it('should load module into container', async () => {
       const serviceToken = createToken<string>('Service');
-      
+
       const module = createModule({
         name: 'AppModule',
         providers: [
@@ -60,7 +60,7 @@ describe('Module System', () => {
 
       await container.loadModule(module);
       const service = container.resolve(serviceToken);
-      
+
       expect(service).toBe('module-service');
     });
 
@@ -93,7 +93,7 @@ describe('Module System', () => {
 
       await container.loadModule(appModule);
       const appService = container.resolve(appToken);
-      
+
       expect(appService).toBe('app-shared-value');
     });
 
@@ -111,7 +111,7 @@ describe('Module System', () => {
       });
 
       await container.loadModule(module);
-      
+
       expect(container.resolve(publicToken)).toBe('public');
       expect(() => container.resolve(privateToken)).toThrow();
     });
@@ -148,7 +148,7 @@ describe('Module System', () => {
 
       await container.loadModule(module);
       const db = container.resolve(DatabaseToken);
-      
+
       expect(db.config.host).toBe('localhost');
       expect(db.config.port).toBe(5432);
     });
@@ -171,7 +171,7 @@ describe('Module System', () => {
 
       const module = RepositoryModule.forFeature(['User', 'Post', 'Comment']);
       await container.loadModule(module);
-      
+
       const userRepo = container.resolve(createToken('UserRepository'));
       expect(userRepo).toEqual({ entity: 'User' });
     });
@@ -207,7 +207,7 @@ describe('Module System', () => {
 
       await container.loadModule(module);
       const config = await container.resolveAsync(ConfigToken);
-      
+
       expect(config.apiKey).toBe('secret-key');
     });
   });
@@ -228,7 +228,7 @@ describe('Module System', () => {
 
       await container.loadModule(module);
       const service = container.resolve(serviceToken);
-      
+
       expect(service).toBe('enabled');
     });
 
@@ -248,7 +248,7 @@ describe('Module System', () => {
 
       await container.loadModule(module);
       const service = container.resolve(serviceToken);
-      
+
       expect(service).toBe('prod-service');
     });
 
@@ -278,7 +278,7 @@ describe('Module System', () => {
       await container.loadModule(ServiceModule);
       const service = container.resolve(serviceToken);
       const logger = container.resolve(loggerToken);
-      
+
       expect(service.name).toBe('TestService');
       expect(logger.log).toHaveBeenCalledWith('Service created');
     });
@@ -309,7 +309,7 @@ describe('Module System', () => {
 
       await container.loadModule(configModule);
       const ConfigToken = createToken<AppConfig>('AppConfig');
-      
+
       // Register the config token
       container.register(ConfigToken, {
         useFactory: () => configModule.config!
@@ -368,7 +368,7 @@ describe('Module System', () => {
 
       await container.loadModule(module);
       await container.dispose();
-      
+
       expect(onDestroy).toHaveBeenCalled();
     });
 
@@ -430,7 +430,7 @@ describe('Module System', () => {
 
       await container.loadModule(moduleC);
       await container.dispose();
-      
+
       expect(destroyOrder).toEqual(['C', 'B', 'A']);
     });
   });
@@ -465,10 +465,10 @@ describe('Module System', () => {
       });
 
       await container.loadModule(moduleB);
-      
+
       const a = container.resolve(tokenA);
       const b = container.resolve(tokenB);
-      
+
       expect(a.name).toBe('A');
       expect(b.name).toBe('B');
     });
@@ -521,7 +521,7 @@ describe('Module System', () => {
 
       await container.loadModule(globalModule);
       await container.loadModule(consumerModule);
-      
+
       const consumer = container.resolve(createToken('Consumer'));
       expect(consumer).toBe('consumer-global-service');
     });

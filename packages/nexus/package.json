@@ -38,21 +38,23 @@
   ],
   "scripts": {
     "build": "tsc -p ./tsconfig.json",
-    "test": "jest --passWithNoTests",
+    "test": "jest",
     "test:coverage": "jest --coverage",
     "test:node": "jest",
-    "test:bun": "bun test test/**/*.spec.ts",
-    "test:deno": "deno test --allow-read test/deno/**/*.test.ts",
-    "test:all": "npm run test:node && npm run test:bun",
+    "test:bun": "/Users/taaliman/.bun/bin/bun test test/runtime/bun-all.test.ts",
+    "test:deno": "/Users/taaliman/.deno/bin/deno test --no-check --allow-all --unstable-sloppy-imports test/runtime/deno-all.test.ts",
+    "test:all": "npm run test:node && npm run test:bun && npm run test:deno",
     "clean": "rm -rf dist",
     "dev": "tsc -p ./tsconfig.build.json --watch"
   },
   "devDependencies": {
+    "@omnitron-dev/testing": "workspace:*",
     "@types/bun": "latest",
     "@types/jest": "^30.0.0",
     "@types/node": "24.4.0",
     "jest": "30.1.3",
     "ts-jest": "29.4.1",
+    "ts-jest-resolver": "^2.0.1",
     "typescript": "5.9.2"
   },
   "keywords": [

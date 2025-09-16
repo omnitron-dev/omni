@@ -4,7 +4,7 @@ const config: Config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/test'],
-  testMatch: ['**/*.spec.ts'],
+  testMatch: ['**/*.spec.ts', '**/*.test.ts'],
   forceExit: true,
   collectCoverageFrom: [
     'src/**/*.ts',
@@ -27,10 +27,7 @@ const config: Config = {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^@omnitron-dev/nexus$': '<rootDir>/../../packages/nexus/src/index.ts',
     '^@omnitron-dev/eventemitter$': '<rootDir>/../../packages/eventemitter/src/index.ts',
-    '^@omnitron-dev/common$': '<rootDir>/../../packages/common/src/index.ts',
-    '^@devgrid/nexus$': '<rootDir>/../../packages/nexus/src/index.ts',
-    '^@devgrid/eventemitter$': '<rootDir>/../../packages/eventemitter/src/index.ts',
-    '^@devgrid/common$': '<rootDir>/../../packages/common/src/index.ts'
+    '^@omnitron-dev/common$': '<rootDir>/../../packages/common/src/index.ts'
   },
   transform: {
     '^.+\\.ts$': ['ts-jest', {
@@ -46,7 +43,7 @@ const config: Config = {
     }]
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(@omnitron-dev|@devgrid)/)'
+    'node_modules/(?!(@omnitron-dev)/)'
   ],
   extensionsToTreatAsEsm: ['.ts'],
   testPathIgnorePatterns: [

@@ -299,6 +299,25 @@ export function Service(name?: string, options: Omit<InjectableOptions, 'scope'>
 }
 
 /**
+ * Global module decorator - marks a module as global
+ * Global modules are automatically available to all other modules
+ */
+export function Global() {
+  return function <T extends Constructor<any>>(target: T): T {
+    const existingMetadata = Reflect.getMetadata(METADATA_KEYS.MODULE, target);
+    if (existingMetadata) {
+      // Update existing module metadata
+      existingMetadata.global = true;
+      Reflect.defineMetadata(METADATA_KEYS.MODULE, existingMetadata, target);
+    } else {
+      // If no module metadata exists, create minimal metadata
+      Reflect.defineMetadata(METADATA_KEYS.MODULE, { global: true }, target);
+    }
+    return target;
+  };
+}
+
+/**
  * Lifecycle hook decorators
  */
 export function PostConstruct() {

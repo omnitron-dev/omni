@@ -1,4 +1,4 @@
-import { omit } from '../src/omit';
+import { omit } from '../src/omit.js';
 
 describe('omit', () => {
   it('should omit a key from the object', () => {
@@ -87,7 +87,7 @@ describe('omit', () => {
 
   it('should return really empty object for props=true', () => {
     class A {
-      constructor(public sec: any) {}
+      constructor(public sec: any) { }
     }
 
     expect(omit(A, true)).toEqual({});
@@ -97,7 +97,7 @@ describe('omit', () => {
     class A {
       static prop1 = 12;
 
-      constructor(public sec: any) {}
+      constructor(public sec: any) { }
     }
 
     const originalDescrs: any[] = [];
@@ -289,7 +289,7 @@ describe('omit', () => {
   });
 
   it('should maintain performance with large objects', () => {
-    const largeObj = {};
+    const largeObj: Record<string, number> = {};
     for (let i = 0; i < 10000; i++) {
       largeObj[`key${i}`] = i;
     }
@@ -341,7 +341,7 @@ describe('omit', () => {
   });
 
   it('should be fast with large arrays of keys', () => {
-    const obj = {};
+    const obj: Record<string, number> = {};
     const keys: string[] = [];
 
     for (let i = 0; i < 10000; i++) {

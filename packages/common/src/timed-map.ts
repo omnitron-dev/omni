@@ -7,7 +7,7 @@ export class TimedMap<K, V> {
   // Callback function invoked for each key after its time expires
   private timeoutCallback: (key: K) => void;
   // Internal storage where each key is associated with a value and a timer
-  private map = new Map<K, { value: V; timer: NodeJS.Timeout }>();
+  private map = new Map<K, { value: V; timer: ReturnType<typeof setTimeout> }>();
 
   /**
    * Constructor for the TimedMap class.
@@ -91,7 +91,7 @@ export class TimedMap<K, V> {
    */
   clear() {
     this.map.forEach((obj) => {
-      clearTimeout(obj.timer); // Clear each timer
+      clearTimeout(obj.timer as any); // Clear each timer
     });
     this.map.clear(); // Clear the map
   }
@@ -102,7 +102,7 @@ export class TimedMap<K, V> {
    */
   private clearTimeout(key: K) {
     if (this.map.has(key)) {
-      clearTimeout(this.map.get(key)!.timer); // Clear the timer
+      clearTimeout(this.map.get(key)!.timer as any); // Clear the timer
     }
   }
 }

@@ -228,3 +228,8 @@ logger.info({ data }, 'message');
 - Bun support is being actively added across packages
 - TypeScript versions may vary slightly between packages (5.8.3 - 5.9.2)
 - When fixing compilation errors after dependency updates, check for breaking changes in logger libraries (especially Pino)
+
+execute these command each time for session:
+```
+export PATH="/Users/taaliman/.bun/bin:/Users/taaliman/.deno/bin:/Users/taaliman/.cargo/bin:/opt/homebrew/bin:$PATH"
+```

@@ -1,6 +1,6 @@
-import { entries } from './entries';
-import { noop, truly } from './primitives';
-import { isNumber, isPromise, isFunction } from './predicates';
+import { entries } from './entries.js';
+import { noop, truly } from './primitives.js';
+import { isNumber, isPromise, isFunction } from './predicates.js';
 
 // Define the Deferred type
 export type Deferred = {
@@ -92,11 +92,11 @@ export const timeout = <T>(promise: Promise<T>, ms: number, options: TimeoutOpti
   }
 
   return new Promise<T>((resolve, reject) => {
-    let timeoutId: NodeJS.Timeout | null;
+    let timeoutId: ReturnType<typeof setTimeout> | null;
 
     const cleanup = () => {
       if (timeoutId) {
-        clearTimeout(timeoutId);
+        clearTimeout(timeoutId as any);
         timeoutId = null;
       }
       if (options.signal) {
@@ -122,8 +122,8 @@ export const timeout = <T>(promise: Promise<T>, ms: number, options: TimeoutOpti
       reject(new Error(`Timeout of ${ms}ms exceeded`));
     }, ms);
 
-    if (options.unref && typeof timeoutId.unref === 'function') {
-      timeoutId.unref();
+    if (options.unref && timeoutId && typeof (timeoutId as any).unref === 'function') {
+      (timeoutId as any).unref();
     }
 
     promise.then(
@@ -241,14 +241,14 @@ export const promisify = (
 
   return options && options.context
     ? (...args: any[]) =>
-        new Promise((resolve, reject) => {
-          processFn(fn, options.context, args, options && Boolean(options.multiArgs), resolve, reject);
-        })
+      new Promise((resolve, reject) => {
+        processFn(fn, options.context, args, options && Boolean(options.multiArgs), resolve, reject);
+      })
     : function _(this: any, ...args: any[]) {
-        return new Promise((resolve, reject) => {
-          processFn(fn, this, args, Boolean(options?.multiArgs), resolve, reject);
-        });
-      };
+      return new Promise((resolve, reject) => {
+        processFn(fn, this, args, Boolean(options?.multiArgs), resolve, reject);
+      });
+    };
 };
 
 /**

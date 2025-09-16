@@ -1,5 +1,5 @@
-import { falsely } from './primitives';
-import { isArray, isObject, isString, isFunction } from './predicates';
+import { falsely } from './primitives.js';
+import { isArray, isObject, isString, isFunction } from './predicates.js';
 
 // Define the options for the omit function
 type OmitOptions = {

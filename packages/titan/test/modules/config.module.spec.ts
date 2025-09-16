@@ -9,7 +9,7 @@ import {
   ConfigSchemas,
   createTypedConfig,
   type ValidationResult
-} from '../src/modules/config.module';
+} from '../../src/modules/config.module';
 
 describe('ConfigModule with zod@4.1.8', () => {
   let config: ConfigModule;

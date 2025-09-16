@@ -2,6 +2,9 @@
  * Test setup file for Jest
  */
 
+// Import reflect-metadata for decorator support
+import 'reflect-metadata';
+
 // Set test environment
 process.env.NODE_ENV = 'test';
 

@@ -16,7 +16,7 @@ Titan is a next-generation backend framework built on the [Nexus](../nexus) DI c
 ## Quick Start
 
 ```typescript
-import { Titan } from '@devgrid/titan';
+import { Titan } from '@omnitron-dev/titan';
 
 const app = Titan.create();
 
@@ -30,8 +30,8 @@ app.listen(3000);
 ## With Dependency Injection
 
 ```typescript
-import { Titan, Controller, Get, Inject } from '@devgrid/titan';
-import { createToken } from '@devgrid/nexus';
+import { Titan, Controller, Get, Inject } from '@omnitron-dev/titan';
+import { createToken } from '@omnitron-dev/nexus';
 
 // Define service token
 const GreetingServiceToken = createToken<GreetingService>('GreetingService');
@@ -179,7 +179,7 @@ const app = Titan.create();
 app.listen(3000); // Automatically uses the best adapter
 
 // Or explicitly choose
-import { NodeAdapter, BunAdapter, DenoAdapter } from '@devgrid/titan';
+import { NodeAdapter, BunAdapter, DenoAdapter } from '@omnitron-dev/titan';
 
 app.useAdapter(new BunAdapter());
 ```

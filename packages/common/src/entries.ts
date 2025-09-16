@@ -1,4 +1,4 @@
-import { isNil } from './predicates';
+import { isNil } from './predicates.js';
 
 // Cache the own property names of a plain object prototype to filter out later
 const objectOwnProps = Object.getOwnPropertyNames(Object.getPrototypeOf({}));

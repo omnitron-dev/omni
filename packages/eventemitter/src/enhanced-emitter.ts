@@ -51,7 +51,7 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
   private batchConfigs: Map<string, BatchOptions> = new Map();
   private batchBuffers: Map<string, any[]> = new Map();
   private batchTimers: Map<string, NodeJS.Timeout> = new Map();
-  
+
   // Throttle/Debounce configurations
   private throttleConfigs: Map<string, { interval: number; lastEmit: number }> = new Map();
   private debounceConfigs: Map<string, { delay: number; timer?: NodeJS.Timeout }> = new Map();
@@ -109,7 +109,7 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
    */
   override emit(event: string | symbol, ...args: any[]): boolean {
     const eventName = String(event);
-    
+
     // Check for throttle config
     if (this.throttleConfigs.has(eventName)) {
       const config = this.throttleConfigs.get(eventName)!;
@@ -119,7 +119,7 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
       }
       config.lastEmit = now;
     }
-    
+
     // Check for debounce config
     if (this.debounceConfigs.has(eventName)) {
       const config = this.debounceConfigs.get(eventName)!;
@@ -132,7 +132,7 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
       }, config.delay);
       return false; // Debounced, will emit later
     }
-    
+
     return super.emit(event, ...args);
   }
 
@@ -144,6 +144,29 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
     const metadata = this.createMetadata(options?.metadata);
 
     try {
+      // Check for throttle config
+      if (this.throttleConfigs.has(event)) {
+        const config = this.throttleConfigs.get(event)!;
+        const now = Date.now();
+        if (now - config.lastEmit < config.interval) {
+          return false; // Throttled
+        }
+        config.lastEmit = now;
+      }
+
+      // Check for debounce config
+      if (this.debounceConfigs.has(event)) {
+        const config = this.debounceConfigs.get(event)!;
+        if (config.timer) {
+          clearTimeout(config.timer);
+        }
+        config.timer = setTimeout(() => {
+          // Emit the event after debounce delay
+          this.emitWithMetadata(event, data, metadata);
+        }, config.delay);
+        return false; // Debounced, will emit later
+      }
+
       // Validate if schema exists
       if (options?.validate !== false && this.schemas.has(event)) {
         const schema = this.schemas.get(event)!;
@@ -258,11 +281,13 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
     );
 
     let handled = false;
-    
+
     // First emit to wildcard patterns (excluding exact match)
     for (const pattern of matchingPatterns) {
       if (pattern !== event) {  // Skip exact match here
-        if (super.emit(pattern, data, metadata)) {
+        // Include the actual event name in metadata for wildcard handlers
+        const wildcardMetadata = { ...metadata, event };
+        if (super.emit(pattern, data, wildcardMetadata)) {
           handled = true;
         }
       }
@@ -281,6 +306,34 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
    */
   private emitWithMetadata(event: string, data: any, metadata: EventMetadata): boolean {
     return super.emit(event, data, metadata);
+  }
+
+  /**
+   * Emit event with reduce pattern
+   */
+  override async emitReduce<T = any, R = any>(
+    event: string,
+    data: T,
+    initialValue: R,
+    metadata?: EventMetadata
+  ): Promise<R> {
+    const listeners = this.listeners(event);
+    if (listeners.length === 0) return initialValue;
+
+    let accumulator = initialValue;
+
+    for (const listener of listeners) {
+      try {
+        // Call listener with data, metadata, and accumulator
+        const result = await Promise.resolve(listener(data, metadata, accumulator));
+        accumulator = result !== undefined ? result : accumulator;
+      } catch (error) {
+        // Handle errors, continue with current accumulator
+        this.handleError(event, error as Error, data, metadata || ({} as EventMetadata));
+      }
+    }
+
+    return accumulator;
   }
 
   /**

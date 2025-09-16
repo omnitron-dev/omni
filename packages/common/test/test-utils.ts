@@ -6,34 +6,38 @@
 export const isBun = typeof Bun !== 'undefined';
 export const isJest = !isBun && typeof jest !== 'undefined' && typeof jest.useFakeTimers === 'function';
 
+// Check if fake timers are supported
+export const supportsFakeTimers = () => {
+  return isJest;
+};
+
 // Timer utilities
 export const setupFakeTimers = () => {
   if (isJest) {
     jest.useFakeTimers();
   }
-  // Bun doesn't support fake timers in the same way
+  // Bun doesn't support fake timers - tests should be skipped or use real timers
 };
 
 export const teardownFakeTimers = () => {
   if (isJest) {
     jest.useRealTimers();
   }
-  // Bun doesn't support fake timers in the same way
+  // Bun doesn't support fake timers
 };
 
 export const advanceTimersByTime = (ms: number) => {
   if (isJest) {
     jest.advanceTimersByTime(ms);
   }
-  // In Bun, we'll need to use real timers
-  // Tests should check isBun and use sleep() instead
+  // In Bun, we can't advance fake timers
 };
 
 export const clearAllTimers = () => {
   if (isJest) {
     jest.clearAllTimers();
   }
-  // Bun doesn't support this in the same way
+  // Bun doesn't support this
 };
 
 // Promise utilities for cross-runtime compatibility

@@ -6,15 +6,14 @@
  */
 
 import {
-  createDecorator,
-  createMethodInterceptor,
-  createPropertyInterceptor,
-  DecoratorContext,
   Injectable,
-  Singleton,
+  createDecorator,
+  DecoratorContext,
   Module as NexusModule,
-  ModuleDecoratorOptions
-} from '@nexus/core/decorators';
+  ModuleDecoratorOptions,
+  createMethodInterceptor,
+  createPropertyInterceptor
+} from '@omnitron-dev/nexus';
 
 /**
  * Titan module metadata
@@ -32,7 +31,7 @@ export const TitanModule = createDecorator<TitanModuleOptions>()
   .withName('TitanModule')
   .forClass((context) => {
     const options = context.options!;
-    
+
     // Apply Nexus module decorator if nexusModule is provided
     if (options.nexusModule) {
       NexusModule({
@@ -43,12 +42,12 @@ export const TitanModule = createDecorator<TitanModuleOptions>()
         global: options.global
       })(context.target);
     }
-    
+
     // Store Titan-specific metadata
     context.metadata.set('titan:module', true);
     context.metadata.set('titan:dependencies', options.dependencies);
     context.metadata.set('titan:config', options.config);
-    
+
     // Mark as Injectable and Singleton by default
     Injectable({ scope: 'singleton' as any })(context.target);
   })
@@ -62,7 +61,7 @@ export type LifecyclePhase = 'bootstrap' | 'startup' | 'ready' | 'shutdown' | 'e
 /**
  * Application lifecycle decorator
  */
-export const AppLifecycle = createDecorator<{ 
+export const AppLifecycle = createDecorator<{
   phase: LifecyclePhase;
   priority?: number;
 }>()
@@ -79,7 +78,7 @@ export const AppLifecycle = createDecorator<{
       const phase = context.options?.phase;
       const method = context.propertyKey;
       const target = context.target;
-      
+
       // This would be handled by Titan's lifecycle manager
       registerLifecycleHook(target, method as string, phase!);
     }
@@ -89,7 +88,7 @@ export const AppLifecycle = createDecorator<{
 /**
  * Module event listener decorator
  */
-export const OnModuleEvent = createDecorator<{ 
+export const OnModuleEvent = createDecorator<{
   event: string;
   filter?: (data: any) => boolean;
 }>()
@@ -98,20 +97,20 @@ export const OnModuleEvent = createDecorator<{
     const event = context.options?.event;
     const filter = context.options?.filter;
     const handler = context.descriptor!.value;
-    
+
     // Wrap handler with filter if provided
     if (filter) {
-      context.descriptor!.value = function(...args: any[]) {
+      context.descriptor!.value = function (...args: any[]) {
         if (filter(args[0])) {
           return handler.apply(this, args);
         }
       };
     }
-    
+
     // Store event handler metadata
     context.metadata.set('event', event);
     context.metadata.set('handler', true);
-    
+
     return context.descriptor;
   })
   .build();
@@ -149,13 +148,14 @@ export const HealthCheck = createDecorator<HealthCheckOptions>()
     if (options.interval && options.interval <= 0) {
       return 'Interval must be positive';
     }
+    return undefined;
   })
   .build();
 
 /**
  * Configuration watcher decorator
  */
-export const ConfigWatch = createPropertyInterceptor<{ 
+export const ConfigWatch = createPropertyInterceptor<{
   path: string;
   deep?: boolean;
 }>('ConfigWatch', {
@@ -169,12 +169,12 @@ export const ConfigWatch = createPropertyInterceptor<{
   set(value, context) {
     // Update config when property is set
     updateConfigValue(context.options?.path!, value);
-    
+
     // Notify watchers if deep watching is enabled
     if (context.options?.deep) {
       notifyConfigWatchers(context.options.path, value);
     }
-    
+
     return value;
   }
 });
@@ -189,51 +189,51 @@ export const Monitor = createMethodInterceptor<{
   includeResult?: boolean;
 }>('Monitor', async (originalMethod, args, context) => {
   const sampleRate = context.options?.sampleRate ?? 1.0;
-  
+
   // Skip monitoring based on sample rate
   if (Math.random() > sampleRate) {
     return originalMethod(...args);
   }
-  
-  const metricName = context.options?.name || 
+
+  const metricName = context.options?.name ||
     `${context.target.constructor.name}.${String(context.propertyKey)}`;
   const start = performance.now();
-  
+
   const metadata: any = {
     method: metricName,
     timestamp: Date.now()
   };
-  
+
   if (context.options?.includeArgs) {
     metadata.args = args;
   }
-  
+
   try {
     const result = await originalMethod(...args);
-    
+
     const duration = performance.now() - start;
     metadata.duration = duration;
     metadata.success = true;
-    
+
     if (context.options?.includeResult) {
       metadata.result = result;
     }
-    
+
     // Record metrics
     recordMetric('method.duration', duration, { method: metricName });
     recordMetric('method.success', 1, { method: metricName });
-    
+
     return result;
   } catch (error) {
     const duration = performance.now() - start;
     metadata.duration = duration;
     metadata.success = false;
     metadata.error = error;
-    
+
     // Record error metrics
     recordMetric('method.duration', duration, { method: metricName });
     recordMetric('method.error', 1, { method: metricName, error: (error as Error).name });
-    
+
     throw error;
   }
 });
@@ -247,15 +247,15 @@ export const RateLimit = createMethodInterceptor<{
   key?: (context: DecoratorContext) => string;
 }>('RateLimit', (originalMethod, args, context) => {
   const { requests, window, key } = context.options!;
-  
-  const rateLimitKey = key 
+
+  const rateLimitKey = key
     ? key(context)
     : `${context.target.constructor.name}.${String(context.propertyKey)}`;
-  
+
   if (!checkRateLimit(rateLimitKey, requests, window)) {
     throw new RateLimitError(`Rate limit exceeded for ${rateLimitKey}`);
   }
-  
+
   return originalMethod(...args);
 });
 
@@ -268,27 +268,27 @@ export const Cacheable = createMethodInterceptor<{
   condition?: (...args: any[]) => boolean;
 }>('Cacheable', async (originalMethod, args, context) => {
   const { ttl = 60000, key, condition } = context.options || {};
-  
+
   // Check if caching should be applied
   if (condition && !condition(...args)) {
     return originalMethod(...args);
   }
-  
+
   // Generate cache key
-  const cacheKey = key 
+  const cacheKey = key
     ? key(...args)
     : `${context.target.constructor.name}.${String(context.propertyKey)}:${JSON.stringify(args)}`;
-  
+
   // Check cache
   const cached = getFromCache(cacheKey);
   if (cached !== undefined) {
     return cached;
   }
-  
+
   // Execute method and cache result
   const result = await originalMethod(...args);
   setInCache(cacheKey, result, ttl);
-  
+
   return result;
 });
 
@@ -309,28 +309,28 @@ export const Retryable = createMethodInterceptor<{
     backoff = 2,
     retryOn
   } = context.options || {};
-  
+
   let lastError: any;
   let currentDelay = delay;
-  
+
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       return await originalMethod(...args);
     } catch (error) {
       lastError = error;
-      
+
       // Check if we should retry this error
       if (retryOn && !retryOn(error)) {
         throw error;
       }
-      
+
       if (attempt < attempts) {
         // Wait before retrying
         await new Promise(resolve => setTimeout(resolve, currentDelay));
-        
+
         // Apply exponential backoff
         currentDelay = Math.min(currentDelay * backoff, maxDelay);
-        
+
         // Log retry attempt
         console.warn(
           `Retry attempt ${attempt}/${attempts} for ${context.target.constructor.name}.${String(context.propertyKey)}`,
@@ -339,7 +339,7 @@ export const Retryable = createMethodInterceptor<{
       }
     }
   }
-  
+
   throw lastError;
 });
 
@@ -348,10 +348,10 @@ export const Retryable = createMethodInterceptor<{
  */
 export const Timeout = createMethodInterceptor<{ ms: number }>('Timeout', (originalMethod, args, context) => {
   const timeoutMs = context.options?.ms || 5000;
-  
+
   return Promise.race([
     originalMethod(...args),
-    new Promise((_, reject) => 
+    new Promise((_, reject) =>
       setTimeout(() => reject(new TimeoutError(
         `Method ${context.target.constructor.name}.${String(context.propertyKey)} timed out after ${timeoutMs}ms`
       )), timeoutMs)
@@ -370,33 +370,33 @@ export const Log = createMethodInterceptor<{
 }>('Log', async (originalMethod, args, context) => {
   const level = context.options?.level || 'info';
   const methodName = `${context.target.constructor.name}.${String(context.propertyKey)}`;
-  
+
   const logData: any = {
     method: methodName,
     timestamp: new Date().toISOString()
   };
-  
+
   if (context.options?.includeArgs) {
     logData.args = args;
   }
-  
+
   if (context.options?.message) {
     logData.message = context.options.message;
   }
-  
+
   // Log method entry
   logger[level](`Entering ${methodName}`, logData);
-  
+
   try {
     const result = await originalMethod(...args);
-    
+
     if (context.options?.includeResult) {
       logData.result = result;
     }
-    
+
     // Log method exit
     logger[level](`Exiting ${methodName}`, logData);
-    
+
     return result;
   } catch (error) {
     logData.error = error;
@@ -413,20 +413,20 @@ export const ValidateArgs = createMethodInterceptor<{
   throwOnError?: boolean;
 }>('ValidateArgs', (originalMethod, args, context) => {
   const { schema, throwOnError = true } = context.options!;
-  
+
   const validation = validateWithSchema(schema, args);
-  
+
   if (!validation.valid) {
     if (throwOnError) {
       throw new ValidationError(
         `Validation failed for ${context.target.constructor.name}.${String(context.propertyKey)}: ${validation.errors.join(', ')}`
       );
     }
-    
+
     // Log validation errors but continue
     console.warn(`Validation warning for ${context.target.constructor.name}.${String(context.propertyKey)}`, validation.errors);
   }
-  
+
   return originalMethod(...args);
 });
 
@@ -439,21 +439,235 @@ export const EmitEvent = createMethodInterceptor<{
   mapError?: (error: any) => any;
 }>('EmitEvent', async (originalMethod, args, context) => {
   const { event, mapResult, mapError } = context.options!;
-  
+
   try {
     const result = await originalMethod(...args);
-    
+
     // Emit success event
     emitEvent(`${event}.success`, mapResult ? mapResult(result) : result);
-    
+
     return result;
   } catch (error) {
     // Emit error event
     emitEvent(`${event}.error`, mapError ? mapError(error) : error);
-    
+
     throw error;
   }
 });
+
+/**
+ * Event listener decorator - listens for events
+ */
+export const OnEvent = createDecorator<{
+  event: string;
+  async?: boolean;
+  priority?: number;
+  timeout?: number;
+  filter?: (data: any) => boolean;
+  transform?: (data: any) => any;
+  errorBoundary?: boolean;
+  onError?: (error: Error, data: any) => void;
+}>()
+  .withName('OnEvent')
+  .forMethod()
+  .withMetadata((context) => ({
+    event: context.options?.event,
+    handler: true,
+    async: context.options?.async,
+    priority: context.options?.priority || 0,
+    timeout: context.options?.timeout,
+    filter: context.options?.filter,
+    transform: context.options?.transform,
+    errorBoundary: context.options?.errorBoundary,
+    onError: context.options?.onError
+  }))
+  .withHooks({
+    afterApply: (context) => {
+      // Store metadata for discovery
+      const EVENT_HANDLER_METADATA = Symbol.for('event:handler');
+      Reflect.defineMetadata(
+        EVENT_HANDLER_METADATA,
+        {
+          event: context.options?.event,
+          options: context.options
+        },
+        context.target,
+        context.propertyKey!
+      );
+    }
+  })
+  .build();
+
+/**
+ * One-time event listener decorator
+ */
+export const OnceEvent = createDecorator<{
+  event: string;
+  timeout?: number;
+  filter?: (data: any) => boolean;
+  transform?: (data: any) => any;
+}>()
+  .withName('OnceEvent')
+  .forMethod()
+  .withMetadata((context) => ({
+    event: context.options?.event,
+    once: true,
+    timeout: context.options?.timeout,
+    filter: context.options?.filter,
+    transform: context.options?.transform
+  }))
+  .withHooks({
+    afterApply: (context) => {
+      // Store metadata for discovery
+      const EVENT_ONCE_METADATA = Symbol.for('event:once');
+      Reflect.defineMetadata(
+        EVENT_ONCE_METADATA,
+        {
+          event: context.options?.event,
+          options: context.options
+        },
+        context.target,
+        context.propertyKey!
+      );
+    }
+  })
+  .build();
+
+/**
+ * Listen to all events
+ */
+export const OnAnyEvent = createDecorator<{
+  filter?: (event: string, data: any) => boolean;
+  priority?: number;
+}>()
+  .withName('OnAnyEvent')
+  .forMethod()
+  .withMetadata((context) => ({
+    event: '*',
+    handler: true,
+    anyEvent: true,
+    filter: context.options?.filter,
+    priority: context.options?.priority || 0
+  }))
+  .withHooks({
+    afterApply: (context) => {
+      // Store metadata for discovery
+      const EVENT_HANDLER_METADATA = Symbol.for('event:handler');
+      Reflect.defineMetadata(
+        EVENT_HANDLER_METADATA,
+        {
+          event: '*',
+          options: context.options
+        },
+        context.target,
+        context.propertyKey!
+      );
+    }
+  })
+  .build();
+
+/**
+ * Event emitter class decorator
+ */
+export const EventEmitter = createDecorator<{
+  namespace?: string;
+  wildcard?: boolean;
+  delimiter?: string;
+}>()
+  .withName('EventEmitter')
+  .forClass()
+  .withMetadata((context) => ({
+    eventEmitter: true,
+    namespace: context.options?.namespace,
+    wildcard: context.options?.wildcard !== false,
+    delimiter: context.options?.delimiter || '.'
+  }))
+  .withHooks({
+    afterApply: (context) => {
+      // Store metadata for discovery
+      Reflect.defineMetadata(
+        'metadata',
+        {
+          eventEmitter: true,
+          namespace: context.options?.namespace,
+          wildcard: context.options?.wildcard !== false,
+          delimiter: context.options?.delimiter || '.'
+        },
+        context.target
+      );
+    }
+  })
+  .build();
+
+/**
+ * Schedule event emission
+ */
+export const ScheduleEvent = createDecorator<{
+  event: string;
+  cron?: string;
+  delay?: number;
+  at?: Date;
+}>()
+  .withName('ScheduleEvent')
+  .forMethod()
+  .withMetadata((context) => ({
+    scheduled: true,
+    event: context.options?.event,
+    cron: context.options?.cron,
+    delay: context.options?.delay,
+    at: context.options?.at
+  }))
+  .withHooks({
+    afterApply: (context) => {
+      // Store metadata for discovery
+      Reflect.defineMetadata(
+        'metadata',
+        {
+          scheduled: true,
+          event: context.options?.event,
+          cron: context.options?.cron,
+          delay: context.options?.delay,
+          at: context.options?.at
+        },
+        context.target,
+        context.propertyKey!
+      );
+    }
+  })
+  .build();
+
+/**
+ * Batch event handling
+ */
+export const BatchEvents = createDecorator<{
+  event: string;
+  maxSize: number;
+  maxWait: number;
+}>()
+  .withName('BatchEvents')
+  .forMethod()
+  .withMetadata((context) => ({
+    batch: true,
+    event: context.options?.event,
+    maxSize: context.options?.maxSize,
+    maxWait: context.options?.maxWait
+  }))
+  .withHooks({
+    afterApply: (context) => {
+      // Store metadata for batch processing
+      const BATCH_HANDLER_METADATA = Symbol.for('event:batch');
+      Reflect.defineMetadata(
+        BATCH_HANDLER_METADATA,
+        {
+          event: `${context.options?.event}:batch`,
+          options: context.options
+        },
+        context.target,
+        context.propertyKey!
+      );
+    }
+  })
+  .build();
 
 // Placeholder functions - these would be implemented by Titan
 function registerLifecycleHook(target: any, method: string, phase: LifecyclePhase) {
@@ -530,14 +744,14 @@ export class ValidationError extends Error {
 
 // Re-export commonly used Nexus decorators
 export {
-  Injectable,
-  Singleton,
   Inject,
-  Optional,
-  PostConstruct,
-  PreDestroy,
-  Module,
   Service,
+  Optional,
+  Singleton,
+  Injectable,
+  PreDestroy,
   Controller,
-  Repository
-} from '@nexus/core/decorators';
+  Repository,
+  PostConstruct,
+  ModuleDecorator as Module
+} from '@omnitron-dev/nexus';

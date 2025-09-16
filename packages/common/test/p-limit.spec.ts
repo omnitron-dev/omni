@@ -1,4 +1,4 @@
-import { pLimit, limitFunction } from '../src/p-limit';
+import { pLimit, limitFunction } from '../src/p-limit.js';
 
 describe('p-limit', () => {
   describe('pLimit', () => {

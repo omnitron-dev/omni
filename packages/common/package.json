@@ -14,8 +14,9 @@
     "build": "tsc -p ./tsconfig.json",
     "test": "jest",
     "test:node": "jest",
-    "test:bun": "bun test test/primitives.spec.ts test/list-buffer.spec.ts test/entries.spec.ts test/omit.spec.ts test/predicates.spec.ts test/promise.spec.ts test/timed-map-bun-compat.spec.ts",
-    "test:all": "npm run test:node && npm run test:bun"
+    "test:bun": "/Users/taaliman/.bun/bin/bun test test/runtime/bun-all.test.ts",
+    "test:deno": "/Users/taaliman/.deno/bin/deno test --no-check --allow-read --allow-write --allow-env --unstable-sloppy-imports test/runtime/deno-all.test.ts",
+    "test:legacy": "jest && bun test test/primitives.spec.ts test/list-buffer.spec.ts test/entries.spec.ts test/omit.spec.ts test/predicates.spec.ts test/promise.spec.ts test/timed-map-bun-compat.spec.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -23,6 +24,7 @@
     "@types/node": "24.3.3",
     "jest": "30.1.3",
     "ts-jest": "29.4.1",
+    "ts-jest-resolver": "^2.0.1",
     "typescript": "5.9.2"
   },
   "keywords": [

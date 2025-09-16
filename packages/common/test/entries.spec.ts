@@ -1,7 +1,25 @@
-import { inherits } from 'node:util';
+// Conditional import for Node.js and Deno compatibility
+let inherits: any;
+if (typeof Deno !== 'undefined') {
+  inherits = (globalThis as any).node?.util?.inherits || function(ctor: any, superCtor: any) {
+    if (ctor === undefined || ctor === null) {
+      throw new TypeError('The constructor to "inherits" must not be null or undefined');
+    }
+    if (superCtor === undefined || superCtor === null) {
+      throw new TypeError('The super constructor to "inherits" must not be null or undefined');
+    }
+    if (superCtor.prototype === undefined) {
+      throw new TypeError('The super constructor to "inherits" must have a prototype property');
+    }
+    ctor.super_ = superCtor;
+    Object.setPrototypeOf(ctor.prototype, superCtor.prototype);
+  };
+} else {
+  inherits = require('node:util').inherits;
+}
 
-import { noop } from '../src/primitives';
-import { keys, values, entries } from '../src/entries';
+import { noop } from '../src/primitives.js';
+import { keys, values, entries } from '../src/entries.js';
 
 describe('entries', () => {
   test('should return an empty array for an empty object', () => {
@@ -38,7 +56,7 @@ describe('entries', () => {
     B.prototype.bMethod = noop;
     const t = new B();
     const props = keys(t, { followProto: true }).sort();
-    expect(props).toStrictEqual(['aMethod', 'aProp', 'bMethod', 'bProp']);
+    expect(props).toEqual(['aMethod', 'aProp', 'bMethod', 'bProp']);
   });
 
   test('should work with classes', () => {
@@ -57,18 +75,18 @@ describe('entries', () => {
     class A {
       public aProp = 1;
 
-      aMethod() {}
+      aMethod() { }
     }
 
     class B extends A {
       public bProp = 2;
 
-      bMethod() {}
+      bMethod() { }
     }
 
     const t = new B();
     const props = keys(t, { all: true }).sort();
-    expect(props).toStrictEqual(['aMethod', 'aProp', 'bMethod', 'bProp']);
+    expect(props).toEqual(['aMethod', 'aProp', 'bMethod', 'bProp']);
   });
 
   test('should return the values of the object', () => {
@@ -133,7 +151,7 @@ describe('entries', () => {
   });
 
   test('values should work with non-enumerable properties', () => {
-    const obj = {};
+    const obj: Record<string, number> = {};
     Object.defineProperty(obj, 'a', { value: 1, enumerable: false });
     obj['b'] = 2;
     expect(values(obj, { enumOnly: false })).toEqual([1, 2]);
@@ -160,7 +178,7 @@ describe('entries', () => {
   });
 
   test('entries should work with non-enumerable properties', () => {
-    const obj = {};
+    const obj: Record<string, number> = {};
     Object.defineProperty(obj, 'a', { value: 1, enumerable: false });
     obj['b'] = 2;
     expect(entries(obj, { enumOnly: false })).toEqual([

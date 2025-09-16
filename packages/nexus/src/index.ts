@@ -33,11 +33,20 @@ export { createMultiToken as multiToken } from './token/token';
 
 // Convenience exports
 export { Container as NexusContainer } from './container/container';
+
 export {
   SpyProvider,
   MockProvider,
   StubProvider
 } from './testing/mock-provider';
+
+// Export decorator utilities and creators
+export {
+  createDecorator,
+  DecoratorContext,
+  createMethodInterceptor,
+  createPropertyInterceptor
+} from './decorators/custom-decorators';
 // Plugin System
 export {
   type Plugin,
@@ -50,6 +59,16 @@ export {
   ValidationPlugin,
   PerformancePlugin
 } from './plugins/plugin';
+// Testing Utilities
+export {
+  TestContainer,
+  type MockConfig,
+  type Interaction,
+  TestModuleBuilder,
+  createTestContainer,
+  type TestContainerOptions,
+  createIsolatedTestContainer
+} from './testing/test-container';
 
 /**
  * Default container instance for simple use cases
@@ -63,17 +82,6 @@ export function createContainer(): Container {
   return new Container();
 }
 
-// Testing Utilities
-export {
-  TestContainer,
-  type MockConfig,
-  type Interaction,
-  TestModuleBuilder,
-  createTestContainer,
-  type TestContainerOptions,
-  createIsolatedTestContainer
-} from './testing/test-container';
-
 // Lifecycle Management
 export {
   AuditObserver,
@@ -85,6 +93,21 @@ export {
   type LifecycleObserver,
   type LifecycleEventData
 } from './lifecycle/lifecycle';
+
+export {
+  Global,
+  Inject,
+  Service,
+  Optional,
+  Singleton,
+  Injectable,
+  PreDestroy,
+  Controller,
+  Repository,
+  PostConstruct,
+  ModuleDecoratorOptions,
+  Module as ModuleDecorator
+} from './decorators/decorators';
 
 export {
   TestHarness,

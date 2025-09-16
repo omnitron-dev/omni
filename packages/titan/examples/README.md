@@ -1,233 +1,228 @@
 # Titan Framework Examples
 
-This directory contains comprehensive examples demonstrating the power and flexibility of the Titan application framework.
+This directory contains comprehensive examples demonstrating the capabilities of the Titan framework.
 
-## 📚 Examples Overview
+## Examples
 
-### 1. [basic-app.ts](./basic-app.ts) - Basic Application
-A minimal Titan application demonstrating:
+### 1. Simple Demo (`simple-demo.ts`)
+
+A concise demonstration of core Titan features:
+- Application lifecycle management
+- Module system integration
+- Service injection with Nexus IoC
+- Event-driven architecture
 - Configuration management
-- Logging
-- Custom module creation
-- Lifecycle hooks
-- Graceful shutdown
+- Logging system
 
-**Run it:**
+**Run the demo:**
 ```bash
-bun run examples/basic-app.ts
+npx ts-node examples/simple-demo.ts
 ```
 
-### 2. [config-usage.ts](./config-usage.ts) - Configuration System
-Advanced configuration features:
-- Multiple configuration sources (files, environment, objects)
-- Schema validation with Zod
-- Hot-reloading
-- Secret management
-- Configuration watching
+### 2. Task Manager Application (`task-manager-app.ts`)
 
-**Run it:**
+A complete task management system showcasing advanced features:
+- Multi-module architecture
+- Complex service dependencies
+- Event-driven workflows
+- Real-time notifications
+- Activity tracking
+- Business logic orchestration
+
+**Features demonstrated:**
+- User management
+- Task CRUD operations
+- Task assignment and status tracking
+- Priority and due date management
+- Activity logging
+- Statistics and analytics
+- Notification system
+
+**Run the application:**
 ```bash
-bun run examples/config-usage.ts
+npx ts-node examples/task-manager-app.ts
 ```
 
-### 3. [custom-core-modules.ts](./custom-core-modules.ts) - Ultimate Flexibility
-Replace ANY core module with custom implementations:
-- Custom logger replacing Pino
-- Custom configuration system
-- Custom metrics collection
-- Complete control over the framework
+## Key Concepts Demonstrated
 
-**Run it:**
-```bash
-bun run examples/custom-core-modules.ts
-```
+### 1. Modular Architecture
 
-### 4. [simplified-api.ts](./simplified-api.ts) - User-Friendly API
-Multiple examples showing how simple Titan can be:
-- One-line app creation
-- Fluent API chaining
-- Service-oriented modules
-- Async resource management
-
-**Run it:**
-```bash
-bun run examples/simplified-api.ts
-```
-
-## 🚀 Key Features Demonstrated
-
-### Maximum Flexibility
-Every single component of Titan can be replaced thanks to the Nexus DI container:
+Both examples show how to structure applications using Titan's module system:
 
 ```typescript
-// Replace the default logger
-app.replaceModule(LoggerModuleToken, MyCustomLogger);
-
-// Replace the configuration system
-app.replaceModule(ConfigModuleToken, MyCustomConfig);
+@Module({
+  name: 'CoreModule',
+  providers: [UserService, TaskService],
+  exports: [UserService, TaskService]
+})
+export class CoreModule {}
 ```
 
-### User-Friendly API
-Create a fully functional app in one line:
+### 2. Dependency Injection
+
+Services are managed through Nexus IoC container with decorators:
 
 ```typescript
-const app = await createAndStartApp({
-  name: 'my-app',
-  version: '1.0.0'
-});
+@Injectable()
+@Service('TaskService@1.0.0')
+export class TaskService {
+  @Inject(LoggerService)
+  private logger!: LoggerService;
+  
+  @ConfigValue('features.taskAssignment')
+  private assignmentEnabled!: boolean;
+}
 ```
 
-### Type-Safe Modules
-Define modules with full TypeScript support:
+### 3. Event-Driven Architecture
+
+Event handling with decorators and programmatic subscriptions:
 
 ```typescript
-interface MyService {
-  doSomething(): void;
+@EventHandler('task.created')
+async onTaskCreated(data: TaskCreatedEvent) {
+  // Handle event
 }
 
-const MyModule = defineModule<MyService>({
-  name: 'my-module',
-  doSomething() {
-    console.log('Doing something!');
-  }
+// Or programmatically
+events.subscribe('task.*', handler, {
+  filter: (data) => data.priority === 'high'
 });
 ```
 
-### Lifecycle Management
-Automatic initialization and cleanup:
+### 4. Configuration Management
+
+Centralized configuration with type safety:
 
 ```typescript
-const DatabaseModule = defineModule({
-  name: 'database',
-  
-  async onStart(app) {
-    await this.connect();
+const config = {
+  app: {
+    name: 'TaskManager',
+    port: 3000
   },
-  
-  async onStop(app) {
-    await this.disconnect();
+  features: {
+    taskAssignment: true,
+    notifications: true
   }
-});
+};
+
+// Access in services
+@ConfigValue('features.taskAssignment')
+private assignmentEnabled!: boolean;
 ```
 
-## 🎯 Philosophy
+### 5. Lifecycle Hooks
 
-Titan follows these core principles:
-
-1. **Progressive Complexity** - Start simple, scale infinitely
-2. **Everything is Replaceable** - No vendor lock-in, ever
-3. **Type Safety First** - Full TypeScript support throughout
-4. **User-Friendly API** - As simple as possible, but no simpler
-5. **Production Ready** - Built-in logging, config, health checks
-
-## 🏗️ Architecture
-
-```
-Application
-    ├── Core Modules (Replaceable!)
-    │   ├── ConfigModule
-    │   └── LoggerModule
-    ├── User Modules
-    │   └── Your custom modules
-    └── Nexus DI Container
-        └── Powers everything
-```
-
-## 📝 Creating Your Own Module
-
-The simplest module:
+Services can implement lifecycle interfaces:
 
 ```typescript
-const MyModule = defineModule({
-  name: 'my-module',
-  
-  sayHello() {
-    return 'Hello!';
+@Injectable()
+export class TaskService implements OnInit, OnDestroy {
+  async onInit() {
+    // Initialize service
   }
-});
+  
+  async onDestroy() {
+    // Cleanup resources
+  }
+}
 ```
 
-With lifecycle hooks:
+## Architecture Patterns
+
+### Service Layer Pattern
+
+The Task Manager example demonstrates a layered architecture:
+
+1. **Domain Layer**: Models and interfaces (`User`, `Task`)
+2. **Service Layer**: Business logic (`TaskService`, `UserService`)
+3. **Orchestration Layer**: Workflow coordination (`TaskOrchestrator`)
+4. **Infrastructure Layer**: External services (`NotificationService`)
+5. **Cross-cutting Concerns**: Logging, Events, Configuration
+
+### Event Sourcing
+
+The Activity Service demonstrates event sourcing patterns:
 
 ```typescript
-const MyModule = defineModule({
-  name: 'my-module',
-  
-  async onStart(app) {
-    console.log('Starting...');
-  },
-  
-  async onStop(app) {
-    console.log('Stopping...');
-  },
-  
-  async health() {
-    return {
-      status: 'healthy',
-      message: 'All good!'
-    };
+@Injectable()
+export class ActivityService {
+  @EventHandler('task.created')
+  async onTaskCreated(event: TaskEvent) {
+    await this.recordActivity(event);
   }
-});
+  
+  async getActivities(filters?: ActivityFilter) {
+    return this.eventStore.query(filters);
+  }
+}
 ```
 
-With dependencies:
+### Repository Pattern
+
+Services abstract data access:
 
 ```typescript
-const MyModule = defineModule({
-  name: 'my-module',
-  dependencies: [DatabaseToken, CacheToken],
+export class TaskService {
+  private tasks: Map<string, Task> = new Map();
   
-  async onStart(app) {
-    const db = app.get(DatabaseToken);
-    const cache = app.get(CacheToken);
-    // Use your dependencies
+  async findById(id: string): Promise<Task | undefined> {
+    return this.tasks.get(id);
   }
-});
+  
+  async findAll(filters?: TaskFilter): Promise<Task[]> {
+    // Apply filters and return results
+  }
+}
 ```
 
-## 🔄 Replacing Core Modules
+## Testing Patterns
 
-Titan's ultimate flexibility means you can replace ANY core module:
+While not shown in these examples, Titan applications are highly testable:
 
 ```typescript
-// Before app.start()
-app.replaceModule(LoggerModuleToken, {
-  name: 'my-logger',
-  logger: myCustomLoggerInstance
-});
-
-app.replaceModule(ConfigModuleToken, {
-  name: 'my-config',
-  get(key) { return myConfig[key]; },
-  set(key, value) { myConfig[key] = value; }
+describe('TaskService', () => {
+  let app: TitanApplication;
+  let taskService: TaskService;
+  
+  beforeEach(async () => {
+    app = await TitanApplication.create({
+      modules: [TestModule]
+    });
+    taskService = app.get(TaskService);
+  });
+  
+  it('should create task', async () => {
+    const task = await taskService.create({
+      title: 'Test Task',
+      status: 'pending'
+    });
+    expect(task.id).toBeDefined();
+  });
 });
 ```
 
-This is powered by the Nexus DI container, giving you complete control over your application architecture.
+## Best Practices
 
-## 🎓 Learning Path
+1. **Use Modules**: Organize related services into modules
+2. **Leverage DI**: Let the container manage dependencies
+3. **Event-Driven**: Use events for loose coupling between modules
+4. **Configuration**: Externalize configuration for different environments
+5. **Type Safety**: Use TypeScript interfaces and decorators
+6. **Error Handling**: Implement proper error boundaries
+7. **Logging**: Use structured logging for debugging
+8. **Testing**: Write unit tests for services and integration tests for workflows
 
-1. Start with `simplified-api.ts` to see how easy Titan can be
-2. Look at `basic-app.ts` for a real-world example
-3. Explore `config-usage.ts` for advanced configuration
-4. Study `custom-core-modules.ts` to understand the ultimate flexibility
+## Next Steps
 
-## 💡 Tips
+1. Explore the source code of each example
+2. Modify the examples to add new features
+3. Create your own Titan application
+4. Refer to the main documentation for detailed API reference
 
-- Always define module interfaces for better type safety
-- Use lifecycle hooks for resource management
-- Replace core modules when you need custom behavior
-- Keep modules focused on a single responsibility
-- Use the fluent API for cleaner code
+## Resources
 
-## 🤝 Contributing
-
-Have an interesting example? Feel free to contribute! Make sure your example:
-- Demonstrates a specific feature or pattern
-- Includes helpful comments
-- Follows the existing code style
-- Runs without errors
-
-## 📄 License
-
-MIT
+- [Titan Documentation](../README.md)
+- [Nexus IoC Documentation](../../nexus/README.md)
+- [API Reference](../docs/api.md)
+- [Architecture Guide](../docs/architecture.md)

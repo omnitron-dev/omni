@@ -1,4 +1,4 @@
-import { noop, truly, arrify, falsely, identity } from '../src/primitives';
+import { noop, truly, arrify, falsely, identity } from '../src/primitives.js';
 
 describe('primitives', () => {
   describe('noop', () => {
@@ -24,7 +24,7 @@ describe('primitives', () => {
     it('should return the same reference for objects', () => {
       const obj = { test: 123 };
       const arr = [1, 2, 3];
-      const func = () => {};
+      const func = () => { };
 
       expect(identity(obj)).toBe(obj);
       expect(identity(arr)).toBe(arr);
@@ -100,7 +100,7 @@ describe('primitives', () => {
     });
 
     it('should handle functions', () => {
-      const func = () => {};
+      const func = () => { };
       expect(arrify(func)).toEqual([func]);
     });
   });

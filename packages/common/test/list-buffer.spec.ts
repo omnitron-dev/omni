@@ -1,4 +1,4 @@
-import { ListBuffer } from '../src/list-buffer';
+import { ListBuffer } from '../src/list-buffer.js';
 
 describe('ListBuffer', () => {
   let buffer: ListBuffer<number>;

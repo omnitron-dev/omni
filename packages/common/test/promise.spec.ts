@@ -1,6 +1,6 @@
 // @ts-nocheck
-import { noop } from '../src/primitives';
-import { isBun, clearAllTimers } from './test-utils';
+import { noop } from '../src/primitives.js';
+import { isBun, clearAllTimers } from './test-utils.js';
 import {
   props,
   defer,
@@ -13,7 +13,7 @@ import {
   callbackify,
   promisifyAll,
   finally as _finally,
-} from '../src/promise';
+} from '../src/promise.js';
 
 describe('defer', () => {
   it('should have a promise', () => {
@@ -130,7 +130,7 @@ describe('timeout', () => {
     const initialMemory = process.memoryUsage().heapUsed;
 
     // Создаем меньше итераций и используем Promise.all для параллельного выполнения
-    const promises = Array.from({ length: 100 }, () => timeout(Promise.resolve(), 10).catch(() => {}));
+    const promises = Array.from({ length: 100 }, () => timeout(Promise.resolve(), 10).catch(() => { }));
 
     await Promise.all(promises);
 

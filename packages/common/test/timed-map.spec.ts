@@ -1,5 +1,5 @@
-import { TimedMap } from '../src/timed-map';
-import { setupFakeTimers, teardownFakeTimers, advanceTimersByTime } from './test-utils';
+import { TimedMap } from '../src/timed-map.js';
+import { setupFakeTimers, teardownFakeTimers, advanceTimersByTime, supportsFakeTimers, sleep, isBun } from './test-utils.js';
 
 describe('TimedMap', () => {
   let map: TimedMap<string, number>;
@@ -37,35 +37,75 @@ describe('TimedMap', () => {
       expect(map.get('key1')).toBe(200);
     });
 
-    it('should delete value after timeout', () => {
-      map.set('key1', 100);
-      advanceTimersByTime(1000);
-      expect(map.get('key1')).toBeUndefined();
+    it('should delete value after timeout', async () => {
+      if (!supportsFakeTimers()) {
+        // Use real timers for Bun
+        const quickMap = new TimedMap(50);
+        quickMap.set('key1', 100);
+        await sleep(60);
+        expect(quickMap.get('key1')).toBeUndefined();
+      } else {
+        map.set('key1', 100);
+        advanceTimersByTime(1000);
+        expect(map.get('key1')).toBeUndefined();
+      }
     });
 
-    it('should use custom timeout', () => {
-      map.set('key1', 100, undefined, 2000);
-      advanceTimersByTime(1000);
-      expect(map.get('key1')).toBe(100);
-      advanceTimersByTime(1000);
-      expect(map.get('key1')).toBeUndefined();
+    it('should use custom timeout', async () => {
+      if (!supportsFakeTimers()) {
+        // Use real timers for Bun
+        const quickMap = new TimedMap(50);
+        quickMap.set('key1', 100, undefined, 100);
+        await sleep(60);
+        expect(quickMap.get('key1')).toBe(100);
+        await sleep(50);
+        expect(quickMap.get('key1')).toBeUndefined();
+      } else {
+        map.set('key1', 100, undefined, 2000);
+        advanceTimersByTime(1000);
+        expect(map.get('key1')).toBe(100);
+        advanceTimersByTime(1000);
+        expect(map.get('key1')).toBeUndefined();
+      }
     });
 
-    it('should call custom callback after timeout', () => {
-      const callback = jest.fn();
-      map.set('key1', 100, callback);
-      advanceTimersByTime(1000);
-      expect(callback).toHaveBeenCalledWith('key1');
+    it('should call custom callback after timeout', async () => {
+      if (!supportsFakeTimers()) {
+        // Use real timers for Bun
+        const quickMap = new TimedMap<string, number>(50);
+        let callbackKey: string | undefined;
+        const callback = (key: string) => { callbackKey = key; };
+        quickMap.set('key1', 100, callback);
+        await sleep(60);
+        expect(callbackKey).toBe('key1');
+      } else {
+        const callback = jest.fn();
+        map.set('key1', 100, callback);
+        advanceTimersByTime(1000);
+        expect(callback).toHaveBeenCalledWith('key1');
+      }
     });
 
-    it('should reset timer when setting value again', () => {
-      map.set('key1', 100);
-      advanceTimersByTime(500);
-      map.set('key1', 200);
-      advanceTimersByTime(500);
-      expect(map.get('key1')).toBe(200);
-      advanceTimersByTime(500);
-      expect(map.get('key1')).toBeUndefined();
+    it('should reset timer when setting value again', async () => {
+      if (!supportsFakeTimers()) {
+        // Use real timers for Bun
+        const quickMap = new TimedMap(50);
+        quickMap.set('key1', 100);
+        await sleep(25);
+        quickMap.set('key1', 200);
+        await sleep(25);
+        expect(quickMap.get('key1')).toBe(200);
+        await sleep(30);
+        expect(quickMap.get('key1')).toBeUndefined();
+      } else {
+        map.set('key1', 100);
+        advanceTimersByTime(500);
+        map.set('key1', 200);
+        advanceTimersByTime(500);
+        expect(map.get('key1')).toBe(200);
+        advanceTimersByTime(500);
+        expect(map.get('key1')).toBeUndefined();
+      }
     });
   });
 
@@ -153,38 +193,72 @@ describe('TimedMap', () => {
   });
 
   describe('integration tests', () => {
-    it('should work correctly with multiple operations', () => {
-      // Setting values
-      map.set('key1', 100);
-      map.set('key2', 200);
-      expect(map.get('key1')).toBe(100);
-      expect(map.get('key2')).toBe(200);
+    it('should work correctly with multiple operations', async () => {
+      if (!supportsFakeTimers()) {
+        // Use real timers for Bun with shorter delays
+        const quickMap = new TimedMap(40);
 
-      // Partial time advancement
-      advanceTimersByTime(500);
-      map.set('key3', 300);
+        // Setting values
+        quickMap.set('key1', 100);
+        quickMap.set('key2', 200);
+        expect(quickMap.get('key1')).toBe(100);
+        expect(quickMap.get('key2')).toBe(200);
 
-      // Updating existing value
-      map.set('key1', 150);
+        // Partial time advancement
+        await sleep(20);
+        quickMap.set('key3', 300);
 
-      // Check after half timeout
-      expect(map.get('key1')).toBe(150);
-      expect(map.get('key2')).toBe(200);
-      expect(map.get('key3')).toBe(300);
+        // Updating existing value
+        quickMap.set('key1', 150);
 
-      // Advance time to full timeout
-      advanceTimersByTime(500);
-      expect(map.get('key2')).toBeUndefined();
-      expect(map.get('key1')).toBe(150);
-      expect(map.get('key3')).toBe(300);
+        // Check after half timeout
+        expect(quickMap.get('key1')).toBe(150);
+        expect(quickMap.get('key2')).toBe(200);
+        expect(quickMap.get('key3')).toBe(300);
 
-      // Final time advancement
-      advanceTimersByTime(500);
-      expect(map.get('key1')).toBeUndefined();
-      expect(map.get('key3')).toBeUndefined();
+        // Advance time to full timeout for key2
+        await sleep(25);
+        expect(quickMap.get('key2')).toBeUndefined();
+        expect(quickMap.get('key1')).toBe(150);
+        expect(quickMap.get('key3')).toBe(300);
 
-      advanceTimersByTime(500);
-      expect(map.get('key3')).toBeUndefined();
+        // Final time advancement
+        await sleep(20);
+        expect(quickMap.get('key1')).toBeUndefined();
+        expect(quickMap.get('key3')).toBeUndefined();
+      } else {
+        // Setting values
+        map.set('key1', 100);
+        map.set('key2', 200);
+        expect(map.get('key1')).toBe(100);
+        expect(map.get('key2')).toBe(200);
+
+        // Partial time advancement
+        advanceTimersByTime(500);
+        map.set('key3', 300);
+
+        // Updating existing value
+        map.set('key1', 150);
+
+        // Check after half timeout
+        expect(map.get('key1')).toBe(150);
+        expect(map.get('key2')).toBe(200);
+        expect(map.get('key3')).toBe(300);
+
+        // Advance time to full timeout
+        advanceTimersByTime(500);
+        expect(map.get('key2')).toBeUndefined();
+        expect(map.get('key1')).toBe(150);
+        expect(map.get('key3')).toBe(300);
+
+        // Final time advancement
+        advanceTimersByTime(500);
+        expect(map.get('key1')).toBeUndefined();
+        expect(map.get('key3')).toBeUndefined();
+
+        advanceTimersByTime(500);
+        expect(map.get('key3')).toBeUndefined();
+      }
     });
   });
 });

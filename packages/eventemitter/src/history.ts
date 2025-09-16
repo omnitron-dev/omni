@@ -1,4 +1,4 @@
-import type { EventRecord, EventFilter, EventStorage, EventHistoryOptions } from './types';
+import type { EventRecord, EventFilter, EventStorage, EventHistoryOptions } from './types.js';
 
 /**
  * In-memory event storage implementation

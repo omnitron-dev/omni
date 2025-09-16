@@ -1,11 +1,11 @@
 
 /* eslint-disable @typescript-eslint/no-unsafe-function-type */
 
-import { EventEmitter } from './emitter';
-import { EventHistory } from './history';
-import { WildcardMatcher } from './wildcard';
-import { EventScheduler } from './scheduler';
-import { MetricsCollector } from './metrics';
+import { EventEmitter } from './emitter.js';
+import { EventHistory } from './history.js';
+import { WildcardMatcher } from './wildcard.js';
+import { EventScheduler } from './scheduler.js';
+import { MetricsCollector } from './metrics.js';
 
 import type {
   EventMap,
@@ -24,7 +24,7 @@ import type {
   ValidationSchema,
   EventHistoryOptions,
   ErrorHandlingOptions
-} from './types';
+} from './types.js';
 
 /**
  * Enhanced EventEmitter with advanced features

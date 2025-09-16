@@ -1,7 +1,7 @@
 {
   "tasks": {
-    "test": "deno test --allow-read --allow-write --allow-env test/runtime/deno.test.ts",
-    "test:watch": "deno test --allow-read --allow-write --allow-env --watch test/runtime/deno.test.ts",
+    "test": "deno test --allow-read --allow-write --allow-env --unstable-sloppy-imports test/runtime/deno.test.ts",
+    "test:watch": "deno test --allow-read --allow-write --allow-env --unstable-sloppy-imports --watch test/runtime/deno.test.ts",
     "fmt": "deno fmt",
     "lint": "deno lint",
     "check": "deno check src/*.ts test/runtime/deno.test.ts"

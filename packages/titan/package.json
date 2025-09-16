@@ -14,7 +14,7 @@
     "dependency-injection",
     "nexus"
   ],
-  "author": "DevGrid Team",
+  "author": "LuxQuant",
   "license": "MIT",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

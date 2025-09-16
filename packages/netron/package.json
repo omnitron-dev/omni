@@ -2,7 +2,7 @@
   "name": "@omnitron-dev/netron",
   "version": "0.6.5",
   "description": "A powerful TypeScript library for building distributed systems with event bus, streaming capabilities, and remote object invocation. Features WebSocket-based bidirectional communication between Node.js and browser environments, service discovery, and type-safe RPC.",
-  "author": "Omnitron",
+  "author": "LuxQuant",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",

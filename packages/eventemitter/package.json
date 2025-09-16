@@ -2,7 +2,7 @@
   "name": "@omnitron-dev/eventemitter",
   "version": "0.3.3",
   "description": "Universal event emitter with synchronous and asynchronous emission patterns",
-  "author": "Omnitron",
+  "author": "LuxQuant",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
@@ -13,7 +13,7 @@
   "scripts": {
     "build": "tsc -p ./tsconfig.json",
     "test": "jest",
-    "test:bun": "bun test test/runtime/bun.test.ts",
+    "test:bun": "bun test test/runtime/bun-all.test.ts",
     "test:deno": "deno test --allow-read --allow-write --allow-env test/runtime/deno.test.ts",
     "test:all": "./scripts/test-all-runtimes.sh"
   },

@@ -1,4 +1,4 @@
-import type { PatternCache } from './types';
+import type { PatternCache } from './types.js';
 
 /**
  * Wildcard pattern matcher for event names
@@ -62,7 +62,7 @@ export class WildcardMatcher {
   private compilePattern(pattern: string): PatternCache {
     const parts = pattern.split(this.delimiter);
     const isWildcard = this.isWildcard(pattern);
-    
+
     if (!isWildcard) {
       return {
         pattern,
@@ -74,10 +74,10 @@ export class WildcardMatcher {
 
     let regexStr = '^';
     let addedDelimiter = false;
-    
+
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
-      
+
       // Handle undefined or empty parts (consecutive delimiters)
       if (!part || part === '') {
         if (i === 0) {
@@ -99,10 +99,10 @@ export class WildcardMatcher {
         }
         continue;
       }
-      
+
       // Add delimiter before part if not first and not already added
       const needsDelimiter = i > 0 && !addedDelimiter;
-      
+
       if (part === this.globstar) {
         // ** matches zero or more segments
         if (i === 0) {
@@ -156,7 +156,7 @@ export class WildcardMatcher {
         let partRegex = '';
         let lastIdx = 0;
         let idx = part.indexOf(this.wildcard);
-        
+
         while (idx !== -1) {
           if (idx > lastIdx) {
             partRegex += this.escapeRegex(part.substring(lastIdx, idx));
@@ -165,11 +165,11 @@ export class WildcardMatcher {
           lastIdx = idx + this.wildcard.length;
           idx = part.indexOf(this.wildcard, lastIdx);
         }
-        
+
         if (lastIdx < part.length) {
           partRegex += this.escapeRegex(part.substring(lastIdx));
         }
-        
+
         regexStr += partRegex;
         addedDelimiter = false;
       } else {
@@ -184,7 +184,7 @@ export class WildcardMatcher {
     regexStr += '$';
 
     const regex = new RegExp(regexStr);
-    
+
     return {
       pattern,
       regex,

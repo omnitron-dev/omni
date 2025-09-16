@@ -1,4 +1,4 @@
-import type { EmitterMetrics, MetricsOptions } from './types';
+import type { EmitterMetrics, MetricsOptions } from './types.js';
 
 /**
  * Performance metrics collector for EventEmitter
@@ -6,7 +6,7 @@ import type { EmitterMetrics, MetricsOptions } from './types';
 export class MetricsCollector {
   private enabled = false;
   private options: MetricsOptions;
-  
+
   // Metrics data
   private eventsEmitted = 0;
   private eventsFailed = 0;
@@ -16,7 +16,7 @@ export class MetricsCollector {
   private eventCounts = new Map<string, number>();
   private errorCounts = new Map<string, number>();
   private startTime = Date.now();
-  
+
   constructor(options: MetricsOptions = {}) {
     this.options = {
       slowThreshold: options.slowThreshold || 100,
@@ -52,7 +52,7 @@ export class MetricsCollector {
    */
   recordEmission(event: string, success: boolean, duration?: number): void {
     if (!this.enabled) return;
-    
+
     // Sample rate check
     if (this.options.sampleRate! < 1 && Math.random() > this.options.sampleRate!) {
       return;
@@ -77,7 +77,7 @@ export class MetricsCollector {
         this.processingTimes.set(event, times);
       }
       times.push(duration);
-      
+
       // Keep only last 100 samples per event
       if (times.length > 100) {
         times.shift();
@@ -103,7 +103,7 @@ export class MetricsCollector {
    */
   getMetrics(): EmitterMetrics {
     const avgProcessingTime = new Map<string, number>();
-    
+
     // Calculate average processing times
     for (const [event, times] of this.processingTimes.entries()) {
       if (times.length > 0) {
@@ -135,7 +135,7 @@ export class MetricsCollector {
    */
   export(format: 'json' | 'prometheus' = 'json'): string {
     const metrics = this.getMetrics();
-    
+
     if (format === 'json') {
       return JSON.stringify({
         timestamp: Date.now(),
@@ -154,35 +154,35 @@ export class MetricsCollector {
     } else if (format === 'prometheus') {
       // Prometheus format
       const lines: string[] = [];
-      
+
       lines.push(`# HELP eventemitter_events_emitted_total Total number of events emitted`);
       lines.push(`# TYPE eventemitter_events_emitted_total counter`);
       lines.push(`eventemitter_events_emitted_total ${metrics.eventsEmitted}`);
-      
+
       lines.push(`# HELP eventemitter_events_failed_total Total number of failed events`);
       lines.push(`# TYPE eventemitter_events_failed_total counter`);
       lines.push(`eventemitter_events_failed_total ${metrics.eventsFailed}`);
-      
+
       lines.push(`# HELP eventemitter_memory_usage_bytes Current memory usage in bytes`);
       lines.push(`# TYPE eventemitter_memory_usage_bytes gauge`);
       lines.push(`eventemitter_memory_usage_bytes ${metrics.memoryUsage}`);
-      
+
       // Per-event metrics
       for (const [event, count] of metrics.eventCounts.entries()) {
         lines.push(`eventemitter_event_count{event="${event}"} ${count}`);
       }
-      
+
       for (const [event, count] of metrics.listenerCount.entries()) {
         lines.push(`eventemitter_listener_count{event="${event}"} ${count}`);
       }
-      
+
       for (const [event, time] of metrics.avgProcessingTime.entries()) {
         lines.push(`eventemitter_avg_processing_time_ms{event="${event}"} ${time}`);
       }
-      
+
       return lines.join('\n');
     }
-    
+
     return '';
   }
 
@@ -205,10 +205,10 @@ export class MetricsCollector {
    */
   private addSlowEvent(event: string, duration: number): void {
     this.slowestEvents.push({ event, duration });
-    
+
     // Sort by duration (slowest first)
     this.slowestEvents.sort((a, b) => b.duration - a.duration);
-    
+
     // Keep only top 10 slowest
     if (this.slowestEvents.length > 10) {
       this.slowestEvents = this.slowestEvents.slice(0, 10);
@@ -222,7 +222,7 @@ export class MetricsCollector {
     const metrics = this.getMetrics();
     const uptime = Date.now() - this.startTime;
     const eventsPerSecond = this.eventsEmitted / (uptime / 1000);
-    const failureRate = this.eventsEmitted > 0 
+    const failureRate = this.eventsEmitted > 0
       ? (this.eventsFailed / this.eventsEmitted * 100).toFixed(2)
       : '0.00';
 

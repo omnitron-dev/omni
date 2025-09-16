@@ -1,6 +1,6 @@
 import { SmartBuffer, isSmartBuffer } from '@omnitron-dev/smartbuffer';
 
-import { BufferType, DecodeFunction } from './types';
+import { BufferType, DecodeFunction } from './types.js';
 
 const getSize = (first: number) => {
   switch (first) {
@@ -68,7 +68,7 @@ const isValidDataSize = (dataLength: number, bufLength: number, headerLength: nu
   bufLength >= headerLength + dataLength;
 
 export default class Decoder {
-  constructor(private decodingTypes: Map<number, DecodeFunction>) {}
+  constructor(private decodingTypes: Map<number, DecodeFunction>) { }
 
   decode(buf: BufferType) {
     const smartBuf: SmartBuffer = isSmartBuffer(buf) ? (buf as SmartBuffer) : SmartBuffer.wrap(buf, undefined, true);
@@ -146,7 +146,7 @@ export default class Decoder {
       case 0xd9:
         // strings up to 2^8 - 1 bytes
         length = buf.readUInt8();
-        if (!isValidDataSize(length, bufLength, 2)) {
+        if (!length || !isValidDataSize(length, bufLength, 2)) {
           return null;
         }
         result = buf.toString('utf8', buf.roffset, buf.roffset + length);
@@ -173,7 +173,7 @@ export default class Decoder {
       case 0xc4:
         // buffers up to 2^8 - 1 bytes
         length = buf.readUInt8();
-        if (!isValidDataSize(length, bufLength, 2)) {
+        if (!length || !isValidDataSize(length, bufLength, 2)) {
           return null;
         }
         result = buf.slice(buf.roffset, buf.roffset + length).buffer;
@@ -233,7 +233,7 @@ export default class Decoder {
         // ext up to 2^8 - 1 bytes
         length = buf.readUInt8();
         type = buf.readUInt8();
-        if (!isValidDataSize(length, bufLength, 3)) {
+        if (!type || !length || !isValidDataSize(length, bufLength, 3)) {
           return null;
         }
         return this.decodeExt(buf, type, length, 3);
@@ -241,7 +241,7 @@ export default class Decoder {
         // ext up to 2^16 - 1 bytes
         length = buf.readUInt16BE();
         type = buf.readUInt8();
-        if (!isValidDataSize(length, bufLength, 4)) {
+        if (!type || !length || !isValidDataSize(length, bufLength, 4)) {
           return null;
         }
         return this.decodeExt(buf, type, length, 4);
@@ -249,7 +249,7 @@ export default class Decoder {
         // ext up to 2^32 - 1 bytes
         length = buf.readUInt32BE();
         type = buf.readUInt8();
-        if (!isValidDataSize(length, bufLength, 6)) {
+        if (!type || !length || !isValidDataSize(length, bufLength, 6)) {
           return null;
         }
         return this.decodeExt(buf, type, length, 6);

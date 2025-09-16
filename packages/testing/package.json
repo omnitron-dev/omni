@@ -1,8 +1,8 @@
 {
   "name": "@omnitron-dev/testing",
   "version": "0.0.1",
-  "description": "Cross-runtime testing utilities for DevGrid monorepo",
-  "author": "DevGrid Team",
+  "description": "Cross-runtime testing utilities",
+  "author": "LuxQuant",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,10 +14,15 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
+    "./runtime/jest": {
+      "types": "./runtime/jest.d.ts",
+      "import": "./runtime/jest.js",
+      "require": "./runtime/jest.js"
+    },
     "./runtime/bun": {
-      "types": "./dist/runtime/bun-adapter.d.ts",
-      "import": "./dist/runtime/bun-adapter.js",
-      "require": "./dist/runtime/bun-adapter.cjs"
+      "types": "./runtime/bun.d.ts",
+      "import": "./runtime/bun.js",
+      "require": "./runtime/bun.js"
     },
     "./runtime/deno": {
       "types": "./dist/runtime/deno-adapter.d.ts",
@@ -32,7 +37,8 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "runtime"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",

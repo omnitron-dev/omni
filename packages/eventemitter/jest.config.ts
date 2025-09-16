@@ -1,36 +1,50 @@
-import { readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { join, dirname } from 'path';
-import { pathsToModuleNameMapper } from 'ts-jest';
+import type { JestConfigWithTsJest } from 'ts-jest';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const tsConfig = JSON.parse(readFileSync(join(__dirname, '..', '..', 'tsconfig.json'), 'utf-8'));
-
-export default {
-  preset: 'ts-jest',
-  testEnvironment: 'node', // Or 'jsdom' for frontend
-  verbose: true, // Show detailed test logs
-  clearMocks: true, // Clear mocks between tests
-  collectCoverage: true, // Enable code coverage collection
-  collectCoverageFrom: ['src/**/*.ts'], // Which files to include in coverage
-  coverageDirectory: 'coverage', // Directory for coverage reports
-  moduleFileExtensions: ['ts', 'js', 'json'], // Which files to use
-  testMatch: ['<rootDir>/test/**/*.test.ts', '<rootDir>/test/**/*.spec.ts'], // Where to find tests
+const config: JestConfigWithTsJest = {
+  preset: 'ts-jest/presets/default-esm',
+  testEnvironment: 'node',
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+  forceExit: true,
+  verbose: true,
+  clearMocks: true,
+  collectCoverage: true,
+  collectCoverageFrom: ['src/**/*.ts'],
+  coverageDirectory: 'coverage',
+  moduleFileExtensions: ['ts', 'js', 'json'],
+  testMatch: ['<rootDir>/test/**/*.spec.ts'],
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '/test/runtime/',
+  ],
   transform: {
-    '^.+\\.(t|j)s$': ['ts-jest', {
-      tsconfig: {
-        allowJs: true,
-        esModuleInterop: true,
-      }
-    }]
+    '^.+\\.ts$': [
+      'ts-jest',
+      {
+        tsconfig: {
+          allowJs: true,
+          module: 'esnext',
+          moduleResolution: 'node',
+          isolatedModules: true,
+          esModuleInterop: true,
+          allowSyntheticDefaultImports: true,
+        },
+        useESM: true,
+      },
+    ],
   },
   transformIgnorePatterns: [
-    'node_modules/(?!@omnitron-dev/.*)'
+    'node_modules/(?!(@noble|@omnitron-dev|@devgrid)/)',
   ],
+  extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
-    ...pathsToModuleNameMapper(tsConfig.compilerOptions?.paths || {}, { prefix: '<rootDir>/' }),
-    '^@omnitron-dev/common$': '<rootDir>/../common/src/index.ts'
+    '^(\\.{1,2}/.*)\\.js$': '$1',
+    '^(\\.{1,2}/.*)\\.ts$': '$1',
+    '^@omnitron-dev/testing$': '<rootDir>/../testing/src/index.ts',
+    '^@omnitron-dev/testing/(.*)$': '<rootDir>/../testing/src/$1',
+    '^@omnitron-dev/common$': '<rootDir>/../common/src/index.ts',
+    '^@omnitron-dev/common/(.*)$': '<rootDir>/../common/src/$1',
   },
+  resolver: 'ts-jest-resolver',
 };
+
+export default config;

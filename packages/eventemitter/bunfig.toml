@@ -1,8 +1,7 @@
 [test]
 # Test configuration for Bun
+preload = ["./test/runtime/bun-setup.ts"]
 coverage = false
-# Run Bun-specific tests
-preload = ["./test/runtime/bun.test.ts"]
 
 [install]
 # Peer dependencies to install

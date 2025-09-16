@@ -1,9 +1,9 @@
 import Long from 'long';
 import { SmartBuffer } from '@omnitron-dev/smartbuffer';
 
-import { BufferType } from './types';
-import Serializer from './serializer';
-import { createError, getStdErrorId } from './errors';
+import { BufferType } from './types.js';
+import Serializer from './serializer.js';
+import { createError, getStdErrorId } from './errors.js';
 
 export const registerCommonTypesFor = (s: Serializer) => {
   // Custom types mapping:

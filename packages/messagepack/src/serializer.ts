@@ -1,9 +1,9 @@
 // Start of Selection
 import { SmartBuffer } from '@omnitron-dev/smartbuffer';
 
-import Encoder from './encoder';
-import Decoder from './decoder';
-import { BufferType, EncoderInfo, DecodeFunction, EncodeFunction } from './types';
+import Encoder from './encoder.js';
+import Decoder from './decoder.js';
+import { BufferType, EncoderInfo, DecodeFunction, EncodeFunction } from './types.js';
 
 export default class Serializer {
   private encodingTypes: Map<number, EncoderInfo> = new Map();
@@ -12,7 +12,7 @@ export default class Serializer {
   public encoder = new Encoder(this.encodingTypes);
   public decoder = new Decoder(this.decodingTypes);
 
-  constructor(private initialCapacity = 64) {}
+  constructor(private initialCapacity = 64) { }
 
   registerEncoder(type: number, check: any, encode: EncodeFunction): Serializer {
     this.encodingTypes.set(type, { check, encode });

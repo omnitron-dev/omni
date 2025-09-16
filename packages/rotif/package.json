@@ -2,7 +2,7 @@
   "name": "@omnitron-dev/rotif",
   "version": "0.2.2",
   "description": "Redis based notification system.",
-  "author": "Omnitron",
+  "author": "LuxQuant",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",

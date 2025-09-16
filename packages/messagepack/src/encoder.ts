@@ -2,7 +2,7 @@ import { Buffer } from 'buffer';
 import { SmartBuffer } from '@omnitron-dev/smartbuffer';
 import { isBuffer, isPlainObject } from '@omnitron-dev/common';
 
-import { EncoderInfo, EncodeFunction } from './types';
+import { EncoderInfo, EncodeFunction } from './types.js';
 
 /**
  * Get a human-readable type name for a value.
@@ -68,7 +68,7 @@ const encodeCustom = (x: any, type: number, encFunc: EncodeFunction, buf: SmartB
 };
 
 export default class Encoder {
-  constructor(private encodingTypes: Map<number, EncoderInfo>) {}
+  constructor(private encodingTypes: Map<number, EncoderInfo>) { }
 
   encode(x: any, buf?: SmartBuffer) {
     buf = buf || new SmartBuffer(1024, true);

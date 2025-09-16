@@ -2,7 +2,7 @@
   "name": "@omnitron-dev/nexus",
   "version": "2.0.0",
   "description": "Next-generation dependency injection container for TypeScript - the architectural foundation for any application",
-  "author": "Omnitron",
+  "author": "LuxQuant",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

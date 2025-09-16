@@ -85,9 +85,14 @@ describe('Regression Tests', () => {
       expect(normalListener).toHaveBeenCalled();
 
       // Timeout event should timeout
-      await expect(async () => {
+      let timeoutError: Error | undefined;
+      try {
         await localEmitter.emitParallel('timeout-event', 'data');
-      }).rejects.toThrow('Listener timeout');
+      } catch (error) {
+        timeoutError = error as Error;
+      }
+      expect(timeoutError).toBeDefined();
+      expect(timeoutError?.message).toContain('Listener timeout');
 
       localEmitter.dispose();
     });

@@ -2,7 +2,7 @@
   "name": "@omnitron-dev/netron-nest",
   "version": "0.1.7",
   "description": "NestJS integration module for @omnitron-dev/netron, providing seamless distributed system capabilities with decorators, dependency injection, and automatic service discovery in NestJS applications.",
-  "author": "Omnitron",
+  "author": "LuxQuant",
   "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

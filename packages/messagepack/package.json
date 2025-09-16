@@ -2,7 +2,7 @@
   "name": "@omnitron-dev/messagepack",
   "version": "0.3.3",
   "description": "Extandable MessagePack serializer",
-  "author": "Omnitron",
+  "author": "LuxQuant",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",

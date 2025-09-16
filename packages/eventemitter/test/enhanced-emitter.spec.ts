@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import { EnhancedEventEmitter } from '../src/enhanced-emitter';
-import type { EventMetadata, EventInterceptor, ValidationSchema, ListenerFn } from '../src/types';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { EnhancedEventEmitter } from '../src/enhanced-emitter.js';
+import type { EventMetadata, EventInterceptor, ValidationSchema, ListenerFn } from '../src/types.js';
 
 // Mock validation schema
 class MockSchema implements ValidationSchema {

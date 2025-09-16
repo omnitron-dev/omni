@@ -2,7 +2,7 @@
   "name": "@omnitron-dev/smartbuffer",
   "version": "0.2.3",
   "description": "Smart buffer",
-  "author": "Omnitron",
+  "author": "LuxQuant",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",

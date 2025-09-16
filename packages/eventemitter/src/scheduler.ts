@@ -1,4 +1,4 @@
-import type { ScheduledEvent, ScheduleOptions } from './types';
+import type { ScheduledEvent, ScheduleOptions } from './types.js';
 
 /**
  * Event scheduler for delayed and recurring events
@@ -19,9 +19,9 @@ export class EventScheduler {
   ): string {
     const id = this.generateId();
     const now = Date.now();
-    
+
     let executeAt: number;
-    
+
     if (options.at) {
       executeAt = options.at.getTime();
     } else if (options.delay) {
@@ -56,7 +56,7 @@ export class EventScheduler {
           // Error is already handled in executeScheduledEvent, just prevent unhandled rejection
         }
       }, delay);
-      
+
       this.timers.set(id, timer);
     }
 
@@ -121,13 +121,13 @@ export class EventScheduler {
     if (!event || event.status !== 'pending') return;
 
     event.status = 'executing';
-    
+
     try {
       await this.executeWithRetry(
         () => emitFn(scheduledEvent.event, scheduledEvent.data),
         scheduledEvent.options.retry
       );
-      
+
       event.status = 'completed';
     } catch (error) {
       event.status = 'failed';
@@ -156,27 +156,27 @@ export class EventScheduler {
     const maxDelay = retryOptions.maxDelay || 30000;
 
     let lastError: Error | undefined;
-    
+
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         return await fn();
       } catch (error) {
         lastError = error as Error;
-        
+
         if (attempt < maxAttempts) {
           let waitTime = delay;
-          
+
           if (backoff === 'exponential') {
             waitTime = Math.min(delay * Math.pow(factor, attempt - 1), maxDelay);
           } else if (backoff === 'linear') {
             waitTime = Math.min(delay * attempt, maxDelay);
           }
-          
+
           await this.sleep(waitTime);
         }
       }
     }
-    
+
     throw lastError;
   }
 
@@ -191,7 +191,7 @@ export class EventScheduler {
     // This is a simplified implementation
     // In production, you'd want to use a proper cron library
     const interval = this.parseCronInterval(scheduledEvent.options.cron!);
-    
+
     if (interval > 0) {
       const timer = setInterval(async () => {
         const event = this.scheduledEvents.get(id);
@@ -199,7 +199,7 @@ export class EventScheduler {
           clearInterval(timer);
           return;
         }
-        
+
         try {
           await emitFn(scheduledEvent.event, scheduledEvent.data);
         } catch (error) {
@@ -207,7 +207,7 @@ export class EventScheduler {
           console.error(`Recurring event ${id} failed:`, error);
         }
       }, interval);
-      
+
       this.timers.set(id, timer as any);
     }
   }
@@ -218,13 +218,13 @@ export class EventScheduler {
   private parseCronInterval(cron: string): number {
     // Very simplified cron parsing - just for demo
     // Real implementation would use a proper cron parser
-    
+
     // Handle some common patterns
     if (cron === '* * * * *') return 60000; // Every minute
     if (cron === '*/5 * * * *') return 5 * 60000; // Every 5 minutes
     if (cron === '0 * * * *') return 60 * 60000; // Every hour
     if (cron === '0 0 * * *') return 24 * 60 * 60000; // Daily
-    
+
     // Default to hourly
     return 60 * 60000;
   }

@@ -5,11 +5,11 @@ import { Redis, RedisOptions } from 'ioredis';
 import { randomUUID, createHash } from 'node:crypto';
 import { defer, Deferred, delay as delayMs } from '@omnitron-dev/common';
 
-import { StatsTracker } from './stats';
-import { defaultLogger } from './utils/logger';
-import { Middleware, MiddlewareManager } from './middleware';
-import { RotifConfig, RotifLogger, RotifMessage, Subscription, PublishOptions, SubscribeOptions } from './types';
-import { getLoopKey, parseFields, getStreamKey, getGroupName, generateDedupKey, defaultConsumerName } from './utils/common';
+import { StatsTracker } from './stats.js';
+import { defaultLogger } from './utils/logger.js';
+import { Middleware, MiddlewareManager } from './middleware.js';
+import { RotifConfig, RotifLogger, RotifMessage, Subscription, PublishOptions, SubscribeOptions } from './types.js';
+import { getLoopKey, parseFields, getStreamKey, getGroupName, generateDedupKey, defaultConsumerName } from './utils/common.js';
 
 /**
  * Main class for managing message queues and subscriptions.
@@ -62,7 +62,7 @@ export class NotificationManager {
       this.logger.error('Redis connection error', err);
     });
 
-    this.redis.on('reconnecting', (time) => {
+    this.redis.on('reconnecting', (time: any) => {
       this.logger.info(`Redis reconnecting in ${time}ms...`);
     });
 
@@ -85,7 +85,7 @@ export class NotificationManager {
   }
 
   async loadLuaScripts() {
-    const luaDir = path.resolve(__dirname, '..', 'lua', 'rotif');
+    const luaDir = path.resolve(__dirname, '..', '..', 'lua', 'rotif');
     const luaFiles = fs.readdirSync(luaDir).filter(file => file.endsWith('.lua'));
 
     for (const file of luaFiles) {

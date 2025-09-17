@@ -65,6 +65,8 @@
     "@omnitron-dev/eventemitter": "workspace:*",
     "@omnitron-dev/nexus": "workspace:*",
     "ioredis": "^5.7.0",
+    "minimatch": "^10.0.3",
+    "msgpackr": "^1.11.5",
     "node-cron": "^4.2.1",
     "pino": "^9.9.5",
     "pino-pretty": "^13.1.1",

@@ -11,40 +11,40 @@ import {
 } from './scheduler.constants';
 
 import type {
-  ScheduledJob,
-  SchedulerConfig,
-  JobExecutionResult
+  IScheduledJob,
+  ISchedulerConfig,
+  IJobExecutionResult
 } from './scheduler.interfaces';
 
 /**
  * Interface for persistence providers
  */
-export interface PersistenceProvider {
-  saveJob(job: ScheduledJob): Promise<void>;
-  loadJob(id: string): Promise<ScheduledJob | null>;
-  loadAllJobs(): Promise<ScheduledJob[]>;
+export interface IPersistenceProvider {
+  saveJob(job: IScheduledJob): Promise<void>;
+  loadJob(id: string): Promise<IScheduledJob | null>;
+  loadAllJobs(): Promise<IScheduledJob[]>;
   deleteJob(id: string): Promise<void>;
-  saveExecutionResult(result: JobExecutionResult): Promise<void>;
-  loadExecutionHistory(jobId: string, limit?: number): Promise<JobExecutionResult[]>;
+  saveExecutionResult(result: IJobExecutionResult): Promise<void>;
+  loadExecutionHistory(jobId: string, limit?: number): Promise<IJobExecutionResult[]>;
   clear(): Promise<void>;
 }
 
 /**
  * In-memory persistence provider (default)
  */
-export class InMemoryPersistenceProvider implements PersistenceProvider {
-  private jobs: Map<string, ScheduledJob> = new Map();
-  private executionHistory: Map<string, JobExecutionResult[]> = new Map();
+export class InMemoryPersistenceProvider implements IPersistenceProvider {
+  private jobs: Map<string, IScheduledJob> = new Map();
+  private executionHistory: Map<string, IJobExecutionResult[]> = new Map();
 
-  async saveJob(job: ScheduledJob): Promise<void> {
+  async saveJob(job: IScheduledJob): Promise<void> {
     this.jobs.set(job.id, { ...job, instance: undefined });
   }
 
-  async loadJob(id: string): Promise<ScheduledJob | null> {
+  async loadJob(id: string): Promise<IScheduledJob | null> {
     return this.jobs.get(id) || null;
   }
 
-  async loadAllJobs(): Promise<ScheduledJob[]> {
+  async loadAllJobs(): Promise<IScheduledJob[]> {
     return Array.from(this.jobs.values());
   }
 
@@ -53,7 +53,7 @@ export class InMemoryPersistenceProvider implements PersistenceProvider {
     this.executionHistory.delete(id);
   }
 
-  async saveExecutionResult(result: JobExecutionResult): Promise<void> {
+  async saveExecutionResult(result: IJobExecutionResult): Promise<void> {
     const history = this.executionHistory.get(result.jobId) || [];
     history.push(result);
     // Keep only last 100 executions
@@ -63,7 +63,7 @@ export class InMemoryPersistenceProvider implements PersistenceProvider {
     this.executionHistory.set(result.jobId, history);
   }
 
-  async loadExecutionHistory(jobId: string, limit: number = 10): Promise<JobExecutionResult[]> {
+  async loadExecutionHistory(jobId: string, limit: number = 10): Promise<IJobExecutionResult[]> {
     const history = this.executionHistory.get(jobId) || [];
     return history.slice(-limit);
   }
@@ -79,11 +79,11 @@ export class InMemoryPersistenceProvider implements PersistenceProvider {
  */
 @Injectable()
 export class SchedulerPersistence {
-  private provider: PersistenceProvider;
+  private provider: IPersistenceProvider;
   private autosaveInterval?: any;
 
   constructor(
-    @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: SchedulerConfig
+    @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: ISchedulerConfig
   ) {
     // Initialize persistence provider based on config
     this.provider = this.initializeProvider();
@@ -97,7 +97,7 @@ export class SchedulerPersistence {
   /**
    * Initialize persistence provider
    */
-  private initializeProvider(): PersistenceProvider {
+  private initializeProvider(): IPersistenceProvider {
     if (!this.config?.persistence?.enabled) {
       return new InMemoryPersistenceProvider();
     }
@@ -123,7 +123,7 @@ export class SchedulerPersistence {
   /**
    * Save job state
    */
-  async saveJob(job: ScheduledJob): Promise<void> {
+  async saveJob(job: IScheduledJob): Promise<void> {
     if (!this.config?.persistence?.enabled) {
       return;
     }
@@ -138,7 +138,7 @@ export class SchedulerPersistence {
   /**
    * Load job state
    */
-  async loadJob(id: string): Promise<ScheduledJob | null> {
+  async loadJob(id: string): Promise<IScheduledJob | null> {
     if (!this.config?.persistence?.enabled) {
       return null;
     }
@@ -154,7 +154,7 @@ export class SchedulerPersistence {
   /**
    * Load all jobs
    */
-  async loadAllJobs(): Promise<ScheduledJob[]> {
+  async loadAllJobs(): Promise<IScheduledJob[]> {
     if (!this.config?.persistence?.enabled) {
       return [];
     }
@@ -185,7 +185,7 @@ export class SchedulerPersistence {
   /**
    * Save execution result
    */
-  async saveExecutionResult(result: JobExecutionResult): Promise<void> {
+  async saveExecutionResult(result: IJobExecutionResult): Promise<void> {
     if (!this.config?.persistence?.enabled) {
       return;
     }
@@ -200,7 +200,7 @@ export class SchedulerPersistence {
   /**
    * Load execution history
    */
-  async loadExecutionHistory(jobId: string, limit?: number): Promise<JobExecutionResult[]> {
+  async loadExecutionHistory(jobId: string, limit?: number): Promise<IJobExecutionResult[]> {
     if (!this.config?.persistence?.enabled) {
       return [];
     }
@@ -246,7 +246,7 @@ export class SchedulerPersistence {
    * Export job state
    */
   async exportState(): Promise<{
-    jobs: ScheduledJob[];
+    jobs: IScheduledJob[];
     timestamp: Date;
   }> {
     const jobs = await this.provider.loadAllJobs();
@@ -260,7 +260,7 @@ export class SchedulerPersistence {
    * Import job state
    */
   async importState(state: {
-    jobs: ScheduledJob[];
+    jobs: IScheduledJob[];
   }): Promise<void> {
     for (const job of state.jobs) {
       await this.provider.saveJob(job);

@@ -18,17 +18,17 @@ import {
 } from './scheduler.constants';
 import {
   JobStatus,
-  type CronOptions,
+  type ICronOptions,
   SchedulerJobType,
-  type ScheduledJob,
-  type TimeoutOptions,
+  type IScheduledJob,
+  type ITimeoutOptions,
   type CronExpression,
-  type SchedulerConfig,
-  type IntervalOptions,
-  type JobFilterOptions,
-  type SchedulerMetrics,
-  type JobExecutionResult,
-  type JobExecutionContext
+  type ISchedulerConfig,
+  type IIntervalOptions,
+  type IJobFilterOptions,
+  type ISchedulerMetrics,
+  type IJobExecutionResult,
+  type IJobExecutionContext
 } from './scheduler.interfaces';
 
 import type { SchedulerRegistry } from './scheduler.registry';
@@ -50,7 +50,7 @@ export class SchedulerService {
   constructor(
     @Inject(SCHEDULER_REGISTRY_TOKEN) private readonly registry: SchedulerRegistry,
     @Inject(SCHEDULER_EXECUTOR_TOKEN) private readonly executor: SchedulerExecutor,
-    @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: SchedulerConfig,
+    @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: ISchedulerConfig,
     @Optional() @Inject(SCHEDULER_PERSISTENCE_TOKEN) private readonly persistence?: SchedulerPersistence,
     @Optional() @Inject(SCHEDULER_METRICS_TOKEN) private readonly metrics?: SchedulerMetricsService,
     @Optional() @Inject(SCHEDULER_DISCOVERY_TOKEN) private readonly discovery?: SchedulerDiscovery
@@ -155,7 +155,7 @@ export class SchedulerService {
   /**
    * Schedule a job based on its type
    */
-  private scheduleJob(job: ScheduledJob): void {
+  private scheduleJob(job: IScheduledJob): void {
     switch (job.type) {
       case 'cron':
         this.scheduleCronJob(job);
@@ -172,9 +172,9 @@ export class SchedulerService {
   /**
    * Schedule a cron job
    */
-  private scheduleCronJob(job: ScheduledJob): void {
+  private scheduleCronJob(job: IScheduledJob): void {
     const pattern = job.pattern as string;
-    const options = job.options as CronOptions;
+    const options = job.options as ICronOptions;
 
     // Validate cron expression
     if (!cron.validate(pattern)) {
@@ -208,9 +208,9 @@ export class SchedulerService {
   /**
    * Schedule an interval job
    */
-  private scheduleIntervalJob(job: ScheduledJob): void {
+  private scheduleIntervalJob(job: IScheduledJob): void {
     const interval = job.pattern as number;
-    const options = job.options as IntervalOptions;
+    const options = job.options as IIntervalOptions;
 
     // Execute immediately if configured
     if (options.immediate) {
@@ -237,7 +237,7 @@ export class SchedulerService {
   /**
    * Schedule a timeout job
    */
-  private scheduleTimeoutJob(job: ScheduledJob): void {
+  private scheduleTimeoutJob(job: IScheduledJob): void {
     const timeout = job.pattern as number;
 
     // Create timeout
@@ -262,7 +262,7 @@ export class SchedulerService {
   /**
    * Execute a job
    */
-  private async executeJob(job: ScheduledJob): Promise<void> {
+  private async executeJob(job: IScheduledJob): Promise<void> {
     // Update job status
     this.registry.updateJobStatus(job.name, JobStatus.RUNNING);
     this.registry.markJobRunning(job.name, true);
@@ -309,7 +309,7 @@ export class SchedulerService {
   /**
    * Update next execution time
    */
-  private updateNextExecution(job: ScheduledJob): void {
+  private updateNextExecution(job: IScheduledJob): void {
     let nextExecution: Date | undefined;
 
     if (job.type === 'cron') {
@@ -333,9 +333,9 @@ export class SchedulerService {
   addCronJob(
     name: string,
     expression: CronExpression,
-    handler: (context: JobExecutionContext) => void | Promise<void>,
-    options?: CronOptions
-  ): ScheduledJob {
+    handler: (context: IJobExecutionContext) => void | Promise<void>,
+    options?: ICronOptions
+  ): IScheduledJob {
     // Create a wrapper object for the handler
     const wrapper = {
       [name]: handler
@@ -365,9 +365,9 @@ export class SchedulerService {
   addInterval(
     name: string,
     milliseconds: number,
-    handler: (context: JobExecutionContext) => void | Promise<void>,
-    options?: IntervalOptions
-  ): ScheduledJob {
+    handler: (context: IJobExecutionContext) => void | Promise<void>,
+    options?: IIntervalOptions
+  ): IScheduledJob {
     // Create a wrapper object for the handler
     const wrapper = {
       [name]: handler
@@ -397,9 +397,9 @@ export class SchedulerService {
   addTimeout(
     name: string,
     milliseconds: number,
-    handler: (context: JobExecutionContext) => void | Promise<void>,
-    options?: TimeoutOptions
-  ): ScheduledJob {
+    handler: (context: IJobExecutionContext) => void | Promise<void>,
+    options?: ITimeoutOptions
+  ): IScheduledJob {
     // Create a wrapper object for the handler
     const wrapper = {
       [name]: handler
@@ -497,28 +497,28 @@ export class SchedulerService {
   /**
    * Get all jobs
    */
-  getAllJobs(): ScheduledJob[] {
+  getAllJobs(): IScheduledJob[] {
     return this.registry.getAllJobs();
   }
 
   /**
    * Get job by name
    */
-  getJob(name: string): ScheduledJob | undefined {
+  getJob(name: string): IScheduledJob | undefined {
     return this.registry.getJob(name);
   }
 
   /**
    * Find jobs with filter
    */
-  findJobs(filter: JobFilterOptions): ScheduledJob[] {
+  findJobs(filter: IJobFilterOptions): IScheduledJob[] {
     return this.registry.findJobs(filter);
   }
 
   /**
    * Get metrics
    */
-  getMetrics(): SchedulerMetrics | null {
+  getMetrics(): ISchedulerMetrics | null {
     return this.metrics?.getMetrics() || null;
   }
 
@@ -562,7 +562,7 @@ export class SchedulerService {
   /**
    * Trigger a job manually
    */
-  async triggerJob(name: string): Promise<JobExecutionResult> {
+  async triggerJob(name: string): Promise<IJobExecutionResult> {
     const job = this.registry.getJob(name);
     if (!job) {
       throw new Error(`${ERROR_MESSAGES.JOB_NOT_FOUND}: ${name}`);

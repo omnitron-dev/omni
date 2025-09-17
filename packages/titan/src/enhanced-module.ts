@@ -5,23 +5,23 @@
 import { Token, Container } from '@omnitron-dev/nexus';
 
 import {
-  Module,
-  Provider,
+  IModule,
+  IProvider,
   ModuleInput,
   IApplication,
-  HealthStatus,
-  DynamicModule,
+  IHealthStatus,
+  IDynamicModule,
   ApplicationModule as BaseApplicationModule
 } from './types';
 
 /**
  * Module metadata interface
  */
-export interface ModuleMetadata {
+export interface IModuleMetadata {
   name?: string;
   version?: string;
   imports?: ModuleInput[];
-  providers?: Provider[];
+  providers?: IProvider[];
   exports?: Token<any>[];
   dependencies?: (Token<any> | string)[];
 }
@@ -29,18 +29,18 @@ export interface ModuleMetadata {
 /**
  * Provider instance with lifecycle
  */
-interface ProviderInstance {
+interface IProviderInstance {
   token: Token<any>;
   instance: any;
-  metadata: Provider;
+  metadata: IProvider;
 }
 
 /**
  * Enhanced application module with automatic provider management
  */
 export abstract class EnhancedApplicationModule extends BaseApplicationModule {
-  private _providers: ProviderInstance[] = [];
-  private _imports: Module[] = [];
+  private _providers: IProviderInstance[] = [];
+  private _imports: IModule[] = [];
   private _exports: Set<Token<any>> = new Set();
   private _moduleContainer?: Container;
   private _parentContainer?: Container;
@@ -51,7 +51,7 @@ export abstract class EnhancedApplicationModule extends BaseApplicationModule {
   override readonly version?: string;
   override readonly dependencies?: (Token<any> | string)[];
 
-  constructor(protected metadata: ModuleMetadata = {}) {
+  constructor(protected metadata: IModuleMetadata = {}) {
     super();
     // Set properties from metadata
     this.name = metadata.name || this.constructor.name;
@@ -153,7 +153,7 @@ export abstract class EnhancedApplicationModule extends BaseApplicationModule {
   /**
    * Health check with provider checks
    */
-  override async health(): Promise<HealthStatus> {
+  override async health(): Promise<IHealthStatus> {
     const providerHealthChecks = await Promise.all(
       this._providers.map(async (provider) => {
         if (provider.instance && typeof provider.instance.health === 'function') {
@@ -212,7 +212,7 @@ export abstract class EnhancedApplicationModule extends BaseApplicationModule {
   /**
    * Register a provider
    */
-  private async registerProvider(providerDef: Provider, app: IApplication): Promise<void> {
+  private async registerProvider(providerDef: IProvider, app: IApplication): Promise<void> {
     const token = providerDef.provide;
 
     // Register in parent container directly
@@ -260,7 +260,7 @@ export abstract class EnhancedApplicationModule extends BaseApplicationModule {
   /**
    * Resolve a module from various input types
    */
-  private async resolveModule(input: ModuleInput, app: IApplication): Promise<Module> {
+  private async resolveModule(input: ModuleInput, app: IApplication): Promise<IModule> {
     if (typeof input === 'function') {
       // Check if it's a constructor or factory function
       if (input.prototype) {
@@ -270,16 +270,16 @@ export abstract class EnhancedApplicationModule extends BaseApplicationModule {
       } else {
         // Factory function
         const result = await (input as any)();
-        return result as Module;
+        return result as IModule;
       }
     } else if ('module' in (input as any)) {
       // Dynamic module
-      const dynamic = input as DynamicModule;
+      const dynamic = input as IDynamicModule;
       const ModuleClass = dynamic.module;
       return new ModuleClass();
     } else {
       // Module instance
-      return input as Module;
+      return input as IModule;
     }
   }
 
@@ -335,7 +335,7 @@ export abstract class EnhancedApplicationModule extends BaseApplicationModule {
 /**
  * Module decorator for declarative module configuration
  */
-export function Module(metadata: ModuleMetadata): ClassDecorator {
+export function Module(metadata: IModuleMetadata): ClassDecorator {
   return function (target: any) {
     // Store metadata on the class
     Reflect.defineMetadata('module:metadata', metadata, target);
@@ -384,8 +384,8 @@ export function Module(metadata: ModuleMetadata): ClassDecorator {
  */
 export function createModuleWithProviders(
   name: string,
-  providers: Provider[],
-  options?: Partial<ModuleMetadata>
+  providers: IProvider[],
+  options?: Partial<IModuleMetadata>
 ): EnhancedApplicationModule {
   return new (class extends EnhancedApplicationModule {
     constructor() {

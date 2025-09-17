@@ -7,24 +7,24 @@ import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { Token, Container, createToken } from '@omnitron-dev/nexus';
 
 import { ConfigModule, ConfigModuleToken } from './modules/config.module';
-import { Logger, LoggerModule, LoggerModuleToken } from './modules/logger.module';
+import { ILogger, LoggerModule, LoggerModuleToken } from './modules/logger.module';
 import {
-  Module,
-  Provider,
-  EventMeta,
-  Environment,
+  IModule,
+  IProvider,
+  IEventMeta,
+  IEnvironment,
   ModuleInput,
   IApplication,
   EventHandler,
-  LifecycleHook,
-  DynamicModule,
-  ShutdownOptions,
+  ILifecycleHook,
+  IDynamicModule,
+  IShutdownOptions,
   ApplicationState,
   ApplicationEvent,
-  ApplicationConfig,
+  IApplicationConfig,
   ModuleConstructor,
-  ApplicationMetrics,
-  ApplicationOptions
+  IApplicationMetrics,
+  IApplicationOptions
 } from './types';
 
 /**
@@ -39,23 +39,23 @@ export class Application implements IApplication {
   private _isStarted = false;
   private _state: ApplicationState = ApplicationState.Created;
   private _container: Container;
-  private _config: ApplicationConfig;
+  private _config: IApplicationConfig;
   private _startTime: number = 0;
   private _eventEmitter = new EventEmitter();
-  private _modules = new Map<Token<any>, Module>();
-  private _startHooks: LifecycleHook[] = [];
-  private _stopHooks: LifecycleHook[] = [];
+  private _modules = new Map<Token<any>, IModule>();
+  private _startHooks: ILifecycleHook[] = [];
+  private _stopHooks: ILifecycleHook[] = [];
   private _errorHandlers: ((error: Error) => void)[] = [];
-  private _logger?: Logger;
+  private _logger?: ILogger;
   private _shutdownHandlers: Map<string, (...args: any[]) => void> = new Map();
 
   /**
    * Static factory method for creating application instance
    */
-  static async create(options?: ApplicationOptions & {
+  static async create(options?: IApplicationOptions & {
     modules?: ModuleInput[];
-    replaceConfig?: Module | ((config?: any) => Module);
-    replaceLogger?: Module | ((config?: any) => Module);
+    replaceConfig?: IModule | ((config?: any) => IModule);
+    replaceLogger?: IModule | ((config?: any) => IModule);
   }): Promise<Application> {
     const app = new Application(options);
 
@@ -84,7 +84,7 @@ export class Application implements IApplication {
     return app;
   }
 
-  constructor(options: ApplicationOptions = {}) {
+  constructor(options: IApplicationOptions = {}) {
     // Initialize container
     this._container = options.container || new Container();
 
@@ -214,7 +214,7 @@ export class Application implements IApplication {
   /**
    * Stop the application
    */
-  async stop(options: ShutdownOptions = {}): Promise<void> {
+  async stop(options: IShutdownOptions = {}): Promise<void> {
     if (this._state !== ApplicationState.Started) {
       return;
     }
@@ -319,7 +319,7 @@ export class Application implements IApplication {
    * Replace a core module with a custom implementation
    * This method ensures the replacement happens before the app starts
    */
-  replaceModule<T extends Module>(token: Token<T>, module: T): this {
+  replaceModule<T extends IModule>(token: Token<T>, module: T): this {
     if (this._isStarted) {
       throw new Error('Cannot replace modules after application has started');
     }
@@ -349,9 +349,9 @@ export class Application implements IApplication {
   /**
    * Register a module - supports various module input types
    */
-  async registerModule(moduleInput: ModuleInput): Promise<Module> {
-    let moduleInstance: Module;
-    let dynamicModule: DynamicModule | null = null;
+  async registerModule(moduleInput: ModuleInput): Promise<IModule> {
+    let moduleInstance: IModule;
+    let dynamicModule: IDynamicModule | null = null;
 
     // Resolve the module input to an instance
     if (typeof moduleInput === 'function') {
@@ -370,14 +370,14 @@ export class Application implements IApplication {
         }
       } else {
         // Factory function - execute it
-        const factoryFn = moduleInput as (() => Module | Promise<Module> | DynamicModule | Promise<DynamicModule>);
+        const factoryFn = moduleInput as (() => IModule | Promise<IModule> | IDynamicModule | Promise<IDynamicModule>);
         const result = await factoryFn();
         if (this.isDynamicModule(result)) {
           dynamicModule = result;
           const ModuleClass = dynamicModule.module;
           moduleInstance = new ModuleClass();
         } else {
-          moduleInstance = result as Module;
+          moduleInstance = result as IModule;
         }
       }
     } else if (this.isDynamicModule(moduleInput)) {
@@ -387,11 +387,11 @@ export class Application implements IApplication {
       moduleInstance = new ModuleClass();
     } else {
       // Regular module instance
-      moduleInstance = moduleInput as Module;
+      moduleInstance = moduleInput as IModule;
     }
 
     // Create token for the module
-    const token = createToken<Module>(moduleInstance.name);
+    const token = createToken<IModule>(moduleInstance.name);
 
     // Register module in container
     if (!this._container.has(token)) {
@@ -421,7 +421,7 @@ export class Application implements IApplication {
   /**
    * Legacy use method - wraps registerModule for backward compatibility
    */
-  use<T extends Module>(module: T | Token<T>): this {
+  use<T extends IModule>(module: T | Token<T>): this {
     if (typeof module === 'object' && 'symbol' in module && 'id' in module) {
       // Token provided - resolve from container
       const token = module as Token<T>;
@@ -429,7 +429,7 @@ export class Application implements IApplication {
       this._modules.set(token, moduleInstance);
     } else {
       // Module instance - register it
-      this.registerModule(module as Module).catch(err => {
+      this.registerModule(module as IModule).catch(err => {
         this._logger?.error({ error: err }, 'Failed to register module');
         this.handleError(err);
       });
@@ -441,7 +441,7 @@ export class Application implements IApplication {
   /**
    * Get a module
    */
-  getModule<T extends Module>(token: Token<T>): T {
+  getModule<T extends IModule>(token: Token<T>): T {
     if (!this._modules.has(token)) {
       // Try to resolve from container
       try {
@@ -470,7 +470,7 @@ export class Application implements IApplication {
   /**
    * Get configuration value
    */
-  config<K extends keyof ApplicationConfig>(key: K): ApplicationConfig[K] {
+  config<K extends keyof IApplicationConfig>(key: K): IApplicationConfig[K] {
     return this._config[key];
   }
 
@@ -503,7 +503,7 @@ export class Application implements IApplication {
    * Emit event
    */
   emit<E extends ApplicationEvent>(event: E, data?: any): void {
-    const meta: EventMeta = {
+    const meta: IEventMeta = {
       event,
       timestamp: Date.now(),
       source: 'application'
@@ -527,7 +527,7 @@ export class Application implements IApplication {
   /**
    * Register start hook
    */
-  onStart(hook: LifecycleHook | (() => void | Promise<void>)): this {
+  onStart(hook: ILifecycleHook | (() => void | Promise<void>)): this {
     if (typeof hook === 'function') {
       this._startHooks.push({
         handler: hook,
@@ -545,7 +545,7 @@ export class Application implements IApplication {
   /**
    * Register stop hook
    */
-  onStop(hook: LifecycleHook | (() => void | Promise<void>)): this {
+  onStop(hook: ILifecycleHook | (() => void | Promise<void>)): this {
     if (typeof hook === 'function') {
       this._stopHooks.push({
         handler: hook,
@@ -617,7 +617,7 @@ export class Application implements IApplication {
   /**
    * Get environment information
    */
-  get environment(): Environment {
+  get environment(): IEnvironment {
     return {
       nodeVersion: process.version,
       platform: process.platform,
@@ -631,7 +631,7 @@ export class Application implements IApplication {
   /**
    * Get application metrics
    */
-  get metrics(): ApplicationMetrics {
+  get metrics(): IApplicationMetrics {
     return {
       uptime: this.uptime,
       memoryUsage: process.memoryUsage(),
@@ -734,8 +734,8 @@ export class Application implements IApplication {
     }
   }
 
-  private sortModulesByDependencies(): Array<[Token<any>, Module]> {
-    const sorted: Array<[Token<any>, Module]> = [];
+  private sortModulesByDependencies(): Array<[Token<any>, IModule]> {
+    const sorted: Array<[Token<any>, IModule]> = [];
     const visited = new Set<Token<any>>();
     const visiting = new Set<Token<any>>();
 
@@ -895,14 +895,14 @@ export class Application implements IApplication {
   /**
    * Check if an object is a DynamicModule
    */
-  private isDynamicModule(obj: any): obj is DynamicModule {
+  private isDynamicModule(obj: any): obj is IDynamicModule {
     return obj && typeof obj === 'object' && 'module' in obj && typeof obj.module === 'function';
   }
 
   /**
    * Process a dynamic module's providers and imports
    */
-  private async processDynamicModule(dynamicModule: DynamicModule, moduleInstance: Module): Promise<void> {
+  private async processDynamicModule(dynamicModule: IDynamicModule, moduleInstance: IModule): Promise<void> {
     // Process imports first
     if (dynamicModule.imports) {
       for (const importModule of dynamicModule.imports) {
@@ -927,7 +927,7 @@ export class Application implements IApplication {
   /**
    * Register a provider in the container
    */
-  private async registerProvider(provider: Provider): Promise<void> {
+  private async registerProvider(provider: IProvider): Promise<void> {
     const { provide: token, useClass, useValue, useFactory, inject, scope } = provider;
 
     let registration: any;
@@ -1012,14 +1012,14 @@ export class Application implements IApplication {
 /**
  * Create a new Titan application
  */
-export function createApp(options?: ApplicationOptions): Application {
+export function createApp(options?: IApplicationOptions): Application {
   return new Application(options);
 }
 
 /**
  * Create and start an application
  */
-export async function startApp(options?: ApplicationOptions): Promise<Application> {
+export async function startApp(options?: IApplicationOptions): Promise<Application> {
   const app = createApp(options);
   await app.start();
   return app;

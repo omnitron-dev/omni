@@ -18,11 +18,11 @@ import { EventMetadataService } from './event-metadata.service';
 import { LOGGER_TOKEN, EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN } from './events.module';
 
 import type {
-  EventContext,
-  EventStatistics,
-  EventSubscription,
-  EventListenerOptions,
-  EventValidationResult
+  IEventContext,
+  IEventStatistics,
+  IEventSubscription,
+  IEventListenerOptions,
+  IEventValidationResult
 } from './types';
 
 /**
@@ -30,8 +30,8 @@ import type {
  */
 @Injectable()
 export class EventsService {
-  private subscriptions: Map<string, Array<{ subscription: EventSubscription; priority: number }>> = new Map();
-  private eventStats: Map<string, EventStatistics> = new Map();
+  private subscriptions: Map<string, Array<{ subscription: IEventSubscription; priority: number }>> = new Map();
+  private eventStats: Map<string, IEventStatistics> = new Map();
   private wildcardSubscriptions: Map<string, { pattern: RegExp; handler: Function; originalHandler: Function }> | undefined;
   private initialized = false;
   private destroyed = false;
@@ -259,8 +259,8 @@ export class EventsService {
   subscribe(
     event: string,
     handler: (...args: any[]) => any,
-    options?: EventListenerOptions
-  ): EventSubscription {
+    options?: IEventListenerOptions
+  ): IEventSubscription {
     // Wrap handler with options
     const wrappedHandler = this.wrapHandler(handler, options);
 
@@ -276,7 +276,7 @@ export class EventsService {
       this.wildcardSubscriptions.set(event, { pattern, handler: wrappedHandler, originalHandler: handler });
 
       // Create subscription object
-      const subscription: EventSubscription = {
+      const subscription: IEventSubscription = {
         unsubscribe: () => {
           this.wildcardSubscriptions?.delete(event);
           this.removeSubscription(event, subscription);
@@ -305,7 +305,7 @@ export class EventsService {
     }
 
     // Create subscription object
-    const subscription: EventSubscription = {
+    const subscription: IEventSubscription = {
       unsubscribe: () => {
         unsubscribe();
         this.removeSubscription(event, subscription);
@@ -331,8 +331,8 @@ export class EventsService {
   once(
     event: string,
     handler: (...args: any[]) => any,
-    options?: EventListenerOptions
-  ): EventSubscription {
+    options?: IEventListenerOptions
+  ): IEventSubscription {
     const wrappedHandler = this.wrapHandler(handler, options);
 
     // Create a special once wrapper
@@ -345,7 +345,7 @@ export class EventsService {
       }
     };
 
-    const subscription: EventSubscription = {
+    const subscription: IEventSubscription = {
       unsubscribe: () => {
         this.removeSubscription(event, subscription);
       },
@@ -366,8 +366,8 @@ export class EventsService {
   subscribeMany(
     events: string[],
     handler: (...args: any[]) => void,
-    options?: EventListenerOptions
-  ): EventSubscription[] {
+    options?: IEventListenerOptions
+  ): IEventSubscription[] {
     return events.map(event => this.subscribe(event, handler, options));
   }
 
@@ -376,8 +376,8 @@ export class EventsService {
    */
   subscribeAll(
     handler: (...args: any[]) => void,
-    options?: EventListenerOptions
-  ): EventSubscription {
+    options?: IEventListenerOptions
+  ): IEventSubscription {
     return this.subscribe('**', handler, options);
   }
 
@@ -387,8 +387,8 @@ export class EventsService {
   on(
     event: string,
     handler: (...args: any[]) => any,
-    options?: EventListenerOptions
-  ): EventSubscription {
+    options?: IEventListenerOptions
+  ): IEventSubscription {
     return this.subscribe(event, handler, options);
   }
 
@@ -591,7 +591,7 @@ export class EventsService {
   /**
    * Get event statistics
    */
-  getStatistics(event?: string): EventStatistics | Map<string, EventStatistics> {
+  getStatistics(event?: string): IEventStatistics | Map<string, IEventStatistics> {
     if (event) {
       return this.eventStats.get(event) || this.createEmptyStats(event);
     }
@@ -628,7 +628,7 @@ export class EventsService {
     event: string,
     data: T,
     metadata?: Partial<EventMetadata>
-  ): EventContext<T> {
+  ): IEventContext<T> {
     const fullMetadata = this.metadataService.createMetadata(metadata);
 
     return {
@@ -644,7 +644,7 @@ export class EventsService {
   /**
    * Validate event data
    */
-  validateEventData(event: string, data: any): EventValidationResult {
+  validateEventData(event: string, data: any): IEventValidationResult {
     // This would use the validation service in a full implementation
     return { valid: true, data };
   }
@@ -701,7 +701,7 @@ export class EventsService {
    */
   private wrapHandler(
     handler: (...args: any[]) => any,
-    options?: EventListenerOptions
+    options?: IEventListenerOptions
   ): (...args: any[]) => any {
     // If no options, return a simple wrapper that just calls the handler
     if (!options) {
@@ -824,7 +824,7 @@ export class EventsService {
   /**
    * Add subscription to tracking
    */
-  private addSubscription(event: string, subscription: EventSubscription, priority: number = 0): void {
+  private addSubscription(event: string, subscription: IEventSubscription, priority: number = 0): void {
     if (!this.subscriptions.has(event)) {
       this.subscriptions.set(event, []);
     }
@@ -837,7 +837,7 @@ export class EventsService {
   /**
    * Remove subscription from tracking
    */
-  private removeSubscription(event: string, subscription: EventSubscription): void {
+  private removeSubscription(event: string, subscription: IEventSubscription): void {
     const subs = this.subscriptions.get(event);
     if (subs) {
       const index = subs.findIndex(s => s.subscription === subscription);
@@ -883,7 +883,7 @@ export class EventsService {
   /**
    * Create empty statistics object
    */
-  private createEmptyStats(event: string): EventStatistics {
+  private createEmptyStats(event: string): IEventStatistics {
     return {
       event,
       emitCount: 0,

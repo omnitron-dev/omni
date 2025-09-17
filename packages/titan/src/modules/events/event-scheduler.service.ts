@@ -9,14 +9,14 @@ import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
 
 import { LOGGER_TOKEN, EVENT_EMITTER_TOKEN } from './events.module';
 
-import type { EventSchedulerJob } from './types';
+import type { IEventSchedulerJob } from './types';
 
 /**
  * Service for scheduling events
  */
 @Injectable()
 export class EventSchedulerService {
-  private jobs: Map<string, EventSchedulerJob> = new Map();
+  private jobs: Map<string, IEventSchedulerJob> = new Map();
   private timers: Map<string, NodeJS.Timeout> = new Map();
   private intervals: Map<string, NodeJS.Timeout> = new Map();
   private jobIdCounter = 0;
@@ -94,9 +94,9 @@ export class EventSchedulerService {
    * Get scheduled jobs (first implementation)
    */
   getScheduledJobs(filter?: {
-    status?: EventSchedulerJob['status'];
+    status?: IEventSchedulerJob['status'];
     event?: string;
-  }): EventSchedulerJob[] {
+  }): IEventSchedulerJob[] {
     let jobs = Array.from(this.jobs.values());
 
     if (filter?.status) {
@@ -146,7 +146,7 @@ export class EventSchedulerService {
     const jobId = this.generateJobId();
     const scheduledAt = options.at || new Date(Date.now() + (options.delay || 0));
 
-    const job: EventSchedulerJob = {
+    const job: IEventSchedulerJob = {
       id: jobId,
       event,
       data,
@@ -197,9 +197,9 @@ export class EventSchedulerService {
    * Get all scheduled jobs
    */
   getJobs(filter?: {
-    status?: EventSchedulerJob['status'];
+    status?: IEventSchedulerJob['status'];
     event?: string;
-  }): EventSchedulerJob[] {
+  }): IEventSchedulerJob[] {
     let jobs = Array.from(this.jobs.values());
 
     if (filter?.status) {
@@ -260,7 +260,7 @@ export class EventSchedulerService {
   /**
    * Get a specific job
    */
-  getJob(jobId: string): EventSchedulerJob | undefined {
+  getJob(jobId: string): IEventSchedulerJob | undefined {
     return this.jobs.get(jobId);
   }
 
@@ -333,7 +333,7 @@ export class EventSchedulerService {
   /**
    * Schedule a one-time job
    */
-  private scheduleOneTimeJob(job: EventSchedulerJob): void {
+  private scheduleOneTimeJob(job: IEventSchedulerJob): void {
     const delay = job.scheduledAt.getTime() - Date.now();
 
     if (delay <= 0) {
@@ -353,7 +353,7 @@ export class EventSchedulerService {
   /**
    * Schedule a cron job
    */
-  private scheduleCronJob(job: EventSchedulerJob): void {
+  private scheduleCronJob(job: IEventSchedulerJob): void {
     if (!job.cron) return;
 
     // Parse cron expression and calculate next run time
@@ -369,7 +369,7 @@ export class EventSchedulerService {
   /**
    * Run a job
    */
-  private async runJob(job: EventSchedulerJob): Promise<void> {
+  private async runJob(job: IEventSchedulerJob): Promise<void> {
     job.status = 'running';
 
     try {

@@ -17,7 +17,7 @@ import {
 /**
  * Titan module metadata
  */
-export interface TitanModuleOptions extends ModuleDecoratorOptions {
+export interface ITitanModuleOptions extends ModuleDecoratorOptions {
   nexusModule?: any;
   dependencies?: string[];
   config?: Record<string, any>;
@@ -26,7 +26,7 @@ export interface TitanModuleOptions extends ModuleDecoratorOptions {
 /**
  * Titan module decorator
  */
-export const TitanModule = createDecorator<TitanModuleOptions>()
+export const TitanModule = createDecorator<ITitanModuleOptions>()
   .withName('TitanModule')
   .forClass((context) => {
     const options = context.options!;
@@ -117,7 +117,7 @@ export const OnModuleEvent = createDecorator<{
 /**
  * Health check decorator options
  */
-export interface HealthCheckOptions {
+export interface IHealthCheckOptions {
   name: string;
   critical?: boolean;
   timeout?: number;
@@ -127,7 +127,7 @@ export interface HealthCheckOptions {
 /**
  * Health check decorator
  */
-export const HealthCheck = createDecorator<HealthCheckOptions>()
+export const HealthCheck = createDecorator<IHealthCheckOptions>()
   .withName('HealthCheck')
   .forMethod()
   .withMetadata((context: any) => ({

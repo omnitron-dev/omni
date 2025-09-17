@@ -7,7 +7,7 @@ import type { EventMetadata } from '@omnitron-dev/eventemitter';
 /**
  * Event emitter configuration options
  */
-export interface EventEmitterOptions {
+export interface IEventEmitterOptions {
   wildcard?: boolean;
   delimiter?: string;
   maxListeners?: number;
@@ -30,7 +30,7 @@ export interface EventEmitterOptions {
 /**
  * Event listener options for decorators
  */
-export interface EventListenerOptions {
+export interface IEventListenerOptions {
   /**
    * Listen for events asynchronously
    */
@@ -94,7 +94,7 @@ export interface EventListenerOptions {
 /**
  * Event handler metadata
  */
-export interface EventHandlerMetadata {
+export interface IEventHandlerMetadata {
   /**
    * Event pattern to listen for
    */
@@ -113,7 +113,7 @@ export interface EventHandlerMetadata {
   /**
    * Handler options
    */
-  options?: EventListenerOptions;
+  options?: IEventListenerOptions;
 
   /**
    * Whether this is a one-time handler
@@ -129,7 +129,7 @@ export interface EventHandlerMetadata {
 /**
  * Event context passed to handlers
  */
-export interface EventContext<T = any> {
+export interface IEventContext<T = any> {
   /**
    * Event name
    */
@@ -169,7 +169,7 @@ export interface EventContext<T = any> {
 /**
  * Event emitter decorator options
  */
-export interface EmitEventOptions {
+export interface IEmitEventOptions {
   /**
    * Event to emit
    */
@@ -214,7 +214,7 @@ export interface EmitEventOptions {
 /**
  * Event subscription handle
  */
-export interface EventSubscription {
+export interface IEventSubscription {
   /**
    * Unsubscribe from the event
    */
@@ -244,7 +244,7 @@ export interface EventSubscription {
 /**
  * Event bus message
  */
-export interface EventBusMessage<T = any> {
+export interface IEventBusMessage<T = any> {
   /**
    * Unique message ID
    */
@@ -284,7 +284,7 @@ export interface EventBusMessage<T = any> {
 /**
  * Event validation result
  */
-export interface EventValidationResult {
+export interface IEventValidationResult {
   /**
    * Whether validation passed
    */
@@ -304,7 +304,7 @@ export interface EventValidationResult {
 /**
  * Event statistics
  */
-export interface EventStatistics {
+export interface IEventStatistics {
   /**
    * Event name
    */
@@ -354,7 +354,7 @@ export interface EventStatistics {
 /**
  * Event replay options
  */
-export interface EventReplayOptions {
+export interface IEventReplayOptions {
   /**
    * Filter events to replay
    */
@@ -389,11 +389,11 @@ export interface EventReplayOptions {
 /**
  * Event discovery result
  */
-export interface EventDiscoveryResult {
+export interface IEventDiscoveryResult {
   /**
    * Discovered event handlers
    */
-  handlers: EventHandlerMetadata[];
+  handlers: IEventHandlerMetadata[];
 
   /**
    * Discovered event emitters
@@ -423,7 +423,7 @@ export interface EventDiscoveryResult {
 /**
  * Event scheduler job
  */
-export interface EventSchedulerJob {
+export interface IEventSchedulerJob {
   /**
    * Job ID
    */
@@ -468,7 +468,7 @@ export interface EventSchedulerJob {
 /**
  * Event module lifecycle
  */
-export interface EventModuleLifecycle {
+export interface IEventModuleLifecycle {
   /**
    * Called when module is initialized
    */

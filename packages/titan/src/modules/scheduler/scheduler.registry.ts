@@ -15,12 +15,12 @@ import {
 import {
   JobStatus,
   SchedulerJobType,
-  type CronOptions,
-  type ScheduledJob,
-  type TimeoutOptions,
-  type SchedulerConfig,
-  type IntervalOptions,
-  type JobFilterOptions
+  type ICronOptions,
+  type IScheduledJob,
+  type ITimeoutOptions,
+  type ISchedulerConfig,
+  type IIntervalOptions,
+  type IJobFilterOptions
 } from './scheduler.interfaces';
 
 /**
@@ -28,14 +28,14 @@ import {
  */
 @Injectable()
 export class SchedulerRegistry {
-  private jobs: Map<string, ScheduledJob> = new Map();
+  private jobs: Map<string, IScheduledJob> = new Map();
   private jobsByType: Map<SchedulerJobType, Set<string>> = new Map();
   private jobsByStatus: Map<JobStatus, Set<string>> = new Map();
   private eventEmitter: EventEmitter = new EventEmitter();
   private jobIdCounter = 0;
 
   constructor(
-    @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: SchedulerConfig
+    @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: ISchedulerConfig
   ) {
     // Initialize type and status maps
     for (const type of Object.values(SchedulerJobType)) {
@@ -62,14 +62,14 @@ export class SchedulerRegistry {
     pattern: string | number,
     target: any,
     method: string,
-    options: CronOptions | IntervalOptions | TimeoutOptions = {}
-  ): ScheduledJob {
+    options: ICronOptions | IIntervalOptions | ITimeoutOptions = {}
+  ): IScheduledJob {
     // Check if job already exists
     if (this.hasJob(name)) {
       throw new Error(`${ERROR_MESSAGES.JOB_ALREADY_EXISTS}: ${name}`);
     }
 
-    const job: ScheduledJob = {
+    const job: IScheduledJob = {
       id: this.generateJobId(),
       name,
       type,
@@ -99,7 +99,7 @@ export class SchedulerRegistry {
   /**
    * Get a job by name
    */
-  getJob(name: string): ScheduledJob | undefined {
+  getJob(name: string): IScheduledJob | undefined {
     return this.jobs.get(name);
   }
 
@@ -213,34 +213,34 @@ export class SchedulerRegistry {
   /**
    * Get all jobs
    */
-  getAllJobs(): ScheduledJob[] {
+  getAllJobs(): IScheduledJob[] {
     return Array.from(this.jobs.values());
   }
 
   /**
    * Get jobs by type
    */
-  getJobsByType(type: SchedulerJobType): ScheduledJob[] {
+  getJobsByType(type: SchedulerJobType): IScheduledJob[] {
     const jobNames = this.jobsByType.get(type) || new Set();
     return Array.from(jobNames)
       .map(name => this.jobs.get(name))
-      .filter((job): job is ScheduledJob => job !== undefined);
+      .filter((job): job is IScheduledJob => job !== undefined);
   }
 
   /**
    * Get jobs by status
    */
-  getJobsByStatus(status: JobStatus): ScheduledJob[] {
+  getJobsByStatus(status: JobStatus): IScheduledJob[] {
     const jobNames = this.jobsByStatus.get(status) || new Set();
     return Array.from(jobNames)
       .map(name => this.jobs.get(name))
-      .filter((job): job is ScheduledJob => job !== undefined);
+      .filter((job): job is IScheduledJob => job !== undefined);
   }
 
   /**
    * Find jobs with filter
    */
-  findJobs(filter: JobFilterOptions): ScheduledJob[] {
+  findJobs(filter: IJobFilterOptions): IScheduledJob[] {
     let jobs = this.getAllJobs();
 
     // Filter by status
@@ -317,21 +317,21 @@ export class SchedulerRegistry {
   /**
    * Get cron jobs
    */
-  getCronJobs(): ScheduledJob[] {
+  getCronJobs(): IScheduledJob[] {
     return this.getJobsByType(SchedulerJobType.CRON);
   }
 
   /**
    * Get interval jobs
    */
-  getIntervals(): ScheduledJob[] {
+  getIntervals(): IScheduledJob[] {
     return this.getJobsByType(SchedulerJobType.INTERVAL);
   }
 
   /**
    * Get timeout jobs
    */
-  getTimeouts(): ScheduledJob[] {
+  getTimeouts(): IScheduledJob[] {
     return this.getJobsByType(SchedulerJobType.TIMEOUT);
   }
 

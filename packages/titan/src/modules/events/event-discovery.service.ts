@@ -11,9 +11,9 @@ import { EventMetadataService } from './event-metadata.service';
 import { LOGGER_TOKEN, EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN } from './events.module';
 
 import type {
-  EventHandlerMetadata,
-  EventDiscoveryResult,
-  EventListenerOptions
+  IEventHandlerMetadata,
+  IEventDiscoveryResult,
+  IEventListenerOptions
 } from './types';
 
 /**
@@ -28,7 +28,7 @@ export const EVENT_EMITTER_METADATA = Symbol('event:emitter');
  */
 @Injectable()
 export class EventDiscoveryService {
-  private discoveredHandlers: Map<string, EventHandlerMetadata[]> = new Map();
+  private discoveredHandlers: Map<string, IEventHandlerMetadata[]> = new Map();
   private registeredHandlers: Map<any, Map<string, Function>> = new Map();
   private initialized = false;
   private destroyed = false;
@@ -52,8 +52,8 @@ export class EventDiscoveryService {
   /**
    * Discover event handlers in a class
    */
-  discoverHandlers(target: any): EventHandlerMetadata[] {
-    const handlers: EventHandlerMetadata[] = [];
+  discoverHandlers(target: any): IEventHandlerMetadata[] {
+    const handlers: IEventHandlerMetadata[] = [];
     const prototype = target.prototype || target;
 
     // Get all method names
@@ -124,8 +124,8 @@ export class EventDiscoveryService {
   /**
    * Scan a module for event providers
    */
-  async scanModule(module: any): Promise<EventDiscoveryResult> {
-    const result: EventDiscoveryResult = {
+  async scanModule(module: any): Promise<IEventDiscoveryResult> {
+    const result: IEventDiscoveryResult = {
       handlers: [],
       emitters: [],
       dependencies: new Map(),
@@ -214,8 +214,8 @@ export class EventDiscoveryService {
   /**
    * Discover all event handlers in the application
    */
-  async discoverAllHandlers(): Promise<EventDiscoveryResult> {
-    const handlers: EventHandlerMetadata[] = [];
+  async discoverAllHandlers(): Promise<IEventDiscoveryResult> {
+    const handlers: IEventHandlerMetadata[] = [];
     const emitters: Array<{ class: string; method: string; event: string }> = [];
     const dependencies = new Map<string, string[]>();
 
@@ -242,7 +242,7 @@ export class EventDiscoveryService {
         );
 
         if (handlerMetadata) {
-          const metadata: EventHandlerMetadata = {
+          const metadata: IEventHandlerMetadata = {
             event: handlerMetadata.event,
             method: propertyName,
             target: provider,
@@ -263,7 +263,7 @@ export class EventDiscoveryService {
         );
 
         if (onceMetadata) {
-          const metadata: EventHandlerMetadata = {
+          const metadata: IEventHandlerMetadata = {
             event: onceMetadata.event,
             method: propertyName,
             target: provider,
@@ -329,7 +329,7 @@ export class EventDiscoveryService {
   /**
    * Register a single event handler
    */
-  async registerHandler(metadata: EventHandlerMetadata): Promise<void> {
+  async registerHandler(metadata: IEventHandlerMetadata): Promise<void> {
     const { target, method, event, options, once } = metadata;
 
     // Create bound handler
@@ -354,7 +354,7 @@ export class EventDiscoveryService {
   /**
    * Register all discovered handlers
    */
-  async registerAllHandlers(handlers: EventHandlerMetadata[]): Promise<void> {
+  async registerAllHandlers(handlers: IEventHandlerMetadata[]): Promise<void> {
     for (const handler of handlers) {
       await this.registerHandler(handler);
     }
@@ -390,14 +390,14 @@ export class EventDiscoveryService {
   /**
    * Get handlers for a specific event
    */
-  getHandlersForEvent(event: string): EventHandlerMetadata[] {
+  getHandlersForEvent(event: string): IEventHandlerMetadata[] {
     return this.discoveredHandlers.get(event) || [];
   }
 
   /**
    * Get all discovered handlers
    */
-  getAllHandlers(): Map<string, EventHandlerMetadata[]> {
+  getAllHandlers(): Map<string, IEventHandlerMetadata[]> {
     return this.discoveredHandlers;
   }
 
@@ -412,7 +412,7 @@ export class EventDiscoveryService {
   /**
    * Convert EventListenerOptions to ListenerOptions
    */
-  private convertToListenerOptions(options?: EventListenerOptions): any {
+  private convertToListenerOptions(options?: IEventListenerOptions): any {
     if (!options) return undefined;
 
     const listenerOptions: any = {
@@ -441,7 +441,7 @@ export class EventDiscoveryService {
   private createHandler(
     target: any,
     method: string,
-    options?: EventListenerOptions
+    options?: IEventListenerOptions
   ): Function {
     const originalMethod = target[method];
 
@@ -531,7 +531,7 @@ export class EventDiscoveryService {
   /**
    * Add handler to discovery map
    */
-  private addHandlerToMap(event: string, metadata: EventHandlerMetadata): void {
+  private addHandlerToMap(event: string, metadata: IEventHandlerMetadata): void {
     if (!this.discoveredHandlers.has(event)) {
       this.discoveredHandlers.set(event, []);
     }

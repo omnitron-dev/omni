@@ -24,7 +24,7 @@ import { EventDiscoveryService } from './event-discovery.service';
 import { EventSchedulerService } from './event-scheduler.service';
 import { EventValidationService } from './event-validation.service';
 
-import type { EventEmitterOptions } from './types';
+import type { IEventEmitterOptions } from './types';
 
 // Tokens
 export const EVENT_EMITTER_TOKEN = createToken<EnhancedEventEmitter>('EventEmitter');
@@ -35,13 +35,13 @@ export const EVENT_BUS_SERVICE_TOKEN = createToken<EventBusService>('EventBusSer
 export const EVENT_SCHEDULER_SERVICE_TOKEN = createToken<EventSchedulerService>('EventSchedulerService');
 export const EVENT_VALIDATION_SERVICE_TOKEN = createToken<EventValidationService>('EventValidationService');
 export const EVENT_HISTORY_SERVICE_TOKEN = createToken<EventHistoryService>('EventHistoryService');
-export const EVENT_OPTIONS_TOKEN = createToken<EventEmitterOptions>('EventEmitterOptions');
+export const EVENT_OPTIONS_TOKEN = createToken<IEventEmitterOptions>('EventEmitterOptions');
 export const LOGGER_TOKEN = createToken<any>('Logger');
 
 /**
  * Events module configuration
  */
-export interface EventsModuleOptions {
+export interface IEventsModuleOptions {
   /**
    * Enable wildcard event support
    */
@@ -106,7 +106,7 @@ export interface EventsModuleOptions {
   providers: [
     // Enhanced Event Emitter
     [EVENT_EMITTER_TOKEN, {
-      useFactory: (options: EventEmitterOptions) => {
+      useFactory: (options: IEventEmitterOptions) => {
         const emitter = new EnhancedEventEmitter({
           wildcard: options.wildcard !== false,
           delimiter: options.delimiter || '.',
@@ -211,7 +211,7 @@ export class EventsModule {
   /**
    * Configure the Events module with options
    */
-  static forRoot(options: EventsModuleOptions = {}): any {
+  static forRoot(options: IEventsModuleOptions = {}): any {
     return {
       module: EventsModule,
       providers: [
@@ -222,7 +222,7 @@ export class EventsModule {
 
         // Enhanced Event Emitter
         [EVENT_EMITTER_TOKEN, {
-          useFactory: (opts: EventEmitterOptions) => {
+          useFactory: (opts: IEventEmitterOptions) => {
             const emitter = new EnhancedEventEmitter({
               wildcard: opts.wildcard !== false,
               delimiter: opts.delimiter || '.',
@@ -337,7 +337,7 @@ export class EventsModule {
    * Configure the Events module asynchronously
    */
   static forRootAsync(options: {
-    useFactory: (...args: any[]) => Promise<EventsModuleOptions> | EventsModuleOptions;
+    useFactory: (...args: any[]) => Promise<IEventsModuleOptions> | IEventsModuleOptions;
     inject?: any[];
   }): any {
     return {
@@ -351,7 +351,7 @@ export class EventsModule {
 
         // Enhanced Event Emitter with async options
         [EVENT_EMITTER_TOKEN, {
-          useFactory: async (opts: EventsModuleOptions) => {
+          useFactory: async (opts: IEventsModuleOptions) => {
             const emitter = new EnhancedEventEmitter({
               wildcard: opts.wildcard !== false,
               delimiter: opts.delimiter || '.',

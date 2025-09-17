@@ -9,30 +9,30 @@ import path from 'node:path';
 import { z, ZodType, ZodError } from 'zod';
 import { createToken } from '@omnitron-dev/nexus';
 
-import { IApplication, HealthStatus, ApplicationModule } from '../types';
+import { IApplication, IHealthStatus, ApplicationModule } from '../types';
 
 /**
  * Configuration source types
  */
 export type ConfigSource =
-  | FileSource
-  | EnvironmentSource
-  | ObjectSource;
+  | IFileSource
+  | IEnvironmentSource
+  | IObjectSource;
 
-export interface FileSource {
+export interface IFileSource {
   type: 'file';
   path: string;
   format?: 'json' | 'env';
   optional?: boolean;
 }
 
-export interface EnvironmentSource {
+export interface IEnvironmentSource {
   type: 'env';
   prefix?: string;
   transform?: (key: string) => string;
 }
 
-export interface ObjectSource {
+export interface IObjectSource {
   type: 'object';
   data: Record<string, any>;
 }
@@ -40,7 +40,7 @@ export interface ObjectSource {
 /**
  * Configuration validation result
  */
-export interface ValidationResult<T = any> {
+export interface IValidationResult<T = any> {
   success: boolean;
   data?: T;
   errors?: $ZodIssue[];
@@ -74,7 +74,7 @@ export interface IConfigModule {
   validate<T>(schema: ZodType<T>): T;
   validateAsync<T>(schema: ZodType<T>): Promise<T>;
   validatePath<T = any>(path: string, schema: ZodType<T>): T;
-  validateSafe<T>(schema: ZodType<T>): ValidationResult<T>;
+  validateSafe<T>(schema: ZodType<T>): IValidationResult<T>;
 
   // Schema registration
   registerSchema<T>(path: string, schema: ZodType<T>): void;
@@ -338,7 +338,7 @@ export class ConfigModule extends ApplicationModule implements IConfigModule {
   /**
    * Safe validation that returns a result object
    */
-  validateSafe<T>(schema: ZodType<T>): ValidationResult<T> {
+  validateSafe<T>(schema: ZodType<T>): IValidationResult<T> {
     const result = schema.safeParse(this.config);
 
     if (result.success) {
@@ -471,7 +471,7 @@ export class ConfigModule extends ApplicationModule implements IConfigModule {
   /**
    * Health check
    */
-  override async health(): Promise<HealthStatus> {
+  override async health(): Promise<IHealthStatus> {
     try {
       // Validate all registered schemas
       for (const [path, schema] of this.schemas) {
@@ -738,7 +738,7 @@ export class ConfigModule extends ApplicationModule implements IConfigModule {
 /**
  * Configuration module options
  */
-export interface ConfigModuleOptions<T = any> {
+export interface IConfigModuleOptions<T = any> {
   sources?: ConfigSource[];
   schema?: ZodType<T>;
   schemas?: Record<string, ZodType>;
@@ -751,7 +751,7 @@ export interface ConfigModuleOptions<T = any> {
  * Create a configuration module
  */
 export function createConfigModule<T = any>(
-  options?: ConfigModuleOptions<T>
+  options?: IConfigModuleOptions<T>
 ): ConfigModule {
   const module = new ConfigModule();
   (module as any).__isConfigModule = true; // Ensure marker is set

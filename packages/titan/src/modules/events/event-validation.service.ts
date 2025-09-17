@@ -8,12 +8,12 @@ import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
 
 import { LOGGER_TOKEN } from './events.module';
 
-import type { EventValidationResult } from './types';
+import type { IEventValidationResult } from './types';
 
 /**
  * Schema validator interface
  */
-export interface SchemaValidator {
+export interface ISchemaValidator {
   validate(data: any): { valid: boolean; errors?: string[] };
 }
 
@@ -22,7 +22,7 @@ export interface SchemaValidator {
  */
 @Injectable()
 export class EventValidationService {
-  private schemas: Map<string, SchemaValidator> = new Map();
+  private schemas: Map<string, ISchemaValidator> = new Map();
   private validators: Map<string, Function> = new Map();
   private initialized = false;
   private destroyed = false;
@@ -150,7 +150,7 @@ export class EventValidationService {
   /**
    * Validate event data
    */
-  validate(event: string, data: any): EventValidationResult {
+  validate(event: string, data: any): IEventValidationResult {
     // Check for custom validator first
     const customValidator = this.validators.get(event);
     if (customValidator) {
@@ -202,7 +202,7 @@ export class EventValidationService {
   validateAndTransform(
     event: string,
     data: any
-  ): EventValidationResult {
+  ): IEventValidationResult {
     const validation = this.validate(event, data);
 
     if (!validation.valid) {
@@ -294,7 +294,7 @@ export class EventValidationService {
   /**
    * Create validator from schema
    */
-  private createValidator(schema: any): SchemaValidator {
+  private createValidator(schema: any): ISchemaValidator {
     if (typeof schema.validate === 'function') {
       return schema;
     }

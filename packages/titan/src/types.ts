@@ -34,7 +34,7 @@ export type ApplicationEvent =
 /**
  * Application configuration
  */
-export interface ApplicationConfig {
+export interface IApplicationConfig {
   name?: string;
   version?: string;
   environment?: string;
@@ -48,7 +48,7 @@ export interface ApplicationConfig {
 /**
  * Module metadata
  */
-export interface ModuleMetadata {
+export interface IModuleMetadata {
   name: string;
   version?: string;
   dependencies?: Token<any>[];
@@ -58,7 +58,7 @@ export interface ModuleMetadata {
 /**
  * Module lifecycle hooks
  */
-export interface ModuleLifecycle {
+export interface IModuleLifecycle {
   onRegister?(app: IApplication): void | Promise<void>;
   onStart?(app: IApplication): void | Promise<void>;
   onStop?(app: IApplication): void | Promise<void>;
@@ -68,7 +68,7 @@ export interface ModuleLifecycle {
 /**
  * Health check status
  */
-export interface HealthStatus {
+export interface IHealthStatus {
   status: 'healthy' | 'degraded' | 'unhealthy';
   message?: string;
   details?: any;
@@ -77,18 +77,18 @@ export interface HealthStatus {
 /**
  * Module interface
  */
-export interface Module extends ModuleLifecycle {
+export interface IModule extends IModuleLifecycle {
   readonly name: string;
   readonly version?: string;
   readonly dependencies?: (Token<any> | string)[];
   configure?(config: any): void;
-  health?(): Promise<HealthStatus>;
+  health?(): Promise<IHealthStatus>;
 }
 
 /**
  * Application module base class
  */
-export abstract class ApplicationModule implements Module {
+export abstract class ApplicationModule implements IModule {
   abstract readonly name: string;
   readonly version?: string;
   readonly dependencies?: (Token<any> | string)[] = [];
@@ -113,7 +113,7 @@ export abstract class ApplicationModule implements Module {
     // Default implementation - can be overridden
   }
 
-  async health(): Promise<HealthStatus> {
+  async health(): Promise<IHealthStatus> {
     // Default implementation
     return {
       status: 'healthy',
@@ -125,12 +125,12 @@ export abstract class ApplicationModule implements Module {
 /**
  * Event handler type
  */
-export type EventHandler<T = any> = (data: T, meta?: EventMeta) => void | Promise<void>;
+export type EventHandler<T = any> = (data: T, meta?: IEventMeta) => void | Promise<void>;
 
 /**
  * Event metadata
  */
-export interface EventMeta {
+export interface IEventMeta {
   event: string;
   timestamp: number;
   source?: string;
@@ -140,7 +140,7 @@ export interface EventMeta {
 /**
  * Lifecycle hook
  */
-export interface LifecycleHook {
+export interface ILifecycleHook {
   name?: string;
   priority?: number;
   timeout?: number;
@@ -150,7 +150,7 @@ export interface LifecycleHook {
 /**
  * Shutdown options
  */
-export interface ShutdownOptions {
+export interface IShutdownOptions {
   timeout?: number;
   force?: boolean;
   signal?: NodeJS.Signals;
@@ -159,7 +159,7 @@ export interface ShutdownOptions {
 /**
  * Application metrics
  */
-export interface ApplicationMetrics {
+export interface IApplicationMetrics {
   uptime: number;
   memoryUsage: NodeJS.MemoryUsage;
   cpuUsage?: NodeJS.CpuUsage;
@@ -169,7 +169,7 @@ export interface ApplicationMetrics {
 /**
  * Application environment
  */
-export interface Environment {
+export interface IEnvironment {
   nodeVersion: string;
   platform: NodeJS.Platform;
   arch: string;
@@ -181,29 +181,29 @@ export interface Environment {
 /**
  * Module definition options
  */
-export interface ModuleDefinition<T extends Module = Module> {
+export interface IModuleDefinition<T extends IModule = IModule> {
   name: string;
   version?: string;
   dependencies?: Token<any>[];
   providers?: any[];
-  imports?: Token<Module>[];
+  imports?: Token<IModule>[];
   exports?: Token<any>[];
   onRegister?(app: IApplication): void | Promise<void>;
   onStart?(app: IApplication): void | Promise<void>;
   onStop?(app: IApplication): void | Promise<void>;
   onDestroy?(): void | Promise<void>;
   configure?(config: any): void;
-  health?(): Promise<HealthStatus>;
+  health?(): Promise<IHealthStatus>;
 }
 
 /**
  * Application options
  */
-export interface ApplicationOptions {
+export interface IApplicationOptions {
   name?: string;
   version?: string;
   container?: Container;
-  config?: ApplicationConfig;
+  config?: IApplicationConfig;
   debug?: boolean;
   gracefulShutdownTimeout?: number;
   disableCoreModules?: boolean; // Allow disabling automatic core module registration
@@ -219,14 +219,14 @@ export interface ApplicationOptions {
 export interface IApplication {
   // Lifecycle management
   start(): Promise<void>;
-  stop(options?: ShutdownOptions): Promise<void>;
+  stop(options?: IShutdownOptions): Promise<void>;
   restart(): Promise<void>;
 
   // Module management
-  use<T extends Module>(module: T | Token<T>): this;
-  get<T extends Module>(token: Token<T>): T;
+  use<T extends IModule>(module: T | Token<T>): this;
+  get<T extends IModule>(token: Token<T>): T;
   has(token: Token<any>): boolean;
-  replaceModule<T extends Module>(token: Token<T>, module: T): this;
+  replaceModule<T extends IModule>(token: Token<T>, module: T): this;
 
   // Dependency Injection
   register<T>(token: Token<T>, provider: any, options?: { override?: boolean }): this;
@@ -235,7 +235,7 @@ export interface IApplication {
 
   // Configuration
   configure<T = any>(config: T): this;
-  config<K extends keyof ApplicationConfig>(key: K): ApplicationConfig[K];
+  config<K extends keyof IApplicationConfig>(key: K): IApplicationConfig[K];
 
   // Event system
   on<E extends ApplicationEvent>(event: E, handler: EventHandler): void;
@@ -244,34 +244,34 @@ export interface IApplication {
   emit<E extends ApplicationEvent>(event: E, data?: any): void;
 
   // Lifecycle hooks
-  onStart(hook: LifecycleHook | (() => void | Promise<void>)): this;
-  onStop(hook: LifecycleHook | (() => void | Promise<void>)): this;
+  onStart(hook: ILifecycleHook | (() => void | Promise<void>)): this;
+  onStop(hook: ILifecycleHook | (() => void | Promise<void>)): this;
   onError(handler: (error: Error) => void): this;
 
   // Runtime information
   readonly state: ApplicationState;
   readonly uptime: number;
-  readonly environment: Environment;
-  readonly metrics: ApplicationMetrics;
+  readonly environment: IEnvironment;
+  readonly metrics: IApplicationMetrics;
   readonly container: Container;
 }
 
 /**
  * Module constructor type
  */
-export type ModuleConstructor<T extends Module = Module> = new (...args: any[]) => T;
+export type ModuleConstructor<T extends IModule = IModule> = new (...args: any[]) => T;
 
 /**
  * Module factory function
  */
-export type ModuleFactory<T extends Module = Module> = (app: IApplication) => T | Promise<T>;
+export type ModuleFactory<T extends IModule = IModule> = (app: IApplication) => T | Promise<T>;
 
 /**
  * Dynamic module interface - for modules with providers
  */
-export interface DynamicModule extends Module {
+export interface IDynamicModule extends IModule {
   module: ModuleConstructor;
-  providers?: Provider[];
+  providers?: IProvider[];
   imports?: ModuleInput[];
   exports?: Token<any>[];
   global?: boolean;
@@ -280,7 +280,7 @@ export interface DynamicModule extends Module {
 /**
  * Provider definition for modules
  */
-export interface Provider {
+export interface IProvider {
   provide: Token<any>;
   useClass?: any;
   useValue?: any;
@@ -293,22 +293,22 @@ export interface Provider {
  * Module input types - supports various module definition patterns
  */
 export type ModuleInput =
-  | Module                        // Module instance
+  | IModule                        // Module instance
   | ModuleConstructor             // Module class
-  | DynamicModule                 // Dynamic module with providers
-  | (() => Module)                // Module factory function
-  | (() => Promise<Module>)       // Async module factory
-  | (() => DynamicModule)         // Dynamic module factory
-  | (() => Promise<DynamicModule>); // Async dynamic module factory
+  | IDynamicModule               // Dynamic module with providers
+  | (() => IModule)                // Module factory function
+  | (() => Promise<IModule>)       // Async module factory
+  | (() => IDynamicModule)         // Dynamic module factory
+  | (() => Promise<IDynamicModule>); // Async dynamic module factory
 
 /**
  * Static module interface - for modules with forRoot patterns
  */
-export interface StaticModuleInterface {
-  forRoot?(config?: any): DynamicModule;
+export interface IStaticModuleInterface {
+  forRoot?(config?: any): IDynamicModule;
   forRootAsync?(options: {
     useFactory?: (...args: any[]) => any | Promise<any>;
     inject?: Token<any>[];
     imports?: ModuleInput[];
-  }): DynamicModule;
+  }): IDynamicModule;
 }

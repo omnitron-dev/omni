@@ -15,9 +15,9 @@ import {
 
 import type { SchedulerRegistry } from './scheduler.registry';
 import type {
-  JobMetadata,
-  ScheduledJob,
-  SchedulerConfig
+  IJobMetadata,
+  IScheduledJob,
+  ISchedulerConfig
 } from './scheduler.interfaces';
 
 /**
@@ -30,14 +30,14 @@ export class SchedulerDiscovery {
   constructor(
     @Inject(Container) private readonly container: Container,
     @Inject(SCHEDULER_REGISTRY_TOKEN) private readonly registry: SchedulerRegistry,
-    @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: SchedulerConfig
+    @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: ISchedulerConfig
   ) {}
 
   /**
    * Discover and register all scheduled jobs
    */
-  async discover(): Promise<ScheduledJob[]> {
-    const jobs: ScheduledJob[] = [];
+  async discover(): Promise<IScheduledJob[]> {
+    const jobs: IScheduledJob[] = [];
 
     // Get all providers from container
     const providers = this.getAllProviders();
@@ -53,7 +53,7 @@ export class SchedulerDiscovery {
   /**
    * Discover jobs in a specific provider
    */
-  async discoverProviderJobs(provider: any): Promise<ScheduledJob[]> {
+  async discoverProviderJobs(provider: any): Promise<IScheduledJob[]> {
     if (!provider || typeof provider !== 'object') {
       return [];
     }
@@ -64,7 +64,7 @@ export class SchedulerDiscovery {
     }
     this.discoveredProviders.add(provider);
 
-    const jobs: ScheduledJob[] = [];
+    const jobs: IScheduledJob[] = [];
     const constructor = provider.constructor;
 
     // Get scheduled jobs metadata
@@ -86,8 +86,8 @@ export class SchedulerDiscovery {
   private registerJob(
     instance: any,
     methodName: string,
-    metadata: JobMetadata
-  ): ScheduledJob | null {
+    metadata: IJobMetadata
+  ): IScheduledJob | null {
     try {
       // Generate job name
       const className = instance.constructor.name;
@@ -119,8 +119,8 @@ export class SchedulerDiscovery {
   /**
    * Discover jobs in a module
    */
-  async discoverModule(module: any): Promise<ScheduledJob[]> {
-    const jobs: ScheduledJob[] = [];
+  async discoverModule(module: any): Promise<IScheduledJob[]> {
+    const jobs: IScheduledJob[] = [];
 
     // Get module metadata
     const moduleMetadata = Reflect.getMetadata('nexus:module', module) || {};
@@ -170,7 +170,7 @@ export class SchedulerDiscovery {
   /**
    * Rediscover jobs (useful for dynamic modules)
    */
-  async rediscover(): Promise<ScheduledJob[]> {
+  async rediscover(): Promise<IScheduledJob[]> {
     // Clear discovered providers
     this.discoveredProviders.clear();
 
@@ -189,7 +189,7 @@ export class SchedulerDiscovery {
   /**
    * Get job metadata for a method
    */
-  getJobMetadata(target: any, propertyKey: string | symbol): JobMetadata | null {
+  getJobMetadata(target: any, propertyKey: string | symbol): IJobMetadata | null {
     const cronMetadata = Reflect.getMetadata(SCHEDULER_METADATA.CRON_JOB, target, propertyKey);
     if (cronMetadata) return cronMetadata;
 

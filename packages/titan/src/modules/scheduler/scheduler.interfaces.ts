@@ -47,7 +47,7 @@ export enum JobStatus {
 /**
  * Cron job options
  */
-export interface BaseJobOptions {
+export interface IBaseJobOptions {
   /**
    * Job name
    */
@@ -61,7 +61,7 @@ export interface BaseJobOptions {
   /**
    * Retry configuration
    */
-  retry?: RetryOptions;
+  retry?: IRetryOptions;
 
   /**
    * Error handler
@@ -102,7 +102,7 @@ export interface BaseJobOptions {
 /**
  * Cron job options
  */
-export interface CronOptions extends BaseJobOptions {
+export interface ICronOptions extends IBaseJobOptions {
   /**
    * Timezone for the cron job
    */
@@ -132,20 +132,20 @@ export interface CronOptions extends BaseJobOptions {
 /**
  * Interval job options
  */
-export interface IntervalOptions extends BaseJobOptions {
+export interface IIntervalOptions extends IBaseJobOptions {
   immediate?: boolean;
 }
 
 /**
  * Timeout job options
  */
-export interface TimeoutOptions extends BaseJobOptions {
+export interface ITimeoutOptions extends IBaseJobOptions {
 }
 
 /**
  * Retry options
  */
-export interface RetryOptions {
+export interface IRetryOptions {
   /**
    * Maximum number of retry attempts
    */
@@ -175,7 +175,7 @@ export interface RetryOptions {
 /**
  * Scheduled job interface
  */
-export interface ScheduledJob {
+export interface IScheduledJob {
   /**
    * Unique job ID
    */
@@ -209,7 +209,7 @@ export interface ScheduledJob {
   /**
    * Job options
    */
-  options: CronOptions | IntervalOptions | TimeoutOptions;
+  options: ICronOptions | IIntervalOptions | ITimeoutOptions;
 
   /**
    * Cron expression or interval/timeout value
@@ -280,7 +280,7 @@ export interface ScheduledJob {
 /**
  * Job execution context
  */
-export interface JobExecutionContext {
+export interface IJobExecutionContext {
   /**
    * Job ID
    */
@@ -325,7 +325,7 @@ export interface JobExecutionContext {
 /**
  * Job execution result
  */
-export interface JobExecutionResult {
+export interface IJobExecutionResult {
   /**
    * Job ID
    */
@@ -370,7 +370,7 @@ export interface JobExecutionResult {
 /**
  * Scheduler configuration
  */
-export interface SchedulerConfig {
+export interface ISchedulerConfig {
   /**
    * Enable scheduler
    */
@@ -412,7 +412,7 @@ export interface SchedulerConfig {
   /**
    * Global retry options
    */
-  retry?: RetryOptions;
+  retry?: IRetryOptions;
 
   /**
    * Maximum concurrent jobs
@@ -446,7 +446,7 @@ export interface SchedulerConfig {
 /**
  * Scheduler metrics
  */
-export interface SchedulerMetrics {
+export interface ISchedulerMetrics {
   /**
    * Total jobs registered
    */
@@ -515,7 +515,7 @@ export interface SchedulerMetrics {
 /**
  * Job filter options
  */
-export interface JobFilterOptions {
+export interface IJobFilterOptions {
   /**
    * Filter by status
    */
@@ -561,22 +561,22 @@ export interface JobFilterOptions {
 /**
  * Job listener interface
  */
-export interface JobListener {
-  onJobStart?(job: ScheduledJob, context: JobExecutionContext): void | Promise<void>;
-  onJobComplete?(job: ScheduledJob, result: JobExecutionResult): void | Promise<void>;
-  onJobError?(job: ScheduledJob, error: Error, context: JobExecutionContext): void | Promise<void>;
-  onJobRetry?(job: ScheduledJob, attempt: number, error: Error): void | Promise<void>;
-  onJobCancelled?(job: ScheduledJob, reason?: string): void | Promise<void>;
+export interface IJobListener {
+  onJobStart?(job: IScheduledJob, context: IJobExecutionContext): void | Promise<void>;
+  onJobComplete?(job: IScheduledJob, result: IJobExecutionResult): void | Promise<void>;
+  onJobError?(job: IScheduledJob, error: Error, context: IJobExecutionContext): void | Promise<void>;
+  onJobRetry?(job: IScheduledJob, attempt: number, error: Error): void | Promise<void>;
+  onJobCancelled?(job: IScheduledJob, reason?: string): void | Promise<void>;
 }
 
 /**
  * Scheduler module options
  */
-export interface SchedulerModuleOptions extends SchedulerConfig {
+export interface ISchedulerModuleOptions extends ISchedulerConfig {
   /**
    * Global job listeners
    */
-  listeners?: JobListener[];
+  listeners?: IJobListener[];
 
   /**
    * Custom job executor
@@ -597,20 +597,20 @@ export interface SchedulerModuleOptions extends SchedulerConfig {
 /**
  * Scheduler module async options
  */
-export interface SchedulerModuleAsyncOptions {
+export interface ISchedulerModuleAsyncOptions {
   imports?: any[];
-  useFactory?: (...args: any[]) => Promise<SchedulerModuleOptions> | SchedulerModuleOptions;
+  useFactory?: (...args: any[]) => Promise<ISchedulerModuleOptions> | ISchedulerModuleOptions;
   inject?: InjectionToken<any>[];
-  useExisting?: InjectionToken<SchedulerModuleOptions>;
+  useExisting?: InjectionToken<ISchedulerModuleOptions>;
 }
 
 /**
  * Job metadata
  */
-export interface JobMetadata {
+export interface IJobMetadata {
   type: SchedulerJobType;
   pattern?: string | number;
-  options?: CronOptions | IntervalOptions | TimeoutOptions;
+  options?: ICronOptions | IIntervalOptions | ITimeoutOptions;
   target: any;
   propertyKey: string;
 }

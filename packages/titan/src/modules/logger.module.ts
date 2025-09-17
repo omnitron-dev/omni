@@ -7,7 +7,7 @@ import { createToken } from '@omnitron-dev/nexus';
 import pino, { Level, DestinationStream, Logger as PinoLogger, LoggerOptions as PinoLoggerOptions } from 'pino';
 
 import { ConfigModuleToken } from './config.module';
-import { IApplication, HealthStatus, ApplicationModule } from '../types';
+import { IApplication, IHealthStatus, ApplicationModule } from '../types';
 
 /**
  * Log levels
@@ -17,7 +17,7 @@ export type LogLevel = Level;
 /**
  * Logger interface
  */
-export interface Logger {
+export interface ILogger {
   // Log methods - Pino v9.9.x format (object first, then message)
   trace(obj: object, msg?: string, ...args: any[]): void;
   trace(msg: string, ...args: any[]): void;
@@ -33,7 +33,7 @@ export interface Logger {
   fatal(msg: string, ...args: any[]): void;
 
   // Child loggers
-  child(bindings: object): Logger;
+  child(bindings: object): ILogger;
 
   // Timer
   time(label?: string): () => void;
@@ -48,7 +48,7 @@ export interface Logger {
 /**
  * Logger options
  */
-export interface LoggerOptions extends PinoLoggerOptions {
+export interface ILoggerOptions extends PinoLoggerOptions {
   prettyPrint?: boolean;
   destination?: DestinationStream;
 }
@@ -56,7 +56,7 @@ export interface LoggerOptions extends PinoLoggerOptions {
 /**
  * Transport configuration
  */
-export interface Transport {
+export interface ITransport {
   name: string;
   write(log: any): void | Promise<void>;
   flush?(): Promise<void>;
@@ -65,7 +65,7 @@ export interface Transport {
 /**
  * Log processor
  */
-export interface LogProcessor {
+export interface ILogProcessor {
   process(log: any): any | null;
 }
 
@@ -74,20 +74,20 @@ export interface LogProcessor {
  */
 export interface ILoggerModule {
   // Logger creation
-  create(name: string, options?: LoggerOptions): Logger;
-  child(bindings: object): Logger;
+  create(name: string, options?: ILoggerOptions): ILogger;
+  child(bindings: object): ILogger;
 
   // Global logger
-  readonly logger: Logger;
+  readonly logger: ILogger;
 
   // Configuration
   setLevel(level: LogLevel): void;
-  addTransport(transport: Transport): void;
-  addProcessor(processor: LogProcessor): void;
+  addTransport(transport: ITransport): void;
+  addProcessor(processor: ILogProcessor): void;
 
   // Context
   setContext(context: object): void;
-  withContext(context: object): Logger;
+  withContext(context: object): ILogger;
 }
 
 /**
@@ -98,7 +98,7 @@ export const LoggerModuleToken = createToken<LoggerModule>('LoggerModule');
 /**
  * Logger implementation wrapping Pino
  */
-class LoggerImpl implements Logger {
+class LoggerImpl implements ILogger {
   constructor(public readonly _pino: PinoLogger) { }
 
   trace(objOrMsg: object | string, ...args: any[]): void {
@@ -149,7 +149,7 @@ class LoggerImpl implements Logger {
     }
   }
 
-  child(bindings: object): Logger {
+  child(bindings: object): ILogger {
     return new LoggerImpl(this._pino.child(bindings));
   }
 
@@ -178,18 +178,18 @@ export class LoggerModule extends ApplicationModule implements ILoggerModule {
   private readonly __isLoggerModule = true; // Marker for type identification
 
   private rootLogger!: PinoLogger;
-  private globalLogger!: Logger;
-  private transports: Transport[] = [];
-  private processors: LogProcessor[] = [];
+  private globalLogger!: ILogger;
+  private transports: ITransport[] = [];
+  private processors: ILogProcessor[] = [];
   private context: object = {};
-  private loggers = new Map<string, Logger>();
+  private loggers = new Map<string, ILogger>();
 
   override async onStart(app: IApplication): Promise<void> {
     // Get configuration
     const config = app.get(ConfigModuleToken);
 
     // Create root logger with configuration
-    const options: LoggerOptions = {
+    const options: ILoggerOptions = {
       level: config.get('logger.level', 'info'),
       name: app.config('name') || 'titan-app',
       serializers: pino.stdSerializers,
@@ -240,7 +240,7 @@ export class LoggerModule extends ApplicationModule implements ILoggerModule {
   /**
    * Create a named logger
    */
-  create(name: string, options?: LoggerOptions): Logger {
+  create(name: string, options?: ILoggerOptions): ILogger {
     if (this.loggers.has(name)) {
       return this.loggers.get(name)!;
     }
@@ -259,7 +259,7 @@ export class LoggerModule extends ApplicationModule implements ILoggerModule {
   /**
    * Create a child logger with additional bindings
    */
-  child(bindings: object): Logger {
+  child(bindings: object): ILogger {
     return new LoggerImpl(this.rootLogger.child({
       ...this.context,
       ...bindings
@@ -269,7 +269,7 @@ export class LoggerModule extends ApplicationModule implements ILoggerModule {
   /**
    * Get the global logger
    */
-  get logger(): Logger {
+  get logger(): ILogger {
     return this.globalLogger;
   }
 
@@ -288,7 +288,7 @@ export class LoggerModule extends ApplicationModule implements ILoggerModule {
   /**
    * Add a transport
    */
-  addTransport(transport: Transport): void {
+  addTransport(transport: ITransport): void {
     this.transports.push(transport);
 
     // For now, we'll just store transports - proper implementation would
@@ -299,7 +299,7 @@ export class LoggerModule extends ApplicationModule implements ILoggerModule {
   /**
    * Add a processor
    */
-  addProcessor(processor: LogProcessor): void {
+  addProcessor(processor: ILogProcessor): void {
     this.processors.push(processor);
 
     // For now, we'll just store processors - proper implementation would
@@ -322,7 +322,7 @@ export class LoggerModule extends ApplicationModule implements ILoggerModule {
   /**
    * Create logger with additional context
    */
-  withContext(context: object): Logger {
+  withContext(context: object): ILogger {
     return new LoggerImpl(
       this.rootLogger.child({ ...this.context, ...context })
     );
@@ -331,7 +331,7 @@ export class LoggerModule extends ApplicationModule implements ILoggerModule {
   /**
    * Health check
    */
-  override async health(): Promise<HealthStatus> {
+  override async health(): Promise<IHealthStatus> {
     return {
       status: 'healthy',
       details: {
@@ -351,8 +351,8 @@ export class LoggerModule extends ApplicationModule implements ILoggerModule {
 export function createLoggerModule(options?: {
   level?: LogLevel;
   prettyPrint?: boolean;
-  transports?: Transport[];
-  processors?: LogProcessor[];
+  transports?: ITransport[];
+  processors?: ILogProcessor[];
   context?: object;
 }): LoggerModule {
   const module = new LoggerModule();
@@ -392,7 +392,7 @@ export function createLoggerModule(options?: {
 /**
  * Console transport for testing
  */
-export class ConsoleTransport implements Transport {
+export class ConsoleTransport implements ITransport {
   name = 'console';
 
   write(log: any): void {
@@ -403,7 +403,7 @@ export class ConsoleTransport implements Transport {
 /**
  * Redaction processor
  */
-export class RedactionProcessor implements LogProcessor {
+export class RedactionProcessor implements ILogProcessor {
   constructor(private paths: string[]) { }
 
   process(log: any): any {

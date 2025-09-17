@@ -11,7 +11,7 @@ import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
 
 import { LOGGER_TOKEN, EVENT_EMITTER_TOKEN } from './events.module';
 
-import type { EventReplayOptions } from './types';
+import type { IEventReplayOptions } from './types';
 
 /**
  * Service for managing event history
@@ -309,7 +309,7 @@ export class EventHistoryService {
   /**
    * Replay events from history
    */
-  async replay(options?: EventReplayOptions): Promise<void> {
+  async replay(options?: IEventReplayOptions): Promise<void> {
     // Convert filter to EventFilter format
     const filter: EventFilter | undefined = options?.filter ? {
       event: Array.isArray(options.filter.event)

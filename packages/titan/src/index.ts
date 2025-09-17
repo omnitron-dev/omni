@@ -10,7 +10,7 @@ import { createApp } from './application';
 import { ConfigModuleToken } from './modules/config.module';
 
 // Import types for internal use
-import type { Module, IApplication } from './types';
+import type { IModule, IApplication } from './types';
 
 // Re-export useful utilities from common
 export {
@@ -34,19 +34,23 @@ export {
   Module as EnhancedModule,
   EnhancedApplicationModule,
   createModuleWithProviders,
-  type ModuleMetadata as EnhancedModuleMetadata
+  type IModuleMetadata as EnhancedModuleMetadata
 } from './enhanced-module';
 
 // Core Modules
 export {
-  FileSource,
+  IFileSource,
   ConfigModule,
   ConfigSource,
-  ObjectSource,
+  IObjectSource,
   IConfigModule,
   ConfigModuleToken,
-  EnvironmentSource,
-  createConfigModule
+  IEnvironmentSource,
+  createConfigModule,
+  // Backward compatibility aliases
+  IFileSource as FileSource,
+  IObjectSource as ObjectSource,
+  IEnvironmentSource as EnvironmentSource
 } from './modules/config.module';
 
 // Re-export essentials from Nexus
@@ -64,41 +68,59 @@ export {
 } from '@omnitron-dev/nexus';
 
 export {
-  Logger,
+  ILogger,
   LogLevel,
-  Transport,
+  ITransport,
   LoggerModule,
-  LogProcessor,
+  ILogProcessor,
   ILoggerModule,
-  LoggerOptions,
+  ILoggerOptions,
   ConsoleTransport,
   LoggerModuleToken,
   RedactionProcessor,
   createLoggerModule,
-  Logger as LoggerService  // Alias for service usage
+  ILogger as LoggerService,  // Alias for service usage
+  // Backward compatibility aliases
+  ILogger as Logger,
+  ITransport as Transport,
+  ILogProcessor as LogProcessor,
+  ILoggerOptions as LoggerOptions
 } from './modules/logger.module';
 
 // Core Types
 export {
-  Module,
-  EventMeta,
-  Environment,
+  IModule,
+  IEventMeta,
+  IEnvironment,
   IApplication,
-  HealthStatus,
+  IHealthStatus,
   ModuleFactory,
-  LifecycleHook,
-  ModuleMetadata,
-  ModuleLifecycle,
-  ShutdownOptions,
+  ILifecycleHook,
+  IModuleMetadata,
+  IModuleLifecycle,
+  IShutdownOptions,
   ApplicationState,
   ApplicationEvent,
-  ModuleDefinition,
-  ApplicationConfig,
+  IModuleDefinition,
+  IApplicationConfig,
   ApplicationModule,
   ModuleConstructor,
-  ApplicationOptions,
-  ApplicationMetrics,
-  EventHandler as EventHandlerType  // Rename to avoid conflict with decorator
+  IApplicationOptions,
+  IApplicationMetrics,
+  EventHandler as EventHandlerType,  // Rename to avoid conflict with decorator
+  // Backward compatibility aliases
+  IModule as Module,
+  IEventMeta as EventMeta,
+  IEnvironment as Environment,
+  ILifecycleHook as LifecycleHook,
+  IModuleMetadata as ModuleMetadata,
+  IShutdownOptions as ShutdownOptions,
+  IApplicationConfig as ApplicationConfig,
+  IApplicationOptions as ApplicationOptions,
+  IApplicationMetrics as ApplicationMetrics,
+  IHealthStatus as HealthStatus,
+  IModuleLifecycle as ModuleLifecycle,
+  IModuleDefinition as ModuleDefinition
 } from './types';
 
 
@@ -109,7 +131,7 @@ export async function createAndStartApp(options?: {
   name?: string;
   version?: string;
   config?: any;
-  modules?: Module[];
+  modules?: IModule[];
 }): Promise<IApplication> {
   const app = createApp({
     name: options?.name,
@@ -158,19 +180,19 @@ export async function createAndStartApp(options?: {
  * });
  */
 export function defineModule<TService = {}>(
-  definition: Module & TService
-): Module & TService {
+  definition: IModule & TService
+): IModule & TService {
   return definition;
 }
 
 /**
  * Lifecycle interface markers
  */
-export interface OnInit {
+export interface IOnInit {
   onInit?(): void | Promise<void>;
 }
 
-export interface OnDestroy {
+export interface IOnDestroy {
   onDestroy?(): void | Promise<void>;
 }
 

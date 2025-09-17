@@ -16,9 +16,9 @@ import {
 import {
   JobStatus,
   SchedulerJobType,
-  type SchedulerConfig,
-  type SchedulerMetrics,
-  type JobExecutionResult
+  type ISchedulerConfig,
+  type ISchedulerMetrics,
+  type IJobExecutionResult
 } from './scheduler.interfaces';
 
 import type { SchedulerRegistry } from './scheduler.registry';
@@ -39,7 +39,7 @@ export class SchedulerMetricsService {
   private lastMetricsUpdate: Date = new Date();
 
   constructor(
-    @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: SchedulerConfig,
+    @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: ISchedulerConfig,
     @Optional() @Inject(SCHEDULER_REGISTRY_TOKEN) private readonly registry?: SchedulerRegistry,
     @Optional() @Inject(SCHEDULER_EXECUTOR_TOKEN) private readonly executor?: SchedulerExecutor
   ) {
@@ -56,7 +56,7 @@ export class SchedulerMetricsService {
 
     // Subscribe to scheduler events
     if (this.executor) {
-      this.executor.on(SCHEDULER_EVENTS.JOB_COMPLETED, ({ result }: { result: JobExecutionResult }) => {
+      this.executor.on(SCHEDULER_EVENTS.JOB_COMPLETED, ({ result }: { result: IJobExecutionResult }) => {
         this.recordExecution(result);
       });
 
@@ -75,7 +75,7 @@ export class SchedulerMetricsService {
   /**
    * Record job execution
    */
-  private recordExecution(result: JobExecutionResult): void {
+  private recordExecution(result: IJobExecutionResult): void {
     this.totalExecutions++;
 
     if (result.status === 'success') {
@@ -114,7 +114,7 @@ export class SchedulerMetricsService {
   /**
    * Get current metrics
    */
-  getMetrics(): SchedulerMetrics {
+  getMetrics(): ISchedulerMetrics {
     const jobsByStatus: Record<JobStatus, number> = {
       [JobStatus.PENDING]: 0,
       [JobStatus.RUNNING]: 0,
@@ -296,7 +296,7 @@ export class SchedulerMetricsService {
    * Export metrics
    */
   exportMetrics(): {
-    metrics: SchedulerMetrics;
+    metrics: ISchedulerMetrics;
     details: {
       successRate: number;
       failureRate: number;
@@ -318,7 +318,7 @@ export class SchedulerMetricsService {
   /**
    * Subscribe to metrics updates
    */
-  onMetricsUpdate(handler: (metrics: SchedulerMetrics) => void): void {
+  onMetricsUpdate(handler: (metrics: ISchedulerMetrics) => void): void {
     this.eventEmitter.on(SCHEDULER_EVENTS.METRICS_UPDATED, handler);
   }
 

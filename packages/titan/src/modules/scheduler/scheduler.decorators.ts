@@ -9,20 +9,20 @@ import {
 } from './scheduler.constants';
 
 import type {
-  CronOptions,
-  JobMetadata,
-  TimeoutOptions,
+  ICronOptions,
+  IJobMetadata,
+  ITimeoutOptions,
   CronExpression,
-  IntervalOptions,
+  IIntervalOptions,
   SchedulerJobType
 } from './scheduler.interfaces';
 
 /**
  * Schedule a cron job
  */
-export function Cron(expression: CronExpression, options?: CronOptions): MethodDecorator {
+export function Cron(expression: CronExpression, options?: ICronOptions): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const metadata: JobMetadata = {
+    const metadata: IJobMetadata = {
       type: 'cron' as SchedulerJobType,
       pattern: expression.toString(),
       options: options || {},
@@ -61,13 +61,13 @@ export function Cron(expression: CronExpression, options?: CronOptions): MethodD
 /**
  * Schedule an interval job
  */
-export function Interval(milliseconds: number, options?: IntervalOptions): MethodDecorator {
+export function Interval(milliseconds: number, options?: IIntervalOptions): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     if (milliseconds <= 0) {
       throw new Error('Interval must be greater than 0');
     }
 
-    const metadata: JobMetadata = {
+    const metadata: IJobMetadata = {
       type: 'interval' as SchedulerJobType,
       pattern: milliseconds,
       options: options || {},
@@ -106,13 +106,13 @@ export function Interval(milliseconds: number, options?: IntervalOptions): Metho
 /**
  * Schedule a timeout job
  */
-export function Timeout(milliseconds: number, options?: TimeoutOptions): MethodDecorator {
+export function Timeout(milliseconds: number, options?: ITimeoutOptions): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     if (milliseconds < 0) {
       throw new Error('Timeout must be non-negative');
     }
 
-    const metadata: JobMetadata = {
+    const metadata: IJobMetadata = {
       type: 'timeout' as SchedulerJobType,
       pattern: milliseconds,
       options: options || {},
@@ -161,27 +161,27 @@ export function Schedulable(): ClassDecorator {
 /**
  * Helper to extract all scheduled jobs from a class
  */
-export function getScheduledJobs(target: any): Array<{ propertyKey: string | symbol; metadata: JobMetadata }> {
+export function getScheduledJobs(target: any): Array<{ propertyKey: string | symbol; metadata: IJobMetadata }> {
   return Reflect.getMetadata(SCHEDULER_METADATA.SCHEDULED_JOB, target) || [];
 }
 
 /**
  * Helper to get cron job metadata
  */
-export function getCronMetadata(target: any, propertyKey: string | symbol): JobMetadata | undefined {
+export function getCronMetadata(target: any, propertyKey: string | symbol): IJobMetadata | undefined {
   return Reflect.getMetadata(SCHEDULER_METADATA.CRON_JOB, target, propertyKey);
 }
 
 /**
  * Helper to get interval metadata
  */
-export function getIntervalMetadata(target: any, propertyKey: string | symbol): JobMetadata | undefined {
+export function getIntervalMetadata(target: any, propertyKey: string | symbol): IJobMetadata | undefined {
   return Reflect.getMetadata(SCHEDULER_METADATA.INTERVAL, target, propertyKey);
 }
 
 /**
  * Helper to get timeout metadata
  */
-export function getTimeoutMetadata(target: any, propertyKey: string | symbol): JobMetadata | undefined {
+export function getTimeoutMetadata(target: any, propertyKey: string | symbol): IJobMetadata | undefined {
   return Reflect.getMetadata(SCHEDULER_METADATA.TIMEOUT, target, propertyKey);
 }

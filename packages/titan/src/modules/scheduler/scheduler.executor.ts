@@ -15,12 +15,12 @@ import {
 } from './scheduler.constants';
 
 import type {
-  JobListener,
-  ScheduledJob,
-  RetryOptions,
-  SchedulerConfig,
-  JobExecutionResult,
-  JobExecutionContext
+  IJobListener,
+  IScheduledJob,
+  IRetryOptions,
+  ISchedulerConfig,
+  IJobExecutionResult,
+  IJobExecutionContext
 } from './scheduler.interfaces';
 
 /**
@@ -29,27 +29,27 @@ import type {
 @Injectable()
 export class SchedulerExecutor {
   private runningJobs: Map<string, AbortController> = new Map();
-  private jobQueue: Array<{ job: ScheduledJob; context: JobExecutionContext }> = [];
+  private jobQueue: Array<{ job: IScheduledJob; context: IJobExecutionContext }> = [];
   private isProcessing = false;
   private eventEmitter = new EventEmitter();
   private concurrentJobs = 0;
 
   constructor(
-    @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: SchedulerConfig,
-    @Optional() @Inject(SCHEDULER_LISTENERS_TOKEN) private readonly listeners?: JobListener[]
+    @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: ISchedulerConfig,
+    @Optional() @Inject(SCHEDULER_LISTENERS_TOKEN) private readonly listeners?: IJobListener[]
   ) {}
 
   /**
    * Execute a job
    */
   async executeJob(
-    job: ScheduledJob,
-    context?: Partial<JobExecutionContext>
-  ): Promise<JobExecutionResult> {
+    job: IScheduledJob,
+    context?: Partial<IJobExecutionContext>
+  ): Promise<IJobExecutionResult> {
     const executionId = this.generateExecutionId();
     const abortController = new AbortController();
 
-    const fullContext: JobExecutionContext = {
+    const fullContext: IJobExecutionContext = {
       jobId: job.id,
       jobName: job.name,
       executionId,
@@ -132,8 +132,8 @@ export class SchedulerExecutor {
    * Execute job with timeout
    */
   private async executeWithTimeout(
-    job: ScheduledJob,
-    context: JobExecutionContext,
+    job: IScheduledJob,
+    context: IJobExecutionContext,
     timeout: number,
     signal: AbortSignal
   ): Promise<any> {
@@ -193,11 +193,11 @@ export class SchedulerExecutor {
    * Handle job failure with retry
    */
   private async handleJobFailure(
-    job: ScheduledJob,
-    context: JobExecutionContext,
+    job: IScheduledJob,
+    context: IJobExecutionContext,
     error: Error,
     executionId: string
-  ): Promise<JobExecutionResult> {
+  ): Promise<IJobExecutionResult> {
     const retryOptions = job.options.retry || this.config?.retry;
 
     // Check if we should retry
@@ -252,7 +252,7 @@ export class SchedulerExecutor {
   /**
    * Calculate retry delay
    */
-  private calculateRetryDelay(retryOptions: RetryOptions, attempt: number): number {
+  private calculateRetryDelay(retryOptions: IRetryOptions, attempt: number): number {
     const baseDelay = retryOptions.delay || 1000;
     const backoff = retryOptions.backoff || 2;
     const maxDelay = retryOptions.maxDelay || 30000;
@@ -265,9 +265,9 @@ export class SchedulerExecutor {
    * Queue a job for later execution
    */
   private async queueJob(
-    job: ScheduledJob,
-    context: JobExecutionContext
-  ): Promise<JobExecutionResult> {
+    job: IScheduledJob,
+    context: IJobExecutionContext
+  ): Promise<IJobExecutionResult> {
     return new Promise((resolve) => {
       this.jobQueue.push({
         job,
@@ -317,7 +317,7 @@ export class SchedulerExecutor {
   /**
    * Check if job should be queued
    */
-  private shouldQueueJob(job: ScheduledJob): boolean {
+  private shouldQueueJob(job: IScheduledJob): boolean {
     const maxConcurrent = this.config?.maxConcurrent || 10;
     const queueSize = this.config?.queueSize || 100;
 
@@ -389,7 +389,7 @@ export class SchedulerExecutor {
     error?: Error,
     duration: number = 0,
     attempt?: number
-  ): JobExecutionResult {
+  ): IJobExecutionResult {
     return {
       jobId,
       executionId,
@@ -412,7 +412,7 @@ export class SchedulerExecutor {
   /**
    * Notify job start
    */
-  private async notifyJobStart(job: ScheduledJob, context: JobExecutionContext): Promise<void> {
+  private async notifyJobStart(job: IScheduledJob, context: IJobExecutionContext): Promise<void> {
     this.eventEmitter.emit(SCHEDULER_EVENTS.JOB_STARTED, { job, context });
 
     if (this.listeners) {
@@ -431,7 +431,7 @@ export class SchedulerExecutor {
   /**
    * Notify job complete
    */
-  private async notifyJobComplete(job: ScheduledJob, result: JobExecutionResult): Promise<void> {
+  private async notifyJobComplete(job: IScheduledJob, result: IJobExecutionResult): Promise<void> {
     this.eventEmitter.emit(SCHEDULER_EVENTS.JOB_COMPLETED, { job, result });
 
     if (this.listeners) {
@@ -460,9 +460,9 @@ export class SchedulerExecutor {
    * Notify job error
    */
   private async notifyJobError(
-    job: ScheduledJob,
+    job: IScheduledJob,
     error: Error,
-    context: JobExecutionContext
+    context: IJobExecutionContext
   ): Promise<void> {
     this.eventEmitter.emit(SCHEDULER_EVENTS.JOB_FAILED, { job, error, context });
 
@@ -482,7 +482,7 @@ export class SchedulerExecutor {
   /**
    * Notify job retry
    */
-  private async notifyJobRetry(job: ScheduledJob, attempt: number, error: Error): Promise<void> {
+  private async notifyJobRetry(job: IScheduledJob, attempt: number, error: Error): Promise<void> {
     this.eventEmitter.emit(SCHEDULER_EVENTS.JOB_RETRYING, { job, attempt, error });
 
     if (this.listeners) {

@@ -14,7 +14,7 @@ type EventHandler = (...args: any[]) => void | Promise<void>;
 
 import { LOGGER_TOKEN, EVENT_EMITTER_TOKEN } from './events.module';
 
-import type { EventBusMessage, EventSubscription } from './types';
+import type { IEventBusMessage, IEventSubscription } from './types';
 
 /**
  * Event bus for inter-module communication
@@ -22,7 +22,7 @@ import type { EventBusMessage, EventSubscription } from './types';
 @Injectable()
 export class EventBusService {
   private channels: Map<string, Set<Function>> = new Map();
-  private messageQueue: Map<string, EventBusMessage[]> = new Map();
+  private messageQueue: Map<string, IEventBusMessage[]> = new Map();
   private messageIdCounter = 0;
   private subscriptions: Map<string, Set<Function>> = new Map();
   private onceHandlers: Set<Function> = new Set();
@@ -131,7 +131,7 @@ export class EventBusService {
   /**
    * Subscribe to an event (alias for subscribe)
    */
-  on(event: string, handler: Function): EventSubscription {
+  on(event: string, handler: Function): IEventSubscription {
     if (!this.subscriptions.has(event)) {
       this.subscriptions.set(event, new Set());
     }
@@ -152,7 +152,7 @@ export class EventBusService {
   /**
    * Subscribe to an event with options
    */
-  subscribe(event: string, handler: Function, options?: { priority?: number; replay?: boolean }): EventSubscription {
+  subscribe(event: string, handler: Function, options?: { priority?: number; replay?: boolean }): IEventSubscription {
     // Store handler priority if provided
     if (options?.priority !== undefined) {
       this.handlerPriorities.set(handler, options.priority);
@@ -231,7 +231,7 @@ export class EventBusService {
   /**
    * Subscribe to an event once
    */
-  once(event: string, handler: Function): EventSubscription {
+  once(event: string, handler: Function): IEventSubscription {
     const wrappedHandler = async (data: any, metadata?: EventMetadata) => {
       this.off(event, wrappedHandler);
       this.onceHandlers.delete(wrappedHandler);
@@ -462,7 +462,7 @@ export class EventBusService {
       metadata?: any;
     }
   ): Promise<void> {
-    const message: EventBusMessage<T> = {
+    const message: IEventBusMessage<T> = {
       id: this.generateMessageId(),
       event: channel,
       data,
@@ -490,13 +490,13 @@ export class EventBusService {
    */
   subscribeToChannel<T = any>(
     channel: string,
-    handler: (message: EventBusMessage<T>) => void | Promise<void>,
+    handler: (message: IEventBusMessage<T>) => void | Promise<void>,
     options?: {
-      filter?: (message: EventBusMessage<T>) => boolean;
+      filter?: (message: IEventBusMessage<T>) => boolean;
       target?: string;
     }
-  ): EventSubscription {
-    const wrappedHandler = async (message: EventBusMessage<T>) => {
+  ): IEventSubscription {
+    const wrappedHandler = async (message: IEventBusMessage<T>) => {
       // Filter by target if specified
       if (options?.target && message.target !== options.target) {
         return;
@@ -561,7 +561,7 @@ export class EventBusService {
       // Subscribe to response
       const unsubscribe = this.emitter.subscribe(
         `bus:${responseChannel}`,
-        (message: EventBusMessage<TResponse>) => {
+        (message: IEventBusMessage<TResponse>) => {
           if (timer) clearTimeout(timer);
           unsubscribe();
           resolve(message.data);
@@ -583,7 +583,7 @@ export class EventBusService {
    * Reply to a request
    */
   async reply<T = any>(
-    message: EventBusMessage,
+    message: IEventBusMessage,
     data: T
   ): Promise<void> {
     const responseChannel = message.metadata?.['responseChannel'];
@@ -610,12 +610,12 @@ export class EventBusService {
     remoteChannel: string,
     options?: {
       bidirectional?: boolean;
-      filter?: (message: EventBusMessage) => boolean;
-      transform?: (message: EventBusMessage) => EventBusMessage;
+      filter?: (message: IEventBusMessage) => boolean;
+      transform?: (message: IEventBusMessage) => IEventBusMessage;
     }
   ): void {
     // Forward local to remote
-    this.subscribeToChannel(localChannel, async (message: EventBusMessage) => {
+    this.subscribeToChannel(localChannel, async (message: IEventBusMessage) => {
       if (options?.filter && !options.filter(message)) {
         return;
       }
@@ -630,7 +630,7 @@ export class EventBusService {
 
     // Forward remote to local if bidirectional
     if (options?.bidirectional) {
-      remoteBus.subscribeToChannel(remoteChannel, async (message: EventBusMessage) => {
+      remoteBus.subscribeToChannel(remoteChannel, async (message: IEventBusMessage) => {
         if (options?.filter && !options.filter(message)) {
           return;
         }
@@ -648,7 +648,7 @@ export class EventBusService {
   /**
    * Get queued messages for a target
    */
-  getQueuedMessages(target: string): EventBusMessage[] {
+  getQueuedMessages(target: string): IEventBusMessage[] {
     return this.messageQueue.get(target) || [];
   }
 
@@ -691,7 +691,7 @@ export class EventBusService {
   /**
    * Queue a message for a target
    */
-  private queueMessage(target: string, message: EventBusMessage): void {
+  private queueMessage(target: string, message: IEventBusMessage): void {
     if (!this.messageQueue.has(target)) {
       this.messageQueue.set(target, []);
     }

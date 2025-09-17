@@ -25,8 +25,8 @@ import {
 } from './scheduler.constants';
 
 import type {
-  SchedulerModuleOptions,
-  SchedulerModuleAsyncOptions
+  ISchedulerModuleOptions,
+  ISchedulerModuleAsyncOptions
 } from './scheduler.interfaces';
 
 /**
@@ -37,7 +37,7 @@ export class SchedulerModule {
   /**
    * Configure scheduler module with options
    */
-  static forRoot(options: SchedulerModuleOptions = {}): DynamicModule {
+  static forRoot(options: ISchedulerModuleOptions = {}): DynamicModule {
     const config = {
       ...DEFAULT_SCHEDULER_CONFIG,
       ...options
@@ -73,7 +73,7 @@ export class SchedulerModule {
   /**
    * Configure scheduler module asynchronously
    */
-  static forRootAsync(options: SchedulerModuleAsyncOptions): DynamicModule {
+  static forRootAsync(options: ISchedulerModuleAsyncOptions): DynamicModule {
     const providers: any[] = [];
 
     // Add config provider
@@ -102,7 +102,7 @@ export class SchedulerModule {
     providers.push([
       SCHEDULER_LISTENERS_TOKEN,
       {
-        useFactory: (config: SchedulerModuleOptions) => config.listeners || [],
+        useFactory: (config: ISchedulerModuleOptions) => config.listeners || [],
         inject: [SCHEDULER_CONFIG_TOKEN]
       }
     ] as any);

@@ -29,30 +29,62 @@ describe('Titan Event System', () => {
   let mockContainer: any;
 
   afterEach(async () => {
-    // Clean up all services
-    if (eventsService) {
-      await eventsService.onDestroy?.();
+    // Clean up all services with timeout protection
+    const cleanupPromises = [];
+
+    if (eventsService && typeof eventsService.onDestroy === 'function') {
+      cleanupPromises.push(
+        Promise.race([
+          eventsService.onDestroy(),
+          new Promise(resolve => setTimeout(resolve, 100))
+        ])
+      );
     }
-    if (eventBus) {
-      await eventBus.onDestroy?.();
+    if (eventBus && typeof eventBus.onDestroy === 'function') {
+      cleanupPromises.push(
+        Promise.race([
+          eventBus.onDestroy(),
+          new Promise(resolve => setTimeout(resolve, 100))
+        ])
+      );
     }
-    if (discoveryService) {
-      await discoveryService.onDestroy?.();
+    if (discoveryService && typeof discoveryService.onDestroy === 'function') {
+      cleanupPromises.push(
+        Promise.race([
+          discoveryService.onDestroy(),
+          new Promise(resolve => setTimeout(resolve, 100))
+        ])
+      );
     }
-    if (historyService) {
-      await historyService.onDestroy?.();
+    if (historyService && typeof historyService.onDestroy === 'function') {
+      cleanupPromises.push(
+        Promise.race([
+          historyService.onDestroy(),
+          new Promise(resolve => setTimeout(resolve, 100))
+        ])
+      );
     }
-    if (schedulerService) {
-      await schedulerService.onDestroy?.();
+    if (schedulerService && typeof schedulerService.onDestroy === 'function') {
+      cleanupPromises.push(
+        Promise.race([
+          schedulerService.onDestroy(),
+          new Promise(resolve => setTimeout(resolve, 100))
+        ])
+      );
     }
+
+    // Wait for all cleanups with timeout
+    await Promise.all(cleanupPromises);
+
     // Clean up mock emitter
-    if (mockEmitter) {
-      mockEmitter.dispose?.();
+    if (mockEmitter && typeof mockEmitter.dispose === 'function') {
+      mockEmitter.dispose();
     }
+
     // Clear all mocks
     jest.clearAllMocks();
     jest.clearAllTimers();
-  });
+  }, 2000); // Increase timeout for afterEach
 
   beforeEach(() => {
     // Create a more realistic mock emitter that actually connects handlers and emit

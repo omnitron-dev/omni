@@ -83,6 +83,7 @@ export {
   Module,
   EventMeta,
   Environment,
+  IApplication,
   HealthStatus,
   ModuleFactory,
   LifecycleHook,

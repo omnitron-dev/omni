@@ -21,10 +21,14 @@ import {
   OnInit,
   OnDestroy,
   Logger,
+  LoggerModule,
   LoggerModuleToken,
+  ConfigModule,
   ConfigModuleToken,
-  ApplicationModule,
-  type Module as IModule
+  EnhancedApplicationModule,
+  type ModuleMetadata as EnhancedModuleMetadata,
+  type Module as IModule,
+  type IApplication
 } from '../src/index';
 
 // ============================
@@ -64,20 +68,10 @@ class TaskService implements OnInit, OnDestroy {
   private logger!: Logger;
 
   constructor(
-    @Inject(LoggerModuleToken) private loggerModule: any
+    @Inject(LoggerModuleToken) private loggerModule: LoggerModule
   ) {
-    // Logger is properly injected through constructor
-    // Use the logger property or child method depending on what's available
-    if (this.loggerModule && this.loggerModule.logger) {
-      this.logger = this.loggerModule.logger.child ?
-        this.loggerModule.logger.child({ service: 'TaskService' }) :
-        this.loggerModule.logger;
-    } else if (this.loggerModule && this.loggerModule.child) {
-      this.logger = this.loggerModule.child({ service: 'TaskService' });
-    } else {
-      // Fallback to console if logger is not available
-      this.logger = console as any;
-    }
+    // Logger is properly injected with correct type
+    this.logger = this.loggerModule.logger.child({ service: 'TaskService' });
   }
 
   async onInit(): Promise<void> {
@@ -207,33 +201,19 @@ class NotificationService implements OnInit {
   private logger!: Logger;
 
   constructor(
-    @Inject(LoggerModuleToken) private loggerModule: any,
-    @Inject(ConfigModuleToken) private configModule: any
+    @Inject(LoggerModuleToken) private loggerModule: LoggerModule,
+    @Inject(ConfigModuleToken) private configModule: ConfigModule
   ) {
-    // Dependencies are properly injected
-    // Use the logger property or child method depending on what's available
-    if (this.loggerModule && this.loggerModule.logger) {
-      this.logger = this.loggerModule.logger.child ?
-        this.loggerModule.logger.child({ service: 'NotificationService' }) :
-        this.loggerModule.logger;
-    } else if (this.loggerModule && this.loggerModule.child) {
-      this.logger = this.loggerModule.child({ service: 'NotificationService' });
-    } else {
-      // Fallback to console if logger is not available
-      this.logger = console as any;
-    }
+    // Dependencies are properly injected with correct types
+    this.logger = this.loggerModule.logger.child({ service: 'NotificationService' });
   }
 
   async onInit(): Promise<void> {
-    const notificationConfig = this.configModule && this.configModule.get ?
-      this.configModule.get('notifications', {
-        enabled: true,
-        channels: ['email', 'push']
-      }) : {
-        enabled: true,
-        channels: ['email', 'push']
-      };
-    this.logger.info('NotificationService initialized', notificationConfig);
+    const notificationConfig = this.configModule.get('notifications', {
+      enabled: true,
+      channels: ['email', 'push']
+    });
+    this.logger.info({ config: notificationConfig }, 'NotificationService initialized');
   }
 
   async sendNotification(type: string, data: any): Promise<void> {
@@ -270,20 +250,10 @@ class TaskCoordinator implements OnInit {
   constructor(
     @Inject(TaskServiceToken) private taskService: TaskService,
     @Inject(NotificationServiceToken) private notificationService: NotificationService,
-    @Inject(LoggerModuleToken) private loggerModule: any
+    @Inject(LoggerModuleToken) private loggerModule: LoggerModule
   ) {
-    // All dependencies are properly injected through constructor
-    // Use the logger property or child method depending on what's available
-    if (this.loggerModule && this.loggerModule.logger) {
-      this.logger = this.loggerModule.logger.child ?
-        this.loggerModule.logger.child({ service: 'TaskCoordinator' }) :
-        this.loggerModule.logger;
-    } else if (this.loggerModule && this.loggerModule.child) {
-      this.logger = this.loggerModule.child({ service: 'TaskCoordinator' });
-    } else {
-      // Fallback to console if logger is not available
-      this.logger = console as any;
-    }
+    // All dependencies are properly injected with correct types
+    this.logger = this.loggerModule.logger.child({ service: 'TaskCoordinator' });
   }
 
   async onInit(): Promise<void> {
@@ -329,69 +299,59 @@ class TaskCoordinator implements OnInit {
 // ============================
 
 /**
- * TaskManagerModule - Properly structured module with manual provider registration
+ * TaskManagerModule - Properly structured module with automatic provider management
+ * Uses EnhancedApplicationModule for proper module-scoped registration
  */
-class TaskManagerModule extends ApplicationModule {
-  override readonly name = 'task-manager';
-  override readonly version = '1.0.0';
-  override readonly dependencies = [LoggerModuleToken, ConfigModuleToken];
-
+class TaskManagerModule extends EnhancedApplicationModule {
   constructor() {
-    super();
+    super({
+      name: 'task-manager',
+      version: '1.0.0',
+      dependencies: [LoggerModuleToken, ConfigModuleToken],
+      providers: [
+        {
+          provide: TaskServiceToken,
+          useClass: TaskService,
+          scope: 'singleton'
+        },
+        {
+          provide: NotificationServiceToken,
+          useClass: NotificationService,
+          scope: 'singleton'
+        },
+        {
+          provide: TaskCoordinatorToken,
+          useClass: TaskCoordinator,
+          scope: 'singleton'
+        }
+      ],
+      // Export these services so other modules can use them
+      exports: [TaskServiceToken, NotificationServiceToken, TaskCoordinatorToken]
+    });
   }
 
-  override async onRegister(app: any): Promise<void> {
-    // Register services in the DI container during registration phase
-    // This ensures they're available before the app starts
-    app.register(TaskServiceToken, {
-      useClass: TaskService
-    });
-
-    app.register(NotificationServiceToken, {
-      useClass: NotificationService
-    });
-
-    app.register(TaskCoordinatorToken, {
-      useClass: TaskCoordinator
-    });
-  }
-
-  override async onStart(app: any): Promise<void> {
+  /**
+   * Module-specific startup logic
+   * The EnhancedApplicationModule handles provider initialization automatically
+   */
+  protected override async onModuleStart(app: IApplication): Promise<void> {
     const logger = app.get(LoggerModuleToken).logger;
-    logger.info('TaskManagerModule starting...');
+    logger.info({ module: this.name }, 'TaskManagerModule started successfully');
 
-    // Resolve and initialize services using public API
-    const taskService = app.resolve(TaskServiceToken);
-    const notificationService = app.resolve(NotificationServiceToken);
-    const taskCoordinator = app.resolve(TaskCoordinatorToken);
-
-    // Initialize services that implement OnInit
-    if (taskService.onInit) {
-      await taskService.onInit();
-    }
-    if (notificationService.onInit) {
-      await notificationService.onInit();
-    }
-    if (taskCoordinator.onInit) {
-      await taskCoordinator.onInit();
-    }
-
-    logger.info('TaskManagerModule started successfully');
+    // Any additional module-specific startup logic can go here
+    // Provider initialization (OnInit) is handled automatically by the base class
   }
 
-  override async onStop(app: any): Promise<void> {
+  /**
+   * Module-specific cleanup logic
+   * The EnhancedApplicationModule handles provider cleanup automatically
+   */
+  protected override async onModuleStop(app: IApplication): Promise<void> {
     const logger = app.get(LoggerModuleToken).logger;
-    logger.info('TaskManagerModule stopping...');
+    logger.info({ module: this.name }, 'TaskManagerModule stopping...');
 
-    // Clean up services that implement OnDestroy using public API
-    if (app.hasProvider(TaskServiceToken)) {
-      const taskService = app.resolve(TaskServiceToken);
-      if (taskService.onDestroy) {
-        await taskService.onDestroy();
-      }
-    }
-
-    logger.info('TaskManagerModule stopped');
+    // Any additional module-specific cleanup logic can go here
+    // Provider cleanup (OnDestroy) is handled automatically by the base class
   }
 }
 

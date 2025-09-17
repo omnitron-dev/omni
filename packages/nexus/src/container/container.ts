@@ -162,13 +162,30 @@ export class Container implements IContainer {
       return this.registerMulti(token, provider, options);
     }
 
-    // Check for duplicate registration
-    if (this.registrations.has(token) && !options.override) {
+    // Check for duplicate registration (allow multi-registration if multi option is set)
+    if (this.registrations.has(token) && !options.override && !options.multi) {
       throw new DuplicateRegistrationError(token);
     }
 
     const registration = this.createRegistration(token, provider, options);
-    this.registrations.set(token, registration);
+
+    // Handle multi-registration
+    if (options.multi) {
+      const existing = this.registrations.get(token);
+      if (existing) {
+        if (Array.isArray(existing)) {
+          existing.push(registration);
+        } else {
+          // Convert single registration to array
+          this.registrations.set(token, [existing, registration]);
+        }
+      } else {
+        // First registration with multi flag
+        this.registrations.set(token, [registration]);
+      }
+    } else {
+      this.registrations.set(token, registration);
+    }
 
     // Emit after register event
     this.lifecycleManager.emitSync(LifecycleEvent.AfterRegister, {
@@ -271,8 +288,16 @@ export class Container implements IContainer {
 
       const classConstructor = provider.useClass;
       const injectedDependencies = Reflect.getMetadata(METADATA_KEYS.INJECT, classConstructor);
+      const optionalMetadata = Reflect.getMetadata(METADATA_KEYS.OPTIONAL, classConstructor) || {};
+
       if (injectedDependencies) {
-        dependencies = injectedDependencies;
+        // Transform dependencies to include optional flag
+        dependencies = injectedDependencies.map((dep: any, index: number) => {
+          if (optionalMetadata[index]) {
+            return { token: dep, optional: true };
+          }
+          return dep;
+        });
       }
     }
 
@@ -1260,6 +1285,93 @@ export class Container implements IContainer {
       return Array.isArray(reg) ? reg[0] : reg;
     }
     return undefined;
+  }
+
+  /**
+   * Create a child container (alias for createScope)
+   */
+  createChildContainer(context: Partial<ResolutionContext> = {}): IContainer {
+    return this.createScope(context);
+  }
+
+  /**
+   * Resolve all instances of a multi-registered token
+   */
+  resolveAll<T>(token: InjectionToken<T>): T[] {
+    this.checkDisposed();
+
+    const results: T[] = [];
+
+    // Get all registrations for this token
+    const registration = this.registrations.get(token);
+
+    if (registration) {
+      if (Array.isArray(registration)) {
+        // Multiple registrations - resolve each one
+        for (const reg of registration) {
+          try {
+            const instance = this.resolveRegistration(reg);
+            if (instance !== undefined) {
+              results.push(instance);
+            }
+          } catch (error) {
+            // Skip failed resolutions for multi-injection
+            console.warn(`Failed to resolve one instance of ${String(token)}:`, error);
+          }
+        }
+      } else if (registration.options?.multi) {
+        // Single registration marked as multi
+        const instance = this.resolveRegistration(registration);
+        if (instance !== undefined) {
+          results.push(instance);
+        }
+      } else {
+        // Regular single registration
+        const instance = this.resolveRegistration(registration);
+        if (instance !== undefined) {
+          results.push(instance);
+        }
+      }
+    }
+
+    // Also check parent container
+    if (this.parent && 'resolveAll' in this.parent && typeof this.parent.resolveAll === 'function') {
+      const parentResults = this.parent.resolveAll(token);
+      results.push(...parentResults);
+    }
+
+    return results;
+  }
+
+  /**
+   * Resolve a single registration
+   */
+  private resolveRegistration(registration: Registration): any {
+    // Handle different scopes
+    if (registration.scope === Scope.Singleton) {
+      if (this.instances.has(registration.token)) {
+        return this.instances.get(registration.token);
+      }
+      const instance = this.createInstance(registration);
+      this.instances.set(registration.token, instance);
+      return instance;
+    } else if (registration.scope === Scope.Transient) {
+      return this.createInstance(registration);
+    } else if (registration.scope === Scope.Scoped || registration.scope === Scope.Request) {
+      const scopeKey = this.context.scope || 'default';
+      let scopedMap = this.scopedInstances.get(scopeKey);
+      if (!scopedMap) {
+        scopedMap = new Map();
+        this.scopedInstances.set(scopeKey, scopedMap);
+      }
+      if (scopedMap.has(registration.token)) {
+        return scopedMap.get(registration.token);
+      }
+      const instance = this.createInstance(registration);
+      scopedMap.set(registration.token, instance);
+      return instance;
+    }
+    return this.createInstance(registration);
   }
 
   /**

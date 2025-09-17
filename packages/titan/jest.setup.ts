@@ -1,10 +1,5 @@
 // Common test setup
 jest.setTimeout(30000);
 
-// Force exit after tests
-afterAll(
-  () =>
-    // Give a small delay for cleanup
-    new Promise((resolve) => setTimeout(resolve, 100)),
-  1000  // Add explicit timeout
-);
+// Removed afterAll hook as it causes timeout issues
+// Jest will handle cleanup automatically

@@ -68,10 +68,10 @@ export abstract class EnhancedApplicationModule extends BaseApplicationModule {
    */
   override async onRegister(app: IApplication): Promise<void> {
     this._app = app;
-    // Use the parent container directly for better compatibility
-    // Module scoping is handled through exports configuration
+    // Use parent container directly for simplicity
+    // All providers are registered in the parent container
     this._parentContainer = app.container;
-    this._moduleContainer = this._parentContainer; // Use parent directly instead of child
+    this._moduleContainer = this._parentContainer;
 
     // Process imports first
     if (this.metadata.imports) {
@@ -88,13 +88,8 @@ export abstract class EnhancedApplicationModule extends BaseApplicationModule {
       }
     }
 
-    // Export tracking for documentation purposes
-    // Since we're using the parent container directly, exports are already available
-    for (const token of this._exports) {
-      if (!this._moduleContainer.has(token)) {
-        console.warn(`Module ${this.name} exports ${token.name} but it is not registered`);
-      }
-    }
+    // No need to re-register exports since all providers are in the parent container
+    // Export configuration is preserved for documentation and potential future module isolation
 
     // Call child class onRegister if exists
     await this.onModuleRegister?.(app);
@@ -202,35 +197,35 @@ export abstract class EnhancedApplicationModule extends BaseApplicationModule {
   private async registerProvider(providerDef: Provider, app: IApplication): Promise<void> {
     const token = providerDef.provide;
 
-    // Register in container (now using parent directly)
-    if (!this._moduleContainer) {
-      throw new Error('Module container not initialized');
+    // Register in parent container directly
+    if (!this._parentContainer) {
+      throw new Error('Parent container not initialized');
     }
 
     let instance: any;
 
     if (providerDef.useClass) {
       // Class provider - register with container and let Nexus handle DI
-      this._moduleContainer.register(token, {
+      this._parentContainer.register(token, {
         useClass: providerDef.useClass,
         scope: providerDef.scope || 'singleton'
       } as any);
 
       // Resolve to create the instance
-      instance = this._moduleContainer.resolve(token);
+      instance = this._parentContainer.resolve(token);
     } else if (providerDef.useValue !== undefined) {
       // Value provider
-      this._moduleContainer.register(token, {
+      this._parentContainer.register(token, {
         useValue: providerDef.useValue
       } as any);
       instance = providerDef.useValue;
     } else if (providerDef.useFactory) {
       // Factory provider
       const deps = providerDef.inject?.map(depToken =>
-        this._moduleContainer!.resolve(depToken)
+        this._parentContainer!.resolve(depToken)
       ) || [];
       instance = await providerDef.useFactory(...deps);
-      this._moduleContainer.register(token, {
+      this._parentContainer.register(token, {
         useValue: instance
       } as any);
     }
@@ -270,18 +265,43 @@ export abstract class EnhancedApplicationModule extends BaseApplicationModule {
   }
 
   /**
-   * Get a provider from this module
+   * Get a provider from this module or its dependencies
    */
   protected getProvider<T>(token: Token<T>): T | undefined {
+    // First check local providers
     const provider = this._providers.find(p => p.token === token);
-    return provider?.instance;
+    if (provider?.instance) {
+      return provider.instance;
+    }
+
+    // Check parent container (all providers are there now)
+    if (this._parentContainer?.has(token)) {
+      return this._parentContainer.resolve(token);
+    }
+
+    return undefined;
   }
 
   /**
-   * Check if module has a provider
+   * Check if module has access to a provider
    */
   protected hasProvider(token: Token<any>): boolean {
-    return this._providers.some(p => p.token === token);
+    // Check local providers
+    if (this._providers.some(p => p.token === token)) {
+      return true;
+    }
+
+    // Check module container
+    if (this._moduleContainer?.has(token)) {
+      return true;
+    }
+
+    // Check parent container
+    if (this._parentContainer?.has(token)) {
+      return true;
+    }
+
+    return false;
   }
 }
 

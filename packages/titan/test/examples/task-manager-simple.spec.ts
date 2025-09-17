@@ -7,7 +7,7 @@ import {
   TaskServiceToken,
   NotificationServiceToken,
   TaskCoordinatorToken
-} from '../../examples/task-manager-simple';
+} from '../fixtures/task-manager-fixture';
 
 describe('TaskManagerSimple Example', () => {
   let app: any;
@@ -44,7 +44,7 @@ describe('TaskManagerSimple Example', () => {
       const taskManager = modules.find(m => m.name === 'task-manager');
 
       expect(taskManager).toBeDefined();
-      expect(taskManager?.version).toBe('1.0.0');
+      expect(taskManager?.version).toBe('2.0.0');
     });
 
     it('should register services in DI container', async () => {

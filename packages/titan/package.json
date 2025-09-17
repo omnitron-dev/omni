@@ -24,13 +24,25 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./module/scheduler": {
-      "types": "./dist/module/scheduler/index.d.ts",
-      "default": "./dist/module/scheduler/index.js"
+    "./redis": {
+      "types": "./dist/modules/redis/index.d.ts",
+      "default": "./dist/modules/redis/index.js"
     },
-    "./module/events": {
-      "types": "./dist/module/events/index.d.ts",
-      "default": "./dist/module/events/index.js"
+    "./scheduler": {
+      "types": "./dist/modules/scheduler/index.d.ts",
+      "default": "./dist/modules/scheduler/index.js"
+    },
+    "./events": {
+      "types": "./dist/modules/events/index.d.ts",
+      "default": "./dist/modules/events/index.js"
+    },
+    "./config": {
+      "types": "./dist/modules/config.module.d.ts",
+      "default": "./dist/modules/config.module.js"
+    },
+    "./logger": {
+      "types": "./dist/modules/logger.module.d.ts",
+      "default": "./dist/modules/logger.module.js"
     }
   },
   "files": [
@@ -52,6 +64,7 @@
     "@omnitron-dev/common": "workspace:*",
     "@omnitron-dev/eventemitter": "workspace:*",
     "@omnitron-dev/nexus": "workspace:*",
+    "ioredis": "^5.7.0",
     "node-cron": "^4.2.1",
     "pino": "^9.9.5",
     "pino-pretty": "^13.1.1",

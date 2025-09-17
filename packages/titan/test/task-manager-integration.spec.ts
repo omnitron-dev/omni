@@ -10,8 +10,9 @@ import {
   Provider,
   HealthStatus
 } from '../src/types';
-// Import core module tokens from titan
-import { LoggerModuleToken, ConfigModuleToken } from '../src/index';
+// Import core module tokens from titan modules
+import { LoggerModuleToken } from '../src/modules/logger.module';
+import { ConfigModuleToken } from '../src/modules/config.module';
 
 // Import the task manager components from test fixture
 import {

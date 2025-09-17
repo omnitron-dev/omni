@@ -768,7 +768,7 @@ export class Application implements IApplication {
             // It's already a token, try to find it
             depToken = dep;
             // If the token isn't in our modules, try to find by its name
-            if (!this._modules.has(depToken)) {
+            if (depToken && !this._modules.has(depToken)) {
               const depName = depToken.name; // Use the string name, not the symbol id
               for (const [t, m] of this._modules.entries()) {
                 if (m.name === depName) {

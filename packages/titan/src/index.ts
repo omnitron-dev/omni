@@ -6,8 +6,6 @@
 
 
 import { createApp } from './application.js';
-// Import ConfigModuleToken for ConfigValue decorator
-import { ConfigModuleToken } from './modules/config.module.js';
 
 // Import types for internal use
 import type { IModule, IApplication } from './types.js';
@@ -51,41 +49,6 @@ export {
   createModule as createNexusModule
 } from '@omnitron-dev/nexus';
 
-// Core Modules
-export {
-  IFileSource,
-  ConfigModule,
-  ConfigSource,
-  IObjectSource,
-  IConfigModule,
-  ConfigModuleToken,
-  IEnvironmentSource,
-  createConfigModule,
-  // Backward compatibility aliases
-  IFileSource as FileSource,
-  IObjectSource as ObjectSource,
-  IEnvironmentSource as EnvironmentSource
-} from './modules/config.module.js';
-
-export {
-  ILogger,
-  LogLevel,
-  ITransport,
-  LoggerModule,
-  ILogProcessor,
-  ILoggerModule,
-  ILoggerOptions,
-  ConsoleTransport,
-  LoggerModuleToken,
-  // Backward compatibility aliases
-  ILogger as Logger,
-  RedactionProcessor,
-  createLoggerModule,
-  ITransport as Transport,
-  ILogger as LoggerService,  // Alias for service usage
-  ILogProcessor as LogProcessor,
-  ILoggerOptions as LoggerOptions
-} from './modules/logger.module.js';
 
 // Decorators
 export {
@@ -210,33 +173,6 @@ export interface IOnDestroy {
   onDestroy?(): void | Promise<void>;
 }
 
-/**
- * Config value decorator function
- */
-export function ConfigValue(path: string): PropertyDecorator {
-  return function (target: any, propertyKey: string | symbol) {
-    // This will be replaced at runtime by dependency injection
-    let value: any;
-    Object.defineProperty(target, propertyKey, {
-      get() {
-        if (value === undefined) {
-          // Get from DI container
-          const container = (this as any).__container;
-          if (container?.has(ConfigModuleToken)) {
-            const config = container.get(ConfigModuleToken);
-            value = config.get(path);
-          }
-        }
-        return value;
-      },
-      set(newValue) {
-        value = newValue;
-      },
-      enumerable: true,
-      configurable: true
-    });
-  };
-}
 
 // Core Types
 export {

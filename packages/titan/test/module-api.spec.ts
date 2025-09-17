@@ -12,11 +12,11 @@ import {
   Inject,
   OnInit,
   OnDestroy,
-  LoggerModuleToken,
-  ConfigModuleToken,
   type DynamicModule,
   type Provider
 } from '../src/index';
+import { LoggerModuleToken } from '../src/modules/logger.module';
+import { ConfigModuleToken } from '../src/modules/config.module';
 
 // Test service tokens
 const TestServiceToken = createToken<TestService>('TestService');

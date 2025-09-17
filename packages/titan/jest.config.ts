@@ -27,7 +27,10 @@ const config: JestConfigWithTsJest = {
   //   }
   // },
   moduleFileExtensions: ['ts', 'js', 'json'],
-  testMatch: ['<rootDir>/test/**/*.spec.ts'],
+  testMatch: [
+    '<rootDir>/test/**/*.spec.ts',
+    '<rootDir>/src/**/*.spec.ts'
+  ],
   testPathIgnorePatterns: [
     '/node_modules/',
     '/test/runtime/'

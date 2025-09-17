@@ -1,6 +1,7 @@
-import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { Redis, Cluster } from 'ioredis';
+
 import { RedisClient, RedisClientOptions } from './redis.types.js';
 
 export function isCluster(client: RedisClient): client is Cluster {
@@ -11,19 +12,24 @@ export function getClientNamespace(options: RedisClientOptions): string {
   return options.namespace || 'default';
 }
 
-export function createRedisClient(options: RedisClientOptions): RedisClient {
+export function createRedisClient(options: RedisClientOptions = {}): RedisClient {
   if (options.cluster) {
     return new Cluster(options.cluster.nodes, {
       ...options,
       ...options.cluster.options,
-      lazyConnect: options.lazyConnect !== false,
+      lazyConnect: options.lazyConnect ?? true,
     });
   }
 
-  return new Redis({
+  // Set default options
+  const redisOptions = {
+    host: options.host || 'localhost',
+    port: options.port || 6379,
     ...options,
-    lazyConnect: options.lazyConnect !== false,
-  });
+    lazyConnect: options.lazyConnect ?? true,
+  };
+
+  return new Redis(redisOptions);
 }
 
 export function generateScriptSha(content: string): string {
@@ -73,20 +79,30 @@ export function mergeOptions(
 export async function waitForConnection(
   client: RedisClient,
   timeout = 5000,
-): Promise<boolean> {
-  return new Promise((resolve) => {
+): Promise<void> {
+  // If already ready, return immediately
+  if (client.status === 'ready') {
+    return;
+  }
+
+  return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
-      resolve(false);
+      reject(new Error(`Redis connection timeout after ${timeout}ms`));
     }, timeout);
 
-    client.once('ready', () => {
+    const onReady = () => {
       clearTimeout(timer);
-      resolve(true);
-    });
+      client.removeListener('error', onError);
+      resolve();
+    };
 
-    if (client.status === 'ready') {
+    const onError = (err: Error) => {
       clearTimeout(timer);
-      resolve(true);
-    }
+      client.removeListener('ready', onReady);
+      reject(err);
+    };
+
+    client.once('ready', onReady);
+    client.once('error', onError);
   });
 }

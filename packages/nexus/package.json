@@ -31,6 +31,10 @@
     "./devtools": {
       "types": "./dist/devtools/index.d.ts",
       "default": "./dist/devtools/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "default": "./dist/testing/index.js"
     }
   },
   "files": [

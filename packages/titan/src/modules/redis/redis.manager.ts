@@ -1,13 +1,13 @@
 import { Redis, Cluster } from 'ioredis';
+
 import { RedisClient, RedisClientOptions, RedisModuleOptions } from './redis.types.js';
 import {
-  createRedisClient,
-  getClientNamespace,
   mergeOptions,
+  createRedisClient,
   waitForConnection,
-  isCluster,
   generateScriptSha,
   loadScriptContent,
+  getClientNamespace,
   createRetryStrategy,
 } from './redis.utils.js';
 
@@ -19,7 +19,7 @@ interface Logger {
 }
 
 class SimpleLogger implements Logger {
-  constructor(private readonly context: string) {}
+  constructor(private readonly context: string) { }
 
   log(message: string): void {
     console.log(`[${this.context}] ${message}`);
@@ -45,12 +45,11 @@ export class RedisManager {
   private readonly options: RedisModuleOptions;
   private readonly connectionPromises = new Map<string, Promise<void>>();
 
-  constructor(options: RedisModuleOptions) {
+  constructor(options: RedisModuleOptions, logger?: Logger) {
     this.options = options;
-    // Initialize automatically
-    this.init().catch(error => {
-      this.logger.error('Failed to initialize RedisManager', error);
-    });
+    if (logger) {
+      this.logger = logger;
+    }
   }
 
   async init(): Promise<void> {
@@ -97,8 +96,9 @@ export class RedisManager {
   private async createAndRegisterClient(options: RedisClientOptions): Promise<RedisClient> {
     const namespace = getClientNamespace(options);
 
+    // If client already exists, destroy it first (last one wins)
     if (this.clients.has(namespace)) {
-      throw new Error(`Redis client with namespace "${namespace}" already exists`);
+      await this.destroyClient(namespace);
     }
 
     if (!options.retryStrategy && !options.cluster?.options?.clusterRetryStrategy) {
@@ -124,13 +124,13 @@ export class RedisManager {
     options: RedisClientOptions
   ): Promise<void> {
     try {
-      await client.connect();
-
-      const ready = await waitForConnection(client, this.options.healthCheck?.timeout);
-
-      if (!ready) {
-        throw new Error(`Connection timeout for namespace "${namespace}"`);
+      // Only connect if lazyConnect is true (which is default)
+      if ((client as Redis).options?.lazyConnect !== false || (client as Cluster).options?.lazyConnect !== false) {
+        await client.connect();
       }
+
+      // Wait for connection to be ready
+      await waitForConnection(client, this.options.healthCheck?.timeout || 5000);
 
       if (this.options.readyLog !== false) {
         this.logger.log(`Redis client "${namespace}" connected successfully`);
@@ -223,7 +223,7 @@ export class RedisManager {
     const client = this.clients.get(ns);
 
     if (!client) {
-      throw new Error(`Redis client "${ns}" not found`);
+      throw new Error(`Redis client with namespace "${ns}" not found`);
     }
 
     return client;
@@ -290,12 +290,14 @@ export class RedisManager {
     }
   }
 
-  async healthCheck(): Promise<Map<string, boolean>> {
-    const results = new Map<string, boolean>();
+  async healthCheck(): Promise<Record<string, { healthy: boolean; latency: number }>> {
+    const results: Record<string, { healthy: boolean; latency: number }> = {};
 
     const checks = Array.from(this.clients.keys()).map(async (namespace) => {
+      const start = Date.now();
       const healthy = await this.isHealthy(namespace);
-      results.set(namespace, healthy);
+      const latency = Date.now() - start;
+      results[namespace] = { healthy, latency };
     });
 
     await Promise.all(checks);

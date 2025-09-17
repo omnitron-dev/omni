@@ -1,5 +1,5 @@
-import { RedisService } from '../../../src/modules/redis/redis.service';
-import { RedisManager } from '../../../src/modules/redis/redis.manager';
+import { RedisService } from '../../../src/modules/redis/redis.service.js';
+import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
 import { Redis } from 'ioredis';
 
 describe('RedisService', () => {

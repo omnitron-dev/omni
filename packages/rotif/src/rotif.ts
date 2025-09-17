@@ -62,7 +62,7 @@ export class NotificationManager {
       this.logger.error('Redis connection error', err);
     });
 
-    this.redis.on('reconnecting', (time) => {
+    this.redis.on('reconnecting', (time: number) => {
       this.logger.info(`Redis reconnecting in ${time}ms...`);
     });
 

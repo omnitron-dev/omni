@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { RedisManager } from '../../../src/modules/redis/redis.manager';
-import { RedisModuleOptions } from '../../../src/modules/redis/redis.types';
+import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
+import { RedisModuleOptions } from '../../../src/modules/redis/redis.types.js';
 import {
   createRedisTestHelper,
   RedisTestHelper
-} from '../../utils/redis-test-utils';
+} from '../../utils/redis-test-utils.js';
 
 describe('RedisManager with Real Redis', () => {
   let manager: RedisManager;
@@ -207,7 +207,7 @@ describe('RedisManager with Real Redis', () => {
       manager = new RedisManager(options, null as any);
 
       // Don't wait for init to complete - broken client won't connect
-      manager.init().catch(() => {}); // Ignore error
+      manager.init().catch(() => { }); // Ignore error
 
       // Give it a moment
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -364,7 +364,7 @@ describe('RedisManager with Real Redis', () => {
       manager = new RedisManager(options, null as any);
 
       // Init should not throw but client won't be healthy
-      await manager.init().catch(() => {}); // Catch init error
+      await manager.init().catch(() => { }); // Catch init error
 
       const health = await manager.isHealthy('fail');
       expect(health).toBe(false);

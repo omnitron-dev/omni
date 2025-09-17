@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { Cluster } from 'ioredis';
-import { RedisManager } from '../../../src/modules/redis/redis.manager';
-import { RedisService } from '../../../src/modules/redis/redis.service';
-import { isCluster, createRedisClient } from '../../../src/modules/redis/redis.utils';
+import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
+import { RedisService } from '../../../src/modules/redis/redis.service.js';
+import { isCluster, createRedisClient } from '../../../src/modules/redis/redis.utils.js';
 
 describe('Redis Cluster Support', () => {
   describe('Cluster Detection', () => {
@@ -304,9 +304,9 @@ describe('Redis Cluster Support', () => {
 
       // Mock failover
       const cluster = client as Cluster;
-      cluster.on('error', () => {});
-      cluster.on('+node', () => {});
-      cluster.on('-node', () => {});
+      cluster.on('error', () => { });
+      cluster.on('+node', () => { });
+      cluster.on('-node', () => { });
 
       await manager.destroy();
     });

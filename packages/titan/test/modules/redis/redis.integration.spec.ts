@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, jest } from '@jest/globals';
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
-import Redis, { Cluster } from 'ioredis';
-import { RedisManager } from '../../../src/modules/redis/redis.manager';
-import { RedisService } from '../../../src/modules/redis/redis.service';
-import { RedisHealthIndicator } from '../../../src/modules/redis/redis.health';
+import { Test, TestingModule } from '@nestjs/testing.js';
+import { INestApplication } from '@nestjs/common.js';
+import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
+import { RedisService } from '../../../src/modules/redis/redis.service.js';
+import { RedisHealthIndicator } from '../../../src/modules/redis/redis.health.js';
 import { TitanRedisModule } from '../../../src/modules/redis/redis.module';
-import { RedisCache, RedisLock, RedisRateLimit } from '../../../src/modules/redis/redis.decorators';
+import { RedisCache, RedisLock, RedisRateLimit } from '../../../src/modules/redis/redis.decorators.js';
+import { Redis } from 'ioredis';
 
 describe('Redis Module Integration Tests (Real Redis)', () => {
   let app: INestApplication;
@@ -764,7 +764,7 @@ describe('Redis Module Integration Tests (Real Redis)', () => {
       // Try to execute concurrently with same ID
       const promises = [
         service.process(1),
-        service.process(1).catch(() => {}),  // Should fail due to lock
+        service.process(1).catch(() => { }),  // Should fail due to lock
         service.process(2),  // Different ID, should work
       ];
 

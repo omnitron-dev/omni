@@ -3,13 +3,13 @@
  */
 
 import { z } from 'zod';
-import { 
+import {
   ConfigModule,
   createConfigModule,
   ConfigSchemas,
   createTypedConfig,
   type ValidationResult
-} from '../../src/modules/config.module';
+} from '../../src/modules/config.module.js';
 
 describe('ConfigModule with zod@4.1.8', () => {
   let config: ConfigModule;
@@ -29,7 +29,7 @@ describe('ConfigModule with zod@4.1.8', () => {
         app: { name: 'test-app' },
         server: { port: 3000 }
       });
-      
+
       expect(config.get('app.name')).toBe('test-app');
       expect(config.get('server.port')).toBe(3000);
     });
@@ -172,7 +172,7 @@ describe('ConfigModule with zod@4.1.8', () => {
 
     it('should validate on registration if value exists', () => {
       config.set('user.email', 'invalid-email');
-      
+
       const schema = z.string().email();
       expect(() => config.registerSchema('user.email', schema)).toThrow();
     });
@@ -180,7 +180,7 @@ describe('ConfigModule with zod@4.1.8', () => {
     it('should validate with registered schemas', () => {
       const emailSchema = z.string().email();
       config.registerSchema('user.email', emailSchema);
-      
+
       config.set('user.email', 'test@example.com');
       const validated = config.validatePath('user.email', emailSchema);
       expect(validated).toBe('test@example.com');
@@ -201,7 +201,7 @@ describe('ConfigModule with zod@4.1.8', () => {
         );
 
       config.set('password', 'weak');
-      
+
       expect(() => config.validatePath('password', passwordSchema))
         .toThrow(/Must contain uppercase letter/);
     });
@@ -245,7 +245,7 @@ describe('ConfigModule with zod@4.1.8', () => {
       });
 
       config.merge({}); // Empty config
-      
+
       const result = config.validate(schema);
       expect(result.name).toBe('default-name');
       expect(result.port).toBe(3000);
@@ -286,12 +286,12 @@ describe('ConfigModule with zod@4.1.8', () => {
       });
 
       config.merge({ url: 'http://example.com' });
-      
+
       await expect(config.validateAsync(asyncSchema))
         .rejects.toThrow(/Must be HTTPS/);
 
       config.merge({ url: 'https://example.com' });
-      
+
       const result = await config.validateAsync(asyncSchema);
       expect(result.url).toBe('https://example.com');
     });
@@ -314,7 +314,7 @@ describe('ConfigModule with zod@4.1.8', () => {
       process.env['APP_DEBUG'] = 'true';
 
       config.loadEnv('APP_');
-      
+
       expect(config.get('name')).toBe('test-app');
       expect(config.get('port')).toBe(3000);
       expect(config.get('debug')).toBe(true);
@@ -325,7 +325,7 @@ describe('ConfigModule with zod@4.1.8', () => {
       process.env['APP_DATABASE_PORT'] = '5432';
 
       config.loadEnv('APP_');
-      
+
       expect(config.get('database.host')).toBe('localhost');
       expect(config.get('database.port')).toBe(5432);
     });
@@ -334,20 +334,20 @@ describe('ConfigModule with zod@4.1.8', () => {
   describe('Watchers', () => {
     it('should notify watchers on value change', () => {
       const callback = jest.fn();
-      
+
       config.watch('test.value', callback);
       config.set('test.value', 42);
-      
+
       expect(callback).toHaveBeenCalledWith(42);
     });
 
     it('should allow unsubscribing from watchers', () => {
       const callback = jest.fn();
-      
+
       const unwatch = config.watch('test.value', callback);
       config.set('test.value', 1);
       expect(callback).toHaveBeenCalledTimes(1);
-      
+
       unwatch();
       config.set('test.value', 2);
       expect(callback).toHaveBeenCalledTimes(1);
@@ -375,7 +375,7 @@ describe('ConfigModule with zod@4.1.8', () => {
       const result = config.validateSafe(schema);
       expect(result.success).toBe(false);
       expect(result.formattedErrors).toBeDefined();
-      
+
       // Check that errors are formatted with paths
       const errors = result.formattedErrors!.join('\n');
       expect(errors).toContain('[user.name]');

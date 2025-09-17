@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import { RedisHealthIndicator, HealthCheckError } from '../../../src/modules/redis/redis.health';
-import { RedisManager } from '../../../src/modules/redis/redis.manager';
+import { RedisHealthIndicator, HealthCheckError } from '../../../src/modules/redis/redis.health.js';
+import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
 import Redis from 'ioredis';
 import {
   createRedisTestHelper,
   RedisTestHelper
-} from '../../utils/redis-test-utils';
+} from '../../utils/redis-test-utils.js';
 
 describe('RedisHealthIndicator', () => {
   let healthIndicator: RedisHealthIndicator;

@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { RedisService } from '../../../src/modules/redis/redis.service';
-import { RedisManager } from '../../../src/modules/redis/redis.manager';
+import { RedisService } from '../../../src/modules/redis/redis.service.js';
+import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
 import {
   createRedisTestHelper,
   RedisTestHelper
-} from '../../utils/redis-test-utils';
+} from '../../utils/redis-test-utils.js';
 
 describe('RedisService with Real Redis', () => {
   let service: RedisService;

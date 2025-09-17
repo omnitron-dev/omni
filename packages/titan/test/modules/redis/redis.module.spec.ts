@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { TitanRedisModule } from '../../../src/modules/redis/redis.module';
+import { TitanRedisModule } from '../../../src/modules/redis/redis.module.js';
 import { RedisService } from '../../../src/modules/redis/redis.service';
-import { RedisManager } from '../../../src/modules/redis/redis.manager';
-import { RedisHealthIndicator } from '../../../src/modules/redis/redis.health';
-import { REDIS_MANAGER, getRedisToken } from '../../../src/modules/redis/redis.constants';
-import { RedisModuleOptions } from '../../../src/modules/redis/redis.types';
+import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
+import { RedisHealthIndicator } from '../../../src/modules/redis/redis.health.js';
+import { REDIS_MANAGER, getRedisToken } from '../../../src/modules/redis/redis.constants.js';
+import { RedisModuleOptions } from '../../../src/modules/redis/redis.types.js';
 
 describe('TitanRedisModule', () => {
   let module: TestingModule;
@@ -139,7 +139,7 @@ describe('TitanRedisModule', () => {
       }
 
       const ConfigModule = {
-        module: class ConfigModule {},
+        module: class ConfigModule { },
         providers: [ConfigService],
         exports: [ConfigService],
       };

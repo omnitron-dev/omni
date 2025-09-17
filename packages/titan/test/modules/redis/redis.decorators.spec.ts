@@ -6,8 +6,8 @@ import {
   RedisRateLimit,
   InjectRedis,
   InjectRedisManager
-} from '../../../src/modules/redis/redis.decorators';
-import { RedisManager } from '../../../src/modules/redis/redis.manager';
+} from '../../../src/modules/redis/redis.decorators.js';
+import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
 // Redis test utilities removed - using direct Redis connections
 import { Redis } from 'ioredis';
 

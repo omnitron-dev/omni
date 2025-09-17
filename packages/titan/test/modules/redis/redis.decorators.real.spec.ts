@@ -1,14 +1,14 @@
 import 'reflect-metadata';
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import {
   RedisCache,
   RedisLock,
   RedisRateLimit,
   InjectRedis,
   InjectRedisManager,
-} from '../../../src/modules/redis/redis.decorators';
-import { RedisManager } from '../../../src/modules/redis/redis.manager';
+} from '../../../src/modules/redis/redis.decorators.js';
+import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
 import {
   createRedisTestFixture,
   cleanupRedisTestFixture,
@@ -17,7 +17,7 @@ import {
   withTimeout,
   flushPromises,
   waitForCondition,
-} from '../../../src/testing';
+} from '../../../src/testing/async-test-utils.js';
 
 describe('Redis Decorators with Real Redis', () => {
   let fixture: RedisTestFixture;
@@ -427,7 +427,7 @@ describe('Redis Decorators with Real Redis', () => {
         private redisManager = manager;
 
         @RedisRateLimit({ key: 'ttl-test', limit: 10, window: 60 })
-        async call(): Promise<void> {}
+        async call(): Promise<void> { }
       }
 
       const service = new TestService();

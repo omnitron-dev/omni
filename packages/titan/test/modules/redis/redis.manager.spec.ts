@@ -1,5 +1,5 @@
-import { RedisManager } from '../../../src/modules/redis/redis.manager';
-import { RedisModuleOptions } from '../../../src/modules/redis/redis.types';
+import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
+import { RedisModuleOptions } from '../../../src/modules/redis/redis.types.js';
 import type { Redis } from 'ioredis';
 
 const mockRedis = jest.fn();

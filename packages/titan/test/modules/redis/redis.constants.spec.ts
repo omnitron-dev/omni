@@ -6,7 +6,7 @@ import {
   REDIS_DEFAULT_NAMESPACE,
   getRedisClientToken,
   getRedisOptionsToken,
-} from '../../../src/modules/redis/redis.constants';
+} from '../../../src/modules/redis/redis.constants.js';
 
 describe('Redis Constants', () => {
   describe('Module Tokens', () => {

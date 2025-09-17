@@ -7,9 +7,9 @@
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
 import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
 
-import { LOGGER_TOKEN, EVENT_EMITTER_TOKEN } from './events.module';
+import { LOGGER_TOKEN, EVENT_EMITTER_TOKEN } from './events.module.js';
 
-import type { IEventSchedulerJob } from './types';
+import type { IEventSchedulerJob } from './types.js';
 
 /**
  * Service for scheduling events

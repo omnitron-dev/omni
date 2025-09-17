@@ -1,4 +1,4 @@
-import { Uid, MAX_UID_VALUE } from '../dist';
+import { Uid, MAX_UID_VALUE } from '../src';
 
 describe('Uid', () => {
   it('max uid should be 4294967295 (max of uint32)', () => {

@@ -11,7 +11,7 @@ import {
   ERROR_MESSAGES,
   SCHEDULER_EVENTS,
   SCHEDULER_CONFIG_TOKEN
-} from './scheduler.constants';
+} from './scheduler.constants.js';
 import {
   JobStatus,
   SchedulerJobType,
@@ -21,7 +21,7 @@ import {
   type ISchedulerConfig,
   type IIntervalOptions,
   type IJobFilterOptions
-} from './scheduler.interfaces';
+} from './scheduler.interfaces.js';
 
 /**
  * Registry for managing scheduled jobs

@@ -5,12 +5,12 @@
  */
 
 
-import { createApp } from './application';
+import { createApp } from './application.js';
 // Import ConfigModuleToken for ConfigValue decorator
-import { ConfigModuleToken } from './modules/config.module';
+import { ConfigModuleToken } from './modules/config.module.js';
 
 // Import types for internal use
-import type { IModule, IApplication } from './types';
+import type { IModule, IApplication } from './types.js';
 
 // Re-export useful utilities from common
 export {
@@ -27,7 +27,7 @@ export {
   Application,
   ApplicationToken,
   Application as TitanApplication  // Alias for backward compatibility
-} from './application';
+} from './application.js';
 
 // Enhanced Module System
 export {
@@ -35,23 +35,7 @@ export {
   EnhancedApplicationModule,
   createModuleWithProviders,
   type IModuleMetadata as EnhancedModuleMetadata
-} from './enhanced-module';
-
-// Core Modules
-export {
-  IFileSource,
-  ConfigModule,
-  ConfigSource,
-  IObjectSource,
-  IConfigModule,
-  ConfigModuleToken,
-  IEnvironmentSource,
-  createConfigModule,
-  // Backward compatibility aliases
-  IFileSource as FileSource,
-  IObjectSource as ObjectSource,
-  IEnvironmentSource as EnvironmentSource
-} from './modules/config.module';
+} from './enhanced-module.js';
 
 // Re-export essentials from Nexus
 export {
@@ -67,6 +51,22 @@ export {
   createModule as createNexusModule
 } from '@omnitron-dev/nexus';
 
+// Core Modules
+export {
+  IFileSource,
+  ConfigModule,
+  ConfigSource,
+  IObjectSource,
+  IConfigModule,
+  ConfigModuleToken,
+  IEnvironmentSource,
+  createConfigModule,
+  // Backward compatibility aliases
+  IFileSource as FileSource,
+  IObjectSource as ObjectSource,
+  IEnvironmentSource as EnvironmentSource
+} from './modules/config.module.js';
+
 export {
   ILogger,
   LogLevel,
@@ -77,51 +77,65 @@ export {
   ILoggerOptions,
   ConsoleTransport,
   LoggerModuleToken,
-  RedactionProcessor,
-  createLoggerModule,
-  ILogger as LoggerService,  // Alias for service usage
   // Backward compatibility aliases
   ILogger as Logger,
+  RedactionProcessor,
+  createLoggerModule,
   ITransport as Transport,
+  ILogger as LoggerService,  // Alias for service usage
   ILogProcessor as LogProcessor,
   ILoggerOptions as LoggerOptions
-} from './modules/logger.module';
+} from './modules/logger.module.js';
 
-// Core Types
+// Decorators
 export {
-  IModule,
-  IEventMeta,
-  IEnvironment,
-  IApplication,
-  IHealthStatus,
-  ModuleFactory,
-  ILifecycleHook,
-  IModuleMetadata,
-  IModuleLifecycle,
-  IShutdownOptions,
-  ApplicationState,
-  ApplicationEvent,
-  IModuleDefinition,
-  IApplicationConfig,
-  ApplicationModule,
-  ModuleConstructor,
-  IApplicationOptions,
-  IApplicationMetrics,
-  EventHandler as EventHandlerType,  // Rename to avoid conflict with decorator
-  // Backward compatibility aliases
-  IModule as Module,
-  IEventMeta as EventMeta,
-  IEnvironment as Environment,
-  ILifecycleHook as LifecycleHook,
-  IModuleMetadata as ModuleMetadata,
-  IShutdownOptions as ShutdownOptions,
-  IApplicationConfig as ApplicationConfig,
-  IApplicationOptions as ApplicationOptions,
-  IApplicationMetrics as ApplicationMetrics,
-  IHealthStatus as HealthStatus,
-  IModuleLifecycle as ModuleLifecycle,
-  IModuleDefinition as ModuleDefinition
-} from './types';
+  Log,
+  Inject,
+  OnEvent,
+  Service,
+  // Method interceptors
+  Monitor,
+  Timeout,
+
+  Optional,
+  OnceEvent,
+  Singleton,
+  RateLimit,
+  Cacheable,
+  Retryable,
+  EmitEvent,
+  OnAnyEvent,
+  Injectable,
+  Controller,
+  Repository,
+
+  PreDestroy,
+
+  // Module decorator
+  TitanModule,
+
+  // Health check decorator
+  HealthCheck,
+  // Configuration decorators
+  ConfigWatch,
+  BatchEvents,
+  // Lifecycle decorators
+  AppLifecycle,
+  ValidateArgs,
+  // Event decorators
+  EventEmitter,
+  TimeoutError,
+  OnModuleEvent,
+
+  PostConstruct,
+  ScheduleEvent,
+  // Error classes
+  RateLimitError,
+
+  ValidationError,
+  OnEvent as EventHandler,  // Alias for backward compatibility
+  Module as ModuleDecorator
+} from './decorators.js';
 
 
 /**
@@ -224,55 +238,41 @@ export function ConfigValue(path: string): PropertyDecorator {
   };
 }
 
-// Decorators
+// Core Types
 export {
-  Log,
-  Inject,
-  OnEvent,
-  Service,
-  // Method interceptors
-  Monitor,
-  Timeout,
-
-  Optional,
-  OnceEvent,
-  Singleton,
-  RateLimit,
-  Cacheable,
-  Retryable,
-  EmitEvent,
-  OnAnyEvent,
-  Injectable,
-  Controller,
-  Repository,
-
-  PreDestroy,
-
-  // Module decorator
-  TitanModule,
-
-  // Health check decorator
-  HealthCheck,
-  // Configuration decorators
-  ConfigWatch,
-  BatchEvents,
-  // Lifecycle decorators
-  AppLifecycle,
-  ValidateArgs,
-  // Event decorators
-  EventEmitter,
-  TimeoutError,
-  OnModuleEvent,
-
-  PostConstruct,
-  ScheduleEvent,
-  // Error classes
-  RateLimitError,
-
-  ValidationError,
-  OnEvent as EventHandler,  // Alias for backward compatibility
-  Module as ModuleDecorator
-} from './decorators';
+  IModule,
+  IEventMeta,
+  IEnvironment,
+  IApplication,
+  IHealthStatus,
+  ModuleFactory,
+  ILifecycleHook,
+  IModuleMetadata,
+  IModuleLifecycle,
+  IShutdownOptions,
+  ApplicationState,
+  ApplicationEvent,
+  IModuleDefinition,
+  ApplicationModule,
+  ModuleConstructor,
+  // Backward compatibility aliases
+  IModule as Module,
+  IApplicationConfig,
+  IApplicationOptions,
+  IApplicationMetrics,
+  IEventMeta as EventMeta,
+  IEnvironment as Environment,
+  IHealthStatus as HealthStatus,
+  ILifecycleHook as LifecycleHook,
+  EventHandler as EventHandlerType,  // Rename to avoid conflict with decorator
+  IModuleMetadata as ModuleMetadata,
+  IShutdownOptions as ShutdownOptions,
+  IModuleLifecycle as ModuleLifecycle,
+  IModuleDefinition as ModuleDefinition,
+  IApplicationConfig as ApplicationConfig,
+  IApplicationOptions as ApplicationOptions,
+  IApplicationMetrics as ApplicationMetrics
+} from './types.js';
 
 /**
  * Version information

@@ -427,9 +427,11 @@ export class ServiceDiscovery {
           continue;
         }
 
-        const address = typeof nodeData['address'] === 'string' ? nodeData['address'] : null;
-        const servicesRaw = typeof nodeData['services'] === 'string' ? nodeData['services'] : null;
-        const timestampRaw = typeof nodeData['timestamp'] === 'string' ? nodeData['timestamp'] : null;
+        // Type assertion for Redis hash result
+        const nodeDataTyped = nodeData as Record<string, unknown>;
+        const address = typeof nodeDataTyped['address'] === 'string' ? nodeDataTyped['address'] : null;
+        const servicesRaw = typeof nodeDataTyped['services'] === 'string' ? nodeDataTyped['services'] : null;
+        const timestampRaw = typeof nodeDataTyped['timestamp'] === 'string' ? nodeDataTyped['timestamp'] : null;
 
         if (!address || !servicesRaw || !timestampRaw) {
           nodesToDeregister.push(nodeId);

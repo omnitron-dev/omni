@@ -1,10 +1,10 @@
 import { Redis } from 'ioredis';
 import { delay } from '@omnitron-dev/common';
 
-import { Netron, ServiceDiscovery } from '../../dist';
+import { Netron, ServiceDiscovery } from '../../src';
 import { cleanupRedis, createTestRedisClient } from '../helpers/test-utils';
 
-import type { DiscoveryEvent } from '../../dist';
+import type { DiscoveryEvent } from '../../src';
 
 describe('ServiceDiscovery Pub/Sub Event Propagation', () => {
   let redis: Redis | undefined;

@@ -11,7 +11,7 @@ import {
   NETRON_EVENT_SERVICE_EXPOSE,
   NETRON_EVENT_PEER_DISCONNECT,
   NETRON_EVENT_SERVICE_UNEXPOSE,
-} from '../dist';
+} from '../src';
 
 describe('RemotePeer', () => {
   let netron: Netron;

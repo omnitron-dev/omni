@@ -8,7 +8,7 @@ import type { EventMetadata } from '@omnitron-dev/eventemitter';
 
 import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
 
-import { LOGGER_TOKEN } from './events.module';
+import { LOGGER_TOKEN } from './events.module.js';
 
 /**
  * Service for managing event metadata

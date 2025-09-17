@@ -9,9 +9,9 @@ import type { EventRecord, EventFilter } from '@omnitron-dev/eventemitter';
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
 import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
 
-import { LOGGER_TOKEN, EVENT_EMITTER_TOKEN } from './events.module';
+import { LOGGER_TOKEN, EVENT_EMITTER_TOKEN } from './events.module.js';
 
-import type { IEventReplayOptions } from './types';
+import type { IEventReplayOptions } from './types.js';
 
 /**
  * Service for managing event history

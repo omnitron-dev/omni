@@ -7,9 +7,9 @@ import type { $ZodIssue } from 'zod/v4/core';
 import fs from 'node:fs';
 import path from 'node:path';
 import { z, ZodType, ZodError } from 'zod';
-import { createToken } from '@omnitron-dev/nexus';
+import { Token, createToken } from '@omnitron-dev/nexus';
 
-import { IApplication, IHealthStatus, ApplicationModule } from '../types';
+import { IApplication, IHealthStatus, ApplicationModule } from '../types.js';
 
 /**
  * Configuration source types
@@ -101,7 +101,7 @@ export interface IConfigModule {
 /**
  * Configuration module token
  */
-export const ConfigModuleToken = createToken<ConfigModule>('ConfigModule');
+export const ConfigModuleToken: Token<ConfigModule> = createToken<ConfigModule>('ConfigModule');
 
 /**
  * Export IConfigModule interface as a value for Bun compatibility

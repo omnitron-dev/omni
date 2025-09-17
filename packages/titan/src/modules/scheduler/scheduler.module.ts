@@ -6,12 +6,12 @@
 
 import { Module, type DynamicModule } from '@omnitron-dev/nexus';
 
-import { SchedulerService } from './scheduler.service';
-import { SchedulerRegistry } from './scheduler.registry';
-import { SchedulerExecutor } from './scheduler.executor';
-import { SchedulerDiscovery } from './scheduler.discovery';
-import { SchedulerMetricsService } from './scheduler.metrics';
-import { SchedulerPersistence } from './scheduler.persistence';
+import { SchedulerService } from './scheduler.service.js';
+import { SchedulerRegistry } from './scheduler.registry.js';
+import { SchedulerExecutor } from './scheduler.executor.js';
+import { SchedulerDiscovery } from './scheduler.discovery.js';
+import { SchedulerMetricsService } from './scheduler.metrics.js';
+import { SchedulerPersistence } from './scheduler.persistence.js';
 import {
   SCHEDULER_CONFIG_TOKEN,
   SCHEDULER_SERVICE_TOKEN,
@@ -22,12 +22,12 @@ import {
   SCHEDULER_DISCOVERY_TOKEN,
   SCHEDULER_LISTENERS_TOKEN,
   SCHEDULER_PERSISTENCE_TOKEN
-} from './scheduler.constants';
+} from './scheduler.constants.js';
 
 import type {
   ISchedulerModuleOptions,
   ISchedulerModuleAsyncOptions
-} from './scheduler.interfaces';
+} from './scheduler.interfaces.js';
 
 /**
  * Scheduler module

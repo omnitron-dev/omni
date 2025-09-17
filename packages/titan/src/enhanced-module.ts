@@ -12,7 +12,7 @@ import {
   IHealthStatus,
   IDynamicModule,
   ApplicationModule as BaseApplicationModule
-} from './types';
+} from './types.js';
 
 /**
  * Module metadata interface

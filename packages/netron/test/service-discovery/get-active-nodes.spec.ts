@@ -1,7 +1,7 @@
 import { Redis } from 'ioredis';
 import { delay } from '@omnitron-dev/common';
 
-import { Netron, NodeInfo, ServiceDiscovery } from '../../dist';
+import { Netron, NodeInfo, ServiceDiscovery } from '../../src';
 import { cleanupRedis, createTestRedisClient } from '../helpers/test-utils';
 
 describe('ServiceDiscovery getActiveNodes', () => {

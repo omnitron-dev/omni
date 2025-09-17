@@ -3,11 +3,11 @@
  */
 
 import os from 'node:os';
-import { createToken } from '@omnitron-dev/nexus';
+import { Token, createToken } from '@omnitron-dev/nexus';
 import pino, { Level, DestinationStream, Logger as PinoLogger, LoggerOptions as PinoLoggerOptions } from 'pino';
 
-import { ConfigModuleToken } from './config.module';
-import { IApplication, IHealthStatus, ApplicationModule } from '../types';
+import { ConfigModuleToken } from './config.module.js';
+import { IApplication, IHealthStatus, ApplicationModule } from '../types.js';
 
 /**
  * Log levels
@@ -93,7 +93,7 @@ export interface ILoggerModule {
 /**
  * Logger module token
  */
-export const LoggerModuleToken = createToken<LoggerModule>('LoggerModule');
+export const LoggerModuleToken: Token<LoggerModule> = createToken<LoggerModule>('LoggerModule');
 
 /**
  * Logger implementation wrapping Pino
@@ -174,7 +174,7 @@ class LoggerImpl implements ILogger {
 export class LoggerModule extends ApplicationModule implements ILoggerModule {
   override readonly name = 'logger';
   override readonly version = '1.0.0';
-  override readonly dependencies = [ConfigModuleToken];
+  override readonly dependencies: (Token<any> | string)[] = [ConfigModuleToken];
   private readonly __isLoggerModule = true; // Marker for type identification
 
   private rootLogger!: PinoLogger;

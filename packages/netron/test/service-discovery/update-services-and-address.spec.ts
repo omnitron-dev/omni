@@ -1,6 +1,6 @@
 import { Redis } from 'ioredis';
 
-import { Netron, NodeInfo, ServiceDiscovery } from '../../dist';
+import { Netron, NodeInfo, ServiceDiscovery } from '../../src';
 import { cleanupRedis, createTestRedisClient } from '../helpers/test-utils';
 
 describe('ServiceDiscovery updateServices and updateAddress', () => {

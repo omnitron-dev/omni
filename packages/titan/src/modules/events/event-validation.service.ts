@@ -6,9 +6,9 @@
 
 import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
 
-import { LOGGER_TOKEN } from './events.module';
+import { LOGGER_TOKEN } from './events.module.js';
 
-import type { IEventValidationResult } from './types';
+import type { IEventValidationResult } from './types.js';
 
 /**
  * Schema validator interface

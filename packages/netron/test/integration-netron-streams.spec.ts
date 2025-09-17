@@ -7,7 +7,7 @@ import {
   NetronReadableStream,
   NetronWritableStream,
   NETRON_EVENT_PEER_CONNECT,
-} from '../dist';
+} from '../src';
 
 describe('Netron Streams Integration Tests', () => {
   let netronA: Netron;

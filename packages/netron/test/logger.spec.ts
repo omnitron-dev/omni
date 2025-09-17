@@ -2,7 +2,7 @@ import { LoggerOptions } from 'pino';
 import { Writable } from 'node:stream';
 import { delay } from '@omnitron-dev/common';
 
-import { Netron } from '../dist';
+import { Netron } from '../src';
 
 describe('Netron Logger Configuration Tests', () => {
   let logs: string[];

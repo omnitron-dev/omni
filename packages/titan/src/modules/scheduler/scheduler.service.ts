@@ -15,27 +15,27 @@ import {
   SCHEDULER_EXECUTOR_TOKEN,
   SCHEDULER_DISCOVERY_TOKEN,
   SCHEDULER_PERSISTENCE_TOKEN
-} from './scheduler.constants';
+} from './scheduler.constants.js';
 import {
   JobStatus,
-  type ICronOptions,
   SchedulerJobType,
+  type ICronOptions,
   type IScheduledJob,
-  type ITimeoutOptions,
   type CronExpression,
+  type ITimeoutOptions,
   type ISchedulerConfig,
   type IIntervalOptions,
   type IJobFilterOptions,
   type ISchedulerMetrics,
   type IJobExecutionResult,
   type IJobExecutionContext
-} from './scheduler.interfaces';
+} from './scheduler.interfaces.js';
 
-import type { SchedulerRegistry } from './scheduler.registry';
-import type { SchedulerExecutor } from './scheduler.executor';
-import type { SchedulerDiscovery } from './scheduler.discovery';
-import type { SchedulerMetricsService } from './scheduler.metrics';
-import type { SchedulerPersistence } from './scheduler.persistence';
+import type { SchedulerRegistry } from './scheduler.registry.js';
+import type { SchedulerExecutor } from './scheduler.executor.js';
+import type { SchedulerDiscovery } from './scheduler.discovery.js';
+import type { SchedulerMetricsService } from './scheduler.metrics.js';
+import type { SchedulerPersistence } from './scheduler.persistence.js';
 
 /**
  * Main scheduler service

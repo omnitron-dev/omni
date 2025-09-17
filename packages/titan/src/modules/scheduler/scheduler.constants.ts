@@ -2,12 +2,12 @@
  * Scheduler Constants
  */
 
-import { createToken } from '@omnitron-dev/nexus';
+import { Token, createToken } from '@omnitron-dev/nexus';
 
 import type {
   IJobListener,
   ISchedulerConfig
-} from './scheduler.interfaces';
+} from './scheduler.interfaces.js';
 
 /**
  * Scheduler metadata keys
@@ -23,14 +23,14 @@ export const SCHEDULER_METADATA = {
 /**
  * Dependency injection tokens
  */
-export const SCHEDULER_CONFIG_TOKEN = createToken<ISchedulerConfig>('SCHEDULER_CONFIG');
-export const SCHEDULER_SERVICE_TOKEN = createToken('SCHEDULER_SERVICE');
-export const SCHEDULER_REGISTRY_TOKEN = createToken('SCHEDULER_REGISTRY');
-export const SCHEDULER_EXECUTOR_TOKEN = createToken('SCHEDULER_EXECUTOR');
-export const SCHEDULER_PERSISTENCE_TOKEN = createToken('SCHEDULER_PERSISTENCE');
-export const SCHEDULER_METRICS_TOKEN = createToken('SCHEDULER_METRICS');
-export const SCHEDULER_DISCOVERY_TOKEN = createToken('SCHEDULER_DISCOVERY');
-export const SCHEDULER_LISTENERS_TOKEN = createToken<IJobListener[]>('SCHEDULER_LISTENERS');
+export const SCHEDULER_CONFIG_TOKEN: Token<ISchedulerConfig> = createToken<ISchedulerConfig>('SCHEDULER_CONFIG');
+export const SCHEDULER_SERVICE_TOKEN: Token<any> = createToken('SCHEDULER_SERVICE');
+export const SCHEDULER_REGISTRY_TOKEN: Token<any> = createToken('SCHEDULER_REGISTRY');
+export const SCHEDULER_EXECUTOR_TOKEN: Token<any> = createToken('SCHEDULER_EXECUTOR');
+export const SCHEDULER_PERSISTENCE_TOKEN: Token<any> = createToken('SCHEDULER_PERSISTENCE');
+export const SCHEDULER_METRICS_TOKEN: Token<any> = createToken('SCHEDULER_METRICS');
+export const SCHEDULER_DISCOVERY_TOKEN: Token<any> = createToken('SCHEDULER_DISCOVERY');
+export const SCHEDULER_LISTENERS_TOKEN: Token<IJobListener[]> = createToken<IJobListener[]>('SCHEDULER_LISTENERS');
 
 /**
  * Default configuration

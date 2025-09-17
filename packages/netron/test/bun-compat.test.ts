@@ -18,7 +18,7 @@ describe('Bun Compatibility', () => {
     // Skip ESM import test in Jest (Node) - it requires additional configuration
     // This test will work correctly when running with Bun
     if (isBun) {
-      const netronESM = await import('../dist/esm/index.js');
+      const netronESM = await import('../src/index.js');
       expect(netronESM).toBeDefined();
       expect(netronESM.Netron).toBeDefined();
       expect(netronESM.Packet).toBeDefined();
@@ -26,7 +26,7 @@ describe('Bun Compatibility', () => {
       // For Node/Jest, just verify the ESM files exist
       const fs = require('fs');
       const path = require('path');
-      const esmPath = path.join(__dirname, '../dist/esm/index.js');
+      const esmPath = path.join(__dirname, '../src/index.js');
       expect(fs.existsSync(esmPath)).toBe(true);
     }
   });

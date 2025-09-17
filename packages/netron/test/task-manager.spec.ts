@@ -1,6 +1,6 @@
 import path from 'path';
 
-import { TaskManager } from '../dist';
+import { TaskManager } from '../src';
 import { syncTask, asyncTask, failingTask, delayedTask } from './fixtures/tasks';
 
 describe('TaskManager', () => {

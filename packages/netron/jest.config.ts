@@ -22,7 +22,29 @@ export default {
   transform: {
     '^.+\\.(t|j)s$': 'ts-jest', // Transform TypeScript files
   },
-  moduleNameMapper: pathsToModuleNameMapper(tsConfig.compilerOptions?.paths || {}, { prefix: '<rootDir>/' }),
+  resolver: '<rootDir>/jest.resolver.cjs',
+  moduleNameMapper: {
+    ...pathsToModuleNameMapper(tsConfig.compilerOptions?.paths || {}, { prefix: '<rootDir>/' }),
+    // Map workspace packages to their source files
+    '^@omnitron-dev/common$': '<rootDir>/../common/src',
+    '^@omnitron-dev/smartbuffer$': '<rootDir>/../smartbuffer/src',
+    '^@omnitron-dev/messagepack$': '<rootDir>/../messagepack/src',
+    '^@omnitron-dev/eventemitter$': '<rootDir>/../eventemitter/src',
+  },
+  transformIgnorePatterns: [
+    'node_modules/(?!(@omnitron-dev)/)',
+  ],
+  extensionsToTreatAsEsm: ['.ts'],
+  globals: {
+    'ts-jest': {
+      useESM: true,
+      tsconfig: {
+        allowJs: true,
+        module: 'commonjs',
+        moduleResolution: 'node',
+      },
+    },
+  },
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts', '<rootDir>/../../jest.setup.global.ts'],
   testTimeout: 30000, // 30 seconds timeout for tests
 };

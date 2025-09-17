@@ -1,6 +1,6 @@
 import { Service1 } from './fixtures/service1';
 import { Service2 } from './fixtures/service2';
-import { isNetronService, SERVICE_ANNOTATION } from '../dist';
+import { isNetronService, SERVICE_ANNOTATION } from '../src';
 
 describe('Packet', () => {
   it('complex metadata', () => {

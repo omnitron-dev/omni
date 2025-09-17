@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 
-import { Netron, Public, Service } from '../dist';
+import { Netron, Public, Service } from '../src';
 
 // Simple service with async generator
 @Service('test@1.0.0')

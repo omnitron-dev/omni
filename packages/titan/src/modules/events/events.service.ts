@@ -14,8 +14,8 @@ import type {
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
 import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
 
-import { EventMetadataService } from './event-metadata.service';
-import { LOGGER_TOKEN, EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN } from './events.module';
+import { EventMetadataService } from './event-metadata.service.js';
+import { LOGGER_TOKEN, EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN } from './events.module.js';
 
 import type {
   IEventContext,
@@ -23,7 +23,7 @@ import type {
   IEventSubscription,
   IEventListenerOptions,
   IEventValidationResult
-} from './types';
+} from './types.js';
 
 /**
  * Core service for event handling

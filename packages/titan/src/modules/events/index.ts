@@ -2,15 +2,15 @@
  * Events Module exports
  */
 
-export * from './types';
-export * from './events.module';
-export * from './events.service';
-export * from './event-bus.service';
-export * from './event-history.service';
-export * from './event-metadata.service';
-export * from './event-discovery.service';
-export * from './event-scheduler.service';
-export * from './event-validation.service';
+export * from './types.js';
+export * from './events.module.js';
+export * from './events.service.js';
+export * from './event-bus.service.js';
+export * from './event-history.service.js';
+export * from './event-metadata.service.js';
+export * from './event-discovery.service.js';
+export * from './event-scheduler.service.js';
+export * from './event-validation.service.js';
 
 // Re-export event decorators from main decorators file
 export {
@@ -21,4 +21,4 @@ export {
   BatchEvents,
   EventEmitter,
   ScheduleEvent
-} from '../../decorators';
+} from '../../decorators.js';

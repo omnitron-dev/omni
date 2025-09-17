@@ -12,17 +12,17 @@ import {
   SCHEDULER_CONFIG_TOKEN,
   SCHEDULER_REGISTRY_TOKEN,
   SCHEDULER_EXECUTOR_TOKEN
-} from './scheduler.constants';
+} from './scheduler.constants.js';
 import {
   JobStatus,
   SchedulerJobType,
   type ISchedulerConfig,
   type ISchedulerMetrics,
   type IJobExecutionResult
-} from './scheduler.interfaces';
+} from './scheduler.interfaces.js';
 
-import type { SchedulerRegistry } from './scheduler.registry';
-import type { SchedulerExecutor } from './scheduler.executor';
+import type { SchedulerRegistry } from './scheduler.registry.js';
+import type { SchedulerExecutor } from './scheduler.executor.js';
 
 /**
  * Metrics collection service

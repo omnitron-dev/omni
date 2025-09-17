@@ -2,7 +2,7 @@ import { WebSocket } from 'ws';
 import { jest } from '@jest/globals';
 import { delay } from '@omnitron-dev/common';
 
-import { Netron, Packet, RemotePeer, createStreamPacket, NetronReadableStream, NetronWritableStream } from '../dist';
+import { Netron, Packet, RemotePeer, createStreamPacket, NetronReadableStream, NetronWritableStream } from '../src';
 
 jest.mock('ws', () => ({
   WebSocket: jest.fn().mockImplementation(() => ({

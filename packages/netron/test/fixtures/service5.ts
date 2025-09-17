@@ -1,4 +1,4 @@
-import { Public, Service } from '../../dist';
+import { Public, Service } from '../../src';
 
 export interface IService5 {
   generateError(errorType: string): void;

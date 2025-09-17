@@ -8,13 +8,13 @@ import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
 
 import {
   SCHEDULER_CONFIG_TOKEN
-} from './scheduler.constants';
+} from './scheduler.constants.js';
 
 import type {
   IScheduledJob,
   ISchedulerConfig,
   IJobExecutionResult
-} from './scheduler.interfaces';
+} from './scheduler.interfaces.js';
 
 /**
  * Interface for persistence providers

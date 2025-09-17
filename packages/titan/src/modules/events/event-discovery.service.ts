@@ -7,14 +7,14 @@
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
 import { Inject, Optional, Container, Injectable } from '@omnitron-dev/nexus';
 
-import { EventMetadataService } from './event-metadata.service';
-import { LOGGER_TOKEN, EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN } from './events.module';
+import { EventMetadataService } from './event-metadata.service.js';
+import { LOGGER_TOKEN, EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN } from './events.module.js';
 
 import type {
   IEventHandlerMetadata,
   IEventDiscoveryResult,
   IEventListenerOptions
-} from './types';
+} from './types.js';
 
 /**
  * Metadata keys for event decorators

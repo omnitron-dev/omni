@@ -1,6 +1,6 @@
 import { delay } from '@omnitron-dev/common';
 
-import { Public, Netron, Service, RemotePeer } from '../dist';
+import { Public, Netron, Service, RemotePeer } from '../src';
 
 describe('RemotePeer Service Versioning', () => {
   let localNetron: Netron;

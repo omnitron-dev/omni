@@ -1,7 +1,7 @@
 import Redis from 'ioredis';
 import { delay } from '@omnitron-dev/common';
 
-import { Netron, Service } from '../dist';
+import { Netron, Service } from '../src';
 import { cleanupRedis, getTestRedisUrl, createTestRedisClient } from './helpers/test-utils';
 
 @Service('service.alpha@1.0.0')

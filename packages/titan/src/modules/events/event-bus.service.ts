@@ -12,9 +12,9 @@ import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
 // Define EventHandler locally since it's not exported from eventemitter
 type EventHandler = (...args: any[]) => void | Promise<void>;
 
-import { LOGGER_TOKEN, EVENT_EMITTER_TOKEN } from './events.module';
+import { LOGGER_TOKEN, EVENT_EMITTER_TOKEN } from './events.module.js';
 
-import type { IEventBusMessage, IEventSubscription } from './types';
+import type { IEventBusMessage, IEventSubscription } from './types.js';
 
 /**
  * Event bus for inter-module communication

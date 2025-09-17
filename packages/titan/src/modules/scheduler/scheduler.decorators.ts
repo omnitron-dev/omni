@@ -6,16 +6,16 @@ import 'reflect-metadata';
 
 import {
   SCHEDULER_METADATA
-} from './scheduler.constants';
+} from './scheduler.constants.js';
 
 import type {
   ICronOptions,
   IJobMetadata,
-  ITimeoutOptions,
   CronExpression,
+  ITimeoutOptions,
   IIntervalOptions,
   SchedulerJobType
-} from './scheduler.interfaces';
+} from './scheduler.interfaces.js';
 
 /**
  * Schedule a cron job

@@ -1,4 +1,4 @@
-import { Netron, Public, Service, RemotePeer } from '../dist';
+import { Netron, Public, Service, RemotePeer } from '../src';
 
 describe('Interface Lifecycle Tests', () => {
   let netron: Netron;

@@ -1,6 +1,6 @@
 import { Redis } from 'ioredis';
 
-import { Netron, ServiceDiscovery } from '../../dist';
+import { Netron, ServiceDiscovery } from '../../src';
 import { cleanupRedis, createTestRedisClient } from '../helpers/test-utils';
 
 describe('ServiceDiscovery Retry Heartbeat', () => {

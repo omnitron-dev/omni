@@ -16,39 +16,21 @@
   ],
   "author": "LuxQuant",
   "license": "MIT",
+  "type": "module",
   "main": "./dist/index.js",
-  "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.js"
+      "default": "./dist/index.js"
     },
-    "./http": {
-      "types": "./dist/http/index.d.ts",
-      "import": "./dist/http/index.mjs",
-      "require": "./dist/http/index.js"
+    "./module/scheduler": {
+      "types": "./dist/module/scheduler/index.d.ts",
+      "default": "./dist/module/scheduler/index.js"
     },
-    "./graphql": {
-      "types": "./dist/graphql/index.d.ts",
-      "import": "./dist/graphql/index.mjs",
-      "require": "./dist/graphql/index.js"
-    },
-    "./websocket": {
-      "types": "./dist/websocket/index.d.ts",
-      "import": "./dist/websocket/index.mjs",
-      "require": "./dist/websocket/index.js"
-    },
-    "./microservices": {
-      "types": "./dist/microservices/index.d.ts",
-      "import": "./dist/microservices/index.mjs",
-      "require": "./dist/microservices/index.js"
-    },
-    "./testing": {
-      "types": "./dist/testing/index.d.ts",
-      "import": "./dist/testing/index.mjs",
-      "require": "./dist/testing/index.js"
+    "./module/events": {
+      "types": "./dist/module/events/index.d.ts",
+      "default": "./dist/module/events/index.js"
     }
   },
   "files": [

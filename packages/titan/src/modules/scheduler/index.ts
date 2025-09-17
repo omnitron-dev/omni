@@ -4,13 +4,13 @@
  * Advanced task scheduling with enterprise features
  */
 
-export * from './scheduler.module';
-export * from './scheduler.service';
-export * from './scheduler.metrics';
-export * from './scheduler.registry';
-export * from './scheduler.executor';
-export * from './scheduler.constants';
-export * from './scheduler.discovery';
-export * from './scheduler.decorators';
-export * from './scheduler.interfaces';
-export * from './scheduler.persistence';
+export * from './scheduler.module.js';
+export * from './scheduler.service.js';
+export * from './scheduler.metrics.js';
+export * from './scheduler.registry.js';
+export * from './scheduler.executor.js';
+export * from './scheduler.constants.js';
+export * from './scheduler.discovery.js';
+export * from './scheduler.decorators.js';
+export * from './scheduler.interfaces.js';
+export * from './scheduler.persistence.js';

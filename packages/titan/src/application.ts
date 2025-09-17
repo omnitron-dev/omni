@@ -6,14 +6,14 @@ import os from 'node:os';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { Token, Container, createToken } from '@omnitron-dev/nexus';
 
-import { ConfigModule, ConfigModuleToken } from './modules/config.module';
-import { ILogger, LoggerModule, LoggerModuleToken } from './modules/logger.module';
+import { ConfigModule, ConfigModuleToken } from './modules/config.module.js';
+import { ILogger, LoggerModule, LoggerModuleToken } from './modules/logger.module.js';
 import {
   IModule,
   IProvider,
   IEventMeta,
-  IEnvironment,
   ModuleInput,
+  IEnvironment,
   IApplication,
   EventHandler,
   ILifecycleHook,
@@ -21,16 +21,16 @@ import {
   IShutdownOptions,
   ApplicationState,
   ApplicationEvent,
-  IApplicationConfig,
   ModuleConstructor,
+  IApplicationConfig,
   IApplicationMetrics,
   IApplicationOptions
-} from './types';
+} from './types.js';
 
 /**
  * Application token for DI
  */
-export const ApplicationToken = createToken<Application>('Application');
+export const ApplicationToken: Token<Application> = createToken<Application>('Application');
 
 /**
  * Titan Application implementation

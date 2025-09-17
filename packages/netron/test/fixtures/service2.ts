@@ -1,5 +1,5 @@
 import { Service1 } from './service1';
-import { Public, Service } from '../../dist';
+import { Public, Service } from '../../src';
 
 export interface IService2 {
   name: string;

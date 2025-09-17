@@ -1,4 +1,4 @@
-import { Public, Service } from '../../dist';
+import { Public, Service } from '../../src';
 
 enum Status {
   Active = 'ACTIVE',

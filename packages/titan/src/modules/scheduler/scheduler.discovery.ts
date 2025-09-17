@@ -6,19 +6,19 @@
 
 import { Inject, Optional, Container, Injectable } from '@omnitron-dev/nexus';
 
-import { getScheduledJobs } from './scheduler.decorators';
+import { getScheduledJobs } from './scheduler.decorators.js';
 import {
   SCHEDULER_METADATA,
   SCHEDULER_CONFIG_TOKEN,
   SCHEDULER_REGISTRY_TOKEN
-} from './scheduler.constants';
+} from './scheduler.constants.js';
 
-import type { SchedulerRegistry } from './scheduler.registry';
+import type { SchedulerRegistry } from './scheduler.registry.js';
 import type {
   IJobMetadata,
   IScheduledJob,
   ISchedulerConfig
-} from './scheduler.interfaces';
+} from './scheduler.interfaces.js';
 
 /**
  * Discovers scheduled jobs in the application

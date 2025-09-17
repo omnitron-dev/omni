@@ -1,9 +1,9 @@
 import { Redis } from 'ioredis';
 
-import { Netron, ServiceDiscovery } from '../../dist';
+import { Netron, ServiceDiscovery } from '../../src';
 import { cleanupRedis, createTestRedisClient } from '../helpers/test-utils';
 
-import type { ServiceInfo, DiscoveryOptions } from '../../dist';
+import type { ServiceInfo, DiscoveryOptions } from '../../src';
 
 describe('ServiceDiscovery Initialization', () => {
   let redis: Redis | undefined;

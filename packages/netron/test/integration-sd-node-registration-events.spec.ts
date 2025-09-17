@@ -1,7 +1,7 @@
 import Redis from 'ioredis';
 import { delay } from '@omnitron-dev/common';
 
-import { Netron } from '../dist';
+import { Netron } from '../src';
 import { cleanupRedis, getTestRedisUrl, createTestRedisClient } from './helpers/test-utils';
 
 describe('ServiceDiscovery Integration - Node Registration & Deregistration Events', () => {

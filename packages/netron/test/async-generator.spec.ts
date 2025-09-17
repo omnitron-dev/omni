@@ -2,7 +2,7 @@ import 'reflect-metadata';
 
 import { delay } from '@omnitron-dev/common';
 
-import { Netron, Public, Service, NetronReadableStream } from '../dist';
+import { Netron, Public, Service, NetronReadableStream } from '../src';
 
 // Example service with async generator methods
 @Service('calculator@1.0.0')

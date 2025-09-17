@@ -2,7 +2,7 @@ import { Redis } from 'ioredis';
 import { jest } from '@jest/globals';
 import { delay } from '@omnitron-dev/common';
 
-import { Netron, ServiceDiscovery } from '../../dist';
+import { Netron, ServiceDiscovery } from '../../src';
 import { cleanupRedis, createTestRedisClient } from '../helpers/test-utils';
 
 describe('ServiceDiscovery Retry Deregistration', () => {

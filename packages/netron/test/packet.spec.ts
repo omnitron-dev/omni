@@ -1,4 +1,4 @@
-import { Packet, TYPE_GET, PacketType, TYPE_STREAM, createPacket, encodePacket, decodePacket } from '../dist';
+import { Packet, TYPE_GET, PacketType, TYPE_STREAM, createPacket, encodePacket, decodePacket } from '../src';
 
 describe('Packet', () => {
   let pkt: Packet;

@@ -12,7 +12,7 @@ import {
   SCHEDULER_EVENTS,
   SCHEDULER_CONFIG_TOKEN,
   SCHEDULER_LISTENERS_TOKEN
-} from './scheduler.constants';
+} from './scheduler.constants.js';
 
 import type {
   IJobListener,
@@ -21,7 +21,7 @@ import type {
   ISchedulerConfig,
   IJobExecutionResult,
   IJobExecutionContext
-} from './scheduler.interfaces';
+} from './scheduler.interfaces.js';
 
 /**
  * Executes scheduled jobs with advanced features

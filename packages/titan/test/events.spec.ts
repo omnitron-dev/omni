@@ -325,7 +325,7 @@ describe('Titan Event System', () => {
       expect(emitResults).toContain(10);
     });
 
-    it.skip('should handle event errors gracefully', async () => {
+    it('should handle event errors gracefully', async () => {
       const errorHandler = jest.fn();
       const goodHandler = jest.fn();
 
@@ -405,7 +405,7 @@ describe('Titan Event System', () => {
       expect(handler).toHaveBeenCalledTimes(2);
     });
 
-    it.skip('should handle priority subscribers', async () => {
+    it('should handle priority subscribers', async () => {
       const results: number[] = [];
 
       eventBus.subscribe('priority.test', () => results.push(3), { priority: 1 });
@@ -446,7 +446,7 @@ describe('Titan Event System', () => {
       );
     });
 
-    it.skip('should handle replay of events', async () => {
+    it('should handle replay of events', async () => {
       eventBus.enableReplay(3);
 
       await eventBus.emit('replay.test', { id: 1 });
@@ -628,7 +628,7 @@ describe('Titan Event System', () => {
   describe('EventSchedulerService', () => {
     jest.useFakeTimers();
 
-    it.skip('should schedule delayed events', () => {
+    it('should schedule delayed events', () => {
       const handler = jest.fn();
       schedulerService.onScheduledEvent('delayed.event', handler);
 
@@ -640,7 +640,7 @@ describe('Titan Event System', () => {
       expect(handler).toHaveBeenCalledWith({ data: 'test' });
     });
 
-    it.skip('should schedule recurring events', () => {
+    it('should schedule recurring events', () => {
       const handler = jest.fn();
       schedulerService.onScheduledEvent('recurring.event', handler);
 
@@ -666,7 +666,7 @@ describe('Titan Event System', () => {
       expect(handler).toHaveBeenCalledTimes(3);
     });
 
-    it.skip('should cancel scheduled jobs', () => {
+    it('should cancel scheduled jobs', () => {
       const handler = jest.fn();
       schedulerService.onScheduledEvent('cancel.event', handler);
 

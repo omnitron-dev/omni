@@ -1349,6 +1349,12 @@ export class Container implements IContainer {
   private resolveRegistration(registration: Registration): any {
     // Handle different scopes
     if (registration.scope === Scope.Singleton) {
+      // For multi-injection with useValue, don't use the shared instances cache
+      // Each registration should return its own value
+      if (registration.options?.multi && 'useValue' in registration.provider) {
+        return (registration.provider as any).useValue;
+      }
+
       if (this.instances.has(registration.token)) {
         return this.instances.get(registration.token);
       }
@@ -1685,13 +1691,19 @@ export class Container implements IContainer {
           }
         } catch (error: any) {
           console.error(`Failed to initialize instance:`, error);
+          throw error;
         }
       }
     }
 
     // Wait for all async initializations
     if (initPromises.length > 0) {
-      await Promise.allSettled(initPromises);
+      const results = await Promise.allSettled(initPromises);
+      // Check for any rejected promises
+      const rejected = results.find(r => r.status === 'rejected');
+      if (rejected && rejected.status === 'rejected') {
+        throw rejected.reason;
+      }
     }
 
     // Emit container initialized event

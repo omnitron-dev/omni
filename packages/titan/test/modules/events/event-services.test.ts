@@ -193,7 +193,7 @@ describe('EventBusService', () => {
     it('should publish and subscribe to channels', async () => {
       const received: any[] = [];
 
-      service.subscribe('test.channel', (message) => {
+      service.subscribeToChannel('test.channel', (message) => {
         received.push(message);
       });
 
@@ -211,7 +211,7 @@ describe('EventBusService', () => {
     it('should filter messages by target', async () => {
       const received: any[] = [];
 
-      service.subscribe('channel', (message) => {
+      service.subscribeToChannel('channel', (message) => {
         received.push(message);
       }, { target: 'service1' });
 
@@ -226,7 +226,7 @@ describe('EventBusService', () => {
     it('should apply custom filter', async () => {
       const received: any[] = [];
 
-      service.subscribe('channel', (message) => {
+      service.subscribeToChannel('channel', (message) => {
         received.push(message);
       }, {
         filter: (msg) => msg.data.priority === 'high'
@@ -243,7 +243,7 @@ describe('EventBusService', () => {
   describe('request/reply pattern', () => {
     it('should handle request-response', async () => {
       // Set up responder
-      service.subscribe('echo', async (message) => {
+      service.subscribeToChannel('echo', async (message) => {
         await service.reply(message, `Echo: ${message.data}`);
       });
 
@@ -264,9 +264,9 @@ describe('EventBusService', () => {
 
   describe('channel statistics', () => {
     it('should track channel statistics', () => {
-      service.subscribe('channel1', () => { });
-      service.subscribe('channel1', () => { });
-      service.subscribe('channel2', () => { });
+      service.subscribeToChannel('channel1', () => { });
+      service.subscribeToChannel('channel1', () => { });
+      service.subscribeToChannel('channel2', () => { });
 
       const stats = service.getChannelStats();
 

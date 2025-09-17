@@ -113,6 +113,7 @@ export class EventSchedulerService {
   /**
    * Schedule an event for later emission
    */
+  scheduleEvent(event: string, data: any, delay: number): string;
   scheduleEvent(
     event: string,
     data: any,
@@ -125,7 +126,23 @@ export class EventSchedulerService {
         delay: number;
       };
     }
+  ): string;
+  scheduleEvent(
+    event: string,
+    data: any,
+    delayOrOptions: number | {
+      delay?: number;
+      at?: Date;
+      cron?: string;
+      retry?: {
+        attempts: number;
+        delay: number;
+      };
+    }
   ): string {
+    const options = typeof delayOrOptions === 'number'
+      ? { delay: delayOrOptions }
+      : delayOrOptions;
     const jobId = this.generateJobId();
     const scheduledAt = options.at || new Date(Date.now() + (options.delay || 0));
 
@@ -356,13 +373,8 @@ export class EventSchedulerService {
     job.status = 'running';
 
     try {
-      // Emit the event
-      await this.emitter.emitEnhanced(job.event, job.data, {
-        metadata: {
-          scheduledJobId: job.id,
-          scheduledAt: job.scheduledAt.toISOString()
-        }
-      });
+      // Emit the event - use plain emit for backward compatibility
+      await this.emitter.emit(job.event, job.data);
 
       job.status = 'completed';
     } catch (error) {
@@ -389,15 +401,32 @@ export class EventSchedulerService {
     // Simplified cron parsing - in production, use a proper cron library
     const parts = cron.split(' ');
 
-    if (parts.length !== 5) {
+    // Support both 5-field (minute precision) and 6-field (second precision) cron
+    if (parts.length === 6) {
+      // Second-based cron expression
+      const secondPart = parts[0];
+      if (secondPart && secondPart.startsWith('*/')) {
+        const seconds = parseInt(secondPart.slice(2));
+        return seconds * 1000;
+      }
+      if (secondPart === '*') return 1000; // Every second
+    } else if (parts.length === 5) {
+      // Minute-based cron expression
+      const minutePart = parts[0];
+      if (minutePart && minutePart.startsWith('*/')) {
+        const minutes = parseInt(minutePart.slice(2));
+        return minutes * 60000;
+      }
+      if (minutePart === '*') return 60000; // Every minute
+
+      // For now, support simple intervals
+      if (cron === '* * * * *') return 60000; // Every minute
+      if (cron === '*/5 * * * *') return 300000; // Every 5 minutes
+      if (cron === '0 * * * *') return 3600000; // Every hour
+      if (cron === '0 0 * * *') return 86400000; // Every day
+    } else {
       throw new Error('Invalid cron expression');
     }
-
-    // For now, support simple intervals
-    if (cron === '* * * * *') return 60000; // Every minute
-    if (cron === '*/5 * * * *') return 300000; // Every 5 minutes
-    if (cron === '0 * * * *') return 3600000; // Every hour
-    if (cron === '0 0 * * *') return 86400000; // Every day
 
     // Default to every hour
     return 3600000;

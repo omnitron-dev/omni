@@ -47,35 +47,19 @@ export class SchedulerModule {
       module: SchedulerModule,
       providers: [
         // Config
-        [SCHEDULER_CONFIG_TOKEN, {
-          useValue: config
-        }] as any,
+        [SCHEDULER_CONFIG_TOKEN, { useValue: config }],
         // Core services
-        [SCHEDULER_REGISTRY_TOKEN, {
-          useClass: SchedulerRegistry
-        }] as any,
-        [SCHEDULER_EXECUTOR_TOKEN, {
-          useClass: SchedulerExecutor
-        }] as any,
-        [SCHEDULER_PERSISTENCE_TOKEN, {
-          useClass: SchedulerPersistence
-        }] as any,
-        [SCHEDULER_METRICS_TOKEN, {
-          useClass: SchedulerMetricsService
-        }] as any,
-        [SCHEDULER_DISCOVERY_TOKEN, {
-          useClass: SchedulerDiscovery
-        }] as any,
-        [SCHEDULER_SERVICE_TOKEN, {
-          useClass: SchedulerService
-        }] as any,
+        [SCHEDULER_REGISTRY_TOKEN, { useClass: SchedulerRegistry }],
+        [SCHEDULER_EXECUTOR_TOKEN, { useClass: SchedulerExecutor }],
+        [SCHEDULER_PERSISTENCE_TOKEN, { useClass: SchedulerPersistence }],
+        [SCHEDULER_METRICS_TOKEN, { useClass: SchedulerMetricsService }],
+        [SCHEDULER_DISCOVERY_TOKEN, { useClass: SchedulerDiscovery }],
+        [SCHEDULER_SERVICE_TOKEN, { useClass: SchedulerService }],
+        // Export main service alias
+        [SchedulerService, { useExisting: SCHEDULER_SERVICE_TOKEN }],
         // Listeners
-        [SCHEDULER_LISTENERS_TOKEN, {
-          useValue: options.listeners || []
-        }] as any,
-        // Export main service
-        SchedulerService
-      ],
+        [SCHEDULER_LISTENERS_TOKEN, { useValue: options.listeners || [] }]
+      ] as any,
       exports: [
         SchedulerService,
         SCHEDULER_SERVICE_TOKEN,
@@ -90,53 +74,48 @@ export class SchedulerModule {
    * Configure scheduler module asynchronously
    */
   static forRootAsync(options: SchedulerModuleAsyncOptions): DynamicModule {
-    const providers = [];
+    const providers: any[] = [];
 
     // Add config provider
     if (options.useFactory) {
-      providers.push([SCHEDULER_CONFIG_TOKEN, {
-        useFactory: async (...args: any[]) => {
-          const config = await options.useFactory!(...args);
-          return {
-            ...DEFAULT_SCHEDULER_CONFIG,
-            ...config
-          };
-        },
-        inject: options.inject || []
-      }] as any);
+      providers.push([
+        SCHEDULER_CONFIG_TOKEN,
+        {
+          useFactory: async (...args: any[]) => {
+            const config = await options.useFactory!(...args);
+            return {
+              ...DEFAULT_SCHEDULER_CONFIG,
+              ...config
+            };
+          },
+          inject: options.inject || []
+        }
+      ] as any);
     } else if (options.useExisting) {
-      providers.push([SCHEDULER_CONFIG_TOKEN, {
-        useExisting: options.useExisting
-      }] as any);
+      providers.push([
+        SCHEDULER_CONFIG_TOKEN,
+        { useExisting: options.useExisting }
+      ] as any);
     }
 
     // Add listeners provider
-    providers.push([SCHEDULER_LISTENERS_TOKEN, {
-      useFactory: (config: SchedulerModuleOptions) => config.listeners || [],
-      inject: [SCHEDULER_CONFIG_TOKEN]
-    }] as any);
+    providers.push([
+      SCHEDULER_LISTENERS_TOKEN,
+      {
+        useFactory: (config: SchedulerModuleOptions) => config.listeners || [],
+        inject: [SCHEDULER_CONFIG_TOKEN]
+      }
+    ] as any);
 
     // Add core services
     providers.push(
-      [SCHEDULER_REGISTRY_TOKEN, {
-        useClass: SchedulerRegistry
-      }] as any,
-      [SCHEDULER_EXECUTOR_TOKEN, {
-        useClass: SchedulerExecutor
-      }] as any,
-      [SCHEDULER_PERSISTENCE_TOKEN, {
-        useClass: SchedulerPersistence
-      }] as any,
-      [SCHEDULER_METRICS_TOKEN, {
-        useClass: SchedulerMetricsService
-      }] as any,
-      [SCHEDULER_DISCOVERY_TOKEN, {
-        useClass: SchedulerDiscovery
-      }] as any,
-      [SCHEDULER_SERVICE_TOKEN, {
-        useClass: SchedulerService
-      }] as any,
-      SchedulerService
+      [SCHEDULER_REGISTRY_TOKEN, { useClass: SchedulerRegistry }] as any,
+      [SCHEDULER_EXECUTOR_TOKEN, { useClass: SchedulerExecutor }] as any,
+      [SCHEDULER_PERSISTENCE_TOKEN, { useClass: SchedulerPersistence }] as any,
+      [SCHEDULER_METRICS_TOKEN, { useClass: SchedulerMetricsService }] as any,
+      [SCHEDULER_DISCOVERY_TOKEN, { useClass: SchedulerDiscovery }] as any,
+      [SCHEDULER_SERVICE_TOKEN, { useClass: SchedulerService }] as any,
+      [SchedulerService, { useExisting: SCHEDULER_SERVICE_TOKEN }] as any
     );
 
     return {

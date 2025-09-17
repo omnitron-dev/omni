@@ -106,8 +106,6 @@ export class SchedulerService {
 
     // Emit started event (registry should emit, not subscribe)
     // This is a placeholder - real implementation would emit through event bus
-
-    console.log(`Scheduler started with ${jobs.length} jobs`);
   }
 
   /**
@@ -152,8 +150,6 @@ export class SchedulerService {
 
     // Emit stopped event (registry should emit, not subscribe)
     // This is a placeholder - real implementation would emit through event bus
-
-    console.log('Scheduler stopped');
   }
 
   /**
@@ -534,7 +530,7 @@ export class SchedulerService {
 
     while (this.executor.getRunningJobCount() > 0) {
       if (Date.now() - startTime > timeout) {
-        console.warn('Timeout waiting for jobs to complete, forcing shutdown');
+        // Timeout waiting for jobs to complete, forcing shutdown
         break;
       }
       await new Promise(resolve => setTimeout(resolve, 100));

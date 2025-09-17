@@ -753,8 +753,34 @@ export class Application implements IApplication {
       const module = this._modules.get(token);
       if (module && module.dependencies) {
         for (const dep of module.dependencies) {
-          if (this._modules.has(dep)) {
-            visit(dep);
+          // Check if dependency is a token or a string name
+          let depToken: Token<any> | undefined;
+
+          if (typeof dep === 'string') {
+            // Find the token by module name
+            for (const [t, m] of this._modules.entries()) {
+              if (m.name === dep) {
+                depToken = t;
+                break;
+              }
+            }
+          } else {
+            // It's already a token, try to find it
+            depToken = dep;
+            // If the token isn't in our modules, try to find by its name
+            if (!this._modules.has(depToken)) {
+              const depName = depToken.name; // Use the string name, not the symbol id
+              for (const [t, m] of this._modules.entries()) {
+                if (m.name === depName) {
+                  depToken = t;
+                  break;
+                }
+              }
+            }
+          }
+
+          if (depToken && this._modules.has(depToken)) {
+            visit(depToken);
           }
         }
       }

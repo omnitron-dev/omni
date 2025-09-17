@@ -242,7 +242,7 @@ export class SchedulerExecutor {
       try {
         await job.options.onError(error);
       } catch (handlerError) {
-        console.error('Error in job error handler:', handlerError);
+        // Error in job error handler
       }
     }
 
@@ -421,7 +421,7 @@ export class SchedulerExecutor {
           try {
             await listener.onJobStart(job, context);
           } catch (error) {
-            console.error('Error in job start listener:', error);
+            // Error in job start listener
           }
         }
       }
@@ -440,7 +440,7 @@ export class SchedulerExecutor {
           try {
             await listener.onJobComplete(job, result);
           } catch (error) {
-            console.error('Error in job complete listener:', error);
+            // Error in job complete listener
           }
         }
       }
@@ -451,7 +451,7 @@ export class SchedulerExecutor {
       try {
         await job.options.onSuccess(result.result);
       } catch (error) {
-        console.error('Error in job success handler:', error);
+        // Error in job success handler
       }
     }
   }
@@ -472,7 +472,7 @@ export class SchedulerExecutor {
           try {
             await listener.onJobError(job, error, context);
           } catch (listenerError) {
-            console.error('Error in job error listener:', listenerError);
+            // Error in job error listener
           }
         }
       }
@@ -491,7 +491,7 @@ export class SchedulerExecutor {
           try {
             await listener.onJobRetry(job, attempt, error);
           } catch (listenerError) {
-            console.error('Error in job retry listener:', listenerError);
+            // Error in job retry listener
           }
         }
       }

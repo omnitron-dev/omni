@@ -592,7 +592,7 @@ describe('EventsService', () => {
       expect(handler).toHaveBeenCalled();
     });
 
-    it.skip('should handle timeout with error boundary', async () => {
+    it('should handle timeout with error boundary', async () => {
       // SKIP REASON: The test logic is correct but Jest reports unhandled promise
       // rejections from the timeout mechanism even though errors are properly caught
       // by the error boundary. This is a known issue with async event handlers and Jest.

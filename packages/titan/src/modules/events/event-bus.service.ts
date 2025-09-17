@@ -31,8 +31,9 @@ export class EventBusService {
   private destroyed = false;
   private middlewares: Array<(data: any, next: (data: any) => any) => any> = [];
   private replayEnabled = false;
-  private replayBuffer: Array<{ event: string; data: any }> = [];
+  private replayBuffer: Array<{ event: string; data: any; metadata?: EventMetadata }> = [];
   private maxReplayBufferSize = 100;
+  private handlerPriorities: Map<Function, number> = new Map();
 
   constructor(
     @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
@@ -58,12 +59,18 @@ export class EventBusService {
   /**
    * Enable event replay
    */
-  enableReplay(enabled: boolean = true, maxBufferSize?: number): void {
-    this.replayEnabled = enabled;
-    if (maxBufferSize !== undefined) {
-      this.maxReplayBufferSize = maxBufferSize;
+  enableReplay(enabledOrBufferSize: boolean | number = true, maxBufferSize?: number): void {
+    // If a number is passed as the first argument, treat it as buffer size and enable replay
+    if (typeof enabledOrBufferSize === 'number') {
+      this.replayEnabled = true;
+      this.maxReplayBufferSize = enabledOrBufferSize;
+    } else {
+      this.replayEnabled = enabledOrBufferSize;
+      if (maxBufferSize !== undefined) {
+        this.maxReplayBufferSize = maxBufferSize;
+      }
     }
-    if (!enabled) {
+    if (!this.replayEnabled) {
       this.replayBuffer = [];
     }
   }
@@ -143,11 +150,66 @@ export class EventBusService {
   }
 
   /**
+   * Subscribe to an event with options
+   */
+  subscribe(event: string, handler: Function, options?: { priority?: number; replay?: boolean }): EventSubscription {
+    // Store handler priority if provided
+    if (options?.priority !== undefined) {
+      this.handlerPriorities.set(handler, options.priority);
+    }
+
+    // Add handler to subscriptions
+    if (!this.subscriptions.has(event)) {
+      this.subscriptions.set(event, new Set());
+    }
+
+    // Get the set and convert to array to sort by priority
+    const handlers = this.subscriptions.get(event)!;
+    handlers.add(handler);
+
+    // If priority is set, re-sort all handlers for this event
+    if (options?.priority !== undefined) {
+      const sortedHandlers = Array.from(handlers).sort((a, b) => {
+        const priorityA = this.handlerPriorities.get(a) ?? 0;
+        const priorityB = this.handlerPriorities.get(b) ?? 0;
+        return priorityB - priorityA; // Higher priority first
+      });
+      handlers.clear();
+      sortedHandlers.forEach(h => handlers.add(h));
+    }
+
+    // Replay events if requested
+    if (options?.replay && this.replayEnabled) {
+      const eventsToReplay = this.replayBuffer.filter(item => item.event === event);
+      eventsToReplay.forEach(item => {
+        try {
+          handler(item.data);  // Only pass data, not metadata for event replay
+        } catch (err) {
+          this.logger?.error({ err, event }, 'Error replaying event');
+        }
+      });
+    }
+
+    return {
+      unsubscribe: () => {
+        this.off(event, handler);
+      },
+      isActive: () => this.subscriptions.get(event)?.has(handler) || false,
+      event,
+      handler
+    };
+  }
+
+  /**
    * Unsubscribe from an event
    */
   off(event: string, handler?: Function): void {
     if (!handler) {
       // Remove all handlers for this event
+      const handlers = this.subscriptions.get(event);
+      if (handlers) {
+        handlers.forEach(h => this.handlerPriorities.delete(h));
+      }
       this.subscriptions.delete(event);
       this.emitter.removeAllListeners(event);
       return;
@@ -156,6 +218,7 @@ export class EventBusService {
     const handlers = this.subscriptions.get(event);
     if (handlers) {
       handlers.delete(handler);
+      this.handlerPriorities.delete(handler);
       if (handlers.size === 0) {
         this.subscriptions.delete(event);
       }
@@ -196,7 +259,7 @@ export class EventBusService {
 
     // Store in replay buffer if enabled
     if (this.replayEnabled) {
-      this.replayBuffer.push({ event, data: processedData });
+      this.replayBuffer.push({ event, data: processedData, metadata: fullMetadata });
       if (this.replayBuffer.length > this.maxReplayBufferSize) {
         this.replayBuffer.shift();
       }
@@ -425,7 +488,7 @@ export class EventBusService {
   /**
    * Subscribe to a channel
    */
-  subscribe<T = any>(
+  subscribeToChannel<T = any>(
     channel: string,
     handler: (message: EventBusMessage<T>) => void | Promise<void>,
     options?: {
@@ -552,7 +615,7 @@ export class EventBusService {
     }
   ): void {
     // Forward local to remote
-    this.subscribe(localChannel, async (message) => {
+    this.subscribeToChannel(localChannel, async (message: EventBusMessage) => {
       if (options?.filter && !options.filter(message)) {
         return;
       }
@@ -567,7 +630,7 @@ export class EventBusService {
 
     // Forward remote to local if bidirectional
     if (options?.bidirectional) {
-      remoteBus.subscribe(remoteChannel, async (message) => {
+      remoteBus.subscribeToChannel(remoteChannel, async (message: EventBusMessage) => {
         if (options?.filter && !options.filter(message)) {
           return;
         }

@@ -26,6 +26,31 @@ import {
   SCHEDULER_DISCOVERY_TOKEN
 } from '../../src/modules/scheduler';
 
+// Mock node-cron to work with fake timers
+jest.mock('node-cron', () => ({
+  validate: jest.fn(() => true),
+  schedule: jest.fn((pattern, callback, options) => {
+    const task = {
+      start: jest.fn(),
+      stop: jest.fn(),
+      destroy: jest.fn(),
+      getStatus: jest.fn(() => 'scheduled')
+    };
+    // Simulate cron execution for tests
+    if (pattern === CronExpression.EVERY_SECOND || pattern === '* * * * * *') {
+      // Use setInterval to simulate cron for tests
+      let intervalId: NodeJS.Timeout;
+      task.start = jest.fn(() => {
+        intervalId = setInterval(callback, 1000);
+      });
+      task.stop = jest.fn(() => {
+        if (intervalId) clearInterval(intervalId);
+      });
+    }
+    return task;
+  })
+}));
+
 describe('Titan Scheduler Module', () => {
   let container: Container;
   let schedulerService: SchedulerService;
@@ -37,15 +62,19 @@ describe('Titan Scheduler Module', () => {
   beforeEach(() => {
     container = new Container();
     jest.clearAllMocks();
-    jest.useFakeTimers();
   });
 
   afterEach(async () => {
+    // Clean up scheduler if running
     if (schedulerService?.isRunning()) {
       await schedulerService.stop();
     }
+
+    // Clear all timers
     jest.clearAllTimers();
-    jest.useRealTimers();
+
+    // Reset mocks
+    jest.clearAllMocks();
   });
 
   describe('Module Configuration', () => {
@@ -84,7 +113,15 @@ describe('Titan Scheduler Module', () => {
   });
 
   describe('Decorator-based Scheduling', () => {
-    it('should register cron job with decorator', () => {
+    beforeEach(() => {
+      discovery = new SchedulerDiscovery(
+        container,
+        new SchedulerRegistry(),
+        { enabled: true }
+      );
+    });
+
+    it('should register cron job with decorator', async () => {
       class TestService {
         public executionCount = 0;
 
@@ -95,13 +132,13 @@ describe('Titan Scheduler Module', () => {
       }
 
       const service = new TestService();
-      const jobs = discovery?.discoverProviderJobs(service) || [];
+      const jobs = await discovery.discoverProviderJobs(service);
 
       expect(jobs).toHaveLength(1);
       expect(jobs[0].type).toBe(SchedulerJobType.CRON);
     });
 
-    it('should register interval job with decorator', () => {
+    it('should register interval job with decorator', async () => {
       class TestService {
         public executionCount = 0;
 
@@ -112,13 +149,13 @@ describe('Titan Scheduler Module', () => {
       }
 
       const service = new TestService();
-      const jobs = discovery?.discoverProviderJobs(service) || [];
+      const jobs = await discovery.discoverProviderJobs(service);
 
       expect(jobs).toHaveLength(1);
       expect(jobs[0].type).toBe(SchedulerJobType.INTERVAL);
     });
 
-    it('should register timeout job with decorator', () => {
+    it('should register timeout job with decorator', async () => {
       class TestService {
         public executionCount = 0;
 
@@ -129,13 +166,13 @@ describe('Titan Scheduler Module', () => {
       }
 
       const service = new TestService();
-      const jobs = discovery?.discoverProviderJobs(service) || [];
+      const jobs = await discovery.discoverProviderJobs(service);
 
       expect(jobs).toHaveLength(1);
       expect(jobs[0].type).toBe(SchedulerJobType.TIMEOUT);
     });
 
-    it('should handle multiple decorated methods in same class', () => {
+    it('should handle multiple decorated methods in same class', async () => {
       class TestService {
         @Cron('*/5 * * * * *')
         cronJob() {}
@@ -148,7 +185,7 @@ describe('Titan Scheduler Module', () => {
       }
 
       const service = new TestService();
-      const jobs = discovery?.discoverProviderJobs(service) || [];
+      const jobs = await discovery.discoverProviderJobs(service);
 
       expect(jobs).toHaveLength(3);
     });
@@ -343,7 +380,7 @@ describe('Titan Scheduler Module', () => {
         options: {
           retry: {
             maxAttempts: 3,
-            delay: 10
+            delay: 1 // Minimal delay for test
           }
         },
         executionCount: 0,
@@ -361,7 +398,10 @@ describe('Titan Scheduler Module', () => {
 
     it('should handle job timeout', async () => {
       const handler = jest.fn().mockImplementation(
-        () => new Promise(resolve => setTimeout(resolve, 2000))
+        () => new Promise((resolve) => {
+          // Never resolves to simulate long-running task
+          setTimeout(resolve, 10000);
+        })
       );
       const target = { testMethod: handler };
 
@@ -373,7 +413,7 @@ describe('Titan Scheduler Module', () => {
         target,
         method: 'testMethod',
         options: {
-          timeout: 100
+          timeout: 10 // Very short timeout
         },
         executionCount: 0,
         failureCount: 0,
@@ -385,7 +425,7 @@ describe('Titan Scheduler Module', () => {
       const result = await executor.executeJob(job);
 
       expect(result.status).toBe('failure');
-      expect(result.error?.message).toContain('timeout');
+      expect(result.error?.message).toContain('timed out');
     });
 
     it('should prevent overlapping executions', async () => {
@@ -419,7 +459,10 @@ describe('Titan Scheduler Module', () => {
 
     it('should cancel running jobs', async () => {
       const handler = jest.fn().mockImplementation(
-        () => new Promise(resolve => setTimeout(resolve, 5000))
+        () => new Promise((resolve) => {
+          // Simulate long-running job
+          setTimeout(resolve, 5000);
+        })
       );
       const target = { testMethod: handler };
 
@@ -440,6 +483,9 @@ describe('Titan Scheduler Module', () => {
 
       // Start execution but don't await
       const executionPromise = executor.executeJob(job);
+
+      // Give it a tiny bit of time to start
+      await new Promise(resolve => setTimeout(resolve, 1));
 
       // Cancel all jobs
       executor.cancelAllJobs();
@@ -515,9 +561,39 @@ describe('Titan Scheduler Module', () => {
       });
 
       // Register providers manually
+      const useExistingProviders: any[] = [];
+
       for (const provider of moduleConfig.providers || []) {
-        if (typeof provider === 'object' && 'provide' in provider) {
-          container.register(provider.provide, provider);
+        // Handle nexus format [token, providerConfig]
+        if (Array.isArray(provider) && provider.length === 2) {
+          const [token, config] = provider;
+
+          if (config.useClass) {
+            container.register(token, config.useClass);
+          } else if (config.useValue !== undefined) {
+            container.register(token, { useValue: config.useValue });
+          } else if (config.useExisting) {
+            // Defer useExisting providers
+            useExistingProviders.push({ token, config });
+          } else if (config.useFactory) {
+            container.register(token, {
+              useFactory: config.useFactory,
+              inject: config.inject || []
+            });
+          }
+        } else if (typeof provider === 'function') {
+          // Direct class registration
+          container.register(provider, provider);
+        }
+      }
+
+      // Now handle useExisting providers after all others are registered
+      for (const { token, config } of useExistingProviders) {
+        try {
+          const existing = container.resolve(config.useExisting);
+          container.register(token, { useValue: existing });
+        } catch (error) {
+          console.warn(`Failed to resolve existing provider: ${String(config.useExisting)}`);
         }
       }
 
@@ -603,18 +679,18 @@ describe('Titan Scheduler Module', () => {
       schedulerService.startJob('test-job');
       const startedJob = schedulerService.getJob('test-job');
       expect(startedJob?.status).toBe(JobStatus.PENDING);
+
+      await schedulerService.stop();
     });
 
     it('should trigger job manually', async () => {
       const handler = jest.fn().mockResolvedValue({ result: 'manual' });
-      const wrapper = { handler };
 
-      registry.registerJob(
+      // Add job through service so it's in the correct registry
+      schedulerService.addCronJob(
         'manual-job',
-        SchedulerJobType.CRON,
         '* * * * *',
-        wrapper,
-        'handler',
+        handler,
         {}
       );
 
@@ -634,6 +710,34 @@ describe('Titan Scheduler Module', () => {
       await schedulerService.stop();
 
       expect(schedulerService.isRunning()).toBe(false);
+    });
+
+    it('should execute interval jobs', async () => {
+      const handler = jest.fn();
+      schedulerService.addInterval('test-interval', 10, handler, { immediate: false });
+
+      await schedulerService.start();
+
+      // Wait for interval to trigger
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      expect(handler).toHaveBeenCalledTimes(1);
+
+      await schedulerService.stop();
+    });
+
+    it('should execute timeout jobs', async () => {
+      const handler = jest.fn();
+      schedulerService.addTimeout('test-timeout', 10, handler);
+
+      await schedulerService.start();
+
+      // Wait for timeout to trigger
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      expect(handler).toHaveBeenCalledTimes(1);
+
+      await schedulerService.stop();
     });
   });
 

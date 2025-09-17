@@ -115,7 +115,7 @@ export class SchedulerPersistence {
     const interval = 5 * 60 * 1000;
     this.autosaveInterval = setInterval(() => {
       this.flush().catch(error => {
-        console.error('Failed to autosave scheduler state:', error);
+        // Failed to autosave scheduler state
       });
     }, interval);
   }
@@ -131,7 +131,7 @@ export class SchedulerPersistence {
     try {
       await this.provider.saveJob(job);
     } catch (error) {
-      console.error('Failed to persist job:', error);
+      // Failed to persist job
     }
   }
 
@@ -146,7 +146,7 @@ export class SchedulerPersistence {
     try {
       return await this.provider.loadJob(id);
     } catch (error) {
-      console.error('Failed to load job:', error);
+      // Failed to load job
       return null;
     }
   }
@@ -162,7 +162,7 @@ export class SchedulerPersistence {
     try {
       return await this.provider.loadAllJobs();
     } catch (error) {
-      console.error('Failed to load jobs:', error);
+      // Failed to load jobs
       return [];
     }
   }
@@ -178,7 +178,7 @@ export class SchedulerPersistence {
     try {
       await this.provider.deleteJob(id);
     } catch (error) {
-      console.error('Failed to delete job:', error);
+      // Failed to delete job
     }
   }
 
@@ -193,7 +193,7 @@ export class SchedulerPersistence {
     try {
       await this.provider.saveExecutionResult(result);
     } catch (error) {
-      console.error('Failed to persist execution result:', error);
+      // Failed to persist execution result
     }
   }
 
@@ -208,7 +208,7 @@ export class SchedulerPersistence {
     try {
       return await this.provider.loadExecutionHistory(jobId, limit);
     } catch (error) {
-      console.error('Failed to load execution history:', error);
+      // Failed to load execution history
       return [];
     }
   }
@@ -228,7 +228,7 @@ export class SchedulerPersistence {
     try {
       await this.provider.clear();
     } catch (error) {
-      console.error('Failed to clear persisted data:', error);
+      // Failed to clear persisted data
     }
   }
 

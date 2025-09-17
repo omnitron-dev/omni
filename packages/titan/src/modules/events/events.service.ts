@@ -118,6 +118,7 @@ export class EventsService {
               result = true;
             } catch (error) {
               // Handle error but continue
+              this.emitter.emit('error', error as Error);
               console.error(`Error in wildcard handler for pattern ${pattern}:`, error);
             }
           }
@@ -142,6 +143,7 @@ export class EventsService {
                   result = true;
                 }
               } catch (error) {
+                this.emitter.emit('error', error as Error);
                 console.error(`Error in handler for ${currentEvent}:`, error);
               }
             }
@@ -160,6 +162,7 @@ export class EventsService {
                 result = true;
               }
             } catch (error) {
+              this.emitter.emit('error', error as Error);
               console.error(`Error in handler for ${event}:`, error);
             }
           }
@@ -173,7 +176,9 @@ export class EventsService {
     } catch (error) {
       // Update error statistics
       this.updateStats(event, false, Date.now() - startTime, error as Error);
-      throw error;
+      // Don't throw system errors - they're already handled
+      console.error(`System error in emit for ${event}:`, error);
+      return false;
     }
   }
 

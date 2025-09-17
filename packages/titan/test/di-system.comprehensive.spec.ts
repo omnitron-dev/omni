@@ -14,6 +14,7 @@ import {
   Optional,
   Singleton,
   Transient,
+  Scope,
   CircularDependencyError,
   DependencyNotFoundError
 } from '@omnitron-dev/nexus';
@@ -304,7 +305,7 @@ describe('Comprehensive DI System Tests', () => {
         }
       }
 
-      container.register(ServiceWithDestroy, { useClass: ServiceWithDestroy });
+      container.register(ServiceWithDestroy, { useClass: ServiceWithDestroy, scope: Scope.Singleton });
       const service = container.resolve(ServiceWithDestroy);
 
       await container.dispose();
@@ -412,7 +413,7 @@ describe('Comprehensive DI System Tests', () => {
           super({
             name: 'async2',
             version: '1.0.0',
-            dependencies: ['async1']
+            dependencies: ['async1']  // Use string dependency
           });
         }
 
@@ -447,8 +448,9 @@ describe('Comprehensive DI System Tests', () => {
 
       container.register(ServiceWithMissingDep, { useClass: ServiceWithMissingDep });
 
+      // ResolutionError is thrown with detailed error message
       expect(() => container.resolve(ServiceWithMissingDep))
-        .toThrow(DependencyNotFoundError);
+        .toThrow(/Failed to resolve|Token not registered/);
     });
 
     it('should handle errors in factory providers gracefully', () => {
@@ -521,7 +523,7 @@ describe('Comprehensive DI System Tests', () => {
       // Create multiple instances
       for (let i = 0; i < 100; i++) {
         const token = createToken(`Disposable${i}`);
-        container.register(token, { useClass: DisposableService });
+        container.register(token, { useClass: DisposableService, scope: Scope.Singleton });
         container.resolve(token);
       }
 
@@ -547,7 +549,6 @@ describe('Comprehensive DI System Tests', () => {
         };
       }
 
-      @Injectable()
       @Singleton()
       @Logger()
       @Cacheable()
@@ -584,13 +585,17 @@ describe('Comprehensive DI System Tests', () => {
     it('should support multi-injection of services', () => {
       const PluginToken = createToken<{ name: string }>('Plugin');
 
-      container.register(PluginToken, { useValue: { name: 'Plugin1' }, multi: true });
-      container.register(PluginToken, { useValue: { name: 'Plugin2' }, multi: true });
-      container.register(PluginToken, { useValue: { name: 'Plugin3' }, multi: true });
+      // Register multiple providers for the same token with multi option
+      container.register(PluginToken, { useValue: { name: 'Plugin1' } }, { multi: true });
+      container.register(PluginToken, { useValue: { name: 'Plugin2' } }, { multi: true });
+      container.register(PluginToken, { useValue: { name: 'Plugin3' } }, { multi: true });
 
+      // Resolve all instances
       const plugins = container.resolveAll(PluginToken);
       expect(plugins).toHaveLength(3);
-      expect(plugins.map(p => p.name)).toEqual(['Plugin1', 'Plugin2', 'Plugin3']);
+      expect(plugins[0].name).toBe('Plugin1');
+      expect(plugins[1].name).toBe('Plugin2');
+      expect(plugins[2].name).toBe('Plugin3');
     });
   });
 });

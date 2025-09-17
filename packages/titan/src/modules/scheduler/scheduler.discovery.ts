@@ -95,7 +95,7 @@ export class SchedulerDiscovery {
 
       // Check if disabled
       if (metadata.options?.disabled) {
-        console.log(`Skipping disabled job: ${jobName}`);
+        // Skipping disabled job
         return null;
       }
 
@@ -109,11 +109,9 @@ export class SchedulerDiscovery {
         metadata.options
       );
 
-      console.log(`Registered scheduled job: ${jobName} (${metadata.type})`);
-
       return job;
     } catch (error) {
-      console.error(`Failed to register job ${methodName}:`, error);
+      // Failed to register job
       return null;
     }
   }
@@ -136,14 +134,14 @@ export class SchedulerDiscovery {
         try {
           instance = this.container.resolve(provider);
         } catch (error) {
-          console.error(`Failed to resolve provider ${provider.name}:`, error);
+          // Failed to resolve provider
           continue;
         }
       } else if (provider.useClass) {
         try {
           instance = this.container.resolve(provider.useClass);
         } catch (error) {
-          console.error(`Failed to resolve provider:`, error);
+          // Failed to resolve provider
           continue;
         }
       }

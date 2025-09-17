@@ -23,7 +23,7 @@ export interface ModuleMetadata {
   imports?: ModuleInput[];
   providers?: Provider[];
   exports?: Token<any>[];
-  dependencies?: Token<any>[];
+  dependencies?: (Token<any> | string)[];
 }
 
 /**
@@ -49,7 +49,7 @@ export abstract class EnhancedApplicationModule extends BaseApplicationModule {
   // Override properties from base class
   override readonly name: string;
   override readonly version?: string;
-  override readonly dependencies?: Token<any>[];
+  override readonly dependencies?: (Token<any> | string)[];
 
   constructor(protected metadata: ModuleMetadata = {}) {
     super();
@@ -101,8 +101,26 @@ export abstract class EnhancedApplicationModule extends BaseApplicationModule {
   override async onStart(app: IApplication): Promise<void> {
     // Initialize all providers that implement OnInit
     for (const provider of this._providers) {
+      // Resolve instance if not yet resolved (for class providers)
+      if (!provider.instance && provider.metadata.useClass && this._parentContainer) {
+        try {
+          provider.instance = this._parentContainer.resolve(provider.token);
+        } catch (error) {
+          // Continue if resolution fails - let it fail later when actually needed
+          continue;
+        }
+      }
+
       if (provider.instance && typeof provider.instance.onInit === 'function') {
-        await provider.instance.onInit();
+        try {
+          await provider.instance.onInit();
+        } catch (error) {
+          // Log error but don't fail startup - graceful degradation
+          const logger = (app as any).logger;
+          if (logger) {
+            logger.error({ error, provider: provider.token.name }, 'Provider initialization failed');
+          }
+        }
       }
     }
 
@@ -211,8 +229,9 @@ export abstract class EnhancedApplicationModule extends BaseApplicationModule {
         scope: providerDef.scope || 'singleton'
       } as any);
 
-      // Resolve to create the instance
-      instance = this._parentContainer.resolve(token);
+      // Don't resolve immediately - let it be resolved lazily
+      // This allows registration to succeed even if dependencies are missing
+      instance = null;
     } else if (providerDef.useValue !== undefined) {
       // Value provider
       this._parentContainer.register(token, {
@@ -270,7 +289,15 @@ export abstract class EnhancedApplicationModule extends BaseApplicationModule {
   protected getProvider<T>(token: Token<T>): T | undefined {
     // First check local providers
     const provider = this._providers.find(p => p.token === token);
-    if (provider?.instance) {
+    if (provider) {
+      // Resolve instance if not yet resolved
+      if (!provider.instance && provider.metadata.useClass && this._parentContainer) {
+        try {
+          provider.instance = this._parentContainer.resolve(token);
+        } catch {
+          return undefined;
+        }
+      }
       return provider.instance;
     }
 

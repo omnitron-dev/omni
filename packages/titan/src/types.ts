@@ -80,7 +80,7 @@ export interface HealthStatus {
 export interface Module extends ModuleLifecycle {
   readonly name: string;
   readonly version?: string;
-  readonly dependencies?: Token<any>[];
+  readonly dependencies?: (Token<any> | string)[];
   configure?(config: any): void;
   health?(): Promise<HealthStatus>;
 }
@@ -91,7 +91,7 @@ export interface Module extends ModuleLifecycle {
 export abstract class ApplicationModule implements Module {
   abstract readonly name: string;
   readonly version?: string;
-  readonly dependencies?: Token<any>[] = [];
+  readonly dependencies?: (Token<any> | string)[] = [];
 
   async onRegister(app: IApplication): Promise<void> {
     // Default implementation - can be overridden

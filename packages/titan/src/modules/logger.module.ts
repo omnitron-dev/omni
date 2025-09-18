@@ -6,8 +6,9 @@ import os from 'node:os';
 import { Token, createToken } from '@omnitron-dev/nexus';
 import pino, { Level, DestinationStream, Logger as PinoLogger, LoggerOptions as PinoLoggerOptions } from 'pino';
 
-import { ConfigModuleToken } from './config.module.js';
+// ConfigModule is now part of the config directory
 import { IApplication, IHealthStatus, ApplicationModule } from '../types.js';
+import { ConfigModuleToken } from './config/index.js';
 
 /**
  * Log levels
@@ -185,31 +186,39 @@ export class LoggerModule extends ApplicationModule implements ILoggerModule {
   private loggers = new Map<string, ILogger>();
 
   override async onStart(app: IApplication): Promise<void> {
-    // Get configuration
-    const config = app.get(ConfigModuleToken);
+    // Get configuration service (if available)
+    let configService: any;
+    try {
+      configService = app.resolve(createToken('ConfigService'));
+    } catch {
+      // Config service not available, use defaults
+      configService = {
+        get: (path: string, defaultValue?: any) => defaultValue
+      };
+    }
 
     // Create root logger with configuration
     const options: ILoggerOptions = {
-      level: config.get('logger.level', 'info'),
+      level: configService.get('logger.level', 'info'),
       name: app.config('name') || 'titan-app',
       serializers: pino.stdSerializers,
-      redact: config.get('logger.redact', []),
+      redact: configService.get('logger.redact', []),
       base: {
         pid: process.pid,
         hostname: os.hostname(),
-        ...config.get('logger.base', {})
+        ...configService.get('logger.base', {})
       },
       timestamp: (() => {
-        const timestampConfig = config.get<boolean>('logger.timestamp', true);
+        const timestampConfig = configService.get('logger.timestamp', true);
         return !timestampConfig ? false : pino.stdTimeFunctions.isoTime;
       })(),
-      messageKey: config.get('logger.messageKey', 'msg'),
-      nestedKey: config.get('logger.nestedKey'),
-      enabled: config.get('logger.enabled', true)
+      messageKey: configService.get('logger.messageKey', 'msg'),
+      nestedKey: configService.get('logger.nestedKey'),
+      enabled: configService.get('logger.enabled', true)
     };
 
     // Check if pretty print is enabled (for development)
-    const prettyPrint = config.get('logger.prettyPrint', app.config('environment') === 'development');
+    const prettyPrint = configService.get('logger.prettyPrint', app.config('environment') === 'development');
 
     if (prettyPrint) {
       // Use pino-pretty for development
@@ -218,7 +227,7 @@ export class LoggerModule extends ApplicationModule implements ILoggerModule {
         colorize: true,
         translateTime: 'SYS:standard',
         ignore: 'pid,hostname',
-        ...config.get('logger.pretty', {})
+        ...configService.get('logger.pretty', {})
       }));
     } else {
       this.rootLogger = pino(options);

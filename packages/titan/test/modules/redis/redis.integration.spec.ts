@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, jest } from '@jest/globals';
-import { Test, TestingModule } from '@nestjs/testing.js';
-import { INestApplication } from '@nestjs/common.js';
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
 import { RedisService } from '../../../src/modules/redis/redis.service.js';
 import { RedisHealthIndicator } from '../../../src/modules/redis/redis.health.js';

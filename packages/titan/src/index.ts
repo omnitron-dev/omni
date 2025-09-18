@@ -45,6 +45,8 @@ export {
   type ClassProvider,
   type ValueProvider,
   type FactoryProvider,
+  type DynamicModule,
+  Global,
   Module as NexusModule,
   createModule as createNexusModule
 } from '@omnitron-dev/nexus';
@@ -97,7 +99,15 @@ export {
 
   ValidationError,
   OnEvent as EventHandler,  // Alias for backward compatibility
-  Module as ModuleDecorator
+  Module,
+  Module as ModuleDecorator,  // Alias for backward compatibility
+
+  // HTTP method decorators
+  Get,
+  Post,
+  Put,
+  Delete,
+  Patch
 } from './decorators.js';
 
 
@@ -174,6 +184,66 @@ export interface IOnDestroy {
 }
 
 
+// Process Lifecycle Module
+export {
+  ProcessLifecycleModule,
+  ProcessLifecycleToken,
+  onShutdown,
+  // Types
+  type IProcessLifecycleConfig,
+  type IShutdownTask,
+  type IProcessMetrics,
+  type ILifecycleEvent,
+  type IHealthCheckResult,
+  type ILifecycleHook as IProcessLifecycleHook,
+  type IProcessLifecycleManager,
+  // Enums
+  ShutdownReason,
+  ShutdownPriority,
+  LifecycleState,
+  type ProcessSignal
+} from './modules/process-lifecycle/index.js';
+
+// Configuration Module
+export {
+  ConfigModule,
+  ConfigService,
+  ConfigModuleToken,
+  ConfigServiceToken,
+  Config,
+  InjectConfig,
+  ConfigSchema,
+  config,  // Global config proxy for direct access
+  type ConfigModuleOptions,
+  type ConfigModuleAsyncOptions,
+  type ConfigSource,
+  type FileConfigSource,
+  type EnvironmentConfigSource,
+  type ObjectConfigSource,
+  type RemoteConfigSource,
+  type VaultConfigSource,
+  type ConfigValidationResult,
+  type ConfigChangeEvent,
+  type ConfigMetadata,
+  type TypedConfigAccessor,
+  type IConfigProvider,
+  type IConfigTransformer,
+  type IConfigValidator,
+  CONFIG_OPTIONS_TOKEN,
+  CONFIG_SCHEMA_TOKEN,
+  CONFIG_LOADER_TOKEN,
+  CONFIG_VALIDATOR_TOKEN,
+  CONFIG_DEFAULTS,
+  // Utils
+  createConfigToken,
+  getValueByPath,
+  setValueByPath,
+  flattenObject,
+  expandObject,
+  detectEnvironment,
+  findConfigFiles,
+} from './modules/config/index.js';
+
 // Core Types
 export {
   IModule,
@@ -192,7 +262,6 @@ export {
   ApplicationModule,
   ModuleConstructor,
   // Backward compatibility aliases
-  IModule as Module,
   IApplicationConfig,
   IApplicationOptions,
   IApplicationMetrics,

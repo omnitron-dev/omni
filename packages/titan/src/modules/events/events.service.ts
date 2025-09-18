@@ -119,7 +119,7 @@ export class EventsService {
             } catch (error) {
               // Handle error but continue
               this.emitter.emit('error', error as Error);
-              console.error(`Error in wildcard handler for pattern ${pattern}:`, error);
+              this.logger?.error(`Error in wildcard handler for pattern ${pattern}:`, error);
             }
           }
         }
@@ -144,7 +144,7 @@ export class EventsService {
                 }
               } catch (error) {
                 this.emitter.emit('error', error as Error);
-                console.error(`Error in handler for ${currentEvent}:`, error);
+                this.logger?.error(`Error in handler for ${currentEvent}:`, error);
               }
             }
           }
@@ -163,7 +163,7 @@ export class EventsService {
               }
             } catch (error) {
               this.emitter.emit('error', error as Error);
-              console.error(`Error in handler for ${event}:`, error);
+              this.logger?.error(`Error in handler for ${event}:`, error);
             }
           }
         }
@@ -177,7 +177,7 @@ export class EventsService {
       // Update error statistics
       this.updateStats(event, false, Date.now() - startTime, error as Error);
       // Don't throw system errors - they're already handled
-      console.error(`System error in emit for ${event}:`, error);
+      this.logger?.error(`System error in emit for ${event}:`, error);
       return false;
     }
   }
@@ -204,7 +204,7 @@ export class EventsService {
         if (subscription.pattern.test(event)) {
           wildcardPromises.push(
             Promise.resolve(subscription.handler(data))
-              .catch(error => console.error(`Error in wildcard async handler for pattern ${pattern}:`, error))
+              .catch(error => this.logger?.error(`Error in wildcard async handler for pattern ${pattern}:`, error))
           );
         }
       }
@@ -343,6 +343,7 @@ export class EventsService {
         this.removeSubscription(event, subscription);
         return wrappedHandler(...args);
       }
+      return undefined;
     };
 
     const subscription: IEventSubscription = {
@@ -395,14 +396,14 @@ export class EventsService {
   /**
    * Alias for unsubscribe (EventEmitter compatibility)
    */
-  off(event: string, handler?: Function): void {
+  off(event: string, handler?: (...args: any[]) => any): void {
     this.unsubscribe(event, handler);
   }
 
   /**
    * Get listeners for an event
    */
-  listeners(event: string): Function[] {
+  listeners(event: string): ((...args: any[]) => any)[] {
     const subs = this.subscriptions.get(event);
     if (!subs) return [];
     return subs.map(({ subscription }) => subscription.handler);
@@ -493,7 +494,7 @@ export class EventsService {
   /**
    * Unsubscribe from an event
    */
-  unsubscribe(event: string, handler?: Function): void {
+  unsubscribe(event: string, handler?: (...args: any[]) => any): void {
     if (handler) {
       // Find the wrapped handler for this original handler
       const subs = this.subscriptions.get(event);
@@ -712,7 +713,7 @@ export class EventsService {
       };
     }
 
-    return async (...args: any[]) => {
+    return async (...args: any[]): Promise<any> => {
       // Extract data (first argument) - for compatibility with standard EventEmitter pattern
       let [data, metadata, ...restArgs] = args;
 
@@ -748,6 +749,8 @@ export class EventsService {
               await new Promise(resolve => setTimeout(resolve, delay * Math.pow(backoff, attempts - 1)));
             }
           }
+          // Should not reach here, but TypeScript needs this
+          throw new Error('Retry loop completed without success');
         } else {
           // Call handler with just data for EventEmitter compatibility
           return await handler(data);
@@ -782,7 +785,7 @@ export class EventsService {
             } else if (options.errorHandling === 'throw') {
               throw error;
             } else if (options.errorHandling === 'log') {
-              console.error(`Error in event handler:`, error);
+              this.logger?.error(`Error in event handler:`, error);
             }
             // 'ignore' does nothing
             return undefined;
@@ -799,7 +802,7 @@ export class EventsService {
    * Handle with retry logic
    */
   private async handleWithRetry(
-    handler: Function,
+    handler: (...args: any[]) => any,
     retryConfig: { attempts: number; delay: number; backoff?: number }
   ): Promise<any> {
     let lastError: any;

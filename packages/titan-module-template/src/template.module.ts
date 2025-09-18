@@ -17,8 +17,7 @@ import {
 import type {
   TemplateModuleOptions,
   TemplateModuleAsyncOptions,
-  TemplateOptionsFactory,
-  HealthCheckResult
+  TemplateOptionsFactory
 } from './types.js';
 import {
   TEMPLATE_MODULE_OPTIONS,

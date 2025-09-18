@@ -37,8 +37,8 @@
       "default": "./dist/modules/events/index.js"
     },
     "./config": {
-      "types": "./dist/modules/config.module.d.ts",
-      "default": "./dist/modules/config.module.js"
+      "types": "./dist/modules/config/index.d.ts",
+      "default": "./dist/modules/config/index.js"
     },
     "./logger": {
       "types": "./dist/modules/logger.module.d.ts",

@@ -322,7 +322,7 @@ export class EventHistoryService {
     const records = await this.getFilteredHistory(filter);
 
     if (options?.dryRun) {
-      console.log(`Would replay ${records.length} events`);
+      this.logger?.info(`Would replay ${records.length} events`);
       return;
     }
 

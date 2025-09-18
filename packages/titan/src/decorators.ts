@@ -103,6 +103,7 @@ export const OnModuleEvent = createDecorator<{
         if (filter(args[0])) {
           return handler.apply(this, args);
         }
+        return undefined;
       };
     }
 
@@ -1289,6 +1290,13 @@ export const Module = createDecorator<{
     // Also set nexus:module metadata for compatibility
     Reflect.defineMetadata('nexus:module', context.options || {}, context.target);
     return context.options || {};
+  })
+  .withHooks({
+    afterApply: (context: any) => {
+      // Mark class for auto-discovery with __titanModule property
+      (context.target as any).__titanModule = true;
+      (context.target as any).__titanModuleMetadata = context.options || {};
+    }
   })
   .build();
 

@@ -384,7 +384,7 @@ export class EventValidationService {
   /**
    * Get transformer for an event
    */
-  private getTransformer(event: string): Function | undefined {
+  private getTransformer(event: string): ((...args: any[]) => any) | undefined {
     // This would return a registered transformer
     // For now, return undefined
     return undefined;

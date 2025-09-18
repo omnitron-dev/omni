@@ -445,7 +445,7 @@ export class EventDiscoveryService {
   ): (...args: any[]) => any {
     const originalMethod = target[method];
 
-    return async (data: any, metadata: any) => {
+    return async (data: any, metadata: any): Promise<any> => {
       try {
         // Apply filter if specified
         if (options?.filter && !options.filter(data, metadata)) {
@@ -476,9 +476,10 @@ export class EventDiscoveryService {
         } else if (options?.errorHandling === 'throw') {
           throw error;
         } else if (options?.errorHandling === 'log') {
-          console.error(`Error in event handler ${target.constructor.name}.${method}:`, error);
+          this.logger?.error(`Error in event handler ${target.constructor.name}.${method}:`, error);
         }
         // 'ignore' does nothing
+        return undefined;
       }
     };
   }

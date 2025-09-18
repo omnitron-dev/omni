@@ -33,7 +33,7 @@ export class EventBusService {
   private replayEnabled = false;
   private replayBuffer: Array<{ event: string; data: any; metadata?: EventMetadata }> = [];
   private maxReplayBufferSize = 100;
-  private handlerPriorities: Map<Function, number> = new Map();
+  private handlerPriorities: Map<(...args: any[]) => any, number> = new Map();
 
   constructor(
     @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,

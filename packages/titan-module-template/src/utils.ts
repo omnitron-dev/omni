@@ -3,7 +3,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import type { TemplateData, OperationResult } from './types.js';
+import type { OperationResult } from './types.js';
 
 /**
  * Generate a unique ID

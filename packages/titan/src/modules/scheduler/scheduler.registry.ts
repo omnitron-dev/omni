@@ -298,6 +298,9 @@ export class SchedulerRegistry {
           case 'createdAt':
             compareValue = a.createdAt.getTime() - b.createdAt.getTime();
             break;
+          default:
+            compareValue = 0;
+            break;
         }
 
         return filter.sortDirection === 'desc' ? -compareValue : compareValue;

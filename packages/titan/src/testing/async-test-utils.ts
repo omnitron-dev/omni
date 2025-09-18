@@ -89,21 +89,21 @@ export class EventListenerTracker {
   private listeners: Array<{
     target: any;
     event: string;
-    handler: Function;
+    handler: (...args: any[]) => any;
     type: 'on' | 'once';
   }> = [];
 
   /**
    * Track an event listener
    */
-  track(target: any, event: string, handler: Function, type: 'on' | 'once' = 'on'): void {
+  track(target: any, event: string, handler: (...args: any[]) => any, type: 'on' | 'once' = 'on'): void {
     this.listeners.push({ target, event, handler, type });
   }
 
   /**
    * Add listener and track it
    */
-  on(target: any, event: string, handler: Function): void {
+  on(target: any, event: string, handler: (...args: any[]) => any): void {
     target.on(event, handler);
     this.track(target, event, handler, 'on');
   }
@@ -111,7 +111,7 @@ export class EventListenerTracker {
   /**
    * Add once listener and track it
    */
-  once(target: any, event: string, handler: Function): void {
+  once(target: any, event: string, handler: (...args: any[]) => any): void {
     target.once(event, handler);
     this.track(target, event, handler, 'once');
   }
@@ -278,7 +278,7 @@ export async function flushPromises(): Promise<void> {
  * Mock timer controller for tests
  */
 export class MockTimerController {
-  private timers = new Map<NodeJS.Timeout, { callback: Function; delay: number; time: number }>();
+  private timers = new Map<NodeJS.Timeout, { callback: (...args: any[]) => any; delay: number; time: number }>();
   private currentTime = 0;
   private nextId = 1;
 
@@ -302,7 +302,7 @@ export class MockTimerController {
   /**
    * Mock setTimeout
    */
-  setTimeout(callback: Function, delay: number): NodeJS.Timeout {
+  setTimeout(callback: (...args: any[]) => any, delay: number): NodeJS.Timeout {
     const id = this.nextId++ as any;
     this.timers.set(id, { callback, delay, time: this.currentTime + delay });
     return id;
@@ -318,7 +318,7 @@ export class MockTimerController {
   /**
    * Mock setInterval
    */
-  setInterval(callback: Function, delay: number): NodeJS.Timeout {
+  setInterval(callback: (...args: any[]) => any, delay: number): NodeJS.Timeout {
     // Simplified implementation
     return this.setTimeout(() => {
       callback();
@@ -352,7 +352,7 @@ export class MockTimerController {
     }
   }
 
-  private getNextTimer(): { id: NodeJS.Timeout; callback: Function; time: number } | null {
+  private getNextTimer(): { id: NodeJS.Timeout; callback: (...args: any[]) => any; time: number } | null {
     let next: any = null;
     let nextId: NodeJS.Timeout | null = null;
 

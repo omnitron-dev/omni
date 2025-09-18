@@ -23,7 +23,7 @@ export interface ISchemaValidator {
 @Injectable()
 export class EventValidationService {
   private schemas: Map<string, ISchemaValidator> = new Map();
-  private validators: Map<string, Function> = new Map();
+  private validators: Map<string, (...args: any[]) => any> = new Map();
   private initialized = false;
   private destroyed = false;
 
@@ -143,7 +143,7 @@ export class EventValidationService {
   /**
    * Register a custom validator function
    */
-  registerValidator(event: string, validator: Function): void {
+  registerValidator(event: string, validator: (...args: any[]) => any): void {
     this.validators.set(event, validator);
   }
 
@@ -351,8 +351,8 @@ export class EventValidationService {
   /**
    * Get wildcard validators for an event
    */
-  private getWildcardValidators(event: string): Function[] {
-    const validators: Function[] = [];
+  private getWildcardValidators(event: string): ((...args: any[]) => any)[] {
+    const validators: ((...args: any[]) => any)[] = [];
 
     for (const [pattern, validator] of this.validators.entries()) {
       if (this.matchesPattern(event, pattern)) {

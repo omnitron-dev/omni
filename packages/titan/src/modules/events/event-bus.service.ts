@@ -21,11 +21,11 @@ import type { IEventBusMessage, IEventSubscription } from './types.js';
  */
 @Injectable()
 export class EventBusService {
-  private channels: Map<string, Set<Function>> = new Map();
+  private channels: Map<string, Set<(...args: any[]) => any>> = new Map();
   private messageQueue: Map<string, IEventBusMessage[]> = new Map();
   private messageIdCounter = 0;
-  private subscriptions: Map<string, Set<Function>> = new Map();
-  private onceHandlers: Set<Function> = new Set();
+  private subscriptions: Map<string, Set<(...args: any[]) => any>> = new Map();
+  private onceHandlers: Set<(...args: any[]) => any> = new Set();
   private emittedEvents = 0;
   private initialized = false;
   private destroyed = false;
@@ -131,7 +131,7 @@ export class EventBusService {
   /**
    * Subscribe to an event (alias for subscribe)
    */
-  on(event: string, handler: Function): IEventSubscription {
+  on(event: string, handler: (...args: any[]) => any): IEventSubscription {
     if (!this.subscriptions.has(event)) {
       this.subscriptions.set(event, new Set());
     }
@@ -152,7 +152,7 @@ export class EventBusService {
   /**
    * Subscribe to an event with options
    */
-  subscribe(event: string, handler: Function, options?: { priority?: number; replay?: boolean }): IEventSubscription {
+  subscribe(event: string, handler: (...args: any[]) => any, options?: { priority?: number; replay?: boolean }): IEventSubscription {
     // Store handler priority if provided
     if (options?.priority !== undefined) {
       this.handlerPriorities.set(handler, options.priority);
@@ -203,7 +203,7 @@ export class EventBusService {
   /**
    * Unsubscribe from an event
    */
-  off(event: string, handler?: Function): void {
+  off(event: string, handler?: (...args: any[]) => any): void {
     if (!handler) {
       // Remove all handlers for this event
       const handlers = this.subscriptions.get(event);
@@ -231,7 +231,7 @@ export class EventBusService {
   /**
    * Subscribe to an event once
    */
-  once(event: string, handler: Function): IEventSubscription {
+  once(event: string, handler: (...args: any[]) => any): IEventSubscription {
     const wrappedHandler = async (data: any, metadata?: EventMetadata) => {
       this.off(event, wrappedHandler);
       this.onceHandlers.delete(wrappedHandler);

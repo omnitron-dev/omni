@@ -166,6 +166,9 @@ export class SchedulerService {
       case 'timeout':
         this.scheduleTimeoutJob(job);
         break;
+      default:
+        // Should not happen due to type checking, but satisfy linter
+        break;
     }
   }
 

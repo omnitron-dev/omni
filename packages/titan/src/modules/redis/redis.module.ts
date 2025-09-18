@@ -7,7 +7,7 @@ export interface Provider<T = any> {
   scope?: 'DEFAULT' | 'REQUEST' | 'TRANSIENT';
 }
 
-export interface Type<T = any> extends Function {
+export interface Type<T = any> {
   new (...args: any[]): T;
 }
 
@@ -19,22 +19,22 @@ export interface DynamicModule {
   exports?: any[];
   global?: boolean;
 }
-import {
-  RedisModuleOptions,
-  RedisModuleAsyncOptions,
-  RedisOptionsFactory,
-  RedisClientOptions,
-} from './redis.types.js';
-import {
-  REDIS_MODULE_OPTIONS,
-  REDIS_MANAGER,
-  getRedisToken,
-  DEFAULT_REDIS_NAMESPACE,
-} from './redis.constants.js';
 import { RedisManager } from './redis.manager.js';
 import { RedisService } from './redis.service.js';
-import { RedisHealthIndicator } from './redis.health.js';
 import { getClientNamespace } from './redis.utils.js';
+import { RedisHealthIndicator } from './redis.health.js';
+import {
+  REDIS_MANAGER,
+  getRedisToken,
+  REDIS_MODULE_OPTIONS,
+  DEFAULT_REDIS_NAMESPACE,
+} from './redis.constants.js';
+import {
+  RedisModuleOptions,
+  RedisClientOptions,
+  RedisOptionsFactory,
+  RedisModuleAsyncOptions,
+} from './redis.types.js';
 
 export class TitanRedisModule {
   static forRoot(options: RedisModuleOptions = {}): DynamicModule {
@@ -110,9 +110,7 @@ export class TitanRedisModule {
 
     const clientProvidersFactory: Provider = {
       provide: 'REDIS_CLIENT_PROVIDERS',
-      useFactory: (moduleOptions: RedisModuleOptions, manager: RedisManager) => {
-        return this.createDynamicClientProviders(moduleOptions, manager);
-      },
+      useFactory: (moduleOptions: RedisModuleOptions, manager: RedisManager) => this.createDynamicClientProviders(moduleOptions, manager),
       inject: [REDIS_MODULE_OPTIONS, REDIS_MANAGER],
     };
 

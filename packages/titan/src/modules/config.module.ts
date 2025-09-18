@@ -227,18 +227,18 @@ export class ConfigModule extends ApplicationModule implements IConfigModule {
   /**
    * Get a configuration value
    */
-  get<T = any>(path: string, defaultValue?: T): T {
-    const value = this.getByPath(path);
+  get<T = any>(configPath: string, defaultValue?: T): T {
+    const value = this.getByPath(configPath);
     return value !== undefined ? value : defaultValue as T;
   }
 
   /**
    * Get a required configuration value
    */
-  require<T = any>(path: string): T {
-    const value = this.getByPath(path);
+  require<T = any>(configPath: string): T {
+    const value = this.getByPath(configPath);
     if (value === undefined) {
-      throw new Error(`Required configuration not found: ${path}`);
+      throw new Error(`Required configuration not found: ${configPath}`);
     }
     return value;
   }
@@ -246,16 +246,16 @@ export class ConfigModule extends ApplicationModule implements IConfigModule {
   /**
    * Check if a configuration path exists
    */
-  has(path: string): boolean {
-    return this.getByPath(path) !== undefined;
+  has(configPath: string): boolean {
+    return this.getByPath(configPath) !== undefined;
   }
 
   /**
    * Set a configuration value
    */
-  set(path: string, value: any): void {
-    this.setByPath(path, value);
-    this.notifyWatchers(path, value);
+  set(configPath: string, value: any): void {
+    this.setByPath(configPath, value);
+    this.notifyWatchers(configPath, value);
   }
 
   /**
@@ -271,16 +271,16 @@ export class ConfigModule extends ApplicationModule implements IConfigModule {
   /**
    * Get configuration with validation
    */
-  getValidated<T>(path: string, schema: ZodType<T>): T {
-    const value = this.getByPath(path);
+  getValidated<T>(configPath: string, schema: ZodType<T>): T {
+    const value = this.getByPath(configPath);
     return schema.parse(value);
   }
 
   /**
    * Get typed configuration value
    */
-  getTyped<T>(path: string, schema: z.ZodType<T>): T | undefined {
-    const value = this.getByPath(path);
+  getTyped<T>(configPath: string, schema: z.ZodType<T>): T | undefined {
+    const value = this.getByPath(configPath);
     if (value === undefined) return undefined;
 
     const result = schema.safeParse(value);

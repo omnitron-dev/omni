@@ -32,7 +32,7 @@ import type {
 export class EventsService {
   private subscriptions: Map<string, Array<{ subscription: IEventSubscription; priority: number }>> = new Map();
   private eventStats: Map<string, IEventStatistics> = new Map();
-  private wildcardSubscriptions: Map<string, { pattern: RegExp; handler: Function; originalHandler: Function }> | undefined;
+  private wildcardSubscriptions: Map<string, { pattern: RegExp; handler: (...args: any[]) => any; originalHandler: (...args: any[]) => any }> | undefined;
   private initialized = false;
   private destroyed = false;
   private bubblingEnabled = false;
@@ -461,7 +461,7 @@ export class EventsService {
           for (const { subscription } of subs) {
             // Create a test function that simulates the handler but doesn't affect external state
             const testHandler = subscription.handler || subscription.wrappedHandler;
-            if (testHandler) {
+            if (typeof testHandler === 'function') {
               // Call handler with cloned data to test for errors
               // We create a mock that throws if the handler would throw
               const testData = JSON.parse(JSON.stringify(data));

@@ -1,5 +1,5 @@
-import { ModuleMetadata, Type, Abstract } from '@nestjs/common';
-import { Redis, RedisOptions, Cluster, ClusterNode, ClusterOptions } from 'ioredis';
+import { Type, Abstract, ModuleMetadata } from '@nestjs/common';
+import { Redis, Cluster, ClusterNode, RedisOptions, ClusterOptions } from 'ioredis';
 
 export interface RedisClientOptions extends RedisOptions {
   namespace?: string;

@@ -82,7 +82,7 @@ export async function waitForConnection(
 ): Promise<void> {
   // If already ready, return immediately
   if (client.status === 'ready') {
-    return;
+    return Promise.resolve();
   }
 
   return new Promise((resolve, reject) => {

@@ -29,7 +29,7 @@ export const EVENT_EMITTER_METADATA = Symbol('event:emitter');
 @Injectable()
 export class EventDiscoveryService {
   private discoveredHandlers: Map<string, IEventHandlerMetadata[]> = new Map();
-  private registeredHandlers: Map<any, Map<string, Function>> = new Map();
+  private registeredHandlers: Map<any, Map<string, (...args: any[]) => any>> = new Map();
   private initialized = false;
   private destroyed = false;
 
@@ -442,7 +442,7 @@ export class EventDiscoveryService {
     target: any,
     method: string,
     options?: IEventListenerOptions
-  ): Function {
+  ): (...args: any[]) => any {
     const originalMethod = target[method];
 
     return async (data: any, metadata: any) => {

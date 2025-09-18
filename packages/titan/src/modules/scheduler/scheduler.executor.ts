@@ -138,11 +138,10 @@ export class SchedulerExecutor {
     signal: AbortSignal
   ): Promise<any> {
     return new Promise((resolve, reject) => {
-      let timeoutId: NodeJS.Timeout;
       let completed = false;
 
       // Setup timeout
-      timeoutId = setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         if (!completed) {
           completed = true;
           reject(new Error(ERROR_MESSAGES.JOB_TIMEOUT));

@@ -1,5 +1,5 @@
 import { getRedisToken, REDIS_MANAGER } from './redis.constants.js';
-import { CacheOptions, LockOptions, RateLimitOptions } from './redis.types.js';
+import { LockOptions, CacheOptions, RateLimitOptions } from './redis.types.js';
 
 // Simple parameter decorator for dependency injection
 function createInjectDecorator(token: string | symbol): ParameterDecorator {
@@ -11,13 +11,9 @@ function createInjectDecorator(token: string | symbol): ParameterDecorator {
   };
 }
 
-export const InjectRedis = (namespace?: string): ParameterDecorator => {
-  return createInjectDecorator(getRedisToken(namespace));
-};
+export const InjectRedis = (namespace?: string): ParameterDecorator => createInjectDecorator(getRedisToken(namespace));
 
-export const InjectRedisManager = (): ParameterDecorator => {
-  return createInjectDecorator(REDIS_MANAGER);
-};
+export const InjectRedisManager = (): ParameterDecorator => createInjectDecorator(REDIS_MANAGER);
 
 export function RedisCache(options?: CacheOptions): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {

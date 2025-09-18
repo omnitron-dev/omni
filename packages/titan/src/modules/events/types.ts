@@ -233,12 +233,12 @@ export interface IEventSubscription {
   /**
    * Handler reference
    */
-  handler: Function;
+  handler: (...args: any[]) => any;
 
   /**
    * Wrapped handler reference (internal)
    */
-  wrappedHandler?: Function;
+  wrappedHandler?: (...args: any[]) => any;
 }
 
 /**

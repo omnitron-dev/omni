@@ -74,13 +74,14 @@ export class RedisHealthIndicator extends HealthIndicator {
       const details: Record<string, any> = {};
       let allHealthy = true;
 
-      for (const [namespace, healthy] of results) {
+      for (const [namespace, result] of Object.entries(results)) {
         details[namespace] = {
-          status: healthy ? 'ready' : 'not ready',
-          healthy,
+          status: result.healthy ? 'ready' : 'not ready',
+          healthy: result.healthy,
+          latency: result.latency,
         };
 
-        if (!healthy) {
+        if (!result.healthy) {
           allHealthy = false;
         }
       }

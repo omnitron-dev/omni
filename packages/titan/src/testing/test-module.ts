@@ -95,19 +95,18 @@ export class TestModule {
     useClass: (cls: new (...args: any[]) => T) => TestModule;
     useFactory: (factory: (...args: any[]) => T) => TestModule;
   } {
-    const self = this;
     return {
       useValue: (value: T) => {
         this.container.override(token).useValue(value);
-        return self;
+        return this;
       },
       useClass: (cls: new (...args: any[]) => T) => {
         this.container.override(token).useClass(cls);
-        return self;
+        return this;
       },
       useFactory: (factory: (...args: any[]) => T) => {
         this.container.override(token).useFactory(factory);
-        return self;
+        return this;
       }
     };
   }

@@ -1,10 +1,10 @@
-import { Redis, Cluster, Pipeline, ChainableCommander } from 'ioredis';
+import { Redis, ChainableCommander } from 'ioredis';
 
 // Type alias for Redis commands that can be chained
 type ChainedRedis = ChainableCommander;
-import { RedisManager } from './redis.manager.js';
-import { RedisClient } from './redis.types.js';
 import { isCluster } from './redis.utils.js';
+import { RedisClient } from './redis.types.js';
+import { RedisManager } from './redis.manager.js';
 
 export class RedisService {
   constructor(private readonly manager: RedisManager) {}

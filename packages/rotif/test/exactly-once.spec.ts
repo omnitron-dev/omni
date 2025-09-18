@@ -42,8 +42,6 @@ describe('Exactly-once Deduplication', () => {
   });
 
   it('should allow re-processing after TTL expiry', async () => {
-    jest.setTimeout(15000);
-
     let received = 0;
 
     manager.config.deduplicationTTL = 2; // short TTL for test
@@ -71,7 +69,7 @@ describe('Exactly-once Deduplication', () => {
     await delay(1000);
 
     expect(received).toBe(2);
-  });
+  }, 15000);
 
   it('should deduplicate based on message payload hash', async () => {
     let received = 0;

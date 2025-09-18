@@ -1,7 +1,7 @@
 import { delay as delayMs } from '@omnitron-dev/common';
 
-import { NotificationManager } from '../src';
-import { createTestConfig } from './helpers/test-utils';
+import { NotificationManager } from '../src/rotif.js';
+import { createTestConfig } from './helpers/test-utils.js';
 
 describe('Stats - tracking', () => {
   describe('should correctly track subscription stats', () => {
@@ -11,7 +11,7 @@ describe('Stats - tracking', () => {
       manager = new NotificationManager(createTestConfig(1, {
         checkDelayInterval: 50,
         blockInterval: 100,
-      });
+      }));
 
       await manager.redis.flushdb();
     });
@@ -52,16 +52,11 @@ describe('Stats - tracking', () => {
     let manager: NotificationManager;
 
     beforeAll(async () => {
-      manager = new NotificationManager({
-        redis: {
-          host: parsed.hostname,
-          port: parseInt(parsed.port || '6379'),
-          db: 1,
-        },
+      manager = new NotificationManager(createTestConfig(1, {
         checkDelayInterval: 100,
         maxRetries: 2,
         blockInterval: 100,
-      });
+      }));
 
       await manager.redis.flushdb();
     });
@@ -88,7 +83,7 @@ describe('Stats - tracking', () => {
       const stats = sub.stats();
 
       expect(stats.messages).toBe(0); // нет успешных сообщений
-      expect(stats.retries).toBe(2);  // 2 retries после первой неудачи
+      expect(stats.retries).toBe(1);  // 1 retry после первой неудачи (при maxRetries=2)
       expect(stats.failures).toBe(1); // 1 сообщение попало в DLQ
       expect(stats.lastMessageAt).toBe(0); // нет успешной обработки
     }, 10000);

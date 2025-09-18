@@ -1,5 +1,8 @@
 // src/types.ts
 import { RedisOptions } from 'ioredis';
+import type { StatsTracker } from './stats.js';
+import type { RetryStrategyConfig } from './retry-strategies.js';
+import type { DLQCleanupConfig } from './dlq-manager.js';
 
 /**
  * Logger interface for Rotif. Provides methods for different log levels.
@@ -58,6 +61,8 @@ export interface RotifConfig {
   scheduledBatchSize?: number;
   /** Retry delay in milliseconds or function to calculate delay */
   retryDelay?: number | ((attempt: number, msg: RotifMessage) => number);
+  /** Retry strategy configuration */
+  retryStrategy?: RetryStrategyConfig;
   /** Enable local round-robin among subscribers */
   localRoundRobin?: boolean;
   /** Enable pending message recovery */
@@ -72,6 +77,8 @@ export interface RotifConfig {
   consumerNameFn?: () => string;
   /** Generate dedup key */
   generateDedupKey?: ({ channel, payload, group, pattern }: { channel: string, payload: any, group?: string, pattern?: string }) => string;
+  /** DLQ cleanup configuration */
+  dlqCleanup?: DLQCleanupConfig;
 }
 
 /**
@@ -99,6 +106,10 @@ export interface Subscription {
   isPaused: boolean;
   /** Get subscription statistics */
   stats(): SubscriptionStats;
+  /** Stats tracker instance (internal) */
+  statsTracker?: StatsTracker;
+  /** Number of messages currently being processed (internal) */
+  inflightCount?: number;
 }
 
 
@@ -149,4 +160,6 @@ export interface SubscribeOptions {
   maxRetries?: number;
   /** Retry delay in milliseconds or function to calculate delay */
   retryDelay?: number | ((attempt: number, msg: RotifMessage) => number);
+  /** Retry strategy configuration */
+  retryStrategy?: RetryStrategyConfig;
 }

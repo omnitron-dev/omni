@@ -25,6 +25,7 @@ describe('NotificationManager - DLQ Subscription', () => {
   it('should deliver messages from DLQ subscription', async () => {
     const received: RotifMessage[] = [];
 
+    // Don't await - this starts the background subscription
     manager.subscribeToDLQ(async (msg) => {
       received.push(msg);
       await msg.ack();

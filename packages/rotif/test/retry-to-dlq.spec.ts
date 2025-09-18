@@ -1,17 +1,18 @@
 import { delay as delayMs } from '@omnitron-dev/common';
 
-import { NotificationManager } from '../src';
-import { createTestConfig } from './helpers/test-utils';
+import { NotificationManager } from '../src/rotif.js';
+import { createTestConfig } from './helpers/test-utils.js';
+import { RotifMessage } from '../src/types.js';
 
 describe('NotificationManager - retry to DLQ', () => {
   let manager: NotificationManager;
 
   beforeAll(async () => {
     manager = new NotificationManager(createTestConfig(1, {
-      checkDelayInterval: 100,
+      checkDelayInterval: 50,
       maxRetries: 3,
-      blockInterval: 100,
-    });
+      blockInterval: 10,
+    }));
     await manager.redis.flushdb();
   });
 
@@ -21,7 +22,7 @@ describe('NotificationManager - retry to DLQ', () => {
 
   it('should move message to DLQ after exceeding max retries', async () => {
     const attempts: number[] = [];
-    let dlqMessage: any;
+    let dlqMessage: RotifMessage | undefined;
 
     await manager.subscribe(
       'test.retry-dlq',
@@ -40,11 +41,14 @@ describe('NotificationManager - retry to DLQ', () => {
 
     await manager.publish('test.retry-dlq', { data: 'test' });
 
+    // Wait for all retries to complete - need extra time for the third retry
+    // to be scheduled, moved, and processed
+    // Adding extra time to ensure the consumer has time to read from retry stream
     await delayMs(8000);
 
     expect(attempts).toEqual([1, 2, 3]);
     expect(dlqMessage).toBeDefined();
-    expect(dlqMessage.channel).toBe('test.retry-dlq');
-    expect(dlqMessage.payload).toEqual({ data: 'test' });
+    expect(dlqMessage?.channel).toBe('test.retry-dlq');
+    expect(dlqMessage?.payload).toEqual({ data: 'test' });
   }, 15000);
 });

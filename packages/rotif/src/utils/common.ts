@@ -62,10 +62,32 @@ export function defaultConsumerName(): string {
  * Generates a deduplication key for a given channel and payload.
  * @param {string} channel - Channel name
  * @param {any} payload - Payload to deduplicate
- * @param {string} group - Optional group name
+ * @param {string} group - Optional group name for consumer-side dedup
+ * @param {string} pattern - Optional pattern for publisher-side dedup
+ * @param {string} side - 'pub' for publisher, 'con' for consumer
  * @returns {string} Deduplication key
  */
-export function generateDedupKey({ channel, payload, group, pattern }: { channel: string, payload: any, group?: string, pattern?: string }): string {
-  const id = createHash('sha256').update(pack(payload)).digest('hex');
-  return `rotif:dedup:${channel}:${id}:${group ? `${group}` : '*'}:${pattern ? `${pattern}` : '*'}`;
+export function generateDedupKey({ channel, payload, group, pattern, side = 'pub' }: { channel: string, payload: any, group?: string, pattern?: string, side?: 'pub' | 'con' }): string {
+  // Create a unique serialization for the payload
+  // Include the type to ensure different types with same value get different hashes
+  const typePrefix = typeof payload === 'object' && payload === null
+    ? 'null:'
+    : `${typeof payload}:`;
+
+  let dataToHash: Buffer;
+  if (payload === null || payload === undefined) {
+    // Handle null and undefined explicitly
+    dataToHash = Buffer.from(typePrefix + String(payload));
+  } else if (typeof payload === 'object') {
+    // Use msgpackr for objects
+    dataToHash = pack(payload);
+  } else {
+    // For primitives, combine type and value
+    dataToHash = Buffer.from(typePrefix + JSON.stringify(payload));
+  }
+
+  const id = createHash('sha256').update(dataToHash).digest('hex');
+  // Use different prefixes for publisher and consumer deduplication
+  const prefix = side === 'pub' ? 'rotif:dedup:pub' : 'rotif:dedup:con';
+  return `${prefix}:${channel}:${id}:${group ? `${group}` : '*'}:${pattern ? `${pattern}` : '*'}`;
 }

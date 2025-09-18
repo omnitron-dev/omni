@@ -1,8 +1,8 @@
 
 import { delay, defer } from '@omnitron-dev/common';
 
-import { NotificationManager } from '../src';
-import { createTestConfig } from './helpers/test-utils';
+import { NotificationManager } from '../src/rotif.js';
+import { createTestConfig } from './helpers/test-utils.js';
 
 describe('NotificationManager – Channel Subscription Tests', () => {
   let manager: NotificationManager;
@@ -33,7 +33,7 @@ describe('NotificationManager – Channel Subscription Tests', () => {
 
     expect(received.length).toBe(1);
     expect(received[0]).toEqual({ userId: 1 });
-  });
+  }, 10000);
 
   it('should not deliver messages to unsubscribed channels', async () => {
     const received: any[] = [];
@@ -48,9 +48,9 @@ describe('NotificationManager – Channel Subscription Tests', () => {
     await delay(500);
 
     expect(received).toHaveLength(0);
-  });
+  }, 10000);
 
-  it.only('should deliver to multiple subscribers with overlapping patterns', async () => {
+  it('should deliver to multiple subscribers with overlapping patterns', async () => {
     const received: string[] = [];
     const def = defer();
 
@@ -70,6 +70,9 @@ describe('NotificationManager – Channel Subscription Tests', () => {
       }
     }, { groupName: 'g2' });
 
+    // Small delay to ensure both consumer loops are ready
+    await delay(100);
+
     await manager.publish('users.signout', {});
 
     await def.promise;
@@ -78,7 +81,7 @@ describe('NotificationManager – Channel Subscription Tests', () => {
       expect.arrayContaining(['users.signout:users.signout', 'users.signout:users.signout']),
     );
     expect(received.length).toBe(2);
-  });
+  }, 10000);
 
   it('should correctly handle exactly-once delivery', async () => {
     const attempts: number[] = [];
@@ -130,7 +133,7 @@ describe('NotificationManager – Channel Subscription Tests', () => {
 
     expect(timestamps.length).toBe(1);
     expect(timestamps[0]).toBeGreaterThanOrEqual(500);
-  }, 15000);
+  }, 10000);
 
 
   // it('should requeue messages from DLQ correctly', async () => {

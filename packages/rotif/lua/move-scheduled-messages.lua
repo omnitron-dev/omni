@@ -24,7 +24,8 @@ for _, messageId in ipairs(messageIds) do
       "timestamp", delayedPayload.timestamp,
       "attempt", delayedPayload.attempt,
       "exactlyOnce", delayedPayload.exactlyOnce,
-      "dedupTTL", delayedPayload.dedupTTL
+      "dedupTTL", delayedPayload.dedupTTL,
+      "pattern", delayedPayload.pattern or channel
     )
 
     redis.call("DEL", payloadKey)

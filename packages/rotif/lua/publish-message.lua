@@ -12,7 +12,7 @@
 -- ARGV[10]: Deduplication TTL (seconds, "0" если не используется)
 -- ARGV[11]: Message ID (для надёжного удаления)
 -- ARGV[12]: Exactly once (true/false)
--- ARGV[13]: Deduplication TTL (seconds, "0" если не используется)
+-- ARGV[13]: Pattern (for deduplication key consistency)
 
 local streamKey = KEYS[1]
 local delayedSetKey = KEYS[2]
@@ -28,6 +28,7 @@ local dedupKey = ARGV[9]
 local dedupTTL = tonumber(ARGV[10])
 local messageUUID = ARGV[11]
 local exactlyOnce = ARGV[12]
+local pattern = ARGV[13]
 
 if dedupKey ~= "" and redis.call("EXISTS", dedupKey) == 1 then
   return "DUPLICATE"
@@ -43,7 +44,8 @@ if deliveryType == "delayed" then
     timestamp = timestamp,
     attempt = attempt,
     exactlyOnce = exactlyOnce,
-    dedupTTL = ARGV[10]
+    dedupTTL = ARGV[10],
+    pattern = pattern
   })
 
   redis.call("ZADD", delayedSetKey, delayTimestamp, messageUUID)
@@ -61,7 +63,8 @@ else
     "timestamp", timestamp,
     "attempt", attempt,
     "exactlyOnce", exactlyOnce,
-    "dedupTTL", ARGV[10]
+    "dedupTTL", ARGV[10],
+    "pattern", pattern
   )
 
   if maxStreamLength > 0 then

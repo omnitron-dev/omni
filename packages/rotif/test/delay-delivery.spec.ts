@@ -1,5 +1,5 @@
 import { delay as delayMs } from '@omnitron-dev/common';
-import { it, expect, describe, afterAll, beforeAll } from '@jest/globals';
+import { it, expect, describe, afterAll, beforeAll, jest } from '@jest/globals';
 
 import { NotificationManager } from '../src';
 import { createTestConfig } from './helpers/test-utils';
@@ -13,7 +13,7 @@ describe('NotificationManager - delay delivery', () => {
     manager = new NotificationManager(createTestConfig(1, {
       checkDelayInterval: 100,
       blockInterval: 100,
-    });
+    }));
     await manager.redis.flushdb();
   });
 

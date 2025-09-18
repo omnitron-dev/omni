@@ -12,7 +12,7 @@ describe('NotificationManager - retry after failure', () => {
       checkDelayInterval: 100,
       maxRetries: 3,
       blockInterval: 100,
-    });
+    }));
 
     await manager.redis.flushdb();
   });

@@ -1,5 +1,5 @@
-import { ServiceMetadata } from '../types';
-import { RemotePeer } from '../remote-peer';
+import { ServiceMetadata } from '../types.js';
+import { RemotePeer } from '../remote-peer.js';
 
 /**
  * Exposes a service to a remote peer in the Netron network.

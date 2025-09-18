@@ -3,12 +3,21 @@
  * This test verifies that the package works correctly with Bun runtime
  */
 
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import WebSocket from 'ws';
+
 // @ts-ignore - Bun global may not be available in Node
 const isBun = typeof Bun !== 'undefined';
 
+// Get __dirname equivalent in ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 describe('Bun Compatibility', () => {
-  it('should import the package correctly', () => {
-    const netron = require('../dist/index.js');
+  it('should import the package correctly', async () => {
+    const netron = await import('../dist/index.js');
     expect(netron).toBeDefined();
     expect(netron.Netron).toBeDefined();
     expect(netron.Packet).toBeDefined();
@@ -24,9 +33,7 @@ describe('Bun Compatibility', () => {
       expect(netronESM.Packet).toBeDefined();
     } else {
       // For Node/Jest, just verify the ESM files exist
-      const fs = require('fs');
-      const path = require('path');
-      const esmPath = path.join(__dirname, '../src/index.js');
+      const esmPath = path.join(__dirname, '../src/index.ts');
       expect(fs.existsSync(esmPath)).toBe(true);
     }
   });
@@ -43,7 +50,6 @@ describe('Bun Compatibility', () => {
   });
 
   it('should handle WebSocket correctly', () => {
-    const WebSocket = require('ws');
     expect(WebSocket).toBeDefined();
     expect(WebSocket.WebSocket || WebSocket).toBeDefined();
   });

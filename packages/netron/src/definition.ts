@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { ServiceMetadata } from './types';
+import { ServiceMetadata } from './types.js';
 
 /**
  * The Definition class represents a service definition within the Netron framework.
@@ -43,7 +43,7 @@ export class Definition {
     public id: string,
     public peerId: string,
     public meta: ServiceMetadata
-  ) {}
+  ) { }
 
   /**
    * Generates a new cryptographically secure unique identifier using the Node.js crypto module.

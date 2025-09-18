@@ -1,5 +1,5 @@
-import { ServiceMetadata } from './types';
-import { SERVICE_ANNOTATION } from './constants';
+import { ServiceMetadata } from './types.js';
+import { SERVICE_ANNOTATION } from './constants.js';
 
 /**
  * Generates a standardized event name for service-related events.

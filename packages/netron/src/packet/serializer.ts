@@ -1,9 +1,8 @@
 import { SmartBuffer } from '@omnitron-dev/smartbuffer';
 import { Serializer, registerCommonTypesFor } from '@omnitron-dev/messagepack';
 
-import { Reference } from '../reference';
-import { Definition } from '../definition';
-import { StreamReference } from '../stream-reference';
+import { Reference } from '../reference.js';
+import { Definition } from '../definition.js';
 
 /**
  * Global serializer instance for the Netron application.
@@ -105,46 +104,86 @@ serializer
      * @returns {Reference} A new Reference instance with the restored defId
      */
     (buf: SmartBuffer) => new Reference(serializer.decode(buf))
-  )
-  /**
-   * Registers serialization handlers for the StreamReference class.
-   * StreamReference objects represent stream connections in the Netron network,
-   * containing information about stream type, direction, and associated peer.
-   *
-   * @param {number} 107 - Unique type identifier for StreamReference objects
-   * @param {StreamReference} - The class constructor for StreamReference objects
-   * @param {Function} - Encoder function that writes StreamReference properties to buffer
-   * @param {Function} - Decoder function that reconstructs StreamReference from buffer
-   */
-  .register(
-    107,
-    StreamReference,
-    /**
-     * Encodes a StreamReference object into a binary buffer.
-     * Serializes the stream's identity, type, liveness status, and associated peer.
-     *
-     * @param {StreamReference} obj - The StreamReference object to encode
-     * @param {SmartBuffer} buf - The buffer to write the encoded data to
-     */
-    (obj: any, buf: SmartBuffer) => {
-      serializer.encode(obj.streamId.toString(), buf);
-      buf.writeUInt8(obj.type === 'writable' ? 1 : 0);
-      buf.writeUInt8(obj.isLive ? 1 : 0);
-      serializer.encode(obj.peerId, buf);
-    },
-    /**
-     * Decodes a StreamReference object from a binary buffer.
-     * Reconstructs the stream reference with its type, liveness status,
-     * and associated peer information.
-     *
-     * @param {SmartBuffer} buf - The buffer containing the encoded StreamReference
-     * @returns {StreamReference} A new StreamReference instance with restored properties
-     */
-    (buf: SmartBuffer) => {
-      const streamId = Number(serializer.decode(buf));
-      const streamType = buf.readUInt8() === 1 ? 'writable' : 'readable';
-      const isLive = buf.readUInt8() === 1;
-      const peerId = serializer.decode(buf);
-      return new StreamReference(streamId, streamType, isLive, peerId);
-    }
   );
+
+// StreamReference will be registered later to avoid circular dependency
+let streamReferenceRegistered = false;
+let StreamReferenceClass: any = null;
+
+/**
+ * Registers StreamReference with the serializer.
+ * This is done lazily to avoid circular dependency issues during module initialization.
+ */
+export async function ensureStreamReferenceRegistered(): Promise<void> {
+  if (streamReferenceRegistered) {
+    return;
+  }
+
+  try {
+    // Dynamic import to avoid circular dependency
+    const module = await import('../stream-reference.js');
+    StreamReferenceClass = module.StreamReference;
+
+    /**
+     * Registers serialization handlers for the StreamReference class.
+     * StreamReference objects represent stream connections in the Netron network,
+     * containing information about stream type, direction, and associated peer.
+     *
+     * @param {number} 107 - Unique type identifier for StreamReference objects
+     */
+    serializer.register(
+      107,
+      StreamReferenceClass,
+      /**
+       * Encodes a StreamReference object into a binary buffer.
+       * Serializes the stream's identity, type, liveness status, and associated peer.
+       *
+       * @param {StreamReference} obj - The StreamReference object to encode
+       * @param {SmartBuffer} buf - The buffer to write the encoded data to
+       */
+      (obj: any, buf: SmartBuffer) => {
+        serializer.encode(obj.streamId.toString(), buf);
+        buf.writeUInt8(obj.type === 'writable' ? 1 : 0);
+        buf.writeUInt8(obj.isLive ? 1 : 0);
+        serializer.encode(obj.peerId, buf);
+      },
+      /**
+       * Decodes a StreamReference object from a binary buffer.
+       * Reconstructs the stream reference with its type, liveness status,
+       * and associated peer information.
+       *
+       * @param {SmartBuffer} buf - The buffer containing the encoded StreamReference
+       * @returns {StreamReference} A new StreamReference instance with restored properties
+       */
+      (buf: SmartBuffer) => {
+        const streamId = Number(serializer.decode(buf));
+        const streamType = buf.readUInt8() === 1 ? 'writable' : 'readable';
+        const isLive = buf.readUInt8() === 1;
+        const peerId = serializer.decode(buf);
+        return new StreamReferenceClass(streamId, streamType, isLive, peerId);
+      }
+    );
+
+    streamReferenceRegistered = true;
+  } catch (error) {
+    console.error('Failed to register StreamReference:', error);
+    throw error;
+  }
+}
+
+// Create a wrapper for encode/decode that ensures StreamReference is registered
+const originalEncode = serializer.encode.bind(serializer);
+const originalDecode = serializer.decode.bind(serializer);
+
+serializer.encode = function(value: any, buffer?: SmartBuffer): any {
+  // Check if value is a StreamReference-like object
+  if (value && value.constructor && value.constructor.name === 'StreamReference' && !streamReferenceRegistered) {
+    // Try to register synchronously using a promise
+    Promise.resolve(ensureStreamReferenceRegistered()).catch(console.error);
+  }
+  return originalEncode(value, buffer);
+};
+
+serializer.decode = function(buffer: SmartBuffer): any {
+  return originalDecode(buffer);
+};

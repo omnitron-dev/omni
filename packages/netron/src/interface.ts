@@ -1,8 +1,8 @@
-import { Reference } from './reference';
-import { Definition } from './definition';
-import { AbstractPeer } from './abstract-peer';
-import { StreamReference } from './stream-reference';
-import { isNetronStream, isNetronService, isServiceInterface } from './predicates';
+import { Reference } from './reference.js';
+import { Definition } from './definition.js';
+import { AbstractPeer } from './abstract-peer.js';
+import { StreamReference } from './stream-reference.js';
+import { isNetronStream, isNetronService, isServiceInterface } from './predicates.js';
 
 /**
  * List of internal properties that can be read from the Interface instance.
@@ -127,8 +127,8 @@ export class Interface {
           throw new Error(`Property is not writable: '${prop}' is marked as readonly`);
         }
 
-        let resolvePromise: () => void = () => {};
-        let rejectPromise: (reason?: any) => void = () => {};
+        let resolvePromise: () => void = () => { };
+        let rejectPromise: (reason?: any) => void = () => { };
 
         const promise = new Promise<void>((resolve, reject) => {
           resolvePromise = resolve;

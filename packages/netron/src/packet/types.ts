@@ -29,6 +29,7 @@ export type PacketImpulse = 0 | 1;
  * @constant {number} TYPE_TASK - Triggers execution of a predefined remote task
  * @constant {number} TYPE_STREAM - Indicates streaming data transmission
  * @constant {number} TYPE_STREAM_ERROR - Signals an error condition during stream transmission
+ * @constant {number} TYPE_STREAM_CLOSE - Explicit stream closure notification
  *
  * @example
  * // Create a packet for property retrieval
@@ -42,6 +43,7 @@ export const TYPE_CALL = 0x03;
 export const TYPE_TASK = 0x04;
 export const TYPE_STREAM = 0x05;
 export const TYPE_STREAM_ERROR = 0x06;
+export const TYPE_STREAM_CLOSE = 0x07;
 
 /**
  * Represents the union type of all possible packet types in the Netron protocol.
@@ -55,6 +57,7 @@ export const TYPE_STREAM_ERROR = 0x06;
  * @property {number} TYPE_TASK - Remote task execution
  * @property {number} TYPE_STREAM - Data streaming
  * @property {number} TYPE_STREAM_ERROR - Stream error notification
+ * @property {number} TYPE_STREAM_CLOSE - Stream close notification
  *
  * @example
  * function handlePacket(packet: Packet) {
@@ -75,7 +78,8 @@ export type PacketType =
   | typeof TYPE_CALL
   | typeof TYPE_TASK
   | typeof TYPE_STREAM
-  | typeof TYPE_STREAM_ERROR;
+  | typeof TYPE_STREAM_ERROR
+  | typeof TYPE_STREAM_CLOSE;
 
 /**
  * Enumerates the possible types of packets within a data stream.

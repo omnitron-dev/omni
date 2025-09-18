@@ -7,22 +7,22 @@ import { WebSocket } from 'ws';
 import { EventEmitter } from 'events';
 import { TimedMap } from '@omnitron-dev/common';
 
-import { Netron } from './netron';
-import { Interface } from './interface';
-import { Definition } from './definition';
-import { getQualifiedName } from './utils';
-import { ServiceStub } from './service-stub';
-import { AbstractPeer } from './abstract-peer';
-import { StreamReference } from './stream-reference';
-import { NetronReadableStream } from './readable-stream';
-import { NetronWritableStream } from './writable-stream';
-import { isServiceDefinition, isNetronStreamReference } from './predicates';
+import { Netron } from './netron.js';
+import { Interface } from './interface.js';
+import { Definition } from './definition.js';
+import { getQualifiedName } from './utils.js';
+import { ServiceStub } from './service-stub.js';
+import { AbstractPeer } from './abstract-peer.js';
+import { StreamReference } from './stream-reference.js';
+import { NetronReadableStream } from './readable-stream.js';
+import { NetronWritableStream } from './writable-stream.js';
+import { isServiceDefinition, isNetronStreamReference } from './predicates.js';
 import {
   REQUEST_TIMEOUT,
   SERVICE_ANNOTATION,
   NETRON_EVENT_SERVICE_EXPOSE,
   NETRON_EVENT_SERVICE_UNEXPOSE,
-} from './constants';
+} from './constants.js';
 import {
   Abilities,
   NetronOptions,
@@ -30,7 +30,7 @@ import {
   ServiceMetadata,
   ServiceExposeEvent,
   ServiceUnexposeEvent,
-} from './types';
+} from './types.js';
 import {
   Packet,
   TYPE_GET,
@@ -43,8 +43,9 @@ import {
   encodePacket,
   decodePacket,
   TYPE_STREAM_ERROR,
+  TYPE_STREAM_CLOSE,
   createStreamPacket,
-} from './packet';
+} from './packet/index.js';
 
 /**
  * Represents a remote peer in the Netron network.
@@ -634,6 +635,16 @@ export class RemotePeer extends AbstractPeer {
         const stream = this.readableStreams.get(streamId);
         if (stream) {
           stream.destroy(new Error(message));
+        }
+        break;
+      }
+      case TYPE_STREAM_CLOSE: {
+        const { streamId, reason } = packet.data;
+        this.logger.info({ streamId, reason }, 'Stream close received');
+        const stream = this.readableStreams.get(streamId);
+        if (stream) {
+          // Immediately close the stream with the provided reason
+          stream.forceClose(reason);
         }
         break;
       }

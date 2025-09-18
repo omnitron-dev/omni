@@ -1,7 +1,7 @@
 import semver from 'semver';
 
-import { ServiceMetadata } from './types';
-import { SERVICE_ANNOTATION } from './constants';
+import { ServiceMetadata } from './types.js';
+import { SERVICE_ANNOTATION } from './constants.js';
 
 /**
  * Service decorator factory that creates a class decorator for defining Netron services.
@@ -117,15 +117,15 @@ export const Service = (qualifiedName: string) => (target: any) => {
  */
 export const Public =
   (options?: { readonly?: boolean }) =>
-  (target: any, propertyKey: string | symbol, descriptor?: PropertyDescriptor) => {
-    // Mark the member as public
-    Reflect.defineMetadata('public', true, target, propertyKey);
+    (target: any, propertyKey: string | symbol, descriptor?: PropertyDescriptor) => {
+      // Mark the member as public
+      Reflect.defineMetadata('public', true, target, propertyKey);
 
-    // For properties (when descriptor is undefined), handle readonly flag
-    if (!descriptor) {
-      Reflect.defineMetadata('readonly', options?.readonly, target, propertyKey);
-    }
-  };
+      // For properties (when descriptor is undefined), handle readonly flag
+      if (!descriptor) {
+        Reflect.defineMetadata('readonly', options?.readonly, target, propertyKey);
+      }
+    };
 
 /**
  * Alias for the Service decorator, providing an alternative naming convention.

@@ -1,7 +1,7 @@
 import { Readable, ReadableOptions } from 'stream';
 
-import { Packet } from './packet';
-import { RemotePeer } from './remote-peer';
+import { Packet } from './packet/index.js';
+import { RemotePeer } from './remote-peer.js';
 
 /**
  * Maximum number of packets that can be buffered in the stream before
@@ -197,6 +197,34 @@ export class NetronReadableStream extends Readable {
     if (this.isLive && force) {
       this.destroy();
     }
+  }
+
+  /**
+   * Forces immediate stream closure due to remote stream termination.
+   * This method is called when receiving an explicit close packet from the remote peer.
+   * It immediately closes the stream and emits appropriate events.
+   *
+   * @param {string} [reason] - Optional reason for the forced closure
+   * @returns {void}
+   */
+  public forceClose(reason?: string): void {
+    if (this.isClosed) {
+      this.peer.logger.warn({ streamId: this.id }, 'Attempt to force close already closed stream');
+      return;
+    }
+
+    this.peer.logger.info({ streamId: this.id, reason }, 'Force closing stream');
+    this.isClosed = true;
+    this.isComplete = true;
+
+    // Push null to signal end of stream
+    this.push(null);
+
+    // Emit close event for listeners
+    process.nextTick(() => {
+      this.emit('close');
+      this.cleanup();
+    });
   }
 
   /**

@@ -1,4 +1,4 @@
-import { MAX_UID_VALUE } from './constants';
+import { MAX_UID_VALUE } from './constants.js';
 
 /**
  * A class that provides functionality for generating and managing unique identifiers (UIDs)

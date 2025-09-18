@@ -1,3 +1,4 @@
+import { jest, describe, beforeEach, afterEach, it, expect } from '@jest/globals';
 import { delay } from '@omnitron-dev/common';
 
 import { Service1, IService1 } from './fixtures/service1';
@@ -11,7 +12,7 @@ import {
   NETRON_EVENT_SERVICE_EXPOSE,
   NETRON_EVENT_PEER_DISCONNECT,
   NETRON_EVENT_SERVICE_UNEXPOSE,
-} from '../src';
+} from '../src/index';
 
 describe('RemotePeer', () => {
   let netron: Netron;

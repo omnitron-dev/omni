@@ -1,8 +1,8 @@
 import { Writable, Readable, WritableOptions } from 'stream';
 
-import { Uid } from './uid';
-import { RemotePeer } from './remote-peer';
-import { Packet, createPacket, TYPE_STREAM_ERROR } from './packet';
+import { Uid } from './uid.js';
+import { RemotePeer } from './remote-peer.js';
+import { Packet, createPacket, TYPE_STREAM_ERROR, TYPE_STREAM_CLOSE } from './packet/index.js';
 
 /**
  * Global UID generator instance for creating unique stream identifiers.
@@ -182,7 +182,7 @@ export class NetronWritableStream extends Writable {
 
   /**
    * Overrides the destroy method to ensure proper cleanup and error handling.
-   * Sends a final chunk to the remote peer before destruction.
+   * Sends a close notification packet to the remote peer for immediate stream termination.
    *
    * @override
    * @param {Error} [error] - Optional error that caused the destruction
@@ -197,10 +197,15 @@ export class NetronWritableStream extends Writable {
     this.peer.logger.info({ streamId: this.id, error }, 'Destroying stream');
     this.isClosed = true;
 
+    // Send explicit close packet for immediate notification
+    const closeReason = error ? error.message : 'Stream destroyed';
     this.peer
-      .sendStreamChunk(this.id, null, this.index, true, this.isLive)
+      .sendPacket(createPacket(Packet.nextId(), 1, TYPE_STREAM_CLOSE, {
+        streamId: this.id,
+        reason: closeReason,
+      }))
       .catch((sendError) => {
-        this.peer.logger.error({ streamId: this.id, error: sendError }, 'Failed to send final stream chunk');
+        this.peer.logger.error({ streamId: this.id, error: sendError }, 'Failed to send stream close packet');
       })
       .finally(() => {
         super.destroy(error);

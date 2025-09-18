@@ -1,11 +1,11 @@
 import { Buffer } from 'buffer';
 import { SmartBuffer } from '@omnitron-dev/smartbuffer';
 
-import { Packet } from './packet';
-import { serializer } from './serializer';
-import { PacketType, TYPE_STREAM, PacketImpulse } from './types';
+import { Packet } from './packet.js';
+import { serializer } from './serializer.js';
+import { PacketType, TYPE_STREAM, PacketImpulse } from './types.js';
 
-export * from './types';
+export * from './types.js';
 
 /**
  * Creates a new packet with the specified parameters.

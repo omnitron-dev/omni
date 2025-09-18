@@ -1,15 +1,15 @@
-import { RemotePeer } from './remote-peer';
-import { NetronReadableStream } from './readable-stream';
-import { NetronWritableStream } from './writable-stream';
+import { RemotePeer } from './remote-peer.js';
+import { NetronReadableStream } from './readable-stream.js';
+import { NetronWritableStream } from './writable-stream.js';
 
 /**
  * Represents the type of stream that can be referenced.
  * This type is used to distinguish between readable and writable streams
  * in the Netron distributed system.
  *
- * @typedef {('readable' | 'writable')} StreamType
+ * @typedef {('readable' | 'writable')} StreamReferenceType
  */
-export type StreamType = 'readable' | 'writable';
+export type StreamReferenceType = 'readable' | 'writable';
 
 /**
  * StreamReference is a serializable representation of a stream in the Netron system.
@@ -18,7 +18,7 @@ export type StreamType = 'readable' | 'writable';
  *
  * @class StreamReference
  * @property {number} streamId - Unique identifier of the stream
- * @property {StreamType} type - Type of the stream (readable or writable)
+ * @property {StreamReferenceType} type - Type of the stream (readable or writable)
  * @property {boolean} isLive - Indicates if the stream is live/real-time
  * @property {string} peerId - ID of the peer that owns the stream
  */
@@ -27,16 +27,16 @@ export class StreamReference {
    * Creates a new StreamReference instance.
    *
    * @param {number} streamId - Unique identifier of the stream
-   * @param {StreamType} type - Type of the stream (readable or writable)
+   * @param {StreamReferenceType} type - Type of the stream (readable or writable)
    * @param {boolean} isLive - Indicates if the stream is live/real-time
    * @param {string} peerId - ID of the peer that owns the stream
    */
   constructor(
     public readonly streamId: number,
-    public readonly type: StreamType,
+    public readonly type: StreamReferenceType,
     public readonly isLive: boolean,
     public readonly peerId: string
-  ) {}
+  ) { }
 
   /**
    * Creates a StreamReference from an existing stream instance.

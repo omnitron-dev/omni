@@ -1,14 +1,14 @@
-import { Netron } from './netron';
-import { Interface } from './interface';
-import { Reference } from './reference';
-import { LocalPeer } from './local-peer';
-import { Definition } from './definition';
-import { ServiceStub } from './service-stub';
-import { AbstractPeer } from './abstract-peer';
-import { SERVICE_ANNOTATION } from './constants';
-import { StreamReference } from './stream-reference';
-import { NetronWritableStream } from './writable-stream';
-import { NetronReadableStream } from './readable-stream';
+import { Netron } from './netron.js';
+import { Interface } from './interface.js';
+import { Reference } from './reference.js';
+import { LocalPeer } from './local-peer.js';
+import { Definition } from './definition.js';
+import { ServiceStub } from './service-stub.js';
+import { AbstractPeer } from './abstract-peer.js';
+import { SERVICE_ANNOTATION } from './constants.js';
+import { StreamReference } from './stream-reference.js';
+import { NetronWritableStream } from './writable-stream.js';
+import { NetronReadableStream } from './readable-stream.js';
 
 /**
  * Determines whether the provided object is an instance of the Netron class.

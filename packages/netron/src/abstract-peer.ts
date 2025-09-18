@@ -1,10 +1,10 @@
 import semver from 'semver';
 
-import { Netron } from './netron';
-import { Interface } from './interface';
-import { Definition } from './definition';
-import { isServiceInterface } from './predicates';
-import { Abilities, EventSubscriber } from './types';
+import { Netron } from './netron.js';
+import { Interface } from './interface.js';
+import { Definition } from './definition.js';
+import { isServiceInterface } from './predicates.js';
+import { Abilities, EventSubscriber } from './types.js';
 
 /**
  * Abstract base class representing a peer in the Netron network.
@@ -36,7 +36,7 @@ export abstract class AbstractPeer {
   constructor(
     public netron: Netron,
     public id: string
-  ) {}
+  ) { }
 
   /**
    * Sets a property value or calls a method on the remote peer.

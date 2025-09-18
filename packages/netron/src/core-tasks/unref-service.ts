@@ -1,4 +1,4 @@
-import { RemotePeer } from '../remote-peer';
+import { RemotePeer } from '../remote-peer.js';
 
 /**
  * Removes a service reference from a remote peer in the Netron network.

@@ -1,6 +1,6 @@
 import { LoggerOptions, DestinationStream } from 'pino';
 
-import { Definition } from './definition';
+import { Definition } from './definition.js';
 
 /**
  * Represents the capabilities and configuration of a remote peer.

@@ -1,4 +1,4 @@
-import { RemotePeer } from '../remote-peer';
+import { RemotePeer } from '../remote-peer.js';
 
 /**
  * Unsubscribes from events previously subscribed to from a remote peer in the Netron network.

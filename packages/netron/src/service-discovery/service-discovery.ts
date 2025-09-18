@@ -2,9 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Logger } from 'pino';
 import { Redis } from 'ioredis';
+import { fileURLToPath } from 'node:url';
 
-import { Netron } from '../netron';
-import { NodeInfo, ServiceInfo, DiscoveryEvent, DiscoveryOptions } from './types';
+import { Netron } from '../netron.js';
+import { NodeInfo, ServiceInfo, DiscoveryEvent, DiscoveryOptions } from './types.js';
 
 /**
  * Default interval in milliseconds for sending periodic heartbeat signals to Redis.
@@ -23,6 +24,8 @@ const DEFAULT_HEARTBEAT_TTL = 15000;
  * Lua script for atomic registration of node heartbeats in Redis.
  * The script is loaded from the filesystem and executed as a single transaction.
  */
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const REGISTER_HEARTBEAT_SCRIPT = fs.readFileSync(path.join(__dirname, '../../lua/register-heartbeat.lua'), 'utf8');
 
 /**

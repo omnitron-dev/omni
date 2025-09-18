@@ -1,4 +1,4 @@
-import { RemotePeer } from '../remote-peer';
+import { RemotePeer } from '../remote-peer.js';
 
 /**
  * Subscribes to events from a remote peer in the Netron network.

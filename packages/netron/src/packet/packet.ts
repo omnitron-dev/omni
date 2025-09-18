@@ -1,5 +1,5 @@
-import { Uid } from '../uid';
-import { PacketType, TYPE_STREAM, PacketImpulse } from './types';
+import { Uid } from '../uid.js';
+import { PacketType, TYPE_STREAM, PacketImpulse } from './types.js';
 
 /**
  * Extracts the value of a single bit from a number at a specified position.
@@ -138,7 +138,7 @@ export class Packet {
    * @param {number} id - The unique identifier for this packet (uint32)
    * @throws {Error} If the provided ID is not a valid unsigned 32-bit integer
    */
-  constructor(public id: number) {}
+  constructor(public id: number) { }
 
   /**
    * Sets the packet type in the control flags while preserving all other flags.

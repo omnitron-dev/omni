@@ -1,20 +1,26 @@
 import path from 'node:path';
 import { Logger } from 'pino';
 import { Redis } from 'ioredis';
+import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { IncomingMessage } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 
-import { NetronOptions } from './types';
-import { LocalPeer } from './local-peer';
-import { RemotePeer } from './remote-peer';
-import { getPeerEventName } from './utils';
-import { ServiceStub } from './service-stub';
-import LoggerFactory from './logging/logger';
-import { Task, TaskManager } from './task-manager';
-import { ServiceInfo, ServiceDiscovery } from './service-discovery';
-import { CONNECT_TIMEOUT, NETRON_EVENT_PEER_CONNECT, NETRON_EVENT_PEER_DISCONNECT } from './constants';
+import { NetronOptions } from './types.js';
+import { LocalPeer } from './local-peer.js';
+import { RemotePeer } from './remote-peer.js';
+import { getPeerEventName } from './utils.js';
+import { ServiceStub } from './service-stub.js';
+import LoggerFactory from './logging/logger.js';
+import { Task, TaskManager } from './task-manager.js';
+import { ServiceInfo, ServiceDiscovery } from './service-discovery/index.js';
+import { CONNECT_TIMEOUT, NETRON_EVENT_PEER_CONNECT, NETRON_EVENT_PEER_DISCONNECT } from './constants.js';
+import { ensureStreamReferenceRegistered } from './packet/serializer.js';
+
+// ESM __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * The main Netron class that manages WebSocket connections, services, and peer communication.
@@ -203,6 +209,10 @@ export class Netron extends EventEmitter {
     }
 
     this.logger.info('Starting Netron instance');
+
+    // Ensure StreamReference is registered with serializer
+    await ensureStreamReferenceRegistered();
+
     // Try to load from dist/core-tasks first (for tests), then from __dirname/core-tasks
     let coreTasksPath = path.join(__dirname, '..', 'dist', 'core-tasks');
     try {

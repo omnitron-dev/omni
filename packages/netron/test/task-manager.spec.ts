@@ -1,7 +1,12 @@
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 import { TaskManager } from '../src';
 import { syncTask, asyncTask, failingTask, delayedTask } from './fixtures/tasks';
+
+// ESM __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 describe('TaskManager', () => {
   let manager: TaskManager;

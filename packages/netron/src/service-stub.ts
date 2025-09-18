@@ -1,10 +1,10 @@
 import { isAsyncGenerator } from '@omnitron-dev/common';
 
-import { LocalPeer } from './local-peer';
-import { Definition } from './definition';
-import { ServiceMetadata } from './types';
-import { StreamReference } from './stream-reference';
-import { NetronWritableStream } from './writable-stream';
+import { LocalPeer } from './local-peer.js';
+import { Definition } from './definition.js';
+import { ServiceMetadata } from './types.js';
+import { StreamReference } from './stream-reference.js';
+import { NetronWritableStream } from './writable-stream.js';
 import {
   isNetronStream,
   isNetronService,
@@ -12,7 +12,7 @@ import {
   isServiceInterface,
   isServiceDefinition,
   isNetronStreamReference,
-} from './predicates';
+} from './predicates.js';
 
 /**
  * ServiceStub is a proxy object for a service instance in the Netron system.

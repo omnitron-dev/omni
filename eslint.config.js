@@ -127,7 +127,7 @@ const customConfig = {
     ...commonRules(),
     ...importRules(),
     ...unusedImportsRules(),
-    ...sortImportsRules(),
+    // ...sortImportsRules(),
   },
 };
 

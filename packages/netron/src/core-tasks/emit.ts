@@ -1,4 +1,4 @@
-import { RemotePeer } from '../remote-peer';
+import { RemotePeer } from '../remote-peer.js';
 
 /**
  * Emits an event to all subscribers registered for a specific event name.

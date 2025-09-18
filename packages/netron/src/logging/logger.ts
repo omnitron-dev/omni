@@ -1,6 +1,6 @@
 import pino, { Logger, LoggerOptions, DestinationStream } from 'pino';
 
-import { defaultLoggingOptions } from './config';
+import { defaultLoggingOptions } from './config.js';
 
 /**
  * Factory class for creating and managing Pino logger instances.

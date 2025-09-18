@@ -1,15 +1,15 @@
 import { Logger } from 'pino';
 
-import { Netron } from './netron';
-import { Interface } from './interface';
-import { Definition } from './definition';
-import { RemotePeer } from './remote-peer';
-import { ServiceStub } from './service-stub';
-import { AbstractPeer } from './abstract-peer';
-import { isServiceInterface, isServiceDefinition } from './predicates';
-import { EventSubscriber, ServiceMetadata, ServiceExposeEvent } from './types';
-import { getQualifiedName, getServiceMetadata, getServiceEventName } from './utils';
-import { NETRON_EVENT_SERVICE_EXPOSE, NETRON_EVENT_SERVICE_UNEXPOSE } from './constants';
+import { Netron } from './netron.js';
+import { Interface } from './interface.js';
+import { Definition } from './definition.js';
+import { RemotePeer } from './remote-peer.js';
+import { ServiceStub } from './service-stub.js';
+import { AbstractPeer } from './abstract-peer.js';
+import { isServiceInterface, isServiceDefinition } from './predicates.js';
+import { EventSubscriber, ServiceMetadata, ServiceExposeEvent } from './types.js';
+import { getQualifiedName, getServiceMetadata, getServiceEventName } from './utils.js';
+import { NETRON_EVENT_SERVICE_EXPOSE, NETRON_EVENT_SERVICE_UNEXPOSE } from './constants.js';
 
 /**
  * LocalPeer is a concrete implementation of AbstractPeer that manages local service instances

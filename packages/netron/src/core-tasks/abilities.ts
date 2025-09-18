@@ -1,6 +1,6 @@
-import { Abilities } from '../types';
-import { Definition } from '../definition';
-import { RemotePeer } from '../remote-peer';
+import { Abilities } from '../types.js';
+import { Definition } from '../definition.js';
+import { RemotePeer } from '../remote-peer.js';
 
 /**
  * Handles the exchange of capabilities between peers during connection establishment.

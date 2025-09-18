@@ -1,4 +1,4 @@
-import { RemotePeer } from '../remote-peer';
+import { RemotePeer } from '../remote-peer.js';
 
 /**
  * Removes a previously exposed service from a remote peer in the Netron network.

@@ -15,7 +15,7 @@ import {
   HealthStatus
 } from '../../src/index';
 import { LoggerModuleToken, ILogger as Logger } from '../../src/modules/logger.module';
-import { ConfigModuleToken } from '../../src/modules/config.module';
+const ConfigModuleToken = createToken('ConfigModule');
 import { Module } from '../../src/enhanced-module';
 
 // ============================

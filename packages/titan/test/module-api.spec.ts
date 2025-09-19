@@ -16,7 +16,7 @@ import {
   type Provider
 } from '../src/index';
 import { LoggerModuleToken } from '../src/modules/logger.module';
-import { ConfigModuleToken } from '../src/modules/config.module';
+const ConfigModuleToken = createToken('ConfigModule');
 
 // Test service tokens
 const TestServiceToken = createToken<TestService>('TestService');

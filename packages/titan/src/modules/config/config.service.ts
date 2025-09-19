@@ -124,12 +124,14 @@ export class ConfigService<T = any> extends EventEmitter {
       });
     }
 
-    // Add environment variables source
-    sources.push({
-      type: 'env',
-      prefix: process.env['CONFIG_PREFIX'] || '',
-      separator: process.env['CONFIG_SEPARATOR'] || '__',
-    });
+    // Add environment variables source if enabled (defaults to true unless explicitly disabled)
+    if (this.options.loadEnvironment !== false) {
+      sources.push({
+        type: 'env',
+        prefix: process.env['CONFIG_PREFIX'] || '',
+        separator: process.env['CONFIG_SEPARATOR'] || '__',
+      });
+    }
 
     // Add defaults as the lowest priority source
     if (this.options.defaults) {
@@ -291,9 +293,6 @@ export class ConfigService<T = any> extends EventEmitter {
    * Get the entire configuration object
    */
   getAll(): T {
-    if (!this.initialized) {
-      throw new Error('Configuration service not initialized');
-    }
     return this.config as T;
   }
 
@@ -410,6 +409,56 @@ export class ConfigService<T = any> extends EventEmitter {
    */
   isTest(): boolean {
     return this.environment === 'test';
+  }
+
+  /**
+   * Reset configuration to defaults
+   */
+  reset(): void {
+    this.config = this.options.defaults || {};
+    this.cache.clear();
+    this.emit('reset', this.config);
+  }
+
+  /**
+   * Delete configuration value by path
+   */
+  delete(path: string): boolean {
+    const parts = path.split('.');
+    const lastKey = parts.pop()!;
+    let target = this.config;
+
+    for (const part of parts) {
+      target = target[part];
+      if (!target) return false;
+    }
+
+    if (lastKey in target) {
+      const oldValue = target[lastKey];
+      delete target[lastKey];
+      this.cache.delete(path);
+
+      const event: ConfigChangeEvent = {
+        path,
+        oldValue,
+        newValue: undefined,
+        source: 'runtime',
+        timestamp: new Date(),
+      };
+
+      this.emit('change', event);
+      this.emit(`change:${path}`, event);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Get current environment
+   */
+  getEnvironment(): string {
+    return this.environment;
   }
 
   /**

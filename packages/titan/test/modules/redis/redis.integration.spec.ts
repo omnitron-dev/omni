@@ -1,22 +1,44 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, jest } from '@jest/globals';
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+/**
+ * Redis Module Integration Tests
+ *
+ * Tests module functionality with real Redis instance
+ * without NestJS dependencies
+ */
+
+import { describe, it, expect, beforeAll, afterAll, beforeEach, jest } from '@jest/globals';
+import { Container } from '@omnitron-dev/nexus';
+import { Redis } from 'ioredis';
+
+import { TitanRedisModule } from '../../../src/modules/redis/redis.module.js';
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
 import { RedisService } from '../../../src/modules/redis/redis.service.js';
 import { RedisHealthIndicator } from '../../../src/modules/redis/redis.health.js';
-import { TitanRedisModule } from '../../../src/modules/redis/redis.module';
-import { RedisCache, RedisLock, RedisRateLimit } from '../../../src/modules/redis/redis.decorators.js';
-import { Redis } from 'ioredis';
+import { REDIS_MANAGER } from '../../../src/modules/redis/redis.constants.js';
+import {
+  RedisCache,
+  RedisLock,
+  RedisRateLimit
+} from '../../../src/modules/redis/redis.decorators.js';
+import { TestApplication } from '../../../src/testing/test-application.js';
+import { suppressConsole } from '../../../src/testing/test-helpers.js';
 
-describe('Redis Module Integration Tests (Real Redis)', () => {
-  let app: INestApplication;
-  let module: TestingModule;
+// Skip integration tests if SKIP_INTEGRATION is set
+const SKIP_INTEGRATION = process.env.SKIP_INTEGRATION === 'true';
+const describeIntegration = SKIP_INTEGRATION ? describe.skip : describe;
+
+describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
+  let app: TestApplication;
+  let container: Container;
   let redisManager: RedisManager;
   let redisService: RedisService;
   let healthIndicator: RedisHealthIndicator;
   let testNamespace: string;
+  let restoreConsole: (() => void) | undefined;
 
   beforeAll(async () => {
+    // Suppress console output during tests
+    restoreConsole = suppressConsole();
+
     // Check if Redis is available at localhost:6379
     const testConnection = new Redis({
       host: 'localhost',
@@ -31,74 +53,89 @@ describe('Redis Module Integration Tests (Real Redis)', () => {
       await testConnection.ping();
       await testConnection.quit();
     } catch (error) {
-      console.error('Redis is not available at localhost:6379. Please start Redis before running tests.');
+      console.error('Redis is not available at localhost:6379. Please start Redis before running integration tests.');
       throw error;
     }
 
     // Generate unique namespace for this test run
     testNamespace = `test-${Date.now()}-${Math.random().toString(36).substring(7)}`;
 
-    // Create test module with multiple Redis clients
-    module = await Test.createTestingModule({
-      imports: [
-        TitanRedisModule.forRoot({
-          clients: [
-            {
-              namespace: 'default',
-              host: 'localhost',
-              port: 6379,
-              db: 15,
-              keyPrefix: `${testNamespace}:default:`,
-            },
-            {
-              namespace: 'cache',
-              host: 'localhost',
-              port: 6379,
-              db: 14,
-              keyPrefix: `${testNamespace}:cache:`,
-              enableOfflineQueue: true,
-              maxRetriesPerRequest: 5,
-            },
-            {
-              namespace: 'pubsub',
-              host: 'localhost',
-              port: 6379,
-              db: 13,
-              keyPrefix: `${testNamespace}:pubsub:`,
-            },
-          ],
-          scripts: [
-            {
-              name: 'testScript',
-              content: `
-                local key = KEYS[1]
-                local value = ARGV[1]
-                redis.call('SET', key, value)
-                return redis.call('GET', key)
-              `,
-            },
-          ],
-        }),
+    // Create test application with Redis module
+    app = new TestApplication();
+    container = app.getContainer();
+
+    // Register the Redis module
+    const redisModule = TitanRedisModule.forRoot({
+      clients: [
+        {
+          namespace: 'default',
+          host: 'localhost',
+          port: 6379,
+          db: 15,
+          keyPrefix: `${testNamespace}:default:`,
+        },
+        {
+          namespace: 'cache',
+          host: 'localhost',
+          port: 6379,
+          db: 14,
+          keyPrefix: `${testNamespace}:cache:`,
+          enableOfflineQueue: true,
+          maxRetriesPerRequest: 5,
+        },
+        {
+          namespace: 'pubsub',
+          host: 'localhost',
+          port: 6379,
+          db: 13,
+          keyPrefix: `${testNamespace}:pubsub:`,
+        },
       ],
-    }).compile();
+      scripts: [
+        {
+          name: 'testScript',
+          content: `
+            local key = KEYS[1]
+            local value = ARGV[1]
+            redis.call('SET', key, value)
+            return redis.call('GET', key)
+          `,
+        },
+      ],
+    });
 
-    app = module.createNestApplication();
-    await app.init();
+    // Register providers from module
+    if (redisModule.providers) {
+      for (const provider of redisModule.providers as any[]) {
+        if (Array.isArray(provider)) {
+          const [token, providerConfig] = provider;
+          container.register(token, providerConfig);
+        } else {
+          container.register(provider, provider);
+        }
+      }
+    }
 
-    redisManager = module.get<RedisManager>(RedisManager);
-    redisService = module.get<RedisService>(RedisService);
-    healthIndicator = module.get<RedisHealthIndicator>(RedisHealthIndicator);
+    // Initialize the application
+    await app.bootstrap();
+
+    // Resolve services
+    redisManager = await container.resolveAsync<RedisManager>(REDIS_MANAGER);
+    redisService = await container.resolveAsync<RedisService>(RedisService);
+    healthIndicator = await container.resolveAsync<RedisHealthIndicator>(RedisHealthIndicator);
   });
 
   afterAll(async () => {
     // Clean up all test data
     try {
       for (const namespace of ['default', 'cache', 'pubsub']) {
-        const client = redisManager.getClient(namespace) as Redis;
-        if (client) {
-          const keys = await client.keys(`${testNamespace}:*`);
-          if (keys.length > 0) {
-            await client.del(...keys);
+        if (redisManager?.hasClient(namespace)) {
+          const client = redisManager.getClient(namespace) as Redis;
+          if (client) {
+            const keys = await client.keys(`${testNamespace}:*`);
+            if (keys.length > 0) {
+              await client.del(...keys);
+            }
           }
         }
       }
@@ -106,18 +143,22 @@ describe('Redis Module Integration Tests (Real Redis)', () => {
       console.warn('Error cleaning up test data:', error);
     }
 
-    await app?.close();
-  });
+    // Cleanup resources
+    await app?.stop();
+    restoreConsole?.();
+  }, 30000); // Increase timeout for cleanup
 
   beforeEach(async () => {
     // Clean up test data before each test
     try {
       for (const namespace of ['default', 'cache', 'pubsub']) {
-        const client = redisManager.getClient(namespace) as Redis;
-        if (client) {
-          const keys = await client.keys(`${testNamespace}:*`);
-          if (keys.length > 0) {
-            await client.del(...keys);
+        if (redisManager?.hasClient(namespace)) {
+          const client = redisManager.getClient(namespace) as Redis;
+          if (client) {
+            const keys = await client.keys(`${testNamespace}:*`);
+            if (keys.length > 0) {
+              await client.del(...keys);
+            }
           }
         }
       }
@@ -408,7 +449,7 @@ describe('Redis Module Integration Tests (Real Redis)', () => {
       expect(results![3][1]).toBe(1);
       expect(results![4][1]).toBe('value');
       expect(results![5][1]).toBe(2);
-      expect(results![6][1].sort()).toEqual(['member1', 'member2']);
+      expect((results![6][1] as string[]).sort()).toEqual(['member1', 'member2']);
       expect(results![8][1]).toEqual(['one', 'two']);
     });
   });
@@ -702,7 +743,13 @@ describe('Redis Module Integration Tests (Real Redis)', () => {
 
       // Scan through all keys
       do {
-        const [newCursor, batch] = await client.scan(cursor, 'MATCH', `${testNamespace}:default:scan-key-*`, 'COUNT', 10);
+        const [newCursor, batch] = await client.scan(
+          cursor,
+          'MATCH',
+          `${testNamespace}:default:scan-key-*`,
+          'COUNT',
+          10
+        );
         cursor = newCursor;
         keys.push(...batch);
       } while (cursor !== '0');
@@ -886,78 +933,107 @@ describe('Redis Module Integration Tests (Real Redis)', () => {
 
   describe('Module Configuration', () => {
     it('should support async configuration', async () => {
-      const asyncModule = await Test.createTestingModule({
-        imports: [
-          TitanRedisModule.forRootAsync({
-            useFactory: async () => ({
-              clients: [
-                {
-                  namespace: 'async-config',
-                  host: 'localhost',
-                  port: 6379,
-                  db: 10,
-                  keyPrefix: `${testNamespace}:async:`,
-                },
-              ],
-            }),
-          }),
-        ],
-      }).compile();
+      const asyncApp = new TestApplication();
+      const asyncContainer = asyncApp.getContainer();
 
-      const asyncApp = asyncModule.createNestApplication();
-      await asyncApp.init();
+      // Register async module
+      const asyncModule = TitanRedisModule.forRootAsync({
+        useFactory: async () => ({
+          clients: [
+            {
+              namespace: 'async-config',
+              host: 'localhost',
+              port: 6379,
+              db: 10,
+              keyPrefix: `${testNamespace}:async:`,
+            },
+          ],
+        }),
+      });
 
-      const asyncService = asyncApp.get<RedisService>(RedisService);
+      // Register providers
+      if (asyncModule.providers) {
+        for (const provider of asyncModule.providers as any[]) {
+          if (Array.isArray(provider)) {
+            const [token, providerConfig] = provider;
+            asyncContainer.register(token, providerConfig);
+          } else {
+            asyncContainer.register(provider, provider);
+          }
+        }
+      }
+
+      await asyncApp.bootstrap();
+
+      const asyncManager = await asyncContainer.resolveAsync<RedisManager>(REDIS_MANAGER);
+      const asyncService = await asyncContainer.resolveAsync<RedisService>(RedisService);
+
       await asyncService.set('async-key', 'async-value', 'async-config');
       const value = await asyncService.get('async-key', 'async-config');
       expect(value).toBe('async-value');
 
       // Clean up
-      const asyncManager = asyncApp.get<RedisManager>(RedisManager);
       const client = asyncManager.getClient('async-config') as Redis;
       const keys = await client.keys(`${testNamespace}:async:*`);
       if (keys.length > 0) {
         await client.del(...keys);
       }
 
-      await asyncApp.close();
+      await asyncApp.stop();
     });
 
     it('should support feature modules', async () => {
-      const featureModule = await Test.createTestingModule({
-        imports: [
-          TitanRedisModule.forRoot({
-            clients: [
-              {
-                namespace: 'feature',
-                host: 'localhost',
-                port: 6379,
-                db: 9,
-                keyPrefix: `${testNamespace}:feature:`,
-              },
-            ],
-          }),
-          TitanRedisModule.forFeature(['feature']),
+      const featureApp = new TestApplication();
+      const featureContainer = featureApp.getContainer();
+
+      // Register root module
+      const rootModule = TitanRedisModule.forRoot({
+        clients: [
+          {
+            namespace: 'feature',
+            host: 'localhost',
+            port: 6379,
+            db: 9,
+            keyPrefix: `${testNamespace}:feature:`,
+          },
         ],
-      }).compile();
+      });
 
-      const featureApp = featureModule.createNestApplication();
-      await featureApp.init();
+      // Register feature module
+      const featureModule = TitanRedisModule.forFeature(['feature']);
 
-      const featureService = featureApp.get<RedisService>(RedisService);
+      // Register all providers
+      const modules = [rootModule, featureModule];
+      for (const module of modules) {
+        if (module.providers) {
+          for (const provider of module.providers as any[]) {
+            if (Array.isArray(provider)) {
+              const [token, providerConfig] = provider;
+              featureContainer.register(token, providerConfig);
+            } else {
+              featureContainer.register(provider, provider);
+            }
+          }
+        }
+      }
+
+      await featureApp.bootstrap();
+
+      const featureManager = await featureContainer.resolveAsync<RedisManager>(REDIS_MANAGER);
+      const featureService = await featureContainer.resolveAsync<RedisService>(RedisService);
+
       await featureService.set('feature-key', 'feature-value', 'feature');
       const value = await featureService.get('feature-key', 'feature');
       expect(value).toBe('feature-value');
 
       // Clean up
-      const featureManager = featureApp.get<RedisManager>(RedisManager);
       const client = featureManager.getClient('feature') as Redis;
       const keys = await client.keys(`${testNamespace}:feature:*`);
       if (keys.length > 0) {
         await client.del(...keys);
       }
 
-      await featureApp.close();
+      await featureApp.stop();
     });
   });
 

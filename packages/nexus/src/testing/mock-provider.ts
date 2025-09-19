@@ -59,12 +59,16 @@ export class MockProviderDI<T> {
    */
   createSpy(): T {
     const provider = this.provider;
-    let mock: T;
+    let mock: T | undefined;
 
     if ('useValue' in provider) {
       mock = provider.useValue;
     } else {
       // For factories and other cases, use automock
+      mock = this.createAutoMock();
+    }
+
+    if (!mock) {
       mock = this.createAutoMock();
     }
 
@@ -81,7 +85,7 @@ export class MockProviderDI<T> {
       return spy;
     }
 
-    return mock;
+    return mock as T;
   }
 }
 

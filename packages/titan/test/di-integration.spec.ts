@@ -210,16 +210,16 @@ describe('DI Integration Tests', () => {
     });
 
     it('should handle factory providers with async initialization', async () => {
-      const ConfigToken = createToken<Config>('Config');
+      const TestConfigToken = createToken<TestConfig>('TestConfig');
       const ServiceToken = createToken<AsyncService>('AsyncService');
 
-      interface Config {
+      interface TestConfig {
         apiUrl: string;
         timeout: number;
       }
 
       class AsyncService {
-        constructor(public config: Config) {}
+        constructor(public config: TestConfig) {}
 
         async fetchData() {
           // Simulate async operation
@@ -235,7 +235,7 @@ describe('DI Integration Tests', () => {
             name: 'FactoryModule',
             providers: [
               {
-                provide: ConfigToken,
+                provide: TestConfigToken,
                 useFactory: async () => {
                   // Simulate async config loading
                   await new Promise(resolve => setTimeout(resolve, 10));
@@ -247,12 +247,12 @@ describe('DI Integration Tests', () => {
               },
               {
                 provide: ServiceToken,
-                useFactory: async (config: Config) => {
+                useFactory: async (config: TestConfig) => {
                   // Simulate async service initialization
                   await new Promise(resolve => setTimeout(resolve, 10));
                   return new AsyncService(config);
                 },
-                inject: [ConfigToken]
+                inject: [TestConfigToken]
               }
             ]
           });

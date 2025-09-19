@@ -8,6 +8,7 @@ import { ContextManager, ContextProvider } from '../context/context.js';
 import { LifecycleEvent, LifecycleManager } from '../lifecycle/lifecycle.js';
 import { isToken, isMultiToken, getTokenName, isOptionalToken } from '../token/token.js';
 import { Middleware, MiddlewareContext, MiddlewarePipeline } from '../middleware/middleware.js';
+import { normalizeProvider, isExplicitProvider } from '../utils/provider-utils.js';
 import {
   DisposalError,
   ResolutionError,
@@ -127,14 +128,41 @@ export class Container implements IContainer {
   }
 
   /**
-   * Register a provider
+   * Register a provider - supports multiple formats
    */
   register<T>(
-    token: InjectionToken<T>,
-    provider: Provider<T>,
-    options: RegistrationOptions = {}
+    tokenOrProvider: InjectionToken<T> | Provider<T> | any,
+    providerOrOptions?: Provider<T> | RegistrationOptions,
+    optionsArg?: RegistrationOptions
   ): this {
     this.checkDisposed();
+
+    let token: InjectionToken<T>;
+    let provider: Provider<T>;
+    let options: RegistrationOptions;
+
+    // Normalize arguments based on input format
+    if (isExplicitProvider(tokenOrProvider)) {
+      // Handle explicit provider format { provide: token, ... }
+      const normalized = normalizeProvider(tokenOrProvider);
+      if (Array.isArray(normalized)) {
+        token = normalized[0] as InjectionToken<T>;
+        provider = normalized[1];
+      } else {
+        throw new InvalidProviderError(undefined as any, 'Provider must have a token');
+      }
+      options = (providerOrOptions as RegistrationOptions) || {};
+    } else if (arguments.length === 1 && typeof tokenOrProvider === 'function' && tokenOrProvider.prototype) {
+      // Handle single constructor argument
+      token = tokenOrProvider as InjectionToken<T>;
+      provider = { useClass: tokenOrProvider as Constructor<T> };
+      options = {};
+    } else {
+      // Standard format: register(token, provider, options)
+      token = tokenOrProvider as InjectionToken<T>;
+      provider = providerOrOptions as Provider<T>;
+      options = optionsArg || {};
+    }
 
     // Handle config token validation and defaults
     if (isToken(token) && (token as any).isConfig) {
@@ -287,8 +315,9 @@ export class Container implements IContainer {
       };
 
       const classConstructor = provider.useClass;
-      const injectedDependencies = Reflect.getMetadata(METADATA_KEYS.INJECT, classConstructor);
-      const optionalMetadata = Reflect.getMetadata(METADATA_KEYS.OPTIONAL, classConstructor) || {};
+      if (classConstructor) {
+        const injectedDependencies = Reflect.getMetadata(METADATA_KEYS.INJECT, classConstructor);
+        const optionalMetadata = Reflect.getMetadata(METADATA_KEYS.OPTIONAL, classConstructor) || {};
 
       if (injectedDependencies) {
         // Transform dependencies to include optional flag
@@ -298,6 +327,7 @@ export class Container implements IContainer {
           }
           return dep;
         });
+      }
       }
     }
 
@@ -323,8 +353,9 @@ export class Container implements IContainer {
       return () => provider.useValue;
     }
 
-    if ('useClass' in provider) {
-      return (...args: any[]) => new provider.useClass(...args);
+    if ('useClass' in provider && provider.useClass) {
+      const ClassConstructor = provider.useClass;
+      return (...args: any[]) => new ClassConstructor(...args);
     }
 
     if ('when' in provider && 'useFactory' in provider) {
@@ -354,12 +385,13 @@ export class Container implements IContainer {
       };
     }
 
-    if ('useFactory' in provider) {
+    if ('useFactory' in provider && provider.useFactory) {
       return provider.useFactory;
     }
 
-    if ('useToken' in provider) {
-      return () => this.resolve(provider.useToken);
+    if ('useToken' in provider && provider.useToken) {
+      const token = provider.useToken;
+      return () => this.resolve(token);
     }
 
     throw new InvalidProviderError(token, 'Unable to create factory from provider');
@@ -717,9 +749,10 @@ export class Container implements IContainer {
         };
 
         const classConstructor = registration.provider.useClass;
-        const propertyInjections = Reflect.getMetadata(METADATA_KEYS.PROPERTY_INJECTIONS, classConstructor);
+        if (classConstructor) {
+          const propertyInjections = Reflect.getMetadata(METADATA_KEYS.PROPERTY_INJECTIONS, classConstructor);
 
-        if (propertyInjections) {
+          if (propertyInjections) {
           for (const [propertyKey, token] of Object.entries(propertyInjections)) {
             try {
               instance[propertyKey] = this.resolve(token as InjectionToken<any>);
@@ -730,6 +763,7 @@ export class Container implements IContainer {
               }
             }
           }
+        }
         }
       }
 

@@ -12,7 +12,7 @@ import {
 } from '../src/types';
 // Import core module tokens from titan modules
 import { LoggerModuleToken } from '../src/modules/logger.module';
-import { ConfigModuleToken } from '../src/modules/config.module';
+const ConfigModuleToken = createToken('ConfigModule');
 
 // Import the task manager components from test fixture
 import {

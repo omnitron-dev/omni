@@ -57,6 +57,7 @@ export interface CacheOptions {
   ttl?: number;
   namespace?: string;
   key?: string | ((...args: any[]) => string);
+  keyFn?: (...args: any[]) => string; // Alias for key function
   condition?: (...args: any[]) => boolean;
   refresh?: boolean;
 }
@@ -65,6 +66,7 @@ export interface LockOptions {
   ttl?: number;
   namespace?: string;
   key?: string | ((...args: any[]) => string);
+  keyFn?: (...args: any[]) => string; // Alias for key function
   retries?: number;
   retryDelay?: number;
 }

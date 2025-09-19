@@ -2,7 +2,7 @@
  * Core types for Titan application framework
  */
 
-import { Token, Container } from '@omnitron-dev/nexus';
+import { Token, Container, ExplicitProvider } from '@omnitron-dev/nexus';
 
 /**
  * Application lifecycle state
@@ -271,22 +271,10 @@ export type ModuleFactory<T extends IModule = IModule> = (app: IApplication) => 
  */
 export interface IDynamicModule extends IModule {
   module: ModuleConstructor;
-  providers?: IProvider[];
+  providers?: ExplicitProvider[];
   imports?: ModuleInput[];
   exports?: Token<any>[];
   global?: boolean;
-}
-
-/**
- * Provider definition for modules
- */
-export interface IProvider {
-  provide: Token<any>;
-  useClass?: any;
-  useValue?: any;
-  useFactory?: (...args: any[]) => any;
-  inject?: Token<any>[];
-  scope?: 'singleton' | 'transient';
 }
 
 /**

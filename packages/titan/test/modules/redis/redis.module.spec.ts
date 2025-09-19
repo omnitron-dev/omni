@@ -1,33 +1,60 @@
-import { Test, TestingModule } from '@nestjs/testing';
+/**
+ * Tests for TitanRedisModule
+ *
+ * Tests module creation, provider registration, and client initialization
+ * without any NestJS dependencies
+ */
+
+import { Container } from '@omnitron-dev/nexus';
 import { TitanRedisModule } from '../../../src/modules/redis/redis.module.js';
-import { RedisService } from '../../../src/modules/redis/redis.service';
+import { RedisService } from '../../../src/modules/redis/redis.service.js';
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
 import { RedisHealthIndicator } from '../../../src/modules/redis/redis.health.js';
 import { REDIS_MANAGER, getRedisToken } from '../../../src/modules/redis/redis.constants.js';
 import { RedisModuleOptions } from '../../../src/modules/redis/redis.types.js';
+import { createMockRedisClient } from '../../../src/testing/test-helpers.js';
+import * as redisUtils from '../../../src/modules/redis/redis.utils.js';
+
+// Mock redis.utils to use mock clients
+jest.mock('../../../src/modules/redis/redis.utils.js', () => ({
+  ...jest.requireActual('../../../src/modules/redis/redis.utils.js'),
+  createRedisClient: jest.fn(() => {
+    const { createMockRedisClient } = require('../../../src/testing/test-helpers.js');
+    return createMockRedisClient();
+  }),
+  waitForConnection: jest.fn(async () => {}),
+}));
 
 describe('TitanRedisModule', () => {
-  let module: TestingModule;
+  let container: Container;
+
+  beforeEach(() => {
+    container = new Container();
+  });
 
   afterEach(async () => {
-    if (module) {
-      await module.close();
+    // Clean up any resources
+    const manager = container.has(REDIS_MANAGER)
+      ? await container.resolveAsync<RedisManager>(REDIS_MANAGER)
+      : null;
+
+    if (manager) {
+      await manager.destroy();
     }
+
+    container.dispose();
+    jest.clearAllMocks();
   });
 
   describe('forRoot', () => {
     it('should create module with default configuration', async () => {
-      module = await Test.createTestingModule({
-        imports: [TitanRedisModule.forRoot()],
-      }).compile();
+      const module = TitanRedisModule.forRoot();
 
-      const redisManager = module.get(REDIS_MANAGER);
-      const redisService = module.get(RedisService);
-      const redisHealth = module.get(RedisHealthIndicator);
-
-      expect(redisManager).toBeDefined();
-      expect(redisService).toBeDefined();
-      expect(redisHealth).toBeDefined();
+      expect(module.module).toBe(TitanRedisModule);
+      expect(module.providers).toBeDefined();
+      expect(module.exports).toContain(REDIS_MANAGER);
+      expect(module.exports).toContain(RedisService);
+      expect(module.exports).toContain(RedisHealthIndicator);
     });
 
     it('should create module with custom configuration', async () => {
@@ -39,12 +66,27 @@ describe('TitanRedisModule', () => {
         },
       };
 
-      module = await Test.createTestingModule({
-        imports: [TitanRedisModule.forRoot(options)],
-      }).compile();
+      const module = TitanRedisModule.forRoot(options);
 
-      const redisManager = module.get(REDIS_MANAGER);
-      expect(redisManager).toBeDefined();
+      expect(module.module).toBe(TitanRedisModule);
+      expect(module.providers).toBeDefined();
+
+      // Register providers in container
+      if (module.providers) {
+        for (const provider of module.providers as any[]) {
+          if (Array.isArray(provider)) {
+            const [token, providerConfig] = provider;
+            container.register(token, providerConfig);
+          } else {
+            container.register(provider, provider);
+          }
+        }
+      }
+
+      // Verify manager can be resolved
+      const manager = await container.resolveAsync<RedisManager>(REDIS_MANAGER);
+      expect(manager).toBeInstanceOf(RedisManager);
+      expect(manager.hasClient('test')).toBe(true);
     });
 
     it('should create global module when isGlobal is true', async () => {
@@ -56,12 +98,11 @@ describe('TitanRedisModule', () => {
         },
       };
 
-      module = await Test.createTestingModule({
-        imports: [TitanRedisModule.forRoot(options)],
-      }).compile();
+      const module = TitanRedisModule.forRoot(options);
 
-      const redisService = module.get(RedisService);
-      expect(redisService).toBeDefined();
+      expect(module.global).toBe(true);
+      expect(module.providers).toBeDefined();
+      expect(module.exports).toContain(RedisService);
     });
 
     it('should handle multiple client configurations', async () => {
@@ -76,35 +117,61 @@ describe('TitanRedisModule', () => {
         },
       };
 
-      module = await Test.createTestingModule({
-        imports: [TitanRedisModule.forRoot(options)],
-      }).compile();
+      const module = TitanRedisModule.forRoot(options);
 
-      const redisManager = module.get<RedisManager>(REDIS_MANAGER);
-      expect(redisManager).toBeDefined();
+      // Register providers
+      if (module.providers) {
+        for (const provider of module.providers as any[]) {
+          if (Array.isArray(provider)) {
+            const [token, providerConfig] = provider;
+            container.register(token, providerConfig);
+          } else {
+            container.register(provider, provider);
+          }
+        }
+      }
+
+      const manager = await container.resolveAsync<RedisManager>(REDIS_MANAGER);
+      expect(manager).toBeInstanceOf(RedisManager);
+      expect(manager.hasClient('cache')).toBe(true);
+      expect(manager.hasClient('sessions')).toBe(true);
     });
   });
 
   describe('forRootAsync', () => {
     it('should create module with async factory', async () => {
-      module = await Test.createTestingModule({
-        imports: [
-          TitanRedisModule.forRootAsync({
-            useFactory: () => ({
-              config: {
-                host: 'localhost',
-                port: 6379,
-              },
-            }),
-          }),
-        ],
-      }).compile();
+      const module = TitanRedisModule.forRootAsync({
+        useFactory: () => ({
+          config: {
+            host: 'localhost',
+            port: 6379,
+          },
+        }),
+      });
 
-      const redisService = module.get(RedisService);
-      expect(redisService).toBeDefined();
+      expect(module.module).toBe(TitanRedisModule);
+      expect(module.providers).toBeDefined();
+      expect(module.exports).toContain(REDIS_MANAGER);
     });
 
-    it('should create module with async class', async () => {
+    it('should support inject tokens', async () => {
+      const CONFIG_TOKEN = Symbol('CONFIG');
+
+      const module = TitanRedisModule.forRootAsync({
+        inject: [CONFIG_TOKEN],
+        useFactory: (config: any) => ({
+          config: {
+            host: config.redis.host,
+            port: config.redis.port,
+          },
+        }),
+      });
+
+      expect(module.providers).toBeDefined();
+      expect(module.imports).toBeDefined();
+    });
+
+    it('should support useClass', async () => {
       class ConfigService {
         createRedisOptions(): RedisModuleOptions {
           return {
@@ -116,69 +183,114 @@ describe('TitanRedisModule', () => {
         }
       }
 
-      module = await Test.createTestingModule({
-        imports: [
-          TitanRedisModule.forRootAsync({
-            useClass: ConfigService,
-          }),
-        ],
-      }).compile();
+      const module = TitanRedisModule.forRootAsync({
+        useClass: ConfigService,
+      });
 
-      const redisService = module.get(RedisService);
-      expect(redisService).toBeDefined();
+      expect(module.providers).toBeDefined();
+      expect(module.providers?.length).toBeGreaterThan(0);
     });
 
-    it('should handle dependencies injection', async () => {
-      class ConfigService {
-        getRedisConfig() {
-          return {
+    it('should create global async module', async () => {
+      const module = TitanRedisModule.forRootAsync({
+        isGlobal: true,
+        useFactory: () => ({
+          config: {
             host: 'localhost',
             port: 6379,
-          };
-        }
-      }
+          },
+        }),
+      });
 
-      const ConfigModule = {
-        module: class ConfigModule { },
-        providers: [ConfigService],
-        exports: [ConfigService],
-      };
-
-      module = await Test.createTestingModule({
-        imports: [
-          ConfigModule,
-          TitanRedisModule.forRootAsync({
-            imports: [ConfigModule],
-            useFactory: (configService: ConfigService) => ({
-              config: configService.getRedisConfig(),
-            }),
-            inject: [ConfigService],
-          }),
-        ],
-      }).compile();
-
-      const redisService = module.get(RedisService);
-      expect(redisService).toBeDefined();
+      expect(module.global).toBe(true);
     });
   });
 
   describe('forFeature', () => {
-    it('should return correct module configuration', () => {
-      const clients = ['cache', 'sessions'];
-      const moduleConfig = TitanRedisModule.forFeature(clients);
+    it('should create feature module for specific clients', () => {
+      const module = TitanRedisModule.forFeature(['cache', 'sessions']);
 
-      expect(moduleConfig).toBeDefined();
-      expect(moduleConfig.module).toBe(TitanRedisModule);
-      expect(moduleConfig.providers).toHaveLength(2);
-      expect(moduleConfig.exports).toHaveLength(2);
+      expect(module.module).toBe(TitanRedisModule);
+      expect(module.providers).toBeDefined();
+      expect(module.providers?.length).toBe(2);
+      expect(module.exports?.length).toBe(2);
+    });
 
-      // Check that correct tokens are provided
-      const cacheToken = getRedisToken('cache');
-      const sessionToken = getRedisToken('sessions');
+    it('should provide access to named clients', async () => {
+      // Register the root module with named clients
+      const rootModule = TitanRedisModule.forRoot({
+        clients: [
+          { namespace: 'cache', db: 0 },
+          { namespace: 'sessions', db: 1 },
+        ],
+      });
 
-      const providerTokens = moduleConfig.providers?.map(p => (p as any).provide);
-      expect(providerTokens).toContain(cacheToken);
-      expect(providerTokens).toContain(sessionToken);
+      // Register root providers
+      if (rootModule.providers) {
+        for (const provider of rootModule.providers as any[]) {
+          if (Array.isArray(provider)) {
+            const [token, providerConfig] = provider;
+            container.register(token, providerConfig);
+          }
+        }
+      }
+
+      // Verify we can access the named clients via their tokens
+      const manager = await container.resolveAsync<RedisManager>(REDIS_MANAGER);
+      const cacheClient = await container.resolveAsync(getRedisToken('cache'));
+      const sessionsClient = await container.resolveAsync(getRedisToken('sessions'));
+
+      expect(cacheClient).toBeDefined();
+      expect(sessionsClient).toBeDefined();
+      expect(manager.hasClient('cache')).toBe(true);
+      expect(manager.hasClient('sessions')).toBe(true);
+    });
+  });
+
+  describe('Client initialization', () => {
+    it('should initialize default client when no config provided', async () => {
+      const module = TitanRedisModule.forRoot();
+
+      if (module.providers) {
+        for (const provider of module.providers as any[]) {
+          if (Array.isArray(provider)) {
+            const [token, providerConfig] = provider;
+            container.register(token, providerConfig);
+          }
+        }
+      }
+
+      const manager = await container.resolveAsync<RedisManager>(REDIS_MANAGER);
+      expect(manager.hasClient('default')).toBe(true);
+    });
+
+    it('should merge common options with client-specific options', async () => {
+      const options: RedisModuleOptions = {
+        commonOptions: {
+          host: 'redis.example.com',
+          password: 'secret',
+        },
+        clients: [
+          { namespace: 'cache', db: 0 },
+          { namespace: 'sessions', db: 1, port: 6380 }, // Override port
+        ],
+      };
+
+      const module = TitanRedisModule.forRoot(options);
+
+      if (module.providers) {
+        for (const provider of module.providers as any[]) {
+          if (Array.isArray(provider)) {
+            const [token, providerConfig] = provider;
+            container.register(token, providerConfig);
+          }
+        }
+      }
+
+      const manager = await container.resolveAsync<RedisManager>(REDIS_MANAGER);
+
+      expect(manager.hasClient('cache')).toBe(true);
+      expect(manager.hasClient('sessions')).toBe(true);
     });
   });
 });

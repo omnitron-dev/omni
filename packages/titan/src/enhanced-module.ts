@@ -2,11 +2,10 @@
  * Enhanced module system with automatic provider management
  */
 
-import { Token, Container } from '@omnitron-dev/nexus';
+import { Token, Container, InjectionToken, getTokenName, ExplicitProvider } from '@omnitron-dev/nexus';
 
 import {
   IModule,
-  IProvider,
   ModuleInput,
   IApplication,
   IHealthStatus,
@@ -21,7 +20,7 @@ export interface IModuleMetadata {
   name?: string;
   version?: string;
   imports?: ModuleInput[];
-  providers?: IProvider[];
+  providers?: ExplicitProvider[];
   exports?: Token<any>[];
   dependencies?: (Token<any> | string)[];
 }
@@ -30,9 +29,9 @@ export interface IModuleMetadata {
  * Provider instance with lifecycle
  */
 interface IProviderInstance {
-  token: Token<any>;
+  token: InjectionToken<any>;
   instance: any;
-  metadata: IProvider;
+  metadata: ExplicitProvider;
 }
 
 /**
@@ -118,7 +117,7 @@ export abstract class EnhancedApplicationModule extends BaseApplicationModule {
           // Log error but don't fail startup - graceful degradation
           const logger = (app as any).logger;
           if (logger) {
-            logger.error({ error, provider: provider.token.name }, 'Provider initialization failed');
+            logger.error({ error, provider: getTokenName(provider.token) }, 'Provider initialization failed');
           }
         }
       }
@@ -162,7 +161,7 @@ export abstract class EnhancedApplicationModule extends BaseApplicationModule {
           } catch (error) {
             return {
               status: 'unhealthy' as const,
-              message: `Provider ${provider.token.name} health check failed`,
+              message: `Provider ${getTokenName(provider.token)} health check failed`,
               details: error
             };
           }
@@ -212,7 +211,7 @@ export abstract class EnhancedApplicationModule extends BaseApplicationModule {
   /**
    * Register a provider
    */
-  private async registerProvider(providerDef: IProvider, app: IApplication): Promise<void> {
+  private async registerProvider(providerDef: ExplicitProvider, app: IApplication): Promise<void> {
     const token = providerDef.provide;
 
     // Register in parent container directly
@@ -384,7 +383,7 @@ export function Module(metadata: IModuleMetadata): ClassDecorator {
  */
 export function createModuleWithProviders(
   name: string,
-  providers: IProvider[],
+  providers: ExplicitProvider[],
   options?: Partial<IModuleMetadata>
 ): EnhancedApplicationModule {
   return new (class extends EnhancedApplicationModule {

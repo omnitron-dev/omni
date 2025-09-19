@@ -4,8 +4,8 @@
 
 import { createToken } from '@omnitron-dev/nexus';
 import { Application, createApp } from '../src/application';
-import { ConfigModuleToken } from '../src/modules/config.module';
 import { LoggerModuleToken } from '../src/modules/logger.module';
+const ConfigModuleToken = createToken('ConfigModule');
 import {
   ApplicationModule,
   ApplicationState,

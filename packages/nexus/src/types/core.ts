@@ -95,7 +95,7 @@ export interface ResolutionContext {
 }
 
 /**
- * Provider types
+ * Provider types - Unified format supporting both token-first and provider-first patterns
  */
 export interface ClassProvider<T = any> {
   useClass: Constructor<T>;
@@ -145,7 +145,28 @@ export interface StreamProvider<T = any> {
 }
 
 /**
- * Provider union type
+ * Provider with explicit token - supports legacy format with 'provide' field
+ */
+export interface ExplicitProvider<T = any> {
+  provide: InjectionToken<T>;
+  useClass?: Constructor<T>;
+  useValue?: T;
+  useFactory?: Factory<T> | AsyncFactory<T>;
+  useToken?: InjectionToken<T>;
+  inject?: InjectionToken[];
+  scope?: Scope;
+  multi?: boolean;
+  async?: boolean;
+  validate?: string | ((value: T) => void);
+  timeout?: number;
+  retry?: {
+    maxAttempts: number;
+    delay: number;
+  };
+}
+
+/**
+ * Provider union type - supports all provider patterns
  */
 export type Provider<T = any> =
   | ClassProvider<T>
@@ -154,7 +175,15 @@ export type Provider<T = any> =
   | AsyncFactoryProvider<T>
   | TokenProvider<T>
   | ConditionalProvider<T>
+  | ExplicitProvider<T>
   | Constructor<T>;
+
+/**
+ * Normalized provider format - internal representation
+ */
+export type NormalizedProvider<T = any> =
+  | [InjectionToken<T>, Provider<T>]
+  | Provider<T>;
 
 /**
  * Stream options for streaming providers

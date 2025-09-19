@@ -52,6 +52,11 @@ export interface IProcessLifecycleConfig {
    * Force kill timeout after graceful shutdown timeout
    */
   forceKillTimeout: number;
+
+  /**
+   * Disable actual process.exit calls (for testing)
+   */
+  disableProcessExit?: boolean;
 }
 
 /**

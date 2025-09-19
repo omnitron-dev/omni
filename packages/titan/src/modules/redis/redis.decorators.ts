@@ -20,40 +20,71 @@ export function RedisCache(options?: CacheOptions): MethodDecorator {
     const originalMethod = descriptor.value;
 
     descriptor.value = async function (...args: any[]) {
+      // Try to find redis client - support multiple naming conventions
+      const redisManager = (this as any).redisManager;
       const redisService = (this as any).redisService;
+      const redis = (this as any).redis;
 
-      if (!redisService) {
+      // Get client from manager or service
+      let client: any;
+      const namespace = options?.namespace || 'default';
+
+      if (redisManager) {
+        client = redisManager.getClient?.(namespace) || redisManager.client || redisManager;
+      } else if (redisService) {
+        client = redisService.getClient?.(namespace) || redisService.client || redisService;
+      } else if (redis) {
+        client = redis;
+      }
+
+      if (!client) {
         return originalMethod.apply(this, args);
       }
 
-      const key = typeof options?.key === 'function'
-        ? options.key(...args)
-        : options?.key || `${target.constructor.name}:${String(propertyKey)}:${JSON.stringify(args)}`;
+      // Support both 'key' and 'keyFn' for backward compatibility
+      const keyFn = options?.keyFn || options?.key;
+      let key: string;
+
+      if (typeof keyFn === 'function') {
+        key = keyFn(...args);
+      } else if (keyFn) {
+        // If static key provided, append args to it
+        const argsKey = args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(':');
+        key = argsKey ? `${keyFn}:${argsKey}` : keyFn;
+      } else {
+        // Default key format
+        key = `${String(propertyKey)}:${args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(':')}`;
+      }
+
+      const fullKey = `cache:${key}`;
 
       if (options?.condition && !options.condition(...args)) {
         return originalMethod.apply(this, args);
       }
 
-      const namespace = options?.namespace;
       const ttl = options?.ttl || 3600;
 
       try {
         if (!options?.refresh) {
-          const cached = await redisService.get(key, namespace);
+          const cached = await client.get(fullKey);
           if (cached) {
-            return JSON.parse(cached);
+            try {
+              return JSON.parse(cached);
+            } catch {
+              return cached; // Return as-is if not JSON
+            }
           }
         }
 
         const result = await originalMethod.apply(this, args);
 
         if (result !== undefined && result !== null) {
-          await redisService.set(
-            key,
-            JSON.stringify(result),
-            ttl,
-            namespace,
-          );
+          const value = typeof result === 'string' ? result : JSON.stringify(result);
+          if (ttl > 0) {
+            await client.setex(fullKey, ttl, value);
+          } else {
+            await client.set(fullKey, value);
+          }
         }
 
         return result;
@@ -86,38 +117,45 @@ export function RedisLock(options?: LockOptions): MethodDecorator {
       const retries = options?.retries || 10;
       const retryDelay = options?.retryDelay || 100;
 
+      const client = namespace ? redisService.getClient(namespace) : redisService.getClient();
+      const fullKey = namespace ? `${namespace}:${key}` : key;
+
       const lockValue = `${Date.now()}:${Math.random()}`;
+      const ttlSeconds = Math.ceil(ttl / 1000);
 
+      // Try to acquire lock
       for (let i = 0; i < retries; i++) {
-        const acquired = await redisService.setnx(key, lockValue, namespace);
+        // Use SET NX EX for atomic lock acquisition
+        const acquired = await client.set(fullKey, lockValue, 'NX', 'EX', ttlSeconds);
 
-        if (acquired) {
-          await redisService.expire(key, Math.ceil(ttl / 1000), namespace);
-
+        if (acquired === 'OK') {
           try {
             const result = await originalMethod.apply(this, args);
-            const currentValue = await redisService.get(key, namespace);
 
+            // Release lock if we still own it
+            const currentValue = await client.get(fullKey);
             if (currentValue === lockValue) {
-              await redisService.del(key, namespace);
+              await client.del(fullKey);
             }
 
             return result;
           } catch (error) {
-            const currentValue = await redisService.get(key, namespace);
-
+            // Release lock on error if we still own it
+            const currentValue = await client.get(fullKey);
             if (currentValue === lockValue) {
-              await redisService.del(key, namespace);
+              await client.del(fullKey);
             }
-
             throw error;
           }
         }
 
-        await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        // Wait before retrying
+        if (i < retries - 1) {
+          await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        }
       }
 
-      throw new Error(`Failed to acquire lock for key: ${key}`);
+      throw new Error(`Failed to acquire lock for key: ${fullKey}`);
     };
 
     return descriptor;
@@ -129,21 +167,34 @@ export function RedisRateLimit(options: RateLimitOptions): MethodDecorator {
     const originalMethod = descriptor.value;
 
     descriptor.value = async function (...args: any[]) {
+      // Try to find redis client - support multiple naming conventions
+      const redisManager = (this as any).redisManager;
       const redisService = (this as any).redisService;
+      const redis = (this as any).redis;
 
-      if (!redisService) {
+      // Get client from manager or service
+      let client: any;
+      const namespace = options?.namespace || 'default';
+
+      if (redisManager) {
+        client = redisManager.getClient?.(namespace) || redisManager.client || redisManager;
+      } else if (redisService) {
+        client = redisService.getClient?.(namespace) || redisService.client || redisService;
+      } else if (redis) {
+        client = redis;
+      }
+
+      if (!client) {
         return originalMethod.apply(this, args);
       }
 
-      const keyPrefix = options.keyPrefix || `rate:${target.constructor.name}:${String(propertyKey)}`;
+      const keyPrefix = options.keyPrefix || `rate:${String(propertyKey)}`;
       const key = `${keyPrefix}:${args[0] || 'default'}`;
-      const namespace = options.namespace;
 
       const now = Date.now();
       const windowStart = now - options.duration;
 
-      const client = redisService.getClient(namespace);
-
+      // Use sorted sets for sliding window rate limiting
       const pipeline = client.pipeline();
       pipeline.zremrangebyscore(key, '-inf', windowStart);
       pipeline.zadd(key, now, `${now}:${Math.random()}`);
@@ -161,18 +212,14 @@ export function RedisRateLimit(options: RateLimitOptions): MethodDecorator {
       if (count > options.points) {
         if (options.blockDuration) {
           const blockKey = `${key}:blocked`;
-          await redisService.set(
-            blockKey,
-            '1',
-            Math.ceil(options.blockDuration / 1000),
-            namespace,
-          );
+          await client.setex(blockKey, Math.ceil(options.blockDuration / 1000), '1');
         }
 
-        throw new Error('Rate limit exceeded');
+        throw new Error(`Rate limit exceeded: ${count}/${options.points} requests`);
       }
 
-      const blocked = await redisService.get(`${key}:blocked`, namespace);
+      // Check if blocked
+      const blocked = await client.get(`${key}:blocked`);
       if (blocked) {
         throw new Error('Rate limit blocked');
       }

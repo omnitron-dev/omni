@@ -27,7 +27,8 @@ import {
   EnhancedApplicationModule
 } from '../src/index';
 import { LoggerModule, LoggerModuleToken } from '../src/modules/logger.module';
-import { ConfigModule, ConfigModuleToken } from '../src/modules/config.module';
+import { ConfigModule } from '../src/modules/config/config.module';
+const ConfigModuleToken = createToken('ConfigModule');
 
 // Test utilities
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));

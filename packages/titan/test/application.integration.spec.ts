@@ -16,8 +16,10 @@ const createApp = (options: any = {}) => {
     ...options
   });
 };
-import { ConfigModule, ConfigModuleToken, createConfigModule } from '../src/modules/config.module';
-import { LoggerModule, LoggerModuleToken, createLoggerModule, Logger } from '../src/modules/logger.module';
+import { ConfigModule } from '../src/modules/config/config.module';
+import { LoggerModule, LoggerModuleToken, Logger } from '../src/modules/logger.module';
+import { createToken } from '@omnitron-dev/nexus';
+const ConfigModuleToken = createToken('ConfigModule');
 import {
   ApplicationModule,
   Module,
@@ -557,7 +559,7 @@ describe('Titan Application Integration Tests', () => {
       });
 
       // Create config module with schema
-      const configModule = createConfigModule({
+      const configModuleDynamic = ConfigModule.forRoot({
         schema: configSchema,
         defaults: {
           app: {
@@ -577,7 +579,16 @@ describe('Titan Application Integration Tests', () => {
       });
 
       app = createApp({ disableCoreModules: true });
-      app.replaceModule(ConfigModuleToken, configModule);
+      // Register the ConfigModule providers manually
+      if (configModuleDynamic.providers) {
+        for (const provider of configModuleDynamic.providers as any[]) {
+          if (Array.isArray(provider)) {
+            const [token, providerDef] = provider;
+            app.container.register(token, providerDef);
+          }
+        }
+      }
+      app.replaceModule(ConfigModuleToken, new ConfigModule());
       app.replaceModule(LoggerModuleToken, new LoggerModule());
 
       await app.start();

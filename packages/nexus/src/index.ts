@@ -120,6 +120,24 @@ export {
   type IsolatedContainer
 } from './testing/test-utilities.js';
 
+// Provider Utilities
+export {
+  isExplicitProvider,
+  isConstructor,
+  isAsyncProvider,
+  normalizeProvider,
+  normalizeProviders,
+  providersToRegistrations,
+  getProviderToken,
+  createValueProvider,
+  createFactoryProvider,
+  createClassProvider,
+  createExplicitProvider,
+  mergeProviders,
+  hasScope,
+  isMultiProvider
+} from './utils/provider-utils.js';
+
 // Runtime Detection
 export {
   isBun,
@@ -287,6 +305,8 @@ export {
   type IModule,
   // Provider types
   type Provider,
+  type ExplicitProvider,
+  type NormalizedProvider,
   type MultiToken,
   type IContainer,
 

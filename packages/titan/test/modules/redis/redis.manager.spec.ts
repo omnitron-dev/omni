@@ -2,13 +2,22 @@ import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
 import { RedisModuleOptions } from '../../../src/modules/redis/redis.types.js';
 import type { Redis } from 'ioredis';
 
-const mockRedis = jest.fn();
-const mockCluster = jest.fn();
+// Mock ioredis module
+jest.mock('ioredis', () => {
+  const mockRedis = jest.fn();
+  const mockCluster = jest.fn();
 
-jest.mock('ioredis', () => ({
-  Redis: mockRedis,
-  Cluster: mockCluster,
-}));
+  return {
+    Redis: mockRedis,
+    Cluster: mockCluster,
+    default: { Redis: mockRedis, Cluster: mockCluster }
+  };
+});
+
+// Get the mocked constructors
+const ioredis = jest.requireMock('ioredis');
+const mockRedis = ioredis.Redis as jest.Mock;
+const mockCluster = ioredis.Cluster as jest.Mock;
 
 describe('RedisManager', () => {
   let manager: RedisManager;

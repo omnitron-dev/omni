@@ -8,7 +8,7 @@
  * @description First-class configuration system that eliminates boilerplate
  */
 
-import { Module, DynamicModule, Provider, createToken } from '@omnitron-dev/nexus';
+import { Module, DynamicModule, Provider, createToken, InjectionToken } from '@omnitron-dev/nexus';
 import { ZodType } from 'zod';
 
 import { IApplication, IModule } from '../../types.js';
@@ -167,24 +167,33 @@ export class ConfigModule implements IModule {
    * @deprecated Use automatic configuration instead
    */
   static forRoot(options: ConfigModuleOptions & { global?: boolean } = {}): DynamicModule {
-    // For backward compatibility, store options for later initialization
+    // For backward compatibility, initialize synchronously if not already initialized
     if (!ConfigModule.initialized) {
-      // The actual initialization happens in Application.create()
-      (ConfigModule as any)._pendingOptions = options;
+      const service = new ConfigService(options, ConfigModule.globalSchema);
+      // Note: initialize() will be called later in the lifecycle
+      ConfigModule.instance = service;
+      ConfigModule.initialized = true;
     }
 
     // Return a simple module that references the singleton
-    return {
+    const providers: Array<[InjectionToken<any>, Provider<any>]> = [
+      [ConfigService, { useValue: ConfigModule.instance }],
+      [ConfigServiceToken, { useValue: ConfigModule.instance }],
+      ['ConfigService' as any, { useValue: ConfigModule.instance }],
+      ['Config' as any, { useValue: ConfigModule.instance }],
+    ];
+
+    const result: DynamicModule = {
       module: ConfigModule,
-      providers: [
-        [ConfigService, { useValue: ConfigModule.instance }],
-        [ConfigServiceToken, { useValue: ConfigModule.instance }],
-        ['ConfigService', { useValue: ConfigModule.instance }],
-        ['Config', { useValue: ConfigModule.instance }],
-      ] as any,
+      providers,
       exports: [ConfigService, ConfigServiceToken, 'ConfigService', 'Config'],
-      global: options.global !== false, // Default to global
     };
+
+    if (options.global === true) {
+      result.global = true;
+    }
+
+    return result;
   }
 
   /**
@@ -192,63 +201,87 @@ export class ConfigModule implements IModule {
    * @deprecated Use automatic configuration instead
    */
   static forRootAsync(options: ConfigModuleAsyncOptions): DynamicModule {
-    const optionsProvider: Provider = {
-      useFactory: async (...args: any[]) => await Promise.resolve(options.useFactory(...args)),
-      inject: options.inject || [],
-    };
-
-    const schemaProvider: Provider = {
-      useFactory: async (...args: any[]) => {
-        const opts = await Promise.resolve(options.useFactory(...args));
-        return opts.schema;
+    const optionsProvider: [InjectionToken<any>, Provider] = [
+      CONFIG_OPTIONS_TOKEN,
+      {
+        useFactory: async (...args: any[]) => await Promise.resolve(options.useFactory(...args)),
+        inject: options.inject || [],
       },
-      inject: options.inject || [],
-    };
+    ];
 
-    const loaderProvider: Provider = {
-      useClass: ConfigLoader,
-    };
-
-    const configServiceProvider: Provider = {
-      useFactory: async (
-        opts: ConfigModuleOptions,
-        schema?: ZodType,
-        logger?: any
-      ) => {
-        const service = new ConfigService(opts, schema, logger);
-        await service.initialize();
-        ConfigModule.instance = service;
-        ConfigModule.initialized = true;
-        return service;
+    const schemaProvider: [InjectionToken<any>, Provider] = [
+      CONFIG_SCHEMA_TOKEN,
+      {
+        useFactory: async (...args: any[]) => {
+          const opts = await Promise.resolve(options.useFactory(...args));
+          return opts.schema;
+        },
+        inject: options.inject || [],
       },
-      inject: [CONFIG_OPTIONS_TOKEN, CONFIG_SCHEMA_TOKEN, 'Logger'],
-    };
+    ];
+
+    const loaderProvider: [InjectionToken<any>, Provider] = [
+      CONFIG_LOADER_TOKEN,
+      { useClass: ConfigLoader },
+    ];
+
+    const configServiceProvider: [InjectionToken<any>, Provider] = [
+      ConfigService,
+      {
+        useFactory: async (
+          opts: ConfigModuleOptions,
+          schema?: ZodType,
+          logger?: any
+        ) => {
+          const service = new ConfigService(opts, schema, logger);
+          await service.initialize();
+          ConfigModule.instance = service;
+          ConfigModule.initialized = true;
+          return service;
+        },
+        inject: [CONFIG_OPTIONS_TOKEN, CONFIG_SCHEMA_TOKEN, 'Logger' as any],
+      },
+    ];
 
     // Alias providers
-    const configServiceTokenProvider: Provider = {
-      useToken: ConfigService,
-    };
+    const configServiceTokenProvider: [InjectionToken<any>, Provider] = [
+      ConfigServiceToken,
+      {
+        useFactory: (service: ConfigService) => service,
+        inject: [ConfigService],
+      },
+    ];
 
-    const configServiceAliasProvider: Provider = {
-      useToken: ConfigService,
-    };
+    const configServiceAliasProvider: [InjectionToken<any>, Provider] = [
+      'ConfigService' as any,
+      {
+        useFactory: (service: ConfigService) => service,
+        inject: [ConfigService],
+      },
+    ];
 
-    const configAliasProvider: Provider = {
-      useToken: ConfigService,
-    };
+    const configAliasProvider: [InjectionToken<any>, Provider] = [
+      'Config' as any,
+      {
+        useFactory: (service: ConfigService) => service,
+        inject: [ConfigService],
+      },
+    ];
+
+    const providers = [
+      optionsProvider,
+      schemaProvider,
+      loaderProvider,
+      configServiceProvider,
+      configServiceTokenProvider,
+      configServiceAliasProvider,
+      configAliasProvider,
+    ];
 
     return {
       module: ConfigModule,
       imports: options.imports || [],
-      providers: [
-        [CONFIG_OPTIONS_TOKEN, optionsProvider],
-        [CONFIG_SCHEMA_TOKEN, schemaProvider],
-        [CONFIG_LOADER_TOKEN, loaderProvider],
-        [ConfigService, configServiceProvider],
-        [ConfigServiceToken, configServiceTokenProvider],
-        ['ConfigService', configServiceAliasProvider],
-        ['Config', configAliasProvider],
-      ] as any,
+      providers,
       exports: [ConfigService, ConfigServiceToken, 'ConfigService', 'Config'],
       global: options.global,
     };
@@ -269,7 +302,9 @@ export class ConfigModule implements IModule {
   ): DynamicModule {
     const token = createConfigToken(name);
 
-    const featureProvider: Provider = {
+    const featureProvider: [InjectionToken<any>, Provider] = [
+      token,
+      {
       useFactory: async () => {
         // Ensure ConfigModule is initialized
         if (!ConfigModule.instance) {
@@ -290,14 +325,13 @@ export class ConfigModule implements IModule {
         }
 
         return result.data;
+        },
       },
-    };
+    ];
 
     return {
       module: ConfigModule,
-      providers: [
-        [token, featureProvider],
-      ] as any,
+      providers: [featureProvider],
       exports: [token],
     };
   }
@@ -412,8 +446,8 @@ export class ConfigModule implements IModule {
   }
 
   async onStop?(app: IApplication): Promise<void> {
-    if (ConfigModule.instance) {
-      await ConfigModule.instance.destroy();
+    if (ConfigModule.instance && typeof ConfigModule.instance.dispose === 'function') {
+      await ConfigModule.instance.dispose();
     }
   }
 

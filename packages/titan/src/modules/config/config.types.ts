@@ -96,6 +96,12 @@ export interface ConfigModuleOptions {
   autoLoad?: boolean;
 
   /**
+   * Load environment variables as configuration source
+   * Defaults to true if not specified
+   */
+  loadEnvironment?: boolean;
+
+  /**
    * Base path for configuration files
    */
   configPath?: string;

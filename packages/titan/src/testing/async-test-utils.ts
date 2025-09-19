@@ -387,3 +387,11 @@ export function createEventSpy(target: any, event: string): { events: any[]; cle
     },
   };
 }
+
+// Re-export Redis utilities for compatibility
+export {
+  createRedisTestFixture,
+  cleanupRedisTestFixture,
+  RedisTestFixture,
+  RedisTestFixtureOptions,
+} from './redis-test-utils.js';

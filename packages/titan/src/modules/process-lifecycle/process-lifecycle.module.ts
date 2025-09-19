@@ -43,6 +43,8 @@ const DEFAULT_CONFIG: IProcessLifecycleConfig = {
   healthCheckInterval: 30000, // 30 seconds
   enableHealthChecks: true,
   forceKillTimeout: 5000, // 5 seconds after graceful timeout
+  // Automatically disable process.exit in test environments
+  disableProcessExit: process.env['NODE_ENV'] === 'test' || process.env['JEST_WORKER_ID'] !== undefined,
 };
 
 /**
@@ -207,7 +209,7 @@ export class ProcessLifecycleModule implements IModule {
 
       // Exit process if configured
       if (this.config.exitOnError && reason !== ShutdownReason.Manual) {
-        process.exit(0);
+        this.exitProcess(0);
       }
       return;
     } catch (error) {
@@ -218,10 +220,10 @@ export class ProcessLifecycleModule implements IModule {
       if (this.config.forceKillTimeout > 0) {
         setTimeout(() => {
           this.logger?.fatal('Force killing process after timeout');
-          process.exit(1);
+          this.exitProcess(1);
         }, this.config.forceKillTimeout);
       } else {
-        process.exit(1);
+        this.exitProcess(1);
       }
       throw error; // Re-throw to match Promise<void> expectation
     }
@@ -358,7 +360,7 @@ export class ProcessLifecycleModule implements IModule {
     // Initiate shutdown
     this.shutdown(reason, { signal }).catch(error => {
       this.logger?.fatal({ error }, 'Failed to handle signal');
-      process.exit(1);
+      this.exitProcess(1);
     });
   }
 
@@ -373,7 +375,7 @@ export class ProcessLifecycleModule implements IModule {
       // Initiate shutdown
       this.shutdown(ShutdownReason.UncaughtException, { error }).catch(err => {
         this.logger?.fatal({ error: err }, 'Failed to handle uncaught exception');
-        process.exit(1);
+        this.exitProcess(1);
       });
     };
 
@@ -393,7 +395,7 @@ export class ProcessLifecycleModule implements IModule {
       if (this.config.exitOnError) {
         this.shutdown(ShutdownReason.UnhandledRejection, { reason, promise }).catch(error => {
           this.logger?.fatal({ error }, 'Failed to handle unhandled rejection');
-          process.exit(1);
+          this.exitProcess(1);
         });
       }
     };
@@ -478,11 +480,23 @@ export class ProcessLifecycleModule implements IModule {
   }
 
   /**
+   * Exit process with code (respects disableProcessExit for testing)
+   */
+  private exitProcess(code: number): void {
+    if (!this.config.disableProcessExit) {
+      process.exit(code);
+    } else {
+      this.logger?.debug(`Process exit with code ${code} (disabled in config)`);
+      this.emit('process:exit', { code });
+    }
+  }
+
+  /**
    * Force immediate shutdown (emergency use only)
    */
   forceShutdown(code: number = 1): void {
     this.logger?.fatal(`Force shutdown with code ${code}`);
-    process.exit(code);
+    this.exitProcess(code);
   }
 }
 

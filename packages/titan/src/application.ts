@@ -4,14 +4,13 @@
 
 import os from 'node:os';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import { Token, Container, createToken } from '@omnitron-dev/nexus';
+import { Token, Container, createToken, ExplicitProvider } from '@omnitron-dev/nexus';
 
 import { ConfigModule, ConfigModuleToken, ConfigServiceToken } from './modules/config/index.js';
 import { ILogger, LoggerModule, LoggerModuleToken } from './modules/logger.module.js';
 import { ProcessLifecycleModule, ProcessLifecycleToken, IShutdownTask } from './modules/process-lifecycle/index.js';
 import {
   IModule,
-  IProvider,
   IEventMeta,
   ModuleInput,
   IEnvironment,
@@ -57,7 +56,7 @@ export class Application implements IApplication {
   static async create(options?: IApplicationOptions & {
     modules?: ModuleInput[];
     imports?: Token<IModule>[];  // Support direct imports like AppModule had
-    providers?: IProvider[];      // Support direct providers
+    providers?: ExplicitProvider[];      // Support direct providers
     autoDiscovery?: boolean;       // Enable automatic module discovery
     scanPaths?: string[];         // Paths to scan for modules
   }): Promise<Application> {
@@ -96,9 +95,9 @@ export class Application implements IApplication {
       const rootModule = {
         name: 'RootContext',
         providers: options.providers,
-        onRegister: () => {},
-        onStart: () => {},
-        onStop: () => {},
+        onRegister: () => { },
+        onStart: () => { },
+        onStop: () => { },
       };
       const rootToken = createToken<IModule>('RootContext');
       app._modules.set(rootToken, rootModule);
@@ -201,7 +200,7 @@ export class Application implements IApplication {
 
       // Register and start modules in dependency order
       const sortedModules = this.sortModulesByDependencies();
-      
+
 
       for (const entry of sortedModules) {
         const [token, module] = entry;
@@ -310,7 +309,7 @@ export class Application implements IApplication {
 
       // Log successful stop before stopping core modules
       this._logger?.info('Application stopped successfully');
-      
+
       // Stop logger first among core modules
       if (this.has(LoggerModuleToken)) {
         const loggerModule = this.getModule(LoggerModuleToken);
@@ -318,17 +317,17 @@ export class Application implements IApplication {
         await loggerModule.onStop?.(this);
         this.emit('module:stopped', { module: loggerModule.name });
       }
-      
+
       // Stop config module last
       if (this.has(ConfigModuleToken)) {
         const configModule = this.getModule(ConfigModuleToken);
         await configModule.onStop?.(this);
         this.emit('module:stopped', { module: configModule.name });
       }
-      
+
       // Give pino-pretty time to flush output
       await new Promise(resolve => setImmediate(resolve));
-      
+
       this._state = ApplicationState.Stopped;
       this.emit('stopped');
     } catch (error: any) {
@@ -1046,67 +1045,10 @@ export class Application implements IApplication {
   /**
    * Register a provider in the container
    */
-  private async registerProvider(provider: IProvider): Promise<void> {
-    const { provide: token, useClass, useValue, useFactory, inject, scope } = provider;
-
-    let registration: any;
-
-    if (useClass) {
-      registration = {
-        useClass,
-        scope: scope || 'singleton'
-      };
-    } else if (useValue !== undefined) {
-      registration = { useValue };
-    } else if (useFactory) {
-      // Check if the factory returns a promise (async factory)
-      const isAsyncFactory = async (fn: (...args: any[]) => any) => {
-        try {
-          // Test with empty args to check if it returns a promise
-          const testResult = fn();
-          return testResult && typeof testResult.then === 'function';
-        } catch {
-          return false;
-        }
-      };
-
-      // For async factories, resolve the value eagerly and register as useValue
-      if (await isAsyncFactory(useFactory)) {
-        let value: any;
-        if (inject && inject.length > 0) {
-          const deps = inject.map(depToken => this._container.resolve(depToken));
-          value = await useFactory(...deps);
-        } else {
-          value = await useFactory();
-        }
-        registration = { useValue: value };
-      } else {
-        // Synchronous factory - handle injection properly
-        if (inject && inject.length > 0) {
-          // Create a factory that resolves dependencies and calls the original factory
-          registration = {
-            useFactory: (...args: any[]) => {
-              // If args are provided, use them (from Nexus container)
-              // Otherwise resolve dependencies manually
-              if (args.length > 0) {
-                return useFactory(...args);
-              }
-              const deps = inject.map(depToken => this._container.resolve(depToken));
-              return useFactory(...deps);
-            },
-            inject // Also pass the inject array to Nexus
-          };
-        } else {
-          registration = { useFactory };
-        }
-      }
-    } else {
-      // Invalid provider, skip
-      return;
-    }
-
-    // Override any existing registration
-    this._container.register(token, registration, { override: true });
+  private async registerProvider(provider: ExplicitProvider): Promise<void> {
+    // Use the container's built-in support for ExplicitProvider format
+    // The container now handles the normalization internally
+    this._container.register(provider as any);
   }
 
   private handleError(error: Error): void {

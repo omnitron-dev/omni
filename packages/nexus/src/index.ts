@@ -305,8 +305,9 @@ export {
   type IModule,
   // Provider types
   type Provider,
+  type ProviderDefinition,
+  type ProviderInput,
   type ExplicitProvider,
-  type NormalizedProvider,
   type MultiToken,
   type IContainer,
 

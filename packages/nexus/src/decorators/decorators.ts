@@ -24,7 +24,7 @@ import 'reflect-metadata';
 
 import { Container } from '../container/container.js';
 import { createToken, tokenFromClass } from '../token/token.js';
-import { Scope, Provider, Constructor, InjectionToken, RegistrationOptions } from '../types/core.js';
+import { Scope, Provider, ProviderDefinition, Constructor, InjectionToken, RegistrationOptions } from '../types/core.js';
 
 /**
  * Lazy factory registry for storing factory functions
@@ -546,9 +546,13 @@ export class DecoratorContainer extends Container {
       for (const provider of moduleOptions.providers) {
         if (typeof provider === 'function') {
           this.registerClass(provider as Constructor<any>);
+        } else if (provider && typeof provider === 'object' && 'provide' in provider) {
+          // It's a Provider with 'provide' field - extract token and definition
+          const { provide, ...definition } = provider as any;
+          this.register(provide, definition as any);
         } else {
-          // It's already a provider object
-          this.register((provider as any).provide || (provider as any).token, provider);
+          // It's already a provider object without provide field
+          this.register((provider as any).token, provider as any);
         }
       }
     }
@@ -560,13 +564,13 @@ export class DecoratorContainer extends Container {
    * Override register to handle decorator metadata
    */
   override register<T>(
-    token: InjectionToken<T>,
-    provider: Provider<T>,
-    options?: RegistrationOptions
+    tokenOrProvider: InjectionToken<T> | Provider<T> | Constructor<T>,
+    providerOrOptions?: ProviderDefinition<T> | RegistrationOptions,
+    optionsArg?: RegistrationOptions
   ): this {
-    // If registering a class with decorator metadata, use it
-    if ('useClass' in provider && provider.useClass) {
-      const classConstructor = provider.useClass;
+    // Handle decorator metadata for class providers
+    if (arguments.length >= 2 && typeof providerOrOptions === 'object' && providerOrOptions && 'useClass' in providerOrOptions) {
+      const classConstructor = providerOrOptions.useClass;
       const metadata = getInjectableMetadata(classConstructor);
 
       if (metadata.isInjectable) {
@@ -574,17 +578,18 @@ export class DecoratorContainer extends Container {
         const dependencies = this.buildDependencyList(classConstructor);
 
         // Override provider with decorator metadata
-        const decoratorProvider: Provider<T> = {
-          ...provider,
-          scope: provider.scope || (metadata.scope as Scope),
+        const decoratorProvider: ProviderDefinition<T> = {
+          ...providerOrOptions,
+          scope: providerOrOptions.scope || (metadata.scope as Scope),
           inject: dependencies
         };
 
-        return super.register(token, decoratorProvider, options || {});
+        return super.register(tokenOrProvider as InjectionToken<T>, decoratorProvider, optionsArg || {});
       }
     }
 
-    return super.register(token, provider, options || {});
+    // Pass through to parent implementation
+    return super.register(tokenOrProvider as any, providerOrOptions as any, optionsArg);
   }
 
   /**

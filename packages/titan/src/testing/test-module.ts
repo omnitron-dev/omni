@@ -1,4 +1,4 @@
-import { IModule, Provider, InjectionToken } from '@omnitron-dev/nexus';
+import { IModule, Provider, ProviderDefinition, InjectionToken } from '@omnitron-dev/nexus';
 import { TestContainer, createTestContainer } from '@omnitron-dev/nexus/testing';
 
 import { Application } from '../application.js';
@@ -9,7 +9,7 @@ import { IApplicationConfig } from '../types.js';
  */
 export interface TestModuleOptions {
   modules?: IModule[];
-  providers?: Array<[InjectionToken<any>, Provider<any>]>;
+  providers?: Array<[InjectionToken<any>, ProviderDefinition<any>]>;
   mocks?: Array<{
     token: InjectionToken<any>;
     mock: any;
@@ -187,7 +187,7 @@ export class TestModuleBuilder {
   /**
    * Add a provider
    */
-  withProvider<T>(token: InjectionToken<T>, provider: Provider<T>): this {
+  withProvider<T>(token: InjectionToken<T>, provider: ProviderDefinition<T>): this {
     this.options.providers!.push([token, provider]);
     return this;
   }

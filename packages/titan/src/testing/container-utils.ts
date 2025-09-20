@@ -4,7 +4,7 @@
  * Provides utilities for working with containers in tests
  */
 
-import { Container, type InjectionToken, type Provider, normalizeProvider } from '@omnitron-dev/nexus';
+import { Container, type InjectionToken, type ProviderDefinition, normalizeProvider } from '@omnitron-dev/nexus';
 
 /**
  * Register providers from a module into a container
@@ -40,7 +40,7 @@ export function registerModuleProviders(
 export function registerProvider(
   container: Container,
   token: InjectionToken<any>,
-  provider: Provider
+  provider: ProviderDefinition
 ): void {
   // Always use register - Container will handle the provider type
   container.register(token, provider);

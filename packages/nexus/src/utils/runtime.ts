@@ -211,6 +211,7 @@ export async function loadRuntimeModule<T>(modulePaths: {
       return module.default || module;
     } else {
       // Fallback for older environments
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       return require(modulePath);
     }
   } catch (error) {
@@ -272,7 +273,9 @@ export function getMemoryUsage(): { used: number; total: number } | null {
           total: usage.heapTotal
         };
       }
-    } catch {}
+    } catch {
+      // Ignore errors when memory usage is not available
+    }
   }
 
   if (runtime.runtime === Runtime.Deno && (globalThis as any).Deno) {
@@ -285,7 +288,9 @@ export function getMemoryUsage(): { used: number; total: number } | null {
           total: metrics.memory.heapTotal
         };
       }
-    } catch {}
+    } catch {
+      // Ignore errors when memory usage is not available
+    }
   }
 
   if (runtime.isBrowser && (performance as any).memory) {

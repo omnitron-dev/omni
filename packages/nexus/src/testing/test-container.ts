@@ -6,8 +6,10 @@ import { Container } from '../container/container.js';
 import {
   IModule,
   Provider,
+  ProviderDefinition,
   Constructor,
-  InjectionToken
+  InjectionToken,
+  RegistrationOptions
 } from '../types/core.js';
 
 /**
@@ -24,7 +26,7 @@ export interface MockConfig<T = any> {
  */
 export interface TestContainerOptions {
   modules?: IModule[];
-  providers?: Array<[InjectionToken<any>, Provider<any>]>;
+  providers?: Array<[InjectionToken<any>, ProviderDefinition<any>]>;
   mocks?: MockConfig[];
   autoMock?: boolean;
   isolate?: boolean;
@@ -446,13 +448,29 @@ export class TestContainer extends Container {
   /**
    * Override register to track registered tokens for leak detection
    */
-  override register<T>(token: InjectionToken<T>, provider: Provider<T>, options?: any): this {
+  override register<T>(
+    tokenOrProvider: InjectionToken<T> | Provider<T> | Constructor<T>,
+    providerOrOptions?: ProviderDefinition<T> | RegistrationOptions,
+    optionsArg?: RegistrationOptions
+  ): this {
     // Track registered tokens for leak detection and memory tracking
     if (this.detectLeaks || this.trackMemory) {
-      this.registeredTokens.add(token);
+      // Extract token from various formats
+      let token: InjectionToken<T> | undefined;
+      if (typeof tokenOrProvider === 'function' || typeof tokenOrProvider === 'string' || typeof tokenOrProvider === 'symbol') {
+        token = tokenOrProvider as InjectionToken<T>;
+      } else if (tokenOrProvider && typeof tokenOrProvider === 'object' && 'provide' in tokenOrProvider) {
+        token = tokenOrProvider.provide;
+      } else if (tokenOrProvider && typeof tokenOrProvider === 'object' && 'id' in tokenOrProvider) {
+        token = tokenOrProvider as InjectionToken<T>;
+      }
+
+      if (token) {
+        this.registeredTokens.add(token);
+      }
     }
 
-    return super.register(token, provider, options);
+    return super.register(tokenOrProvider as any, providerOrOptions as any, optionsArg);
   }
 
   /**
@@ -660,11 +678,11 @@ export function createIsolatedTestContainer(
  * Test module builder for dynamic test modules
  */
 export class TestModuleBuilder {
-  private providers: Array<[InjectionToken<any>, Provider<any>]> = [];
+  private providers: Array<[InjectionToken<any>, ProviderDefinition<any>]> = [];
   private imports: IModule[] = [];
   private mocks: MockConfig[] = [];
 
-  withProvider<T>(token: InjectionToken<T>, provider: Provider<T>): this {
+  withProvider<T>(token: InjectionToken<T>, provider: ProviderDefinition<T>): this {
     this.providers.push([token, provider]);
     return this;
   }

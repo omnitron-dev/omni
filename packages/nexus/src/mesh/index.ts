@@ -8,7 +8,7 @@
  */
 
 import { createToken } from '../token/token.js';
-import { Provider, InjectionToken } from '../types/core.js';
+import { ProviderDefinition, InjectionToken } from '../types/core.js';
 
 /**
  * Service instance information
@@ -988,7 +988,7 @@ export class ServiceRegistry {
 export function createRemoteServiceProvider<T>(
   serviceName: string,
   discoveryToken: InjectionToken<ServiceDiscovery>
-): Provider<T> {
+): ProviderDefinition<T> {
   return {
     useFactory: (discovery: ServiceDiscovery) => {
       const proxy = new ServiceProxy<T>(discovery, {

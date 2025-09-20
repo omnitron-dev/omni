@@ -5,6 +5,8 @@
 import {
   IModule,
   Provider,
+  ProviderDefinition,
+  ProviderInput,
   IContainer,
   Constructor,
   DynamicModule,
@@ -18,7 +20,7 @@ import {
 export interface ModuleMetadata {
   name?: string;
   imports?: Array<Constructor<any> | IModule | DynamicModule>;
-  providers?: Array<Provider<any> | Constructor<any> | [InjectionToken<any>, Provider<any>]>;
+  providers?: Array<Provider<any> | Constructor<any> | [InjectionToken<any>, ProviderDefinition<any>]>;
   exports?: Array<InjectionToken<any> | Provider<any>>;
   controllers?: Constructor<any>[];
   global?: boolean;
@@ -51,7 +53,7 @@ export interface ModuleRef {
   /**
    * Module providers
    */
-  readonly providers: Map<InjectionToken<any>, Provider<any>>;
+  readonly providers: Map<InjectionToken<any>, ProviderDefinition<any> | Provider<any>>;
 
   /**
    * Module exports
@@ -177,7 +179,7 @@ export class ModuleCompiler {
    * Create module reference
    */
   private createModuleRef(name: string, metadata: ModuleMetadata): ModuleRef {
-    const providers = new Map<InjectionToken<any>, Provider<any>>();
+    const providers = new Map<InjectionToken<any>, ProviderDefinition<any> | Provider<any>>();
     const exports = new Set<InjectionToken<any>>();
     const imports = new Set<ModuleRef>();
 
@@ -187,8 +189,11 @@ export class ModuleCompiler {
         if (Array.isArray(provider) && provider.length === 2) {
           // Handle [token, provider] tuples
           providers.set(provider[0], provider[1]);
+        } else if (typeof provider === 'function') {
+          // Constructor
+          providers.set(provider, { useClass: provider });
         } else {
-          // Handle regular providers
+          // Handle regular providers with 'provide' field
           const token = this.extractToken(provider);
           providers.set(token, provider as Provider<any>);
         }
@@ -323,22 +328,21 @@ export function createModule(metadata: ModuleMetadata & { name: string }): IModu
   const module: IModule = {
     name: metadata.name,
     imports: metadata.imports as IModule[],
-    providers: metadata.providers?.map(p => {
+    providers: metadata.providers?.map((p): Provider<any> | ProviderInput<any> => {
       if (typeof p === 'function') {
-        return [p, { useClass: p }] as [InjectionToken<any>, Provider<any>];
+        // Constructor - return as-is (it's a valid ProviderInput)
+        return p;
       }
-      // Handle TestProvider format { provide: token, useValue/useClass/useFactory/useToken: ... }
+      // Handle Provider format { provide: token, useValue/useClass/useFactory/useToken: ... }
       if (p && typeof p === 'object' && 'provide' in p) {
-        const token = (p as any).provide;
-        const provider: any = {};
-        if ('useValue' in p) provider.useValue = (p as any).useValue;
-        if ('useClass' in p) provider.useClass = (p as any).useClass;
-        if ('useFactory' in p) provider.useFactory = (p as any).useFactory;
-        if ('useToken' in p) provider.useToken = (p as any).useToken;
-        if ('inject' in p) provider.inject = (p as any).inject;
-        if ('scope' in p) provider.scope = (p as any).scope;
-        return [token, provider] as [InjectionToken<any>, Provider<any>];
+        // It's already a Provider, return as-is
+        return p as Provider<any>;
       }
+      // Handle tuple format [token, provider]
+      if (Array.isArray(p) && p.length === 2) {
+        return p as [InjectionToken<any>, ProviderDefinition<any>];
+      }
+      // Unknown format, return as-is
       return p;
     }),
     exports: metadata.exports as InjectionToken<any>[],
@@ -392,22 +396,12 @@ export class ModuleBuilder {
   /**
    * Add providers
    */
-  providers(...providers: Array<Provider<any> | Constructor<any> | [InjectionToken<any>, Provider<any>]>): this {
-    const processedProviders = providers.map(p => {
-      // Handle TestProvider format { provide: token, useValue/useClass/useFactory/useToken: ... }
-      if (p && typeof p === 'object' && 'provide' in p) {
-        const token = (p as any).provide;
-        const provider: any = {};
-        if ('useValue' in p) provider.useValue = (p as any).useValue;
-        if ('useClass' in p) provider.useClass = (p as any).useClass;
-        if ('useFactory' in p) provider.useFactory = (p as any).useFactory;
-        if ('useToken' in p) provider.useToken = (p as any).useToken;
-        if ('inject' in p) provider.inject = (p as any).inject;
-        if ('scope' in p) provider.scope = (p as any).scope;
-        return [token, provider] as [InjectionToken<any>, Provider<any>];
-      }
-      return p;
-    });
+  providers(...providers: Array<Provider<any> | Constructor<any> | [InjectionToken<any>, ProviderDefinition<any>]>): this {
+    const processedProviders = providers.map((p): Provider<any> | Constructor<any> | [InjectionToken<any>, ProviderDefinition<any>] => 
+      // Provider format is already valid, return as-is
+      // (Provider objects with 'provide' field and other formats are all valid)
+       p
+    );
 
     this.metadata.providers = [...(this.metadata.providers || []), ...processedProviders];
     return this;
@@ -442,11 +436,11 @@ export class ModuleBuilder {
   /**
    * Provide a single token
    */
-  provide<T>(token: InjectionToken<T>, provider: Provider<T>): this {
+  provide<T>(token: InjectionToken<T>, provider: ProviderDefinition<T>): this {
     if (!this.metadata.providers) {
       this.metadata.providers = [];
     }
-    this.metadata.providers.push([token, provider] as [InjectionToken<any>, Provider<any>]);
+    this.metadata.providers.push([token, provider] as [InjectionToken<any>, ProviderDefinition<any>]);
     return this;
   }
 
@@ -456,26 +450,22 @@ export class ModuleBuilder {
   provideIf<T>(
     condition: (container?: any) => boolean,
     token: InjectionToken<T>,
-    provider: Provider<T>
+    provider: ProviderDefinition<T> | Provider<T>
   ): this {
     if (!this.metadata.providers) {
       this.metadata.providers = [];
     }
 
-    // Mark the provider as conditional for later evaluation during module loading
-    const conditionalProvider: [InjectionToken<T>, Provider<T> & { conditional?: boolean; condition?: Function; originalProvider?: Provider<T> }] = [
-      token,
-      {
-        conditional: true,
-        condition,
-        originalProvider: provider,
-        useFactory: () => {
-          throw new Error(`Conditional provider for ${String(token)} should not be resolved directly`);
-        }
-      }
-    ];
+    // Create a conditional provider
+    const conditionalProvider: Provider<T> = {
+      provide: token,
+      ...('provide' in provider ? { ...provider, provide: token } : provider),
+      conditional: true,
+      condition,
+      originalProvider: provider
+    } as Provider<T> & { conditional?: boolean; condition?: Function; originalProvider?: Provider<T> | ProviderDefinition<T> };
 
-    this.metadata.providers.push(conditionalProvider as [InjectionToken<any>, Provider<any>]);
+    this.metadata.providers.push(conditionalProvider);
     return this;
   }
 
@@ -544,9 +534,9 @@ export function createConfigModule<T = any>(options: {
  */
 export function createFeatureModule(
   name: string,
-  providers: Array<[InjectionToken<any>, Provider<any>]>
+  providers: Array<[InjectionToken<any>, ProviderDefinition<any>]>
 ): ModuleFactory {
-  const extractToken = (provider: [InjectionToken<any>, Provider<any>]): InjectionToken<any> => provider[0];
+  const extractToken = (provider: [InjectionToken<any>, ProviderDefinition<any>]): InjectionToken<any> => provider[0];
 
   return {
     forRoot(options: ModuleOptions): DynamicModule {
@@ -563,9 +553,9 @@ export function createFeatureModule(
                 }
                 return instance;
               }) as any
-            }] as [InjectionToken<any>, Provider<any>];
+            }] as [InjectionToken<any>, ProviderDefinition<any>];
           }
-          return [token, provider] as [InjectionToken<any>, Provider<any>];
+          return [token, provider] as [InjectionToken<any>, ProviderDefinition<any>];
         }),
         exports: providers.map(p => extractToken(p))
       };

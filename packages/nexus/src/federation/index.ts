@@ -439,8 +439,11 @@ export class ModuleFederationContainer {
         const actualToken = tokenMap.get(tokenKey);
         if (actualToken) {
           try {
-            container.register(actualToken, provider);
-          } catch (e) {
+            // Extract provider definition (without 'provide' field) from Provider
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { provide, ...providerDefinition } = provider as any;
+            container.register(actualToken, providerDefinition);
+          } catch {
             // Already registered, skip
           }
         }
@@ -452,7 +455,10 @@ export class ModuleFederationContainer {
       if (scopeName !== 'tokenStrings') {
         for (const [token, provider] of sharedMap.entries()) {
           try {
-            container.register(token, provider);
+            // Extract provider definition (without 'provide' field) from Provider
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { provide, ...providerDefinition } = provider as any;
+            container.register(token, providerDefinition);
           } catch {
             // Already registered, skip
           }

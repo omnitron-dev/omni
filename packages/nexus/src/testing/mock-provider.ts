@@ -1,4 +1,4 @@
-import { Provider, InjectionToken as Token } from '../types/core.js';
+import { ProviderDefinition, InjectionToken as Token } from '../types/core.js';
 
 // Jest type declaration (for build compatibility)
 declare const jest: any;
@@ -18,7 +18,7 @@ export interface MockProviderConfig<T = any> {
  * Mock provider for testing (original implementation for DI)
  */
 export class MockProviderDI<T> {
-  private provider: Provider<T>;
+  private provider: ProviderDefinition<T>;
 
   constructor(private config: MockProviderConfig<T>) {
     if (config.value !== undefined) {
@@ -32,7 +32,7 @@ export class MockProviderDI<T> {
     }
   }
 
-  getProvider(): Provider<T> {
+  getProvider(): ProviderDefinition<T> {
     return this.provider;
   }
 

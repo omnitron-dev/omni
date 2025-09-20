@@ -341,12 +341,7 @@ export const RetryMiddleware = createMiddleware({
     // Just try once and return
     const firstAttempt = () => {
       context.attempt = 1;
-      try {
-        return next();
-      } catch (error) {
-        // In sync mode, we can't wait to retry, so just throw
-        throw error;
-      }
+      return next();
     };
 
     const result = firstAttempt();

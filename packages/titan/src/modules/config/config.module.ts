@@ -8,7 +8,7 @@
  * @description First-class configuration system that eliminates boilerplate
  */
 
-import { Module, DynamicModule, Provider, createToken, InjectionToken } from '@omnitron-dev/nexus';
+import { Module, DynamicModule, Provider, ProviderDefinition, createToken, InjectionToken } from '@omnitron-dev/nexus';
 import { ZodType } from 'zod';
 
 import { IApplication, IModule } from '../../types.js';
@@ -176,7 +176,7 @@ export class ConfigModule implements IModule {
     }
 
     // Return a simple module that references the singleton
-    const providers: Array<[InjectionToken<any>, Provider<any>]> = [
+    const providers: Array<[InjectionToken<any>, ProviderDefinition<any>]> = [
       [ConfigService, { useValue: ConfigModule.instance }],
       [ConfigServiceToken, { useValue: ConfigModule.instance }],
       ['ConfigService' as any, { useValue: ConfigModule.instance }],
@@ -201,7 +201,7 @@ export class ConfigModule implements IModule {
    * @deprecated Use automatic configuration instead
    */
   static forRootAsync(options: ConfigModuleAsyncOptions): DynamicModule {
-    const optionsProvider: [InjectionToken<any>, Provider] = [
+    const optionsProvider: [InjectionToken<any>, ProviderDefinition] = [
       CONFIG_OPTIONS_TOKEN,
       {
         useFactory: async (...args: any[]) => await Promise.resolve(options.useFactory(...args)),
@@ -209,7 +209,7 @@ export class ConfigModule implements IModule {
       },
     ];
 
-    const schemaProvider: [InjectionToken<any>, Provider] = [
+    const schemaProvider: [InjectionToken<any>, ProviderDefinition] = [
       CONFIG_SCHEMA_TOKEN,
       {
         useFactory: async (...args: any[]) => {
@@ -220,12 +220,12 @@ export class ConfigModule implements IModule {
       },
     ];
 
-    const loaderProvider: [InjectionToken<any>, Provider] = [
+    const loaderProvider: [InjectionToken<any>, ProviderDefinition] = [
       CONFIG_LOADER_TOKEN,
       { useClass: ConfigLoader },
     ];
 
-    const configServiceProvider: [InjectionToken<any>, Provider] = [
+    const configServiceProvider: [InjectionToken<any>, ProviderDefinition] = [
       ConfigService,
       {
         useFactory: async (
@@ -244,7 +244,7 @@ export class ConfigModule implements IModule {
     ];
 
     // Alias providers
-    const configServiceTokenProvider: [InjectionToken<any>, Provider] = [
+    const configServiceTokenProvider: [InjectionToken<any>, ProviderDefinition] = [
       ConfigServiceToken,
       {
         useFactory: (service: ConfigService) => service,
@@ -252,7 +252,7 @@ export class ConfigModule implements IModule {
       },
     ];
 
-    const configServiceAliasProvider: [InjectionToken<any>, Provider] = [
+    const configServiceAliasProvider: [InjectionToken<any>, ProviderDefinition] = [
       'ConfigService' as any,
       {
         useFactory: (service: ConfigService) => service,
@@ -260,7 +260,7 @@ export class ConfigModule implements IModule {
       },
     ];
 
-    const configAliasProvider: [InjectionToken<any>, Provider] = [
+    const configAliasProvider: [InjectionToken<any>, ProviderDefinition] = [
       'Config' as any,
       {
         useFactory: (service: ConfigService) => service,
@@ -302,7 +302,7 @@ export class ConfigModule implements IModule {
   ): DynamicModule {
     const token = createConfigToken(name);
 
-    const featureProvider: [InjectionToken<any>, Provider] = [
+    const featureProvider: [InjectionToken<any>, ProviderDefinition] = [
       token,
       {
       useFactory: async () => {
@@ -339,10 +339,10 @@ export class ConfigModule implements IModule {
   /**
    * Create a typed configuration provider
    */
-  static createProvider<T>(name: string, schema: ZodType<T>, path?: string): [symbol, Provider] {
+  static createProvider<T>(name: string, schema: ZodType<T>, path?: string): [symbol, ProviderDefinition] {
     const token = createConfigToken(name);
 
-    const provider: Provider = {
+    const provider: ProviderDefinition = {
       useFactory: async (configService: ConfigService) => {
         const data = path ? configService.get(path) : configService.getAll();
         return configService.getTyped(schema, path);

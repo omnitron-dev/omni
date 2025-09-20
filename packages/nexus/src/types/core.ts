@@ -95,59 +95,10 @@ export interface ResolutionContext {
 }
 
 /**
- * Provider types - Unified format supporting both token-first and provider-first patterns
+ * Provider definition - unified format supporting all provider patterns
+ * This is the main provider interface used throughout the framework
  */
-export interface ClassProvider<T = any> {
-  useClass: Constructor<T>;
-  scope?: Scope;
-  inject?: InjectionToken[];
-}
-
-export interface ValueProvider<T = any> {
-  useValue: T;
-  validate?: string | ((value: T) => void);
-}
-
-export interface FactoryProvider<T = any> {
-  useFactory: Factory<T>;
-  inject?: InjectionToken[];
-  scope?: Scope;
-}
-
-export interface AsyncFactoryProvider<T = any> {
-  useFactory: AsyncFactory<T>;
-  inject?: InjectionToken[];
-  scope?: Scope;
-  timeout?: number;
-  retry?: {
-    maxAttempts: number;
-    delay: number;
-  };
-  async?: boolean;
-}
-
-export interface TokenProvider<T = any> {
-  useToken: InjectionToken<T>;
-}
-
-export interface ConditionalProvider<T = any> {
-  useFactory: (context: ResolutionContext) => T;
-  when: (context: ResolutionContext) => boolean;
-  fallback?: Provider<T>;
-}
-
-export interface StreamProvider<T = any> {
-  useFactory: Factory<AsyncIterable<T>>;
-  inject?: InjectionToken[];
-  scope?: Scope;
-  filter?: (value: T) => boolean;
-  batch?: { size: number };
-}
-
-/**
- * Provider with explicit token - supports legacy format with 'provide' field
- */
-export interface ExplicitProvider<T = any> {
+export interface Provider<T = any> {
   provide: InjectionToken<T>;
   useClass?: Constructor<T>;
   useValue?: T;
@@ -163,27 +114,67 @@ export interface ExplicitProvider<T = any> {
     maxAttempts: number;
     delay: number;
   };
+  condition?: (context: ResolutionContext) => boolean;
+  fallback?: Provider<T>;
 }
 
 /**
- * Provider union type - supports all provider patterns
+ * Simplified provider types for specific use cases without 'provide' field
+ * These are used when token is provided separately (e.g., in register method)
  */
-export type Provider<T = any> =
+export type ClassProvider<T = any> = {
+  useClass: Constructor<T>;
+  scope?: Scope;
+  inject?: InjectionToken[];
+};
+
+export type ValueProvider<T = any> = {
+  useValue: T;
+  validate?: string | ((value: T) => void);
+};
+
+export type FactoryProvider<T = any> = {
+  useFactory: Factory<T> | AsyncFactory<T>;
+  inject?: InjectionToken[];
+  scope?: Scope;
+  async?: boolean;
+  timeout?: number;
+  retry?: {
+    maxAttempts: number;
+    delay: number;
+  };
+};
+
+export type TokenProvider<T = any> = {
+  useToken: InjectionToken<T>;
+};
+
+/**
+ * Provider definition without 'provide' field - for use in register(token, provider)
+ */
+export type ProviderDefinition<T = any> =
   | ClassProvider<T>
   | ValueProvider<T>
   | FactoryProvider<T>
-  | AsyncFactoryProvider<T>
   | TokenProvider<T>
-  | ConditionalProvider<T>
-  | ExplicitProvider<T>
   | Constructor<T>;
 
 /**
- * Normalized provider format - internal representation
+ * Provider input - what users can provide when registering
  */
-export type NormalizedProvider<T = any> =
-  | [InjectionToken<T>, Provider<T>]
-  | Provider<T>;
+export type ProviderInput<T = any> =
+  | Provider<T>                                         // Full provider with 'provide' field
+  | [InjectionToken<T>, ProviderDefinition<T>]         // Tuple format
+  | Constructor<T>;                                      // Direct constructor
+
+/**
+ * Legacy type aliases for backward compatibility
+ * @deprecated Use Provider interface instead
+ */
+export type ExplicitProvider<T = any> = Provider<T>;
+export type AsyncFactoryProvider<T = any> = FactoryProvider<T>;
+export type ConditionalProvider<T = any> = Provider<T>;
+export type StreamProvider<T = any> = Provider<T>;
 
 /**
  * Stream options for streaming providers
@@ -211,14 +202,17 @@ export interface RegistrationOptions {
  */
 export interface IContainer {
   /**
-   * Register a provider
+   * Register a provider - supports multiple formats
    */
-  register<T>(token: InjectionToken<T>, provider: Provider<T>, options?: RegistrationOptions): this;
+  register<T>(token: InjectionToken<T>, provider: ProviderDefinition<T>, options?: RegistrationOptions): this;
+  register<T>(provider: Provider<T>, options?: RegistrationOptions): this;
+  register<T>(token: Constructor<T>): this;
 
   /**
    * Register an async provider
+   * @deprecated Use register with async flag in provider
    */
-  registerAsync<T>(token: InjectionToken<T>, provider: AsyncFactoryProvider<T>, options?: RegistrationOptions): this;
+  registerAsync<T>(token: InjectionToken<T>, provider: FactoryProvider<T>, options?: RegistrationOptions): this;
 
   /**
    * Resolve a dependency
@@ -243,7 +237,7 @@ export interface IContainer {
   /**
    * Register a stream provider
    */
-  registerStream<T>(token: InjectionToken<AsyncIterable<T>>, provider: Provider<AsyncIterable<T>>, options?: RegistrationOptions): this;
+  registerStream<T>(token: InjectionToken<AsyncIterable<T>>, provider: ProviderDefinition<AsyncIterable<T>>, options?: RegistrationOptions): this;
 
   /**
    * Resolve a stream dependency
@@ -341,7 +335,7 @@ export interface ContainerMetadata {
 export interface IModule {
   name: string;
   imports?: IModule[];
-  providers?: Array<Provider<any> | [InjectionToken<any>, Provider<any>]>;
+  providers?: Array<Provider<any> | ProviderInput<any>>;
   exports?: InjectionToken<any>[];
   global?: boolean;
   requires?: string[];

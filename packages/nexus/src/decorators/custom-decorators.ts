@@ -322,8 +322,8 @@ export class CustomDecoratorBuilder<TOptions = any> {
 
       function applyDecorator(
         target: any,
-        propertyKey?: string | symbol,
-        descriptorOrIndex?: any,
+        propKey?: string | symbol,
+        descOrIdx?: any,
         options?: TOptions
       ) {
         // Determine target type
@@ -331,13 +331,13 @@ export class CustomDecoratorBuilder<TOptions = any> {
         let descriptor: PropertyDescriptor | undefined;
         let parameterIndex: number | undefined;
 
-        if (typeof descriptorOrIndex === 'number') {
+        if (typeof descOrIdx === 'number') {
           targetType = DecoratorTarget.Parameter;
-          parameterIndex = descriptorOrIndex;
-        } else if (propertyKey !== undefined && descriptorOrIndex === undefined) {
+          parameterIndex = descOrIdx;
+        } else if (propKey !== undefined && descOrIdx === undefined) {
           targetType = DecoratorTarget.Property;
-        } else if (propertyKey !== undefined && descriptorOrIndex !== undefined) {
-          descriptor = descriptorOrIndex;
+        } else if (propKey !== undefined && descOrIdx !== undefined) {
+          descriptor = descOrIdx;
           targetType = descriptor && (descriptor.get || descriptor.set)
             ? DecoratorTarget.Accessor
             : DecoratorTarget.Method;
@@ -357,8 +357,8 @@ export class CustomDecoratorBuilder<TOptions = any> {
         if (!config.stackable) {
           const metadataKey = `custom:${config.name}`;
           // Use getOwnMetadata to avoid conflicts with inherited metadata
-          const existingMetadata = propertyKey
-            ? Reflect.getOwnMetadata(metadataKey, target, propertyKey)
+          const existingMetadata = propKey
+            ? Reflect.getOwnMetadata(metadataKey, target, propKey)
             : Reflect.getOwnMetadata(metadataKey, target);
 
           if (existingMetadata) {
@@ -369,7 +369,7 @@ export class CustomDecoratorBuilder<TOptions = any> {
         // Create context
         const context: DecoratorContext<TOptions> = {
           target,
-          propertyKey,
+          propertyKey: propKey,
           descriptor,
           parameterIndex,
           options,
@@ -386,12 +386,12 @@ export class CustomDecoratorBuilder<TOptions = any> {
           for (let i = config.compose.length - 1; i >= 0; i--) {
             const decorator = config.compose[i];
             if (!decorator) continue;
-            const result = decorator(target, propertyKey, descriptorOrIndex);
+            const result = decorator(target, propKey, descOrIdx);
             if (result !== undefined && result !== target) {
-              if (propertyKey !== undefined && descriptorOrIndex !== undefined) {
-                descriptorOrIndex = result;
+              if (propKey !== undefined && descOrIdx !== undefined) {
+                descOrIdx = result;
                 context.descriptor = result;
-              } else if (propertyKey === undefined && descriptorOrIndex === undefined) {
+              } else if (propKey === undefined && descOrIdx === undefined) {
                 target = result;
                 context.target = result;
               }
@@ -407,8 +407,8 @@ export class CustomDecoratorBuilder<TOptions = any> {
 
           for (const [key, value] of Object.entries(metadata)) {
             const metadataKey = `custom:${config.name}:${key}`;
-            if (propertyKey !== undefined) {
-              Reflect.defineMetadata(metadataKey, value, target, propertyKey);
+            if (propKey !== undefined) {
+              Reflect.defineMetadata(metadataKey, value, target, propKey);
             } else {
               Reflect.defineMetadata(metadataKey, value, target);
             }
@@ -424,16 +424,16 @@ export class CustomDecoratorBuilder<TOptions = any> {
             priority: config.priority
           };
 
-          if (propertyKey !== undefined) {
-            const existing = Reflect.getMetadata(applicationKey, target, propertyKey);
-            const metadata = Array.isArray(existing) ? existing : (existing ? [existing] : []);
-            metadata.push(applicationData);
-            Reflect.defineMetadata(applicationKey, metadata, target, propertyKey);
+          if (propKey !== undefined) {
+            const existing = Reflect.getMetadata(applicationKey, target, propKey);
+            const decoratorMetadata = Array.isArray(existing) ? existing : (existing ? [existing] : []);
+            decoratorMetadata.push(applicationData);
+            Reflect.defineMetadata(applicationKey, decoratorMetadata, target, propKey);
           } else {
             const existing = Reflect.getMetadata(applicationKey, target);
-            const metadata = Array.isArray(existing) ? existing : (existing ? [existing] : []);
-            metadata.push(applicationData);
-            Reflect.defineMetadata(applicationKey, metadata, target);
+            const decoratorMetadata = Array.isArray(existing) ? existing : (existing ? [existing] : []);
+            decoratorMetadata.push(applicationData);
+            Reflect.defineMetadata(applicationKey, decoratorMetadata, target);
           }
         }
 
@@ -462,6 +462,9 @@ export class CustomDecoratorBuilder<TOptions = any> {
         } else if (targetType === DecoratorTarget.Class) {
           return target;
         }
+
+        // Default return for parameter and property decorators
+        return undefined;
       }
     };
   }
@@ -586,7 +589,7 @@ export function createParameterizedDecorator<TOptions>(
 export function createMethodInterceptor<TOptions = any>(
   name: string,
   interceptor: (
-    originalMethod: Function,
+    originalMethod: (...args: any[]) => any,
     args: any[],
     context: DecoratorContext<TOptions>
   ) => any

@@ -4,7 +4,7 @@
  * Provides Redis integration with connection pooling, clustering, and health checks
  */
 
-import { Module, DynamicModule, Provider, InjectionToken, Constructor } from '@omnitron-dev/nexus';
+import { Module, DynamicModule, Provider, ProviderDefinition, InjectionToken, Constructor } from '@omnitron-dev/nexus';
 import { RedisManager } from './redis.manager.js';
 import { RedisService } from './redis.service.js';
 import { getClientNamespace } from './redis.utils.js';
@@ -26,7 +26,7 @@ import {
 export class TitanRedisModule {
   static forRoot(options: RedisModuleOptions = {}): DynamicModule {
     // Create providers using correct Nexus format: [token, provider]
-    const providers: Array<[InjectionToken<any>, Provider<any>] | Provider<any>> = [
+    const providers: Array<[InjectionToken<any>, ProviderDefinition<any>] | Provider<any>> = [
       // Manager singleton with initialization
       [REDIS_MANAGER, {
         useFactory: async () => {
@@ -74,7 +74,7 @@ export class TitanRedisModule {
   }
 
   static forRootAsync(options: RedisModuleAsyncOptions): DynamicModule {
-    const providers: Array<[InjectionToken<any>, Provider<any>] | Provider<any>> = [];
+    const providers: Array<[InjectionToken<any>, ProviderDefinition<any>] | Provider<any>> = [];
 
     // Create async options provider
     const asyncProviders = this.createAsyncProviders(options);
@@ -130,7 +130,7 @@ export class TitanRedisModule {
   }
 
   static forFeature(clients: string[] = []): DynamicModule {
-    const providers: Array<[InjectionToken<any>, Provider<any>]> = clients.map((namespace) => [
+    const providers: Array<[InjectionToken<any>, ProviderDefinition<any>]> = clients.map((namespace) => [
       getRedisToken(namespace),
       {
         useFactory: (manager: RedisManager) => manager.getClient(namespace),
@@ -147,7 +147,7 @@ export class TitanRedisModule {
 
   private static createClientProviders(
     options: RedisModuleOptions
-  ): Array<[InjectionToken<any>, Provider<any>]> {
+  ): Array<[InjectionToken<any>, ProviderDefinition<any>]> {
     const configs: RedisClientOptions[] = [];
 
     if (options.config) {
@@ -178,7 +178,7 @@ export class TitanRedisModule {
   private static createDynamicClientProviders(
     options: RedisModuleOptions,
     manager: RedisManager
-  ): Array<[InjectionToken<any>, Provider<any>]> {
+  ): Array<[InjectionToken<any>, ProviderDefinition<any>]> {
     const configs: RedisClientOptions[] = [];
 
     if (options.config) {
@@ -206,8 +206,8 @@ export class TitanRedisModule {
 
   private static createAsyncProviders(
     options: RedisModuleAsyncOptions
-  ): Array<[InjectionToken<any>, Provider<any>] | Provider<any>> {
-    const providers: Array<[InjectionToken<any>, Provider<any>] | Provider<any>> = [];
+  ): Array<[InjectionToken<any>, ProviderDefinition<any>] | Provider<any>> {
+    const providers: Array<[InjectionToken<any>, ProviderDefinition<any>] | Provider<any>> = [];
 
     if (options.useFactory) {
       providers.push([REDIS_MODULE_OPTIONS, {

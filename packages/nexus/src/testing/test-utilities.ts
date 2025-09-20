@@ -1,7 +1,7 @@
 import { TestContainer } from './test-container.js';
 import { Container } from '../container/container.js';
 import { createToken, getTokenName } from '../token/token.js';
-import { Scope, IModule, Provider, Constructor, InjectionToken, InjectionToken as Token } from '../types/core.js';
+import { Scope, IModule, Provider, ProviderDefinition, Constructor, InjectionToken, InjectionToken as Token, RegistrationOptions } from '../types/core.js';
 
 /**
  * Test utility functions for Nexus testing
@@ -45,7 +45,7 @@ export interface TestModuleConfig {
  */
 export interface TestHarnessConfig {
   component?: Constructor<any>;
-  providers?: Array<[InjectionToken<any>, Provider<any>] | TestProvider<any>>;
+  providers?: Array<[InjectionToken<any>, ProviderDefinition<any>] | TestProvider<any>>;
   zone?: {
     onEnter?: () => void;
     onLeave?: () => void;
@@ -75,13 +75,13 @@ export interface MemoryUsage {
  * Snapshot container for state management
  */
 export class SnapshotContainer extends Container {
-  private snapshots = new Map<string, Map<Token<any>, Provider<any>>>();
+  private snapshots = new Map<string, Map<Token<any>, ProviderDefinition<any>>>();
   private snapshotCounter = 0;
   private snapshotStack: string[] = [];
 
   snapshot(): string {
     const id = `snapshot_${++this.snapshotCounter}`;
-    const state = new Map<Token<any>, Provider<any>>();
+    const state = new Map<Token<any>, ProviderDefinition<any>>();
 
     // Capture current registrations
     if ('registrations' in this) {
@@ -139,12 +139,19 @@ export class SnapshotContainer extends Container {
   /**
    * Override register to clear cached instances on override
    */
-  override register<T>(token: Token<T>, provider: Provider<T>, options?: any): this {
+  override register<T>(
+    tokenOrProvider: InjectionToken<T> | Provider<T> | Constructor<T>,
+    providerOrOptions?: ProviderDefinition<T> | RegistrationOptions,
+    optionsArg?: RegistrationOptions
+  ): this {
+    // Check if it's an override registration
+    const options = optionsArg || (typeof providerOrOptions === 'object' && !('useValue' in providerOrOptions) && !('useClass' in providerOrOptions) && !('useFactory' in providerOrOptions) && !('useToken' in providerOrOptions) ? providerOrOptions as RegistrationOptions : undefined);
     if (options?.override && 'instances' in this) {
       // Clear cached instance when overriding
+      const token = typeof tokenOrProvider === 'object' && 'provide' in tokenOrProvider ? tokenOrProvider.provide : tokenOrProvider as InjectionToken<T>;
       (this as any).instances.delete(token);
     }
-    return super.register(token, provider, options);
+    return super.register(tokenOrProvider, providerOrOptions as any, optionsArg);
   }
 }
 
@@ -235,7 +242,7 @@ export class TestHarness {
         } else if ('provide' in providerEntry) {
           // TestProvider format
           const token = providerEntry.provide;
-          let provider: Provider<any>;
+          let provider: ProviderDefinition<any>;
 
           if ('useValue' in providerEntry && providerEntry.useValue !== undefined) {
             provider = { useValue: providerEntry.useValue };
@@ -502,7 +509,7 @@ export function createTestProvider<T>(
     scope?: Scope;
     tags?: string[];
   }
-): Provider<T> {
+): ProviderDefinition<T> {
   return {
     useValue: value,
     scope: options?.scope
@@ -519,7 +526,7 @@ export function createTestFactoryProvider<T>(
     scope?: Scope;
     tags?: string[];
   }
-): Provider<T> {
+): ProviderDefinition<T> {
   return {
     useFactory: factory,
     inject: options?.inject,
@@ -537,7 +544,7 @@ export function createTestClassProvider<T>(
     scope?: Scope;
     tags?: string[];
   }
-): Provider<T> {
+): ProviderDefinition<T> {
   return {
     useClass: cls,
     inject: options?.inject,
@@ -689,7 +696,7 @@ export function createTestSuite(
  */
 export function createTestModule(config: TestModuleConfig): TestModule {
   // Convert TestProvider format to tuple format and collect tokens
-  const allProviders: Array<[Token<any>, Provider<any>]> = [];
+  const allProviders: Array<[Token<any>, ProviderDefinition<any>]> = [];
   const tokens: Token<any>[] = [];
 
   const processProviders = (providers: (Provider<any> | TestProvider<any>)[] | undefined) => {
@@ -701,7 +708,7 @@ export function createTestModule(config: TestModuleConfig): TestModule {
         const token = provider.provide;
         tokens.push(token);
 
-        let regularProvider: Provider<any>;
+        let regularProvider: ProviderDefinition<any>;
         if ('useValue' in provider && provider.useValue !== undefined) {
           regularProvider = { useValue: provider.useValue };
         } else if ('useClass' in provider && provider.useClass) {

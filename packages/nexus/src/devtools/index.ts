@@ -151,6 +151,11 @@ export class DevToolsServer {
    * Start the DevTools server
    */
   async start(): Promise<void> {
+    // Don't start if already running
+    if (this.running || this.server) {
+      return;
+    }
+
     // Check if we're in a Node.js environment
     if (typeof global !== 'undefined' && global.process) {
       try {
@@ -329,7 +334,8 @@ export class DevToolsPlugin implements Plugin {
     this.server = config?.server || new DevToolsServer(config?.port);
     this.enabled = config?.enabled !== false;
 
-    if (config?.autoStart !== false && this.enabled && !config?.server) {
+    // Only auto-start if explicitly requested
+    if (config?.autoStart === true && this.enabled && !config?.server) {
       this.server?.start().catch(console.error);
     }
   }
@@ -847,7 +853,16 @@ export class DevToolsPlugin implements Plugin {
 
   // Public API methods for tests
   async close(): Promise<void> {
-    this.server?.stop();
+    if (this.server) {
+      await this.server.stop();
+    }
+    // Clear all data structures
+    this.containers.clear();
+    this.graphs.clear();
+    this.metrics.clear();
+    this.resolutionTimes.clear();
+    this.events = [];
+    this.currentContainer = undefined;
   }
 
   getEvents(): Array<{ type: string; timestamp: number; data: any }> {

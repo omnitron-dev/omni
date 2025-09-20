@@ -8,7 +8,7 @@ import { ContextManager, ContextProvider } from '../context/context.js';
 import { LifecycleEvent, LifecycleManager } from '../lifecycle/lifecycle.js';
 import { isToken, isMultiToken, getTokenName, isOptionalToken } from '../token/token.js';
 import { Middleware, MiddlewareContext, MiddlewarePipeline } from '../middleware/middleware.js';
-import { normalizeProvider, isExplicitProvider } from '../utils/provider-utils.js';
+import { isProvider, extractProviderParts, isConstructor } from '../utils/provider-utils.js';
 import {
   DisposalError,
   ResolutionError,
@@ -23,6 +23,7 @@ import {
   Scope,
   IModule,
   Provider,
+  ProviderDefinition,
   IContainer,
   Disposable,
   Constructor,
@@ -31,9 +32,8 @@ import {
   InjectionToken,
   ResolutionContext,
   ContainerMetadata,
-  ConditionalProvider,
   RegistrationOptions,
-  AsyncFactoryProvider
+  FactoryProvider
 } from '../types/core.js';
 
 /**
@@ -41,7 +41,7 @@ import {
  */
 interface Registration {
   token: InjectionToken<any>;
-  provider: Provider<any>;
+  provider: ProviderDefinition<any>;
   options: RegistrationOptions;
   scope: Scope;
   instance?: any;
@@ -131,37 +131,40 @@ export class Container implements IContainer {
    * Register a provider - supports multiple formats
    */
   register<T>(
-    tokenOrProvider: InjectionToken<T> | Provider<T> | any,
-    providerOrOptions?: Provider<T> | RegistrationOptions,
+    tokenOrProvider: InjectionToken<T> | Provider<T> | Constructor<T>,
+    providerOrOptions?: ProviderDefinition<T> | RegistrationOptions,
     optionsArg?: RegistrationOptions
   ): this {
     this.checkDisposed();
 
     let token: InjectionToken<T>;
-    let provider: Provider<T>;
+    let provider: ProviderDefinition<T>;
     let options: RegistrationOptions;
 
     // Normalize arguments based on input format
-    if (isExplicitProvider(tokenOrProvider)) {
-      // Handle explicit provider format { provide: token, ... }
-      const normalized = normalizeProvider(tokenOrProvider);
-      if (Array.isArray(normalized)) {
-        token = normalized[0] as InjectionToken<T>;
-        provider = normalized[1];
+    if (arguments.length === 1) {
+      // Single argument - could be Provider, Constructor, or token
+      if (isProvider(tokenOrProvider)) {
+        // Provider with 'provide' field
+        const parts = extractProviderParts(tokenOrProvider);
+        token = parts.token!;
+        provider = parts.definition;
+        options = {};
+      } else if (isConstructor(tokenOrProvider)) {
+        // Direct constructor registration
+        token = tokenOrProvider as InjectionToken<T>;
+        provider = { useClass: tokenOrProvider as Constructor<T> };
+        options = {};
       } else {
-        throw new InvalidProviderError(undefined as any, 'Provider must have a token');
+        throw new InvalidProviderError(tokenOrProvider as any, 'Invalid single argument to register');
       }
-      options = (providerOrOptions as RegistrationOptions) || {};
-    } else if (arguments.length === 1 && typeof tokenOrProvider === 'function' && tokenOrProvider.prototype) {
-      // Handle single constructor argument
+    } else if (arguments.length >= 2) {
+      // Multiple arguments - standard format: register(token, provider, options)
       token = tokenOrProvider as InjectionToken<T>;
-      provider = { useClass: tokenOrProvider as Constructor<T> };
-      options = {};
-    } else {
-      // Standard format: register(token, provider, options)
-      token = tokenOrProvider as InjectionToken<T>;
-      provider = providerOrOptions as Provider<T>;
+      provider = providerOrOptions as ProviderDefinition<T>;
       options = optionsArg || {};
+    } else {
+      throw new InvalidProviderError(undefined as any, 'Invalid arguments to register');
     }
 
     // Handle config token validation and defaults
@@ -229,7 +232,7 @@ export class Container implements IContainer {
    */
   registerAsync<T>(
     token: InjectionToken<T>,
-    provider: AsyncFactoryProvider<T>,
+    provider: FactoryProvider<T>,
     options: RegistrationOptions = {}
   ): this {
     this.checkDisposed();
@@ -252,7 +255,7 @@ export class Container implements IContainer {
    */
   private registerMulti<T>(
     token: InjectionToken<T>,
-    provider: Provider<T>,
+    provider: ProviderDefinition<T>,
     options: RegistrationOptions
   ): this {
     const existing = this.registrations.get(token);
@@ -280,7 +283,7 @@ export class Container implements IContainer {
    */
   private createRegistration(
     token: InjectionToken<any>,
-    provider: Provider<any>,
+    provider: ProviderDefinition<any>,
     options: RegistrationOptions
   ): Registration {
     // Handle class constructor as provider
@@ -348,7 +351,7 @@ export class Container implements IContainer {
   /**
    * Create a factory function from a provider
    */
-  private createFactory(token: InjectionToken<any>, provider: Provider<any>): (...args: any[]) => any {
+  private createFactory(token: InjectionToken<any>, provider: ProviderDefinition<any>): (...args: any[]) => any {
     if ('useValue' in provider) {
       return () => provider.useValue;
     }
@@ -359,7 +362,7 @@ export class Container implements IContainer {
     }
 
     if ('when' in provider && 'useFactory' in provider) {
-      const conditionalProvider = provider as ConditionalProvider;
+      const conditionalProvider = provider as any;
       return () => {
         const context = this.context;
         try {
@@ -390,8 +393,8 @@ export class Container implements IContainer {
     }
 
     if ('useToken' in provider && provider.useToken) {
-      const token = provider.useToken;
-      return () => this.resolve(token);
+      const aliasToken = provider.useToken;
+      return () => this.resolve(aliasToken);
     }
 
     throw new InvalidProviderError(token, 'Unable to create factory from provider');
@@ -589,7 +592,7 @@ export class Container implements IContainer {
         const resolvingModule = (this.context as any).__resolvingModule;
         const isSameModule = resolvingModule && resolvingModule === tokenModule;
 
-        // Check if resolving module imports the token's module  
+        // Check if resolving module imports the token's module
         let canAccessFromImport = false;
         if (resolvingModule && this.moduleImports.has(resolvingModule)) {
           canAccessFromImport = this.moduleImports.get(resolvingModule)!.has(tokenModule) && isExported;
@@ -606,7 +609,8 @@ export class Container implements IContainer {
         const hasAccess = isGlobal || isSameModule || canAccessFromImport || canAccessFromMain;
 
         if (!hasAccess) {
-          throw new DependencyNotFoundError(token);
+          const tokenName = getTokenName(token);
+          throw new Error(`Token "${tokenName}" from module "${tokenModule}" is not exported and cannot be accessed from outside the module`);
         }
       }
     }
@@ -1033,7 +1037,7 @@ export class Container implements IContainer {
     let instance: T;
     try {
       // Check if this is an async provider before calling factory
-      const asyncProvider = registration.provider as AsyncFactoryProvider<T>;
+      const asyncProvider = registration.provider as FactoryProvider<T>;
       const isAsync = registration.isAsync || (asyncProvider.useFactory && asyncProvider.useFactory.constructor.name === 'AsyncFunction');
 
       if (isAsync) {
@@ -1181,7 +1185,7 @@ export class Container implements IContainer {
   /**
    * Register stream provider
    */
-  registerStream<T>(token: InjectionToken<AsyncIterable<T>>, provider: Provider<AsyncIterable<T>> & { filter?: (value: T) => boolean; batch?: { size: number } }, options: RegistrationOptions = {}): this {
+  registerStream<T>(token: InjectionToken<AsyncIterable<T>>, provider: ProviderDefinition<AsyncIterable<T>>, options: RegistrationOptions = {}): this {
     // If streaming options are provided, wrap the provider with stream processing
     if ((provider as any).filter || (provider as any).batch) {
       const originalProvider = provider;
@@ -1191,13 +1195,13 @@ export class Container implements IContainer {
       };
 
       // Create a new provider that applies filtering and batching
-      const wrappedProvider: Provider<AsyncIterable<T>> = {
+      const wrappedProvider: ProviderDefinition<AsyncIterable<T>> = {
         ...originalProvider,
         useFactory: (...args: any[]): AsyncIterable<T> => {
           const originalStream = (originalProvider as any).useFactory(...args);
           return this.applyStreamProcessing(originalStream, streamOptions) as AsyncIterable<T>;
         }
-      } as Provider<AsyncIterable<T>>;
+      } as ProviderDefinition<AsyncIterable<T>>;
 
       // Remove the streaming options from the provider before registering
       delete (wrappedProvider as any).filter;
@@ -1562,18 +1566,36 @@ export class Container implements IContainer {
         this.moduleProviders.set(module.name, new Map());
       }
 
-      // Track non-conditional providers
+      // Track all non-conditional providers
       for (const provider of module.providers) {
-        if (!Array.isArray(provider) || provider.length !== 2) continue;
-        const [token, providerObj] = provider;
+        let token: any;
+        let isConditional = false;
+
+        // Extract token from different provider formats
+        if (Array.isArray(provider) && provider.length === 2) {
+          // Handle [token, provider] tuples
+          token = provider[0];
+          isConditional = provider[1] && typeof provider[1] === 'object' && (provider[1] as any).conditional;
+        } else if (typeof provider === 'function') {
+          // Class constructor
+          token = provider;
+        } else if (provider && typeof provider === 'object' && 'provide' in provider) {
+          // Provider object with 'provide' property (NestJS style)
+          token = provider.provide;
+          isConditional = (provider as any).conditional;
+        } else {
+          continue; // Skip unknown provider format
+        }
 
         // Skip if it's a conditional provider (will be tracked separately)
-        if (providerObj && typeof providerObj === 'object' && (providerObj as any).conditional) {
+        if (isConditional) {
           continue;
         }
 
         // Check if token is exported
-        const isExported = !module.exports || module.exports.length === 0 || module.exports.some(exportedToken => this.getTokenKey(exportedToken) === this.getTokenKey(token));
+        // If exports is undefined, all providers are exported by default
+        // If exports is defined (even as empty array), only specified tokens are exported
+        const isExported = module.exports === undefined || module.exports.some(exportedToken => this.getTokenKey(exportedToken) === this.getTokenKey(token));
 
         const tokenKey = this.getTokenKey(token);
         this.moduleProviders.get(module.name)!.set(tokenKey, {
@@ -1589,7 +1611,9 @@ export class Container implements IContainer {
         const originalProvider = providerObj.originalProvider;
 
         // Check if token is exported
-        const isExported = !module.exports || module.exports.length === 0 || module.exports.some(exportedToken => this.getTokenKey(exportedToken) === this.getTokenKey(token));
+        // If exports is undefined, all providers are exported by default
+        // If exports is defined (even as empty array), only specified tokens are exported
+        const isExported = module.exports === undefined || module.exports.some(exportedToken => this.getTokenKey(exportedToken) === this.getTokenKey(token));
 
         const tokenKey = this.getTokenKey(token);
 
@@ -1816,6 +1840,9 @@ export class Container implements IContainer {
         }
       }
     }
+
+    // Dispose plugins (will uninstall them and clear intervals)
+    await this.pluginManager.dispose();
 
     // Clear all caches
     this.registrations.clear();
@@ -2080,7 +2107,10 @@ export class Container implements IContainer {
 
     // Register providers from the module
     for (const [token, provider] of moduleRef.providers) {
-      this.register(token, provider);
+      // Extract provider definition (without 'provide' field) from Provider
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { provide, ...providerDefinition } = provider as any;
+      this.register(token, providerDefinition as ProviderDefinition<any>);
     }
 
     // Store module reference

@@ -6,23 +6,26 @@
 
 import type {
   Provider,
+  ProviderDefinition,
+  ProviderInput,
   InjectionToken,
   Constructor,
-  ExplicitProvider,
-  ClassProvider,
-  ValueProvider,
-  FactoryProvider,
-  AsyncFactoryProvider,
-  TokenProvider,
-  NormalizedProvider
+  Factory,
+  AsyncFactory
 } from '../types/core.js';
 
 /**
- * Check if a value is an explicit provider (with 'provide' field)
+ * Check if a value is a provider with 'provide' field
  */
-export function isExplicitProvider(value: any): value is ExplicitProvider {
+export function isProvider(value: any): value is Provider {
   return value && typeof value === 'object' && 'provide' in value;
 }
+
+/**
+ * Legacy alias for backward compatibility
+ * @deprecated Use isProvider instead
+ */
+export const isExplicitProvider = isProvider;
 
 /**
  * Check if a value is a constructor
@@ -34,7 +37,7 @@ export function isConstructor(value: any): value is Constructor {
 /**
  * Check if a provider is async
  */
-export function isAsyncProvider(provider: Provider): boolean {
+export function isAsyncProvider(provider: Provider | ProviderDefinition): boolean {
   if ('async' in provider && provider.async === true) {
     return true;
   }
@@ -51,66 +54,57 @@ export function isAsyncProvider(provider: Provider): boolean {
  *
  * Handles multiple input formats:
  * - Constructor functions
- * - Explicit providers with 'provide' field
- * - Standard provider objects
+ * - Providers with 'provide' field
+ * - Provider definitions without 'provide' field
  * - Tuple format [token, provider]
  */
 export function normalizeProvider<T = any>(
-  provider: Provider<T> | ExplicitProvider<T> | [InjectionToken<T>, Provider<T>] | Constructor<T>
-): NormalizedProvider<T> {
+  provider: ProviderInput<T> | any
+): [InjectionToken<T>, ProviderDefinition<T>] | Provider<T> | Constructor<T> {
   // Already in tuple format
   if (Array.isArray(provider) && provider.length === 2) {
-    return provider as [InjectionToken<T>, Provider<T>];
+    return provider as [InjectionToken<T>, ProviderDefinition<T>];
   }
 
-  // Explicit provider with 'provide' field
-  if (isExplicitProvider(provider)) {
-    const { provide, ...providerDef } = provider;
-
-    // Convert to appropriate provider type
-    let normalizedProvider: Provider<T>;
-
-    if ('useClass' in providerDef && providerDef.useClass) {
-      normalizedProvider = {
-        useClass: providerDef.useClass,
-        scope: providerDef.scope,
-        inject: providerDef.inject
-      } as ClassProvider<T>;
-    } else if ('useValue' in providerDef && providerDef.useValue !== undefined) {
-      normalizedProvider = {
-        useValue: providerDef.useValue,
-        validate: providerDef.validate
-      } as ValueProvider<T>;
-    } else if ('useFactory' in providerDef && providerDef.useFactory) {
-      if (providerDef.async) {
-        normalizedProvider = {
-          useFactory: providerDef.useFactory as any,
-          inject: providerDef.inject,
-          scope: providerDef.scope,
-          timeout: providerDef.timeout,
-          retry: providerDef.retry,
-          async: true
-        } as AsyncFactoryProvider<T>;
-      } else {
-        normalizedProvider = {
-          useFactory: providerDef.useFactory as any,
-          inject: providerDef.inject,
-          scope: providerDef.scope
-        } as FactoryProvider<T>;
-      }
-    } else if ('useToken' in providerDef && providerDef.useToken) {
-      normalizedProvider = {
-        useToken: providerDef.useToken
-      } as TokenProvider<T>;
-    } else {
-      throw new Error(`Invalid explicit provider: ${JSON.stringify(provider)}`);
-    }
-
-    return [provide, normalizedProvider];
+  // Provider with 'provide' field - extract token and definition
+  if (isProvider(provider)) {
+    const { provide, ...definition } = provider;
+    return [provide, definition as ProviderDefinition<T>];
   }
 
-  // Constructor or standard provider
-  return provider as Provider<T>;
+  // Constructor - return as-is (will be handled by container)
+  if (isConstructor(provider)) {
+    return provider as Constructor<T>;
+  }
+
+  // Provider definition without 'provide' field - invalid without token
+  throw new Error(`Invalid provider format: ${JSON.stringify(provider)}`);
+}
+
+/**
+ * Extract the token and provider definition from a provider input
+ */
+export function extractProviderParts<T = any>(
+  provider: ProviderInput<T> | Provider<T> | any
+): { token?: InjectionToken<T>; definition: ProviderDefinition<T> } {
+  // Tuple format
+  if (Array.isArray(provider) && provider.length === 2) {
+    return { token: provider[0], definition: provider[1] };
+  }
+
+  // Provider with 'provide' field
+  if (isProvider(provider)) {
+    const { provide, ...definition } = provider;
+    return { token: provide, definition: definition as ProviderDefinition<T> };
+  }
+
+  // Constructor
+  if (isConstructor(provider)) {
+    return { token: provider as Constructor<T>, definition: { useClass: provider } as ProviderDefinition<T> };
+  }
+
+  // Provider definition without token - shouldn't happen
+  throw new Error(`Cannot extract provider parts: ${JSON.stringify(provider)}`);
 }
 
 /**
@@ -118,7 +112,7 @@ export function normalizeProvider<T = any>(
  */
 export function normalizeProviders(
   providers: any[] | undefined
-): NormalizedProvider[] {
+): Array<[InjectionToken<any>, ProviderDefinition<any>] | Provider<any> | Constructor<any>> {
   if (!providers) return [];
   return providers.map(p => normalizeProvider(p));
 }
@@ -128,20 +122,17 @@ export function normalizeProviders(
  */
 export function providersToRegistrations(
   providers: any[] | undefined
-): Array<{ token: InjectionToken<any>; provider: Provider<any> }> {
-  const normalized = normalizeProviders(providers);
-  const registrations: Array<{ token: InjectionToken<any>; provider: Provider<any> }> = [];
+): Array<{ token: InjectionToken<any>; provider: ProviderDefinition<any> }> {
+  if (!providers) return [];
 
-  for (const item of normalized) {
-    if (Array.isArray(item)) {
-      // Tuple format [token, provider]
-      registrations.push({ token: item[0], provider: item[1] });
-    } else if (isConstructor(item)) {
-      // Constructor - use as both token and provider
-      registrations.push({ token: item, provider: { useClass: item } });
+  const registrations: Array<{ token: InjectionToken<any>; provider: ProviderDefinition<any> }> = [];
+
+  for (const provider of providers) {
+    const parts = extractProviderParts(provider);
+    if (parts.token) {
+      registrations.push({ token: parts.token, provider: parts.definition });
     } else {
-      // Standard provider object - this shouldn't happen in well-formed code
-      console.warn('Provider without explicit token detected:', item);
+      console.warn('Provider without token detected:', provider);
     }
   }
 
@@ -152,170 +143,184 @@ export function providersToRegistrations(
  * Extract token from a provider
  */
 export function getProviderToken(
-  provider: Provider | ExplicitProvider | [InjectionToken<any>, Provider] | Constructor
+  provider: ProviderInput<any> | Provider<any> | any
 ): InjectionToken<any> | undefined {
-  if (Array.isArray(provider)) {
+  // Tuple format
+  if (Array.isArray(provider) && provider.length === 2) {
     return provider[0];
   }
-  if (isExplicitProvider(provider)) {
+
+  // Provider with 'provide' field
+  if (isProvider(provider)) {
     return provider.provide;
   }
+
+  // Constructor
   if (isConstructor(provider)) {
     return provider;
   }
+
   return undefined;
 }
 
 /**
- * Create value provider in normalized format
+ * Create a value provider
  */
 export function createValueProvider<T>(
   token: InjectionToken<T>,
-  value: T
-): [InjectionToken<T>, ValueProvider<T>] {
-  return [token, { useValue: value }];
+  value: T,
+  options?: { validate?: string | ((value: T) => void) }
+): Provider<T> {
+  return {
+    provide: token,
+    useValue: value,
+    ...(options?.validate && { validate: options.validate })
+  };
 }
 
 /**
- * Create factory provider in normalized format
+ * Create a factory provider
  */
 export function createFactoryProvider<T>(
   token: InjectionToken<T>,
   factory: (...args: any[]) => T | Promise<T>,
   options?: {
-    inject?: InjectionToken<any>[];
+    inject?: InjectionToken[];
     scope?: string;
     async?: boolean;
+    timeout?: number;
+    retry?: { maxAttempts: number; delay: number };
   }
-): [InjectionToken<T>, FactoryProvider<T> | AsyncFactoryProvider<T>] {
-  if (options?.async) {
-    return [token, {
-      useFactory: factory as any,
-      inject: options.inject,
-      scope: options.scope as any,
-      async: true
-    } as AsyncFactoryProvider<T>];
-  }
-
-  return [token, {
-    useFactory: factory as any,
-    inject: options?.inject,
-    scope: options?.scope as any
-  } as FactoryProvider<T>];
+): Provider<T> {
+  return {
+    provide: token,
+    useFactory: factory as Factory<T> | AsyncFactory<T>,
+    ...(options?.inject && { inject: options.inject }),
+    ...(options?.scope && { scope: options.scope as any }),
+    ...(options?.async && { async: options.async }),
+    ...(options?.timeout && { timeout: options.timeout }),
+    ...(options?.retry && { retry: options.retry })
+  };
 }
 
 /**
- * Create class provider in normalized format
+ * Create a class provider
  */
 export function createClassProvider<T>(
   token: InjectionToken<T>,
   useClass: Constructor<T>,
   options?: {
     scope?: string;
-    inject?: InjectionToken<any>[];
+    inject?: InjectionToken[];
   }
-): [InjectionToken<T>, ClassProvider<T>] {
-  return [token, {
+): Provider<T> {
+  return {
+    provide: token,
     useClass,
-    scope: options?.scope as any,
-    inject: options?.inject
-  }];
+    ...(options?.scope && { scope: options.scope as any }),
+    ...(options?.inject && { inject: options.inject })
+  };
 }
 
 /**
- * Create explicit provider (with 'provide' field)
+ * Create a token provider (alias)
+ */
+export function createTokenProvider<T>(
+  token: InjectionToken<T>,
+  useToken: InjectionToken<T>
+): Provider<T> {
+  return {
+    provide: token,
+    useToken
+  };
+}
+
+/**
+ * Create a provider with explicit format
+ * @deprecated Use specific provider creation functions instead
  */
 export function createExplicitProvider<T>(
   token: InjectionToken<T>,
-  provider: Provider<T>
-): ExplicitProvider<T> {
-  if ('useClass' in provider) {
-    return {
-      provide: token,
-      useClass: provider.useClass,
-      scope: provider.scope,
-      inject: provider.inject
-    };
-  } else if ('useValue' in provider) {
-    return {
-      provide: token,
-      useValue: provider.useValue,
-      validate: provider.validate
-    };
-  } else if ('useFactory' in provider) {
-    const factoryProvider = provider as FactoryProvider<T> | AsyncFactoryProvider<T>;
-    const asyncProvider = provider as AsyncFactoryProvider<T>;
-    return {
-      provide: token,
-      useFactory: factoryProvider.useFactory,
-      inject: 'inject' in factoryProvider ? factoryProvider.inject : undefined,
-      scope: 'scope' in factoryProvider ? factoryProvider.scope : undefined,
-      async: 'async' in asyncProvider ? asyncProvider.async : undefined,
-      timeout: 'timeout' in asyncProvider ? asyncProvider.timeout : undefined,
-      retry: 'retry' in asyncProvider ? asyncProvider.retry : undefined
-    };
-  } else if ('useToken' in provider) {
-    return {
-      provide: token,
-      useToken: provider.useToken
-    };
-  }
-
-  throw new Error(`Cannot create explicit provider from: ${JSON.stringify(provider)}`);
+  provider: ProviderDefinition<T>
+): Provider<T> {
+  return {
+    provide: token,
+    ...provider
+  } as Provider<T>;
 }
 
 /**
- * Merge provider arrays, handling duplicates
- *
- * Later providers override earlier ones with the same token
+ * Merge multiple providers arrays
  */
 export function mergeProviders(
   ...providerArrays: Array<any[] | undefined>
-): NormalizedProvider[] {
-  const mergedProviders: NormalizedProvider[] = [];
-  const tokenMap = new Map<InjectionToken<any>, NormalizedProvider>();
+): Array<Provider<any> | ProviderInput<any>> {
+  const merged: Array<Provider<any> | ProviderInput<any>> = [];
+  const seenTokens = new Set<InjectionToken<any>>();
 
   for (const providers of providerArrays) {
     if (!providers) continue;
 
     for (const provider of providers) {
-      const normalized = normalizeProvider(provider);
-      const token = getProviderToken(normalized);
+      const token = getProviderToken(provider);
+
+      // Skip duplicate tokens (first one wins)
+      if (token && seenTokens.has(token)) {
+        continue;
+      }
 
       if (token) {
-        // Override existing provider with same token
-        tokenMap.set(token, normalized);
-      } else {
-        // Provider without token (shouldn't happen)
-        mergedProviders.push(normalized);
+        seenTokens.add(token);
       }
+
+      merged.push(provider);
     }
   }
 
-  // Add all providers from map in order
-  for (const provider of tokenMap.values()) {
-    mergedProviders.push(provider);
-  }
+  return merged;
+}
 
-  return mergedProviders;
+/**
+ * Create a multi-provider
+ */
+export function createMultiProvider<T>(
+  token: InjectionToken<T>,
+  providers: Array<ProviderDefinition<T>>
+): Provider<T>[] {
+  return providers.map(provider => ({
+    provide: token,
+    ...provider,
+    multi: true
+  } as Provider<T>));
+}
+
+/**
+ * Check if a provider is a multi-provider
+ */
+export function isMultiProvider(provider: Provider | ProviderDefinition<any>): boolean {
+  return 'multi' in provider && provider.multi === true;
 }
 
 /**
  * Check if a provider has a specific scope
  */
-export function hasScope(provider: Provider, scope: string): boolean {
-  if ('scope' in provider) {
-    return provider.scope === scope;
-  }
-  return false;
+export function hasScope(provider: Provider | ProviderDefinition<any>, scope: string): boolean {
+  return 'scope' in provider && provider.scope === scope;
 }
 
 /**
- * Check if a provider is multi-provider
+ * Create a conditional provider
  */
-export function isMultiProvider(provider: Provider | ExplicitProvider): boolean {
-  if (isExplicitProvider(provider)) {
-    return provider.multi === true;
-  }
-  return false;
+export function createConditionalProvider<T>(
+  token: InjectionToken<T>,
+  provider: ProviderDefinition<T>,
+  condition: (context: any) => boolean,
+  fallback?: ProviderDefinition<T>
+): Provider<T> {
+  return {
+    provide: token,
+    ...provider,
+    condition,
+    ...(fallback && { fallback })
+  } as Provider<T>;
 }

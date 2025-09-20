@@ -95,30 +95,6 @@ export interface ResolutionContext {
 }
 
 /**
- * Provider definition - unified format supporting all provider patterns
- * This is the main provider interface used throughout the framework
- */
-export interface Provider<T = any> {
-  provide: InjectionToken<T>;
-  useClass?: Constructor<T>;
-  useValue?: T;
-  useFactory?: Factory<T> | AsyncFactory<T>;
-  useToken?: InjectionToken<T>;
-  inject?: InjectionToken[];
-  scope?: Scope;
-  multi?: boolean;
-  async?: boolean;
-  validate?: string | ((value: T) => void);
-  timeout?: number;
-  retry?: {
-    maxAttempts: number;
-    delay: number;
-  };
-  condition?: (context: ResolutionContext) => boolean;
-  fallback?: Provider<T>;
-}
-
-/**
  * Simplified provider types for specific use cases without 'provide' field
  * These are used when token is provided separately (e.g., in register method)
  */
@@ -126,11 +102,17 @@ export type ClassProvider<T = any> = {
   useClass: Constructor<T>;
   scope?: Scope;
   inject?: InjectionToken[];
+  multi?: boolean;
+  condition?: (context: ResolutionContext) => boolean;
+  fallback?: Provider<T>;
 };
 
 export type ValueProvider<T = any> = {
   useValue: T;
   validate?: string | ((value: T) => void);
+  multi?: boolean;
+  condition?: (context: ResolutionContext) => boolean;
+  fallback?: Provider<T>;
 };
 
 export type FactoryProvider<T = any> = {
@@ -143,16 +125,23 @@ export type FactoryProvider<T = any> = {
     maxAttempts: number;
     delay: number;
   };
+  multi?: boolean;
+  condition?: (context: ResolutionContext) => boolean;
+  fallback?: Provider<T>;
 };
 
 export type TokenProvider<T = any> = {
   useToken: InjectionToken<T>;
+  multi?: boolean;
+  condition?: (context: ResolutionContext) => boolean;
+  fallback?: Provider<T>;
 };
 
 /**
- * Provider definition without 'provide' field - for use in register(token, provider)
+ * Provider - the actual provider configuration without token
+ * Token is passed separately in register(token, provider)
  */
-export type ProviderDefinition<T = any> =
+export type Provider<T = any> =
   | ClassProvider<T>
   | ValueProvider<T>
   | FactoryProvider<T>
@@ -163,15 +152,14 @@ export type ProviderDefinition<T = any> =
  * Provider input - what users can provide when registering
  */
 export type ProviderInput<T = any> =
-  | Provider<T>                                         // Full provider with 'provide' field
-  | [InjectionToken<T>, ProviderDefinition<T>]         // Tuple format
+  | Provider<T>                                         // Provider without 'provide' field
+  | [InjectionToken<T>, Provider<T>]                   // Tuple format [token, provider]
   | Constructor<T>;                                      // Direct constructor
 
 /**
- * Legacy type aliases for backward compatibility
- * @deprecated Use Provider interface instead
+ * Type aliases
  */
-export type ExplicitProvider<T = any> = Provider<T>;
+export type ProviderDefinition<T = any> = Provider<T>;
 export type AsyncFactoryProvider<T = any> = FactoryProvider<T>;
 export type ConditionalProvider<T = any> = Provider<T>;
 export type StreamProvider<T = any> = Provider<T>;

@@ -354,14 +354,13 @@ describe('Comprehensive DI System Tests', () => {
             version: '1.0.0',
             dependencies: [ConfigModuleToken],
             providers: [
-              {
-                provide: 'DB_CONNECTION',
+              ['DB_CONNECTION', {
                 useFactory: (config: ConfigModule) => ({
                   host: config.get('db.host', 'localhost'),
                   port: config.get('db.port', 5432)
                 }),
                 inject: [ConfigModuleToken]
-              }
+              }]
             ],
             exports: ['DB_CONNECTION']
           });

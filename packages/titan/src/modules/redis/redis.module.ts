@@ -4,16 +4,16 @@
  * Provides Redis integration with connection pooling, clustering, and health checks
  */
 
-import { Module, DynamicModule, Provider, ProviderDefinition, InjectionToken, Constructor } from '@omnitron-dev/nexus';
+import { Module, DynamicModule, Provider, ProviderDefinition, InjectionToken } from '@omnitron-dev/nexus';
 import { RedisManager } from './redis.manager.js';
 import { RedisService } from './redis.service.js';
 import { getClientNamespace } from './redis.utils.js';
 import { RedisHealthIndicator } from './redis.health.js';
 import {
   REDIS_MANAGER,
-  getRedisToken,
+  getRedisClientToken,
   REDIS_MODULE_OPTIONS,
-  DEFAULT_REDIS_NAMESPACE,
+  REDIS_DEFAULT_NAMESPACE,
 } from './redis.constants.js';
 import {
   RedisModuleOptions,
@@ -57,7 +57,7 @@ export class TitanRedisModule {
       REDIS_MANAGER,
       RedisService,
       RedisHealthIndicator,
-      ...clientProviders.map(p => Array.isArray(p) ? p[0] : getRedisToken(DEFAULT_REDIS_NAMESPACE)),
+      ...clientProviders.map(p => Array.isArray(p) ? p[0] : getRedisClientToken(REDIS_DEFAULT_NAMESPACE)),
     ];
 
     const result: DynamicModule = {
@@ -103,9 +103,7 @@ export class TitanRedisModule {
 
     // Dynamic client providers
     providers.push(['REDIS_CLIENT_PROVIDERS' as any, {
-      useFactory: async (moduleOptions: RedisModuleOptions, manager: RedisManager) => {
-        return this.createDynamicClientProviders(moduleOptions, manager);
-      },
+      useFactory: async (moduleOptions: RedisModuleOptions, manager: RedisManager) => this.createDynamicClientProviders(moduleOptions, manager),
       inject: [REDIS_MODULE_OPTIONS, REDIS_MANAGER],
     }]);
 
@@ -131,7 +129,7 @@ export class TitanRedisModule {
 
   static forFeature(clients: string[] = []): DynamicModule {
     const providers: Array<[InjectionToken<any>, ProviderDefinition<any>]> = clients.map((namespace) => [
-      getRedisToken(namespace),
+      getRedisClientToken(namespace),
       {
         useFactory: (manager: RedisManager) => manager.getClient(namespace),
         inject: [REDIS_MANAGER],
@@ -160,13 +158,13 @@ export class TitanRedisModule {
 
     // Default client if none specified
     if (configs.length === 0) {
-      configs.push({ namespace: DEFAULT_REDIS_NAMESPACE });
+      configs.push({ namespace: REDIS_DEFAULT_NAMESPACE });
     }
 
     return configs.map((config) => {
       const namespace = getClientNamespace(config);
       return [
-        getRedisToken(namespace),
+        getRedisClientToken(namespace),
         {
           useFactory: (manager: RedisManager) => manager.getClient(namespace),
           inject: [REDIS_MANAGER],
@@ -190,13 +188,13 @@ export class TitanRedisModule {
     }
 
     if (configs.length === 0) {
-      configs.push({ namespace: DEFAULT_REDIS_NAMESPACE });
+      configs.push({ namespace: REDIS_DEFAULT_NAMESPACE });
     }
 
     return configs.map((config) => {
       const namespace = getClientNamespace(config);
       return [
-        getRedisToken(namespace),
+        getRedisClientToken(namespace),
         {
           useFactory: () => manager.getClient(namespace),
         }

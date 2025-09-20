@@ -2,7 +2,7 @@
  * Enhanced module system with automatic provider management
  */
 
-import { Token, Container, InjectionToken, getTokenName, ExplicitProvider } from '@omnitron-dev/nexus';
+import { Token, Container, InjectionToken, getTokenName, Provider } from '@omnitron-dev/nexus';
 
 import {
   IModule,
@@ -20,7 +20,7 @@ export interface IModuleMetadata {
   name?: string;
   version?: string;
   imports?: ModuleInput[];
-  providers?: ExplicitProvider[];
+  providers?: Array<[InjectionToken<any>, Provider<any>]>;
   exports?: Token<any>[];
   dependencies?: (Token<any> | string)[];
 }
@@ -31,7 +31,7 @@ export interface IModuleMetadata {
 interface IProviderInstance {
   token: InjectionToken<any>;
   instance: any;
-  metadata: ExplicitProvider;
+  metadata: [InjectionToken<any>, Provider<any>];
 }
 
 /**
@@ -101,7 +101,8 @@ export abstract class EnhancedApplicationModule extends BaseApplicationModule {
     // Initialize all providers that implement OnInit
     for (const provider of this._providers) {
       // Resolve instance if not yet resolved (for class providers)
-      if (!provider.instance && provider.metadata.useClass && this._parentContainer) {
+      const [, providerDef] = provider.metadata;
+      if (!provider.instance && 'useClass' in providerDef && this._parentContainer) {
         try {
           provider.instance = this._parentContainer.resolve(provider.token);
         } catch (error) {
@@ -211,8 +212,8 @@ export abstract class EnhancedApplicationModule extends BaseApplicationModule {
   /**
    * Register a provider
    */
-  private async registerProvider(providerDef: ExplicitProvider, app: IApplication): Promise<void> {
-    const token = providerDef.provide;
+  private async registerProvider(providerDef: [InjectionToken<any>, Provider<any>], app: IApplication): Promise<void> {
+    const [token, provider] = providerDef;
 
     // Register in parent container directly
     if (!this._parentContainer) {
@@ -221,28 +222,28 @@ export abstract class EnhancedApplicationModule extends BaseApplicationModule {
 
     let instance: any;
 
-    if (providerDef.useClass) {
+    if ('useClass' in provider) {
       // Class provider - register with container and let Nexus handle DI
       this._parentContainer.register(token, {
-        useClass: providerDef.useClass,
-        scope: providerDef.scope || 'singleton'
+        useClass: provider.useClass,
+        scope: provider.scope || 'singleton'
       } as any);
 
       // Don't resolve immediately - let it be resolved lazily
       // This allows registration to succeed even if dependencies are missing
       instance = null;
-    } else if (providerDef.useValue !== undefined) {
+    } else if ('useValue' in provider) {
       // Value provider
       this._parentContainer.register(token, {
-        useValue: providerDef.useValue
+        useValue: provider.useValue
       } as any);
-      instance = providerDef.useValue;
-    } else if (providerDef.useFactory) {
+      instance = provider.useValue;
+    } else if ('useFactory' in provider) {
       // Factory provider
-      const deps = providerDef.inject?.map(depToken =>
+      const deps = provider.inject?.map((depToken: any) =>
         this._parentContainer!.resolve(depToken)
       ) || [];
-      instance = await providerDef.useFactory(...deps);
+      instance = await provider.useFactory(...deps);
       this._parentContainer.register(token, {
         useValue: instance
       } as any);
@@ -290,7 +291,8 @@ export abstract class EnhancedApplicationModule extends BaseApplicationModule {
     const provider = this._providers.find(p => p.token === token);
     if (provider) {
       // Resolve instance if not yet resolved
-      if (!provider.instance && provider.metadata.useClass && this._parentContainer) {
+      const [, providerDef] = provider.metadata;
+      if (!provider.instance && 'useClass' in providerDef && this._parentContainer) {
         try {
           provider.instance = this._parentContainer.resolve(token);
         } catch {
@@ -383,7 +385,7 @@ export function Module(metadata: IModuleMetadata): ClassDecorator {
  */
 export function createModuleWithProviders(
   name: string,
-  providers: ExplicitProvider[],
+  providers: Array<[InjectionToken<any>, Provider<any>]>,
   options?: Partial<IModuleMetadata>
 ): EnhancedApplicationModule {
   return new (class extends EnhancedApplicationModule {

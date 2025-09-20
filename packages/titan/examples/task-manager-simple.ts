@@ -309,21 +309,9 @@ class TaskManagerModule extends EnhancedApplicationModule {
       version: '1.0.0',
       dependencies: [LoggerModuleToken, ConfigModuleToken],
       providers: [
-        {
-          provide: TaskServiceToken,
-          useClass: TaskService,
-          scope: 'singleton'
-        },
-        {
-          provide: NotificationServiceToken,
-          useClass: NotificationService,
-          scope: 'singleton'
-        },
-        {
-          provide: TaskCoordinatorToken,
-          useClass: TaskCoordinator,
-          scope: 'singleton'
-        }
+        [TaskServiceToken, { useClass: TaskService, scope: 'singleton' }],
+        [NotificationServiceToken, { useClass: NotificationService, scope: 'singleton' }],
+        [TaskCoordinatorToken, { useClass: TaskCoordinator, scope: 'singleton' }]
       ],
       // Export these services so other modules can use them
       exports: [TaskServiceToken, NotificationServiceToken, TaskCoordinatorToken]

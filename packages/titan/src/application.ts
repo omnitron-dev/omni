@@ -4,7 +4,7 @@
 
 import os from 'node:os';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import { Token, Container, createToken, ExplicitProvider } from '@omnitron-dev/nexus';
+import { Token, Container, createToken, InjectionToken, Provider } from '@omnitron-dev/nexus';
 
 import { ConfigModule, ConfigModuleToken, ConfigServiceToken } from './modules/config/index.js';
 import { ILogger, LoggerModule, LoggerModuleToken } from './modules/logger.module.js';
@@ -56,7 +56,7 @@ export class Application implements IApplication {
   static async create(options?: IApplicationOptions & {
     modules?: ModuleInput[];
     imports?: Token<IModule>[];  // Support direct imports like AppModule had
-    providers?: ExplicitProvider[];      // Support direct providers
+    providers?: Array<[InjectionToken<any>, Provider<any>]>;      // Support direct providers
     autoDiscovery?: boolean;       // Enable automatic module discovery
     scanPaths?: string[];         // Paths to scan for modules
   }): Promise<Application> {
@@ -104,10 +104,9 @@ export class Application implements IApplication {
 
       // Register providers in container
       for (const provider of options.providers) {
-        // Extract token from provider
-        if ('provide' in provider) {
-          app._container.register(provider.provide, provider as any);
-        }
+        // Provider is in tuple format [token, providerDef]
+        const [token, providerDef] = provider;
+        app._container.register(token, providerDef);
       }
     }
 
@@ -1031,7 +1030,13 @@ export class Application implements IApplication {
     // Register providers
     if (dynamicModule.providers) {
       for (const provider of dynamicModule.providers) {
-        await this.registerProvider(provider);
+        // Handle both tuple format and direct providers
+        if (Array.isArray(provider)) {
+          await this.registerProvider(provider as [InjectionToken<any>, Provider<any>]);
+        } else if (typeof provider === 'function') {
+          // Constructor - convert to tuple format
+          await this.registerProvider([provider, { useClass: provider }]);
+        }
       }
     }
 
@@ -1045,10 +1050,9 @@ export class Application implements IApplication {
   /**
    * Register a provider in the container
    */
-  private async registerProvider(provider: ExplicitProvider): Promise<void> {
-    // Use the container's built-in support for ExplicitProvider format
-    // The container now handles the normalization internally
-    this._container.register(provider as any);
+  private async registerProvider(provider: [InjectionToken<any>, Provider<any>]): Promise<void> {
+    const [token, providerDef] = provider;
+    this._container.register(token, providerDef);
   }
 
   private handleError(error: Error): void {

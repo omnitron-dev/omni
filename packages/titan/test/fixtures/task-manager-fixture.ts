@@ -415,31 +415,27 @@ export class TaskCoordinator implements OnInit {
   version: '2.0.0',
   dependencies: [LoggerModuleToken, ConfigModuleToken],
   providers: [
-    {
-      provide: TaskRepositoryToken,
+    [TaskRepositoryToken, {
       useFactory: (loggerModule: any) => new TaskRepository(loggerModule),
       inject: [LoggerModuleToken],
       scope: 'singleton'
-    },
-    {
-      provide: TaskServiceToken,
+    }],
+    [TaskServiceToken, {
       useFactory: (repository: TaskRepository, loggerModule: any) => new TaskService(repository, loggerModule),
       inject: [TaskRepositoryToken, LoggerModuleToken],
       scope: 'singleton'
-    },
-    {
-      provide: NotificationServiceToken,
+    }],
+    [NotificationServiceToken, {
       useFactory: (loggerModule: any, configModule: any) => new NotificationService(loggerModule, configModule),
       inject: [LoggerModuleToken, ConfigModuleToken],
       scope: 'singleton'
-    },
-    {
-      provide: TaskCoordinatorToken,
+    }],
+    [TaskCoordinatorToken, {
       useFactory: (taskService: TaskService, notificationService: NotificationService, loggerModule: any) =>
         new TaskCoordinator(taskService, notificationService, loggerModule),
       inject: [TaskServiceToken, NotificationServiceToken, LoggerModuleToken],
       scope: 'singleton'
-    }
+    }]
   ],
   exports: [TaskCoordinatorToken, TaskServiceToken] // Only expose public API
 })

@@ -4,12 +4,12 @@
  * Provides utilities for working with containers in tests
  */
 
-import { Container, type InjectionToken, type ProviderDefinition, normalizeProvider } from '@omnitron-dev/nexus';
+import { Container, type InjectionToken, type Provider } from '@omnitron-dev/nexus';
 
 /**
  * Register providers from a module into a container
  *
- * Handles both legacy and Nexus provider formats
+ * Handles tuple format [token, provider] and direct constructors
  */
 export function registerModuleProviders(
   container: Container,
@@ -18,18 +18,16 @@ export function registerModuleProviders(
   if (!providers) return;
 
   for (const provider of providers) {
-    const normalized = normalizeProvider(provider);
-
-    if (Array.isArray(normalized)) {
+    if (Array.isArray(provider) && provider.length === 2) {
       // Tuple format [token, provider]
-      const [token, providerDef] = normalized;
-      registerProvider(container, token, providerDef);
-    } else if (typeof normalized === 'function') {
+      const [token, providerDef] = provider;
+      container.register(token, providerDef);
+    } else if (typeof provider === 'function') {
       // Constructor - register as class provider
-      container.register(normalized, { useClass: normalized });
+      container.register(provider, { useClass: provider });
     } else {
       // Provider object without token - shouldn't happen
-      console.warn('Provider without token:', normalized);
+      console.warn('Provider without token:', provider);
     }
   }
 }
@@ -40,7 +38,7 @@ export function registerModuleProviders(
 export function registerProvider(
   container: Container,
   token: InjectionToken<any>,
-  provider: ProviderDefinition
+  provider: Provider
 ): void {
   // Always use register - Container will handle the provider type
   container.register(token, provider);
@@ -76,11 +74,9 @@ export function hasProvider(
   if (!module.providers) return false;
 
   for (const provider of module.providers) {
-    const normalized = normalizeProvider(provider);
-
-    if (Array.isArray(normalized)) {
-      if (normalized[0] === token) return true;
-    } else if (normalized === token) {
+    if (Array.isArray(provider)) {
+      if (provider[0] === token) return true;
+    } else if (provider === token) {
       return true;
     }
   }
@@ -97,12 +93,10 @@ export function getModuleTokens(module: { providers?: any[] }): InjectionToken<a
   const tokens: InjectionToken<any>[] = [];
 
   for (const provider of module.providers) {
-    const normalized = normalizeProvider(provider);
-
-    if (Array.isArray(normalized)) {
-      tokens.push(normalized[0]);
-    } else if (typeof normalized === 'function') {
-      tokens.push(normalized);
+    if (Array.isArray(provider)) {
+      tokens.push(provider[0]);
+    } else if (typeof provider === 'function') {
+      tokens.push(provider);
     }
   }
 

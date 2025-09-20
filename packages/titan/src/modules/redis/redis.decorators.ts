@@ -1,4 +1,4 @@
-import { getRedisToken, REDIS_MANAGER } from './redis.constants.js';
+import { getRedisClientToken, REDIS_MANAGER } from './redis.constants.js';
 import { LockOptions, CacheOptions, RateLimitOptions } from './redis.types.js';
 
 // Simple parameter decorator for dependency injection
@@ -11,7 +11,7 @@ function createInjectDecorator(token: string | symbol): ParameterDecorator {
   };
 }
 
-export const InjectRedis = (namespace?: string): ParameterDecorator => createInjectDecorator(getRedisToken(namespace));
+export const InjectRedis = (namespace?: string): ParameterDecorator => createInjectDecorator(getRedisClientToken(namespace));
 
 export const InjectRedisManager = (): ParameterDecorator => createInjectDecorator(REDIS_MANAGER);
 

@@ -328,28 +328,18 @@ class TaskManagerModule extends ApplicationModule {
   static forRoot(config?: TaskManagerConfig): DynamicModule {
     const providers: Provider[] = [
       // Configuration provider
-      {
-        provide: TaskConfigToken,
+      [TaskConfigToken, {
         useValue: config || {
           enableNotifications: true,
           notificationChannels: ['email', 'push', 'sms'],
           maxTasksPerUser: 100,
           defaultPriority: 'medium'
         }
-      },
+      }],
       // Service providers
-      {
-        provide: TaskServiceToken,
-        useClass: TaskService
-      },
-      {
-        provide: NotificationServiceToken,
-        useClass: NotificationService
-      },
-      {
-        provide: TaskCoordinatorToken,
-        useClass: TaskCoordinator
-      }
+      [TaskServiceToken, { useClass: TaskService }],
+      [NotificationServiceToken, { useClass: NotificationService }],
+      [TaskCoordinatorToken, { useClass: TaskCoordinator }]
     ];
 
     return {
@@ -371,24 +361,14 @@ class TaskManagerModule extends ApplicationModule {
   }): DynamicModule {
     const providers: Provider[] = [
       // Async configuration provider
-      {
-        provide: TaskConfigToken,
+      [TaskConfigToken, {
         useFactory: options.useFactory,
         inject: options.inject || []
-      },
+      }],
       // Service providers
-      {
-        provide: TaskServiceToken,
-        useClass: TaskService
-      },
-      {
-        provide: NotificationServiceToken,
-        useClass: NotificationService
-      },
-      {
-        provide: TaskCoordinatorToken,
-        useClass: TaskCoordinator
-      }
+      [TaskServiceToken, { useClass: TaskService }],
+      [NotificationServiceToken, { useClass: NotificationService }],
+      [TaskCoordinatorToken, { useClass: TaskCoordinator }]
     ];
 
     return {

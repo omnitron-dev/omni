@@ -122,18 +122,14 @@ export {
 
 // Provider Utilities
 export {
-  isExplicitProvider,
   isConstructor,
   isAsyncProvider,
-  normalizeProvider,
-  normalizeProviders,
-  providersToRegistrations,
-  getProviderToken,
   createValueProvider,
   createFactoryProvider,
   createClassProvider,
-  createExplicitProvider,
-  mergeProviders,
+  createTokenProvider,
+  createMultiProvider,
+  createConditionalProvider,
   hasScope,
   isMultiProvider
 } from './utils/provider-utils.js';
@@ -307,7 +303,6 @@ export {
   type Provider,
   type ProviderDefinition,
   type ProviderInput,
-  type ExplicitProvider,
   type MultiToken,
   type IContainer,
 

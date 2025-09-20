@@ -750,8 +750,8 @@ export class TaskOrchestrator {
 @Module({
   name: 'CoreModule',
   providers: [
-    { provide: UserService, useClass: UserService },
-    { provide: TaskService, useClass: TaskService }
+    [UserService, { useClass: UserService }],
+    [TaskService, { useClass: TaskService }]
   ],
   exports: [UserService, TaskService]
 })
@@ -764,7 +764,7 @@ export class CoreModule { }
   name: 'NotificationModule',
   imports: [CoreModule],
   providers: [
-    { provide: NotificationService, useClass: NotificationService }
+    [NotificationService, { useClass: NotificationService }]
   ],
   exports: [NotificationService]
 })
@@ -777,7 +777,7 @@ export class NotificationModule { }
   name: 'ActivityModule',
   imports: [CoreModule],
   providers: [
-    { provide: ActivityService, useClass: ActivityService }
+    [ActivityService, { useClass: ActivityService }]
   ],
   exports: [ActivityService]
 })
@@ -790,7 +790,7 @@ export class ActivityModule { }
   name: 'OrchestrationModule',
   imports: [CoreModule, NotificationModule],
   providers: [
-    { provide: TaskOrchestrator, useClass: TaskOrchestrator }
+    [TaskOrchestrator, { useClass: TaskOrchestrator }]
   ],
   exports: [TaskOrchestrator]
 })

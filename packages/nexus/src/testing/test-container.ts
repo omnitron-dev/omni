@@ -459,8 +459,6 @@ export class TestContainer extends Container {
       let token: InjectionToken<T> | undefined;
       if (typeof tokenOrProvider === 'function' || typeof tokenOrProvider === 'string' || typeof tokenOrProvider === 'symbol') {
         token = tokenOrProvider as InjectionToken<T>;
-      } else if (tokenOrProvider && typeof tokenOrProvider === 'object' && 'provide' in tokenOrProvider) {
-        token = tokenOrProvider.provide;
       } else if (tokenOrProvider && typeof tokenOrProvider === 'object' && 'id' in tokenOrProvider) {
         token = tokenOrProvider as InjectionToken<T>;
       }

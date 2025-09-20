@@ -3,9 +3,6 @@ export const REDIS_MANAGER = Symbol('REDIS_MANAGER');
 export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
 export const REDIS_DEFAULT_NAMESPACE = 'default';
 
-// Deprecated, use DEFAULT_REDIS_NAMESPACE
-export const DEFAULT_REDIS_NAMESPACE = REDIS_DEFAULT_NAMESPACE;
-
 /**
  * Get injection token for a Redis client
  * @param namespace - The namespace of the client
@@ -23,6 +20,3 @@ export const getRedisClientToken = (namespace?: string): string => namespace && 
 export const getRedisOptionsToken = (namespace?: string): string => namespace && namespace !== REDIS_DEFAULT_NAMESPACE
   ? `REDIS_OPTIONS:${namespace}`
   : `REDIS_OPTIONS:${REDIS_DEFAULT_NAMESPACE}`;
-
-// Legacy support
-export const getRedisToken = getRedisClientToken;

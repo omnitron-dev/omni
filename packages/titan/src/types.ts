@@ -2,7 +2,7 @@
  * Core types for Titan application framework
  */
 
-import { Token, Container, ExplicitProvider } from '@omnitron-dev/nexus';
+import { Token, Container, Provider, type InjectionToken } from '@omnitron-dev/nexus';
 
 /**
  * Application lifecycle state
@@ -178,23 +178,6 @@ export interface IEnvironment {
   ppid?: number;
 }
 
-/**
- * Module definition options
- */
-export interface IModuleDefinition<T extends IModule = IModule> {
-  name: string;
-  version?: string;
-  dependencies?: Token<any>[];
-  providers?: any[];
-  imports?: Token<IModule>[];
-  exports?: Token<any>[];
-  onRegister?(app: IApplication): void | Promise<void>;
-  onStart?(app: IApplication): void | Promise<void>;
-  onStop?(app: IApplication): void | Promise<void>;
-  onDestroy?(): void | Promise<void>;
-  configure?(config: any): void;
-  health?(): Promise<IHealthStatus>;
-}
 
 /**
  * Application options
@@ -261,17 +244,13 @@ export interface IApplication {
  */
 export type ModuleConstructor<T extends IModule = IModule> = new (...args: any[]) => T;
 
-/**
- * Module factory function
- */
-export type ModuleFactory<T extends IModule = IModule> = (app: IApplication) => T | Promise<T>;
 
 /**
  * Dynamic module interface - for modules with providers
  */
 export interface IDynamicModule extends IModule {
   module: ModuleConstructor;
-  providers?: ExplicitProvider[];
+  providers?: Array<Provider | [InjectionToken<any>, Provider]>;
   imports?: ModuleInput[];
   exports?: Token<any>[];
   global?: boolean;
@@ -289,14 +268,3 @@ export type ModuleInput =
   | (() => IDynamicModule)         // Dynamic module factory
   | (() => Promise<IDynamicModule>); // Async dynamic module factory
 
-/**
- * Static module interface - for modules with forRoot patterns
- */
-export interface IStaticModuleInterface {
-  forRoot?(config?: any): IDynamicModule;
-  forRootAsync?(options: {
-    useFactory?: (...args: any[]) => any | Promise<any>;
-    inject?: Token<any>[];
-    imports?: ModuleInput[];
-  }): IDynamicModule;
-}

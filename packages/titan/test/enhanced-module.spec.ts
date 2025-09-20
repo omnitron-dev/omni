@@ -231,8 +231,8 @@ describe('EnhancedApplicationModule', () => {
 
   describe('Provider Registration', () => {
     it('should register class providers', async () => {
-      const providers: Provider[] = [
-        { provide: TestServiceToken, useClass: TestServiceImpl, scope: 'singleton' }
+      const providers: Array<[any, Provider]> = [
+        [TestServiceToken, { useClass: TestServiceImpl, scope: 'singleton' }]
       ];
 
       const module = new (class extends EnhancedApplicationModule {
@@ -250,8 +250,8 @@ describe('EnhancedApplicationModule', () => {
 
     it('should register value providers', async () => {
       const testValue = { test: 'value' };
-      const providers: Provider[] = [
-        { provide: TestServiceToken, useValue: testValue }
+      const providers: Array<[any, Provider]> = [
+        [TestServiceToken, { useValue: testValue }]
       ];
 
       const module = new (class extends EnhancedApplicationModule {
@@ -267,11 +267,10 @@ describe('EnhancedApplicationModule', () => {
     });
 
     it('should register factory providers', async () => {
-      const providers: Provider[] = [
-        {
-          provide: TestServiceToken,
+      const providers: Array<[any, Provider]> = [
+        [TestServiceToken, {
           useFactory: () => new TestServiceImpl()
-        }
+        }]
       ];
 
       const module = new (class extends EnhancedApplicationModule {
@@ -287,13 +286,12 @@ describe('EnhancedApplicationModule', () => {
     });
 
     it('should inject dependencies into factory providers', async () => {
-      const providers: Provider[] = [
-        { provide: TestServiceToken, useClass: TestServiceImpl },
-        {
-          provide: DependentServiceToken,
+      const providers: Array<[any, Provider]> = [
+        [TestServiceToken, { useClass: TestServiceImpl }],
+        [DependentServiceToken, {
           useFactory: (testService: TestService) => new DependentService(testService),
           inject: [TestServiceToken]
-        }
+        }]
       ];
 
       const module = new (class extends EnhancedApplicationModule {
@@ -318,9 +316,9 @@ describe('EnhancedApplicationModule', () => {
       const service1 = new TestServiceImpl();
       const service2 = new TestServiceImpl();
 
-      const providers: Provider[] = [
-        { provide: TestServiceToken, useValue: service1 },
-        { provide: createToken('Service2'), useValue: service2 }
+      const providers: Array<[any, Provider]> = [
+        [TestServiceToken, { useValue: service1 }],
+        [createToken('Service2'), { useValue: service2 }]
       ];
 
       const module = new (class extends EnhancedApplicationModule {
@@ -350,10 +348,10 @@ describe('EnhancedApplicationModule', () => {
       const service2 = new OrderedService('second');
       const service3 = new OrderedService('third');
 
-      const providers: Provider[] = [
-        { provide: createToken('Service1'), useValue: service1 },
-        { provide: createToken('Service2'), useValue: service2 },
-        { provide: createToken('Service3'), useValue: service3 }
+      const providers: Array<[any, Provider]> = [
+        [createToken('Service1'), { useValue: service1 }],
+        [createToken('Service2'), { useValue: service2 }],
+        [createToken('Service3'), { useValue: service3 }]
       ];
 
       const module = new (class extends EnhancedApplicationModule {
@@ -412,9 +410,9 @@ describe('EnhancedApplicationModule', () => {
       const service = new TestServiceImpl();
       const privateService = { private: true };
 
-      const providers: Provider[] = [
-        { provide: TestServiceToken, useValue: service },
-        { provide: createToken('PrivateService'), useValue: privateService }
+      const providers: Array<[any, Provider]> = [
+        [TestServiceToken, { useValue: service }],
+        [createToken('PrivateService'), { useValue: privateService }]
       ];
 
       const module = new (class extends EnhancedApplicationModule {
@@ -448,9 +446,9 @@ describe('EnhancedApplicationModule', () => {
       const unhealthyService = new TestServiceImpl();
       unhealthyService.destroyed = true;
 
-      const providers: Provider[] = [
-        { provide: createToken('HealthyService'), useValue: healthyService },
-        { provide: createToken('UnhealthyService'), useValue: unhealthyService }
+      const providers: Array<[any, Provider]> = [
+        [createToken('HealthyService'), { useValue: healthyService }],
+        [createToken('UnhealthyService'), { useValue: unhealthyService }]
       ];
 
       const module = new (class extends EnhancedApplicationModule {
@@ -481,9 +479,9 @@ describe('EnhancedApplicationModule', () => {
         }
       }
 
-      const providers: Provider[] = [
-        { provide: createToken('Service1'), useValue: new HealthyService() },
-        { provide: createToken('Service2'), useValue: new DegradedService() }
+      const providers: Array<[any, Provider]> = [
+        [createToken('Service1'), { useValue: new HealthyService() }],
+        [createToken('Service2'), { useValue: new DegradedService() }]
       ];
 
       const module = new (class extends EnhancedApplicationModule {
@@ -505,8 +503,8 @@ describe('EnhancedApplicationModule', () => {
         }
       }
 
-      const providers: Provider[] = [
-        { provide: createToken('ErrorService'), useValue: new ErrorService() }
+      const providers: Array<[any, Provider]> = [
+        [createToken('ErrorService'), { useValue: new ErrorService() }]
       ];
 
       const module = new (class extends EnhancedApplicationModule {
@@ -529,7 +527,7 @@ describe('EnhancedApplicationModule', () => {
         name: 'DecoratedModule',
         version: '1.0.0',
         providers: [
-          { provide: TestServiceToken, useClass: TestServiceImpl }
+          [TestServiceToken, { useClass: TestServiceImpl }]
         ]
       })
       class DecoratedModule {
@@ -589,7 +587,7 @@ describe('EnhancedApplicationModule', () => {
       const module = createModuleWithProviders(
         'HelperModule',
         [
-          { provide: TestServiceToken, useClass: TestServiceImpl }
+          [TestServiceToken, { useClass: TestServiceImpl }]
         ],
         {
           version: '1.0.0',
@@ -608,8 +606,8 @@ describe('EnhancedApplicationModule', () => {
   describe('Protected Methods', () => {
     it('should provide getProvider method', async () => {
       const service = new TestServiceImpl();
-      const providers: Provider[] = [
-        { provide: TestServiceToken, useValue: service }
+      const providers: Array<[any, Provider]> = [
+        [TestServiceToken, { useValue: service }]
       ];
 
       class TestModule extends EnhancedApplicationModule {
@@ -629,8 +627,8 @@ describe('EnhancedApplicationModule', () => {
     });
 
     it('should provide hasProvider method', async () => {
-      const providers: Provider[] = [
-        { provide: TestServiceToken, useClass: TestServiceImpl }
+      const providers: Array<[any, Provider]> = [
+        [TestServiceToken, { useClass: TestServiceImpl }]
       ];
 
       class TestModule extends EnhancedApplicationModule {

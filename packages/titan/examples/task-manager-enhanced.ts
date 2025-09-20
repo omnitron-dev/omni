@@ -383,10 +383,10 @@ class TaskCoordinator implements OnInit {
   version: '2.0.0',
   dependencies: [LoggerModuleToken, ConfigModuleToken],
   providers: [
-    { provide: TaskRepositoryToken, useClass: TaskRepository, scope: 'singleton' },
-    { provide: TaskServiceToken, useClass: TaskService, scope: 'singleton' },
-    { provide: NotificationServiceToken, useClass: NotificationService, scope: 'singleton' },
-    { provide: TaskCoordinatorToken, useClass: TaskCoordinator, scope: 'singleton' }
+    [TaskRepositoryToken, { useClass: TaskRepository, scope: 'singleton' }],
+    [TaskServiceToken, { useClass: TaskService, scope: 'singleton' }],
+    [NotificationServiceToken, { useClass: NotificationService, scope: 'singleton' }],
+    [TaskCoordinatorToken, { useClass: TaskCoordinator, scope: 'singleton' }]
   ],
   exports: [TaskCoordinatorToken, TaskServiceToken] // Only expose public API
 })

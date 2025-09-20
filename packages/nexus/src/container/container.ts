@@ -8,7 +8,7 @@ import { ContextManager, ContextProvider } from '../context/context.js';
 import { LifecycleEvent, LifecycleManager } from '../lifecycle/lifecycle.js';
 import { isToken, isMultiToken, getTokenName, isOptionalToken } from '../token/token.js';
 import { Middleware, MiddlewareContext, MiddlewarePipeline } from '../middleware/middleware.js';
-import { isProvider, extractProviderParts, isConstructor } from '../utils/provider-utils.js';
+import { isConstructor } from '../utils/provider-utils.js';
 import {
   DisposalError,
   ResolutionError,
@@ -143,20 +143,14 @@ export class Container implements IContainer {
 
     // Normalize arguments based on input format
     if (arguments.length === 1) {
-      // Single argument - could be Provider, Constructor, or token
-      if (isProvider(tokenOrProvider)) {
-        // Provider with 'provide' field
-        const parts = extractProviderParts(tokenOrProvider);
-        token = parts.token!;
-        provider = parts.definition;
-        options = {};
-      } else if (isConstructor(tokenOrProvider)) {
+      // Single argument - should be a Constructor
+      if (isConstructor(tokenOrProvider)) {
         // Direct constructor registration
         token = tokenOrProvider as InjectionToken<T>;
         provider = { useClass: tokenOrProvider as Constructor<T> };
         options = {};
       } else {
-        throw new InvalidProviderError(tokenOrProvider as any, 'Invalid single argument to register');
+        throw new InvalidProviderError(tokenOrProvider as any, 'Single argument must be a constructor');
       }
     } else if (arguments.length >= 2) {
       // Multiple arguments - standard format: register(token, provider, options)

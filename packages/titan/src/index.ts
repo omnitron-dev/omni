@@ -251,14 +251,12 @@ export {
   IEnvironment,
   IApplication,
   IHealthStatus,
-  ModuleFactory,
   ILifecycleHook,
   IModuleMetadata,
   IModuleLifecycle,
   IShutdownOptions,
   ApplicationState,
   ApplicationEvent,
-  IModuleDefinition,
   ApplicationModule,
   ModuleConstructor,
   // Backward compatibility aliases
@@ -273,7 +271,6 @@ export {
   IModuleMetadata as ModuleMetadata,
   IShutdownOptions as ShutdownOptions,
   IModuleLifecycle as ModuleLifecycle,
-  IModuleDefinition as ModuleDefinition,
   IApplicationConfig as ApplicationConfig,
   IApplicationOptions as ApplicationOptions,
   IApplicationMetrics as ApplicationMetrics

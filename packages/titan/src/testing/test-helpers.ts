@@ -5,7 +5,7 @@
  */
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import type { ConfigModuleOptions } from '../modules/config/config.types.js';
+import type { IConfigModuleOptions as ConfigModuleOptions } from '../modules/config/types.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -189,9 +189,7 @@ export function createMockRedisClient(): any {
       }
       return deleted;
     }),
-    exists: jest.fn(async (...keys: string[]) => {
-      return keys.filter(k => data.has(k)).length;
-    }),
+    exists: jest.fn(async (...keys: string[]) => keys.filter(k => data.has(k)).length),
     keys: jest.fn(async (pattern: string) => {
       if (pattern === '*') return Array.from(data.keys());
       // Simple pattern matching
@@ -210,9 +208,7 @@ export function createMockRedisClient(): any {
       data.set(key, hash);
       return 1;
     }),
-    hgetall: jest.fn(async (key: string) => {
-      return data.get(key) || {};
-    }),
+    hgetall: jest.fn(async (key: string) => data.get(key) || {}),
 
     // List operations
     lpush: jest.fn(async (key: string, ...values: any[]) => {
@@ -302,7 +298,7 @@ export function createMockRedisClient(): any {
         exec: jest.fn(async () => {
           const results = [];
           for (const [cmd, ...args] of commands) {
-            // @ts-ignore
+            // @ts-expect-error - Redis command methods are dynamically accessed
             results.push([null, await client[cmd](...args)]);
           }
           return results;
@@ -311,11 +307,9 @@ export function createMockRedisClient(): any {
       return pipeline;
     }),
 
-    multi: jest.fn((): any => {
-      return {
+    multi: jest.fn((): any => ({
         exec: jest.fn(async () => []),
-      };
-    }),
+      })),
 
     // Utility
     ping: jest.fn(async () => 'PONG'),

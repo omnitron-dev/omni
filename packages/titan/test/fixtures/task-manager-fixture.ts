@@ -14,8 +14,8 @@ import {
   IApplication,
   HealthStatus
 } from '../../src/index';
-import { LoggerModuleToken, ILogger as Logger } from '../../src/modules/logger.module';
-const ConfigModuleToken = createToken('ConfigModule');
+import { LOGGER_SERVICE_TOKEN, ILogger as Logger } from '../../src/modules/logger.module';
+const CONFIG_SERVICE_TOKEN = createToken('ConfigModule');
 import { Module } from '../../src/enhanced-module';
 
 // ============================
@@ -52,7 +52,7 @@ export class TaskRepository implements OnInit, OnDestroy {
   private logger!: Logger;
 
   constructor(
-    @Inject(LoggerModuleToken) private loggerModule: any
+    @Inject(LOGGER_SERVICE_TOKEN) private loggerModule: any
   ) {
     // Add safety check for tests
     if (this.loggerModule && typeof this.loggerModule.child === 'function') {
@@ -141,7 +141,7 @@ export class TaskService implements OnInit {
 
   constructor(
     @Inject(TaskRepositoryToken) private repository: TaskRepository,
-    @Inject(LoggerModuleToken) private loggerModule: any
+    @Inject(LOGGER_SERVICE_TOKEN) private loggerModule: any
   ) {
     // Add safety check for tests
     if (this.loggerModule && typeof this.loggerModule.child === 'function') {
@@ -264,8 +264,8 @@ export class NotificationService implements OnInit {
   private config: any = {};
 
   constructor(
-    @Inject(LoggerModuleToken) private loggerModule: any,
-    @Inject(ConfigModuleToken) private configModule: any
+    @Inject(LOGGER_SERVICE_TOKEN) private loggerModule: any,
+    @Inject(CONFIG_SERVICE_TOKEN) private configModule: any
   ) {
     // Add safety check for tests
     if (this.loggerModule && typeof this.loggerModule.child === 'function') {
@@ -345,7 +345,7 @@ export class TaskCoordinator implements OnInit {
   constructor(
     @Inject(TaskServiceToken) private taskService: TaskService,
     @Inject(NotificationServiceToken) private notificationService: NotificationService,
-    @Inject(LoggerModuleToken) private loggerModule: any
+    @Inject(LOGGER_SERVICE_TOKEN) private loggerModule: any
   ) {
     // Add safety check for tests
     if (this.loggerModule && typeof this.loggerModule.child === 'function') {
@@ -413,27 +413,27 @@ export class TaskCoordinator implements OnInit {
 @Module({
   name: 'task-manager',
   version: '2.0.0',
-  dependencies: [LoggerModuleToken, ConfigModuleToken],
+  dependencies: [LOGGER_SERVICE_TOKEN, CONFIG_SERVICE_TOKEN],
   providers: [
     [TaskRepositoryToken, {
       useFactory: (loggerModule: any) => new TaskRepository(loggerModule),
-      inject: [LoggerModuleToken],
+      inject: [LOGGER_SERVICE_TOKEN],
       scope: 'singleton'
     }],
     [TaskServiceToken, {
       useFactory: (repository: TaskRepository, loggerModule: any) => new TaskService(repository, loggerModule),
-      inject: [TaskRepositoryToken, LoggerModuleToken],
+      inject: [TaskRepositoryToken, LOGGER_SERVICE_TOKEN],
       scope: 'singleton'
     }],
     [NotificationServiceToken, {
       useFactory: (loggerModule: any, configModule: any) => new NotificationService(loggerModule, configModule),
-      inject: [LoggerModuleToken, ConfigModuleToken],
+      inject: [LOGGER_SERVICE_TOKEN, CONFIG_SERVICE_TOKEN],
       scope: 'singleton'
     }],
     [TaskCoordinatorToken, {
       useFactory: (taskService: TaskService, notificationService: NotificationService, loggerModule: any) =>
         new TaskCoordinator(taskService, notificationService, loggerModule),
-      inject: [TaskServiceToken, NotificationServiceToken, LoggerModuleToken],
+      inject: [TaskServiceToken, NotificationServiceToken, LOGGER_SERVICE_TOKEN],
       scope: 'singleton'
     }]
   ],
@@ -443,7 +443,7 @@ export class TaskManagerModule {
   private logger?: Logger;
 
   async onStart(app: IApplication): Promise<void> {
-    const loggerModule = app.get(LoggerModuleToken);
+    const loggerModule = app.get(LOGGER_SERVICE_TOKEN);
     this.logger = loggerModule.child({ module: 'TaskManager' });
     this.logger.info('TaskManagerModule started successfully');
   }

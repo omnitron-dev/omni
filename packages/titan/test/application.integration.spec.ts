@@ -17,11 +17,11 @@ const createApp = (options: any = {}) => {
   });
 };
 import { ConfigModule } from '../src/modules/config/config.module';
-import { LoggerModule, LoggerModuleToken, Logger } from '../src/modules/logger.module';
+import { LoggerModule, LOGGER_SERVICE_TOKEN, Logger } from '../src/modules/logger.module';
 import { createToken } from '@omnitron-dev/nexus';
-const ConfigModuleToken = createToken('ConfigModule');
+const CONFIG_SERVICE_TOKEN = createToken('ConfigModule');
 import {
-  ApplicationModule,
+  AbstractModule,
   Module,
   IApplication,
   HealthStatus,
@@ -35,10 +35,10 @@ import {
 /**
  * Database module simulating real database connection
  */
-class DatabaseModule extends ApplicationModule {
+class DatabaseModule extends AbstractModule {
   override readonly name = 'database';
   override readonly version = '1.0.0';
-  override readonly dependencies = [ConfigModuleToken, LoggerModuleToken];
+  override readonly dependencies = [CONFIG_SERVICE_TOKEN, LOGGER_SERVICE_TOKEN];
 
   private connection: any = null;
   private connectionPool: any[] = [];
@@ -46,9 +46,9 @@ class DatabaseModule extends ApplicationModule {
   private config?: any;
 
   override async onStart(app: IApplication): Promise<void> {
-    const configModule = app.get(ConfigModuleToken);
-    const loggerModule = app.get(LoggerModuleToken);
-    
+    const configModule = app.get(CONFIG_SERVICE_TOKEN);
+    const loggerModule = app.get(LOGGER_SERVICE_TOKEN);
+
     this.logger = loggerModule.child({ module: 'database' });
     this.config = configModule.get('database', {
       host: 'localhost',
@@ -61,7 +61,7 @@ class DatabaseModule extends ApplicationModule {
 
     // Simulate connection establishment
     await this.connect();
-    
+
     // Initialize connection pool
     for (let i = 0; i < this.config.poolSize; i++) {
       this.connectionPool.push({ id: i, busy: false });
@@ -124,7 +124,7 @@ class DatabaseModule extends ApplicationModule {
     }
 
     connection.busy = true;
-    
+
     try {
       // Simulate query execution
       await new Promise(resolve => setTimeout(resolve, 10));
@@ -140,10 +140,10 @@ const DatabaseModuleToken = createToken<DatabaseModule>('DatabaseModule');
 /**
  * HTTP Server module simulating real server
  */
-class HttpServerModule extends ApplicationModule {
+class HttpServerModule extends AbstractModule {
   override readonly name = 'http-server';
   override readonly version = '1.0.0';
-  override readonly dependencies = [ConfigModuleToken, LoggerModuleToken];
+  override readonly dependencies = [CONFIG_SERVICE_TOKEN, LOGGER_SERVICE_TOKEN];
 
   private server: any = null;
   private logger?: Logger;
@@ -151,9 +151,9 @@ class HttpServerModule extends ApplicationModule {
   private requestCount = 0;
 
   override async onStart(app: IApplication): Promise<void> {
-    const configModule = app.get(ConfigModuleToken);
-    const loggerModule = app.get(LoggerModuleToken);
-    
+    const configModule = app.get(CONFIG_SERVICE_TOKEN);
+    const loggerModule = app.get(LOGGER_SERVICE_TOKEN);
+
     this.logger = loggerModule.child({ module: 'http-server' });
     this.port = configModule.get('server.port', 3000);
 
@@ -161,7 +161,7 @@ class HttpServerModule extends ApplicationModule {
 
     // Simulate server start
     await this.startServer();
-    
+
     this.logger.info({ port: this.port }, 'HTTP server started');
   }
 
@@ -230,10 +230,10 @@ const HttpServerModuleToken = createToken<HttpServerModule>('HttpServerModule');
 /**
  * Cache module with TTL support
  */
-class CacheModule extends ApplicationModule {
+class CacheModule extends AbstractModule {
   override readonly name = 'cache';
   override readonly version = '1.0.0';
-  override readonly dependencies = [ConfigModuleToken, LoggerModuleToken];
+  override readonly dependencies = [CONFIG_SERVICE_TOKEN, LOGGER_SERVICE_TOKEN];
 
   private cache = new Map<string, { value: any; expires: number }>();
   private logger?: Logger;
@@ -241,9 +241,9 @@ class CacheModule extends ApplicationModule {
   private cleanupInterval?: NodeJS.Timeout;
 
   override async onStart(app: IApplication): Promise<void> {
-    const configModule = app.get(ConfigModuleToken);
-    const loggerModule = app.get(LoggerModuleToken);
-    
+    const configModule = app.get(CONFIG_SERVICE_TOKEN);
+    const loggerModule = app.get(LOGGER_SERVICE_TOKEN);
+
     this.logger = loggerModule.child({ module: 'cache' });
     this.defaultTTL = configModule.get('cache.ttl', 3600000);
 
@@ -285,7 +285,7 @@ class CacheModule extends ApplicationModule {
 
   get(key: string): any {
     const entry = this.cache.get(key);
-    
+
     if (!entry) {
       this.logger?.debug({ key }, 'Cache miss');
       return undefined;
@@ -333,10 +333,10 @@ const CacheModuleToken = createToken<CacheModule>('CacheModule');
 /**
  * Message Queue module
  */
-class MessageQueueModule extends ApplicationModule {
+class MessageQueueModule extends AbstractModule {
   override readonly name = 'message-queue';
   override readonly version = '1.0.0';
-  override readonly dependencies = [ConfigModuleToken, LoggerModuleToken];
+  override readonly dependencies = [CONFIG_SERVICE_TOKEN, LOGGER_SERVICE_TOKEN];
 
   private queues = new Map<string, any[]>();
   private subscribers = new Map<string, ((message: any) => void)[]>();
@@ -344,24 +344,24 @@ class MessageQueueModule extends ApplicationModule {
   private processing = false;
 
   override async onStart(app: IApplication): Promise<void> {
-    const loggerModule = app.get(LoggerModuleToken);
+    const loggerModule = app.get(LOGGER_SERVICE_TOKEN);
     this.logger = loggerModule.child({ module: 'message-queue' });
-    
+
     this.logger.info('Starting message queue');
     this.processing = true;
-    
+
     // Start message processing
     this.processMessages();
   }
 
   override async onStop(): Promise<void> {
     this.processing = false;
-    
+
     if (this.logger) {
       const totalMessages = Array.from(this.queues.values())
         .reduce((sum, queue) => sum + queue.length, 0);
-      
-      this.logger.info({ queues: this.queues.size, messages: totalMessages }, 
+
+      this.logger.info({ queues: this.queues.size, messages: totalMessages },
         'Stopping message queue');
     }
 
@@ -400,7 +400,7 @@ class MessageQueueModule extends ApplicationModule {
     }
 
     this.subscribers.get(queue)!.push(handler);
-    
+
     // Return unsubscribe function
     return () => {
       const handlers = this.subscribers.get(queue);
@@ -419,7 +419,7 @@ class MessageQueueModule extends ApplicationModule {
         if (messages.length > 0) {
           const message = messages.shift();
           const handlers = this.subscribers.get(queue) || [];
-          
+
           for (const handler of handlers) {
             try {
               handler(message);
@@ -516,7 +516,7 @@ describe('Titan Application Integration Tests', () => {
       // Verify operations
       expect(cacheModule.get('user:1')).toEqual({ id: 1, name: 'John' });
       expect(serverHealth.details?.requestCount).toBe(0); // Was 0 before handleRequest
-      
+
       const newServerHealth = await serverModule.health();
       expect(newServerHealth.details?.requestCount).toBe(1); // Now 1 after handleRequest
 
@@ -588,13 +588,13 @@ describe('Titan Application Integration Tests', () => {
           }
         }
       }
-      app.replaceModule(ConfigModuleToken, new ConfigModule());
-      app.replaceModule(LoggerModuleToken, new LoggerModule());
+      app.replaceModule(CONFIG_SERVICE_TOKEN, new ConfigModule());
+      app.replaceModule(LOGGER_SERVICE_TOKEN, new LoggerModule());
 
       await app.start();
 
       // Validate configuration
-      const config = app.get(ConfigModuleToken);
+      const config = app.get(CONFIG_SERVICE_TOKEN);
       const validated = config.validate(configSchema);
 
       expect(validated.app.name).toBe('validated-app');
@@ -633,7 +633,7 @@ describe('Titan Application Integration Tests', () => {
 
       // Message queue for inter-service communication
       const sharedQueue = new MessageQueueModule();
-      
+
       // Register shared queue in all services
       [userServiceApp, orderServiceApp, notificationServiceApp].forEach(service => {
         service.container.register(MessageQueueModuleToken, { useValue: sharedQueue });
@@ -649,7 +649,7 @@ describe('Titan Application Integration Tests', () => {
 
       // Setup inter-service communication
       const queue = userServiceApp.get(MessageQueueModuleToken) as MessageQueueModule;
-      
+
       let notificationReceived = false;
       queue.subscribe('notifications', (message) => {
         notificationReceived = true;
@@ -680,7 +680,7 @@ describe('Titan Application Integration Tests', () => {
       app = createApp();
 
       // Module that fails initially but can recover
-      class ResilientModule extends ApplicationModule {
+      class ResilientModule extends AbstractModule {
         override readonly name = 'resilient';
         private attempts = 0;
         private maxAttempts = 3;
@@ -710,12 +710,12 @@ describe('Titan Application Integration Tests', () => {
       app.use(resilientModule);
 
       await expect(app.start()).rejects.toThrow('Start failed, attempt 2');
-      
+
       // Third attempt succeeds
       app = createApp();
       app.use(resilientModule);
       await app.start();
-      
+
       expect(app.state).toBe(ApplicationState.Started);
     });
 
@@ -723,7 +723,7 @@ describe('Titan Application Integration Tests', () => {
       app = createApp();
 
       // Module A that fails
-      class ModuleA extends ApplicationModule {
+      class ModuleA extends AbstractModule {
         override readonly name = 'moduleA';
         override async onStart(): Promise<void> {
           throw new Error('ModuleA failed to start');
@@ -732,9 +732,9 @@ describe('Titan Application Integration Tests', () => {
 
       // Create unique tokens for this test
       const tokenA = createToken<ModuleA>('moduleA-dep-test');
-      
+
       // Module B that depends on A
-      class ModuleB extends ApplicationModule {
+      class ModuleB extends AbstractModule {
         override readonly name = 'moduleB';
         override readonly dependencies = [tokenA];
         startCalled = false;
@@ -750,7 +750,7 @@ describe('Titan Application Integration Tests', () => {
 
       app.container.register(tokenA, { useValue: moduleA });
       app.container.register(tokenB, { useValue: moduleB });
-      
+
       app.use(tokenA);
       app.use(tokenB);
 
@@ -763,15 +763,15 @@ describe('Titan Application Integration Tests', () => {
       app = createApp({ debug: true }); // Enable debug to auto-create logger
 
       // Simulate network module with transient failures
-      class NetworkModule extends ApplicationModule {
+      class NetworkModule extends AbstractModule {
         override readonly name = 'network';
         private retryCount = 0;
         private maxRetries = 3;
         connected = false;
 
         override async onStart(app: IApplication): Promise<void> {
-          const logger = app.get(LoggerModuleToken).logger;
-          
+          const logger = app.get(LOGGER_SERVICE_TOKEN).logger;
+
           while (this.retryCount < this.maxRetries && !this.connected) {
             try {
               await this.connect();
@@ -780,11 +780,11 @@ describe('Titan Application Integration Tests', () => {
             } catch (error) {
               this.retryCount++;
               logger.warn({ attempt: this.retryCount }, 'Connection failed, retrying');
-              
+
               if (this.retryCount >= this.maxRetries) {
                 throw new Error('Max retries exceeded');
               }
-              
+
               await new Promise(resolve => setTimeout(resolve, 100));
             }
           }
@@ -887,7 +887,7 @@ describe('Titan Application Integration Tests', () => {
       app = createApp();
 
       // Module that consumes memory
-      class MemoryIntensiveModule extends ApplicationModule {
+      class MemoryIntensiveModule extends AbstractModule {
         override readonly name = 'memory-intensive';
         private data: any[] = [];
 
@@ -929,7 +929,7 @@ describe('Titan Application Integration Tests', () => {
 
       // Wait for GC
       await new Promise(resolve => setTimeout(resolve, 100));
-      
+
       const finalMemory = process.memoryUsage().heapUsed;
 
       // Memory should be released after stop (or at least not grow significantly)
@@ -961,24 +961,24 @@ describe('Titan Application Integration Tests', () => {
         configModule.loadObject(JSON.parse(fileContent));
 
         app = createApp({ disableCoreModules: true });
-        app.replaceModule(ConfigModuleToken, configModule);
-        app.replaceModule(LoggerModuleToken, new LoggerModule());
+        app.replaceModule(CONFIG_SERVICE_TOKEN, configModule);
+        app.replaceModule(LOGGER_SERVICE_TOKEN, new LoggerModule());
 
         await app.start();
 
-        const config = app.get(ConfigModuleToken);
+        const config = app.get(CONFIG_SERVICE_TOKEN);
         expect(config.get('app.name')).toBe('file-config-app');
         expect(config.get('app.version')).toBe('2.0.0');
         expect(config.get('features.experimental')).toBe(true);
       } finally {
         // Cleanup
-        await fs.unlink(configPath).catch(() => {});
+        await fs.unlink(configPath).catch(() => { });
       }
     });
 
     it('should handle environment-specific configuration', async () => {
       const environments = ['development', 'staging', 'production'];
-      
+
       for (const env of environments) {
         const testApp = createApp({
           config: {
@@ -999,9 +999,9 @@ describe('Titan Application Integration Tests', () => {
         });
 
         await testApp.start();
-        
-        const config = testApp.get(ConfigModuleToken);
-        
+
+        const config = testApp.get(CONFIG_SERVICE_TOKEN);
+
         if (env === 'production') {
           expect(config.get('database.host')).toBe('prod-db.example.com');
           expect(config.get('database.poolSize')).toBe(50);
@@ -1020,8 +1020,8 @@ describe('Titan Application Integration Tests', () => {
 
     it('should handle configuration hot-reload', async () => {
       app = createApp();
-      
-      const config = app.get(ConfigModuleToken);
+
+      const config = app.get(CONFIG_SERVICE_TOKEN);
       let configChanges: any[] = [];
 
       // Watch for config changes
@@ -1055,7 +1055,7 @@ describe('Titan Application Integration Tests', () => {
       app = createApp();
 
       // Event bus module
-      class EventBusModule extends ApplicationModule {
+      class EventBusModule extends AbstractModule {
         override readonly name = 'event-bus';
         private listeners = new Map<string, Set<Function>>();
 
@@ -1079,7 +1079,7 @@ describe('Titan Application Integration Tests', () => {
       }
 
       // Producer module
-      class ProducerModule extends ApplicationModule {
+      class ProducerModule extends AbstractModule {
         override readonly name = 'producer';
         private eventBus?: EventBusModule;
 
@@ -1093,7 +1093,7 @@ describe('Titan Application Integration Tests', () => {
       }
 
       // Consumer module
-      class ConsumerModule extends ApplicationModule {
+      class ConsumerModule extends AbstractModule {
         override readonly name = 'consumer';
         public receivedData: any[] = [];
 
@@ -1137,13 +1137,13 @@ describe('Titan Application Integration Tests', () => {
       app = createApp();
 
       // Service module that handles requests
-      class ServiceModule extends ApplicationModule {
+      class ServiceModule extends AbstractModule {
         override readonly name = 'service';
-        
+
         async handleRequest(request: any): Promise<any> {
           // Simulate processing
           await new Promise(resolve => setTimeout(resolve, 10));
-          
+
           return {
             success: true,
             data: request.data?.toUpperCase(),
@@ -1153,7 +1153,7 @@ describe('Titan Application Integration Tests', () => {
       }
 
       // Client module that makes requests
-      class ClientModule extends ApplicationModule {
+      class ClientModule extends AbstractModule {
         override readonly name = 'client';
         private service?: ServiceModule;
 
@@ -1165,7 +1165,7 @@ describe('Titan Application Integration Tests', () => {
           if (!this.service) {
             throw new Error('Service not available');
           }
-          
+
           return this.service.handleRequest({ data });
         }
       }
@@ -1185,7 +1185,7 @@ describe('Titan Application Integration Tests', () => {
       await app.start();
 
       const response = await client.makeRequest('hello');
-      
+
       expect(response.success).toBe(true);
       expect(response.data).toBe('HELLO');
       expect(response.timestamp).toBeDefined();

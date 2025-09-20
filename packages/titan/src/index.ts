@@ -1,16 +1,65 @@
 /**
  * Titan - Minimal yet powerful application framework built on Nexus DI
- * 
+ *
  * @packageDocumentation
  */
 
+// ============================================================================
+// Core Application
+// ============================================================================
 
-import { createApp } from './application.js';
+export {
+  startApp,
+  createApp,
+  Application,
+  ApplicationToken,
+  Application as TitanApplication
+} from './application.js';
 
-// Import types for internal use
-import type { IModule, IApplication } from './types.js';
+// ============================================================================
+// Decorators - Only Essential Set
+// ============================================================================
 
-// Re-export useful utilities from common
+export {
+  // Core DI decorators
+  Module,
+  Injectable,
+  Singleton,
+  Transient,
+  Service,
+  Inject,
+  Optional,
+
+  // Lifecycle decorators
+  PostConstruct,
+  PreDestroy,
+
+  // Method interceptors
+  Retryable,
+  Timeout,
+
+  // Error classes
+  TimeoutError
+} from './decorators.js';
+
+// ============================================================================
+// Framework Modules
+// ============================================================================
+
+// Configuration Module - full re-export
+export * from './modules/config/index.js';
+
+// Events Module - full re-export
+export * from './modules/events/index.js';
+
+// Logger Module - full re-export
+export * from './modules/logger/index.js';
+
+// ============================================================================
+// Re-exports from Dependencies
+// ============================================================================
+
+// Common utilities
 export {
   defer,
   delay,
@@ -18,24 +67,7 @@ export {
   timeout
 } from '@omnitron-dev/common';
 
-// Core Application
-export {
-  startApp,
-  createApp,
-  Application,
-  ApplicationToken,
-  Application as TitanApplication  // Alias for backward compatibility
-} from './application.js';
-
-// Enhanced Module System
-export {
-  Module as EnhancedModule,
-  EnhancedApplicationModule,
-  createModuleWithProviders,
-  type IModuleMetadata as EnhancedModuleMetadata
-} from './enhanced-module.js';
-
-// Re-export essentials from Nexus
+// Nexus DI essentials
 export {
   Token,
   Scope,
@@ -51,68 +83,15 @@ export {
   createModule as createNexusModule
 } from '@omnitron-dev/nexus';
 
+// ============================================================================
+// Helper Functions
+// ============================================================================
 
-// Decorators
-export {
-  Log,
-  Inject,
-  OnEvent,
-  Service,
-  // Method interceptors
-  Monitor,
-  Timeout,
-
-  Optional,
-  OnceEvent,
-  Singleton,
-  RateLimit,
-  Cacheable,
-  Retryable,
-  EmitEvent,
-  OnAnyEvent,
-  Injectable,
-  Controller,
-  Repository,
-
-  PreDestroy,
-
-  // Module decorator
-  TitanModule,
-
-  // Health check decorator
-  HealthCheck,
-  // Configuration decorators
-  ConfigWatch,
-  BatchEvents,
-  // Lifecycle decorators
-  AppLifecycle,
-  ValidateArgs,
-  // Event decorators
-  EventEmitter,
-  TimeoutError,
-  OnModuleEvent,
-
-  PostConstruct,
-  ScheduleEvent,
-  // Error classes
-  RateLimitError,
-
-  ValidationError,
-  OnEvent as EventHandler,  // Alias for backward compatibility
-  Module,
-  Module as ModuleDecorator,  // Alias for backward compatibility
-
-  // HTTP method decorators
-  Get,
-  Post,
-  Put,
-  Delete,
-  Patch
-} from './decorators.js';
-
+import type { IModule, IApplication } from './types.js';
+import { createApp } from './application.js';
 
 /**
- * Quick start helper
+ * Quick start helper to create and start an application
  */
 export async function createAndStartApp(options?: {
   name?: string;
@@ -126,7 +105,6 @@ export async function createAndStartApp(options?: {
     config: options?.config
   });
 
-  // Register additional modules
   if (options?.modules) {
     for (const module of options.modules) {
       app.use(module);
@@ -139,32 +117,6 @@ export async function createAndStartApp(options?: {
 
 /**
  * Create a simple module with optional service methods
- * 
- * @template TService - Optional service interface for additional methods
- * @param definition - Module definition with lifecycle hooks and optional service methods
- * @returns Module instance with service methods
- * 
- * @example
- * // Simple module without service methods
- * const MyModule = defineModule({
- *   name: 'my-module',
- *   onStart(app) {
- *     console.log('Starting...');
- *   }
- * });
- * 
- * @example
- * // Module with service methods
- * interface MyService {
- *   doSomething(): void;
- * }
- * 
- * const MyModule = defineModule<MyService>({
- *   name: 'my-module',
- *   doSomething() {
- *     console.log('Doing something...');
- *   }
- * });
  */
 export function defineModule<TService = {}>(
   definition: IModule & TService
@@ -172,9 +124,8 @@ export function defineModule<TService = {}>(
   return definition;
 }
 
-/**
- * Lifecycle interface markers
- */
+
+// Lifecycle interfaces
 export interface IOnInit {
   onInit?(): void | Promise<void>;
 }
@@ -183,66 +134,16 @@ export interface IOnDestroy {
   onDestroy?(): void | Promise<void>;
 }
 
-
-// Process Lifecycle Module
+// Process Lifecycle Types
 export {
-  ProcessLifecycleModule,
-  ProcessLifecycleToken,
-  onShutdown,
-  // Types
-  type IProcessLifecycleConfig,
   type IShutdownTask,
   type IProcessMetrics,
   type ILifecycleEvent,
-  type IHealthCheckResult,
-  type ILifecycleHook as IProcessLifecycleHook,
-  type IProcessLifecycleManager,
-  // Enums
+  type ProcessSignal,
   ShutdownReason,
   ShutdownPriority,
-  LifecycleState,
-  type ProcessSignal
-} from './modules/process-lifecycle/index.js';
-
-// Configuration Module
-export {
-  ConfigModule,
-  ConfigService,
-  ConfigModuleToken,
-  ConfigServiceToken,
-  Config,
-  InjectConfig,
-  ConfigSchema,
-  config,  // Global config proxy for direct access
-  type ConfigModuleOptions,
-  type ConfigModuleAsyncOptions,
-  type ConfigSource,
-  type FileConfigSource,
-  type EnvironmentConfigSource,
-  type ObjectConfigSource,
-  type RemoteConfigSource,
-  type VaultConfigSource,
-  type ConfigValidationResult,
-  type ConfigChangeEvent,
-  type ConfigMetadata,
-  type TypedConfigAccessor,
-  type IConfigProvider,
-  type IConfigTransformer,
-  type IConfigValidator,
-  CONFIG_OPTIONS_TOKEN,
-  CONFIG_SCHEMA_TOKEN,
-  CONFIG_LOADER_TOKEN,
-  CONFIG_VALIDATOR_TOKEN,
-  CONFIG_DEFAULTS,
-  // Utils
-  createConfigToken,
-  getValueByPath,
-  setValueByPath,
-  flattenObject,
-  expandObject,
-  detectEnvironment,
-  findConfigFiles,
-} from './modules/config/index.js';
+  LifecycleState
+} from './types.js';
 
 // Core Types
 export {
@@ -253,27 +154,14 @@ export {
   IHealthStatus,
   ILifecycleHook,
   IModuleMetadata,
-  IModuleLifecycle,
   IShutdownOptions,
   ApplicationState,
   ApplicationEvent,
-  ApplicationModule,
+  AbstractModule,
   ModuleConstructor,
-  // Backward compatibility aliases
   IApplicationConfig,
   IApplicationOptions,
-  IApplicationMetrics,
-  IEventMeta as EventMeta,
-  IEnvironment as Environment,
-  IHealthStatus as HealthStatus,
-  ILifecycleHook as LifecycleHook,
-  EventHandler as EventHandlerType,  // Rename to avoid conflict with decorator
-  IModuleMetadata as ModuleMetadata,
-  IShutdownOptions as ShutdownOptions,
-  IModuleLifecycle as ModuleLifecycle,
-  IApplicationConfig as ApplicationConfig,
-  IApplicationOptions as ApplicationOptions,
-  IApplicationMetrics as ApplicationMetrics
+  IApplicationMetrics
 } from './types.js';
 
 /**

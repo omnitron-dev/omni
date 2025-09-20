@@ -29,7 +29,17 @@ export type ApplicationEvent =
   | 'module:started'
   | 'module:stopped'
   | 'config:changed'
-  | 'health:check';
+  | 'health:check'
+  | 'signal'
+  | 'uncaughtException'
+  | 'unhandledRejection'
+  | 'state:save'
+  | 'shutdown:start'
+  | 'shutdown:complete'
+  | 'shutdown:error'
+  | 'shutdown:task:complete'
+  | 'shutdown:task:error'
+  | 'process:exit';
 
 /**
  * Application configuration
@@ -55,15 +65,6 @@ export interface IModuleMetadata {
   priority?: number;
 }
 
-/**
- * Module lifecycle hooks
- */
-export interface IModuleLifecycle {
-  onRegister?(app: IApplication): void | Promise<void>;
-  onStart?(app: IApplication): void | Promise<void>;
-  onStop?(app: IApplication): void | Promise<void>;
-  onDestroy?(): void | Promise<void>;
-}
 
 /**
  * Health check status
@@ -77,18 +78,22 @@ export interface IHealthStatus {
 /**
  * Module interface
  */
-export interface IModule extends IModuleLifecycle {
+export interface IModule {
   readonly name: string;
   readonly version?: string;
   readonly dependencies?: (Token<any> | string)[];
   configure?(config: any): void;
   health?(): Promise<IHealthStatus>;
+  onRegister?(app: IApplication): void | Promise<void>;
+  onStart?(app: IApplication): void | Promise<void>;
+  onStop?(app: IApplication): void | Promise<void>;
+  onDestroy?(): void | Promise<void>;
 }
 
 /**
  * Application module base class
  */
-export abstract class ApplicationModule implements IModule {
+export abstract class AbstractModule implements IModule {
   abstract readonly name: string;
   readonly version?: string;
   readonly dependencies?: (Token<any> | string)[] = [];
@@ -268,3 +273,100 @@ export type ModuleInput =
   | (() => IDynamicModule)         // Dynamic module factory
   | (() => Promise<IDynamicModule>); // Async dynamic module factory
 
+/**
+ * Shutdown task definition
+ */
+export interface IShutdownTask {
+  id?: string;
+  name: string;
+  priority?: number;
+  handler: (reason: ShutdownReason, details?: any) => Promise<void> | void;
+  timeout?: number;
+  critical?: boolean;
+  parallel?: boolean;
+}
+
+/**
+ * Reasons for shutdown
+ */
+export enum ShutdownReason {
+  Manual = 'manual',
+  SIGTERM = 'SIGTERM',
+  SIGINT = 'SIGINT',
+  SIGHUP = 'SIGHUP',
+  Signal = 'signal',
+  UncaughtException = 'uncaughtException',
+  UnhandledRejection = 'unhandledRejection',
+  Timeout = 'timeout',
+  Error = 'error',
+  Reload = 'reload',
+  Upgrade = 'upgrade',
+  Maintenance = 'maintenance',
+}
+
+/**
+ * Process signals
+ */
+export type ProcessSignal =
+  | 'SIGTERM'
+  | 'SIGINT'
+  | 'SIGHUP'
+  | 'SIGUSR1'
+  | 'SIGUSR2'
+  | 'SIGQUIT'
+  | 'SIGABRT';
+
+/**
+ * Shutdown priority levels
+ */
+export enum ShutdownPriority {
+  First = 0,
+  VeryHigh = 10,
+  High = 20,
+  AboveNormal = 30,
+  Normal = 50,
+  BelowNormal = 70,
+  Low = 80,
+  VeryLow = 90,
+  Last = 100,
+}
+
+/**
+ * Lifecycle states
+ */
+export enum LifecycleState {
+  Created = 'created',
+  Initializing = 'initializing',
+  Initialized = 'initialized',
+  Starting = 'starting',
+  Running = 'running',
+  Stopping = 'stopping',
+  Stopped = 'stopped',
+  ShuttingDown = 'shuttingDown',
+  Error = 'error',
+}
+
+/**
+ * Process metrics
+ */
+export interface IProcessMetrics {
+  uptime: number;
+  memoryUsage: NodeJS.MemoryUsage;
+  cpuUsage: NodeJS.CpuUsage;
+  pid: number;
+  ppid: number;
+  platform: NodeJS.Platform;
+  nodeVersion: string;
+  state: LifecycleState;
+  shutdownTasksCount: number;
+  cleanupHandlersCount: number;
+}
+
+/**
+ * Lifecycle event
+ */
+export interface ILifecycleEvent {
+  type: string;
+  timestamp: number;
+  data?: any;
+}

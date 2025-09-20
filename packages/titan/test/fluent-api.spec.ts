@@ -3,7 +3,7 @@
  */
 
 // Jest is globally available, no need to import
-import { createApp, defineModule, createToken, LoggerModuleToken, ConfigModuleToken } from '../src';
+import { createApp, defineModule, createToken, LOGGER_SERVICE_TOKEN, CONFIG_SERVICE_TOKEN } from '../src';
 import { ApplicationState } from '../src/types';
 
 describe('Fluent API', () => {
@@ -109,10 +109,10 @@ describe('Fluent API', () => {
         }
       });
       
-      app.replaceModule(LoggerModuleToken, customLogger);
+      app.replaceModule(LOGGER_SERVICE_TOKEN, customLogger);
       await app.start();
       
-      const logger = app.get(LoggerModuleToken);
+      const logger = app.get(LOGGER_SERVICE_TOKEN);
       expect(logger.name).toBe('custom-logger');
       expect(logger.logger.info).toBeDefined();
       
@@ -154,10 +154,10 @@ describe('Fluent API', () => {
         }
       });
       
-      app.replaceModule(ConfigModuleToken, customConfig as any);
+      app.replaceModule(CONFIG_SERVICE_TOKEN, customConfig as any);
       await app.start();
       
-      const config = app.get(ConfigModuleToken);
+      const config = app.get(CONFIG_SERVICE_TOKEN);
       expect(config.name).toBe('custom-config');
       expect(config.get('test')).toBe('value');
       expect(config.getEnvironment()).toBe('test');
@@ -171,8 +171,8 @@ describe('Fluent API', () => {
       const module2 = defineModule({ name: 'module2' });
       
       const result = app
-        .replaceModule(LoggerModuleToken, module1 as any)
-        .replaceModule(ConfigModuleToken, module2 as any);
+        .replaceModule(LOGGER_SERVICE_TOKEN, module1 as any)
+        .replaceModule(CONFIG_SERVICE_TOKEN, module2 as any);
       
       expect(result).toBe(app);
     });

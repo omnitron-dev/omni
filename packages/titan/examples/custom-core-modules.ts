@@ -4,11 +4,11 @@
 
 import {
   TitanApplication,
-  ApplicationModule,
+  AbstractModule,
   ConfigModule,
   LoggerModule,
-  ConfigModuleToken,
-  LoggerModuleToken,
+  CONFIG_SERVICE_TOKEN,
+  LOGGER_SERVICE_TOKEN,
   createConfigModule,
   createLoggerModule,
   type IApplication
@@ -88,11 +88,11 @@ async function exampleWithFactories() {
   await app.start();
 
   // Use custom modules
-  const configModule = app.get(ConfigModuleToken) as CustomConfigModule;
+  const configModule = app.get(CONFIG_SERVICE_TOKEN) as CustomConfigModule;
   console.log('Custom config initialized:', configModule.get('custom.initialized'));
   console.log('App environment:', configModule.getWithPrefix('app', 'environment'));
 
-  const loggerModule = app.get(LoggerModuleToken) as CustomLoggerModule;
+  const loggerModule = app.get(LOGGER_SERVICE_TOKEN) as CustomLoggerModule;
   loggerModule.logToFile('Application started successfully');
 
   await app.stop();
@@ -123,7 +123,7 @@ async function exampleWithDirectInstances() {
 
   await app.start();
 
-  const configModule = app.get(ConfigModuleToken);
+  const configModule = app.get(CONFIG_SERVICE_TOKEN);
   console.log('App name from config:', configModule.get('app.name'));
 
   await app.stop();
@@ -151,8 +151,8 @@ async function exampleWithAutomaticInit() {
   await app.start();
 
   // Core modules were auto-initialized
-  const configModule = app.get(ConfigModuleToken);
-  const loggerModule = app.get(LoggerModuleToken);
+  const configModule = app.get(CONFIG_SERVICE_TOKEN);
+  const loggerModule = app.get(LOGGER_SERVICE_TOKEN);
 
   console.log('Database URL:', configModule.get('database.url'));
   loggerModule.logger.warn('This is a warning message');
@@ -173,8 +173,8 @@ async function exampleWithNoAutoInit() {
   await app.start();
 
   // Check if modules exist
-  console.log('Has ConfigModule:', app.has(ConfigModuleToken));
-  console.log('Has LoggerModule:', app.has(LoggerModuleToken));
+  console.log('Has ConfigModule:', app.has(CONFIG_SERVICE_TOKEN));
+  console.log('Has LoggerModule:', app.has(LOGGER_SERVICE_TOKEN));
 
   await app.stop();
 }

@@ -5,7 +5,8 @@
  */
 
 import { z } from 'zod';
-import type { ConfigModuleOptions } from '../modules/config/config.types.js';
+import { Module, Injectable } from '@omnitron-dev/nexus';
+import type { IConfigModuleOptions as ConfigModuleOptions } from '../modules/config/types.js';
 import type { RedisOptions } from 'ioredis';
 
 /**
@@ -183,8 +184,6 @@ export const TestModules = {
    * Create a simple test module
    */
   createSimple: (name: string, providers: any[] = []) => {
-    const Module = require('@omnitron-dev/nexus').Module;
-
     @Module({
       providers,
       exports: providers.map(p => (Array.isArray(p) ? p[0] : p)),
@@ -200,8 +199,6 @@ export const TestModules = {
    * Create a test service
    */
   createService: (name: string, methods: Record<string, any> = {}) => {
-    const Injectable = require('@omnitron-dev/nexus').Injectable;
-
     @Injectable()
     class TestService {
       static __name = name;
@@ -234,9 +231,7 @@ export const TestData = {
   /**
    * Generate random port number
    */
-  randomPort: (): number => {
-    return Math.floor(Math.random() * (65535 - 1024) + 1024);
-  },
+  randomPort: (): number => Math.floor(Math.random() * (65535 - 1024) + 1024),
 
   /**
    * Generate test user object

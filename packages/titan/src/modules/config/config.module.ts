@@ -1,384 +1,239 @@
 /**
  * Configuration Module for Titan Framework
  *
- * This module provides zero-config, automatic configuration management
- * with smart defaults, auto-discovery, and type safety.
+ * Provides comprehensive configuration management with:
+ * - Multiple configuration sources (files, env, argv, remote)
+ * - Schema validation with Zod
+ * - Hot reload support
+ * - Caching and optimization
+ * - Type-safe access
  *
- * @module ConfigModule
- * @description First-class configuration system that eliminates boilerplate
+ * @module titan/modules/config
  */
 
-import { Module, DynamicModule, Provider, ProviderDefinition, createToken, InjectionToken } from '@omnitron-dev/nexus';
+import { createToken } from '@omnitron-dev/nexus';
 import { ZodType } from 'zod';
 
-import { IApplication, IModule } from '../../types.js';
+import { ConfigService } from './config.service.js';
+import { ConfigLoaderService } from './config-loader.service.js';
+import { ConfigValidatorService } from './config-validator.service.js';
+import { ConfigWatcherService } from './config-watcher.service.js';
+import { Module } from '../../decorators.js';
+
 import {
-  ConfigModuleOptions,
-  ConfigModuleAsyncOptions,
+  CONFIG_SERVICE_TOKEN,
+  CONFIG_LOADER_SERVICE_TOKEN,
+  CONFIG_VALIDATOR_SERVICE_TOKEN,
+  CONFIG_WATCHER_SERVICE_TOKEN,
   CONFIG_OPTIONS_TOKEN,
   CONFIG_SCHEMA_TOKEN,
-  CONFIG_LOADER_TOKEN,
-  ConfigServiceToken,
-} from './config.types.js';
-import { ConfigService } from './config.service.js';
-import { ConfigLoader } from './config.loader.js';
-import { createConfigToken, detectEnvironment, findConfigFiles } from './config.utils.js';
+  CONFIG_LOGGER_TOKEN
+} from './config.tokens.js';
+
+import type { IConfigModuleOptions, IConfigAsyncOptions } from './types.js';
 
 /**
- * Smart Configuration Module
+ * Global Configuration Module
  *
- * Features:
- * - Zero-config initialization with smart defaults
- * - Automatic config file discovery
- * - Environment-based configuration cascade
- * - Type-safe configuration with Zod schemas
- * - Module-specific configuration via forFeature
- * - Hot-reload in development
- * - Built-in caching and optimization
- *
- * @example
- * ```typescript
- * // Automatic usage - no configuration needed!
- * // ConfigModule is automatically registered by Application
- *
- * // Optional: Define schema for type safety
- * const AppConfig = z.object({
- *   port: z.number().default(3000),
- *   database: z.object({
- *     host: z.string(),
- *     port: z.number(),
- *   }),
- * });
- *
- * // Set schema before creating app
- * ConfigModule.setGlobalSchema(AppConfig);
- *
- * // Optional: Module-specific config
- * @Module({
- *   imports: [
- *     ConfigModule.forFeature('database', DatabaseSchema),
- *   ],
- * })
- * class DatabaseModule {}
- * ```
+ * Provides configuration capabilities to the entire application
  */
-
 @Module({})
-export class ConfigModule implements IModule {
-  private static instance: ConfigService;
+export class ConfigModule {
+  private static instance?: ConfigService;
   private static initialized = false;
-  private static globalSchema?: ZodType;
-
-  // Module metadata for Titan
-  readonly name = 'ConfigModule';
-  readonly version = '2.0.0';
 
   /**
-   * Create the ConfigModule with automatic configuration
-   * This is called automatically by Application.registerCoreModules()
-   *
-   * @internal
+   * Configure the Config module with options
    */
-  static async createAutomatic(options?: Partial<ConfigModuleOptions>): Promise<ConfigModule> {
-    if (ConfigModule.initialized) {
-      return new ConfigModule();
-    }
+  static forRoot(options: IConfigModuleOptions = {}): any {
+    // Create service instances directly
+    const loader = new ConfigLoaderService();
+    const validator = new ConfigValidatorService();
+    const watcher = options.watchForChanges ? new ConfigWatcherService() : undefined;
 
-    const environment = detectEnvironment();
-    const configFiles = await findConfigFiles(process.cwd());
+    // Create ConfigService instance directly
+    const configService = new ConfigService(
+      options,
+      loader,
+      validator,
+      watcher,
+      options.schema,
+      undefined // Logger will be injected separately if needed
+    );
 
-    // Build smart default sources
-    const sources = [
-      // 1. Default configuration file (if exists)
-      ...configFiles.defaults.map(file => ({
-        type: 'file' as const,
-        path: file,
-        optional: true,
-      })),
-
-      // 2. Environment-specific configuration
-      ...configFiles.environment.map(file => ({
-        type: 'file' as const,
-        path: file,
-        optional: true,
-      })),
-
-      // 3. .env files (in priority order)
-      ...configFiles.dotenv.map(file => ({
-        type: 'dotenv' as const,
-        path: file,
-        optional: true,
-      })),
-
-      // 4. Environment variables with smart prefixes
-      {
-        type: 'env' as const,
-        prefix: process.env['CONFIG_PREFIX'] || 'APP_',
-        separator: process.env['CONFIG_SEPARATOR'] || '__',
-      },
-
-      // 5. Command line arguments (highest priority)
-      {
-        type: 'argv' as const,
-        prefix: '--',
-      },
-
-      // 6. User-provided sources (if any)
-      ...(options?.sources || []),
-    ];
-
-    // Create optimized options
-    const optimizedOptions: ConfigModuleOptions = {
-      ...options,
-      sources,
-      environment,
-      autoLoad: true,
-      validateOnStartup: environment === 'production',
-      watchForChanges: environment === 'development',
-      cache: {
-        enabled: true,
-        ttl: environment === 'production' ? 300000 : 60000, // 5min in prod, 1min in dev
-        ...options?.cache,
-      },
-    };
-
-    // Create and initialize the service
-    const service = new ConfigService(optimizedOptions, ConfigModule.globalSchema);
-    await service.initialize();
-
-    ConfigModule.instance = service;
-    ConfigModule.initialized = true;
-
-    return new ConfigModule();
-  }
-
-  /**
-   * Set global schema for type validation
-   * Call this before Application.create() for type safety
-   *
-   * @param schema - Zod schema for configuration validation
-   */
-  static setGlobalSchema<T>(schema: ZodType<T>): void {
-    ConfigModule.globalSchema = schema;
-  }
-
-  /**
-   * Register a configuration subset for a specific module
-   * This provides type-safe, isolated configuration for feature modules
-   *
-   * @param name - Name of the configuration section
-   * @param schema - Zod schema for validation
-   * @param path - Optional path to the configuration section
-   */
-  static forFeature<T>(
-    name: string,
-    schema: ZodType<T>,
-    path?: string
-  ): DynamicModule {
-    const token = createConfigToken(name);
-
-    const featureProvider: [InjectionToken<any>, ProviderDefinition] = [
-      token,
-      {
-      useFactory: async () => {
-        // Ensure ConfigModule is initialized
-        if (!ConfigModule.instance) {
-          throw new Error('ConfigModule not initialized. Ensure Application is created properly.');
-        }
-
-        // Get configuration section
-        const configPath = path || name;
-        const data = ConfigModule.instance.get(configPath);
-
-        // Validate with schema
-        const result = schema.safeParse(data);
-        if (!result.success) {
-          const errors = (result.error as any).issues || (result.error as any).errors || [];
-          throw new Error(
-            `Invalid configuration for ${name}: ${JSON.stringify(errors)}`
-          );
-        }
-
-        return result.data;
-        },
-      },
-    ];
+    // Store instance for global access
+    ConfigModule.instance = configService;
 
     return {
       module: ConfigModule,
-      providers: [featureProvider],
-      exports: [token],
+      providers: [
+        // Provide options
+        [CONFIG_OPTIONS_TOKEN, {
+          useValue: options
+        }] as any,
+
+        // Provide global schema if specified
+        ...(options.schema ? [
+          [CONFIG_SCHEMA_TOKEN, {
+            useValue: options.schema
+          }] as any
+        ] : []),
+
+        // Config Loader Service - use value instead of class
+        [CONFIG_LOADER_SERVICE_TOKEN, {
+          useValue: loader
+        }] as any,
+
+        // Config Validator Service - use value instead of class
+        [CONFIG_VALIDATOR_SERVICE_TOKEN, {
+          useValue: validator
+        }] as any,
+
+        // Config Watcher Service (only if watching is enabled)
+        ...(watcher ? [
+          [CONFIG_WATCHER_SERVICE_TOKEN, {
+            useValue: watcher
+          }] as any
+        ] : []),
+
+        // Main Config Service - use value instead of factory
+        [CONFIG_SERVICE_TOKEN, {
+          useValue: configService
+        }] as any
+      ],
+      exports: [
+        CONFIG_SERVICE_TOKEN,
+        CONFIG_LOADER_SERVICE_TOKEN,
+        CONFIG_VALIDATOR_SERVICE_TOKEN,
+        ...(watcher ? [CONFIG_WATCHER_SERVICE_TOKEN] : [])
+      ],
+      global: options.global // Propagate global option
     };
   }
 
   /**
-   * Create a typed configuration provider
+   * Configure the Config module for a specific feature
    */
-  static createProvider<T>(name: string, schema: ZodType<T>, path?: string): [symbol, ProviderDefinition] {
-    const token = createConfigToken(name);
+  static forFeature(name: string, schema?: ZodType): any {
+    const featureToken = createToken(`Config:${name}`);
 
-    const provider: ProviderDefinition = {
-      useFactory: async (configService: ConfigService) => {
-        const data = path ? configService.get(path) : configService.getAll();
-        return configService.getTyped(schema, path);
-      },
-      inject: [ConfigService],
-    };
+    return {
+      module: ConfigModule,
+      providers: [
+        // Feature-specific configuration provider
+        [featureToken, {
+          useFactory: async (configService: ConfigService) => {
+            const value = configService.get(name);
 
-    return [token, provider];
-  }
+            // Validate if schema provided
+            if (schema) {
+              const result = schema.safeParse(value);
+              if (!result.success) {
+                throw new Error(`Configuration validation failed for ${name}: ${result.error.message}`);
+              }
+              return result.data;
+            }
 
-  /**
-   * Get the global ConfigService instance
-   */
-  static getService(): ConfigService | undefined {
-    return ConfigModule.instance;
-  }
-
-  /**
-   * Get the instance for internal use
-   * @internal
-   */
-  static getInstance(): ConfigService | undefined {
-    return ConfigModule.instance;
-  }
-
-  /**
-   * Get a configuration value directly (static helper)
-   */
-  static get<T = any>(path: string, defaultValue?: T): T | undefined {
-    return ConfigModule.instance?.get(path, defaultValue);
-  }
-
-  /**
-   * Get the entire configuration object
-   */
-  static getAll(): Record<string, any> {
-    return ConfigModule.instance?.getAll() || {};
-  }
-
-  /**
-   * Check if a configuration path exists
-   */
-  static has(path: string): boolean {
-    return ConfigModule.instance?.has(path) || false;
-  }
-
-  /**
-   * Instance methods for backward compatibility
-   */
-  get<T = any>(path: string, defaultValue?: T): T | undefined {
-    return ConfigModule.get(path, defaultValue);
-  }
-
-  has(path: string): boolean {
-    return ConfigModule.has(path);
-  }
-
-  getAll(): Record<string, any> {
-    return ConfigModule.getAll();
-  }
-
-  get environment(): string {
-    return ConfigModule.instance?.environment || 'development';
-  }
-
-  get info(): any {
-    return this.onInfo ? this.onInfo() : {};
-  }
-
-  /**
-   * Module lifecycle hooks
-   */
-  async onRegister?(app: IApplication): Promise<void> {
-    // ConfigService registration is handled in Application.registerCoreModules
-    // to avoid duplicate registration errors
-  }
-
-  async onStart?(app: IApplication): Promise<void> {
-    if (!ConfigModule.instance) {
-      throw new Error('ConfigModule not properly initialized');
-    }
-
-    // Log configuration status
-    try {
-      const logger = app.get(createToken('Logger')) as any;
-      if (logger?.info) {
-        const metadata = ConfigModule.instance.getMetadata();
-        logger.info(
-          {
-            environment: ConfigModule.instance.environment,
-            sources: metadata.sources?.length || 0,
-            cached: metadata.cached || false,
+            return value;
           },
-          'Configuration module started'
-        );
-      }
-    } catch (error) {
-      // Logger not available, skip logging
-      console.log('[ConfigModule] Started successfully');
+          inject: [CONFIG_SERVICE_TOKEN]
+        }] as any
+      ],
+      exports: [featureToken]
+    };
+  }
+
+  /**
+   * Configure the Config module asynchronously
+   */
+  static forRootAsync(options: IConfigAsyncOptions): any {
+    // Create service instances directly
+    const loader = new ConfigLoaderService();
+    const validator = new ConfigValidatorService();
+    const watcher = new ConfigWatcherService();
+
+    return {
+      module: ConfigModule,
+      providers: [
+        // Provide async options
+        [CONFIG_OPTIONS_TOKEN, {
+          useFactory: options.useFactory,
+          inject: options.inject || []
+        }] as any,
+
+        // Config Loader Service - use value instead of class
+        [CONFIG_LOADER_SERVICE_TOKEN, {
+          useValue: loader
+        }] as any,
+
+        // Config Validator Service - use value instead of class
+        [CONFIG_VALIDATOR_SERVICE_TOKEN, {
+          useValue: validator
+        }] as any,
+
+        // Config Watcher Service - use value instead of class
+        [CONFIG_WATCHER_SERVICE_TOKEN, {
+          useValue: watcher
+        }] as any,
+
+        // Main Config Service with async initialization
+        [CONFIG_SERVICE_TOKEN, {
+          useFactory: async (opts: IConfigModuleOptions) => {
+            // Provide schema if available in options
+            const schema = opts.schema;
+
+            const service = new ConfigService(
+              opts,
+              loader,
+              validator,
+              opts.watchForChanges ? watcher : undefined,
+              schema,
+              undefined // Logger will be injected separately if needed
+            );
+            // Store instance for global access
+            ConfigModule.instance = service;
+            return service;
+          },
+          inject: [CONFIG_OPTIONS_TOKEN],
+          scope: 'singleton'
+        }] as any
+      ],
+      exports: [
+        CONFIG_SERVICE_TOKEN,
+        CONFIG_LOADER_SERVICE_TOKEN,
+        CONFIG_VALIDATOR_SERVICE_TOKEN,
+        CONFIG_WATCHER_SERVICE_TOKEN
+      ],
+      global: options.global // Propagate global option
+    };
+  }
+
+  /**
+   * Lifecycle hooks
+   */
+  async onStart?(app: any): Promise<void> {
+    // Initialize config service if not already done
+    if (ConfigModule.instance && !ConfigModule.initialized) {
+      await ConfigModule.instance.initialize();
+      ConfigModule.initialized = true;
     }
   }
 
-  async onStop?(app: IApplication): Promise<void> {
-    if (ConfigModule.instance && typeof ConfigModule.instance.dispose === 'function') {
+  async onStop?(app: any): Promise<void> {
+    // Dispose config service
+    if (ConfigModule.instance) {
       await ConfigModule.instance.dispose();
+      ConfigModule.initialized = false;
     }
-  }
-
-  async onHealthCheck?(): Promise<any> {
-    if (!ConfigModule.instance) {
-      return {
-        status: 'unhealthy',
-        message: 'ConfigService not initialized',
-      };
-    }
-
-    return {
-      status: 'healthy',
-      environment: ConfigModule.instance.environment,
-      uptime: Date.now() - ConfigModule.instance.getMetadata().loadedAt.getTime(),
-    };
-  }
-
-  async onInfo?(): Promise<any> {
-    if (!ConfigModule.instance) {
-      return { initialized: false };
-    }
-
-    const metadata = ConfigModule.instance.getMetadata();
-    return {
-      initialized: true,
-      environment: ConfigModule.instance.environment,
-      sources: metadata.sources?.map(s => ({
-        type: s.type,
-        loaded: s.loaded,
-      })),
-      loadedAt: metadata.loadedAt,
-      cached: metadata.cached,
-    };
   }
 }
 
 /**
- * Export a singleton instance for direct usage
- * This allows users to import and use the config directly
- *
- * @example
- * ```typescript
- * import { config } from '@omnitron-dev/titan/config';
- *
- * const port = config.get('server.port', 3000);
- * ```
+ * Re-export types and services
  */
-export const config = new Proxy({} as ConfigService, {
-  get(target, prop) {
-    const instance = ConfigModule.getInstance();
-    if (!instance) {
-      throw new Error(
-        'ConfigModule not initialized. Ensure Application is created before accessing config.'
-      );
-    }
-    return Reflect.get(instance, prop);
-  },
-});
+export * from './types.js';
+export * from './config.tokens.js';
+export * from './config.service.js';
+export * from './config-loader.service.js';
+export * from './config-validator.service.js';
+export * from './config-watcher.service.js';

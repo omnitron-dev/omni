@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import { createToken } from '@omnitron-dev/nexus';
 import {
   TitanApplication,
-  ApplicationModule,
+  AbstractModule,
   Injectable,
   Singleton,
   Inject,
@@ -15,8 +15,8 @@ import {
   type DynamicModule,
   type Provider
 } from '../src/index';
-import { LoggerModuleToken } from '../src/modules/logger.module';
-const ConfigModuleToken = createToken('ConfigModule');
+import { LOGGER_SERVICE_TOKEN } from '../src/modules/logger.module';
+const CONFIG_SERVICE_TOKEN = createToken('ConfigModule');
 
 // Test service tokens
 const TestServiceToken = createToken<TestService>('TestService');
@@ -37,7 +37,7 @@ class TestService implements OnInit, OnDestroy {
   private initialized = false;
   private destroyed = false;
 
-  constructor(@Inject(TestConfigToken) private config: TestConfig) {}
+  constructor(@Inject(TestConfigToken) private config: TestConfig) { }
 
   async onInit(): Promise<void> {
     this.initialized = true;
@@ -72,7 +72,7 @@ class DependentService implements OnInit {
   constructor(
     @Inject(TestServiceToken) private testService: TestService,
     @Inject(TestConfigToken) private config: TestConfig
-  ) {}
+  ) { }
 
   async onInit(): Promise<void> {
     this.initialized = true;
@@ -88,7 +88,7 @@ class DependentService implements OnInit {
 }
 
 // Test module with forRoot pattern
-class TestModule extends ApplicationModule {
+class TestModule extends AbstractModule {
   override readonly name = 'test-module';
   override readonly version = '1.0.0';
 
@@ -187,7 +187,7 @@ class TestModule extends ApplicationModule {
 }
 
 // Simple module without forRoot
-class SimpleModule extends ApplicationModule {
+class SimpleModule extends AbstractModule {
   override readonly name = 'simple-module';
   override readonly version = '1.0.0';
 
@@ -370,7 +370,7 @@ describe('Improved Titan Module API', () => {
       await app.start();
 
       // Core modules should be resolvable
-      const logger = app.resolve(LoggerModuleToken);
+      const logger = app.resolve(LOGGER_SERVICE_TOKEN);
       expect(logger).toBeDefined();
       expect(logger.name).toBe('logger');
     });
@@ -491,7 +491,7 @@ describe('Improved Titan Module API', () => {
       });
 
       const mainModule: DynamicModule = {
-        module: class MainModule extends ApplicationModule {
+        module: class MainModule extends AbstractModule {
           override readonly name = 'main-module';
         },
         name: 'main-module',
@@ -604,7 +604,7 @@ describe('Improved Titan Module API', () => {
         modules: [
           TestModule.forRoot(config1),  // Dynamic module with forRoot
           SimpleModule,                   // Class reference
-          new (class InlineModule extends ApplicationModule {  // Anonymous class instance
+          new (class InlineModule extends AbstractModule {  // Anonymous class instance
             override readonly name = 'inline-module';
             override readonly version = '1.0.0';
           })()

@@ -7,7 +7,7 @@
 import 'reflect-metadata';
 import { Token, createToken, Inject } from '@omnitron-dev/nexus';
 import { ZodType } from 'zod';
-import { CONFIG_INJECT_METADATA_KEY, CONFIG_SCHEMA_METADATA_KEY } from './config.types.js';
+import { CONFIG_INJECT_METADATA_KEY, CONFIG_SCHEMA_METADATA_KEY } from './types.js';
 
 /**
  * Decorator to inject configuration values into class properties or constructor parameters

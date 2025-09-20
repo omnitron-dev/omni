@@ -16,15 +16,19 @@ import {
   Injectable,
   Inject,
   Singleton,
-  OnInit,
-  OnDestroy,
-  Logger,
-  LoggerModuleToken,
-  ConfigModuleToken,
-  ApplicationModule,
+  LOGGER_SERVICE_TOKEN,
+  CONFIG_SERVICE_TOKEN,
+  type IModule as AbstractModule,
   type DynamicModule,
-  type Provider
+  type Provider,
+  type IOnInit as OnInit,
+  type IOnDestroy as OnDestroy
 } from '../src/index';
+
+interface Logger {
+  info(msg: string): void;
+  debug(msg: string): void;
+}
 
 // ============================
 // Domain Models
@@ -73,7 +77,7 @@ class TaskService implements OnInit, OnDestroy {
   private defaultPriority: Task['priority'];
 
   constructor(
-    @Inject(LoggerModuleToken) private loggerModule: any,
+    @Inject(LOGGER_SERVICE_TOKEN) private loggerModule: any,
     @Inject(TaskConfigToken) private config: TaskManagerConfig
   ) {
     this.logger = this.loggerModule.child({ service: 'TaskService' });
@@ -214,7 +218,7 @@ class NotificationService implements OnInit {
   private channels: string[];
 
   constructor(
-    @Inject(LoggerModuleToken) private loggerModule: any,
+    @Inject(LOGGER_SERVICE_TOKEN) private loggerModule: any,
     @Inject(TaskConfigToken) private config: TaskManagerConfig
   ) {
     this.logger = this.loggerModule.child({ service: 'NotificationService' });
@@ -266,7 +270,7 @@ class TaskCoordinator implements OnInit {
   constructor(
     @Inject(TaskServiceToken) private taskService: TaskService,
     @Inject(NotificationServiceToken) private notificationService: NotificationService,
-    @Inject(LoggerModuleToken) private loggerModule: any
+    @Inject(LOGGER_SERVICE_TOKEN) private loggerModule: any
   ) {
     this.logger = this.loggerModule.child({ service: 'TaskCoordinator' });
   }
@@ -316,10 +320,10 @@ class TaskCoordinator implements OnInit {
 /**
  * TaskManagerModule - Now with static forRoot method and automatic provider registration
  */
-class TaskManagerModule extends ApplicationModule {
+class TaskManagerModule extends AbstractModule {
   override readonly name = 'task-manager';
   override readonly version = '1.0.0';
-  override readonly dependencies = [LoggerModuleToken, ConfigModuleToken];
+  override readonly dependencies = [LOGGER_SERVICE_TOKEN, CONFIG_SERVICE_TOKEN];
 
   /**
    * Static forRoot method for dynamic module configuration
@@ -381,7 +385,7 @@ class TaskManagerModule extends ApplicationModule {
   }
 
   override async onStart(app: any): Promise<void> {
-    const logger = app.resolve(LoggerModuleToken).child({ module: this.name });
+    const logger = app.resolve(LOGGER_SERVICE_TOKEN).child({ module: this.name });
     logger.info('TaskManagerModule starting...');
 
     // With the new API, providers are automatically registered and initialized
@@ -405,7 +409,7 @@ class TaskManagerModule extends ApplicationModule {
   }
 
   override async onStop(app: any): Promise<void> {
-    const logger = app.resolve(LoggerModuleToken).child({ module: this.name });
+    const logger = app.resolve(LOGGER_SERVICE_TOKEN).child({ module: this.name });
     logger.info('TaskManagerModule stopping...');
 
     // Clean up services that implement OnDestroy
@@ -561,7 +565,7 @@ async function bootstrapWithAsyncConfig() {
             defaultPriority: config.defaultPriority ?? 'medium'
           };
         },
-        inject: [ConfigModuleToken]
+        inject: [CONFIG_SERVICE_TOKEN]
       })
     ]
   });

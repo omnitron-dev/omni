@@ -15,8 +15,8 @@ import {
   createToken,
   defineModule,
   HealthStatus,
-  ConfigModuleToken,
-  LoggerModuleToken
+  CONFIG_SERVICE_TOKEN,
+  LOGGER_SERVICE_TOKEN
 } from '../src/index.js';
 
 /**
@@ -39,15 +39,15 @@ const GreeterModule = defineModule<GreeterService>({
   version: '1.0.0',
 
   async onStart(app) {
-    const logger = app.get(LoggerModuleToken).logger;
-    const config = app.get(ConfigModuleToken);
+    const logger = app.get(LOGGER_SERVICE_TOKEN).logger;
+    const config = app.get(CONFIG_SERVICE_TOKEN);
 
     const greeting = config.get('greeter.message', 'Hello, World!');
     logger.info({ greeting }, 'Greeter module started');
   },
 
   async onStop(app) {
-    const logger = app.get(LoggerModuleToken).logger;
+    const logger = app.get(LOGGER_SERVICE_TOKEN).logger;
     logger.info('Greeter module stopping');
   },
 
@@ -93,16 +93,16 @@ async function main() {
 
   // Add lifecycle hooks
   app.onStart(async () => {
-    const logger = app.get(LoggerModuleToken).logger;
+    const logger = app.get(LOGGER_SERVICE_TOKEN).logger;
     logger.info('Running custom startup tasks...');
 
     // Example: Load additional configuration
-    const config = app.get(ConfigModuleToken);
+    const config = app.get(CONFIG_SERVICE_TOKEN);
     config.set('app.startTime', new Date().toISOString());
   });
 
   app.onStop(async () => {
-    const logger = app.get(LoggerModuleToken).logger;
+    const logger = app.get(LOGGER_SERVICE_TOKEN).logger;
     logger.info('Running custom cleanup tasks...');
 
     // Example: Save state, flush caches, etc.
@@ -110,7 +110,7 @@ async function main() {
 
   // Error handling
   app.onError((error) => {
-    const logger = app.get(LoggerModuleToken).logger;
+    const logger = app.get(LOGGER_SERVICE_TOKEN).logger;
     logger.error({ error }, 'Application error occurred');
   });
 
@@ -118,8 +118,8 @@ async function main() {
   await app.start();
 
   // Get services and use them
-  const logger = app.get(LoggerModuleToken).logger;
-  const config = app.get(ConfigModuleToken);
+  const logger = app.get(LOGGER_SERVICE_TOKEN).logger;
+  const config = app.get(CONFIG_SERVICE_TOKEN);
 
   // Get the greeter module using the token
   const greeter = app.get(GreeterModuleToken);

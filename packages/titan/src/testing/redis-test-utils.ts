@@ -174,9 +174,7 @@ export function createMockRedis(): any {
     ping: jest.fn().mockResolvedValue('PONG'),
 
     // Basic operations
-    get: jest.fn().mockImplementation(async (key: string) => {
-      return data.get(key) ?? null;
-    }),
+    get: jest.fn().mockImplementation(async (key: string) => data.get(key) ?? null),
 
     set: jest.fn().mockImplementation(async (key: string, value: any, ...args: any[]) => {
       data.set(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
@@ -205,9 +203,7 @@ export function createMockRedis(): any {
       return count;
     }),
 
-    exists: jest.fn().mockImplementation(async (...keys: string[]) => {
-      return keys.filter(k => data.has(k)).length;
-    }),
+    exists: jest.fn().mockImplementation(async (...keys: string[]) => keys.filter(k => data.has(k)).length),
 
     expire: jest.fn().mockImplementation(async (key: string, ttl: number) => {
       if (data.has(key)) {
@@ -217,9 +213,7 @@ export function createMockRedis(): any {
       return 0;
     }),
 
-    ttl: jest.fn().mockImplementation(async (key: string) => {
-      return data.has(key) ? -1 : -2;
-    }),
+    ttl: jest.fn().mockImplementation(async (key: string) => data.has(key) ? -1 : -2),
 
     keys: jest.fn().mockImplementation(async (pattern: string) => {
       if (pattern === '*') return Array.from(data.keys());
@@ -427,17 +421,17 @@ export function createMockRedis(): any {
     }),
 
     // Event emitter methods
-    on: jest.fn().mockImplementation((event: string, handler: Function) => {
+    on: jest.fn().mockImplementation((event: string, handler: (...args: any[]) => any) => {
       pubsub.on(event, handler);
       return mock;
     }),
 
-    once: jest.fn().mockImplementation((event: string, handler: Function) => {
+    once: jest.fn().mockImplementation((event: string, handler: (...args: any[]) => any) => {
       pubsub.once(event, handler);
       return mock;
     }),
 
-    off: jest.fn().mockImplementation((event: string, handler: Function) => {
+    off: jest.fn().mockImplementation((event: string, handler: (...args: any[]) => any) => {
       pubsub.off(event, handler);
       return mock;
     }),
@@ -457,9 +451,7 @@ export function createMockRedis(): any {
     }),
 
     // Duplicate for creating subscriber clients
-    duplicate: jest.fn().mockImplementation(() => {
-      return createMockRedis();
-    }),
+    duplicate: jest.fn().mockImplementation(() => createMockRedis()),
 
     // Status
     status: 'ready',

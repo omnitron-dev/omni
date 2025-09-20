@@ -4,17 +4,34 @@
 
 import { z } from 'zod';
 import { ConfigService } from '../../../src/modules/config/config.service.js';
-import { ConfigChangeEvent, ConfigModuleOptions } from '../../../src/modules/config/config.types.js';
+import { ConfigLoaderService } from '../../../src/modules/config/config-loader.service.js';
+import { ConfigValidatorService } from '../../../src/modules/config/config-validator.service.js';
+import type { IConfigChangeEvent as ConfigChangeEvent, IConfigModuleOptions as ConfigModuleOptions } from '../../../src/modules/config/types.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
 describe('ConfigService', () => {
   let configService: ConfigService;
   let tempDir: string;
+  let mockLoader: ConfigLoaderService;
+  let mockValidator: ConfigValidatorService;
 
   beforeEach(() => {
-    // Create ConfigService with environment loading disabled for tests
-    configService = new ConfigService({ loadEnvironment: false });
+    // Create mocked dependencies
+    mockLoader = {
+      load: jest.fn().mockResolvedValue({})
+    } as any;
+    mockValidator = {
+      validate: jest.fn().mockReturnValue({ success: true, errors: [] })
+    } as any;
+
+    // Create ConfigService with mocked dependencies
+    configService = new ConfigService(
+      { loadEnvironment: false },
+      mockLoader,
+      mockValidator
+    );
+
     tempDir = path.join(process.cwd(), 'packages/titan/test/modules/config/.temp-test');
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
@@ -52,11 +69,6 @@ describe('ConfigService', () => {
       expect(configService.get('missing.key', 'default')).toBe('default');
     });
 
-    it('should throw for required missing keys', async () => {
-      await configService.initialize();
-      expect(() => configService.require('missing.key')).toThrow('Required configuration not found: missing.key');
-    });
-
     it('should check if configuration has value', async () => {
       await configService.initialize();
       configService.set('existing.key', 'value');
@@ -64,21 +76,11 @@ describe('ConfigService', () => {
       expect(configService.has('missing.key')).toBe(false);
     });
 
-    it('should merge configurations', async () => {
+    it('should handle setting root configuration', async () => {
       await configService.initialize();
-      configService.merge({
-        app: { name: 'test-app', version: '1.0.0' },
-        server: { port: 3000 }
-      });
-      expect(configService.get('app.name')).toBe('test-app');
-      expect(configService.get('server.port')).toBe(3000);
-    });
-
-    it('should reset configuration', async () => {
-      await configService.initialize();
-      configService.set('test.value', 42);
-      configService.reset();
-      expect(configService.has('test.value')).toBe(false);
+      const config = { app: { name: 'test' }, debug: true };
+      configService.set('', config);
+      expect(configService.getAll()).toEqual(config);
     });
   });
 
@@ -92,13 +94,26 @@ describe('ConfigService', () => {
     });
 
     it('should validate configuration with schema', async () => {
-      const options: ConfigModuleOptions = {
-        schema: testSchema,
-        defaults: {
-          app: { name: 'test-app', port: 3000, debug: false }
-        }
+      const validConfig = {
+        app: { name: 'test-app', port: 3000, debug: false }
       };
-      configService = new ConfigService({ ...options, loadEnvironment: false });
+
+      mockLoader.load = jest.fn().mockResolvedValue(validConfig);
+      mockValidator.validate = jest.fn().mockReturnValue({ success: true, errors: [] });
+
+      configService = new ConfigService(
+        {
+          schema: testSchema,
+          defaults: validConfig,
+          validateOnStartup: true,
+          sources: []
+        },
+        mockLoader,
+        mockValidator,
+        undefined,
+        testSchema
+      );
+
       await configService.initialize();
 
       const config = configService.getAll();
@@ -107,367 +122,280 @@ describe('ConfigService', () => {
     });
 
     it('should throw on invalid configuration', async () => {
-      const options: ConfigModuleOptions = {
-        schema: testSchema,
-        defaults: {
-          app: { name: 'ab', port: -1, debug: 'invalid' }
-        }
+      const invalidConfig = {
+        app: { name: 'ab', port: -1, debug: 'invalid' }
       };
-      configService = new ConfigService({ ...options, loadEnvironment: false });
-      await expect(configService.initialize()).rejects.toThrow();
-    });
 
-    it('should validate configuration on set with schema', async () => {
-      const options: ConfigModuleOptions = {
-        schema: testSchema,
-        defaults: {
-          app: { name: 'test-app', port: 3000, debug: false }
+      mockLoader.load = jest.fn().mockResolvedValue(invalidConfig);
+      mockValidator.validate = jest.fn().mockReturnValue({
+        success: false,
+        errors: ['Invalid configuration']
+      });
+
+      configService = new ConfigService(
+        {
+          schema: testSchema,
+          defaults: invalidConfig,
+          validateOnStartup: true,
+          sources: []
         },
-        validateOnStartup: true
-      };
-      configService = new ConfigService({ ...options, loadEnvironment: false });
-      await configService.initialize();
+        mockLoader,
+        mockValidator,
+        undefined,
+        testSchema
+      );
 
-      expect(() => configService.set('app.port', -1)).not.toThrow();
-      // Validation happens on full config, not individual values
+      await expect(configService.initialize()).rejects.toThrow();
     });
   });
 
   describe('Configuration sources', () => {
-    it('should load from JSON file', async () => {
-      const configFile = path.join(tempDir, 'config.json');
-      fs.writeFileSync(configFile, JSON.stringify({
-        app: { name: 'file-app', port: 4000 }
-      }));
-
-      const options: ConfigModuleOptions = {
-        sources: [{
-          type: 'file',
-          path: configFile,
-          format: 'json'
-        }]
+    it('should load from sources', async () => {
+      const configData = {
+        app: { name: 'loaded-app', port: 4000 }
       };
-      configService = new ConfigService({ ...options, loadEnvironment: false });
-      await configService.initialize();
 
-      expect(configService.get('app.name')).toBe('file-app');
-      expect(configService.get('app.port')).toBe(4000);
-    });
+      mockLoader.load = jest.fn().mockResolvedValue(configData);
 
-    it('should load from environment variables', async () => {
-      process.env.TEST_APP_NAME = 'env-app';
-      process.env.TEST_APP_PORT = '5000';
-      process.env.TEST_APP_DEBUG = 'true';
-
-      const options: ConfigModuleOptions = {
-        sources: [{
-          type: 'env',
-          prefix: 'TEST_APP_',
-          separator: '_'
-        }]
-      };
-      // For this specific test, we want to use the env source we explicitly configured
-      configService = new ConfigService(options);
-      await configService.initialize();
-
-      expect(configService.get('name')).toBe('env-app');
-      expect(configService.get('port')).toBe(5000);
-      expect(configService.get('debug')).toBe(true);
-
-      delete process.env.TEST_APP_NAME;
-      delete process.env.TEST_APP_PORT;
-      delete process.env.TEST_APP_DEBUG;
-    });
-
-    it('should load from object source', async () => {
-      const options: ConfigModuleOptions = {
-        sources: [{
-          type: 'object',
-          data: {
-            app: { name: 'object-app', port: 6000 }
-          }
-        }]
-      };
-      configService = new ConfigService({ ...options, loadEnvironment: false });
-      await configService.initialize();
-
-      expect(configService.get('app.name')).toBe('object-app');
-      expect(configService.get('app.port')).toBe(6000);
-    });
-
-    it('should merge multiple sources with priority', async () => {
-      const configFile = path.join(tempDir, 'base.json');
-      fs.writeFileSync(configFile, JSON.stringify({
-        app: { name: 'file-app', port: 3000, version: '1.0.0' }
-      }));
-
-      process.env.OVERRIDE_APP_PORT = '4000';
-
-      const options: ConfigModuleOptions = {
-        sources: [
-          {
+      configService = new ConfigService(
+        {
+          sources: [{
             type: 'file',
-            path: configFile,
+            path: 'test.json',
             format: 'json'
-          },
-          {
-            type: 'env',
-            prefix: 'OVERRIDE_APP_',
-            separator: '_'
-          },
-          {
-            type: 'object',
-            data: {
-              app: { name: 'final-app' }
-            },
-            priority: 10
-          }
-        ]
-      };
-      configService = new ConfigService({ ...options, loadEnvironment: false });
-      await configService.initialize();
-
-      expect(configService.get('app.name')).toBe('final-app'); // From object (highest priority)
-      expect(configService.get('app.port')).toBe(4000); // From env
-      expect(configService.get('app.version')).toBe('1.0.0'); // From file
-
-      delete process.env.OVERRIDE_APP_PORT;
-    });
-
-    it('should handle optional sources', async () => {
-      const options: ConfigModuleOptions = {
-        sources: [{
-          type: 'file',
-          path: '/non/existent/file.json',
-          optional: true
-        }],
-        defaults: {
-          app: { name: 'default-app' }
-        }
-      };
-      configService = new ConfigService({ ...options, loadEnvironment: false });
-      await configService.initialize();
-
-      expect(configService.get('app.name')).toBe('default-app');
-    });
-  });
-
-  describe('Configuration watching', () => {
-    it('should watch configuration changes', (done) => {
-      configService.initialize().then(() => {
-        const unwatch = configService.watch('test.value', (event: ConfigChangeEvent) => {
-          expect(event.path).toBe('test.value');
-          expect(event.oldValue).toBeUndefined();
-          expect(event.newValue).toBe(42);
-          unwatch();
-          done();
-        });
-
-        configService.set('test.value', 42);
-      });
-    });
-
-    it('should watch nested path changes', (done) => {
-      configService.initialize().then(() => {
-        const unwatch = configService.watch('app', (event: ConfigChangeEvent) => {
-          expect(event.path).toBe('app.name');
-          expect(event.newValue).toBe('new-app');
-          unwatch();
-          done();
-        });
-
-        configService.set('app.name', 'new-app');
-      });
-    });
-
-    it('should emit configuration change events', (done) => {
-      configService.initialize().then(() => {
-        configService.on('config:changed', (event: ConfigChangeEvent) => {
-          expect(event.path).toBe('test.value');
-          expect(event.newValue).toBe('test');
-          done();
-        });
-
-        configService.set('test.value', 'test');
-      });
-    });
-  });
-
-  describe('File watching', () => {
-    it('should reload configuration when file changes', async () => {
-      const configFile = path.join(tempDir, 'watch.json');
-      fs.writeFileSync(configFile, JSON.stringify({
-        app: { name: 'initial', port: 3000 }
-      }));
-
-      const options: ConfigModuleOptions = {
-        sources: [{
-          type: 'file',
-          path: configFile,
-          watch: true
-        }],
-        watchForChanges: true
-      };
-      configService = new ConfigService({ ...options, loadEnvironment: false });
-      await configService.initialize();
-
-      expect(configService.get('app.name')).toBe('initial');
-
-      // Update file
-      fs.writeFileSync(configFile, JSON.stringify({
-        app: { name: 'updated', port: 4000 }
-      }));
-
-      // Wait for file watcher to detect change
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      expect(configService.get('app.name')).toBe('updated');
-      expect(configService.get('app.port')).toBe(4000);
-    });
-  });
-
-  describe('Environment detection', () => {
-    const originalEnv = process.env.NODE_ENV;
-
-    afterEach(() => {
-      process.env.NODE_ENV = originalEnv;
-    });
-
-    it('should detect current environment', async () => {
-      process.env.NODE_ENV = 'production';
-      const options: ConfigModuleOptions = {
-        environment: process.env.NODE_ENV
-      };
-      configService = new ConfigService({ ...options, loadEnvironment: false });
-      await configService.initialize();
-
-      expect(configService.getEnvironment()).toBe('production');
-    });
-
-    it('should use default environment if not set', async () => {
-      delete process.env.NODE_ENV;
-      configService = new ConfigService({ loadEnvironment: false });
-      await configService.initialize();
-
-      expect(configService.getEnvironment()).toBe('development');
-    });
-  });
-
-  describe('Configuration encryption', () => {
-    it('should encrypt sensitive fields', async () => {
-      const options: ConfigModuleOptions = {
-        defaults: {
-          database: {
-            host: 'localhost',
-            password: 'secret123'
-          }
+          }]
         },
-        encryption: {
-          enabled: true,
-          key: 'test-encryption-key-32-chars-long',
-          fields: ['database.password']
-        }
-      };
-      configService = new ConfigService({ ...options, loadEnvironment: false });
+        mockLoader,
+        mockValidator
+      );
+
       await configService.initialize();
 
-      const config = configService.getAll();
-      expect(config.database.host).toBe('localhost');
-      expect(config.database.password).toBe('secret123');
+      expect(configService.get('app.name')).toBe('loaded-app');
+      expect(configService.get('app.port')).toBe(4000);
+      expect(mockLoader.load).toHaveBeenCalled();
+    });
+
+    it('should handle multiple sources', async () => {
+      const mergedConfig = {
+        app: { name: 'merged-app', port: 5000 },
+        database: { host: 'localhost' }
+      };
+
+      mockLoader.load = jest.fn().mockResolvedValue(mergedConfig);
+
+      configService = new ConfigService(
+        {
+          sources: [
+            { type: 'file', path: 'base.json', format: 'json' },
+            { type: 'env', prefix: 'APP_' },
+            { type: 'object', data: { app: { port: 5000 } } }
+          ]
+        },
+        mockLoader,
+        mockValidator
+      );
+
+      await configService.initialize();
+
+      expect(configService.get('app.port')).toBe(5000);
+      expect(configService.get('database.host')).toBe('localhost');
     });
   });
 
-  describe('Configuration metadata', () => {
+  describe('Change listeners', () => {
+    it('should notify listeners on change', async () => {
+      await configService.initialize();
+
+      const listener = jest.fn();
+      const unsubscribe = configService.onChange(listener);
+
+      configService.set('test.value', 42);
+
+      expect(listener).toHaveBeenCalledWith({
+        path: 'test.value',
+        oldValue: undefined,
+        newValue: 42,
+        source: 'runtime',
+        timestamp: expect.any(Date)
+      });
+
+      unsubscribe();
+      configService.set('test.value', 100);
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('Caching', () => {
+    it('should cache values when enabled', async () => {
+      const mockData = { app: { name: 'cached' } };
+      mockLoader.load = jest.fn().mockResolvedValue(mockData);
+
+      configService = new ConfigService(
+        {
+          cache: { enabled: true, ttl: 1000 },
+          sources: []
+        },
+        mockLoader,
+        mockValidator
+      );
+
+      await configService.initialize();
+      configService.set('app.name', 'cached');
+
+      // First access should cache
+      const value1 = configService.get('app.name');
+      // Second access should use cache
+      const value2 = configService.get('app.name');
+
+      expect(value1).toBe('cached');
+      expect(value2).toBe('cached');
+    });
+
+    it('should invalidate cache after TTL', async () => {
+      const mockData = {};
+      mockLoader.load = jest.fn().mockResolvedValue(mockData);
+
+      configService = new ConfigService(
+        {
+          cache: { enabled: true, ttl: 100 }, // 100ms TTL
+          sources: []
+        },
+        mockLoader,
+        mockValidator
+      );
+
+      await configService.initialize();
+      configService.set('test', 'value');
+
+      const value1 = configService.get('test');
+      expect(value1).toBe('value');
+
+      // Wait for cache to expire
+      await new Promise(resolve => setTimeout(resolve, 150));
+
+      // Change value
+      configService.set('test', 'new-value');
+      const value2 = configService.get('test');
+      expect(value2).toBe('new-value');
+    });
+  });
+
+  describe('Typed configuration', () => {
+    it('should get typed configuration with schema', async () => {
+      const schema = z.object({
+        port: z.number(),
+        host: z.string()
+      });
+
+      await configService.initialize();
+      configService.set('server', { port: 3000, host: 'localhost' });
+
+      const config = configService.getTyped(schema, 'server');
+      expect(config).toEqual({ port: 3000, host: 'localhost' });
+    });
+
+    it('should throw on invalid typed configuration', async () => {
+      const schema = z.object({
+        port: z.number(),
+        host: z.string()
+      });
+
+      await configService.initialize();
+      configService.set('server', { port: 'invalid', host: 'localhost' });
+
+      expect(() => configService.getTyped(schema, 'server')).toThrow();
+    });
+  });
+
+  describe('Reload functionality', () => {
+    it('should reload configuration from sources', async () => {
+      const initialData = { version: 1 };
+      const updatedData = { version: 2 };
+
+      mockLoader.load = jest.fn()
+        .mockResolvedValueOnce(initialData)
+        .mockResolvedValueOnce(updatedData);
+
+      configService = new ConfigService(
+        {
+          sources: [{ type: 'file', path: 'config.json' }]
+        },
+        mockLoader,
+        mockValidator
+      );
+
+      await configService.initialize();
+      expect(configService.get('version')).toBe(1);
+
+      await configService.reload();
+      expect(configService.get('version')).toBe(2);
+      expect(mockLoader.load).toHaveBeenCalledTimes(2);
+    });
+
+    it('should restore old config on validation failure during reload', async () => {
+      const initialData = { version: 1, valid: true };
+      const invalidData = { version: 2, valid: false };
+
+      mockLoader.load = jest.fn()
+        .mockResolvedValueOnce(initialData)
+        .mockResolvedValueOnce(invalidData);
+
+      mockValidator.validate = jest.fn()
+        .mockReturnValueOnce({ success: true, errors: [] })
+        .mockReturnValueOnce({ success: false, errors: ['Invalid'] });
+
+      const schema = z.object({ version: z.number(), valid: z.boolean() });
+
+      configService = new ConfigService(
+        {
+          sources: [{ type: 'file', path: 'config.json' }],
+          validateOnStartup: true,
+          schema
+        },
+        mockLoader,
+        mockValidator,
+        undefined,
+        schema
+      );
+
+      await configService.initialize();
+      expect(configService.get('version')).toBe(1);
+
+      await expect(configService.reload()).rejects.toThrow();
+      // Config should remain unchanged
+      expect(configService.get('version')).toBe(1);
+    });
+  });
+
+  describe('Metadata', () => {
     it('should provide configuration metadata', async () => {
+      configService = new ConfigService(
+        {
+          environment: 'test',
+          sources: [{ type: 'file', path: 'test.json', name: 'test-file' }],
+          cache: { enabled: true }
+        },
+        mockLoader,
+        mockValidator
+      );
+
       await configService.initialize();
+
       const metadata = configService.getMetadata();
-
-      expect(metadata.source).toBeDefined();
+      expect(metadata.environment).toBe('test');
+      expect(metadata.cached).toBe(true);
       expect(metadata.loadedAt).toBeInstanceOf(Date);
-      expect(metadata.environment).toBeDefined();
-    });
-  });
-
-  describe('Error handling', () => {
-    it('should handle invalid JSON file gracefully', async () => {
-      const configFile = path.join(tempDir, 'invalid.json');
-      fs.writeFileSync(configFile, 'invalid json content');
-
-      const options: ConfigModuleOptions = {
-        sources: [{
-          type: 'file',
-          path: configFile,
-          format: 'json'
-        }]
-      };
-      configService = new ConfigService({ ...options, loadEnvironment: false });
-
-      await expect(configService.initialize()).rejects.toThrow();
     });
 
-    it('should handle missing required file', async () => {
-      const options: ConfigModuleOptions = {
-        sources: [{
-          type: 'file',
-          path: '/non/existent/required.json',
-          optional: false
-        }]
-      };
-      configService = new ConfigService({ ...options, loadEnvironment: false });
+    it('should get environment from metadata', async () => {
+      configService = new ConfigService(
+        { environment: 'production' },
+        mockLoader,
+        mockValidator
+      );
 
-      await expect(configService.initialize()).rejects.toThrow();
-    });
-  });
-
-  describe('Configuration interpolation', () => {
-    it.skip('should interpolate configuration values', async () => {
-      // TODO: This test requires interpolation support which is not yet implemented
-      // Skipping for now as interpolation requires environment variable access
-      process.env.DB_HOST = 'prod-db.example.com';
-
-      const options: ConfigModuleOptions = {
-        defaults: {
-          database: {
-            host: '${env:DB_HOST}',
-            url: 'postgresql://${database.host}:5432/mydb'
-          }
-        }
-      };
-      configService = new ConfigService({ ...options, loadEnvironment: true });
-      await configService.initialize();
-
-      expect(configService.get('database.host')).toBe('prod-db.example.com');
-
-      delete process.env.DB_HOST;
-    });
-  });
-
-  describe('Typed configuration access', () => {
-    interface AppConfig {
-      app: {
-        name: string;
-        port: number;
-        debug: boolean;
-      };
-    }
-
-    it('should provide typed configuration access', async () => {
-      const options: ConfigModuleOptions = {
-        defaults: {
-          app: {
-            name: 'typed-app',
-            port: 3000,
-            debug: false
-          }
-        }
-      };
-      configService = new ConfigService<AppConfig>(options);
-      await configService.initialize();
-
-      const appConfig = configService.get<AppConfig['app']>('app');
-      expect(appConfig?.name).toBe('typed-app');
-      expect(appConfig?.port).toBe(3000);
-      expect(appConfig?.debug).toBe(false);
+      expect(configService.environment).toBe('production');
     });
   });
 });

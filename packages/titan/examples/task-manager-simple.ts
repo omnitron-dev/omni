@@ -22,9 +22,9 @@ import {
   OnDestroy,
   Logger,
   LoggerModule,
-  LoggerModuleToken,
+  LOGGER_SERVICE_TOKEN,
   ConfigModule,
-  ConfigModuleToken,
+  CONFIG_SERVICE_TOKEN,
   EnhancedApplicationModule,
   type ModuleMetadata as EnhancedModuleMetadata,
   type Module as IModule,
@@ -68,7 +68,7 @@ class TaskService implements OnInit, OnDestroy {
   private logger!: Logger;
 
   constructor(
-    @Inject(LoggerModuleToken) private loggerModule: LoggerModule
+    @Inject(LOGGER_SERVICE_TOKEN) private loggerModule: LoggerModule
   ) {
     // Logger is properly injected with correct type
     this.logger = this.loggerModule.logger.child({ service: 'TaskService' });
@@ -201,8 +201,8 @@ class NotificationService implements OnInit {
   private logger!: Logger;
 
   constructor(
-    @Inject(LoggerModuleToken) private loggerModule: LoggerModule,
-    @Inject(ConfigModuleToken) private configModule: ConfigModule
+    @Inject(LOGGER_SERVICE_TOKEN) private loggerModule: LoggerModule,
+    @Inject(CONFIG_SERVICE_TOKEN) private configModule: ConfigModule
   ) {
     // Dependencies are properly injected with correct types
     this.logger = this.loggerModule.logger.child({ service: 'NotificationService' });
@@ -250,7 +250,7 @@ class TaskCoordinator implements OnInit {
   constructor(
     @Inject(TaskServiceToken) private taskService: TaskService,
     @Inject(NotificationServiceToken) private notificationService: NotificationService,
-    @Inject(LoggerModuleToken) private loggerModule: LoggerModule
+    @Inject(LOGGER_SERVICE_TOKEN) private loggerModule: LoggerModule
   ) {
     // All dependencies are properly injected with correct types
     this.logger = this.loggerModule.logger.child({ service: 'TaskCoordinator' });
@@ -307,7 +307,7 @@ class TaskManagerModule extends EnhancedApplicationModule {
     super({
       name: 'task-manager',
       version: '1.0.0',
-      dependencies: [LoggerModuleToken, ConfigModuleToken],
+      dependencies: [LOGGER_SERVICE_TOKEN, CONFIG_SERVICE_TOKEN],
       providers: [
         [TaskServiceToken, { useClass: TaskService, scope: 'singleton' }],
         [NotificationServiceToken, { useClass: NotificationService, scope: 'singleton' }],
@@ -323,7 +323,7 @@ class TaskManagerModule extends EnhancedApplicationModule {
    * The EnhancedApplicationModule handles provider initialization automatically
    */
   protected override async onModuleStart(app: IApplication): Promise<void> {
-    const logger = app.get(LoggerModuleToken).logger;
+    const logger = app.get(LOGGER_SERVICE_TOKEN).logger;
     logger.info({ module: this.name }, 'TaskManagerModule started successfully');
 
     // Any additional module-specific startup logic can go here
@@ -335,7 +335,7 @@ class TaskManagerModule extends EnhancedApplicationModule {
    * The EnhancedApplicationModule handles provider cleanup automatically
    */
   protected override async onModuleStop(app: IApplication): Promise<void> {
-    const logger = app.get(LoggerModuleToken).logger;
+    const logger = app.get(LOGGER_SERVICE_TOKEN).logger;
     logger.info({ module: this.name }, 'TaskManagerModule stopping...');
 
     // Any additional module-specific cleanup logic can go here

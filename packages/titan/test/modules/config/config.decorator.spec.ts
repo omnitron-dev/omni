@@ -8,20 +8,10 @@ import {
   Config,
   InjectConfig,
   ConfigSchema,
-  Configuration,
-  ConfigValidate,
   ConfigWatch,
-  ConfigDefaults,
-  ConfigProvider,
-  ConfigTransform,
-  getConfigMetadata,
 } from '../../../src/modules/config/config.decorator.js';
 import { ConfigService } from '../../../src/modules/config/config.service.js';
 import { Container, createToken } from '@omnitron-dev/nexus';
-import {
-  CONFIG_INJECT_METADATA_KEY,
-  CONFIG_SCHEMA_METADATA_KEY,
-} from '../../../src/modules/config/config.types.js';
 
 describe('Configuration Decorators', () => {
   describe('@Config decorator', () => {

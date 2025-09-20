@@ -9,8 +9,8 @@ import {
   createApp,
   defineModule,
   createAndStartApp,
-  LoggerModuleToken,
-  ConfigModuleToken,
+  LOGGER_SERVICE_TOKEN,
+  CONFIG_SERVICE_TOKEN,
   createToken,
   type HealthStatus
 } from '../src';
@@ -27,7 +27,7 @@ async function simplestApp() {
     version: '1.0.0'
   });
 
-  const logger = app.get(LoggerModuleToken).logger;
+  const logger = app.get(LOGGER_SERVICE_TOKEN).logger;
   logger.info('This is the simplest possible Titan app!');
   
   await app.stop();
@@ -149,7 +149,7 @@ async function replaceModulesApp() {
   });
 
   // Replace logger with a simple console logger in one line
-  app.replaceModule(LoggerModuleToken, defineModule({
+  app.replaceModule(LOGGER_SERVICE_TOKEN, defineModule({
     name: 'simple-logger',
     logger: {
       trace: console.log,
@@ -163,7 +163,7 @@ async function replaceModulesApp() {
   }));
 
   // Replace config with a simple object
-  app.replaceModule(ConfigModuleToken, defineModule({
+  app.replaceModule(CONFIG_SERVICE_TOKEN, defineModule({
     name: 'simple-config',
     _data: { app: { name: 'replaced' } },
     // Add loadObject method expected by Application
@@ -198,8 +198,8 @@ async function replaceModulesApp() {
 
   await app.start();
 
-  const logger = app.get(LoggerModuleToken).logger;
-  const config = app.get(ConfigModuleToken);
+  const logger = app.get(LOGGER_SERVICE_TOKEN).logger;
+  const config = app.get(CONFIG_SERVICE_TOKEN);
   
   logger.info('Using replaced logger!');
   console.log('Config environment:', config.getEnvironment());

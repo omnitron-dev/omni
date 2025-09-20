@@ -211,9 +211,7 @@ function createMockRedisClient(): any {
       }
       return count;
     }),
-    exists: jest.fn(async (...keys: string[]) => {
-      return keys.filter(k => data.has(k)).length;
-    }),
+    exists: jest.fn(async (...keys: string[]) => keys.filter(k => data.has(k)).length),
     ping: jest.fn(async () => 'PONG'),
     connect: jest.fn(async () => {
       emitter.emit('connect');

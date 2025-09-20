@@ -9,8 +9,10 @@ import { ConfigService } from '../../../src/modules/config/config.service.js';
 import {
   CONFIG_OPTIONS_TOKEN,
   CONFIG_SCHEMA_TOKEN,
-  ConfigModuleOptions,
-} from '../../../src/modules/config/config.types.js';
+} from '../../../src/modules/config/config.tokens.js';
+import type {
+  IConfigModuleOptions as ConfigModuleOptions,
+} from '../../../src/modules/config/types.js';
 import { createToken } from '@omnitron-dev/nexus';
 import { registerModuleProviders } from '../../../src/testing/container-utils.js';
 import path from 'node:path';
@@ -124,7 +126,6 @@ describe('ConfigModule', () => {
       const DB_TOKEN = createToken<{ host: string }>('Database');
 
       const module = ConfigModule.forRootAsync({
-        imports: [],
         inject: [DB_TOKEN],
         useFactory: async (db: { host: string }) => ({
           defaults: {

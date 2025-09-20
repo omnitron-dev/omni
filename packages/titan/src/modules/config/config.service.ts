@@ -1,60 +1,67 @@
 /**
  * Configuration Service
  *
- * Core configuration management service for Titan Framework
- * Provides comprehensive configuration management with multiple sources,
- * validation, hot-reload, and dependency injection support.
+ * Main service for accessing and managing configuration
  */
 
-import fs from 'node:fs';
-import path from 'node:path';
-import crypto from 'node:crypto';
-import { EventEmitter } from 'node:events';
-import { ZodType } from 'zod';
 import { Injectable, Inject, Optional } from '@omnitron-dev/nexus';
-import { Logger } from 'pino';
+import { ZodType } from 'zod';
 
 import {
-  ConfigModuleOptions,
-  ConfigSource,
-  ConfigValidationResult,
-  ConfigChangeEvent,
-  ConfigMetadata,
   CONFIG_OPTIONS_TOKEN,
+  CONFIG_LOADER_SERVICE_TOKEN,
+  CONFIG_VALIDATOR_SERVICE_TOKEN,
+  CONFIG_WATCHER_SERVICE_TOKEN,
   CONFIG_SCHEMA_TOKEN,
-  CONFIG_DEFAULTS,
-} from './config.types.js';
-import { ConfigLoader } from './config.loader.js';
-import { getValueByPath, setValueByPath, flattenObject } from './config.utils.js';
+  CONFIG_LOGGER_TOKEN
+} from './config.tokens.js';
 
-/**
- * Main configuration service
- */
+import type {
+  IConfigProvider,
+  IConfigModuleOptions,
+  IConfigMetadata,
+  IConfigValidationResult,
+  IConfigChangeEvent
+} from './types.js';
+
+import type { ConfigLoaderService } from './config-loader.service.js';
+import type { ConfigValidatorService } from './config-validator.service.js';
+import type { ConfigWatcherService } from './config-watcher.service.js';
+
 @Injectable()
-export class ConfigService<T = any> extends EventEmitter {
+export class ConfigService implements IConfigProvider {
   private config: Record<string, any> = {};
-  private schema?: ZodType;
-  private loader: ConfigLoader;
-  private metadata: ConfigMetadata;
-  private watchers = new Map<string, any>();
+  private metadata: IConfigMetadata;
   private cache = new Map<string, { value: any; timestamp: number }>();
-  private logger?: Logger;
   private initialized = false;
+  private changeListeners = new Set<(event: IConfigChangeEvent) => void>();
 
   constructor(
-    @Inject(CONFIG_OPTIONS_TOKEN) private readonly options: ConfigModuleOptions = {},
-    @Optional() @Inject(CONFIG_SCHEMA_TOKEN) schema?: ZodType,
-    @Optional() @Inject('Logger') logger?: Logger
+    @Inject(CONFIG_OPTIONS_TOKEN) private readonly options: IConfigModuleOptions,
+    @Inject(CONFIG_LOADER_SERVICE_TOKEN) private readonly loader: ConfigLoaderService,
+    @Inject(CONFIG_VALIDATOR_SERVICE_TOKEN) private readonly validator: ConfigValidatorService,
+    @Optional() @Inject(CONFIG_WATCHER_SERVICE_TOKEN) private readonly watcher?: ConfigWatcherService,
+    @Optional() @Inject(CONFIG_SCHEMA_TOKEN) private readonly schema?: ZodType,
+    @Optional() @Inject(CONFIG_LOGGER_TOKEN) private readonly logger?: any
   ) {
-    super();
-    this.schema = schema || options?.schema;
-    this.loader = new ConfigLoader();
-    this.logger = logger || options?.logger;
     this.metadata = {
       source: 'titan-config',
       loadedAt: new Date(),
-      environment: options?.environment || CONFIG_DEFAULTS.environment,
+      environment: options.environment || process.env['NODE_ENV'] || 'development',
+      sources: [],
+      validated: false,
+      cached: options.cache?.enabled || false
     };
+
+    // Set initial config from sources if they are object type
+    // This allows synchronous access before full initialization
+    if (options.sources) {
+      for (const source of options.sources) {
+        if (source.type === 'object' && source.data) {
+          this.config = { ...this.config, ...source.data };
+        }
+      }
+    }
   }
 
   /**
@@ -67,24 +74,38 @@ export class ConfigService<T = any> extends EventEmitter {
 
     try {
       // Load configuration from all sources
-      await this.loadConfiguration();
+      if (this.options.sources && this.options.sources.length > 0) {
+        this.config = await this.loader.load(this.options.sources);
+
+        // Update metadata
+        this.metadata.sources = this.options.sources.map(s => ({
+          type: s.type,
+          name: s.name,
+          loaded: true
+        }));
+      }
 
       // Validate if required
-      if (this.options.validateOnStartup) {
-        const result = this.validate();
+      if (this.options.validateOnStartup && this.schema) {
+        const result = this.validator.validate(this.config, this.schema);
         if (!result.success) {
           throw new Error(`Configuration validation failed: ${JSON.stringify(result.errors)}`);
         }
+        this.metadata.validated = true;
       }
 
       // Setup file watchers if enabled
-      if (this.options.watchForChanges) {
-        await this.setupWatchers();
+      if (this.options.watchForChanges && this.watcher) {
+        this.watcher.watch(this.options.sources || [], (event) => {
+          this.handleConfigChange(event);
+        });
       }
 
       this.initialized = true;
-      this.logger?.info('Configuration service initialized');
-      this.emit('initialized', this.config);
+      this.logger?.info('Configuration service initialized', {
+        environment: this.metadata.environment,
+        sources: this.metadata.sources?.length || 0
+      });
     } catch (error) {
       this.logger?.error({ error }, 'Failed to initialize configuration service');
       throw error;
@@ -92,129 +113,15 @@ export class ConfigService<T = any> extends EventEmitter {
   }
 
   /**
-   * Load configuration from all sources
-   */
-  private async loadConfiguration(): Promise<void> {
-    const sources: ConfigSource[] = [...(this.options.sources || [])];
-
-    // Add automatic environment-based loading
-    if (this.options.autoLoad) {
-      const environment = this.options.environment || process.env['NODE_ENV'] || 'development';
-      const configPath = this.options.configPath || CONFIG_DEFAULTS.configPath;
-
-      // Add default config file
-      sources.unshift({
-        type: 'file',
-        path: path.join(configPath, 'config.default.json'),
-        optional: true,
-      });
-
-      // Add environment-specific config file
-      sources.push({
-        type: 'file',
-        path: path.join(configPath, `config.${environment}.json`),
-        optional: true,
-      });
-
-      // Add local override config file
-      sources.push({
-        type: 'file',
-        path: path.join(configPath, 'config.local.json'),
-        optional: true,
-      });
-    }
-
-    // Add environment variables source if enabled (defaults to true unless explicitly disabled)
-    if (this.options.loadEnvironment !== false) {
-      sources.push({
-        type: 'env',
-        prefix: process.env['CONFIG_PREFIX'] || '',
-        separator: process.env['CONFIG_SEPARATOR'] || '__',
-      });
-    }
-
-    // Add defaults as the lowest priority source
-    if (this.options.defaults) {
-      sources.unshift({
-        type: 'object',
-        data: this.options.defaults,
-      });
-    }
-
-    // Load all configurations
-    this.config = await this.loader.loadAll(sources);
-
-    // Update metadata
-    this.metadata.loadedAt = new Date();
-    this.metadata.checksum = this.calculateChecksum(this.config);
-
-    this.logger?.debug({ sources: sources.length }, 'Configuration loaded from sources');
-  }
-
-  /**
-   * Setup file watchers for configuration files
-   */
-  private async setupWatchers(): Promise<void> {
-    const sources = this.options.sources?.filter(s => s.type === 'file' && s.watch) || [];
-
-    for (const source of sources) {
-      if (source.type === 'file' && fs.existsSync(source.path)) {
-        const watcher = fs.watch(source.path, async (eventType) => {
-          if (eventType === 'change') {
-            this.logger?.debug({ path: source.path }, 'Configuration file changed');
-            await this.reload();
-          }
-        });
-
-        this.watchers.set(source.path, watcher);
-      }
-    }
-  }
-
-  /**
-   * Reload configuration from all sources
-   */
-  async reload(): Promise<void> {
-    const oldConfig = { ...this.config };
-
-    try {
-      await this.loadConfiguration();
-
-      // Validate new configuration
-      if (this.options.validateOnStartup) {
-        const result = this.validate();
-        if (!result.success) {
-          // Rollback to old configuration
-          this.config = oldConfig;
-          throw new Error(`Configuration validation failed after reload: ${JSON.stringify(result.errors)}`);
-        }
-      }
-
-      // Detect changes and emit events
-      const changes = this.detectChanges(oldConfig, this.config);
-      for (const change of changes) {
-        this.emit('change', change);
-        this.emit(`change:${change.path}`, change);
-      }
-
-      // Clear cache
-      this.cache.clear();
-
-      this.logger?.info('Configuration reloaded successfully');
-      this.emit('reload', this.config);
-    } catch (error) {
-      this.logger?.error({ error }, 'Failed to reload configuration');
-      this.emit('reload:error', error);
-      throw error;
-    }
-  }
-
-  /**
    * Get configuration value by path
    */
-  get<K = any>(path: string, defaultValue?: K): K {
+  get<T = any>(path: string, defaultValue?: T): T {
+    // Auto-initialize if not already done (for synchronous access)
     if (!this.initialized) {
-      throw new Error('Configuration service not initialized');
+      // For synchronous access, we can't await initialize()
+      // Just use the config as-is (it should have been set in constructor)
+      // The Application should call initialize() during startup
+      this.logger?.debug('ConfigService accessed before initialization, using default config');
     }
 
     // Check cache if enabled
@@ -228,263 +135,207 @@ export class ConfigService<T = any> extends EventEmitter {
       }
     }
 
-    const value = getValueByPath(this.config, path);
-    const result = value !== undefined ? value : defaultValue;
+    // Get value from config
+    const value = this.getValueByPath(this.config, path) ?? defaultValue;
 
-    // Update cache
-    if (this.options.cache?.enabled && result !== undefined) {
-      this.cache.set(path, { value: result, timestamp: Date.now() });
-
-      // Limit cache size
-      const maxSize = this.options.cache.maxSize || 1000;
-      if (this.cache.size > maxSize) {
-        const firstKey = this.cache.keys().next().value;
-        if (firstKey) {
-          this.cache.delete(firstKey);
-        }
-      }
+    // Cache the value
+    if (this.options.cache?.enabled && value !== undefined) {
+      this.cache.set(path, { value, timestamp: Date.now() });
     }
 
-    return result as K;
+    return value;
   }
 
   /**
-   * Get required configuration value by path
+   * Get all configuration values
    */
-  require<K = any>(path: string): K {
-    const value = this.get<K>(path);
-    if (value === undefined) {
-      throw new Error(`Required configuration not found: ${path}`);
-    }
-    return value;
+  getAll(): Record<string, any> {
+    return { ...this.config };
   }
 
   /**
    * Check if configuration path exists
    */
   has(path: string): boolean {
-    return getValueByPath(this.config, path) !== undefined;
+    return this.getValueByPath(this.config, path) !== undefined;
   }
 
   /**
-   * Set configuration value by path (runtime only)
+   * Set configuration value (runtime only)
    */
   set(path: string, value: any): void {
-    const oldValue = getValueByPath(this.config, path);
-    setValueByPath(this.config, path, value);
+    const oldValue = this.getValueByPath(this.config, path);
+    this.setValueByPath(this.config, path, value);
 
     // Clear cache for this path
     this.cache.delete(path);
 
-    // Emit change event
-    const event: ConfigChangeEvent = {
+    // Notify listeners
+    const event: IConfigChangeEvent = {
       path,
       oldValue,
       newValue: value,
       source: 'runtime',
-      timestamp: new Date(),
+      timestamp: new Date()
     };
-
-    this.emit('change', event);
-    this.emit(`change:${path}`, event);
+    this.notifyChangeListeners(event);
   }
 
   /**
-   * Get the entire configuration object
+   * Get typed configuration value
    */
-  getAll(): T {
-    return this.config as T;
-  }
-
-  /**
-   * Get typed configuration subset
-   */
-  getTyped<K>(schema: ZodType<K>, path?: string): K {
-    const data = path ? this.get(path) : this.getAll();
-    const result = schema.safeParse(data);
+  getTyped<T>(schema: ZodType<T>, path?: string): T {
+    const value = path ? this.get(path) : this.getAll();
+    const result = schema.safeParse(value);
 
     if (!result.success) {
-      throw new Error(`Configuration validation failed: ${JSON.stringify(result.error.issues)}`);
+      throw new Error(`Configuration validation failed for ${path || 'root'}: ${result.error.message}`);
     }
 
     return result.data;
   }
 
   /**
-   * Validate configuration against schema
+   * Validate current configuration
    */
-  validate(data?: any): ConfigValidationResult {
-    if (!this.schema) {
-      return { success: true, data: data || this.config };
-    }
-
-    const result = this.schema.safeParse(data || this.config);
-
-    if (result.success) {
-      return { success: true, data: result.data };
-    }
-
-    return {
-      success: false,
-      errors: result.error.issues,
-    };
+  validate(schema?: ZodType): IConfigValidationResult {
+    return this.validator.validate(this.config, schema || this.schema);
   }
 
   /**
    * Get configuration metadata
    */
-  getMetadata(): ConfigMetadata {
+  getMetadata(): IConfigMetadata {
     return { ...this.metadata };
-  }
-
-  /**
-   * Detect changes between two configurations
-   */
-  private detectChanges(oldConfig: any, newConfig: any): ConfigChangeEvent[] {
-    const changes: ConfigChangeEvent[] = [];
-    const oldFlat = flattenObject(oldConfig);
-    const newFlat = flattenObject(newConfig);
-
-    const allKeys = new Set([...Object.keys(oldFlat), ...Object.keys(newFlat)]);
-
-    for (const key of allKeys) {
-      if (oldFlat[key] !== newFlat[key]) {
-        changes.push({
-          path: key,
-          oldValue: oldFlat[key],
-          newValue: newFlat[key],
-          source: 'reload',
-          timestamp: new Date(),
-        });
-      }
-    }
-
-    return changes;
-  }
-
-  /**
-   * Calculate configuration checksum
-   */
-  private calculateChecksum(config: any): string {
-    const json = JSON.stringify(config, Object.keys(config).sort());
-    return crypto.createHash('sha256').update(json).digest('hex');
-  }
-
-  /**
-   * Watch for configuration changes
-   */
-  watch(path: string, callback: (event: ConfigChangeEvent) => void): () => void {
-    const eventName = `change:${path}`;
-    this.on(eventName, callback);
-
-    // Return unsubscribe function
-    return () => {
-      this.off(eventName, callback);
-    };
   }
 
   /**
    * Get environment
    */
   get environment(): string {
-    return this.metadata.environment || 'development';
+    return this.metadata.environment;
   }
 
   /**
-   * Check if running in production
+   * Subscribe to configuration changes
    */
-  isProduction(): boolean {
-    return this.environment === 'production';
+  onChange(listener: (event: IConfigChangeEvent) => void): () => void {
+    this.changeListeners.add(listener);
+    return () => this.changeListeners.delete(listener);
   }
 
   /**
-   * Check if running in development
+   * Reload configuration from sources
    */
-  isDevelopment(): boolean {
-    return this.environment === 'development';
-  }
-
-  /**
-   * Check if running in test
-   */
-  isTest(): boolean {
-    return this.environment === 'test';
-  }
-
-  /**
-   * Reset configuration to defaults
-   */
-  reset(): void {
-    this.config = this.options.defaults || {};
-    this.cache.clear();
-    this.emit('reset', this.config);
-  }
-
-  /**
-   * Delete configuration value by path
-   */
-  delete(path: string): boolean {
-    const parts = path.split('.');
-    const lastKey = parts.pop()!;
-    let target = this.config;
-
-    for (const part of parts) {
-      target = target[part];
-      if (!target) return false;
+  async reload(): Promise<void> {
+    if (!this.options.sources || this.options.sources.length === 0) {
+      return;
     }
 
-    if (lastKey in target) {
-      const oldValue = target[lastKey];
-      delete target[lastKey];
-      this.cache.delete(path);
-
-      const event: ConfigChangeEvent = {
-        path,
-        oldValue,
-        newValue: undefined,
-        source: 'runtime',
-        timestamp: new Date(),
-      };
-
-      this.emit('change', event);
-      this.emit(`change:${path}`, event);
-      return true;
-    }
-
-    return false;
-  }
-
-  /**
-   * Get current environment
-   */
-  getEnvironment(): string {
-    return this.environment;
-  }
-
-  /**
-   * Cleanup resources
-   */
-  async destroy(): Promise<void> {
-    // Close file watchers
-    for (const watcher of this.watchers.values()) {
-      watcher.close();
-    }
-    this.watchers.clear();
+    const oldConfig = { ...this.config };
+    this.config = await this.loader.load(this.options.sources);
 
     // Clear cache
     this.cache.clear();
 
-    // Remove all listeners
-    this.removeAllListeners();
+    // Validate if required
+    if (this.options.validateOnStartup && this.schema) {
+      const result = this.validator.validate(this.config, this.schema);
+      if (!result.success) {
+        // Restore old config on validation failure
+        this.config = oldConfig;
+        throw new Error(`Configuration validation failed: ${JSON.stringify(result.errors)}`);
+      }
+    }
 
-    this.initialized = false;
-    this.logger?.debug('Configuration service destroyed');
+    // Update metadata
+    this.metadata.loadedAt = new Date();
+
+    // Notify about changes
+    this.notifyChangeListeners({
+      path: '',
+      oldValue: oldConfig,
+      newValue: this.config,
+      source: 'reload',
+      timestamp: new Date()
+    });
   }
 
   /**
-   * Alias for destroy() for compatibility
+   * Dispose the service
    */
   async dispose(): Promise<void> {
-    return this.destroy();
+    if (this.watcher) {
+      this.watcher.unwatch();
+    }
+    this.cache.clear();
+    this.changeListeners.clear();
+  }
+
+  /**
+   * Handle configuration file changes
+   */
+  private async handleConfigChange(event: IConfigChangeEvent): Promise<void> {
+    try {
+      await this.reload();
+      this.logger?.info('Configuration reloaded due to file change', { file: event.path });
+    } catch (error) {
+      this.logger?.error({ error }, 'Failed to reload configuration');
+    }
+  }
+
+  /**
+   * Notify change listeners
+   */
+  private notifyChangeListeners(event: IConfigChangeEvent): void {
+    for (const listener of this.changeListeners) {
+      try {
+        listener(event);
+      } catch (error) {
+        this.logger?.error({ error }, 'Error in configuration change listener');
+      }
+    }
+  }
+
+  /**
+   * Get value by dot notation path
+   */
+  private getValueByPath(obj: any, path: string): any {
+    const keys = path.split('.');
+    let current = obj;
+
+    for (const key of keys) {
+      if (current == null || typeof current !== 'object') {
+        return undefined;
+      }
+      if (key) {
+        current = current[key];
+      }
+    }
+
+    return current;
+  }
+
+  /**
+   * Set value by dot notation path
+   */
+  private setValueByPath(obj: any, path: string, value: any): void {
+    const keys = path.split('.');
+    let current = obj;
+
+    for (let i = 0; i < keys.length - 1; i++) {
+      const key = keys[i];
+      if (key && (!(key in current) || typeof current[key] !== 'object')) {
+        current[key] = {};
+      }
+      if (key) {
+        current = current[key];
+      }
+    }
+
+    const lastKey = keys[keys.length - 1];
+    if (lastKey) {
+      current[lastKey] = value;
+    }
   }
 }

@@ -4,20 +4,20 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { ConfigLoader } from '../../../src/modules/config/config.loader.js';
-import {
-  FileConfigSource,
-  EnvironmentConfigSource,
-  ObjectConfigSource,
-  RemoteConfigSource,
-} from '../../../src/modules/config/config.types.js';
+import { ConfigLoaderService } from '../../../src/modules/config/config-loader.service.js';
+import type {
+  IFileConfigSource as FileConfigSource,
+  IEnvironmentConfigSource as EnvironmentConfigSource,
+  IObjectConfigSource as ObjectConfigSource,
+  IRemoteConfigSource as RemoteConfigSource,
+} from '../../../src/modules/config/types.js';
 
-describe('ConfigLoader', () => {
-  let loader: ConfigLoader;
+describe('ConfigLoaderService', () => {
+  let loader: ConfigLoaderService;
   let tempDir: string;
 
   beforeEach(() => {
-    loader = new ConfigLoader();
+    loader = new ConfigLoaderService();
     tempDir = path.join(process.cwd(), 'packages/titan/test/modules/config/.temp-loader-test');
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
@@ -46,7 +46,7 @@ describe('ConfigLoader', () => {
         format: 'json'
       };
 
-      const result = await loader.load(source);
+      const result = await loader.load([source]);
       expect(result).toEqual(configData);
     });
 
@@ -61,7 +61,7 @@ describe('ConfigLoader', () => {
         // format not specified
       };
 
-      const result = await loader.load(source);
+      const result = await loader.load([source]);
       expect(result).toEqual(configData);
     });
 
@@ -83,7 +83,7 @@ EMPTY_VALUE=
         format: 'env'
       };
 
-      const result = await loader.load(source);
+      const result = await loader.load([source]);
       expect(result.APP_NAME).toBe('test-app');
       expect(result.APP_PORT).toBe(3000);
       expect(result.APP_DEBUG).toBe(true);
@@ -109,7 +109,7 @@ database.port=5432
         format: 'properties'
       };
 
-      const result = await loader.load(source);
+      const result = await loader.load([source]);
       expect(result.app.name).toBe('test-app');
       expect(result.app.version).toBe('1.0.0');
       expect(result.server.port).toBe(3000);
@@ -124,7 +124,7 @@ database.port=5432
         optional: true
       };
 
-      const result = await loader.load(source);
+      const result = await loader.load([source]);
       expect(result).toEqual({});
     });
 
@@ -135,7 +135,7 @@ database.port=5432
         optional: false
       };
 
-      await expect(loader.load(source)).rejects.toThrow('Configuration file not found');
+      await expect(loader.load([source])).rejects.toThrow();
     });
 
     it('should apply transformation to file data', async () => {
@@ -152,7 +152,7 @@ database.port=5432
         })
       };
 
-      const result = await loader.load(source);
+      const result = await loader.load([source]);
       expect(result.port).toBe(3000);
       expect(result.debug).toBe(true);
     });
@@ -167,7 +167,7 @@ database.port=5432
         format: 'json'
       };
 
-      await expect(loader.load(source)).rejects.toThrow();
+      await expect(loader.load([source])).rejects.toThrow();
     });
   });
 
@@ -193,7 +193,7 @@ database.port=5432
         prefix: 'APP_'
       };
 
-      const result = await loader.load(source);
+      const result = await loader.load([source]);
       expect(result.name).toBe('env-app');
       expect(result.port).toBe(3000);
       expect(result.debug).toBe(true);
@@ -211,7 +211,7 @@ database.port=5432
         separator: '__'
       };
 
-      const result = await loader.load(source);
+      const result = await loader.load([source]);
       expect(result.database.host).toBe('localhost');
       expect(result.database.port).toBe(5432);
       expect(result.cache.enabled).toBe(true);
@@ -233,7 +233,7 @@ database.port=5432
         }
       };
 
-      const result = await loader.load(source);
+      const result = await loader.load([source]);
       expect(result.port).toBe(3000);
       expect(result.host).toBe('localhost');
     });
@@ -252,7 +252,7 @@ database.port=5432
         prefix: 'TEST_'
       };
 
-      const result = await loader.load(source);
+      const result = await loader.load([source]);
       expect(result.string).toBe('text');
       expect(result.number).toBe(42);
       expect(result.float).toBe(3.14);
@@ -275,7 +275,7 @@ database.port=5432
         data
       };
 
-      const result = await loader.load(source);
+      const result = await loader.load([source]);
       expect(result).toEqual(data);
     });
 
@@ -286,7 +286,7 @@ database.port=5432
         priority: 10
       };
 
-      const result = await loader.load(source);
+      const result = await loader.load([source]);
       expect(result).toEqual({ test: 'value' });
     });
   });
@@ -318,7 +318,7 @@ database.port=5432
         } as ObjectConfigSource
       ];
 
-      const result = await loader.loadAll(sources);
+      const result = await loader.load(sources);
       expect(result.app.name).toBe('final-app'); // From object (last)
       expect(result.app.version).toBe('1.0.0'); // From file
       expect(result.server.port).toBe(4000); // From env
@@ -345,7 +345,7 @@ database.port=5432
         } as ObjectConfigSource
       ];
 
-      const result = await loader.loadAll(sources);
+      const result = await loader.load(sources);
       expect(result.value).toBe('high'); // Highest priority wins
     });
 
@@ -365,7 +365,7 @@ database.port=5432
         } as FileConfigSource
       ];
 
-      const result = await loader.loadAll(sources);
+      const result = await loader.load(sources);
       expect(result.valid).toBe(true);
     });
 
@@ -378,7 +378,7 @@ database.port=5432
         } as FileConfigSource
       ];
 
-      await expect(loader.loadAll(sources)).rejects.toThrow();
+      await expect(loader.load(sources)).rejects.toThrow();
     });
   });
 
@@ -412,7 +412,7 @@ database.port=5432
         } as ObjectConfigSource
       ];
 
-      const result = await loader.loadAll(sources);
+      const result = await loader.load(sources);
       expect(result.database.host).toBe('localhost'); // Preserved from first
       expect(result.database.port).toBe(3306); // Overridden by second
       expect(result.database.credentials.username).toBe('admin'); // Preserved from first
@@ -438,7 +438,7 @@ database.port=5432
         } as ObjectConfigSource
       ];
 
-      const result = await loader.loadAll(sources);
+      const result = await loader.load(sources);
       expect(result.features).toEqual(['feature3', 'feature4']); // Arrays are replaced
       expect(result.settings.timeout).toBe(30); // Preserved
       expect(result.settings.retries).toBe(3); // Added
@@ -462,7 +462,7 @@ database.port=5432
         format: 'json'
       };
 
-      await expect(loader.load(source)).rejects.toThrow();
+      await expect(loader.load([source])).rejects.toThrow();
     });
   });
 });

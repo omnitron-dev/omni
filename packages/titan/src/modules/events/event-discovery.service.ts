@@ -449,7 +449,7 @@ export class EventDiscoveryService {
       try {
         // Apply filter if specified
         if (options?.filter && !options.filter(data, metadata)) {
-          return;
+          return undefined;
         }
 
         // Apply transformation if specified

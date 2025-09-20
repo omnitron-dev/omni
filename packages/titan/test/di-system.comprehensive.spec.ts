@@ -26,9 +26,9 @@ import {
   TitanApplication,
   EnhancedApplicationModule
 } from '../src/index';
-import { LoggerModule, LoggerModuleToken } from '../src/modules/logger.module';
+import { LoggerModule, LOGGER_SERVICE_TOKEN } from '../src/modules/logger.module';
 import { ConfigModule } from '../src/modules/config/config.module';
-const ConfigModuleToken = createToken('ConfigModule');
+const CONFIG_SERVICE_TOKEN = createToken('ConfigModule');
 
 // Test utilities
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -352,14 +352,14 @@ describe('Comprehensive DI System Tests', () => {
           super({
             name: 'database',
             version: '1.0.0',
-            dependencies: [ConfigModuleToken],
+            dependencies: [CONFIG_SERVICE_TOKEN],
             providers: [
               ['DB_CONNECTION', {
                 useFactory: (config: ConfigModule) => ({
                   host: config.get('db.host', 'localhost'),
                   port: config.get('db.port', 5432)
                 }),
-                inject: [ConfigModuleToken]
+                inject: [CONFIG_SERVICE_TOKEN]
               }]
             ],
             exports: ['DB_CONNECTION']
@@ -535,28 +535,28 @@ describe('Comprehensive DI System Tests', () => {
     it('should support decorator composition', () => {
       const metadata: string[] = [];
 
-      function Logger() {
+      function TestDecorator1() {
         return function(target: any) {
-          metadata.push('Logger');
+          metadata.push('TestDecorator1');
         };
       }
 
-      function Cacheable() {
+      function TestDecorator2() {
         return function(target: any) {
-          metadata.push('Cacheable');
+          metadata.push('TestDecorator2');
         };
       }
 
       @Singleton()
-      @Logger()
-      @Cacheable()
       @Service('ComposedService')
+      @TestDecorator1()
+      @TestDecorator2()
       class ComposedService {
         public value = 'composed';
       }
 
-      expect(metadata).toContain('Logger');
-      expect(metadata).toContain('Cacheable');
+      expect(metadata).toContain('TestDecorator1');
+      expect(metadata).toContain('TestDecorator2');
 
       const serviceMetadata = Reflect.getMetadata('nexus:injectable', ComposedService);
       expect(serviceMetadata).toBe(true);

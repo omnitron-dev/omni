@@ -6,7 +6,7 @@
  */
 
 import { Application } from './application.js';
-import { Module, Injectable, Inject } from './decorators.js';
+import { Module, Injectable } from './decorators.js';
 import type { IApplicationOptions } from './types.js';
 import type { Token } from '@omnitron-dev/nexus';
 

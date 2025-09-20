@@ -11,14 +11,4 @@ export * from './event-metadata.service.js';
 export * from './event-discovery.service.js';
 export * from './event-scheduler.service.js';
 export * from './event-validation.service.js';
-
-// Re-export event decorators from main decorators file
-export {
-  OnEvent,
-  OnceEvent,
-  EmitEvent,
-  OnAnyEvent,
-  BatchEvents,
-  EventEmitter,
-  ScheduleEvent
-} from '../../decorators.js';
+export * from './events.decorators.js';

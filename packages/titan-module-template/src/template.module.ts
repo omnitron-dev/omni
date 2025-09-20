@@ -10,7 +10,7 @@
 
 import { Container, createToken } from '@omnitron-dev/nexus';
 import {
-  ApplicationModule,
+  AbstractModule,
   IApplication,
   IHealthStatus
 } from '@omnitron-dev/titan';
@@ -31,7 +31,7 @@ import { CacheService } from './services/cache.service.js';
 import { LoggerService } from './services/logger.service.js';
 import { mergeDeep } from './utils.js';
 
-export class TemplateModule implements ApplicationModule {
+export class TemplateModule implements AbstractModule {
   name = 'TemplateModule';
   private static globalOptions: TemplateModuleOptions | null = null;
   private container!: Container;

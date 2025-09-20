@@ -317,7 +317,7 @@ export const YOUR_SERVICE = createToken<YourService>('YOUR_SERVICE');
 
 3. **Implement Lifecycle Hooks:**
 ```typescript
-export class YourModule implements ApplicationModule {
+export class YourModule implements AbstractModule {
   async onApplicationInit(app: IApplication): Promise<void> {
     // Initialize module
   }
@@ -444,9 +444,9 @@ export class AppService {
 ```typescript
 // my-cache.module.ts
 import { Container } from '@omnitron-dev/nexus';
-import { ApplicationModule, IApplication } from '@omnitron-dev/titan';
+import { AbstractModule, IApplication } from '@omnitron-dev/titan';
 
-export class MyCacheModule implements ApplicationModule {
+export class MyCacheModule implements AbstractModule {
   static forRoot(options: CacheOptions): MyCacheModule {
     return new MyCacheModule(options);
   }

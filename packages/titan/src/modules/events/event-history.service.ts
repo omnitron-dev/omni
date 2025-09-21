@@ -25,10 +25,11 @@ export class EventHistoryService {
   private maxHistorySize = 1000;
   private initialized = false;
   private destroyed = false;
+  private logger: any = null;
 
   constructor(
     @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
-    @Optional() @Inject(LOGGER_TOKEN) private readonly logger?: any
+    
   ) { }
 
   /**

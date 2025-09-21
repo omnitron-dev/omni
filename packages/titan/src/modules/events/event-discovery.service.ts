@@ -32,12 +32,13 @@ export class EventDiscoveryService {
   private registeredHandlers: Map<any, Map<string, (...args: any[]) => any>> = new Map();
   private initialized = false;
   private destroyed = false;
+  private logger: any = null;
 
   constructor(
     @Inject(Container) private readonly container: Container,
     @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
     @Inject(EVENT_METADATA_SERVICE_TOKEN) private readonly metadataService: EventMetadataService,
-    @Optional() @Inject(LOGGER_TOKEN) private readonly logger?: any
+    
   ) { }
 
   /**

@@ -6,7 +6,7 @@
 
 import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
 
-import { LOGGER_TOKEN } from './events.module.js';
+
 
 import type { IEventValidationResult } from './types.js';
 
@@ -26,9 +26,10 @@ export class EventValidationService {
   private validators: Map<string, (...args: any[]) => any> = new Map();
   private initialized = false;
   private destroyed = false;
+  private logger: any = null;
 
   constructor(
-    @Optional() @Inject(LOGGER_TOKEN) private readonly logger?: any
+    
   ) { }
 
   /**

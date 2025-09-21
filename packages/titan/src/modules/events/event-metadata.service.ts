@@ -6,9 +6,7 @@
 
 import type { EventMetadata } from '@omnitron-dev/eventemitter';
 
-import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
-
-import { LOGGER_TOKEN } from './events.module.js';
+import { Injectable } from '@omnitron-dev/nexus';
 
 /**
  * Service for managing event metadata
@@ -20,10 +18,9 @@ export class EventMetadataService {
   private eventMetadata: Map<string, any> = new Map();
   private initialized = false;
   private destroyed = false;
+  private logger: any = null;
 
-  constructor(
-    @Optional() @Inject(LOGGER_TOKEN) private readonly logger?: any
-  ) { }
+  constructor() { }
 
   /**
    * Initialize the service

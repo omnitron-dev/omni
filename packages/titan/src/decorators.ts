@@ -10,8 +10,6 @@
 import {
   createDecorator,
   createMethodInterceptor,
-  Module as NexusModule,
-  ModuleDecoratorOptions,
   Inject as NexusInject,
   Singleton as NexusSingleton,
   Transient as NexusTransient,

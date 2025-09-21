@@ -29,6 +29,7 @@ export class EventBusService {
   private emittedEvents = 0;
   private initialized = false;
   private destroyed = false;
+  private logger: any = null;
   private middlewares: Array<(data: any, next: (data: any) => any) => any> = [];
   private replayEnabled = false;
   private replayBuffer: Array<{ event: string; data: any; metadata?: EventMetadata }> = [];
@@ -37,7 +38,7 @@ export class EventBusService {
 
   constructor(
     @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
-    @Optional() @Inject(LOGGER_TOKEN) private readonly logger?: any
+    
   ) { }
 
   /**

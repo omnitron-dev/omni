@@ -92,7 +92,7 @@ export class LocalPeer extends AbstractPeer {
       definition: def,
     } as ServiceExposeEvent);
 
-    await this.netron.discovery?.updateServices(this.netron.getExposedServices());
+    // await this.netron.discovery?.updateServices(this.netron.getExposedServices());
     this.logger.info({ serviceKey }, 'Service exposed successfully');
 
     return def;
@@ -160,7 +160,7 @@ export class LocalPeer extends AbstractPeer {
       defId,
     });
 
-    await this.netron.discovery?.updateServices(this.netron.getExposedServices());
+    // await this.netron.discovery?.updateServices(this.netron.getExposedServices());
     this.logger.info({ serviceName }, 'Service unexposed successfully');
   }
 

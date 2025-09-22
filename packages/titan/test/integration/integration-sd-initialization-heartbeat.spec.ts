@@ -1,9 +1,9 @@
 import { Redis } from 'ioredis';
 import { delay } from '@omnitron-dev/common';
 
-import { Service } from '../src';
-import { Netron } from '../dist/netron';
-import { cleanupRedis, getTestRedisUrl, createTestRedisClient } from './helpers/test-utils';
+import { Service } from '@omnitron-dev/netron/src/index.js';
+import { Netron } from '@omnitron-dev/netron/dist/netron.js';
+import { cleanupRedis, getTestRedisUrl, createTestRedisClient } from '@omnitron-dev/netron/test/helpers/test-utils.js';
 
 @Service('test.service@1.0.0')
 class TestService {

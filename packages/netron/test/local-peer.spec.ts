@@ -1,10 +1,10 @@
 import { jest, describe, beforeEach, afterEach, it, expect } from '@jest/globals';
-import { Service1, IService1 } from './fixtures/service1';
-import { Service2, IService2 } from './fixtures/service2';
-import { Service3, IService3 } from './fixtures/service3';
-import { Service4, IService4 } from './fixtures/service4';
-import { Service5, IService5 } from './fixtures/service5';
-import { Netron, Interface, LocalPeer, NETRON_EVENT_SERVICE_EXPOSE, NETRON_EVENT_SERVICE_UNEXPOSE } from '../src/index';
+import { Service1, IService1 } from './fixtures/service1.js';
+import { Service2, IService2 } from './fixtures/service2.js';
+import { Service3, IService3 } from './fixtures/service3.js';
+import { Service4, IService4 } from './fixtures/service4.js';
+import { Service5, IService5 } from './fixtures/service5.js';
+import { Netron, Interface, LocalPeer, NETRON_EVENT_SERVICE_EXPOSE, NETRON_EVENT_SERVICE_UNEXPOSE } from '../src/index.js';
 
 describe('LocalPeer', () => {
   let netron: Netron;

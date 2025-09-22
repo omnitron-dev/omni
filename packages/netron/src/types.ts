@@ -87,46 +87,46 @@ export type NetronOptions = {
    */
   maxReconnectAttempts?: number;
 
-  /**
-   * Enable service discovery via Redis
-   */
-  discoveryEnabled?: boolean;
+  // /**
+  //  * Enable service discovery via Redis
+  //  */
+  // discoveryEnabled?: boolean;
 
-  /**
-   * Redis connection string for service discovery
-   */
-  discoveryRedisUrl?: string;
+  // /**
+  //  * Redis connection string for service discovery
+  //  */
+  // discoveryRedisUrl?: string;
 
-  /**
-   * Interval (ms) between heartbeats for service discovery
-   */
-  discoveryHeartbeatInterval?: number;
+  // /**
+  //  * Interval (ms) between heartbeats for service discovery
+  //  */
+  // discoveryHeartbeatInterval?: number;
 
-  /**
-   * TTL (ms) for heartbeat keys in Redis
-   */
-  discoveryHeartbeatTTL?: number;
+  // /**
+  //  * TTL (ms) for heartbeat keys in Redis
+  //  */
+  // discoveryHeartbeatTTL?: number;
 
-  /**
-   * Enables or disables Redis Pub/Sub functionality for service discovery events.
-   * When enabled, the system will publish real-time notifications about:
-   * - Node registration events
-   * - Service availability changes
-   * - Node health status updates
-   * - Network topology changes
-   *
-   * This feature is particularly useful for:
-   * - Building reactive systems that need immediate awareness of service changes
-   * - Implementing dynamic load balancing
-   * - Creating real-time monitoring dashboards
-   * - Enabling automatic failover mechanisms
-   *
-   * @default true
-   * @type {boolean}
-   * @see DiscoveryOptions
-   * @see ServiceDiscovery
-   */
-  discoveryPubSubEnabled?: boolean;
+  // /**
+  //  * Enables or disables Redis Pub/Sub functionality for service discovery events.
+  //  * When enabled, the system will publish real-time notifications about:
+  //  * - Node registration events
+  //  * - Service availability changes
+  //  * - Node health status updates
+  //  * - Network topology changes
+  //  *
+  //  * This feature is particularly useful for:
+  //  * - Building reactive systems that need immediate awareness of service changes
+  //  * - Implementing dynamic load balancing
+  //  * - Creating real-time monitoring dashboards
+  //  * - Enabling automatic failover mechanisms
+  //  *
+  //  * @default true
+  //  * @type {boolean}
+  //  * @see DiscoveryOptions
+  //  * @see ServiceDiscovery
+  //  */
+  // discoveryPubSubEnabled?: boolean;
 
   /**
    * Optional logger configuration based on Pino LoggerOptions.

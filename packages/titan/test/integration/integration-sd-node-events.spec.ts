@@ -1,9 +1,9 @@
 import { Redis } from 'ioredis';
 import { delay } from '@omnitron-dev/common';
 
-import { Netron } from '../dist/netron';
-import { DiscoveryEvent } from '../dist/service-discovery/types';
-import { cleanupRedis, getTestRedisUrl, createTestRedisClient } from './helpers/test-utils';
+import { Netron } from '@omnitron-dev/netron/dist/netron.js';
+import { DiscoveryEvent } from '@omnitron-dev/netron/dist/service-discovery/types.js';
+import { cleanupRedis, getTestRedisUrl, createTestRedisClient } from '@omnitron-dev/netron/test/helpers/test-utils.js';
 
 describe('ServiceDiscovery Integration - Node Registration & Deregistration Events', () => {
   let redisPub: Redis;

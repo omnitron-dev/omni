@@ -1,4 +1,4 @@
-import { Public, Service } from '../../src';
+import { Public, Service } from '../../src/index.js';
 
 enum Status {
   Active = 'ACTIVE',

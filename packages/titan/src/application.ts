@@ -730,9 +730,7 @@ export class Application implements IApplication {
       // Check if this exact module instance is already registered
       for (const [, existingModule] of this._modules) {
         if (existingModule === moduleInstance) {
-          // Module instance already registered, just return
-          this._logger?.debug(`Module ${moduleInstance.name} already registered, skipping`);
-          return this;
+          throw new Error(`Module ${moduleInstance.name} already registered`);
         }
       }
 
@@ -1056,49 +1054,30 @@ export class Application implements IApplication {
       options = configOrKey as any;
     }
 
-    // For module-specific configurations, replace rather than merge
+    // Merge configuration
     const newConfig = { ...this._config };
 
     for (const key of Object.keys(options)) {
-      // Check if this key corresponds to a module name
-      let isModuleConfig = false;
-      for (const [, module] of this._modules) {
-        if (module.name === key) {
-          isModuleConfig = true;
-          break;
-        }
-      }
-
-      if (isModuleConfig) {
-        // Replace module config entirely instead of merging
-        newConfig[key] = options[key];
+      // Deep merge for all configs (both module and non-module)
+      if (newConfig[key] && typeof newConfig[key] === 'object' && !Array.isArray(newConfig[key]) &&
+          options[key] && typeof options[key] === 'object' && !Array.isArray(options[key])) {
+        newConfig[key] = this.deepMerge(newConfig[key], options[key]);
       } else {
-        // Deep merge for non-module configs
-        if (newConfig[key] && typeof newConfig[key] === 'object' && !Array.isArray(newConfig[key]) &&
-            options[key] && typeof options[key] === 'object' && !Array.isArray(options[key])) {
-          newConfig[key] = this.deepMerge(newConfig[key], options[key]);
-        } else {
-          newConfig[key] = options[key];
-        }
+        newConfig[key] = options[key];
       }
     }
 
     // Apply the merged configuration
     this._config = newConfig;
 
-    // Update user config separately for config(key) method
+    // Update user config - merge the same way as main config for consistency
     for (const key of Object.keys(options)) {
-      // Check if this key corresponds to a module name
-      let isModuleConfig = false;
-      for (const [, module] of this._modules) {
-        if (module.name === key) {
-          isModuleConfig = true;
-          break;
-        }
+      if (this._userConfig[key] && typeof this._userConfig[key] === 'object' && !Array.isArray(this._userConfig[key]) &&
+          options[key] && typeof options[key] === 'object' && !Array.isArray(options[key])) {
+        this._userConfig[key] = this.deepMerge(this._userConfig[key], options[key]);
+      } else {
+        this._userConfig[key] = options[key];
       }
-
-      // For _userConfig, always do complete replacement (for config(key) compatibility)
-      this._userConfig[key] = options[key];
     }
 
     // Apply logger configuration if provided

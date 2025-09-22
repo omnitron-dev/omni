@@ -14,13 +14,14 @@ import { getPeerEventName } from './utils.js';
 import { ServiceStub } from './service-stub.js';
 import LoggerFactory from './logging/logger.js';
 import { Task, TaskManager } from './task-manager.js';
-import { ServiceInfo, ServiceDiscovery } from './service-discovery/index.js';
+// import { ServiceInfo, ServiceDiscovery } from './service-discovery/index.js';
 import { CONNECT_TIMEOUT, NETRON_EVENT_PEER_CONNECT, NETRON_EVENT_PEER_DISCONNECT } from './constants.js';
 import { ensureStreamReferenceRegistered } from './packet/serializer.js';
 
 // ESM __dirname equivalent
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Check if __filename is already defined (for compatibility with different module systems)
+const _filename = typeof __filename !== 'undefined' ? __filename : fileURLToPath(import.meta.url);
+const _dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(_filename);
 
 /**
  * The main Netron class that manages WebSocket connections, services, and peer communication.
@@ -135,15 +136,15 @@ export class Netron extends EventEmitter {
    */
   public options: NetronOptions;
 
-  /**
-   * Service discovery instance for managing service registration and discovery.
-   * Only initialized when discovery is enabled in options.
-   *
-   * @type {ServiceDiscovery | undefined}
-   * @public
-   * @description Manages service discovery and registration in the distributed network
-   */
-  public discovery?: ServiceDiscovery;
+  // /**
+  //  * Service discovery instance for managing service registration and discovery.
+  //  * Only initialized when discovery is enabled in options.
+  //  *
+  //  * @type {ServiceDiscovery | undefined}
+  //  * @public
+  //  * @description Manages service discovery and registration in the distributed network
+  //  */
+  // public discovery?: ServiceDiscovery;
 
   /**
    * Redis client instance for service discovery.
@@ -213,14 +214,14 @@ export class Netron extends EventEmitter {
     // Ensure StreamReference is registered with serializer
     await ensureStreamReferenceRegistered();
 
-    // Try to load from dist/core-tasks first (for tests), then from __dirname/core-tasks
-    let coreTasksPath = path.join(__dirname, '..', 'dist', 'core-tasks');
+    // Try to load from dist/core-tasks first (for tests), then from _dirname/core-tasks
+    let coreTasksPath = path.join(_dirname, '..', 'dist', 'core-tasks');
     try {
       await this.taskManager.loadTasksFromDir(coreTasksPath);
       this.logger.debug({ coreTasksPath }, 'Loaded core tasks from dist');
     } catch {
-      // Fallback to __dirname/core-tasks
-      coreTasksPath = path.join(__dirname, 'core-tasks');
+      // Fallback to _dirname/core-tasks
+      coreTasksPath = path.join(_dirname, 'core-tasks');
       this.logger.debug({ coreTasksPath }, 'Loading core tasks from source');
       await this.taskManager.loadTasksFromDir(coreTasksPath);
     }
@@ -228,10 +229,10 @@ export class Netron extends EventEmitter {
     if (!this.options?.listenHost || !this.options?.listenPort) {
       this.logger.info('Netron started in client-only mode');
 
-      if (this.options.discoveryEnabled && this.options.discoveryRedisUrl) {
-        this.logger.info('Initializing service discovery in client mode');
-        await this.initServiceDiscovery(true);
-      }
+      // if (this.options.discoveryEnabled && this.options.discoveryRedisUrl) {
+      //   this.logger.info('Initializing service discovery in client mode');
+      //   await this.initServiceDiscovery(true);
+      // }
 
       this.isStarted = true;
       return Promise.resolve();
@@ -247,9 +248,9 @@ export class Netron extends EventEmitter {
         this.logger.info(`Netron server started at ${this.options.listenHost}:${this.options.listenPort}`);
         this.isStarted = true;
 
-        if (this.options.discoveryEnabled && this.options.discoveryRedisUrl) {
-          await this.initServiceDiscovery(false);
-        }
+        // if (this.options.discoveryEnabled && this.options.discoveryRedisUrl) {
+        //   await this.initServiceDiscovery(false);
+        // }
 
         resolve();
       });
@@ -285,29 +286,29 @@ export class Netron extends EventEmitter {
     });
   }
 
-  private async initServiceDiscovery(clientMode: boolean): Promise<void> {
-    this.logger.info('Initializing service discovery');
-    this.discoveryRedis = new Redis(this.options.discoveryRedisUrl!);
-    this.discovery = new ServiceDiscovery(
-      this.discoveryRedis,
-      this,
-      clientMode ? '' : `${this.options.listenHost}:${this.options.listenPort}`,
-      clientMode ? [] : this.getExposedServices(),
-      {
-        heartbeatInterval: this.options.discoveryHeartbeatInterval,
-        heartbeatTTL: this.options.discoveryHeartbeatTTL,
-        pubSubEnabled: this.options.discoveryPubSubEnabled ?? true,
-        clientMode,
-      }
-    );
-    this.discovery.startHeartbeat();
-    await this.discovery.subscribeToEvents((event) => {
-      this.logger.debug({ event }, 'Service discovery event received');
-      this.emit('discovery:event', event);
-    });
+  // private async initServiceDiscovery(clientMode: boolean): Promise<void> {
+  //   this.logger.info('Initializing service discovery');
+  //   this.discoveryRedis = new Redis(this.options.discoveryRedisUrl!);
+  //   this.discovery = new ServiceDiscovery(
+  //     this.discoveryRedis,
+  //     this,
+  //     clientMode ? '' : `${this.options.listenHost}:${this.options.listenPort}`,
+  //     clientMode ? [] : this.getExposedServices(),
+  //     {
+  //       heartbeatInterval: this.options.discoveryHeartbeatInterval,
+  //       heartbeatTTL: this.options.discoveryHeartbeatTTL,
+  //       pubSubEnabled: this.options.discoveryPubSubEnabled ?? true,
+  //       clientMode,
+  //     }
+  //   );
+  //   this.discovery.startHeartbeat();
+  //   await this.discovery.subscribeToEvents((event) => {
+  //     this.logger.debug({ event }, 'Service discovery event received');
+  //     this.emit('discovery:event', event);
+  //   });
 
-    this.logger.info(`Service discovery initialized successfully (${clientMode ? 'client mode' : 'server mode'})`);
-  }
+  //   this.logger.info(`Service discovery initialized successfully (${clientMode ? 'client mode' : 'server mode'})`);
+  // }
 
   /**
    * Stops the Netron instance, closing the WebSocket server and cleaning up resources.
@@ -327,13 +328,13 @@ export class Netron extends EventEmitter {
       this.wss = undefined;
     }
 
-    if (this.discovery) {
-      this.logger.info('Shutting down service discovery');
-      await this.discovery.shutdown();
-      await this.discoveryRedis!.quit();
-      this.discovery = undefined;
-      this.discoveryRedis = undefined;
-    }
+    // if (this.discovery) {
+    //   this.logger.info('Shutting down service discovery');
+    //   await this.discovery.shutdown();
+    //   await this.discoveryRedis!.quit();
+    //   this.discovery = undefined;
+    //   this.discoveryRedis = undefined;
+    // }
 
     this.isStarted = false;
     this.logger.info('Netron instance stopped');
@@ -637,36 +638,37 @@ export class Netron extends EventEmitter {
     await netron.start();
     return netron;
   }
-  /**
-   * Retrieves a list of all services currently exposed by this Netron instance.
-   * This method provides a standardized way to access service metadata for discovery
-   * and registration purposes. The returned information includes both service names
-   * and versions, which are essential for service matching and version compatibility.
-   *
-   * @method getExposedServices
-   * @public
-   * @returns {ServiceInfo[]} An array of ServiceInfo objects containing:
-   *                         - name: The unique identifier of the service
-   *                         - version: The semantic version of the service
-   *
-   * @example
-   * // Get all exposed services
-   * const services = netron.getExposedServices();
-   * // Result: [{ name: 'auth', version: '1.0.0' }, { name: 'storage', version: '2.1.0' }]
-   *
-   * @remarks
-   * This method is primarily used by the service discovery system to:
-   * 1. Register services with the discovery mechanism
-   * 2. Provide service information to connecting peers
-   * 3. Enable service version compatibility checking
-   *
-   * The returned array is derived from the internal services Map, ensuring that
-   * the information is always up-to-date with the current service registry.
-   */
-  public getExposedServices(): ServiceInfo[] {
-    return Array.from(this.services.values()).map((stub) => ({
-      name: stub.definition.meta.name,
-      version: stub.definition.meta.version,
-    }));
-  }
+
+  // /**
+  //  * Retrieves a list of all services currently exposed by this Netron instance.
+  //  * This method provides a standardized way to access service metadata for discovery
+  //  * and registration purposes. The returned information includes both service names
+  //  * and versions, which are essential for service matching and version compatibility.
+  //  *
+  //  * @method getExposedServices
+  //  * @public
+  //  * @returns {ServiceInfo[]} An array of ServiceInfo objects containing:
+  //  *                         - name: The unique identifier of the service
+  //  *                         - version: The semantic version of the service
+  //  *
+  //  * @example
+  //  * // Get all exposed services
+  //  * const services = netron.getExposedServices();
+  //  * // Result: [{ name: 'auth', version: '1.0.0' }, { name: 'storage', version: '2.1.0' }]
+  //  *
+  //  * @remarks
+  //  * This method is primarily used by the service discovery system to:
+  //  * 1. Register services with the discovery mechanism
+  //  * 2. Provide service information to connecting peers
+  //  * 3. Enable service version compatibility checking
+  //  *
+  //  * The returned array is derived from the internal services Map, ensuring that
+  //  * the information is always up-to-date with the current service registry.
+  //  */
+  // public getExposedServices(): ServiceInfo[] {
+  //   return Array.from(this.services.values()).map((stub) => ({
+  //     name: stub.definition.meta.name,
+  //     version: stub.definition.meta.version,
+  //   }));
+  // }
 }

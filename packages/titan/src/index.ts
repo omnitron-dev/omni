@@ -164,6 +164,27 @@ export {
   IApplicationMetrics
 } from './types.js';
 
+// Discovery Module
+export {
+  // Module and Service
+  DiscoveryModule,
+  DiscoveryModuleToken,
+  createDiscoveryModule,
+  DiscoveryService,
+  // Tokens
+  DISCOVERY_SERVICE_TOKEN,
+  REDIS_TOKEN as DISCOVERY_REDIS_TOKEN,
+  LOGGER_TOKEN as DISCOVERY_LOGGER_TOKEN,
+  DISCOVERY_OPTIONS_TOKEN,
+  // Types
+  type NodeInfo,
+  type ServiceInfo,
+  type DiscoveryOptions,
+  type DiscoveryEvent,
+  type IDiscoveryService,
+  type DiscoveryModuleOptions
+} from './modules/discovery/index.js';
+
 /**
  * Version information
  */
@@ -181,5 +202,6 @@ export const FEATURES = {
   HEALTH_CHECKS: true,
   MODULE_DEPENDENCIES: true,
   ERROR_HANDLING: true,
-  ENHANCED_MODULES: true
+  ENHANCED_MODULES: true,
+  DISCOVERY_MODULE: true
 } as const;

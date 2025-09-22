@@ -33,6 +33,3 @@ export * from './packet/index.js';
 
 // Main Netron class
 export * from './netron.js';
-
-// Service discovery
-export * from './service-discovery/index.js';

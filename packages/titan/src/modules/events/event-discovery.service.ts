@@ -19,9 +19,9 @@ import type {
 /**
  * Metadata keys for event decorators
  */
-export const EVENT_HANDLER_METADATA = Symbol('event:handler');
-export const EVENT_ONCE_METADATA = Symbol('event:once');
-export const EVENT_EMITTER_METADATA = Symbol('event:emitter');
+export const EVENT_HANDLER_METADATA = Symbol.for('event:handler');
+export const EVENT_ONCE_METADATA = Symbol.for('event:once');
+export const EVENT_EMITTER_METADATA = Symbol.for('event:emitter');
 
 /**
  * Service for discovering and registering event handlers

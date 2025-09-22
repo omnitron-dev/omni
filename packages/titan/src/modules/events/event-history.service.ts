@@ -184,7 +184,7 @@ export class EventHistoryService {
     ttl?: number;
   }): void {
     this.emitter.enableHistory({
-      maxSize: options?.maxSize,
+      maxSize: options?.maxSize || this.maxHistorySize,
       ttl: options?.ttl,
       filter: options?.filter
     });
@@ -230,10 +230,47 @@ export class EventHistoryService {
    * Get event history (unified method)
    */
   getHistory(eventOrFilter?: string | EventFilter): EventRecord[] | Promise<EventRecord[]> {
-    if (typeof eventOrFilter === 'string' || eventOrFilter === undefined) {
-      return this.getHistorySync(eventOrFilter);
+    // If emitter has getHistory, use it, otherwise use our stored history
+    if (this.emitter.getHistory) {
+      return this.emitter.getHistory(eventOrFilter as any);
     }
-    return this.getFilteredHistory(eventOrFilter);
+
+    // Fall back to our stored history
+    if (typeof eventOrFilter === 'string') {
+      return this.getHistorySync(eventOrFilter);
+    } else if (eventOrFilter && typeof eventOrFilter === 'object') {
+      // EventFilter object - apply filters
+      const allHistory = this.getHistorySync();
+      return allHistory.filter((record) => {
+        // Apply EventFilter logic
+        if (eventOrFilter.event) {
+          if (typeof eventOrFilter.event === 'string') {
+            if (record.event !== eventOrFilter.event) return false;
+          } else if (eventOrFilter.event instanceof RegExp) {
+            if (!eventOrFilter.event.test(record.event)) return false;
+          }
+        }
+        if (eventOrFilter.from && record.timestamp < eventOrFilter.from.getTime()) {
+          return false;
+        }
+        if (eventOrFilter.to && record.timestamp > eventOrFilter.to.getTime()) {
+          return false;
+        }
+        if (eventOrFilter.tags && eventOrFilter.tags.length > 0) {
+          const recordTags = record.metadata?.tags || [];
+          if (!eventOrFilter.tags.some(tag => recordTags.includes(tag))) {
+            return false;
+          }
+        }
+        if (eventOrFilter.correlationId && record.metadata?.correlationId !== eventOrFilter.correlationId) {
+          return false;
+        }
+        return true;
+      });
+    } else {
+      // No filter - return all
+      return this.getHistorySync();
+    }
   }
 
   /**

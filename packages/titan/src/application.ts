@@ -2031,7 +2031,7 @@ export class Application implements IApplication {
     const uptime = this._startTime > 0 ? Math.max(1, Date.now() - this._startTime) : Math.max(1, process.uptime() * 1000);
 
     return {
-      uptime: uptime,
+      uptime,
       memoryUsage: process.memoryUsage(),
       cpuUsage: process.cpuUsage(),
       pid: process.pid,

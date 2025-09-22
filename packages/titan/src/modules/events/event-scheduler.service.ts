@@ -375,7 +375,7 @@ export class EventSchedulerService {
 
     try {
       // Emit the event - use plain emit for backward compatibility
-      await this.emitter.emit(job.event, job.data);
+      this.emitter.emit(job.event, job.data);
 
       job.status = 'completed';
     } catch (error) {

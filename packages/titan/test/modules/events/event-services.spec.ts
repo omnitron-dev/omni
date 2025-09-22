@@ -313,8 +313,7 @@ describe('EventSchedulerService', () => {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       expect(handler).toHaveBeenCalledWith(
-        { data: 'test' },
-        expect.any(Object)
+        { data: 'test' }
       );
     });
 

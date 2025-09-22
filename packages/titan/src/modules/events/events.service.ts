@@ -41,7 +41,7 @@ export class EventsService {
   constructor(
     @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
     @Inject(EVENT_METADATA_SERVICE_TOKEN) private readonly metadataService: EventMetadataService,
-    
+
   ) { }
 
   /**
@@ -63,7 +63,7 @@ export class EventsService {
     // Clear all subscriptions and resources
     this.unsubscribeAll();
     this.eventStats.clear();
-    this.emitter.dispose();
+    this.emitter.removeAllListeners();
 
     this.logger?.info('EventsService destroyed');
   }
@@ -107,15 +107,59 @@ export class EventsService {
         source: this.constructor.name
       });
 
-      // Emit the event using enhanced emit if available, otherwise standard emit
+      // Emit the event
       let result: boolean = false;
+
+      // Check if we have any subscriptions with priority
+      const subs = this.subscriptions.get(event);
+      const hasAnyPriority = subs && subs.some(s => s.priority !== 0);
+
+      if (hasAnyPriority && subs) {
+        // We have prioritized handlers - call all handlers from subscriptions in priority order
+        // Don't use emitter to avoid wrong order
+        for (const { subscription } of subs) {
+          try {
+            if (subscription.wrappedHandler) {
+              subscription.wrappedHandler(data, metadata);
+              result = true;
+            }
+          } catch (error) {
+            this.emitter.emit('error', error as Error);
+            this.logger?.error(`Error in handler for ${event}:`, error);
+          }
+        }
+
+        // Still emit through enhanced for history/metrics, but handlers are already called
+        if ((this.emitter as any).emitEnhanced) {
+          try {
+            // Use emitEnhanced just for its side effects (history, metrics, etc.)
+            // but don't rely on it calling handlers
+            (this.emitter as any).emitEnhanced(event, data, { metadata, skipHandlers: true });
+          } catch (error) {
+            // Log but don't fail the whole emit
+            this.logger?.error(`Error in emitEnhanced for ${event}:`, error);
+          }
+        }
+      } else {
+        // No priority handlers - use normal emitter flow
+        // Always emit through the underlying emitter for cross-service communication
+        // and history recording
+        if ((this.emitter as any).emitEnhanced) {
+          // Use emitEnhanced for its features (history, metrics, etc.)
+          result = (this.emitter as any).emitEnhanced(event, data, { metadata });
+        } else {
+          // Fall back to regular emit with data and metadata
+          result = this.emitter.emit(event, data, metadata);
+        }
+      }
 
       // Check wildcard subscriptions first
       if (this.wildcardSubscriptions) {
         for (const [pattern, subscription] of this.wildcardSubscriptions) {
           if (subscription.pattern.test(event)) {
             try {
-              subscription.handler(data);
+              // Pass metadata with event name for wildcard handlers
+              subscription.handler(data, { event, ...metadata });
               result = true;
             } catch (error) {
               // Handle error but continue
@@ -127,46 +171,14 @@ export class EventsService {
       }
 
       // Handle event bubbling if enabled
-      if (this.bubblingEnabled) {
-        // Emit the event and all parent events
-        const eventParts = event.split('.');
-        for (let i = eventParts.length; i > 0; i--) {
-          const currentEvent = eventParts.slice(0, i).join('.');
-
-          // Execute our priority-sorted handlers
-          const subs = this.subscriptions.get(currentEvent);
-          if (subs && subs.length > 0) {
-            // Handlers are already sorted by priority in addSubscription
-            for (const { subscription } of subs) {
-              try {
-                if (subscription.wrappedHandler) {
-                  subscription.wrappedHandler(data);
-                  result = true;
-                }
-              } catch (error) {
-                this.emitter.emit('error', error as Error);
-                this.logger?.error(`Error in handler for ${currentEvent}:`, error);
-              }
-            }
-          }
-        }
-      } else {
-        // Normal emit without bubbling
-        // Execute our priority-sorted handlers
-        const subs = this.subscriptions.get(event);
-        if (subs && subs.length > 0) {
-          // Handlers are already sorted by priority in addSubscription
-          for (const { subscription } of subs) {
-            try {
-              if (subscription.wrappedHandler) {
-                subscription.wrappedHandler(data);
-                result = true;
-              }
-            } catch (error) {
-              this.emitter.emit('error', error as Error);
-              this.logger?.error(`Error in handler for ${event}:`, error);
-            }
-          }
+      if (this.bubblingEnabled && event.includes('.')) {
+        // Bubble up through parent events
+        const parts = event.split('.');
+        // Skip the current event and emit parent events
+        for (let i = parts.length - 1; i > 0; i--) {
+          const parentEvent = parts.slice(0, i).join('.');
+          // Emit parent event (not recursive to avoid stack overflow)
+          this.emitDirect(parentEvent, data, options);
         }
       }
 
@@ -294,15 +306,28 @@ export class EventsService {
     }
 
     // Regular event subscription (non-wildcard)
-    // Register with emitter for async support
+    // Register with emitter for async operations support
     let unsubscribe: () => void;
-    if (this.emitter.subscribe) {
+
+    // We need to register with the underlying emitter for async operations
+    // but avoid double execution in sync emit
+    // Check if this event already has any handlers with priority
+    const existingSubs = this.subscriptions.get(event);
+    const hasAnyPriority = existingSubs && existingSubs.some(s => s.priority !== 0);
+    const thisHasPriority = options?.priority !== undefined && options.priority !== 0;
+
+    // If this event has any prioritized handlers (including this one),
+    // don't register with emitter - we'll handle all handlers manually
+    if (hasAnyPriority || thisHasPriority) {
+      // Don't register with emitter, we'll call manually from subscriptions
+      unsubscribe = () => { };
+    } else if (this.emitter.subscribe) {
       unsubscribe = this.emitter.subscribe(event, wrappedHandler);
     } else if (this.emitter.on) {
       this.emitter.on(event, wrappedHandler);
       unsubscribe = () => this.emitter.off(event, wrappedHandler);
     } else {
-      throw new Error('EventEmitter does not support subscription');
+      unsubscribe = () => { };
     }
 
     // Create subscription object
@@ -342,13 +367,38 @@ export class EventsService {
       if (!executed) {
         executed = true;
         this.removeSubscription(event, subscription);
+        // Also unregister from emitter
+        unsubscribe();
         return wrappedHandler(...args);
       }
       return undefined;
     };
 
+    // Register with emitter for async operations support
+    let unsubscribe: () => void;
+
+    // Check if this event already has any handlers with priority
+    const existingSubs = this.subscriptions.get(event);
+    const hasAnyPriority = existingSubs && existingSubs.some(s => s.priority !== 0);
+    const thisHasPriority = options?.priority !== undefined && options.priority !== 0;
+
+    // If this event has any prioritized handlers (including this one),
+    // don't register with emitter - we'll handle all handlers manually
+    if (hasAnyPriority || thisHasPriority) {
+      // Don't register with emitter, we'll call manually from subscriptions
+      unsubscribe = () => { };
+    } else if (this.emitter.subscribe) {
+      unsubscribe = this.emitter.subscribe(event, onceWrapper);
+    } else if (this.emitter.on) {
+      this.emitter.on(event, onceWrapper);
+      unsubscribe = () => this.emitter.off(event, onceWrapper);
+    } else {
+      unsubscribe = () => { };
+    }
+
     const subscription: IEventSubscription = {
       unsubscribe: () => {
+        unsubscribe();
         this.removeSubscription(event, subscription);
       },
       isActive: () => !executed,
@@ -441,6 +491,42 @@ export class EventsService {
   enableBubbling(enabled: boolean): void {
     // Store bubbling state locally
     this.bubblingEnabled = enabled;
+  }
+
+  /**
+   * Emit event directly without bubbling (internal use)
+   */
+  private emitDirect<T = any>(
+    event: string,
+    data?: T,
+    options?: EmitOptions
+  ): boolean {
+    let result = false;
+
+    // Add context metadata
+    const metadata = this.metadataService.createMetadata({
+      ...options?.metadata,
+      source: this.constructor.name
+    });
+
+    // Check if we have any subscriptions with priority
+    const subs = this.subscriptions.get(event);
+    if (subs && subs.length > 0) {
+      // Call all handlers from subscriptions in priority order
+      for (const { subscription } of subs) {
+        try {
+          if (subscription.wrappedHandler) {
+            subscription.wrappedHandler(data, metadata);
+            result = true;
+          }
+        } catch (error) {
+          this.emitter.emit('error', error as Error);
+          this.logger?.error(`Error in handler for ${event}:`, error);
+        }
+      }
+    }
+
+    return result;
   }
 
   /**
@@ -695,7 +781,7 @@ export class EventsService {
    */
   dispose(): void {
     this.unsubscribeAll();
-    this.emitter.dispose();
+    this.emitter.removeAllListeners();
   }
 
   /**
@@ -705,12 +791,11 @@ export class EventsService {
     handler: (...args: any[]) => any,
     options?: IEventListenerOptions
   ): (...args: any[]) => any {
-    // If no options, return a simple wrapper that just calls the handler
+    // If no options, return a simple wrapper that passes all arguments
     if (!options) {
       return (...args: any[]) => {
-        // Call handler with just data (first argument) for EventEmitter compatibility
-        const [data] = args;
-        return handler(data);
+        // Pass all arguments through to support both regular and wildcard handlers
+        return handler(...args);
       };
     }
 
@@ -738,8 +823,8 @@ export class EventsService {
           while (attempts < maxAttempts) {
             attempts++;
             try {
-              // Call handler with just data for EventEmitter compatibility
-              return await handler(data);
+              // Call handler with data and metadata
+              return await handler(data, metadata, ...restArgs);
             } catch (error) {
               if (attempts >= maxAttempts) {
                 throw error;
@@ -753,8 +838,8 @@ export class EventsService {
           // Should not reach here, but TypeScript needs this
           throw new Error('Retry loop completed without success');
         } else {
-          // Call handler with just data for EventEmitter compatibility
-          return await handler(data);
+          // Call handler with data and metadata
+          return await handler(data, metadata, ...restArgs);
         }
       };
 
@@ -762,15 +847,30 @@ export class EventsService {
       if (options?.timeout) {
         const originalExecution = handlerExecution;
         handlerExecution = async (): Promise<void> => {
+          let timeoutId: NodeJS.Timeout | undefined;
           const handlerPromise = originalExecution();
-          const timeoutPromise = new Promise<void>((_, reject) =>
-            setTimeout(
+          const timeoutPromise = new Promise<void>((_, reject) => {
+            timeoutId = setTimeout(
               () => reject(new Error(`Handler timeout after ${options.timeout}ms`)),
               options.timeout
-            )
-          );
+            );
+          });
 
-          return Promise.race([handlerPromise, timeoutPromise]) as Promise<void>;
+          try {
+            const result = await Promise.race([handlerPromise, timeoutPromise]);
+            if (timeoutId) clearTimeout(timeoutId);
+            return result as void;
+          } catch (error) {
+            if (timeoutId) clearTimeout(timeoutId);
+            // If there's no error boundary, we still need to handle the timeout error
+            // to prevent unhandled rejections. Log it and return undefined.
+            if (!options?.errorBoundary) {
+              this.logger?.warn(`Handler timed out after ${options.timeout}ms`, { event, error });
+              // Don't throw - this prevents unhandled rejections
+              return undefined;
+            }
+            throw error;
+          }
         };
       }
 

@@ -7,12 +7,13 @@
 import type { EventMetadata } from '@omnitron-dev/eventemitter';
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
-import { Inject, Injectable } from '@omnitron-dev/nexus';
+import { Inject, Injectable, Optional } from '@omnitron-dev/nexus';
 
 // Define EventHandler locally since it's not exported from eventemitter
 type EventHandler = (...args: any[]) => void | Promise<void>;
 
 import { EVENT_EMITTER_TOKEN } from './events.module.js';
+import { LOGGER_TOKEN } from './tokens.js';
 
 import type { IEventBusMessage, IEventSubscription } from './types.js';
 
@@ -29,7 +30,6 @@ export class EventBusService {
   private emittedEvents = 0;
   private initialized = false;
   private destroyed = false;
-  private logger: any = null;
   private middlewares: Array<(data: any, next: (data: any) => any) => any> = [];
   private replayEnabled = false;
   private replayBuffer: Array<{ event: string; data: any; metadata?: EventMetadata }> = [];
@@ -38,7 +38,7 @@ export class EventBusService {
 
   constructor(
     @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
-    
+    @Optional() @Inject(LOGGER_TOKEN) private readonly logger?: any
   ) { }
 
   /**

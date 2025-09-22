@@ -11,20 +11,9 @@ import {
   Constructor,
   DynamicModule,
   InjectionToken,
-  ServiceIdentifier
+  ServiceIdentifier,
+  ModuleMetadata
 } from './types.js';
-
-/**
- * Module metadata decorator options
- */
-export interface ModuleMetadata {
-  name?: string;
-  imports?: Array<Constructor<any> | IModule | DynamicModule>;
-  providers?: Array<Provider<any> | Constructor<any> | [InjectionToken<any>, ProviderDefinition<any>]>;
-  exports?: Array<InjectionToken<any> | Provider<any>>;
-  controllers?: Constructor<any>[];
-  global?: boolean;
-}
 
 /**
  * Module options for forRoot pattern
@@ -573,21 +562,6 @@ export function createFeatureModule(
         exports: filteredProviders.map(p => extractToken(p))
       };
     }
-  };
-}
-
-/**
- * Module decorator (for decorator support)
- */
-export function Module(metadata: ModuleMetadata): ClassDecorator {
-  return (target: any) => {
-    if (typeof Reflect !== 'undefined' && Reflect.defineMetadata) {
-      Reflect.defineMetadata('module:metadata', metadata, target);
-    } else {
-      // Store metadata on the constructor itself as fallback
-      (target as any).__moduleMetadata = metadata;
-    }
-    return target;
   };
 }
 

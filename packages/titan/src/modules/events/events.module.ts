@@ -14,7 +14,8 @@
  */
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
-import { Module, Global, Container } from '@nexus';
+import { Container } from '@nexus';
+import { Module, Global } from '../../decorators/index.js';
 
 import { EventsService } from './events.service.js';
 import { EventBusService } from './event-bus.service.js';

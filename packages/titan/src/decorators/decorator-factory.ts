@@ -32,7 +32,7 @@
 
 import 'reflect-metadata';
 
-import { Container } from '../container.js';
+import { Container } from '@nexus/container.js';
 
 /**
  * Decorator target types

@@ -25,9 +25,9 @@ import {
   OnDestroy,
   TitanApplication,
   EnhancedApplicationModule
-} from '../src/index';
+} from '../src/index.js';
 import { LoggerModule, LOGGER_SERVICE_TOKEN } from '../src/modules/logger.module';
-import { ConfigModule } from '../src/modules/config/config.module';
+import { ConfigModule } from '../src/modules/config/config.module.js';
 const CONFIG_SERVICE_TOKEN = createToken('ConfigModule');
 
 // Test utilities
@@ -60,7 +60,7 @@ describe('Comprehensive DI System Tests', () => {
       class ApiService {
         constructor(
           @Inject(ConfigToken) public config: { apiUrl: string }
-        ) {}
+        ) { }
       }
 
       container.register(ConfigToken, { useValue: { apiUrl: 'http://api.test' } });
@@ -154,12 +154,12 @@ describe('Comprehensive DI System Tests', () => {
 
       @Injectable()
       class A {
-        constructor(@Inject(BToken) public b: any) {}
+        constructor(@Inject(BToken) public b: any) { }
       }
 
       @Injectable()
       class B {
-        constructor(@Inject(AToken) public a: any) {}
+        constructor(@Inject(AToken) public a: any) { }
       }
 
       container.register(AToken, { useClass: A });
@@ -175,17 +175,17 @@ describe('Comprehensive DI System Tests', () => {
 
       @Injectable()
       class A {
-        constructor(@Inject(BToken) public b: any) {}
+        constructor(@Inject(BToken) public b: any) { }
       }
 
       @Injectable()
       class B {
-        constructor(@Inject(CToken) public c: any) {}
+        constructor(@Inject(CToken) public c: any) { }
       }
 
       @Injectable()
       class C {
-        constructor(@Inject(AToken) public a: any) {}
+        constructor(@Inject(AToken) public a: any) { }
       }
 
       container.register(AToken, { useClass: A });
@@ -206,7 +206,7 @@ describe('Comprehensive DI System Tests', () => {
         constructor(
           @Inject(RequiredToken) public required: string,
           @Optional() @Inject(OptionalToken) public optional?: string
-        ) {}
+        ) { }
       }
 
       container.register(RequiredToken, { useValue: 'required' });
@@ -226,7 +226,7 @@ describe('Comprehensive DI System Tests', () => {
         constructor(
           @Inject(RequiredToken) public required: string,
           @Optional() @Inject(OptionalToken) public optional?: string
-        ) {}
+        ) { }
       }
 
       container.register(RequiredToken, { useValue: 'required' });
@@ -327,7 +327,7 @@ describe('Comprehensive DI System Tests', () => {
 
       @Injectable()
       class B implements OnInit {
-        constructor(@Inject(AToken) private a: any) {}
+        constructor(@Inject(AToken) private a: any) { }
 
         async onInit() {
           initOrder.push('B');
@@ -441,7 +441,7 @@ describe('Comprehensive DI System Tests', () => {
 
       @Injectable()
       class ServiceWithMissingDep {
-        constructor(@Inject(MissingToken) private missing: any) {}
+        constructor(@Inject(MissingToken) private missing: any) { }
       }
 
       container.register(ServiceWithMissingDep, { useClass: ServiceWithMissingDep });
@@ -536,13 +536,13 @@ describe('Comprehensive DI System Tests', () => {
       const metadata: string[] = [];
 
       function TestDecorator1() {
-        return function(target: any) {
+        return function (target: any) {
           metadata.push('TestDecorator1');
         };
       }
 
       function TestDecorator2() {
-        return function(target: any) {
+        return function (target: any) {
           metadata.push('TestDecorator2');
         };
       }

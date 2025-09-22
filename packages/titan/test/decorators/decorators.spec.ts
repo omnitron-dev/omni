@@ -8,16 +8,22 @@ import {
   Injectable,
   Singleton,
   Transient,
-  Inject,
   Service,
-  Module,
-  Optional,
+  Module
+} from '../../src/decorators/core.js';
+import {
+  Inject,
+  Optional
+} from '../../src/decorators/injection.js';
+import {
   PostConstruct,
-  PreDestroy,
+  PreDestroy
+} from '../../src/decorators/lifecycle.js';
+import {
   Retryable,
   Timeout,
   TimeoutError
-} from '../src/decorators';
+} from '../../src/decorators/utility.js';
 
 describe('Minimal Titan Decorators', () => {
   let container: Container;

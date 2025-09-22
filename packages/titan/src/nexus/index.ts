@@ -19,8 +19,8 @@ export * from './devtools.js';
 // Export Federation
 export * from './federation.js';
 
-// Export Decorators
-export * from './decorators/index.js';
+// Export Decorators (now from unified location)
+export * from '../decorators/index.js';
 
 // Container
 export {
@@ -40,12 +40,7 @@ export {
   StubProvider
 } from './testing/mock-provider.js';
 
-// Export decorator utilities and creators
-export {
-  createDecorator,
-  createMethodInterceptor,
-  createPropertyInterceptor
-} from './decorators/custom-decorators.js';
+// Decorator utilities already exported from main decorators module
 
 // Plugin System
 export {
@@ -59,19 +54,7 @@ export {
   ValidationPlugin,
   PerformancePlugin
 } from './plugin.js';
-export {
-  Global,
-  Inject,
-  Service,
-  Optional,
-  Singleton,
-  Injectable,
-  PreDestroy,
-  Controller,
-  Repository,
-  PostConstruct,
-  Module as ModuleDecorator
-} from './decorators/decorators.js';
+// Decorators are exported from main decorators module above
 // Testing Utilities
 export {
   TestContainer,
@@ -173,7 +156,6 @@ export {
 
 // Enhanced Module System
 export {
-  Module,
   forwardRef,
   createModule,
   ModuleBuilder,
@@ -183,7 +165,6 @@ export {
   type ModuleOptions,
   type ModuleFactory,
   createConfigModule,
-  type ModuleMetadata,
   type ModuleCompiler,
   createDynamicModule,
   createFeatureModule
@@ -306,6 +287,8 @@ export {
   type MultiToken,
   type IContainer,
 
+  type ModuleMetadata,
+
   type Disposable,
   // Type definitions
   type Constructor,
@@ -327,12 +310,3 @@ export {
   type RegistrationOptions,
   type AsyncFactoryProvider
 } from './types.js';
-
-export type {
-  ModuleDecoratorOptions
-} from './decorators/decorators.js';
-
-// Export types separately
-export type {
-  DecoratorContext
-} from './decorators/custom-decorators.js';

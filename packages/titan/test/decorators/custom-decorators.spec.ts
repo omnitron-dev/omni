@@ -16,7 +16,7 @@ import {
   Retry,
   Deprecated,
   Validate
-} from '../../../src/nexus/decorators/index.js';
+} from '../../src/decorators/index.js';
 
 describe('Custom Decorators', () => {
   describe('createDecorator', () => {

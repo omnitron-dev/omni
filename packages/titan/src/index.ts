@@ -20,8 +20,8 @@ export {
 // Decorators - Only Essential Set
 // ============================================================================
 
+// Core DI decorators
 export {
-  // Core DI decorators
   Module,
   Injectable,
   Singleton,
@@ -29,6 +29,9 @@ export {
   Service,
   Inject,
   Optional,
+  Controller,
+  Repository,
+  Global,
 
   // Lifecycle decorators
   PostConstruct,
@@ -37,6 +40,8 @@ export {
   // Method interceptors
   Retryable,
   Timeout,
+  Log,
+  Monitor,
 
   // Error classes
   TimeoutError
@@ -78,9 +83,8 @@ export {
   type ValueProvider,
   type FactoryProvider,
   type DynamicModule,
-  Global,
-  Module as NexusModule,
-  createModule as createNexusModule
+  createModule,
+  Module as NexusModule  // Export Nexus Module with different name
 } from '@nexus';
 
 // ============================================================================

@@ -358,3 +358,15 @@ export interface Disposable {
 export interface Initializable {
   initialize(): Promise<void> | void;
 }
+
+/**
+ * Module metadata decorator options
+ */
+export interface ModuleMetadata {
+  name?: string;
+  imports?: Array<Constructor<any> | IModule | DynamicModule>;
+  providers?: Array<Provider<any> | Constructor<any> | [InjectionToken<any>, ProviderDefinition<any>]>;
+  exports?: Array<InjectionToken<any> | Provider<any>>;
+  controllers?: Constructor<any>[];
+  global?: boolean;
+}

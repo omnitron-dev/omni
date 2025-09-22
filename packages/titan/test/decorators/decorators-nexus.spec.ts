@@ -6,8 +6,9 @@
 
 import 'reflect-metadata'; // Required for decorator support
 import {
+  Container,
   createToken
-} from '../../../src/nexus/index.js';
+} from '../../src/nexus/index.js';
 import {
   Injectable,
   Inject,
@@ -23,8 +24,7 @@ import {
   PostConstruct,
   PreDestroy,
   Lazy,
-  Container
-} from '../../../src/nexus/decorators/index.js';
+} from '../../src/decorators/index.js';
 
 describe('Decorator Support', () => {
   let container: Container;

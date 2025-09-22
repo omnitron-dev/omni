@@ -19,7 +19,7 @@ import {
   type IApplication,
   type Provider,
   type ModuleMetadata
-} from '../src';
+} from '../src/index.js';
 
 describe('DI Integration Tests', () => {
   describe('Complete DI Flow', () => {
@@ -48,7 +48,7 @@ describe('DI Integration Tests', () => {
       class CacheService {
         constructor(
           @Inject(DatabaseToken) private db: DatabaseService
-        ) {}
+        ) { }
 
         getCached(key: string) {
           return this.db.query(`SELECT * FROM cache WHERE key='${key}'`);
@@ -65,7 +65,7 @@ describe('DI Integration Tests', () => {
         constructor(
           @Inject(DatabaseToken) private db: DatabaseService,
           @Inject(CacheToken) private cache: CacheService
-        ) {}
+        ) { }
 
         async onInit() {
           this.initialized = true;
@@ -88,7 +88,7 @@ describe('DI Integration Tests', () => {
         constructor(
           @Inject(ApiToken) private api: ApiService,
           @Inject(CacheToken) private cache: CacheService
-        ) {}
+        ) { }
 
         async process(id: string) {
           const data = this.api.getData(id);
@@ -219,7 +219,7 @@ describe('DI Integration Tests', () => {
       }
 
       class AsyncService {
-        constructor(public config: TestConfig) {}
+        constructor(public config: TestConfig) { }
 
         async fetchData() {
           // Simulate async operation
@@ -291,7 +291,7 @@ describe('DI Integration Tests', () => {
       class ModuleAService {
         constructor(
           @Inject(SharedServiceToken) private shared: SharedService
-        ) {}
+        ) { }
 
         processA() {
           return `A: ${this.shared.getValue()}`;
@@ -303,7 +303,7 @@ describe('DI Integration Tests', () => {
         constructor(
           @Inject(SharedServiceToken) private shared: SharedService,
           @Inject(ModuleAServiceToken) private serviceA: ModuleAService
-        ) {}
+        ) { }
 
         processB() {
           return `B: ${this.shared.getValue()} + ${this.serviceA.processA()}`;
@@ -590,7 +590,7 @@ describe('DI Integration Tests', () => {
       class ConsumerService {
         constructor(
           @Inject(MissingToken) private missing: any
-        ) {}
+        ) { }
       }
 
       // Use a module for proper provider registration

@@ -4,7 +4,7 @@
  * Main service for accessing and managing configuration
  */
 
-import { Injectable, Inject, Optional } from '@nexus';
+import { Injectable, Inject, Optional } from '../../decorators/index.js';
 import { ZodType } from 'zod';
 
 import {

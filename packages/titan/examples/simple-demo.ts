@@ -14,7 +14,7 @@ import { TitanApplication } from '../src/core/application';
 import { ConfigModule } from '../src/modules/config/config.module';
 import { LoggerModule } from '../src/modules/logger/logger.module';
 import { EventsModule } from '../src/modules/events/events.module';
-import { Container, Injectable, Inject, createToken } from '@omnitron-dev/nexus';
+import { Container, Injectable, Inject, createToken } from '@nexus';
 
 // Service tokens
 const GreetingServiceToken = createToken<GreetingService>('GreetingService');

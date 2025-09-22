@@ -6,7 +6,7 @@
  */
 
 import { Redis } from 'ioredis';
-import { Container } from '@omnitron-dev/nexus';
+import { Container } from '@nexus';
 import { DiscoveryService } from '../../../src/modules/discovery/discovery.service.js';
 import {
   DiscoveryModule,

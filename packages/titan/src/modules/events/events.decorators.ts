@@ -4,7 +4,7 @@
  * Decorators for event-driven architecture in Titan framework
  */
 
-import { createDecorator, createMethodInterceptor } from '@omnitron-dev/nexus';
+import { createDecorator, createMethodInterceptor } from '@nexus';
 import {
   EVENT_HANDLER_METADATA,
   EVENT_ONCE_METADATA,

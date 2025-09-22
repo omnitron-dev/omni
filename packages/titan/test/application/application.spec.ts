@@ -2,7 +2,7 @@
  * Comprehensive tests for Titan Application
  */
 
-import { Container, createToken, Token } from '@omnitron-dev/nexus';
+import { Container, createToken, Token } from '@nexus';
 import { Application, createApp as originalCreateApp, startApp, ApplicationToken } from '../../src/application.js';
 import { ConfigModule } from '../../src/modules/config/config.module.js';
 import { ConfigService } from '../../src/modules/config/config.service.js';

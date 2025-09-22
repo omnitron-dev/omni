@@ -5,7 +5,7 @@
  */
 
 import 'reflect-metadata';
-import { Token, createToken, Inject } from '@omnitron-dev/nexus';
+import { Token, createToken, Inject } from '@nexus';
 import { ZodType } from 'zod';
 import { CONFIG_INJECT_METADATA_KEY, CONFIG_SCHEMA_METADATA_KEY } from './types.js';
 

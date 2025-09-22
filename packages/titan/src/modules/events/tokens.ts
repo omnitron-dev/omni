@@ -4,7 +4,7 @@
  * Centralized token definitions to avoid circular dependencies
  */
 
-import { createToken, Token } from '@omnitron-dev/nexus';
+import { createToken, Token } from '@nexus';
 import type { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
 import type { EventsService } from './events.service.js';
 import type { EventBusService } from './event-bus.service.js';

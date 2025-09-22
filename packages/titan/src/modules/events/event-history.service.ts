@@ -7,7 +7,7 @@
 import type { EventRecord, EventFilter } from '@omnitron-dev/eventemitter';
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
-import { Inject, Injectable } from '@omnitron-dev/nexus';
+import { Inject, Injectable } from '@nexus';
 
 import { EVENT_EMITTER_TOKEN } from './events.module.js';
 

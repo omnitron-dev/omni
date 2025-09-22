@@ -1,5 +1,4 @@
-import { IModule, ProviderDefinition, InjectionToken } from '@omnitron-dev/nexus';
-import { TestContainer, createTestContainer } from '@omnitron-dev/nexus/testing';
+import { IModule, ProviderDefinition, InjectionToken, TestContainer, createTestContainer } from '@nexus';
 
 import { Application } from '../application.js';
 import { IApplicationConfig } from '../types.js';

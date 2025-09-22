@@ -8,7 +8,7 @@
 import { Application } from './application.js';
 import { Module, Injectable } from './decorators.js';
 import type { IApplicationOptions } from './types.js';
-import type { Token } from '@omnitron-dev/nexus';
+import type { Token } from '@nexus';
 
 /**
  * Create and start a Titan application with zero configuration

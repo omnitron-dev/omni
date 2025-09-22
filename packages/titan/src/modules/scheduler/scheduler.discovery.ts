@@ -4,7 +4,7 @@
  * Discovers and registers scheduled jobs from decorated classes
  */
 
-import { Inject, Optional, Container, Injectable } from '@omnitron-dev/nexus';
+import { Inject, Optional, Container, Injectable } from '@nexus';
 
 import { getScheduledJobs } from './scheduler.decorators.js';
 import {

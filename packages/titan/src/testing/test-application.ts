@@ -6,7 +6,7 @@
  */
 
 import { Application } from '../application.js';
-import { Container } from '@omnitron-dev/nexus';
+import { Container } from '@nexus';
 import type { IApplicationOptions } from '../types.js';
 
 /**

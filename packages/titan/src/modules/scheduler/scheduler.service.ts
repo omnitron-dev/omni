@@ -5,7 +5,7 @@
  */
 
 import * as cron from 'node-cron';
-import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
+import { Inject, Optional, Injectable } from '@nexus';
 
 import {
   ERROR_MESSAGES,

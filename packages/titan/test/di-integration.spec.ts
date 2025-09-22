@@ -4,7 +4,7 @@
  */
 
 import 'reflect-metadata';
-import { createToken, Container } from '@omnitron-dev/nexus';
+import { createToken, Container } from '@nexus';
 import {
   TitanApplication,
   Injectable,

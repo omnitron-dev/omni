@@ -9,7 +9,7 @@
  * - No manual provider registration or lifecycle calls
  */
 
-import { createToken } from '@omnitron-dev/nexus';
+import { createToken } from '@nexus';
 import {
   TitanApplication,
   Injectable,

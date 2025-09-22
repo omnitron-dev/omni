@@ -12,7 +12,7 @@
 import { Redis } from 'ioredis';
 import { EventEmitter } from 'events';
 import { Injectable, Inject, Optional } from '../../decorators.js';
-import { createToken, type Token } from '@omnitron-dev/nexus';
+import { createToken, type Token } from '@nexus';
 import type { ILogger } from '../logger/logger.types.js';
 import {
   type NodeInfo,

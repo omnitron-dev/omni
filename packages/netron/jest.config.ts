@@ -21,17 +21,9 @@ const config: Config = {
     '^.+\\.ts$': [
       'ts-jest',
       {
-        tsconfig: {
-          allowJs: true,
-          module: 'ESNext',
-          target: 'ES2022',
-          moduleResolution: 'node',
-          isolatedModules: true,
-          esModuleInterop: true,
-          allowSyntheticDefaultImports: true,
-        },
+        tsconfig: 'tsconfig.test.json',
         useESM: true,
-        isolatedModules: true,
+        transpilation: true,
       },
     ],
   },

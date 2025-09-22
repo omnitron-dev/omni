@@ -3,7 +3,7 @@
  */
 
 import { z } from 'zod';
-import { Container } from '@omnitron-dev/nexus';
+import { Container } from '@nexus';
 import { ConfigModule } from '../../../src/modules/config/config.module.js';
 import { ConfigService } from '../../../src/modules/config/config.service.js';
 import {
@@ -13,7 +13,7 @@ import {
 import type {
   IConfigModuleOptions as ConfigModuleOptions,
 } from '../../../src/modules/config/types.js';
-import { createToken } from '@omnitron-dev/nexus';
+import { createToken } from '@nexus';
 import { registerModuleProviders } from '../../../src/testing/container-utils.js';
 import path from 'node:path';
 import fs from 'node:fs';

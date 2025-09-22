@@ -4,7 +4,7 @@
  * Provides Redis integration with connection pooling, clustering, and health checks
  */
 
-import { Module, DynamicModule, Provider, ProviderDefinition, InjectionToken } from '@omnitron-dev/nexus';
+import { Module, DynamicModule, Provider, ProviderDefinition, InjectionToken } from '@nexus';
 import { RedisManager } from './redis.manager.js';
 import { RedisService } from './redis.service.js';
 import { getClientNamespace } from './redis.utils.js';

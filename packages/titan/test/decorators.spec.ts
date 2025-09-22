@@ -3,7 +3,7 @@
  */
 
 import 'reflect-metadata';
-import { Container, createToken } from '@omnitron-dev/nexus';
+import { Container, createToken } from '@nexus';
 import {
   Injectable,
   Singleton,

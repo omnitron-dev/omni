@@ -1,4 +1,4 @@
-import { IService1 } from './service1';
+import type { IService1 } from './service1';
 import { Public, Service } from '../../src';
 
 export interface IService4 {

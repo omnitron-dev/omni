@@ -6,7 +6,7 @@
  */
 
 import { Application, createApp } from '../../src/application.js';
-import { createToken } from '@omnitron-dev/nexus';
+import { createToken } from '@nexus';
 import {
   SimpleModule,
   DatabaseModule,

@@ -7,7 +7,7 @@
 import type { EventMetadata } from '@omnitron-dev/eventemitter';
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
-import { Inject, Injectable, Optional } from '@omnitron-dev/nexus';
+import { Inject, Injectable, Optional } from '@nexus';
 
 // Define EventHandler locally since it's not exported from eventemitter
 type EventHandler = (...args: any[]) => void | Promise<void>;

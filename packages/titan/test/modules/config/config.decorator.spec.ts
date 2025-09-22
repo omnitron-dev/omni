@@ -11,7 +11,7 @@ import {
   ConfigWatch,
 } from '../../../src/modules/config/config.decorator.js';
 import { ConfigService } from '../../../src/modules/config/config.service.js';
-import { Container, createToken } from '@omnitron-dev/nexus';
+import { Container, createToken } from '@nexus';
 
 describe('Configuration Decorators', () => {
   describe('@Config decorator', () => {

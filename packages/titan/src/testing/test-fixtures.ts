@@ -5,7 +5,7 @@
  */
 
 import { z } from 'zod';
-import { Module, Injectable } from '@omnitron-dev/nexus';
+import { Module, Injectable } from '@nexus';
 import type { IConfigModuleOptions as ConfigModuleOptions } from '../modules/config/types.js';
 import type { RedisOptions } from 'ioredis';
 

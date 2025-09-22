@@ -61,9 +61,10 @@ const config: JestConfigWithTsJest = {
     '^(\\.{1,2}/.*)\\.js$': '$1',
     '^(\\.{1,2}/.*)\\.ts$': '$1',
     '^@/(.*)$': '<rootDir>/src/$1',
+    '^@nexus$': '<rootDir>/src/nexus/index.ts',
+    '^@nexus/(.*)$': '<rootDir>/src/nexus/$1',
     '^@omnitron-dev/testing$': '<rootDir>/../testing/src/index.ts',
     '^@omnitron-dev/testing/(.*)$': '<rootDir>/../testing/src/$1',
-    '^@omnitron-dev/nexus$': '<rootDir>/../nexus/src/index.ts',
     '^@omnitron-dev/eventemitter$': '<rootDir>/../eventemitter/src/index.ts',
     '^@omnitron-dev/common$': '<rootDir>/../common/src/index.ts'
   },

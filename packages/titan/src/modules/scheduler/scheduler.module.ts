@@ -4,7 +4,7 @@
  * Provides task scheduling capabilities
  */
 
-import { Module, type DynamicModule } from '@omnitron-dev/nexus';
+import { Module, type DynamicModule } from '@nexus';
 
 import { SchedulerService } from './scheduler.service.js';
 import { SchedulerRegistry } from './scheduler.registry.js';

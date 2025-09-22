@@ -4,7 +4,7 @@
  * Decorators for logging functionality in Titan framework
  */
 
-import { createDecorator, createMethodInterceptor } from '@omnitron-dev/nexus';
+import { createDecorator, createMethodInterceptor } from '@nexus';
 
 // Re-export ILogger type from logger module for convenience
 export type { ILogger } from './logger.module.js';

@@ -5,7 +5,7 @@
  */
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
+import { Inject, Optional, Injectable } from '@nexus';
 
 import {
   ERROR_MESSAGES,

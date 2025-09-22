@@ -180,4 +180,16 @@ module.exports = [
     files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
     ...customConfig,
   },
+  // Специальная конфигурация для packages/titan с алиасом @nexus
+  {
+    files: ['packages/titan/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
+    rules: {
+      'import/no-unresolved': [
+        'error',
+        {
+          ignore: ['^@nexus', '^@nexus/', 'bun:test', 'https://deno.land', '@omnitron-dev/nexus']
+        }
+      ]
+    }
+  },
 ];

@@ -6,7 +6,7 @@
 import 'reflect-metadata';
 import { Application } from '../../src/application.js';
 import { Module, Injectable, Singleton, Inject, PostConstruct, PreDestroy } from '../../src/decorators.js';
-import { createToken } from '@omnitron-dev/nexus';
+import { createToken } from '@nexus';
 
 // Test service tokens
 const ServiceAToken = createToken<ServiceA>('ServiceA');

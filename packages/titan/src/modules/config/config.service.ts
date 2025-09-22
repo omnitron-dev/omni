@@ -4,7 +4,7 @@
  * Main service for accessing and managing configuration
  */
 
-import { Injectable, Inject, Optional } from '@omnitron-dev/nexus';
+import { Injectable, Inject, Optional } from '@nexus';
 import { ZodType } from 'zod';
 
 import {

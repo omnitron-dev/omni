@@ -4,7 +4,7 @@
  * Handles job state persistence and recovery
  */
 
-import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
+import { Inject, Optional, Injectable } from '@nexus';
 
 import {
   SCHEDULER_CONFIG_TOKEN

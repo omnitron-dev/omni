@@ -2,7 +2,7 @@
  * Scheduler Constants
  */
 
-import { Token, createToken } from '@omnitron-dev/nexus';
+import { Token, createToken } from '@nexus';
 
 import type {
   IJobListener,

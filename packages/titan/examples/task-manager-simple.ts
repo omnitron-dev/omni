@@ -11,7 +11,7 @@
  * - NEW: Class reference module registration (no 'new' needed)
  */
 
-import { createToken } from '@omnitron-dev/nexus';
+import { createToken } from '@nexus';
 import {
   TitanApplication,
   Service,

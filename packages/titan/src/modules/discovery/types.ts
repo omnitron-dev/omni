@@ -147,7 +147,7 @@ export interface IDiscoveryService {
   offEvent(handler: (event: DiscoveryEvent) => void): void;
 }
 
-import { createToken, type Token } from '@omnitron-dev/nexus';
+import { createToken, type Token } from '@nexus';
 import type { Redis } from 'ioredis';
 import type { ILogger } from '../logger/logger.types.js';
 

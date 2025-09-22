@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, jest } from '@jest/globals';
-import { Container } from '@omnitron-dev/nexus';
+import { Container } from '@nexus';
 import { Redis } from 'ioredis';
 
 import { TitanRedisModule } from '../../../src/modules/redis/redis.module.js';

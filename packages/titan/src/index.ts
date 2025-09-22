@@ -81,7 +81,7 @@ export {
   Global,
   Module as NexusModule,
   createModule as createNexusModule
-} from '@omnitron-dev/nexus';
+} from '@nexus';
 
 // ============================================================================
 // Helper Functions

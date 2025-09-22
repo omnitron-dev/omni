@@ -8,7 +8,7 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { Injectable } from '@omnitron-dev/nexus';
+import { Injectable } from '@nexus';
 
 import type {
   ConfigSource,
@@ -235,7 +235,7 @@ export class ConfigLoaderService implements IConfigLoader {
   private parseEnvValue(value: string): any {
     // Remove quotes if present
     if ((value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))) {
+      (value.startsWith("'") && value.endsWith("'"))) {
       return value.slice(1, -1);
     }
 
@@ -258,7 +258,7 @@ export class ConfigLoaderService implements IConfigLoader {
 
     // Parse JSON arrays and objects
     if ((value.startsWith('[') && value.endsWith(']')) ||
-        (value.startsWith('{') && value.endsWith('}'))) {
+      (value.startsWith('{') && value.endsWith('}'))) {
       try {
         return JSON.parse(value);
       } catch {

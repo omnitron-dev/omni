@@ -15,10 +15,17 @@
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
     "allowJs": true,
-    "types": ["bun-types"],
+    "types": [
+      "bun-types"
+    ],
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "lib": ["esnext"]
+    "lib": [
+      "esnext"
+    ]
   },
-  "include": ["src/**/*", "test/**/*"]
+  "include": [
+    "src/**/*",
+    "test/**/*"
+  ]
 }

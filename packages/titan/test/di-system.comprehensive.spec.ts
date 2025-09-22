@@ -17,7 +17,7 @@ import {
   Scope,
   CircularDependencyError,
   DependencyNotFoundError
-} from '@omnitron-dev/nexus';
+} from '@nexus';
 import {
   Service,
   Module,

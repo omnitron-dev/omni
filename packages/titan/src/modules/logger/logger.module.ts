@@ -4,7 +4,7 @@
  * Provides centralized logging with Pino
  */
 
-import { Module, Global } from '@omnitron-dev/nexus';
+import { Module, Global } from '@nexus';
 
 import { LoggerService } from './logger.service.js';
 import {

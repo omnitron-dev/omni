@@ -46,7 +46,6 @@
   },
   "dependencies": {
     "@omnitron-dev/common": "workspace:*",
-    "@omnitron-dev/nexus": "workspace:*",
     "@omnitron-dev/titan": "workspace:*",
     "pino": "^9.9.5",
     "reflect-metadata": "^0.2.2",

@@ -5,7 +5,7 @@
  * without any NestJS dependencies
  */
 
-import { Container } from '@omnitron-dev/nexus';
+import { Container } from '@nexus';
 import { TitanRedisModule } from '../../../src/modules/redis/redis.module.js';
 import { RedisService } from '../../../src/modules/redis/redis.service.js';
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';

@@ -4,7 +4,7 @@
 
 import os from 'node:os';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import { Token, Container, createToken, InjectionToken, Provider } from '@omnitron-dev/nexus';
+import { Token, Container, createToken, InjectionToken, Provider } from '@nexus';
 
 import { ConfigModule, CONFIG_SERVICE_TOKEN } from './modules/config/index.js';
 import { LoggerModule, LOGGER_SERVICE_TOKEN } from './modules/logger/index.js';

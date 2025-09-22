@@ -24,6 +24,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./nexus": {
+      "types": "./dist/nexus/index.d.ts",
+      "default": "./dist/nexus/index.js"
+    },
     "./redis": {
       "types": "./dist/modules/redis/index.d.ts",
       "default": "./dist/modules/redis/index.js"
@@ -64,7 +68,6 @@
   "dependencies": {
     "@omnitron-dev/common": "workspace:*",
     "@omnitron-dev/eventemitter": "workspace:*",
-    "@omnitron-dev/nexus": "workspace:*",
     "glob": "^11.0.3",
     "ioredis": "^5.7.0",
     "minimatch": "^10.0.3",
@@ -73,6 +76,7 @@
     "pino": "^9.9.5",
     "pino-pretty": "^13.1.1",
     "reflect-metadata": "^0.2.2",
+    "ws": "^8.18.3",
     "yaml": "^2.8.1",
     "zod": "^4.1.8"
   },
@@ -80,12 +84,12 @@
     "@omnitron-dev/testing": "workspace:*",
     "@types/bun": "latest",
     "@types/jest": "^30.0.0",
-    "@types/node": "24.5.0",
+    "@types/node": "24.5.2",
     "@types/node-cron": "^3.0.11",
     "@typescript-eslint/eslint-plugin": "8.44.0",
     "@typescript-eslint/parser": "8.44.0",
     "jest": "^30.1.3",
-    "ts-jest": "^29.4.2",
+    "ts-jest": "^29.4.4",
     "ts-jest-resolver": "^2.0.1",
     "typescript": "^5.9.2"
   },

@@ -2,7 +2,7 @@
  * Scheduler Interfaces and Types
  */
 
-import type { InjectionToken } from '@omnitron-dev/nexus';
+import type { InjectionToken } from '@nexus';
 
 /**
  * Cron expression type

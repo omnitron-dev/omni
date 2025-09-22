@@ -18,7 +18,7 @@ import {
   PreDestroy,
   PostConstruct,
   Repository
-} from '@omnitron-dev/nexus';
+} from '@nexus';
 
 // ============================================================================
 // Module Decorators

@@ -4,7 +4,7 @@
  * It is separated from the examples to maintain clean test boundaries.
  */
 
-import { createToken } from '@omnitron-dev/nexus';
+import { createToken } from '@nexus';
 import {
   Injectable,
   Inject,

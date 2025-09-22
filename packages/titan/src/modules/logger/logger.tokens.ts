@@ -4,7 +4,7 @@
  * Dependency injection tokens for the logger module
  */
 
-import { createToken, Token } from '@omnitron-dev/nexus';
+import { createToken, Token } from '@nexus';
 import type { ILoggerModule, ILoggerOptions, ITransport, ILogProcessor } from './logger.types.js';
 
 // Service token

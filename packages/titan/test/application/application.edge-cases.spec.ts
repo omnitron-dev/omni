@@ -2,7 +2,7 @@
  * Edge case tests for Titan Application to achieve >96% coverage
  */
 
-import { createToken } from '@omnitron-dev/nexus';
+import { createToken } from '@nexus';
 import { Application, createApp } from '../../src/application.js';
 import { LOGGER_SERVICE_TOKEN } from '../../src/modules/logger.module.js';
 const CONFIG_SERVICE_TOKEN = createToken('ConfigModule');

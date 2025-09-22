@@ -3,7 +3,7 @@
  */
 
 // Jest provides describe, it, expect, beforeEach globally
-import { Container } from '@omnitron-dev/nexus';
+import { Container } from '@nexus';
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
 import { EventMetadataService } from '../../../src/modules/events/event-metadata.service';
 import { EventBusService } from '../../../src/modules/events/event-bus.service';

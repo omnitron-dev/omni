@@ -9,7 +9,7 @@
  */
 
 import { Application, createApp, startApp } from '../../src/application.js';
-import { createToken } from '@omnitron-dev/nexus';
+import { createToken } from '@nexus';
 import {
   ApplicationState,
   ApplicationEvent,

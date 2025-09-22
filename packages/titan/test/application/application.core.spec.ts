@@ -5,7 +5,7 @@
  * initialization, basic operations, and DI container integration.
  */
 
-import { Container, createToken } from '@omnitron-dev/nexus';
+import { Container, createToken } from '@nexus';
 import { Application, createApp, ApplicationToken, startApp } from '../../src/application.js';
 import { ApplicationState, ApplicationEvent, IApplicationOptions } from '../../src/types.js';
 import { SimpleModule, FailingModule, SlowModule } from '../fixtures/test-modules.js';

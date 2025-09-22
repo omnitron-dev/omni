@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import { createToken } from '@omnitron-dev/nexus';
+import { createToken } from '@nexus';
 import {
   TitanApplication,
   AbstractModule,

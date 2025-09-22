@@ -4,7 +4,7 @@
  * Provides utilities for working with containers in tests
  */
 
-import { Container, type InjectionToken, type Provider } from '@omnitron-dev/nexus';
+import { Container, type InjectionToken, type Provider } from '@nexus';
 
 /**
  * Register providers from a module into a container

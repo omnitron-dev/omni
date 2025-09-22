@@ -13,7 +13,7 @@ import {
 } from '../../src/types.js';
 import { Application, createApp } from '../../src/application.js';
 import { Injectable, Module, Service } from '../../src/decorators.js';
-import { createToken, Token } from '@omnitron-dev/nexus';
+import { createToken, Token } from '@nexus';
 
 // ============================================================================
 // Basic Module Fixtures

@@ -3,7 +3,7 @@
  */
 
 import 'reflect-metadata';
-import { Container } from '@omnitron-dev/nexus';
+import { Container } from '@nexus';
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
 import { EventsService } from '../../../src/modules/events/events.service';
 import { EventMetadataService } from '../../../src/modules/events/event-metadata.service';

@@ -9,7 +9,7 @@
  * - Clean separation of concerns with improved DX
  */
 
-import { createToken } from '@omnitron-dev/nexus';
+import { createToken } from '@nexus';
 import {
   TitanApplication,
   Service,

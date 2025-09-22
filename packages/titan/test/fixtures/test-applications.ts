@@ -27,7 +27,7 @@ import {
   NotificationServiceToken
 } from './test-modules.js';
 import { Module, Injectable } from '../../src/decorators.js';
-import { createToken } from '@omnitron-dev/nexus';
+import { createToken } from '@nexus';
 
 // ============================================================================
 // Web Application

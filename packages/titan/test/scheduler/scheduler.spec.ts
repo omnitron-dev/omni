@@ -3,7 +3,7 @@
  */
 
 import 'reflect-metadata';
-import { Container } from '@omnitron-dev/nexus';
+import { Container } from '@nexus';
 
 import {
   SchedulerModule,

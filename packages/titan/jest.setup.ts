@@ -1,3 +1,5 @@
+import { jest } from '@jest/globals';
+
 // Common test setup
 jest.setTimeout(30000);
 

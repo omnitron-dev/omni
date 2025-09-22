@@ -1,7 +1,4 @@
 import { Redis, ChainableCommander } from 'ioredis';
-
-// Type alias for Redis commands that can be chained
-type ChainedRedis = ChainableCommander;
 import { isCluster } from './redis.utils.js';
 import { RedisClient } from './redis.types.js';
 import { RedisManager } from './redis.manager.js';

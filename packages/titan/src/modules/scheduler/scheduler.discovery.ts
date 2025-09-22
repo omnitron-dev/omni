@@ -110,7 +110,7 @@ export class SchedulerDiscovery {
       );
 
       return job;
-    } catch (error) {
+    } catch {
       // Failed to register job
       return null;
     }
@@ -133,14 +133,14 @@ export class SchedulerDiscovery {
       if (typeof provider === 'function') {
         try {
           instance = this.container.resolve(provider);
-        } catch (error) {
+        } catch {
           // Failed to resolve provider
           continue;
         }
       } else if (provider.useClass) {
         try {
           instance = this.container.resolve(provider.useClass);
-        } catch (error) {
+        } catch {
           // Failed to resolve provider
           continue;
         }

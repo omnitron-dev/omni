@@ -58,12 +58,14 @@
     "test:all": "npm run test:node && npm run test:bun && npm run test:deno",
     "test:coverage": "jest --coverage",
     "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
     "dev": "tsc -p ./tsconfig.build.json --watch"
   },
   "dependencies": {
     "@omnitron-dev/common": "workspace:*",
     "@omnitron-dev/eventemitter": "workspace:*",
     "@omnitron-dev/nexus": "workspace:*",
+    "glob": "^11.0.3",
     "ioredis": "^5.7.0",
     "minimatch": "^10.0.3",
     "msgpackr": "^1.11.5",

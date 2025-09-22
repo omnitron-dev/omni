@@ -130,7 +130,7 @@ export class SchedulerPersistence {
 
     try {
       await this.provider.saveJob(job);
-    } catch (error) {
+    } catch {
       // Failed to persist job
     }
   }
@@ -145,7 +145,7 @@ export class SchedulerPersistence {
 
     try {
       return await this.provider.loadJob(id);
-    } catch (error) {
+    } catch {
       // Failed to load job
       return null;
     }
@@ -161,7 +161,7 @@ export class SchedulerPersistence {
 
     try {
       return await this.provider.loadAllJobs();
-    } catch (error) {
+    } catch {
       // Failed to load jobs
       return [];
     }
@@ -177,7 +177,7 @@ export class SchedulerPersistence {
 
     try {
       await this.provider.deleteJob(id);
-    } catch (error) {
+    } catch {
       // Failed to delete job
     }
   }
@@ -192,7 +192,7 @@ export class SchedulerPersistence {
 
     try {
       await this.provider.saveExecutionResult(result);
-    } catch (error) {
+    } catch {
       // Failed to persist execution result
     }
   }
@@ -207,7 +207,7 @@ export class SchedulerPersistence {
 
     try {
       return await this.provider.loadExecutionHistory(jobId, limit);
-    } catch (error) {
+    } catch {
       // Failed to load execution history
       return [];
     }
@@ -227,7 +227,7 @@ export class SchedulerPersistence {
   async clear(): Promise<void> {
     try {
       await this.provider.clear();
-    } catch (error) {
+    } catch {
       // Failed to clear persisted data
     }
   }

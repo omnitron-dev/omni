@@ -201,7 +201,7 @@ export class LoggerService implements ILoggerModule {
         config.pretty = this.configService.get('logger.pretty', config.pretty);
         config.environment = this.configService.get('environment', 'development');
         config.name = this.configService.get('name', config.name);
-      } catch (error) {
+      } catch {
         // ConfigService might not be fully initialized, use defaults
         // This is expected during early initialization phase
       }

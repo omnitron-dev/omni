@@ -26,8 +26,7 @@ import {
   CONFIG_VALIDATOR_SERVICE_TOKEN,
   CONFIG_WATCHER_SERVICE_TOKEN,
   CONFIG_OPTIONS_TOKEN,
-  CONFIG_SCHEMA_TOKEN,
-  CONFIG_LOGGER_TOKEN
+  CONFIG_SCHEMA_TOKEN
 } from './config.tokens.js';
 
 import type { IConfigModuleOptions, IConfigAsyncOptions } from './types.js';
@@ -39,8 +38,6 @@ import type { IConfigModuleOptions, IConfigAsyncOptions } from './types.js';
  */
 @Module({})
 export class ConfigModule {
-  private static instance?: ConfigService;
-  private static initialized = false;
 
   /**
    * Configure the Config module with options
@@ -60,9 +57,6 @@ export class ConfigModule {
       options.schema,
       undefined // Logger will be injected separately if needed
     );
-
-    // Store instance for global access
-    ConfigModule.instance = configService;
 
     return {
       module: ConfigModule,
@@ -190,8 +184,6 @@ export class ConfigModule {
               schema,
               undefined // Logger will be injected separately if needed
             );
-            // Store instance for global access
-            ConfigModule.instance = service;
             return service;
           },
           inject: [CONFIG_OPTIONS_TOKEN],
@@ -212,19 +204,11 @@ export class ConfigModule {
    * Lifecycle hooks
    */
   async onStart?(app: any): Promise<void> {
-    // Initialize config service if not already done
-    if (ConfigModule.instance && !ConfigModule.initialized) {
-      await ConfigModule.instance.initialize();
-      ConfigModule.initialized = true;
-    }
+    // Config service initialization is now handled by the service itself
   }
 
   async onStop?(app: any): Promise<void> {
-    // Dispose config service
-    if (ConfigModule.instance) {
-      await ConfigModule.instance.dispose();
-      ConfigModule.initialized = false;
-    }
+    // Config service disposal is now handled by the service itself
   }
 }
 

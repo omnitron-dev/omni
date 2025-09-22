@@ -7,12 +7,12 @@
 import type { EventMetadata } from '@omnitron-dev/eventemitter';
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
-import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
+import { Inject, Injectable } from '@omnitron-dev/nexus';
 
 // Define EventHandler locally since it's not exported from eventemitter
 type EventHandler = (...args: any[]) => void | Promise<void>;
 
-import { LOGGER_TOKEN, EVENT_EMITTER_TOKEN } from './events.module.js';
+import { EVENT_EMITTER_TOKEN } from './events.module.js';
 
 import type { IEventBusMessage, IEventSubscription } from './types.js';
 

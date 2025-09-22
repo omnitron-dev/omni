@@ -19,7 +19,7 @@ export function RedisCache(options?: CacheOptions): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     const originalMethod = descriptor.value;
 
-    descriptor.value = async function (...args: any[]) {
+    descriptor.value = async function cacheMethod(...args: any[]) {
       // Try to find redis client - support multiple naming conventions
       const redisManager = (this as any).redisManager;
       const redisService = (this as any).redisService;
@@ -88,7 +88,7 @@ export function RedisCache(options?: CacheOptions): MethodDecorator {
         }
 
         return result;
-      } catch (error) {
+      } catch {
         return originalMethod.apply(this, args);
       }
     };
@@ -101,7 +101,7 @@ export function RedisLock(options?: LockOptions): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     const originalMethod = descriptor.value;
 
-    descriptor.value = async function (...args: any[]) {
+    descriptor.value = async function lockMethod(...args: any[]) {
       const redisService = (this as any).redisService;
 
       if (!redisService) {
@@ -166,7 +166,7 @@ export function RedisRateLimit(options: RateLimitOptions): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     const originalMethod = descriptor.value;
 
-    descriptor.value = async function (...args: any[]) {
+    descriptor.value = async function rateLimitMethod(...args: any[]) {
       // Try to find redis client - support multiple naming conventions
       const redisManager = (this as any).redisManager;
       const redisService = (this as any).redisService;

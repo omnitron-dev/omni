@@ -159,8 +159,8 @@ export function service<T extends object>(
 
   // Auto-register if application exists
   if ((global as any).__titanApp) {
-    const app = (global as any).__titanApp as Application;
     // TODO: Implement auto-registration in Application
+    // const app = (global as any).__titanApp as Application;
     // app.registerProvider(ServiceClass);
   }
 

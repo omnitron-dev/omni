@@ -12,10 +12,10 @@ import type {
 } from '@omnitron-dev/eventemitter';
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
-import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
+import { Inject, Injectable } from '@omnitron-dev/nexus';
 
 import { EventMetadataService } from './event-metadata.service.js';
-import { LOGGER_TOKEN, EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN } from './events.module.js';
+import { EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN } from './events.module.js';
 
 import type {
   IEventContext,

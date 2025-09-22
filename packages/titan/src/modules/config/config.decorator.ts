@@ -157,8 +157,6 @@ export function Configuration(prefix?: string) {
  */
 export function ConfigValidate(schema: ZodType) {
   return function (target: any, propertyKey: string | symbol) {
-    const validationKey = Symbol(`__validation_${String(propertyKey)}`);
-
     // Store validation schema
     Reflect.defineMetadata(`titan:config:validation:${String(propertyKey)}`, schema, target);
 
@@ -269,7 +267,6 @@ export function ConfigProvider(name: string) {
  */
 export function ConfigTransform(transformer: (value: any) => any) {
   return function (target: any, propertyKey: string | symbol) {
-    const transformKey = Symbol(`__transform_${String(propertyKey)}`);
     Reflect.defineMetadata(`titan:config:transform:${String(propertyKey)}`, transformer, target);
 
     // Apply transformation when value is set

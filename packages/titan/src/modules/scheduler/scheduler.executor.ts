@@ -240,7 +240,7 @@ export class SchedulerExecutor {
     if (job.options.onError) {
       try {
         await job.options.onError(error);
-      } catch (handlerError) {
+      } catch {
         // Error in job error handler
       }
     }
@@ -419,7 +419,7 @@ export class SchedulerExecutor {
         if (listener.onJobStart) {
           try {
             await listener.onJobStart(job, context);
-          } catch (error) {
+          } catch {
             // Error in job start listener
           }
         }
@@ -438,7 +438,7 @@ export class SchedulerExecutor {
         if (listener.onJobComplete) {
           try {
             await listener.onJobComplete(job, result);
-          } catch (error) {
+          } catch {
             // Error in job complete listener
           }
         }
@@ -449,7 +449,7 @@ export class SchedulerExecutor {
     if (job.options.onSuccess) {
       try {
         await job.options.onSuccess(result.result);
-      } catch (error) {
+      } catch {
         // Error in job success handler
       }
     }
@@ -470,7 +470,7 @@ export class SchedulerExecutor {
         if (listener.onJobError) {
           try {
             await listener.onJobError(job, error, context);
-          } catch (listenerError) {
+          } catch {
             // Error in job error listener
           }
         }
@@ -489,7 +489,7 @@ export class SchedulerExecutor {
         if (listener.onJobRetry) {
           try {
             await listener.onJobRetry(job, attempt, error);
-          } catch (listenerError) {
+          } catch {
             // Error in job retry listener
           }
         }

@@ -127,7 +127,7 @@ export class EventListenerTracker {
         } else if (target.off) {
           target.off(event, handler);
         }
-      } catch (error) {
+      } catch {
         // Ignore errors during cleanup
       }
     }
@@ -183,7 +183,6 @@ export async function waitForEvents(
   events: string[],
   timeout = 5000
 ): Promise<any[]> {
-  const results: any[] = [];
   const promises: Promise<any>[] = [];
 
   for (const event of events) {

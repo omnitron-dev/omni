@@ -3,15 +3,15 @@
  */
 
 import { createToken } from '@omnitron-dev/nexus';
-import { Application, createApp } from '../src/application';
-import { LOGGER_SERVICE_TOKEN } from '../src/modules/logger.module';
+import { Application, createApp } from '../../src/application.js';
+import { LOGGER_SERVICE_TOKEN } from '../../src/modules/logger.module.js';
 const CONFIG_SERVICE_TOKEN = createToken('ConfigModule');
 import {
   AbstractModule,
   ApplicationState,
   IApplication,
   LifecycleHook
-} from '../src/types';
+} from '../../src/types.js';
 
 // Test fixture
 class EdgeCaseModule extends AbstractModule {

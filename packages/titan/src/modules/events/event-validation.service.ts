@@ -4,7 +4,7 @@
  * Validates event data against schemas
  */
 
-import { Inject, Optional, Injectable } from '@omnitron-dev/nexus';
+import { Injectable } from '@omnitron-dev/nexus';
 
 
 

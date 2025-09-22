@@ -19,27 +19,29 @@ export enum ApplicationState {
 /**
  * Application lifecycle events
  */
-export type ApplicationEvent =
-  | 'starting'
-  | 'started'
-  | 'stopping'
-  | 'stopped'
-  | 'error'
-  | 'module:registered'
-  | 'module:started'
-  | 'module:stopped'
-  | 'config:changed'
-  | 'health:check'
-  | 'signal'
-  | 'uncaughtException'
-  | 'unhandledRejection'
-  | 'state:save'
-  | 'shutdown:start'
-  | 'shutdown:complete'
-  | 'shutdown:error'
-  | 'shutdown:task:complete'
-  | 'shutdown:task:error'
-  | 'process:exit';
+export enum ApplicationEvent {
+  Starting = 'starting',
+  Started = 'started',
+  Stopping = 'stopping',
+  Stopped = 'stopped',
+  Error = 'error',
+  ModuleRegistered = 'module:registered',
+  ModuleStarted = 'module:started',
+  ModuleStopped = 'module:stopped',
+  ConfigChanged = 'config:changed',
+  HealthCheck = 'health:check',
+  Signal = 'signal',
+  UncaughtException = 'uncaughtException',
+  UnhandledRejection = 'unhandledRejection',
+  StateSave = 'state:save',
+  ShutdownStart = 'shutdown:start',
+  ShutdownComplete = 'shutdown:complete',
+  ShutdownError = 'shutdown:error',
+  ShutdownTaskComplete = 'shutdown:task:complete',
+  ShutdownTaskError = 'shutdown:task:error',
+  ProcessExit = 'process:exit',
+  Custom = 'custom'
+}
 
 /**
  * Application configuration
@@ -72,6 +74,7 @@ export interface IModuleMetadata {
 export interface IHealthStatus {
   status: 'healthy' | 'degraded' | 'unhealthy';
   message?: string;
+  modules?: Record<string, IHealthStatus>;
   details?: any;
 }
 
@@ -158,6 +161,7 @@ export interface ILifecycleHook {
 export interface IShutdownOptions {
   timeout?: number;
   force?: boolean;
+  graceful?: boolean;
   signal?: NodeJS.Signals;
 }
 
@@ -169,6 +173,8 @@ export interface IApplicationMetrics {
   memoryUsage: NodeJS.MemoryUsage;
   cpuUsage?: NodeJS.CpuUsage;
   eventLoopUtilization?: any;
+  startupTime?: number;
+  modules?: number;
 }
 
 /**

@@ -2,8 +2,8 @@
  * Application shutdown and process lifecycle tests
  */
 
-import { Application } from '../src/application.js';
-import { ShutdownReason, ShutdownPriority } from '../src/types.js';
+import { Application } from '../../src/application.js';
+import { ShutdownReason, ShutdownPriority } from '../../src/types.js';
 
 describe('Application Shutdown and Process Lifecycle', () => {
   let app: Application;
@@ -76,7 +76,6 @@ describe('Application Shutdown and Process Lifecycle', () => {
       });
 
       await app.shutdown(ShutdownReason.Manual);
-
       expect(executionOrder).toEqual(['first', 'high', 'low']);
     });
 
@@ -223,8 +222,13 @@ describe('Application Shutdown and Process Lifecycle', () => {
       app = await Application.create({
         disableGracefulShutdown: false,
         // Don't set environment to 'test' to allow process.exit
-        environment: 'production'
+        environment: 'production',
+        // Explicitly enable process exit for this test
+        disableProcessExit: false
       });
+
+      // Manually override the _disableProcessExit flag to ensure process.exit is called
+      (app as any)._disableProcessExit = false;
 
       expect(() => app.forceShutdown(1)).toThrow('Process.exit called');
       expect(exitSpy).toHaveBeenCalledWith(1);
@@ -248,7 +252,7 @@ describe('Application Shutdown and Process Lifecycle', () => {
 
       app.registerShutdownTask({
         name: 'Test Task',
-        handler: async () => {}
+        handler: async () => { }
       });
 
       await app.shutdown(ShutdownReason.Manual);

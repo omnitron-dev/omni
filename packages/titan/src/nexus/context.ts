@@ -2,7 +2,7 @@
  * Advanced contextual injection for Nexus DI Container
  */
 
-import { Scope, InjectionToken, ResolutionContext } from '../types/core.js';
+import { Scope, InjectionToken, ResolutionContext } from './types.js';
 
 /**
  * Context key for typed context access

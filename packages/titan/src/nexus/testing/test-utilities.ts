@@ -1,7 +1,7 @@
 import { TestContainer } from './test-container.js';
-import { Container } from '../container/container.js';
-import { createToken, getTokenName } from '../token/token.js';
-import { Scope, IModule, Provider, ProviderDefinition, Constructor, InjectionToken, InjectionToken as Token, RegistrationOptions } from '../types/core.js';
+import { Container } from '../container.js';
+import { createToken, getTokenName } from '../token.js';
+import { Scope, IModule, Provider, ProviderDefinition, Constructor, InjectionToken, InjectionToken as Token, RegistrationOptions } from '../types.js';
 
 /**
  * Test utility functions for Nexus testing

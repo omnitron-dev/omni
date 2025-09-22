@@ -7,11 +7,11 @@
  * Provides debugging and visualization tools for dependency injection
  */
 
-import { Plugin } from '../plugins/plugin.js';
-import { createToken } from '../token/token.js';
-import { Container } from '../container/container.js';
-import { LifecycleEvent } from '../lifecycle/lifecycle.js';
-import { Scope, InjectionToken, ResolutionContext } from '../types/core.js';
+import { Plugin } from './plugin.js';
+import { createToken } from './token.js';
+import { Container } from './container.js';
+import { LifecycleEvent } from './lifecycle.js';
+import { Scope, InjectionToken, ResolutionContext } from './types.js';
 
 /**
  * DevTools message types

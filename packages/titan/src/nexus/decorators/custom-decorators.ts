@@ -32,7 +32,7 @@
 
 import 'reflect-metadata';
 
-import { Container } from '../container/container.js';
+import { Container } from '../container.js';
 
 /**
  * Decorator target types

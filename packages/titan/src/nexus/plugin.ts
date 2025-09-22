@@ -2,8 +2,8 @@
  * Plugin system for Nexus DI Container
  */
 
-import { createMiddleware } from '../middleware/middleware.js';
-import { IContainer, InjectionToken, ResolutionContext } from '../types/core.js';
+import { createMiddleware } from './middleware.js';
+import { IContainer, InjectionToken, ResolutionContext } from './types.js';
 
 /**
  * Plugin lifecycle hooks

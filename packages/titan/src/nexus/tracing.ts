@@ -7,10 +7,10 @@
  * Provides OpenTelemetry integration and distributed tracing capabilities
  */
 
-import { createToken } from '../token/token.js';
-import { Container } from '../container/container.js';
-import { Plugin, PluginHooks } from '../plugins/plugin.js';
-import { InjectionToken, ResolutionContext } from '../types/core.js';
+import { createToken } from './token.js';
+import { Container } from './container.js';
+import { Plugin, PluginHooks } from './plugin.js';
+import { InjectionToken, ResolutionContext } from './types.js';
 
 /**
  * Span attributes

@@ -2,7 +2,7 @@
  * Testing utilities for Nexus DI Container
  */
 
-import { Container } from '../container/container.js';
+import { Container } from '../container.js';
 import {
   IModule,
   Provider,
@@ -10,7 +10,7 @@ import {
   Constructor,
   InjectionToken,
   RegistrationOptions
-} from '../types/core.js';
+} from '../types.js';
 
 /**
  * Mock provider configuration

@@ -5,19 +5,19 @@
  */
 
 // Import for internal use
-import { Container } from './container/container.js';
+import { Container } from './container.js';
 
 // Export Service Mesh
-export * from './mesh/index.js';
+export * from './mesh.js';
 
 // Export Tracing
-export * from './tracing/index.js';
+export * from './tracing.js';
 
 // Export DevTools
-export * from './devtools/index.js';
+export * from './devtools.js';
 
 // Export Federation
-export * from './federation/index.js';
+export * from './federation.js';
 
 // Export Decorators
 export * from './decorators/index.js';
@@ -25,14 +25,14 @@ export * from './decorators/index.js';
 // Container
 export {
   Container
-} from './container/container.js';
+} from './container.js';
 
-export { createToken as token } from './token/token.js';
+export { createToken as token } from './token.js';
 
-export { createMultiToken as multiToken } from './token/token.js';
+export { createMultiToken as multiToken } from './token.js';
 
 // Convenience exports
-export { Container as NexusContainer } from './container/container.js';
+export { Container as NexusContainer } from './container.js';
 
 export {
   SpyProvider,
@@ -58,7 +58,7 @@ export {
   type PluginHooks,
   ValidationPlugin,
   PerformancePlugin
-} from './plugins/plugin.js';
+} from './plugin.js';
 export {
   Global,
   Inject,
@@ -105,7 +105,7 @@ export {
   PerformanceObserver,
   type LifecycleObserver,
   type LifecycleEventData
-} from './lifecycle/lifecycle.js';
+} from './lifecycle.js';
 
 export {
   TestHarness,
@@ -132,7 +132,7 @@ export {
   createConditionalProvider,
   hasScope,
   isMultiProvider
-} from './utils/provider-utils.js';
+} from './provider-utils.js';
 
 // Runtime Detection
 export {
@@ -151,7 +151,7 @@ export {
   hasWorkerSupport,
   PerformanceTimer,
   loadRuntimeModule
-} from './utils/runtime.js';
+} from './runtime.js';
 
 // Token System
 export {
@@ -169,7 +169,7 @@ export {
   createStreamToken,
   type TokenRegistry,
   createOptionalToken
-} from './token/token.js';
+} from './token.js';
 
 // Enhanced Module System
 export {
@@ -187,7 +187,7 @@ export {
   type ModuleCompiler,
   createDynamicModule,
   createFeatureModule
-} from './modules/module.js';
+} from './module.js';
 
 // Advanced Context System
 export {
@@ -205,7 +205,7 @@ export {
   type ResolutionStrategy,
   type ContextAwareProvider,
   createContextAwareProvider
-} from './context/context.js';
+} from './context.js';
 
 /**
  * Feature flags for all phases
@@ -268,7 +268,7 @@ export {
   CircularDependencyError,
   DependencyNotFoundError,
   DuplicateRegistrationError
-} from './errors/errors.js';
+} from './errors.js';
 
 // Middleware System
 export {
@@ -290,7 +290,7 @@ export {
   type MiddlewareFunction,
   CircuitBreakerMiddleware,
   ValidationMiddlewareClass
-} from './middleware/middleware.js';
+} from './middleware.js';
 
 // Core Types
 export {
@@ -326,7 +326,7 @@ export {
   type ConditionalProvider,
   type RegistrationOptions,
   type AsyncFactoryProvider
-} from './types/core.js';
+} from './types.js';
 
 export type {
   ModuleDecoratorOptions

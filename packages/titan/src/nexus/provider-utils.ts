@@ -11,7 +11,7 @@ import type {
   Factory,
   AsyncFactory,
   Scope
-} from '../types/core.js';
+} from './types.js';
 
 /**
  * Check if a value is a constructor
@@ -30,7 +30,7 @@ export function isAsyncProvider(provider: Provider): boolean {
   if ('useFactory' in provider && provider.useFactory) {
     const factory = provider.useFactory as any;
     return factory.constructor.name === 'AsyncFunction' ||
-           (typeof factory === 'function' && factory.toString().includes('__awaiter'));
+      (typeof factory === 'function' && factory.toString().includes('__awaiter'));
   }
   return false;
 }

@@ -2,7 +2,7 @@
  * Token system for type-safe dependency identification
  */
 
-import { Token, Scope, MultiToken, TokenMetadata } from '../types/core.js';
+import { Token, Scope, MultiToken, TokenMetadata } from './types.js';
 
 /**
  * Token registry for caching tokens by name

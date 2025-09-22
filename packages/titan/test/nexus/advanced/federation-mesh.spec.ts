@@ -13,7 +13,7 @@ import {
   createLazyModule,
   RemoteModule,
   SharedDependencies
-} from '../../../src/nexus/federation/index.js';
+} from '../../../src/nexus/federation.js';
 import {
   ConsulServiceDiscovery,
   LoadBalancer,
@@ -23,7 +23,7 @@ import {
   createRemoteProxy,
   HealthCheck,
   ServiceEndpoint
-} from '../../../src/nexus/mesh/index.js';
+} from '../../../src/nexus/mesh.js';
 
 describe('Module Federation', () => {
   let federation: ModuleFederationContainer;

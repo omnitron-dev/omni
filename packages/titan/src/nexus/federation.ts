@@ -7,9 +7,9 @@
  * Enables sharing modules across applications and microservices
  */
 
-import { createToken } from '../token/token.js';
-import { Container } from '../container/container.js';
-import { IModule, Provider, DynamicModule, InjectionToken } from '../types/core.js';
+import { createToken } from './token.js';
+import { Container } from './container.js';
+import { IModule, Provider, DynamicModule, InjectionToken } from './types.js';
 
 /**
  * Remote module configuration

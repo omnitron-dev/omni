@@ -1,4 +1,4 @@
-import { ProviderDefinition, InjectionToken as Token } from '../types/core.js';
+import { ProviderDefinition, InjectionToken as Token } from '../types.js';
 
 // Jest type declaration (for build compatibility)
 declare const jest: any;

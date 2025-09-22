@@ -7,8 +7,8 @@
  * Provides service discovery, load balancing, and distributed communication
  */
 
-import { createToken } from '../token/token.js';
-import { ProviderDefinition, InjectionToken } from '../types/core.js';
+import { createToken } from './token.js';
+import { ProviderDefinition, InjectionToken } from './types.js';
 
 /**
  * Service instance information

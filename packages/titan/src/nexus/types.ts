@@ -2,7 +2,7 @@
  * Core types and interfaces for Nexus DI Container
  */
 
-import { ContextProvider } from '../context/context.js';
+import { ContextProvider } from './context.js';
 
 /**
  * Constructor type for creating instances

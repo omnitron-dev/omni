@@ -2,13 +2,13 @@
  * Core container implementation for Nexus DI
  */
 
-import { ModuleCompiler } from '../modules/module.js';
-import { Plugin, PluginManager } from '../plugins/plugin.js';
-import { ContextManager, ContextProvider } from '../context/context.js';
-import { LifecycleEvent, LifecycleManager } from '../lifecycle/lifecycle.js';
-import { isToken, isMultiToken, getTokenName, isOptionalToken } from '../token/token.js';
-import { Middleware, MiddlewareContext, MiddlewarePipeline } from '../middleware/middleware.js';
-import { isConstructor } from '../utils/provider-utils.js';
+import { ModuleCompiler } from './module.js';
+import { Plugin, PluginManager } from './plugin.js';
+import { ContextManager, ContextProvider } from './context.js';
+import { LifecycleEvent, LifecycleManager } from './lifecycle.js';
+import { isToken, isMultiToken, getTokenName, isOptionalToken } from './token.js';
+import { Middleware, MiddlewareContext, MiddlewarePipeline } from './middleware.js';
+import { isConstructor } from './provider-utils.js';
 import {
   DisposalError,
   ResolutionError,
@@ -18,7 +18,7 @@ import {
   CircularDependencyError,
   DependencyNotFoundError,
   DuplicateRegistrationError
-} from '../errors/errors.js';
+} from './errors.js';
 import {
   Scope,
   IModule,
@@ -34,7 +34,7 @@ import {
   ContainerMetadata,
   RegistrationOptions,
   FactoryProvider
-} from '../types/core.js';
+} from './types.js';
 
 /**
  * Registration metadata
@@ -316,15 +316,15 @@ export class Container implements IContainer {
         const injectedDependencies = Reflect.getMetadata(METADATA_KEYS.INJECT, classConstructor);
         const optionalMetadata = Reflect.getMetadata(METADATA_KEYS.OPTIONAL, classConstructor) || {};
 
-      if (injectedDependencies) {
-        // Transform dependencies to include optional flag
-        dependencies = injectedDependencies.map((dep: any, index: number) => {
-          if (optionalMetadata[index]) {
-            return { token: dep, optional: true };
-          }
-          return dep;
-        });
-      }
+        if (injectedDependencies) {
+          // Transform dependencies to include optional flag
+          dependencies = injectedDependencies.map((dep: any, index: number) => {
+            if (optionalMetadata[index]) {
+              return { token: dep, optional: true };
+            }
+            return dep;
+          });
+        }
       }
     }
 
@@ -751,17 +751,17 @@ export class Container implements IContainer {
           const propertyInjections = Reflect.getMetadata(METADATA_KEYS.PROPERTY_INJECTIONS, classConstructor);
 
           if (propertyInjections) {
-          for (const [propertyKey, token] of Object.entries(propertyInjections)) {
-            try {
-              instance[propertyKey] = this.resolve(token as InjectionToken<any>);
-            } catch (error) {
-              // Ignore optional property injection errors
-              if (!(error instanceof DependencyNotFoundError)) {
-                throw error;
+            for (const [propertyKey, token] of Object.entries(propertyInjections)) {
+              try {
+                instance[propertyKey] = this.resolve(token as InjectionToken<any>);
+              } catch (error) {
+                // Ignore optional property injection errors
+                if (!(error instanceof DependencyNotFoundError)) {
+                  throw error;
+                }
               }
             }
           }
-        }
         }
       }
 

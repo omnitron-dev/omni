@@ -2,7 +2,7 @@
  * Middleware system for Nexus DI Container
  */
 
-import { InjectionToken, ResolutionContext } from '../types/core.js';
+import { InjectionToken, ResolutionContext } from './types.js';
 
 /**
  * Middleware execution result

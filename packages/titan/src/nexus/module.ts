@@ -12,7 +12,7 @@ import {
   DynamicModule,
   InjectionToken,
   ServiceIdentifier
-} from '../types/core.js';
+} from './types.js';
 
 /**
  * Module metadata decorator options
@@ -397,10 +397,10 @@ export class ModuleBuilder {
    * Add providers
    */
   providers(...providers: Array<Provider<any> | Constructor<any> | [InjectionToken<any>, ProviderDefinition<any>]>): this {
-    const processedProviders = providers.map((p): Provider<any> | Constructor<any> | [InjectionToken<any>, ProviderDefinition<any>] => 
+    const processedProviders = providers.map((p): Provider<any> | Constructor<any> | [InjectionToken<any>, ProviderDefinition<any>] =>
       // Provider format is already valid, return as-is
       // (Provider objects with 'provide' field and other formats are all valid)
-       p
+      p
     );
 
     this.metadata.providers = [...(this.metadata.providers || []), ...processedProviders];

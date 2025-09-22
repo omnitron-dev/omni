@@ -21,7 +21,7 @@ import {
   createTracer,
   withSpan,
   trace
-} from '../../../src/nexus/tracing/index.js';
+} from '../../../src/nexus/tracing.js';
 import {
   DevToolsPlugin,
   DevToolsServer,
@@ -32,7 +32,7 @@ import {
   createDevTools,
   exportToDot,
   exportToMermaid
-} from '../../../src/nexus/devtools/index.js';
+} from '../../../src/nexus/devtools.js';
 
 describe('Tracing', () => {
   let container: Container;

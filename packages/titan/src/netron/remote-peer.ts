@@ -1,4 +1,4 @@
-import { Logger } from 'pino';
+import type { ILogger } from '../modules/logger/logger.types.js';
 /**
  * Imports required dependencies for the RemotePeer class implementation.
  * @module remote-peer
@@ -59,7 +59,7 @@ export class RemotePeer extends AbstractPeer {
   /** Event emitter for handling internal events */
   private events = new EventEmitter();
 
-  public logger: Logger;
+  public logger: ILogger;
 
   /**
    * Map of response handlers for pending requests with timeout functionality.

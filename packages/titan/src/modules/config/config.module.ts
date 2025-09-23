@@ -11,7 +11,7 @@
  * @module titan/modules/config
  */
 
-import { createToken } from '@nexus';
+import { createToken } from '../../nexus/index.js';
 import { ZodType } from 'zod';
 
 import { ConfigService } from './config.service.js';

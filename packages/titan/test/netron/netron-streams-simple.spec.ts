@@ -2,6 +2,7 @@ import { WebSocket } from 'ws';
 import { jest, describe, beforeEach, afterEach, afterAll, it, expect } from '@jest/globals';
 
 import { Netron, RemotePeer, createStreamPacket, NetronReadableStream, NetronWritableStream } from '../../src/netron';
+import { createMockLogger } from './test-utils.js';
 
 describe('Netron Streams Simple Tests', () => {
   jest.setTimeout(10000); // Set test timeout to 10 seconds
@@ -11,7 +12,8 @@ describe('Netron Streams Simple Tests', () => {
 
   beforeEach(async () => {
     // Create real Netron instance with shorter timeout for faster tests
-    netron = await Netron.create({ streamTimeout: 100 });
+    const logger = createMockLogger();
+    netron = await Netron.create(logger, { streamTimeout: 100 });
 
     // Create a mock WebSocket for testing
     const mockSocket = {

@@ -38,7 +38,7 @@ export {
   type DynamicModule,
   createModule,
   Module as NexusModule  // Export Nexus Module with different name
-} from '@nexus';
+} from './nexus/index.js';
 
 // ============================================================================
 // Helper Functions

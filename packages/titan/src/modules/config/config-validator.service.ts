@@ -5,7 +5,7 @@
  */
 
 import { ZodType, ZodError } from 'zod';
-import { Injectable } from '@nexus';
+import { Injectable } from '../../nexus/index.js';
 
 import type { IConfigValidator, IConfigValidationResult } from './types.js';
 

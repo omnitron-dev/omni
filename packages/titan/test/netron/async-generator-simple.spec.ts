@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 
-import { Netron, Public, Service } from '../../src/netron';
+import { Netron, Public, Service } from '../../src/netron/index.js';
+import { createMockLogger } from './test-utils.js';
 
 // Simple service with async generator
 @Service('test@1.0.0')
@@ -21,12 +22,12 @@ describe('AsyncGenerator Basic Test', () => {
   beforeEach(async () => {
     serverPort = 9000 + Math.floor(Math.random() * 1000);
 
-    // Create and start server
-    server = new Netron({
+    // Create and start server with logger
+    const serverLogger = createMockLogger();
+    server = await Netron.create(serverLogger, {
       listenHost: 'localhost',
       listenPort: serverPort,
     });
-    await server.start();
 
     // Expose service
     const service = new TestService();
@@ -39,9 +40,9 @@ describe('AsyncGenerator Basic Test', () => {
   });
 
   it('should stream numbers from async generator', async () => {
-    // Create client and connect
-    client = new Netron();
-    await client.start();
+    // Create client and connect with logger
+    const clientLogger = createMockLogger();
+    client = await Netron.create(clientLogger, {});
     const peer = await client.connect(`ws://localhost:${serverPort}`);
 
     // Query the service

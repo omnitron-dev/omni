@@ -2,7 +2,7 @@
  * Core types for Titan application framework
  */
 
-import { Token, Container, Provider, type InjectionToken } from '@nexus';
+import { Token, Container, Provider, type InjectionToken } from './nexus/index.js';
 
 /**
  * Application lifecycle state

@@ -5,7 +5,7 @@
  */
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
-import { Inject, Container, Injectable } from '@nexus';
+import { Inject, Container, Injectable } from '../../nexus/index.js';
 
 import { EventMetadataService } from './event-metadata.service.js';
 import { EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN } from './events.module.js';
@@ -379,7 +379,7 @@ export class EventDiscoveryService {
    * Unregister all handlers
    */
   unregisterAllHandlers(): void {
-    for (const [target, handlers] of this.registeredHandlers.entries()) {
+    for (const [, handlers] of this.registeredHandlers.entries()) {
       for (const [event, handler] of handlers.entries()) {
         this.emitter.off(event, handler);
       }

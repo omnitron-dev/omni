@@ -275,6 +275,9 @@ export class PluginManager {
     if (name === 'afterResolve' && args.length >= 2) {
       return args[1];
     }
+
+    // For other hooks, return undefined
+    return undefined;
   }
 
   /**

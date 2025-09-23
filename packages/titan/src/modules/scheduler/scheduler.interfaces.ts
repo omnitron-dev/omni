@@ -2,7 +2,7 @@
  * Scheduler Interfaces and Types
  */
 
-import type { InjectionToken } from '@nexus';
+import type { InjectionToken } from '../../nexus/index.js';
 
 /**
  * Cron expression type

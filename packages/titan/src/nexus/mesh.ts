@@ -841,6 +841,8 @@ export function createRemoteProxy<T extends object>(options: {
                 }
               }
             }
+            // This should never be reached, but ensures all paths return
+            throw new Error('Failed to complete request after all retry attempts');
           };
         }
         return undefined;

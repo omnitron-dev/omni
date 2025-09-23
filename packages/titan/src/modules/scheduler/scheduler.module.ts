@@ -4,7 +4,7 @@
  * Provides task scheduling capabilities
  */
 
-import { Module, type DynamicModule } from '@nexus';
+import { Module, type DynamicModule } from '../../nexus/index.js';
 
 import { SchedulerService } from './scheduler.service.js';
 import { SchedulerRegistry } from './scheduler.registry.js';

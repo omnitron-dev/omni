@@ -1,6 +1,7 @@
 import { delay } from '@omnitron-dev/common';
 
 import { Public, Netron, Service, RemotePeer } from '../../src/netron';
+import { createMockLogger } from './test-utils.js';
 
 describe('RemotePeer Service Versioning', () => {
   let localNetron: Netron;
@@ -31,14 +32,16 @@ describe('RemotePeer Service Versioning', () => {
     }
   }
   beforeAll(async () => {
-    localNetron = await Netron.create({
+    const localLogger = createMockLogger();
+    localNetron = await Netron.create(localLogger, {
       id: 'local',
       listenHost: 'localhost',
       listenPort: 9090,
       allowServiceEvents: true,
     });
 
-    remoteNetron = await Netron.create({ id: 'remote' });
+    const remoteLogger = createMockLogger();
+    remoteNetron = await Netron.create(remoteLogger, { id: 'remote' });
     await localNetron.peer.exposeService(new VersionedServiceV1());
     await localNetron.peer.exposeService(new VersionedServiceV2());
 

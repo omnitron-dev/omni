@@ -4,7 +4,7 @@
  * Decorators for event-driven architecture in Titan framework
  */
 
-import { createDecorator, createMethodInterceptor } from '@nexus';
+import { createDecorator, createMethodInterceptor } from '../../nexus/index.js';
 import {
   EVENT_HANDLER_METADATA,
   EVENT_ONCE_METADATA,
@@ -192,6 +192,9 @@ export const EmitEvent = createMethodInterceptor<{
 
     // Emit success event
     const eventData = mapResult ? mapResult(result) : result;
+    // TODO: Actually emit the event with eventData
+    // This requires access to an event emitter instance
+    void eventData; // Suppress unused variable warning
 
     // Store metadata for discovery
     Reflect.defineMetadata(
@@ -205,6 +208,9 @@ export const EmitEvent = createMethodInterceptor<{
   } catch (error) {
     // Emit error event
     const errorData = mapError ? mapError(error) : error;
+    // TODO: Actually emit the error event with errorData
+    // This requires access to an event emitter instance
+    void errorData; // Suppress unused variable warning
 
     // Store metadata for discovery
     Reflect.defineMetadata(

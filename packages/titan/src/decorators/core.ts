@@ -6,7 +6,7 @@
 
 import 'reflect-metadata';
 import { createDecorator } from './decorator-factory.js';
-import type { Constructor } from '@nexus';
+import type { Constructor } from '../nexus/index.js';
 
 /**
  * Scope type for dependency injection

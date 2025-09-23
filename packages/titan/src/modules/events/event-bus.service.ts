@@ -7,8 +7,7 @@
 import type { EventMetadata } from '@omnitron-dev/eventemitter';
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
-import { Inject, Injectable, Optional } from '@nexus';
-import type { ILogger } from '../logger/logger.types.js';
+import { Inject, Injectable, Optional } from '../../nexus/index.js';
 
 import { EVENT_EMITTER_TOKEN } from './events.module.js';
 import { LOGGER_TOKEN } from './tokens.js';
@@ -17,7 +16,6 @@ import type {
   EventData,
   EventHandler,
   VarArgEventHandler,
-  EventMiddleware,
   IEventSubscription,
   HealthCheckResult
 } from './event.types.js';

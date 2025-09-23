@@ -5,7 +5,7 @@
 import os from 'node:os';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { Token, Container, createToken, InjectionToken, Provider, AsyncFactory } from './nexus/index.js';
-import { Netron, type NetronOptions } from '@netron';
+import { Netron, type NetronOptions } from './netron/index.js';
 
 import { ConfigModule, CONFIG_SERVICE_TOKEN } from './modules/config/index.js';
 import { LoggerModule, LOGGER_SERVICE_TOKEN } from './modules/logger/index.js';
@@ -226,6 +226,7 @@ export class Application implements IApplication {
     } finally {
       this._startPromise = null;
     }
+    return undefined;
   }
 
   /**
@@ -277,7 +278,7 @@ export class Application implements IApplication {
 
 
       for (const entry of sortedModules) {
-        const [token, module] = entry;
+        const [, module] = entry;
         this._logger?.debug({ module: module.name }, 'Starting module');
 
         // Register module
@@ -362,7 +363,7 @@ export class Application implements IApplication {
     }
 
     if (this._state !== ApplicationState.Started && this._state !== ApplicationState.Failed) {
-      return; // Not in a stoppable state
+      return undefined; // Not in a stoppable state
     }
 
     // Create and track the stop promise
@@ -372,6 +373,7 @@ export class Application implements IApplication {
     } finally {
       this._stopPromise = null;
     }
+    return undefined;
   }
 
   /**
@@ -455,7 +457,7 @@ export class Application implements IApplication {
       for (let i = sortedModules.length - 1; i >= 0; i--) {
         const entry = sortedModules[i];
         if (!entry) continue;
-        const [token, module] = entry;
+        const [, module] = entry;
 
         this._logger?.debug({ module: module.name }, 'Stopping module');
 
@@ -526,7 +528,8 @@ export class Application implements IApplication {
       // Stop logger first among core modules
       if (this._container.has(LOGGER_SERVICE_TOKEN)) {
         try {
-          const loggerService = this._container.resolve(LOGGER_SERVICE_TOKEN) as ILoggerModule;
+          // Ensure logger service is resolved before stopping
+          this._container.resolve(LOGGER_SERVICE_TOKEN) as ILoggerModule;
           this._logger?.debug({ module: 'logger' }, 'Stopping module');
           // Logger service doesn't need explicit stop
           this.emit(ApplicationEvent.ModuleStopped, { module: 'logger' });
@@ -1126,13 +1129,8 @@ export class Application implements IApplication {
 
     // Apply logger configuration if provided
     if (options['logger'] && this._container.has(LOGGER_SERVICE_TOKEN)) {
-      try {
-        const loggerService = this._container.resolve(LOGGER_SERVICE_TOKEN) as ILoggerModule;
-        // Logger service configuration is handled via forRoot pattern now
-        // We could add a reconfigure method if needed
-      } catch {
-        // Logger not found
-      }
+      // Logger service configuration is handled via forRoot pattern now
+      // We could add a reconfigure method if needed in future
     }
 
     // Apply event configuration if provided
@@ -1152,7 +1150,7 @@ export class Application implements IApplication {
     }
 
     // Reconfigure modules that have configure method
-    for (const [token, module] of this._modules.entries()) {
+    for (const [, module] of this._modules.entries()) {
       if (module.configure && module.name && this._config[module.name]) {
         module.configure(this._config[module.name]);
       }
@@ -1436,7 +1434,7 @@ export class Application implements IApplication {
         this._modules.set(token, resolved as any);
       }
       return resolved;
-    } catch (error) {
+    } catch {
       // Provide a better error message
       throw new Error(`Module not found: ${token.name || token.toString()}`);
     }
@@ -1600,32 +1598,28 @@ export class Application implements IApplication {
       }
     }
 
-    // 3. Register Netron service as a lazy-loaded singleton
+    // 3. Register Netron service as a singleton instance
     if (!this._container.has(NetronToken)) {
-      this._container.register(NetronToken, {
-        useFactory: (async (container: Container) => {
-          // Build Netron options from config
-          const netronConfig = this._config?.['netron'] || {};
-          const logger = this._logger;
+      const netronConfig = this._config?.['netron'] || {};
+      const netronOptions: NetronOptions = {
+        ...netronConfig,
+        // Use application ID as Netron ID if not specified
+        id: netronConfig.id || `${this._name}-netron`
+      };
 
-          const netronOptions: NetronOptions = {
-            logger: logger as any,
-            ...netronConfig,
-            // Use application ID as Netron ID if not specified
-            id: netronConfig.id || `${this._name}-netron`
-          };
+      // Create Netron instance directly with logger if available
+      if (this._logger) {
+        const netron = new Netron(this._logger, netronOptions);
 
-          // Create and start Netron instance
-          const netron = new Netron(netronOptions);
+        // Register as singleton instance
+        this._container.register(NetronToken, {
+          useValue: netron
+        });
 
-          this._logger?.info({ module: 'Netron', id: netron.id }, 'Netron service initialized');
-          return netron;
-        }) as AsyncFactory<Netron>,
-        async: true,
-        scope: 'singleton' as any
-      });
-
-      this._logger?.debug({ module: 'Application' }, 'Netron service registered (lazy-loaded)');
+        this._logger.debug({ module: 'Application' }, 'Netron service registered as singleton instance');
+      } else {
+        console.warn('[Application] Logger not available, skipping Netron registration');
+      }
     }
   }
 
@@ -2255,7 +2249,7 @@ export class Application implements IApplication {
             }
           }
         }
-      } catch (error) {
+      } catch {
         // Path doesn't exist, skip it
         this._logger?.debug(`Scan path not found: ${scanPath}`);
       }

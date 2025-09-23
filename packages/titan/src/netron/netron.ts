@@ -1,7 +1,4 @@
-import path from 'node:path';
-import { Logger } from 'pino';
 import { Redis } from 'ioredis';
-import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { IncomingMessage } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
@@ -12,40 +9,20 @@ import { LocalPeer } from './local-peer.js';
 import { RemotePeer } from './remote-peer.js';
 import { getPeerEventName } from './utils.js';
 import { ServiceStub } from './service-stub.js';
-import LoggerFactory from './logging/logger.js';
 import { Task, TaskManager } from './task-manager.js';
+import type { ILogger } from '../modules/logger/logger.types.js';
 // import { ServiceInfo, ServiceDiscovery } from './service-discovery/index.js';
 import { CONNECT_TIMEOUT, NETRON_EVENT_PEER_CONNECT, NETRON_EVENT_PEER_DISCONNECT } from './constants.js';
 import { ensureStreamReferenceRegistered } from './packet/serializer.js';
 
-// ESM __dirname equivalent
-// Check if __filename is already defined (for compatibility with different module systems)
-let _filename: string;
-let _dirname: string;
-
-try {
-  if (typeof __filename !== 'undefined') {
-    _filename = __filename;
-    _dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(_filename);
-  } else {
-    // Fallback for ES modules or test environments
-    // We'll try to use import.meta.url but wrap it to avoid syntax errors
-    try {
-      // Use eval to avoid syntax errors in non-ESM environments
-      const metaUrl = eval('import.meta.url');
-      _filename = fileURLToPath(metaUrl);
-      _dirname = path.dirname(_filename);
-    } catch {
-      // Fallback for test environments
-      _filename = 'unknown';
-      _dirname = process.cwd();
-    }
-  }
-} catch (e) {
-  // Fallback for test environments where import.meta might fail
-  _filename = 'unknown';
-  _dirname = process.cwd();
-}
+// Import core tasks
+import { abilities } from './core-tasks/abilities.js';
+import { emit } from './core-tasks/emit.js';
+import { expose_service } from './core-tasks/expose-service.js';
+import { subscribe } from './core-tasks/subscribe.js';
+import { unsubscribe } from './core-tasks/unsubscribe.js';
+import { unexpose_service } from './core-tasks/unexpose-service.js';
+import { unref_service } from './core-tasks/unref-service.js';
 
 /**
  * The main Netron class that manages WebSocket connections, services, and peer communication.
@@ -57,7 +34,7 @@ try {
  * @description Core class for managing distributed system components and peer-to-peer communication
  * @example
  * // Create a new Netron instance
- * const netron = await Netron.create({
+ * const netron = new Netron(logger, {
  *   listenHost: 'localhost',
  *   listenPort: 8080,
  *   discoveryEnabled: true,
@@ -180,32 +157,37 @@ export class Netron extends EventEmitter {
    */
   private discoveryRedis?: Redis;
 
-  public logger: Logger;
+  public logger: ILogger;
 
   /**
-   * Creates a new Netron instance with the specified options.
+   * Creates a new Netron instance.
    * Initializes the task manager and local peer.
    *
    * @constructor
+   * @param {ILogger} logger - Logger instance for Netron
    * @param {NetronOptions} [options] - Configuration options for the Netron instance
    * @throws {Error} If required options are missing or invalid
    * @example
-   * const netron = new Netron({
-   *   id: 'custom-id',
-   *   taskTimeout: 5000,
-   *   taskOverwriteStrategy: 'replace'
+   * const netron = new Netron(logger, {
+   *   listenHost: 'localhost',
+   *   listenPort: 8080
    * });
    */
-  constructor(options?: NetronOptions) {
+  constructor(logger: ILogger, options: NetronOptions = {}) {
     super();
 
-    this.options = options ?? {};
-    this.id = options?.id ?? randomUUID();
+    this.options = options;
+    this.id = options.id ?? randomUUID();
 
-    if (options?.loggerOptions || options?.loggerDestination) {
-      LoggerFactory.initLogger(options.loggerOptions || {}, options.loggerDestination);
-    }
-    this.logger = LoggerFactory.getLogger(options?.loggerContext);
+    // Store base logger as private field
+    (this as any).baseLogger = logger;
+
+    // Create child logger for Netron with context
+    this.logger = logger.child({
+      module: 'netron',
+      netronId: this.id,
+      ...(options.loggerContext || {})
+    });
 
     this.taskManager = new TaskManager({
       timeout: options?.taskTimeout,
@@ -238,35 +220,8 @@ export class Netron extends EventEmitter {
     // Ensure StreamReference is registered with serializer
     await ensureStreamReferenceRegistered();
 
-    // Load core tasks - try multiple possible locations
-    const possiblePaths = [
-      path.join(__dirname, 'core-tasks'),
-      path.join(__dirname, '..', 'dist', 'netron', 'core-tasks'),
-      path.join(process.cwd(), 'packages', 'titan', 'dist', 'netron', 'core-tasks'),
-      path.join(process.cwd(), 'packages', 'titan', 'src', 'netron', 'core-tasks'),
-      path.join(process.cwd(), 'dist', 'netron', 'core-tasks'),
-      path.join(process.cwd(), 'src', 'netron', 'core-tasks'),
-      path.join(_dirname, 'core-tasks'),
-      path.join(_dirname, '..', 'dist', 'core-tasks'),
-    ];
-
-    this.logger.debug({ __dirname, _dirname, cwd: process.cwd() }, 'Path information for core tasks');
-
-    let loaded = false;
-    for (const coreTasksPath of possiblePaths) {
-      try {
-        await this.taskManager.loadTasksFromDir(coreTasksPath);
-        this.logger.debug({ coreTasksPath }, 'Loaded core tasks');
-        loaded = true;
-        break;
-      } catch (err: any) {
-        this.logger.debug({ coreTasksPath, error: err?.message || String(err) }, 'Failed to load core tasks from path');
-      }
-    }
-
-    if (!loaded) {
-      this.logger.warn({ possiblePaths }, 'Could not load core tasks from any known location');
-    }
+    // Register core tasks directly
+    this.registerCoreTasks();
 
     if (!this.options?.listenHost || !this.options?.listenPort) {
       this.logger.info('Netron started in client-only mode');
@@ -598,6 +553,27 @@ export class Netron extends EventEmitter {
   }
 
   /**
+   * Registers core Netron tasks that handle essential functionality.
+   * This includes service discovery, event handling, and stream management.
+   *
+   * @private
+   */
+  private registerCoreTasks(): void {
+    this.logger.debug('Registering core tasks');
+
+    // Register each core task
+    this.taskManager.addTask(abilities as Task);
+    this.taskManager.addTask(emit as Task);
+    this.taskManager.addTask(expose_service as Task);
+    this.taskManager.addTask(subscribe as Task);
+    this.taskManager.addTask(unsubscribe as Task);
+    this.taskManager.addTask(unexpose_service as Task);
+    this.taskManager.addTask(unref_service as Task);
+
+    this.logger.debug('Core tasks registered successfully');
+  }
+
+  /**
    * Removes special events associated with a specific ID from the event queue.
    * This method is used to clean up event queues when they are no longer needed
    * or when the associated operation has been completed or cancelled.
@@ -675,8 +651,17 @@ export class Netron extends EventEmitter {
    * @returns {Promise<Netron>} A promise that resolves with the initialized Netron instance
    * @throws {Error} If initialization fails or if required resources are unavailable
    */
-  static async create(options?: NetronOptions) {
-    const netron = new Netron(options);
+  /**
+   * Creates and starts a new Netron instance.
+   * This is a convenience method for standalone usage outside of DI container.
+   *
+   * @param options - Configuration options
+   * @param logger - Logger instance (required for standalone usage)
+   * @returns Promise<Netron> - Started Netron instance
+   */
+  static async create(logger: ILogger, options?: NetronOptions) {
+    // Create Netron with provided logger
+    const netron = new Netron(logger, options || {});
     await netron.start();
     return netron;
   }

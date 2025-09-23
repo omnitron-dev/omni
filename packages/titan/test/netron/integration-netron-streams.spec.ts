@@ -9,6 +9,7 @@ import {
   NetronWritableStream,
   NETRON_EVENT_PEER_CONNECT,
 } from '../../src/netron/index';
+import { createMockLogger } from './test-utils.js';
 
 describe('Netron Streams Integration Tests', () => {
   let netronA: Netron;
@@ -16,8 +17,10 @@ describe('Netron Streams Integration Tests', () => {
   let peerB: RemotePeer;
 
   beforeEach(async () => {
-    netronA = await Netron.create({ allowServiceEvents: true });
-    netronB = await Netron.create({ listenHost: 'localhost', listenPort: 3002, allowServiceEvents: true });
+    const loggerA = createMockLogger();
+    netronA = await Netron.create(loggerA, { allowServiceEvents: true });
+    const loggerB = createMockLogger();
+    netronB = await Netron.create(loggerB, { listenHost: 'localhost', listenPort: 3002, allowServiceEvents: true });
   });
 
   afterEach(async () => {

@@ -4,7 +4,7 @@
  * Dependency injection tokens for the configuration module
  */
 
-import { createToken, Token } from '@nexus';
+import { createToken, Token } from '../../nexus/index.js';
 import type { ConfigService } from './config.service.js';
 import type { ConfigLoaderService } from './config-loader.service.js';
 import type { ConfigValidatorService } from './config-validator.service.js';

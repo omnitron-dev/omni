@@ -793,15 +793,14 @@ export class EventsService {
   ): (...args: any[]) => any {
     // If no options, return a simple wrapper that passes all arguments
     if (!options) {
-      return (...args: any[]) => {
-        // Pass all arguments through to support both regular and wildcard handlers
-        return handler(...args);
-      };
+      // Pass all arguments through to support both regular and wildcard handlers
+      return (...args: any[]) => handler(...args);
     }
 
     return async (...args: any[]): Promise<any> => {
       // Extract data (first argument) - for compatibility with standard EventEmitter pattern
-      let [data, metadata, ...restArgs] = args;
+      const [initialData, metadata, ...restArgs] = args;
+      let data = initialData;
 
       // Apply filter if specified
       if (options?.filter && !options.filter(data, metadata)) {

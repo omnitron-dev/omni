@@ -1,4 +1,4 @@
-import { Logger } from 'pino';
+import type { ILogger } from '../modules/logger/logger.types.js';
 
 import { Netron } from './netron.js';
 import { Interface } from './interface.js';
@@ -19,7 +19,7 @@ import { NETRON_EVENT_SERVICE_EXPOSE, NETRON_EVENT_SERVICE_UNEXPOSE } from './co
  * @extends AbstractPeer
  */
 export class LocalPeer extends AbstractPeer {
-  public logger: Logger;
+  public logger: ILogger;
 
   /**
    * A mapping of service definition IDs to their corresponding ServiceStub instances.

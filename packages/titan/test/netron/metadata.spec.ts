@@ -205,4 +205,16 @@ describe('Packet', () => {
   }
 }`);
   });
+
+  it('should have correct Service1 method count', () => {
+    const metadata = Reflect.getMetadata(SERVICE_ANNOTATION, Service1);
+    const methodCount = Object.keys(metadata.methods).length;
+    expect(methodCount).toBe(26); // Service1 has 26 public methods
+  });
+
+  it('should have correct Service2 method count', () => {
+    const metadata = Reflect.getMetadata(SERVICE_ANNOTATION, Service2);
+    const methodCount = Object.keys(metadata.methods).length;
+    expect(methodCount).toBe(3); // Service2 has 3 public methods
+  });
 });

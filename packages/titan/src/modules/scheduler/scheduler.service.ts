@@ -5,7 +5,7 @@
  */
 
 import * as cron from 'node-cron';
-import { Inject, Optional, Injectable } from '@nexus';
+import { Inject, Optional, Injectable } from '../../nexus/index.js';
 
 import {
   ERROR_MESSAGES,

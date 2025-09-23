@@ -1,4 +1,5 @@
 import { Netron, Public, Service, RemotePeer } from '../../src/netron';
+import { createMockLogger } from './test-utils.js';
 
 describe('Interface Lifecycle Tests', () => {
   let netron: Netron;
@@ -50,17 +51,19 @@ describe('Interface Lifecycle Tests', () => {
   }
 
   beforeAll(async () => {
-    netron = await Netron.create({ id: 'local', listenHost: 'localhost', listenPort: 7070, allowServiceEvents: true });
+    const logger = createMockLogger();
+    netron = await Netron.create(logger, { id: 'local', listenHost: 'localhost', listenPort: 7070, allowServiceEvents: true });
     await netron.peer.exposeService(new TestService());
 
-    remoteNetron = await Netron.create({ id: 'remote' });
+    const remoteLogger = createMockLogger();
+    remoteNetron = await Netron.create(remoteLogger, { id: 'remote' });
     remotePeer = await remoteNetron.connect('ws://localhost:7070');
   });
 
   afterAll(async () => {
-    remotePeer.disconnect();
-    await remoteNetron.stop();
-    await netron.stop();
+    if (remotePeer) remotePeer.disconnect();
+    if (remoteNetron) await remoteNetron.stop();
+    if (netron) await netron.stop();
   });
 
   it('should correctly handle parallel queryInterface calls', async () => {

@@ -5,20 +5,27 @@ import { Service3 } from './fixtures/service3';
 import { Service4 } from './fixtures/service4';
 import { Service5 } from './fixtures/service5';
 import { Netron, Interface, LocalPeer, NETRON_EVENT_SERVICE_EXPOSE, NETRON_EVENT_SERVICE_UNEXPOSE } from '../../src/netron/index.js';
+import { createMockLogger } from './test-utils.js';
 
 describe('LocalPeer', () => {
   let netron: Netron;
+  let port = 18080;
 
-  beforeEach(() => {
-    netron = new Netron({
+  beforeEach(async () => {
+    const logger = createMockLogger();
+    // Use a different port for each test to avoid conflicts
+    port++;
+    netron = await Netron.create(logger, {
       id: 'n1',
       listenHost: 'localhost',
-      listenPort: 8080,
+      listenPort: port,
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     netron.peer.unexposeAllServices();
+    // Properly stop the Netron instance to free the port
+    await netron.stop();
   });
 
   it('should create own peer', () => {
@@ -367,7 +374,7 @@ describe('LocalPeer', () => {
     expect(peer.stubs.size).toBe(0);
   });
 
-  it.skip('send exposed service to another service through argument', async () => {
+  it('send exposed service to another service through argument', async () => {
     const svc1 = new Service1();
     const svc4 = new Service4();
     const peer = netron.peer;
@@ -392,7 +399,7 @@ describe('LocalPeer', () => {
     }
   });
 
-  it.skip('should release interface when service is unexposed', async () => {
+  it('should release interface when service is unexposed', async () => {
     const svc2 = new Service2();
     const srv4 = new Service4();
     const peer = netron.peer;

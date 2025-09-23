@@ -4,7 +4,7 @@
  * Validates event data against schemas
  */
 
-import { Injectable } from '@nexus';
+import { Injectable } from '../../nexus/index.js';
 
 import type {
   EventData,

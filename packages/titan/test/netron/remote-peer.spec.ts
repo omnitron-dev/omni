@@ -13,12 +13,14 @@ import {
   NETRON_EVENT_PEER_DISCONNECT,
   NETRON_EVENT_SERVICE_UNEXPOSE,
 } from '../../src/netron/index';
+import { createMockLogger } from './test-utils.js';
 
 describe('RemotePeer', () => {
   let netron: Netron;
 
   beforeEach(async () => {
-    netron = await Netron.create({
+    const logger = createMockLogger();
+    netron = await Netron.create(logger, {
       id: 'n1',
       listenHost: 'localhost',
       listenPort: 8080,
@@ -78,7 +80,7 @@ describe('RemotePeer', () => {
   }
 
   it('should connect to remote peer', async () => {
-    const n2 = await Netron.create();
+    const n2 = await Netron.create(createMockLogger());
     const peer1 = await n2.connect(`ws://localhost:8080`);
     expect(peer1).toBeInstanceOf(RemotePeer);
     expect(peer1.id).toBe(netron.id);
@@ -91,7 +93,7 @@ describe('RemotePeer', () => {
   });
 
   it('should emit peer connect and disconnect events with correct peerId and update peers list', async () => {
-    const n2 = await Netron.create();
+    const n2 = await Netron.create(createMockLogger());
 
     const connectHandlerN1 = jest.fn();
     const disconnectHandlerN1 = jest.fn();
@@ -131,7 +133,7 @@ describe('RemotePeer', () => {
   });
 
   it('should use specified id', async () => {
-    const n2 = await Netron.create({
+    const n2 = await Netron.create(createMockLogger(), {
       id: 'n2',
     });
 
@@ -146,7 +148,7 @@ describe('RemotePeer', () => {
   });
 
   it('should have abilities after connection', async () => {
-    const n2 = await Netron.create({
+    const n2 = await Netron.create(createMockLogger(), {
       id: 'n2',
     });
 
@@ -166,7 +168,7 @@ describe('RemotePeer', () => {
   });
 
   it('connector side can send abilities', async () => {
-    const n2 = await Netron.create({
+    const n2 = await Netron.create(createMockLogger(), {
       id: 'n2',
       allowServiceEvents: true,
     });
@@ -191,7 +193,7 @@ describe('RemotePeer', () => {
     const peer = netron.peer;
     peer.exposeService(svc1);
 
-    const n2 = await Netron.create();
+    const n2 = await Netron.create(createMockLogger());
     const peer1 = await n2.connect(`ws://localhost:8080`);
     const iface = await peer1.queryInterface<IService1>('service1');
 
@@ -207,7 +209,7 @@ describe('RemotePeer', () => {
     const peer = netron.peer;
     peer.exposeService(ctx1);
 
-    const n2 = await Netron.create({
+    const n2 = await Netron.create(createMockLogger(), {
       requestTimeout: 500,
     });
     const peer1 = await n2.connect(`ws://localhost:8080`);
@@ -227,7 +229,7 @@ describe('RemotePeer', () => {
     const peer = netron.peer;
     peer.exposeService(ctx1);
 
-    const n2 = await Netron.create();
+    const n2 = await Netron.create(createMockLogger());
     const peer1 = await n2.connect(`ws://localhost:8080`);
 
     const iface = await peer1.queryInterface<IService1>('service1');
@@ -243,7 +245,7 @@ describe('RemotePeer', () => {
     const peer = netron.peer;
     peer.exposeService(ctx1);
 
-    const n2 = await Netron.create();
+    const n2 = await Netron.create(createMockLogger());
     const peer1 = await n2.connect(`ws://localhost:8080`);
 
     const iface = await peer1.queryInterface<IService5>('service5');
@@ -276,7 +278,7 @@ describe('RemotePeer', () => {
     const peer = netron.peer;
     peer.exposeService(ctx1);
 
-    const n2 = await Netron.create();
+    const n2 = await Netron.create(createMockLogger());
     const peer1 = await n2.connect(`ws://localhost:8080`);
 
     const iface = await peer1.queryInterface<IService5>('service5');
@@ -299,7 +301,8 @@ describe('RemotePeer', () => {
     const peer = netron.peer;
     peer.exposeService(svc2);
 
-    const n2 = new Netron();
+    const n2 = new Netron(createMockLogger());
+    await n2.start();
     const peer1 = await n2.connect('ws://localhost:8080');
 
     expect(peer1.getServiceNames()).toEqual(['service2']);
@@ -349,7 +352,8 @@ describe('RemotePeer', () => {
     const peer = netron.peer;
     peer.exposeService(svc2);
 
-    const n2 = new Netron();
+    const n2 = new Netron(createMockLogger());
+    await n2.start();
     const peer1 = await n2.connect('ws://localhost:8080');
     const iService2 = await peer1.queryInterface<IService2>('service2');
     const iService1 = await iService2.getService1();
@@ -362,7 +366,7 @@ describe('RemotePeer', () => {
 
   it('autosubscribe to expose and unexpose events', async () => {
     const peer = netron.peer;
-    const n2 = await Netron.create();
+    const n2 = await Netron.create(createMockLogger());
     const peer1 = await n2.connect('ws://localhost:8080');
 
     await peer.exposeService(new Service1());
@@ -382,7 +386,7 @@ describe('RemotePeer', () => {
 
   it('subscribe to event', async () => {
     const peer = netron.peer;
-    const n2 = await Netron.create();
+    const n2 = await Netron.create(createMockLogger());
     const peer1 = await n2.connect('ws://localhost:8080');
 
     const eventHandler1 = jest.fn();
@@ -417,7 +421,7 @@ describe('RemotePeer', () => {
 
   it('subscribe to same event multiple times should handle it only once', async () => {
     const peer = netron.peer;
-    const n2 = await Netron.create();
+    const n2 = await Netron.create(createMockLogger());
     const peer1 = await n2.connect('ws://localhost:8080');
 
     const eventHandler1 = jest.fn();
@@ -442,7 +446,7 @@ describe('RemotePeer', () => {
 
   it('unsubscribe event', async () => {
     const peer = netron.peer;
-    const n2 = await Netron.create();
+    const n2 = await Netron.create(createMockLogger());
     const peer1 = await n2.connect('ws://localhost:8080');
 
     const eventHandler1 = jest.fn();
@@ -473,7 +477,7 @@ describe('RemotePeer', () => {
 
   it('unsubscribe all events', async () => {
     const peer = netron.peer;
-    const n2 = await Netron.create();
+    const n2 = await Netron.create(createMockLogger());
     const peer1 = await n2.connect('ws://localhost:8080');
 
     const eventHandler1 = jest.fn();
@@ -493,7 +497,7 @@ describe('RemotePeer', () => {
 
   it('expose service remotely and query it from local peer', async () => {
     const peer = netron.peer;
-    const n2 = await Netron.create();
+    const n2 = await Netron.create(createMockLogger());
     const peer1 = await n2.connect('ws://localhost:8080');
 
     const svc1 = new Service1();
@@ -513,8 +517,8 @@ describe('RemotePeer', () => {
 
   it('expose service remotely and query it from other remote peer', async () => {
     const peer = netron.peer;
-    const n2 = await Netron.create();
-    const n3 = await Netron.create();
+    const n2 = await Netron.create(createMockLogger());
+    const n3 = await Netron.create(createMockLogger());
     const peer21 = await n2.connect('ws://localhost:8080');
     const peer31 = await n3.connect('ws://localhost:8080');
 
@@ -585,8 +589,8 @@ describe('RemotePeer', () => {
 
   it('subscribe to event for remote service exposed by another peer', async () => {
     const peer = netron.peer;
-    const n2 = await Netron.create();
-    const n3 = await Netron.create();
+    const n2 = await Netron.create(createMockLogger());
+    const n3 = await Netron.create(createMockLogger());
     const peer21 = await n2.connect('ws://localhost:8080');
     const peer31 = await n3.connect('ws://localhost:8080');
 
@@ -660,8 +664,8 @@ describe('RemotePeer', () => {
 
   it('query, use and release proxified service', async () => {
     const peer = netron.peer;
-    const n2 = await Netron.create();
-    const n3 = await Netron.create();
+    const n2 = await Netron.create(createMockLogger());
+    const n3 = await Netron.create(createMockLogger());
     const peer21 = await n2.connect('ws://localhost:8080');
     const peer31 = await n3.connect('ws://localhost:8080');
 
@@ -721,7 +725,7 @@ describe('RemotePeer', () => {
     const peer = netron.peer;
     await peer.exposeService(svc1);
 
-    const n2 = await Netron.create();
+    const n2 = await Netron.create(createMockLogger());
     const peer1 = await n2.connect(`ws://localhost:8080`);
 
     // Запрашиваем интерфейс в первый раз

@@ -2,7 +2,7 @@
  * Scheduler Constants
  */
 
-import { Token, createToken } from '@nexus';
+import { Token, createToken } from '../../nexus/index.js';
 
 import type {
   IJobListener,

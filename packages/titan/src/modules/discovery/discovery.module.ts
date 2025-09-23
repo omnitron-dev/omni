@@ -7,7 +7,7 @@
 import { Redis } from 'ioredis';
 import { Module, Injectable } from '../../decorators/index.js';
 import { IModule, IApplication } from '../../types.js';
-import { createToken, type Token } from '@nexus';
+import { createToken, type Token } from '../../nexus/index.js';
 import type { ILogger } from '../logger/logger.types.js';
 import { DiscoveryService } from './discovery.service.js';
 import {

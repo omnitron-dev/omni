@@ -31,7 +31,9 @@ import {
   ShutdownPriority,
   LifecycleState,
   IProcessMetrics,
-  IHealthStatus
+  IHealthStatus,
+  ConfigValue,
+  ConfigObject
 } from './types.js';
 
 /**
@@ -47,7 +49,7 @@ export class Application implements IApplication {
   private _state: ApplicationState = ApplicationState.Created;
   private _container: Container;
   private _config: IApplicationConfig;
-  private _userConfig: any;  // Store original user config separately
+  private _userConfig: ConfigObject;  // Store original user config separately
   private _name: string;
   private _version: string;
   private _debug: boolean;
@@ -309,11 +311,13 @@ export class Application implements IApplication {
         },
         'Application started successfully'
       );
-    } catch (error: any) {
+    } catch (error) {
       this.setState(ApplicationState.Failed);
       this._isStarted = false;
       this._logger?.error({ error }, 'Application failed to start');
-      this.handleError(error);
+      if (error instanceof Error) {
+        this.handleError(error);
+      }
       throw error;
     }
   }
@@ -449,11 +453,11 @@ export class Application implements IApplication {
           if (module.onDestroy && !options.force) {
             await module.onDestroy();
           }
-        } catch (error: any) {
+        } catch (error) {
           this._logger?.error({ error, module: module.name }, 'Module stop failed');
 
           // Handle timeout errors
-          if (error.message && error.message.includes('timed out')) {
+          if (error instanceof Error && error.message.includes('timed out')) {
             if (!options.force) {
               // Only throw timeout errors if not force stop
               throw error;
@@ -513,7 +517,7 @@ export class Application implements IApplication {
 
       // Also emit ShutdownComplete for compatibility with shutdown flow
       this.emit(ApplicationEvent.ShutdownComplete, { reason: ShutdownReason.Manual, success: true });
-    } catch (error: any) {
+    } catch (error) {
       this.setState(ApplicationState.Failed);
       this._isStarted = false;
       this._logger?.error({ error }, 'Error during application stop');
@@ -857,7 +861,7 @@ export class Application implements IApplication {
   /**
    * Emit event asynchronously and wait for all handlers
    */
-  async emitAsync<E extends ApplicationEvent | string>(event: E, data?: any): Promise<void> {
+  async emitAsync<E extends ApplicationEvent | string>(event: E, data?: unknown): Promise<void> {
     const meta: IEventMeta = {
       event,
       timestamp: Date.now(),
@@ -885,7 +889,7 @@ export class Application implements IApplication {
       const listeners = this._eventEmitter.listeners(event);
 
       // Execute all listeners and wait for them
-      const promises = listeners.map((listener: any) =>
+      const promises = listeners.map((listener) =>
         Promise.resolve(listener(data, meta))
       );
 
@@ -894,7 +898,7 @@ export class Application implements IApplication {
       // Also emit to wildcard listeners if event is not already '*'
       if (event !== '*') {
         const wildcardListeners = this._eventEmitter.listeners('*');
-        const wildcardPromises = wildcardListeners.map((listener: any) =>
+        const wildcardPromises = wildcardListeners.map((listener) =>
           Promise.resolve(listener(data, meta))
         );
         await Promise.all(wildcardPromises);
@@ -912,7 +916,7 @@ export class Application implements IApplication {
   /**
    * Emit event synchronously
    */
-  emit<E extends ApplicationEvent | string>(event: E, data?: any): void {
+  emit<E extends ApplicationEvent | string>(event: E, data?: unknown): void {
     const meta: IEventMeta = {
       event,
       timestamp: Date.now(),
@@ -1017,7 +1021,7 @@ export class Application implements IApplication {
   /**
    * Deep merge helper function
    */
-  private deepMerge(target: any, source: any): any {
+  private deepMerge(target: ConfigObject, source: ConfigObject): ConfigObject {
     if (!source || typeof source !== 'object') return source;
     if (Array.isArray(source)) return source;
 
@@ -1044,14 +1048,14 @@ export class Application implements IApplication {
   /**
    * Configure application settings
    */
-  configure<T = any>(configOrKey: T | string, value?: any): this {
-    let options: any;
+  configure<T = ConfigObject>(configOrKey: T | string, value?: ConfigValue): this {
+    let options: ConfigObject;
 
     // Support both full config object and key-value pairs
     if (typeof configOrKey === 'string') {
       options = { [configOrKey]: value };
     } else {
-      options = configOrKey as any;
+      options = configOrKey as ConfigObject;
     }
 
     // Merge configuration
@@ -1060,7 +1064,7 @@ export class Application implements IApplication {
     for (const key of Object.keys(options)) {
       // Deep merge for all configs (both module and non-module)
       if (newConfig[key] && typeof newConfig[key] === 'object' && !Array.isArray(newConfig[key]) &&
-          options[key] && typeof options[key] === 'object' && !Array.isArray(options[key])) {
+        options[key] && typeof options[key] === 'object' && !Array.isArray(options[key])) {
         newConfig[key] = this.deepMerge(newConfig[key], options[key]);
       } else {
         newConfig[key] = options[key];
@@ -1073,7 +1077,7 @@ export class Application implements IApplication {
     // Update user config - merge the same way as main config for consistency
     for (const key of Object.keys(options)) {
       if (this._userConfig[key] && typeof this._userConfig[key] === 'object' && !Array.isArray(this._userConfig[key]) &&
-          options[key] && typeof options[key] === 'object' && !Array.isArray(options[key])) {
+        options[key] && typeof options[key] === 'object' && !Array.isArray(options[key])) {
         this._userConfig[key] = this.deepMerge(this._userConfig[key], options[key]);
       } else {
         this._userConfig[key] = options[key];
@@ -1081,7 +1085,7 @@ export class Application implements IApplication {
     }
 
     // Apply logger configuration if provided
-    if (options.logger && this._container.has(LOGGER_SERVICE_TOKEN)) {
+    if (options['logger'] && this._container.has(LOGGER_SERVICE_TOKEN)) {
       try {
         const loggerService = this._container.resolve(LOGGER_SERVICE_TOKEN) as ILoggerModule;
         // Logger service configuration is handled via forRoot pattern now
@@ -1092,15 +1096,16 @@ export class Application implements IApplication {
     }
 
     // Apply event configuration if provided
-    if (options.events && this._eventEmitter) {
+    if (options['events'] && this._eventEmitter) {
       // Apply event emitter configuration
       // Note: Our EventEmitter doesn't have setMaxListeners, store in config
-      if (options.events.maxListeners) {
+      const eventsConfig = options['events'] as ConfigObject;
+      if (eventsConfig && typeof eventsConfig === 'object' && eventsConfig['maxListeners']) {
         this._config = {
           ...this._config,
           events: {
-            ...(this._config as any).events,
-            maxListeners: options.events.maxListeners
+            ...(this._config['events'] as ConfigObject || {}),
+            maxListeners: eventsConfig['maxListeners']
           }
         };
       }
@@ -1120,15 +1125,19 @@ export class Application implements IApplication {
   /**
    * Set a configuration value and emit change event
    */
-  setConfig(key: string, value: any): void {
+  setConfig(key: string, value: ConfigValue): void {
     const parts = key.split('.');
-    let obj: any = this._config;
+    let obj: ConfigObject = this._config as ConfigObject;
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
       if (part && !(part in obj)) {
         obj[part] = {};
       }
-      obj = obj[part!];
+      const nextObj = obj[part!];
+      if (!nextObj || typeof nextObj !== 'object' || Array.isArray(nextObj)) {
+        obj[part!] = {};
+      }
+      obj = obj[part!] as ConfigObject;
     }
     const lastPart = parts[parts.length - 1];
     if (lastPart) {
@@ -1328,16 +1337,16 @@ export class Application implements IApplication {
     const result = { ...this._config };
 
     // Only exclude app metadata if they weren't provided by user
-    if (this._userConfig.name === undefined) {
+    if (this._userConfig['name'] === undefined) {
       delete result.name;
     }
-    if (this._userConfig.version === undefined) {
+    if (this._userConfig['version'] === undefined) {
       delete result.version;
     }
-    if (this._userConfig.debug === undefined) {
+    if (this._userConfig['debug'] === undefined) {
       delete result.debug;
     }
-    if (this._userConfig.environment === undefined) {
+    if (this._userConfig['environment'] === undefined) {
       delete result.environment;
     }
 
@@ -1358,7 +1367,7 @@ export class Application implements IApplication {
   /**
    * Register a provider in the container - public API
    */
-  register<T>(token: Token<T>, provider: any, options?: { override?: boolean }): this {
+  register<T>(token: Token<T>, provider: Provider<T>, options?: { override?: boolean }): this {
     this._container.register(token, provider, options);
     return this;
   }
@@ -1540,7 +1549,7 @@ export class Application implements IApplication {
   /**
    * Register a dynamic module (with forRoot pattern)
    */
-  private async registerDynamicModule(moduleConfig: any): Promise<void> {
+  private async registerDynamicModule(moduleConfig: IDynamicModule): Promise<void> {
     const { module: ModuleClass, providers = [], exports = [] } = moduleConfig;
 
     // Register providers
@@ -1551,12 +1560,12 @@ export class Application implements IApplication {
           this._container.register(token, providerDef);
           this._logger?.debug({
             module: 'Application',
-            tokenName: token?.name || token?.toString()
+            tokenName: typeof token === 'function' && 'name' in token ? token.name : token?.toString()
           }, 'Provider registered');
         } catch (error) {
           this._logger?.error({
             module: 'Application',
-            tokenName: token?.name || token?.toString(),
+            tokenName: typeof token === 'function' && 'name' in token ? token.name : token?.toString(),
             error
           }, 'Failed to register provider');
           throw error;
@@ -1700,7 +1709,7 @@ export class Application implements IApplication {
     process.on('uncaughtException', uncaughtHandler);
 
     // Unhandled rejection handler
-    const rejectionHandler = (reason: any, promise: Promise<any>) => {
+    const rejectionHandler = (reason: unknown, promise: Promise<unknown>) => {
       this._logger?.error({ reason, promise }, 'Unhandled promise rejection');
       this.emit(ApplicationEvent.UnhandledRejection, { reason, promise });
 
@@ -1807,7 +1816,7 @@ export class Application implements IApplication {
       // Multi-parameter API
       task = {
         name: taskOrName,
-        handler: handler || (() => {}),
+        handler: handler || (() => { }),
         priority: priority ?? ShutdownPriority.Normal,
         critical: isCritical
       };
@@ -1855,7 +1864,7 @@ export class Application implements IApplication {
   /**
    * Perform graceful shutdown
    */
-  async shutdown(reason: ShutdownReason, details?: any): Promise<void> {
+  async shutdown(reason: ShutdownReason, details?: { signal?: string; error?: Error; reason?: unknown; promise?: Promise<unknown> }): Promise<void> {
     // Prevent multiple concurrent shutdowns
     if (this._isShuttingDown) {
       await this._shutdownPromise!;
@@ -1905,7 +1914,7 @@ export class Application implements IApplication {
   /**
    * Execute shutdown tasks
    */
-  private async executeShutdown(reason: ShutdownReason, details?: any): Promise<void> {
+  private async executeShutdown(reason: ShutdownReason, details?: unknown): Promise<void> {
     // Get all tasks and ensure priority is a number
     const tasksArray = Array.from(this._shutdownTasks.values()).map(task => ({
       ...task,
@@ -1961,7 +1970,7 @@ export class Application implements IApplication {
     // Stop the application
     await this.stop({
       timeout: this._shutdownTimeout,
-      signal: details?.signal
+      signal: (details as any)?.signal as NodeJS.Signals | undefined
     });
 
     // Run cleanup handlers
@@ -2036,8 +2045,8 @@ export class Application implements IApplication {
   /**
    * Check if an object is a DynamicModule
    */
-  private isDynamicModule(obj: any): obj is IDynamicModule {
-    return obj && typeof obj === 'object' && 'module' in obj && typeof obj.module === 'function';
+  private isDynamicModule(obj: unknown): obj is IDynamicModule {
+    return !!(obj && typeof obj === 'object' && 'module' in obj && typeof (obj as any).module === 'function');
   }
 
   /**
@@ -2151,14 +2160,15 @@ export class Application implements IApplication {
                 }
               }
             }
-          } catch (error: any) {
+          } catch (error) {
             // Treat actual syntax errors in the file content as critical
-            if (error.message && (error.message.includes('Unexpected end of input') || (error.message.includes('SyntaxError') && !error.message.includes("Unexpected token 'export'")))) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            if (error instanceof Error && errorMessage && (errorMessage.includes('Unexpected end of input') || (errorMessage.includes('SyntaxError') && !errorMessage.includes("Unexpected token 'export'")))) {
               criticalErrors.push(error);
-              this._logger?.error(`Critical error loading module from ${file}: ${error.message}`);
+              this._logger?.error(`Critical error loading module from ${file}: ${errorMessage}`);
             } else {
               // Module format issues or other import errors are just warnings
-              this._logger?.warn(`Failed to load potential module from ${file}: ${error.message || error}`);
+              this._logger?.warn(`Failed to load potential module from ${file}: ${errorMessage}`);
             }
           }
         }

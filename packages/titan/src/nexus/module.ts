@@ -437,7 +437,7 @@ export class ModuleBuilder {
    * Conditionally provide a token
    */
   provideIf<T>(
-    condition: (container?: any) => boolean,
+    condition: (container?: unknown) => boolean,
     token: InjectionToken<T>,
     provider: ProviderDefinition<T> | Provider<T>
   ): this {
@@ -452,7 +452,7 @@ export class ModuleBuilder {
       conditional: true,
       condition,
       originalProvider: provider
-    } as Provider<T> & { conditional?: boolean; condition?: Function; originalProvider?: Provider<T> | ProviderDefinition<T> };
+    } as Provider<T> & { conditional?: boolean; condition?: (container?: unknown) => boolean; originalProvider?: Provider<T> | ProviderDefinition<T> };
 
     this.metadata.providers.push(conditionalProvider);
     return this;

@@ -6,6 +6,11 @@ import { createMiddleware } from './middleware.js';
 import { IContainer, InjectionToken, ResolutionContext } from './types.js';
 
 /**
+ * Plugin hook function type
+ */
+export type PluginHookFunction = (...args: unknown[]) => void | Promise<void>;
+
+/**
  * Plugin lifecycle hooks
  */
 export interface PluginHooks {
@@ -100,7 +105,7 @@ export interface Plugin {
  */
 export class PluginManager {
   private plugins = new Map<string, Plugin>();
-  private hooks = new Map<keyof PluginHooks, Array<Function>>();
+  private hooks = new Map<keyof PluginHooks, Array<(...args: any[]) => any>>();
   private container: IContainer;
 
   constructor(container: IContainer) {
@@ -209,7 +214,7 @@ export class PluginManager {
   /**
    * Add a hook
    */
-  addHook(name: keyof PluginHooks, fn: Function): void {
+  addHook(name: keyof PluginHooks, fn: PluginHookFunction): void {
     const hooks = this.hooks.get(name) || [];
     hooks.push(fn);
     this.hooks.set(name, hooks);
@@ -218,7 +223,7 @@ export class PluginManager {
   /**
    * Remove a hook
    */
-  removeHook(name: keyof PluginHooks, fn: Function): void {
+  removeHook(name: keyof PluginHooks, fn: PluginHookFunction): void {
     const hooks = this.hooks.get(name);
     if (hooks) {
       const index = hooks.indexOf(fn);

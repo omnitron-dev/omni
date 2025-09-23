@@ -6,15 +6,19 @@
 
 import { Injectable } from '@nexus';
 
-
-
+import type {
+  EventData,
+  EventValidator,
+  EventTransformer
+} from './event.types.js';
 import type { IEventValidationResult } from './types.js';
+import type { ILogger } from '../logger/logger.types.js';
 
 /**
  * Schema validator interface
  */
 export interface ISchemaValidator {
-  validate(data: any): { valid: boolean; errors?: string[] };
+  validate(data: EventData): { valid: boolean; errors?: string[] };
 }
 
 /**
@@ -23,10 +27,10 @@ export interface ISchemaValidator {
 @Injectable()
 export class EventValidationService {
   private schemas: Map<string, ISchemaValidator> = new Map();
-  private validators: Map<string, (...args: any[]) => any> = new Map();
+  private validators: Map<string, EventValidator> = new Map();
   private initialized = false;
   private destroyed = false;
-  private logger: any = null;
+  private logger: ILogger | null = null;
 
   constructor(
     
@@ -58,7 +62,7 @@ export class EventValidationService {
   /**
    * Get health status
    */
-  async health(): Promise<{ status: 'healthy' | 'degraded' | 'unhealthy'; details?: any }> {
+  async health(): Promise<{ status: 'healthy' | 'degraded' | 'unhealthy'; details?: Record<string, unknown> }> {
     return {
       status: this.initialized && !this.destroyed ? 'healthy' : 'unhealthy',
       details: {
@@ -100,7 +104,7 @@ export class EventValidationService {
   /**
    * Validate event data against registered schema
    */
-  validateData(event: string, data: any): boolean {
+  validateData(event: string, data: EventData): boolean {
     const result = this.validate(event, data);
     return result.valid;
   }
@@ -108,14 +112,14 @@ export class EventValidationService {
   /**
    * Validate handler function signature
    */
-  isValidHandler(handler: any): boolean {
+  isValidHandler(handler: unknown): boolean {
     return typeof handler === 'function';
   }
 
   /**
    * Sanitize event data by removing sensitive information
    */
-  sanitizeData(data: any): any {
+  sanitizeData(data: EventData): EventData {
     if (!data || typeof data !== 'object') {
       return data;
     }
@@ -135,7 +139,7 @@ export class EventValidationService {
   /**
    * Register a schema for an event
    */
-  registerSchema(event: string, schema: any): void {
+  registerSchema(event: string, schema: unknown): void {
     // Convert schema to validator if needed
     const validator = this.createValidator(schema);
     this.schemas.set(event, validator);
@@ -144,14 +148,14 @@ export class EventValidationService {
   /**
    * Register a custom validator function
    */
-  registerValidator(event: string, validator: (...args: any[]) => any): void {
+  registerValidator(event: string, validator: EventValidator): void {
     this.validators.set(event, validator);
   }
 
   /**
    * Validate event data
    */
-  validate(event: string, data: any): IEventValidationResult {
+  validate(event: string, data: EventData): IEventValidationResult {
     // Check for custom validator first
     const customValidator = this.validators.get(event);
     if (customValidator) {
@@ -160,7 +164,17 @@ export class EventValidationService {
         if (typeof result === 'boolean') {
           return { valid: result };
         }
-        return result;
+        if (typeof result === 'string') {
+          return { valid: false, errors: [result] };
+        }
+        if (result instanceof Promise) {
+          // Synchronous validation expected, treat promise as invalid
+          return { valid: false, errors: ['Async validation not supported in sync context'] };
+        }
+        if (typeof result === 'object' && result && 'valid' in result) {
+          return result as IEventValidationResult;
+        }
+        return { valid: false, errors: ['Invalid validator result'] };
       } catch (error) {
         return {
           valid: false,
@@ -182,8 +196,17 @@ export class EventValidationService {
 
       for (const validator of wildcardValidators) {
         const result = validator(data);
-        if (!result.valid && result.errors) {
-          errors.push(...result.errors);
+        if (typeof result === 'boolean') {
+          if (!result) {
+            errors.push('Validation failed');
+          }
+        } else if (typeof result === 'string') {
+          errors.push(result);
+        } else if (typeof result === 'object' && result && 'valid' in result) {
+          const validationResult = result as IEventValidationResult;
+          if (!validationResult.valid && validationResult.errors) {
+            errors.push(...validationResult.errors);
+          }
         }
       }
 
@@ -202,7 +225,7 @@ export class EventValidationService {
    */
   validateAndTransform(
     event: string,
-    data: any
+    data: EventData
   ): IEventValidationResult {
     const validation = this.validate(event, data);
 
@@ -260,14 +283,14 @@ export class EventValidationService {
    */
   createSchema(definition: {
     type?: string;
-    properties?: Record<string, any>;
+    properties?: Record<string, unknown>;
     required?: string[];
     additionalProperties?: boolean;
-  }): any {
+  }): ISchemaValidator {
     // This would create a proper schema object
     // For now, return a simple validator
     return {
-      validate: (data: any) => {
+      validate: (data: EventData) => {
         const errors: string[] = [];
 
         // Check type
@@ -295,19 +318,20 @@ export class EventValidationService {
   /**
    * Create validator from schema
    */
-  private createValidator(schema: any): ISchemaValidator {
-    if (typeof schema.validate === 'function') {
-      return schema;
+  private createValidator(schema: unknown): ISchemaValidator {
+    if (schema && typeof schema === 'object' && 'validate' in schema && typeof (schema as any).validate === 'function') {
+      return schema as ISchemaValidator;
     }
 
     // Create a JSON schema validator
+    const schemaObj = schema as any;
     return {
-      validate: (data: any) => {
+      validate: (data: EventData) => {
         const errors: string[] = [];
 
         // Check type
-        if (schema.type) {
-          const expectedType = schema.type;
+        if (schemaObj?.type) {
+          const expectedType = schemaObj.type;
           const actualType = Array.isArray(data) ? 'array' : typeof data;
 
           if (expectedType !== actualType) {
@@ -319,8 +343,8 @@ export class EventValidationService {
         }
 
         // Check required fields
-        if (schema.required && Array.isArray(schema.required) && typeof data === 'object') {
-          for (const field of schema.required) {
+        if (schemaObj?.required && Array.isArray(schemaObj.required) && typeof data === 'object') {
+          for (const field of schemaObj.required) {
             if (!(field in data) || data[field] === undefined) {
               errors.push(`Missing required property: ${field}`);
             }
@@ -328,8 +352,8 @@ export class EventValidationService {
         }
 
         // Check properties
-        if (schema.properties && typeof data === 'object') {
-          for (const [prop, propSchema] of Object.entries(schema.properties)) {
+        if (schemaObj?.properties && typeof data === 'object') {
+          for (const [prop, propSchema] of Object.entries(schemaObj.properties)) {
             if (prop in data) {
               const propType = (propSchema as any).type;
               const actualType = Array.isArray(data[prop]) ? 'array' : typeof data[prop];
@@ -352,8 +376,8 @@ export class EventValidationService {
   /**
    * Get wildcard validators for an event
    */
-  private getWildcardValidators(event: string): ((...args: any[]) => any)[] {
-    const validators: ((...args: any[]) => any)[] = [];
+  private getWildcardValidators(event: string): EventValidator[] {
+    const validators: EventValidator[] = [];
 
     for (const [pattern, validator] of this.validators.entries()) {
       if (this.matchesPattern(event, pattern)) {
@@ -385,7 +409,7 @@ export class EventValidationService {
   /**
    * Get transformer for an event
    */
-  private getTransformer(event: string): ((...args: any[]) => any) | undefined {
+  private getTransformer(event: string): EventTransformer | undefined {
     // This would return a registered transformer
     // For now, return undefined
     return undefined;

@@ -24,6 +24,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./netron": {
+      "types": "./dist/netron/index.d.ts",
+      "default": "./dist/netron/index.js"
+    },
     "./nexus": {
       "types": "./dist/nexus/index.d.ts",
       "default": "./dist/nexus/index.js"
@@ -68,6 +72,8 @@
   "dependencies": {
     "@omnitron-dev/common": "workspace:*",
     "@omnitron-dev/eventemitter": "workspace:*",
+    "@omnitron-dev/messagepack": "workspace:*",
+    "@omnitron-dev/smartbuffer": "workspace:*",
     "glob": "^11.0.3",
     "ioredis": "^5.7.0",
     "minimatch": "^10.0.3",
@@ -76,6 +82,7 @@
     "pino": "^9.9.5",
     "pino-pretty": "^13.1.1",
     "reflect-metadata": "^0.2.2",
+    "semver": "^7.7.2",
     "ws": "^8.18.3",
     "yaml": "^2.8.1",
     "zod": "^4.1.8"
@@ -86,6 +93,9 @@
     "@types/jest": "^30.0.0",
     "@types/node": "24.5.2",
     "@types/node-cron": "^3.0.11",
+    "@types/pino": "7.0.4",
+    "@types/semver": "^7.7.1",
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "8.44.0",
     "@typescript-eslint/parser": "8.44.0",
     "jest": "^30.1.3",

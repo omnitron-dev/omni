@@ -11,8 +11,10 @@
 
 import { Redis } from 'ioredis';
 import { EventEmitter } from 'events';
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { Injectable, Inject, Optional } from '../../decorators.js';
-import { createToken, type Token } from '@nexus';
 import type { ILogger } from '../logger/logger.types.js';
 import {
   type NodeInfo,
@@ -24,7 +26,6 @@ import {
   LOGGER_TOKEN,
   DISCOVERY_OPTIONS_TOKEN
 } from './types.js';
-import { getRegisterHeartbeatScript } from './lua-loader.js';
 
 // Default configuration values
 const DEFAULT_HEARTBEAT_INTERVAL = 5000;
@@ -33,7 +34,12 @@ const DEFAULT_REDIS_PREFIX = 'titan:discovery';
 const DEFAULT_PUBSUB_CHANNEL = 'titan:discovery:events';
 
 // Load Lua script for atomic heartbeat registration
-const REGISTER_HEARTBEAT_SCRIPT = getRegisterHeartbeatScript();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const REGISTER_HEARTBEAT_SCRIPT = readFileSync(
+  join(__dirname, '..', '..', '..', 'lua', 'discovery', 'register-heartbeat.lua'),
+  'utf-8'
+);
 
 /**
  * Service Discovery implementation for Titan framework.

@@ -8,14 +8,20 @@ import type { EventMetadata } from '@omnitron-dev/eventemitter';
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
 import { Inject, Injectable, Optional } from '@nexus';
-
-// Define EventHandler locally since it's not exported from eventemitter
-type EventHandler = (...args: any[]) => void | Promise<void>;
+import type { ILogger } from '../logger/logger.types.js';
 
 import { EVENT_EMITTER_TOKEN } from './events.module.js';
 import { LOGGER_TOKEN } from './tokens.js';
 
-import type { IEventBusMessage, IEventSubscription } from './types.js';
+import type {
+  EventData,
+  EventHandler,
+  VarArgEventHandler,
+  EventMiddleware,
+  IEventSubscription,
+  HealthCheckResult
+} from './event.types.js';
+import type { IEventBusMessage } from './types.js';
 
 /**
  * Event bus for inter-module communication
@@ -79,11 +85,11 @@ export class EventBusService {
   /**
    * Apply middleware chain to data
    */
-  private applyMiddleware(data: any): any {
+  private applyMiddleware(data: EventData): EventData {
     let index = 0;
     const middlewares = this.middlewares;
 
-    function next(currentData: any): any {
+    function next(currentData: EventData): EventData | void | Promise<EventData | void> {
       if (index >= middlewares.length) {
         return currentData;
       }
@@ -91,7 +97,7 @@ export class EventBusService {
       return middleware ? middleware(currentData, next) : currentData;
     }
 
-    return next(data);
+    return (next(data) as EventData) || data;
   }
 
   /**
@@ -114,7 +120,7 @@ export class EventBusService {
   /**
    * Get health status
    */
-  async health(): Promise<{ status: 'healthy' | 'degraded' | 'unhealthy'; details?: any }> {
+  async health(): Promise<HealthCheckResult> {
     const listenerCount = Array.from(this.subscriptions.values())
       .reduce((acc, handlers) => acc + handlers.size, 0);
 
@@ -132,7 +138,7 @@ export class EventBusService {
   /**
    * Subscribe to an event (alias for subscribe)
    */
-  on(event: string, handler: (...args: any[]) => any): IEventSubscription {
+  on(event: string, handler: VarArgEventHandler): IEventSubscription {
     if (!this.subscriptions.has(event)) {
       this.subscriptions.set(event, new Set());
     }
@@ -144,16 +150,14 @@ export class EventBusService {
       unsubscribe: () => {
         this.off(event, handler);
       },
-      isActive: () => this.subscriptions.get(event)?.has(handler) || false,
-      event,
-      handler
+      isActive: () => this.subscriptions.get(event)?.has(handler) || false
     };
   }
 
   /**
    * Subscribe to an event with options
    */
-  subscribe(event: string, handler: (...args: any[]) => any, options?: { priority?: number; replay?: boolean }): IEventSubscription {
+  subscribe(event: string, handler: VarArgEventHandler, options?: { priority?: number; replay?: boolean }): IEventSubscription {
     // Store handler priority if provided
     if (options?.priority !== undefined) {
       this.handlerPriorities.set(handler, options.priority);
@@ -195,16 +199,14 @@ export class EventBusService {
       unsubscribe: () => {
         this.off(event, handler);
       },
-      isActive: () => this.subscriptions.get(event)?.has(handler) || false,
-      event,
-      handler
+      isActive: () => this.subscriptions.get(event)?.has(handler) || false
     };
   }
 
   /**
    * Unsubscribe from an event
    */
-  off(event: string, handler?: (...args: any[]) => any): void {
+  off(event: string, handler?: VarArgEventHandler): void {
     if (!handler) {
       // Remove all handlers for this event
       const handlers = this.subscriptions.get(event);
@@ -232,11 +234,11 @@ export class EventBusService {
   /**
    * Subscribe to an event once
    */
-  once(event: string, handler: (...args: any[]) => any): IEventSubscription {
-    const wrappedHandler = async (data: any, metadata?: EventMetadata) => {
+  once(event: string, handler: VarArgEventHandler): IEventSubscription {
+    const wrappedHandler: VarArgEventHandler = async (...args: unknown[]) => {
       this.off(event, wrappedHandler);
       this.onceHandlers.delete(wrappedHandler);
-      return handler(data, metadata);
+      return handler(...args);
     };
 
     this.onceHandlers.add(wrappedHandler);
@@ -246,11 +248,11 @@ export class EventBusService {
   /**
    * Emit an event
    */
-  async emit(event: string, data?: any, metadata?: Partial<EventMetadata>): Promise<void> {
+  async emit(event: string, data?: EventData, metadata?: Partial<EventMetadata>): Promise<void> {
     this.emittedEvents++;
 
     // Apply middleware chain to data
-    const processedData = this.applyMiddleware(data);
+    const processedData = data !== undefined ? this.applyMiddleware(data) : undefined;
 
     const fullMetadata: EventMetadata = {
       id: this.generateMessageId(),
@@ -329,28 +331,28 @@ export class EventBusService {
   /**
    * Emit an event asynchronously (parallel)
    */
-  async emitAsync(event: string, data?: any, metadata?: Partial<EventMetadata>): Promise<void> {
+  async emitAsync(event: string, data?: EventData, metadata?: Partial<EventMetadata>): Promise<void> {
     return this.emit(event, data, metadata);
   }
 
   /**
    * Emit an event in parallel (alias for emitAsync)
    */
-  async emitParallel(event: string, data?: any, metadata?: Partial<EventMetadata>): Promise<void> {
+  async emitParallel(event: string, data?: EventData, metadata?: Partial<EventMetadata>): Promise<void> {
     return this.emit(event, data, metadata);
   }
 
   /**
    * Emit an event sequentially (alias for emitSync)
    */
-  async emitSequential(event: string, data?: any, metadata?: Partial<EventMetadata>): Promise<void> {
+  async emitSequential(event: string, data?: EventData, metadata?: Partial<EventMetadata>): Promise<void> {
     return this.emitSync(event, data, metadata);
   }
 
   /**
    * Emit an event synchronously (sequential)
    */
-  async emitSync(event: string, data?: any, metadata?: Partial<EventMetadata>): Promise<void> {
+  async emitSync(event: string, data?: EventData, metadata?: Partial<EventMetadata>): Promise<void> {
     this.emittedEvents++;
 
     const fullMetadata: EventMetadata = {
@@ -360,7 +362,7 @@ export class EventBusService {
     } as EventMetadata;
 
     // Emit through internal emitter sequentially
-    await (this.emitter as any).emitSequential(event, data);
+    await this.emitter.emitSequential(event, data);
 
     // Also call registered handlers sequentially
     const handlers = this.subscriptions.get(event);
@@ -372,7 +374,7 @@ export class EventBusService {
           this.logger?.error({ err, event }, 'Error in event handler');
           // Emit error event
           if (event !== 'error') {
-            await this.emit('error', err);
+            await this.emit('error', { error: err instanceof Error ? err : new Error(String(err)), event });
           }
         }
       }
@@ -385,7 +387,7 @@ export class EventBusService {
   async emitReduce<T, R>(
     event: string,
     data: T,
-    reducer: (acc: R, result: any) => R,
+    reducer: (acc: R, result: unknown) => R,
     initialValue: R,
     metadata?: Partial<EventMetadata>
   ): Promise<R> {
@@ -454,13 +456,13 @@ export class EventBusService {
   /**
    * Publish a message to the bus (alternative API)
    */
-  async publish<T = any>(
+  async publish<T = EventData>(
     channel: string,
     data: T,
     options?: {
       target?: string;
       source?: string;
-      metadata?: any;
+      metadata?: Partial<EventMetadata>;
     }
   ): Promise<void> {
     const message: IEventBusMessage<T> = {
@@ -489,7 +491,7 @@ export class EventBusService {
   /**
    * Subscribe to a channel
    */
-  subscribeToChannel<T = any>(
+  subscribeToChannel<T = EventData>(
     channel: string,
     handler: (message: IEventBusMessage<T>) => void | Promise<void>,
     options?: {
@@ -531,21 +533,19 @@ export class EventBusService {
           }
         }
       },
-      isActive: () => this.channels.get(channel)?.has(wrappedHandler) || false,
-      event: channel,
-      handler: wrappedHandler
+      isActive: () => this.channels.get(channel)?.has(wrappedHandler) || false
     };
   }
 
   /**
    * Request-response pattern
    */
-  async request<TRequest = any, TResponse = any>(
+  async request<TRequest = EventData, TResponse = EventData>(
     channel: string,
     data: TRequest,
     options?: {
       timeout?: number;
-      metadata?: any;
+      metadata?: Partial<EventMetadata>;
     }
   ): Promise<TResponse> {
     const requestId = this.generateMessageId();
@@ -583,7 +583,7 @@ export class EventBusService {
   /**
    * Reply to a request
    */
-  async reply<T = any>(
+  async reply<T = EventData>(
     message: IEventBusMessage,
     data: T
   ): Promise<void> {

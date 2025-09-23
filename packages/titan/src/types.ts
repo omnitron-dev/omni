@@ -376,3 +376,51 @@ export interface ILifecycleEvent {
   timestamp: number;
   data?: any;
 }
+
+/**
+ * Event handler function type
+ */
+export type ApplicationEventHandler<T = unknown> = (data?: T) => void | Promise<void>;
+
+/**
+ * Configuration value type
+ */
+export type ConfigValue = string | number | boolean | null | undefined | ConfigObject | ConfigArray;
+
+export interface ConfigObject {
+  [key: string]: ConfigValue;
+}
+
+export interface ConfigArray extends Array<ConfigValue> { }
+
+/**
+ * Signal handler function type
+ */
+export type SignalHandler = (signal: NodeJS.Signals) => void | Promise<void>;
+
+/**
+ * Module configuration for dynamic modules
+ */
+export interface IDynamicModuleConfig {
+  module: Token<IModule>;
+  imports?: Array<Token<IModule>>;
+  providers?: Provider[];
+  exports?: Array<Token<unknown>>;
+}
+
+/**
+ * Unhandled rejection handler
+ */
+export type RejectionHandler = (reason: unknown, promise: Promise<unknown>) => void;
+
+/**
+ * Module export type
+ */
+export type ModuleExport = { name: string } | { toString(): string } | string;
+
+/**
+ * Deep merge function options
+ */
+export interface DeepMergeOptions {
+  arrayMerge?: 'replace' | 'concat' | 'merge';
+}

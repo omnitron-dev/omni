@@ -21,7 +21,7 @@ let redisHelper: any = null;
 
 beforeAll(async () => {
   try {
-    const helper = await import('./test/helpers/redis-test-helper.js');
+    const helper = await import('../titan/test/netron/helpers/redis-test-helper.js');
     redisHelper = await helper.setupRedisForTests();
     // Set REDIS_URL environment variable for tests
     process.env['REDIS_URL'] = redisHelper.getConnectionString();
@@ -40,7 +40,7 @@ afterAll(async () => {
   // Teardown Redis helper
   if (redisHelper) {
     try {
-      const helper = await import('./test/helpers/redis-test-helper.js');
+      const helper = await import('../titan/test/netron/helpers/redis-test-helper.js');
       await helper.teardownRedisForTests();
     } catch (error) {
       console.error('Failed to teardown Redis:', error);

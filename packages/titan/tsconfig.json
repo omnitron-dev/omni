@@ -6,8 +6,18 @@
     "rootDir": "./src",
     "outDir": "./dist",
     "paths": {
-      "@nexus": ["src/nexus/index.js"],
-      "@nexus/*": ["src/nexus/*"]
+      "@netron": [
+        "src/netron/index.js"
+      ],
+      "@netron/*": [
+        "src/netron/*"
+      ],
+      "@nexus": [
+        "src/nexus/index.js"
+      ],
+      "@nexus/*": [
+        "src/nexus/*"
+      ]
     }
   },
   "include": [

@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/titan",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Enterprise backend framework built on Nexus DI",
   "keywords": [
     "backend",
@@ -24,6 +24,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./decorators": {
+      "types": "./dist/decorators/index.d.ts",
+      "default": "./dist/decorators/index.js"
+    },
     "./netron": {
       "types": "./dist/netron/index.d.ts",
       "default": "./dist/netron/index.js"
@@ -32,25 +36,29 @@
       "types": "./dist/nexus/index.d.ts",
       "default": "./dist/nexus/index.js"
     },
-    "./redis": {
+    "./module/redis": {
       "types": "./dist/modules/redis/index.d.ts",
       "default": "./dist/modules/redis/index.js"
     },
-    "./scheduler": {
+    "./module/scheduler": {
       "types": "./dist/modules/scheduler/index.d.ts",
       "default": "./dist/modules/scheduler/index.js"
     },
-    "./events": {
+    "./module/events": {
       "types": "./dist/modules/events/index.d.ts",
       "default": "./dist/modules/events/index.js"
     },
-    "./config": {
+    "./module/config": {
       "types": "./dist/modules/config/index.d.ts",
       "default": "./dist/modules/config/index.js"
     },
-    "./logger": {
+    "./module/logger": {
       "types": "./dist/modules/logger.module.d.ts",
       "default": "./dist/modules/logger.module.js"
+    },
+    "./module/discovery": {
+      "types": "./dist/modules/discovery/index.d.ts",
+      "default": "./dist/modules/discovery/index.js"
     }
   },
   "files": [

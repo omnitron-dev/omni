@@ -1,9 +1,0 @@
-[test]
-# Test configuration for Bun
-preload = ["./test/helpers/setup-bun.ts"]
-coverage = false
-timeout = 30000
-
-[test.loader]
-".ts" = "tsx"
-".js" = "jsx"

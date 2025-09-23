@@ -187,7 +187,7 @@ module.exports = [
       'import/no-unresolved': [
         'error',
         {
-          ignore: ['^@nexus', '^@nexus/', 'bun:test', 'https://deno.land', '@omnitron-dev/nexus']
+          ignore: ['^@nexus', '^@nexus/', '@netron', '^@netron/', 'bun:test', 'https://deno.land']
         }
       ]
     }

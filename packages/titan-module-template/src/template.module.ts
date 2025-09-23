@@ -8,7 +8,7 @@
  * - Module lifecycle
  */
 
-import { Container, createToken } from '@omnitron-dev/nexus';
+import { Container, createToken } from '@omnitron-dev/titan/nexus';
 import {
   AbstractModule,
   IApplication,

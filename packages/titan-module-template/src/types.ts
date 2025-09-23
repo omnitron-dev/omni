@@ -3,7 +3,7 @@
  */
 
 import type { z } from 'zod';
-import type { Token } from '@omnitron-dev/nexus';
+import type { Token } from '@omnitron-dev/titan/nexus';
 
 /**
  * Configuration options for the Template module

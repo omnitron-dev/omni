@@ -3,21 +3,42 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Turborepo](https://img.shields.io/badge/maintained%20with-turborepo-cc00ff.svg)](https://turbo.build/)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org)
+[![Bun](https://img.shields.io/badge/bun-%3E%3D1.2-f472b6)](https://bun.sh/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.3--5.9.2-blue)](https://www.typescriptlang.org/)
 [![Yarn](https://img.shields.io/badge/yarn-4.9.2-2C8EBB)](https://yarnpkg.com/)
-[![Bun](https://img.shields.io/badge/bun-compatible-f472b6)](https://bun.sh/)
 
-A comprehensive TypeScript monorepo containing libraries for building distributed systems and data processing applications.
+A comprehensive TypeScript monorepo containing libraries for building distributed systems and data processing applications with full support for both Node.js and Bun runtimes.
 
 ## 🎯 Vision
 
 Omnitron provides a suite of production-ready TypeScript packages for building scalable, distributed applications with focus on:
-- **Real-time Communication** - WebSocket-based RPC and event streaming
+- **Cross-Runtime Support** - First-class support for both Node.js 22+ and Bun 1.2+
+- **Enterprise Framework** - Titan provides integrated DI, WebSocket RPC, and module system
+- **Real-time Communication** - Built-in WebSocket-based RPC and event streaming
 - **Data Processing** - Efficient serialization and buffer manipulation
-- **Cross-Runtime Support** - Works with both Node.js and Bun
-- **Developer Experience** - Type safety, great APIs, and comprehensive docs
+- **Developer Experience** - Type safety, decorator-based APIs, and comprehensive docs
+
+## 🚀 Runtime Support
+
+All packages are designed and tested to work seamlessly with:
+- **Node.js** >= 22.0.0 (primary runtime)
+- **Bun** >= 1.2.0 (fully supported with dedicated tests)
+- **Deno** (experimental support in select packages)
 
 ## 📦 Packages
+
+### Enterprise Framework
+
+#### [@omnitron-dev/titan](packages/titan)
+Enterprise backend framework with integrated dependency injection and distributed systems support.
+- **Integrated Nexus DI** - Full dependency injection container
+- **Integrated Netron** - WebSocket RPC framework
+- **Built-in Modules** - Config, Events, Scheduler, Redis, Logger
+- **Application Lifecycle** - Graceful startup/shutdown, state management
+- **Decorator-based API** - Clean, declarative syntax
+- ✅ Node.js 22+ compatible
+- ✅ Bun 1.2+ compatible
+- 🚧 Deno support (experimental)
 
 ### Core Utilities
 
@@ -27,7 +48,7 @@ Essential utilities and helper functions for TypeScript/JavaScript projects.
 - Object manipulation (omit, entries, keys, values)
 - Type predicates and guards
 - Data structures (ListBuffer, TimedMap)
-- ✅ Bun compatible
+- ✅ Node.js & Bun compatible
 
 #### [@omnitron-dev/eventemitter](packages/eventemitter)
 Universal event emitter with both synchronous and asynchronous emission patterns.
@@ -36,8 +57,16 @@ Universal event emitter with both synchronous and asynchronous emission patterns
 - Reduce patterns for event accumulation
 - Concurrency control with p-limit
 - Promise-based event handling
-- Works in Node.js, Bun, and browsers
-- ✅ Bun compatible
+- ✅ Works in Node.js, Bun, and browsers
+
+#### [@omnitron-dev/cuid](packages/cuid)
+Collision-resistant unique identifiers generator.
+- Secure random ID generation
+- Timestamp-based ordering
+- URL-safe characters
+- ✅ Node.js & Bun compatible
+
+### Data Processing
 
 #### [@omnitron-dev/smartbuffer](packages/smartbuffer)
 Enhanced binary data manipulation based on ByteBuffer.js.
@@ -45,9 +74,7 @@ Enhanced binary data manipulation based on ByteBuffer.js.
 - Support for various data types (int8-64, float, double, varint)
 - Big-endian and little-endian support
 - String encoding/decoding utilities
-- ✅ Bun compatible
-
-### Data Processing
+- ✅ Node.js & Bun compatible
 
 #### [@omnitron-dev/messagepack](packages/messagepack)
 High-performance MessagePack serialization with TypeScript support.
@@ -55,25 +82,7 @@ High-performance MessagePack serialization with TypeScript support.
 - Custom type extensions
 - Efficient binary serialization
 - Stream processing capabilities
-- ✅ Bun compatible
-
-### Distributed Systems
-
-#### [@omnitron-dev/netron](packages/netron)
-WebSocket-based distributed systems framework for building microservices.
-- Type-safe RPC with decorators
-- Event bus with multiple emission patterns
-- Service discovery via Redis
-- Automatic reconnection and versioning
-- Streaming support for large data transfers
-- ✅ Bun compatible with test coverage
-
-#### [@omnitron-dev/netron-nest](packages/netron-nest)
-NestJS integration for Netron framework.
-- Seamless NestJS dependency injection
-- Service decorators for easy exposure
-- Module configuration
-- Health checks and graceful shutdown
+- ✅ Node.js & Bun compatible
 
 ### Messaging & Notifications
 
@@ -81,30 +90,36 @@ NestJS integration for Netron framework.
 Redis-based reliable notification and messaging system with guaranteed delivery.
 - ✅ Exactly-once processing with deduplication
 - 🔄 Configurable retry mechanisms with exponential backoff
-- ⏲️ Delayed message delivery
+- ⏲️ Delayed message delivery and scheduling
 - 💀 Dead Letter Queue (DLQ) for failed messages
 - 📊 Built-in statistics and monitoring
 - 🔧 Extensible middleware system
 - 🚀 Consumer groups for horizontal scaling
-- 🛡️ Full TypeScript support
 
-#### [@omnitron-dev/rotif-nest](packages/rotif-nest)
-NestJS integration for Rotif messaging system.
-- 🎯 Seamless NestJS DI integration
-- 🏷️ Decorator-based message handlers
-- 💉 Automatic dependency injection
-- 🏥 Health checks and monitoring
-- 🛡️ Custom exception filters
-- 📊 Built-in interceptors for logging and metrics
-- 🔧 NestJS-style middleware support
-- 🚀 Auto-discovery of decorated handlers
+### Development Tools
+
+#### [@omnitron-dev/testing](packages/testing)
+Testing utilities and helpers for all Omnitron packages.
+- Mock factories
+- Test fixtures
+- Async test utilities
+- Container testing helpers
+- Redis test utilities
+
+#### [@omnitron-dev/titan-module-template](packages/titan-module-template)
+Template for creating Titan framework modules.
+- Boilerplate for new modules
+- Example implementations
+- Best practices guide
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 
-- Node.js >= 22 or Bun >= 1.0
-- Yarn 4.9.2
+Choose your runtime:
+- **Node.js** >= 22.0.0, or
+- **Bun** >= 1.2.0
+- **Yarn** 4.9.2 (package manager)
 
 ### Installation
 
@@ -126,8 +141,12 @@ yarn build
 # Run in development mode
 yarn dev
 
-# Run tests
+# Run tests (uses your default runtime)
 yarn test
+
+# Run tests with specific runtime
+yarn test:node  # Node.js tests
+yarn test:bun   # Bun tests
 
 # Lint and format code
 yarn fix:all
@@ -143,14 +162,14 @@ yarn cleanup
 
 ```bash
 # Run commands for specific package
-yarn workspace @omnitron-dev/netron test
+yarn workspace @omnitron-dev/titan test
 yarn workspace @omnitron-dev/common build
 
 # Add dependencies to specific package
 yarn workspace @omnitron-dev/common add lodash
 
 # Run package-specific scripts
-yarn workspace @omnitron-dev/netron dev
+yarn workspace @omnitron-dev/titan dev
 ```
 
 ## 🏗️ Architecture
@@ -159,71 +178,102 @@ yarn workspace @omnitron-dev/netron dev
 
 ```
 omni/
-├── packages/           # All published packages
-│   ├── common/        # Shared utilities
-│   ├── eventemitter/  # Event emitter
-│   ├── smartbuffer/   # Binary data handling
-│   ├── messagepack/   # Serialization
-│   ├── netron/        # Distributed framework
-│   ├── netron-nest/   # NestJS integration
-│   ├── rotif/         # Redis messaging system
-│   └── rotif-nest/    # NestJS integration for Rotif
-├── scripts/           # Build and utility scripts
-├── experiments/       # Experimental code and docs
-├── .changeset/        # Version management
-└── turbo.json        # Turborepo configuration
+├── packages/                  # All published packages
+│   ├── common/               # Shared utilities
+│   ├── cuid/                 # Unique ID generation
+│   ├── eventemitter/         # Event emitter
+│   ├── messagepack/          # MessagePack serialization
+│   ├── rotif/                # Redis messaging system
+│   ├── smartbuffer/          # Binary data handling
+│   ├── testing/              # Testing utilities
+│   ├── titan/                # Enterprise framework
+│   │   ├── src/
+│   │   │   ├── nexus/       # Integrated DI container
+│   │   │   ├── netron/      # Integrated WebSocket RPC
+│   │   │   └── modules/     # Built-in modules
+│   └── titan-module-template/ # Module template
+├── scripts/                  # Build and utility scripts
+└── turbo.json               # Turborepo configuration
 ```
 
 ### Technology Stack
 
 - **Language**: TypeScript 5.8.3 - 5.9.2 with strict mode
-- **Runtime**: Node.js 22+ and Bun 1.0+
+- **Runtime**: Node.js 22+ and Bun 1.2+ (both fully supported)
 - **Build System**: Turborepo for monorepo orchestration
 - **Package Manager**: Yarn 4.9.2 with workspaces
-- **Testing**: Jest 30.x with ts-jest
+- **Testing**: Jest 30.x (Node.js), Bun test (Bun runtime)
 - **Linting**: ESLint v9 with flat config
 - **Formatting**: Prettier
 - **Versioning**: Changesets
 
 ### Design Principles
 
-1. **Type Safety First** - Full TypeScript with strict typing
-2. **Zero/Minimal Dependencies** - Keep packages lightweight
-3. **Performance Focused** - Optimized for production use
-4. **Cross-Runtime Support** - Works with Node.js and Bun
-5. **Developer Experience** - Clear APIs and comprehensive docs
+1. **Runtime Agnostic** - Full support for Node.js and Bun
+2. **Type Safety First** - Full TypeScript with strict typing
+3. **Zero/Minimal Dependencies** - Keep packages lightweight
+4. **Performance Focused** - Optimized for production use
+5. **Developer Experience** - Decorator-based APIs and clear documentation
 6. **Modular Architecture** - Use only what you need
 
 ## 📚 Documentation
 
 Each package contains detailed documentation:
 
+- [Titan Framework Guide](packages/titan/README.md)
 - [Common Utilities Guide](packages/common/README.md)
 - [Event Emitter Guide](packages/eventemitter/README.md)
 - [SmartBuffer Guide](packages/smartbuffer/README.md)
 - [MessagePack Guide](packages/messagepack/README.md)
-- [Netron Framework Guide](packages/netron/README.md)
-- [Netron-Nest Integration Guide](packages/netron-nest/README.md)
 - [Rotif Messaging Guide](packages/rotif/README.md)
-- [Rotif-Nest Integration Guide](packages/rotif-nest/README.md)
+- [CUID Generator Guide](packages/cuid/README.md)
+- [Testing Utilities Guide](packages/testing/README.md)
 
 ## 🔧 Common Use Cases
 
-### Building a Microservice
+### Building an Application with Titan
 
 ```typescript
-import { Netron, Service, Public } from '@omnitron-dev/netron';
+import { Application, Module, Injectable, OnStart } from '@omnitron-dev/titan';
 
-@Service('users@1.0.0')
-class UserService {
-  @Public()
-  async getUser(id: string) {
-    return { id, name: 'John Doe' };
+@Injectable()
+class GreetingService {
+  greet(name: string): string {
+    return `Hello, ${name}!`;
   }
 }
 
-const netron = await Netron.create({ listenPort: 8080 });
-await netron.peer.exposeService(new UserService());
+@Module({
+  providers: [GreetingService],
+  exports: [GreetingService]
+})
+class AppModule implements OnStart {
+  constructor(private greeting: GreetingService) {}
+
+  async onStart(): Promise<void> {
+    console.log(this.greeting.greet('Titan'));
+  }
+}
+
+// Create and run application
+const app = await Application.create(AppModule);
+await app.start();
+```
+
+### Using Built-in WebSocket RPC (via Titan)
+
+```typescript
+import { Service, Public } from '@omnitron-dev/titan/netron';
+
+@Service('calculator@1.0.0')
+class CalculatorService {
+  @Public()
+  add(a: number, b: number): number {
+    return a + b;
+  }
+}
+
+// Service is automatically exposed via Titan's Netron integration
 ```
 
 ### Efficient Data Serialization
@@ -243,18 +293,17 @@ import { EventEmitter } from '@omnitron-dev/eventemitter';
 
 const emitter = new EventEmitter();
 
-// Synchronous emission (standard EventEmitter)
-emitter.emit('process', data);
+// Works in both Node.js and Bun
+emitter.on('data', async (value) => {
+  await processData(value);
+});
 
 // Sequential async processing
-await emitter.emitSerial('process', data);
+await emitter.emitSerial('data', payload);
 
-// Parallel async processing with optional concurrency
+// Parallel async processing with concurrency control
 emitter.setConcurrency(5);
-await emitter.emitParallel('process', data);
-
-// Reduce pattern for aggregation
-const result = await emitter.emitReduce('calculate', initialValue);
+await emitter.emitParallel('data', payload);
 ```
 
 ### Reliable Message Processing
@@ -277,6 +326,21 @@ await manager.subscribe('order.*', async (msg) => {
 });
 ```
 
+## 🧪 Runtime Testing
+
+All packages are tested with multiple runtimes:
+
+```bash
+# Test with Node.js
+yarn workspace @omnitron-dev/[package] test:node
+
+# Test with Bun
+yarn workspace @omnitron-dev/[package] test:bun
+
+# Run all runtime tests
+yarn workspace @omnitron-dev/[package] test:all
+```
+
 ## 🤝 Contributing
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
@@ -289,11 +353,27 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 ### Development Guidelines
 
-- Write tests for new features
+- Write tests for new features (test with both Node.js and Bun)
 - Follow existing code patterns
 - Update documentation
 - Add changeset for version bumps
-- Ensure all tests pass
+- Ensure all tests pass in both runtimes
+
+## 📊 Package Status
+
+| Package | Node.js | Bun | Deno | Version |
+|---------|---------|-----|------|---------|
+| @omnitron-dev/common | ✅ | ✅ | 🚧 | 0.1.0 |
+| @omnitron-dev/cuid | ✅ | ✅ | 🚧 | 0.1.0 |
+| @omnitron-dev/eventemitter | ✅ | ✅ | 🚧 | 0.1.0 |
+| @omnitron-dev/messagepack | ✅ | ✅ | 🚧 | 0.1.0 |
+| @omnitron-dev/rotif | ✅ | ✅ | ❌ | 0.1.0 |
+| @omnitron-dev/smartbuffer | ✅ | ✅ | 🚧 | 0.1.0 |
+| @omnitron-dev/testing | ✅ | ✅ | ❌ | 0.1.0 |
+| @omnitron-dev/titan | ✅ | ✅ | 🚧 | 0.1.0 |
+| @omnitron-dev/titan-module-template | ✅ | ✅ | ❌ | 0.1.0 |
+
+Legend: ✅ Full Support | 🚧 Experimental | ❌ Not Supported
 
 ## 📄 License
 
@@ -312,5 +392,5 @@ Created and maintained by the Omnitron team.
 ---
 
 <div align="center">
-  Built with ❤️ using TypeScript
+  Built with ❤️ for both Node.js and Bun runtimes using TypeScript
 </div>

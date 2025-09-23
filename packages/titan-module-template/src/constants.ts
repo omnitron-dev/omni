@@ -2,7 +2,7 @@
  * Constants for the Template Module
  */
 
-import { createToken, Token } from '@omnitron-dev/nexus';
+import { createToken, Token } from '@omnitron-dev/titan/nexus';
 import type { TemplateModuleOptions } from './types.js';
 
 // Token for module options

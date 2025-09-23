@@ -5,7 +5,7 @@
  * In production, this could be replaced with Redis or another caching solution.
  */
 
-import { Injectable, Inject } from '@omnitron-dev/nexus';
+import { Injectable, Inject } from '@omnitron-dev/titan/nexus';
 import {
   TEMPLATE_MODULE_OPTIONS,
   TEMPLATE_LOGGER,

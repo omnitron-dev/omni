@@ -4,7 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a TypeScript monorepo for the DevGrid project, containing distributed systems libraries and data processing tools. The monorepo uses Turborepo for build orchestration and Yarn 4.9.2 for package management.
+This is a TypeScript monorepo for the Omnitron project, containing distributed systems libraries and data processing tools. The monorepo uses Turborepo for build orchestration and Yarn 4.9.2 for package management.
+
+### Runtime Support
+- **Node.js**: >=22.0.0 (primary runtime)
+- **Bun**: >=1.2.0 (fully supported with test coverage)
+- **Deno**: Experimental support in some packages
+- All packages work in both Node.js and Bun environments
 
 ## Key Commands
 
@@ -46,10 +52,16 @@ yarn cleanup
 yarn test
 
 # Run tests for a specific package
-yarn workspace @devgrid/[package-name] test
+yarn workspace @omnitron-dev/[package-name] test
 
 # Run a single test file
-yarn workspace @devgrid/[package-name] test path/to/test.spec.ts
+yarn workspace @omnitron-dev/[package-name] test path/to/test.spec.ts
+
+# Run Bun tests for compatible packages
+yarn workspace @omnitron-dev/[package-name] test:bun
+
+# Run Deno tests (experimental)
+yarn workspace @omnitron-dev/[package-name] test:deno
 ```
 
 ## Architecture Overview
@@ -57,55 +69,64 @@ yarn workspace @devgrid/[package-name] test path/to/test.spec.ts
 ### Monorepo Structure
 - `/packages/*` - Reusable libraries
 - `/scripts` - Build and utility scripts
-- `/experiments` - Experimental code and documentation
+- No `/apps` directory currently (referenced in package.json but not present)
 
 ### Current Packages
 
-**@devgrid/common** - Essential utilities and helper functions
+**@omnitron-dev/common** - Essential utilities and helper functions
 - Promise utilities (defer, delay, retry, timeout)
 - Object manipulation (omit, entries, keys, values)
 - Type predicates and guards
 - Data structures (ListBuffer, TimedMap)
-- Bun runtime support
+- ✅ Full Bun runtime support
+- ✅ Node.js 22+ support
 
-**@devgrid/eventemitter** - Universal event emitter with sync and async patterns
+**@omnitron-dev/eventemitter** - Universal event emitter with sync and async patterns
 - Standard EventEmitter API (on, off, emit, once)
 - Parallel and sequential async event execution
 - Reduce patterns for event accumulation
 - Concurrency control with p-limit
 - Promise-based event handling
-- Works in Node.js, Bun, and browsers
-- Bun runtime support
+- ✅ Works in Node.js, Bun, and browsers
+- ✅ Full test coverage for all runtimes
 
-**@devgrid/smartbuffer** - Enhanced binary data manipulation
+**@omnitron-dev/smartbuffer** - Enhanced binary data manipulation
 - Efficient buffer operations
 - Support for various data types (int8-64, float, double, varint)
 - Big-endian and little-endian support
 - String encoding/decoding utilities
-- Bun runtime support
+- ✅ Bun runtime support
+- ✅ Node.js support
 
-**@devgrid/messagepack** - High-performance MessagePack serialization
+**@omnitron-dev/messagepack** - High-performance MessagePack serialization
 - Full MessagePack specification support
 - Custom type extensions
 - Efficient binary serialization
 - Stream processing capabilities
-- Bun runtime support
+- ✅ Bun runtime support
+- ✅ Node.js support
 
-**@devgrid/netron** - WebSocket-based distributed systems framework
-- Type-safe RPC with decorators
-- Event bus with multiple emission patterns
-- Service discovery via Redis
-- Automatic reconnection and versioning
-- Streaming support for large data transfers
-- Bun runtime support (with test coverage)
+**@omnitron-dev/titan** - Enterprise backend framework with integrated DI and distributed systems
+- **Integrated Nexus DI**: Full dependency injection container built-in
+- **Integrated Netron**: WebSocket RPC framework built-in
+- **Built-in Modules**:
+  - Config: Configuration management with multiple sources
+  - Events: Event bus with decorators
+  - Scheduler: Cron and interval scheduling
+  - Redis: Redis integration module
+  - Logger: Pino-based logging
+- **Features**:
+  - Decorator-based API
+  - Application lifecycle management
+  - Graceful shutdown and error handling
+  - Module system with dependencies
+  - Start/stop hooks
+  - Process signal handling
+- ✅ Full Bun support (including tests)
+- ✅ Node.js 22+ support
+- 🚧 Deno support (experimental)
 
-**@devgrid/netron-nest** - NestJS integration for Netron framework
-- Seamless NestJS dependency injection
-- Service decorators for easy exposure
-- Module configuration
-- Health checks and graceful shutdown
-
-**@devgrid/rotif** - Redis-based reliable notification and messaging system
+**@omnitron-dev/rotif** - Redis-based reliable notification and messaging system
 - Exactly-once processing with deduplication
 - Configurable retry mechanisms with exponential backoff
 - Delayed message delivery and scheduling
@@ -115,38 +136,75 @@ yarn workspace @devgrid/[package-name] test path/to/test.spec.ts
 - Consumer groups for horizontal scaling
 - Full TypeScript support
 
-**@devgrid/rotif-nest** - NestJS integration for Rotif messaging
-- Seamless NestJS DI integration
-- Decorator-based message handlers (@RotifSubscribe)
-- Automatic dependency injection
-- Health checks and monitoring
-- Custom exception filters
-- Built-in interceptors for logging and metrics
-- NestJS-style middleware support
-- Auto-discovery of decorated handlers
+**@omnitron-dev/cuid** - Collision-resistant unique identifiers
+- Secure random ID generation
+- Timestamp-based ordering
+- URL-safe characters
+- ✅ Bun runtime support
+- ✅ Node.js support
 
-### Recently Moved/Removed Packages
+**@omnitron-dev/testing** - Testing utilities and helpers
+- Mock factories
+- Test fixtures
+- Async test utilities
+- Container testing helpers
+- Redis test utilities
 
-The following packages have been moved to separate repositories:
-- **@devgrid/bitcoin-core** - Bitcoin Core RPC client (moved to separate repo)
-- **@devgrid/onix** - Infrastructure orchestration (removed)
-- **omnitron** codebase (removed)
-- **ts-rest** forks (removed)
+**@omnitron-dev/titan-module-template** - Template for creating Titan modules
+- Boilerplate for new modules
+- Example implementations
+- Best practices guide
+
+### Integrated into Titan
+
+The following packages have been integrated directly into @omnitron-dev/titan:
+- **nexus** - Dependency injection container (now at `titan/src/nexus`)
+- **netron** - WebSocket RPC framework (now at `titan/src/netron`)
+- These are accessible via exports: `@omnitron-dev/titan/nexus` and `@omnitron-dev/titan/netron`
+
+### Removed Packages
+
+The following packages have been removed from the monorepo:
+- **priceverse** - Crypto price aggregation (moved to separate repo)
+- **vibra** - Vitest-based testing framework (removed)
+- **bitcoin-core** - Bitcoin Core RPC client (moved to separate repo)
+- **onix** - Infrastructure orchestration (removed)
+- **rotif-nest** - NestJS integration for Rotif (removed)
+- **netron-nest** - NestJS integration for Netron (functionality merged into Titan)
 
 ### Technology Stack
 - **Language**: TypeScript 5.8.3 - 5.9.2 with strict mode
-- **Runtime**: Node.js 22+ and Bun support
-- **Build**: Turborepo
+- **Runtime**: Node.js 22+ and Bun 1.2+ (both fully supported)
+- **Build**: Turborepo for orchestration, TSC for compilation
 - **Package Manager**: Yarn 4.9.2 with workspaces
-- **Testing**: Jest 30.x with ts-jest
+- **Testing**: Jest 30.x with ts-jest (Node.js), Bun test (Bun runtime)
 - **Linting**: ESLint v9 with flat config
-- **Formatting**: Prettier
-- **Serialization**: MessagePack
-- **Messaging**: Redis for service discovery
+- **Formatting**: Prettier with consistent style
+- **Serialization**: MessagePack for efficient data transfer
+- **Messaging**: Redis for service discovery and reliable messaging
 
 ### Development Patterns
 
-**Service Definition**: Use decorators for declarative service exposure
+**Titan Application Structure**:
+```typescript
+import { Application, Module, Injectable } from '@omnitron-dev/titan';
+
+@Injectable()
+class MyService {
+  doSomething() { /* ... */ }
+}
+
+@Module({
+  providers: [MyService],
+  exports: [MyService]
+})
+class MyModule {}
+
+const app = await Application.create(MyModule);
+await app.start();
+```
+
+**Service Definition with Decorators**:
 ```typescript
 @Service('calculator@1.0.0')
 export class CalculatorService {
@@ -157,9 +215,15 @@ export class CalculatorService {
 }
 ```
 
-**Event-Driven Architecture**: Both Netron and Rotif use event-driven patterns extensively
+**Event-Driven Architecture**: Titan provides built-in event handling
+```typescript
+@OnEvent('user.created')
+async handleUserCreated(data: any) {
+  // Handle event
+}
+```
 
-**Message Handler Definition**: Use decorators for declarative message handling with Rotif
+**Message Handler with Rotif**:
 ```typescript
 @Injectable()
 export class OrderService {
@@ -175,7 +239,7 @@ export class OrderService {
 
 **Dependency Management**: Internal packages use workspace protocol:
 ```json
-"@devgrid/common": "workspace:*"
+"@omnitron-dev/common": "workspace:*"
 ```
 
 ### Important Configuration
@@ -190,9 +254,10 @@ export class OrderService {
 
 **Turbo Pipeline**: Defined in `turbo.json` with proper task dependencies and caching
 
-**Bun Support**: Several packages now include:
-- `bunfig.toml` - Bun configuration
-- Bun-specific test files for compatibility testing
+**Runtime Support Configuration**:
+- `bunfig.toml` - Bun-specific configuration
+- Runtime detection in code for compatibility
+- Separate test files for Bun compatibility testing
 
 ### Code Quality Standards
 
@@ -200,15 +265,17 @@ export class OrderService {
 - Prettier enforces consistent formatting (2 spaces, single quotes, semicolons)
 - All code must pass linting and formatting checks before committing
 - Tests should be written for new functionality
-- Use existing patterns and utilities from `@devgrid/common`
+- Use existing patterns and utilities from `@omnitron-dev/common`
+- Ensure Bun compatibility when adding new features
 
 ### Working with the Monorepo
 
 1. When adding dependencies, add them to the specific package, not the root
-2. Use `yarn workspace @devgrid/[package-name] add [dependency]`
+2. Use `yarn workspace @omnitron-dev/[package-name] add [dependency]`
 3. Follow existing package structure when creating new packages
 4. Ensure all packages build successfully before committing
 5. Use changesets for version management when making changes
+6. Test with both Node.js and Bun runtimes when possible
 
 ### Recent Breaking Changes
 
@@ -221,15 +288,52 @@ logger.info('message', { data });
 logger.info({ data }, 'message');
 ```
 
+### Titan-Specific Notes
+
+**Application State Management**:
+- Application has strict state transitions (Created → Starting → Started → Stopping → Stopped)
+- Concurrent start/stop operations are properly queued
+- Force shutdown is supported with timeout options
+
+**Module System**:
+- Modules can have dependencies on other modules
+- Lifecycle hooks: onRegister, onStart, onStop, onDestroy
+- Modules are started in dependency order, stopped in reverse
+
+**Error Handling**:
+- Graceful error handling in event handlers
+- Module stop failures don't prevent cleanup by default
+- Timeout errors are treated as critical
+
 ### Notes for AI Assistants
 
-- The repository focuses on core distributed systems utilities
-- Rotif and Rotif-Nest packages have been restored to the monorepo for Redis-based messaging functionality
-- Bun support is being actively added across packages
+- The repository has transitioned from @devgrid to @omnitron-dev namespace
+- Nexus and Netron are now integrated into Titan, not separate packages
+- Focus is on runtime compatibility (Node.js and Bun)
+- Titan is the main framework package that integrates all core functionality
+- When working with Titan tests, be aware of state management quirks
 - TypeScript versions may vary slightly between packages (5.8.3 - 5.9.2)
-- When fixing compilation errors after dependency updates, check for breaking changes in logger libraries (especially Pino)
+- Always check for breaking changes in dependencies (especially Pino logger)
 
-execute these command each time for session:
-```
+### Environment Setup
+
+Execute these commands each time for session to ensure all tools are available:
+```bash
 export PATH="/Users/taaliman/.bun/bin:/Users/taaliman/.deno/bin:/Users/taaliman/.cargo/bin:/opt/homebrew/bin:$PATH"
 ```
+
+### Testing Best Practices
+
+1. **Runtime Testing**: Always test with both Node.js and Bun
+2. **State Management**: Use `disableGracefulShutdown: true` in tests
+3. **Module Testing**: Use `disableCoreModules: true` for isolated testing
+4. **Async Operations**: Properly await all promises to avoid hanging tests
+5. **Cleanup**: Ensure proper cleanup in afterEach blocks
+
+### Current Focus Areas
+
+- ✅ Full Bun runtime support across all packages
+- ✅ Titan framework stabilization and testing
+- 🚧 Deno support (experimental)
+- 🚧 Documentation improvements
+- 🚧 Performance optimizations

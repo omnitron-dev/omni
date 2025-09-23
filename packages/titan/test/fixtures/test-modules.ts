@@ -12,7 +12,7 @@ import {
   ApplicationEvent
 } from '../../src/types.js';
 import { Application, createApp } from '../../src/application.js';
-import { Injectable, Module, Service } from '../../src/decorators.js';
+import { Injectable, Module, Service } from '../../src/decorators/index.js';
 import { createToken, Token } from '@nexus';
 
 // ============================================================================

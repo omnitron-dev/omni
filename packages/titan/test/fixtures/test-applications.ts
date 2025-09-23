@@ -26,7 +26,7 @@ import {
   UserServiceToken,
   NotificationServiceToken
 } from './test-modules.js';
-import { Module, Injectable } from '../../src/decorators.js';
+import { Module, Injectable } from '../../src/decorators/index.js';
 import { createToken } from '@nexus';
 
 // ============================================================================

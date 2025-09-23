@@ -5,7 +5,7 @@
  */
 
 import { Redis } from 'ioredis';
-import { Module, Injectable } from '../../decorators.js';
+import { Module, Injectable } from '../../decorators/index.js';
 import { IModule, IApplication } from '../../types.js';
 import { createToken, type Token } from '@nexus';
 import type { ILogger } from '../logger/logger.types.js';
@@ -46,7 +46,7 @@ export const DiscoveryModuleToken: Token<DiscoveryModule> = createToken<Discover
 export class DiscoveryModule implements IModule {
   name = 'discovery';
   version = '1.0.0';
-  
+
   private redis?: Redis;
   private discoveryService?: IDiscoveryService;
   private logger?: ILogger;

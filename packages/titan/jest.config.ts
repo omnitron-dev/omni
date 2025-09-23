@@ -54,7 +54,7 @@ const config: JestConfigWithTsJest = {
     ]
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(@omnitron-dev)/)'
+    'node_modules/(?!(@omnitron-dev|long)/)'
   ],
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
@@ -68,7 +68,9 @@ const config: JestConfigWithTsJest = {
     '^@omnitron-dev/testing$': '<rootDir>/../testing/src/index.ts',
     '^@omnitron-dev/testing/(.*)$': '<rootDir>/../testing/src/$1',
     '^@omnitron-dev/eventemitter$': '<rootDir>/../eventemitter/src/index.ts',
-    '^@omnitron-dev/common$': '<rootDir>/../common/src/index.ts'
+    '^@omnitron-dev/common$': '<rootDir>/../common/src/index.ts',
+    '^@omnitron-dev/smartbuffer$': '<rootDir>/../smartbuffer/src/index.ts',
+    '^@omnitron-dev/messagepack$': '<rootDir>/../messagepack/src/index.ts'
   },
   resolver: 'ts-jest-resolver'
 };

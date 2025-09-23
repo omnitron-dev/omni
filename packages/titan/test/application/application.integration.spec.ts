@@ -36,7 +36,7 @@ import {
   SlowModule,
   SimpleModule
 } from '../fixtures/test-modules.js';
-import { Module } from '../../src/decorators.js';
+import { Module } from '../../src/decorators/index.js';
 
 describe('Application Integration', () => {
   let app: Application;

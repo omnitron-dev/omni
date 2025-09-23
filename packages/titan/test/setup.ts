@@ -6,7 +6,7 @@
 import 'reflect-metadata';
 
 // Set test environment
-process.env.NODE_ENV = 'test';
+process.env['NODE_ENV'] = 'test';
 
 // Increase timeout for async tests
 jest.setTimeout(10000);

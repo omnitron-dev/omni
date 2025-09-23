@@ -4,7 +4,8 @@
 
 import os from 'node:os';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import { Token, Container, createToken, InjectionToken, Provider } from '@nexus';
+import { Token, Container, createToken, InjectionToken, Provider, AsyncFactory } from './nexus/index.js';
+import { Netron, type NetronOptions } from '@netron';
 
 import { ConfigModule, CONFIG_SERVICE_TOKEN } from './modules/config/index.js';
 import { LoggerModule, LOGGER_SERVICE_TOKEN } from './modules/logger/index.js';
@@ -40,6 +41,11 @@ import {
  * Application token for DI
  */
 export const ApplicationToken: Token<Application> = createToken<Application>('Application');
+
+/**
+ * Netron service token - Core networking and RPC service
+ */
+export const NetronToken: Token<Netron> = createToken<Netron>('Netron');
 
 /**
  * Titan Application implementation
@@ -237,7 +243,10 @@ export class Application implements IApplication {
       // Emit starting event
       this.emit(ApplicationEvent.Starting);
 
-      // Config module initialization is handled in registerCoreModules
+      // Initialize core modules if not already done
+      if (!this._container.has(NetronToken) && !this._config?.['disableCoreModules']) {
+        await this.initializeCoreModules();
+      }
 
       // Initialize logger after config if available
       if (this._container.has(LOGGER_SERVICE_TOKEN)) {
@@ -283,6 +292,21 @@ export class Application implements IApplication {
 
         this.emit(ApplicationEvent.ModuleStarted, { module: module.name });
         this._logger?.debug({ module: module.name }, 'Module started');
+      }
+
+      // Start Netron if configured and available
+      if (this._container.has(NetronToken)) {
+        try {
+          const netron = await this._container.resolveAsync(NetronToken) as Netron;
+          if (netron) {
+            await netron.start();
+            this._logger?.info({ module: 'Netron' }, 'Netron service started');
+            this.emit(ApplicationEvent.ModuleStarted, { module: 'netron' });
+          }
+        } catch (error) {
+          this._logger?.warn({ error }, 'Failed to start Netron service');
+          // Don't fail application start if Netron fails
+        }
       }
 
       // Run start hooks
@@ -482,6 +506,22 @@ export class Application implements IApplication {
 
       // Log successful stop before stopping core modules
       this._logger?.info('Application stopped successfully');
+
+      // Stop Netron service before core modules
+      if (this._container.has(NetronToken)) {
+        try {
+          const netron = this._container.resolve(NetronToken) as Netron;
+          if (netron) {
+            this._logger?.debug({ module: 'Netron' }, 'Stopping Netron service');
+            await netron.stop();
+            this.emit(ApplicationEvent.ModuleStopped, { module: 'netron' });
+            this._logger?.info({ module: 'Netron' }, 'Netron service stopped');
+          }
+        } catch (error) {
+          this._logger?.warn({ error }, 'Error stopping Netron service');
+          // Continue shutdown even if Netron fails to stop
+        }
+      }
 
       // Stop logger first among core modules
       if (this._container.has(LOGGER_SERVICE_TOKEN)) {
@@ -1487,6 +1527,21 @@ export class Application implements IApplication {
     return this._logger;
   }
 
+  /**
+   * Get the Netron instance
+   * Lazily initialized on first access
+   */
+  get netron(): Netron | undefined {
+    if (this._container.has(NetronToken)) {
+      try {
+        return this._container.resolve(NetronToken) as Netron;
+      } catch {
+        // Netron not available
+      }
+    }
+    return undefined;
+  }
+
   // Private methods
 
   private async initializeCoreModules(): Promise<void> {
@@ -1543,6 +1598,34 @@ export class Application implements IApplication {
       } catch (error) {
         this._logger?.warn({ module: 'Application', error }, 'Failed to initialize ConfigService');
       }
+    }
+
+    // 3. Register Netron service as a lazy-loaded singleton
+    if (!this._container.has(NetronToken)) {
+      this._container.register(NetronToken, {
+        useFactory: (async (container: Container) => {
+          // Build Netron options from config
+          const netronConfig = this._config?.['netron'] || {};
+          const logger = this._logger;
+
+          const netronOptions: NetronOptions = {
+            logger: logger as any,
+            ...netronConfig,
+            // Use application ID as Netron ID if not specified
+            id: netronConfig.id || `${this._name}-netron`
+          };
+
+          // Create and start Netron instance
+          const netron = new Netron(netronOptions);
+
+          this._logger?.info({ module: 'Netron', id: netron.id }, 'Netron service initialized');
+          return netron;
+        }) as AsyncFactory<Netron>,
+        async: true,
+        scope: 'singleton' as any
+      });
+
+      this._logger?.debug({ module: 'Application' }, 'Netron service registered (lazy-loaded)');
     }
   }
 

@@ -31,7 +31,7 @@ import {
   createApplicationWithCircularDeps,
   createFullStackApplication
 } from '../fixtures/test-modules.js';
-import { Module, Injectable } from '../../src/decorators.js';
+import { Module, Injectable } from '../../src/decorators/index.js';
 
 describe('Application Module Management', () => {
   let app: Application;

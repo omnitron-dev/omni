@@ -6,7 +6,7 @@
  */
 
 import { Application, createApp } from '../../src/application.js';
-import { Module, Injectable } from '../../src/decorators.js';
+import { Module, Injectable } from '../../src/decorators/index.js';
 import { AbstractModule, IApplication } from '../../src/types.js';
 import * as path from 'path';
 import * as fs from 'fs';

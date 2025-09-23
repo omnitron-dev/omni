@@ -14,7 +14,7 @@ import { EventEmitter } from 'events';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { Injectable, Inject, Optional } from '../../decorators.js';
+import { Injectable, Inject, Optional } from '../../decorators/index.js';
 import type { ILogger } from '../logger/logger.types.js';
 import {
   type NodeInfo,

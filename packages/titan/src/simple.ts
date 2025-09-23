@@ -6,7 +6,7 @@
  */
 
 import { Application } from './application.js';
-import { Module, Injectable } from './decorators.js';
+import { Module, Injectable } from './decorators/index.js';
 import type { IApplicationOptions } from './types.js';
 import type { Token } from '@nexus';
 
@@ -317,7 +317,7 @@ export function controller(
 /**
  * Export commonly used decorators for convenience
  */
-export { Module, Injectable, Inject } from './decorators.js';
+export { Module, Injectable, Inject } from './decorators/index.js';
 
 /**
  * Lifecycle hook interfaces

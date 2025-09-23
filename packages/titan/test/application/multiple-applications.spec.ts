@@ -5,7 +5,7 @@
 
 import 'reflect-metadata';
 import { Application } from '../../src/application.js';
-import { Module, Injectable, Singleton, Inject, PostConstruct, PreDestroy } from '../../src/decorators.js';
+import { Module, Injectable, Singleton, Inject, PostConstruct, PreDestroy } from '../../src/decorators/index.js';
 import { createToken } from '@nexus';
 
 // Test service tokens

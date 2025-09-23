@@ -13,56 +13,9 @@ export {
   createApp,
   Application,
   ApplicationToken,
+  NetronToken,
   Application as TitanApplication
 } from './application.js';
-
-// ============================================================================
-// Decorators - Only Essential Set
-// ============================================================================
-
-// Core DI decorators
-export {
-  Module,
-  Injectable,
-  Singleton,
-  Transient,
-  Service,
-  Inject,
-  Optional,
-  Controller,
-  Repository,
-  Global,
-
-  // Lifecycle decorators
-  PostConstruct,
-  PreDestroy,
-
-  // Method interceptors
-  Retryable,
-  Timeout,
-  Log,
-  Monitor,
-
-  // Error classes
-  TimeoutError
-} from './decorators.js';
-
-// ============================================================================
-// Framework Modules
-// ============================================================================
-
-// Configuration Module - full re-export
-export * from './modules/config/index.js';
-
-// Events Module - full re-export
-export * from './modules/events/index.js';
-
-// Logger Module - full re-export
-export * from './modules/logger/index.js';
-
-// ============================================================================
-// Re-exports from Dependencies
-// ============================================================================
 
 // Common utilities
 export {
@@ -168,31 +121,6 @@ export {
   IApplicationMetrics
 } from './types.js';
 
-// Discovery Module
-export {
-  // Module and Service
-  DiscoveryModule,
-  DiscoveryModuleToken,
-  createDiscoveryModule,
-  DiscoveryService,
-  // Tokens
-  DISCOVERY_SERVICE_TOKEN,
-  REDIS_TOKEN as DISCOVERY_REDIS_TOKEN,
-  LOGGER_TOKEN as DISCOVERY_LOGGER_TOKEN,
-  DISCOVERY_OPTIONS_TOKEN,
-  // Types
-  type NodeInfo,
-  type ServiceInfo,
-  type DiscoveryOptions,
-  type DiscoveryEvent,
-  type IDiscoveryService,
-  type DiscoveryModuleOptions
-} from './modules/discovery/index.js';
-
-/**
- * Version information
- */
-export const VERSION = '1.0.0';
 
 /**
  * Feature flags

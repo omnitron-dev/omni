@@ -14,7 +14,7 @@ import {
   CacheModule,
   DependentModule
 } from '../fixtures/test-modules.js';
-import { Module, Injectable, Inject } from '../../src/decorators.js';
+import { Module, Injectable, Inject } from '../../src/decorators/index.js';
 import { IModule, AbstractModule, IHealthStatus, IApplication } from '../../src/types.js';
 
 describe('Application Module Management', () => {
@@ -393,7 +393,7 @@ describe('Application Module Management', () => {
         constructor(
           @Inject(LoggerToken) private logger: any,
           @Inject(ConfigToken) private config: any
-        ) {}
+        ) { }
 
         doSomething() {
           this.logger.log('Doing something');

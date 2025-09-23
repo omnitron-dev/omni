@@ -18,7 +18,7 @@ import { ConfigService } from './config.service.js';
 import { ConfigLoaderService } from './config-loader.service.js';
 import { ConfigValidatorService } from './config-validator.service.js';
 import { ConfigWatcherService } from './config-watcher.service.js';
-import { Module } from '../../decorators.js';
+import { Module } from '../../decorators/index.js';
 
 import {
   CONFIG_SERVICE_TOKEN,

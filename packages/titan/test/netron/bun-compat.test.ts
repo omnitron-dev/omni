@@ -17,7 +17,7 @@ const __dirname = path.dirname(__filename);
 
 describe('Bun Compatibility', () => {
   it('should import the package correctly', async () => {
-    const netron = await import('@omnitron-dev/netron');
+    const netron = await import('../src/netron/index.js');
     expect(netron).toBeDefined();
     expect(netron.Netron).toBeDefined();
     expect(netron.Packet).toBeDefined();

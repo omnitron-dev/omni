@@ -275,15 +275,18 @@ export function Request() {
  *   // ...
  * }
  */
-export const Service = (options: string | ServiceOptions) => (target: any) => {
+export const Service = (options?: string | ServiceOptions) => (target: any) => {
   // Normalize options to ensure we always have an object
   const serviceOptions: ServiceOptions = typeof options === 'string'
     ? { name: options }
-    : options;
+    : options || { name: target.name };
 
-  const qualifiedName = serviceOptions.name;
+  const qualifiedName = serviceOptions.name || target.name;
   // Parse the qualified name into name and version components
-  const [name, version] = qualifiedName.split('@');
+  const [name, versionFromName] = qualifiedName.split('@');
+
+  // Use explicit version from options if provided, otherwise from qualified name
+  const version = (typeof options === 'object' && 'version' in options) ? options.version : versionFromName;
 
   // Regular expression to validate service names
   // Allows alphanumeric characters and dots for namespacing
@@ -302,7 +305,7 @@ export const Service = (options: string | ServiceOptions) => (target: any) => {
   // Initialize metadata structure with extended properties
   const metadata: ExtendedServiceMetadata = {
     name,
-    version: version ?? '',
+    version: version || '',
     properties: {},
     methods: {},
     transports: serviceOptions.transports,
@@ -362,7 +365,7 @@ export const Service = (options: string | ServiceOptions) => (target: any) => {
   Reflect.defineMetadata(METADATA_KEYS.SERVICE_ANNOTATION, metadata, target);
 
   // Also set compatibility metadata
-  Reflect.defineMetadata('service', { name, version }, target);
+  Reflect.defineMetadata('service', { name, version: version || '' }, target);
   if (name) {
     Reflect.defineMetadata(METADATA_KEYS.SERVICE_NAME, name, target);
   }

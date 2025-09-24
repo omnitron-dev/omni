@@ -205,7 +205,7 @@ describe('Core Decorators', () => {
       const metadata = Reflect.getMetadata('service', UserService);
       expect(metadata).toEqual({
         name: 'UserService',
-        version: undefined
+        version: ''
       });
 
       expect(Reflect.getMetadata(METADATA_KEYS.SERVICE_NAME, UserService)).toBe('UserService');
@@ -216,10 +216,8 @@ describe('Core Decorators', () => {
       class ApiService {}
 
       const metadata = Reflect.getMetadata('service', ApiService);
-      expect(metadata).toEqual({
-        name: 'ApiService',
-        version: '1.0.0'
-      });
+      expect(metadata.name).toBe('ApiService');
+      expect(metadata.version).toBe('1.0.0');
 
       expect(Reflect.getMetadata(METADATA_KEYS.SERVICE_NAME, ApiService)).toBe('ApiService');
     });
@@ -237,10 +235,8 @@ describe('Core Decorators', () => {
       class AnonymousService {}
 
       const metadata = Reflect.getMetadata('service', AnonymousService);
-      expect(metadata).toEqual({
-        name: undefined,
-        version: undefined
-      });
+      expect(metadata.name).toBe('AnonymousService');
+      expect(metadata.version).toBe('');
     });
   });
 

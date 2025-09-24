@@ -3,7 +3,6 @@ import type { ILogger } from '../modules/logger/logger.types.js';
  * Imports required dependencies for the RemotePeer class implementation.
  * @module remote-peer
  */
-import { WebSocket } from 'ws';
 import { EventEmitter } from 'events';
 import { TimedMap } from '@omnitron-dev/common';
 
@@ -95,14 +94,15 @@ export class RemotePeer extends AbstractPeer {
 
   /**
    * Creates a new instance of RemotePeer.
+   * The socket can be either a WebSocket or a TransportAdapter that mimics the WebSocket API.
    *
    * @constructor
-   * @param {WebSocket} socket - The WebSocket connection to the remote peer
+   * @param {any} socket - The socket connection to the remote peer (WebSocket or TransportAdapter)
    * @param {Netron} netron - The Netron instance this peer belongs to
    * @param {string} [id=""] - Optional unique identifier for the remote peer
    */
   constructor(
-    private socket: WebSocket,
+    private socket: any, // Can be WebSocket or TransportAdapter
     netron: Netron,
     id: string = ''
   ) {
@@ -355,16 +355,36 @@ export class RemotePeer extends AbstractPeer {
    * This method gracefully closes the WebSocket connection and cleans up resources.
    * It emits a 'manual-disconnect' event and performs cleanup operations.
    */
-  disconnect() {
+  async disconnect() {
     this.logger.info('Disconnecting remote peer');
     this.events.emit('manual-disconnect');
 
-    if (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING) {
-      this.socket.close();
+    // Check if socket is open or connecting (works for both WebSocket and TransportAdapter)
+    const readyState = this.socket.readyState;
+    if (readyState === 1 || readyState === 'OPEN' ||
+        readyState === 0 || readyState === 'CONNECTING') {
+      // Use async close if available (TransportAdapter), otherwise sync close (WebSocket)
+      if (typeof this.socket.close === 'function') {
+        const closeResult = this.socket.close();
+        if (closeResult && typeof closeResult.then === 'function') {
+          await closeResult; // TransportAdapter returns a Promise
+        }
+      }
     } else {
-      this.logger.warn(`Attempt to close WebSocket in unexpected state: ${this.socket.readyState}`);
+      this.logger.warn(`Attempt to close socket in unexpected state: ${readyState}`);
     }
     this.cleanup();
+  }
+
+  /**
+   * Closes the connection (alias for disconnect).
+   * This method is provided for compatibility with Netron's stop method.
+   *
+   * @async
+   * @returns {Promise<void>}
+   */
+  async close(): Promise<void> {
+    return this.disconnect();
   }
 
   /**
@@ -478,8 +498,9 @@ export class RemotePeer extends AbstractPeer {
    */
   sendPacket(packet: Packet) {
     return new Promise<void>((resolve, reject) => {
-      if (this.socket.readyState === WebSocket.OPEN) {
-        this.socket.send(encodePacket(packet), { binary: true }, (err) => {
+      // Check if socket is open (works for both WebSocket and TransportAdapter)
+      if (this.socket.readyState === 1 || this.socket.readyState === 'OPEN') { // 1 is WebSocket.OPEN
+        this.socket.send(encodePacket(packet), { binary: true }, (err?: Error) => {
           if (err) {
             reject(err);
           } else {

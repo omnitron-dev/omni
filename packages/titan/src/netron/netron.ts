@@ -1,7 +1,5 @@
 import { Redis } from 'ioredis';
 import { randomUUID } from 'node:crypto';
-import { IncomingMessage } from 'node:http';
-import { WebSocket, WebSocketServer } from 'ws';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 
 import { NetronOptions } from './types.js';
@@ -14,6 +12,12 @@ import type { ILogger } from '../modules/logger/logger.types.js';
 // import { ServiceInfo, ServiceDiscovery } from './service-discovery/index.js';
 import { CONNECT_TIMEOUT, NETRON_EVENT_PEER_CONNECT, NETRON_EVENT_PEER_DISCONNECT } from './constants.js';
 import { ensureStreamReferenceRegistered } from './packet/serializer.js';
+
+// Import transport layer
+import { TransportRegistry } from './transport/transport-registry.js';
+import { WebSocketCompatibilityAdapter, TransportConnectionFactory } from './transport/transport-adapter.js';
+import { WebSocketTransport } from './transport/websocket-transport.js';
+import type { ITransport, ITransportServer, ITransportConnection } from './transport/types.js';
 
 // Import core tasks
 import { abilities } from './core-tasks/abilities.js';
@@ -55,14 +59,14 @@ export class Netron extends EventEmitter {
   public id: string;
 
   /**
-   * WebSocket server instance for handling incoming connections.
+   * Transport server instance for handling incoming connections.
    * Only initialized when running in server mode (when listenHost and listenPort are provided).
    *
-   * @type {WebSocketServer | undefined}
+   * @type {ITransportServer | undefined}
    * @private
-   * @description Manages WebSocket connections and handles the WebSocket protocol
+   * @description Manages transport connections and handles the protocol
    */
-  private wss?: WebSocketServer;
+  private server?: ITransportServer;
 
   /**
    * Map of special events that need to be processed sequentially.
@@ -160,6 +164,23 @@ export class Netron extends EventEmitter {
   public logger: ILogger;
 
   /**
+   * Transport registry for managing different transport types.
+   * Default transport is WebSocket for backward compatibility.
+   *
+   * @type {TransportRegistry}
+   * @private
+   */
+  private transportRegistry: TransportRegistry;
+
+  /**
+   * Default transport to use for connections.
+   *
+   * @type {ITransport}
+   * @private
+   */
+  private defaultTransport: ITransport;
+
+  /**
    * Creates a new Netron instance.
    * Initializes the task manager and local peer.
    *
@@ -195,6 +216,20 @@ export class Netron extends EventEmitter {
     });
 
     this.peer = new LocalPeer(this);
+
+    // Initialize transport registry with default WebSocket transport
+    this.transportRegistry = new TransportRegistry();
+    const wsTransport = new WebSocketTransport();
+
+    // Register transports only if not already registered
+    if (!this.transportRegistry.has('ws')) {
+      this.transportRegistry.register('ws', () => wsTransport);
+    }
+    if (!this.transportRegistry.has('wss')) {
+      this.transportRegistry.register('wss', () => wsTransport);
+    }
+
+    this.defaultTransport = wsTransport;
   }
 
   /**
@@ -235,51 +270,47 @@ export class Netron extends EventEmitter {
       return Promise.resolve();
     }
 
-    return new Promise<void>((resolve, reject) => {
-      this.wss = new WebSocketServer({
-        host: this.options?.listenHost,
-        port: this.options?.listenPort,
-      });
+    // Create and start transport server
+    return this.defaultTransport.createServer!({
+      host: this.options?.listenHost,
+      port: this.options?.listenPort,
+      headers: { 'x-netron-id': this.id }
+    } as any).then(async (server) => {
+      this.server = server;
 
-      this.wss.on('listening', async () => {
-        this.logger.info(`Netron server started at ${this.options.listenHost}:${this.options.listenPort}`);
-        this.isStarted = true;
+      this.server.on('connection', async (connection: ITransportConnection) => {
+        // Extract peer ID from connection or generate new one
+        const url = connection.remoteAddress || '';
+        const peerId = this.extractPeerIdFromConnection(url) || randomUUID();
 
-        // if (this.options.discoveryEnabled && this.options.discoveryRedisUrl) {
-        //   await this.initServiceDiscovery(false);
-        // }
+        this.logger.info({ peerId, address: connection.remoteAddress }, 'New peer connection');
 
-        resolve();
-      });
-
-      this.wss.on('error', (err) => {
-        this.logger.error({ error: err }, 'WebSocket server error');
-        reject(err);
-      });
-
-      this.wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
-        const peerId = new URL(req.url!, 'ws://localhost').searchParams.get('id');
-        if (!peerId) {
-          this.logger.warn('Connection attempt without peer ID, closing');
-          ws.close();
-          return;
-        }
-        this.logger.info({ peerId }, 'New peer connection');
-        const peer = new RemotePeer(ws, this, peerId);
+        // Create RemotePeer with transport adapter for backward compatibility
+        const adapter = TransportConnectionFactory.fromConnection(connection);
+        const peer = new RemotePeer(adapter as any, this, peerId);
         this.peers.set(peer.id, peer);
 
-        ws.send(JSON.stringify({ type: 'id', id: this.id }));
+        // Send our ID to peer
+        connection.send(Buffer.from(JSON.stringify({ type: 'id', id: this.id })));
 
         this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId });
 
-        ws.on('close', () => {
+        connection.on('disconnect', () => {
           this.logger.info({ peerId }, 'Peer disconnected');
           this.peers.delete(peerId);
           this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peerId), { peerId });
         });
 
-        peer.init(false, this.options);
+        await peer.init(false, this.options);
       });
+
+      this.server.on('error', (error: Error) => {
+        this.logger.error({ error }, 'Transport server error');
+      });
+
+      await this.server.listen();
+      this.logger.info(`Netron server started at ${this.options.listenHost}:${this.options.listenPort}`);
+      this.isStarted = true;
     });
   }
 
@@ -319,10 +350,18 @@ export class Netron extends EventEmitter {
    */
   async stop() {
     this.logger.info('Stopping Netron instance');
-    if (this.wss) {
-      this.logger.info('Closing WebSocket server');
-      this.wss.close();
-      this.wss = undefined;
+
+    // Close all peer connections
+    for (const peer of this.peers.values()) {
+      await peer.close();
+    }
+    this.peers.clear();
+
+    // Stop transport server
+    if (this.server) {
+      this.logger.info('Closing transport server');
+      await this.server.close();
+      this.server = undefined;
     }
 
     // if (this.discovery) {
@@ -366,82 +405,90 @@ export class Netron extends EventEmitter {
     let manuallyDisconnected = false;
 
     const connectPeer = (): Promise<RemotePeer> =>
-      new Promise<RemotePeer>((resolve, reject) => {
+      new Promise<RemotePeer>(async (resolve, reject) => {
         const timeoutId = setTimeout(() => {
           this.logger.error({ address }, 'Connection timeout');
           reject(new Error('Connection timeout'));
         }, this.options?.connectTimeout ?? CONNECT_TIMEOUT);
 
-        const ws = new WebSocket(`${address}?id=${this.id}`);
-        const peer = new RemotePeer(ws, this, address);
+        try {
+          // Parse address to determine transport type
+          const transport = this.getTransportForAddress(address);
+          if (!transport) {
+            throw new Error(`No suitable transport found for address: ${address}`);
+          }
 
-        let resolved = false;
+          // Connect using transport
+          const connection = await transport.connect(`${address}?id=${this.id}`, {
+            ...this.options,
+            connectTimeout: this.options?.connectTimeout ?? CONNECT_TIMEOUT,
+            headers: { 'x-netron-id': this.id }
+          });
 
-        ws.once('open', () => {
-          this.logger.debug({ address }, 'WebSocket connection established');
-          clearTimeout(timeoutId);
-          ws.once('message', async (message: ArrayBuffer, isBinary: boolean) => {
-            if (!isBinary) {
-              try {
-                const data = JSON.parse(message.toString()) as { type: 'id'; id: string };
-                if (data.type === 'id') {
-                  peer.id = data.id;
-                  this.peers.set(peer.id, peer);
-                  await peer.init(true, this.options);
+          // Create RemotePeer with transport adapter
+          const adapter = TransportConnectionFactory.fromConnection(connection);
+          const peer = new RemotePeer(adapter as any, this, address);
 
-                  peer.once('manual-disconnect', () => {
-                    this.logger.info({ peerId: peer.id }, 'Manual disconnect requested');
-                    manuallyDisconnected = true;
-                  });
+          let resolved = false;
 
-                  ws.once('close', () => {
-                    this.logger.info({ peerId: peer.id }, 'WebSocket connection closed');
-                    this.peers.delete(peer.id);
-                    this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peer.id), { peerId: peer.id });
+          // Wait for connection to be established
+          connection.once('connect', () => {
+            this.logger.debug({ address }, 'Connection established');
+            clearTimeout(timeoutId);
+          });
 
-                    if (reconnect && !manuallyDisconnected) {
-                      attemptReconnect();
-                    }
-                  });
+          // Handle first message (handshake)
+          connection.once('data', async (data: Buffer) => {
+            try {
+              const message = JSON.parse(data.toString()) as { type: 'id'; id: string };
+              if (message.type === 'id') {
+                peer.id = message.id;
+                this.peers.set(peer.id, peer);
+                await peer.init(true, this.options);
 
-                  resolved = true;
-                  reconnectAttempts = 0;
-                  this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId: peer.id });
-                  this.logger.info({ peerId: peer.id }, 'Peer connection established');
-                  resolve(peer);
-                } else {
-                  this.logger.warn({ type: data.type }, 'Invalid handshake message type');
-                  ws.close();
-                  reject(new Error('Invalid handshake'));
-                }
-              } catch (error) {
-                this.logger.error({ error }, 'Error parsing handshake message');
-                ws.close();
-                reject(error);
+                peer.once('manual-disconnect', () => {
+                  this.logger.info({ peerId: peer.id }, 'Manual disconnect requested');
+                  manuallyDisconnected = true;
+                });
+
+                connection.once('disconnect', () => {
+                  this.logger.info({ peerId: peer.id }, 'Connection closed');
+                  this.peers.delete(peer.id);
+                  this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peer.id), { peerId: peer.id });
+
+                  if (reconnect && !manuallyDisconnected) {
+                    attemptReconnect();
+                  }
+                });
+
+                resolved = true;
+                reconnectAttempts = 0;
+                this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId: peer.id });
+                this.logger.info({ peerId: peer.id }, 'Peer connection established');
+                resolve(peer);
+              } else {
+                this.logger.warn({ type: message.type }, 'Invalid handshake message type');
+                await connection.close();
+                reject(new Error('Invalid handshake'));
               }
-            } else {
-              this.logger.warn('Received binary handshake message');
-              ws.close();
-              reject(new Error('Invalid handshake'));
+            } catch (error) {
+              this.logger.error({ error }, 'Error parsing handshake message');
+              await connection.close();
+              reject(error);
             }
           });
-        });
 
-        ws.on('error', (err) => {
-          this.logger.error({ error: err }, 'WebSocket connection error');
+          connection.on('error', (err: Error) => {
+            this.logger.error({ error: err }, 'Connection error');
+            clearTimeout(timeoutId);
+            if (!resolved) {
+              reject(err);
+            }
+          });
+        } catch (error) {
           clearTimeout(timeoutId);
-          if (!resolved) {
-            reject(err);
-          }
-        });
-
-        ws.on('close', () => {
-          this.logger.warn({ address }, 'WebSocket connection closed prematurely');
-          clearTimeout(timeoutId);
-          if (!resolved) {
-            reject(new Error('Connection closed prematurely'));
-          }
-        });
+          reject(error);
+        }
       });
 
     /**
@@ -571,6 +618,41 @@ export class Netron extends EventEmitter {
     this.taskManager.addTask(unref_service as Task);
 
     this.logger.debug('Core tasks registered successfully');
+  }
+
+  /**
+   * Helper method to get the appropriate transport for a given address.
+   * @private
+   * @param {string} address - The address to connect to
+   * @returns {ITransport | undefined} The transport instance or undefined
+   */
+  private getTransportForAddress(address: string): ITransport {
+    // Parse protocol from address
+    const protocolMatch = address.match(/^(\w+):\/\//);
+    if (!protocolMatch) {
+      return this.defaultTransport;
+    }
+
+    const protocol = protocolMatch[1]!; // Protocol is guaranteed to exist if regex matches
+    const transport = this.transportRegistry.getByProtocol(protocol);
+    return transport ?? this.defaultTransport;
+  }
+
+  /**
+   * Helper method to extract peer ID from connection URL.
+   * @private
+   * @param {string} url - The connection URL
+   * @returns {string | undefined} The peer ID or undefined
+   */
+  private extractPeerIdFromConnection(url: string): string | undefined {
+    if (!url) return undefined;
+
+    try {
+      const urlObj = new URL(url, 'ws://localhost');
+      return urlObj.searchParams.get('id') || undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   /**

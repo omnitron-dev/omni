@@ -290,15 +290,37 @@ export class Netron extends EventEmitter {
         const peer = new RemotePeer(adapter as any, this, peerId);
         this.peers.set(peer.id, peer);
 
-        // Send our ID to peer
-        connection.send(Buffer.from(JSON.stringify({ type: 'id', id: this.id })));
+        // Send our ID to peer through the adapter (with small delay to ensure client is ready)
+        setTimeout(() => {
+          adapter.send(Buffer.from(JSON.stringify({ type: 'id', id: this.id })));
+        }, 10);
 
-        this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId });
+        // Listen for client ID
+        adapter.once('message', async (data: Buffer | ArrayBuffer, isBinary?: boolean) => {
+          if (!isBinary) {
+            try {
+              const str = Buffer.isBuffer(data) ? data.toString() : Buffer.from(data).toString();
+              const message = JSON.parse(str) as { type: string; id: string };
+              if (message.type === 'client-id') {
+                // Update peer with actual client ID
+                this.peers.delete(peer.id);
+                peer.id = message.id;
+                this.peers.set(peer.id, peer);
+                this.logger.info({ clientId: message.id }, 'Client ID received');
+
+                // Emit connect event after we have the actual client ID
+                this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId: peer.id });
+              }
+            } catch (error) {
+              this.logger.error({ error }, 'Error parsing client ID message');
+            }
+          }
+        });
 
         connection.on('disconnect', () => {
-          this.logger.info({ peerId }, 'Peer disconnected');
-          this.peers.delete(peerId);
-          this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peerId), { peerId });
+          this.logger.info({ peerId: peer.id }, 'Peer disconnected');
+          this.peers.delete(peer.id);
+          this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peer.id), { peerId: peer.id });
         });
 
         await peer.init(false, this.options);
@@ -438,12 +460,17 @@ export class Netron extends EventEmitter {
           });
 
           // Handle first message (handshake)
-          connection.once('data', async (data: Buffer) => {
+          adapter.once('message', async (data: Buffer | ArrayBuffer, isBinary?: boolean) => {
             try {
-              const message = JSON.parse(data.toString()) as { type: 'id'; id: string };
+              const str = Buffer.isBuffer(data) ? data.toString() : Buffer.from(data).toString();
+              const message = JSON.parse(str) as { type: 'id'; id: string };
               if (message.type === 'id') {
                 peer.id = message.id;
                 this.peers.set(peer.id, peer);
+
+                // Send our ID back to the server
+                connection.send(Buffer.from(JSON.stringify({ type: 'client-id', id: this.id })));
+
                 await peer.init(true, this.options);
 
                 peer.once('manual-disconnect', () => {

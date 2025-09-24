@@ -110,14 +110,16 @@ export class WebSocketCompatibilityAdapter extends EventEmitter {
       const data = this._binaryType === 'arraybuffer' ?
                   encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength) :
                   Buffer.from(encoded);
-      this.emit('message', data);
+      // Packets are always binary
+      this.emit('message', data, true);
     });
 
     this.connection.on('data', (data: Buffer | ArrayBuffer) => {
       const buffer = this._binaryType === 'arraybuffer' && Buffer.isBuffer(data) ?
                     data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) :
                     data;
-      this.emit('message', buffer);
+      // Raw data is treated as non-binary (text) for handshake messages
+      this.emit('message', buffer, false);
     });
 
     // Map error event
@@ -154,8 +156,14 @@ export class WebSocketCompatibilityAdapter extends EventEmitter {
     }
 
     this.connection.send(buffer)
-      .then(() => callback?.())
-      .catch(err => callback?.(err));
+      .then(() => {
+        if (typeof callback === 'function') callback();
+      })
+      .catch(err => {
+        if (typeof callback === 'function') callback(err);
+        // Log error if no callback provided
+        else console.error('WebSocketCompatibilityAdapter send error:', err);
+      });
   }
 
   /**

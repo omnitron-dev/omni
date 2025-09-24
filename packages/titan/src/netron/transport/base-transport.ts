@@ -71,13 +71,30 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
   protected handleData(data: Buffer | ArrayBuffer): void {
     this.metrics.bytesReceived += data.byteLength;
 
-    try {
-      const packet = decodePacket(data);
-      this.metrics.packetsReceived++;
-      this.emit('packet', packet);
-    } catch (error: any) {
-      // Not a valid packet, emit as raw data
+    // Check if this looks like a packet (starts with valid packet header)
+    // Packets start with a 4-byte ID, then a flags byte
+    // For now, just check if it's binary-looking data vs text
+    let isLikelyText = false;
+    if (Buffer.isBuffer(data) && data.length > 0) {
+      const firstByte = data[0]!;
+      isLikelyText = firstByte === 0x7B || // '{' for JSON
+                     firstByte === 0x22 || // '"' for strings
+                     (firstByte >= 0x20 && firstByte <= 0x7E); // printable ASCII
+    }
+
+    if (isLikelyText) {
+      // Emit as raw data for handshake messages
       this.emit('data', data);
+    } else {
+      // Try to decode as packet
+      try {
+        const packet = decodePacket(data);
+        this.metrics.packetsReceived++;
+        this.emit('packet', packet);
+      } catch (error: any) {
+        // Not a valid packet, emit as raw data
+        this.emit('data', data);
+      }
     }
   }
 

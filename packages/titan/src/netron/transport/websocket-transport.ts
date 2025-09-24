@@ -44,14 +44,21 @@ export class WebSocketConnection extends BaseConnection {
   private pingInterval?: NodeJS.Timeout;
   private pongTimeout?: NodeJS.Timeout;
 
-  constructor(socket: WebSocket, options: WebSocketOptions = {}) {
+  constructor(socket: WebSocket, options: WebSocketOptions = {}, isServer = false) {
     super(options);
     this.socket = socket;
+    (this as any).isServer = isServer;
     this.setupEventHandlers();
 
     // Start keep-alive if enabled
     if (options.keepAlive?.enabled) {
       this.startKeepAlive();
+    }
+
+    // If socket is already open, emit connect immediately
+    if (socket.readyState === WebSocket.OPEN) {
+      // Use setImmediate to ensure event handlers are attached first
+      setImmediate(() => this.handleConnect());
     }
   }
 
@@ -272,7 +279,7 @@ export class WebSocketServerAdapter extends BaseServer {
   private setupEventHandlers(): void {
     // Handle new connections
     this.wss.on('connection', (socket: WebSocket, request: IncomingMessage) => {
-      const connection = new WebSocketConnection(socket, this.options as WebSocketOptions);
+      const connection = new WebSocketConnection(socket, this.options as WebSocketOptions, true);
 
       // Add request info to connection
       (connection as any).request = request;
@@ -377,6 +384,9 @@ export class WebSocketTransport extends BaseTransport {
         headers: options.headers
       });
 
+      // Create connection immediately to set up event handlers
+      const connection = new WebSocketConnection(socket, options);
+
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
           socket.terminate();
@@ -385,7 +395,7 @@ export class WebSocketTransport extends BaseTransport {
 
         socket.once('open', () => {
           clearTimeout(timeout);
-          resolve(new WebSocketConnection(socket, options));
+          resolve(connection);
         });
 
         socket.once('error', (error) => {

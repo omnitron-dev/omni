@@ -126,15 +126,3 @@ export const Public =
         Reflect.defineMetadata('readonly', options?.readonly, target, propertyKey);
       }
     };
-
-/**
- * Alias for the Service decorator, providing an alternative naming convention.
- * @see Service
- */
-export const NetronService = Service;
-
-/**
- * Alias for the Public decorator, providing an alternative naming convention.
- * @see Public
- */
-export const NetronMethod = Public;

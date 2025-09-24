@@ -76,6 +76,20 @@ export class LocalPeer extends AbstractPeer {
       throw new Error(`Service already exposed: ${serviceKey}`);
     }
 
+    // If the service has transports configured, store them for later use
+    // Note: The application should decide when and how to use these transports
+    // We don't automatically start them here to avoid conflicts and allow flexibility
+    if (meta.transports && meta.transports.length > 0) {
+      this.logger.info(
+        {
+          serviceName: meta.name,
+          transportCount: meta.transports.length,
+          transports: meta.transports.map(t => t.name)
+        },
+        'Service configured with transports'
+      );
+    }
+
     this.logger.info({ serviceKey }, 'Creating service stub');
     const stub = new ServiceStub(this, instance, meta);
     const def = stub.definition;

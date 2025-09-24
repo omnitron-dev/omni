@@ -1,5 +1,5 @@
 import type { IService1 } from './service1.js';
-import { Public, Service } from '../../../src/netron';
+import { Public, Service } from '../../../src/decorators/core.js';
 
 export interface IService4 {
   setService(svc: IService1): boolean;

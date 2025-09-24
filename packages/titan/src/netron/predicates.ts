@@ -5,7 +5,7 @@ import { LocalPeer } from './local-peer.js';
 import { Definition } from './definition.js';
 import { ServiceStub } from './service-stub.js';
 import { AbstractPeer } from './abstract-peer.js';
-import { SERVICE_ANNOTATION } from './constants.js';
+import { SERVICE_ANNOTATION } from '../decorators/core.js';
 import { StreamReference } from './stream-reference.js';
 import { NetronWritableStream } from './writable-stream.js';
 import { NetronReadableStream } from './readable-stream.js';

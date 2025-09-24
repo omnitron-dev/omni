@@ -1,5 +1,5 @@
 import { Service1 } from './service1.js';
-import { Public, Service } from '../../../src/netron';
+import { Public, Service } from '../../../src/decorators/core.js';
 
 export interface IService2 {
   name: string;

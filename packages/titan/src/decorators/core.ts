@@ -5,8 +5,60 @@
  */
 
 import 'reflect-metadata';
-import { createDecorator } from './decorator-factory.js';
+import semver from 'semver';
 import type { Constructor } from '../nexus/index.js';
+import type { ServiceMetadata } from '../netron/types.js';
+import type { ITransport } from '../netron/transport/types.js';
+
+/**
+ * Options for the Service decorator
+ */
+export interface ServiceOptions {
+  /**
+   * The fully qualified name of the service (name[@version])
+   */
+  name: string;
+
+  /**
+   * Optional array of transports the service should be exposed on
+   */
+  transports?: ITransport[];
+
+  /**
+   * Optional transport configuration
+   */
+  transportConfig?: {
+    /**
+     * Default timeout for RPC calls (ms)
+     */
+    timeout?: number;
+
+    /**
+     * Enable compression for messages
+     */
+    compression?: boolean;
+
+    /**
+     * Maximum message size in bytes
+     */
+    maxMessageSize?: number;
+  };
+}
+
+/**
+ * Extended service metadata that includes transport configuration
+ */
+export interface ExtendedServiceMetadata extends ServiceMetadata {
+  /**
+   * Transports configured for the service
+   */
+  transports?: ITransport[];
+
+  /**
+   * Transport configuration options
+   */
+  transportConfig?: ServiceOptions['transportConfig'];
+}
 
 /**
  * Scope type for dependency injection
@@ -38,7 +90,31 @@ export const METADATA_KEYS = {
   CONTROLLER_PATH: 'controller:path',
   REPOSITORY_ENTITY: 'repository:entity',
   FACTORY_NAME: 'factory:name',
+
+  // Netron/Service metadata
+  SERVICE_ANNOTATION: 'netron:service',
+  METHOD_ANNOTATION: 'netron:method',
 } as const;
+
+/**
+ * Annotation used to mark classes and methods as Netron services.
+ * This annotation is used in conjunction with decorators to identify
+ * and register services within the Netron framework.
+ *
+ * Re-exported from core decorators for backward compatibility.
+ * @constant {string} SERVICE_ANNOTATION
+ */
+export const SERVICE_ANNOTATION = METADATA_KEYS.SERVICE_ANNOTATION;
+
+/**
+ * Annotation used to mark public methods and properties of Netron services.
+ * This annotation indicates that the marked element should be exposed
+ * and accessible to remote peers in the network.
+ *
+ * Re-exported from core decorators for backward compatibility.
+ * @constant {string} PUBLIC_ANNOTATION
+ */
+export const PUBLIC_ANNOTATION = METADATA_KEYS.METHOD_ANNOTATION;
 
 /**
  * Injectable decorator options
@@ -162,31 +238,138 @@ export function Request() {
 }
 
 /**
- * Service decorator - marks a class as a service with optional name
+ * Service decorator factory that creates a class decorator for defining Titan/Netron services.
+ * This decorator processes the service class to extract metadata about its public methods
+ * and properties, validates the service name and version, and stores the metadata using
+ * reflection.
+ *
+ * @param {string | ServiceOptions} options - Either a qualified name string 'name[@version]'
+ *                                           or an options object with name and optional transports
+ * @returns {ClassDecorator} A decorator function that processes the target class
+ *
+ * @throws {Error} If the service name is invalid or doesn't match the required pattern
+ * @throws {Error} If the version string is provided but doesn't follow semantic versioning
+ *
+ * @example
+ * // Simple string usage
+ * @Service('auth@1.0.0')
+ * class AuthService {
+ *   @Method()
+ *   async login(username: string, password: string): Promise<string> {
+ *     // Implementation
+ *   }
+ * }
+ *
+ * @example
+ * // With transports configuration
+ * import { WebSocketTransport, TcpTransport } from '@omnitron-dev/titan/netron';
+ *
+ * @Service({
+ *   name: 'auth@1.0.0',
+ *   transports: [
+ *     new WebSocketTransport({ port: 8080 }),
+ *     new TcpTransport({ port: 3000 })
+ *   ]
+ * })
+ * class AuthService {
+ *   // ...
+ * }
  */
-export const Service = createDecorator<string | { name?: string; version?: string }>()
-  .withName('Service')
-  .forClass()
-  .withMetadata((context: any) => {
-    const name = typeof context.options === 'string' ? context.options : context.options?.name;
-    const version = typeof context.options === 'object' ? context.options?.version : undefined;
+export const Service = (options: string | ServiceOptions) => (target: any) => {
+  // Normalize options to ensure we always have an object
+  const serviceOptions: ServiceOptions = typeof options === 'string'
+    ? { name: options }
+    : options;
 
-    // Set service metadata
-    Reflect.defineMetadata('service', { name, version }, context.target);
+  const qualifiedName = serviceOptions.name;
+  // Parse the qualified name into name and version components
+  const [name, version] = qualifiedName.split('@');
 
-    if (name) {
-      Reflect.defineMetadata(METADATA_KEYS.SERVICE_NAME, name, context.target);
+  // Regular expression to validate service names
+  // Allows alphanumeric characters and dots for namespacing
+  const nameRegex = /^[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*$/;
+
+  // Validate service name format
+  if (!name || !nameRegex.test(name)) {
+    throw new Error(`Invalid service name "${name}". Only latin letters and dots are allowed.`);
+  }
+
+  // Validate version string if provided
+  if (version && !semver.valid(version)) {
+    throw new Error(`Invalid version "${version}". Version must follow semver.`);
+  }
+
+  // Initialize metadata structure with extended properties
+  const metadata: ExtendedServiceMetadata = {
+    name,
+    version: version ?? '',
+    properties: {},
+    methods: {},
+    transports: serviceOptions.transports,
+    transportConfig: serviceOptions.transportConfig,
+  };
+
+  // Process class methods to extract metadata
+  for (const key of Object.getOwnPropertyNames(target.prototype)) {
+    const descriptor = Object.getOwnPropertyDescriptor(target.prototype, key);
+    if (!descriptor) continue;
+
+    // Skip non-public methods (check for Method decorator metadata)
+    const isPublic = Reflect.getMetadata('public', target.prototype, key) ||
+      Reflect.getMetadata(METADATA_KEYS.METHOD_ANNOTATION, target.prototype, key);
+    if (!isPublic) continue;
+
+    // Process method metadata
+    if (typeof descriptor.value === 'function') {
+      // Extract parameter types and return type using reflection
+      const paramTypes = Reflect.getMetadata('design:paramtypes', target.prototype, key) || [];
+      const returnType = Reflect.getMetadata('design:returntype', target.prototype, key)?.name || 'void';
+
+      // Store method metadata
+      metadata.methods[key] = {
+        type: returnType,
+        arguments: paramTypes.map((type: any) => type?.name || 'unknown'),
+      };
     }
+  }
 
-    return { service: true, name, version };
-  })
-  .withHooks({
-    afterApply: (context: any) => {
-      // Apply Injectable decorator
-      Injectable({ scope: 'singleton' })(context.target);
+  // Process class properties to extract metadata
+  // This requires creating an instance to get properties
+  try {
+    const instance = new target();
+    for (const key of Object.keys(instance)) {
+      // Skip non-public properties
+      const isPublic = Reflect.getMetadata('public', target.prototype, key) ||
+        Reflect.getMetadata(METADATA_KEYS.METHOD_ANNOTATION, target.prototype, key);
+      if (!isPublic) continue;
+
+      // Extract property type and readonly status
+      const type = Reflect.getMetadata('design:type', target.prototype, key)?.name || 'unknown';
+      const isReadonly = Reflect.getMetadata('readonly', target.prototype, key);
+
+      // Store property metadata
+      metadata.properties[key] = {
+        type,
+        readonly: !!isReadonly,
+      };
     }
-  })
-  .build();
+  } catch {
+    // If constructor requires params, we can't extract property metadata
+    // This is acceptable - properties will be empty
+  }
+
+  // Store the complete metadata on the class using reflection
+  Reflect.defineMetadata(METADATA_KEYS.SERVICE_ANNOTATION, metadata, target);
+
+  // Also set compatibility metadata
+  Reflect.defineMetadata('service', { name, version }, target);
+  if (name) {
+    Reflect.defineMetadata(METADATA_KEYS.SERVICE_NAME, name, target);
+  }
+
+  // Apply Injectable decorator for DI
+  Injectable({ scope: 'singleton' })(target);
+};
 
 /**
  * Mark a module or provider as global (available to all modules)
@@ -236,3 +419,44 @@ export function Factory<T>(name: string) {
     return descriptor;
   };
 }
+
+/**
+ * Method decorator factory that creates a property or method decorator.
+ * This decorator marks class members as publicly accessible in the Titan/Netron service
+ * and can optionally mark properties as read-only.
+ *
+ * This replaces the former @Public decorator from Netron.
+ *
+ * @param {Object} [options] - Configuration options for the decorator
+ * @param {boolean} [options.readonly] - If true, marks the property as read-only
+ * @returns {PropertyDecorator | MethodDecorator} A decorator function that processes the target member
+ *
+ * @example
+ * class ExampleService {
+ *   @Method({ readonly: true })
+ *   public readonly value: string;
+ *
+ *   @Method()
+ *   public doSomething(): void {
+ *     // Implementation
+ *   }
+ * }
+ */
+export const Method =
+  (options?: { readonly?: boolean }) =>
+    (target: any, propertyKey: string | symbol, descriptor?: PropertyDescriptor) => {
+      // Mark the member as public/method
+      Reflect.defineMetadata('public', true, target, propertyKey);
+      Reflect.defineMetadata(METADATA_KEYS.METHOD_ANNOTATION, true, target, propertyKey);
+
+      // For properties (when descriptor is undefined), handle readonly flag
+      if (!descriptor) {
+        Reflect.defineMetadata('readonly', options?.readonly, target, propertyKey);
+      }
+    };
+
+/**
+ * Public decorator - alias for Method decorator for backward compatibility
+ * @deprecated Use @Method instead
+ */
+export const Public = Method;

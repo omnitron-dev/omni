@@ -14,7 +14,6 @@ export * from './stream-reference.js';
 
 // Interfaces and decorators
 export * from './interface.js';
-export * from './decorators.js';
 
 // Peer classes
 export * from './local-peer.js';

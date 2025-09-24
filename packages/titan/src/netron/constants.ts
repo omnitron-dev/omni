@@ -19,24 +19,6 @@ export const MAX_UID_VALUE = Number.MAX_SAFE_INTEGER >>> 0;
 export const CONTEXTIFY_SYMBOL = Symbol();
 
 /**
- * Annotation used to mark classes and methods as Netron services.
- * This annotation is used in conjunction with decorators to identify
- * and register services within the Netron framework.
- *
- * @constant {string} SERVICE_ANNOTATION
- */
-export const SERVICE_ANNOTATION = 'netron:service';
-
-/**
- * Annotation used to mark public methods and properties of Netron services.
- * This annotation indicates that the marked element should be exposed
- * and accessible to remote peers in the network.
- *
- * @constant {string} PUBLIC_ANNOTATION
- */
-export const PUBLIC_ANNOTATION = 'netron:method';
-
-/**
  * Event emitted when a service is exposed to the network.
  * This event is triggered when a service becomes available for remote access,
  * allowing other peers to discover and interact with it.

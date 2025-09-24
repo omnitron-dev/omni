@@ -1,4 +1,4 @@
-import { Public, Service } from '../../../src/netron/index.js';
+import { Public, Service } from '../../../src/decorators/core.js';
 
 enum Status {
   Active = 'ACTIVE',

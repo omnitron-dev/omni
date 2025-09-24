@@ -49,8 +49,13 @@ export {
   Repository,
   Factory,
   Global,
+  // Service/Method decorators
+  Method,
+  Public, // Deprecated alias for Method
   // Metadata keys
   METADATA_KEYS,
+  SERVICE_ANNOTATION,
+  PUBLIC_ANNOTATION,
   // Types
   type Scope,
   type InjectableOptions,

@@ -1,4 +1,4 @@
-import { Public, Service } from '../../../src/netron';
+import { Public, Service } from '../../../src/decorators/core.js';
 
 export interface IService5 {
   generateError(errorType: string): void;

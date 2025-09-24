@@ -1,6 +1,7 @@
-import { Service1 } from './fixtures/service1';
-import { Service2 } from './fixtures/service2';
-import { isNetronService, SERVICE_ANNOTATION } from '../../src/netron';
+import { Service1 } from './fixtures/service1.js';
+import { Service2 } from './fixtures/service2.js';
+import { isNetronService } from '../../src/netron/predicates.js';
+import { SERVICE_ANNOTATION } from '../../src/decorators/core.js';
 
 describe('Packet', () => {
   it('complex metadata', () => {

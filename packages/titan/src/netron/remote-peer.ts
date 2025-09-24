@@ -18,7 +18,6 @@ import { NetronWritableStream } from './writable-stream.js';
 import { isServiceDefinition, isNetronStreamReference } from './predicates.js';
 import {
   REQUEST_TIMEOUT,
-  SERVICE_ANNOTATION,
   NETRON_EVENT_SERVICE_EXPOSE,
   NETRON_EVENT_SERVICE_UNEXPOSE,
 } from './constants.js';
@@ -45,6 +44,10 @@ import {
   TYPE_STREAM_CLOSE,
   createStreamPacket,
 } from './packet/index.js';
+
+import { SERVICE_ANNOTATION } from '../decorators/core.js';
+import type { ExtendedServiceMetadata } from '../decorators/core.js';
+import type { ITransport } from './transport/types.js';
 
 /**
  * Represents a remote peer in the Netron network.
@@ -91,6 +94,9 @@ export class RemotePeer extends AbstractPeer {
 
   /** Map of all definitions indexed by definition ID */
   public definitions = new Map<string, Definition>();
+
+  /** Map of transports associated with each service */
+  private serviceTransports = new Map<string, ITransport[]>();
 
   /**
    * Creates a new instance of RemotePeer.
@@ -172,7 +178,7 @@ export class RemotePeer extends AbstractPeer {
    * @throws {Error} If the service is invalid or already exposed
    */
   async exposeService(instance: any) {
-    const meta = Reflect.getMetadata(SERVICE_ANNOTATION, instance.constructor) as ServiceMetadata;
+    const meta = Reflect.getMetadata(SERVICE_ANNOTATION, instance.constructor) as ExtendedServiceMetadata;
     if (!meta) {
       throw new Error('Invalid service');
     }
@@ -181,11 +187,30 @@ export class RemotePeer extends AbstractPeer {
       throw new Error(`Service already exposed: ${meta.name}`);
     }
 
+    // If the service has transports configured, store them for later use
+    // Note: The application should decide when and how to use these transports
+    // We don't automatically start them here to avoid conflicts and allow flexibility
+    if (meta.transports && meta.transports.length > 0) {
+      this.logger.info(
+        {
+          serviceName: meta.name,
+          transportCount: meta.transports.length,
+          transports: meta.transports.map(t => t.name)
+        },
+        'Service configured with transports'
+      );
+    }
+
     const def = await this.runTask('expose_service', meta);
 
     const stub = new ServiceStub(this.netron.peer, instance, meta);
     this.netron.peer.stubs.set(def.id, stub);
     this.netron.peer.serviceInstances.set(instance, stub);
+
+    // Store transport associations for this service
+    if (meta.transports) {
+      this.serviceTransports.set(meta.name, meta.transports);
+    }
 
     return def;
   }
@@ -213,6 +238,19 @@ export class RemotePeer extends AbstractPeer {
     if (stub) {
       this.netron.peer.serviceInstances.delete(stub.instance);
       this.netron.peer.stubs.delete(defId);
+    }
+
+    // Clean up transport associations for this service
+    const transports = this.serviceTransports.get(serviceName);
+    if (transports) {
+      this.logger.info(
+        {
+          serviceName,
+          transportCount: transports.length
+        },
+        'Cleaning up transport associations for service'
+      );
+      this.serviceTransports.delete(serviceName);
     }
   }
 
@@ -362,7 +400,7 @@ export class RemotePeer extends AbstractPeer {
     // Check if socket is open or connecting (works for both WebSocket and TransportAdapter)
     const readyState = this.socket.readyState;
     if (readyState === 1 || readyState === 'OPEN' ||
-        readyState === 0 || readyState === 'CONNECTING') {
+      readyState === 0 || readyState === 'CONNECTING') {
       // Use async close if available (TransportAdapter), otherwise sync close (WebSocket)
       if (typeof this.socket.close === 'function') {
         const closeResult = this.socket.close();

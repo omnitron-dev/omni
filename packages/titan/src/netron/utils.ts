@@ -1,5 +1,5 @@
 import { ServiceMetadata } from './types.js';
-import { SERVICE_ANNOTATION } from './constants.js';
+import { SERVICE_ANNOTATION, ExtendedServiceMetadata } from '../decorators/core.js';
 
 /**
  * Generates a standardized event name for service-related events.
@@ -34,8 +34,8 @@ export const getPeerEventName = (peerId: string) => `peer:${peerId}`;
  * @returns {ServiceMetadata} The metadata associated with the service
  * @throws {Error} If the metadata cannot be retrieved or is invalid
  */
-export const getServiceMetadata = (instance: any) =>
-  Reflect.getMetadata(SERVICE_ANNOTATION, instance.constructor) as ServiceMetadata;
+export const getServiceMetadata = (instance: any): ExtendedServiceMetadata | undefined =>
+  Reflect.getMetadata(SERVICE_ANNOTATION, instance.constructor) as ExtendedServiceMetadata;
 
 /**
  * Constructs a qualified name by combining a base name with an optional version.

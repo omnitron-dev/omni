@@ -1,5 +1,5 @@
 import { Service2 } from './service2.js';
-import { Public, Service } from '../../../src/netron';
+import { Public, Service } from '../../../src/decorators/core.js';
 
 export interface IService3 {
   getService2(): Service2;

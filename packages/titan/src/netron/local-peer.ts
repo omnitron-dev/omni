@@ -241,6 +241,9 @@ export class LocalPeer extends AbstractPeer {
     }
 
     const meta = isServiceInterface(instance) ? instance.$def!.meta : getServiceMetadata(instance);
+    if (!meta) {
+      throw new Error('Service metadata not found');
+    }
     const stub = new ServiceStub(this, instance, meta);
     stub.definition.parentId = parentDef.id;
     this.serviceInstances.set(instance, stub);

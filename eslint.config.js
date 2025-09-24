@@ -32,20 +32,10 @@ const commonRules = () => ({
 /**
  * @rules import
  * from 'eslint-plugin-import'.
+ * Disabled due to ESLint 9 compatibility issues
  */
 const importRules = () => ({
-  ...importPlugin.configs.recommended.rules,
-  'import/named': 0,
-  'import/export': 0,
-  'import/default': 0,
-  'import/namespace': 0,
-  'import/no-named-as-default': 0,
-  'import/newline-after-import': 2,
-  'import/no-named-as-default-member': 0,
-  'import/no-cycle': [
-    0, // disabled if slow
-    { maxDepth: '∞', ignoreExternal: false, allowUnsafeDynamicCyclicDependency: false },
-  ],
+  // Import plugin rules are disabled due to ESLint 9 compatibility
 });
 
 /**
@@ -107,21 +97,9 @@ const sortImportsRules = () => {
  */
 const customConfig = {
   plugins: {
+    '@typescript-eslint': eslintTs.plugin,
     'unused-imports': unusedImportsPlugin,
     perfectionist: perfectionistPlugin,
-    import: importPlugin,
-  },
-  settings: {
-    // https://www.npmjs.com/package/eslint-import-resolver-typescript
-    ...importPlugin.configs.typescript.settings,
-    'import/resolver': {
-      ...importPlugin.configs.typescript.settings['import/resolver'],
-      typescript: {
-        alwaysTryTypes: true,
-        tsconfigRootDir: __dirname,
-        project: './tsconfig.json',
-      },
-    },
   },
   rules: {
     ...commonRules(),
@@ -184,12 +162,7 @@ module.exports = [
   {
     files: ['packages/titan/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
     rules: {
-      'import/no-unresolved': [
-        'error',
-        {
-          ignore: ['^@nexus', '^@nexus/', '@netron', '^@netron/', 'bun:test', 'https://deno.land']
-        }
-      ]
+      // import/no-unresolved disabled due to ESLint 9 compatibility issues
     }
   },
 ];

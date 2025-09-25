@@ -38,16 +38,17 @@ describe('DLQ - Requeue from DLQ', () => {
     // Publish message that will fail and go to DLQ
     await manager.publish(channel, { data: 'important' });
 
-    await delayMs(1000);
+    await delayMs(1500); // Give time for message to be processed and moved to DLQ
 
     expect(received.length).toBe(0); // msg initially not processed (in DLQ)
 
     // Now, requeue message from DLQ
-    await manager.requeueFromDLQ();
+    const requeuedCount = await manager.requeueFromDLQ();
+    expect(requeuedCount).toBe(1);
 
-    await delayMs(1000);
+    await delayMs(1500); // Give time for requeued message to be processed
 
     expect(received.length).toBe(1);
     expect(received[0]).toEqual({ data: 'important' });
-  }, 10000);
+  }, 15000);
 });

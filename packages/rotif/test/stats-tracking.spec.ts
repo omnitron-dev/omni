@@ -83,7 +83,7 @@ describe('Stats - tracking', () => {
       const stats = sub.stats();
 
       expect(stats.messages).toBe(0); // нет успешных сообщений
-      expect(stats.retries).toBe(1);  // 1 retry после первой неудачи (при maxRetries=2)
+      expect(stats.retries).toBe(2);  // 2 retry после первой неудачи (при maxRetries=2, всего 3 попытки)
       expect(stats.failures).toBe(1); // 1 сообщение попало в DLQ
       expect(stats.lastMessageAt).toBe(0); // нет успешной обработки
     }, 10000);

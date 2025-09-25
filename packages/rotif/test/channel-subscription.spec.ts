@@ -109,8 +109,9 @@ describe('NotificationManager – Channel Subscription Tests', () => {
 
     await def.promise;
 
-    expect(attempts).toEqual([1, 2]);
-    expect(received).toEqual([{ userId: 10 }, { userId: 10 }]);
+    // maxRetries: 2 means 2 retries AFTER the first attempt, so 3 total attempts
+    expect(attempts).toEqual([1, 2, 3]);
+    expect(received).toEqual([{ userId: 10 }, { userId: 10 }, { userId: 10 }]);
     expect(dlqMsgs).toEqual([{ userId: 10 }]);
   }, 10000);
 

@@ -1,4 +1,4 @@
-import { RotifMessage } from './types';
+import { RotifMessage } from './types.js';
 
 /**
  * Context object passed to middleware functions.

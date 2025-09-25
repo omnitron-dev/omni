@@ -1,4 +1,4 @@
-import { RotifLogger } from '../types';
+import { RotifLogger } from '../types.js';
 
 /**
  * Default logger implementation for Rotif.

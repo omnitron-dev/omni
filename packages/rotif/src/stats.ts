@@ -1,4 +1,4 @@
-import { SubscriptionStats } from './types';
+import { SubscriptionStats } from './types.js';
 
 /**
  * Tracks statistics for message processing.

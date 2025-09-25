@@ -158,10 +158,13 @@ describe('Rotif Wildcard Subscriptions', () => {
 
       await delay(100);
 
+      // Don't await - start the DLQ subscription loop but don't wait for it
       manager.subscribeToDLQ(async (msg) => {
         dlqMessages.push(msg.channel);
         await msg.ack();
       });
+
+      await delay(200); // Give DLQ subscription time to set up
 
       await manager.publish('alerts.critical', {});
 

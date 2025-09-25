@@ -189,12 +189,17 @@ describe('Race Condition Tests', () => {
   it('should handle exactly-once with DLQ movement', async () => {
     let attemptCount = 0;
     let dlqMessages: any[] = [];
+    let dlqSubscribed = false;
 
-    // Subscribe to DLQ first
-    await manager.subscribeToDLQ(async (msg) => {
+    // Subscribe to DLQ first (don't await - starts in background)
+    manager.subscribeToDLQ(async (msg) => {
       dlqMessages.push(msg.payload);
       await msg.ack();
     });
+    dlqSubscribed = true;
+
+    // Give DLQ subscription time to initialize
+    await delay(100);
 
     await manager.subscribe('race.dlq', async (msg) => {
       attemptCount++;
@@ -215,14 +220,23 @@ describe('Race Condition Tests', () => {
     // Duplicate should be blocked by dedup
     await manager.publish('race.dlq', payload, { exactlyOnce: true });
 
-    // Wait for initial attempt + retries + DLQ movement
-    await delay(2000);
+    // Wait for initial attempt + retries + DLQ movement with timeout check
+    const maxWait = 15000;
+    const startTime = Date.now();
+
+    while (dlqMessages.length === 0 && Date.now() - startTime < maxWait) {
+      await delay(100);
+    }
+
+    // Give a bit more time after DLQ message appears
+    await delay(500);
 
     // Should process only one message through retries to DLQ
-    expect(attemptCount).toBe(2); // Initial + 1 retry (maxRetries = 2)
+    // maxRetries=2 means initial attempt + 2 retries = 3 total attempts
+    expect(attemptCount).toBe(3); // Initial + 2 retries (maxRetries = 2)
     expect(dlqMessages).toHaveLength(1);
     expect(dlqMessages[0]).toEqual(payload);
-  }, 15000); // Increase timeout
+  }, 30000); // Increase timeout for CI/CD environments
 
   it('should handle high-concurrency exactly-once deduplication', async () => {
     let processedCount = 0;

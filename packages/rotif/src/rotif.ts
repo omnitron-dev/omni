@@ -10,13 +10,13 @@ import { defer, Deferred, delay as delayMs } from '@omnitron-dev/common';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-import { StatsTracker } from './stats';
-import { defaultLogger } from './utils/logger';
-import { Middleware, MiddlewareManager } from './middleware';
-import { RotifConfig, RotifLogger, RotifMessage, Subscription, PublishOptions, SubscribeOptions } from './types';
-import { getLoopKey, parseFields, getStreamKey, getGroupName, generateDedupKey, defaultConsumerName } from './utils/common';
-import { createRetryDelayFn, RetryStrategies } from './retry-strategies';
-import { DLQManager, type DLQCleanupConfig } from './dlq-manager';
+import { StatsTracker } from './stats.js';
+import { defaultLogger } from './utils/logger.js';
+import { Middleware, MiddlewareManager } from './middleware.js';
+import { RotifConfig, RotifLogger, RotifMessage, Subscription, PublishOptions, SubscribeOptions } from './types.js';
+import { getLoopKey, parseFields, getStreamKey, getGroupName, generateDedupKey, defaultConsumerName } from './utils/common.js';
+import { createRetryDelayFn, RetryStrategies } from './retry-strategies.js';
+import { DLQManager, type DLQCleanupConfig } from './dlq-manager.js';
 
 /**
  * Main class for managing message queues and subscriptions.
@@ -42,6 +42,7 @@ export class NotificationManager {
   private activePatterns = new Set<string>();
   private initializationDefer: Deferred;
   private subClient?: Redis;
+  private dlqClient?: Redis;
   private consumerLoops = new Map<string, { loopPromise: Promise<void>; subscriptions: Set<Subscription>; readyPromise: Promise<void> }>();
   private luaScripts = new Map<string, string>();
   private roundRobinIndices = new Map<string, number>();
@@ -391,6 +392,10 @@ export class NotificationManager {
       await this.subClient.quit();
     }
 
+    if (this.dlqClient && this.dlqClient.status !== 'end') {
+      await this.dlqClient.quit();
+    }
+
     this.logger.info('All subscriptions stopped');
   }
 
@@ -403,6 +408,11 @@ export class NotificationManager {
     const streamKey = 'rotif:dlq';
     const group = 'dlq-group';
     const consumer = 'dlq-worker';
+
+    // Create a separate Redis connection for DLQ subscription to avoid blocking
+    if (!this.dlqClient) {
+      this.dlqClient = new Redis(this.config.redis as RedisOptions);
+    }
 
     try {
       await this.redis.xgroup('CREATE', streamKey, group, '0', 'MKSTREAM');
@@ -419,7 +429,7 @@ export class NotificationManager {
           // Break if stopAll has been called
           if (!this.active) break;
 
-          const entries = await this.redis.xreadgroup(
+          const entries = await this.dlqClient!.xreadgroup(
             'GROUP', group, consumer,
             'COUNT', 1000,
             'BLOCK', 1000,  // Reduce block timeout for faster shutdown
@@ -608,6 +618,24 @@ export class NotificationManager {
           sub.statsTracker?.recordRetry();
         }
 
+        // Check if message has exceeded max retries BEFORE processing
+        const maxRetries = sub.options?.maxRetries ?? this.config.maxRetries ?? 5;
+        // maxRetries is the number of retries AFTER the first attempt
+        // So total attempts allowed = maxRetries + 1
+        // Only check this for retries (attempt > 1)
+        if (msg.attempt > 1 && msg.attempt > maxRetries + 1) {
+          await this.runLuaScript('move-to-dlq', [stream, 'rotif:dlq'], [
+            group, msg.id, channel, payloadStr,
+            'Max retries exceeded', msg.timestamp.toString(), msg.attempt.toString(),
+          ]);
+          // Record failure when message moved to DLQ
+          sub.statsTracker?.recordFailure();
+          this.logger.error(`Message ${id} moved to DLQ - max retries exceeded`);
+          // Decrement in-flight counter
+          (sub as any).inflightCount = Math.max(0, ((sub as any).inflightCount || 0) - 1);
+          continue;
+        }
+
         let dedupKey = '';
         if (exactlyOnce) {
           // Use group for consumer-side deduplication
@@ -647,52 +675,57 @@ export class NotificationManager {
             await this.redis.del(dedupKey);
           }
 
-          const maxRetries = sub.options?.maxRetries ?? this.config.maxRetries ?? 5;
-
-          if (msg.attempt > maxRetries) {
+          // Check if we've exhausted all retries
+          // maxRetries is the number of retries AFTER the first attempt
+          if (msg.attempt >= maxRetries + 1) {
+            // Move to DLQ with the actual error message
+            const errorMessage = err instanceof Error ? err.message : String(err);
             await this.runLuaScript('move-to-dlq', [stream, 'rotif:dlq'], [
               group, msg.id, channel, payloadStr,
-              (err as Error).message || 'unknown', msg.timestamp.toString(), msg.attempt.toString(),
+              errorMessage, msg.timestamp.toString(), msg.attempt.toString(),
             ]);
             // Record failure when message moved to DLQ
             sub.statsTracker?.recordFailure();
-            this.logger.error(`Message ${id} moved to DLQ`);
+            this.logger.error(`Message ${id} moved to DLQ after error: ${errorMessage}`);
+            // Decrement in-flight counter
+            (sub as any).inflightCount = Math.max(0, ((sub as any).inflightCount || 0) - 1);
+            continue;
+          }
+
+          // We can still retry - Calculate retry delay using strategy or function
+          let retryDelay: number;
+          if (sub.options?.retryStrategy) {
+            const retryFn = createRetryDelayFn(sub.options.retryStrategy);
+            retryDelay = retryFn(msg.attempt, msg);
+          } else if (this.config.retryStrategy) {
+            const retryFn = createRetryDelayFn(this.config.retryStrategy);
+            retryDelay = retryFn(msg.attempt, msg);
+          } else if (typeof sub.options?.retryDelay === 'function') {
+            retryDelay = sub.options.retryDelay(msg.attempt, msg);
           } else {
-            // Calculate retry delay using strategy or function
-            let retryDelay: number;
-            if (sub.options?.retryStrategy) {
-              const retryFn = createRetryDelayFn(sub.options.retryStrategy);
-              retryDelay = retryFn(msg.attempt, msg);
-            } else if (this.config.retryStrategy) {
-              const retryFn = createRetryDelayFn(this.config.retryStrategy);
-              retryDelay = retryFn(msg.attempt, msg);
-            } else if (typeof sub.options?.retryDelay === 'function') {
-              retryDelay = sub.options.retryDelay(msg.attempt, msg);
-            } else {
-              retryDelay = Number(sub.options?.retryDelay ?? this.config.retryDelay ?? 1000);
-            }
+            retryDelay = Number(sub.options?.retryDelay ?? this.config.retryDelay ?? 1000);
+          }
 
-            // Determine the correct stream for retry - always use the main stream (without :retry suffix)
-            // This ensures retries go to the main stream, not back to retry stream
-            const mainStream = stream.endsWith(':retry')
-              ? stream.slice(0, -6)  // Remove ':retry' suffix to get main stream
-              : stream; // Already the main stream
-            const nextAttempt = attempt + 1;
-            const retryAt = Date.now() + retryDelay;
+          // Determine the correct stream for retry - always use the main stream (without :retry suffix)
+          // This ensures retries go to the main stream, not back to retry stream
+          const mainStream = stream.endsWith(':retry')
+            ? stream.slice(0, -6)  // Remove ':retry' suffix to get main stream
+            : stream; // Already the main stream
+          const nextAttempt = attempt + 1;
+          const retryAt = Date.now() + retryDelay;
 
 
-            try {
-              this.logger.debug(`Scheduling retry: stream=${mainStream}, attempt=${nextAttempt}, delay=${retryDelay}ms`);
-              const result = await this.runLuaScript('retry-message', [stream, 'rotif:scheduled'], [
-                group, msg.id, channel, payloadStr, timestamp.toString(), nextAttempt.toString(),
-                retryAt.toString(), randomUUID(), fields['exactlyOnce'] ?? 'false', dedupTTL ?? '3600', mainStream,
-                pattern, // Pass pattern for retries
-              ]);
-              this.logger.debug(`Retry scheduled successfully: ${result}`);
-            } catch (luaErr) {
-              this.logger.error(`Failed to schedule retry: ${luaErr}`);
-              throw luaErr;
-            }
+          try {
+            this.logger.debug(`Scheduling retry: stream=${mainStream}, attempt=${nextAttempt}, delay=${retryDelay}ms`);
+            const result = await this.runLuaScript('retry-message', [stream, 'rotif:scheduled'], [
+              group, msg.id, channel, payloadStr, timestamp.toString(), nextAttempt.toString(),
+              retryAt.toString(), randomUUID(), fields['exactlyOnce'] ?? 'false', dedupTTL ?? '3600', mainStream,
+              pattern, // Pass pattern for retries
+            ]);
+            this.logger.debug(`Retry scheduled successfully: ${result}`);
+          } catch (luaErr) {
+            this.logger.error(`Failed to schedule retry: ${luaErr}`);
+            throw luaErr;
           }
         } finally {
           // Decrement in-flight counter

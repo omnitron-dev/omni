@@ -4,8 +4,7 @@
 
 import { z } from 'zod';
 import { TitanError, ErrorOptions } from './core.js';
-import { ErrorCode } from './codes.js';
-import type { Contract, MethodContract } from '../validation/contract.js';
+import type { Contract } from '../validation/contract.js';
 
 /**
  * Contract error that validates against method contracts

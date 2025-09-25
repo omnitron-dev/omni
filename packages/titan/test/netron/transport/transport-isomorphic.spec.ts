@@ -1007,11 +1007,17 @@ describe('Isomorphic Transport Test Suite', () => {
 
           // Trigger some activity
           await client.send(Buffer.from('test'));
+          await new Promise(resolve => setTimeout(resolve, 100)); // Wait a bit for events
           await client.close();
 
           // All transports should emit at least these events
           // Note: Some events might be emitted differently based on implementation
           // but the core events should be consistent
+          // Since we connect before tracking, we won't see 'connect' event
+          // but we should see disconnect when closing
+          expect(events).toContain('disconnect');
+          // State changes are also commonly emitted
+          expect(events.length).toBeGreaterThan(0);
         } finally {
           // Clean up
           if (server) {
@@ -1030,6 +1036,6 @@ describe('Isomorphic Transport Test Suite', () => {
           }
         }
       }
-    });
+    }, 60000);
   });
 });

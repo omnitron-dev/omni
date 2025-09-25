@@ -10,7 +10,6 @@ import { EventEmitter } from '@omnitron-dev/eventemitter';
 import {
   ITransportConnection,
   ITransportServer,
-  ITransport,
   ITransportRegistry,
   TransportOptions,
   ConnectionState,
@@ -18,7 +17,7 @@ import {
   TransportAddress
 } from './types.js';
 import { TransportRegistry, getTransportForAddress } from './transport-registry.js';
-import { Packet, encodePacket, decodePacket } from '../packet/index.js';
+import { Packet, encodePacket } from '../packet/index.js';
 
 /**
  * WebSocket compatibility adapter

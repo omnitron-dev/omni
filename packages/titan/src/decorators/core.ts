@@ -20,6 +20,11 @@ export interface ServiceOptions {
   name: string;
 
   /**
+   * Optional service contract for validation and documentation
+   */
+  contract?: any;
+
+  /**
    * Optional array of transports the service should be exposed on
    */
   transports?: ITransport[];
@@ -49,6 +54,11 @@ export interface ServiceOptions {
  * Extended service metadata that includes transport configuration
  */
 export interface ExtendedServiceMetadata extends ServiceMetadata {
+  /**
+   * Service contract for validation and documentation
+   */
+  contract?: any;
+
   /**
    * Transports configured for the service
    */
@@ -261,17 +271,18 @@ export function Request() {
  * }
  *
  * @example
- * // With transports configuration
+ * // With contract and transports configuration
  * import { WebSocketTransport, TcpTransport } from '@omnitron-dev/titan/netron';
  *
  * @Service({
- *   name: 'auth@1.0.0',
+ *   name: 'UserService@1.0.0',
+ *   contract: userContract,
  *   transports: [
  *     new WebSocketTransport({ port: 8080 }),
  *     new TcpTransport({ port: 3000 })
  *   ]
  * })
- * class AuthService {
+ * class UserService {
  *   // ...
  * }
  */
@@ -308,6 +319,7 @@ export const Service = (options?: string | ServiceOptions) => (target: any) => {
     version: version || '',
     properties: {},
     methods: {},
+    contract: serviceOptions.contract,
     transports: serviceOptions.transports,
     transportConfig: serviceOptions.transportConfig,
   };

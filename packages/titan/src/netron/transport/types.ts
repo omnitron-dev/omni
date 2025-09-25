@@ -8,6 +8,9 @@
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import type { Packet } from '../packet/packet.js';
 
+// Re-export Packet for convenience
+export { Packet } from '../packet/packet.js';
+
 /**
  * Transport capabilities descriptor
  */
@@ -52,6 +55,12 @@ export interface TransportOptions {
   compression?: boolean;
   /** Custom headers or metadata */
   headers?: Record<string, string>;
+  /** Request timeout in milliseconds */
+  timeout?: number;
+  /** HTTP server specific options */
+  host?: string;
+  port?: number;
+  cors?: any;
 }
 
 /**

@@ -1,4 +1,3 @@
-import { ServiceMetadata } from './types.js';
 import { SERVICE_ANNOTATION, ExtendedServiceMetadata } from '../decorators/core.js';
 
 /**

@@ -103,6 +103,7 @@ export function ValidateStream(
 /**
  * Common validation schemas
  */
+// eslint-disable-next-line @typescript-eslint/no-namespace
 export namespace ValidationSchemas {
   // UUID validation
   export const uuid = z.string().uuid();
@@ -179,6 +180,7 @@ export namespace ValidationSchemas {
 /**
  * Validation presets for common use cases
  */
+// eslint-disable-next-line @typescript-eslint/no-namespace
 export namespace ValidationPresets {
   /**
    * CRUD validation preset

@@ -95,7 +95,10 @@ export class LoggerModule {
 
         // Main Logger Service
         [LOGGER_SERVICE_TOKEN, {
-          useClass: LoggerService,
+          useFactory: () =>
+            // Pass the options directly from closure
+            new LoggerService(options, options.transports, options.processors)
+          ,
           scope: 'singleton'
         }] as any
       ],
@@ -123,7 +126,13 @@ export class LoggerModule {
 
         // Main Logger Service
         [LOGGER_SERVICE_TOKEN, {
-          useClass: LoggerService,
+          useFactory: (options_?: ILoggerModuleOptions, transports?: ITransport[], processors?: ILogProcessor[], configService?: any) => new LoggerService(options_ || {}, transports, processors, configService),
+          inject: [
+            { token: LOGGER_OPTIONS_TOKEN, optional: true },
+            { token: LOGGER_TRANSPORTS_TOKEN, optional: true },
+            { token: LOGGER_PROCESSORS_TOKEN, optional: true },
+            { token: CONFIG_SERVICE_TOKEN, optional: true }
+          ],
           scope: 'singleton'
         }] as any
       ],

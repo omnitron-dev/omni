@@ -6,6 +6,37 @@ import { z } from 'zod';
 import { ValidationOptions } from './validation-engine.js';
 
 /**
+ * HTTP-specific options for method contracts
+ */
+export interface HttpMethodOptions {
+  /** HTTP method (defaults to POST for RPC-style calls) */
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
+
+  /** Path pattern with parameters (defaults to /rpc/{methodName}) */
+  path?: string; // e.g., '/users/:id' or '/api/v1/users/{id}'
+
+  /** Request parsing */
+  query?: z.ZodSchema<any>;     // URL query parameters
+  params?: z.ZodSchema<any>;    // URL path parameters
+  headers?: z.ZodSchema<any>;   // Request headers validation
+  cookies?: z.ZodSchema<any>;   // Cookie validation
+
+  /** Response configuration */
+  responseHeaders?: Record<string, string>;
+  contentType?: string;
+  status?: number; // HTTP status code for success (default 200)
+
+  /** OpenAPI documentation metadata */
+  openapi?: {
+    summary?: string;
+    description?: string;
+    tags?: string[];
+    deprecated?: boolean;
+    examples?: Record<string, any>;
+  };
+}
+
+/**
  * Method contract definition
  */
 export interface MethodContract {
@@ -14,6 +45,9 @@ export interface MethodContract {
   errors?: Record<number, z.ZodSchema<any>>;
   stream?: boolean;
   options?: ValidationOptions;
+
+  /** New optional HTTP extension */
+  http?: HttpMethodOptions;
 }
 
 /**

@@ -280,17 +280,18 @@ describe('Unix Domain Socket Transport', () => {
     it('should send and receive raw data', async () => {
       const testData = Buffer.from('Hello, Unix Socket!');
 
-      // Server listens for packet (since send() wraps data as packet)
-      const packetPromise = waitForEvent(serverConnection, 'packet');
+      // Server listens for data event (raw text is emitted as 'data', not 'packet')
+      const dataPromise = waitForEvent(serverConnection, 'data');
 
       // Client sends data
       await clientConnection.send(testData);
 
-      // Server receives packet with data
-      const receivedPacket = await packetPromise;
-      // The original data might be in the packet's data field
-      // But since it's not a valid MessagePack packet, it will be treated as raw
-      expect(receivedPacket).toBeDefined();
+      // Server receives data
+      const receivedData = await dataPromise;
+      // The received data is the raw buffer after length prefix is stripped
+      expect(receivedData).toBeDefined();
+      expect(Buffer.isBuffer(receivedData)).toBe(true);
+      expect(receivedData.toString()).toBe('Hello, Unix Socket!');
     });
 
     it('should send and receive packets', async () => {
@@ -314,27 +315,29 @@ describe('Unix Domain Socket Transport', () => {
       const clientData = Buffer.from('Client message');
       const serverData = Buffer.from('Server response');
 
-      // Set up listeners
-      const serverPacketPromise = waitForEvent(serverConnection, 'packet');
-      const clientPacketPromise = waitForEvent(clientConnection, 'packet');
+      // Set up listeners (raw text data emits 'data' events)
+      const serverDataPromise = waitForEvent(serverConnection, 'data');
+      const clientDataPromise = waitForEvent(clientConnection, 'data');
 
       // Client sends to server
       await clientConnection.send(clientData);
-      const serverReceived = await serverPacketPromise;
+      const serverReceived = await serverDataPromise;
       expect(serverReceived).toBeDefined();
+      expect(serverReceived.toString()).toBe('Client message');
 
       // Server responds to client
       await serverConnection.send(serverData);
-      const clientReceived = await clientPacketPromise;
+      const clientReceived = await clientDataPromise;
       expect(clientReceived).toBeDefined();
+      expect(clientReceived.toString()).toBe('Server response');
     });
 
     it('should handle rapid data exchange', async () => {
       const messageCount = 100;
       const messages: any[] = [];
 
-      serverConnection.on('packet', (packet: any) => {
-        messages.push(packet);
+      serverConnection.on('data', (data: any) => {
+        messages.push(data);
       });
 
       // Send many messages rapidly
@@ -351,12 +354,13 @@ describe('Unix Domain Socket Transport', () => {
     it('should handle large data transfers', async () => {
       const largeData = Buffer.alloc(1024 * 1024 * 5, 'x'); // 5MB of 'x'
 
-      const packetPromise = waitForEvent(serverConnection, 'packet', 10000);
+      const dataPromise = waitForEvent(serverConnection, 'data', 10000);
 
       await clientConnection.send(largeData);
 
-      const receivedPacket = await packetPromise;
-      expect(receivedPacket).toBeDefined();
+      const receivedData = await dataPromise;
+      expect(receivedData).toBeDefined();
+      expect(receivedData.length).toBe(largeData.length);
     });
 
     it('should track connection metrics', async () => {
@@ -461,25 +465,28 @@ describe('Unix Domain Socket Transport', () => {
       const client3 = await transport.connect(socketPath);
       await connPromise3;
 
-      // Set up packet listeners
-      const packet1Promise = waitForEvent(client1, 'packet');
-      const packet2Promise = waitForEvent(client2, 'packet');
-      const packet3Promise = waitForEvent(client3, 'packet');
+      // Set up data listeners (raw text data emits 'data' events)
+      const data1Promise = waitForEvent(client1, 'data');
+      const data2Promise = waitForEvent(client2, 'data');
+      const data3Promise = waitForEvent(client3, 'data');
 
       // Broadcast message
       const broadcastData = Buffer.from('Broadcast message');
       await server.broadcast(broadcastData);
 
       // All clients should receive the message
-      const [packet1, packet2, packet3] = await Promise.all([
-        packet1Promise,
-        packet2Promise,
-        packet3Promise
+      const [data1, data2, data3] = await Promise.all([
+        data1Promise,
+        data2Promise,
+        data3Promise
       ]);
 
-      expect(packet1).toBeDefined();
-      expect(packet2).toBeDefined();
-      expect(packet3).toBeDefined();
+      expect(data1).toBeDefined();
+      expect(data2).toBeDefined();
+      expect(data3).toBeDefined();
+      expect(data1.toString()).toBe('Broadcast message');
+      expect(data2.toString()).toBe('Broadcast message');
+      expect(data3.toString()).toBe('Broadcast message');
 
       // Clean up
       await client1.close();

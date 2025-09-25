@@ -5,6 +5,7 @@ import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { NetronOptions } from './types.js';
 import { LocalPeer } from './local-peer.js';
 import { RemotePeer } from './remote-peer.js';
+import { HttpRemotePeer } from './http-remote-peer.js';
 import { getPeerEventName } from './utils.js';
 import { ServiceStub } from './service-stub.js';
 import { Task, TaskManager } from './task-manager.js';
@@ -15,9 +16,9 @@ import { ensureStreamReferenceRegistered } from './packet/serializer.js';
 
 // Import transport layer
 import { TransportRegistry } from './transport/transport-registry.js';
-import { WebSocketCompatibilityAdapter, TransportConnectionFactory } from './transport/transport-adapter.js';
+import { TransportConnectionFactory } from './transport/transport-adapter.js';
 import { WebSocketTransport } from './transport/websocket-transport.js';
-import type { ITransport, ITransportServer, ITransportConnection } from './transport/types.js';
+import type { ITransport, ITransportServer, ITransportConnection, TransportFactory } from './transport/types.js';
 
 // Import core tasks
 import { abilities } from './core-tasks/abilities.js';
@@ -67,6 +68,15 @@ export class Netron extends EventEmitter {
    * @description Manages transport connections and handles the protocol
    */
   private server?: ITransportServer;
+
+  /**
+   * Get the transport server instance
+   * Used by LocalPeer to register services with HTTP server
+   * @returns The transport server if available
+   */
+  get transportServer(): ITransportServer | undefined {
+    return this.server;
+  }
 
   /**
    * Map of special events that need to be processed sequentially.
@@ -233,6 +243,35 @@ export class Netron extends EventEmitter {
   }
 
   /**
+   * Register a transport factory
+   * @param name - Transport name (e.g., 'http', 'tcp', 'unix')
+   * @param factory - Factory function that creates transport instances
+   * @param setAsDefault - Whether to set this transport as the default
+   */
+  registerTransport(name: string, factory: TransportFactory, setAsDefault = false): void {
+    this.transportRegistry.register(name, factory);
+
+    if (setAsDefault) {
+      const transport = this.transportRegistry.get(name);
+      if (transport) {
+        this.defaultTransport = transport;
+      }
+    }
+  }
+
+  /**
+   * Set the default transport for server operations
+   * @param name - Transport name
+   */
+  setDefaultTransport(name: string): void {
+    const transport = this.transportRegistry.get(name);
+    if (!transport) {
+      throw new Error(`Transport ${name} not registered`);
+    }
+    this.defaultTransport = transport;
+  }
+
+  /**
    * Starts the Netron instance, initializing the WebSocket server and loading tasks.
    * Loads core tasks from the specified directory and sets up the WebSocket server if configured.
    *
@@ -277,6 +316,20 @@ export class Netron extends EventEmitter {
       headers: { 'x-netron-id': this.id }
     } as any).then(async (server) => {
       this.server = server;
+
+      // If this is an HTTP server, set the peer for service invocation
+      if (server && typeof (server as any).setPeer === 'function') {
+        (server as any).setPeer(this.peer);
+      }
+
+      // Register existing services with the transport server
+      if (server && typeof (server as any).registerService === 'function') {
+        for (const [serviceName, stub] of this.services) {
+          const meta = stub.definition.meta;
+          const contract = (meta as any).contract || (stub.instance?.constructor as any)?.contract;
+          (server as any).registerService(meta.name, stub.definition, contract);
+        }
+      }
 
       this.server.on('connection', async (connection: ITransportConnection) => {
         // Extract peer ID from connection or generate new one
@@ -420,8 +473,18 @@ export class Netron extends EventEmitter {
    * @example
    * const peer = await netron.connect('ws://example.com:8080');
    */
-  async connect(address: string, reconnect = true): Promise<RemotePeer> {
+  async connect(address: string, reconnect = true): Promise<RemotePeer | HttpRemotePeer> {
     this.logger.info({ address, reconnect }, 'Connecting to remote peer');
+
+    // Check if this is an HTTP connection
+    const isHttp = address.startsWith('http://') || address.startsWith('https://');
+
+    if (isHttp) {
+      // Use optimized HTTP-specific connection flow
+      return this.connectHttp(address);
+    }
+
+    // Use existing WebSocket/TCP connection flow for other transports
     const baseDelay = 1000;
     let reconnectAttempts = 0;
     let manuallyDisconnected = false;
@@ -549,6 +612,49 @@ export class Netron extends EventEmitter {
     };
 
     return connectPeer();
+  }
+
+  /**
+   * Connect to an HTTP server (optimized for stateless connections)
+   * This method bypasses the WebSocket handshake and creates a stateless HTTP peer.
+   *
+   * @param address The HTTP/HTTPS URL to connect to
+   * @returns HttpRemotePeer configured for stateless operation
+   */
+  private async connectHttp(address: string): Promise<HttpRemotePeer> {
+    this.logger.info({ address }, 'Connecting to HTTP server (stateless mode)');
+
+    try {
+      // Get HTTP transport
+      const transport = this.getTransportForAddress(address);
+      if (!transport) {
+        throw new Error(`No HTTP transport registered for address: ${address}`);
+      }
+
+      // Connect using HTTP transport - this creates an HttpClientConnection
+      const connection = await transport.connect(address, {
+        ...this.options,
+        headers: { 'x-netron-id': this.id }
+      });
+
+      // Create HTTP-specific peer (no handshake needed)
+      const peer = new HttpRemotePeer(connection, this, address);
+
+      // Register the peer
+      this.peers.set(peer.id, peer as any);
+
+      // Initialize the peer (no-op for HTTP)
+      await peer.init(true, this.options);
+
+      // Emit connection event
+      this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId: peer.id });
+      this.logger.info({ peerId: peer.id, address }, 'HTTP peer connected (stateless)');
+
+      return peer;
+    } catch (error) {
+      this.logger.error({ error, address }, 'Failed to connect to HTTP server');
+      throw error;
+    }
   }
 
   /**

@@ -5,6 +5,10 @@
     "baseUrl": "./",
     "rootDir": "./src",
     "outDir": "./dist",
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": true,
+    "downlevelIteration": true,
     "paths": {
       "@netron": [
         "src/netron/index.js"
@@ -21,7 +25,7 @@
     }
   },
   "include": [
-    "src/**/*.ts",
+    "src/**/*.ts"
   ],
   "exclude": [
     "**/*spec.ts"

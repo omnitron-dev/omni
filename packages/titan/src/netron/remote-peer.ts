@@ -25,7 +25,6 @@ import {
   Abilities,
   NetronOptions,
   EventSubscriber,
-  ServiceMetadata,
   ServiceExposeEvent,
   ServiceUnexposeEvent,
 } from './types.js';

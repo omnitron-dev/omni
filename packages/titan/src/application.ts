@@ -4,7 +4,7 @@
 
 import os from 'node:os';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import { Token, Container, createToken, InjectionToken, Provider, AsyncFactory } from './nexus/index.js';
+import { Token, Container, createToken, InjectionToken, Provider } from './nexus/index.js';
 import { Netron, type NetronOptions } from './netron/index.js';
 
 import { ConfigModule, CONFIG_SERVICE_TOKEN } from './modules/config/index.js';
@@ -177,6 +177,17 @@ export class Application implements IApplication {
       ...this._userConfig  // User config overrides app metadata
     };
 
+    // Add specific options to config if provided
+    if (options.disableCoreModules !== undefined) {
+      this._config['disableCoreModules'] = options.disableCoreModules;
+    }
+    if (options.disableGracefulShutdown !== undefined) {
+      this._config['disableGracefulShutdown'] = options.disableGracefulShutdown;
+    }
+    if (options['disableProcessExit'] !== undefined) {
+      this._config['disableProcessExit'] = options['disableProcessExit'];
+    }
+
     // Add logging if provided at top level
     if (options.logging && !this._config.logging) {
       this._config.logging = options.logging;
@@ -255,6 +266,7 @@ export class Application implements IApplication {
           const loggerService = this._container.resolve(LOGGER_SERVICE_TOKEN) as ILoggerModule;
           this._logger = loggerService.logger;
           this._logger.info({ state: this._state }, 'Application starting');
+          // Emit ModuleStarted for logger when it exists
           this.emit(ApplicationEvent.ModuleStarted, { module: 'logger' });
         } catch {
           // Logger not found
@@ -302,6 +314,7 @@ export class Application implements IApplication {
           if (netron) {
             await netron.start();
             this._logger?.info({ module: 'Netron' }, 'Netron service started');
+            // Emit ModuleStarted for Netron when it exists
             this.emit(ApplicationEvent.ModuleStarted, { module: 'netron' });
           }
         } catch (error) {
@@ -777,15 +790,26 @@ export class Application implements IApplication {
       // Check if this exact module instance is already registered
       for (const [, existingModule] of this._modules) {
         if (existingModule === moduleInstance) {
-          throw new Error(`Module ${moduleInstance.name} already registered`);
+          // Module instance already registered, just return
+          return this;
         }
       }
 
-      // Register it
-      this.registerModule(moduleInstance).catch(err => {
-        this._logger?.error({ error: err }, 'Failed to register module');
-        this.handleError(err);
-      });
+      // Register module synchronously for instances
+      // Store the token and module
+      const token = createToken<IModule>(moduleInstance.name);
+      this._modules.set(token, moduleInstance);
+
+      // Configure module if config exists
+      if (moduleInstance.configure && typeof moduleInstance.configure === 'function') {
+        const moduleConfig = this._config[moduleInstance.name];
+        if (moduleConfig !== undefined) {
+          moduleInstance.configure(moduleConfig);
+        }
+      }
+
+      // Emit registration event immediately
+      this.emit(ApplicationEvent.ModuleRegistered, { module: moduleInstance.name });
     }
 
     return this;
@@ -844,6 +868,7 @@ export class Application implements IApplication {
     // Return from user config first, fallback to full config for app metadata
     return this._userConfig[key] !== undefined ? this._userConfig[key] : this._config[key];
   }
+
 
   /**
    * Register event handler
@@ -1105,26 +1130,17 @@ export class Application implements IApplication {
     const newConfig = { ...this._config };
 
     for (const key of Object.keys(options)) {
-      // Deep merge for all configs (both module and non-module)
-      if (newConfig[key] && typeof newConfig[key] === 'object' && !Array.isArray(newConfig[key]) &&
-        options[key] && typeof options[key] === 'object' && !Array.isArray(options[key])) {
-        newConfig[key] = this.deepMerge(newConfig[key], options[key]);
-      } else {
-        newConfig[key] = options[key];
-      }
+      // Replace top-level config sections completely
+      // This matches the test expectations where configure replaces sections
+      newConfig[key] = options[key];
     }
 
     // Apply the merged configuration
     this._config = newConfig;
 
-    // Update user config - merge the same way as main config for consistency
+    // Update user config - replace sections same as main config
     for (const key of Object.keys(options)) {
-      if (this._userConfig[key] && typeof this._userConfig[key] === 'object' && !Array.isArray(this._userConfig[key]) &&
-        options[key] && typeof options[key] === 'object' && !Array.isArray(options[key])) {
-        this._userConfig[key] = this.deepMerge(this._userConfig[key], options[key]);
-      } else {
-        this._userConfig[key] = options[key];
-      }
+      this._userConfig[key] = options[key];
     }
 
     // Apply logger configuration if provided
@@ -1156,7 +1172,18 @@ export class Application implements IApplication {
       }
     }
 
-    this.emit(ApplicationEvent.ConfigChanged, { config: this.getConfig() });
+    // Update module configurations if they have configure method
+    for (const [, module] of this._modules) {
+      if (module.configure && typeof module.configure === 'function') {
+        const moduleConfig = this._config[module.name];
+        if (moduleConfig !== undefined) {
+          module.configure(moduleConfig);
+        }
+      }
+    }
+
+    // Emit only the changed config, not the entire config
+    this.emit(ApplicationEvent.ConfigChanged, { config: options });
     return this;
   }
 

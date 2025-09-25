@@ -98,6 +98,12 @@ export class LocalPeer extends AbstractPeer {
     this.netron.services.set(serviceKey, stub);
     this.serviceInstances.set(instance, stub);
 
+    // If we have an HTTP server, register the service with it
+    if (this.netron.transportServer && typeof (this.netron.transportServer as any).registerService === 'function') {
+      const contract = (meta as any).contract || (instance.constructor as any).contract;
+      (this.netron.transportServer as any).registerService(meta.name, def, contract);
+    }
+
     this.netron.emitSpecial(NETRON_EVENT_SERVICE_EXPOSE, getServiceEventName(serviceKey), {
       name: def.meta.name,
       version: def.meta.version,

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-duplicate-enum-values */
 /**
  * Standard error codes based on HTTP status codes
  * These form the universal basis for all transport-specific error mappings

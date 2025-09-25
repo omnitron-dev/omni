@@ -6,7 +6,7 @@ import { ModuleCompiler } from './module.js';
 import { Plugin, PluginManager } from './plugin.js';
 import { ContextManager, ContextProvider } from './context.js';
 import { LifecycleEvent, LifecycleManager } from './lifecycle.js';
-import { isToken, isMultiToken, getTokenName, isOptionalToken } from './token.js';
+import { isToken, isMultiToken, getTokenName, isOptionalToken, createToken } from './token.js';
 import { Middleware, MiddlewareContext, MiddlewarePipeline } from './middleware.js';
 import { isConstructor } from './provider-utils.js';
 import {
@@ -296,6 +296,13 @@ export class Container implements IContainer {
       scope = Scope.Singleton; // Values are always singleton
     } else if ('scope' in provider && provider.scope) {
       scope = provider.scope;
+    } else if ('useClass' in provider) {
+      // Check for scope metadata from decorators
+      const scopeMetadata = Reflect.getMetadata('nexus:scope', provider.useClass) ||
+        Reflect.getMetadata('scope', provider.useClass);
+      if (scopeMetadata) {
+        scope = scopeMetadata as Scope;
+      }
     }
 
     // Extract dependencies
@@ -307,23 +314,37 @@ export class Container implements IContainer {
       const METADATA_KEYS = {
         INJECT: 'nexus:inject',
         INJECT_PARAMS: 'nexus:inject:params',
+        CONSTRUCTOR_PARAMS: 'nexus:constructor-params',
         OPTIONAL: 'nexus:optional',
         PROPERTY_INJECTIONS: 'nexus:property:injections'
       };
 
       const classConstructor = provider.useClass;
       if (classConstructor) {
-        const injectedDependencies = Reflect.getMetadata(METADATA_KEYS.INJECT, classConstructor);
+        // First try the new decorator metadata (from @Inject decorator)
+        const constructorParams = Reflect.getMetadata(METADATA_KEYS.CONSTRUCTOR_PARAMS, classConstructor);
         const optionalMetadata = Reflect.getMetadata(METADATA_KEYS.OPTIONAL, classConstructor) || {};
 
-        if (injectedDependencies) {
-          // Transform dependencies to include optional flag
-          dependencies = injectedDependencies.map((dep: any, index: number) => {
+        if (constructorParams && constructorParams.length > 0) {
+          // Use constructor params from @Inject decorator
+          dependencies = constructorParams.map((dep: any, index: number) => {
             if (optionalMetadata[index]) {
               return { token: dep, optional: true };
             }
             return dep;
           });
+        } else {
+          // Fall back to legacy metadata format
+          const injectedDependencies = Reflect.getMetadata(METADATA_KEYS.INJECT, classConstructor);
+          if (injectedDependencies) {
+            // Transform dependencies to include optional flag
+            dependencies = injectedDependencies.map((dep: any, index: number) => {
+              if (optionalMetadata[index]) {
+                return { token: dep, optional: true };
+              }
+              return dep;
+            });
+          }
         }
       }
     }
@@ -2254,5 +2275,41 @@ export class Container implements IContainer {
     }
     // Fallback to string representation
     return String(token);
+  }
+
+  /**
+   * Auto-register a class based on its decorator metadata
+   */
+  autoRegister<T>(constructor: Constructor<T>): this {
+    // Check for service name metadata
+    const serviceName = Reflect.getMetadata('nexus:service:name', constructor) ||
+      Reflect.getMetadata('service', constructor)?.name ||
+      constructor.name;
+
+    // Create a token for the service
+    const token = createToken<T>(serviceName);
+
+    // Check for scope metadata
+    const scope = Reflect.getMetadata('nexus:scope', constructor) ||
+      Reflect.getMetadata('scope', constructor) ||
+      'singleton';
+
+    // Extract constructor dependencies
+    const METADATA_KEYS = {
+      CONSTRUCTOR_PARAMS: 'nexus:constructor-params',
+      OPTIONAL: 'nexus:optional'
+    };
+
+    const constructorParams = Reflect.getMetadata(METADATA_KEYS.CONSTRUCTOR_PARAMS, constructor);
+    const inject = constructorParams && constructorParams.length > 0 ? constructorParams : undefined;
+
+    // Register the class with extracted metadata
+    this.register(token, {
+      useClass: constructor,
+      scope: scope as Scope,
+      inject
+    });
+
+    return this;
   }
 }

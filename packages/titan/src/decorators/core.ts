@@ -377,7 +377,7 @@ export const Service = (options?: string | ServiceOptions) => (target: any) => {
   Reflect.defineMetadata(METADATA_KEYS.SERVICE_ANNOTATION, metadata, target);
 
   // Also set compatibility metadata
-  Reflect.defineMetadata('service', { name, version: version || '' }, target);
+  Reflect.defineMetadata('service', { name, version: version || undefined }, target);
   if (name) {
     Reflect.defineMetadata(METADATA_KEYS.SERVICE_NAME, name, target);
   }

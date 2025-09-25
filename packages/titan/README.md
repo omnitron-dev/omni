@@ -1,193 +1,299 @@
-# Titan - Enterprise Backend Framework
+# @omnitron-dev/titan
 
-Titan is a next-generation backend framework built on the [Nexus](../nexus) DI container, designed to be the definitive solution for building scalable, maintainable, and high-performance server applications.
+> A minimalist TypeScript framework for building distributed, runtime-agnostic applications with enterprise reliability.
 
-## Features
+## Overview
 
-- 🚀 **Blazing Fast** - Optimized router, minimal overhead, compiled routes
-- 🔒 **Type-Safe** - End-to-end type safety without code generation
-- 🏗️ **Modular Architecture** - Built on Nexus DI for clean, testable code
-- 🌍 **Platform Agnostic** - Run on Node.js, Bun, Deno, Workers, or Edge
-- 🔌 **Protocol Support** - HTTP, GraphQL, WebSocket, gRPC, and more
-- 🧪 **Testing First** - Comprehensive testing utilities built-in
-- 📊 **Production Ready** - Health checks, metrics, tracing, and more
-- 🎯 **Minimal Boilerplate** - Focus on business logic, not infrastructure
+Titan is a lightweight yet powerful application framework that provides the essential building blocks for distributed systems without the bloat. Built on top of the [Nexus](../nexus) DI container and integrating seamlessly with [Netron](../netron) for RPC and [Rotif](../rotif) for reliable messaging, Titan offers a clean, modular architecture that works across Node.js and Bun runtimes.
+
+## Key Features
+
+- 🎯 **Minimalist Core** - Essential features without bloat
+- 🔄 **Runtime Agnostic** - Full support for Node.js 22+ and Bun 1.2+
+- 🏗️ **Modular Architecture** - Clean separation of concerns with dependency injection
+- 🌐 **Distributed by Design** - Built-in WebSocket RPC and reliable messaging
+- 🔒 **Enterprise Ready** - Graceful shutdown, health checks, lifecycle management
+- ⚡ **High Performance** - Minimal overhead, efficient event system
+- 🧪 **Testing First** - Comprehensive testing utilities included
+
+## Installation
+
+```bash
+yarn add @omnitron-dev/titan
+# or
+npm install @omnitron-dev/titan
+# or
+bun add @omnitron-dev/titan
+```
 
 ## Quick Start
 
-```typescript
-import { Titan } from '@omnitron-dev/titan';
-
-const app = Titan.create();
-
-app.get('/hello/:name', ({ params }) => ({
-  message: `Hello, ${params.name}!`
-}));
-
-app.listen(3000);
-```
-
-## With Dependency Injection
+### Simple Application
 
 ```typescript
-import { Titan, Controller, Get, Inject } from '@omnitron-dev/titan';
-import { createToken } from '@omnitron-dev/nexus';
+import { Application, Module, Injectable } from '@omnitron-dev/titan';
 
-// Define service token
-const GreetingServiceToken = createToken<GreetingService>('GreetingService');
-
-// Service implementation
+// Define a service
+@Injectable()
 class GreetingService {
-  greet(name: string) {
+  greet(name: string): string {
     return `Hello, ${name}!`;
   }
 }
 
-// Controller with DI
-@Controller('/greetings')
-class GreetingController {
-  constructor(
-    @Inject(GreetingServiceToken) private greetings: GreetingService
-  ) {}
-  
-  @Get('/:name')
-  greet(@Param('name') name: string) {
-    return { message: this.greetings.greet(name) };
+// Define a module
+@Module({
+  providers: [GreetingService],
+  exports: [GreetingService]
+})
+class AppModule {
+  constructor(private greetingService: GreetingService) {}
+
+  async onStart() {
+    console.log(this.greetingService.greet('Titan'));
   }
 }
 
-// Application setup
-const app = Titan.create({
-  controllers: [GreetingController],
+// Create and start application
+async function bootstrap() {
+  const app = await Application.create(AppModule);
+  await app.start();
+}
+
+bootstrap().catch(console.error);
+```
+
+### With Event System
+
+```typescript
+import { OnEvent, Injectable } from '@omnitron-dev/titan';
+
+@Injectable()
+class NotificationService {
+  @OnEvent('user.created')
+  async handleUserCreated(user: User) {
+    console.log('New user created:', user.name);
+    // Send welcome email
+  }
+}
+```
+
+### With Configuration
+
+```typescript
+import { Config, Injectable } from '@omnitron-dev/titan';
+
+@Injectable()
+class DatabaseService {
+  @Config('database.host')
+  private host: string;
+
+  @Config('database.port', 5432)
+  private port: number;
+
+  connect() {
+    console.log(`Connecting to ${this.host}:${this.port}`);
+  }
+}
+```
+
+## Core Modules
+
+### Application Lifecycle
+
+```typescript
+const app = await Application.create(AppModule, {
+  name: 'my-service',
+  version: '1.0.0',
+  gracefulShutdown: true,
+  shutdownTimeout: 30000
+});
+
+// Lifecycle hooks
+app.onStart(() => console.log('Starting...'));
+app.onStop(() => console.log('Stopping...'));
+
+// Start the application
+await app.start();
+
+// Graceful shutdown on signals
+process.on('SIGTERM', () => app.stop());
+```
+
+### Module System
+
+```typescript
+@Module({
+  imports: [DatabaseModule, CacheModule],
+  providers: [UserService, AuthService],
+  exports: [UserService]
+})
+class UserModule {}
+
+// Dynamic modules
+@Module({})
+class ConfigurableModule {
+  static forRoot(options: ModuleOptions): DynamicModule {
+    return {
+      module: ConfigurableModule,
+      providers: [
+        { provide: OPTIONS_TOKEN, useValue: options },
+        ConfigService
+      ],
+      exports: [ConfigService]
+    };
+  }
+}
+```
+
+### Dependency Injection
+
+```typescript
+import { createToken, Inject } from '@omnitron-dev/titan';
+
+// Define tokens
+const LoggerToken = createToken<ILogger>('Logger');
+const ConfigToken = createToken<IConfig>('Config');
+
+@Injectable()
+class UserService {
+  constructor(
+    @Inject(LoggerToken) private logger: ILogger,
+    @Inject(ConfigToken) private config: IConfig
+  ) {}
+}
+
+// Register providers
+const app = await Application.create(AppModule, {
   providers: [
-    { provide: GreetingServiceToken, useClass: GreetingService }
+    { provide: LoggerToken, useClass: PinoLogger },
+    { provide: ConfigToken, useValue: configObject }
   ]
 });
-
-app.listen(3000);
 ```
 
-## Protocol Support
+## Distributed Features
 
-### HTTP/REST
-
-```typescript
-app.get('/users', () => userService.findAll());
-app.post('/users', ({ body }) => userService.create(body));
-app.put('/users/:id', ({ params, body }) => userService.update(params.id, body));
-app.delete('/users/:id', ({ params }) => userService.delete(params.id));
-```
-
-### GraphQL
+### WebSocket RPC with Netron
 
 ```typescript
-@Resolver()
-class UserResolver {
-  @Query(() => [User])
-  users() {
-    return this.userService.findAll();
+import { Service, Public } from '@omnitron-dev/titan/netron';
+
+@Service('calculator@1.0.0')
+class CalculatorService {
+  @Public()
+  add(a: number, b: number): number {
+    return a + b;
   }
-  
-  @Mutation(() => User)
-  createUser(@Args() input: CreateUserInput) {
-    return this.userService.create(input);
+
+  @Public()
+  async divide(a: number, b: number): Promise<number> {
+    if (b === 0) throw new Error('Division by zero');
+    return a / b;
   }
 }
-
-app.graphql({ 
-  schema: buildSchema({ resolvers: [UserResolver] })
-});
 ```
 
-### WebSocket
+### Reliable Messaging with Rotif
 
 ```typescript
-@Gateway('/chat')
-class ChatGateway {
-  @Subscribe('message')
-  onMessage(@Payload() data: MessageDto, @Socket() socket: Socket) {
-    socket.broadcast.emit('message', data);
+import { RotifSubscribe } from '@omnitron-dev/titan/rotif';
+
+@Injectable()
+class OrderProcessor {
+  @RotifSubscribe('orders.created')
+  async handleNewOrder(message: RotifMessage) {
+    const order = message.payload;
+    console.log('Processing order:', order.id);
+
+    // Process the order
+    await this.processOrder(order);
+
+    // Acknowledge the message
+    await message.ack();
   }
 }
-
-app.websocket({ gateways: [ChatGateway] });
-```
-
-### Microservices
-
-```typescript
-@Controller()
-class UserMicroservice {
-  @MessagePattern('user.create')
-  createUser(@Payload() data: CreateUserDto) {
-    return this.userService.create(data);
-  }
-  
-  @EventPattern('user.updated')
-  onUserUpdated(@Payload() user: User) {
-    this.cache.invalidate(`user:${user.id}`);
-  }
-}
-
-app.microservice({
-  transport: Transport.REDIS,
-  options: { url: 'redis://localhost:6379' }
-});
 ```
 
 ## Testing
 
 ```typescript
-describe('UserController', () => {
-  let app: TestingModule;
-  
+import { TestApplication } from '@omnitron-dev/titan/testing';
+
+describe('UserModule', () => {
+  let app: TestApplication;
+
   beforeEach(async () => {
-    app = await Test.createTestingModule({
-      controllers: [UserController],
-      providers: [UserService]
-    }).compile();
+    app = await TestApplication.create({
+      modules: [UserModule],
+      providers: [
+        { provide: DatabaseService, useValue: mockDatabase }
+      ]
+    });
   });
-  
-  it('should return users', () => {
-    return app.request()
-      .get('/users')
-      .expect(200)
-      .expect(res => {
-        expect(res.body).toBeInstanceOf(Array);
-      });
+
+  afterEach(async () => {
+    await app.stop();
+  });
+
+  it('should create user', async () => {
+    const userService = app.get(UserService);
+    const user = await userService.create({ name: 'John' });
+    expect(user.id).toBeDefined();
   });
 });
 ```
 
 ## Performance
 
-Titan is designed for maximum performance:
+Titan is designed for minimal overhead and maximum performance:
 
-- **Radix tree routing** for O(log n) route matching
-- **Compiled routes** with pre-compiled regex patterns
-- **Zero-copy streaming** for efficient data transfer
-- **Connection pooling** for database connections
-- **Response caching** with automatic invalidation
+- **Lightweight Core**: ~50KB minified core with tree-shakeable modules
+- **Fast Startup**: Optimized module loading and initialization
+- **Efficient Events**: High-performance event emitter with async support
+- **Memory Efficient**: Careful memory management and cleanup
 
-## Platform Support
+## Runtime Support
 
-Titan runs anywhere JavaScript runs:
+| Runtime | Version | Status |
+|---------|---------|---------|
+| Node.js | >=22.0.0 | ✅ Full Support |
+| Bun | >=1.2.0 | ✅ Full Support |
+| Deno | 2.0+ | 🧪 Experimental |
 
-```typescript
-// Auto-detect platform
-const app = Titan.create();
-app.listen(3000); // Automatically uses the best adapter
+## Ecosystem
 
-// Or explicitly choose
-import { NodeAdapter, BunAdapter, DenoAdapter } from '@omnitron-dev/titan';
+Titan is part of the Omnitron ecosystem:
 
-app.useAdapter(new BunAdapter());
-```
+- **[Nexus](../nexus)** - Powerful dependency injection container
+- **[Netron](../netron)** - WebSocket RPC framework
+- **[Rotif](../rotif)** - Redis-based reliable messaging
+- **[Common](../common)** - Shared utilities and helpers
+- **Tron** (Coming Soon) - Process manager for Titan applications
 
 ## Documentation
 
-See the [full documentation](./docs/specification.md) for detailed information on all features.
+- [Getting Started](./docs/getting-started.md)
+- [Module System](./docs/modules.md)
+- [Dependency Injection](./docs/dependency-injection.md)
+- [Event System](./docs/events.md)
+- [Configuration](./docs/configuration.md)
+- [Testing](./docs/testing.md)
+- [API Reference](./docs/api.md)
+
+## Examples
+
+Check out the [examples](./examples) directory for:
+- Simple application
+- Modular application
+- Distributed services
+- Testing patterns
+- Configuration management
+
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guide](../../CONTRIBUTING.md) for details.
 
 ## License
 
-MIT
+MIT © Omnitron Dev Team

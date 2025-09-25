@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a TypeScript monorepo for the Omnitron project, containing distributed systems libraries and data processing tools. The monorepo uses Turborepo for build orchestration and Yarn 4.9.2 for package management.
+This is a TypeScript monorepo for the Omnitron ecosystem - a collection of minimalist, high-performance libraries for building distributed systems. At its core is **Titan**, a lightweight framework designed for distributed, runtime-agnostic applications with enterprise reliability. The monorepo uses Turborepo for build orchestration and Yarn 4.9.2 for package management.
 
 ### Runtime Support
 - **Node.js**: >=22.0.0 (primary runtime)
@@ -106,25 +106,30 @@ yarn workspace @omnitron-dev/[package-name] test:deno
 - ✅ Bun runtime support
 - ✅ Node.js support
 
-**@omnitron-dev/titan** - Enterprise backend framework with integrated DI and distributed systems
-- **Integrated Nexus DI**: Full dependency injection container built-in
-- **Integrated Netron**: WebSocket RPC framework built-in
+**@omnitron-dev/titan** - A minimalist TypeScript framework for building distributed, runtime-agnostic applications with enterprise reliability
+- **Core Philosophy**: Essential features without bloat, designed for distributed systems
+- **Integrated Components**:
+  - Nexus DI: Full dependency injection container built-in
+  - Netron: WebSocket RPC framework integrated
+  - Rotif: Reliable messaging system support
 - **Built-in Modules**:
-  - Config: Configuration management with multiple sources
-  - Events: Event bus with decorators
-  - Scheduler: Cron and interval scheduling
+  - Config: Multi-source configuration management
+  - Events: Async event bus with decorators
+  - Scheduler: Cron and interval task scheduling
   - Redis: Redis integration module
-  - Logger: Pino-based logging
-- **Features**:
-  - Decorator-based API
+  - Logger: Pino-based structured logging
+- **Key Features**:
+  - Minimalist decorator-based API
   - Application lifecycle management
-  - Graceful shutdown and error handling
-  - Module system with dependencies
-  - Start/stop hooks
+  - Graceful shutdown with timeout control
+  - Modular architecture with dependency resolution
+  - Concurrent operation handling (start/stop)
   - Process signal handling
-- ✅ Full Bun support (including tests)
-- ✅ Node.js 22+ support
-- 🚧 Deno support (experimental)
+  - Health checks and metrics
+- **Runtime Support**:
+  - ✅ Node.js 22+ (full support)
+  - ✅ Bun 1.2+ (full support with tests)
+  - 🚧 Deno 2.0+ (experimental)
 
 **@omnitron-dev/rotif** - Redis-based reliable notification and messaging system
 - Exactly-once processing with deduplication
@@ -337,3 +342,17 @@ export PATH="/Users/taaliman/.bun/bin:/Users/taaliman/.deno/bin:/Users/taaliman/
 - 🚧 Deno support (experimental)
 - 🚧 Documentation improvements
 - 🚧 Performance optimizations
+- 🚧 Decorator cleanup and minimization
+
+### Planned Projects
+
+**Tron** (apps/tron) - Process manager for Titan applications
+- Deep integration with Titan architecture
+- Multi-process orchestration
+- Health monitoring and auto-restart
+- Load balancing and scaling
+- Configuration management
+- Log aggregation and monitoring
+- Zero-downtime deployments
+
+This will complement Titan as the operational layer, similar to how PM2 complements Node.js applications but with native Titan integration.

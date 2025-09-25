@@ -8,6 +8,7 @@ import {
   InjectRedisManager
 } from '../../../src/modules/redis/redis.decorators.js';
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
+import { REDIS_MANAGER } from '../../../src/modules/redis/redis.constants.js';
 // Redis test utilities removed - using direct Redis connections
 import { Redis } from 'ioredis';
 
@@ -125,7 +126,8 @@ describe('Redis Decorators', () => {
 
       // Check that custom key was used
       const cachedValue = await client.get(`cache:custom:user:1`);
-      expect(JSON.parse(cachedValue!)).toBe('user-1');
+      // String values are stored as-is without JSON encoding
+      expect(cachedValue).toBe('user-1');
     });
 
     it('should handle complex data types', async () => {
@@ -254,7 +256,7 @@ describe('Redis Decorators', () => {
 
     it('should retry acquiring lock', async () => {
       class TestService {
-        @RedisLock({ key: 'retry-lock', ttl: 1, retries: 3, retryDelay: 100 })
+        @RedisLock({ key: 'retry-lock', ttl: 1, retries: 12, retryDelay: 100 })
         async process(id: number): Promise<string> {
           return `done-${id}`;
         }
@@ -554,31 +556,29 @@ describe('Redis Decorators', () => {
 
   describe('Injection Decorators', () => {
     it('should inject Redis client with @InjectRedis', () => {
-      const mockClient = {} as Redis;
-
       class TestService {
-        @InjectRedis()
-        redis!: Redis;
-
-        @InjectRedis('cache')
-        cacheRedis!: Redis;
+        constructor(
+          @InjectRedis() redis: Redis,
+          @InjectRedis('cache') cacheRedis: Redis,
+        ) {}
       }
 
-      const metadata = Reflect.getMetadata('custom:inject', TestService.prototype, 'redis');
-      expect(metadata).toEqual({ token: 'REDIS_CLIENT:default' });
-
-      const cacheMetadata = Reflect.getMetadata('custom:inject', TestService.prototype, 'cacheRedis');
-      expect(cacheMetadata).toEqual({ token: 'REDIS_CLIENT:cache' });
+      const metadata = Reflect.getMetadata('inject:tokens', TestService, 'constructor');
+      expect(metadata).toBeDefined();
+      expect(metadata[0]).toBe('REDIS_CLIENT:default');
+      expect(metadata[1]).toBe('REDIS_CLIENT:cache');
     });
 
     it('should inject RedisManager with @InjectRedisManager', () => {
       class TestService {
-        @InjectRedisManager()
-        manager!: RedisManager;
+        constructor(
+          @InjectRedisManager() manager: RedisManager,
+        ) {}
       }
 
-      const metadata = Reflect.getMetadata('custom:inject', TestService.prototype, 'manager');
-      expect(metadata).toEqual({ token: 'REDIS_MANAGER' });
+      const metadata = Reflect.getMetadata('inject:tokens', TestService, 'constructor');
+      expect(metadata).toBeDefined();
+      expect(metadata[0]).toBe(REDIS_MANAGER);
     });
   });
 

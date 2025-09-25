@@ -698,6 +698,11 @@ export class Application implements IApplication {
       moduleInstance = moduleInput as IModule;
     }
 
+    // Validate that we have a module instance
+    if (!moduleInstance) {
+      throw new Error('Failed to create module instance from provided input');
+    }
+
     // Get module metadata from @Module decorator
     // Check on the constructor of the instance first, then fallback to moduleInput
     const moduleConstructor = moduleInstance.constructor;
@@ -714,9 +719,15 @@ export class Application implements IApplication {
     if (!moduleName) {
       if (metadata?.name) {
         moduleName = metadata.name;
+      } else if (dynamicModule && dynamicModule.module) {
+        // For dynamic modules, use the module class name
+        moduleName = dynamicModule.module.name || 'UnnamedModule';
       } else if (typeof moduleInput === 'function') {
         // Use constructor name as fallback
         moduleName = moduleInput.name || 'UnnamedModule';
+      } else if (moduleConstructor && moduleConstructor.name) {
+        // Use the constructor name from the instance
+        moduleName = moduleConstructor.name || 'UnnamedModule';
       } else {
         moduleName = 'UnnamedModule';
       }

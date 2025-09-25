@@ -10,7 +10,7 @@ import { TitanRedisModule } from '../../../src/modules/redis/redis.module.js';
 import { RedisService } from '../../../src/modules/redis/redis.service.js';
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
 import { RedisHealthIndicator } from '../../../src/modules/redis/redis.health.js';
-import { REDIS_MANAGER, getRedisToken } from '../../../src/modules/redis/redis.constants.js';
+import { REDIS_MANAGER, getRedisClientToken } from '../../../src/modules/redis/redis.constants.js';
 import { RedisModuleOptions } from '../../../src/modules/redis/redis.types.js';
 import { createMockRedisClient } from '../../../src/testing/test-helpers.js';
 import * as redisUtils from '../../../src/modules/redis/redis.utils.js';
@@ -237,8 +237,8 @@ describe('TitanRedisModule', () => {
 
       // Verify we can access the named clients via their tokens
       const manager = await container.resolveAsync<RedisManager>(REDIS_MANAGER);
-      const cacheClient = await container.resolveAsync(getRedisToken('cache'));
-      const sessionsClient = await container.resolveAsync(getRedisToken('sessions'));
+      const cacheClient = await container.resolveAsync(getRedisClientToken('cache'));
+      const sessionsClient = await container.resolveAsync(getRedisClientToken('sessions'));
 
       expect(cacheClient).toBeDefined();
       expect(sessionsClient).toBeDefined();

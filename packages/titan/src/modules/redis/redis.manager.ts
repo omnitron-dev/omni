@@ -124,16 +124,26 @@ export class RedisManager {
     options: RedisClientOptions
   ): Promise<void> {
     try {
-      // Only connect if lazyConnect is true (which is default)
-      if ((client as Redis).options?.lazyConnect !== false || (client as Cluster).options?.lazyConnect !== false) {
-        await client.connect();
-      }
+      // Only connect if lazyConnect is false (not lazy) and client is not already connected
+      // When lazyConnect is true, we should NOT connect immediately
+      const isLazyConnect = (client as Redis).options?.lazyConnect ?? (client as Cluster).options?.lazyConnect ?? true;
+      if (!isLazyConnect) {
+        // Check if already connected/connecting
+        if (client.status !== 'ready' && client.status !== 'connecting') {
+          await client.connect();
+        }
 
-      // Wait for connection to be ready
-      await waitForConnection(client, this.options.healthCheck?.timeout || 5000);
+        // Wait for connection to be ready
+        const connected = await waitForConnection(client, this.options.healthCheck?.timeout || 5000);
+        if (!connected) {
+          throw new Error(`Failed to connect Redis client "${namespace}" within timeout`);
+        }
 
-      if (this.options.readyLog !== false) {
-        this.logger.log(`Redis client "${namespace}" connected successfully`);
+        if (this.options.readyLog !== false) {
+          this.logger.log(`Redis client "${namespace}" connected successfully`);
+        }
+      } else {
+        this.logger.debug(`Redis client "${namespace}" initialized with lazy connect`);
       }
 
       if (options.onClientCreated) {
@@ -191,6 +201,16 @@ export class RedisManager {
       const sha = generateScriptSha(content);
 
       for (const [namespace, client] of this.clients) {
+        // Skip loading scripts for clients that aren't connected yet (lazy connect)
+        if (client.status !== 'ready' && client.status !== 'connect') {
+          // Store the script sha for later loading
+          if (!this.scripts.has(namespace)) {
+            this.scripts.set(namespace, new Map());
+          }
+          const scriptMap = this.scripts.get(namespace)!;
+          scriptMap.set(script.name, sha);
+          continue;
+        }
         if (!this.scripts.has(namespace)) {
           this.scripts.set(namespace, new Map());
         }
@@ -288,6 +308,11 @@ export class RedisManager {
     } catch {
       return false;
     }
+  }
+
+  async ping(namespace?: string): Promise<string> {
+    const client = this.getClient(namespace);
+    return client.ping();
   }
 
   async healthCheck(): Promise<Record<string, { healthy: boolean; latency: number }>> {

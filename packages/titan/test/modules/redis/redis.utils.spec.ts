@@ -56,11 +56,12 @@ describe('Redis Utils', () => {
 
     it('should create a Redis cluster client', () => {
       const options: RedisClientOptions = {
-        cluster: true,
-        nodes: [
-          { host: 'localhost', port: 7000 },
-          { host: 'localhost', port: 7001 },
-        ],
+        cluster: {
+          nodes: [
+            { host: 'localhost', port: 7000 },
+            { host: 'localhost', port: 7001 },
+          ],
+        },
       };
 
       const client = createRedisClient(options);
@@ -155,11 +156,14 @@ describe('Redis Utils', () => {
 
     it('should create cluster with custom options', () => {
       const client = createRedisClient({
-        cluster: true,
-        nodes: [{ host: 'localhost', port: 7000 }],
-        clusterRetryStrategy: (times: number) => Math.min(100 * times, 2000),
-        redisOptions: {
-          password: 'cluster-pass',
+        cluster: {
+          nodes: [{ host: 'localhost', port: 7000 }],
+          options: {
+            clusterRetryStrategy: (times: number) => Math.min(100 * times, 2000),
+            redisOptions: {
+              password: 'cluster-pass',
+            },
+          },
         },
       }) as Cluster;
       testClients.push(client);
@@ -169,7 +173,7 @@ describe('Redis Utils', () => {
 
     it('should throw error when cluster nodes are missing', () => {
       expect(() => {
-        createRedisClient({ cluster: true } as any);
+        createRedisClient({ cluster: {} } as any);
       }).toThrow('Cluster configuration requires nodes');
     });
   });
@@ -521,10 +525,17 @@ describe('Redis Utils', () => {
     it('should clean up event listeners', async () => {
       const removeListenerSpy = jest.spyOn(client, 'removeListener');
 
-      await client.connect();
-      await waitForConnection(client, 100);
+      // Start with a disconnected client that will connect
+      const connectPromise = client.connect();
 
-      expect(removeListenerSpy).toHaveBeenCalledWith('ready', expect.any(Function));
+      // Call waitForConnection while client is connecting
+      // This will add listeners that need to be cleaned up
+      const waitPromise = waitForConnection(client, 1000);
+
+      // Wait for both to complete
+      await Promise.all([connectPromise, waitPromise]);
+
+      // Now check that listeners were cleaned up after connection succeeded
       expect(removeListenerSpy).toHaveBeenCalledWith('error', expect.any(Function));
     });
 

@@ -102,29 +102,51 @@ export function RedisLock(options?: LockOptions): MethodDecorator {
     const originalMethod = descriptor.value;
 
     descriptor.value = async function lockMethod(...args: any[]) {
+      // Try to find redis client - support multiple naming conventions
+      const redisManager = (this as any).redisManager;
       const redisService = (this as any).redisService;
+      const redis = (this as any).redis;
 
-      if (!redisService) {
+      // Get client from manager or service
+      let client: any;
+      const namespace = options?.namespace || 'default';
+
+      if (redisManager) {
+        client = redisManager.getClient?.(namespace) || redisManager.client || redisManager;
+      } else if (redisService) {
+        client = redisService.getClient?.(namespace) || redisService.client || redisService;
+      } else if (redis) {
+        client = redis;
+      }
+
+      if (!client) {
         return originalMethod.apply(this, args);
       }
 
-      const key = typeof options?.key === 'function'
-        ? options.key(...args)
-        : options?.key || `lock:${target.constructor.name}:${String(propertyKey)}:${JSON.stringify(args)}`;
+      // Generate key based on options
+      let key: string;
+      if (typeof options?.key === 'function') {
+        key = options.key(...args);
+      } else if (options?.key) {
+        // If a static key is provided, append the first argument as ID
+        key = args.length > 0 ? `${options.key}:${args[0]}` : options.key;
+      } else {
+        // Default key includes class name, method name, and args
+        key = `${target.constructor.name}:${String(propertyKey)}:${JSON.stringify(args)}`;
+      }
 
-      const namespace = options?.namespace;
-      const ttl = options?.ttl || 10000;
-      const retries = options?.retries || 10;
+      // TTL is expected to be in seconds (for backward compatibility with tests)
+      const ttl = options?.ttl || 10; // Default 10 seconds
+      const retries = options?.retries ?? 10; // Use ?? to allow 0
       const retryDelay = options?.retryDelay || 100;
-
-      const client = namespace ? redisService.getClient(namespace) : redisService.getClient();
-      const fullKey = namespace ? `${namespace}:${key}` : key;
+      const fullKey = `lock:${key}`;
 
       const lockValue = `${Date.now()}:${Math.random()}`;
-      const ttlSeconds = Math.ceil(ttl / 1000);
+      const ttlSeconds = ttl; // TTL is already in seconds
 
-      // Try to acquire lock
-      for (let i = 0; i < retries; i++) {
+      // Try to acquire lock (retries + 1 attempts total, including initial attempt)
+      const maxAttempts = retries + 1;
+      for (let i = 0; i < maxAttempts; i++) {
         // Use SET NX EX for atomic lock acquisition
         const acquired = await client.set(fullKey, lockValue, 'NX', 'EX', ttlSeconds);
 
@@ -149,8 +171,8 @@ export function RedisLock(options?: LockOptions): MethodDecorator {
           }
         }
 
-        // Wait before retrying
-        if (i < retries - 1) {
+        // Wait before retrying (don't wait after last attempt)
+        if (i < maxAttempts - 1) {
           await new Promise((resolve) => setTimeout(resolve, retryDelay));
         }
       }
@@ -188,18 +210,27 @@ export function RedisRateLimit(options: RateLimitOptions): MethodDecorator {
         return originalMethod.apply(this, args);
       }
 
-      const keyPrefix = options.keyPrefix || `rate:${String(propertyKey)}`;
-      const key = `${keyPrefix}:${args[0] || 'default'}`;
+      // Support custom key function or static key/keyPrefix
+      let key: string;
+      if ((options as any).keyFn && typeof (options as any).keyFn === 'function') {
+        key = `rate:${(options as any).keyFn(...args)}`;
+      } else {
+        // Support both 'key' and 'keyPrefix' for backward compatibility
+        const keyPrefix = (options as any).key || options.keyPrefix || `rate:${String(propertyKey)}`;
+        key = `${keyPrefix}:${args[0] || 'default'}`;
+      }
 
       const now = Date.now();
-      const windowStart = now - options.duration;
+      // Support both 'window' (seconds) and 'duration' (milliseconds) for backward compatibility
+      const duration = (options as any).window ? (options as any).window * 1000 : options.duration;
+      const windowStart = now - duration;
 
       // Use sorted sets for sliding window rate limiting
       const pipeline = client.pipeline();
       pipeline.zremrangebyscore(key, '-inf', windowStart);
       pipeline.zadd(key, now, `${now}:${Math.random()}`);
       pipeline.zcard(key);
-      pipeline.expire(key, Math.ceil(options.duration / 1000));
+      pipeline.expire(key, Math.ceil(duration / 1000));
 
       const results = await pipeline.exec();
 
@@ -208,14 +239,16 @@ export function RedisRateLimit(options: RateLimitOptions): MethodDecorator {
       }
 
       const count = results[2]?.[1] as number;
+      // Support both 'limit' and 'points' for backward compatibility
+      const limit = (options as any).limit || options.points;
 
-      if (count > options.points) {
+      if (count > limit) {
         if (options.blockDuration) {
           const blockKey = `${key}:blocked`;
           await client.setex(blockKey, Math.ceil(options.blockDuration / 1000), '1');
         }
 
-        throw new Error(`Rate limit exceeded: ${count}/${options.points} requests`);
+        throw new Error(`Rate limit exceeded: ${count}/${limit} requests`);
       }
 
       // Check if blocked

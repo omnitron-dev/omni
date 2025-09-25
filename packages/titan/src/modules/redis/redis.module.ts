@@ -24,6 +24,8 @@ import {
 
 @Module({})
 export class TitanRedisModule {
+  name = 'TitanRedisModule';
+
   static forRoot(options: RedisModuleOptions = {}): DynamicModule {
     // Create providers using correct Nexus format: [token, provider]
     const providers: Array<[InjectionToken<any>, ProviderDefinition<any>] | Provider<any>> = [

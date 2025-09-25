@@ -35,12 +35,14 @@ describe('RedisHealthIndicator', () => {
           host: 'localhost',
           port: 6379,
           db: 15,
+          lazyConnect: false,
         },
         {
           namespace: secondaryNamespace,
           host: 'localhost',
           port: 6379,
           db: 14,
+          lazyConnect: false,
         }
       ]
     });
@@ -178,7 +180,7 @@ describe('RedisHealthIndicator', () => {
 
   describe('ping', () => {
     it('should return PONG when Redis responds', async () => {
-      const result = await healthIndicator.ping();
+      const result = await healthIndicator.ping(defaultNamespace);
 
       expect(result).toHaveProperty('redis');
       expect(result.redis.status).toBe('up');
@@ -221,19 +223,21 @@ describe('RedisHealthIndicator', () => {
 
   describe('checkConnection', () => {
     it('should return connected status for ready client', async () => {
-      const result = await healthIndicator.checkConnection();
+      const result = await healthIndicator.checkConnection(defaultNamespace);
+      const key = `redis-${defaultNamespace}`;
 
-      expect(result).toHaveProperty('redis');
-      expect(result.redis.status).toBe('up');
-      expect(result.redis.connected).toBe(true);
+      expect(result).toHaveProperty(key);
+      expect(result[key].status).toBe('up');
+      expect(result[key].healthy).toBe(true);
     });
 
     it('should check connection for specific namespace', async () => {
       const result = await healthIndicator.checkConnection(secondaryNamespace);
+      const key = `redis-${secondaryNamespace}`;
 
-      expect(result).toHaveProperty('redis');
-      expect(result.redis.status).toBe('up');
-      expect(result.redis.connected).toBe(true);
+      expect(result).toHaveProperty(key);
+      expect(result[key].status).toBe('up');
+      expect(result[key].healthy).toBe(true);
     });
 
     it('should throw HealthCheckError for disconnected client', async () => {
@@ -331,15 +335,15 @@ describe('RedisHealthIndicator', () => {
       const allResult = await healthIndicator.checkAll();
       expect(allResult.redis.status).toBe('up');
 
-      const pingResult = await healthIndicator.ping();
+      const pingResult = await healthIndicator.ping(defaultNamespace);
       expect(pingResult.redis.ping).toBe('PONG');
 
-      const connResult = await healthIndicator.checkConnection();
+      const connResult = await healthIndicator.checkConnection(defaultNamespace);
       expect(connResult.redis.connected).toBe(true);
     });
 
     it('should measure accurate latency', async () => {
-      const result = await healthIndicator.isHealthy('latency-test');
+      const result = await healthIndicator.isHealthy('latency-test', defaultNamespace);
 
       expect(result['latency-test'].latency).toBeGreaterThanOrEqual(0);
       expect(result['latency-test'].latency).toBeLessThan(50); // Should be fast on localhost
@@ -347,10 +351,10 @@ describe('RedisHealthIndicator', () => {
 
     it('should handle multiple concurrent health checks', async () => {
       const promises = [
-        healthIndicator.isHealthy('concurrent1'),
-        healthIndicator.isHealthy('concurrent2'),
-        healthIndicator.ping(),
-        healthIndicator.checkConnection(),
+        healthIndicator.isHealthy('concurrent1', defaultNamespace),
+        healthIndicator.isHealthy('concurrent2', defaultNamespace),
+        healthIndicator.ping(defaultNamespace),
+        healthIndicator.checkConnection(defaultNamespace),
       ];
 
       const results = await Promise.all(promises);

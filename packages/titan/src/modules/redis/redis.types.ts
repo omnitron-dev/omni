@@ -1,5 +1,5 @@
-import { Type, Abstract, ModuleMetadata } from '@nestjs/common';
-import { Redis, Cluster, ClusterNode, RedisOptions, ClusterOptions } from 'ioredis';
+import type { Constructor, AbstractConstructor, ModuleMetadata, Token } from '../../nexus/index.js';
+import type { Redis, Cluster, ClusterNode, RedisOptions, ClusterOptions } from 'ioredis';
 
 export interface RedisClientOptions extends RedisOptions {
   namespace?: string;
@@ -41,10 +41,10 @@ export interface RedisModuleOptions {
 
 export interface RedisModuleAsyncOptions extends Pick<ModuleMetadata, 'imports'> {
   isGlobal?: boolean;
-  useExisting?: Type<RedisOptionsFactory>;
-  useClass?: Type<RedisOptionsFactory>;
+  useExisting?: Constructor<RedisOptionsFactory>;
+  useClass?: Constructor<RedisOptionsFactory>;
   useFactory?: (...args: any[]) => Promise<RedisModuleOptions> | RedisModuleOptions;
-  inject?: (Type<any> | Abstract<any> | string | symbol)[];
+  inject?: (Constructor<any> | AbstractConstructor<any> | Token<any> | string | symbol)[];
 }
 
 export interface RedisOptionsFactory {

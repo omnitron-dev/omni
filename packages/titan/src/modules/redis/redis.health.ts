@@ -41,12 +41,15 @@ export class RedisHealthIndicator extends HealthIndicator {
 
   async isHealthy(key: string, namespace?: string): Promise<HealthIndicatorResult> {
     try {
+      const start = Date.now();
       const healthy = await this.redisManager.isHealthy(namespace);
+      const latency = Date.now() - start;
 
       if (healthy) {
         return this.getStatus(key, true, {
           namespace: namespace || 'default',
-          status: 'ready',
+          healthy: true,
+          latency,
         });
       }
 
@@ -54,7 +57,8 @@ export class RedisHealthIndicator extends HealthIndicator {
         'Redis check failed',
         this.getStatus(key, false, {
           namespace: namespace || 'default',
-          status: 'not ready',
+          healthy: false,
+          latency,
         }),
       );
     } catch (error) {
@@ -63,6 +67,7 @@ export class RedisHealthIndicator extends HealthIndicator {
         this.getStatus(key, false, {
           namespace: namespace || 'default',
           error: (error as Error).message,
+          healthy: false,
         }),
       );
     }
@@ -87,12 +92,16 @@ export class RedisHealthIndicator extends HealthIndicator {
       }
 
       if (allHealthy) {
-        return this.getStatus('redis', true, details);
+        return this.getStatus('redis', true, {
+          clients: details,
+        });
       }
 
       throw new HealthCheckError(
         'Some Redis clients are not healthy',
-        this.getStatus('redis', false, details),
+        this.getStatus('redis', false, {
+          clients: details,
+        }),
       );
     } catch (error) {
       if (error instanceof HealthCheckError) {
@@ -109,7 +118,22 @@ export class RedisHealthIndicator extends HealthIndicator {
   }
 
   async ping(namespace?: string): Promise<HealthIndicatorResult> {
-    return this.isHealthy('redis-ping', namespace);
+    try {
+      const pingResult = await this.redisManager.ping(namespace);
+
+      return this.getStatus('redis', true, {
+        namespace: namespace || 'default',
+        ping: pingResult,
+      });
+    } catch (error) {
+      throw new HealthCheckError(
+        'Redis ping failed',
+        this.getStatus('redis', false, {
+          namespace: namespace || 'default',
+          error: (error as Error).message,
+        }),
+      );
+    }
   }
 
   async checkConnection(namespace?: string): Promise<HealthIndicatorResult> {

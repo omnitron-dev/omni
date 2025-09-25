@@ -46,8 +46,8 @@ export class TestApplication {
       disableCoreModules: !(this.options as any)['registerCoreModules'],
     });
 
-    // Store container reference
-    this.container = (this.app as any).container;
+    // Store container reference - use public getter
+    this.container = this.app.container;
   }
 
   /**

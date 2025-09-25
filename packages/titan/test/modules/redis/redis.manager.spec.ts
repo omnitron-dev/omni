@@ -34,7 +34,7 @@ describe('RedisManager', () => {
       on: jest.fn(),
       once: jest.fn(),
       status: 'ready',
-      options: {},
+      options: { lazyConnect: false },
       duplicate: jest.fn().mockReturnThis(),
     } as any;
 
@@ -85,7 +85,7 @@ describe('RedisManager', () => {
       manager = new RedisManager(options);
       await manager.onModuleInit();
 
-      expect(Redis).toHaveBeenCalledTimes(2);
+      expect(mockRedis).toHaveBeenCalledTimes(2);
     });
 
     it('should load scripts on initialization', async () => {
@@ -145,7 +145,7 @@ describe('RedisManager', () => {
       await manager.onModuleInit();
 
       expect(() => manager.getClient('non-existent')).toThrow(
-        'Redis client "non-existent" not found',
+        'Redis client with namespace "non-existent" not found',
       );
     });
   });
@@ -253,7 +253,9 @@ describe('RedisManager', () => {
         config: {},
       };
 
-      mockRedisInstance.status = 'connecting' as any;
+      // Mock ping to reject, simulating unhealthy client
+      mockRedisInstance.ping = jest.fn().mockRejectedValue(new Error('Connection error'));
+
       manager = new RedisManager(options);
       await manager.onModuleInit();
 
@@ -277,9 +279,9 @@ describe('RedisManager', () => {
 
       const results = await manager.healthCheck();
 
-      expect(results.size).toBe(2);
-      expect(results.get('cache')).toBe(true);
-      expect(results.get('sessions')).toBe(true);
+      expect(Object.keys(results).length).toBe(2);
+      expect(results.cache?.healthy).toBe(true);
+      expect(results.sessions?.healthy).toBe(true);
     });
   });
 

@@ -77,18 +77,14 @@ export class RedisService {
   }
 
   pipeline(namespace?: string): ChainableCommander {
-    const client = this.getClient(namespace) as Redis;
-    if (isCluster(client)) {
-      throw new Error('Pipeline is not supported for cluster mode');
-    }
+    const client = this.getClient(namespace);
     return client.pipeline();
   }
 
   multi(namespace?: string): ChainableCommander {
-    const client = this.getClient(namespace) as Redis;
-    if (isCluster(client)) {
-      throw new Error('Multi is not supported for cluster mode');
-    }
+    const client = this.getClient(namespace);
+    // Note: multi is not fully supported in cluster mode for cross-slot operations
+    // but we allow it for single-slot operations
     return client.multi();
   }
 

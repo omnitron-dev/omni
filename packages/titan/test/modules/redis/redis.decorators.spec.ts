@@ -126,8 +126,8 @@ describe('Redis Decorators', () => {
 
       // Check that custom key was used
       const cachedValue = await client.get(`cache:custom:user:1`);
-      // String values are stored as-is without JSON encoding
-      expect(cachedValue).toBe('user-1');
+      // String values are stored with JSON encoding for consistency
+      expect(cachedValue).toBe('"user-1"');
     });
 
     it('should handle complex data types', async () => {

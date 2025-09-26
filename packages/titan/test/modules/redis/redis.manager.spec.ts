@@ -33,8 +33,10 @@ describe('RedisManager', () => {
       eval: jest.fn(),
       on: jest.fn(),
       once: jest.fn(),
+      removeListener: jest.fn(),
+      off: jest.fn(),
       status: 'ready',
-      options: { lazyConnect: false },
+      options: { lazyConnect: true },
       duplicate: jest.fn().mockReturnThis(),
     } as any;
 
@@ -65,8 +67,23 @@ describe('RedisManager', () => {
         config: {
           host: 'localhost',
           port: 6379,
+          lazyConnect: false, // Force non-lazy connect for this test
         },
       };
+
+      // Update mock to reflect non-lazy connect and set up event simulation
+      mockRedisInstance.options = { lazyConnect: false };
+      (mockRedisInstance.status as any) = 'wait'; // Not ready yet
+
+      // Simulate ready event after connect is called
+      mockRedisInstance.connect.mockImplementation(async () => {
+        (mockRedisInstance.status as any) = 'ready';
+        // Simulate the ready event
+        const readyHandler = (mockRedisInstance.on as jest.Mock).mock.calls.find(call => call[0] === 'ready')?.[1];
+        if (readyHandler) {
+          setTimeout(() => readyHandler(), 0);
+        }
+      });
 
       manager = new RedisManager(options);
       await manager.onModuleInit();

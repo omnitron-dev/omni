@@ -157,30 +157,54 @@ export async function waitForConnection(
   timeout = 5000,
 ): Promise<boolean> {
   // If already ready, return immediately
-  if (client.status === 'ready') {
+  if ((client as any).status === 'ready') {
     return Promise.resolve(true);
   }
 
   return new Promise((resolve) => {
-    const timer = setTimeout(() => {
+    let resolved = false;
+
+    const cleanup = () => {
+      if (resolved) return;
+      resolved = true;
       client.removeListener('ready', onReady);
       client.removeListener('error', onError);
+    };
+
+    const timer = setTimeout(() => {
+      cleanup();
       resolve(false);
     }, timeout);
 
     const onReady = () => {
+      cleanup();
       clearTimeout(timer);
-      client.removeListener('error', onError);
       resolve(true);
     };
 
-    const onError = (_err: Error) => {
+    const onError = (err: Error) => {
+      cleanup();
       clearTimeout(timer);
-      client.removeListener('ready', onReady);
       resolve(false);
     };
 
+    // Set up listeners first, then check status again
     client.once('ready', onReady);
     client.once('error', onError);
+
+    // Double-check status after setting up listeners (race condition fix)
+    if (client.status === 'ready') {
+      cleanup();
+      clearTimeout(timer);
+      resolve(true);
+      return;
+    }
+
+    // Force connection if status is 'wait'
+    if (client.status === 'wait') {
+      client.connect().catch(() => {
+        // Connection attempt failed, but error event will handle cleanup
+      });
+    }
   });
 }

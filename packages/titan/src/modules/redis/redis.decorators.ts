@@ -29,15 +29,20 @@ export function RedisCache(options?: CacheOptions): MethodDecorator {
       let client: any;
       const namespace = options?.namespace || 'default';
 
-      if (redisManager) {
-        client = redisManager.getClient?.(namespace) || redisManager.client || redisManager;
-      } else if (redisService) {
-        client = redisService.getClient?.(namespace) || redisService.client || redisService;
-      } else if (redis) {
-        client = redis;
-      }
+      try {
+        if (redisManager) {
+          client = redisManager.getClient?.(namespace) || redisManager.client || redisManager;
+        } else if (redisService) {
+          client = redisService.getClient?.(namespace) || redisService.client || redisService;
+        } else if (redis) {
+          client = redis;
+        }
 
-      if (!client) {
+        if (!client) {
+          return originalMethod.apply(this, args);
+        }
+      } catch (error) {
+        // If client not found, fall back to original method
         return originalMethod.apply(this, args);
       }
 
@@ -79,7 +84,8 @@ export function RedisCache(options?: CacheOptions): MethodDecorator {
         const result = await originalMethod.apply(this, args);
 
         if (result !== undefined && result !== null) {
-          const value = typeof result === 'string' ? result : JSON.stringify(result);
+          // Always stringify for consistent storage and retrieval
+          const value = JSON.stringify(result);
           if (ttl > 0) {
             await client.setex(fullKey, ttl, value);
           } else {
@@ -111,25 +117,32 @@ export function RedisLock(options?: LockOptions): MethodDecorator {
       let client: any;
       const namespace = options?.namespace || 'default';
 
-      if (redisManager) {
-        client = redisManager.getClient?.(namespace) || redisManager.client || redisManager;
-      } else if (redisService) {
-        client = redisService.getClient?.(namespace) || redisService.client || redisService;
-      } else if (redis) {
-        client = redis;
-      }
+      try {
+        if (redisManager) {
+          client = redisManager.getClient?.(namespace) || redisManager.client || redisManager;
+        } else if (redisService) {
+          client = redisService.getClient?.(namespace) || redisService.client || redisService;
+        } else if (redis) {
+          client = redis;
+        }
 
-      if (!client) {
+        if (!client) {
+          return originalMethod.apply(this, args);
+        }
+      } catch (error) {
+        // If client not found, fall back to original method
         return originalMethod.apply(this, args);
       }
 
       // Generate key based on options
+      const keyFn = options?.keyFn || options?.key;
       let key: string;
-      if (typeof options?.key === 'function') {
-        key = options.key(...args);
-      } else if (options?.key) {
+
+      if (typeof keyFn === 'function') {
+        key = keyFn(...args);
+      } else if (keyFn) {
         // If a static key is provided, append the first argument as ID
-        key = args.length > 0 ? `${options.key}:${args[0]}` : options.key;
+        key = args.length > 0 ? `${keyFn}:${args[0]}` : keyFn;
       } else {
         // Default key includes class name, method name, and args
         key = `${target.constructor.name}:${String(propertyKey)}:${JSON.stringify(args)}`;
@@ -198,15 +211,20 @@ export function RedisRateLimit(options: RateLimitOptions): MethodDecorator {
       let client: any;
       const namespace = options?.namespace || 'default';
 
-      if (redisManager) {
-        client = redisManager.getClient?.(namespace) || redisManager.client || redisManager;
-      } else if (redisService) {
-        client = redisService.getClient?.(namespace) || redisService.client || redisService;
-      } else if (redis) {
-        client = redis;
-      }
+      try {
+        if (redisManager) {
+          client = redisManager.getClient?.(namespace) || redisManager.client || redisManager;
+        } else if (redisService) {
+          client = redisService.getClient?.(namespace) || redisService.client || redisService;
+        } else if (redis) {
+          client = redis;
+        }
 
-      if (!client) {
+        if (!client) {
+          return originalMethod.apply(this, args);
+        }
+      } catch (error) {
+        // If client not found, fall back to original method
         return originalMethod.apply(this, args);
       }
 

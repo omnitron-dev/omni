@@ -74,8 +74,24 @@ export async function createRedisTestFixture(
   // Wait for connection if not lazy
   if (!lazyConnect) {
     await new Promise<void>((resolve, reject) => {
-      client.once('ready', resolve);
-      client.once('error', reject);
+      const timeout = setTimeout(() => {
+        client.removeAllListeners();
+        reject(new Error('Redis connection timeout in test fixture'));
+      }, 10000); // 10 second timeout
+
+      client.once('ready', () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+      client.once('error', (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+
+      // Ensure connection starts
+      if (client.status === 'wait') {
+        client.connect().catch(reject);
+      }
     });
   }
 
@@ -85,14 +101,24 @@ export async function createRedisTestFixture(
   // Create manager if requested
   if (withManager) {
     manager = new RedisManager({
-      config: namespace === 'default' ? redisOptions : {
-        namespace,
-        ...redisOptions,
-      },
-      clients: namespace !== 'default' ? [{
-        namespace,
-        ...redisOptions,
-      }] : undefined,
+      // Create both default and test/cache clients for decorator tests
+      clients: [
+        {
+          namespace: 'default',
+          ...redisOptions,
+          db: redisOptions.db, // Use the test DB
+        },
+        {
+          namespace,
+          ...redisOptions,
+          db: redisOptions.db, // Use the test DB
+        },
+        ...(namespace !== 'cache' ? [{
+          namespace: 'cache',
+          ...redisOptions,
+          db: 14, // Use different DB for cache namespace
+        }] : []),
+      ],
     });
     await manager.onModuleInit();
   }

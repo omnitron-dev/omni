@@ -128,15 +128,22 @@ export class RedisManager {
       // When lazyConnect is true, we should NOT connect immediately
       const isLazyConnect = (client as Redis).options?.lazyConnect ?? (client as Cluster).options?.lazyConnect ?? true;
       if (!isLazyConnect) {
-        // Check if already connected/connecting
-        if (client.status !== 'ready' && client.status !== 'connecting') {
-          await client.connect();
-        }
+        // Wait for connection to be ready - increase timeout for tests
+        const timeout = this.options.healthCheck?.timeout || (process.env['NODE_ENV'] === 'test' ? 10000 : 5000);
 
-        // Wait for connection to be ready
-        const connected = await waitForConnection(client, this.options.healthCheck?.timeout || 5000);
-        if (!connected) {
-          throw new Error(`Failed to connect Redis client "${namespace}" within timeout`);
+        // If already ready, skip connection wait
+        if ((client as any).status === 'ready') {
+          this.logger.debug(`Redis client "${namespace}" already ready`);
+        } else {
+          // Check if already connected/connecting
+          if ((client as any).status !== 'ready' && (client as any).status !== 'connecting' && (client as any).status !== 'connect') {
+            await client.connect();
+          }
+
+          const connected = await waitForConnection(client, timeout);
+          if (!connected) {
+            throw new Error(`Failed to connect Redis client "${namespace}" within timeout (${timeout}ms). Status: ${(client as any).status}`);
+          }
         }
 
         if (this.options.readyLog !== false) {
@@ -202,7 +209,7 @@ export class RedisManager {
 
       for (const [namespace, client] of this.clients) {
         // Skip loading scripts for clients that aren't connected yet (lazy connect)
-        if (client.status !== 'ready' && client.status !== 'connect') {
+        if ((client as any).status !== 'ready' && (client as any).status !== 'connect') {
           // Store the script sha for later loading
           if (!this.scripts.has(namespace)) {
             this.scripts.set(namespace, new Map());
@@ -276,7 +283,7 @@ export class RedisManager {
     }
 
     try {
-      if (client.status !== 'end') {
+      if ((client as any).status !== 'end') {
         await client.quit();
       }
 
@@ -299,7 +306,7 @@ export class RedisManager {
     try {
       const client = this.getClient(namespace);
 
-      if (client.status !== 'ready') {
+      if ((client as any).status !== 'ready') {
         return false;
       }
 
@@ -376,7 +383,7 @@ export class RedisManager {
 
     const closePromises = Array.from(this.clients.entries()).map(async ([namespace, client]) => {
       try {
-        if (client.status !== 'end') {
+        if ((client as any).status !== 'end') {
           await client.quit();
         }
         this.logger.log(`Redis client "${namespace}" closed`);

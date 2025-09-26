@@ -14,6 +14,13 @@ import type { LocalPeer } from '../../local-peer.js';
 import type { Definition } from '../../definition.js';
 import type { MethodContract } from '../../../validation/contract.js';
 import { TitanError, ErrorCode } from '../../../errors/index.js';
+import {
+  MiddlewarePipeline,
+  MiddlewareStage,
+  HttpMiddlewareAdapter,
+  HttpBuiltinMiddleware,
+  NetronBuiltinMiddleware
+} from '../../middleware/index.js';
 
 /**
  * Service route information
@@ -24,6 +31,8 @@ interface ServiceRoute {
   pattern: string;
   method: string;
   contract: MethodContract;
+  regex?: RegExp;
+  streaming?: boolean;
 }
 
 /**
@@ -38,6 +47,21 @@ interface CorsOptions {
 }
 
 /**
+ * Enhanced server options
+ */
+export interface HttpServerOptions extends Omit<TransportOptions, 'compression'> {
+  maxBodySize?: number;
+  requestTimeout?: number;
+  compression?: boolean | { threshold?: number };
+  middleware?: {
+    rateLimit?: any;
+    circuitBreaker?: any;
+    metrics?: boolean;
+    logging?: boolean;
+  };
+}
+
+/**
  * HTTP Server implementation
  * Routes incoming HTTP requests to Netron services transparently
  */
@@ -46,14 +70,34 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
   private server: any = null;
   private routes = new Map<string, ServiceRoute>();
+  private routePatterns: Array<{ regex: RegExp; route: ServiceRoute }> = [];
   private netronPeer?: LocalPeer;
-  private options: TransportOptions;
+  private options: HttpServerOptions;
   private corsOptions: CorsOptions;
+  private status: string = 'offline';
+  private startTime: number = Date.now();
 
-  // Metrics tracking
-  private totalRequests = 0;
-  private totalErrors = 0;
-  private startTime = Date.now();
+  // Middleware
+  private globalPipeline: MiddlewarePipeline;
+  private middlewareAdapter?: HttpMiddlewareAdapter;
+
+  // Route cache for performance
+  private routeCache = new Map<string, ServiceRoute | null>();
+  private readonly ROUTE_CACHE_SIZE = 1000;
+
+  // Enhanced metrics tracking
+  private metrics = {
+    totalRequests: 0,
+    activeRequests: 0,
+    totalErrors: 0,
+    totalBytesSent: 0,
+    totalBytesReceived: 0,
+    avgResponseTime: 0,
+    responseTimes: [] as number[],
+    statusCounts: new Map<number, number>(),
+    methodCounts: new Map<string, number>(),
+    startTime: Date.now()
+  };
 
   get address(): string | undefined {
     return this.options?.host || 'localhost';
@@ -63,9 +107,13 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     return this.options?.port || 3000;
   }
 
-  constructor(options?: TransportOptions) {
+  constructor(options?: HttpServerOptions) {
     super();
-    this.options = options || {};
+    this.options = {
+      maxBodySize: 10 * 1024 * 1024, // 10MB default
+      requestTimeout: 30000, // 30s default
+      ...options
+    };
 
     // Setup CORS options
     this.corsOptions = this.options.cors || {
@@ -75,6 +123,88 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       credentials: true,
       maxAge: 86400
     };
+
+    // Initialize middleware pipeline
+    this.globalPipeline = new MiddlewarePipeline();
+    this.setupDefaultMiddleware();
+  }
+
+  /**
+   * Setup default middleware based on options
+   */
+  private setupDefaultMiddleware(): void {
+    const { middleware } = this.options;
+
+    // Always add request ID
+    this.globalPipeline.use(
+      NetronBuiltinMiddleware.requestId(),
+      { name: 'request-id', priority: 1 },
+      MiddlewareStage.PRE_PROCESS
+    );
+
+    // Add CORS if configured
+    if (this.corsOptions.origin) {
+      this.globalPipeline.use(
+        HttpBuiltinMiddleware.cors(this.corsOptions as any) as any,
+        { name: 'cors', priority: 5 },
+        MiddlewareStage.PRE_PROCESS
+      );
+    }
+
+    // Add compression if enabled
+    if (this.options.compression) {
+      const compressionOpts = typeof this.options.compression === 'object'
+        ? this.options.compression
+        : { threshold: 1024 };
+      this.globalPipeline.use(
+        HttpBuiltinMiddleware.compression(compressionOpts) as any,
+        { name: 'compression', priority: 90 },
+        MiddlewareStage.POST_PROCESS
+      );
+    }
+
+    // Add rate limiting if configured
+    if (middleware?.rateLimit) {
+      this.globalPipeline.use(
+        NetronBuiltinMiddleware.rateLimit(middleware.rateLimit),
+        { name: 'rate-limit', priority: 10 },
+        MiddlewareStage.PRE_INVOKE
+      );
+    }
+
+    // Add circuit breaker if configured
+    if (middleware?.circuitBreaker) {
+      this.globalPipeline.use(
+        NetronBuiltinMiddleware.circuitBreaker(middleware.circuitBreaker),
+        { name: 'circuit-breaker', priority: 15 },
+        MiddlewareStage.PRE_INVOKE
+      );
+    }
+
+    // Add metrics collection if enabled
+    if (middleware?.metrics) {
+      this.globalPipeline.use(
+        NetronBuiltinMiddleware.metrics((m) => this.recordMetric(m)),
+        { name: 'metrics', priority: 95 },
+        MiddlewareStage.POST_PROCESS
+      );
+    }
+
+    // Add logging if enabled
+    if (middleware?.logging) {
+      this.globalPipeline.use(
+        NetronBuiltinMiddleware.logging({ includeInput: false, includeResult: false }),
+        { name: 'logging', priority: 2 },
+        MiddlewareStage.PRE_PROCESS
+      );
+    }
+  }
+
+  /**
+   * Record metric from middleware
+   */
+  private recordMetric(metric: any): void {
+    this.emit('metric', metric);
   }
 
   /**
@@ -82,6 +212,17 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    */
   setPeer(peer: LocalPeer): void {
     this.netronPeer = peer;
+    this.middlewareAdapter = new HttpMiddlewareAdapter({
+      cors: this.corsOptions
+    });
+  }
+
+  /**
+   * Add custom middleware
+   */
+  use(middleware: any, config?: any, stage?: MiddlewareStage): this {
+    this.globalPipeline.use(middleware, config, stage);
+    return this;
   }
 
   /**
@@ -150,18 +291,34 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       if (http?.path && http?.method) {
         // Register REST-style endpoint
         const routeKey = `${http.method}:${http.path}`;
-        this.routes.set(routeKey, {
+        const route: ServiceRoute = {
           serviceName,
           methodName,
           pattern: http.path,
           method: http.method,
-          contract: methodContract as MethodContract
-        });
+          contract: methodContract as MethodContract,
+          streaming: http.streaming || false
+        };
+
+        // Compile pattern to regex if it has parameters
+        if (http.path.includes(':') || http.path.includes('{')) {
+          route.regex = this.compilePattern(http.path);
+          this.routePatterns.push({ regex: route.regex, route });
+        }
+
+        this.routes.set(routeKey, route);
       }
 
       // Always register RPC-style endpoint as fallback
       this.registerRpcRoute(serviceName, methodName, methodContract as MethodContract);
     }
+
+    // Sort route patterns by specificity (more specific first)
+    this.routePatterns.sort((a, b) => {
+      const aSpecificity = a.route.pattern.split('/').filter(p => !p.includes(':') && !p.includes('{')).length;
+      const bSpecificity = b.route.pattern.split('/').filter(p => !p.includes(':') && !p.includes('{')).length;
+      return bSpecificity - aSpecificity;
+    });
   }
 
   /**
@@ -174,8 +331,19 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       methodName,
       pattern: `/rpc/${methodName}`,
       method: 'POST',
-      contract: contract || {}
+      contract: contract || {},
+      streaming: false
     });
+  }
+
+  /**
+   * Compile route pattern to regex
+   */
+  private compilePattern(pattern: string): RegExp {
+    const regexPattern = pattern
+      .replace(/\{([^}]+)\}/g, '(?<$1>[^/]+)')
+      .replace(/:([^/]+)/g, '(?<$1>[^/]+)');
+    return new RegExp(`^${regexPattern}$`);
   }
 
   /**
@@ -191,6 +359,9 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     const port = this.port || 3000;
     const host = this.address || 'localhost';
 
+    this.startTime = Date.now();
+    this.status = 'starting';
+
     if (runtime === 'bun') {
       // Use Bun's native server
       // @ts-ignore - Bun global is not always available
@@ -199,7 +370,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         this.server = globalThis.Bun.serve({
           port,
           hostname: host,
-          fetch: this.handleRequest.bind(this)
+          fetch: this.handleRequest.bind(this),
+          maxRequestBodySize: this.options.maxBodySize
         });
       } else {
         throw new Error('Bun runtime detected but Bun.serve not available');
@@ -211,7 +383,10 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     } else {
       // Node.js implementation
       const { createServer } = await import('http');
-      this.server = createServer(this.handleNodeRequest.bind(this));
+      this.server = createServer({
+        keepAliveTimeout: 5000,
+        maxHeaderSize: 16384
+      } as any, this.handleNodeRequest.bind(this));
 
       await new Promise<void>((resolve, reject) => {
         const errorHandler = (err: any) => {
@@ -227,6 +402,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       });
     }
 
+    this.status = 'online';
     this.emit('listening', { port, host });
   }
 
@@ -234,25 +410,47 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    * Handle incoming HTTP request (Web API style)
    */
   async handleRequest(request: Request): Promise<Response> {
-    this.totalRequests++;
+    const startTime = performance.now();
+    this.metrics.totalRequests++;
+    this.metrics.activeRequests++;
+
+    // Update method counts
+    this.metrics.methodCounts.set(
+      request.method,
+      (this.metrics.methodCounts.get(request.method) || 0) + 1
+    );
 
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
+      this.metrics.activeRequests--;
       return this.handleCorsPreflightBe(request);
     }
 
     const url = new URL(request.url);
     const pathname = url.pathname;
 
-    // Handle discovery endpoint
+    // Handle special endpoints
     if (pathname === '/netron/discovery' && request.method === 'GET') {
+      this.metrics.activeRequests--;
       return this.handleDiscoveryRequest(request);
+    }
+
+    if (pathname === '/health' && request.method === 'GET') {
+      this.metrics.activeRequests--;
+      return this.handleHealthCheck(request);
+    }
+
+    if (pathname === '/metrics' && request.method === 'GET') {
+      this.metrics.activeRequests--;
+      return this.handleMetricsRequest(request);
     }
 
     // Try to find matching route
     const route = this.findRoute(`${request.method}:${pathname}`, pathname);
 
     if (!route) {
+      this.metrics.activeRequests--;
+      this.updateMetrics(startTime, 404);
       return this.createErrorResponse(404, 'Route not found');
     }
 
@@ -285,11 +483,37 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       }
 
       // Create response
-      return this.createResponse(result, route, request);
+      const response = this.createResponse(result, route, request);
+      this.updateMetrics(startTime, response.status);
+      return response;
     } catch (error: any) {
-      this.totalErrors++;
+      this.metrics.totalErrors++;
+      this.updateMetrics(startTime, error.status || 500);
       return this.handleError(error, request);
+    } finally {
+      this.metrics.activeRequests--;
     }
+  }
+
+  /**
+   * Update metrics
+   */
+  private updateMetrics(startTime: number, status: number): void {
+    const duration = performance.now() - startTime;
+
+    this.metrics.responseTimes.push(duration);
+    if (this.metrics.responseTimes.length > 1000) {
+      this.metrics.responseTimes.shift();
+    }
+
+    this.metrics.avgResponseTime =
+      this.metrics.responseTimes.reduce((a, b) => a + b, 0) /
+      this.metrics.responseTimes.length;
+
+    this.metrics.statusCounts.set(
+      status,
+      (this.metrics.statusCounts.get(status) || 0) + 1
+    );
   }
 
   /**
@@ -506,6 +730,40 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   /**
    * Create error response
    */
+  private handleHealthCheck(request: Request): Response {
+    const status = this.status === 'online' ? 200 : 503;
+    return new Response(
+      JSON.stringify({
+        status: this.status,
+        uptime: Date.now() - this.startTime,
+        metrics: this.metrics
+      }),
+      {
+        status,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+
+  private handleMetricsRequest(request: Request): Response {
+    return new Response(
+      JSON.stringify({
+        server: {
+          status: this.status,
+          uptime: Date.now() - this.startTime,
+          connections: this.connections.size
+        },
+        requests: this.metrics,
+        routes: Array.from(this.routes.keys()),
+        middleware: this.globalPipeline.getMetrics()
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+
   private createErrorResponse(status: number, message: string): Response {
     const headers = new Headers({
       'Content-Type': 'application/json'
@@ -673,17 +931,27 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   /**
    * Get server metrics
    */
-  getMetrics(): ServerMetrics & { errorRate?: number } {
-    const uptime = Date.now() - this.startTime;
-    const errorRate = this.totalRequests > 0 ? this.totalErrors / this.totalRequests : 0;
+  getMetrics(): ServerMetrics & any {
+    const uptime = Date.now() - this.metrics.startTime;
+    const errorRate = this.metrics.totalRequests > 0
+      ? this.metrics.totalErrors / this.metrics.totalRequests
+      : 0;
 
     return {
       activeConnections: this.connections.size,
-      totalConnections: this.totalRequests, // Use requests as connections for HTTP
-      totalBytesSent: 0, // Would need to track this
-      totalBytesReceived: 0, // Would need to track this
+      totalConnections: this.metrics.totalRequests,
+      totalBytesSent: this.metrics.totalBytesSent,
+      totalBytesReceived: this.metrics.totalBytesReceived,
       uptime,
-      errorRate
+      // Extended metrics
+      totalRequests: this.metrics.totalRequests,
+      activeRequests: this.metrics.activeRequests,
+      totalErrors: this.metrics.totalErrors,
+      errorRate,
+      avgResponseTime: this.metrics.avgResponseTime,
+      statusCounts: Object.fromEntries(this.metrics.statusCounts),
+      methodCounts: Object.fromEntries(this.metrics.methodCounts),
+      routeCacheSize: this.routeCache.size
     };
   }
 

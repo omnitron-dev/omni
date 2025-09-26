@@ -32,3 +32,6 @@ export * from './packet/index.js';
 
 // Main Netron class
 export * from './netron.js';
+
+// Export decorators from decorators/core
+export { Service, Public, Method } from '../decorators/core.js';

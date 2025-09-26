@@ -25,6 +25,7 @@ export interface HttpMethodOptions {
   responseHeaders?: Record<string, string>;
   contentType?: string;
   status?: number; // HTTP status code for success (default 200)
+  streaming?: boolean; // Enable streaming response
 
   /** OpenAPI documentation metadata */
   openapi?: {

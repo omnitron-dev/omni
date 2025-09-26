@@ -1,6 +1,6 @@
 import { Injectable } from '../../nexus/index.js';
 import { NotificationManager } from '../../rotif/rotif.js';
-import { ChannelManager, ChannelType, ProcessedNotification, DeliveryResults } from './channel-manager.js';
+import { ChannelManager, ChannelType, DeliveryResults } from './channel-manager.js';
 import { PreferenceManager } from './preference-manager.js';
 import { RateLimiter } from './rate-limiter.js';
 import { generateUuid } from './utils.js';

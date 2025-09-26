@@ -165,9 +165,7 @@ export class TitanNotificationsModule {
     // Workflow engine (optional)
     if (options.workflows?.enabled !== false) {
       providers.push([WORKFLOW_ENGINE, {
-        useFactory: (notificationService: NotificationService, redisClient: Redis) => {
-          return new WorkflowEngine(notificationService, redisClient, options.workflows);
-        },
+        useFactory: (notificationService: NotificationService, redisClient: Redis) => new WorkflowEngine(notificationService, redisClient, options.workflows),
         inject: [NOTIFICATION_SERVICE, 'REDIS_CLIENT' as any]
       }]);
     }
@@ -187,9 +185,7 @@ export class TitanNotificationsModule {
         channelManager: ChannelManager,
         preferenceManager: PreferenceManager,
         rateLimiter: RateLimiter
-      ) => {
-        return new NotificationService(rotif, channelManager, preferenceManager, rateLimiter);
-      },
+      ) => new NotificationService(rotif, channelManager, preferenceManager, rateLimiter),
       inject: [ROTIF_MANAGER, CHANNEL_MANAGER, PREFERENCE_MANAGER, RATE_LIMITER]
     }]);
 
@@ -258,14 +254,12 @@ export class TitanNotificationsModule {
 
     // Create services using async options
     providers.push(['REDIS_CLIENT' as any, {
-      useFactory: (moduleOptions: NotificationModuleOptions) => {
-        return new Redis({
+      useFactory: (moduleOptions: NotificationModuleOptions) => new Redis({
           host: moduleOptions.redis?.host || 'localhost',
           port: moduleOptions.redis?.port || 6379,
           db: moduleOptions.redis?.db || 0,
           password: moduleOptions.redis?.password
-        });
-      },
+        }),
       inject: [NOTIFICATION_MODULE_OPTIONS]
     }]);
 
@@ -306,9 +300,7 @@ export class TitanNotificationsModule {
         channelManager: ChannelManager,
         preferenceManager: PreferenceManager,
         rateLimiter: RateLimiter
-      ) => {
-        return new NotificationService(rotif, channelManager, preferenceManager, rateLimiter);
-      },
+      ) => new NotificationService(rotif, channelManager, preferenceManager, rateLimiter),
       inject: [ROTIF_MANAGER, CHANNEL_MANAGER, PREFERENCE_MANAGER, RATE_LIMITER]
     }]);
 

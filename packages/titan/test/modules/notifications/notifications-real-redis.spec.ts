@@ -20,6 +20,7 @@ import type {
   NotificationPayload,
   NotificationRecipient
 } from '../../../src/modules/notifications/types.js';
+import { RedisDockerTestHelper } from './test-redis-docker.js';
 
 describe('NotificationService with Real Redis', () => {
   let redis: Redis;
@@ -33,16 +34,17 @@ describe('NotificationService with Real Redis', () => {
   const TEST_PREFIX = `test:notifications:${Date.now()}`;
 
   beforeAll(async () => {
-    // Create Redis connections
-    redis = new Redis({
-      host: 'localhost',
-      port: 6379,
-      db: 2, // Use a separate DB for tests
-      retryStrategy: () => null // Don't retry in tests
-    });
-
-    pubRedis = redis.duplicate();
-    subRedis = redis.duplicate();
+    // Start Redis container and create connections
+    try {
+      await RedisDockerTestHelper.startRedis();
+      const clients = RedisDockerTestHelper.createClients();
+      redis = clients.redis;
+      pubRedis = clients.pubRedis;
+      subRedis = clients.subRedis;
+    } catch (error) {
+      console.error('Failed to start Redis for testing:', error);
+      throw error;
+    }
 
     // Clear test data
     const keys = await redis.keys(`${TEST_PREFIX}:*`);
@@ -86,21 +88,31 @@ describe('NotificationService with Real Redis', () => {
       preferenceManager,
       rateLimiter
     );
-  });
+  }, 30000); // Increase timeout for Docker setup
 
   afterAll(async () => {
-    // Clean up test data
-    const keys = await redis.keys(`${TEST_PREFIX}:*`);
-    if (keys.length > 0) {
-      await redis.del(...keys);
-    }
+    try {
+      // Clean up test data
+      await RedisDockerTestHelper.cleanup(redis, `${TEST_PREFIX}:*`);
 
-    // Close connections
-    await rotifManager.destroy();
-    await pubRedis.quit();
-    await subRedis.quit();
-    await redis.quit();
-  });
+      // Close connections
+      if (rotifManager) {
+        await rotifManager.destroy();
+      }
+      if (pubRedis) {
+        await pubRedis.quit();
+      }
+      if (subRedis) {
+        await subRedis.quit();
+      }
+      if (redis) {
+        await redis.quit();
+      }
+    } finally {
+      // Stop Redis container
+      await RedisDockerTestHelper.stopRedis();
+    }
+  }, 30000); // Increase timeout for cleanup
 
   describe('Basic Notification Flow', () => {
     it('should send and receive notification through real Redis', async () => {

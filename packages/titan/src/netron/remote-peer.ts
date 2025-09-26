@@ -537,13 +537,19 @@ export class RemotePeer extends AbstractPeer {
     return new Promise<void>((resolve, reject) => {
       // Check if socket is open (works for both WebSocket and TransportAdapter)
       if (this.socket.readyState === 1 || this.socket.readyState === 'OPEN') { // 1 is WebSocket.OPEN
-        this.socket.send(encodePacket(packet), { binary: true }, (err?: Error) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve();
-          }
-        });
+        // For stream packets, don't wait for callback - just resolve immediately
+        if (packet.getType() === TYPE_STREAM) {
+          this.socket.send(encodePacket(packet), { binary: true });
+          resolve();
+        } else {
+          this.socket.send(encodePacket(packet), { binary: true }, (err?: Error) => {
+            if (err) {
+              reject(err);
+            } else {
+              resolve();
+            }
+          });
+        }
       } else {
         reject(new Error('Socket closed'));
       }

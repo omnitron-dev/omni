@@ -344,7 +344,7 @@ export class DLQManager {
       const messages = await this.redis.xrange(dlqKey, '-', '+');
 
       const now = Date.now();
-      let filtered: DLQMessageInfo[] = [];
+      const filtered: DLQMessageInfo[] = [];
 
       for (const [id, fields] of messages) {
         const fieldsObj = parseFields(fields as string[]);

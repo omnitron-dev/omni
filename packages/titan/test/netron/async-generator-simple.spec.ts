@@ -29,6 +29,9 @@ describe('AsyncGenerator Basic Test', () => {
       listenPort: serverPort,
     });
 
+    // Wait for server to be ready
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
     // Expose service
     const service = new TestService();
     await server.peer.exposeService(service);

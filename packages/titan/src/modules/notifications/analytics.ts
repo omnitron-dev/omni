@@ -146,6 +146,12 @@ export class NotificationAnalytics {
     // Set TTL for automatic cleanup
     const ttl = (this.options?.retention || 90) * 86400;
     await this.redis.expire(`${this.ANALYTICS_KEY_PREFIX}events:${dayKey}`, ttl);
+
+    // Publish event for real-time subscribers
+    if (this.options?.realtime) {
+      const channel = `${this.ANALYTICS_KEY_PREFIX}events`;
+      await this.redis.publish(channel, eventData);
+    }
   }
 
   /**
@@ -294,7 +300,7 @@ export class NotificationAnalytics {
    */
   async generateReport(
     period: ReportPeriod,
-    options: { compareToPrevious?: boolean } = {}
+    options: { compareToPrevious?: boolean; comparison?: boolean } = {}
   ): Promise<NotificationReport> {
     const query: AnalyticsQuery = {
       startDate: period.start,
@@ -314,7 +320,7 @@ export class NotificationAnalytics {
 
     // Compare with previous period if requested
     let comparison: PeriodComparison | undefined;
-    if (options.compareToPrevious) {
+    if (options.compareToPrevious || options.comparison) {
       comparison = await this.compareWithPreviousPeriod(period, statistics);
     }
 
@@ -587,4 +593,77 @@ export class NotificationAnalytics {
 
     return deleted;
   }
+
+  /**
+   * Alias for cleanupOldData
+   */
+  async cleanup(): Promise<number> {
+    const retentionDays = this.options?.retention || 90;
+    return this.cleanupOldData(retentionDays);
+  }
+
+  /**
+   * Subscribe to real-time events
+   */
+  async subscribeToEvents(
+    callback: (event: NotificationEvent) => void
+  ): Promise<() => void> {
+    if (!this.options?.realtime) {
+      return () => {}; // No-op if real-time is disabled
+    }
+
+    // Subscribe to Redis pub/sub channel
+    const subRedis = this.redis.duplicate();
+    const channel = `${this.ANALYTICS_KEY_PREFIX}events`;
+
+    await subRedis.subscribe(channel);
+
+    subRedis.on('message', (ch, message) => {
+      if (ch === channel) {
+        try {
+          const event = JSON.parse(message) as NotificationEvent;
+          callback(event);
+        } catch (err) {
+          // Ignore parse errors
+        }
+      }
+    });
+
+    // Return unsubscribe function
+    return () => {
+      subRedis.unsubscribe(channel);
+      subRedis.disconnect();
+    };
+  }
+
+  /**
+   * Subscribe to real-time statistics updates
+   */
+  async subscribeToStats(
+    callback: (stats: NotificationStatistics) => void,
+    interval: number = 5000
+  ): Promise<() => void> {
+    if (!this.options?.realtime) {
+      return () => {}; // No-op if real-time is disabled
+    }
+
+    // Set up interval to calculate and emit stats
+    const intervalId = setInterval(async () => {
+      try {
+        const stats = await this.getStatistics({
+          startDate: Date.now() - 86400000, // Last 24 hours
+          endDate: Date.now()
+        });
+        callback(stats);
+      } catch (err) {
+        // Ignore errors in stats calculation
+      }
+    }, interval);
+
+    // Return cleanup function
+    return () => {
+      clearInterval(intervalId);
+    };
+  }
+
 }

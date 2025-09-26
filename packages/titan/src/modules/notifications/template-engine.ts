@@ -168,10 +168,10 @@ export class TemplateEngine {
     const rendered: RenderedContent = {};
 
     // Simple variable replacement
-    const replaceVariables = (text: string): string => {
+    const replaceVariables = (text: string): string => 
       // Use the class method to replace all {{variable}} patterns
-      return this.replaceVariables(text, data);
-    };
+       this.replaceVariables(text, data)
+    ;
 
     // Render email content if present
     if (template.content.email) {
@@ -320,9 +320,7 @@ export class TemplateEngine {
     }
 
     const rendered: RenderedContent = {};
-    const replaceVars = (text: string): string => {
-      return this.replaceVariables(text, data);
-    };
+    const replaceVars = (text: string): string => this.replaceVariables(text, data);
 
     if ('subject' in channelContent) {
       rendered.subject = replaceVars(channelContent.subject);
@@ -387,7 +385,9 @@ export class TemplateEngine {
     let match;
 
     while ((match = regex.exec(content)) !== null) {
-      variables.add(match[1].trim());
+      if (match[1]) {
+        variables.add(match[1].trim());
+      }
     }
 
     return Array.from(variables);

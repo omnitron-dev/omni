@@ -141,12 +141,6 @@ export class WorkflowEngine {
     });
   }
 
-  /**
-   * Define a notification workflow
-   */
-  defineWorkflow(workflow: NotificationWorkflow): void {
-    this.workflows.set(workflow.id, workflow);
-  }
 
   /**
    * Execute a notification workflow
@@ -309,9 +303,22 @@ export class WorkflowEngine {
     const config = step.config;
     const recipients = this.resolveRecipients(config.recipients, instance.context);
     const notification = this.resolveNotification(config.notification, instance.context);
-    const options = config.options || {};
+    const options: SendOptions = {
+      channels: config.channels,
+      ...config.options
+    };
 
     try {
+      // Only send if we have recipients
+      if (!recipients || (Array.isArray(recipients) && recipients.length === 0)) {
+        return {
+          stepId: step.id,
+          success: true,
+          data: { skipped: true, reason: 'No recipients' },
+          timestamp: Date.now()
+        };
+      }
+
       const result = await this.notificationService.send(
         recipients,
         notification,
@@ -366,11 +373,35 @@ export class WorkflowEngine {
     instance: WorkflowInstance
   ): Promise<StepResult> {
     const config = step.config;
-    const conditionMet = this.evaluateCondition(config.if, instance.context);
 
-    const subSteps = conditionMet ? config.then : config.else;
-    if (subSteps) {
-      // Execute sub-steps
+    // Support different config formats
+    let conditionMet: boolean;
+
+    if (config.if) {
+      // Format: { if: condition, then: [...], else: [...] }
+      conditionMet = this.evaluateCondition(config.if, instance.context);
+    } else if (config.field && config.operator && 'value' in config) {
+      // Format: { field, operator, value, onTrue, onFalse }
+      conditionMet = this.evaluateConditionObject(config, instance.context);
+
+      // Store result for branching
+      instance.context['lastStepResult'] = conditionMet;
+
+      // Support setContext
+      if (config.setContext && conditionMet) {
+        Object.assign(instance.context, config.setContext);
+      }
+    } else {
+      // Default to true if no condition specified
+      conditionMet = true;
+    }
+
+    // Execute sub-steps based on condition result
+    const subSteps = config.then || config.onTrue
+      ? (conditionMet ? (config.then || []) : (config.else || []))
+      : [];
+
+    if (subSteps.length > 0) {
       for (const subStep of subSteps) {
         await this.executeStep(subStep, instance);
       }
@@ -382,6 +413,45 @@ export class WorkflowEngine {
       data: { conditionMet },
       timestamp: Date.now()
     };
+  }
+
+  /**
+   * Evaluate condition object
+   */
+  private evaluateConditionObject(
+    condition: any,
+    context: WorkflowContext
+  ): boolean {
+    const field = condition.field;
+    const value = this.getNestedValue(context, field);
+    const expected = condition.value;
+
+    switch (condition.operator) {
+      case 'equals':
+        return value === expected;
+      case 'notEquals':
+        return value !== expected;
+      case 'contains':
+        return String(value).includes(String(expected));
+      case 'greaterThan':
+        return value > expected;
+      case 'lessThan':
+        return value < expected;
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * Get nested value from object
+   */
+  private getNestedValue(obj: any, path: string): any {
+    const keys = path.split('.');
+    let value = obj;
+    for (const key of keys) {
+      value = value?.[key];
+    }
+    return value;
   }
 
   /**
@@ -558,9 +628,7 @@ export class WorkflowEngine {
    * Replace variables in text
    */
   private replaceVariables(text: string, context: WorkflowContext): string {
-    return text.replace(/\{\{(\w+)\}\}/g, (match, key) => {
-      return context[key] ?? match;
-    });
+    return text.replace(/\{\{(\w+)\}\}/g, (match, key) => context[key] ?? match);
   }
 
   /**
@@ -608,5 +676,99 @@ export class WorkflowEngine {
     this.runningWorkflows.delete(instanceId);
 
     return true;
+  }
+
+  /**
+   * Get a workflow by ID
+   */
+  getWorkflow(workflowId: string): NotificationWorkflow | undefined {
+    return this.workflows.get(workflowId);
+  }
+
+  /**
+   * List all workflows
+   */
+  listWorkflows(): NotificationWorkflow[] {
+    return Array.from(this.workflows.values());
+  }
+
+  /**
+   * Get execution history for a workflow
+   */
+  async getExecutionHistory(workflowId: string, limit = 100): Promise<any[]> {
+    const pattern = `${this.storageKeyPrefix}execution:*`;
+    const keys = await this.redis.keys(pattern);
+
+    const executions: any[] = [];
+    for (const key of keys) {
+      const data = await this.redis.get(key);
+      if (data) {
+        const execution = JSON.parse(data);
+        if (execution.instance?.workflowId === workflowId) {
+          executions.push({
+            instanceId: execution.instance.id,
+            workflowId: execution.instance.workflowId,
+            success: execution.result.success,
+            startedAt: execution.instance.startedAt,
+            completedAt: execution.result.completedAt,
+            steps: execution.result.steps
+          });
+        }
+      }
+    }
+
+    // Sort by startedAt descending and limit
+    return executions
+      .sort((a, b) => b.startedAt - a.startedAt)
+      .slice(0, limit);
+  }
+
+  /**
+   * Get execution details by instance ID
+   */
+  async getExecutionDetails(instanceId: string): Promise<any> {
+    const key = `${this.storageKeyPrefix}execution:${instanceId}`;
+    const data = await this.redis.get(key);
+
+    if (data) {
+      const execution = JSON.parse(data);
+      return {
+        instanceId: execution.instance.id,
+        workflowId: execution.instance.workflowId,
+        success: execution.result.success,
+        startedAt: execution.instance.startedAt,
+        completedAt: execution.result.completedAt,
+        steps: execution.result.steps,
+        context: execution.instance.context
+      };
+    }
+
+    return null;
+  }
+
+  /**
+   * Validate workflow structure
+   */
+  private validateWorkflow(workflow: NotificationWorkflow): void {
+    if (!workflow.id) {
+      throw new Error('Workflow ID is required');
+    }
+    if (!workflow.name) {
+      throw new Error('Workflow name is required');
+    }
+    if (!workflow.trigger) {
+      throw new Error('Workflow trigger is required');
+    }
+    if (!workflow.steps || workflow.steps.length === 0) {
+      throw new Error('Workflow must have at least one step');
+    }
+  }
+
+  /**
+   * Redefine defineWorkflow to add validation
+   */
+  defineWorkflow(workflow: NotificationWorkflow): void {
+    this.validateWorkflow(workflow);
+    this.workflows.set(workflow.id, workflow);
   }
 }

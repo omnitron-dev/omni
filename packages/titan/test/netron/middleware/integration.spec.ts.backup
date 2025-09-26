@@ -1,0 +1,704 @@
+/**
+ * Integration tests for Netron Middleware with Transports
+ */
+
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { createServer } from 'http';
+import { Netron } from '../../../src/netron/netron.js';
+import { LocalPeer } from '../../../src/netron/local-peer.js';
+import { RemotePeer } from '../../../src/netron/remote-peer.js';
+import { HttpTransport } from '../../../src/netron/transport/http/index.js';
+import { WebSocketTransport } from '../../../src/netron/transport/websocket-transport.js';
+import { TcpTransport } from '../../../src/netron/transport/tcp-transport.js';
+import { createMockLogger } from '../test-utils.js';
+import {
+  MiddlewarePipeline,
+  MiddlewareStage,
+  NetronBuiltinMiddleware,
+  HttpBuiltinMiddleware,
+  globalMiddleware,
+  type NetronMiddlewareContext,
+  type MiddlewareFunction
+} from '../../../src/netron/middleware/index.js';
+import { TitanError, ErrorCode } from '../../../src/errors/index.js';
+import { delay } from '@omnitron-dev/common';
+
+describe('Middleware-Transport Integration', () => {
+  let netron: Netron;
+  let remotePeer: RemotePeer;
+  let port = 28080;
+
+  beforeEach(async () => {
+    const logger = createMockLogger();
+    // Use a different port for each test
+    port++;
+    netron = await Netron.create(logger, {
+      id: 'middleware-test',
+      listenHost: 'localhost',
+      listenPort: port,
+    });
+  });
+
+  afterEach(async () => {
+    if (remotePeer) await remotePeer.disconnect();
+    if (netron) await netron.stop();
+    globalMiddleware.clear();
+  });
+
+  describe('HTTP Transport with Middleware', () => {
+    it('should apply middleware to HTTP transport requests', async () => {
+      const executionOrder: string[] = [];
+
+      // Setup middleware
+      const loggingMiddleware: MiddlewareFunction = async (ctx, next) => {
+        executionOrder.push('logging-before');
+        await next();
+        executionOrder.push('logging-after');
+      };
+
+      const authMiddleware: MiddlewareFunction = async (ctx, next) => {
+        executionOrder.push('auth');
+        if (!ctx.metadata.get('authorization')) {
+          throw new TitanError({ code: ErrorCode.UNAUTHORIZED });
+        }
+        await next();
+      };
+
+      // Add middleware globally
+      globalMiddleware.use(loggingMiddleware, { name: 'logging', priority: 10 });
+      globalMiddleware.use(authMiddleware, { name: 'auth', priority: 20 });
+
+      // Expose a test service
+      class TestService {
+        async echo(input: string) {
+          executionOrder.push('service-execution');
+          return `Echo: ${input}`;
+        }
+      }
+
+      const service = new TestService();
+      // Add service metadata
+      (service as any).__meta = { name: 'TestService', version: '1.0.0' };
+      await netron.peer.exposeService(service);
+
+      remotePeer = new RemotePeer(netron, `http://localhost:${port}`);
+      await remotePeer.connect();
+
+      // Add authorization to remote peer requests
+      remotePeer.metadata.set('authorization', 'Bearer valid-token');
+
+      // Call the service
+      const remoteService = await remotePeer.getService('TestService');
+      const result = await remoteService.echo('Hello');
+
+      expect(result).toBe('Echo: Hello');
+      expect(executionOrder).toContain('logging-before');
+      expect(executionOrder).toContain('auth');
+      expect(executionOrder).toContain('service-execution');
+      expect(executionOrder).toContain('logging-after');
+    });
+
+    it('should handle middleware errors in HTTP transport', async () => {
+      // Setup error middleware
+      const errorMiddleware: MiddlewareFunction = async (ctx, next) => {
+        if (ctx.methodName === 'fail') {
+          throw new TitanError({
+            code: ErrorCode.FORBIDDEN,
+            message: 'Method not allowed'
+          });
+        }
+        await next();
+      };
+
+      // Create HTTP transport
+      const transport = new HttpTransport();
+      const server = await transport.createServer({ port: 0 });
+
+      // Add middleware
+      globalMiddleware.use(errorMiddleware, { name: 'error-check' });
+
+      // Create peers
+      localPeer = new LocalPeer(netron);
+      await localPeer.listen(server);
+
+      localPeer.expose('TestService@1.0.0', {
+        async fail() {
+          return 'Should not reach here';
+        },
+        async success() {
+          return 'OK';
+        }
+      });
+
+      const port = (server as any).port;
+      remotePeer = new RemotePeer(`http://localhost:${port}`);
+      await remotePeer.connect();
+
+      const service = await remotePeer.getService('TestService@1.0.0');
+
+      // Should fail with middleware error
+      await expect(service.fail()).rejects.toThrow('Method not allowed');
+
+      // Should succeed
+      const result = await service.success();
+      expect(result).toBe('OK');
+    });
+
+    it('should support HTTP-specific middleware', async () => {
+      const transport = new HttpTransport();
+
+      // Configure CORS middleware
+      const corsMiddleware = HttpBuiltinMiddleware.corsMiddleware({
+        origin: '*',
+        methods: ['GET', 'POST'],
+        credentials: true
+      });
+
+      // Add as HTTP-specific middleware
+      globalMiddleware.use(corsMiddleware, {
+        name: 'cors',
+        priority: 5
+      }, MiddlewareStage.PRE_PROCESS);
+
+      const server = await transport.createServer({ port: 0 });
+
+      localPeer = new LocalPeer(netron);
+      await localPeer.listen(server);
+
+      localPeer.expose('TestService@1.0.0', {
+        async getData() {
+          return { data: 'test' };
+        }
+      });
+
+      const port = (server as any).port;
+
+      // Make direct HTTP request to test CORS
+      const response = await fetch(`http://localhost:${port}/TestService@1.0.0/getData`, {
+        method: 'OPTIONS',
+        headers: {
+          'Origin': 'https://example.com',
+          'Access-Control-Request-Method': 'POST'
+        }
+      });
+
+      expect(response.status).toBe(204);
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
+      expect(response.headers.get('Access-Control-Allow-Credentials')).toBe('true');
+    });
+  });
+
+  describe('WebSocket Transport with Middleware', () => {
+    it('should apply middleware to WebSocket transport', async () => {
+      const metricsCollected = {
+        requests: 0,
+        durations: [] as number[]
+      };
+
+      // Setup metrics middleware
+      const metricsMiddleware: MiddlewareFunction = async (ctx, next) => {
+        const start = Date.now();
+        metricsCollected.requests++;
+        await next();
+        metricsCollected.durations.push(Date.now() - start);
+      };
+
+      // Create WebSocket transport
+      const transport = new WebSocketTransport();
+      const server = await transport.createServer({ port: 0 });
+
+      // Add middleware
+      globalMiddleware.use(metricsMiddleware, { name: 'metrics' });
+
+      // Create peers
+      localPeer = new LocalPeer(netron);
+      await localPeer.listen(server);
+
+      localPeer.expose('TestService@1.0.0', {
+        async calculate(a: number, b: number) {
+          await delay(10); // Simulate work
+          return a + b;
+        }
+      });
+
+      const port = (server as any).port;
+      remotePeer = new RemotePeer(`ws://localhost:${port}`);
+      await remotePeer.connect();
+
+      const service = await remotePeer.getService('TestService@1.0.0');
+
+      // Make multiple calls
+      const results = await Promise.all([
+        service.calculate(1, 2),
+        service.calculate(3, 4),
+        service.calculate(5, 6)
+      ]);
+
+      expect(results).toEqual([3, 7, 11]);
+      expect(metricsCollected.requests).toBe(3);
+      expect(metricsCollected.durations.length).toBe(3);
+      metricsCollected.durations.forEach(duration => {
+        expect(duration).toBeGreaterThan(9);
+      });
+    });
+
+    it('should handle streaming with middleware in WebSocket', async () => {
+      const streamEvents: string[] = [];
+
+      // Setup stream monitoring middleware
+      const streamMiddleware: MiddlewareFunction = async (ctx, next) => {
+        if (ctx.metadata.get('streaming')) {
+          streamEvents.push('stream-start');
+        }
+        await next();
+        if (ctx.metadata.get('streaming')) {
+          streamEvents.push('stream-end');
+        }
+      };
+
+      const transport = new WebSocketTransport();
+      const server = await transport.createServer({ port: 0 });
+
+      globalMiddleware.use(streamMiddleware, { name: 'stream-monitor' });
+
+      localPeer = new LocalPeer(netron);
+      await localPeer.listen(server);
+
+      localPeer.expose('StreamService@1.0.0', {
+        async *streamData(count: number) {
+          for (let i = 0; i < count; i++) {
+            yield i;
+            await delay(5);
+          }
+        }
+      });
+
+      const port = (server as any).port;
+      remotePeer = new RemotePeer(`ws://localhost:${port}`);
+      await remotePeer.connect();
+
+      const service = await remotePeer.getService('StreamService@1.0.0');
+      const stream = service.streamData(3);
+
+      const values: number[] = [];
+      for await (const value of stream) {
+        values.push(value);
+      }
+
+      expect(values).toEqual([0, 1, 2]);
+      // Stream middleware should have been triggered
+      expect(streamEvents.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('TCP Transport with Middleware', () => {
+    it('should apply middleware to TCP transport', async () => {
+      const validationErrors: any[] = [];
+
+      // Setup validation middleware
+      const validationMiddleware: MiddlewareFunction = async (ctx, next) => {
+        if (ctx.methodName === 'divide' && ctx.input?.[1] === 0) {
+          const error = new TitanError({
+            code: ErrorCode.BAD_REQUEST,
+            message: 'Division by zero'
+          });
+          validationErrors.push(error);
+          throw error;
+        }
+        await next();
+      };
+
+      // Create TCP transport
+      const transport = new TcpTransport();
+      const server = await transport.createServer({ port: 0 });
+
+      globalMiddleware.use(validationMiddleware, { name: 'validation' });
+
+      localPeer = new LocalPeer(netron);
+      await localPeer.listen(server);
+
+      localPeer.expose('MathService@1.0.0', {
+        async divide(a: number, b: number) {
+          return a / b;
+        }
+      });
+
+      const port = (server as any).port;
+      remotePeer = new RemotePeer(`tcp://localhost:${port}`);
+      await remotePeer.connect();
+
+      const service = await remotePeer.getService('MathService@1.0.0');
+
+      // Valid request
+      const result = await service.divide(10, 2);
+      expect(result).toBe(5);
+
+      // Invalid request (division by zero)
+      await expect(service.divide(10, 0)).rejects.toThrow('Division by zero');
+      expect(validationErrors.length).toBe(1);
+    });
+  });
+
+  describe('Multi-Stage Middleware', () => {
+    it('should execute middleware in correct stages', async () => {
+      const stageExecutions: string[] = [];
+
+      // Create middleware for different stages
+      const preProcessMiddleware: MiddlewareFunction = async (ctx, next) => {
+        stageExecutions.push('pre-process');
+        await next();
+      };
+
+      const preInvokeMiddleware: MiddlewareFunction = async (ctx, next) => {
+        stageExecutions.push('pre-invoke');
+        ctx.metadata.set('request-time', Date.now());
+        await next();
+      };
+
+      const postInvokeMiddleware: MiddlewareFunction = async (ctx, next) => {
+        stageExecutions.push('post-invoke');
+        const requestTime = ctx.metadata.get('request-time');
+        ctx.metadata.set('duration', Date.now() - requestTime);
+        await next();
+      };
+
+      const postProcessMiddleware: MiddlewareFunction = async (ctx, next) => {
+        stageExecutions.push('post-process');
+        await next();
+      };
+
+      // Register middleware in different stages
+      globalMiddleware.use(preProcessMiddleware, { name: 'pre-process' }, MiddlewareStage.PRE_PROCESS);
+      globalMiddleware.use(preInvokeMiddleware, { name: 'pre-invoke' }, MiddlewareStage.PRE_INVOKE);
+      globalMiddleware.use(postInvokeMiddleware, { name: 'post-invoke' }, MiddlewareStage.POST_INVOKE);
+      globalMiddleware.use(postProcessMiddleware, { name: 'post-process' }, MiddlewareStage.POST_PROCESS);
+
+      // Create transport and peers
+      const transport = new HttpTransport();
+      const server = await transport.createServer({ port: 0 });
+
+      localPeer = new LocalPeer(netron);
+      await localPeer.listen(server);
+
+      localPeer.expose('TestService@1.0.0', {
+        async process() {
+          stageExecutions.push('service-method');
+          return 'processed';
+        }
+      });
+
+      const port = (server as any).port;
+      remotePeer = new RemotePeer(`http://localhost:${port}`);
+      await remotePeer.connect();
+
+      const service = await remotePeer.getService('TestService@1.0.0');
+      const result = await service.process();
+
+      expect(result).toBe('processed');
+      expect(stageExecutions).toEqual([
+        'pre-process',
+        'pre-invoke',
+        'service-method',
+        'post-invoke',
+        'post-process'
+      ]);
+    });
+  });
+
+  describe('Service-Specific Middleware', () => {
+    it('should apply middleware to specific services', async () => {
+      const serviceACalls: number[] = [];
+      const serviceBCalls: number[] = [];
+
+      // Service A middleware
+      const serviceAMiddleware: MiddlewareFunction = async (ctx, next) => {
+        serviceACalls.push(Date.now());
+        await next();
+      };
+
+      // Service B middleware
+      const serviceBMiddleware: MiddlewareFunction = async (ctx, next) => {
+        serviceBCalls.push(Date.now());
+        await next();
+      };
+
+      // Register service-specific middleware
+      globalMiddleware.useForService('ServiceA@1.0.0', serviceAMiddleware);
+      globalMiddleware.useForService('ServiceB@1.0.0', serviceBMiddleware);
+
+      // Create transport
+      const transport = new HttpTransport();
+      const server = await transport.createServer({ port: 0 });
+
+      localPeer = new LocalPeer(netron);
+      await localPeer.listen(server);
+
+      localPeer.expose('ServiceA@1.0.0', {
+        async methodA() { return 'A'; }
+      });
+
+      localPeer.expose('ServiceB@1.0.0', {
+        async methodB() { return 'B'; }
+      });
+
+      const port = (server as any).port;
+      remotePeer = new RemotePeer(`http://localhost:${port}`);
+      await remotePeer.connect();
+
+      const serviceA = await remotePeer.getService('ServiceA@1.0.0');
+      const serviceB = await remotePeer.getService('ServiceB@1.0.0');
+
+      await serviceA.methodA();
+      await serviceB.methodB();
+
+      expect(serviceACalls.length).toBe(1);
+      expect(serviceBCalls.length).toBe(1);
+    });
+
+    it('should apply middleware to specific methods', async () => {
+      const methodExecutions = new Map<string, number>();
+
+      // Method-specific middleware
+      const methodMiddleware = (methodName: string): MiddlewareFunction =>
+        async (ctx, next) => {
+          const count = methodExecutions.get(methodName) || 0;
+          methodExecutions.set(methodName, count + 1);
+          await next();
+        };
+
+      // Register method-specific middleware
+      globalMiddleware.useForMethod('TestService@1.0.0', 'method1', methodMiddleware('method1'));
+      globalMiddleware.useForMethod('TestService@1.0.0', 'method2', methodMiddleware('method2'));
+
+      // Create transport
+      const transport = new WebSocketTransport();
+      const server = await transport.createServer({ port: 0 });
+
+      localPeer = new LocalPeer(netron);
+      await localPeer.listen(server);
+
+      localPeer.expose('TestService@1.0.0', {
+        async method1() { return '1'; },
+        async method2() { return '2'; },
+        async method3() { return '3'; }
+      });
+
+      const port = (server as any).port;
+      remotePeer = new RemotePeer(`ws://localhost:${port}`);
+      await remotePeer.connect();
+
+      const service = await remotePeer.getService('TestService@1.0.0');
+
+      await service.method1();
+      await service.method2();
+      await service.method3();
+      await service.method1(); // Call again
+
+      expect(methodExecutions.get('method1')).toBe(2);
+      expect(methodExecutions.get('method2')).toBe(1);
+      expect(methodExecutions.has('method3')).toBe(false); // No middleware for method3
+    });
+  });
+
+  describe('Error Handling in Middleware', () => {
+    it('should handle and transform errors in middleware', async () => {
+      // Error transformation middleware
+      const errorTransformMiddleware: MiddlewareFunction = async (ctx, next) => {
+        try {
+          await next();
+        } catch (error: any) {
+          if (error.message === 'Internal error') {
+            throw new TitanError({
+              code: ErrorCode.INTERNAL_ERROR,
+              message: 'Transformed error',
+              details: { original: error.message }
+            });
+          }
+          throw error;
+        }
+      };
+
+      globalMiddleware.use(errorTransformMiddleware, { name: 'error-transform' });
+
+      const transport = new HttpTransport();
+      const server = await transport.createServer({ port: 0 });
+
+      localPeer = new LocalPeer(netron);
+      await localPeer.listen(server);
+
+      localPeer.expose('TestService@1.0.0', {
+        async fail() {
+          throw new Error('Internal error');
+        }
+      });
+
+      const port = (server as any).port;
+      remotePeer = new RemotePeer(`http://localhost:${port}`);
+      await remotePeer.connect();
+
+      const service = await remotePeer.getService('TestService@1.0.0');
+
+      try {
+        await service.fail();
+        expect.fail('Should have thrown');
+      } catch (error: any) {
+        expect(error.message).toBe('Transformed error');
+        expect(error.code).toBe(ErrorCode.INTERNAL_ERROR);
+        expect(error.details.original).toBe('Internal error');
+      }
+    });
+
+    it('should use error stage middleware for error handling', async () => {
+      const errorLogs: any[] = [];
+
+      // Error stage middleware
+      const errorMiddleware: MiddlewareFunction = async (ctx, next) => {
+        if (ctx.error) {
+          errorLogs.push({
+            service: ctx.serviceName,
+            method: ctx.methodName,
+            error: ctx.error.message
+          });
+        }
+        await next();
+      };
+
+      globalMiddleware.use(errorMiddleware, { name: 'error-logger' }, MiddlewareStage.ERROR);
+
+      const transport = new TcpTransport();
+      const server = await transport.createServer({ port: 0 });
+
+      localPeer = new LocalPeer(netron);
+      await localPeer.listen(server);
+
+      localPeer.expose('TestService@1.0.0', {
+        async throwError() {
+          throw new Error('Test error');
+        }
+      });
+
+      const port = (server as any).port;
+      remotePeer = new RemotePeer(`tcp://localhost:${port}`);
+      await remotePeer.connect();
+
+      const service = await remotePeer.getService('TestService@1.0.0');
+
+      try {
+        await service.throwError();
+      } catch (error) {
+        // Expected
+      }
+
+      expect(errorLogs).toHaveLength(1);
+      expect(errorLogs[0]).toEqual({
+        service: 'TestService@1.0.0',
+        method: 'throwError',
+        error: 'Test error'
+      });
+    });
+  });
+
+  describe('Performance and Optimization', () => {
+    it('should handle high-throughput with middleware efficiently', async () => {
+      let requestCount = 0;
+
+      // Lightweight counting middleware
+      const countingMiddleware: MiddlewareFunction = async (ctx, next) => {
+        requestCount++;
+        await next();
+      };
+
+      globalMiddleware.use(countingMiddleware, { name: 'counter', priority: 1 });
+
+      const transport = new WebSocketTransport();
+      const server = await transport.createServer({ port: 0 });
+
+      localPeer = new LocalPeer(netron);
+      await localPeer.listen(server);
+
+      localPeer.expose('PerformanceService@1.0.0', {
+        async ping() { return 'pong'; }
+      });
+
+      const port = (server as any).port;
+      remotePeer = new RemotePeer(`ws://localhost:${port}`);
+      await remotePeer.connect();
+
+      const service = await remotePeer.getService('PerformanceService@1.0.0');
+
+      const start = Date.now();
+      const promises = [];
+
+      // Make 100 concurrent requests
+      for (let i = 0; i < 100; i++) {
+        promises.push(service.ping());
+      }
+
+      const results = await Promise.all(promises);
+      const duration = Date.now() - start;
+
+      expect(results.every(r => r === 'pong')).toBe(true);
+      expect(requestCount).toBe(100);
+      expect(duration).toBeLessThan(1000); // Should complete within 1 second
+    });
+
+    it('should cache middleware results when appropriate', async () => {
+      let serviceCallCount = 0;
+      const cache = new Map<string, any>();
+
+      // Caching middleware
+      const cachingMiddleware: MiddlewareFunction = async (ctx, next) => {
+        const cacheKey = `${ctx.serviceName}.${ctx.methodName}:${JSON.stringify(ctx.input)}`;
+
+        if (cache.has(cacheKey)) {
+          ctx.result = cache.get(cacheKey);
+          ctx.metadata.set('cached', true);
+          return; // Skip the actual service call
+        }
+
+        await next();
+
+        if (ctx.result && !ctx.error) {
+          cache.set(cacheKey, ctx.result);
+        }
+      };
+
+      globalMiddleware.use(cachingMiddleware, { name: 'cache', priority: 10 });
+
+      const transport = new HttpTransport();
+      const server = await transport.createServer({ port: 0 });
+
+      localPeer = new LocalPeer(netron);
+      await localPeer.listen(server);
+
+      localPeer.expose('CachedService@1.0.0', {
+        async expensiveOperation(input: string) {
+          serviceCallCount++;
+          await delay(50); // Simulate expensive operation
+          return `Result for ${input}`;
+        }
+      });
+
+      const port = (server as any).port;
+      remotePeer = new RemotePeer(`http://localhost:${port}`);
+      await remotePeer.connect();
+
+      const service = await remotePeer.getService('CachedService@1.0.0');
+
+      // First call - should hit the service
+      const result1 = await service.expensiveOperation('test');
+      expect(result1).toBe('Result for test');
+      expect(serviceCallCount).toBe(1);
+
+      // Second call with same input - should be cached
+      const result2 = await service.expensiveOperation('test');
+      expect(result2).toBe('Result for test');
+      expect(serviceCallCount).toBe(1); // Should not increment
+
+      // Call with different input - should hit the service
+      const result3 = await service.expensiveOperation('other');
+      expect(result3).toBe('Result for other');
+      expect(serviceCallCount).toBe(2);
+    });
+  });
+});

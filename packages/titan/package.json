@@ -59,6 +59,10 @@
     "./module/discovery": {
       "types": "./dist/modules/discovery/index.d.ts",
       "default": "./dist/modules/discovery/index.js"
+    },
+    "./module/notifications": {
+      "types": "./dist/modules/notifications/index.d.ts",
+      "default": "./dist/modules/notifications/index.js"
     }
   },
   "files": [

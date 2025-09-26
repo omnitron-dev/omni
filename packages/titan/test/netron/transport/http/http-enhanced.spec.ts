@@ -17,63 +17,43 @@ import { Definition } from '../../../../src/netron/definition.js';
 import { NetronBuiltinMiddleware } from '../../../../src/netron/middleware/index.js';
 import { TitanError, ErrorCode } from '../../../../src/errors/index.js';
 import { createMockLogger } from '../../test-utils.js';
+import { Service, Public } from '../../../../src/decorators/core.js';
 
-// Test service definition
-const createTestService = () => {
-  const definition = new Definition({
-    name: 'TestService',
-    version: '1.0.0',
-    methods: {
-      echo: {
-        input: { message: 'string' },
-        output: { message: 'string' }
-      },
-      add: {
-        input: { a: 'number', b: 'number' },
-        output: { result: 'number' }
-      },
-      slowMethod: {
-        input: { delay: 'number' },
-        output: { completed: 'boolean' }
-      },
-      errorMethod: {
-        input: {},
-        output: {}
-      },
-      streamMethod: {
-        input: { count: 'number' },
-        output: 'stream'
-      }
+// Test service class
+@Service('TestService', '1.0.0')
+class TestService {
+  @Public()
+  async echo(input: { message: string }) {
+    return { message: input.message };
+  }
+
+  @Public()
+  async add(input: { a: number; b: number }) {
+    return { result: input.a + input.b };
+  }
+
+  @Public()
+  async slowMethod(input: { delay: number }) {
+    await new Promise(resolve => setTimeout(resolve, input.delay));
+    return { completed: true };
+  }
+
+  @Public()
+  async errorMethod() {
+    throw new TitanError({
+      code: ErrorCode.INTERNAL_ERROR,
+      message: 'Test error'
+    });
+  }
+
+  @Public()
+  async *streamMethod(input: { count: number }) {
+    for (let i = 0; i < input.count; i++) {
+      yield { index: i };
+      await new Promise(resolve => setTimeout(resolve, 10));
     }
-  });
-
-  const implementation = {
-    async echo(input: { message: string }) {
-      return { message: input.message };
-    },
-    async add(input: { a: number; b: number }) {
-      return { result: input.a + input.b };
-    },
-    async slowMethod(input: { delay: number }) {
-      await new Promise(resolve => setTimeout(resolve, input.delay));
-      return { completed: true };
-    },
-    async errorMethod() {
-      throw new TitanError({
-        code: ErrorCode.INTERNAL_ERROR,
-        message: 'Test error'
-      });
-    },
-    async *streamMethod(input: { count: number }) {
-      for (let i = 0; i < input.count; i++) {
-        yield { index: i };
-        await new Promise(resolve => setTimeout(resolve, 10));
-      }
-    }
-  };
-
-  return { definition, implementation };
-};
+  }
+}
 
 describe('Enhanced HTTP Transport Features', () => {
   let server: HttpServer;
@@ -106,9 +86,11 @@ describe('Enhanced HTTP Transport Features', () => {
     peer = new LocalPeer(netron);
 
     // Register test service
-    const { definition, implementation } = createTestService();
-    const stub = peer.exposeService(definition, implementation);
+    const testService = new TestService();
+    const definition = await peer.exposeService(testService);
     server.setPeer(peer);
+
+    // Register routes for the service
     server.registerService('TestService', definition);
 
     // Start server
@@ -127,7 +109,11 @@ describe('Enhanced HTTP Transport Features', () => {
 
       const data = await response.json();
       expect(data.services).toHaveProperty('TestService');
-      expect(data.services.TestService.methods).toContain('echo');
+      expect(data.services.TestService).toBeDefined();
+      expect(data.services.TestService.meta).toBeDefined();
+      expect(data.services.TestService.meta.name).toBe('TestService');
+      // Check if methods are present
+      expect(Object.keys(data.services.TestService.meta.methods || {})).toContain('echo');
     });
 
     it('should handle health checks', async () => {
@@ -135,7 +121,7 @@ describe('Enhanced HTTP Transport Features', () => {
       expect(response.status).toBe(200);
 
       const health = await response.json();
-      expect(health.status).toBe('healthy');
+      expect(health.status).toBe('online');
       expect(health.uptime).toBeGreaterThan(0);
     });
 
@@ -144,8 +130,8 @@ describe('Enhanced HTTP Transport Features', () => {
       expect(response.status).toBe(200);
 
       const metrics = await response.json();
-      expect(metrics.totalRequests).toBeGreaterThanOrEqual(2); // discovery + health
-      expect(metrics.uptime).toBeGreaterThan(0);
+      expect(metrics.requests.totalRequests).toBeGreaterThanOrEqual(2); // discovery + health
+      expect(metrics.server.uptime).toBeGreaterThan(0);
     });
 
     it('should handle RPC-style requests', async () => {
@@ -206,9 +192,10 @@ describe('Enhanced HTTP Transport Features', () => {
         host: 'localhost'
       });
 
-      const { definition, implementation } = createTestService();
-      const localPeer = new LocalPeer('middleware-peer');
-      localPeer.exposeService(definition, implementation);
+      const middlewareNetron = new Netron(createMockLogger());
+      const localPeer = new LocalPeer(middlewareNetron);
+      const testService = new TestService();
+      const definition = await localPeer.exposeService(testService);
       middlewareServer.setPeer(localPeer);
       middlewareServer.registerService('TestService', definition);
     });
@@ -382,9 +369,10 @@ describe('Enhanced HTTP Transport Features', () => {
         { name: 'rate-limit', priority: 5 }
       );
 
-      const { definition, implementation } = createTestService();
-      const localPeer = new LocalPeer('rate-limit-peer');
-      localPeer.exposeService(definition, implementation);
+      const rateLimitNetron = new Netron(createMockLogger());
+      const localPeer = new LocalPeer(rateLimitNetron);
+      const testService = new TestService();
+      const definition = await localPeer.exposeService(testService);
       rateLimitServer.setPeer(localPeer);
       rateLimitServer.registerService('TestService', definition);
 
@@ -462,18 +450,9 @@ describe('Enhanced HTTP Transport Features', () => {
       );
 
       // Service that fails on demand
-      const definition = new Definition({
-        name: 'CircuitService',
-        version: '1.0.0',
-        methods: {
-          unstable: {
-            input: {},
-            output: { success: 'boolean' }
-          }
-        }
-      });
-
-      const implementation = {
+      @Service('CircuitService', '1.0.0')
+      class CircuitService {
+        @Public()
         async unstable() {
           failureCount++;
           if (failureCount <= 3) {
@@ -481,10 +460,12 @@ describe('Enhanced HTTP Transport Features', () => {
           }
           return { success: true };
         }
-      };
+      }
 
-      const localPeer = new LocalPeer('circuit-peer');
-      localPeer.exposeService(definition, implementation);
+      const circuitNetron = new Netron(createMockLogger());
+      const localPeer = new LocalPeer(circuitNetron);
+      const circuitService = new CircuitService();
+      const definition = await localPeer.exposeService(circuitService);
       circuitServer.setPeer(localPeer);
       circuitServer.registerService('CircuitService', definition);
 

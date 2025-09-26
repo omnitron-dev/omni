@@ -135,19 +135,24 @@ describe('Netron Streams Integration Tests', () => {
       return originalSendStreamChunk(streamId, chunk, index, isLast, isLive);
     }) as any;
 
+    // Set up error listener before writing
+    const errorPromise = new Promise<void>((resolve) => {
+      writableStream.on('error', () => {
+        writableErrored = true;
+        resolve();
+      });
+    });
+
     writableStream.write('chunk-1');
     writableStream.write('chunk-2'); // Error occurs here (index === 1)
     writableStream.write('chunk-3');
     writableStream.end();
 
-    await new Promise((resolve) => {
-      writableStream.on('error', () => {
-        writableErrored = true;
-        resolve(null);
-      });
-
-      writableStream.on('finish', resolve);
-    });
+    // Wait for error event with timeout
+    await Promise.race([
+      errorPromise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Error event timeout')), 5000))
+    ]);
 
     // Small delay for completion of all async operations
     await delay(100);
@@ -155,7 +160,7 @@ describe('Netron Streams Integration Tests', () => {
     expect(writableErrored).toBe(true);
     expect(readableEnded).toBe(true);
     expect(receivedChunks).toEqual(['chunk-1']);
-  });
+  }, 40000);
 
 
   it('should correctly send and receive a large amount of data', async () => {

@@ -123,7 +123,7 @@ export class NotificationAnalytics {
   constructor(
     private redis: Redis,
     private options?: AnalyticsOptions
-  ) {}
+  ) { }
 
   /**
    * Track a notification event
@@ -371,6 +371,7 @@ export class NotificationAnalytics {
         case 'failed':
           stats.failed++;
           break;
+        default:
       }
     }
 
@@ -609,7 +610,7 @@ export class NotificationAnalytics {
     callback: (event: NotificationEvent) => void
   ): Promise<() => void> {
     if (!this.options?.realtime) {
-      return () => {}; // No-op if real-time is disabled
+      return () => { }; // No-op if real-time is disabled
     }
 
     // Subscribe to Redis pub/sub channel
@@ -644,7 +645,7 @@ export class NotificationAnalytics {
     interval: number = 5000
   ): Promise<() => void> {
     if (!this.options?.realtime) {
-      return () => {}; // No-op if real-time is disabled
+      return () => { }; // No-op if real-time is disabled
     }
 
     // Set up interval to calculate and emit stats

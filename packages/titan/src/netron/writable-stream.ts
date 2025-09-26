@@ -74,7 +74,8 @@ export class NetronWritableStream extends Writable {
     this.peer.writableStreams.set(this.id, this);
 
     this.once('close', this.cleanup);
-    this.once('error', this.handleError);
+    // Don't automatically consume error events - let them propagate to consumers
+    // this.once('error', this.handleError);
   }
 
   /**
@@ -124,6 +125,8 @@ export class NetronWritableStream extends Writable {
       .then(() => callback())
       .catch((err: Error) => {
         this.peer.logger.error({ streamId: this.id, error: err }, 'Error sending stream chunk');
+
+        // Send error packet to remote peer (best effort)
         this.peer
           .sendPacket(
             createPacket(Packet.nextId(), 1, TYPE_STREAM_ERROR, {
@@ -131,10 +134,12 @@ export class NetronWritableStream extends Writable {
               message: err.message,
             })
           )
-          .finally(() => {
-            callback(err);
-            this.destroy(err);
+          .catch(sendErr => {
+            this.peer.logger.error({ streamId: this.id, error: sendErr }, 'Failed to send stream error packet');
           });
+
+        // Call callback with error to trigger error event on the stream
+        callback(err);
       });
   }
 
@@ -159,7 +164,6 @@ export class NetronWritableStream extends Writable {
       .catch((err: Error) => {
         this.peer.logger.error({ streamId: this.id, error: err }, 'Error sending final chunk');
         callback(err);
-        this.destroy(err);
       })
       .finally(() => this.closeStream());
   }
@@ -197,7 +201,13 @@ export class NetronWritableStream extends Writable {
     this.peer.logger.info({ streamId: this.id, error }, 'Destroying stream');
     this.isClosed = true;
 
-    // Send explicit close packet for immediate notification
+    // Perform cleanup immediately
+    this.cleanup();
+
+    // Immediately call super.destroy to set the destroyed property and emit error if needed
+    super.destroy(error);
+
+    // Send explicit close packet for immediate notification (best effort)
     const closeReason = error ? error.message : 'Stream destroyed';
     this.peer
       .sendPacket(createPacket(Packet.nextId(), 1, TYPE_STREAM_CLOSE, {
@@ -206,10 +216,6 @@ export class NetronWritableStream extends Writable {
       }))
       .catch((sendError) => {
         this.peer.logger.error({ streamId: this.id, error: sendError }, 'Failed to send stream close packet');
-      })
-      .finally(() => {
-        super.destroy(error);
-        this.cleanup();
       });
 
     return this;

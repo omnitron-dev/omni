@@ -1,7 +1,7 @@
 import { delay as delayMs } from '@omnitron-dev/common';
 
-import { NotificationManager } from '../src';
-import { createTestConfig } from './helpers/test-utils';
+import { NotificationManager } from '../../src/rotif/rotif.js';
+import { createTestConfig } from './helpers/test-utils.js';
 
 describe('DLQ - Requeue from DLQ', () => {
   let manager: NotificationManager;

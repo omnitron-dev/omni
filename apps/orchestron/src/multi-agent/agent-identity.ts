@@ -9,7 +9,7 @@ import {
   ErrorInfo,
   TaskRequirements,
   SessionInfo
-} from './types';
+} from './types.js';
 
 export class AgentIdentityManager {
   private agents: Map<string, AgentIdentity> = new Map();

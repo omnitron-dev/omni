@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
-import { CSPEngine } from './engine';
-import { TaskManager } from './task-manager';
+import { OrchestronEngine } from './engine.js';
+import { TaskManager } from './task-manager.js';
 import {
   NodeId,
   SprintNode,
@@ -11,7 +11,7 @@ import {
   TaskStatus,
   BurndownData,
   SprintMetrics,
-} from './types';
+} from './types.js';
 
 export interface SprintReport {
   sprint: SprintNode;
@@ -34,11 +34,11 @@ export interface ChartData {
 }
 
 export class SprintManager {
-  private engine: CSPEngine;
+  private engine: OrchestronEngine;
   private taskManager: TaskManager;
   private activeSprint: NodeId | null = null;
 
-  constructor(engine: CSPEngine, taskManager: TaskManager) {
+  constructor(engine: OrchestronEngine, taskManager: TaskManager) {
     this.engine = engine;
     this.taskManager = taskManager;
   }
@@ -517,7 +517,7 @@ export class SprintManager {
   }
 
   // Helper methods
-  private async getSprint(sprintId: NodeId): Promise<SprintNode | null> {
+  async getSprint(sprintId: NodeId): Promise<SprintNode | null> {
     try {
       // First search recent nodes to get the latest version
       const recent = await this.engine.getRecentNodes(100);

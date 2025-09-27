@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { NotificationManager, RetryStrategies } from '../src/index.js';
+import { NotificationManager } from '../../src/rotif/rotif.js';
 import { delay } from '@omnitron-dev/common';
 import Redis from 'ioredis';
 

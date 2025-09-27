@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "orchestron": {
+      "command": "node",
+      "args": ["./dist/mcp/server.js"],
+      "cwd": "/Users/taaliman/projects/omnitron-dev/omni/apps/orchestron",
+      "env": {
+        "ORCHESTRON_STORAGE_PATH": ".orchestron",
+        "NODE_ENV": "production"
+      }
+    }
+  }
+}

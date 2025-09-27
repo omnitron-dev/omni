@@ -12,8 +12,8 @@ export {
   startApp,
   createApp,
   Application,
-  ApplicationToken,
-  NetronToken,
+  APPLICATION_TOKEN as ApplicationToken,
+  NETRON_TOKEN as NetronToken,
   Application as TitanApplication
 } from './application.js';
 

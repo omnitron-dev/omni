@@ -24,8 +24,8 @@ import {
   ErrorPattern,
   DevelopmentMetadata,
   TaskStatus,
-} from './types';
-import { Storage } from '../storage/interface';
+} from './types.js';
+import { Storage } from '../storage/interface.js';
 
 export interface OrchestronEngineEvents {
   'commit': (response: CommitResponse) => void;

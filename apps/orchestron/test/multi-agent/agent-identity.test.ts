@@ -107,6 +107,8 @@ describe('AgentIdentityManager', () => {
 
     it('should end an active session', async () => {
       const session = await manager.startSession('claude-1');
+      // Add a small delay to ensure duration > 0
+      await new Promise(resolve => setTimeout(resolve, 1));
       const endedSession = await manager.endSession(session.sessionId);
 
       expect(endedSession.endTime).toBeInstanceOf(Date);

@@ -15,7 +15,7 @@ import {
   AgentContribution,
   Decision,
   TaskMetrics
-} from './types';
+} from './types.js';
 
 interface SearchResult {
   id: string;

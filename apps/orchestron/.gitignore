@@ -1,3 +1,6 @@
 node_modules/
 dist/
+dashboard/
 coverage/
+.orchestron/
+*.db

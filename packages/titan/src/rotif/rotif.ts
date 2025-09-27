@@ -106,22 +106,7 @@ export class NotificationManager {
       }
 
       // Try to determine lua directory
-      let luaDir: string | undefined;
-
-      // Try to use __dirname if available (CommonJS) or fall back to process.cwd()
-      try {
-        // @ts-ignore - __dirname might not be available in ESM
-        if (typeof __dirname !== 'undefined') {
-          luaDir = path.resolve(__dirname, '..', 'lua');
-        }
-      } catch {
-        // Ignore if __dirname is not available
-      }
-
-      // Fallback to process.cwd() based path
-      if (!luaDir) {
-        luaDir = path.resolve(process.cwd(), 'src', 'rotif', '..', 'lua');
-      }
+      const luaDir = path.resolve(import.meta.dirname, '..', '..', 'lua', 'rotif');
 
       // Check if lua directory exists
       if (!fs.existsSync(luaDir)) {

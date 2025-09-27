@@ -1,8 +1,8 @@
 import { delay as delayMs } from '@omnitron-dev/common';
 import { it, expect, describe, afterAll, beforeAll, jest } from '@jest/globals';
 
-import { NotificationManager } from '../src';
-import { createTestConfig } from './helpers/test-utils';
+import { NotificationManager } from '../../src/rotif/rotif.js';
+import { createTestConfig } from './helpers/test-utils.js';
 
 describe('NotificationManager - delay delivery', () => {
   let manager: NotificationManager;

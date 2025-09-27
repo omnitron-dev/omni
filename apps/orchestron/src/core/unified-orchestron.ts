@@ -1,17 +1,18 @@
 import { EventEmitter } from 'eventemitter3';
-import { OrchestronEngine } from './engine';
-import { TaskManager } from './task-manager';
-import { SprintManager } from './sprint-manager';
-import { Analytics } from './analytics';
-import { MLPredictor } from './ml-predictor';
-import { Storage } from '../storage/interface';
+import { OrchestronEngine } from './engine.js';
+import { TaskManager } from './task-manager.js';
+import { SprintManager } from './sprint-manager.js';
+import { Analytics } from './analytics.js';
+import { MLPredictor } from './ml-predictor.js';
+import { SessionManager } from './session-manager.js';
+import { Storage } from '../storage/interface.js';
 import {
   AgentIdentityManager,
   SharedMemoryManager,
   TaskCoordinator,
   KnowledgeSynthesizer,
   ConflictResolver
-} from '../multi-agent';
+} from '../multi-agent/index.js';
 import {
   NodeId,
   TaskNode,
@@ -30,7 +31,7 @@ import {
   FileChange,
   CommitResponse,
   DevelopmentMetadata,
-} from './types';
+} from './types.js';
 
 /**
  * Unified Orchestron System - Single interface for all development management
@@ -41,6 +42,7 @@ export class UnifiedOrchestron extends EventEmitter {
   private sprintManager: SprintManager;
   private analytics: Analytics;
   private mlPredictor: MLPredictor;
+  private sessionManager: SessionManager;
 
   // Multi-agent components (Phase 7)
   private agentManager: AgentIdentityManager;
@@ -65,7 +67,7 @@ export class UnifiedOrchestron extends EventEmitter {
     super();
 
     // Initialize core components
-    this.engine = new CSPEngine(storage);
+    this.engine = new OrchestronEngine(storage);
     this.taskManager = new TaskManager(this.engine);
     this.sprintManager = new SprintManager(this.engine, this.taskManager);
     this.analytics = new Analytics(
@@ -74,6 +76,7 @@ export class UnifiedOrchestron extends EventEmitter {
       this.sprintManager
     );
     this.mlPredictor = new MLPredictor(this.engine);
+    this.sessionManager = new SessionManager(storage);
 
     // Initialize multi-agent components (Phase 7)
     this.agentManager = new AgentIdentityManager();
@@ -591,8 +594,12 @@ export class UnifiedOrchestron extends EventEmitter {
 
   // ============= Additional Sprint Methods =============
 
-  getActiveSprint(): NodeId | null {
-    return this.sprintManager.getActiveSprint();
+  async getActiveSprint(): Promise<SprintNode | null> {
+    const sprintId = this.sprintManager.getActiveSprint();
+    if (sprintId) {
+      return this.sprintManager.getSprint(sprintId);
+    }
+    return null;
   }
 
   async getBurndownChart(sprintId: NodeId): Promise<any> {
@@ -1134,6 +1141,91 @@ ${tasks.map(t => `- ${t.payload.title} (${t.payload.status})`).join('\\n')}
 
   // ============= Cleanup =============
 
+  // ============================================
+  // Session Management
+  // ============================================
+
+  /**
+   * Start a new session
+   */
+  async startSession(agentId: string): Promise<any> {
+    return await this.sessionManager.startSession(agentId);
+  }
+
+  /**
+   * End current session
+   */
+  async endSession(sessionId: string): Promise<void> {
+    await this.sessionManager.endSession(sessionId);
+  }
+
+  /**
+   * Save context for session handoff
+   */
+  async saveContext(sessionId: string, context: any): Promise<void> {
+    await this.sessionManager.saveContext(sessionId, context);
+  }
+
+  /**
+   * Load context from previous session
+   */
+  async loadContext(sessionId?: string): Promise<any> {
+    return await this.sessionManager.loadContext(sessionId);
+  }
+
+  /**
+   * Get current session
+   */
+  async getCurrentSession(): Promise<any> {
+    const sessions = this.sessionManager.getActiveSessions();
+    return sessions.length > 0 ? sessions[0] : null;
+  }
+
+  /**
+   * Get recent activity
+   */
+  async getRecentActivity(limit: number = 20): Promise<any[]> {
+    const allNodes = await this.engine.getAllNodes();
+    // Sort by timestamp (using timestamp since createdAt doesn't exist on Node)
+    const nodes = allNodes
+      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+      .slice(0, limit);
+
+    return nodes.map((node: any) => ({
+      id: node.id,
+      type: node.nodeType,
+      timestamp: node.createdAt,
+      description: node.payload?.title || node.payload?.message || 'Activity',
+      metadata: node.metadata
+    }));
+  }
+
+
+  /**
+   * Check if node is a task node
+   */
+  private isTaskNode(node: Node): boolean {
+    const taskTypes = ['EPIC', 'STORY', 'TASK', 'SUBTASK', 'TODO'];
+    return taskTypes.includes(node.nodeType);
+  }
+
+  // Get current statistics (wrapper for analytics.getStatistics)
+  async getStatistics(): Promise<Statistics> {
+    return this.analytics.getStats();
+  }
+
+  // Get blocked tasks (wrapper for taskManager.getBlockedTasks)
+  async getBlockedTasks(): Promise<TaskNode[]> {
+    return this.taskManager.getBlockedTasks();
+  }
+
+
+
+  // Get burndown data for a sprint
+  async getBurndownData(sprintId: string): Promise<any> {
+    return this.sprintManager.getBurndownChart(sprintId);
+  }
+
   async close(): Promise<void> {
     // Stop file watchers
     for (const watcher of this.fileWatchers.values()) {
@@ -1159,4 +1251,4 @@ function uuidv4(): string {
   });
 }
 
-import { Author } from './types';
+import { Author } from './types.js';

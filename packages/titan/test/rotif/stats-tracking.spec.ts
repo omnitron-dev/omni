@@ -1,6 +1,6 @@
 import { delay as delayMs } from '@omnitron-dev/common';
 
-import { NotificationManager } from '../src/rotif.js';
+import { NotificationManager } from '../../src/rotif/rotif.js';
 import { createTestConfig } from './helpers/test-utils.js';
 
 describe('Stats - tracking', () => {

@@ -1,8 +1,8 @@
 
 import { delay } from '@omnitron-dev/common';
 
-import { NotificationManager } from '../src/rotif';
-import { getTestRedisUrl } from './helpers/test-utils';
+import { NotificationManager } from '../../src/rotif/rotif.js';
+import { getTestRedisUrl } from './helpers/test-utils.js';
 
 let manager: NotificationManager;
 

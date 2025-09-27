@@ -53,8 +53,8 @@
       "default": "./dist/modules/config/index.js"
     },
     "./module/logger": {
-      "types": "./dist/modules/logger.module.d.ts",
-      "default": "./dist/modules/logger.module.js"
+      "types": "./dist/modules/logger/index.d.ts",
+      "default": "./dist/modules/logger/index.js"
     },
     "./module/discovery": {
       "types": "./dist/modules/discovery/index.d.ts",

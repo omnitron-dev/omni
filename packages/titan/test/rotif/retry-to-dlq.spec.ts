@@ -1,6 +1,5 @@
-import { NotificationManager } from '../src/rotif.js';
+import { NotificationManager } from '../../src/rotif/rotif.js';
 import { createTestConfig } from './helpers/test-utils.js';
-import { RotifMessage } from '../src/types.js';
 
 // Use a local delay function to avoid any import issues
 const delayMs = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));

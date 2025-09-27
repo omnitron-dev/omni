@@ -1,8 +1,8 @@
 
 import { delay } from '@omnitron-dev/common';
 
-import { NotificationManager } from '../src';
-import { createTestConfig } from './helpers/test-utils';
+import { NotificationManager } from '../../src/rotif/rotif.js';
+import { createTestConfig } from './helpers/test-utils.js';
 
 describe('NotificationManager - retry after failure', () => {
   let manager: NotificationManager;

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
-import { createRetryDelayFn, RetryStrategies, RetryStrategy } from '../src/retry-strategies.js';
-import type { RotifMessage } from '../src/types.js';
+import { createRetryDelayFn, RetryStrategies, RetryStrategy } from '../../src/rotif/retry-strategies.js';
+import type { RotifMessage } from '../../src/rotif/types.js';
 
 describe('Retry Strategies', () => {
   let mockMessage: RotifMessage;

@@ -1,6 +1,6 @@
 import { delay } from '@omnitron-dev/common';
 
-import { RotifMessage, NotificationManager } from '../src';
+import { RotifMessage, NotificationManager } from '../../src/rotif/rotif.js';
 
 describe('NotificationManager - DLQ Subscription', () => {
   let manager: NotificationManager;

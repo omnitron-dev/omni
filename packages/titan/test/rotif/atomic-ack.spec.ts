@@ -1,8 +1,8 @@
 import Redis from 'ioredis';
 import { delay, defer } from '@omnitron-dev/common';
 
-import { NotificationManager } from '../src';
-import { createTestConfig } from './helpers/test-utils';
+import { NotificationManager } from '../../src/rotif/rotif.js';
+import { createTestConfig } from './helpers/test-utils.js';
 
 describe('Lua Atomic Ack Script', () => {
   let manager: NotificationManager;

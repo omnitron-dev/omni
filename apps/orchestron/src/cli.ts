@@ -5,23 +5,17 @@ import chalk from 'chalk';
 import * as fs from 'fs';
 import * as path from 'path';
 import { createInterface } from 'readline';
-import { initializeOrchestron, OrchestronTools } from './index';
-import { OrchestronEngine } from './core/engine';
-import { UnifiedOrchestron } from './core/unified-orchestron';
-import { TaskManager } from './core/task-manager';
-import { SprintManager } from './core/sprint-manager';
-import { Analytics } from './core/analytics';
+import { initializeOrchestron, OrchestronTools } from './index.js';
+import { OrchestronEngine } from './core/engine.js';
+import { UnifiedOrchestron } from './core/unified-orchestron.js';
 import {
   DevelopmentNodeType,
-  DevelopmentEdgeType,
-  Author,
-  MergeStrategy,
   FileChange,
   TaskStatus,
   Priority,
   TaskNode,
   SprintNode,
-} from './core/types';
+} from './core/types.js';
 
 const program = new Command();
 let engine: OrchestronEngine | null = null;
@@ -179,8 +173,8 @@ program
         const id = formatTaskId(props.id);
         const status = chalk.cyan(props.status);
         const priority = props.priority === Priority.HIGH ? chalk.red(props.priority) :
-                        props.priority === Priority.CRITICAL ? chalk.magenta(props.priority) :
-                        chalk.yellow(props.priority);
+          props.priority === Priority.CRITICAL ? chalk.magenta(props.priority) :
+            chalk.yellow(props.priority);
 
         console.log(
           `  ${priority}`,
@@ -789,7 +783,7 @@ program
     try {
       const eng = await getEngine();
 
-      await CSPTools.trackError(eng, {
+      await OrchestronTools.trackError(eng, {
         message: options.message || 'Unknown error',
         component: options.component || 'unknown',
         severity: options.severity as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
@@ -818,7 +812,7 @@ program
         ? `${((options.after - options.before) / options.before * 100).toFixed(2)}%`
         : 'N/A';
 
-      await CSPTools.trackPerformance(eng, {
+      await OrchestronTools.trackPerformance(eng, {
         operation: options.operation || 'benchmark',
         before: { throughput: options.before || 0 },
         after: { throughput: options.after || 0 },
@@ -844,7 +838,7 @@ program
     try {
       const eng = await getEngine();
 
-      await CSPTools.trackDevelopmentDecision(eng, {
+      await OrchestronTools.trackDevelopmentDecision(eng, {
         type: DevelopmentNodeType.ARCHITECTURE,
         title: options.title || 'Development decision',
         rationale: options.rationale || 'Technical requirement',
@@ -961,14 +955,12 @@ program
             console.log('  exit         - Exit interactive mode');
             break;
 
-          case 'status':
+          case 'status': {
             const stats = await csp.getStats();
             console.log(chalk.bold('📊 Current Status:'));
             console.log(`  Tasks: ${stats.totalTasks} total (${stats.inProgress} in progress, ${stats.blocked} blocked, ${stats.overdue} overdue)`);
-            const activeSprintId = csp.getActiveSprint();
-            if (activeSprintId) {
-              const activeSprint = await csp.getSprint(activeSprintId);
-              if (!activeSprint) break;
+            const activeSprint = await csp.getActiveSprint();
+            if (activeSprint) {
               const sprintProps = getSprintProps(activeSprint);
               const currentDay = Math.floor((Date.now() - new Date(sprintProps.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1;
               const duration = Math.floor((new Date(sprintProps.endDate).getTime() - new Date(sprintProps.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1;
@@ -976,8 +968,8 @@ program
             }
             console.log(`  Velocity: ${stats.velocity.toFixed(1)} points/day`);
             break;
-
-          case 'tasks':
+          }
+          case 'tasks': {
             const filter: any = {};
             if (args.includes('--mine')) {
               filter.assignee = process.env.USER || 'me';
@@ -987,12 +979,12 @@ program
             for (const task of tasks.slice(0, 5)) {
               const props = getTaskProps(task);
               const priority = props.priority === Priority.HIGH ? chalk.red(`[${props.priority}]`) :
-                              props.priority === Priority.CRITICAL ? chalk.magenta(`[${props.priority}]`) :
-                              chalk.yellow(`[${props.priority}]`);
+                props.priority === Priority.CRITICAL ? chalk.magenta(`[${props.priority}]`) :
+                  chalk.yellow(`[${props.priority}]`);
               console.log(`  ${priority} ${formatTaskId(props.id)}: ${props.title} (${props.status}) ${props.progress}%`);
             }
             break;
-
+          }
           case 'start':
             if (args[1]) {
               await csp.startTimer(args[1], 'current-user');
@@ -1022,13 +1014,14 @@ program
             }
             break;
 
-          case 'stats':
+          case 'stats': {
             const currentStats = await csp.getStats();
             console.log(chalk.bold('📈 Statistics:'));
             console.log(`  Velocity: ${currentStats.velocity.toFixed(1)} points/day`);
             console.log(`  Cycle Time: ${currentStats.cycleTime.toFixed(1)} hours`);
             console.log(`  Throughput: ${currentStats.throughput.toFixed(1)} tasks/week`);
             break;
+          }
 
           case 'exit':
           case 'quit':

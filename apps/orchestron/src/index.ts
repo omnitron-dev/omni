@@ -1,11 +1,14 @@
-export * from './core/types';
-export * from './core/engine';
-export * from './storage/interface';
-export * from './storage/sqlite';
-export * from './core/ml-predictor';
+export * from './core/types.js';
+export * from './core/engine.js';
+export * from './storage/interface.js';
+export * from './storage/sqlite.js';
+export * from './core/ml-predictor.js';
+export * from './core/workflow-engine.js';
+export * from './core/feedback-collector.js';
+export * from './core/learning-pipeline.js';
 
-import { OrchestronEngine } from './core/engine';
-import { SQLiteStorage } from './storage/sqlite';
+import { OrchestronEngine } from './core/engine.js';
+import { SQLiteStorage } from './storage/sqlite.js';
 import {
   Author,
   DevelopmentNodeType,
@@ -13,7 +16,7 @@ import {
   MergeStrategy,
   Priority,
   TaskStatus,
-} from './core/types';
+} from './core/types.js';
 
 export interface OrchestronConfig {
   storagePath?: string;

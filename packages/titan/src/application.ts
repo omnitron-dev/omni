@@ -40,12 +40,12 @@ import {
 /**
  * Application token for DI
  */
-export const ApplicationToken: Token<Application> = createToken<Application>('Application');
+export const APPLICATION_TOKEN: Token<Application> = createToken<Application>('Application');
 
 /**
  * Netron service token - Core networking and RPC service
  */
-export const NetronToken: Token<Netron> = createToken<Netron>('Netron');
+export const NETRON_TOKEN: Token<Netron> = createToken<Netron>('Netron');
 
 /**
  * Titan Application implementation
@@ -156,7 +156,7 @@ export class Application implements IApplication {
     this._container = options.container || new Container();
 
     // Register application itself
-    this._container.register(ApplicationToken, {
+    this._container.register(APPLICATION_TOKEN, {
       useValue: this
     });
 
@@ -256,7 +256,7 @@ export class Application implements IApplication {
       this.emit(ApplicationEvent.Starting);
 
       // Initialize core modules if not already done
-      if (!this._container.has(NetronToken) && !this._config?.['disableCoreModules']) {
+      if (!this._container.has(NETRON_TOKEN) && !this._config?.['disableCoreModules']) {
         await this.initializeCoreModules();
       }
 
@@ -308,9 +308,9 @@ export class Application implements IApplication {
       }
 
       // Start Netron if configured and available
-      if (this._container.has(NetronToken)) {
+      if (this._container.has(NETRON_TOKEN)) {
         try {
-          const netron = await this._container.resolveAsync(NetronToken) as Netron;
+          const netron = await this._container.resolveAsync(NETRON_TOKEN) as Netron;
           if (netron) {
             await netron.start();
             this._logger?.info({ module: 'Netron' }, 'Netron service started');
@@ -523,9 +523,9 @@ export class Application implements IApplication {
       this._logger?.info('Application stopped successfully');
 
       // Stop Netron service before core modules
-      if (this._container.has(NetronToken)) {
+      if (this._container.has(NETRON_TOKEN)) {
         try {
-          const netron = this._container.resolve(NetronToken) as Netron;
+          const netron = this._container.resolve(NETRON_TOKEN) as Netron;
           if (netron) {
             this._logger?.debug({ module: 'Netron' }, 'Stopping Netron service');
             await netron.stop();
@@ -1568,9 +1568,9 @@ export class Application implements IApplication {
    * Lazily initialized on first access
    */
   get netron(): Netron | undefined {
-    if (this._container.has(NetronToken)) {
+    if (this._container.has(NETRON_TOKEN)) {
       try {
-        return this._container.resolve(NetronToken) as Netron;
+        return this._container.resolve(NETRON_TOKEN) as Netron;
       } catch {
         // Netron not available
       }
@@ -1637,7 +1637,7 @@ export class Application implements IApplication {
     }
 
     // 3. Register Netron service as a singleton instance
-    if (!this._container.has(NetronToken)) {
+    if (!this._container.has(NETRON_TOKEN)) {
       const netronConfig = this._config?.['netron'] || {};
       const netronOptions: NetronOptions = {
         ...netronConfig,
@@ -1650,7 +1650,7 @@ export class Application implements IApplication {
         const netron = new Netron(this._logger, netronOptions);
 
         // Register as singleton instance
-        this._container.register(NetronToken, {
+        this._container.register(NETRON_TOKEN, {
           useValue: netron
         });
 

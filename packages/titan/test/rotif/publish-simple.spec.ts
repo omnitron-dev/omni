@@ -1,8 +1,8 @@
 import Redis from 'ioredis';
 import { delay } from '@omnitron-dev/common';
 
-import { NotificationManager } from '../src';
-import { createTestConfig } from './helpers/test-utils';
+import { NotificationManager } from '../../src/rotif/rotif.js';
+import { createTestConfig } from './helpers/test-utils.js';
 
 describe('Lua Script - Atomic Publish', () => {
   let manager: NotificationManager;

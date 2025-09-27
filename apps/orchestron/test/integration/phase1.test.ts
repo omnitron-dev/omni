@@ -11,16 +11,16 @@ import {
   assertEventEmitted,
   waitFor,
   PerformanceTimer,
-} from '../fixtures/test-helpers';
+} from '../fixtures/test-helpers.js';
 import {
   DevelopmentNodeType,
   TaskStatus,
   Priority,
   Author,
   MergeStrategy,
-} from '../../src/core/types';
+} from '../../src/core/types.js';
 
-describe('CSP Phase 1 Integration Tests', () => {
+describe('Orchestron Phase 1 Integration Tests', () => {
   let context: TestContext;
 
   beforeEach(async () => {
@@ -38,7 +38,7 @@ describe('CSP Phase 1 Integration Tests', () => {
 
       // 1. Create a task
       timer.mark('task-creation-start');
-      const task = await context.unifiedCSP.createTask({
+      const task = await context.unifiedOrchestron.createTask({
         title: 'Complete Integration Task',
         description: 'Test complete task workflow',
         priority: Priority.HIGH,
@@ -53,24 +53,24 @@ describe('CSP Phase 1 Integration Tests', () => {
       expect(task.payload.status).toBe(TaskStatus.TODO);
 
       // 2. Start working on task
-      await context.unifiedCSP.updateTaskStatus(task.nodeId, TaskStatus.IN_PROGRESS);
-      await context.unifiedCSP.startTimer(task.nodeId, 'integration-user');
+      await context.unifiedOrchestron.updateTaskStatus(task.nodeId, TaskStatus.IN_PROGRESS);
+      await context.unifiedOrchestron.startTimer(task.nodeId, 'integration-user');
 
       // 3. Make progress with checkpoints
-      await context.unifiedCSP.updateTaskProgress(task.nodeId, 25, 'Initial analysis complete');
-      await context.unifiedCSP.updateTaskProgress(task.nodeId, 50, 'Core implementation done');
-      await context.unifiedCSP.updateTaskProgress(task.nodeId, 75, 'Testing phase complete');
+      await context.unifiedOrchestron.updateTaskProgress(task.nodeId, 25, 'Initial analysis complete');
+      await context.unifiedOrchestron.updateTaskProgress(task.nodeId, 50, 'Core implementation done');
+      await context.unifiedOrchestron.updateTaskProgress(task.nodeId, 75, 'Testing phase complete');
 
       // 4. Log some time
-      await context.unifiedCSP.stopTimer(task.nodeId);
+      await context.unifiedOrchestron.stopTimer(task.nodeId);
       await context.taskManager.logTime(task.nodeId, 8); // Additional time
 
       // 5. Move to review
-      await context.unifiedCSP.updateTaskStatus(task.nodeId, TaskStatus.IN_REVIEW);
+      await context.unifiedOrchestron.updateTaskStatus(task.nodeId, TaskStatus.IN_REVIEW);
 
       // 6. Complete the task
-      await context.unifiedCSP.updateTaskProgress(task.nodeId, 100, 'Final review passed');
-      await context.unifiedCSP.updateTaskStatus(task.nodeId, TaskStatus.DONE);
+      await context.unifiedOrchestron.updateTaskProgress(task.nodeId, 100, 'Final review passed');
+      await context.unifiedOrchestron.updateTaskStatus(task.nodeId, TaskStatus.DONE);
 
       timer.mark('task-lifecycle-complete');
 
@@ -100,8 +100,8 @@ describe('CSP Phase 1 Integration Tests', () => {
       expect(blockedTasks.map(t => t.nodeId)).toContain(childTask2.nodeId);
 
       // Complete parent task
-      await context.unifiedCSP.updateTaskStatus(parentTask.nodeId, TaskStatus.IN_PROGRESS);
-      await context.unifiedCSP.updateTaskStatus(parentTask.nodeId, TaskStatus.DONE);
+      await context.unifiedOrchestron.updateTaskStatus(parentTask.nodeId, TaskStatus.IN_PROGRESS);
+      await context.unifiedOrchestron.updateTaskStatus(parentTask.nodeId, TaskStatus.DONE);
 
       // Child tasks should be unblocked automatically
       const recentNodes = await context.engine.getRecentNodes(20);
@@ -115,13 +115,13 @@ describe('CSP Phase 1 Integration Tests', () => {
 
     it('should handle TODO to task conversion workflow', async () => {
       // Create TODO
-      const todo = await context.unifiedCSP.addTodo('Implement authentication', 'auth-service');
+      const todo = await context.unifiedOrchestron.addTodo('Implement authentication', 'auth-service');
 
       expect(todo.nodeType).toBe(DevelopmentNodeType.TODO);
       expect(todo.payload.priority).toBe(Priority.LOW);
 
       // Convert to task with more details
-      const task = await context.unifiedCSP.convertTodoToTask(todo.nodeId, {
+      const task = await context.unifiedOrchestron.convertTodoToTask(todo.nodeId, {
         title: 'Implement OAuth 2.0 Authentication',
         description: 'Complete implementation of OAuth 2.0 authentication flow',
         priority: Priority.HIGH,
@@ -137,9 +137,9 @@ describe('CSP Phase 1 Integration Tests', () => {
       expect(task.parentIds).toContain(todo.nodeId);
 
       // Complete the converted task
-      await context.unifiedCSP.updateTaskStatus(task.nodeId, TaskStatus.IN_PROGRESS);
-      await context.unifiedCSP.updateTaskProgress(task.nodeId, 100);
-      await context.unifiedCSP.updateTaskStatus(task.nodeId, TaskStatus.DONE);
+      await context.unifiedOrchestron.updateTaskStatus(task.nodeId, TaskStatus.IN_PROGRESS);
+      await context.unifiedOrchestron.updateTaskProgress(task.nodeId, 100);
+      await context.unifiedOrchestron.updateTaskStatus(task.nodeId, TaskStatus.DONE);
 
       // Verify task completion
       const completedTask = await context.engine.getNode(task.nodeId);
@@ -154,7 +154,7 @@ describe('CSP Phase 1 Integration Tests', () => {
 
       // 1. Create sprint
       timer.mark('sprint-creation-start');
-      const sprint = await context.unifiedCSP.createSprint({
+      const sprint = await context.unifiedOrchestron.createSprint({
         name: 'Integration Sprint 1',
         goal: 'Complete Phase 1 integration testing',
         startDate: new Date('2024-01-15'),
@@ -165,7 +165,7 @@ describe('CSP Phase 1 Integration Tests', () => {
       // 2. Create tasks for the sprint
       const tasks = [];
       for (let i = 0; i < 5; i++) {
-        const task = await context.unifiedCSP.createTask({
+        const task = await context.unifiedOrchestron.createTask({
           title: `Sprint Task ${i + 1}`,
           description: `Task ${i + 1} for integration sprint`,
           priority: [Priority.HIGH, Priority.MEDIUM, Priority.LOW][i % 3] as Priority,
@@ -179,7 +179,7 @@ describe('CSP Phase 1 Integration Tests', () => {
       // 3. Add tasks to sprint
       timer.mark('sprint-planning-start');
       for (const task of tasks) {
-        await context.unifiedCSP.addToSprint(task.nodeId, sprint.nodeId);
+        await context.unifiedOrchestron.addToSprint(task.nodeId, sprint.nodeId);
       }
       timer.mark('sprint-planning-end');
 
@@ -187,8 +187,8 @@ describe('CSP Phase 1 Integration Tests', () => {
       await context.sprintManager.estimateCapacity(sprint.nodeId, 3); // 3 team members
 
       // 5. Start sprint
-      await context.unifiedCSP.startSprint(sprint.nodeId);
-      expect(context.unifiedCSP.getActiveSprint()).toBe(sprint.nodeId);
+      await context.unifiedOrchestron.startSprint(sprint.nodeId);
+      expect(context.unifiedOrchestron.getActiveSprint()).toBe(sprint.nodeId);
 
       // 6. Work on tasks during sprint
       timer.mark('sprint-execution-start');
@@ -197,14 +197,14 @@ describe('CSP Phase 1 Integration Tests', () => {
 
         if (i < 3) {
           // Complete 3 tasks
-          await context.unifiedCSP.updateTaskStatus(task.nodeId, TaskStatus.IN_PROGRESS);
-          await context.unifiedCSP.updateTaskProgress(task.nodeId, 50, 'Halfway done');
-          await context.unifiedCSP.updateTaskProgress(task.nodeId, 100, 'Complete');
-          await context.unifiedCSP.updateTaskStatus(task.nodeId, TaskStatus.DONE);
+          await context.unifiedOrchestron.updateTaskStatus(task.nodeId, TaskStatus.IN_PROGRESS);
+          await context.unifiedOrchestron.updateTaskProgress(task.nodeId, 50, 'Halfway done');
+          await context.unifiedOrchestron.updateTaskProgress(task.nodeId, 100, 'Complete');
+          await context.unifiedOrchestron.updateTaskStatus(task.nodeId, TaskStatus.DONE);
         } else if (i === 3) {
           // One task in progress
-          await context.unifiedCSP.updateTaskStatus(task.nodeId, TaskStatus.IN_PROGRESS);
-          await context.unifiedCSP.updateTaskProgress(task.nodeId, 60, 'Making progress');
+          await context.unifiedOrchestron.updateTaskStatus(task.nodeId, TaskStatus.IN_PROGRESS);
+          await context.unifiedOrchestron.updateTaskProgress(task.nodeId, 60, 'Making progress');
         }
         // One task remains in TODO
       }
@@ -215,10 +215,10 @@ describe('CSP Phase 1 Integration Tests', () => {
 
       // 8. End sprint
       timer.mark('sprint-end-start');
-      await context.unifiedCSP.endSprint(sprint.nodeId);
+      await context.unifiedOrchestron.endSprint(sprint.nodeId);
       timer.mark('sprint-end-end');
 
-      expect(context.unifiedCSP.getActiveSprint()).toBeNull();
+      expect(context.unifiedOrchestron.getActiveSprint()).toBeNull();
 
       // 9. Get sprint report
       const report = await context.sprintManager.getSprintReport(sprint.nodeId);
@@ -229,7 +229,7 @@ describe('CSP Phase 1 Integration Tests', () => {
       expect(report.completionRate).toBe(0.6); // 3/5 = 60%
 
       // 10. Generate velocity chart
-      const velocityChart = await context.unifiedCSP.getVelocityChart(1);
+      const velocityChart = await context.unifiedOrchestron.getVelocityChart(1);
       expect(velocityChart.labels).toHaveLength(1);
       expect(velocityChart.datasets).toHaveLength(2);
 
@@ -246,7 +246,7 @@ describe('CSP Phase 1 Integration Tests', () => {
     });
 
     it('should handle sprint with dependencies and critical path', async () => {
-      const sprint = await context.unifiedCSP.createSprint({
+      const sprint = await context.unifiedOrchestron.createSprint({
         name: 'Dependency Sprint',
         goal: 'Test dependency handling in sprints',
         startDate: new Date(),
@@ -254,42 +254,42 @@ describe('CSP Phase 1 Integration Tests', () => {
       });
 
       // Create tasks with dependencies
-      const setupTask = await context.unifiedCSP.createTask({
+      const setupTask = await context.unifiedOrchestron.createTask({
         title: 'Environment Setup',
         estimatedHours: 4,
         priority: Priority.HIGH,
       });
 
-      const coreTask = await context.unifiedCSP.createTask({
+      const coreTask = await context.unifiedOrchestron.createTask({
         title: 'Core Development',
         estimatedHours: 16,
         priority: Priority.HIGH,
       });
 
-      const testTask = await context.unifiedCSP.createTask({
+      const testTask = await context.unifiedOrchestron.createTask({
         title: 'Testing',
         estimatedHours: 8,
         priority: Priority.MEDIUM,
       });
 
-      const deployTask = await context.unifiedCSP.createTask({
+      const deployTask = await context.unifiedOrchestron.createTask({
         title: 'Deployment',
         estimatedHours: 4,
         priority: Priority.MEDIUM,
       });
 
       // Create dependency chain: setup -> core -> test -> deploy
-      await context.unifiedCSP.addDependency(coreTask.nodeId, setupTask.nodeId);
-      await context.unifiedCSP.addDependency(testTask.nodeId, coreTask.nodeId);
-      await context.unifiedCSP.addDependency(deployTask.nodeId, testTask.nodeId);
+      await context.unifiedOrchestron.addDependency(coreTask.nodeId, setupTask.nodeId);
+      await context.unifiedOrchestron.addDependency(testTask.nodeId, coreTask.nodeId);
+      await context.unifiedOrchestron.addDependency(deployTask.nodeId, testTask.nodeId);
 
       // Add tasks to sprint
       const allTasks = [setupTask, coreTask, testTask, deployTask];
       for (const task of allTasks) {
-        await context.unifiedCSP.addToSprint(task.nodeId, sprint.nodeId);
+        await context.unifiedOrchestron.addToSprint(task.nodeId, sprint.nodeId);
       }
 
-      await context.unifiedCSP.startSprint(sprint.nodeId);
+      await context.unifiedOrchestron.startSprint(sprint.nodeId);
 
       // Calculate critical path
       const criticalPath = await context.taskManager.getCriticalPath(setupTask.nodeId);
@@ -297,21 +297,21 @@ describe('CSP Phase 1 Integration Tests', () => {
       expect(criticalPath.length).toBeGreaterThan(1);
 
       // Work through the dependency chain
-      await context.unifiedCSP.updateTaskStatus(setupTask.nodeId, TaskStatus.IN_PROGRESS);
-      await context.unifiedCSP.updateTaskStatus(setupTask.nodeId, TaskStatus.DONE);
+      await context.unifiedOrchestron.updateTaskStatus(setupTask.nodeId, TaskStatus.IN_PROGRESS);
+      await context.unifiedOrchestron.updateTaskStatus(setupTask.nodeId, TaskStatus.DONE);
 
       // Core task should now be unblocked
-      await context.unifiedCSP.updateTaskStatus(coreTask.nodeId, TaskStatus.IN_PROGRESS);
-      await context.unifiedCSP.updateTaskStatus(coreTask.nodeId, TaskStatus.DONE);
+      await context.unifiedOrchestron.updateTaskStatus(coreTask.nodeId, TaskStatus.IN_PROGRESS);
+      await context.unifiedOrchestron.updateTaskStatus(coreTask.nodeId, TaskStatus.DONE);
 
       // Continue the chain
-      await context.unifiedCSP.updateTaskStatus(testTask.nodeId, TaskStatus.IN_PROGRESS);
-      await context.unifiedCSP.updateTaskStatus(testTask.nodeId, TaskStatus.DONE);
+      await context.unifiedOrchestron.updateTaskStatus(testTask.nodeId, TaskStatus.IN_PROGRESS);
+      await context.unifiedOrchestron.updateTaskStatus(testTask.nodeId, TaskStatus.DONE);
 
-      await context.unifiedCSP.updateTaskStatus(deployTask.nodeId, TaskStatus.IN_PROGRESS);
-      await context.unifiedCSP.updateTaskStatus(deployTask.nodeId, TaskStatus.DONE);
+      await context.unifiedOrchestron.updateTaskStatus(deployTask.nodeId, TaskStatus.IN_PROGRESS);
+      await context.unifiedOrchestron.updateTaskStatus(deployTask.nodeId, TaskStatus.DONE);
 
-      await context.unifiedCSP.endSprint(sprint.nodeId);
+      await context.unifiedOrchestron.endSprint(sprint.nodeId);
 
       const report = await context.sprintManager.getSprintReport(sprint.nodeId);
       expect(report.completedTasks.length).toBe(4);
@@ -328,7 +328,7 @@ describe('CSP Phase 1 Integration Tests', () => {
       try {
         // Create multiple sprints with varying success rates
         for (let s = 0; s < 3; s++) {
-          const sprint = await context.unifiedCSP.createSprint({
+          const sprint = await context.unifiedOrchestron.createSprint({
             name: `Analytics Sprint ${s + 1}`,
             goal: `Sprint ${s + 1} for analytics testing`,
             startDate: new Date(`2024-01-${(s + 1) * 5}`),
@@ -337,7 +337,7 @@ describe('CSP Phase 1 Integration Tests', () => {
 
           // Create tasks for each sprint
           for (let t = 0; t < 4; t++) {
-            const task = await context.unifiedCSP.createTask({
+            const task = await context.unifiedOrchestron.createTask({
               title: `Sprint ${s + 1} Task ${t + 1}`,
               priority: [Priority.HIGH, Priority.MEDIUM, Priority.LOW][t % 3] as Priority,
               assignee: `dev-${(t % 3) + 1}`,
@@ -345,20 +345,20 @@ describe('CSP Phase 1 Integration Tests', () => {
               component: ['frontend', 'backend', 'database'][t % 3],
             });
 
-            await context.unifiedCSP.addToSprint(task.nodeId, sprint.nodeId);
+            await context.unifiedOrchestron.addToSprint(task.nodeId, sprint.nodeId);
 
             // Complete some tasks (varying completion rates)
             if (t < 2 + s) {
-              await context.unifiedCSP.updateTaskStatus(task.nodeId, TaskStatus.IN_PROGRESS);
-              await context.unifiedCSP.updateTaskStatus(task.nodeId, TaskStatus.DONE);
+              await context.unifiedOrchestron.updateTaskStatus(task.nodeId, TaskStatus.IN_PROGRESS);
+              await context.unifiedOrchestron.updateTaskStatus(task.nodeId, TaskStatus.DONE);
             } else if (t === 2 + s) {
-              await context.unifiedCSP.updateTaskStatus(task.nodeId, TaskStatus.IN_PROGRESS);
+              await context.unifiedOrchestron.updateTaskStatus(task.nodeId, TaskStatus.IN_PROGRESS);
             }
           }
 
           if (s < 2) {
-            await context.unifiedCSP.startSprint(sprint.nodeId);
-            await context.unifiedCSP.endSprint(sprint.nodeId);
+            await context.unifiedOrchestron.startSprint(sprint.nodeId);
+            await context.unifiedOrchestron.endSprint(sprint.nodeId);
           }
         }
 
@@ -410,23 +410,23 @@ describe('CSP Phase 1 Integration Tests', () => {
       timer.startTimer();
 
       // Create and complete some tasks today
-      const todayTask1 = await context.unifiedCSP.createTask({
+      const todayTask1 = await context.unifiedOrchestron.createTask({
         title: 'Today Task 1',
         priority: Priority.HIGH,
       });
-      await context.unifiedCSP.updateTaskStatus(todayTask1.nodeId, TaskStatus.IN_PROGRESS);
-      await context.unifiedCSP.updateTaskStatus(todayTask1.nodeId, TaskStatus.DONE);
+      await context.unifiedOrchestron.updateTaskStatus(todayTask1.nodeId, TaskStatus.IN_PROGRESS);
+      await context.unifiedOrchestron.updateTaskStatus(todayTask1.nodeId, TaskStatus.DONE);
 
-      const todayTask2 = await context.unifiedCSP.createTask({
+      const todayTask2 = await context.unifiedOrchestron.createTask({
         title: 'Today Task 2',
         priority: Priority.MEDIUM,
       });
-      await context.unifiedCSP.updateTaskStatus(todayTask2.nodeId, TaskStatus.IN_PROGRESS);
-      await context.unifiedCSP.updateTaskStatus(todayTask2.nodeId, TaskStatus.DONE);
+      await context.unifiedOrchestron.updateTaskStatus(todayTask2.nodeId, TaskStatus.IN_PROGRESS);
+      await context.unifiedOrchestron.updateTaskStatus(todayTask2.nodeId, TaskStatus.DONE);
 
       // Get overall statistics
       timer.mark('stats-start');
-      const stats = await context.unifiedCSP.getStats();
+      const stats = await context.unifiedOrchestron.getStats();
       timer.mark('stats-end');
 
       expect(stats.totalTasks).toBeGreaterThanOrEqual(12); // 3 sprints * 4 tasks + 2 today
@@ -437,7 +437,7 @@ describe('CSP Phase 1 Integration Tests', () => {
 
       // Identify bottlenecks
       timer.mark('bottlenecks-start');
-      const bottlenecks = await context.unifiedCSP.identifyBottlenecks();
+      const bottlenecks = await context.unifiedOrchestron.identifyBottlenecks();
       timer.mark('bottlenecks-end');
 
       expect(Array.isArray(bottlenecks)).toBe(true);
@@ -488,7 +488,7 @@ describe('CSP Phase 1 Integration Tests', () => {
 
       // Generate JSON report
       timer.mark('json-report-start');
-      const jsonReport = await context.unifiedCSP.generateReport('json');
+      const jsonReport = await context.unifiedOrchestron.generateReport('json');
       timer.mark('json-report-end');
 
       const parsedJson = JSON.parse(jsonReport);
@@ -498,7 +498,7 @@ describe('CSP Phase 1 Integration Tests', () => {
 
       // Generate markdown report
       timer.mark('markdown-report-start');
-      const markdownReport = await context.unifiedCSP.generateReport('markdown');
+      const markdownReport = await context.unifiedOrchestron.generateReport('markdown');
       timer.mark('markdown-report-end');
 
       expect(markdownReport).toContain('# Development Report');
@@ -507,7 +507,7 @@ describe('CSP Phase 1 Integration Tests', () => {
 
       // Generate HTML report
       timer.mark('html-report-start');
-      const htmlReport = await context.unifiedCSP.generateReport('html');
+      const htmlReport = await context.unifiedOrchestron.generateReport('html');
       timer.mark('html-report-end');
 
       expect(htmlReport).toContain('<html>');
@@ -515,7 +515,7 @@ describe('CSP Phase 1 Integration Tests', () => {
 
       // Generate graph
       timer.mark('graph-start');
-      const graph = await context.unifiedCSP.generateGraph();
+      const graph = await context.unifiedOrchestron.generateGraph();
       timer.mark('graph-end');
 
       expect(graph.nodes.length).toBeGreaterThan(0);
@@ -523,7 +523,7 @@ describe('CSP Phase 1 Integration Tests', () => {
 
       // Generate timeline
       timer.mark('timeline-start');
-      const timeline = await context.unifiedCSP.generateTimeline();
+      const timeline = await context.unifiedOrchestron.generateTimeline();
       timer.mark('timeline-end');
 
       expect(timeline.length).toBeGreaterThan(0);
@@ -559,7 +559,7 @@ describe('CSP Phase 1 Integration Tests', () => {
 
       // 3. Create feature work
       timer.mark('feature-work-start');
-      const featureTask = await context.unifiedCSP.createTask({
+      const featureTask = await context.unifiedOrchestron.createTask({
         title: 'Feature Branch Task',
         description: 'Task created on feature branch',
         priority: Priority.HIGH,
@@ -581,8 +581,8 @@ describe('CSP Phase 1 Integration Tests', () => {
       timer.mark('feature-work-end');
 
       // 4. Complete feature task
-      await context.unifiedCSP.updateTaskStatus(featureTask.nodeId, TaskStatus.IN_PROGRESS);
-      await context.unifiedCSP.updateTaskStatus(featureTask.nodeId, TaskStatus.DONE);
+      await context.unifiedOrchestron.updateTaskStatus(featureTask.nodeId, TaskStatus.IN_PROGRESS);
+      await context.unifiedOrchestron.updateTaskStatus(featureTask.nodeId, TaskStatus.DONE);
 
       // 5. Switch back to main
       await context.engine.checkout('main');
@@ -640,7 +640,7 @@ describe('CSP Phase 1 Integration Tests', () => {
       await context.engine.checkout('experiment/performance-optimization');
 
       // Create experimental work
-      const experimentTask = await context.unifiedCSP.createTask({
+      const experimentTask = await context.unifiedOrchestron.createTask({
         title: 'Implement Caching Strategy',
         description: 'Experimental caching implementation',
         priority: Priority.HIGH,
@@ -668,8 +668,8 @@ describe('CSP Phase 1 Integration Tests', () => {
       });
 
       // Complete experiment
-      await context.unifiedCSP.updateTaskStatus(experimentTask.nodeId, TaskStatus.IN_PROGRESS);
-      await context.unifiedCSP.updateTaskStatus(experimentTask.nodeId, TaskStatus.DONE);
+      await context.unifiedOrchestron.updateTaskStatus(experimentTask.nodeId, TaskStatus.IN_PROGRESS);
+      await context.unifiedOrchestron.updateTaskStatus(experimentTask.nodeId, TaskStatus.DONE);
 
       // Merge successful experiment
       await context.engine.checkout('main');
@@ -705,8 +705,8 @@ describe('CSP Phase 1 Integration Tests', () => {
         enabled: true,
       };
 
-      await context.unifiedCSP.createWorkflow(autoAssignWorkflow);
-      await context.unifiedCSP.enableWorkflow(autoAssignWorkflow.id);
+      await context.unifiedOrchestron.createWorkflow(autoAssignWorkflow);
+      await context.unifiedOrchestron.enableWorkflow(autoAssignWorkflow.id);
 
       // Define notification workflow
       const notificationWorkflow = {
@@ -726,15 +726,15 @@ describe('CSP Phase 1 Integration Tests', () => {
         enabled: true,
       };
 
-      await context.unifiedCSP.createWorkflow(notificationWorkflow);
-      await context.unifiedCSP.enableWorkflow(notificationWorkflow.id);
+      await context.unifiedOrchestron.createWorkflow(notificationWorkflow);
+      await context.unifiedOrchestron.enableWorkflow(notificationWorkflow.id);
 
       // Test workflows
-      const assignEventPromise = assertEventEmitted(context.unifiedCSP, 'task:assigned');
-      const notificationEventPromise = assertEventEmitted(context.unifiedCSP, 'notification');
+      const assignEventPromise = assertEventEmitted(context.unifiedOrchestron, 'task:assigned');
+      const notificationEventPromise = assertEventEmitted(context.unifiedOrchestron, 'notification');
 
       // Create high priority task (should trigger auto-assignment)
-      const highPriorityTask = await context.unifiedCSP.createTask({
+      const highPriorityTask = await context.unifiedOrchestron.createTask({
         title: 'Critical Bug Fix',
         priority: Priority.HIGH,
         description: 'Fix critical production issue',
@@ -746,8 +746,8 @@ describe('CSP Phase 1 Integration Tests', () => {
       expect(assignEvent.assignee).toBe('senior-dev');
 
       // Complete task (should trigger notification)
-      await context.unifiedCSP.updateTaskStatus(highPriorityTask.nodeId, TaskStatus.IN_PROGRESS);
-      await context.unifiedCSP.updateTaskStatus(highPriorityTask.nodeId, TaskStatus.DONE);
+      await context.unifiedOrchestron.updateTaskStatus(highPriorityTask.nodeId, TaskStatus.IN_PROGRESS);
+      await context.unifiedOrchestron.updateTaskStatus(highPriorityTask.nodeId, TaskStatus.DONE);
 
       // Verify notification
       const notificationEvent = await notificationEventPromise;
@@ -755,7 +755,7 @@ describe('CSP Phase 1 Integration Tests', () => {
       expect(notificationEvent.recipients).toEqual(['manager', 'team-lead']);
 
       // Test workflow listing
-      const workflows = await context.unifiedCSP.listWorkflows();
+      const workflows = await context.unifiedOrchestron.listWorkflows();
       expect(workflows).toHaveLength(2);
       expect(workflows.every(w => w.enabled)).toBe(true);
     });
@@ -775,7 +775,7 @@ describe('CSP Phase 1 Integration Tests', () => {
       // Create sprints
       const sprints = [];
       for (let s = 0; s < SPRINT_COUNT; s++) {
-        const sprint = await context.unifiedCSP.createSprint({
+        const sprint = await context.unifiedOrchestron.createSprint({
           name: `Perf Sprint ${s + 1}`,
           goal: `Performance testing sprint ${s + 1}`,
           startDate: new Date(`2024-01-${s + 1}`),
@@ -787,7 +787,7 @@ describe('CSP Phase 1 Integration Tests', () => {
       // Create tasks
       const tasks = [];
       for (let t = 0; t < TASK_COUNT; t++) {
-        const task = await context.unifiedCSP.createTask({
+        const task = await context.unifiedOrchestron.createTask({
           title: `Perf Task ${t + 1}`,
           priority: [Priority.HIGH, Priority.MEDIUM, Priority.LOW][t % 3] as Priority,
           assignee: `dev-${(t % 10) + 1}`,
@@ -798,7 +798,7 @@ describe('CSP Phase 1 Integration Tests', () => {
 
         // Add tasks to sprints
         const sprintIndex = t % SPRINT_COUNT;
-        await context.unifiedCSP.addToSprint(task.nodeId, sprints[sprintIndex].nodeId);
+        await context.unifiedOrchestron.addToSprint(task.nodeId, sprints[sprintIndex].nodeId);
       }
 
       timer.mark('bulk-creation-end');
@@ -809,16 +809,16 @@ describe('CSP Phase 1 Integration Tests', () => {
       // Complete half the tasks
       const tasksToComplete = tasks.slice(0, TASK_COUNT / 2);
       for (const task of tasksToComplete) {
-        await context.unifiedCSP.updateTaskStatus(task.nodeId, TaskStatus.IN_PROGRESS);
-        await context.unifiedCSP.updateTaskStatus(task.nodeId, TaskStatus.DONE);
+        await context.unifiedOrchestron.updateTaskStatus(task.nodeId, TaskStatus.IN_PROGRESS);
+        await context.unifiedOrchestron.updateTaskStatus(task.nodeId, TaskStatus.DONE);
       }
 
       timer.mark('bulk-operations-end');
 
       // Analytics on large dataset
       timer.mark('analytics-large-start');
-      const stats = await context.unifiedCSP.getStats();
-      const bottlenecks = await context.unifiedCSP.identifyBottlenecks();
+      const stats = await context.unifiedOrchestron.getStats();
+      const bottlenecks = await context.unifiedOrchestron.identifyBottlenecks();
       timer.mark('analytics-large-end');
 
       // Queries on large dataset
@@ -858,14 +858,14 @@ describe('CSP Phase 1 Integration Tests', () => {
       timer.startTimer();
 
       // Create base sprint
-      const sprint = await context.unifiedCSP.createSprint({
+      const sprint = await context.unifiedOrchestron.createSprint({
         name: 'Concurrent Sprint',
         goal: 'Test concurrent operations',
         startDate: new Date(),
         duration: 14,
       });
 
-      await context.unifiedCSP.startSprint(sprint.nodeId);
+      await context.unifiedOrchestron.startSprint(sprint.nodeId);
 
       timer.mark('concurrent-start');
 
@@ -875,15 +875,15 @@ describe('CSP Phase 1 Integration Tests', () => {
       // Concurrent task creation
       for (let i = 0; i < 20; i++) {
         promises.push(
-          context.unifiedCSP.createTask({
+          context.unifiedOrchestron.createTask({
             title: `Concurrent Task ${i + 1}`,
             priority: Priority.MEDIUM,
             assignee: `user-${(i % 5) + 1}`,
           }).then(task => {
             // Chain task updates
-            return context.unifiedCSP.addToSprint(task.nodeId, sprint.nodeId)
-              .then(() => context.unifiedCSP.updateTaskStatus(task.nodeId, TaskStatus.IN_PROGRESS))
-              .then(() => context.unifiedCSP.updateTaskProgress(task.nodeId, 50))
+            return context.unifiedOrchestron.addToSprint(task.nodeId, sprint.nodeId)
+              .then(() => context.unifiedOrchestron.updateTaskStatus(task.nodeId, TaskStatus.IN_PROGRESS))
+              .then(() => context.unifiedOrchestron.updateTaskProgress(task.nodeId, 50))
               .then(() => task);
           })
         );
@@ -891,8 +891,8 @@ describe('CSP Phase 1 Integration Tests', () => {
 
       // Concurrent analytics operations
       for (let i = 0; i < 5; i++) {
-        promises.push(context.unifiedCSP.getStats());
-        promises.push(context.unifiedCSP.identifyBottlenecks());
+        promises.push(context.unifiedOrchestron.getStats());
+        promises.push(context.unifiedOrchestron.identifyBottlenecks());
       }
 
       // Concurrent queries
@@ -927,11 +927,11 @@ describe('CSP Phase 1 Integration Tests', () => {
     it('should handle and recover from various error conditions', async () => {
       // Test non-existent resource operations
       await expect(
-        context.unifiedCSP.updateTaskStatus('non-existent', TaskStatus.DONE)
+        context.unifiedOrchestron.updateTaskStatus('non-existent', TaskStatus.DONE)
       ).rejects.toThrow();
 
       await expect(
-        context.unifiedCSP.addToSprint('non-existent-task', 'non-existent-sprint')
+        context.unifiedOrchestron.addToSprint('non-existent-task', 'non-existent-sprint')
       ).rejects.toThrow();
 
       await expect(
@@ -939,28 +939,28 @@ describe('CSP Phase 1 Integration Tests', () => {
       ).rejects.toThrow();
 
       // Test invalid state transitions
-      const task = await context.unifiedCSP.createTask({
+      const task = await context.unifiedOrchestron.createTask({
         title: 'Error Test Task',
         priority: Priority.MEDIUM,
       });
 
       await expect(
-        context.unifiedCSP.updateTaskStatus(task.nodeId, TaskStatus.DONE) // Skip IN_PROGRESS
+        context.unifiedOrchestron.updateTaskStatus(task.nodeId, TaskStatus.DONE) // Skip IN_PROGRESS
       ).rejects.toThrow('Invalid status transition');
 
       // Test system recovery after errors
-      const validTask = await context.unifiedCSP.createTask({
+      const validTask = await context.unifiedOrchestron.createTask({
         title: 'Recovery Test Task',
         priority: Priority.HIGH,
       });
 
-      await context.unifiedCSP.updateTaskStatus(validTask.nodeId, TaskStatus.IN_PROGRESS);
-      await context.unifiedCSP.updateTaskStatus(validTask.nodeId, TaskStatus.DONE);
+      await context.unifiedOrchestron.updateTaskStatus(validTask.nodeId, TaskStatus.IN_PROGRESS);
+      await context.unifiedOrchestron.updateTaskStatus(validTask.nodeId, TaskStatus.DONE);
 
       expect(validTask).toBeTruthy();
 
       // Test analytics with corrupted data
-      const stats = await context.unifiedCSP.getStats();
+      const stats = await context.unifiedOrchestron.getStats();
       expect(stats.totalTasks).toBeGreaterThanOrEqual(2);
     });
 
@@ -987,7 +987,7 @@ describe('CSP Phase 1 Integration Tests', () => {
       expect(finalEdgeCount).toBe(initialEdgeCount);
 
       // Verify system is still functional
-      const validTask = await context.unifiedCSP.createTask({
+      const validTask = await context.unifiedOrchestron.createTask({
         title: 'Consistency Test Task',
         priority: Priority.MEDIUM,
       });
@@ -997,7 +997,7 @@ describe('CSP Phase 1 Integration Tests', () => {
   });
 
   describe('Complete System Integration', () => {
-    it('should demonstrate end-to-end CSP workflow', async () => {
+    it('should demonstrate end-to-end Orchestron workflow', async () => {
       const timer = new PerformanceTimer();
       timer.startTimer();
 
@@ -1020,7 +1020,7 @@ describe('CSP Phase 1 Integration Tests', () => {
       });
 
       // Create epic for the project
-      const projectEpic = await context.unifiedCSP.createTask({
+      const projectEpic = await context.unifiedOrchestron.createTask({
         type: DevelopmentNodeType.EPIC,
         title: 'Complete CSP Integration System',
         description: 'End-to-end integration of all CSP components',
@@ -1033,14 +1033,14 @@ describe('CSP Phase 1 Integration Tests', () => {
       // 2. Sprint Planning Phase
       timer.mark('planning-start');
 
-      const sprint1 = await context.unifiedCSP.createSprint({
+      const sprint1 = await context.unifiedOrchestron.createSprint({
         name: 'Integration Sprint 1',
         goal: 'Core system implementation',
         startDate: new Date('2024-01-15'),
         duration: 14,
       });
 
-      const sprint2 = await context.unifiedCSP.createSprint({
+      const sprint2 = await context.unifiedOrchestron.createSprint({
         name: 'Integration Sprint 2',
         goal: 'Testing and optimization',
         startDate: new Date('2024-01-29'),
@@ -1061,7 +1061,7 @@ describe('CSP Phase 1 Integration Tests', () => {
 
       for (let i = 0; i < coreStories.length; i++) {
         const story = coreStories[i];
-        const task = await context.unifiedCSP.createTask({
+        const task = await context.unifiedOrchestron.createTask({
           title: story.title,
           description: `Implementation of ${story.title.toLowerCase()}`,
           priority: story.priority,
@@ -1074,23 +1074,23 @@ describe('CSP Phase 1 Integration Tests', () => {
 
         if (i < 3) {
           sprint1Tasks.push(task);
-          await context.unifiedCSP.addToSprint(task.nodeId, sprint1.nodeId);
+          await context.unifiedOrchestron.addToSprint(task.nodeId, sprint1.nodeId);
         } else {
           sprint2Tasks.push(task);
-          await context.unifiedCSP.addToSprint(task.nodeId, sprint2.nodeId);
+          await context.unifiedOrchestron.addToSprint(task.nodeId, sprint2.nodeId);
         }
       }
 
       // Add dependencies
-      await context.unifiedCSP.addDependency(sprint1Tasks[1].nodeId, sprint1Tasks[0].nodeId); // Tasks depend on Auth
-      await context.unifiedCSP.addDependency(sprint1Tasks[2].nodeId, sprint1Tasks[1].nodeId); // Dashboard depends on Tasks
+      await context.unifiedOrchestron.addDependency(sprint1Tasks[1].nodeId, sprint1Tasks[0].nodeId); // Tasks depend on Auth
+      await context.unifiedOrchestron.addDependency(sprint1Tasks[2].nodeId, sprint1Tasks[1].nodeId); // Dashboard depends on Tasks
 
       timer.mark('planning-end');
 
       // 3. Sprint 1 Execution
       timer.mark('sprint1-start');
 
-      await context.unifiedCSP.startSprint(sprint1.nodeId);
+      await context.unifiedOrchestron.startSprint(sprint1.nodeId);
 
       // Simulate sprint work with realistic patterns
       for (let day = 0; day < 10; day++) {
@@ -1109,18 +1109,18 @@ describe('CSP Phase 1 Integration Tests', () => {
               const currentStatus = (taskNode as any)?.payload?.status || TaskStatus.TODO;
 
               if (currentStatus === TaskStatus.TODO && currentProgress > 0) {
-                await context.unifiedCSP.updateTaskStatus(task.nodeId, TaskStatus.IN_PROGRESS);
+                await context.unifiedOrchestron.updateTaskStatus(task.nodeId, TaskStatus.IN_PROGRESS);
               }
 
-              await context.unifiedCSP.updateTaskProgress(
+              await context.unifiedOrchestron.updateTaskProgress(
                 task.nodeId,
                 currentProgress,
                 `Day ${day + 1} progress update`
               );
 
               if (currentProgress === 100 && currentStatus !== TaskStatus.DONE) {
-                await context.unifiedCSP.updateTaskStatus(task.nodeId, TaskStatus.IN_REVIEW);
-                await context.unifiedCSP.updateTaskStatus(task.nodeId, TaskStatus.DONE);
+                await context.unifiedOrchestron.updateTaskStatus(task.nodeId, TaskStatus.IN_REVIEW);
+                await context.unifiedOrchestron.updateTaskStatus(task.nodeId, TaskStatus.DONE);
               }
             }
           }
@@ -1150,7 +1150,7 @@ describe('CSP Phase 1 Integration Tests', () => {
         }
       }
 
-      await context.unifiedCSP.endSprint(sprint1.nodeId);
+      await context.unifiedOrchestron.endSprint(sprint1.nodeId);
       const sprint1Report = await context.sprintManager.getSprintReport(sprint1.nodeId);
 
       timer.mark('sprint1-end');
@@ -1158,16 +1158,16 @@ describe('CSP Phase 1 Integration Tests', () => {
       // 4. Sprint 2 Execution (Abbreviated)
       timer.mark('sprint2-start');
 
-      await context.unifiedCSP.startSprint(sprint2.nodeId);
+      await context.unifiedOrchestron.startSprint(sprint2.nodeId);
 
       // Complete sprint 2 tasks quickly for testing
       for (const task of sprint2Tasks) {
-        await context.unifiedCSP.updateTaskStatus(task.nodeId, TaskStatus.IN_PROGRESS);
-        await context.unifiedCSP.updateTaskProgress(task.nodeId, 100, 'Completed');
-        await context.unifiedCSP.updateTaskStatus(task.nodeId, TaskStatus.DONE);
+        await context.unifiedOrchestron.updateTaskStatus(task.nodeId, TaskStatus.IN_PROGRESS);
+        await context.unifiedOrchestron.updateTaskProgress(task.nodeId, 100, 'Completed');
+        await context.unifiedOrchestron.updateTaskStatus(task.nodeId, TaskStatus.DONE);
       }
 
-      await context.unifiedCSP.endSprint(sprint2.nodeId);
+      await context.unifiedOrchestron.endSprint(sprint2.nodeId);
       const sprint2Report = await context.sprintManager.getSprintReport(sprint2.nodeId);
 
       timer.mark('sprint2-end');
@@ -1176,20 +1176,20 @@ describe('CSP Phase 1 Integration Tests', () => {
       timer.mark('analysis-start');
 
       // Complete the epic
-      await context.unifiedCSP.updateTaskStatus(projectEpic.nodeId, TaskStatus.IN_PROGRESS);
-      await context.unifiedCSP.updateTaskProgress(projectEpic.nodeId, 100, 'All stories completed');
-      await context.unifiedCSP.updateTaskStatus(projectEpic.nodeId, TaskStatus.DONE);
+      await context.unifiedOrchestron.updateTaskStatus(projectEpic.nodeId, TaskStatus.IN_PROGRESS);
+      await context.unifiedOrchestron.updateTaskProgress(projectEpic.nodeId, 100, 'All stories completed');
+      await context.unifiedOrchestron.updateTaskStatus(projectEpic.nodeId, TaskStatus.DONE);
 
       // Generate comprehensive analytics
-      const finalStats = await context.unifiedCSP.getStats();
-      const finalBottlenecks = await context.unifiedCSP.identifyBottlenecks();
+      const finalStats = await context.unifiedOrchestron.getStats();
+      const finalBottlenecks = await context.unifiedOrchestron.identifyBottlenecks();
       const teamProductivity = await context.analytics.getTeamProductivity();
       const qualityMetrics = await context.analytics.getCodeQuality();
 
       // Generate reports
-      const jsonReport = await context.unifiedCSP.generateReport('json');
-      const markdownReport = await context.unifiedCSP.generateReport('markdown');
-      const dashboard = await context.unifiedCSP.generateDashboard();
+      const jsonReport = await context.unifiedOrchestron.generateReport('json');
+      const markdownReport = await context.unifiedOrchestron.generateReport('markdown');
+      const dashboard = await context.unifiedOrchestron.generateDashboard();
 
       timer.mark('analysis-end');
 
@@ -1212,8 +1212,8 @@ describe('CSP Phase 1 Integration Tests', () => {
       expect(dashboard.widgets).toHaveLength(4);
 
       // Verify timeline and graph
-      const timeline = await context.unifiedCSP.generateTimeline();
-      const graph = await context.unifiedCSP.generateGraph();
+      const timeline = await context.unifiedOrchestron.generateTimeline();
+      const graph = await context.unifiedOrchestron.generateGraph();
 
       expect(timeline.length).toBeGreaterThan(10);
       expect(graph.nodes.length).toBeGreaterThan(15);

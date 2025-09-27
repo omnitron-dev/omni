@@ -1,5 +1,5 @@
 import { EventEmitter } from 'eventemitter3';
-import { CSPEngine } from './engine';
+import { OrchestronEngine } from './engine.js';
 import {
   Node,
   NodeId,
@@ -9,7 +9,7 @@ import {
   DevelopmentEdgeType,
   Priority,
   DevelopmentMetadata,
-} from './types';
+} from './types.js';
 
 export interface MLPrediction {
   confidence: number;
@@ -120,11 +120,11 @@ interface CodePattern {
 }
 
 export class MLPredictor extends EventEmitter {
-  private engine: CSPEngine;
+  private engine: OrchestronEngine;
   private patternCache: PatternCache;
   private developerProfiles: Map<string, DeveloperProfile>;
 
-  constructor(engine: CSPEngine) {
+  constructor(engine: OrchestronEngine) {
     super();
     this.engine = engine;
     this.developerProfiles = new Map();
@@ -1169,5 +1169,22 @@ export class MLPredictor extends EventEmitter {
     });
 
     return Math.max(0, accuracies.reduce((a, b) => a + b, 0) / accuracies.length);
+  }
+
+  /**
+   * Predict the impact of an improvement
+   */
+  async predictImpact(improvement: any): Promise<number> {
+    // Simple impact prediction based on improvement type
+    const baseImpact = Math.random() * 0.5 + 0.3; // 0.3 to 0.8
+
+    // Adjust based on improvement type
+    if (improvement.type === 'optimization') {
+      return Math.min(0.9, baseImpact * 1.2);
+    } else if (improvement.type === 'bug_fix') {
+      return Math.min(0.95, baseImpact * 1.3);
+    }
+
+    return baseImpact;
   }
 }

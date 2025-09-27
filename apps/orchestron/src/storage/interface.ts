@@ -5,7 +5,7 @@ import {
   NodeId,
   EdgeId,
   BranchName,
-} from '../core/types';
+} from '../core/types.js';
 
 export interface Storage {
   initialize(): Promise<void>;
@@ -28,4 +28,10 @@ export interface Storage {
   deleteBranch(name: BranchName): Promise<void>;
 
   clear(): Promise<void>;
+
+  // Additional methods for extended storage operations
+  getData?(key: string): Promise<any>;
+  saveData?(key: string, data: any): Promise<void>;
+  createNode?(node: Partial<Node>): Promise<Node>;
+  queryNodes?(query: any): Promise<Node[]>;
 }

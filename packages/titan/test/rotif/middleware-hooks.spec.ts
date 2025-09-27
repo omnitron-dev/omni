@@ -1,8 +1,8 @@
 import { delay } from '@omnitron-dev/common';
 import { it, expect, afterAll, describe, beforeAll } from '@jest/globals';
 
-import { Middleware, NotificationManager } from '../src';
-import { createTestConfig } from './helpers/test-utils';
+import { Middleware, NotificationManager } from '../../src/rotif/rotif.js';
+import { createTestConfig } from './helpers/test-utils.js';
 
 describe('Middleware - hooks', () => {
   let manager: NotificationManager;

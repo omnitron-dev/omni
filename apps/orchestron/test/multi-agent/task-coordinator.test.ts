@@ -141,6 +141,24 @@ describe('TaskCoordinator', () => {
   });
 
   describe('Task Progress Tracking', () => {
+    beforeEach(async () => {
+      // Register test agents for this section
+      const agent1: AgentIdentity = {
+        id: 'claude-1',
+        model: 'claude-opus-4.1',
+        specialization: ['backend', 'database'],
+        capabilities: [
+          { tool: 'Read', proficiency: 0.9, successRate: 0.95, avgExecutionTime: 100 },
+          { tool: 'Write', proficiency: 0.85, successRate: 0.9, avgExecutionTime: 150 }
+        ],
+        preferences: { maxConcurrentTasks: 3, preferredTaskTypes: ['API'], contextWindowSize: 200000 },
+        reputation: { score: 0.85, totalTasks: 20, successfulTasks: 17, failedTasks: 3 },
+        sessionHistory: []
+      };
+
+      await identityManager.registerAgent(agent1);
+    });
+
     it('should track task progress', async () => {
       const assignment = await coordinator.assignTask({
         taskId: 'task-123',
@@ -182,6 +200,38 @@ describe('TaskCoordinator', () => {
   });
 
   describe('Parallel Execution', () => {
+    beforeEach(async () => {
+      // Register test agents for this section
+      const agent1: AgentIdentity = {
+        id: 'claude-1',
+        model: 'claude-opus-4.1',
+        specialization: ['backend', 'database'],
+        capabilities: [
+          { tool: 'Read', proficiency: 0.9, successRate: 0.95, avgExecutionTime: 100 },
+          { tool: 'Write', proficiency: 0.85, successRate: 0.9, avgExecutionTime: 150 }
+        ],
+        preferences: { maxConcurrentTasks: 3, preferredTaskTypes: ['API'], contextWindowSize: 200000 },
+        reputation: { score: 0.85, totalTasks: 20, successfulTasks: 17, failedTasks: 3 },
+        sessionHistory: []
+      };
+
+      const agent2: AgentIdentity = {
+        id: 'claude-2',
+        model: 'claude-opus-4.1',
+        specialization: ['frontend', 'ui'],
+        capabilities: [
+          { tool: 'Read', proficiency: 0.88, successRate: 0.92, avgExecutionTime: 120 },
+          { tool: 'Edit', proficiency: 0.9, successRate: 0.93, avgExecutionTime: 100 }
+        ],
+        preferences: { maxConcurrentTasks: 2, preferredTaskTypes: ['UI'], contextWindowSize: 200000 },
+        reputation: { score: 0.9, totalTasks: 15, successfulTasks: 14, failedTasks: 1 },
+        sessionHistory: []
+      };
+
+      await identityManager.registerAgent(agent1);
+      await identityManager.registerAgent(agent2);
+    });
+
     it('should execute tasks in parallel', async () => {
       const tasks = [
         { taskId: 't1', type: 'backend' },
@@ -233,6 +283,41 @@ describe('TaskCoordinator', () => {
   });
 
   describe('Collaboration Patterns', () => {
+    beforeEach(async () => {
+      // Register test agents for collaboration patterns
+      const agent1: AgentIdentity = {
+        id: 'claude-1',
+        model: 'claude-opus-4.1',
+        specialization: ['backend', 'database'],
+        capabilities: [
+          { tool: 'Read', proficiency: 0.9, successRate: 0.95, avgExecutionTime: 100 },
+          { tool: 'Write', proficiency: 0.85, successRate: 0.9, avgExecutionTime: 150 },
+          { tool: 'Edit', proficiency: 0.8, successRate: 0.85, avgExecutionTime: 120 },
+          { tool: 'Review', proficiency: 0.75, successRate: 0.8, avgExecutionTime: 200 }
+        ],
+        preferences: { maxConcurrentTasks: 3, preferredTaskTypes: ['API'], contextWindowSize: 200000 },
+        reputation: { score: 0.85, totalTasks: 20, successfulTasks: 17, failedTasks: 3 },
+        sessionHistory: []
+      };
+
+      const agent2: AgentIdentity = {
+        id: 'claude-2',
+        model: 'claude-opus-4.1',
+        specialization: ['frontend', 'ui'],
+        capabilities: [
+          { tool: 'Read', proficiency: 0.88, successRate: 0.92, avgExecutionTime: 120 },
+          { tool: 'Write', proficiency: 0.82, successRate: 0.88, avgExecutionTime: 160 },
+          { tool: 'Edit', proficiency: 0.9, successRate: 0.93, avgExecutionTime: 100 }
+        ],
+        preferences: { maxConcurrentTasks: 2, preferredTaskTypes: ['UI'], contextWindowSize: 200000 },
+        reputation: { score: 0.9, totalTasks: 15, successfulTasks: 14, failedTasks: 1 },
+        sessionHistory: []
+      };
+
+      await identityManager.registerAgent(agent1);
+      await identityManager.registerAgent(agent2);
+    });
+
     it('should register collaboration pattern', async () => {
       const pattern: CollaborationPattern = {
         name: 'pair-programming',
@@ -351,6 +436,38 @@ describe('TaskCoordinator', () => {
   });
 
   describe('Task Rebalancing', () => {
+    beforeEach(async () => {
+      // Register test agents for this section
+      const agent1: AgentIdentity = {
+        id: 'claude-1',
+        model: 'claude-opus-4.1',
+        specialization: ['backend', 'database'],
+        capabilities: [
+          { tool: 'Read', proficiency: 0.9, successRate: 0.95, avgExecutionTime: 100 },
+          { tool: 'Write', proficiency: 0.85, successRate: 0.9, avgExecutionTime: 150 }
+        ],
+        preferences: { maxConcurrentTasks: 3, preferredTaskTypes: ['API'], contextWindowSize: 200000 },
+        reputation: { score: 0.85, totalTasks: 20, successfulTasks: 17, failedTasks: 3 },
+        sessionHistory: []
+      };
+
+      const agent2: AgentIdentity = {
+        id: 'claude-2',
+        model: 'claude-opus-4.1',
+        specialization: ['frontend', 'ui'],
+        capabilities: [
+          { tool: 'Read', proficiency: 0.88, successRate: 0.92, avgExecutionTime: 120 },
+          { tool: 'Edit', proficiency: 0.9, successRate: 0.93, avgExecutionTime: 100 }
+        ],
+        preferences: { maxConcurrentTasks: 2, preferredTaskTypes: ['UI'], contextWindowSize: 200000 },
+        reputation: { score: 0.9, totalTasks: 15, successfulTasks: 14, failedTasks: 1 },
+        sessionHistory: []
+      };
+
+      await identityManager.registerAgent(agent1);
+      await identityManager.registerAgent(agent2);
+    });
+
     it('should rebalance tasks when agent becomes unavailable', async () => {
       const tasks = [
         { taskId: 't1', type: 'backend' },
@@ -461,6 +578,38 @@ describe('TaskCoordinator', () => {
   });
 
   describe('Agent Coordination', () => {
+    beforeEach(async () => {
+      // Register test agents for this section
+      const agent1: AgentIdentity = {
+        id: 'claude-1',
+        model: 'claude-opus-4.1',
+        specialization: ['backend', 'database'],
+        capabilities: [
+          { tool: 'Read', proficiency: 0.9, successRate: 0.95, avgExecutionTime: 100 },
+          { tool: 'Write', proficiency: 0.85, successRate: 0.9, avgExecutionTime: 150 }
+        ],
+        preferences: { maxConcurrentTasks: 3, preferredTaskTypes: ['API'], contextWindowSize: 200000 },
+        reputation: { score: 0.85, totalTasks: 20, successfulTasks: 17, failedTasks: 3 },
+        sessionHistory: []
+      };
+
+      const agent2: AgentIdentity = {
+        id: 'claude-2',
+        model: 'claude-opus-4.1',
+        specialization: ['frontend', 'ui'],
+        capabilities: [
+          { tool: 'Read', proficiency: 0.88, successRate: 0.92, avgExecutionTime: 120 },
+          { tool: 'Edit', proficiency: 0.9, successRate: 0.93, avgExecutionTime: 100 }
+        ],
+        preferences: { maxConcurrentTasks: 2, preferredTaskTypes: ['UI'], contextWindowSize: 200000 },
+        reputation: { score: 0.9, totalTasks: 15, successfulTasks: 14, failedTasks: 1 },
+        sessionHistory: []
+      };
+
+      await identityManager.registerAgent(agent1);
+      await identityManager.registerAgent(agent2);
+    });
+
     it('should coordinate handoffs between agents', async () => {
       const assignment = await coordinator.assignTask({
         taskId: 'task-123',

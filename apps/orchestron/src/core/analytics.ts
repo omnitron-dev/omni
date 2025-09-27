@@ -1,6 +1,6 @@
-import { CSPEngine } from './engine';
-import { TaskManager } from './task-manager';
-import { SprintManager } from './sprint-manager';
+import { OrchestronEngine } from './engine.js';
+import { TaskManager } from './task-manager.js';
+import { SprintManager } from './sprint-manager.js';
 import {
   Statistics,
   DevelopmentNodeType,
@@ -10,7 +10,7 @@ import {
   Node,
   TaskNode,
   SprintNode,
-} from './types';
+} from './types.js';
 
 export interface TrendData {
   dates: Date[];
@@ -72,12 +72,12 @@ export interface TechDebtMetrics {
 }
 
 export class Analytics {
-  private engine: CSPEngine;
+  private engine: OrchestronEngine;
   private taskManager: TaskManager;
   private sprintManager: SprintManager;
 
   constructor(
-    engine: CSPEngine,
+    engine: OrchestronEngine,
     taskManager: TaskManager,
     sprintManager: SprintManager
   ) {
@@ -111,7 +111,7 @@ export class Analytics {
         linesAdded += node.metadata.linesAdded || 0;
         linesRemoved += node.metadata.linesRemoved || 0;
         if (node.metadata.filesModified) {
-          node.metadata.filesModified.forEach((f) => filesChanged.add(f));
+          node.metadata.filesModified.forEach((f: string) => filesChanged.add(f));
         }
       }
       if (node.metadata.testCoverage !== undefined) {
@@ -422,7 +422,7 @@ export class Analytics {
 
   async getIndividualMetrics(assignee: string): Promise<IndividualMetrics> {
     const allTasks = await this.engine.getAllNodes();
-    const tasks = allTasks.filter(node => {
+    const tasks = allTasks.filter((node: Node) => {
       const taskNode = node as TaskNode;
       return taskNode.payload && taskNode.payload.assignee === assignee;
     });
@@ -479,12 +479,12 @@ export class Analytics {
 
     // Quality: inverse of bugs created
     const allBugs = await this.engine.queryByType(DevelopmentNodeType.BUG);
-    const bugs = allBugs.filter(b => b.metadata.assignee === assignee);
+    const bugs = allBugs.filter((b: Node) => b.metadata.assignee === assignee);
     const quality = 1 / (bugs.length + 1);
 
     // Workload: current tasks in progress
     const inProgress = tasks.filter(
-      (t) => (t as TaskNode).payload.status === TaskStatus.IN_PROGRESS
+      (t: Node) => (t as TaskNode).payload.status === TaskStatus.IN_PROGRESS
     );
     const workload = inProgress.length;
 
@@ -656,7 +656,7 @@ export class Analytics {
   // Helper methods
   private async calculateVelocity(since: Date): Promise<number> {
     const allTasks = await this.engine.getAllNodes();
-    const completedTasks = allTasks.filter(node => {
+    const completedTasks = allTasks.filter((node: Node) => {
       const taskNode = node as TaskNode;
       return taskNode.payload && taskNode.payload.status === TaskStatus.DONE;
     });
@@ -682,7 +682,7 @@ export class Analytics {
 
   private async calculateCycleTime(since: Date): Promise<number> {
     const allTasks = await this.engine.getAllNodes();
-    const completedTasks = allTasks.filter(node => {
+    const completedTasks = allTasks.filter((node: Node) => {
       const taskNode = node as TaskNode;
       return taskNode.payload && taskNode.payload.status === TaskStatus.DONE;
     });
@@ -711,7 +711,7 @@ export class Analytics {
 
   private async calculateLeadTime(since: Date): Promise<number> {
     const allTasks = await this.engine.getAllNodes();
-    const completedTasks = allTasks.filter(node => {
+    const completedTasks = allTasks.filter((node: Node) => {
       const taskNode = node as TaskNode;
       return taskNode.payload && taskNode.payload.status === TaskStatus.DONE;
     });
@@ -739,7 +739,7 @@ export class Analytics {
 
   private async calculateThroughput(since: Date): Promise<number> {
     const allTasks = await this.engine.getAllNodes();
-    const completedTasks = allTasks.filter(node => {
+    const completedTasks = allTasks.filter((node: Node) => {
       const taskNode = node as TaskNode;
       return taskNode.payload && taskNode.payload.status === TaskStatus.DONE;
     });
@@ -765,7 +765,7 @@ export class Analytics {
 
   private async calculateErrorRate(since: Date): Promise<number> {
     const errors = await this.engine.queryByType(DevelopmentNodeType.ERROR);
-    const recentErrors = errors.filter((e) => e.timestamp >= since);
+    const recentErrors = errors.filter((e: Node) => e.timestamp >= since);
 
     const days = Math.max(
       1,
@@ -788,7 +788,7 @@ export class Analytics {
         const edges = await this.engine.getEdgesByTarget(fix.nodeId);
         for (const edge of edges) {
           if (edge.edgeType === DevelopmentEdgeType.FIXES) {
-            const bug = bugs.find((b) => b.nodeId === edge.sourceNodeId);
+            const bug = bugs.find((b: Node) => b.nodeId === edge.sourceNodeId);
             if (bug) {
               const fixTime =
                 (fix.timestamp.getTime() - bug.timestamp.getTime()) /
@@ -809,7 +809,7 @@ export class Analytics {
       DevelopmentNodeType.MILESTONE
     );
     const recentDeployments = milestones.filter(
-      (m) => m.timestamp >= since && m.metadata.status === TaskStatus.DONE
+      (m: Node) => m.timestamp >= since && m.metadata.status === TaskStatus.DONE
     );
 
     const days = Math.max(
@@ -826,14 +826,14 @@ export class Analytics {
   ): Promise<number> {
     // Get all nodes up to this date
     const nodes = await this.engine.getAllNodes();
-    const relevantNodes = nodes.filter((n) => n.timestamp <= date);
+    const relevantNodes = nodes.filter((n: Node) => n.timestamp <= date);
 
     switch (metric) {
       case 'velocity':
         return this.calculateVelocityAtDate(relevantNodes, date);
       case 'bugs':
         return relevantNodes.filter(
-          (n) => n.nodeType === DevelopmentNodeType.BUG
+          (n: Node) => n.nodeType === DevelopmentNodeType.BUG
         ).length;
       case 'coverage':
         return this.calculateCoverageAtDate(relevantNodes);
@@ -844,7 +844,7 @@ export class Analytics {
 
   private calculateVelocityAtDate(nodes: Node[], date: Date): number {
     const weekAgo = new Date(date.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const completedInWeek = nodes.filter((n) => {
+    const completedInWeek = nodes.filter((n: Node) => {
       const task = n as TaskNode;
       return (
         task.payload?.status === TaskStatus.DONE &&
@@ -861,13 +861,13 @@ export class Analytics {
 
   private calculateCoverageAtDate(nodes: Node[]): number {
     const withCoverage = nodes.filter(
-      (n) => n.metadata.testCoverage !== undefined
+      (n: Node) => n.metadata.testCoverage !== undefined
     );
 
     if (withCoverage.length === 0) return 0;
 
     return (
-      withCoverage.reduce((sum, n) => sum + (n.metadata.testCoverage || 0), 0) /
+      withCoverage.reduce((sum: number, n: Node) => sum + (n.metadata.testCoverage || 0), 0) /
       withCoverage.length
     );
   }
@@ -941,11 +941,11 @@ export class Analytics {
       DevelopmentNodeType.FEATURE
     );
 
-    const todoHours = todos.reduce((sum, t) => {
+    const todoHours = todos.reduce((sum: number, t: Node) => {
       return sum + ((t as TaskNode).payload?.estimatedHours || 0);
     }, 0);
 
-    const featureHours = features.reduce((sum, f) => {
+    const featureHours = features.reduce((sum: number, f: Node) => {
       return sum + ((f as TaskNode).payload?.estimatedHours || 0);
     }, 0);
 
@@ -957,7 +957,7 @@ export class Analytics {
     lastMonth.setMonth(lastMonth.getMonth() - 1);
 
     const nodes = await this.engine.getAllNodes();
-    const recentNodes = nodes.filter((n) => n.timestamp >= lastMonth);
+    const recentNodes = nodes.filter((n: Node) => n.timestamp >= lastMonth);
 
     let totalAdded = 0;
     let totalRemoved = 0;
@@ -984,7 +984,7 @@ export class Analytics {
 
     // Get nodes in period
     const nodes = await this.engine.getAllNodes();
-    const nodesInPeriod = nodes.filter(n =>
+    const nodesInPeriod = nodes.filter((n: Node) =>
       n.timestamp >= startDate && n.timestamp <= endDate
     );
 
@@ -1003,10 +1003,10 @@ export class Analytics {
         return this.calculateThroughput(startDate);
 
       case 'commits':
-        return nodesInPeriod.filter(n => n.nodeType === DevelopmentNodeType.MODULE).length;
+        return nodesInPeriod.filter((n: Node) => n.nodeType === DevelopmentNodeType.MODULE).length;
 
       case 'errors':
-        return nodesInPeriod.filter(n => n.nodeType === DevelopmentNodeType.ERROR).length;
+        return nodesInPeriod.filter((n: Node) => n.nodeType === DevelopmentNodeType.ERROR).length;
 
       default:
         return null;

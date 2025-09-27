@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import { NotificationManager } from '../src/rotif.js';
-import { DLQManager } from '../src/dlq-manager.js';
+import { NotificationManager } from '../../src/rotif/rotif.js';
+import { DLQManager } from '../../src/rotif/dlq-manager.js';
 import { delay } from '@omnitron-dev/common';
 import Redis from 'ioredis';
 

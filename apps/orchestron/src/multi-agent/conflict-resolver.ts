@@ -1,5 +1,5 @@
 import { v4 as uuid } from 'uuid';
-import { Conflict, ResolutionStrategy, ConflictProposal as ConflictProposalType } from './types';
+import { Conflict, ResolutionStrategy, ConflictProposal as ConflictProposalType } from './types.js';
 
 interface ConflictProposal {
   agent: string;

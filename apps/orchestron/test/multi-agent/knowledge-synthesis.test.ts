@@ -245,6 +245,9 @@ describe('KnowledgeSynthesizer', () => {
         contributors: ['claude-1']
       };
 
+      // Add small delay to ensure timestamp difference
+      await new Promise(resolve => setTimeout(resolve, 1));
+
       const updates = [
         { agentId: 'claude-2', update: 'Refined pattern', timestamp: new Date() },
         { agentId: 'claude-3', update: 'Added edge cases', timestamp: new Date() }

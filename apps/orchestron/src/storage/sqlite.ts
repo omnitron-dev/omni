@@ -6,8 +6,8 @@ import {
   NodeId,
   EdgeId,
   BranchName,
-} from '../core/types';
-import { Storage } from './interface';
+} from '../core/types.js';
+import { Storage } from './interface.js';
 
 export class SQLiteStorage implements Storage {
   private db: Database.Database;
@@ -268,5 +268,103 @@ export class SQLiteStorage implements Storage {
     this.db.exec('DELETE FROM nodes');
     this.db.exec('DELETE FROM edges');
     this.db.exec('DELETE FROM branches');
+  }
+
+  // Extended storage methods for compatibility
+  async getData(key: string): Promise<any> {
+    try {
+      // Try to get from nodes table first
+      const stmt = this.db.prepare('SELECT payload FROM nodes WHERE nodeId = ? LIMIT 1');
+      const row = stmt.get(key) as any;
+      if (row) {
+        return JSON.parse(row.payload);
+      }
+      return null;
+    } catch (error) {
+      console.error('Error getting data:', error);
+      return null;
+    }
+  }
+
+  async saveData(key: string, data: any): Promise<void> {
+    try {
+      // Save as a special node for now
+      const node: Node = {
+        nodeId: key,
+        author: 'SYSTEM' as any,
+        parentIds: [],
+        nodeType: 'DATA' as any,
+        payload: data,
+        metadata: {},
+        timestamp: new Date()
+      };
+      await this.saveNode(node);
+    } catch (error) {
+      console.error('Error saving data:', error);
+    }
+  }
+
+  async createNode(partialNode: Partial<Node>): Promise<Node> {
+    const node: Node = {
+      nodeId: partialNode.nodeId || `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      author: partialNode.author || 'SYSTEM' as any,
+      parentIds: partialNode.parentIds || [],
+      nodeType: partialNode.nodeType || 'GENERIC' as any,
+      payload: partialNode.payload || {},
+      metadata: partialNode.metadata || {},
+      timestamp: partialNode.timestamp || new Date()
+    };
+    await this.saveNode(node);
+    return node;
+  }
+
+  async queryNodes(query: any): Promise<Node[]> {
+    try {
+      let sql = 'SELECT * FROM nodes WHERE 1=1';
+      const params: any[] = [];
+
+      if (query.nodeType) {
+        sql += ' AND node_type = ?';
+        params.push(query.nodeType);
+      }
+
+      if (query.author) {
+        sql += ' AND author = ?';
+        params.push(query.author);
+      }
+
+      if (query.after) {
+        sql += ' AND created_at > ?';
+        params.push(new Date(query.after).getTime());
+      }
+
+      if (query.before) {
+        sql += ' AND created_at < ?';
+        params.push(new Date(query.before).getTime());
+      }
+
+      sql += ' ORDER BY created_at DESC';
+
+      if (query.limit) {
+        sql += ' LIMIT ?';
+        params.push(query.limit);
+      }
+
+      const stmt = this.db.prepare(sql);
+      const rows = stmt.all(...params) as any[];
+
+      return rows.map(row => ({
+        nodeId: row.id,
+        author: row.author,
+        parentIds: JSON.parse(row.parent_ids),
+        nodeType: row.node_type,
+        payload: JSON.parse(row.payload),
+        metadata: JSON.parse(row.metadata),
+        timestamp: new Date(row.created_at)
+      } as Node));
+    } catch (error) {
+      console.error('Error querying nodes:', error);
+      return [];
+    }
   }
 }

@@ -1,6 +1,6 @@
 import { v4 as uuid } from 'uuid';
-import { AgentIdentityManager } from './agent-identity';
-import { SharedMemoryManager } from './shared-memory';
+import { AgentIdentityManager } from './agent-identity.js';
+import { SharedMemoryManager } from './shared-memory.js';
 import {
   AgentAssignment,
   TaskDistribution,
@@ -8,7 +8,7 @@ import {
   AgentPerformance,
   TaskRequirements,
   AgentIdentity
-} from './types';
+} from './types.js';
 
 interface Task {
   taskId: string;
@@ -109,15 +109,21 @@ export class TaskCoordinator {
     const availableAgents = await this.identityManager.getAvailableAgents();
     let selectedAgent: AgentIdentity | null = null;
 
-    if (task.requirements) {
+    // Check if task has specific requirements
+    if (task.requirements && Object.keys(task.requirements).length > 0) {
       selectedAgent = await this.identityManager.findBestAgentForTask(task.requirements);
     }
 
-    // If no specific match, pick first available
-    if (!selectedAgent && availableAgents.length > 0) {
+    // If no specific match, try to find agent by task type
+    if (!selectedAgent && task.type && availableAgents.length > 0) {
       // Filter out unavailable agents
       const activeAgents = availableAgents.filter(a => !this.unavailableAgents.has(a.id));
-      if (activeAgents.length > 0) {
+
+      // Try to find agent with matching specialization
+      selectedAgent = activeAgents.find(a => a.specialization?.includes(task.type)) || null;
+
+      // If still no match, pick first available
+      if (!selectedAgent && activeAgents.length > 0) {
         selectedAgent = activeAgents[0];
       }
     }
@@ -357,10 +363,28 @@ export class TaskCoordinator {
 
     // Execute batches
     for (const batch of batches) {
-      const batchAssignments = await Promise.all(
+      const batchAssignments = await Promise.allSettled(
         batch.map(task => this.assignTask(task))
       );
-      results.push(...batchAssignments);
+
+      for (let i = 0; i < batchAssignments.length; i++) {
+        const result = batchAssignments[i];
+        if (result.status === 'fulfilled') {
+          results.push(result.value);
+        } else {
+          // Create a pending assignment for failed tasks
+          const failedTask = batch[i];
+          const pendingAssignment: AgentAssignment = {
+            id: uuid(),
+            agentId: '',  // No agent assigned yet
+            taskId: failedTask.taskId,
+            assignedAt: new Date(),
+            status: 'pending',
+            progress: 0
+          };
+          results.push(pendingAssignment);
+        }
+      }
     }
 
     return results;
@@ -567,9 +591,12 @@ export class TaskCoordinator {
 
     const progress = this.taskProgress.get(assignment.taskId) || 0;
 
+    // Save original agent before updating
+    const originalAgent = assignment.agentId;
+
     // Create handoff
     await this.identityManager.createHandoff({
-      fromAgent: assignment.agentId,
+      fromAgent: originalAgent,
       toAgent: request.targetAgent,
       task: assignment.taskId,
       context: {
@@ -587,7 +614,7 @@ export class TaskCoordinator {
     assignment.status = 'handed_off';
 
     return {
-      fromAgent: assignment.agentId,
+      fromAgent: originalAgent,
       toAgent: request.targetAgent,
       taskId: assignment.taskId,
       progress,

@@ -5,7 +5,7 @@ import {
   KnowledgeSynthesis,
   Conflict,
   KnowledgeMetadata
-} from './types';
+} from './types.js';
 
 interface IncompatibilityResult {
   hasConflicts: boolean;

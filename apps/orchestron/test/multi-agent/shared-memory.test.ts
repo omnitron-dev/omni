@@ -419,6 +419,8 @@ describe('SharedMemoryManager', () => {
       };
 
       await memory.addErrorPattern(errorPattern);
+      // Add small delay to ensure timestamp difference
+      await new Promise(resolve => setTimeout(resolve, 1));
       await memory.recordErrorOccurrence('err-2');
 
       const updated = await memory.getErrorPattern('err-2');

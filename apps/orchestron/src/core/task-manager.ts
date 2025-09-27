@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { CSPEngine } from './engine';
+import { OrchestronEngine } from './engine.js';
 import {
   NodeId,
   TaskNode,
@@ -11,13 +11,13 @@ import {
   Checkpoint,
   TimeEntry,
   TimesheetEntry,
-} from './types';
+} from './types.js';
 
 export class TaskManager {
-  private engine: CSPEngine;
+  private engine: OrchestronEngine;
   private activeTimers: Map<NodeId, TimeEntry>;
 
-  constructor(engine: CSPEngine) {
+  constructor(engine: OrchestronEngine) {
     this.engine = engine;
     this.activeTimers = new Map();
   }

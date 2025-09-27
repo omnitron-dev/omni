@@ -5,7 +5,7 @@
  */
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import { Inject, Optional, Injectable } from '../../nexus/index.js';
+import { Inject, Optional, Injectable } from '../../decorators/index.js';
 
 import {
   ERROR_MESSAGES,
@@ -37,7 +37,7 @@ export class SchedulerExecutor {
   constructor(
     @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: ISchedulerConfig,
     @Optional() @Inject(SCHEDULER_LISTENERS_TOKEN) private readonly listeners?: IJobListener[]
-  ) {}
+  ) { }
 
   /**
    * Execute a job

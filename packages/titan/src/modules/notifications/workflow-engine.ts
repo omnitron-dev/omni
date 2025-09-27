@@ -1,4 +1,4 @@
-import { Injectable } from '../../nexus/index.js';
+import { Injectable } from '../../decorators/index.js';
 import { Redis } from 'ioredis';
 import { NotificationService, NotificationPayload, Recipient, SendOptions } from './notifications.service.js';
 import { generateUuid, sleep } from './utils.js';

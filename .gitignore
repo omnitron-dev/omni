@@ -2,8 +2,6 @@
 
 # Dependencies
 node_modules
-.claude
-.gemini
 
 .pnp
 .pnp.js

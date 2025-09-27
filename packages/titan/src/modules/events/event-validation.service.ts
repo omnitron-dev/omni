@@ -4,7 +4,7 @@
  * Validates event data against schemas
  */
 
-import { Injectable } from '../../nexus/index.js';
+import { Injectable } from '../../decorators/index.js';
 
 import type {
   EventData,
@@ -33,7 +33,7 @@ export class EventValidationService {
   private logger: ILogger | null = null;
 
   constructor(
-    
+
   ) { }
 
   /**

@@ -4,7 +4,8 @@
  * Provides Redis integration with connection pooling, clustering, and health checks
  */
 
-import { Module, DynamicModule, Provider, ProviderDefinition, InjectionToken } from '../../nexus/index.js';
+import { DynamicModule, Provider, ProviderDefinition, InjectionToken } from '../../nexus/index.js';
+import { Module } from '../../decorators/index.js';
 import { RedisManager } from './redis.manager.js';
 import { RedisService } from './redis.service.js';
 import { getClientNamespace } from './redis.utils.js';

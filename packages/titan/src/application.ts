@@ -813,9 +813,10 @@ export class Application implements IApplication {
       const token = module as Token<T>;
       const moduleInstance = this._container.resolve(token);
 
-      // Check for duplicate
+      // Check for duplicate - for tokens, be idempotent
       if (this._modules.has(token)) {
-        throw new Error(`Module ${token.name || 'unknown'} already registered`);
+        // Token already registered, just return (idempotent)
+        return this;
       }
 
       this._modules.set(token, moduleInstance);
@@ -826,15 +827,64 @@ export class Application implements IApplication {
       // Check if this exact module instance is already registered
       for (const [, existingModule] of this._modules) {
         if (existingModule === moduleInstance) {
-          // Module instance already registered, just return
+          // Module instance already registered, just return (idempotent)
           return this;
         }
       }
 
-      // Register module synchronously for instances
       // Store the token and module
       const token = createToken<IModule>(moduleInstance.name);
       this._modules.set(token, moduleInstance);
+
+      // Get module metadata from @Module decorator
+      const moduleConstructor = moduleInstance.constructor;
+      const metadata = Reflect.getMetadata('module', moduleConstructor) ||
+        Reflect.getMetadata('nexus:module', moduleConstructor) ||
+        (moduleConstructor as any).__titanModuleMetadata;
+
+      // Process @Module decorator metadata synchronously
+      if (metadata) {
+        // Register providers synchronously
+        if (metadata.providers) {
+          for (const provider of metadata.providers) {
+            if (typeof provider === 'function') {
+              // Constructor - register with the class as both token and implementation
+              this._container.register(provider, { useClass: provider });
+            } else if (typeof provider === 'object' && 'provide' in provider) {
+              // Provider object format { provide: token, useValue/useClass/useFactory: ... }
+              const { provide, ...providerDef } = provider as any;
+              this._container.register(provide, providerDef);
+            }
+          }
+        }
+
+        // Handle exports synchronously
+        if (metadata.exports) {
+          for (const exportToken of metadata.exports) {
+            if (typeof exportToken === 'string') {
+              // Export by string token
+              const provider = metadata.providers?.find((p: any) =>
+                (typeof p === 'function' && p.name === exportToken) ||
+                (typeof p === 'object' && p.provide === exportToken)
+              );
+              if (provider && !this._container.has(exportToken as any)) {
+                // Register the exported provider in the parent container
+                if (typeof provider === 'function') {
+                  this._container.register(provider, { useClass: provider });
+                } else if (typeof provider === 'object' && 'provide' in provider) {
+                  const { provide, ...providerDef } = provider as any;
+                  this._container.register(provide, providerDef);
+                }
+              }
+            } else {
+              // Export by token/class
+              if (!this._container.has(exportToken)) {
+                this._container.register(exportToken, { useClass: exportToken });
+              }
+            }
+          }
+        }
+      }
 
       // Configure module if config exists
       if (moduleInstance.configure && typeof moduleInstance.configure === 'function') {
@@ -1102,14 +1152,14 @@ export class Application implements IApplication {
     if (typeof hook === 'function') {
       this._stopHooks.push({
         handler: hook,
-        priority: priority ?? 100,
+        priority: priority ?? 100,  // Default priority is 100
         timeout
       });
     } else {
       this._stopHooks.push(hook);
     }
 
-    // Sort by priority
+    // Sort by priority (lower priority numbers execute first)
     this._stopHooks.sort((a, b) => (a.priority || 100) - (b.priority || 100));
     return this;
   }
@@ -1162,21 +1212,53 @@ export class Application implements IApplication {
       options = configOrKey as ConfigObject;
     }
 
-    // Merge configuration
+    // Deep merge helper function
+    const deepMerge = (target: any, source: any): any => {
+      if (!source || typeof source !== 'object' || Array.isArray(source)) {
+        return source;
+      }
+
+      const result = { ...target };
+      for (const key of Object.keys(source)) {
+        if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key]) &&
+            result[key] && typeof result[key] === 'object' && !Array.isArray(result[key])) {
+          // Both are objects, merge recursively
+          result[key] = deepMerge(result[key], source[key]);
+        } else {
+          // Otherwise replace
+          result[key] = source[key];
+        }
+      }
+      return result;
+    };
+
+    // Merge configuration deeply
     const newConfig = { ...this._config };
 
     for (const key of Object.keys(options)) {
-      // Replace top-level config sections completely
-      // This matches the test expectations where configure replaces sections
-      newConfig[key] = options[key];
+      if (newConfig[key] && typeof newConfig[key] === 'object' && !Array.isArray(newConfig[key]) &&
+          options[key] && typeof options[key] === 'object' && !Array.isArray(options[key])) {
+        // Deep merge objects
+        newConfig[key] = deepMerge(newConfig[key], options[key]);
+      } else {
+        // Replace non-objects or arrays
+        newConfig[key] = options[key];
+      }
     }
 
     // Apply the merged configuration
     this._config = newConfig;
 
-    // Update user config - replace sections same as main config
+    // Update user config - deep merge same as main config
     for (const key of Object.keys(options)) {
-      this._userConfig[key] = options[key];
+      if (this._userConfig[key] && typeof this._userConfig[key] === 'object' && !Array.isArray(this._userConfig[key]) &&
+          options[key] && typeof options[key] === 'object' && !Array.isArray(options[key])) {
+        // Deep merge objects
+        this._userConfig[key] = deepMerge(this._userConfig[key], options[key]);
+      } else {
+        // Replace non-objects or arrays
+        this._userConfig[key] = options[key];
+      }
     }
 
     // Apply logger configuration if provided
@@ -1218,8 +1300,8 @@ export class Application implements IApplication {
       }
     }
 
-    // Emit only the changed config, not the entire config
-    this.emit(ApplicationEvent.ConfigChanged, { config: options });
+    // Emit the current user configuration state
+    this.emit(ApplicationEvent.ConfigChanged, { config: { ...this._userConfig } });
     return this;
   }
 
@@ -1450,6 +1532,11 @@ export class Application implements IApplication {
     if (this._userConfig['environment'] === undefined) {
       delete result.environment;
     }
+
+    // Always exclude internal options that are not part of user configuration
+    delete result['disableCoreModules'];
+    delete result['disableGracefulShutdown'];
+    delete result['disableProcessExit'];
 
     return result;
   }

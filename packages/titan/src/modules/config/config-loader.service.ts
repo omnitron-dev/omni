@@ -8,7 +8,7 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { Injectable } from '../../nexus/index.js';
+import { Injectable } from '../../decorators/index.js';
 
 import type {
   ConfigSource,

@@ -5,7 +5,8 @@
  */
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
-import { Inject, Container, Injectable } from '../../nexus/index.js';
+import { Container, } from '../../nexus/index.js';
+import { Inject, Injectable } from '../../decorators/index.js';
 
 import { EventMetadataService } from './event-metadata.service.js';
 import { EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN } from './events.module.js';
@@ -38,7 +39,7 @@ export class EventDiscoveryService {
     @Inject(Container) private readonly container: Container,
     @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
     @Inject(EVENT_METADATA_SERVICE_TOKEN) private readonly metadataService: EventMetadataService,
-    
+
   ) { }
 
   /**
@@ -65,7 +66,7 @@ export class EventDiscoveryService {
     for (const methodName of methodNames) {
       // Check for event handler metadata
       const handlerMetadata = Reflect.getMetadata(EVENT_HANDLER_METADATA, prototype, methodName) ||
-                              Reflect.getMetadata('event:handler', prototype, methodName);
+        Reflect.getMetadata('event:handler', prototype, methodName);
 
       if (handlerMetadata) {
         handlers.push({
@@ -78,7 +79,7 @@ export class EventDiscoveryService {
 
       // Check for once handler metadata
       const onceMetadata = Reflect.getMetadata(EVENT_ONCE_METADATA, prototype, methodName) ||
-                          Reflect.getMetadata('event:once', prototype, methodName);
+        Reflect.getMetadata('event:once', prototype, methodName);
 
       if (onceMetadata) {
         handlers.push({
@@ -109,7 +110,7 @@ export class EventDiscoveryService {
     for (const methodName of methodNames) {
       // Check for event emitter metadata
       const emitterMetadata = Reflect.getMetadata(EVENT_EMITTER_METADATA, prototype, methodName) ||
-                              Reflect.getMetadata('event:emitter', prototype, methodName);
+        Reflect.getMetadata('event:emitter', prototype, methodName);
 
       if (emitterMetadata) {
         emitters.push({

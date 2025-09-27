@@ -360,6 +360,42 @@ export PATH="/Users/taaliman/.bun/bin:/Users/taaliman/.deno/bin:/Users/taaliman/
 4. **Async Operations**: Properly await all promises to avoid hanging tests
 5. **Cleanup**: Ensure proper cleanup in afterEach blocks
 
+### Docker Redis Testing
+
+For running Redis tests in the Titan package, use Docker with these specific paths and configurations:
+
+**Important Paths**:
+- Docker binary: `/usr/local/bin/docker`
+- Docker Compose syntax: Use `docker compose` (v2, not `docker-compose`)
+- Test utilities location: `packages/titan/test/utils/`
+  - `redis-test-manager.ts` - Manages Docker Redis containers for testing
+  - `redis-fallback.ts` - Provides fallback to local Redis if Docker unavailable
+- Docker compose file: `packages/titan/test/docker/docker-compose.test.yml`
+
+**Running Redis Tests**:
+```bash
+# Start Redis container for tests
+cd packages/titan
+npm test -- test/modules/redis/
+
+# Run specific test file
+npm test -- test/modules/redis/redis.service.spec.ts
+
+# Run with real Redis (Docker or local)
+USE_REAL_REDIS=true npm test -- test/modules/redis/
+
+# Manual Redis management
+npm run redis:start   # Start test Redis container
+npm run redis:stop    # Stop test Redis container
+npm run redis:cleanup # Clean up all test containers
+```
+
+**Test Configuration**:
+- Tests use ioredis (not redis package)
+- Dynamic port allocation for parallel test runs
+- Automatic cleanup of containers after tests
+- Fallback to local Redis if Docker unavailable
+
 ### Current Focus Areas
 
 - ✅ Full Bun runtime support across all packages

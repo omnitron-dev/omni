@@ -5,7 +5,7 @@
  */
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
-import { Inject, Injectable } from '../../nexus/index.js';
+import { Inject, Injectable } from '../../decorators/index.js';
 
 import { EVENT_EMITTER_TOKEN } from './events.module.js';
 
@@ -26,7 +26,7 @@ export class EventSchedulerService {
 
   constructor(
     @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
-    
+
   ) { }
 
   /**

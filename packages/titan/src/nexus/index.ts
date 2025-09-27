@@ -19,9 +19,6 @@ export * from './devtools.js';
 // Export Federation
 export * from './federation.js';
 
-// Export Decorators (now from unified location)
-export * from '../decorators/index.js';
-
 // Container
 export {
   Container

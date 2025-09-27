@@ -4,7 +4,7 @@
  * Provides centralized logging with Pino
  */
 
-import { Module, Global } from '../../nexus/index.js';
+import { Module, Global } from '../../decorators/index.js';
 
 import { LoggerService } from './logger.service.js';
 import {

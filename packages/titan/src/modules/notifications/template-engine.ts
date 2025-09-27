@@ -1,4 +1,4 @@
-import { Injectable } from '../../nexus/index.js';
+import { Injectable } from '../../decorators/index.js';
 import { Redis } from 'ioredis';
 import { hash } from './utils.js';
 
@@ -168,10 +168,10 @@ export class TemplateEngine {
     const rendered: RenderedContent = {};
 
     // Simple variable replacement
-    const replaceVariables = (text: string): string => 
+    const replaceVariables = (text: string): string =>
       // Use the class method to replace all {{variable}} patterns
-       this.replaceVariables(text, data)
-    ;
+      this.replaceVariables(text, data)
+      ;
 
     // Render email content if present
     if (template.content.email) {

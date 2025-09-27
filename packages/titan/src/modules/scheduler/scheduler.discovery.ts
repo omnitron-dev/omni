@@ -4,7 +4,8 @@
  * Discovers and registers scheduled jobs from decorated classes
  */
 
-import { Inject, Optional, Container, Injectable } from '../../nexus/index.js';
+import { Container } from '../../nexus/index.js';
+import { Inject, Optional, Injectable } from '../../decorators/index.js';
 
 import { getScheduledJobs } from './scheduler.decorators.js';
 import {
@@ -31,7 +32,7 @@ export class SchedulerDiscovery {
     @Inject(Container) private readonly container: Container,
     @Inject(SCHEDULER_REGISTRY_TOKEN) private readonly registry: SchedulerRegistry,
     @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: ISchedulerConfig
-  ) {}
+  ) { }
 
   /**
    * Discover and register all scheduled jobs

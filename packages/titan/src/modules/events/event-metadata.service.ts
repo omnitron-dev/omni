@@ -6,7 +6,7 @@
 
 import type { EventMetadata } from '@omnitron-dev/eventemitter';
 
-import { Injectable } from '../../nexus/index.js';
+import { Injectable } from '../../decorators/index.js';
 
 /**
  * Service for managing event metadata

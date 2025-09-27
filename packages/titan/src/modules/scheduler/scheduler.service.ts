@@ -5,7 +5,7 @@
  */
 
 import * as cron from 'node-cron';
-import { Inject, Optional, Injectable } from '../../nexus/index.js';
+import { Inject, Optional, Injectable } from '../../decorators/index.js';
 
 import {
   ERROR_MESSAGES,
@@ -54,7 +54,7 @@ export class SchedulerService {
     @Optional() @Inject(SCHEDULER_PERSISTENCE_TOKEN) private readonly persistence?: SchedulerPersistence,
     @Optional() @Inject(SCHEDULER_METRICS_TOKEN) private readonly metrics?: SchedulerMetricsService,
     @Optional() @Inject(SCHEDULER_DISCOVERY_TOKEN) private readonly discovery?: SchedulerDiscovery
-  ) {}
+  ) { }
 
   /**
    * Initialize scheduler

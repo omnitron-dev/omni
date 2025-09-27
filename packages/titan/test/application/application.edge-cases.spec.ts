@@ -3,15 +3,13 @@
  */
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
-import { createToken } from '@nexus';
+import { createToken } from '../../src/nexus/index.js';
 import { Application, createApp } from '../../src/application.js';
-import { LOGGER_SERVICE_TOKEN } from '../../src/modules/logger.module.js';
 const CONFIG_SERVICE_TOKEN = createToken('ConfigModule');
 import {
   ApplicationState,
   IApplication,
   IModule,
-  LifecycleHook
 } from '../../src/types.js';
 
 // Test fixture

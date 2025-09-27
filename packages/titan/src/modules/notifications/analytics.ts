@@ -1,4 +1,4 @@
-import { Injectable } from '../../nexus/index.js';
+import { Injectable } from '../../decorators/index.js';
 import { Redis } from 'ioredis';
 
 export interface AnalyticsOptions {

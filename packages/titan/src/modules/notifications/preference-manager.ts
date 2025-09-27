@@ -1,4 +1,4 @@
-import { Injectable } from '../../nexus/index.js';
+import { Injectable } from '../../decorators/index.js';
 import { Redis } from 'ioredis';
 import { NotificationPayload } from './notifications.service.js';
 import { ChannelType } from './channel-manager.js';
@@ -122,7 +122,7 @@ export class PreferenceManager {
         return false;
       }
       if (typeof categoryPref === 'object' && categoryPref.channels &&
-          !categoryPref.channels.includes(channelType)) {
+        !categoryPref.channels.includes(channelType)) {
         return false;
       }
     }

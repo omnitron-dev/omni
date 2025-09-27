@@ -5,7 +5,8 @@
  */
 
 import 'reflect-metadata';
-import { Token, createToken, Inject } from '../../nexus/index.js';
+import { Token, createToken } from '../../nexus/index.js';
+import { Inject } from '../../decorators/index.js';
 import { ZodType } from 'zod';
 import { CONFIG_INJECT_METADATA_KEY, CONFIG_SCHEMA_METADATA_KEY } from './types.js';
 
@@ -102,12 +103,12 @@ export function ConfigSchema<T>(schema: ZodType<T>) {
     Reflect.defineMetadata(CONFIG_SCHEMA_METADATA_KEY, schema, target);
 
     // Add validation method
-    target.prototype.validate = function() {
+    target.prototype.validate = function () {
       return schema.safeParse(this);
     };
 
     // Add static validation method
-    target.validate = function(data: any) {
+    target.validate = function (data: any) {
       return schema.safeParse(data);
     };
 

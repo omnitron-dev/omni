@@ -6,7 +6,7 @@
  */
 
 import { Container, createToken } from '@nexus';
-import { Application, createApp, ApplicationToken, startApp } from '../../src/application.js';
+import { Application, createApp, APPLICATION_TOKEN, startApp } from '../../src/application.js';
 import { ApplicationState, ApplicationEvent, IApplicationOptions } from '../../src/types.js';
 import { SimpleModule, FailingModule, SlowModule } from '../fixtures/test-modules.js';
 import { createMinimalApplication, createWebApplication } from '../fixtures/test-applications.js';
@@ -49,7 +49,7 @@ describe('Application Core', () => {
 
     it('should register application in container', () => {
       app = createApp();
-      const registered = app.container.resolve(ApplicationToken);
+      const registered = app.container.resolve(APPLICATION_TOKEN);
       expect(registered).toBe(app);
     });
 
@@ -319,7 +319,7 @@ describe('Application Core', () => {
     it('should check if module exists', async () => {
       app = createWebApplication();
 
-      expect(app.has(ApplicationToken)).toBe(true);
+      expect(app.has(APPLICATION_TOKEN)).toBe(true);
       expect(app.has(createToken('NonExistent'))).toBe(false);
     });
 

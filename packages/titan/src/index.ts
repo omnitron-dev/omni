@@ -17,28 +17,6 @@ export {
   Application as TitanApplication
 } from './application.js';
 
-// Common utilities
-export {
-  defer,
-  delay,
-  retry,
-  timeout
-} from '@omnitron-dev/common';
-
-// Nexus DI essentials
-export {
-  Token,
-  Container,
-  createToken,
-  type Provider,
-  type ClassProvider,
-  type ValueProvider,
-  type FactoryProvider,
-  type DynamicModule,
-  createModule,
-  Module as NexusModule  // Export Nexus Module with different name
-} from './nexus/index.js';
-
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -90,74 +68,7 @@ export interface IOnDestroy {
   onDestroy?(): void | Promise<void>;
 }
 
-// Process Lifecycle Types
-export {
-  type IShutdownTask,
-  type IProcessMetrics,
-  type ILifecycleEvent,
-  type ProcessSignal,
-  ShutdownReason,
-  ShutdownPriority,
-  LifecycleState
-} from './types.js';
-
-// Core Types
-export {
-  IModule,  // Now coming from unified Nexus module system
-  IEventMeta,
-  IEnvironment,
-  IApplication,
-  IHealthStatus,
-  ILifecycleHook,
-  IModuleMetadata,
-  IShutdownOptions,
-  ApplicationState,
-  ApplicationEvent,
-  ModuleConstructor,
-  IApplicationConfig,
-  IApplicationOptions,
-  IApplicationMetrics
-} from './types.js';
-
-
-// ============================================================================
-// Decorators
-// ============================================================================
-
-export {
-  // Core DI decorators
-  Module,
-  Injectable,
-  Singleton,
-  Transient,
-  Scoped,
-  Request,
-  Service,
-  Controller,
-  Repository,
-  Factory,
-  Global,
-  Method,
-  Public,
-
-  // Injection decorators
-  Inject,
-  InjectAll,
-  Optional,
-
-  // Lifecycle decorators
-  PostConstruct,
-  PreDestroy,
-
-  // Utility decorators
-  Log,
-  Lazy,
-
-  // Decorator types
-  type InjectableOptions,
-  type ModuleDecoratorOptions,
-  type Scope
-} from './decorators/index.js';
+export * from './types.js';
 
 // ============================================================================
 // Built-in Modules
@@ -165,9 +76,6 @@ export {
 // DO NOT RE-EXPORT MODULES HERE!
 // Modules should be imported directly via package.json exports:
 // This ensures proper tree-shaking and avoids circular dependencies
-
-// Re-export ModuleMetadata type from Nexus
-export type { ModuleMetadata } from './nexus/index.js';
 
 /**
  * Feature flags

@@ -4,7 +4,7 @@
  * Decorators for event-driven architecture in Titan framework
  */
 
-import { createDecorator, createMethodInterceptor } from '../../nexus/index.js';
+import { createDecorator, createMethodInterceptor } from '../../decorators/index.js';
 import {
   EVENT_HANDLER_METADATA,
   EVENT_ONCE_METADATA,

@@ -5,7 +5,7 @@
  */
 
 import { z } from 'zod';
-import { Module, Injectable } from '../nexus/index.js';
+import { Module, Injectable } from '../decorators/index.js';
 import type { IConfigModuleOptions as ConfigModuleOptions } from '../modules/config/types.js';
 import type { RedisOptions } from 'ioredis';
 

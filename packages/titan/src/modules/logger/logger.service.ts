@@ -4,7 +4,7 @@
 
 import os from 'node:os';
 import pino, { Logger as PinoLogger } from 'pino';
-import { Injectable, Inject, Optional } from '../../nexus/index.js';
+import { Injectable, Inject, Optional } from '../../decorators/index.js';
 
 import {
   LOGGER_OPTIONS_TOKEN,

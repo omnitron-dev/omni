@@ -1,4 +1,5 @@
-import { Module, DynamicModule, Provider, ProviderDefinition, InjectionToken } from '../../nexus/index.js';
+import { DynamicModule, Provider, ProviderDefinition, InjectionToken } from '../../nexus/index.js';
+import { Module } from '../../decorators/index.js';
 import { NotificationManager } from '../../rotif/rotif.js';
 import { NotificationService } from './notifications.service.js';
 import { ChannelManager } from './channel-manager.js';
@@ -255,11 +256,11 @@ export class TitanNotificationsModule {
     // Create services using async options
     providers.push(['REDIS_CLIENT' as any, {
       useFactory: (moduleOptions: NotificationModuleOptions) => new Redis({
-          host: moduleOptions.redis?.host || 'localhost',
-          port: moduleOptions.redis?.port || 6379,
-          db: moduleOptions.redis?.db || 0,
-          password: moduleOptions.redis?.password
-        }),
+        host: moduleOptions.redis?.host || 'localhost',
+        port: moduleOptions.redis?.port || 6379,
+        db: moduleOptions.redis?.db || 0,
+        password: moduleOptions.redis?.password
+      }),
       inject: [NOTIFICATION_MODULE_OPTIONS]
     }]);
 

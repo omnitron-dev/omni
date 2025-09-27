@@ -6,7 +6,7 @@
 import 'reflect-metadata';
 import { Application } from '../../src/application.js';
 import { Module, Injectable, Singleton, Inject, PostConstruct, PreDestroy } from '../../src/decorators/index.js';
-import { createToken } from '@nexus';
+import { createToken } from '../../src/nexus/index.js';
 
 // Test service tokens
 const ServiceAToken = createToken<ServiceA>('ServiceA');

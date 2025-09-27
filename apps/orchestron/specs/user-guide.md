@@ -184,19 +184,19 @@ orchestron todo "Add rate limiting to API"
 Human                     Orchestron                    Claude
   │                           │                           │
   ├─Create Epic──────────────>│                           │
-  │                           ├─Decompose to Tasks────────>│
-  │                           │<─Task Breakdown────────────┤
-  │<─Review Tasks──────────────┤                           │
+  │                           ├─Decompose to Tasks───────>│
+  │                           │<─Task Breakdown───────────┤
+  │<─Review Tasks─────────────┤                           │
   ├─Approve/Modify───────────>│                           │
-  │                           ├─Assign Task───────────────>│
+  │                           ├─Assign Task──────────────>│
   │                           │                           ├─Work
-  │                           │<─Progress Update───────────┤
-  │<─Status Notification───────┤                           │
+  │                           │<─Progress Update──────────┤
+  │<─Status Notification──────┤                           │
   │                           │                           ├─Complete
-  │                           │<─Mark Complete─────────────┤
-  │<─Ready for Review──────────┤                           │
-  ├─Review & Feedback─────────>│                           │
-  │                           ├─Next Task─────────────────>│
+  │                           │<─Mark Complete────────────┤
+  │<─Ready for Review─────────┤                           │
+  ├─Review & Feedback────────>│                           │
+  │                           ├─Next Task────────────────>│
 ```
 
 ### 5.2 Intervention Points

@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import { Application, createApp } from '../../src/application.js';
-import { createToken } from '@nexus';
+import { createToken } from '../../src/nexus/index.js';
 import {
   ApplicationState,
   ApplicationEvent,
@@ -404,7 +404,8 @@ describe('Application Module Management', () => {
         simple: { updated: 'new-value' }
       });
 
-      expect(module.configValue).toEqual({ updated: 'new-value' });
+      // Configuration should be deep merged
+      expect(module.configValue).toEqual({ initial: 'value', updated: 'new-value' });
     });
   });
 

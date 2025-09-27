@@ -7,7 +7,7 @@
 import type { EventMetadata } from '@omnitron-dev/eventemitter';
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
-import { Inject, Injectable, Optional } from '../../nexus/index.js';
+import { Inject, Injectable, Optional } from '../../decorators/index.js';
 
 import { EVENT_EMITTER_TOKEN } from './events.module.js';
 import { LOGGER_TOKEN } from './tokens.js';

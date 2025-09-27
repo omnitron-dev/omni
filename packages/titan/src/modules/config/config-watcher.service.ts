@@ -6,7 +6,7 @@
 
 import { watch, FSWatcher } from 'node:fs';
 import path from 'node:path';
-import { Injectable } from '../../nexus/index.js';
+import { Injectable } from '../../decorators/index.js';
 
 import type { ConfigSource, IConfigWatcher, IConfigChangeEvent } from './types.js';
 

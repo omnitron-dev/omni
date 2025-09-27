@@ -5,7 +5,7 @@
  */
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import { Inject, Optional, Injectable } from '../../nexus/index.js';
+import { Inject, Optional, Injectable } from '../../decorators/index.js';
 
 import {
   SCHEDULER_EVENTS,

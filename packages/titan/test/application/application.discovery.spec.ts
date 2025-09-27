@@ -158,20 +158,29 @@ module.exports = { NotAModule };
 class ErrorModule {
   // Syntax error: missing closing brace
 `;
-      fs.writeFileSync(
-        path.join(tempDir, 'error-module.cjs'),
-        errorModuleContent
-      );
+      const errorFile = path.join(tempDir, 'error-module.cjs');
+      fs.writeFileSync(errorFile, errorModuleContent);
 
       await expect(app.discoverModules(tempDir)).rejects.toThrow();
+
+      // Clean up the error file to prevent it from affecting other tests
+      fs.unlinkSync(errorFile);
     });
   });
 
   describe('Scan Paths Configuration', () => {
     beforeEach(() => {
+      // Clean up any existing test files
+      const testFiles = ['module1.cjs', 'module2.cjs', 'error-module.cjs'];
+      testFiles.forEach(file => {
+        const filePath = path.join(tempDir, file);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      });
+
       // Create test module files for scan paths tests
-      const module1Content = `
-class TestDiscoveredModule1 {
+      const module1Content = `class TestDiscoveredModule1 {
   constructor() {
     this.name = 'discovered-1';
     this.version = '1.0.0';
@@ -179,11 +188,9 @@ class TestDiscoveredModule1 {
 }
 TestDiscoveredModule1.__titanModule = true;
 TestDiscoveredModule1.__titanModuleMetadata = {};
-module.exports = { TestDiscoveredModule1 };
-`;
+module.exports = { TestDiscoveredModule1 };`;
 
-      const module2Content = `
-class TestDiscoveredModule2 {
+      const module2Content = `class TestDiscoveredModule2 {
   constructor() {
     this.name = 'discovered-2';
     this.version = '1.0.0';
@@ -191,8 +198,7 @@ class TestDiscoveredModule2 {
 }
 TestDiscoveredModule2.__titanModule = true;
 TestDiscoveredModule2.__titanModuleMetadata = {};
-module.exports = { TestDiscoveredModule2 };
-`;
+module.exports = { TestDiscoveredModule2 };`;
 
       fs.writeFileSync(
         path.join(tempDir, 'module1.cjs'),
@@ -225,16 +231,14 @@ module.exports = { TestDiscoveredModule2 };
 
       try {
         // Create module in second directory
-        const module3Content = `
-class TestDiscoveredModule3 {
+        const module3Content = `class TestDiscoveredModule3 {
   constructor() {
     this.name = 'discovered-3';
   }
 }
 TestDiscoveredModule3.__titanModule = true;
 TestDiscoveredModule3.__titanModuleMetadata = {};
-module.exports = { TestDiscoveredModule3 };
-`;
+module.exports = { TestDiscoveredModule3 };`;
         fs.writeFileSync(
           path.join(tempDir2, 'module3.cjs'),
           module3Content

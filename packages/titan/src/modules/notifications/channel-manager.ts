@@ -1,4 +1,4 @@
-import { Injectable } from '../../nexus/index.js';
+import { Injectable } from '../../decorators/index.js';
 import { NotificationPayload, Recipient, SendOptions } from './notifications.service.js';
 
 export enum ChannelType {

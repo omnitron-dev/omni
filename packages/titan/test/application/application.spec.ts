@@ -697,7 +697,7 @@ describe('Titan Application', () => {
       });
 
       expect(app.config('app')).toEqual({ name: 'test' });
-      expect(app.config('server')).toEqual({ host: 'localhost' });
+      expect(app.config('server')).toEqual({ port: 3000, host: 'localhost' }); // Deep merged
       expect(app.config('database')).toEqual({ url: 'postgres://...' });
     });
 

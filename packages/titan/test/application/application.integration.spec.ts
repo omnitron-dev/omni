@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import { Application, createApp, startApp } from '../../src/application.js';
-import { createToken } from '@nexus';
+import { createToken } from '../../src/nexus/index.js';
 import {
   ApplicationState,
   ApplicationEvent,
@@ -203,15 +203,15 @@ describe('Application Integration', () => {
 
       app.onStart(() => {
         executionOrder.push('start-2');
-      }, 10); // Higher priority
+      }, 10); // Higher priority (lower number = higher priority)
 
       app.onStart(() => {
         executionOrder.push('start-3');
-      }, 5);
+      }, 50); // Medium priority
 
       await app.start();
 
-      // Should execute in priority order (higher first)
+      // Should execute in priority order (lower numbers first)
       expect(executionOrder).toEqual(['start-2', 'start-3', 'start-1']);
 
       await app.stop();

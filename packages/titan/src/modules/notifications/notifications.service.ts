@@ -1,4 +1,4 @@
-import { Injectable } from '../../nexus/index.js';
+import { Injectable } from '../../decorators/index.js';
 import { NotificationManager } from '../../rotif/rotif.js';
 import { ChannelManager, ChannelType, DeliveryResults } from './channel-manager.js';
 import { PreferenceManager } from './preference-manager.js';
@@ -93,7 +93,7 @@ export class NotificationService {
     private channelManager: ChannelManager,
     private preferenceManager: PreferenceManager,
     private rateLimiter: RateLimiter
-  ) {}
+  ) { }
 
   /**
    * Send a notification to specified recipients

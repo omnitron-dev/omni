@@ -4,7 +4,7 @@
  * Handles job state persistence and recovery
  */
 
-import { Inject, Optional, Injectable } from '../../nexus/index.js';
+import { Inject, Optional, Injectable } from '../../decorators/index.js';
 
 import {
   SCHEDULER_CONFIG_TOKEN

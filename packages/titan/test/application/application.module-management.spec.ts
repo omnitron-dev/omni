@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import { Application, createApp } from '../../src/application.js';
-import { createToken } from '@nexus';
+import { createToken } from '../../src/nexus/index.js';
 import {
   SimpleModule,
   DatabaseModule,
@@ -48,11 +48,15 @@ describe('Application Module Management', () => {
       expect(app.hasModule('nonexistent')).toBe(false);
     });
 
-    it('should prevent duplicate module registration', () => {
+    it('should handle duplicate module registration gracefully', () => {
       const module = new SimpleModule();
       app.use(module);
 
-      expect(() => app.use(module)).toThrow(/already registered/i);
+      // Using the same module instance again should be idempotent
+      expect(() => app.use(module)).not.toThrow();
+
+      // Should still only have one module registered
+      expect(app.hasModule('simple')).toBe(true);
     });
 
     it('should get module by name', async () => {

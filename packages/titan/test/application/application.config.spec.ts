@@ -393,7 +393,6 @@ describe('Application Configuration', () => {
       });
 
       const dbModule = new DatabaseModule();
-      app.use(dbModule);
 
       // Module should handle invalid config gracefully
       expect(() => app.use(dbModule)).not.toThrow();

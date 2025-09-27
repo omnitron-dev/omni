@@ -2,6 +2,7 @@
  * Tracing and DevTools Tests
  * Tests for distributed tracing and developer tools integration
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import {
   Container,

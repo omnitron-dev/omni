@@ -42,15 +42,24 @@ export class ConfigModule {
   /**
    * Configure the Config module with options
    */
-  static forRoot(options: IConfigModuleOptions = {}): any {
+  static forRoot(options: IConfigModuleOptions & { defaults?: Record<string, any> } = {}): any {
     // Create service instances directly
     const loader = new ConfigLoaderService();
     const validator = new ConfigValidatorService();
     const watcher = options.watchForChanges ? new ConfigWatcherService() : undefined;
 
+    // Convert defaults to sources if provided and no sources are specified
+    const normalizedOptions = { ...options };
+    if (!normalizedOptions.sources && (options as any).defaults) {
+      normalizedOptions.sources = [{
+        type: 'object' as const,
+        data: (options as any).defaults
+      }];
+    }
+
     // Create ConfigService instance directly
     const configService = new ConfigService(
-      options,
+      normalizedOptions,
       loader,
       validator,
       watcher,
@@ -61,9 +70,9 @@ export class ConfigModule {
     return {
       module: ConfigModule,
       providers: [
-        // Provide options
+        // Provide normalized options
         [CONFIG_OPTIONS_TOKEN, {
-          useValue: options
+          useValue: normalizedOptions
         }] as any,
 
         // Provide global schema if specified
@@ -172,12 +181,21 @@ export class ConfigModule {
 
         // Main Config Service with async initialization
         [CONFIG_SERVICE_TOKEN, {
-          useFactory: async (opts: IConfigModuleOptions) => {
+          useFactory: async (opts: IConfigModuleOptions & { defaults?: Record<string, any> }) => {
+            // Normalize options to handle defaults
+            const normalizedOpts = { ...opts };
+            if (!normalizedOpts.sources && (opts as any).defaults) {
+              normalizedOpts.sources = [{
+                type: 'object' as const,
+                data: (opts as any).defaults
+              }];
+            }
+
             // Provide schema if available in options
             const schema = opts.schema;
 
             const service = new ConfigService(
-              opts,
+              normalizedOpts,
               loader,
               validator,
               opts.watchForChanges ? watcher : undefined,

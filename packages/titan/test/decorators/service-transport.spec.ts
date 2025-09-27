@@ -1,12 +1,14 @@
 /**
  * Tests for Service decorator with transport configuration
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import 'reflect-metadata';
 import { Service, Public, Method } from '../../src/decorators/index.js';
 import { SERVICE_ANNOTATION } from '../../src/decorators/core.js';
 import type { ExtendedServiceMetadata } from '../../src/decorators/core.js';
 import { WebSocketTransport, TcpTransport } from '../../src/netron/transport/index.js';
+import { UnixSocketTransport, NamedPipeTransport } from '../../src/netron/transport/unix-transport.js';
 import { LocalPeer } from '../../src/netron/local-peer.js';
 import { RemotePeer } from '../../src/netron/remote-peer.js';
 import type { ITransport } from '../../src/netron/transport/types.js';
@@ -155,7 +157,6 @@ describe('Service Decorator with Transports', () => {
         return;
       }
 
-      const { UnixSocketTransport } = require('../../src/netron/transport/unix-transport.js');
       const unixTransport = new UnixSocketTransport({ path: '/tmp/test.sock' });
 
       @Service({
@@ -181,7 +182,6 @@ describe('Service Decorator with Transports', () => {
         return;
       }
 
-      const { NamedPipeTransport } = require('../../src/netron/transport/unix-transport.js');
       const pipeTransport = new NamedPipeTransport({ pipeName: 'test-pipe' });
 
       @Service({

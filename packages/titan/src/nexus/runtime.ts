@@ -206,14 +206,8 @@ export async function loadRuntimeModule<T>(modulePaths: {
   }
 
   try {
-    if (hasESMSupport()) {
-      const module = await import(modulePath);
-      return module.default || module;
-    } else {
-      // Fallback for older environments
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      return require(modulePath);
-    }
+    const module = await import(modulePath);
+    return module.default || module;
   } catch (error) {
     throw new Error(`Failed to load module '${modulePath}' for runtime '${runtime}': ${error}`);
   }

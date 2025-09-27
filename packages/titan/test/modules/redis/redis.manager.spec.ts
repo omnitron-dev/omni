@@ -1,3 +1,5 @@
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { createHash } from 'node:crypto';
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
 import { RedisModuleOptions } from '../../../src/modules/redis/redis.types.js';
 import type { Redis } from 'ioredis';
@@ -18,6 +20,9 @@ jest.mock('ioredis', () => {
 const ioredis = jest.requireMock('ioredis');
 const mockRedis = ioredis.Redis as jest.Mock;
 const mockCluster = ioredis.Cluster as jest.Mock;
+
+// Mock redis.utils - we'll set the implementation in beforeEach
+jest.mock('../../../src/modules/redis/redis.utils.js');
 
 describe('RedisManager', () => {
   let manager: RedisManager;
@@ -41,6 +46,18 @@ describe('RedisManager', () => {
     } as any;
 
     mockRedis.mockImplementation(() => mockRedisInstance);
+
+    // Set up redis.utils mocks
+    const redisUtils = jest.requireMock('../../../src/modules/redis/redis.utils.js');
+    redisUtils.createRedisClient = jest.fn(() => mockRedisInstance);
+    redisUtils.waitForConnection = jest.fn(async () => {});
+    redisUtils.mergeOptions = jest.fn((a, b) => ({ ...a, ...b }));
+    redisUtils.generateScriptSha = jest.fn((content: string) => {
+      return createHash('sha1').update(content).digest('hex');
+    });
+    redisUtils.loadScriptContent = jest.fn(() => 'mock-script');
+    redisUtils.getClientNamespace = jest.fn((client, fallback = 'default') => fallback);
+    redisUtils.createRetryStrategy = jest.fn(() => (times: number) => Math.min(times * 50, 2000));
   });
 
   afterEach(() => {

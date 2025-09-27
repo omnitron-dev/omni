@@ -1,6 +1,7 @@
 /**
  * Tests for EventHistoryService
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import 'reflect-metadata';
 import { EventHistoryService } from '../../../src/modules/events/event-history.service';

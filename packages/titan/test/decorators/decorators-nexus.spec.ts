@@ -3,6 +3,7 @@
  * Tests for optional decorator-based dependency injection
  * Note: These tests require reflect-metadata to be installed
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import 'reflect-metadata'; // Required for decorator support
 import {

@@ -1,6 +1,7 @@
 /**
  * Tests for Base Transport Classes
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import { EventEmitter } from 'events';
 import {

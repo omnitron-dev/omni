@@ -156,6 +156,11 @@ export async function waitForConnection(
   client: RedisClient,
   timeout = 5000,
 ): Promise<boolean> {
+  // Handle invalid timeouts
+  if (timeout <= 0) {
+    return Promise.resolve(false);
+  }
+
   // If already ready, return immediately
   if ((client as any).status === 'ready') {
     return Promise.resolve(true);
@@ -198,13 +203,6 @@ export async function waitForConnection(
       clearTimeout(timer);
       resolve(true);
       return;
-    }
-
-    // Force connection if status is 'wait'
-    if (client.status === 'wait') {
-      client.connect().catch(() => {
-        // Connection attempt failed, but error event will handle cleanup
-      });
     }
   });
 }

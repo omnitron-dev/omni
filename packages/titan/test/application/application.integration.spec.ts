@@ -7,6 +7,7 @@
  * - Performance and reliability
  * - Advanced patterns
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import { Application, createApp, startApp } from '../../src/application.js';
 import { createToken } from '@nexus';

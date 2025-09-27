@@ -4,22 +4,22 @@
  */
 
 import 'reflect-metadata';
-import { createToken, Container } from '@nexus';
+import { createToken, Container } from '../src/nexus/index.js';
 import {
-  TitanApplication,
+  Application,
   Injectable,
   Singleton,
   Inject,
   Service,
   OnInit,
   OnDestroy,
-  EnhancedApplicationModule,
-  LoggerModule,
-  ConfigModule,
+  Module,
   type IApplication,
   type Provider,
   type ModuleMetadata
 } from '../src/index.js';
+import { LoggerModule } from '../src/modules/logger/logger.module.js';
+import { ConfigModule } from '../src/modules/config/config.module.js';
 
 describe('DI Integration Tests', () => {
   describe('Complete DI Flow', () => {
@@ -98,26 +98,19 @@ describe('DI Integration Tests', () => {
       }
 
       // Create module with all providers
-      class TestModule extends EnhancedApplicationModule {
-        constructor() {
-          super({
-            name: 'TestModule',
-            providers: [
-              { provide: DatabaseToken, useClass: DatabaseService },
-              { provide: CacheToken, useClass: CacheService },
-              { provide: ApiToken, useClass: ApiService },
-              { provide: AppToken, useClass: AppService }
-            ],
-            exports: [DatabaseToken, CacheToken, ApiToken, AppToken]
-          });
-        }
-      }
+      @Module({
+        providers: [
+          { provide: DatabaseToken, useClass: DatabaseService },
+          { provide: CacheToken, useClass: CacheService },
+          { provide: ApiToken, useClass: ApiService },
+          { provide: AppToken, useClass: AppService }
+        ],
+        exports: [DatabaseToken, CacheToken, ApiToken, AppToken]
+      })
+      class TestModule {}
 
       // Create and start application
-      const app = await TitanApplication.create({
-        name: 'TestApp',
-        modules: [TestModule]
-      });
+      const app = await Application.create(TestModule);
 
       await app.start();
 
@@ -175,7 +168,7 @@ describe('DI Integration Tests', () => {
       ServiceB = ServiceBImpl;
 
       // Use a module for proper provider registration
-      class CircularModule extends EnhancedApplicationModule {
+      class CircularModule extends Module {
         constructor() {
           super({
             name: 'CircularModule',
@@ -187,7 +180,7 @@ describe('DI Integration Tests', () => {
         }
       }
 
-      const app = await TitanApplication.create({
+      const app = await Application.create({
         name: 'CircularTest',
         modules: [CircularModule]
       });
@@ -229,7 +222,7 @@ describe('DI Integration Tests', () => {
       }
 
       // Use a module for proper provider registration
-      class FactoryModule extends EnhancedApplicationModule {
+      class FactoryModule extends Module {
         constructor() {
           super({
             name: 'FactoryModule',
@@ -259,7 +252,7 @@ describe('DI Integration Tests', () => {
         }
       }
 
-      const app = await TitanApplication.create({
+      const app = await Application.create({
         name: 'FactoryTest',
         modules: [FactoryModule]
       });
@@ -311,7 +304,7 @@ describe('DI Integration Tests', () => {
       }
 
       // Shared module
-      class SharedModule extends EnhancedApplicationModule {
+      class SharedModule extends Module {
         constructor() {
           super({
             name: 'SharedModule',
@@ -324,7 +317,7 @@ describe('DI Integration Tests', () => {
       }
 
       // Module A depending on Shared
-      class ModuleA extends EnhancedApplicationModule {
+      class ModuleA extends Module {
         constructor() {
           super({
             name: 'ModuleA',
@@ -338,7 +331,7 @@ describe('DI Integration Tests', () => {
       }
 
       // Module B depending on both Shared and ModuleA
-      class ModuleB extends EnhancedApplicationModule {
+      class ModuleB extends Module {
         constructor() {
           super({
             name: 'ModuleB',
@@ -350,7 +343,7 @@ describe('DI Integration Tests', () => {
         }
       }
 
-      const app = await TitanApplication.create({
+      const app = await Application.create({
         name: 'MultiModuleApp',
         modules: [SharedModule, ModuleA, ModuleB]
       });
@@ -397,7 +390,7 @@ describe('DI Integration Tests', () => {
       }
 
       // Use a module for proper provider registration
-      class ScopeModule extends EnhancedApplicationModule {
+      class ScopeModule extends Module {
         constructor() {
           super({
             name: 'ScopeModule',
@@ -409,7 +402,7 @@ describe('DI Integration Tests', () => {
         }
       }
 
-      const app = await TitanApplication.create({
+      const app = await Application.create({
         name: 'ScopeTest',
         modules: [ScopeModule]
       });
@@ -477,7 +470,7 @@ describe('DI Integration Tests', () => {
       }
 
       // Use a module for proper provider registration
-      class OptionalModule extends EnhancedApplicationModule {
+      class OptionalModule extends Module {
         constructor() {
           super({
             name: 'OptionalModule',
@@ -490,7 +483,7 @@ describe('DI Integration Tests', () => {
         }
       }
 
-      const app = await TitanApplication.create({
+      const app = await Application.create({
         name: 'OptionalTest',
         modules: [OptionalModule]
       });
@@ -546,7 +539,7 @@ describe('DI Integration Tests', () => {
       }
 
       // Use a module for proper provider registration
-      class PerformanceModule extends EnhancedApplicationModule {
+      class PerformanceModule extends Module {
         constructor() {
           super({
             name: 'PerformanceModule',
@@ -555,7 +548,7 @@ describe('DI Integration Tests', () => {
         }
       }
 
-      const app = await TitanApplication.create({
+      const app = await Application.create({
         name: 'PerformanceTest',
         modules: [PerformanceModule]
       });
@@ -594,7 +587,7 @@ describe('DI Integration Tests', () => {
       }
 
       // Use a module for proper provider registration
-      class ErrorModule extends EnhancedApplicationModule {
+      class ErrorModule extends Module {
         constructor() {
           super({
             name: 'ErrorModule',
@@ -605,7 +598,7 @@ describe('DI Integration Tests', () => {
         }
       }
 
-      const app = await TitanApplication.create({
+      const app = await Application.create({
         name: 'ErrorTest',
         modules: [ErrorModule]
       });
@@ -630,7 +623,7 @@ describe('DI Integration Tests', () => {
       }
 
       // Use a module for proper provider registration
-      class InitErrorModule extends EnhancedApplicationModule {
+      class InitErrorModule extends Module {
         constructor() {
           super({
             name: 'InitErrorModule',
@@ -641,7 +634,7 @@ describe('DI Integration Tests', () => {
         }
       }
 
-      const app = await TitanApplication.create({
+      const app = await Application.create({
         name: 'InitErrorTest',
         modules: [InitErrorModule]
       });

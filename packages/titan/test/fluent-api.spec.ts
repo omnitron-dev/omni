@@ -1,6 +1,7 @@
 /**
  * Tests for Titan fluent API
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 // Jest is globally available, no need to import
 import { createApp, defineModule, createToken, LOGGER_SERVICE_TOKEN, CONFIG_SERVICE_TOKEN } from '../src';

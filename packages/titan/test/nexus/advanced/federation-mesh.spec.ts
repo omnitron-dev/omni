@@ -2,6 +2,7 @@
  * Module Federation and Service Mesh Tests
  * Tests for distributed module loading and service discovery
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import {
   Container,

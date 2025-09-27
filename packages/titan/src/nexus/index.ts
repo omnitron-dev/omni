@@ -27,9 +27,7 @@ export {
   Container
 } from './container.js';
 
-export { createToken as token } from './token.js';
-
-export { createMultiToken as multiToken } from './token.js';
+// Token and other types are exported below from types.js
 
 // Convenience exports
 export { Container as NexusContainer } from './container.js';
@@ -140,12 +138,14 @@ export {
 export {
   isToken,
   createToken,
+  createToken as token,  // Alias for convenience
   isMultiToken,
   getTokenName,
   tokenFromClass,
   createLazyToken,
   isOptionalToken,
   createMultiToken,
+  createMultiToken as multiToken,  // Alias for convenience
   createAsyncToken,
   createConfigToken,
   createScopedToken,

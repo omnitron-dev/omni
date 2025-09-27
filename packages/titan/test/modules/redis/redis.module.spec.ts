@@ -4,8 +4,9 @@
  * Tests module creation, provider registration, and client initialization
  * without any NestJS dependencies
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
-import { Container } from '@nexus';
+import { Container } from '../../../src/nexus/index.js';
 import { TitanRedisModule } from '../../../src/modules/redis/redis.module.js';
 import { RedisService } from '../../../src/modules/redis/redis.service.js';
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
@@ -17,12 +18,8 @@ import * as redisUtils from '../../../src/modules/redis/redis.utils.js';
 
 // Mock redis.utils to use mock clients
 jest.mock('../../../src/modules/redis/redis.utils.js', () => ({
-  ...jest.requireActual('../../../src/modules/redis/redis.utils.js'),
-  createRedisClient: jest.fn(() => {
-    const { createMockRedisClient } = require('../../../src/testing/test-helpers.js');
-    return createMockRedisClient();
-  }),
-  waitForConnection: jest.fn(async () => {}),
+  createRedisClient: jest.fn(() => createMockRedisClient()),
+  waitForConnection: jest.fn(async () => { }),
 }));
 
 describe('TitanRedisModule', () => {

@@ -25,11 +25,21 @@ export class ConfigLoaderService implements IConfigLoader {
   /**
    * Load configuration from multiple sources
    */
-  async load(sources: ConfigSource[]): Promise<Record<string, any>> {
+  async load(sources: ConfigSource[] | ConfigSource): Promise<Record<string, any>> {
     const configs: Record<string, any>[] = [];
 
+    // Ensure sources is an array
+    const sourcesArray = Array.isArray(sources) ? sources : [sources];
+
+    // Sort sources by priority (lower priority first, undefined = 0)
+    const sortedSources = [...sourcesArray].sort((a, b) => {
+      const aPriority = (a as any).priority || 0;
+      const bPriority = (b as any).priority || 0;
+      return aPriority - bPriority;
+    });
+
     // Load from sources in order (first = lowest priority)
-    for (const source of sources) {
+    for (const source of sortedSources) {
       try {
         const config = await this.loadSource(source);
         if (config && Object.keys(config).length > 0) {
@@ -63,7 +73,7 @@ export class ConfigLoaderService implements IConfigLoader {
       case 'remote':
         return this.loadRemote(source);
       default:
-        throw new Error(`Unknown config source type: ${(source as any).type}`);
+        throw new Error(`Unsupported configuration source type: ${(source as any).type}`);
     }
   }
 
@@ -88,19 +98,36 @@ export class ConfigLoaderService implements IConfigLoader {
     const format = source.format || this.detectFormat(filePath);
 
     // Parse based on format
+    let data: Record<string, any>;
     switch (format) {
       case 'json':
-        return JSON.parse(content);
+        data = JSON.parse(content);
+        break;
 
       case 'yaml':
-        return parseYaml(content) || {};
+        data = parseYaml(content) || {};
+        break;
 
       case 'env':
-        return this.parseEnvFile(content);
+        data = this.parseEnvFile(content);
+        break;
+
+      case 'properties':
+        data = this.parsePropertiesFile(content);
+        break;
 
       default:
         throw new Error(`Unsupported config file format: ${format}`);
     }
+
+    // Apply transformation if specified
+    if (source.transform) {
+      if (typeof source.transform === 'function') {
+        data = source.transform(data);
+      }
+    }
+
+    return data;
   }
 
   /**
@@ -116,17 +143,22 @@ export class ConfigLoaderService implements IConfigLoader {
         // Remove prefix if present
         const configKey = prefix ? key.slice(prefix.length) : key;
 
-        // Convert separator to dots for nested paths
-        const configPath = configKey.replace(new RegExp(separator, 'g'), '.');
-
-        // Apply transformation
-        const transformedPath = this.transformKey(configPath, source.transform);
+        // Convert separator to dots for nested paths and make lowercase
+        const configPath = configKey.toLowerCase().replace(new RegExp(separator, 'g'), '.');
 
         // Parse value (handle booleans and numbers)
-        const parsedValue = this.parseEnvValue(value!);
+        let parsedValue = this.parseEnvValue(value!);
+
+        // Apply transformation if it's a function that takes key and value
+        if (typeof source.transform === 'function') {
+          const transformed = source.transform(configKey, parsedValue);
+          if (transformed !== undefined) {
+            parsedValue = transformed;
+          }
+        }
 
         // Set nested value
-        this.setNestedValue(config, transformedPath, parsedValue);
+        this.setNestedValue(config, configPath, parsedValue);
       }
     }
 
@@ -230,6 +262,38 @@ export class ConfigLoaderService implements IConfigLoader {
   }
 
   /**
+   * Parse .properties file content
+   */
+  private parsePropertiesFile(content: string): Record<string, any> {
+    const config: Record<string, any> = {};
+    const lines = content.split('\n');
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+
+      // Skip comments and empty lines
+      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('!')) continue;
+
+      // Handle line continuation (simple implementation)
+      if (trimmed.endsWith('\\')) {
+        continue; // In production should concatenate lines
+      }
+
+      const separatorIndex = trimmed.indexOf('=') !== -1 ? trimmed.indexOf('=') : trimmed.indexOf(':');
+      if (separatorIndex === -1) continue;
+
+      const key = trimmed.substring(0, separatorIndex).trim();
+      const value = trimmed.substring(separatorIndex + 1).trim();
+
+      // Convert property path to nested object
+      const configPath = key.replace(/\./g, '.');
+      this.setNestedValue(config, configPath, this.parseEnvValue(value));
+    }
+
+    return config;
+  }
+
+  /**
    * Parse environment variable value
    */
   private parseEnvValue(value: string): any {
@@ -282,6 +346,8 @@ export class ConfigLoaderService implements IConfigLoader {
         return 'yaml';
       case '.env':
         return 'env';
+      case '.properties':
+        return 'properties';
       default:
         return 'json'; // Default to JSON
     }
@@ -332,6 +398,48 @@ export class ConfigLoaderService implements IConfigLoader {
    */
   private mergeConfigs(configs: Record<string, any>[]): Record<string, any> {
     return configs.reduce((merged, config) => this.deepMerge(merged, config), {});
+  }
+
+  /**
+   * Transform configuration data
+   */
+  private transformData(data: any, transform: string | ((value: any) => any)): any {
+    if (typeof transform === 'function') {
+      return transform(data);
+    }
+
+    // Apply string transformation to all string values
+    if (typeof transform === 'string') {
+      return this.transformObject(data, (value) => {
+        if (typeof value === 'string') {
+          return this.transformKey(value, transform);
+        }
+        return value;
+      });
+    }
+
+    return data;
+  }
+
+  /**
+   * Recursively transform all values in an object
+   */
+  private transformObject(obj: any, transformer: (value: any) => any): any {
+    if (typeof obj !== 'object' || obj === null) {
+      return transformer(obj);
+    }
+
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.transformObject(item, transformer));
+    }
+
+    const result: Record<string, any> = {};
+    for (const key in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        result[key] = this.transformObject(obj[key], transformer);
+      }
+    }
+    return result;
   }
 
   /**

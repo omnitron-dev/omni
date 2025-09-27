@@ -1,6 +1,7 @@
 /**
  * Application shutdown and process lifecycle tests
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import { Application } from '../../src/application.js';
 import { ShutdownReason, ShutdownPriority } from '../../src/types.js';

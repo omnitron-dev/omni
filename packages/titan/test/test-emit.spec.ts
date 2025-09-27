@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { createApp } from '../src/application.js';
 
 describe('Test Emit', () => {
@@ -15,6 +16,13 @@ describe('Test Emit', () => {
 
     console.log('Handler mock calls:', handler.mock.calls);
     console.log('First call args:', handler.mock.calls[0]);
-    expect(handler).toHaveBeenCalledWith(testData);
+
+    // The application adds metadata as the second argument
+    expect(handler).toHaveBeenCalled();
+    expect(handler.mock.calls[0][0]).toEqual(testData);
+    expect(handler.mock.calls[0][1]).toMatchObject({
+      event: 'custom',
+      source: 'application'
+    });
   });
 });

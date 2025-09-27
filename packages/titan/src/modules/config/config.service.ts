@@ -320,6 +320,13 @@ export class ConfigService implements IConfigProvider {
    * Set value by dot notation path
    */
   private setValueByPath(obj: any, path: string, value: any): void {
+    // Handle empty path - replace entire config
+    if (!path || path === '') {
+      Object.keys(obj).forEach(key => delete obj[key]);
+      Object.assign(obj, value);
+      return;
+    }
+
     const keys = path.split('.');
     let current = obj;
 

@@ -7,6 +7,7 @@ import type { NotificationService } from '../../../src/modules/notifications/not
 import type { PreferenceManager } from '../../../src/modules/notifications/preference-manager.js';
 import type { RateLimiter } from '../../../src/modules/notifications/rate-limiter.js';
 import type { ChannelManager } from '../../../src/modules/notifications/channel-manager.js';
+import { InAppChannel, EmailChannel } from '../../../src/modules/notifications/channel-manager.js';
 
 describe('Notifications Module Integration', () => {
   let redis: Redis;
@@ -224,8 +225,6 @@ describe('Notifications Module Integration', () => {
 
     describe('ChannelManager', () => {
       it('should have default channels registered', () => {
-        const { InAppChannel } = require('../../../src/modules/notifications/channel-manager.js');
-
         // Channel manager should have at least InApp channel by default
         const channels = channelManager['channels'];
         expect(channels.size).toBeGreaterThan(0);
@@ -255,7 +254,6 @@ describe('Notifications Module Integration', () => {
       });
 
       it('should validate recipients for channels', () => {
-        const { EmailChannel } = require('../../../src/modules/notifications/channel-manager.js');
         const emailChannel = new EmailChannel();
 
         expect(emailChannel.validateRecipient({ id: 'user-1', email: 'valid@email.com' })).toBe(true);
@@ -264,7 +262,6 @@ describe('Notifications Module Integration', () => {
       });
 
       it('should format content for channels', () => {
-        const { InAppChannel } = require('../../../src/modules/notifications/channel-manager.js');
         const inAppChannel = new InAppChannel();
 
         const content = inAppChannel.formatContent({

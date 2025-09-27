@@ -2,6 +2,7 @@
  * Core Container Tests
  * Tests for the fundamental container functionality including registration, resolution, and lifecycle
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import {
   Container,

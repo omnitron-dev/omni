@@ -2,6 +2,7 @@
  * Tests for ConfigService
  */
 
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { z } from 'zod';
 import { ConfigService } from '../../../src/modules/config/config.service.js';
 import { ConfigLoaderService } from '../../../src/modules/config/config-loader.service.js';
@@ -104,9 +105,11 @@ describe('ConfigService', () => {
       configService = new ConfigService(
         {
           schema: testSchema,
-          defaults: validConfig,
           validateOnStartup: true,
-          sources: []
+          sources: [{
+            type: 'object',
+            data: validConfig
+          }]
         },
         mockLoader,
         mockValidator,

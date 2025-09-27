@@ -8,6 +8,7 @@
  * - Module configuration
  * - Module health checks
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import { Application, createApp } from '../../src/application.js';
 import { createToken } from '@nexus';

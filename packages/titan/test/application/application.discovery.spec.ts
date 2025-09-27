@@ -7,7 +7,7 @@
 
 import { Application, createApp } from '../../src/application.js';
 import { Module, Injectable } from '../../src/decorators/index.js';
-import { AbstractModule, IApplication } from '../../src/types.js';
+import { IModule, IApplication } from '../../src/types.js';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -274,8 +274,8 @@ module.exports = { TestDiscoveredModule3 };
   describe('Module Class Detection', () => {
     it('should detect @Module decorated classes', () => {
       @Module({})
-      class DecoratedModule extends AbstractModule {
-        override readonly name = 'decorated';
+      class DecoratedModule implements IModule {
+        readonly name = 'decorated';
       }
 
       const instance = new DecoratedModule();
@@ -284,11 +284,11 @@ module.exports = { TestDiscoveredModule3 };
 
     it('should detect modules by interface implementation', async () => {
       // Module without decorator but implements interface
-      class InterfaceModule extends AbstractModule {
-        override readonly name = 'interface-module';
-        override readonly version = '1.0.0';
+      class InterfaceModule implements IModule {
+        readonly name = 'interface-module';
+        readonly version = '1.0.0';
 
-        override async onStart(app: IApplication): Promise<void> {
+        async onStart(app: IApplication): Promise<void> {
           // Custom start logic
         }
       }
@@ -323,11 +323,11 @@ module.exports = { InvalidModule };
       await app.start();
 
       // Dynamically create and register module
-      class DynamicModule extends AbstractModule {
-        override readonly name = 'dynamic';
+      class DynamicModule implements IModule {
+        readonly name = 'dynamic';
         loaded = false;
 
-        override async onStart(): Promise<void> {
+        async onStart(): Promise<void> {
           this.loaded = true;
         }
       }
@@ -341,17 +341,17 @@ module.exports = { InvalidModule };
 
     it('should handle dynamic module with dependencies', async () => {
       // Start app with base module
-      class BaseModule extends AbstractModule {
-        override readonly name = 'base';
+      class BaseModule implements IModule {
+        readonly name = 'base';
       }
 
       app.use(new BaseModule());
       await app.start();
 
       // Add dynamic module with dependency
-      class DynamicWithDep extends AbstractModule {
-        override readonly name = 'dynamic-dep';
-        override readonly dependencies = ['base'];
+      class DynamicWithDep implements IModule {
+        readonly name = 'dynamic-dep';
+        readonly dependencies = ['base'];
       }
 
       const module = new DynamicWithDep();
@@ -363,9 +363,9 @@ module.exports = { InvalidModule };
     it('should reject dynamic module with missing dependencies', async () => {
       await app.start();
 
-      class DynamicWithMissingDep extends AbstractModule {
-        override readonly name = 'dynamic-missing';
-        override readonly dependencies = ['nonexistent'];
+      class DynamicWithMissingDep implements IModule {
+        readonly name = 'dynamic-missing';
+        readonly dependencies = ['nonexistent'];
       }
 
       const module = new DynamicWithMissingDep();
@@ -376,9 +376,9 @@ module.exports = { InvalidModule };
   describe('Module Factory Pattern', () => {
     it('should create modules from factory functions', async () => {
       const createDatabaseModule = (config: any) => {
-        class ConfiguredDatabaseModule extends AbstractModule {
-          override readonly name = 'database';
-          override readonly version = '1.0.0';
+        class ConfiguredDatabaseModule implements IModule {
+          readonly name = 'database';
+          readonly version = '1.0.0';
 
           getConfig() {
             return config;
@@ -408,8 +408,8 @@ module.exports = { InvalidModule };
         // Simulate async initialization
         await new Promise(resolve => setTimeout(resolve, 10));
 
-        class AsyncCreatedModule extends AbstractModule {
-          override readonly name = 'async-created';
+        class AsyncCreatedModule implements IModule {
+          readonly name = 'async-created';
         }
 
         return new AsyncCreatedModule();
@@ -429,8 +429,8 @@ module.exports = { InvalidModule };
         providers: [{ provide: 'TEST', useValue: 'test' }],
         exports: ['TEST']
       })
-      class MetadataModule extends AbstractModule {
-        override readonly name = 'metadata-module';
+      class MetadataModule implements IModule {
+        readonly name = 'metadata-module';
       }
 
       const module = new MetadataModule();
@@ -453,8 +453,8 @@ module.exports = { InvalidModule };
         providers: [TestService],
         exports: [TestService]
       })
-      class ServiceModule extends AbstractModule {
-        override readonly name = 'service-module';
+      class ServiceModule implements IModule {
+        readonly name = 'service-module';
       }
 
       const module = new ServiceModule();

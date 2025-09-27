@@ -302,12 +302,20 @@ export class RedisService {
 
   async zadd(
     key: string,
-    score: number,
-    member: string,
-    namespace?: string,
+    ...args: (string | number)[]
   ): Promise<number> {
+    // Parse namespace from last argument if it's a string and not part of score-member pairs
+    let namespace: string | undefined;
+    let scoreMembers = args;
+
+    // Check if last arg could be namespace (odd number of args and last is string)
+    if (args.length % 2 === 1 && typeof args[args.length - 1] === 'string') {
+      namespace = args[args.length - 1] as string;
+      scoreMembers = args.slice(0, -1);
+    }
+
     const client = this.getClient(namespace);
-    return client.zadd(key, score, member);
+    return client.zadd(key, ...scoreMembers);
   }
 
   async zrem(

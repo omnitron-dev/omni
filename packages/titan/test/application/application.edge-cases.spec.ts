@@ -1,23 +1,24 @@
 /**
  * Edge case tests for Titan Application to achieve >96% coverage
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import { createToken } from '@nexus';
 import { Application, createApp } from '../../src/application.js';
 import { LOGGER_SERVICE_TOKEN } from '../../src/modules/logger.module.js';
 const CONFIG_SERVICE_TOKEN = createToken('ConfigModule');
 import {
-  AbstractModule,
   ApplicationState,
   IApplication,
+  IModule,
   LifecycleHook
 } from '../../src/types.js';
 
 // Test fixture
-class EdgeCaseModule extends AbstractModule {
-  override readonly name = 'edge-case';
+class EdgeCaseModule implements IModule {
+  readonly name = 'edge-case';
 
-  override async onStop(app: IApplication): Promise<void> {
+  async onStop(app: IApplication): Promise<void> {
     // Simulate stop
   }
 }
@@ -101,9 +102,9 @@ describe('Titan Application Edge Cases', () => {
 
       const DependencyToken = createToken('Dependency');
 
-      class DependentModule extends AbstractModule {
-        override readonly name = 'dependent';
-        override readonly dependencies = [DependencyToken];
+      class DependentModule implements IModule {
+        readonly name = 'dependent';
+        readonly dependencies = [DependencyToken];
       }
 
       const module = new DependentModule();
@@ -263,11 +264,11 @@ describe('Titan Application Edge Cases', () => {
     it('should handle configuration with no module-specific config', async () => {
       app = createApp();
 
-      class ConfigurableModule extends AbstractModule {
-        override readonly name = 'configurable';
+      class ConfigurableModule implements IModule {
+        readonly name = 'configurable';
         configureCalledWith: any = null;
 
-        override configure(config: any): void {
+        configure(config: any): void {
           this.configureCalledWith = config;
         }
       }
@@ -298,9 +299,9 @@ describe('Titan Application Edge Cases', () => {
     it('should handle module resolution with empty dependencies array', async () => {
       app = createApp();
 
-      class NoDepsModule extends AbstractModule {
-        override readonly name = 'no-deps';
-        override readonly dependencies = [];
+      class NoDepsModule implements IModule {
+        readonly name = 'no-deps';
+        readonly dependencies = [];
       }
 
       const module = new NoDepsModule();
@@ -385,15 +386,15 @@ describe('Titan Application Edge Cases', () => {
     it('should handle very long running modules', async () => {
       app = createApp();
 
-      class SlowModule extends AbstractModule {
-        override readonly name = 'slow';
+      class SlowModule implements IModule {
+        readonly name = 'slow';
 
-        override async onStart(): Promise<void> {
+        async onStart(): Promise<void> {
           // Simulate long initialization
           await new Promise(resolve => setTimeout(resolve, 200));
         }
 
-        override async onStop(): Promise<void> {
+        async onStop(): Promise<void> {
           // Simulate long cleanup
           await new Promise(resolve => setTimeout(resolve, 200));
         }

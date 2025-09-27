@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { minimatch } from 'minimatch'
 import { Redis, RedisOptions } from 'ioredis';
 import { randomUUID, createHash } from 'node:crypto';
@@ -99,14 +100,18 @@ export class NotificationManager {
 
   async loadLuaScripts() {
     try {
-      // Skip Lua script loading in test environments
-      if (typeof process !== 'undefined' && process.env['NODE_ENV'] === 'test') {
-        this.logger.debug('Skipping Lua script loading in test environment');
+      // Determine lua directory using ESM import.meta
+      let luaDir: string;
+      try {
+        // Use import.meta.url to get the current module's URL
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = path.dirname(__filename);
+        luaDir = path.resolve(__dirname, '..', '..', 'lua', 'rotif');
+      } catch (e) {
+        // If import.meta is not available (shouldn't happen in ESM), skip loading lua scripts
+        this.logger.debug('Cannot determine lua directory, skipping script loading');
         return;
       }
-
-      // Try to determine lua directory
-      const luaDir = path.resolve(import.meta.dirname, '..', '..', 'lua', 'rotif');
 
       // Check if lua directory exists
       if (!fs.existsSync(luaDir)) {

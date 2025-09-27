@@ -1,6 +1,7 @@
 /**
  * Tests for Event Decorators
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import 'reflect-metadata';
 import { Container } from '@nexus';

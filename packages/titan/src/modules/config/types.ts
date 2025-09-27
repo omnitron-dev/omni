@@ -35,6 +35,7 @@ export interface IFileConfigSource extends IConfigSource {
   path: string;
   format?: 'json' | 'yaml' | 'toml' | 'ini' | 'env';
   encoding?: BufferEncoding;
+  transform?: (data: any) => any;
 }
 
 /**
@@ -44,7 +45,7 @@ export interface IEnvironmentConfigSource extends IConfigSource {
   type: 'env';
   prefix?: string;
   separator?: string;
-  transform?: 'lowercase' | 'uppercase' | 'camelCase';
+  transform?: 'lowercase' | 'uppercase' | 'camelCase' | ((key: string, value: any) => any);
 }
 
 /**

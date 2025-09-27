@@ -5,7 +5,6 @@
  */
 
 import {
-  AbstractModule,
   IModule,
   IApplication,
   IHealthStatus,
@@ -22,9 +21,9 @@ import { createToken, Token } from '@nexus';
 /**
  * Simple module with all lifecycle hooks
  */
-export class SimpleModule extends AbstractModule {
-  override readonly name = 'simple';
-  override readonly version = '1.0.0';
+export class SimpleModule implements IModule {
+  readonly name = 'simple';
+  readonly version = '1.0.0';
 
   startCalled = false;
   stopCalled = false;
@@ -33,28 +32,28 @@ export class SimpleModule extends AbstractModule {
   configureCalled = false;
   configValue: any = null;
 
-  override async onRegister(app: IApplication): Promise<void> {
+  async onRegister(app: IApplication): Promise<void> {
     this.registerCalled = true;
   }
 
-  override async onStart(app: IApplication): Promise<void> {
+  async onStart(app: IApplication): Promise<void> {
     this.startCalled = true;
   }
 
-  override async onStop(app: IApplication): Promise<void> {
+  async onStop(app: IApplication): Promise<void> {
     this.stopCalled = true;
   }
 
-  override async onDestroy(): Promise<void> {
+  async onDestroy(): Promise<void> {
     this.destroyCalled = true;
   }
 
-  override configure(config: any): void {
+  configure(config: any): void {
     this.configureCalled = true;
     this.configValue = config;
   }
 
-  override async health(): Promise<IHealthStatus> {
+  async health(): Promise<IHealthStatus> {
     return {
       status: this.startCalled ? 'healthy' : 'unhealthy',
       message: 'Simple module health check',
@@ -69,19 +68,18 @@ export class SimpleModule extends AbstractModule {
 /**
  * Module that takes time to start/stop
  */
-export class SlowModule extends AbstractModule {
-  override readonly name = 'slow';
-  override readonly version = '1.0.0';
+export class SlowModule implements IModule {
+  readonly name = 'slow';
+  readonly version = '1.0.0';
 
   constructor(public delay = 100) {
-    super();
   }
 
-  override async onStart(): Promise<void> {
+  async onStart(): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, this.delay));
   }
 
-  override async onStop(): Promise<void> {
+  async onStop(): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, this.delay));
   }
 }
@@ -89,36 +87,35 @@ export class SlowModule extends AbstractModule {
 /**
  * Module that fails during lifecycle
  */
-export class FailingModule extends AbstractModule {
-  override readonly name = 'failing';
-  override readonly version = '1.0.0';
+export class FailingModule implements IModule {
+  readonly name = 'failing';
+  readonly version = '1.0.0';
 
   constructor(
     public failOn: 'start' | 'stop' | 'register' | 'destroy' = 'start',
     public errorMessage = 'Module failure'
   ) {
-    super();
   }
 
-  override async onRegister(): Promise<void> {
+  async onRegister(): Promise<void> {
     if (this.failOn === 'register') {
       throw new Error(this.errorMessage);
     }
   }
 
-  override async onStart(): Promise<void> {
+  async onStart(): Promise<void> {
     if (this.failOn === 'start') {
       throw new Error(this.errorMessage);
     }
   }
 
-  override async onStop(): Promise<void> {
+  async onStop(): Promise<void> {
     if (this.failOn === 'stop') {
       throw new Error(this.errorMessage);
     }
   }
 
-  override async onDestroy(): Promise<void> {
+  async onDestroy(): Promise<void> {
     if (this.failOn === 'destroy') {
       throw new Error(this.errorMessage);
     }
@@ -132,20 +129,20 @@ export class FailingModule extends AbstractModule {
 /**
  * Database module - represents database connection management
  */
-export class DatabaseModule extends AbstractModule {
-  override readonly name = 'database';
-  override readonly version = '2.0.0';
-  override readonly dependencies = ['config'];
+export class DatabaseModule implements IModule {
+  readonly name = 'database';
+  readonly version = '2.0.0';
+  readonly dependencies = ['config'];
 
   private connection: any = null;
   private pool: any[] = [];
   private config: any = {};
 
-  override configure(config: any): void {
+  configure(config: any): void {
     this.config = config;
   }
 
-  override async onStart(app: IApplication): Promise<void> {
+  async onStart(app: IApplication): Promise<void> {
     // Simulate database connection
     this.connection = {
       id: Math.random().toString(36).substring(7),
@@ -163,13 +160,13 @@ export class DatabaseModule extends AbstractModule {
     }
   }
 
-  override async onStop(): Promise<void> {
+  async onStop(): Promise<void> {
     // Close all connections
     this.pool = [];
     this.connection = null;
   }
 
-  override async health(): Promise<IHealthStatus> {
+  async health(): Promise<IHealthStatus> {
     const activeConnections = this.pool.filter(c => !c.busy).length;
     return {
       status: this.connection ? 'healthy' : 'unhealthy',
@@ -200,21 +197,21 @@ export class DatabaseModule extends AbstractModule {
 /**
  * HTTP Server module - represents web server
  */
-export class HttpServerModule extends AbstractModule {
-  override readonly name = 'http';
-  override readonly version = '1.0.0';
-  override readonly dependencies = ['config', 'logger'];
+export class HttpServerModule implements IModule {
+  readonly name = 'http';
+  readonly version = '1.0.0';
+  readonly dependencies = ['config', 'logger'];
 
   private server: any = null;
   private routes: Map<string, Function> = new Map();
   private middleware: Function[] = [];
   public port: number = 3000;
 
-  override configure(config: any): void {
+  configure(config: any): void {
     this.port = config.port || 3000;
   }
 
-  override async onStart(app: IApplication): Promise<void> {
+  async onStart(app: IApplication): Promise<void> {
     // Simulate server start
     this.server = {
       listening: true,
@@ -228,7 +225,7 @@ export class HttpServerModule extends AbstractModule {
     });
   }
 
-  override async onStop(app: IApplication): Promise<void> {
+  async onStop(app: IApplication): Promise<void> {
     if (this.server) {
       this.server.listening = false;
       this.server = null;
@@ -237,7 +234,7 @@ export class HttpServerModule extends AbstractModule {
     }
   }
 
-  override async health(): Promise<IHealthStatus> {
+  async health(): Promise<IHealthStatus> {
     return {
       status: this.server?.listening ? 'healthy' : 'unhealthy',
       message: 'HTTP server status',
@@ -267,20 +264,20 @@ export class HttpServerModule extends AbstractModule {
 /**
  * Cache module - represents caching service
  */
-export class CacheModule extends AbstractModule {
-  override readonly name = 'cache';
-  override readonly version = '1.2.0';
-  override readonly dependencies = ['config'];
+export class CacheModule implements IModule {
+  readonly name = 'cache';
+  readonly version = '1.2.0';
+  readonly dependencies = ['config'];
 
   private cache: Map<string, { value: any; expires: number }> = new Map();
   private ttl: number = 60000; // Default 1 minute
   private cleanupInterval: any = null;
 
-  override configure(config: any): void {
+  configure(config: any): void {
     this.ttl = config.ttl || 60000;
   }
 
-  override async onStart(): Promise<void> {
+  async onStart(): Promise<void> {
     // Start cleanup interval
     this.cleanupInterval = setInterval(() => {
       const now = Date.now();
@@ -292,7 +289,7 @@ export class CacheModule extends AbstractModule {
     }, 10000); // Cleanup every 10 seconds
   }
 
-  override async onStop(): Promise<void> {
+  async onStop(): Promise<void> {
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
@@ -300,7 +297,7 @@ export class CacheModule extends AbstractModule {
     this.cache.clear();
   }
 
-  override async health(): Promise<IHealthStatus> {
+  async health(): Promise<IHealthStatus> {
     return {
       status: 'healthy',
       message: 'Cache service status',
@@ -342,17 +339,17 @@ export class CacheModule extends AbstractModule {
 /**
  * Message Queue module - represents async message processing
  */
-export class MessageQueueModule extends AbstractModule {
-  override readonly name = 'queue';
-  override readonly version = '1.0.0';
-  override readonly dependencies = ['database'];
+export class MessageQueueModule implements IModule {
+  readonly name = 'queue';
+  readonly version = '1.0.0';
+  readonly dependencies = ['database'];
 
   private queues: Map<string, any[]> = new Map();
   private processors: Map<string, Function> = new Map();
   private processing = false;
   private processInterval: any = null;
 
-  override async onStart(app: IApplication): Promise<void> {
+  async onStart(app: IApplication): Promise<void> {
     this.processing = true;
 
     // Start processing loop
@@ -363,7 +360,7 @@ export class MessageQueueModule extends AbstractModule {
     }, 100);
   }
 
-  override async onStop(): Promise<void> {
+  async onStop(): Promise<void> {
     this.processing = false;
 
     if (this.processInterval) {
@@ -372,7 +369,7 @@ export class MessageQueueModule extends AbstractModule {
     }
   }
 
-  override async health(): Promise<IHealthStatus> {
+  async health(): Promise<IHealthStatus> {
     let totalMessages = 0;
     for (const queue of this.queues.values()) {
       totalMessages += queue.length;
@@ -565,21 +562,20 @@ export class NotificationService {
     NotificationServiceToken
   ]
 })
-export class ApplicationModule extends AbstractModule {
-  override readonly name = 'application';
-  override readonly version = '1.0.0';
+export class ApplicationModule implements IModule {
+  readonly name = 'application';
+  readonly version = '1.0.0';
 
   constructor(
     // Services will be injected if DI is properly configured
   ) {
-    super();
   }
 
-  override async onStart(app: IApplication): Promise<void> {
+  async onStart(app: IApplication): Promise<void> {
     // Initialize application services
   }
 
-  override async health(): Promise<IHealthStatus> {
+  async health(): Promise<IHealthStatus> {
     return {
       status: 'healthy',
       message: 'Application module is running'
@@ -597,7 +593,7 @@ export class ApplicationModule extends AbstractModule {
 /**
  * Auth module mock
  */
-export class AuthModule extends AbstractModule {
+export class AuthModule implements IModule {
   name = 'auth';
   version = '1.0.0';
   private isAuthenticated = false;
@@ -625,7 +621,7 @@ export class AuthModule extends AbstractModule {
 /**
  * Notifications module mock
  */
-export class NotificationsModule extends AbstractModule {
+export class NotificationsModule implements IModule {
   name = 'notifications';
   version = '1.0.0';
   private connected = false;
@@ -650,15 +646,15 @@ export class NotificationsModule extends AbstractModule {
   }
 }
 
-export class DependentModule extends AbstractModule {
-  override readonly name = 'dependent';
-  override readonly version = '1.0.0';
-  override readonly dependencies = ['database', 'cache'];
+export class DependentModule implements IModule {
+  readonly name = 'dependent';
+  readonly version = '1.0.0';
+  readonly dependencies = ['database', 'cache'];
 
   private db?: DatabaseModule;
   private cache?: CacheModule;
 
-  override async onStart(app: IApplication): Promise<void> {
+  async onStart(app: IApplication): Promise<void> {
     // Get dependencies
     this.db = app.get(createToken<DatabaseModule>('database'));
     this.cache = app.get(createToken<CacheModule>('cache'));
@@ -668,7 +664,7 @@ export class DependentModule extends AbstractModule {
     }
   }
 
-  override async health(): Promise<IHealthStatus> {
+  async health(): Promise<IHealthStatus> {
     return {
       status: this.db && this.cache ? 'healthy' : 'unhealthy',
       message: 'Dependent module status',

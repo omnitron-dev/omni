@@ -2,6 +2,7 @@
  * Test utilities for Discovery module testing
  */
 
+import { jest } from '@jest/globals';
 import { Redis } from 'ioredis';
 import { Container, createToken, type Token } from '@nexus';
 import { DiscoveryService } from '../../../src/modules/discovery/discovery.service.js';

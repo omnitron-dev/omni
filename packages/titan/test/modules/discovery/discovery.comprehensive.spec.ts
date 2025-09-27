@@ -5,6 +5,7 @@
  * that provides complete coverage of the DiscoveryService functionality.
  */
 
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { Redis } from 'ioredis';
 import { Container } from '@nexus';
 import { DiscoveryService } from '../../../src/modules/discovery/discovery.service.js';

@@ -683,7 +683,12 @@ export class Application implements IApplication {
         if (this.isDynamicModule(result)) {
           dynamicModule = result;
           const ModuleClass = dynamicModule.module;
-          moduleInstance = new ModuleClass();
+          // Check if it's a constructor or already an instance
+          if (typeof ModuleClass === 'function' && ModuleClass.prototype) {
+            moduleInstance = new (ModuleClass as ModuleConstructor)();
+          } else {
+            moduleInstance = ModuleClass as IModule;
+          }
         } else {
           moduleInstance = result as IModule;
         }
@@ -692,7 +697,12 @@ export class Application implements IApplication {
       // Dynamic module object
       dynamicModule = moduleInput;
       const ModuleClass = dynamicModule.module;
-      moduleInstance = new ModuleClass();
+      // Check if it's a constructor or already an instance
+      if (typeof ModuleClass === 'function' && ModuleClass.prototype) {
+        moduleInstance = new (ModuleClass as ModuleConstructor)();
+      } else {
+        moduleInstance = ModuleClass as IModule;
+      }
     } else {
       // Regular module instance
       moduleInstance = moduleInput as IModule;
@@ -743,12 +753,27 @@ export class Application implements IApplication {
     if (!dynamicModule && metadata) {
       // Create a dynamic module from metadata
       dynamicModule = {
-        name: moduleName,
         module: moduleInput as any,
         providers: metadata.providers || [],
         imports: metadata.imports || [],
         exports: metadata.exports || []
       };
+    }
+
+    // Check if module instance has providers/imports/exports directly
+    if (!dynamicModule && moduleInstance) {
+      const hasProviders = (moduleInstance as any).providers;
+      const hasImports = (moduleInstance as any).imports;
+      const hasExports = (moduleInstance as any).exports;
+
+      if (hasProviders || hasImports || hasExports) {
+        dynamicModule = {
+          module: moduleInput as any,
+          providers: (moduleInstance as any).providers || [],
+          imports: (moduleInstance as any).imports || [],
+          exports: (moduleInstance as any).exports || []
+        };
+      }
     }
 
     // Create token for the module
@@ -1533,9 +1558,18 @@ export class Application implements IApplication {
     // Check dependencies
     if (module.dependencies) {
       for (const dep of module.dependencies) {
-        if (!this.hasModule(dep)) {
-          throw new Error(`Module ${module.name} requires missing dependency: ${typeof dep === 'string' ? dep : dep.toString()}`);
+        // Convert dependency to appropriate type for hasModule
+        if (typeof dep === 'string') {
+          if (!this.hasModule(dep)) {
+            throw new Error(`Module ${module.name} requires missing dependency: ${dep}`);
+          }
+        } else if (dep && typeof dep === 'object' && 'id' in dep) {
+          // It's a Token
+          if (!this.hasModule(dep as Token<any>)) {
+            throw new Error(`Module ${module.name} requires missing dependency: ${dep.toString()}`);
+          }
         }
+        // Skip other types of dependencies (symbols, constructors, etc)
       }
     }
 
@@ -1736,11 +1770,11 @@ export class Application implements IApplication {
               this._logger?.warn(`Module ${module.name} dependency '${dep}' not found - continuing without it`);
               continue;
             }
-          } else {
-            // It's already a token, try to find it
-            depToken = dep;
+          } else if (dep && typeof dep === 'object' && 'id' in dep) {
+            // It's a Token
+            depToken = dep as Token<any>;
             // If the token isn't in our modules, try to find by its name
-            if (depToken && !this._modules.has(depToken)) {
+            if (!this._modules.has(depToken)) {
               const depName = depToken.name; // Use the string name, not the symbol id
               for (const [t, m] of this._modules.entries()) {
                 if (m.name === depName) {
@@ -1756,6 +1790,9 @@ export class Application implements IApplication {
                 continue;
               }
             }
+          } else {
+            // Skip non-token dependencies (symbols, constructors, etc.)
+            continue;
           }
 
           if (depToken && this._modules.has(depToken)) {

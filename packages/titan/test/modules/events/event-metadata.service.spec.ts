@@ -1,6 +1,7 @@
 /**
  * Tests for EventMetadataService
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import 'reflect-metadata';
 import { EventMetadataService } from '../../../src/modules/events/event-metadata.service';

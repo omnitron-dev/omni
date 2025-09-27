@@ -2,6 +2,7 @@
  * Advanced contextual injection for Nexus DI Container
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { Scope, InjectionToken, ResolutionContext } from './types.js';
 
 /**
@@ -303,8 +304,6 @@ export class ContextManager {
 
     // Try to use AsyncLocalStorage if available (Node.js)
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { AsyncLocalStorage } = require('async_hooks');
       this.asyncLocalStorage = new AsyncLocalStorage();
     } catch {
       // Not available, will use global context only

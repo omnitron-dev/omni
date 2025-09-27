@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'node:crypto';
 
 /**
  * Generate a unique identifier
@@ -42,9 +42,7 @@ export function isValidUrl(url: string): boolean {
  * Hash a value for caching
  */
 export function hash(data: any): string {
-  const crypto = require('crypto');
-  return crypto
-    .createHash('sha256')
+  return createHash('sha256')
     .update(JSON.stringify(data))
     .digest('hex')
     .substring(0, 16);

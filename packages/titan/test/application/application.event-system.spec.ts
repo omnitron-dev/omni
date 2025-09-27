@@ -4,6 +4,7 @@
  * Tests for event emission, subscription, handling,
  * and event-driven communication patterns.
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import { Application, createApp } from '../../src/application.js';
 import { ApplicationEvent, IApplication, IEventMeta } from '../../src/types.js';

@@ -2,6 +2,7 @@
  * Module System Tests
  * Tests for module creation, composition, and lifecycle
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import {
   Container,

@@ -28,7 +28,6 @@ export {
 // Nexus DI essentials
 export {
   Token,
-  Scope,
   Container,
   createToken,
   type Provider,
@@ -104,7 +103,7 @@ export {
 
 // Core Types
 export {
-  IModule,
+  IModule,  // Now coming from unified Nexus module system
   IEventMeta,
   IEnvironment,
   IApplication,
@@ -114,13 +113,61 @@ export {
   IShutdownOptions,
   ApplicationState,
   ApplicationEvent,
-  AbstractModule,
   ModuleConstructor,
   IApplicationConfig,
   IApplicationOptions,
   IApplicationMetrics
 } from './types.js';
 
+
+// ============================================================================
+// Decorators
+// ============================================================================
+
+export {
+  // Core DI decorators
+  Module,
+  Injectable,
+  Singleton,
+  Transient,
+  Scoped,
+  Request,
+  Service,
+  Controller,
+  Repository,
+  Factory,
+  Global,
+  Method,
+  Public,
+
+  // Injection decorators
+  Inject,
+  InjectAll,
+  Optional,
+
+  // Lifecycle decorators
+  PostConstruct,
+  PreDestroy,
+
+  // Utility decorators
+  Log,
+  Lazy,
+
+  // Decorator types
+  type InjectableOptions,
+  type ModuleDecoratorOptions,
+  type Scope
+} from './decorators/index.js';
+
+// ============================================================================
+// Built-in Modules
+// ============================================================================
+// DO NOT RE-EXPORT MODULES HERE!
+// Modules should be imported directly via package.json exports:
+// This ensures proper tree-shaking and avoids circular dependencies
+
+// Re-export ModuleMetadata type from Nexus
+export type { ModuleMetadata } from './nexus/index.js';
 
 /**
  * Feature flags

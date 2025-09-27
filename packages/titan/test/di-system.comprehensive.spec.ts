@@ -4,6 +4,7 @@
  * This test suite ensures the robustness and reliability of the dependency injection system
  * in Nexus and Titan, covering edge cases, performance, and best practices.
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import 'reflect-metadata';
 import {

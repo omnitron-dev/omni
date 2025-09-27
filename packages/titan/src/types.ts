@@ -2,7 +2,7 @@
  * Core types for Titan application framework
  */
 
-import { Token, Container, Provider, type InjectionToken } from './nexus/index.js';
+import { Token, Container, Provider, type InjectionToken, type IModule, type DynamicModule } from './nexus/index.js';
 
 /**
  * Application lifecycle state
@@ -78,57 +78,11 @@ export interface IHealthStatus {
   details?: any;
 }
 
-/**
- * Module interface
- */
-export interface IModule {
-  readonly name: string;
-  readonly version?: string;
-  readonly dependencies?: (Token<any> | string)[];
-  configure?(config: any): void;
-  health?(): Promise<IHealthStatus>;
-  onRegister?(app: IApplication): void | Promise<void>;
-  onStart?(app: IApplication): void | Promise<void>;
-  onStop?(app: IApplication): void | Promise<void>;
-  onDestroy?(): void | Promise<void>;
-}
+// IModule and DynamicModule are now imported from nexus/index.js
+// The unified module system is defined in nexus/types.ts
 
-/**
- * Application module base class
- */
-export abstract class AbstractModule implements IModule {
-  abstract readonly name: string;
-  readonly version?: string;
-  readonly dependencies?: (Token<any> | string)[] = [];
-
-  async onRegister(app: IApplication): Promise<void> {
-    // Default implementation - can be overridden
-  }
-
-  async onStart(app: IApplication): Promise<void> {
-    // Default implementation - can be overridden
-  }
-
-  async onStop(app: IApplication): Promise<void> {
-    // Default implementation - can be overridden
-  }
-
-  async onDestroy(): Promise<void> {
-    // Default implementation - can be overridden
-  }
-
-  configure(config: any): void {
-    // Default implementation - can be overridden
-  }
-
-  async health(): Promise<IHealthStatus> {
-    // Default implementation
-    return {
-      status: 'healthy',
-      message: `Module ${this.name} is healthy`
-    };
-  }
-}
+// Re-export IModule and DynamicModule for backward compatibility
+export type { IModule, DynamicModule };
 
 /**
  * Event handler type
@@ -256,16 +210,9 @@ export interface IApplication {
 export type ModuleConstructor<T extends IModule = IModule> = new (...args: any[]) => T;
 
 
-/**
- * Dynamic module interface - for modules with providers
- */
-export interface IDynamicModule extends IModule {
-  module: ModuleConstructor;
-  providers?: Array<Provider | [InjectionToken<any>, Provider]>;
-  imports?: ModuleInput[];
-  exports?: Token<any>[];
-  global?: boolean;
-}
+// IDynamicModule is now replaced by DynamicModule from nexus/index.js
+// For backward compatibility, create a type alias
+export type IDynamicModule = DynamicModule;
 
 /**
  * Module input types - supports various module definition patterns

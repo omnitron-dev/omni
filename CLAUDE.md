@@ -282,6 +282,31 @@ export class OrderService {
 5. Use changesets for version management when making changes
 6. Test with both Node.js and Bun runtimes when possible
 
+### Module Import/Export Guidelines
+
+**CRITICAL: Module Export Rules for Titan**
+
+1. **NO RE-EXPORTS OF MODULES from index.ts** - Never re-export modules from `packages/titan/src/index.ts`. This causes circular dependencies and breaks tree-shaking.
+
+2. **Use Package.json Exports** - All Titan modules must be imported via the package.json export paths:
+```typescript
+// ✅ CORRECT - Use package.json exports for tree-shaking
+import { ConfigModule } from '@omnitron-dev/titan/module/config';
+import { LoggerModule } from '@omnitron-dev/titan/module/logger';
+import { EventsModule } from '@omnitron-dev/titan/module/events';
+import { SchedulerModule } from '@omnitron-dev/titan/module/scheduler';
+import { TitanRedisModule } from '@omnitron-dev/titan/module/redis';
+
+// ❌ WRONG - Don't import modules from root
+import { ConfigModule } from '@omnitron-dev/titan';  // NEVER DO THIS
+```
+
+3. **Unified Module System** - Nexus DI is integrated directly into Titan. Use the single `IModule` interface from `nexus/types.ts` for all modules. No need for additional abstractions or adaptations.
+
+4. **Single Source of Truth** - Each module's exports are defined ONLY in package.json. No duplicate export paths.
+
+5. **Module Structure** - All modules implement the unified `IModule` interface and can be used directly with Application.use() without any wrappers or adapters
+
 ### Recent Breaking Changes
 
 **Pino Logger v9.9.x**: The logger methods now require object parameters first, then message string:

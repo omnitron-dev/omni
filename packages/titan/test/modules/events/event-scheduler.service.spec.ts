@@ -1,6 +1,7 @@
 /**
  * Tests for EventSchedulerService
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import 'reflect-metadata';
 import { EventSchedulerService } from '../../../src/modules/events/event-scheduler.service';

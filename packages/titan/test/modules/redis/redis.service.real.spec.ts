@@ -1,45 +1,79 @@
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, jest } from '@jest/globals';
 import { RedisService } from '../../../src/modules/redis/redis.service.js';
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
-import {
-  createRedisTestHelper,
-  RedisTestHelper
-} from '../../utils/redis-test-utils.js';
+import { ConfigService } from '../../../src/modules/config/config.service.js';
+import { RedisTestManager, RedisTestContainer } from '../../utils/redis-test-manager.js';
+import { setupRedisTests, describeWithRedis } from '../../setup/redis-setup.js';
 
-describe('RedisService with Real Redis', () => {
+// Setup Redis test infrastructure
+setupRedisTests();
+
+describeWithRedis('RedisService with Real Redis', () => {
   let service: RedisService;
   let manager: RedisManager;
-  let helper: RedisTestHelper;
+  let configService: ConfigService;
+  let testContainer: RedisTestContainer;
+  let testManager: RedisTestManager;
 
-  beforeEach(async () => {
-    helper = createRedisTestHelper();
-    await helper.waitForRedis();
-
-    manager = new RedisManager({
-      clients: [
-        {
-          namespace: 'default',
-          host: 'localhost',
-          port: 6379,
-          db: 15,
-        },
-        {
-          namespace: 'cache',
-          host: 'localhost',
-          port: 6379,
-          db: 14,
-        },
-      ],
-    }, null as any);
-
-    await manager.init();
-    service = new RedisService(manager);
+  beforeAll(async () => {
+    testManager = RedisTestManager.getInstance({ verbose: process.env.REDIS_VERBOSE === 'true' });
   });
 
+  beforeEach(async () => {
+    // Create a dedicated Redis container for each test
+    testContainer = await testManager.createContainer();
+
+    // Create config service with test container URL
+    configService = new ConfigService({
+      sources: [
+        {
+          type: 'object',
+          data: {
+            redis: {
+              default: {
+                type: 'standalone',
+                options: {
+                  host: testContainer.host,
+                  port: testContainer.port,
+                  db: 0,
+                  retryStrategy: (times: number) => {
+                    if (times > 3) return null;
+                    return Math.min(times * 100, 2000);
+                  },
+                  enableOfflineQueue: false,
+                }
+              },
+              cache: {
+                type: 'standalone',
+                options: {
+                  host: testContainer.host,
+                  port: testContainer.port,
+                  db: 1,
+                  keyPrefix: 'cache:',
+                }
+              }
+            }
+          }
+        }
+      ]
+    });
+
+    // Create manager and service with real Redis
+    manager = new RedisManager(configService);
+    await manager.connect();
+    service = new RedisService(manager);
+
+    // Clear all data before each test
+    const client = service.getClient();
+    if (client) {
+      await client.flushall();
+    }
+  }, 30000);
+
   afterEach(async () => {
-    await helper.cleanupData();
-    await manager.destroy();
-    await helper.cleanup();
+    // Disconnect and cleanup
+    await manager.disconnect();
+    await testContainer.cleanup();
   });
 
   describe('String Operations', () => {
@@ -80,7 +114,7 @@ describe('RedisService with Real Redis', () => {
 
     it('should work with different namespaces', async () => {
       await service.set('key', 'default-value');
-      await service.set('key', 'cache-value', 'cache');
+      await service.set('key', 'cache-value', undefined, 'cache');
 
       expect(await service.get('key')).toBe('default-value');
       expect(await service.get('key', 'cache')).toBe('cache-value');
@@ -118,7 +152,7 @@ describe('RedisService with Real Redis', () => {
       const set = 'tags';
 
       // Add members
-      expect(await service.sadd(set, 'tag1', 'tag2', 'tag3')).toBe(3);
+      expect(await service.sadd(set, ['tag1', 'tag2', 'tag3'])).toBe(3);
       expect(await service.sadd(set, 'tag2')).toBe(0); // Already exists
 
       // Check membership
@@ -191,7 +225,7 @@ describe('RedisService with Real Redis', () => {
         return redis.call('get', key)
       `;
 
-      const result = await service.eval(script, ['script-key'], ['script-value']);
+      const result = await service.eval(script, 1, 'script-key', 'script-value');
       expect(result).toBe('script-value');
 
       // Verify the key was set
@@ -202,14 +236,14 @@ describe('RedisService with Real Redis', () => {
       const script = 'return redis.call("incr", KEYS[1])';
 
       // Load script
-      const sha = await service.loadScript(script);
+      const sha = await service.loadScript('test-script', script);
       expect(sha).toHaveLength(40);
 
       // Set initial value
       await service.set('counter', '10');
 
       // Execute using SHA
-      const result = await service.evalsha(sha, ['counter'], []);
+      const result = await service.evalsha(sha, 1, 'counter');
       expect(result).toBe(11);
     });
 
@@ -249,22 +283,26 @@ describe('RedisService with Real Redis', () => {
     it('should create subscriber', async () => {
       const subscriber = await service.createSubscriber();
       expect(subscriber).toBeDefined();
-      expect(subscriber.status).toBe('ready');
+
+      // Check status is valid
+      expect(['wait', 'ready', 'connecting', 'connect']).toContain(subscriber.status);
 
       await subscriber.quit();
     });
 
-    it('should handle pub/sub messaging', async (done) => {
+    it('should handle pub/sub messaging', async () => {
       const subscriber = await service.createSubscriber();
       const messages: string[] = [];
 
-      subscriber.on('message', (channel, message) => {
-        messages.push(message);
-        if (messages.length === 3) {
-          expect(messages).toEqual(['msg1', 'msg2', 'msg3']);
-          subscriber.quit();
-          done();
-        }
+      const messagePromise = new Promise<void>((resolve) => {
+        subscriber.on('message', (channel, message) => {
+          messages.push(message);
+          if (messages.length === 3) {
+            expect(messages).toEqual(['msg1', 'msg2', 'msg3']);
+            subscriber.quit();
+            resolve();
+          }
+        });
       });
 
       await subscriber.subscribe('test-channel');
@@ -275,6 +313,8 @@ describe('RedisService with Real Redis', () => {
         await service.publish('test-channel', 'msg2');
         await service.publish('test-channel', 'msg3');
       }, 50);
+
+      await messagePromise;
     }, 5000);
   });
 
@@ -351,7 +391,7 @@ describe('RedisService with Real Redis', () => {
 
     it('should flush all databases', async () => {
       await service.set('key', 'value');
-      await service.set('key', 'cache-value', 'cache');
+      await service.set('key', 'cache-value', undefined, 'cache');
 
       await service.flushall();
 

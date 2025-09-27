@@ -1,6 +1,7 @@
 /**
  * Test Netron DI integration
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import { Container, createToken } from '../../src/nexus/index.js';
 import { Netron } from '../../src/netron/netron.js';

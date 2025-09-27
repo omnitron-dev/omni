@@ -2,6 +2,7 @@
  * Plugin and Middleware System Tests
  * Tests for plugin installation, middleware composition, and interceptors
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import {
   Container,

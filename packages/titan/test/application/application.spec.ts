@@ -1,9 +1,13 @@
 /**
  * Comprehensive tests for Titan Application
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
-import { Container, createToken, Token } from '@nexus';
-import { Application, createApp as originalCreateApp, startApp, ApplicationToken } from '../../src/application.js';
+import { Container, createToken, Token } from '../../src/nexus/index.js';
+import { Application, createApp as originalCreateApp, startApp } from '../../src/application.js';
+
+// Create ApplicationToken for testing
+const ApplicationToken = createToken<Application>('Application');
 import { ConfigModule } from '../../src/modules/config/config.module.js';
 import { ConfigService } from '../../src/modules/config/config.service.js';
 import { CONFIG_SERVICE_TOKEN } from '../../src/modules/config/config.tokens.js';
@@ -34,13 +38,13 @@ import {
   LifecycleHook,
   HealthStatus,
   IApplication,
-  AbstractModule
+  IModule
 } from '../../src/types.js';
 
 // Test fixtures
-class TestModule extends AbstractModule {
-  override readonly name = 'test';
-  override readonly version = '1.0.0';
+class TestModule implements IModule {
+  readonly name = 'test';
+  readonly version = '1.0.0';
 
   startCalled = false;
   stopCalled = false;
@@ -49,28 +53,28 @@ class TestModule extends AbstractModule {
   configureCalled = false;
   configValue: any = null;
 
-  override async onRegister(app: IApplication): Promise<void> {
+  async onRegister(app: IApplication): Promise<void> {
     this.registerCalled = true;
   }
 
-  override async onStart(app: IApplication): Promise<void> {
+  async onStart(app: IApplication): Promise<void> {
     this.startCalled = true;
   }
 
-  override async onStop(app: IApplication): Promise<void> {
+  async onStop(app: IApplication): Promise<void> {
     this.stopCalled = true;
   }
 
-  override async onDestroy(): Promise<void> {
+  async onDestroy(): Promise<void> {
     this.destroyCalled = true;
   }
 
-  override configure(config: any): void {
+  configure(config: any): void {
     this.configureCalled = true;
     this.configValue = config;
   }
 
-  override async health(): Promise<HealthStatus> {
+  async health(): Promise<HealthStatus> {
     return {
       status: 'healthy',
       message: 'Test module is healthy',
@@ -79,58 +83,55 @@ class TestModule extends AbstractModule {
   }
 }
 
-class SlowModule extends AbstractModule {
-  override readonly name = 'slow';
+class SlowModule implements IModule {
+  readonly name = 'slow';
   delay: number;
 
   constructor(delay = 100) {
-    super();
     this.delay = delay;
   }
 
-  override async onStart(): Promise<void> {
+  async onStart(): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, this.delay));
   }
 
-  override async onStop(): Promise<void> {
+  async onStop(): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, this.delay));
   }
 }
 
-class FailingModule extends AbstractModule {
-  override readonly name = 'failing';
+class FailingModule implements IModule {
+  readonly name = 'failing';
   failOn: 'register' | 'start' | 'stop' | 'destroy';
   error: Error;
 
   constructor(failOn: 'register' | 'start' | 'stop' | 'destroy' = 'start') {
-    super();
     this.failOn = failOn;
     this.error = new Error(`Module failed on ${failOn}`);
   }
 
-  override async onRegister(): Promise<void> {
+  async onRegister(): Promise<void> {
     if (this.failOn === 'register') throw this.error;
   }
 
-  override async onStart(): Promise<void> {
+  async onStart(): Promise<void> {
     if (this.failOn === 'start') throw this.error;
   }
 
-  override async onStop(): Promise<void> {
+  async onStop(): Promise<void> {
     if (this.failOn === 'stop') throw this.error;
   }
 
-  override async onDestroy(): Promise<void> {
+  async onDestroy(): Promise<void> {
     if (this.failOn === 'destroy') throw this.error;
   }
 }
 
-class DependentModule extends AbstractModule {
-  override readonly name = 'dependent';
-  override readonly dependencies: Token<any>[];
+class DependentModule implements IModule {
+  readonly name = 'dependent';
+  readonly dependencies: Token<any>[];
 
   constructor(dependencies: Token<any>[]) {
-    super();
     this.dependencies = dependencies;
   }
 }
@@ -476,8 +477,8 @@ describe('Titan Application', () => {
     it('should handle module dependencies', async () => {
       app = createApp();
 
-      class ModuleA extends AbstractModule {
-        override readonly name = 'moduleA';
+      class ModuleA implements IModule {
+        readonly name = 'moduleA';
       }
       const moduleA = new ModuleA();
       const tokenA = createToken<ModuleA>('moduleA');
@@ -509,12 +510,12 @@ describe('Titan Application', () => {
       const tokenB = createToken('moduleB');
 
       class ModuleA extends DependentModule {
-        override readonly name = 'moduleA';
+        readonly name = 'moduleA';
       }
       const moduleA = new ModuleA([tokenB]);
 
       class ModuleB extends DependentModule {
-        override readonly name = 'moduleB';
+        readonly name = 'moduleB';
       }
       const moduleB = new ModuleB([tokenA]);
 
@@ -532,16 +533,16 @@ describe('Titan Application', () => {
     it('should stop modules in reverse order', async () => {
       app = createApp(); // Test without core modules for clarity
 
-      class Module1 extends AbstractModule {
-        override readonly name = 'module1';
+      class Module1 implements IModule {
+        readonly name = 'module1';
       }
       const module1 = new Module1();
-      class Module2 extends AbstractModule {
-        override readonly name = 'module2';
+      class Module2 implements IModule {
+        readonly name = 'module2';
       }
       const module2 = new Module2();
-      class Module3 extends AbstractModule {
-        override readonly name = 'module3';
+      class Module3 implements IModule {
+        readonly name = 'module3';
       }
       const module3 = new Module3();
 
@@ -1126,16 +1127,16 @@ describe('Titan Application', () => {
 
       const modules: any[] = [];
       for (let i = 0; i < 50; i++) {
-        class DynamicModule extends AbstractModule {
-          override readonly name = `module-${i}`;
+        class DynamicModule implements IModule {
+          readonly name = `module-${i}`;
           startCalled = false;
           stopCalled = false;
 
-          override async onStart(app: IApplication): Promise<void> {
+          async onStart(app: IApplication): Promise<void> {
             this.startCalled = true;
           }
 
-          override async onStop(app: IApplication): Promise<void> {
+          async onStop(app: IApplication): Promise<void> {
             this.stopCalled = true;
           }
         }
@@ -1176,8 +1177,8 @@ describe('Titan Application', () => {
 
       // Add modules concurrently
       for (let i = 0; i < 10; i++) {
-        class ConcurrentModule extends AbstractModule {
-          override readonly name = `concurrent-${i}`;
+        class ConcurrentModule implements IModule {
+          readonly name = `concurrent-${i}`;
         }
         const module = new ConcurrentModule();
         promises.push(Promise.resolve(app.use(module)));
@@ -1308,7 +1309,7 @@ describe('Titan Application', () => {
 
       const longName = 'a'.repeat(1000);
       class LongNameModule extends TestModule {
-        override readonly name = longName;
+        readonly name = longName;
       }
       const module = new LongNameModule();
 
@@ -1322,7 +1323,7 @@ describe('Titan Application', () => {
 
       const specialName = 'module!@#$%^&*()_+-=[]{}|;:,.<>?';
       class SpecialNameModule extends TestModule {
-        override readonly name = specialName;
+        readonly name = specialName;
       }
       const module = new SpecialNameModule();
 
@@ -1338,7 +1339,7 @@ describe('Titan Application', () => {
 
       const createModule = (name: string) => {
         class FactoryModule extends TestModule {
-          override readonly name = name;
+          readonly name = name;
         }
         return new FactoryModule();
       };
@@ -1368,7 +1369,7 @@ describe('Titan Application', () => {
 
       if (config.get('features.moduleA')) {
         class ModuleA extends TestModule {
-          override readonly name = 'moduleA';
+          readonly name = 'moduleA';
         }
         const moduleA = new ModuleA();
         app.use(moduleA);
@@ -1376,7 +1377,7 @@ describe('Titan Application', () => {
 
       if (config.get('features.moduleB')) {
         class ModuleB extends TestModule {
-          override readonly name = 'moduleB';
+          readonly name = 'moduleB';
         }
         const moduleB = new ModuleB();
         app.use(moduleB);
@@ -1389,20 +1390,20 @@ describe('Titan Application', () => {
     });
 
     it('should support module inheritance', async () => {
-      class BaseModule extends AbstractModule {
-        override readonly name = 'base';
+      class BaseModule implements IModule {
+        readonly name = 'base';
         baseCalled = false;
 
-        override async onStart(): Promise<void> {
+        async onStart(): Promise<void> {
           this.baseCalled = true;
         }
       }
 
       class ExtendedModule extends BaseModule {
-        override readonly name = 'extended';
+        readonly name = 'extended';
         extendedCalled = false;
 
-        override async onStart(): Promise<void> {
+        async onStart(): Promise<void> {
           await super.onStart();
           this.extendedCalled = true;
         }
@@ -1419,15 +1420,15 @@ describe('Titan Application', () => {
     });
 
     it('should support module composition', async () => {
-      class CompositeModule extends AbstractModule {
-        override readonly name = 'composite';
+      class CompositeModule implements IModule {
+        readonly name = 'composite';
         private modules: Module[] = [];
 
         addModule(module: Module): void {
           this.modules.push(module);
         }
 
-        override async onStart(app: IApplication): Promise<void> {
+        async onStart(app: IApplication): Promise<void> {
           for (const module of this.modules) {
             if (module.onStart) {
               await module.onStart(app);
@@ -1435,7 +1436,7 @@ describe('Titan Application', () => {
           }
         }
 
-        override async onStop(app: IApplication): Promise<void> {
+        async onStop(app: IApplication): Promise<void> {
           for (const module of this.modules.reverse()) {
             if (module.onStop) {
               await module.onStop(app);
@@ -1448,11 +1449,11 @@ describe('Titan Application', () => {
       const composite = new CompositeModule();
 
       class Sub1Module extends TestModule {
-        override readonly name = 'sub1';
+        readonly name = 'sub1';
       }
       const sub1 = new Sub1Module();
       class Sub2Module extends TestModule {
-        override readonly name = 'sub2';
+        readonly name = 'sub2';
       }
       const sub2 = new Sub2Module();
 

@@ -4,6 +4,7 @@
  * Tests for module registration, dependencies, health checks,
  * and module-specific functionality.
  */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import { Application, createApp } from '../../src/application.js';
 import { createToken } from '@nexus';
@@ -15,7 +16,7 @@ import {
   DependentModule
 } from '../fixtures/test-modules.js';
 import { Module, Injectable, Inject } from '../../src/decorators/index.js';
-import { IModule, AbstractModule, IHealthStatus, IApplication } from '../../src/types.js';
+import { IModule, IHealthStatus, IApplication } from '../../src/types.js';
 
 describe('Application Module Management', () => {
   let app: Application;
@@ -103,17 +104,17 @@ describe('Application Module Management', () => {
   describe('Module Dependencies', () => {
     it('should sort modules by dependencies', async () => {
       class ModuleA extends SimpleModule {
-        override readonly name = 'module-a';
-        override readonly dependencies = ['module-b'];
+        readonly name = 'module-a';
+        readonly dependencies = ['module-b'];
       }
 
       class ModuleB extends SimpleModule {
-        override readonly name = 'module-b';
-        override readonly dependencies = ['module-c'];
+        readonly name = 'module-b';
+        readonly dependencies = ['module-c'];
       }
 
       class ModuleC extends SimpleModule {
-        override readonly name = 'module-c';
+        readonly name = 'module-c';
       }
 
       // Register in wrong order
@@ -137,13 +138,13 @@ describe('Application Module Management', () => {
 
     it('should detect circular dependencies', async () => {
       class CircularA extends SimpleModule {
-        override readonly name = 'circular-a';
-        override readonly dependencies = ['circular-b'];
+        readonly name = 'circular-a';
+        readonly dependencies = ['circular-b'];
       }
 
       class CircularB extends SimpleModule {
-        override readonly name = 'circular-b';
-        override readonly dependencies = ['circular-a'];
+        readonly name = 'circular-b';
+        readonly dependencies = ['circular-a'];
       }
 
       app.use(new CircularA());
@@ -155,8 +156,8 @@ describe('Application Module Management', () => {
 
     it('should handle missing dependencies gracefully', async () => {
       class ModuleWithMissingDep extends SimpleModule {
-        override readonly name = 'missing-dep';
-        override readonly dependencies = ['nonexistent'];
+        readonly name = 'missing-dep';
+        readonly dependencies = ['nonexistent'];
       }
 
       app.use(new ModuleWithMissingDep());
@@ -171,8 +172,8 @@ describe('Application Module Management', () => {
       // Create a complex dependency tree
       for (let i = 0; i < 5; i++) {
         class TestModule extends SimpleModule {
-          override readonly name = `module-${i}`;
-          override readonly dependencies = i > 0 ? [`module-${i - 1}`] : [];
+          readonly name = `module-${i}`;
+          readonly dependencies = i > 0 ? [`module-${i - 1}`] : [];
         }
         modules.push(new TestModule());
       }
@@ -195,7 +196,7 @@ describe('Application Module Management', () => {
     it('should configure modules', async () => {
       // Create a module without dependencies for testing configuration
       class TestConfigurableModule extends DatabaseModule {
-        override readonly dependencies = [];
+        readonly dependencies = [];
       }
 
       const module = new TestConfigurableModule();
@@ -230,7 +231,7 @@ describe('Application Module Management', () => {
 
       // Create a module without dependencies for testing configuration
       class TestConfigurableModule extends DatabaseModule {
-        override readonly dependencies = [];
+        readonly dependencies = [];
       }
 
       const module = new TestConfigurableModule();
@@ -252,7 +253,7 @@ describe('Application Module Management', () => {
 
       // Create a module without dependencies for testing configuration
       class TestConfigurableModule extends DatabaseModule {
-        override readonly dependencies = [];
+        readonly dependencies = [];
       }
 
       const module = new TestConfigurableModule();
@@ -290,7 +291,7 @@ describe('Application Module Management', () => {
 
       // Create a module without dependencies for testing health
       class TestDatabaseModule extends DatabaseModule {
-        override readonly dependencies = [];
+        readonly dependencies = [];
       }
       const database = new TestDatabaseModule();
 
@@ -309,9 +310,9 @@ describe('Application Module Management', () => {
 
     it('should handle unhealthy modules', async () => {
       class UnhealthyModule extends SimpleModule {
-        override readonly name = 'unhealthy';
+        readonly name = 'unhealthy';
 
-        override async health(): Promise<IHealthStatus> {
+        async health(): Promise<IHealthStatus> {
           return {
             status: 'unhealthy',
             message: 'Module is not healthy',
@@ -330,9 +331,9 @@ describe('Application Module Management', () => {
 
     it('should handle module health check errors', async () => {
       class ErrorModule extends SimpleModule {
-        override readonly name = 'error-module';
+        readonly name = 'error-module';
 
-        override async health(): Promise<IHealthStatus> {
+        async health(): Promise<IHealthStatus> {
           throw new Error('Health check failed');
         }
       }
@@ -360,11 +361,10 @@ describe('Application Module Management', () => {
         providers: [TestService],
         exports: [TestService]
       })
-      class TestModule extends AbstractModule {
-        override readonly name = 'decorated-module';
+      class TestModule implements IModule {
+        readonly name = 'decorated-module';
 
         constructor(private testService: TestService) {
-          super();
         }
 
         getService() {
@@ -409,11 +409,10 @@ describe('Application Module Management', () => {
         ],
         exports: [ComplexService]
       })
-      class ComplexModule extends AbstractModule {
-        override readonly name = 'complex-module';
+      class ComplexModule implements IModule {
+        readonly name = 'complex-module';
 
         constructor(private service: ComplexService) {
-          super();
         }
 
         execute() {
@@ -440,7 +439,7 @@ describe('Application Module Management', () => {
     it('should access module via token', async () => {
       // Create a module without dependencies for testing
       class TestDatabaseModule extends DatabaseModule {
-        override readonly dependencies = [];
+        readonly dependencies = [];
       }
 
       const ModuleToken = createToken<TestDatabaseModule>('DatabaseModule');
@@ -458,13 +457,13 @@ describe('Application Module Management', () => {
     it('should provide inter-module communication', async () => {
       // Create modules without dependencies for testing
       class TestDatabaseModule extends DatabaseModule {
-        override readonly dependencies = [];
+        readonly dependencies = [];
       }
       class TestCacheModule extends CacheModule {
-        override readonly dependencies = [];
+        readonly dependencies = [];
       }
       class TestDependentModule extends DependentModule {
-        override readonly dependencies = ['database', 'cache'];
+        readonly dependencies = ['database', 'cache'];
       }
 
       const database = new TestDatabaseModule();

@@ -6,7 +6,6 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import { createToken } from '@nexus';
 import {
   TitanApplication,
-  AbstractModule,
   Injectable,
   Singleton,
   Inject,
@@ -88,9 +87,9 @@ class DependentService implements OnInit {
 }
 
 // Test module with forRoot pattern
-class TestModule extends AbstractModule {
-  override readonly name = 'test-module';
-  override readonly version = '1.0.0';
+class TestModule implements IModule {
+  readonly name = 'test-module';
+  readonly version = '1.0.0';
 
   /**
    * Static forRoot method for dynamic module configuration
@@ -157,7 +156,7 @@ class TestModule extends AbstractModule {
     };
   }
 
-  override async onStart(app: any): Promise<void> {
+  async onStart(app: any): Promise<void> {
     // Services are automatically registered via providers
     // Just initialize them if they exist
     if (app.hasProvider(TestServiceToken)) {
@@ -175,7 +174,7 @@ class TestModule extends AbstractModule {
     }
   }
 
-  override async onStop(app: any): Promise<void> {
+  async onStop(app: any): Promise<void> {
     // Cleanup
     if (app.hasProvider(TestServiceToken)) {
       const testService = app.resolve(TestServiceToken);
@@ -187,11 +186,11 @@ class TestModule extends AbstractModule {
 }
 
 // Simple module without forRoot
-class SimpleModule extends AbstractModule {
-  override readonly name = 'simple-module';
-  override readonly version = '1.0.0';
+class SimpleModule implements IModule {
+  readonly name = 'simple-module';
+  readonly version = '1.0.0';
 
-  override async onStart(app: any): Promise<void> {
+  async onStart(app: any): Promise<void> {
     // Register providers manually only if not already registered
     if (!app.hasProvider(TestConfigToken)) {
       app.register(TestConfigToken, {
@@ -387,7 +386,7 @@ describe('Improved Titan Module API', () => {
       expect(app.hasProvider(testToken)).toBe(true);
     });
 
-    it('should support override option in register', () => {
+    it('should support option in register', () => {
       const testToken = createToken('TestToken');
 
       app.register(testToken, {
@@ -491,8 +490,8 @@ describe('Improved Titan Module API', () => {
       });
 
       const mainModule: DynamicModule = {
-        module: class MainModule extends AbstractModule {
-          override readonly name = 'main-module';
+        module: class MainModule implements IModule {
+          readonly name = 'main-module';
         },
         name: 'main-module',
         imports: [importedModule],
@@ -604,9 +603,9 @@ describe('Improved Titan Module API', () => {
         modules: [
           TestModule.forRoot(config1),  // Dynamic module with forRoot
           SimpleModule,                   // Class reference
-          new (class InlineModule extends AbstractModule {  // Anonymous class instance
-            override readonly name = 'inline-module';
-            override readonly version = '1.0.0';
+          new (class InlineModule implements IModule {  // Anonymous class instance
+            readonly name = 'inline-module';
+            readonly version = '1.0.0';
           })()
         ]
       });

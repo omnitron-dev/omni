@@ -319,20 +319,39 @@ export interface ContainerMetadata {
 
 /**
  * Module interface for organizing providers
+ * Unified interface for both DI and Application-level modules
  */
 export interface IModule {
+  // Core module properties
   name: string;
+  version?: string;
+  dependencies?: (InjectionToken<any> | string)[];
+
+  // DI configuration
   imports?: IModule[];
   providers?: Array<Provider<any> | ProviderInput<any>>;
   exports?: InjectionToken<any>[];
   global?: boolean;
   requires?: string[];
+
+  // Module metadata
   metadata?: {
     version?: string;
     description?: string;
     author?: string;
     tags?: string[];
+    priority?: number;
   };
+
+  // Application lifecycle hooks (compatible with Application.ts)
+  configure?(config: any): void | Promise<void>;
+  health?(): Promise<{ status: 'healthy' | 'degraded' | 'unhealthy'; message?: string; details?: any }>;
+  onRegister?(app: any): void | Promise<void>;  // app is IApplication but we avoid circular deps
+  onStart?(app: any): void | Promise<void>;
+  onStop?(app: any): void | Promise<void>;
+  onDestroy?(): void | Promise<void>;
+
+  // Original DI lifecycle hooks (kept for compatibility)
   onModuleInit?(): Promise<void> | void;
   onModuleDestroy?(): Promise<void> | void;
 }

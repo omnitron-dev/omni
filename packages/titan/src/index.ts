@@ -11,18 +11,21 @@
 export {
   startApp,
   createApp,
+  createModule,
+  createToken,
+  defineModule,
   Application,
   APPLICATION_TOKEN as ApplicationToken,
   NETRON_TOKEN as NetronToken,
   Application as TitanApplication
-} from './application.js';
+} from './application/index.js';
 
 // ============================================================================
 // Helper Functions
 // ============================================================================
 
 import type { IModule, IApplication } from './types.js';
-import { createApp } from './application.js';
+import { createApp } from './application/index.js';
 
 /**
  * Quick start helper to create and start an application
@@ -49,14 +52,7 @@ export async function createAndStartApp(options?: {
   return app;
 }
 
-/**
- * Create a simple module with optional service methods
- */
-export function defineModule<TService = {}>(
-  definition: IModule & TService
-): IModule & TService {
-  return definition;
-}
+// defineModule is now exported from application module
 
 
 // Lifecycle interfaces

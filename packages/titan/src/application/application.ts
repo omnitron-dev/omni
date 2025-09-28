@@ -4,12 +4,12 @@
 
 import os from 'node:os';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import { Token, Container, createToken, InjectionToken, Provider } from './nexus/index.js';
-import { Netron, type NetronOptions } from './netron/index.js';
+import { Token, Container, createToken, InjectionToken, Provider } from '../nexus/index.js';
+import { Netron, type NetronOptions } from '../netron/index.js';
 
-import { ConfigModule, CONFIG_SERVICE_TOKEN } from './modules/config/index.js';
-import { LoggerModule, LOGGER_SERVICE_TOKEN } from './modules/logger/index.js';
-import type { ILogger, ILoggerModule } from './modules/logger/index.js';
+import { ConfigModule, CONFIG_SERVICE_TOKEN } from '../modules/config/index.js';
+import { LoggerModule, LOGGER_SERVICE_TOKEN } from '../modules/logger/index.js';
+import type { ILogger, ILoggerModule } from '../modules/logger/index.js';
 import {
   IModule,
   IEventMeta,
@@ -35,7 +35,7 @@ import {
   IHealthStatus,
   ConfigValue,
   ConfigObject
-} from './types.js';
+} from '../types.js';
 
 /**
  * Application token for DI

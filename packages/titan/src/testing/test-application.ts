@@ -5,7 +5,7 @@
  * in Titan framework tests.
  */
 
-import { Application } from '../application.js';
+import { Application } from '../application/index.js';
 import { Container } from '../nexus/index.js';
 import type { IApplicationOptions } from '../types.js';
 

@@ -1,6 +1,6 @@
 import { IModule, ProviderDefinition, InjectionToken, TestContainer, createTestContainer } from '../nexus/index.js';
 
-import { Application } from '../application.js';
+import { Application } from '../application/index.js';
 import { IApplicationConfig } from '../types.js';
 
 /**

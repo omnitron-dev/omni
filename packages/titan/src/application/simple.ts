@@ -6,9 +6,9 @@
  */
 
 import { Application } from './application.js';
-import { Module, Injectable } from './decorators/index.js';
-import type { IApplicationOptions } from './types.js';
-import type { Token } from './nexus/index.js';
+import { Module, Injectable } from '../decorators/index.js';
+import type { IApplicationOptions, IModule } from '../types.js';
+import { Token, createToken as nexusCreateToken } from '../nexus/index.js';
 
 /**
  * Create and start a Titan application with zero configuration
@@ -315,9 +315,47 @@ export function controller(
 }
 
 /**
+ * Create an application instance (alias for Application.create)
+ */
+export const createApp = Application.create.bind(Application);
+
+/**
+ * Create a unique injection token
+ */
+export const createToken = nexusCreateToken;
+
+/**
+ * Create a module programmatically
+ */
+export function createModule(config: {
+  name?: string;
+  providers?: any[];
+  imports?: any[];
+  exports?: any[];
+  onStart?: () => void | Promise<void>;
+  onStop?: () => void | Promise<void>;
+}): IModule {
+  // Convert to the format expected by module()
+  const moduleConfig = {
+    ...config,
+    services: config.providers
+  };
+  return module(moduleConfig);
+}
+
+/**
+ * Define a module with type-safe service methods
+ */
+export function defineModule<TService = {}>(
+  definition: IModule & TService
+): IModule & TService {
+  return definition;
+}
+
+/**
  * Export commonly used decorators for convenience
  */
-export { Module, Injectable, Inject } from './decorators/index.js';
+export { Module, Injectable, Inject } from '../decorators/index.js';
 
 /**
  * Lifecycle hook interfaces

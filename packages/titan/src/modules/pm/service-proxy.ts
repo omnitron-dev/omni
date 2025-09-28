@@ -2,11 +2,12 @@
  * Service Proxy Handler
  *
  * Creates type-safe proxies for inter-process communication via Netron
+ * with support for streaming via AsyncIterables
  */
 
 import type { NetronClient } from './netron-client.js';
 import type { ILogger } from '../logger/logger.types.js';
-import type { ServiceProxy, IServiceProxyControl, IProcessMetrics, IHealthStatus } from './types.js';
+import type { ServiceProxy, IProcessMetrics, IHealthStatus } from './types.js';
 
 /**
  * Handler for creating service proxies
@@ -17,7 +18,7 @@ export class ServiceProxyHandler<T> {
     private readonly netron: NetronClient,
     private readonly serviceName: string,
     private readonly logger: ILogger
-  ) {}
+  ) { }
 
   /**
    * Create a type-safe proxy for the service
@@ -58,10 +59,16 @@ export class ServiceProxyHandler<T> {
         // Convert property to string
         const methodName = String(property);
 
+        // Check if this should be a streaming method
+        // Methods starting with 'stream' or containing 'Stream' return AsyncIterables
+        if (methodName.startsWith('stream') || methodName.includes('Stream')) {
+          return async function* (...args: any[]) {
+            yield* self.callStreamingMethod(methodName, args);
+          };
+        }
+
         // Return async function that calls remote method
-        return async (...args: any[]) => {
-          return self.callRemoteMethod(methodName, args);
-        };
+        return async (...args: any[]) => self.callRemoteMethod(methodName, args);
       },
 
       has(target, property) {
@@ -103,6 +110,38 @@ export class ServiceProxyHandler<T> {
       this.logger.error(
         { error, processId: this.processId, methodName, args },
         'Failed to call remote method'
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Call a streaming method via Netron
+   */
+  private async *callStreamingMethod(methodName: string, args: any[]): AsyncGenerator<any> {
+    try {
+      // Check if we're using a mock (for testing)
+      if ((this.netron as any).mockStream) {
+        yield* (this.netron as any).mockStream(methodName, args);
+        return;
+      }
+
+      // Call the streaming method via NetronClient
+      const stream = await this.netron.call(this.serviceName, methodName, args);
+
+      // Check if result is an async iterable
+      if (stream && typeof stream[Symbol.asyncIterator] === 'function') {
+        for await (const value of stream) {
+          yield value;
+        }
+      } else {
+        // If not a stream, yield the single result
+        yield stream;
+      }
+    } catch (error) {
+      this.logger.error(
+        { error, processId: this.processId, methodName, args },
+        'Failed to call streaming method'
       );
       throw error;
     }
@@ -173,7 +212,7 @@ export class StreamingServiceProxyHandler<T> {
     private readonly netron: NetronClient,
     private readonly serviceName: string,
     private readonly logger: ILogger
-  ) {}
+  ) { }
 
   /**
    * Create a proxy that handles async generators

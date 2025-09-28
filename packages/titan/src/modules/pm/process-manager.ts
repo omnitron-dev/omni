@@ -41,8 +41,8 @@ import { ProcessPool } from './process-pool.js';
 import { ProcessSupervisor } from './process-supervisor.js';
 import { ProcessWorkflow } from './process-workflow.js';
 import { ServiceProxyHandler } from './service-proxy.js';
-import { ProcessSpawner } from './process-spawner.js';
-import { SimpleMockProcessSpawner } from './simple-mock-spawner.js';
+import { UnifiedProcessSpawner, ProcessSpawnerFactory } from './process-spawner.js';
+import type { IProcessSpawner } from './types.js';
 import { ProcessRegistry } from './process-registry.js';
 import { ProcessMetricsCollector } from './process-metrics.js';
 import { ProcessHealthChecker } from './process-health.js';
@@ -53,13 +53,12 @@ import { ProcessHealthChecker } from './process-health.js';
 @Injectable()
 export class ProcessManager extends EventEmitter implements IProcessManager {
   private processes = new Map<string, IProcessInfo>();
-  private workers = new Map<string, Worker | ChildProcess | any>();
-  private netronPeers = new Map<string, any>();
+  private workers = new Map<string, any>(); // Now stores IWorkerHandle
   private serviceProxies = new Map<string, any>();
   private isShuttingDown = false;
 
   private readonly registry: ProcessRegistry;
-  private readonly spawner: ProcessSpawner | SimpleMockProcessSpawner;
+  private readonly spawner: IProcessSpawner;
   private readonly metricsCollector: ProcessMetricsCollector;
   private readonly healthChecker: ProcessHealthChecker;
 
@@ -72,12 +71,8 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
     // Initialize sub-components
     this.registry = new ProcessRegistry();
 
-    // Use mock spawner in test environment
-    if (process.env['NODE_ENV'] === 'test' || this.config.useMockSpawner) {
-      this.spawner = new SimpleMockProcessSpawner(this.logger, this.config);
-    } else {
-      this.spawner = new ProcessSpawner(this.logger, this.config);
-    }
+    // Use factory to create appropriate spawner
+    this.spawner = ProcessSpawnerFactory.create(this.logger, this.config);
 
     this.metricsCollector = new ProcessMetricsCollector(this.logger);
     this.healthChecker = new ProcessHealthChecker(this.logger);
@@ -115,31 +110,34 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
       processInfo.status = ProcessStatus.STARTING;
       this.emit('process:spawn', processInfo);
 
-      // Spawn the process
-      const { worker, netron, transportUrl } = await this.spawner.spawn(
-        ProcessClass,
+      // Spawn the process with unified interface
+      const handle = await this.spawner.spawn(ProcessClass, {
         processId,
-        mergedOptions
-      );
+        name: mergedOptions.name,
+        version: mergedOptions.version,
+        config: mergedOptions,  // Pass whole options as config
+        transport: mergedOptions.netron?.transport as any,
+        host: mergedOptions.netron?.host,
+        isolation: mergedOptions.security?.isolation as any
+      });
 
       // Store references
-      this.workers.set(processId, worker);
-      this.netronPeers.set(processId, netron);
-      (processInfo as any).transportUrl = transportUrl;
+      this.workers.set(processId, handle);
+      (processInfo as any).transportUrl = handle.transportUrl;
 
-      // For mock spawner or when worker is already ready, skip waiting
-      if (this.config.useMockSpawner || process.env['NODE_ENV'] === 'test') {
+      // Check if worker is already running
+      if (handle.status === ProcessStatus.RUNNING) {
         processInfo.status = ProcessStatus.RUNNING;
       } else {
         // Wait for process to be ready
         await this.waitForProcessReady(processId);
       }
 
-      // Create service proxy
-      const proxy = await this.createServiceProxy<T>(
+      // Use proxy from handle if available
+      const proxy = handle.proxy || await this.createServiceProxy<T>(
         ProcessClass,
         processId,
-        netron,
+        null,
         mergedOptions
       );
 
@@ -150,7 +148,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
 
       // Update status
       processInfo.status = ProcessStatus.RUNNING;
-      processInfo.pid = (worker as any).pid || (worker as any).threadId;
+      processInfo.pid = (handle as any).pid || process.pid;
       this.emit('process:ready', processInfo);
 
       // Setup monitoring
@@ -193,6 +191,11 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
         // Return pool properties and methods if they exist
         if (property in target) {
           return (target as any)[property];
+        }
+
+        // Prevent the proxy from being treated as a Promise
+        if (property === 'then' || property === 'catch' || property === 'finally') {
+          return undefined;
         }
 
         // For unknown properties, create a function that executes through the pool
@@ -293,25 +296,14 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
       this.healthChecker.stopMonitoring(processId);
       this.metricsCollector.stopCollection(processId);
 
-      // Shutdown Netron peer
-      const netron = this.netronPeers.get(processId);
-      if (netron) {
-        await netron.stop();
-      }
-
-      // Terminate worker
-      const worker = this.workers.get(processId);
-      if (worker) {
-        if ('terminate' in worker) {
-          await (worker as Worker).terminate();
-        } else {
-          (worker as ChildProcess).kill(signal as NodeJS.Signals);
-        }
+      // Terminate worker handle
+      const handle = this.workers.get(processId);
+      if (handle && 'terminate' in handle) {
+        await handle.terminate();
       }
 
       // Cleanup references
       this.workers.delete(processId);
-      this.netronPeers.delete(processId);
       this.serviceProxies.delete(processId);
 
       // Unregister from registry
@@ -477,8 +469,17 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
    */
   private async discoverRemoteService<T>(serviceName: string): Promise<ServiceProxy<T> | null> {
     try {
-      // This would integrate with service discovery (Redis, Consul, etc.)
-      // For now, return null
+      // For now, return null as Netron discovery integration requires more setup
+      // This would integrate with Netron's service discovery in production
+
+      // Parse service name and version for future use
+      const [name, version = '1.0.0'] = serviceName.split('@');
+
+      this.logger.debug(
+        { serviceName, name, version },
+        'Service discovery not yet fully implemented'
+      );
+
       return null;
     } catch (error) {
       this.logger.error({ error, serviceName }, 'Failed to discover service');

@@ -25,7 +25,8 @@ export {
 
 export { ProcessManager } from './process-manager.js';
 export { ProcessRegistry } from './process-registry.js';
-export { ProcessSpawner } from './process-spawner.js';
+export { UnifiedProcessSpawner, ProcessSpawnerFactory } from './process-spawner.js';
+export { MockProcessSpawner } from './mock-process-spawner.js';
 export { ProcessPool } from './process-pool.js';
 export { ProcessSupervisor } from './process-supervisor.js';
 export { ProcessWorkflow } from './process-workflow.js';
@@ -164,6 +165,17 @@ export { ProcessStatus, PoolStrategy, SupervisionStrategy, RestartDecision } fro
 // ============================================================================
 
 export * from './enterprise/index.js';
+
+// ============================================================================
+// Testing Utilities
+// ============================================================================
+
+export {
+  TestProcessManager,
+  createTestProcessManager,
+  type ITestProcessManagerConfig,
+  type IOperationRecord
+} from './testing/test-process-manager.js';
 
 // ============================================================================
 // Convenience Functions

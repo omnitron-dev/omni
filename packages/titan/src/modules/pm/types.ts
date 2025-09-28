@@ -283,6 +283,7 @@ export interface ISupervisorChild {
   critical?: boolean;
   pool?: IProcessPoolOptions;
   optional?: boolean;
+  propertyKey?: string; // Property key for runtime resolution
 }
 
 /**
@@ -698,6 +699,51 @@ export interface IProcessManager extends EventEmitter {
 // ============================================================================
 
 /**
+ * Process spawner interface
+ */
+export interface IProcessSpawner {
+  spawn<T>(
+    ProcessClass: new (...args: any[]) => T,
+    options?: ISpawnOptions
+  ): Promise<IWorkerHandle>;
+  cleanup?(): Promise<void>;
+}
+
+/**
+ * Worker handle for managing spawned processes
+ */
+export interface IWorkerHandle {
+  id: string;
+  transportUrl: string;
+  serviceName: string;
+  serviceVersion: string;
+  terminate(): Promise<void>;
+  isAlive(): boolean;
+  send?(message: any): Promise<void>;
+  onMessage?(handler: (data: any) => void): void;
+  status?: ProcessStatus;
+  proxy?: any;
+  worker?: any; // Optional for backward compatibility
+  netronClient?: any; // Optional for backward compatibility
+}
+
+/**
+ * Spawn options
+ */
+export interface ISpawnOptions {
+  processId?: string;
+  name?: string;
+  version?: string;
+  config?: any;
+  discovery?: {
+    enabled?: boolean;
+  };
+  transport?: 'tcp' | 'unix' | 'ws' | 'ipc';
+  host?: string;
+  isolation?: 'none' | 'vm' | 'container';
+}
+
+/**
  * Process Manager module configuration
  */
 export interface IProcessManagerConfig {
@@ -734,6 +780,15 @@ export interface IProcessManagerConfig {
 
   /** Use mock spawner for testing */
   useMockSpawner?: boolean;
+
+  /** Use real processes (worker threads/child processes) */
+  useRealProcesses?: boolean;
+
+  /** Use worker threads instead of child processes */
+  useWorkerThreads?: boolean;
+
+  /** Temporary directory for generated modules */
+  tempDir?: string;
 }
 
 /**

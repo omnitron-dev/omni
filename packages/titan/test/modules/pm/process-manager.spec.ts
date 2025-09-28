@@ -269,11 +269,14 @@ describe('ProcessPool', () => {
 
       const results = [];
       for (let i = 0; i < 4; i++) {
-        results.push(await pool.getCount());
+        results.push(await pool.increment());
       }
 
-      // Should alternate between workers
-      expect(new Set(results).size).toBeGreaterThan(1);
+      // With round-robin and 2 workers, we should see:
+      // Worker1: returns 1, then 2
+      // Worker2: returns 1, then 2
+      // So results should be [1, 1, 2, 2]
+      expect(results).toEqual([1, 1, 2, 2]);
     });
 
     it('should track pool metrics', async () => {

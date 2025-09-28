@@ -168,11 +168,17 @@ export function Metric(name?: string): MethodDecorator {
  */
 export function Supervisor(options: ISupervisorOptions = {}): ClassDecorator {
   return (target: any) => {
+    // Get existing metadata (may have been set by Child decorators)
+    const existingMetadata = Reflect.getMetadata(SUPERVISOR_METADATA_KEY, target) || {};
+
+    // Merge with new options, preserving existing children Map
     const metadata = {
+      ...existingMetadata,
       ...options,
       target,
-      children: new Map<string, ISupervisorChild>()
+      children: existingMetadata.children || new Map<string, ISupervisorChild>()
     };
+
     Reflect.defineMetadata(SUPERVISOR_METADATA_KEY, metadata, target);
     return target;
   };
@@ -183,13 +189,20 @@ export function Supervisor(options: ISupervisorOptions = {}): ClassDecorator {
  */
 export function Child(options: Partial<ISupervisorChild> = {}): PropertyDecorator {
   return (target: any, propertyKey: string | symbol) => {
-    const metadata = Reflect.getMetadata(SUPERVISOR_METADATA_KEY, target.constructor) || {
-      children: new Map()
-    };
+    // Get or create metadata
+    let metadata = Reflect.getMetadata(SUPERVISOR_METADATA_KEY, target.constructor);
+    if (!metadata) {
+      metadata = { children: new Map() };
+    }
+    if (!metadata.children) {
+      metadata.children = new Map();
+    }
 
+    // Store child definition with property key
     const childDef: ISupervisorChild = {
       name: String(propertyKey),
-      processClass: null, // Will be resolved at runtime
+      processClass: null, // Will be resolved from property value at runtime
+      propertyKey: String(propertyKey), // Store property key for resolution
       ...options
     };
 
@@ -207,10 +220,16 @@ export function Child(options: Partial<ISupervisorChild> = {}): PropertyDecorato
  */
 export function Workflow(): ClassDecorator {
   return (target: any) => {
+    // Get existing metadata (may have been set by Stage decorators)
+    const existingMetadata = Reflect.getMetadata(WORKFLOW_METADATA_KEY, target) || {};
+
+    // Merge with new options, preserving existing stages Map
     const metadata = {
+      ...existingMetadata,
       target,
-      stages: new Map<string, IWorkflowStage>()
+      stages: existingMetadata.stages || new Map<string, IWorkflowStage>()
     };
+
     Reflect.defineMetadata(WORKFLOW_METADATA_KEY, metadata, target);
     return target;
   };
@@ -225,10 +244,16 @@ export function Stage(options: Partial<IWorkflowStage> = {}): MethodDecorator {
       stages: new Map()
     };
 
+    // Normalize dependsOn to always be an array
+    const normalizedOptions = { ...options };
+    if (normalizedOptions.dependsOn && !Array.isArray(normalizedOptions.dependsOn)) {
+      normalizedOptions.dependsOn = [normalizedOptions.dependsOn];
+    }
+
     const stage: IWorkflowStage = {
       name: String(propertyKey),
       handler: descriptor.value,
-      ...options
+      ...normalizedOptions
     };
 
     metadata.stages.set(String(propertyKey), stage);

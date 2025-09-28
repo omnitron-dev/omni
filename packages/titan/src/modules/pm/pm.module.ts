@@ -9,7 +9,7 @@ import type { DynamicModule } from '../../nexus/index.js';
 import { Module } from '../../decorators/index.js';
 import { ProcessManager } from './process-manager.js';
 import { ProcessRegistry } from './process-registry.js';
-import { ProcessSpawner } from './process-spawner.js';
+import { ProcessSpawnerFactory } from './process-spawner.js';
 import { ProcessMetricsCollector } from './process-metrics.js';
 import { ProcessHealthChecker } from './process-health.js';
 import { LoggerService } from '../logger/logger.service.js';
@@ -123,7 +123,7 @@ export class ProcessManagerModule {
           PM_SPAWNER_TOKEN,
           {
             useFactory: (logger: any, config: IProcessManagerConfig) => {
-              return new ProcessSpawner(logger, config);
+              return ProcessSpawnerFactory.create(logger, config);
             },
             inject: [LOGGER_SERVICE_TOKEN, PM_CONFIG_TOKEN]
           }
@@ -211,7 +211,7 @@ export class ProcessManagerModule {
         PM_SPAWNER_TOKEN,
         {
           useFactory: (logger: any, config: IProcessManagerConfig) => {
-            return new ProcessSpawner(logger, config);
+            return ProcessSpawnerFactory.create(logger, config);
           },
           inject: [LOGGER_SERVICE_TOKEN, PM_CONFIG_TOKEN]
         }

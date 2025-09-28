@@ -157,3 +157,25 @@ export {
   type EvaluationContext,
   type EvaluationResult
 } from './feature-flags.js';
+
+// ============================================================================
+// Advanced Patterns
+// ============================================================================
+
+export {
+  DistributedLock,
+  GeoSpatialQuery,
+  RealtimeMatch,
+  MessageBus,
+  ResourcePool,
+  type IDistributedLockConfig,
+  type ILockHandle,
+  type IGeoPoint,
+  type IGeoSpatialConfig,
+  type IMatchingConfig,
+  type IMatch,
+  type IMessageBusConfig,
+  type IOrderedMessage,
+  type IResourcePoolConfig,
+  type IPooledResource
+} from './advanced-patterns.js';

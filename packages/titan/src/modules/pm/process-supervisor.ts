@@ -92,6 +92,20 @@ export class ProcessSupervisor {
     if (!metadata) {
       throw new Error('Supervisor metadata not found');
     }
+
+    // Resolve process classes from property values
+    const instance = new this.SupervisorClass();
+    if (metadata.children) {
+      for (const [key, childDef] of metadata.children) {
+        // Get the actual process class from the property value
+        const propertyKey = (childDef as any).propertyKey || key;
+        const processClass = (instance as any)[propertyKey];
+        if (processClass) {
+          childDef.processClass = processClass;
+        }
+      }
+    }
+
     return metadata;
   }
 

@@ -2,6 +2,7 @@
  * Process Workflow Implementation
  *
  * Implements workflow orchestration for complex multi-stage processes
+ * with DAG (Directed Acyclic Graph) support for parallel execution
  */
 
 import type { ILogger } from '../logger/logger.types.js';
@@ -15,12 +16,23 @@ import type {
 import { WORKFLOW_METADATA_KEY } from './decorators.js';
 
 /**
+ * DAG node for workflow execution
+ */
+interface IDAGNode {
+  stage: IWorkflowStage;
+  dependencies: string[];
+  dependents: string[];
+  level: number;
+}
+
+/**
  * Process workflow orchestrator
  */
 export class ProcessWorkflow<T> {
   private stages = new Map<string, IWorkflowStage>();
   private stageResults = new Map<string, IStageResult>();
   private context: IWorkflowContext;
+  private workflowInstance?: T;
 
   constructor(
     private readonly manager: IProcessManager,
@@ -44,10 +56,11 @@ export class ProcessWorkflow<T> {
 
     const workflow = new this.WorkflowClass();
 
+    // Store the workflow instance for later use
+    this.workflowInstance = workflow;
+
     // Enhance workflow with run method
-    (workflow as any).run = async (input?: any) => {
-      return this.run(input);
-    };
+    (workflow as any).run = async (input?: any) => this.run(input);
 
     // Enhance workflow with context access
     (workflow as any).getContext = () => this.context;
@@ -64,13 +77,19 @@ export class ProcessWorkflow<T> {
     // Build execution plan
     const executionPlan = this.buildExecutionPlan();
 
-    // Execute stages
-    for (const batch of executionPlan) {
-      await this.executeBatch(batch, input);
-    }
+    try {
+      // Execute stages
+      for (const batch of executionPlan) {
+        await this.executeBatch(batch, input);
+      }
 
-    // Return final results
-    return this.collectResults();
+      // Return final results
+      return this.collectResults();
+    } catch (error) {
+      // On failure, run compensations for all completed stages in reverse order
+      await this.compensateCompletedStages();
+      throw error;
+    }
   }
 
   // ============================================================================
@@ -89,34 +108,138 @@ export class ProcessWorkflow<T> {
   }
 
   /**
-   * Build execution plan based on dependencies
+   * Build execution plan based on dependencies (DAG)
    */
   private buildExecutionPlan(): IWorkflowStage[][] {
+    // Build DAG structure
+    const dag = this.buildDAG();
+
+    // Detect cycles
+    if (this.hasCycle(dag)) {
+      throw new Error('Circular dependency detected in workflow');
+    }
+
+    // Topological sort with level assignment
+    const levels = this.topologicalSort(dag);
+
+    // Group stages by level for parallel execution
     const plan: IWorkflowStage[][] = [];
-    const completed = new Set<string>();
-    const stages = Array.from(this.stages.values());
+    const maxLevel = Math.max(...Array.from(dag.values()).map(n => n.level));
 
-    while (completed.size < stages.length) {
-      const batch: IWorkflowStage[] = [];
+    for (let level = 0; level <= maxLevel; level++) {
+      const batch = Array.from(dag.values())
+        .filter(node => node.level === level)
+        .map(node => node.stage);
 
-      for (const stage of stages) {
-        if (completed.has(stage.name)) continue;
-
-        const deps = this.getDependencies(stage);
-        if (deps.every(dep => completed.has(dep))) {
-          batch.push(stage);
-        }
+      if (batch.length > 0) {
+        plan.push(batch);
       }
-
-      if (batch.length === 0) {
-        throw new Error('Circular dependency detected in workflow');
-      }
-
-      plan.push(batch);
-      batch.forEach(stage => completed.add(stage.name));
     }
 
     return plan;
+  }
+
+  /**
+   * Build DAG structure from stages
+   */
+  private buildDAG(): Map<string, IDAGNode> {
+    const dag = new Map<string, IDAGNode>();
+
+    // Initialize nodes
+    for (const stage of this.stages.values()) {
+      const deps = this.getDependencies(stage);
+      dag.set(stage.name, {
+        stage,
+        dependencies: deps,
+        dependents: [],
+        level: 0
+      });
+    }
+
+    // Build dependents lists
+    for (const node of dag.values()) {
+      for (const dep of node.dependencies) {
+        const depNode = dag.get(dep);
+        if (depNode) {
+          depNode.dependents.push(node.stage.name);
+        }
+      }
+    }
+
+    return dag;
+  }
+
+  /**
+   * Check if DAG has cycles
+   */
+  private hasCycle(dag: Map<string, IDAGNode>): boolean {
+    const visited = new Set<string>();
+    const recursionStack = new Set<string>();
+
+    const hasCycleUtil = (nodeName: string): boolean => {
+      visited.add(nodeName);
+      recursionStack.add(nodeName);
+
+      const node = dag.get(nodeName);
+      if (!node) return false;
+
+      for (const dependent of node.dependents) {
+        if (!visited.has(dependent)) {
+          if (hasCycleUtil(dependent)) return true;
+        } else if (recursionStack.has(dependent)) {
+          return true;
+        }
+      }
+
+      recursionStack.delete(nodeName);
+      return false;
+    };
+
+    for (const nodeName of dag.keys()) {
+      if (!visited.has(nodeName)) {
+        if (hasCycleUtil(nodeName)) return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Perform topological sort and assign levels
+   */
+  private topologicalSort(dag: Map<string, IDAGNode>): Map<string, IDAGNode> {
+    const inDegree = new Map<string, number>();
+    const queue: string[] = [];
+
+    // Calculate in-degrees
+    for (const [name, node] of dag.entries()) {
+      inDegree.set(name, node.dependencies.length);
+      if (node.dependencies.length === 0) {
+        queue.push(name);
+        node.level = 0;
+      }
+    }
+
+    // Process nodes level by level
+    while (queue.length > 0) {
+      const nodeName = queue.shift()!;
+      const node = dag.get(nodeName)!;
+
+      for (const dependentName of node.dependents) {
+        const dependent = dag.get(dependentName)!;
+        const currentInDegree = inDegree.get(dependentName)! - 1;
+        inDegree.set(dependentName, currentInDegree);
+
+        // Update level
+        dependent.level = Math.max(dependent.level, node.level + 1);
+
+        if (currentInDegree === 0) {
+          queue.push(dependentName);
+        }
+      }
+    }
+
+    return dag;
   }
 
   /**
@@ -187,11 +310,7 @@ export class ProcessWorkflow<T> {
         'Stage failed'
       );
 
-      // Check if we should run compensation
-      if ((stage as any).compensate) {
-        await this.runCompensation(stage);
-      }
-
+      // Don't run compensation here, it will be handled at the workflow level
       throw error;
     }
   }
@@ -236,16 +355,21 @@ export class ProcessWorkflow<T> {
 
     let lastError: Error | undefined;
 
+    // Bind the handler to the workflow instance if it exists
+    const boundHandler = this.workflowInstance
+      ? stage.handler.bind(this.workflowInstance)
+      : stage.handler;
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         if (timeout > 0) {
           return await this.executeWithTimeout(
-            stage.handler,
+            boundHandler,
             input,
             timeout
           );
         } else {
-          return await stage.handler(input);
+          return await boundHandler(input);
         }
       } catch (error) {
         lastError = error as Error;
@@ -290,12 +414,38 @@ export class ProcessWorkflow<T> {
 
     try {
       const stageResult = this.stageResults.get(stage.name);
-      await compensate(stageResult?.result);
+      // Bind the compensation handler to the workflow instance
+      const boundCompensate = this.workflowInstance
+        ? compensate.bind(this.workflowInstance)
+        : compensate;
+      await boundCompensate(stageResult?.result);
     } catch (error) {
       this.logger.error(
         { error, stage: stage.name },
         'Compensation failed'
       );
+    }
+  }
+
+  /**
+   * Compensate all completed stages in reverse order
+   */
+  private async compensateCompletedStages(): Promise<void> {
+    const completedStages: IWorkflowStage[] = [];
+
+    // Collect all completed stages
+    for (const [name, result] of this.stageResults) {
+      if (result.status === 'completed') {
+        const stage = this.stages.get(name);
+        if (stage) {
+          completedStages.push(stage);
+        }
+      }
+    }
+
+    // Run compensations in reverse order
+    for (const stage of completedStages.reverse()) {
+      await this.runCompensation(stage);
     }
   }
 

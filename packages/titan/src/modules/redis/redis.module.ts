@@ -23,7 +23,7 @@ import {
   RedisModuleAsyncOptions,
 } from './redis.types.js';
 
-@Module({})
+@Module()
 export class TitanRedisModule {
   name = 'TitanRedisModule';
 

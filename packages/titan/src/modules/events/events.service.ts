@@ -15,7 +15,7 @@ import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
 import { Inject, Injectable } from '../../decorators/index.js';
 
 import { EventMetadataService } from './event-metadata.service.js';
-import { EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN } from './events.module.js';
+import { EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN } from './tokens.js';
 
 import type {
   IEventContext,

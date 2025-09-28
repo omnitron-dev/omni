@@ -106,7 +106,7 @@ export interface NotificationModuleAsyncOptions {
   isGlobal?: boolean;
 }
 
-@Module({})
+@Module()
 export class TitanNotificationsModule {
   name = 'TitanNotificationsModule';
 

@@ -32,7 +32,7 @@ import type {
 /**
  * Scheduler module
  */
-@Module({})
+@Module()
 export class SchedulerModule {
   /**
    * Configure scheduler module with options

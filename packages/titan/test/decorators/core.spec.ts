@@ -442,7 +442,7 @@ describe('Core Decorators', () => {
     });
 
     it('should handle empty module options', () => {
-      @Module({})
+      @Module()
       class EmptyModule {}
 
       expect(Reflect.getMetadata('nexus:module', EmptyModule)).toEqual({});

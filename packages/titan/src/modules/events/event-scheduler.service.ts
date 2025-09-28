@@ -7,7 +7,7 @@
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
 import { Inject, Injectable } from '../../decorators/index.js';
 
-import { EVENT_EMITTER_TOKEN } from './events.module.js';
+import { EVENT_EMITTER_TOKEN } from './tokens.js';
 
 import type { IEventSchedulerJob } from './types.js';
 

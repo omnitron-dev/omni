@@ -36,7 +36,7 @@ import type { IConfigModuleOptions, IConfigAsyncOptions } from './types.js';
  *
  * Provides configuration capabilities to the entire application
  */
-@Module({})
+@Module()
 export class ConfigModule {
 
   /**

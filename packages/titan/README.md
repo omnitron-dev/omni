@@ -131,7 +131,7 @@ process.on('SIGTERM', () => app.stop());
 class UserModule {}
 
 // Dynamic modules
-@Module({})
+@Module()
 class ConfigurableModule {
   static forRoot(options: ModuleOptions): DynamicModule {
     return {

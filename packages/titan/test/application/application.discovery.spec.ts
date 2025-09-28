@@ -277,7 +277,7 @@ module.exports = { TestDiscoveredModule3 };`;
 
   describe('Module Class Detection', () => {
     it('should detect @Module decorated classes', () => {
-      @Module({})
+      @Module()
       class DecoratedModule implements IModule {
         readonly name = 'decorated';
       }

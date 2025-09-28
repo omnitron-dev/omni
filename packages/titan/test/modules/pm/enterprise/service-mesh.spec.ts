@@ -54,13 +54,28 @@ class TestService {
 
 // Create mock service proxy
 function createMockServiceProxy(service: any): ServiceProxy<any> {
-  return {
-    ...service,
-    __processId: 'test-process',
-    __destroy: async () => {},
-    __getMetrics: async () => ({}),
-    __getHealth: async () => ({ status: 'healthy', checks: [], timestamp: Date.now() })
-  };
+  // Create a proxy that delegates to the service instance
+  const proxy = Object.create(Object.getPrototypeOf(service));
+
+  // Copy all properties and methods from the service
+  for (const key of Object.getOwnPropertyNames(service)) {
+    proxy[key] = service[key];
+  }
+
+  // Copy methods from the prototype
+  for (const key of Object.getOwnPropertyNames(Object.getPrototypeOf(service))) {
+    if (key !== 'constructor' && typeof service[key] === 'function') {
+      proxy[key] = service[key].bind(service);
+    }
+  }
+
+  // Add ServiceProxy specific methods
+  proxy.__processId = 'test-process';
+  proxy.__destroy = async () => {};
+  proxy.__getMetrics = async () => ({});
+  proxy.__getHealth = async () => ({ status: 'healthy', checks: [], timestamp: Date.now() });
+
+  return proxy;
 }
 
 describe('ServiceMeshProxy', () => {

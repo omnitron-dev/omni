@@ -7,7 +7,6 @@
 
 import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
-import type { ServiceProxy } from '../types.js';
 
 // ============================================================================
 // Distributed Lock Pattern
@@ -191,10 +190,10 @@ export class GeoSpatialQueryManager {
     }
     
     // Filter by actual distance
-    return results.filter(entity => {
+    return results.filter(entity => 
       // In real implementation, entity would have location
-      return true; // Simplified for now
-    });
+       true // Simplified for now
+    );
   }
 
   /**

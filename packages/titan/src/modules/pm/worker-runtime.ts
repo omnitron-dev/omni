@@ -8,7 +8,6 @@
 import 'reflect-metadata';
 import { parentPort, workerData } from 'worker_threads';
 import { Netron } from '../../netron/index.js';
-import { Service } from '../../decorators/core.js';
 
 // Worker configuration from parent
 interface WorkerConfig {

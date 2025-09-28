@@ -17,8 +17,7 @@ import type {
   ICacheOptions,
   IValidationOptions,
   ICircuitBreakerOptions,
-  ISelfHealAction,
-  IProcessPoolOptions
+  ISelfHealAction
 } from './types.js';
 
 // ============================================================================

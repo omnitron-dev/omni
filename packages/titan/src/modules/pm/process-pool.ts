@@ -14,10 +14,9 @@ import type {
   ServiceProxy,
   IPoolMetrics,
   IProcessManager,
-  IProcessMetrics,
-  IHealthStatus
+  IProcessMetrics
 } from './types.js';
-import { PoolStrategy, ProcessStatus } from './types.js';
+import { PoolStrategy } from './types.js';
 
 /**
  * Worker information tracking

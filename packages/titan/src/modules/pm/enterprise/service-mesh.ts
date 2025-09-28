@@ -5,7 +5,6 @@
  * rate limiting, retries, timeouts, and observability.
  */
 
-import { EventEmitter } from 'events';
 import type { ILogger } from '../../logger/logger.types.js';
 import type { ServiceProxy } from '../types.js';
 
@@ -123,13 +122,11 @@ export class ServiceMeshProxy<T> {
         }
 
         // Wrap method with mesh capabilities
-        return async (...args: any[]) => {
-          return self.executeWithMesh(
+        return async (...args: any[]) => self.executeWithMesh(
             property as string,
             () => (original as Function).apply(target, args),
             args
           );
-        };
       }
     }) as ServiceProxy<T>;
   }
@@ -155,7 +152,10 @@ export class ServiceMeshProxy<T> {
       try {
         // Execute with circuit breaker
         const result = await this.circuitBreaker.execute(
-          () => this.executeWithRetry(fn, context)
+          () => this.executeWithTimeout(
+            () => this.executeWithRetry(fn, context),
+            this.config.timeout
+          )
         );
 
         // Record success metrics
@@ -178,6 +178,28 @@ export class ServiceMeshProxy<T> {
    */
   private async executeWithRetry(fn: () => Promise<any>, context: any): Promise<any> {
     return this.retryManager.execute(fn, context);
+  }
+
+  /**
+   * Execute with timeout
+   */
+  private async executeWithTimeout<T>(
+    fn: () => Promise<T>,
+    timeout?: number
+  ): Promise<T> {
+    if (!timeout) {
+      return fn();
+    }
+
+    return Promise.race([
+      fn(),
+      new Promise<T>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`Operation timed out after ${timeout}ms`)),
+          timeout
+        )
+      )
+    ]);
   }
 
   /**

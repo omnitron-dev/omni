@@ -12,7 +12,6 @@ import { ProcessRegistry } from './process-registry.js';
 import { ProcessSpawnerFactory } from './process-spawner.js';
 import { ProcessMetricsCollector } from './process-metrics.js';
 import { ProcessHealthChecker } from './process-health.js';
-import { LoggerService } from '../logger/logger.service.js';
 import { LOGGER_SERVICE_TOKEN } from '../logger/logger.tokens.js';
 
 import type { IProcessManagerConfig } from './types.js';
@@ -122,27 +121,21 @@ export class ProcessManagerModule {
         [
           PM_SPAWNER_TOKEN,
           {
-            useFactory: (logger: any, config: IProcessManagerConfig) => {
-              return ProcessSpawnerFactory.create(logger, config);
-            },
+            useFactory: (logger: any, config: IProcessManagerConfig) => ProcessSpawnerFactory.create(logger, config),
             inject: [LOGGER_SERVICE_TOKEN, PM_CONFIG_TOKEN]
           }
         ],
         [
           PM_METRICS_TOKEN,
           {
-            useFactory: (logger: any) => {
-              return new ProcessMetricsCollector(logger);
-            },
+            useFactory: (logger: any) => new ProcessMetricsCollector(logger),
             inject: [LOGGER_SERVICE_TOKEN]
           }
         ],
         [
           PM_HEALTH_TOKEN,
           {
-            useFactory: (logger: any) => {
-              return new ProcessHealthChecker(logger);
-            },
+            useFactory: (logger: any) => new ProcessHealthChecker(logger),
             inject: [LOGGER_SERVICE_TOKEN]
           }
         ],
@@ -151,9 +144,7 @@ export class ProcessManagerModule {
         [
           PM_MANAGER_TOKEN,
           {
-            useFactory: (logger: any, config: IProcessManagerConfig) => {
-              return new ProcessManager(logger, config);
-            },
+            useFactory: (logger: any, config: IProcessManagerConfig) => new ProcessManager(logger, config),
             inject: [LOGGER_SERVICE_TOKEN, PM_CONFIG_TOKEN]
           }
         ],
@@ -210,36 +201,28 @@ export class ProcessManagerModule {
       [
         PM_SPAWNER_TOKEN,
         {
-          useFactory: (logger: any, config: IProcessManagerConfig) => {
-            return ProcessSpawnerFactory.create(logger, config);
-          },
+          useFactory: (logger: any, config: IProcessManagerConfig) => ProcessSpawnerFactory.create(logger, config),
           inject: [LOGGER_SERVICE_TOKEN, PM_CONFIG_TOKEN]
         }
       ],
       [
         PM_METRICS_TOKEN,
         {
-          useFactory: (logger: any) => {
-            return new ProcessMetricsCollector(logger);
-          },
+          useFactory: (logger: any) => new ProcessMetricsCollector(logger),
           inject: [LOGGER_SERVICE_TOKEN]
         }
       ],
       [
         PM_HEALTH_TOKEN,
         {
-          useFactory: (logger: any) => {
-            return new ProcessHealthChecker(logger);
-          },
+          useFactory: (logger: any) => new ProcessHealthChecker(logger),
           inject: [LOGGER_SERVICE_TOKEN]
         }
       ],
       [
         PM_MANAGER_TOKEN,
         {
-          useFactory: (logger: any, config: IProcessManagerConfig) => {
-            return new ProcessManager(logger, config);
-          },
+          useFactory: (logger: any, config: IProcessManagerConfig) => new ProcessManager(logger, config),
           inject: [LOGGER_SERVICE_TOKEN, PM_CONFIG_TOKEN]
         }
       ],

@@ -6,7 +6,6 @@
  */
 
 import type { IModule } from '../../nexus/types.js';
-import type { Netron } from '../../netron/index.js';
 import type { EventEmitter } from 'events';
 
 // ============================================================================

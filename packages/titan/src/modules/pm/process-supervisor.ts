@@ -11,7 +11,7 @@ import type {
   IProcessManager,
   IProcessInfo
 } from './types.js';
-import { SupervisionStrategy, RestartDecision, ProcessStatus } from './types.js';
+import { SupervisionStrategy, RestartDecision } from './types.js';
 
 import { SUPERVISOR_METADATA_KEY } from './decorators.js';
 

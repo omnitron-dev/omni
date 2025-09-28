@@ -9,7 +9,7 @@ import { EventEmitter } from 'events';
 import { Netron } from '../../netron/index.js';
 import type { ILogger } from '../logger/logger.types.js';
 import type { IProcessOptions, IProcessManagerConfig } from './types.js';
-import { PROCESS_METHOD_METADATA_KEY, PROCESS_METADATA_KEY } from './decorators.js';
+import { PROCESS_METHOD_METADATA_KEY } from './decorators.js';
 
 /**
  * Mock worker that runs in the same thread
@@ -123,15 +123,11 @@ export class MockProcessSpawner {
     });
 
     // Override Netron's call method to directly call the worker
-    (netron as any).mockCall = async (methodName: string, args: any[]) => {
-      return worker.callMethod(methodName, args);
-    };
+    (netron as any).mockCall = async (methodName: string, args: any[]) => worker.callMethod(methodName, args);
 
     // Create a mock peer
     (netron as any).peer = {
-      call: async (serviceName: string, methodName: string, args: any[]) => {
-        return worker.callMethod(methodName, args);
-      },
+      call: async (serviceName: string, methodName: string, args: any[]) => worker.callMethod(methodName, args),
       expose: async () => {},
       start: async () => {},
       stop: async () => {},

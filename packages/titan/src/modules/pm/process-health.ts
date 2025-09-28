@@ -8,7 +8,6 @@ import { EventEmitter } from 'events';
 import type { ILogger } from '../logger/logger.types.js';
 import type {
   IHealthStatus,
-  IHealthCheck,
   ServiceProxy,
   IProcessOptions
 } from './types.js';

@@ -13,8 +13,6 @@ import type {
   ServiceProxy,
   IProcessManagerConfig
 } from '../types.js';
-import type { ILogger } from '../../logger/logger.types.js';
-import { randomUUID } from 'crypto';
 
 /**
  * Test process manager configuration

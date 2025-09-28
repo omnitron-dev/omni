@@ -66,7 +66,7 @@ class UserAggregate extends AggregateRoot {
   private onUserCreated(event: IDomainEvent): void {
     this.name = event.eventData.name;
     this.email = event.eventData.email;
-    this.isActive = true;
+    // Note: Don't set isActive here, let activate() do it
   }
 
   private onUserUpdated(event: IDomainEvent): void {
@@ -157,7 +157,7 @@ describe('Event Sourcing', () => {
 
       expect(user.getName()).toBe('John Doe');
       expect(user.getEmail()).toBe('john@example.com');
-      expect(user.getIsActive()).toBe(true);
+      expect(user.getIsActive()).toBe(false); // Not active until activated
       expect(user.getVersion()).toBe(1);
     });
 

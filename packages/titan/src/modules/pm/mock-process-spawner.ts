@@ -274,9 +274,7 @@ export class MockWorkerHandle implements IWorkerHandle {
         }
 
         // Return async method wrapper
-        return async (...args: any[]) => {
-          return this.worker.callMethod(String(property), args);
-        };
+        return async (...args: any[]) => this.worker.callMethod(String(property), args);
       }
     });
   }

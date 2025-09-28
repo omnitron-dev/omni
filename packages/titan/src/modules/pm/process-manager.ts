@@ -6,16 +6,10 @@
  */
 
 import { EventEmitter } from 'events';
-import { Worker } from 'worker_threads';
-import { fork, ChildProcess } from 'child_process';
 import { randomUUID } from 'crypto';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
-import { Netron, LocalPeer } from '../../netron/index.js';
 import { Injectable } from '../../decorators/index.js';
 import type { ILogger } from '../logger/logger.types.js';
-import { LoggerService } from '../logger/logger.service.js';
 
 import type {
   IProcessManager,
@@ -24,12 +18,10 @@ import type {
   ServiceProxy,
   IProcessPool,
   IProcessPoolOptions,
-  PoolStrategy,
   IProcessMetrics,
   IHealthStatus,
   IProcessManagerConfig,
   ISupervisorOptions,
-  IWorkflowContext,
   IProcessMetadata
 } from './types.js';
 
@@ -41,7 +33,7 @@ import { ProcessPool } from './process-pool.js';
 import { ProcessSupervisor } from './process-supervisor.js';
 import { ProcessWorkflow } from './process-workflow.js';
 import { ServiceProxyHandler } from './service-proxy.js';
-import { UnifiedProcessSpawner, ProcessSpawnerFactory } from './process-spawner.js';
+import { ProcessSpawnerFactory } from './process-spawner.js';
 import type { IProcessSpawner } from './types.js';
 import { ProcessRegistry } from './process-registry.js';
 import { ProcessMetricsCollector } from './process-metrics.js';
@@ -200,9 +192,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
 
         // For unknown properties, create a function that executes through the pool
         if (typeof property === 'string' && property !== 'constructor') {
-          return async (...args: any[]) => {
-            return target.execute(property, ...args);
-          };
+          return async (...args: any[]) => target.execute(property, ...args);
         }
 
         return undefined;

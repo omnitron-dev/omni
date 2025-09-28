@@ -364,9 +364,9 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
     if (runtime === 'bun') {
       // Use Bun's native server
-      // @ts-ignore - Bun global is not always available
+      // @ts-expect-error - Bun global is not always available
       if (typeof globalThis.Bun !== 'undefined' && globalThis.Bun.serve) {
-        // @ts-ignore - Bun types may not be installed
+        // @ts-expect-error - Bun types may not be installed
         this.server = globalThis.Bun.serve({
           port,
           hostname: host,
@@ -962,7 +962,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     if (typeof window !== 'undefined') {
       return 'browser';
     }
-    // @ts-ignore - Bun global may not be available
+    // @ts-expect-error - Bun global may not be available
     if (typeof globalThis.Bun !== 'undefined') {
       return 'bun';
     }

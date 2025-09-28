@@ -7,13 +7,10 @@ import Redis from 'ioredis';
 import { NotificationService } from '../../../src/modules/notifications/notifications.service.js';
 import { NotificationManager } from '../../../src/rotif/rotif.js';
 import {
-  ChannelManager,
-  ChannelType,
-  NotificationChannel
+  ChannelManager
 } from '../../../src/modules/notifications/channel-manager.js';
 import {
-  PreferenceManager,
-  UserPreference
+  PreferenceManager
 } from '../../../src/modules/notifications/preference-manager.js';
 import { RateLimiter } from '../../../src/modules/notifications/rate-limiter.js';
 import type {

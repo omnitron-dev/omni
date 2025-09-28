@@ -117,28 +117,28 @@ export class TestProcessManager extends ProcessManager {
    * Simulate a process crash
    */
   async simulateCrash(processOrId: ServiceProxy<any> | string): Promise<void> {
-    const processId = typeof processOrId === 'string' 
-      ? processOrId 
+    const processId = typeof processOrId === 'string'
+      ? processOrId
       : (processOrId as any).__processId;
-    
+
     const info = this.getProcess(processId);
     if (!info) {
       throw new Error(`Process not found: ${processId}`);
     }
-    
-    // Update status
-    (info as any).status = ProcessStatus.CRASHED;
-    
+
     // Emit crash event
     const error = new Error('Simulated crash for testing');
     this.emit('process:crash', info, error);
-    
-    // Kill the actual process if it exists
+
+    // Kill the actual process if it exists but preserve CRASHED status
     try {
       await this.kill(processId, 'SIGKILL');
     } catch (e) {
       // Ignore errors during simulated crash
     }
+
+    // Update status AFTER kill to ensure it stays CRASHED
+    (info as any).status = ProcessStatus.CRASHED;
   }
 
   /**

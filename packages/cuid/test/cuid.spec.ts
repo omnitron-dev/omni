@@ -1,4 +1,4 @@
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect } from '@jest/globals';
 import { cuid, isCuid, createOptimizedCuid } from '../src/index';
 
 describe('CUID', () => {
@@ -171,7 +171,7 @@ describe('CUID', () => {
       const customCuid = createOptimizedCuid({
         length: customLength,
         fingerprint: customFingerprint,
-        initialCount: initialCount,
+        initialCount,
       });
 
       const id = customCuid();

@@ -6,7 +6,7 @@
  */
 
 import type { ILogger } from '../../logger/logger.types.js';
-import type { ServiceProxy } from '../types.js';
+import type { ServiceProxy, IProcessPool } from '../types.js';
 
 /**
  * Tenant context interface
@@ -48,7 +48,7 @@ export interface IMultiTenancyConfig {
  * Tenant-aware process pool
  */
 export interface ITenantProcessPool<T> {
-  getTenantProxy(tenantId: string): ServiceProxy<T>;
+  getTenantProxy(tenantId: string): Promise<IProcessPool<T>>;
   getAllTenants(): string[];
   getTenantMetrics(tenantId: string): Promise<any>;
   evictTenant(tenantId: string): Promise<void>;
@@ -251,6 +251,9 @@ export class MultiTenancyManager {
           throw new Error(`Tenant ${tenantId} exceeded request quota`);
         }
         break;
+      default:
+        // Unknown resource type, skip check
+        break;
     }
   }
 
@@ -316,7 +319,7 @@ export class MultiTenancyManager {
  * Tenant-aware process pool implementation
  */
 export class TenantProcessPool<T> implements ITenantProcessPool<T> {
-  private tenantPools = new Map<string, any>();
+  private tenantPools = new Map<string, IProcessPool<T>>();
 
   constructor(
     private readonly ProcessClass: new (...args: any[]) => T,
@@ -328,12 +331,12 @@ export class TenantProcessPool<T> implements ITenantProcessPool<T> {
   /**
    * Get tenant-specific proxy
    */
-  getTenantProxy(tenantId: string): ServiceProxy<T> {
+  async getTenantProxy(tenantId: string): Promise<IProcessPool<T>> {
     let pool = this.tenantPools.get(tenantId);
 
     if (!pool) {
       // Lazy create pool for tenant
-      pool = this.createTenantPool(tenantId);
+      pool = await this.createTenantPool(tenantId);
       this.tenantPools.set(tenantId, pool);
     }
 
@@ -343,14 +346,14 @@ export class TenantProcessPool<T> implements ITenantProcessPool<T> {
   /**
    * Create pool for tenant
    */
-  private createTenantPool(tenantId: string): ServiceProxy<T> {
+  private async createTenantPool(tenantId: string): Promise<IProcessPool<T>> {
     const tenant = this.multiTenancyManager.getTenant(tenantId);
     if (!tenant) {
       throw new Error(`Tenant ${tenantId} not found`);
     }
 
     // Create pool with tenant isolation
-    return this.processManager.pool(this.ProcessClass, {
+    return await this.processManager.pool(this.ProcessClass, {
       size: this.getPoolSizeForTenant(tenant),
       name: `${this.ProcessClass.name}-${tenantId}`
     });

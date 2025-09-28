@@ -51,8 +51,7 @@ describe('Event Decorators', () => {
       }),
       registerHandler: jest.fn().mockImplementation(async (metadata: any) => {
         // Create wrapped handler
-        const createWrappedHandler = () => {
-          return (data: any, eventMetadata?: any) => {
+        const createWrappedHandler = () => (data: any, eventMetadata?: any) => {
             const method = metadata.target[metadata.method];
             if (!method) return;
             
@@ -92,7 +91,6 @@ describe('Event Decorators', () => {
               method.call(metadata.target, processedData, fullMetadata);
             }
           };
-        };
         
         const handler = createWrappedHandler();
         

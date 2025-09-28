@@ -7,6 +7,7 @@
 
 import { EventEmitter } from 'events';
 import { v4 as uuidv4 } from 'uuid';
+import type { ProcessMethod } from './common-types.js';
 import type { ILogger } from '../logger/logger.types.js';
 import type {
   IProcessSpawner,
@@ -26,7 +27,7 @@ export class MockWorker extends EventEmitter {
   public readonly threadId = Math.floor(Math.random() * 10000);
   public readonly pid = process.pid;
   private instance: any;
-  private publicMethods = new Map<string, Function>();
+  private publicMethods = new Map<string, ProcessMethod>();
   private _status: ProcessStatus = ProcessStatus.STARTING;
   private metrics: IProcessMetrics = {
     cpu: 0,
@@ -95,24 +96,42 @@ export class MockWorker extends EventEmitter {
    * Setup internal process management methods
    */
   private setupInternalMethods(): void {
-    const self = this; // Capture this for use in async functions
+    
 
     this.publicMethods.set('__getProcessMetrics', async (): Promise<IProcessMetrics> => {
-      if (self.metrics) self.metrics.requests = (self.metrics.requests || 0) + 1;
+      if (this.metrics) this.metrics.requests = (this.metrics.requests || 0) + 1;
       return {
-        ...(self.metrics || { cpu: 0, memory: 0, requests: 0, errors: 0 }),
+        ...(this.metrics || { cpu: 0, memory: 0, requests: 0, errors: 0 }),
         cpu: Math.random() * 100,
         memory: process.memoryUsage().heapUsed
       };
     });
 
     this.publicMethods.set('__getProcessHealth', async (): Promise<IHealthStatus> => {
-      if (self.publicMethods.has('checkHealth')) {
-        return await self.publicMethods.get('checkHealth')!();
+      if (this.publicMethods.has('checkHealth')) {
+        const result = await this.publicMethods.get('checkHealth')!();
+        // Normalize the result to IHealthStatus format
+        if (result && typeof result === 'object') {
+          // If it already has the correct format, return as-is
+          if ('status' in result && 'checks' in result && 'timestamp' in result) {
+            return result;
+          }
+          // Convert from test format to IHealthStatus
+          return {
+            status: result.status || (this._status === ProcessStatus.RUNNING ? 'healthy' : 'unhealthy'),
+            checks: result.checks || [{
+              name: 'checkHealth',
+              status: result.status === 'healthy' ? 'pass' : 'fail',
+              message: result.message,
+              details: result.details
+            }],
+            timestamp: result.timestamp || Date.now()
+          };
+        }
       }
 
       return {
-        status: self._status === ProcessStatus.RUNNING ? 'healthy' : 'unhealthy',
+        status: this._status === ProcessStatus.RUNNING ? 'healthy' : 'unhealthy',
         checks: [{
           name: 'mock',
           status: 'pass'
@@ -122,7 +141,7 @@ export class MockWorker extends EventEmitter {
     });
 
     this.publicMethods.set('__destroy', async (): Promise<void> => {
-      await self.terminate();
+      await this.terminate();
     });
   }
 
@@ -138,7 +157,15 @@ export class MockWorker extends EventEmitter {
 
     try {
       if (this.metrics) this.metrics.requests = (this.metrics.requests || 0) + 1;
-      return await method(...args);
+      const result = method(...args);
+
+      // If the method returns a promise, await it
+      if (result && typeof result.then === 'function') {
+        return await result;
+      }
+
+      // Return as-is for async generators and other values
+      return result;
     } catch (error) {
       if (this.metrics) this.metrics.errors = (this.metrics.errors || 0) + 1;
       throw error;
@@ -273,8 +300,44 @@ export class MockWorkerHandle implements IWorkerHandle {
           return undefined;
         }
 
+        // Convert property to string
+        const methodName = String(property);
+
+        // Check if this should be a streaming method
+        // Only methods starting with 'stream' (lowercase) return AsyncIterables
+        // Methods like 'processStream' or 'handleStream' are normal async methods
+        if (methodName.startsWith('stream')) {
+          const workerInstance = this.worker;
+          return async function* (...args: any[]) {
+            const result = await workerInstance.callMethod(methodName, args);
+            // If result is an async iterable, yield from it
+            if (result && typeof result[Symbol.asyncIterator] === 'function') {
+              yield* result;
+            } else if (result && typeof result[Symbol.iterator] === 'function') {
+              // Support sync iterables too
+              yield* result;
+            } else if (Array.isArray(result)) {
+              // Support arrays
+              yield* result;
+            } else {
+              // Single value
+              yield result;
+            }
+          };
+        }
+
         // Return async method wrapper
-        return async (...args: any[]) => this.worker.callMethod(String(property), args);
+        return async (...args: any[]) => this.worker.callMethod(methodName, args);
+      },
+
+      has: (target, property) => {
+        // Report that we have the special control methods
+        const controlMethods = ['__processId', '__destroy', '__getMetrics', '__getHealth'];
+        if (typeof property === 'string' && controlMethods.includes(property)) {
+          return true;
+        }
+        // All other methods are assumed to be available
+        return typeof property === 'string';
       }
     });
   }

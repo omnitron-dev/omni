@@ -5,8 +5,7 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import {
   NetronBuiltinMiddleware,
-  type NetronMiddlewareContext,
-  type MiddlewareFunction
+  type NetronMiddlewareContext
 } from '../../../src/netron/middleware/index.js';
 import { TitanError, ErrorCode } from '../../../src/errors/index.js';
 

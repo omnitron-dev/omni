@@ -9,9 +9,6 @@ import {
   LWWRegister,
   RaftConsensus,
   GeoRoutingStrategy,
-  ReplicationStrategy,
-  ConsistencyLevel,
-  ConflictResolution,
   type GeoRegion,
   type GeoLocation
 } from '../../../../src/modules/pm/enterprise/geo-distribution.js';
@@ -175,12 +172,13 @@ describe('CRDT Implementations', () => {
       expect(register2.get()).toBe('value2');
     });
 
-    it('should handle concurrent writes correctly', () => {
+    it('should handle concurrent writes correctly', async () => {
       const register1 = new LWWRegister('initial', 'node1');
       const register2 = new LWWRegister('initial', 'node2');
 
-      // Simulate concurrent writes
+      // Simulate concurrent writes with small delay to ensure different timestamps
       register1.set('A');
+      await new Promise(resolve => setTimeout(resolve, 1));
       register2.set('B');
 
       // Both merge with each other
@@ -191,8 +189,9 @@ describe('CRDT Implementations', () => {
       register2.merge(register1);
 
       // After merging, both should have the same value
-      // (the one with the higher timestamp)
-      expect(register1.get()).toBe(register2.get());
+      // (the one with the higher timestamp - should be 'B')
+      expect(register1.get()).toBe('B');
+      expect(register2.get()).toBe('B');
     });
   });
 });

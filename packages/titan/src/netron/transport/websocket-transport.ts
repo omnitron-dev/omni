@@ -63,12 +63,12 @@ export class WebSocketConnection extends BaseConnection {
   }
 
   get remoteAddress(): string | undefined {
-    // @ts-ignore - _socket exists on ws WebSocket
+    // @ts-expect-error - _socket exists on ws WebSocket
     return this.socket._socket?.remoteAddress;
   }
 
   get localAddress(): string | undefined {
-    // @ts-ignore - _socket exists on ws WebSocket
+    // @ts-expect-error - _socket exists on ws WebSocket
     return this.socket._socket?.localAddress;
   }
 
@@ -298,7 +298,7 @@ export class WebSocketServerAdapter extends BaseServer {
     });
 
     // If server is already listening
-    // @ts-ignore - WebSocketServer doesn't have a listening property, but it works
+    // @ts-expect-error - WebSocketServer doesn't have a listening property, but it works
     if (this.wss.listening || (this.wss as any).options?.server) {
       this.handleListening();
     }

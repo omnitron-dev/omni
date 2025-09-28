@@ -6,7 +6,7 @@
 import { describe, test, expect } from "bun:test";
 
 // Import core functionality
-import { Application, createApp, startApp } from '../../src/application';
+import { Application, createApp } from '../../src/application';
 import { ConfigModule } from '../../src/modules/config.module';
 import { LoggerModule } from '../../src/modules/logger.module';
 

@@ -277,6 +277,11 @@ export class ProcessSupervisor {
         // For dynamic children, just restart the failed one
         await this.restartChild(name);
         break;
+
+      default:
+        // Unknown strategy, use one-for-one as fallback
+        await this.restartChild(name);
+        break;
     }
   }
 

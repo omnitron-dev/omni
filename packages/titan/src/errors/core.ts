@@ -177,12 +177,13 @@ export class TitanError extends Error {
    */
   static getMetrics(options: MetricsOptions): any {
     const now = Date.now();
-    const windowMs = {
-      '1m': 60000,
-      '5m': 300000,
-      '15m': 900000,
-      '1h': 3600000
-    }[options.window || '1m'];
+    // Window duration for future windowed metrics implementation
+    // const windowMs = {
+    //   '1m': 60000,
+    //   '5m': 300000,
+    //   '15m': 900000,
+    //   '1h': 3600000
+    // }[options.window || '1m'];
 
     const elapsed = now - this.stats.lastReset;
     const rate = this.stats.totalErrors / (elapsed / 1000); // errors per second

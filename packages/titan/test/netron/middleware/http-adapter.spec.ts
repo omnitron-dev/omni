@@ -6,9 +6,7 @@ import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import {
   HttpMiddlewareAdapter,
   HttpBuiltinMiddleware,
-  type HttpMiddlewareContext,
-  type NetronMiddlewareContext,
-  MiddlewareStage
+  type HttpMiddlewareContext
 } from '../../../src/netron/middleware/index.js';
 import { TitanError, ErrorCode } from '../../../src/errors/index.js';
 import type { IncomingMessage, ServerResponse } from 'http';

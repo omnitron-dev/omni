@@ -246,8 +246,8 @@ describe('TenantProcessPool', () => {
         tier: 'standard'
       });
 
-      const proxy1 = pool.getTenantProxy('pool-tenant-1');
-      const proxy2 = pool.getTenantProxy('pool-tenant-2');
+      const proxy1 = await pool.getTenantProxy('pool-tenant-1');
+      const proxy2 = await pool.getTenantProxy('pool-tenant-2');
 
       expect(proxy1).toBeDefined();
       expect(proxy2).toBeDefined();
@@ -268,8 +268,8 @@ describe('TenantProcessPool', () => {
       });
 
       // Pools should have different sizes based on tier
-      const enterpriseProxy = pool.getTenantProxy('enterprise-tenant');
-      const freeProxy = pool.getTenantProxy('free-tenant');
+      const enterpriseProxy = await pool.getTenantProxy('enterprise-tenant');
+      const freeProxy = await pool.getTenantProxy('free-tenant');
 
       expect(enterpriseProxy).toBeDefined();
       expect(freeProxy).toBeDefined();
@@ -281,7 +281,7 @@ describe('TenantProcessPool', () => {
         name: 'To Evict'
       });
 
-      const proxy = pool.getTenantProxy('evict-tenant');
+      const proxy = await pool.getTenantProxy('evict-tenant');
       expect(proxy).toBeDefined();
 
       await pool.evictTenant('evict-tenant');

@@ -42,7 +42,7 @@ export function Cached(options: CacheOptions = {}): MethodDecorator {
     const originalMethod = descriptor.value;
     const methodName = String(propertyKey);
 
-    descriptor.value = async function (...args: any[]) {
+    descriptor.value = async function cachedMethod(...args: any[]) {
       // Get cache service (assumes it's injected into the class)
       const cacheService = (this as any).cache;
 
@@ -85,7 +85,7 @@ export function CacheClear(methodName?: string): MethodDecorator {
     const originalMethod = descriptor.value;
     const targetMethod = methodName || String(propertyKey);
 
-    descriptor.value = async function (...args: any[]) {
+    descriptor.value = async function cacheClearMethod(...args: any[]) {
       // Call original method first
       const result = await originalMethod.apply(this, args);
 

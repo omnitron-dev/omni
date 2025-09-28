@@ -10,7 +10,6 @@ import {
   BaseServer
 } from '../../../src/netron/transport/base-transport.js';
 import type {
-  ITransport,
   IConnection,
   IServer,
   TransportOptions,

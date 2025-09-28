@@ -279,10 +279,10 @@ describe('Race Condition Tests', () => {
       redis: getTestRedisUrl(1),
       deduplicationTTL: 3600,
       blockInterval: 50,
-      generateDedupKey: ({ payload }) => {
+      generateDedupKey: ({ payload }) => 
         // Use only the 'id' field for deduplication
-        return `custom:${(payload as any).id}`;
-      },
+         `custom:${(payload as any).id}`
+      ,
     });
 
     await customManager.redis.flushdb();

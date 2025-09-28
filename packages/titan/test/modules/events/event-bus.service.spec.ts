@@ -4,7 +4,6 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import { EventBusService } from '../../../src/modules/events/event-bus.service';
-import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
 
 describe('EventBusService', () => {
   let service: EventBusService;

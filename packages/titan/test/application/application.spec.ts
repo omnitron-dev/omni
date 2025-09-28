@@ -14,28 +14,22 @@ import { CONFIG_SERVICE_TOKEN } from '../../src/modules/config/config.tokens.js'
 import { LoggerModule, LOGGER_SERVICE_TOKEN } from '../../src/modules/logger/index.js';
 
 // Wrapper for createApp that disables graceful shutdown by default in tests
-const createApp = (options: any = {}) => {
-  return originalCreateApp({
+const createApp = (options: any = {}) => originalCreateApp({
     disableGracefulShutdown: true,
     disableCoreModules: true, // Disable core modules by default in tests
     logger: false, // Disable logger in tests to reduce noise
     ...options
   });
-};
 
 // Create app with core modules for specific tests
-const createAppWithCoreModules = async (options: any = {}) => {
-  return Application.create({
+const createAppWithCoreModules = async (options: any = {}) => Application.create({
     disableGracefulShutdown: true,
     logger: false,
     ...options
   });
-};
 import {
   ApplicationState,
-  ApplicationEvent,
   Module,
-  LifecycleHook,
   HealthStatus,
   IApplication,
   IModule

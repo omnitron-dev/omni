@@ -1,11 +1,10 @@
 /**
  * Tests for Titan fluent API
  */
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, jest } from '@jest/globals';
 
 // Jest is globally available, no need to import
 import { createApp, defineModule, createToken, LOGGER_SERVICE_TOKEN, CONFIG_SERVICE_TOKEN } from '../src';
-import { ApplicationState } from '../src/types';
 
 describe('Fluent API', () => {
   describe('Lifecycle hooks chaining', () => {

@@ -8,7 +8,6 @@ import {
   createMultiToken,
   createOptionalToken,
   createConfigToken,
-  InjectionToken,
   isToken,
   isMultiToken,
   isOptionalToken,

@@ -18,7 +18,7 @@ import {
 } from '../../../src/modules/config/config.decorator.js';
 import { ConfigService } from '../../../src/modules/config/config.service.js';
 import { CONFIG_INJECT_METADATA_KEY, CONFIG_SCHEMA_METADATA_KEY } from '../../../src/modules/config/types.js';
-import { Container, createToken } from '@nexus';
+import { createToken } from '@nexus';
 
 describe('Configuration Decorators', () => {
   describe('@Config decorator', () => {

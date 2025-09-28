@@ -1,7 +1,7 @@
 /**
  * Tests for Service decorator with transport configuration
  */
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, jest } from '@jest/globals';
 
 import 'reflect-metadata';
 import { Service, Public, Method } from '../../src/decorators/index.js';
@@ -10,7 +10,6 @@ import type { ExtendedServiceMetadata } from '../../src/decorators/core.js';
 import { WebSocketTransport, TcpTransport } from '../../src/netron/transport/index.js';
 import { UnixSocketTransport, NamedPipeTransport } from '../../src/netron/transport/unix-transport.js';
 import { LocalPeer } from '../../src/netron/local-peer.js';
-import { RemotePeer } from '../../src/netron/remote-peer.js';
 import type { ITransport } from '../../src/netron/transport/types.js';
 
 describe('Service Decorator with Transports', () => {
@@ -413,12 +412,10 @@ describe('Service Decorator with Transports', () => {
     });
 
     it('should support dynamic transport creation', () => {
-      const createTransports = (basePort: number): ITransport[] => {
-        return [
+      const createTransports = (basePort: number): ITransport[] => [
           new WebSocketTransport({ port: basePort }),
           new TcpTransport({ port: basePort + 1 }),
         ];
-      };
 
       @Service({
         name: 'dynamic@1.0.0',

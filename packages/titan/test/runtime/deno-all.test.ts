@@ -6,7 +6,7 @@
 import { describe, it, expect, run } from 'https://deno.land/x/tincan@1.0.2/mod.ts';
 
 // Import core functionality
-import { Application, createApp, startApp } from '../../src/application.ts';
+import { Application, createApp } from '../../src/application.ts';
 import { ConfigModule } from '../../src/modules/config.module.ts';
 import { LoggerModule } from '../../src/modules/logger.module.ts';
 import { Container } from '../../../nexus/src/index.ts';

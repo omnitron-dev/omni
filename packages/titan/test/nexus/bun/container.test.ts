@@ -55,10 +55,10 @@ describe("Nexus Container in Bun", () => {
 
     // Example of using Bun-specific API
     container.register(fileToken, {
-      useFactory: () => {
+      useFactory: () => 
         // This would use Bun.file() in real scenario
-        return "Bun file content";
-      }
+         "Bun file content"
+      
     });
 
     const content = container.resolve(fileToken);

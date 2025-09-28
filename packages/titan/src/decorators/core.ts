@@ -151,7 +151,7 @@ export interface ModuleDecoratorOptions {
  * Mark a class as injectable and available for dependency injection
  */
 export function Injectable(options: InjectableOptions = {}) {
-  return function <T extends Constructor<any>>(target: T): T {
+  return function injectableDecorator<T extends Constructor<any>>(target: T): T {
     // Mark as injectable
     Reflect.defineMetadata(METADATA_KEYS.INJECTABLE, true, target);
 
@@ -182,7 +182,7 @@ export function Injectable(options: InjectableOptions = {}) {
  * Module decorator - defines a module with providers, imports, and exports
  */
 export function Module(options: ModuleDecoratorOptions = {}) {
-  return function <T extends Constructor<any>>(target: T): T {
+  return function moduleDecorator<T extends Constructor<any>>(target: T): T {
     // Set Nexus module metadata
     Reflect.defineMetadata(METADATA_KEYS.MODULE, true, target);
     Reflect.defineMetadata('nexus:module', options, target);
@@ -210,7 +210,7 @@ export function Module(options: ModuleDecoratorOptions = {}) {
  * Mark a class as singleton scoped (one instance for the entire application)
  */
 export function Singleton() {
-  return function <T extends Constructor<any>>(target: T): T {
+  return function singletonDecorator<T extends Constructor<any>>(target: T): T {
     Injectable({ scope: 'singleton' })(target);
     Reflect.defineMetadata('singleton', true, target);
     return target;
@@ -221,7 +221,7 @@ export function Singleton() {
  * Mark a class as transient scoped (new instance for every injection)
  */
 export function Transient() {
-  return function <T extends Constructor<any>>(target: T): T {
+  return function transientDecorator<T extends Constructor<any>>(target: T): T {
     Injectable({ scope: 'transient' })(target);
     return target;
   };
@@ -231,7 +231,7 @@ export function Transient() {
  * Mark a class as scoped (one instance per scope/context)
  */
 export function Scoped() {
-  return function <T extends Constructor<any>>(target: T): T {
+  return function scopedDecorator<T extends Constructor<any>>(target: T): T {
     Injectable({ scope: 'scoped' })(target);
     return target;
   };
@@ -241,7 +241,7 @@ export function Scoped() {
  * Mark a class as request scoped (one instance per request)
  */
 export function Request() {
-  return function <T extends Constructor<any>>(target: T): T {
+  return function requestDecorator<T extends Constructor<any>>(target: T): T {
     Injectable({ scope: 'request' })(target);
     return target;
   };
@@ -390,7 +390,7 @@ export const Service = (options?: string | ServiceOptions) => (target: any) => {
  * Mark a module or provider as global (available to all modules)
  */
 export function Global() {
-  return function <T extends Constructor<any>>(target: T): T {
+  return function globalDecorator<T extends Constructor<any>>(target: T): T {
     Reflect.defineMetadata(METADATA_KEYS.GLOBAL, true, target);
     Reflect.defineMetadata('global', true, target);
     return target;
@@ -401,7 +401,7 @@ export function Global() {
  * Controller decorator - marks a class as a controller
  */
 export function Controller(path: string = '') {
-  return function <T extends Constructor<any>>(target: T): T {
+  return function controllerDecorator<T extends Constructor<any>>(target: T): T {
     Reflect.defineMetadata(METADATA_KEYS.CONTROLLER_PATH, path, target);
     Reflect.defineMetadata('controller:path', path, target);
     Reflect.defineMetadata('controller', { path }, target);
@@ -414,7 +414,7 @@ export function Controller(path: string = '') {
  * Repository decorator - marks a class as a repository
  */
 export function Repository(entity?: Constructor<any>) {
-  return function <T extends Constructor<any>>(target: T): T {
+  return function repositoryDecorator<T extends Constructor<any>>(target: T): T {
     if (entity) {
       Reflect.defineMetadata(METADATA_KEYS.REPOSITORY_ENTITY, entity, target);
     }
@@ -427,8 +427,8 @@ export function Repository(entity?: Constructor<any>) {
 /**
  * Factory decorator - marks a method as a factory for creating instances
  */
-export function Factory<T>(name: string) {
-  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+export function Factory(name: string) {
+  return function factoryDecorator(target: any, propertyKey: string, descriptor: PropertyDescriptor) {
     Reflect.defineMetadata(METADATA_KEYS.FACTORY_NAME, name, target, propertyKey);
     Reflect.defineMetadata('factory', name, target, propertyKey);
     return descriptor;

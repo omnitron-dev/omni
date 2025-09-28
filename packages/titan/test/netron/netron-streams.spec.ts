@@ -1,8 +1,8 @@
-import { WebSocket, WebSocketServer } from 'ws';
+import { WebSocket } from 'ws';
 import { jest, describe, beforeEach, afterEach, afterAll, it, expect } from '@jest/globals';
 import { delay } from '@omnitron-dev/common';
 
-import { Netron, Packet, RemotePeer, createStreamPacket, NetronReadableStream, NetronWritableStream } from '../../src/netron';
+import { Netron, RemotePeer, createStreamPacket, NetronReadableStream, NetronWritableStream } from '../../src/netron';
 import { createMockLogger } from './test-utils.js';
 
 describe('Netron Streams', () => {

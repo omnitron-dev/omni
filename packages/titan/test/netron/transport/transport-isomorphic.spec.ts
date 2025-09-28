@@ -11,18 +11,15 @@ import {
   ITransport,
   ITransportConnection,
   ITransportServer,
-  TransportCapabilities,
-  ConnectionState,
-  TransportOptions
+  ConnectionState
 } from '../../../src/netron/transport/types.js';
 import {
   TcpTransport,
   WebSocketTransport,
   UnixSocketTransport,
-  NamedPipeTransport,
-  BaseTransport
+  NamedPipeTransport
 } from '../../../src/netron/transport/index.js';
-import { Packet, encodePacket, decodePacket } from '../../../src/netron/packet/index.js';
+import { Packet, encodePacket } from '../../../src/netron/packet/index.js';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -100,7 +97,7 @@ async function waitForCondition(
 
 // Test packet for consistency
 const createTestPacket = (id: number): Packet => ({
-  id: id,
+  id,
   type: 'request',
   taskId: 'test-task',
   taskName: 'test',

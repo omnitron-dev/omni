@@ -6,9 +6,7 @@ import 'reflect-metadata';
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { Process, Public, RateLimit, HealthCheck } from '../../../src/modules/pm/decorators.js';
 import { ProcessManager } from '../../../src/modules/pm/process-manager.js';
-import { ProcessPool } from '../../../src/modules/pm/process-pool.js';
 import { ProcessStatus } from '../../../src/modules/pm/types.js';
-import type { ServiceProxy } from '../../../src/modules/pm/types.js';
 
 // Mock logger
 const mockLogger = {
@@ -59,7 +57,7 @@ class TestService {
 @Process()
 class StreamingService {
   @Public()
-  async *generateNumbers(max: number): AsyncGenerator<number> {
+  async *streamNumbers(max: number): AsyncGenerator<number> {
     for (let i = 0; i < max; i++) {
       yield i;
       await new Promise(resolve => setTimeout(resolve, 10));
@@ -285,14 +283,29 @@ describe('ProcessPool', () => {
         metrics: true
       });
 
+      // Execute several requests
       await Promise.all([
+        pool.increment(),
+        pool.increment(),
         pool.increment(),
         pool.increment()
       ]);
 
+      // Check metrics after requests complete
       const metrics = pool.metrics;
-      expect(metrics.totalRequests).toBeGreaterThanOrEqual(2);
-      expect(metrics.activeWorkers).toBeGreaterThan(0);
+      expect(metrics.totalRequests).toBeGreaterThanOrEqual(4);
+      expect(metrics.totalWorkers).toBe(2);
+      expect(metrics.idleWorkers).toBe(2);  // All workers should be idle after requests complete
+      expect(metrics.avgResponseTime).toBeGreaterThanOrEqual(0);
+      expect(metrics.queueSize).toBe(0); // Queue should be empty after processing
+
+      // Check optional metrics if available
+      if (metrics.errorRate !== undefined) {
+        expect(metrics.errorRate).toBe(0); // No errors expected
+      }
+      if (metrics.successfulRequests !== undefined) {
+        expect(metrics.successfulRequests).toBeGreaterThanOrEqual(4);
+      }
     });
   });
 
@@ -331,10 +344,117 @@ describe('Streaming', () => {
     const service = await pm.spawn(StreamingService);
 
     const results = [];
-    for await (const value of service.generateNumbers(5)) {
+    for await (const value of service.streamNumbers(5)) {
       results.push(value);
     }
 
     expect(results).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it('should handle empty streams', async () => {
+    const service = await pm.spawn(StreamingService);
+
+    const results = [];
+    for await (const value of service.streamNumbers(0)) {
+      results.push(value);
+    }
+
+    expect(results).toEqual([]);
+  });
+});
+
+describe('ProcessManager - Edge Cases', () => {
+  let pm: ProcessManager;
+
+  beforeEach(() => {
+    pm = new ProcessManager(mockLogger as any, {
+      useMockSpawner: true
+    });
+  });
+
+  afterEach(async () => {
+    await pm.shutdown({ force: true });
+  });
+
+  it('should handle concurrent spawns of the same service', async () => {
+    const promises = [];
+    for (let i = 0; i < 5; i++) {
+      promises.push(pm.spawn(TestService));
+    }
+
+    const services = await Promise.all(promises);
+    expect(services).toHaveLength(5);
+
+    // Each service should have a unique process ID
+    const processIds = services.map(s => s.__processId);
+    const uniqueIds = new Set(processIds);
+    expect(uniqueIds.size).toBe(5);
+  });
+
+  it('should handle rapid kill and respawn', async () => {
+    const service1 = await pm.spawn(TestService);
+    const processId1 = service1.__processId;
+
+    await pm.kill(processId1);
+
+    const service2 = await pm.spawn(TestService);
+    const processId2 = service2.__processId;
+
+    expect(processId1).not.toBe(processId2);
+    expect(pm.getProcess(processId1)?.status).toBe(ProcessStatus.STOPPED);
+    expect(pm.getProcess(processId2)?.status).toBe(ProcessStatus.RUNNING);
+  });
+
+  it('should handle service discovery after kill', async () => {
+    const service1 = await pm.spawn(TestService, { name: 'test-svc' });
+    await pm.kill(service1.__processId);
+
+    const discovered = await pm.discover('test-svc');
+    expect(discovered).toBeNull();
+
+    const service2 = await pm.spawn(TestService, { name: 'test-svc' });
+    const discovered2 = await pm.discover('test-svc');
+    expect(discovered2).toBeDefined();
+    expect(discovered2?.__processId).toBe(service2.__processId);
+  });
+
+  it('should handle pool with size 1', async () => {
+    const pool = await pm.pool(TestService, { size: 1 });
+    expect(pool.size).toBe(1);
+
+    const results = await Promise.all([
+      pool.increment(),
+      pool.increment()
+    ]);
+
+    // Both calls should go to the same worker, so results should be [1, 2]
+    expect(results).toEqual([1, 2]);
+  });
+
+  it('should handle pool scale to 0', async () => {
+    const pool = await pm.pool(TestService, { size: 2 });
+
+    // Scaling to 0 should remove all workers
+    await pool.scale(0);
+    expect(pool.size).toBe(0);
+
+    // Pool should still be able to scale back up
+    await pool.scale(2);
+    expect(pool.size).toBe(2);
+  });
+
+  it('should handle shutdown with active pools', async () => {
+    const pool1 = await pm.pool(TestService, { size: 2 });
+    const pool2 = await pm.pool(TestService, { size: 3 });
+
+    // Start some operations
+    const promise1 = pool1.increment();
+    const promise2 = pool2.increment();
+
+    // Shutdown should wait for these to complete
+    await pm.shutdown();
+
+    const processes = pm.listProcesses();
+    expect(processes.every(p => p.status === ProcessStatus.STOPPED)).toBe(true);
   });
 });

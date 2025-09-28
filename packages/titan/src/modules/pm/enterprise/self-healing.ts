@@ -439,6 +439,8 @@ export class SelfHealingManager extends EventEmitter {
             await action.handler();
           }
           break;
+        default:
+          throw new Error(`Unknown remediation action: ${action.action}`);
       }
 
       remediation.status = 'completed';

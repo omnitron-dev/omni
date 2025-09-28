@@ -16,11 +16,7 @@ import { PreferenceManager } from '../../../src/modules/notifications/preference
 import { RateLimiter } from '../../../src/modules/notifications/rate-limiter.js';
 import { RedisDockerTestHelper } from './test-redis-docker.js';
 import type {
-  NotificationWorkflow,
-  WorkflowStep,
-  WorkflowContext,
-  WorkflowResult,
-  StepCondition
+  NotificationWorkflow
 } from '../../../src/modules/notifications/workflow-engine.js';
 
 describe('WorkflowEngine', () => {

@@ -345,6 +345,9 @@ class ActorInstance<T extends Actor = Actor> extends EventEmitter {
       case SupervisorAction.ESCALATE:
         // Would escalate to parent
         throw error;
+      default:
+        // Unknown action, escalate
+        throw new Error(`Unknown supervisor action: ${action}`);
     }
   }
 

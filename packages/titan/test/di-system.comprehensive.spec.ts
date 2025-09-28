@@ -16,18 +16,15 @@ import {
   Singleton,
   Transient,
   Scope,
-  CircularDependencyError,
-  DependencyNotFoundError
+  CircularDependencyError
 } from '@nexus';
 import {
   Service,
-  Module,
   OnInit,
   OnDestroy,
   TitanApplication,
   EnhancedApplicationModule
 } from '../src/index.js';
-import { LoggerModule, LOGGER_SERVICE_TOKEN } from '../src/modules/logger.module';
 import { ConfigModule } from '../src/modules/config/config.module.js';
 const CONFIG_SERVICE_TOKEN = createToken('ConfigModule');
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, beforeAll } from '@jest/globals';
 import { RedisService } from '../../../src/modules/redis/redis.service.js';
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
 import { ConfigService } from '../../../src/modules/config/config.service.js';

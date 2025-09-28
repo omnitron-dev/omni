@@ -5,7 +5,7 @@
  * without NestJS dependencies
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from '@jest/globals';
 import { Container } from '@nexus';
 import { Redis } from 'ioredis';
 

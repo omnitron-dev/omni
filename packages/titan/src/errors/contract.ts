@@ -9,7 +9,7 @@ import type { Contract } from '../validation/contract.js';
 /**
  * Contract error that validates against method contracts
  */
-export class ContractError<TContract extends Contract = Contract> extends TitanError {
+export class ContractError extends TitanError {
   public readonly contractMethod: string;
   public readonly payload: any;
 
@@ -37,7 +37,7 @@ export class ContractError<TContract extends Contract = Contract> extends TitanE
     method: TMethod,
     code: TCode,
     payload: z.infer<NonNullable<TContract['definition'][TMethod]['errors']>[TCode]>
-  ): ContractError<TContract> {
+  ): ContractError {
     const methodContract = contract.getMethod(String(method));
 
     if (!methodContract) {

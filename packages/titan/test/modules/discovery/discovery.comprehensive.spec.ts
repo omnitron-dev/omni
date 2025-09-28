@@ -10,7 +10,6 @@ import { Redis } from 'ioredis';
 import { Container } from '@nexus';
 import { DiscoveryService } from '../../../src/modules/discovery/discovery.service.js';
 import {
-  DiscoveryModule,
   createDiscoveryModule
 } from '../../../src/modules/discovery/discovery.module.js';
 import {
@@ -18,7 +17,6 @@ import {
   LOGGER_TOKEN,
   DISCOVERY_OPTIONS_TOKEN,
   DISCOVERY_SERVICE_TOKEN,
-  type NodeInfo,
   type ServiceInfo,
   type DiscoveryOptions
 } from '../../../src/modules/discovery/types.js';

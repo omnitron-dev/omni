@@ -7,10 +7,8 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { z } from 'zod';
 import { HttpServer } from '../../../../src/netron/transport/http/http-server.js';
-import { ITransportServer, ITransportConnection, ConnectionState } from '../../../../src/netron/transport/types.js';
 import { contract } from '../../../../src/validation/contract.js';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import { LocalPeer } from '../../../../src/netron/local-peer.js';
 import { Definition } from '../../../../src/netron/definition.js';
 
 describe('HttpServer', () => {
@@ -479,9 +477,7 @@ describe('HttpServer', () => {
     it('should handle multiple concurrent requests', async () => {
       // Setup stub for SimpleService
       const simpleStub = mockPeer.stubs.get('SimpleService@1.0.0');
-      simpleStub.call.mockImplementation((method, [input]) => {
-        return Promise.resolve({ echo: input });
-      });
+      simpleStub.call.mockImplementation((method, [input]) => Promise.resolve({ echo: input }));
 
       await server.listen();
 

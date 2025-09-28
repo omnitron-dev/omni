@@ -7,16 +7,14 @@
  * - Performance and reliability
  * - Advanced patterns
  */
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, afterEach, jest } from '@jest/globals';
 
-import { Application, createApp, startApp } from '../../src/application.js';
+import { Application, createApp } from '../../src/application.js';
 import { createToken } from '../../src/nexus/index.js';
 import {
   ApplicationState,
   ApplicationEvent,
   IModule,
-  LifecycleState,
-  ShutdownReason,
   ShutdownPriority
 } from '../../src/types.js';
 import {

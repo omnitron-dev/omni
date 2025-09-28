@@ -10,7 +10,6 @@ import { ConnectionState } from '../../../src/netron/transport/types.js';
 import { Packet } from '../../../src/netron/packet/index.js';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { createServer, Socket } from 'node:net';
-import { promisify } from 'node:util';
 
 // Helper to find free port
 async function getFreePort(): Promise<number> {

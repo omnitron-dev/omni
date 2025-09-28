@@ -52,7 +52,7 @@ export function Timed(options: TimedOptions = {}): MethodDecorator {
     const methodName = String(propertyKey);
     const className = target.constructor.name;
 
-    descriptor.value = async function (...args: any[]) {
+    descriptor.value = async function timedMethod(...args: any[]) {
       const logger = (this as any).logger;
       const label = options.label || `${className}.${methodName}`;
 
@@ -117,7 +117,7 @@ export function Timeout(ms: number): MethodDecorator {
     const originalMethod = descriptor.value;
     const methodName = String(propertyKey);
 
-    descriptor.value = async function (...args: any[]) {
+    descriptor.value = async function timeoutMethod(...args: any[]) {
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => {
           reject(new Error(`Method ${methodName} timed out after ${ms}ms`));
@@ -142,7 +142,7 @@ export function Throttle(ms: number): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     const originalMethod = descriptor.value;
 
-    descriptor.value = async function (...args: any[]) {
+    descriptor.value = async function throttledMethod(...args: any[]) {
       const now = Date.now();
       const last = lastCall.get(this) || 0;
 
@@ -167,7 +167,7 @@ export function Debounce(ms: number): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     const originalMethod = descriptor.value;
 
-    descriptor.value = function (...args: any[]) {
+    descriptor.value = function debouncedMethod(...args: any[]) {
       const existing = timers.get(this);
       if (existing) {
         clearTimeout(existing);

@@ -209,6 +209,9 @@ async function initialize() {
         case 'ping':
           parentPort?.postMessage({ type: 'pong' });
           break;
+        default:
+          // Unknown message type, ignore
+          break;
       }
     });
 

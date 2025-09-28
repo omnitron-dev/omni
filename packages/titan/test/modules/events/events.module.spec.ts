@@ -1,7 +1,7 @@
 /**
  * Tests for EventsModule
  */
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, jest } from '@jest/globals';
 
 import 'reflect-metadata';
 import {

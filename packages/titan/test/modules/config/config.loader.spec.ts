@@ -9,7 +9,6 @@ import type {
   IFileConfigSource as FileConfigSource,
   IEnvironmentConfigSource as EnvironmentConfigSource,
   IObjectConfigSource as ObjectConfigSource,
-  IRemoteConfigSource as RemoteConfigSource,
 } from '../../../src/modules/config/types.js';
 
 describe('ConfigLoaderService', () => {

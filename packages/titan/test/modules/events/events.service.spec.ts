@@ -143,13 +143,9 @@ describe('EventsService', () => {
 
   describe('emitReduce', () => {
     it('should emit event with reduce pattern', async () => {
-      service.subscribe('reduce.event', (data, metadata, acc) => {
-        return acc + data.value;
-      });
+      service.subscribe('reduce.event', (data, metadata, acc) => acc + data.value);
 
-      service.subscribe('reduce.event', (data, metadata, acc) => {
-        return acc * 2;
-      });
+      service.subscribe('reduce.event', (data, metadata, acc) => acc * 2);
 
       const result = await service.emitReduce(
         'reduce.event',

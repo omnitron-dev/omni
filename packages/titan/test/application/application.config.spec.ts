@@ -11,8 +11,7 @@
 import { Application, createApp } from '../../src/application.js';
 import {
   ApplicationState,
-  ApplicationEvent,
-  IApplicationOptions
+  ApplicationEvent
 } from '../../src/types.js';
 import {
   SimpleModule,

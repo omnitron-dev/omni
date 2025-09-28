@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, jest } from '@jest/globals';
 import { createApp } from '../src/application.js';
 
 describe('Test Emit', () => {

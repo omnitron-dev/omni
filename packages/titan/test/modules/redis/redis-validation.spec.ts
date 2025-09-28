@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { RedisService } from '../../../src/modules/redis/redis.service.js';
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
-import { ConfigService } from '../../../src/modules/config/config.service.js';
 
 /**
  * Validation tests for Redis module that don't require actual Redis connection
@@ -364,11 +363,11 @@ describe('Redis Module Validation (No Redis Required)', () => {
   describe('Module Integration', () => {
     it('should work with Titan DI container', () => {
       // Verify that RedisService and RedisManager can be injected
-      const hasInjectableDecorator = (target: any) => {
-        return Reflect.getMetadata('injectable', target) === true ||
+      const hasInjectableDecorator = (target: any) => 
+         Reflect.getMetadata('injectable', target) === true ||
                Reflect.getMetadata('titan:injectable', target) === true ||
-               true; // Default to true if no metadata (for basic validation)
-      };
+               true // Default to true if no metadata (for basic validation)
+      ;
 
       expect(hasInjectableDecorator(RedisService)).toBe(true);
       expect(hasInjectableDecorator(RedisManager)).toBe(true);

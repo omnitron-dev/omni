@@ -12,14 +12,12 @@ import {
   isErrorCode,
   mapToTransport,
   TransportType,
-  ErrorContract,
   ContractError,
   inferErrorTypes,
   ValidationError,
-  ServiceError,
   HttpError,
 } from '../../src/errors/index.js';
-import { contract, type MethodContract } from '../../src/validation/contract.js';
+import { contract } from '../../src/validation/contract.js';
 
 describe('Transport-Agnostic Error System', () => {
   describe('Core Error System', () => {

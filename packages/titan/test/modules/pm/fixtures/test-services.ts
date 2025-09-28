@@ -136,7 +136,7 @@ export class CounterService {
 export class StreamService {
 
   @Public()
-  async *generateNumbers(start: number, end: number, delay = 10): AsyncGenerator<number> {
+  async *streamNumbers(start: number, end: number, delay = 10): AsyncGenerator<number> {
     for (let i = start; i <= end; i++) {
       await new Promise(resolve => setTimeout(resolve, delay));
       yield i;
@@ -144,7 +144,7 @@ export class StreamService {
   }
 
   @Public()
-  async *fibonacci(n: number): AsyncGenerator<number> {
+  async *streamFibonacci(n: number): AsyncGenerator<number> {
     let a = 0, b = 1;
     for (let i = 0; i < n; i++) {
       yield a;

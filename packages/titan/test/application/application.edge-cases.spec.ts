@@ -1,7 +1,7 @@
 /**
  * Edge case tests for Titan Application to achieve >96% coverage
  */
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, afterEach, jest } from '@jest/globals';
 
 import { createToken } from '../../src/nexus/index.js';
 import { Application, createApp } from '../../src/application.js';

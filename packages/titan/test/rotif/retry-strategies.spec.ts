@@ -113,9 +113,7 @@ describe('Retry Strategies', () => {
 
     describe('Custom Function', () => {
       it('should use custom delay function when provided', () => {
-        const customDelayFn = (attempt: number, msg: RotifMessage) => {
-          return attempt * 333 + msg.channel.length;
-        };
+        const customDelayFn = (attempt: number, msg: RotifMessage) => attempt * 333 + msg.channel.length;
 
         const retryFn = createRetryDelayFn({
           customDelayFn

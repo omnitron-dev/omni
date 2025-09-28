@@ -7,6 +7,7 @@
 
 import type { ILogger } from '../../logger/logger.types.js';
 import type { ServiceProxy } from '../types.js';
+import type { ProcessMethod } from '../common-types.js';
 
 /**
  * Service mesh configuration
@@ -106,10 +107,8 @@ export class ServiceMeshProxy<T> {
    * Create a mesh-enabled proxy
    */
   createProxy(): ServiceProxy<T> {
-    const self = this;
-
     return new Proxy(this.service, {
-      get(target, property: string | symbol) {
+      get: (target, property: string | symbol) => {
         // Pass through control methods
         if (property === '__processId' || property === '__destroy' ||
             property === '__getMetrics' || property === '__getHealth') {
@@ -122,9 +121,9 @@ export class ServiceMeshProxy<T> {
         }
 
         // Wrap method with mesh capabilities
-        return async (...args: any[]) => self.executeWithMesh(
+        return async (...args: any[]) => this.executeWithMesh(
             property as string,
-            () => (original as Function).apply(target, args),
+            () => (original as ProcessMethod).apply(target, args),
             args
           );
       }
@@ -183,17 +182,17 @@ export class ServiceMeshProxy<T> {
   /**
    * Execute with timeout
    */
-  private async executeWithTimeout<T>(
-    fn: () => Promise<T>,
+  private async executeWithTimeout<R>(
+    fn: () => Promise<R>,
     timeout?: number
-  ): Promise<T> {
+  ): Promise<R> {
     if (!timeout) {
       return fn();
     }
 
     return Promise.race([
       fn(),
-      new Promise<T>((_, reject) =>
+      new Promise<R>((_, reject) =>
         setTimeout(
           () => reject(new Error(`Operation timed out after ${timeout}ms`)),
           timeout

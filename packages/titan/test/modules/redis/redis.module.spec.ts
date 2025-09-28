@@ -14,7 +14,6 @@ import { RedisHealthIndicator } from '../../../src/modules/redis/redis.health.js
 import { REDIS_MANAGER, getRedisClientToken } from '../../../src/modules/redis/redis.constants.js';
 import { RedisModuleOptions } from '../../../src/modules/redis/redis.types.js';
 import { createMockRedisClient } from '../../../src/testing/test-helpers.js';
-import * as redisUtils from '../../../src/modules/redis/redis.utils.js';
 
 // Mock redis.utils to use mock clients
 jest.mock('../../../src/modules/redis/redis.utils.js', () => ({

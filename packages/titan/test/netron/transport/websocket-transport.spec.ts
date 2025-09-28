@@ -7,7 +7,6 @@
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { WebSocketTransport } from '../../../src/netron/transport/websocket-transport.js';
 import { ConnectionState } from '../../../src/netron/transport/types.js';
-import { Packet } from '../../../src/netron/packet/index.js';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -710,9 +709,7 @@ describe('WebSocketTransport', () => {
       // Configure server to accept specific subprotocol
       const customWsServer = new WebSocketServer({
         server: subprotocolHttpServer,
-        handleProtocols: (protocols) => {
-          return protocols.has('netron') ? 'netron' : false;
-        }
+        handleProtocols: (protocols) => protocols.has('netron') ? 'netron' : false
       });
 
       let serverWs: WebSocket;

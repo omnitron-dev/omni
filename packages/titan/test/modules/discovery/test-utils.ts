@@ -4,7 +4,7 @@
 
 import { jest } from '@jest/globals';
 import { Redis } from 'ioredis';
-import { Container, createToken, type Token } from '@nexus';
+import { Container } from '@nexus';
 import { DiscoveryService } from '../../../src/modules/discovery/discovery.service.js';
 import { REDIS_TOKEN, LOGGER_TOKEN, DISCOVERY_OPTIONS_TOKEN } from '../../../src/modules/discovery/types.js';
 import { DiscoveryModule } from '../../../src/modules/discovery/discovery.module.js';

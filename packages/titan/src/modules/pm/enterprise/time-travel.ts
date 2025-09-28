@@ -473,7 +473,7 @@ export function createTimeTravelProxy<T extends object>(
  * Decorator for time-travel debugging
  */
 export function TimeTravel(options: TimeTravelOptions = {}) {
-  return function(target: any, propertyKey?: string, descriptor?: PropertyDescriptor) {
+  return function timeTravelDecorator(target: any, propertyKey?: string, descriptor?: PropertyDescriptor) {
     // Class decorator
     if (!propertyKey) {
       const originalConstructor = target;
@@ -509,6 +509,9 @@ export function TimeTravel(options: TimeTravelOptions = {}) {
 
       return descriptor;
     }
+
+    // Property decorator (no-op for now)
+    return target;
   };
 }
 

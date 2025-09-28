@@ -39,7 +39,7 @@ export interface ILockHandle {
  */
 export class DistributedLockManager {
   private locks = new Map<string, ILockHandle>();
-  private lockQueues = new Map<string, Array<(lock: ILockHandle) => void>>();
+  private lockQueues = new Map<string, Array<() => void>>();
 
   constructor(private config: IDistributedLockConfig = {}) {}
 
@@ -83,14 +83,14 @@ export class DistributedLockManager {
     for (const [resource, lock] of this.locks.entries()) {
       if (lock.id === lockId) {
         this.locks.delete(resource);
-        
+
         // Process waiting queue
         const queue = this.lockQueues.get(resource);
         if (queue && queue.length > 0) {
           const waiter = queue.shift();
           if (waiter) {
-            const newLock = await this.acquire(resource);
-            waiter(newLock);
+            // Just notify the waiter, they will handle acquiring the lock
+            waiter();
           }
         }
         break;
@@ -456,13 +456,14 @@ export interface IPooledResource {
 /**
  * Resource pool manager
  */
-export class ResourcePoolManager {
+export class ResourcePool {
   private resources = new Map<string, IPooledResource>();
   private availableQueue: string[] = [];
   private waitingQueue: Array<(resource: IPooledResource) => void> = [];
-  
+  private initPromise: Promise<void> | null = null;
+
   constructor(private config: IResourcePoolConfig = {}) {
-    this.initialize();
+    this.initPromise = this.initialize();
   }
 
   /**
@@ -470,9 +471,11 @@ export class ResourcePoolManager {
    */
   private async initialize(): Promise<void> {
     const { min = 1 } = this.config;
-    
+
     for (let i = 0; i < min; i++) {
-      await this.createResource();
+      const resource = await this.createResource();
+      // Add to available queue since it's not in use
+      this.availableQueue.push(resource.id);
     }
   }
 
@@ -480,6 +483,12 @@ export class ResourcePoolManager {
    * Acquire a resource from the pool
    */
   async acquire(): Promise<IPooledResource> {
+    // Wait for initialization to complete
+    if (this.initPromise) {
+      await this.initPromise;
+      this.initPromise = null;
+    }
+
     // Check for available resource
     if (this.availableQueue.length > 0) {
       const resourceId = this.availableQueue.shift()!;
@@ -504,6 +513,7 @@ export class ResourcePoolManager {
       const resource = await this.createResource();
       resource.inUse = true;
       resource.lastUsedAt = Date.now();
+      resource.usageCount = 1;  // Set initial usage count
       return resource;
     }
     
@@ -549,9 +559,9 @@ export class ResourcePoolManager {
       createdAt: Date.now(),
       resource: {} // Actual resource would be created here
     };
-    
+
     this.resources.set(resource.id, resource);
-    this.availableQueue.push(resource.id);
+    // Don't add to availableQueue here - let the caller decide
     return resource;
   }
 
@@ -582,6 +592,5 @@ export {
   DistributedLockManager as DistributedLock,
   GeoSpatialQueryManager as GeoSpatialQuery,
   RealtimeMatchingService as RealtimeMatch,
-  TotalOrderMessageBus as MessageBus,
-  ResourcePoolManager as ResourcePool
+  TotalOrderMessageBus as MessageBus
 };

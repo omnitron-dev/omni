@@ -12,7 +12,6 @@ import {
   ModuleFederationContainer,
   createFederatedModule,
   createLazyModule,
-  RemoteModule,
   SharedDependencies
 } from '../../../src/nexus/federation.js';
 import {
@@ -20,7 +19,6 @@ import {
   LoadBalancer,
   LoadBalancingStrategy,
   CircuitBreaker,
-  ServiceProxy,
   createRemoteProxy,
   HealthCheck,
   ServiceEndpoint

@@ -2,7 +2,7 @@
  * Tests for CacheService
  */
 
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import { Container } from '@omnitron-dev/nexus';
 import { CacheService } from '../src/services/cache.service.js';
 import { LoggerService } from '../src/services/logger.service.js';

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { EventScheduler } from '../src/scheduler';
-import type { ScheduleOptions, ScheduledEvent } from '../src/types';
+import type { ScheduleOptions } from '../src/types';
 
 describe('EventScheduler', () => {
   let scheduler: EventScheduler;

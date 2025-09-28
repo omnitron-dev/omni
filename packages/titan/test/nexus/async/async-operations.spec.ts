@@ -6,10 +6,7 @@
 import {
   Container,
   createToken,
-  AsyncProvider,
   AsyncResolutionError,
-  StreamProvider,
-  LazyProvider,
   createAsyncToken,
   createStreamToken,
   createLazyToken
@@ -287,7 +284,7 @@ describe('Async Operations', () => {
       const token = createStreamToken<number>('NumberStream');
 
       container.registerStream(token, {
-        useFactory: async function* () {
+        async *useFactory () {
           for (let i = 0; i < 5; i++) {
             await new Promise(resolve => setTimeout(resolve, 10));
             yield i;
@@ -309,7 +306,7 @@ describe('Async Operations', () => {
       const token = createStreamToken<number>('ErrorStream');
 
       container.registerStream(token, {
-        useFactory: async function* () {
+        async *useFactory () {
           yield 1;
           yield 2;
           throw new Error('Stream error');
@@ -335,13 +332,13 @@ describe('Async Operations', () => {
       const transformedToken = createStreamToken<string>('Transformed');
 
       container.registerStream(sourceToken, {
-        useFactory: async function* () {
+        async *useFactory () {
           yield* [1, 2, 3, 4, 5];
         }
       });
 
       container.registerStream(transformedToken, {
-        useFactory: async function* (source) {
+        async *useFactory (source) {
           for await (const num of source) {
             yield `Number: ${num}`;
           }
@@ -369,7 +366,7 @@ describe('Async Operations', () => {
       const token = createStreamToken<number>('FilteredStream');
 
       container.registerStream(token, {
-        useFactory: async function* () {
+        async *useFactory () {
           for (let i = 0; i < 10; i++) {
             yield i;
           }
@@ -391,7 +388,7 @@ describe('Async Operations', () => {
       const token = createStreamToken<number[]>('BatchedStream');
 
       container.registerStream(token, {
-        useFactory: async function* () {
+        async *useFactory () {
           for (let i = 0; i < 10; i++) {
             yield i;
           }
@@ -419,7 +416,7 @@ describe('Async Operations', () => {
       let cancelled = false;
 
       container.registerStream(token, {
-        useFactory: async function* () {
+        async *useFactory () {
           try {
             for (let i = 0; i < 100; i++) {
               await new Promise(resolve => setTimeout(resolve, 10));
@@ -452,7 +449,7 @@ describe('Async Operations', () => {
       const mergedToken = createStreamToken<string>('Merged');
 
       container.registerStream(stream1Token, {
-        useFactory: async function* () {
+        async *useFactory () {
           yield 'a1';
           await new Promise(resolve => setTimeout(resolve, 20));
           yield 'a2';
@@ -460,7 +457,7 @@ describe('Async Operations', () => {
       });
 
       container.registerStream(stream2Token, {
-        useFactory: async function* () {
+        async *useFactory () {
           await new Promise(resolve => setTimeout(resolve, 10));
           yield 'b1';
           await new Promise(resolve => setTimeout(resolve, 20));
@@ -469,7 +466,7 @@ describe('Async Operations', () => {
       });
 
       container.registerStream(mergedToken, {
-        useFactory: async function* (s1, s2) {
+        async *useFactory (s1, s2) {
           // Simple merge - interleave streams
           const iter1 = s1[Symbol.asyncIterator]();
           const iter2 = s2[Symbol.asyncIterator]();

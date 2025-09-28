@@ -7,7 +7,6 @@ import { z } from 'zod';
 import { ConfigService } from '../../../src/modules/config/config.service.js';
 import { ConfigLoaderService } from '../../../src/modules/config/config-loader.service.js';
 import { ConfigValidatorService } from '../../../src/modules/config/config-validator.service.js';
-import type { IConfigChangeEvent as ConfigChangeEvent, IConfigModuleOptions as ConfigModuleOptions } from '../../../src/modules/config/types.js';
 import fs from 'node:fs';
 import path from 'node:path';
 

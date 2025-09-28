@@ -7,8 +7,7 @@ import {
   MiddlewarePipeline,
   MiddlewareStage,
   type NetronMiddlewareContext,
-  type MiddlewareFunction,
-  type MiddlewareConfig
+  type MiddlewareFunction
 } from '../../../src/netron/middleware/index.js';
 
 describe('MiddlewarePipeline', () => {

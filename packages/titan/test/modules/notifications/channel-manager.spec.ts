@@ -5,7 +5,6 @@ import {
   InAppChannel,
   EmailChannel,
   SMSChannel,
-  NotificationChannel,
   ChannelContent,
   Recipient
 } from '../../../src/modules/notifications/channel-manager.js';

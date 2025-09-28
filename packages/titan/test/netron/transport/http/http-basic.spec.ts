@@ -2,7 +2,7 @@
  * Basic tests for HTTP Transport
  */
 
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import { HttpTransport } from '../../../../src/netron/transport/http/index.js';
 import { HttpServer } from '../../../../src/netron/transport/http/http-server.js';
 import { HttpClientConnection } from '../../../../src/netron/transport/http/http-client.js';

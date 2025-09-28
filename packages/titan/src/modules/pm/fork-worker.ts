@@ -6,6 +6,7 @@
  */
 
 import 'reflect-metadata';
+import type { MessageHandler } from './common-types.js';
 
 // Get configuration from environment
 const config = JSON.parse(process.env['WORKER_DATA'] || '{}');
@@ -17,7 +18,7 @@ const parentPort = {
       process.send(message);
     }
   },
-  on: (event: string, handler: Function) => {
+  on: (event: string, handler: MessageHandler) => {
     if (event === 'message') {
       process.on('message', handler as any);
     }

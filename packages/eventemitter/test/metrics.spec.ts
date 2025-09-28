@@ -104,10 +104,10 @@ describe('MetricsCollector', () => {
       // Mock Math.random to control sampling
       const originalRandom = Math.random;
       let callCount = 0;
-      Math.random = jest.fn(() => {
+      Math.random = jest.fn(() => 
         // Alternate between sampled (< 0.5) and not sampled (>= 0.5)
-        return (callCount++ % 2) * 0.6;
-      });
+         (callCount++ % 2) * 0.6
+      );
 
       for (let i = 0; i < 10; i++) {
         metrics.recordEmission('test', true, 10);

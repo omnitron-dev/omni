@@ -8,7 +8,6 @@
 import { describe, it } from "https://deno.land/std@0.218.0/testing/bdd.ts";
 import {
   assertEquals,
-  assertInstanceOf,
   assertExists,
 } from "https://deno.land/std@0.218.0/assert/mod.ts";
 

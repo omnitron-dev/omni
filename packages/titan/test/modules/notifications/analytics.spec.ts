@@ -8,9 +8,7 @@ import { NotificationAnalytics } from '../../../src/modules/notifications/analyt
 import { RedisDockerTestHelper } from './test-redis-docker.js';
 import type {
   NotificationEvent,
-  AnalyticsQuery,
   NotificationStatistics,
-  NotificationReport,
   ReportPeriod
 } from '../../../src/modules/notifications/analytics.js';
 

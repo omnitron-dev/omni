@@ -6,7 +6,7 @@
  */
 
 import { Application, createApp } from '../../src/application.js';
-import { ApplicationState, ApplicationEvent, LifecycleState } from '../../src/types.js';
+import { ApplicationState } from '../../src/types.js';
 import {
   SimpleModule,
   SlowModule,
@@ -234,14 +234,12 @@ describe('Application Lifecycle', () => {
       app.use(module);
 
       // Create a timeout wrapper for testing
-      const startWithTimeout = () => {
-        return Promise.race([
+      const startWithTimeout = () => Promise.race([
           app.start(),
           new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Operation timeout')), 100)
           )
         ]);
-      };
 
       await expect(startWithTimeout()).rejects.toThrow(/timeout/i);
 

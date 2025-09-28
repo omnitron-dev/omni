@@ -168,7 +168,8 @@ export class AuditLogger extends EventEmitter {
       : fullEvent;
 
     this.events.push(storedEvent);
-    this.emit('event:logged', fullEvent);
+    // Emit the encrypted event if encryption is enabled
+    this.emit('event:logged', storedEvent);
 
     // Check retention and rotate if needed
     this.checkRetention();
@@ -428,6 +429,10 @@ export class ComplianceManager extends EventEmitter {
         break;
       case ComplianceStandard.PCI_DSS:
         this.applyPCIDSS();
+        break;
+      default:
+        // Unknown standard, log warning but don't fail
+        this.emit('standard:unknown', { standard });
         break;
     }
   }

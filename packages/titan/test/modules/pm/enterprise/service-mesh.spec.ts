@@ -3,7 +3,7 @@
  */
 
 import 'reflect-metadata';
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { describe, it, expect, jest } from '@jest/globals';
 import { ServiceMeshProxy } from '../../../../src/modules/pm/enterprise/service-mesh.js';
 import type { ServiceProxy } from '../../../../src/modules/pm/types.js';
 

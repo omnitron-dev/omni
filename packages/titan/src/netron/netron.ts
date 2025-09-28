@@ -490,21 +490,23 @@ export class Netron extends EventEmitter {
     let manuallyDisconnected = false;
 
     const connectPeer = (): Promise<RemotePeer> =>
-      new Promise<RemotePeer>(async (resolve, reject) => {
+      new Promise<RemotePeer>((resolve, reject) => {
         const timeoutId = setTimeout(() => {
           this.logger.error({ address }, 'Connection timeout');
           reject(new Error('Connection timeout'));
         }, this.options?.connectTimeout ?? CONNECT_TIMEOUT);
 
-        try {
-          // Parse address to determine transport type
-          const transport = this.getTransportForAddress(address);
-          if (!transport) {
-            throw new Error(`No suitable transport found for address: ${address}`);
-          }
+        // Wrap async logic in an IIFE
+        (async () => {
+          try {
+            // Parse address to determine transport type
+            const transport = this.getTransportForAddress(address);
+            if (!transport) {
+              throw new Error(`No suitable transport found for address: ${address}`);
+            }
 
-          // Connect using transport
-          const connection = await transport.connect(`${address}?id=${this.id}`, {
+            // Connect using transport
+            const connection = await transport.connect(`${address}?id=${this.id}`, {
             ...this.options,
             connectTimeout: this.options?.connectTimeout ?? CONNECT_TIMEOUT,
             headers: { 'x-netron-id': this.id }
@@ -575,10 +577,11 @@ export class Netron extends EventEmitter {
               reject(err);
             }
           });
-        } catch (error) {
-          clearTimeout(timeoutId);
-          reject(error);
-        }
+          } catch (error) {
+            clearTimeout(timeoutId);
+            reject(error);
+          }
+        })(); // Execute the async IIFE
       });
 
     /**

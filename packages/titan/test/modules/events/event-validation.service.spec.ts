@@ -1,7 +1,7 @@
 /**
  * Tests for EventValidationService
  */
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 
 import 'reflect-metadata';
 import { EventValidationService } from '../../../src/modules/events/event-validation.service';

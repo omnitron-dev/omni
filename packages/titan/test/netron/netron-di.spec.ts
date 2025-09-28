@@ -1,9 +1,9 @@
 /**
  * Test Netron DI integration
  */
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 
-import { Container, createToken } from '../../src/nexus/index.js';
+import { Container } from '../../src/nexus/index.js';
 import { Netron } from '../../src/netron/netron.js';
 import { NetronToken } from '../../src/application.js';
 import { LOGGER_SERVICE_TOKEN } from '../../src/modules/logger/index.js';

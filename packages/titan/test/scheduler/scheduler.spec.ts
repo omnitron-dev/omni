@@ -20,11 +20,7 @@ import {
   JobStatus,
   JobPriority,
   SchedulerJobType,
-  SCHEDULER_SERVICE_TOKEN,
-  SCHEDULER_REGISTRY_TOKEN,
-  SCHEDULER_EXECUTOR_TOKEN,
-  SCHEDULER_METRICS_TOKEN,
-  SCHEDULER_DISCOVERY_TOKEN
+  SCHEDULER_REGISTRY_TOKEN
 } from '../../src/modules/scheduler';
 
 // Mock node-cron to work with fake timers

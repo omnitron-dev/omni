@@ -6,7 +6,6 @@ import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { z } from 'zod';
 import {
   Cached,
-  CacheClear,
   Validate,
   ValidateReturn,
   Schemas,

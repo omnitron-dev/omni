@@ -8,7 +8,6 @@ import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { TransportAdapter } from '../../../src/netron/transport/transport-adapter.js';
 import { TransportRegistry } from '../../../src/netron/transport/transport-registry.js';
 import { TcpTransport } from '../../../src/netron/transport/tcp-transport.js';
-import { WebSocketTransport } from '../../../src/netron/transport/websocket-transport.js';
 import { ConnectionState } from '../../../src/netron/transport/types.js';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { createServer } from 'http';

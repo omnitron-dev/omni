@@ -4,7 +4,7 @@
  */
 
 import 'reflect-metadata';
-import { createToken, Container } from '../src/nexus/index.js';
+import { createToken } from '../src/nexus/index.js';
 import {
   Application,
   Injectable,
@@ -14,12 +14,8 @@ import {
   OnInit,
   OnDestroy,
   Module,
-  type IApplication,
-  type Provider,
-  type ModuleMetadata
+  type Provider
 } from '../src/index.js';
-import { LoggerModule } from '../src/modules/logger/logger.module.js';
-import { ConfigModule } from '../src/modules/config/config.module.js';
 
 describe('DI Integration Tests', () => {
   describe('Complete DI Flow', () => {

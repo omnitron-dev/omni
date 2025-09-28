@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { z } from 'zod';
 import { HttpClientConnection } from '../../../../src/netron/transport/http/http-client.js';
-import { ITransportConnection, ConnectionState, Packet } from '../../../../src/netron/transport/types.js';
+import { ConnectionState } from '../../../../src/netron/transport/types.js';
 import { contract } from '../../../../src/validation/contract.js';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { Definition } from '../../../../src/netron/definition.js';

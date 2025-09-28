@@ -12,6 +12,7 @@ import type {
   IStageResult,
   IProcessManager
 } from './types.js';
+import type { WorkflowHandler } from './common-types.js';
 
 import { WORKFLOW_METADATA_KEY } from './decorators.js';
 
@@ -391,7 +392,7 @@ export class ProcessWorkflow<T> {
    * Execute with timeout
    */
   private async executeWithTimeout(
-    handler: Function,
+    handler: WorkflowHandler,
     input: any,
     timeout: number
   ): Promise<any> {
@@ -453,8 +454,8 @@ export class ProcessWorkflow<T> {
    * Collect final results from all stages
    */
   private collectResults(): any {
+    // Always return all stage results for better observability and testing
     const results: any = {};
-
     for (const [name, result] of this.stageResults) {
       if (result.status === 'completed') {
         results[name] = result.result;

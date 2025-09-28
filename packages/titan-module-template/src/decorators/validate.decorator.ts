@@ -47,7 +47,7 @@ export function Validate(
     const originalMethod = descriptor.value;
     const methodName = String(propertyKey);
 
-    descriptor.value = async function (...args: any[]) {
+    descriptor.value = async function validatedMethod(...args: any[]) {
       try {
         // Transform if needed
         const transformedArgs = options.transform
@@ -101,7 +101,7 @@ export function ValidateReturn(
     const originalMethod = descriptor.value;
     const methodName = String(propertyKey);
 
-    descriptor.value = async function (...args: any[]) {
+    descriptor.value = async function validatedReturnMethod(...args: any[]) {
       const result = await originalMethod.apply(this, args);
 
       try {

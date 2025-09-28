@@ -14,12 +14,7 @@ import {
   JaegerExporter,
   ZipkinExporter,
   W3CTraceContextPropagator,
-  Span,
-  SpanContext,
-  SpanKind,
   SpanStatus,
-  TraceFlags,
-  createTracer,
   withSpan,
   trace
 } from '../../../src/nexus/tracing.js';
@@ -27,10 +22,7 @@ import {
   DevToolsPlugin,
   DevToolsServer,
   MessageType,
-  ContainerSnapshot,
   DependencyGraph,
-  PerformanceMetrics,
-  createDevTools,
   exportToDot,
   exportToMermaid
 } from '../../../src/nexus/devtools.js';

@@ -8,31 +8,27 @@
  * - Module configuration
  * - Module health checks
  */
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, afterEach, jest } from '@jest/globals';
 
 import { Application, createApp } from '../../src/application.js';
 import { createToken } from '../../src/nexus/index.js';
 import {
   ApplicationState,
   ApplicationEvent,
-  IModule,
-  IHealthStatus
+  IModule
 } from '../../src/types.js';
 import {
   SimpleModule,
   DatabaseModule,
   CacheModule,
   HttpServerModule,
-  MessageQueueModule,
-  DependentModule,
-  ApplicationModule,
   createTrackedModule,
   createCustomModule,
   createApplicationWithDependencies,
   createApplicationWithCircularDeps,
   createFullStackApplication
 } from '../fixtures/test-modules.js';
-import { Module, Injectable } from '../../src/decorators/index.js';
+import { Module } from '../../src/decorators/index.js';
 
 describe('Application Module Management', () => {
   let app: Application;

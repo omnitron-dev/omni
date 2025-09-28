@@ -10,7 +10,6 @@ import {
   assertRejects,
   assertExists,
 } from "https://deno.land/std@0.218.0/assert/mod.ts";
-import { FakeTime } from "https://deno.land/std@0.218.0/testing/time.ts";
 import { EventEmitter } from '../../src/emitter.ts';
 import { EnhancedEmitter } from '../../src/enhanced-emitter.ts';
 

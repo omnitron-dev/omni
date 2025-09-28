@@ -5,20 +5,14 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import { z } from 'zod';
 import { HttpTransport } from '../../../../src/netron/transport/http/http-transport.js';
 import { HttpServer } from '../../../../src/netron/transport/http/http-server.js';
 import { HttpClientConnection } from '../../../../src/netron/transport/http/http-client.js';
 import {
   ITransport,
-  ITransportConnection,
-  ITransportServer,
   ConnectionState,
-  TransportCapabilities,
-  TransportOptions,
-  TransportAddress
+  TransportOptions
 } from '../../../../src/netron/transport/types.js';
-import { contract } from '../../../../src/validation/contract.js';
 
 describe('HttpTransport', () => {
   let transport: HttpTransport;

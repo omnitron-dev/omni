@@ -3,7 +3,7 @@
  */
 
 import { z } from 'zod';
-import { ValidationEngine, ValidationError, ValidationOptions } from '../../src/validation/validation-engine.js';
+import { ValidationEngine, ValidationError } from '../../src/validation/validation-engine.js';
 
 describe('ValidationEngine', () => {
   let engine: ValidationEngine;

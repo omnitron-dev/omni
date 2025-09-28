@@ -3,11 +3,11 @@
  * Provides compatibility layer for Jest API
  */
 
-// @ts-ignore - Deno specific imports
+// @ts-expect-error - Deno specific imports
 import { FakeTime } from "https://deno.land/std@0.208.0/testing/time.ts";
-// @ts-ignore - Deno specific imports
+// @ts-expect-error - Deno specific imports
 import { expect as denoExpect } from "https://deno.land/x/expect@v0.3.0/mod.ts";
-// @ts-ignore - Deno specific imports
+// @ts-expect-error - Deno specific imports
 import { it as denoIt, describe as denoDescribe } from "https://deno.land/std@0.208.0/testing/bdd.ts";
 
 // Polyfill for node:util inherits
@@ -36,8 +36,9 @@ const afterAllCallbacks: Array<() => void | Promise<void>> = [];
 function describe(name: string, fn: () => void) {
   denoDescribe(name, () => {
     // Clear callbacks for this describe block
-    const localBeforeEach = [...beforeEachCallbacks];
-    const localAfterEach = [...afterEachCallbacks];
+    // Note: These are preserved for potential future use in nested describe blocks
+    // const localBeforeEach = [...beforeEachCallbacks];
+    // const localAfterEach = [...afterEachCallbacks];
     const localBeforeAll = [...beforeAllCallbacks];
     const localAfterAll = [...afterAllCallbacks];
 
@@ -187,7 +188,7 @@ const expect = (value: any) => {
   const matcher = denoExpect(value);
 
   // Add missing matcher methods to the chain
-  matcher.toBeInstanceOf = function(constructor: any) {
+  matcher.toBeInstanceOf = function toBeInstanceOf(constructor: any) {
     const pass = value instanceof constructor;
     if (!pass) {
       throw new Error(`expected ${value} to be instance of ${constructor.name}`);
@@ -195,11 +196,11 @@ const expect = (value: any) => {
     return { pass };
   };
 
-  matcher.toStrictEqual = function(expected: any) {
+  matcher.toStrictEqual = function toStrictEqual(expected: any) {
     return matcher.toEqual(expected);
   };
 
-  matcher.toThrowError = function(expected?: any) {
+  matcher.toThrowError = function toThrowError(expected?: any) {
     let error: any;
     let thrown = false;
 

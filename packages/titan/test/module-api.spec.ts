@@ -2,7 +2,7 @@
  * Tests for the improved Titan module API
  */
 
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { createToken } from '@nexus';
 import {
   TitanApplication,
@@ -470,9 +470,7 @@ describe('Improved Titan Module API', () => {
 
       // Add a factory provider that depends on other services
       app.register(derivedToken, {
-        useFactory: (testService: TestService) => {
-          return `Derived from: ${testService.doSomething()}`;
-        },
+        useFactory: (testService: TestService) => `Derived from: ${testService.doSomething()}`,
         inject: [TestServiceToken]
       });
 

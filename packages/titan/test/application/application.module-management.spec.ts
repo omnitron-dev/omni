@@ -11,12 +11,11 @@ import { createToken } from '../../src/nexus/index.js';
 import {
   SimpleModule,
   DatabaseModule,
-  HttpServerModule,
   CacheModule,
   DependentModule
 } from '../fixtures/test-modules.js';
 import { Module, Injectable, Inject } from '../../src/decorators/index.js';
-import { IModule, IHealthStatus, IApplication } from '../../src/types.js';
+import { IModule, IHealthStatus } from '../../src/types.js';
 
 describe('Application Module Management', () => {
   let app: Application;

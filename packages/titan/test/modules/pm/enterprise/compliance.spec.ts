@@ -270,7 +270,15 @@ describe('ComplianceManager', () => {
   describe('Standards Application', () => {
     it('should apply GDPR standard', () => {
       const standardApplied = jest.fn();
-      complianceManager.on('standard:applied', standardApplied);
+
+      // Create a spy for the emit method before creating the manager
+      const originalEmit = ComplianceManager.prototype.emit;
+      ComplianceManager.prototype.emit = jest.fn(function(this: any, event: string, ...args: any[]) {
+        if (event === 'standard:applied') {
+          standardApplied(...args);
+        }
+        return originalEmit.call(this, event, ...args);
+      });
 
       // Re-initialize to trigger standard application
       const manager = new ComplianceManager({
@@ -285,10 +293,11 @@ describe('ComplianceManager', () => {
         }
       });
 
-      manager.on('standard:applied', standardApplied);
-
       // Standards are applied during initialization
       expect(standardApplied).toHaveBeenCalledWith({ standard: 'GDPR' });
+
+      // Restore original emit
+      ComplianceManager.prototype.emit = originalEmit;
     });
   });
 

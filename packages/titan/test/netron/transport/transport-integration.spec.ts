@@ -5,13 +5,10 @@
  * ensuring they work correctly together and can interoperate.
  */
 
-import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, beforeAll } from '@jest/globals';
 import {
   TransportRegistry,
   getTransportRegistry,
-  registerTransport,
-  getTransport,
-  getTransportForAddress,
   TcpTransport,
   WebSocketTransport,
   UnixSocketTransport,
@@ -19,7 +16,6 @@ import {
   BaseTransport
 } from '../../../src/netron/transport/index.js';
 import { ConnectionState } from '../../../src/netron/transport/types.js';
-import { Packet } from '../../../src/netron/packet/index.js';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';

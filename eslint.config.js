@@ -128,7 +128,10 @@ module.exports = [
       '**/jest.setup.global.ts',
       'packages/rotif/**', // Временно игнорируем rotif так как он перемещен
       'scripts/**',
-      'experiments/**'
+      'experiments/**',
+      '**/examples/**', // Игнорируем примеры
+      '**/test/**/fixtures/**', // Игнорируем test fixtures
+      '**/test/**/helpers/**' // Игнорируем test helpers
     ]
   },
   // Базовая конфигурация
@@ -164,5 +167,18 @@ module.exports = [
     rules: {
       // import/no-unresolved disabled due to ESLint 9 compatibility issues
     }
+  },
+  // Конфигурация для тестовых файлов
+  {
+    files: ['packages/*/test/**/*.{js,mjs,cjs,ts,jsx,tsx,spec.ts}', 'packages/*/__tests__/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
+    languageOptions: {
+      parser: eslintTs.parser,
+      parserOptions: {
+        project: './tsconfig.json',
+        tsconfigRootDir: __dirname,
+      },
+      globals: { ...globals.browser, ...globals.node, ...globals.jest },
+    },
+    ...customConfig,
   },
 ];

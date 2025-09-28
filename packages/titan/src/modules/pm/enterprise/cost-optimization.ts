@@ -269,6 +269,10 @@ export class CostOptimizer extends EventEmitter {
       case 'stop':
         this.stopResources(action.target);
         break;
+      default:
+        // Unknown action, log warning
+        this.emit('budget:unknown-action', action);
+        break;
     }
   }
 
@@ -371,6 +375,10 @@ export class CostOptimizer extends EventEmitter {
         break;
       case 'convert-to-spot':
         this.convertToSpot(rec.resource);
+        break;
+      default:
+        // Unknown optimization action
+        this.emit('optimization:unknown-action', rec);
         break;
     }
 

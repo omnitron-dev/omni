@@ -3,7 +3,6 @@ import { Redis } from 'ioredis';
 import { Container } from '../../../src/nexus/index.js';
 import { TitanNotificationsModule } from '../../../src/modules/notifications/notifications.module.js';
 import { NOTIFICATION_SERVICE, PREFERENCE_MANAGER, RATE_LIMITER, CHANNEL_MANAGER } from '../../../src/modules/notifications/constants.js';
-import type { NotificationService } from '../../../src/modules/notifications/notifications.service.js';
 import type { PreferenceManager } from '../../../src/modules/notifications/preference-manager.js';
 import type { RateLimiter } from '../../../src/modules/notifications/rate-limiter.js';
 import type { ChannelManager } from '../../../src/modules/notifications/channel-manager.js';

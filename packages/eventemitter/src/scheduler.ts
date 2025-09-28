@@ -52,7 +52,7 @@ export class EventScheduler {
       const timer = setTimeout(async () => {
         try {
           await this.executeScheduledEvent(id, scheduledEvent, emitFn);
-        } catch (error) {
+        } catch {
           // Error is already handled in executeScheduledEvent, just prevent unhandled rejection
         }
       }, delay);

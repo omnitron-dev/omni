@@ -3,12 +3,11 @@
  */
 
 import 'reflect-metadata';
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import {
   DistributedTransactionCoordinator,
   TransactionParticipant,
-  TransactionPhase,
-  type ITransactionParticipant
+  TransactionPhase
 } from '../../../../src/modules/pm/enterprise/distributed-transactions.js';
 
 // Mock logger

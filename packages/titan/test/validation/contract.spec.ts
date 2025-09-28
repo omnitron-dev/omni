@@ -3,7 +3,7 @@
  */
 
 import { z } from 'zod';
-import { contract, Contract, MethodContract } from '../../src/validation/contract.js';
+import { contract } from '../../src/validation/contract.js';
 
 describe('Contract System', () => {
   describe('contract creation', () => {

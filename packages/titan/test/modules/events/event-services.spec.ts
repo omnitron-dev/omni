@@ -1,7 +1,7 @@
 /**
  * Tests for Event Module Services
  */
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 
 // Jest provides describe, it, expect, beforeEach globally
 import { Container } from '@nexus';

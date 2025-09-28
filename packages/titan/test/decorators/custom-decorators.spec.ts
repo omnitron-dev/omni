@@ -1,15 +1,13 @@
 /**
  * Tests for Custom Decorator Creation API
  */
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, jest } from '@jest/globals';
 
 import 'reflect-metadata';
 import {
   createDecorator,
-  DecoratorTarget,
   getCustomMetadata,
   hasDecorator,
-  getDecoratorOptions,
   combineDecorators,
   createMethodInterceptor,
   createPropertyInterceptor,

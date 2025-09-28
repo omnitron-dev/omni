@@ -1,7 +1,7 @@
 /**
  * Tests for EventDiscoveryService
  */
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 
 import 'reflect-metadata';
 import { EventDiscoveryService } from '../../../src/modules/events/event-discovery.service';

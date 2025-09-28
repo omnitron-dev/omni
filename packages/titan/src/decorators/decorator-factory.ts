@@ -287,9 +287,9 @@ export class CustomDecoratorBuilder<TOptions = any> {
     return function (optionsOrTarget?: any, propertyKey?: string | symbol, descriptorOrIndex?: any) {
       // Handle different decorator signatures
       const isParameterDecorator = typeof descriptorOrIndex === 'number';
-      const isPropertyDecorator = propertyKey !== undefined && descriptorOrIndex === undefined;
-      const isMethodDecorator = propertyKey !== undefined && descriptorOrIndex !== undefined && !isParameterDecorator;
-      const isClassDecorator = propertyKey === undefined && descriptorOrIndex === undefined;
+      const _isPropertyDecorator = propertyKey !== undefined && descriptorOrIndex === undefined;
+      const _isMethodDecorator = propertyKey !== undefined && descriptorOrIndex !== undefined && !isParameterDecorator;
+      const _isClassDecorator = propertyKey === undefined && descriptorOrIndex === undefined;
 
       // Check if this is a decorator factory call with options
       // If we have exactly one argument and it's not a function (constructor), it's likely options

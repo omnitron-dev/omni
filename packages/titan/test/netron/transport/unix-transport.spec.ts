@@ -5,16 +5,15 @@
  * Also tests named pipes on Windows.
  */
 
-import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { UnixSocketTransport, NamedPipeTransport } from '../../../src/netron/transport/unix-transport.js';
 import { ConnectionState } from '../../../src/netron/transport/types.js';
 import { Packet } from '../../../src/netron/packet/index.js';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import { createServer as createNetServer, Socket } from 'node:net';
+import { Socket } from 'node:net';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
 
 // Helper to generate unique socket path
 function getSocketPath(): string {

@@ -7,6 +7,7 @@
 
 import { EventEmitter } from 'events';
 import { Netron } from '../../netron/index.js';
+import type { ProcessMethod } from './common-types.js';
 import type { ILogger } from '../logger/logger.types.js';
 import type { IProcessOptions, IProcessManagerConfig } from './types.js';
 import { PROCESS_METHOD_METADATA_KEY } from './decorators.js';
@@ -18,7 +19,7 @@ class MockWorker extends EventEmitter {
   public threadId = Math.floor(Math.random() * 10000);
   public pid = process.pid;
   private instance: any;
-  private publicMethods: Map<string, Function> = new Map();
+  private publicMethods: Map<string, ProcessMethod> = new Map();
 
   constructor(ProcessClass: new (...args: any[]) => any) {
     super();

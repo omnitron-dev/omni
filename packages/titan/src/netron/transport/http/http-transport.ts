@@ -44,7 +44,7 @@ export class HttpTransport implements ITransport {
     if (typeof window !== 'undefined') {
       return 'browser';
     }
-    // @ts-ignore - Bun global may not be available
+    // @ts-expect-error - Bun global may not be available
     if (typeof globalThis.Bun !== 'undefined') {
       return 'bun';
     }

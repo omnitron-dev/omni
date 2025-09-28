@@ -9,11 +9,7 @@ import { ConfigModule } from '../../../src/modules/config/config.module.js';
 import { ConfigService } from '../../../src/modules/config/config.service.js';
 import {
   CONFIG_OPTIONS_TOKEN,
-  CONFIG_SCHEMA_TOKEN,
   CONFIG_SERVICE_TOKEN,
-  CONFIG_LOADER_SERVICE_TOKEN,
-  CONFIG_VALIDATOR_SERVICE_TOKEN,
-  CONFIG_WATCHER_SERVICE_TOKEN,
 } from '../../../src/modules/config/config.tokens.js';
 import type {
   IConfigModuleOptions as ConfigModuleOptions,

@@ -121,7 +121,7 @@ export class ProcessManagerModule {
         [
           PM_SPAWNER_TOKEN,
           {
-            useFactory: (logger: any, config: IProcessManagerConfig) => ProcessSpawnerFactory.create(logger, config),
+            useFactory: (logger: any, pmConfig: IProcessManagerConfig) => ProcessSpawnerFactory.create(logger, pmConfig),
             inject: [LOGGER_SERVICE_TOKEN, PM_CONFIG_TOKEN]
           }
         ],
@@ -144,7 +144,7 @@ export class ProcessManagerModule {
         [
           PM_MANAGER_TOKEN,
           {
-            useFactory: (logger: any, config: IProcessManagerConfig) => new ProcessManager(logger, config),
+            useFactory: (logger: any, pmConfig: IProcessManagerConfig) => new ProcessManager(logger, pmConfig),
             inject: [LOGGER_SERVICE_TOKEN, PM_CONFIG_TOKEN]
           }
         ],

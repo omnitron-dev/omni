@@ -9,7 +9,7 @@ import { TransportRegistry } from '../../../src/netron/transport/transport-regis
 import { TcpTransport } from '../../../src/netron/transport/tcp-transport.js';
 import { WebSocketTransport } from '../../../src/netron/transport/websocket-transport.js';
 import { UnixTransport } from '../../../src/netron/transport/unix-transport.js';
-import type { ITransport, ITransportRegistry, TransportFactory } from '../../../src/netron/transport/types.js';
+import type { ITransport, TransportFactory } from '../../../src/netron/transport/types.js';
 
 // Mock transport for testing
 class MockTransport implements ITransport {

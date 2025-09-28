@@ -24,26 +24,31 @@ export class ServiceProxyHandler<T> {
    * Create a type-safe proxy for the service
    */
   createProxy(): ServiceProxy<T> {
-    const self = this;
+    const processId = this.processId;
+    const destroy = () => this.destroy();
+    const getMetrics = () => this.getMetrics();
+    const getHealth = () => this.getHealth();
+    const callStreamingMethod = (method: string, args: any[]) => this.callStreamingMethod(method, args);
+    const callRemoteMethod = (method: string, args: any[]) => this.callRemoteMethod(method, args);
 
     // Create proxy handler
     const handler: ProxyHandler<any> = {
       get(target, property: string | symbol) {
         // Handle control methods
         if (property === '__processId') {
-          return self.processId;
+          return processId;
         }
 
         if (property === '__destroy') {
-          return async () => self.destroy();
+          return async () => destroy();
         }
 
         if (property === '__getMetrics') {
-          return async () => self.getMetrics();
+          return async () => getMetrics();
         }
 
         if (property === '__getHealth') {
-          return async () => self.getHealth();
+          return async () => getHealth();
         }
 
         // Prevent proxy from being treated as a Promise
@@ -63,12 +68,12 @@ export class ServiceProxyHandler<T> {
         // Methods starting with 'stream' or containing 'Stream' return AsyncIterables
         if (methodName.startsWith('stream') || methodName.includes('Stream')) {
           return async function* (...args: any[]) {
-            yield* self.callStreamingMethod(methodName, args);
+            yield* callStreamingMethod(methodName, args);
           };
         }
 
         // Return async function that calls remote method
-        return async (...args: any[]) => self.callRemoteMethod(methodName, args);
+        return async (...args: any[]) => callRemoteMethod(methodName, args);
       },
 
       has(target, property) {
@@ -218,7 +223,10 @@ export class StreamingServiceProxyHandler<T> {
    * Create a proxy that handles async generators
    */
   createStreamingProxy(): ServiceProxy<T> {
-    const self = this;
+    const netron = this.netron;
+    const serviceName = this.serviceName;
+    const logger = this.logger;
+    const processId = this.processId;
 
     const handler: ProxyHandler<any> = {
       get(target, property: string | symbol) {
@@ -228,15 +236,15 @@ export class StreamingServiceProxyHandler<T> {
         return async function* (...args: any[]) {
           try {
             // Call the streaming method via NetronClient
-            const stream = await self.netron.call(self.serviceName, methodName, args);
+            const stream = await netron.call(serviceName, methodName, args);
 
             // Yield values from the stream
             for await (const value of stream) {
               yield value;
             }
           } catch (error) {
-            self.logger.error(
-              { error, processId: self.processId, methodName },
+            logger.error(
+              { error, processId, methodName },
               'Streaming method failed'
             );
             throw error;

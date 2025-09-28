@@ -299,7 +299,7 @@ export abstract class BaseTransport implements ITransport {
   parseAddress(address: string): TransportAddress {
     // Handle various address formats
     // Support both IPv4 and IPv6 addresses
-    const urlPattern = /^([a-z]+):\/\/(\[([^\]]+)\]|([^:\/]+))(?::(\d+))?(\/.*)?(\?.*)?$/i;
+    const urlPattern = /^([a-z]+):\/\/(\[([^\]]+)\]|([^:/]+))(?::(\d+))?(\/.*)?(\?.*)?$/i;
     const unixPattern = /^unix:(.+)$/i;
     const ipcPattern = /^ipc:(.+)$/i;
 

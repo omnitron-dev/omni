@@ -52,9 +52,7 @@ describe('RedisManager', () => {
     redisUtils.createRedisClient = jest.fn(() => mockRedisInstance);
     redisUtils.waitForConnection = jest.fn(async () => {});
     redisUtils.mergeOptions = jest.fn((a, b) => ({ ...a, ...b }));
-    redisUtils.generateScriptSha = jest.fn((content: string) => {
-      return createHash('sha1').update(content).digest('hex');
-    });
+    redisUtils.generateScriptSha = jest.fn((content: string) => createHash('sha1').update(content).digest('hex'));
     redisUtils.loadScriptContent = jest.fn(() => 'mock-script');
     redisUtils.getClientNamespace = jest.fn((client, fallback = 'default') => fallback);
     redisUtils.createRetryStrategy = jest.fn(() => (times: number) => Math.min(times * 50, 2000));

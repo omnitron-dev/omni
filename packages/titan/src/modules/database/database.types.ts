@@ -712,5 +712,5 @@ export interface IDatabaseManager {
   closeAll(): Promise<void>;
   isConnected(name?: string): boolean;
   getConnectionNames(): string[];
-  getConnectionConfig(name?: string): ConnectionOptions | undefined;
+  getConnectionConfig(name?: string): DatabaseConnection | undefined;
 }

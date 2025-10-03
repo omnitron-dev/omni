@@ -480,7 +480,7 @@ export class DatabaseManager implements IDatabaseManager {
   /**
    * Get connection configuration
    */
-  getConnectionConfig(name?: string): ConnectionOptions | undefined {
+  getConnectionConfig(name?: string): DatabaseConnection | undefined {
     const connectionName = name || DATABASE_DEFAULT_CONNECTION;
     const info = this.connections.get(connectionName);
     return info?.config;

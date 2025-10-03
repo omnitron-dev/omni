@@ -259,7 +259,7 @@ export class DatabaseService {
     const dialect = config?.dialect || 'sqlite';
 
     // PostgreSQL uses $1, $2, etc. placeholders
-    if (dialect === 'postgres' || dialect === 'postgresql') {
+    if (dialect === 'postgres') {
       // Check if the query already uses PostgreSQL-style placeholders
       const hasPostgresPlaceholders = /\$\d+/.test(sqlString);
 
@@ -272,10 +272,10 @@ export class DatabaseService {
       // Build the query with parameters for PostgreSQL
       // We need to use sql template literal for proper parameter binding
       const parts = sqlString.split(/\$\d+/);
-      let boundQuery = sql`${sql.raw(parts[0])}`;
+      let boundQuery = sql`${sql.raw(parts[0] || '')}`;
 
       for (let i = 0; i < params.length && i < parts.length - 1; i++) {
-        boundQuery = sql`${boundQuery}${params[i]}${sql.raw(parts[i + 1])}`;
+        boundQuery = sql`${boundQuery}${params[i]}${sql.raw(parts[i + 1] || '')}`;
       }
 
       const result = await boundQuery.execute(db);
@@ -289,9 +289,9 @@ export class DatabaseService {
     }
 
     // Build the SQL with bound parameters for MySQL/SQLite
-    let boundQuery = sql`${sql.raw(parts[0])}`;
+    let boundQuery = sql`${sql.raw(parts[0] || '')}`;
     for (let i = 0; i < params.length; i++) {
-      boundQuery = sql`${boundQuery}${sql.literal(params[i])}${sql.raw(parts[i + 1])}`;
+      boundQuery = sql`${boundQuery}${sql.literal(params[i])}${sql.raw(parts[i + 1] || '')}`;
     }
 
     const result = await boundQuery.execute(db);

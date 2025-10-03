@@ -8,7 +8,6 @@ import { Injectable } from '../../../decorators/index.js';
 import { Kysely, Transaction } from 'kysely';
 import {
   createRepositoryFactory as createKyseraRepositoryFactory,
-  createORM,
   type Plugin as KyseraPlugin,
 } from '@kysera/repository';
 import { softDeletePlugin } from '@kysera/soft-delete';
@@ -19,7 +18,6 @@ import { DatabaseManager } from '../database.manager.js';
 import { BaseRepository } from './base.repository.js';
 import { PluginManager } from '../plugins/plugin.manager.js';
 import {
-  getRepositoryToken,
   BUILT_IN_PLUGINS,
 } from '../database.constants.js';
 import type {
@@ -354,9 +352,7 @@ export class RepositoryFactory implements IRepositoryFactory {
 
           return baseRepo as T;
         },
-        execute: async <T>(executeFn: () => Promise<T>): Promise<T> => {
-          return executeFn();
-        },
+        execute: async <T>(executeFn: () => Promise<T>): Promise<T> => executeFn(),
       };
 
       return fn(scope);

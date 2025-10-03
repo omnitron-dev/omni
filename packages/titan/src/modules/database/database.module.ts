@@ -15,7 +15,7 @@ import { TransactionManager } from './transaction/transaction.manager.js';
 import { TransactionScopeFactory } from './transaction/transaction.scope.js';
 import { PluginManager } from './plugins/plugin.manager.js';
 import { PluginLoader } from './plugins/plugin.loader.js';
-import { getRepositoryMetadata, isRepository } from './database.decorators.js';
+import { getRepositoryMetadata } from './database.decorators.js';
 import {
   DATABASE_SERVICE,
   DATABASE_HEALTH_INDICATOR,
@@ -70,17 +70,13 @@ export class TitanDatabaseModule {
 
       // Database service
       [DATABASE_SERVICE, {
-        useFactory: async (manager: DatabaseManager) => {
-          return new DatabaseService(manager);
-        },
+        useFactory: async (manager: DatabaseManager) => new DatabaseService(manager),
         inject: [DATABASE_MANAGER],
       }],
 
       // Health indicator
       [DATABASE_HEALTH_INDICATOR, {
-        useFactory: async (manager: DatabaseManager) => {
-          return new DatabaseHealthIndicator(manager);
-        },
+        useFactory: async (manager: DatabaseManager) => new DatabaseHealthIndicator(manager),
         inject: [DATABASE_MANAGER],
       }],
 
@@ -176,17 +172,13 @@ export class TitanDatabaseModule {
 
       // Transaction manager
       [DATABASE_TRANSACTION_MANAGER, {
-        useFactory: (manager: DatabaseManager) => {
-          return new TransactionManager(manager, options.transactionOptions);
-        },
+        useFactory: (manager: DatabaseManager) => new TransactionManager(manager, options.transactionOptions),
         inject: [DATABASE_MANAGER],
       }],
 
       // Transaction scope factory
       [DATABASE_TRANSACTION_SCOPE_FACTORY, {
-        useFactory: (repositoryFactory: RepositoryFactory, manager: DatabaseManager, transactionManager: TransactionManager) => {
-          return new TransactionScopeFactory(repositoryFactory, manager, transactionManager);
-        },
+        useFactory: (repositoryFactory: RepositoryFactory, manager: DatabaseManager, transactionManager: TransactionManager) => new TransactionScopeFactory(repositoryFactory, manager, transactionManager),
         inject: [DATABASE_REPOSITORY_FACTORY, DATABASE_MANAGER, DATABASE_TRANSACTION_MANAGER],
       }],
     ];
@@ -345,17 +337,13 @@ export class TitanDatabaseModule {
 
     // Transaction manager
     providers.push([DATABASE_TRANSACTION_MANAGER, {
-      useFactory: (manager: DatabaseManager, moduleOptions: DatabaseModuleOptions) => {
-        return new TransactionManager(manager, moduleOptions.transactionOptions);
-      },
+      useFactory: (manager: DatabaseManager, moduleOptions: DatabaseModuleOptions) => new TransactionManager(manager, moduleOptions.transactionOptions),
       inject: [DATABASE_MANAGER, DATABASE_MODULE_OPTIONS],
     }]);
 
     // Transaction scope factory
     providers.push([DATABASE_TRANSACTION_SCOPE_FACTORY, {
-      useFactory: (repositoryFactory: RepositoryFactory, manager: DatabaseManager, transactionManager: TransactionManager) => {
-        return new TransactionScopeFactory(repositoryFactory, manager, transactionManager);
-      },
+      useFactory: (repositoryFactory: RepositoryFactory, manager: DatabaseManager, transactionManager: TransactionManager) => new TransactionScopeFactory(repositoryFactory, manager, transactionManager),
       inject: [DATABASE_REPOSITORY_FACTORY, DATABASE_MANAGER, DATABASE_TRANSACTION_MANAGER],
     }]);
 

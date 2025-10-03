@@ -10,11 +10,9 @@ import * as mysql from 'mysql2';
 import BetterSqlite3 from 'better-sqlite3';
 type Database = BetterSqlite3.Database;
 import { Injectable } from '../../decorators/index.js';
-import { Logger } from '../logger/index.js';
 import type {
   DatabaseConnection,
   DatabaseDialect,
-  ConnectionConfig,
   DatabaseModuleOptions,
   IDatabaseManager,
   DatabaseEvent,

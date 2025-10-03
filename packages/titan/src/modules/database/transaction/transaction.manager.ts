@@ -7,7 +7,7 @@
 
 import { Injectable, Inject } from '../../../decorators/index.js';
 import { EventEmitter } from 'events';
-import { Kysely, Transaction, sql } from 'kysely';
+import { Transaction, sql } from 'kysely';
 import { v4 as uuidv4 } from 'uuid';
 import { AsyncLocalStorage } from 'async_hooks';
 import { DATABASE_MANAGER } from '../database.constants.js';
@@ -165,8 +165,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
 
     try {
       // Execute with retry for deadlocks
-      const result = await this.executeWithRetry(async () => {
-        return db.transaction().execute(async (trx) => {
+      const result = await this.executeWithRetry(async () => db.transaction().execute(async (trx) => {
           // Set isolation level if specified
           if (options.isolationLevel) {
             await this.setTransactionIsolationLevel(trx, options.isolationLevel);
@@ -192,8 +191,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
 
           // Execute function with context
           return this.storage.run(context, () => fn(trx));
-        });
-      }, options);
+        }), options);
 
       // Update context state
       context.state = TransactionState.COMMITTED;

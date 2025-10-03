@@ -22,7 +22,7 @@ import {
   TransactionIsolationLevel,
   TransactionTimeoutError,
 } from '../../../src/modules/database/index.js';
-import { Kysely, sql } from 'kysely';
+import { sql } from 'kysely';
 import { DatabaseTestManager } from '../../utils/docker-test-manager.js';
 
 // Skip Docker tests if env var is set

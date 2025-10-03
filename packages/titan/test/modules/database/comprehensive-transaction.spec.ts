@@ -5,12 +5,11 @@
  * nested transactions, deadlock handling, and edge cases
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from '@jest/globals';
 import { Application } from '../../../src/application.js';
 import { Module, Injectable, Inject } from '../../../src/decorators/index.js';
 import { Kysely, sql, Transaction } from 'kysely';
 import {
-  TitanDatabaseModule,
   InjectConnection,
   InjectRepository,
   Repository,
@@ -235,9 +234,7 @@ class BankingService {
         try {
           // Nested transaction with savepoint
           const result = await this.txManager.executeInTransaction(
-            async () => {
-              return this.transferFunds(transfer.from, transfer.to, transfer.amount);
-            },
+            async () => this.transferFunds(transfer.from, transfer.to, transfer.amount),
             { propagation: TransactionPropagation.NESTED }
           );
           results.push({ success: true, transaction: result });

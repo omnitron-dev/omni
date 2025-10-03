@@ -4,7 +4,7 @@
  * Provides a unified interface for managing Docker containers in tests
  */
 
-import { execSync, execFileSync, ChildProcess } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { randomBytes } from 'crypto';
 import * as net from 'net';
 

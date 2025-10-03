@@ -5,10 +5,10 @@
  * in an e-commerce application with all features integrated
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import { Application } from '../../../src/application.js';
 import { Module, Injectable, Inject } from '../../../src/decorators/index.js';
-import { Kysely, sql, Transaction } from 'kysely';
+import { Kysely, sql } from 'kysely';
 import {
   TitanDatabaseModule,
   InjectConnection,
@@ -16,25 +16,17 @@ import {
   InjectDatabaseManager,
   Repository,
   BaseRepository,
-  Migration,
-  IMigration,
   Transactional,
   TransactionManager,
   TransactionIsolationLevel,
-  TransactionPropagation,
   DatabaseManager,
   DatabaseHealthIndicator,
-  MigrationRunner,
-  PluginManager,
   DATABASE_TRANSACTION_MANAGER,
-  DATABASE_PLUGIN_MANAGER,
   optimisticLockingPlugin,
   validationPlugin,
-  createValidationPlugin,
   CommonSchemas,
 } from '../../../src/modules/database/index.js';
 import { z } from 'zod';
-import { DatabaseTestManager, DockerContainer } from '../../utils/docker-test-manager.js';
 
 // ============================================================================
 // Domain Models & Schemas

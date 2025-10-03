@@ -4,7 +4,7 @@
  * Loads and manages migration files and classes
  */
 
-import { readdirSync, readFileSync } from 'fs';
+import { readdirSync } from 'fs';
 import { join, resolve } from 'path';
 import type {
   IMigration,

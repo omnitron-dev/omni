@@ -7,18 +7,14 @@
 
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from '@jest/globals';
 import { Application } from '../../../src/application.js';
-import { Module, Injectable, Inject } from '../../../src/decorators/index.js';
-import { Kysely, sql, Transaction } from 'kysely';
+import { Module, Injectable } from '../../../src/decorators/index.js';
+import { sql } from 'kysely';
 import {
-  TitanDatabaseModule,
-  InjectConnection,
   InjectDatabaseManager,
   InjectRepository,
   Repository,
   BaseRepository,
   DatabaseManager,
-  MigrationRunner,
-  TransactionManager,
 } from '../../../src/modules/database/index.js';
 import { DatabaseTestingModule, DatabaseTestingService } from '../../../src/modules/database/testing/database-testing.module.js';
 import { DatabaseTestManager, DockerContainer } from '../../utils/docker-test-manager.js';

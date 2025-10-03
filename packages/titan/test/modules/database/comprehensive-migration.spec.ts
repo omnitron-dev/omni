@@ -5,7 +5,7 @@
  * rollback, dependency management, and edge cases
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from '@jest/globals';
 import { Application } from '../../../src/application.js';
 import { Module, Injectable, Inject } from '../../../src/decorators/index.js';
 import { Kysely, sql } from 'kysely';
@@ -16,9 +16,7 @@ import {
   IMigration,
   MigrationRunner,
   MigrationService,
-  MigrationProvider,
   MigrationLock,
-  DatabaseTestingModule,
   DatabaseTestingService,
   DATABASE_MIGRATION_SERVICE,
   DATABASE_MIGRATION_RUNNER,

@@ -14,7 +14,6 @@ import {
   type PaginatedResult as KyseraPaginatedResult,
   type CursorOptions as KyseraCursorOptions
 } from '@kysera/core';
-import { Logger } from '../logger/index.js';
 import { EventsService } from '../events/index.js';
 import { DatabaseManager } from './database.manager.js';
 import {

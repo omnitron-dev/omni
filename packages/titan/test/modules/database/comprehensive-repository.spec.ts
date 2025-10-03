@@ -10,7 +10,6 @@ import { Application } from '../../../src/application.js';
 import { Module, Injectable } from '../../../src/decorators/index.js';
 import { Kysely, sql } from 'kysely';
 import {
-  TitanDatabaseModule,
   InjectConnection,
   InjectRepository,
   Repository,

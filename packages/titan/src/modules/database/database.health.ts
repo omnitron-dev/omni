@@ -8,7 +8,6 @@ import { Injectable, Inject } from '../../decorators/index.js';
 import { Pool } from 'pg';
 import * as mysql from 'mysql2';
 import { sql } from 'kysely';
-import { Logger } from '../logger/index.js';
 import { DatabaseManager } from './database.manager.js';
 import { MigrationService } from './migration/migration.service.js';
 import { TransactionManager } from './transaction/transaction.manager.js';

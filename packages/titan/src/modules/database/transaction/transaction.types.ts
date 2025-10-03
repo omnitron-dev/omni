@@ -4,7 +4,7 @@
  * Type definitions for advanced transaction management
  */
 
-import type { Kysely, Transaction } from 'kysely';
+import type { Transaction } from 'kysely';
 
 /**
  * Transaction isolation levels

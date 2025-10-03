@@ -3,7 +3,6 @@
  * Provides compatibility layer for Jest API
  */
 
-// @ts-expect-error - Bun specific imports
 import { mock, test as bunTest, expect as bunExpect, describe as bunDescribe, afterAll as bunAfterAll, afterEach as bunAfterEach, beforeAll as bunBeforeAll, beforeEach as bunBeforeEach } from "bun:test";
 
 import { timerUtils } from './test-adapter.js';

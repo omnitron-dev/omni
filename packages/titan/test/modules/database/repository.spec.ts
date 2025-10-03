@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { Application } from '../../../src/application.js';
-import { Module, Injectable, Inject } from '../../../src/decorators/index.js';
+import { Module, Injectable } from '../../../src/decorators/index.js';
 import {
   TitanDatabaseModule,
   Repository,
@@ -17,8 +17,6 @@ import {
   InjectRepository,
   DatabaseManager,
   DATABASE_MANAGER,
-  DATABASE_REPOSITORY_FACTORY,
-  getRepositoryMetadata,
 } from '../../../src/modules/database/index.js';
 import { Kysely, sql } from 'kysely';
 import { z } from 'zod';

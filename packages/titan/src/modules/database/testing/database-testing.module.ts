@@ -17,7 +17,7 @@ import {
   DATABASE_MIGRATION_SERVICE,
   DATABASE_TRANSACTION_MANAGER,
 } from '../database.constants.js';
-import type { DatabaseModuleOptions, DatabaseConnection } from '../database.types.js';
+import type { DatabaseModuleOptions } from '../database.types.js';
 
 export interface DatabaseTestingOptions extends Partial<DatabaseModuleOptions> {
   /**

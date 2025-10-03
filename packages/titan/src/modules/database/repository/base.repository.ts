@@ -7,9 +7,6 @@
 import {
   Kysely,
   Transaction,
-  Selectable,
-  Insertable,
-  Updateable,
   sql,
 } from 'kysely';
 import { z } from 'zod';

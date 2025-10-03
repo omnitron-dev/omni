@@ -6,7 +6,6 @@
 
 import type { Kysely, Transaction } from 'kysely';
 import type { Plugin as KyseraPlugin } from '@kysera/repository';
-import type { Repository } from '../repository/repository.types.js';
 
 /**
  * Cache interface

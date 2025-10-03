@@ -114,7 +114,7 @@ export function Transactional(options?: TransactionOptions): MethodDecorator {
 
     descriptor.value = async function (...args: any[]) {
       // Try to get transaction manager first (preferred)
-      let transactionManager = (this as any).transactionManager;
+      const transactionManager = (this as any).transactionManager;
 
       // Fallback to database service for backward compatibility
       if (!transactionManager) {
@@ -155,7 +155,7 @@ export function Transactional(options?: TransactionOptions): MethodDecorator {
           // Store transaction in context for nested operations
           const context = {
             transaction: trx,
-            transactionManager: transactionManager,
+            transactionManager,
             transactionContext: transactionManager.getCurrentTransaction()
           };
 

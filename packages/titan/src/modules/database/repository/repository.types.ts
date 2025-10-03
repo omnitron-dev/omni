@@ -4,7 +4,7 @@
  * Types for the repository pattern implementation
  */
 
-import type { Kysely, Transaction, Selectable, Insertable, Updateable } from 'kysely';
+import type { Transaction, Selectable, Insertable } from 'kysely';
 import type { z } from 'zod';
 import type { Plugin as KyseraPlugin } from '@kysera/repository';
 import type { PaginatedResult, PaginationOptions } from '../database.types.js';

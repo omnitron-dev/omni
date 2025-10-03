@@ -5,7 +5,7 @@
  * Provides consistent logging with module context.
  */
 
-import { Injectable, Inject, Optional } from '@omnitron-dev/titan/nexus';
+import { Injectable, Inject, Optional } from '@omnitron-dev/titan/decorators';
 import pino, { Logger } from 'pino';
 import { TEMPLATE_MODULE_OPTIONS } from '../constants.js';
 import type { TemplateModuleOptions } from '../types.js';

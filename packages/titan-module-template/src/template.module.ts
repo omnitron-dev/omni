@@ -8,9 +8,8 @@
  * - Module lifecycle
  */
 
-import { Container, createToken } from '@omnitron-dev/titan/nexus';
+import { Container, createToken, IModule } from '@omnitron-dev/titan/nexus';
 import {
-  AbstractModule,
   IApplication,
   IHealthStatus
 } from '@omnitron-dev/titan';
@@ -31,7 +30,7 @@ import { CacheService } from './services/cache.service.js';
 import { LoggerService } from './services/logger.service.js';
 import { mergeDeep } from './utils.js';
 
-export class TemplateModule implements AbstractModule {
+export class TemplateModule implements IModule {
   name = 'TemplateModule';
   private static globalOptions: TemplateModuleOptions | null = null;
   private container!: Container;

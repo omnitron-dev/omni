@@ -5,7 +5,7 @@
  * It demonstrates service patterns, dependency injection, and lifecycle management.
  */
 
-import { Inject, Injectable } from '@omnitron-dev/titan/nexus';
+import { Inject, Injectable } from '@omnitron-dev/titan/decorators';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import {
   ServiceStatus

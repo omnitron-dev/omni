@@ -1568,6 +1568,13 @@ export class Application implements IApplication {
   }
 
   /**
+   * Resolve an async dependency from the container - public API
+   */
+  async resolveAsync<T>(token: Token<T>): Promise<T> {
+    return this._container.resolveAsync(token);
+  }
+
+  /**
    * Get a dependency from the container - tries modules first, then container
    */
   get<T>(token: Token<T>): T {

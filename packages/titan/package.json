@@ -67,6 +67,10 @@
     "./module/pm": {
       "types": "./dist/modules/pm/index.d.ts",
       "default": "./dist/modules/pm/index.js"
+    },
+    "./module/database": {
+      "types": "./dist/modules/database/index.d.ts",
+      "default": "./dist/modules/database/index.js"
     }
   },
   "files": [
@@ -93,15 +97,25 @@
     "dev": "tsc -p ./tsconfig.build.json --watch"
   },
   "dependencies": {
+    "@kysera/audit": "^0.3.0",
+    "@kysera/core": "^0.3.0",
+    "@kysera/migrations": "^0.3.0",
+    "@kysera/repository": "^0.3.0",
+    "@kysera/soft-delete": "^0.3.0",
+    "@kysera/timestamps": "^0.3.0",
     "@omnitron-dev/common": "workspace:*",
     "@omnitron-dev/eventemitter": "workspace:*",
     "@omnitron-dev/messagepack": "workspace:*",
     "@omnitron-dev/smartbuffer": "workspace:*",
+    "better-sqlite3": "^12.4.0",
     "glob": "^11.0.3",
     "ioredis": "^5.8.0",
+    "kysely": "^0.28.7",
     "minimatch": "^10.0.3",
     "msgpackr": "^1.11.5",
+    "mysql2": "^3.15.0",
     "node-cron": "^4.2.1",
+    "pg": "^8.16.0",
     "pino": "^9.11.0",
     "pino-pretty": "^13.1.1",
     "reflect-metadata": "^0.2.2",

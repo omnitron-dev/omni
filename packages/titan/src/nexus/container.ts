@@ -1148,20 +1148,37 @@ export class Container implements IContainer {
       return [];
     }
 
-    return Promise.all(
-      registration.dependencies.map(dep => {
-        // Check for circular dependency in async context too
-        if (this.resolutionState?.chain.includes(dep)) {
-          throw new CircularDependencyError([...this.resolutionState.chain, dep]);
-        }
+    // Resolve dependencies sequentially to avoid race conditions with resolution state
+    const resolvedDeps = [];
+    for (const dep of registration.dependencies) {
+      // Check for circular dependency in async context too
+      if (this.resolutionState?.chain.includes(dep)) {
+        throw new CircularDependencyError([...this.resolutionState.chain, dep]);
+      }
 
-        const depReg = this.getRegistration(dep);
-        if (depReg?.isAsync) {
-          return this.resolveAsync(dep);
+      const depReg = this.getRegistration(dep);
+      if (depReg?.isAsync) {
+        // Check if already being resolved (pending promise)
+        if (this.pendingPromises.has(dep)) {
+          resolvedDeps.push(await this.pendingPromises.get(dep)!);
+        } else {
+          // Don't use resolveAsync here - it manages its own resolution state
+          // Instead, resolve the dependency directly within current resolution context
+          this.resolutionState?.chain.push(dep);
+          try {
+            const result = await this.resolveAsyncInternal(dep);
+            resolvedDeps.push(result);
+          } finally {
+            // Remove from chain after resolution
+            this.resolutionState?.chain.pop();
+          }
         }
-        return this.resolve(dep);
-      })
-    );
+      } else {
+        resolvedDeps.push(this.resolve(dep));
+      }
+    }
+
+    return resolvedDeps;
   }
 
   /**

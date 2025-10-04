@@ -30,18 +30,22 @@ class LinearWorkflow {
   }
 
   @Stage({ name: 'step2', dependsOn: 'step1' })
-  async step2(input: string): Promise<{ data: string }> {
+  async step2(input: any): Promise<{ data: string }> {
     this.executionLog.push('step2');
     await new Promise(resolve => setTimeout(resolve, 50));
-    return { data: `${input}-step2` };
+    // Input from step1 is an object with 'data' field
+    const prevData = typeof input === 'string' ? input : input.data || input;
+    return { data: `${prevData}-step2` };
   }
 
   @Stage({ name: 'step3', dependsOn: 'step2' })
-  async step3(input: string): Promise<{ data: string; finalResult: string }> {
+  async step3(input: any): Promise<{ data: string; finalResult: string }> {
     this.executionLog.push('step3');
     await new Promise(resolve => setTimeout(resolve, 50));
+    // Input from step2 is an object with 'data' field
+    const prevData = typeof input === 'string' ? input : input.data || input;
     return {
-      data: `${input}-step3`,
+      data: `${prevData}-step3`,
       finalResult: 'completed'
     };
   }
@@ -332,6 +336,12 @@ class ConditionalWorkflow {
 @Workflow()
 class ErrorHandlingWorkflow {
   public attemptLog: string[] = [];
+  private shouldFail: boolean = false;
+
+  // Method to control failure behavior (not a stage)
+  setShouldFail(value: boolean) {
+    this.shouldFail = value;
+  }
 
   @Stage({ name: 'reliable-stage' })
   async reliableStage(): Promise<{ success: boolean }> {
@@ -341,11 +351,11 @@ class ErrorHandlingWorkflow {
   }
 
   @Stage({ name: 'unreliable-stage', dependsOn: 'reliable-stage' })
-  async unreliableStage(shouldFail: boolean = false): Promise<{ success: boolean }> {
+  async unreliableStage(input: any): Promise<{ success: boolean }> {
     this.attemptLog.push('unreliable-stage');
     await new Promise(resolve => setTimeout(resolve, 30));
 
-    if (shouldFail) {
+    if (this.shouldFail) {
       throw new Error('Stage failed as expected');
     }
 
@@ -353,7 +363,7 @@ class ErrorHandlingWorkflow {
   }
 
   @Stage({ name: 'recovery-stage', dependsOn: 'unreliable-stage' })
-  async recoveryStage(): Promise<{ recovered: boolean }> {
+  async recoveryStage(input: any): Promise<{ recovered: boolean }> {
     this.attemptLog.push('recovery-stage');
     await new Promise(resolve => setTimeout(resolve, 30));
     return { recovered: true };
@@ -637,7 +647,8 @@ describe('Workflow Orchestration - Error Handling', () => {
 
   it('should complete workflow when all stages succeed', async () => {
     const workflow = await pm.workflow(ErrorHandlingWorkflow);
-    const result = await (workflow as any).run(false);
+    // Don't set shouldFail, so workflow succeeds
+    const result = await (workflow as any).run();
 
     const log = (workflow as any).attemptLog;
 
@@ -652,10 +663,11 @@ describe('Workflow Orchestration - Error Handling', () => {
 
   it('should handle stage failures', async () => {
     const workflow = await pm.workflow(ErrorHandlingWorkflow);
+    (workflow as any).setShouldFail(true); // Set the flag to trigger failure
 
     let error;
     try {
-      await (workflow as any).run(true); // Trigger failure
+      await (workflow as any).run(); // Run workflow
     } catch (e) {
       error = e;
     }

@@ -25,7 +25,7 @@ export {
 
 export { ProcessManager } from './process-manager.js';
 export { ProcessRegistry } from './process-registry.js';
-export { UnifiedProcessSpawner, ProcessSpawnerFactory } from './process-spawner.js';
+export { ProcessSpawner, ProcessSpawnerFactory } from './process-spawner.js';
 export { MockProcessSpawner } from './mock-process-spawner.js';
 export { ProcessPool } from './process-pool.js';
 export { ProcessSupervisor } from './process-supervisor.js';

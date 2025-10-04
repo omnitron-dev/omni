@@ -6,6 +6,7 @@
  */
 
 import { cpus } from 'os';
+import path from 'path';
 import { EventEmitter } from 'events';
 import type { ILogger } from '../logger/logger.types.js';
 import type {
@@ -103,11 +104,20 @@ export class ProcessPool<T> implements IProcessPool<T> {
 
   constructor(
     private readonly manager: IProcessManager,
-    private readonly ProcessClass: new (...args: any[]) => T,
+    private readonly processPathOrClass: string | (new (...args: any[]) => T),
     options: IProcessPoolOptions,
     private readonly logger: ILogger
   ) {
     this.poolOptions = this.normalizeOptions(options);
+  }
+
+  /**
+   * Get the process name for logging and identification
+   */
+  private get processName(): string {
+    return typeof this.processPathOrClass === 'string'
+      ? path.basename(this.processPathOrClass, '.js')
+      : this.processPathOrClass.name;
   }
 
   /**
@@ -158,7 +168,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
     const size = this.getPoolSize();
     this.logger.info({
       size,
-      class: this.ProcessClass.name,
+      class: this.processName,
       strategy: this.poolOptions.strategy
     }, 'Initializing process pool');
 
@@ -188,7 +198,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
       this.setupRecycling();
     }
 
-    this.emit('pool:initialized', { size, class: this.ProcessClass.name });
+    this.emit('pool:initialized', { size, class: this.processName });
   }
 
   /**
@@ -277,7 +287,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
     this.logger.info({
       currentSize,
       newSize,
-      class: this.ProcessClass.name
+      class: this.processName
     }, 'Scaling process pool');
 
     // Record scale action
@@ -299,7 +309,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
     this.emit('pool:scaled', {
       from: currentSize,
       to: newSize,
-      class: this.ProcessClass.name
+      class: this.processName
     });
   }
 
@@ -307,7 +317,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
    * Drain the pool (stop accepting new requests)
    */
   async drain(): Promise<void> {
-    this.logger.info({ class: this.ProcessClass.name }, 'Draining process pool');
+    this.logger.info({ class: this.processName }, 'Draining process pool');
     this.isDraining = true;
 
     // Clear the queue
@@ -321,14 +331,14 @@ export class ProcessPool<T> implements IProcessPool<T> {
     // Wait for active requests to complete
     await this.waitForActiveRequests();
 
-    this.emit('pool:drained', { class: this.ProcessClass.name });
+    this.emit('pool:drained', { class: this.processName });
   }
 
   /**
    * Destroy the pool
    */
   async destroy(): Promise<void> {
-    this.logger.info({ class: this.ProcessClass.name }, 'Destroying process pool');
+    this.logger.info({ class: this.processName }, 'Destroying process pool');
     this.isShuttingDown = true;
 
     // Clear timers
@@ -354,7 +364,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
     this.isShuttingDown = false;
     this.isDraining = false;
 
-    this.emit('pool:destroyed', { class: this.ProcessClass.name });
+    this.emit('pool:destroyed', { class: this.processName });
   }
 
   /**
@@ -401,8 +411,8 @@ export class ProcessPool<T> implements IProcessPool<T> {
    */
   private async spawnWorker(): Promise<void> {
     try {
-      const proxy = await this.manager.spawn(this.ProcessClass, {
-        name: `${this.ProcessClass.name}-pool-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      const proxy = await this.manager.spawn(this.processPathOrClass, {
+        name: `${this.processName}-pool-${Date.now()}-${Math.random().toString(36).slice(2)}`
       });
 
       const workerId = (proxy as any).__processId;
@@ -428,7 +438,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
         totalWorkers: this.workers.size
       }, 'Spawned pool worker');
 
-      this.emit('worker:spawned', { workerId, class: this.ProcessClass.name });
+      this.emit('worker:spawned', { workerId, class: this.processName });
     } catch (error) {
       this.logger.error({ error }, 'Failed to spawn worker');
       throw error;
@@ -463,7 +473,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
       this.unhealthyWorkers.delete(workerId);
 
       this.logger.debug({ workerId }, 'Shutdown pool worker');
-      this.emit('worker:shutdown', { workerId, class: this.ProcessClass.name });
+      this.emit('worker:shutdown', { workerId, class: this.processName });
     } catch (error) {
       this.logger.error({ error, workerId }, 'Error shutting down worker');
     }

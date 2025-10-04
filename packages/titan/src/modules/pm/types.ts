@@ -22,6 +22,12 @@ export interface IProcessOptions {
   /** Service version for discovery */
   version?: string;
 
+  /** Process description */
+  description?: string;
+
+  /** Process dependencies for initialization */
+  dependencies?: Record<string, any>;
+
   /** Netron peer configuration */
   netron?: {
     port?: number | 'auto';
@@ -652,13 +658,13 @@ export interface IBackoffOptions {
 export interface IProcessManager extends EventEmitter {
   /** Spawn a new process as a Netron service */
   spawn<T>(
-    ProcessClass: new (...args: any[]) => T,
+    processPathOrClass: string | (new (...args: any[]) => T),
     options?: IProcessOptions
   ): Promise<ServiceProxy<T>>;
 
   /** Create a process pool */
   pool<T>(
-    ProcessClass: new (...args: any[]) => T,
+    processPathOrClass: string | (new (...args: any[]) => T),
     options?: IProcessPoolOptions
   ): Promise<IProcessPool<T>>;
 
@@ -666,7 +672,7 @@ export interface IProcessManager extends EventEmitter {
   discover<T>(serviceName: string): Promise<ServiceProxy<T> | null>;
 
   /** Create a workflow */
-  workflow<T>(WorkflowClass: new () => T): Promise<T>;
+  workflow<T>(WorkflowPathOrClass: string | (new () => T)): Promise<T>;
 
   /** Create a supervisor tree */
   supervisor(
@@ -702,7 +708,7 @@ export interface IProcessManager extends EventEmitter {
  */
 export interface IProcessSpawner {
   spawn<T>(
-    ProcessClass: new (...args: any[]) => T,
+    processPathOrClass: string | (new (...args: any[]) => T),
     options?: ISpawnOptions
   ): Promise<IWorkerHandle>;
   cleanup?(): Promise<void>;
@@ -734,6 +740,7 @@ export interface ISpawnOptions {
   name?: string;
   version?: string;
   config?: any;
+  dependencies?: Record<string, any>;
   discovery?: {
     enabled?: boolean;
   };
@@ -744,50 +751,55 @@ export interface ISpawnOptions {
 
 /**
  * Process Manager module configuration
+ *
+ * Focuses on process orchestration and infrastructure concerns.
+ * Business logic (discovery, redis, etc.) should be handled at the process level.
  */
 export interface IProcessManagerConfig {
-  /** Default Netron configuration */
-  netron?: {
-    discovery?: 'redis' | 'consul' | 'etcd' | 'local';
-    transport?: 'unix' | 'tcp' | 'websocket' | 'http';
-    compression?: boolean;
-    encryption?: boolean;
-  };
+  /**
+   * Process isolation strategy
+   * - 'none': In-process (for testing)
+   * - 'worker': Worker threads (default, fast)
+   * - 'child': Child processes (more isolation)
+   */
+  isolation?: 'none' | 'worker' | 'child';
 
-  /** Default process options */
-  process?: {
-    restartPolicy?: IRestartPolicy;
+  /**
+   * Inter-process communication transport
+   * - 'ipc': Native IPC (fastest for local)
+   * - 'unix': Unix sockets (local only)
+   * - 'tcp': TCP sockets (network capable)
+   * - 'http': HTTP/WebSocket (most compatible)
+   */
+  transport?: 'ipc' | 'unix' | 'tcp' | 'http';
+
+  /** Default process restart policy */
+  restartPolicy?: IRestartPolicy;
+
+  /** Default resource limits */
+  resources?: {
     maxMemory?: string;
+    maxCpu?: number;
     timeout?: number;
-    isolation?: 'none' | 'vm' | 'container';
   };
 
-  /** Monitoring configuration */
+  /** Monitoring and observability */
   monitoring?: {
+    healthCheck?: boolean | { interval?: number; timeout?: number };
     metrics?: boolean;
     tracing?: boolean;
-    profiling?: boolean;
-    logs?: 'console' | 'file' | 'remote';
   };
 
-  /** Integration with other modules */
-  integrations?: {
-    scheduler?: boolean;
-    notifications?: boolean;
-    redis?: boolean;
+  /** Testing configuration */
+  testing?: {
+    useMockSpawner?: boolean;
   };
 
-  /** Use mock spawner for testing */
-  useMockSpawner?: boolean;
-
-  /** Use real processes (worker threads/child processes) */
-  useRealProcesses?: boolean;
-
-  /** Use worker threads instead of child processes */
-  useWorkerThreads?: boolean;
-
-  /** Temporary directory for generated modules */
-  tempDir?: string;
+  /** Advanced options */
+  advanced?: {
+    tempDir?: string;
+    gracefulShutdownTimeout?: number;
+  };
 }
 
 /**

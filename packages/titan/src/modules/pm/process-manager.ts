@@ -7,6 +7,7 @@
 
 import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
+import path from 'path';
 
 import { Injectable } from '../../decorators/index.js';
 import type { ILogger } from '../logger/logger.types.js';
@@ -79,17 +80,31 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
    * Spawn a new process as a Netron service
    */
   async spawn<T>(
-    ProcessClass: new (...args: any[]) => T,
+    processPathOrClass: string | (new (...args: any[]) => T),
     options: IProcessOptions = {}
   ): Promise<ServiceProxy<T>> {
     const processId = randomUUID();
-    const processMetadata = this.getProcessMetadata(ProcessClass);
+
+    // Handle both string path and class
+    let ProcessClass: (new (...args: any[]) => T) | null = null;
+    let processName: string;
+
+    if (typeof processPathOrClass === 'string') {
+      // File path case - we'll use the name from options or derive from path
+      processName = options.name || path.basename(processPathOrClass, '.js');
+    } else {
+      // Class constructor case
+      ProcessClass = processPathOrClass;
+      processName = ProcessClass.name;
+    }
+
+    const processMetadata = ProcessClass ? this.getProcessMetadata(ProcessClass) : undefined;
     const mergedOptions = this.mergeOptions(processMetadata, options);
 
     // Create process info
     const processInfo: IProcessInfo = {
       id: processId,
-      name: mergedOptions.name || ProcessClass.name,
+      name: mergedOptions.name || processName,
       status: ProcessStatus.PENDING,
       startTime: Date.now(),
       restartCount: 0
@@ -103,7 +118,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
       this.emit('process:spawn', processInfo);
 
       // Spawn the process with unified interface
-      const handle = await this.spawner.spawn(ProcessClass, {
+      const handle = await this.spawner.spawn(processPathOrClass, {
         processId,
         name: mergedOptions.name,
         version: mergedOptions.version,
@@ -127,7 +142,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
 
       // Use proxy from handle if available
       const proxy = handle.proxy || await this.createServiceProxy<T>(
-        ProcessClass,
+        ProcessClass || {} as any,  // Pass empty object if using file path
         processId,
         null,
         mergedOptions
@@ -165,12 +180,12 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
    * Create a process pool for load balancing
    */
   async pool<T>(
-    ProcessClass: new (...args: any[]) => T,
+    processPathOrClass: string | (new (...args: any[]) => T),
     options: IProcessPoolOptions = {}
   ): Promise<IProcessPool<T>> {
     const pool = new ProcessPool<T>(
       this,
-      ProcessClass,
+      processPathOrClass,
       options,
       this.logger
     );
@@ -202,29 +217,35 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
 
   /**
    * Discover a service by name
+   *
+   * Note: This only checks local registry. For distributed discovery,
+   * use the Discovery module at the application level or implement
+   * discovery within your process logic.
    */
   async discover<T>(serviceName: string): Promise<ServiceProxy<T> | null> {
-    // First check local registry
+    // Check local registry
     const localProcess = this.registry.findByServiceName(serviceName);
     if (localProcess) {
       return this.serviceProxies.get(localProcess.id) as ServiceProxy<T>;
     }
 
-    // Then try service discovery if configured
-    if (this.config.netron?.discovery) {
-      return this.discoverRemoteService<T>(serviceName);
-    }
-
+    // For remote discovery, processes should use the Discovery module
+    // or implement their own discovery mechanism
     return null;
   }
 
   /**
    * Create a workflow
    */
-  async workflow<T>(WorkflowClass: new () => T): Promise<T> {
+  async workflow<T>(WorkflowPathOrClass: string | (new () => T)): Promise<T> {
+    // For now, workflows must be classes, not file paths
+    if (typeof WorkflowPathOrClass === 'string') {
+      throw new Error('Workflow file paths are not yet supported. Please pass the workflow class directly.');
+    }
+
     const workflow = new ProcessWorkflow<T>(
       this,
-      WorkflowClass,
+      WorkflowPathOrClass,
       this.logger
     );
 
@@ -403,7 +424,12 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
     options: IProcessOptions
   ): IProcessOptions {
     return {
-      ...this.config.process,
+      // Set memory limit from PM config if not specified
+      memory: {
+        limit: this.config.resources?.maxMemory,
+        ...metadata?.memory,
+        ...options.memory
+      },
       ...metadata,
       ...options
     };
@@ -452,29 +478,6 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
     );
 
     return handler.createProxy();
-  }
-
-  /**
-   * Discover remote service via service discovery
-   */
-  private async discoverRemoteService<T>(serviceName: string): Promise<ServiceProxy<T> | null> {
-    try {
-      // For now, return null as Netron discovery integration requires more setup
-      // This would integrate with Netron's service discovery in production
-
-      // Parse service name and version for future use
-      const [name, version = '1.0.0'] = serviceName.split('@');
-
-      this.logger.debug(
-        { serviceName, name, version },
-        'Service discovery not yet fully implemented'
-      );
-
-      return null;
-    } catch (error) {
-      this.logger.error({ error, serviceName }, 'Failed to discover service');
-      return null;
-    }
   }
 
   /**

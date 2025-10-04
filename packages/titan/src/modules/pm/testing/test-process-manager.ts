@@ -68,7 +68,10 @@ export class TestProcessManager extends ProcessManager {
       logger,
       {
         ...config,
-        useMockSpawner: config.mock !== false
+        testing: {
+          ...config.testing,
+          useMockSpawner: config.mock !== false
+        }
       }
     );
     

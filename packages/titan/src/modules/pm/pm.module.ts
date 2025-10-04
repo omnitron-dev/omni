@@ -30,39 +30,35 @@ export const PM_HEALTH_TOKEN = Symbol('PM_HEALTH_TOKEN');
  * Default Process Manager configuration
  */
 export const DEFAULT_PM_CONFIG: IProcessManagerConfig = {
-  netron: {
-    discovery: 'local',
-    transport: 'unix',
-    compression: false,
-    encryption: false
+  isolation: 'worker',
+  transport: 'ipc',
+  restartPolicy: {
+    enabled: true,
+    maxRestarts: 3,
+    window: 60000,
+    delay: 1000,
+    backoff: {
+      type: 'exponential',
+      initial: 1000,
+      max: 30000,
+      factor: 2
+    }
   },
-  process: {
-    restartPolicy: {
-      enabled: true,
-      maxRestarts: 3,
-      window: 60000,
-      delay: 1000,
-      backoff: {
-        type: 'exponential',
-        initial: 1000,
-        max: 30000,
-        factor: 2
-      }
-    },
+  resources: {
     maxMemory: '512MB',
-    timeout: 30000,
-    isolation: 'none'
+    maxCpu: 1.0,
+    timeout: 30000
   },
   monitoring: {
+    healthCheck: { interval: 30000, timeout: 5000 },
     metrics: true,
-    tracing: false,
-    profiling: false,
-    logs: 'console'
+    tracing: false
   },
-  integrations: {
-    scheduler: true,
-    notifications: false,
-    redis: false
+  testing: {
+    useMockSpawner: false
+  },
+  advanced: {
+    gracefulShutdownTimeout: 5000
   }
 };
 
@@ -89,24 +85,28 @@ export class ProcessManagerModule {
    * Configure Process Manager module with options
    */
   static forRoot(options: IProcessManagerConfig = {}): DynamicModule {
-    const config = {
+    const config: IProcessManagerConfig = {
       ...DEFAULT_PM_CONFIG,
       ...options,
-      netron: {
-        ...DEFAULT_PM_CONFIG.netron,
-        ...options.netron
+      restartPolicy: {
+        ...DEFAULT_PM_CONFIG.restartPolicy,
+        ...options.restartPolicy
       },
-      process: {
-        ...DEFAULT_PM_CONFIG.process,
-        ...options.process
+      resources: {
+        ...DEFAULT_PM_CONFIG.resources,
+        ...options.resources
       },
       monitoring: {
         ...DEFAULT_PM_CONFIG.monitoring,
         ...options.monitoring
       },
-      integrations: {
-        ...DEFAULT_PM_CONFIG.integrations,
-        ...options.integrations
+      testing: {
+        ...DEFAULT_PM_CONFIG.testing,
+        ...options.testing
+      },
+      advanced: {
+        ...DEFAULT_PM_CONFIG.advanced,
+        ...options.advanced
       }
     };
 

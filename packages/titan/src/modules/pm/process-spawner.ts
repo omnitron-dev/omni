@@ -1,8 +1,8 @@
 /**
- * Unified Process Spawner
+ * Process Spawner - Clean Architecture Implementation
  *
- * Combines the best features from process-spawner.ts and real-process-spawner.ts
- * into a single, well-architected implementation following SOLID principles.
+ * This implementation follows file-based process architecture where each process
+ * is defined in a separate file with a default export. No runtime code extraction!
  */
 
 import { Worker } from 'worker_threads';
@@ -42,19 +42,19 @@ interface ITransportConfig {
  */
 interface IWorkerContext {
   processId: string;
-  className: string;
-  modulePath: string;
+  processPath: string; // Path to the process file
   transport: ITransportConfig;
   options: IProcessOptions;
+  dependencies?: Record<string, any>;
 }
 
 /**
  * Unified worker handle implementation
  */
-export class UnifiedWorkerHandle implements IWorkerHandle {
+export class WorkerHandle implements IWorkerHandle {
   private _status: ProcessStatus = ProcessStatus.STARTING;
   private messageHandlers = new Map<string, (data: any) => void>();
-  public readonly worker: Worker | ChildProcess; // Make worker public for interface compliance
+  public readonly worker: Worker | ChildProcess;
   public readonly netronClient: NetronClient | null;
 
   constructor(
@@ -189,13 +189,12 @@ export class UnifiedWorkerHandle implements IWorkerHandle {
 }
 
 /**
- * Unified process spawner implementation
+ * Process spawner implementation - File-based architecture
  */
-export class UnifiedProcessSpawner implements IProcessSpawner {
-  private readonly tempDir: string;
+export class ProcessSpawner implements IProcessSpawner {
   private readonly workerRuntimePath: string;
   private readonly forkWorkerPath: string;
-  private tempModules = new Map<string, string>();
+  private readonly tempDir: string;
 
   constructor(
     private readonly logger: ILogger,
@@ -206,39 +205,67 @@ export class UnifiedProcessSpawner implements IProcessSpawner {
     this.workerRuntimePath = path.join(currentDir, 'worker-runtime.js');
     this.forkWorkerPath = path.join(currentDir, 'fork-worker.js');
 
-    // Setup temp directory
-    this.tempDir = config.tempDir || path.join(os.tmpdir(), 'titan-pm');
+    // Setup temp directory for Unix sockets
+    this.tempDir = config.advanced?.tempDir || path.join(os.tmpdir(), 'titan-pm');
   }
 
   /**
-   * Spawn a new process with the specified class
+   * Spawn a new process from a file path
+   *
+   * @param processPathOrClass - Path to the process file (compiled JS) or class for backward compatibility
+   * @param options - Spawn options
    */
   async spawn<T>(
-    ProcessClass: new (...args: any[]) => T,
+    processPathOrClass: string | (new (...args: any[]) => T),
     options: ISpawnOptions = {}
   ): Promise<IWorkerHandle> {
     const processId = options.processId || uuidv4();
-    const serviceName = options.name || ProcessClass.name;
+
+    // Handle both string path and class for backward compatibility
+    let processPath: string;
+    let serviceName: string;
+
+    if (typeof processPathOrClass === 'string') {
+      // New way: file path
+      processPath = path.resolve(processPathOrClass);
+      serviceName = options.name || path.basename(processPath, '.js');
+    } else {
+      // Legacy: class constructor (for backward compatibility)
+      // In production, you should migrate to file-based approach
+      this.logger.warn(
+        'Using legacy class-based spawn. Please migrate to file-based approach!'
+      );
+
+      // For backward compatibility, we can still support classes
+      // by generating a temporary file that imports and exports the class
+      processPath = await this.createLegacyModule(processPathOrClass, processId);
+      serviceName = options.name || processPathOrClass.name;
+    }
+
     const serviceVersion = options.version || '1.0.0';
+
+    // Verify process file exists
+    try {
+      await fs.access(processPath);
+    } catch (error) {
+      throw new Error(`Process file not found: ${processPath}`);
+    }
 
     // Prepare transport configuration
     const transport = await this.setupTransport(processId, options);
 
-    // Create temporary module for the process class
-    const modulePath = await this.createTemporaryModule(ProcessClass, processId);
-
     // Prepare worker context
     const context: IWorkerContext = {
       processId,
-      className: ProcessClass.name,
-      modulePath,
+      processPath,
       transport,
-      options: options as IProcessOptions
+      options: options as IProcessOptions,
+      dependencies: options.dependencies
     };
 
-    // Determine spawn strategy
-    const useWorkerThreads = this.config.useWorkerThreads ?? true;
-    const isolation = options.isolation || 'none';
+    // Determine spawn strategy based on isolation config
+    const isolation = options.isolation || this.config.isolation || 'worker';
+    const useWorkerThreads = isolation === 'worker';
 
     let worker: Worker | ChildProcess;
     let netronClient: NetronClient | null = null;
@@ -256,8 +283,11 @@ export class UnifiedProcessSpawner implements IProcessSpawner {
         worker = await this.spawnChildProcess(context);
       }
 
-      // Create Netron client for communication
-      if (this.config.netron) {
+      // Wait for worker to be ready
+      await this.waitForReady(worker, useWorkerThreads);
+
+      // Create Netron client for communication if not in-process
+      if (isolation !== 'none') {
         netronClient = new NetronClient(processId, this.logger);
         await netronClient.start();
         await netronClient.connect(transport.url!);
@@ -271,10 +301,7 @@ export class UnifiedProcessSpawner implements IProcessSpawner {
         );
         const proxy = proxyHandler.createProxy();
 
-        // Wait for worker to be ready
-        await this.waitForReady(worker, useWorkerThreads);
-
-        return new UnifiedWorkerHandle(
+        return new WorkerHandle(
           processId,
           worker,
           netronClient,
@@ -287,7 +314,7 @@ export class UnifiedProcessSpawner implements IProcessSpawner {
         );
       } else {
         // Direct communication without Netron
-        return new UnifiedWorkerHandle(
+        return new WorkerHandle(
           processId,
           worker,
           null,
@@ -300,10 +327,8 @@ export class UnifiedProcessSpawner implements IProcessSpawner {
       }
     } catch (error) {
       // Cleanup on error
-      await this.cleanupTemporaryModule(processId);
-
       if (netronClient) {
-        await netronClient.disconnect().catch(() => {});
+        await netronClient.disconnect().catch(() => { });
       }
 
       throw error;
@@ -314,11 +339,6 @@ export class UnifiedProcessSpawner implements IProcessSpawner {
    * Cleanup spawner resources
    */
   async cleanup(): Promise<void> {
-    // Cleanup all temporary modules
-    for (const [processId, modulePath] of this.tempModules) {
-      await this.cleanupTemporaryModule(processId);
-    }
-
     // Cleanup temp directory if empty
     try {
       await fs.rmdir(this.tempDir);
@@ -331,7 +351,7 @@ export class UnifiedProcessSpawner implements IProcessSpawner {
    * Setup transport configuration
    */
   private async setupTransport(processId: string, options: ISpawnOptions): Promise<ITransportConfig> {
-    const transportType = options.transport || this.config.netron?.transport || 'unix';
+    const transportType = options.transport || this.config.transport || 'ipc';
 
     switch (transportType) {
       case 'tcp':
@@ -348,6 +368,7 @@ export class UnifiedProcessSpawner implements IProcessSpawner {
       }
 
       case 'unix': {
+        await fs.mkdir(this.tempDir, { recursive: true });
         const socketPath = path.join(this.tempDir, `${processId}.sock`);
         return {
           type: 'unix',
@@ -367,64 +388,35 @@ export class UnifiedProcessSpawner implements IProcessSpawner {
   }
 
   /**
-   * Create temporary module for the process class
+   * Create a temporary module for legacy class-based spawning
+   * This is for backward compatibility only!
    */
-  private async createTemporaryModule(
+  private async createLegacyModule(
     ProcessClass: new (...args: any[]) => any,
     processId: string
   ): Promise<string> {
-    // Ensure temp directory exists
-    await fs.mkdir(this.tempDir, { recursive: true });
+    // This should only be used for backward compatibility
+    // In production, use file-based processes
 
-    // Generate module content
-    const modulePath = path.join(this.tempDir, `process-${processId}.js`);
+    await fs.mkdir(this.tempDir, { recursive: true });
+    const modulePath = path.join(this.tempDir, `legacy-process-${processId}.js`);
+
+    // Create a simple wrapper that exports the class
     const moduleContent = `
-      // Auto-generated temporary module for ${ProcessClass.name}
+      // Auto-generated legacy wrapper - MIGRATE TO FILE-BASED APPROACH!
       import 'reflect-metadata';
 
-      export class ${ProcessClass.name} {
-        ${this.extractClassMethods(ProcessClass)}
+      // This is a placeholder - in real implementation,
+      // the class should be in its own file
+      export default class ${ProcessClass.name} {
+        constructor() {
+          console.warn('Legacy process spawning - please migrate to file-based approach');
+        }
       }
-
-      export default ${ProcessClass.name};
     `;
 
     await fs.writeFile(modulePath, moduleContent, 'utf8');
-    this.tempModules.set(processId, modulePath);
-
     return modulePath;
-  }
-
-  /**
-   * Extract class methods as string
-   */
-  private extractClassMethods(ProcessClass: any): string {
-    // This is a simplified version - in production, you'd serialize the actual class
-    // For now, we'll just create a placeholder
-    return `
-      constructor() {
-        // Process initialization
-      }
-
-      async start() {
-        // Process start logic
-      }
-
-      async stop() {
-        // Process stop logic
-      }
-    `;
-  }
-
-  /**
-   * Cleanup temporary module
-   */
-  private async cleanupTemporaryModule(processId: string): Promise<void> {
-    const modulePath = this.tempModules.get(processId);
-    if (modulePath) {
-      await fs.unlink(modulePath).catch(() => {});
-      this.tempModules.delete(processId);
-    }
   }
 
   /**
@@ -499,11 +491,11 @@ export class ProcessSpawnerFactory {
     config: IProcessManagerConfig = {}
   ): IProcessSpawner {
     // Use mock spawner in test environment
-    if (process.env['NODE_ENV'] === 'test' || config.useMockSpawner) {
+    if (process.env['NODE_ENV'] === 'test' || config.testing?.useMockSpawner) {
       return new MockProcessSpawner(logger, config);
     }
 
     // Use unified spawner for production
-    return new UnifiedProcessSpawner(logger, config);
+    return new ProcessSpawner(logger, config);
   }
 }

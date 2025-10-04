@@ -1,8 +1,8 @@
 /**
- * Worker Runtime Implementation
+ * Worker Runtime Implementation - File-based Architecture
  *
- * This is the actual runtime that executes in spawned processes.
- * It properly integrates with Netron for service exposure.
+ * This runtime executes in spawned processes and loads process classes
+ * from their default exports. Integrates with Netron for RPC.
  */
 
 import 'reflect-metadata';
@@ -12,18 +12,16 @@ import { Netron } from '../../netron/index.js';
 // Worker configuration from parent
 interface WorkerConfig {
   processId: string;
-  className: string;
-  modulePath: string;
-  netron: {
-    id: string;
-    transport: string;
-    listenHost: string;
-    listenPort: number;
-    discoveryEnabled?: boolean;
+  processPath: string;  // Path to the process file
+  transport: {
+    type: 'tcp' | 'unix' | 'ws' | 'ipc';
+    host?: string;
+    port?: number;
+    path?: string;
+    url?: string;
   };
-  serviceName?: string;
-  version?: string;
   options?: any;
+  dependencies?: Record<string, any>;
 }
 
 const config = workerData as WorkerConfig;
@@ -33,20 +31,34 @@ const config = workerData as WorkerConfig;
  */
 async function initialize() {
   try {
-    // Dynamic import of the module containing the process class
-    const module = await import(config.modulePath);
-    const ProcessClass = module[config.className];
+    // Dynamic import of the process module
+    const ProcessModule = await import(config.processPath);
+
+    // Get the default export (process class)
+    const ProcessClass = ProcessModule.default;
 
     if (!ProcessClass) {
-      throw new Error(`Class ${config.className} not found in module ${config.modulePath}`);
+      throw new Error(`No default export found in ${config.processPath}`);
     }
 
     // Create process instance
     const processInstance = new ProcessClass();
 
+    // Initialize dependencies if provided
+    if (config.dependencies && typeof processInstance.init === 'function') {
+      await processInstance.init(...Object.values(config.dependencies));
+    }
+
+    // Get process metadata if available
+    const PROCESS_METADATA_KEY = Symbol.for('process:metadata');
+    const processMetadata = Reflect.getMetadata(PROCESS_METADATA_KEY, ProcessClass) || {};
+
+    const serviceName = processMetadata.name || ProcessClass.name || 'UnnamedService';
+    const serviceVersion = processMetadata.version || '1.0.0';
+
     // Initialize Netron for this process
     const netronOptions: any = {
-      id: config.netron.id,
+      id: config.processId,
       allowServiceEvents: true
     };
 
@@ -55,29 +67,15 @@ async function initialize() {
     // Start Netron
     await netron.start();
 
-    // Decorate the instance as a Service if not already
-    const serviceName = config.serviceName || config.className;
-    const serviceVersion = config.version || '1.0.0';
-
-    // Check if instance already has service metadata
-    const existingMeta = Reflect.getMetadata('netron:service', processInstance);
-    if (!existingMeta) {
-      // Apply Service decorator metadata manually
-      Reflect.defineMetadata('netron:service', {
-        name: serviceName,
-        version: serviceVersion
-      }, processInstance);
-    }
-
-    // Get process method metadata and create service wrapper
-    const PROCESS_METHOD_METADATA_KEY = Symbol.for('process:method:metadata');
-    const prototype = Object.getPrototypeOf(processInstance);
-    const propertyNames = Object.getOwnPropertyNames(prototype);
-
-    // Create a service wrapper with public methods
+    // Create service wrapper with public methods
     const serviceWrapper: any = {
       __instance: processInstance
     };
+
+    // Get process method metadata and expose public methods
+    const PROCESS_METHOD_METADATA_KEY = Symbol.for('process:method:metadata');
+    const prototype = Object.getPrototypeOf(processInstance);
+    const propertyNames = Object.getOwnPropertyNames(prototype);
 
     for (const propertyName of propertyNames) {
       if (propertyName === 'constructor') continue;
@@ -88,7 +86,25 @@ async function initialize() {
       // Check if method is marked as public
       const metadata = Reflect.getMetadata(PROCESS_METHOD_METADATA_KEY, prototype, propertyName);
       if (metadata?.public) {
-        serviceWrapper[propertyName] = descriptor.value.bind(processInstance);
+        // Wrap method to track metrics
+        const originalMethod = descriptor.value;
+        serviceWrapper[propertyName] = async function (...args: any[]) {
+          const startTime = Date.now();
+          try {
+            const result = await originalMethod.apply(processInstance, args);
+            // Track success metrics
+            (processInstance as any).__requestCount = ((processInstance as any).__requestCount || 0) + 1;
+            return result;
+          } catch (error) {
+            // Track error metrics
+            (processInstance as any).__errorCount = ((processInstance as any).__errorCount || 0) + 1;
+            throw error;
+          } finally {
+            // Track latency
+            const duration = Date.now() - startTime;
+            (processInstance as any).__lastLatency = duration;
+          }
+        };
       }
     }
 
@@ -100,43 +116,73 @@ async function initialize() {
         memory: process.memoryUsage().heapUsed,
         requests: (processInstance as any).__requestCount || 0,
         errors: (processInstance as any).__errorCount || 0,
-        uptime: process.uptime()
+        uptime: process.uptime(),
+        latency: {
+          last: (processInstance as any).__lastLatency || 0
+        }
       };
     };
 
     serviceWrapper.__getProcessHealth = async () => {
-      // Call checkHealth if it exists
-      const healthMethod = (processInstance as any).checkHealth;
-      if (typeof healthMethod === 'function') {
+      // Look for method decorated with @HealthCheck
+      const healthCheckMethods = [];
+
+      for (const propertyName of propertyNames) {
+        const metadata = Reflect.getMetadata(PROCESS_METHOD_METADATA_KEY, prototype, propertyName);
+        if (metadata?.healthCheck) {
+          healthCheckMethods.push(propertyName);
+        }
+      }
+
+      // Call health check methods
+      const checks = [];
+      let overallStatus: 'healthy' | 'degraded' | 'unhealthy' = 'healthy';
+
+      for (const methodName of healthCheckMethods) {
         try {
-          return await healthMethod.call(processInstance);
+          const result = await (processInstance as any)[methodName]();
+          if (result) {
+            if (result.status === 'unhealthy') overallStatus = 'unhealthy';
+            else if (result.status === 'degraded' && overallStatus === 'healthy') {
+              overallStatus = 'degraded';
+            }
+            return result; // Return first health check result
+          }
         } catch (error: any) {
-          return {
-            status: 'unhealthy' as const,
-            error: error.message,
-            timestamp: Date.now()
-          };
+          overallStatus = 'unhealthy';
+          checks.push({
+            name: methodName,
+            status: 'fail' as const,
+            message: error.message
+          });
         }
       }
 
       return {
-        status: 'healthy' as const,
-        checks: [],
+        status: overallStatus,
+        checks,
         timestamp: Date.now()
       };
     };
 
     serviceWrapper.__shutdown = async () => {
-      // Call onShutdown if it exists
-      const shutdownMethod = (processInstance as any).onShutdown;
-      if (typeof shutdownMethod === 'function') {
-        await shutdownMethod.call(processInstance);
+      // Look for methods decorated with @OnShutdown
+      for (const propertyName of propertyNames) {
+        const metadata = Reflect.getMetadata(PROCESS_METHOD_METADATA_KEY, prototype, propertyName);
+        if (metadata?.onShutdown) {
+          try {
+            await (processInstance as any)[propertyName]();
+          } catch (error: any) {
+            console.error(`Error during shutdown: ${error.message}`);
+          }
+        }
       }
+
       await netron.stop();
       process.exit(0);
     };
 
-    // Apply service metadata to wrapper
+    // Apply service metadata to wrapper for Netron
     Reflect.defineMetadata('netron:service', {
       name: serviceName,
       version: serviceVersion
@@ -145,28 +191,10 @@ async function initialize() {
     // Expose the service via Netron
     await netron.peer.exposeService(serviceWrapper);
 
-    // Get transport URL based on configuration
-    let transportUrl = '';
-    switch (config.netron.transport) {
-      case 'unix':
-        transportUrl = `unix:///tmp/titan-pm-${config.processId}.sock`;
-        break;
-      case 'tcp':
-        transportUrl = `tcp://${config.netron.listenHost}:${config.netron.listenPort}`;
-        break;
-      case 'websocket':
-      case 'ws':
-        transportUrl = `ws://${config.netron.listenHost}:${config.netron.listenPort}`;
-        break;
-      case 'http':
-        transportUrl = `http://${config.netron.listenHost}:${config.netron.listenPort}`;
-        break;
-      default:
-        transportUrl = `ws://${config.netron.listenHost}:${config.netron.listenPort}`;
-    }
+    // Setup transport server based on configuration
+    const transportUrl = config.transport.url || '';
 
-    // Setup transport server if needed
-    if (config.netron.listenPort) {
+    if (config.transport.type !== 'ipc') {
       const { getTransportForAddress } = await import('../../netron/transport/index.js');
       const transport = getTransportForAddress(transportUrl);
 
@@ -176,18 +204,19 @@ async function initialize() {
 
       // Create server if transport supports it
       if (transport.createServer) {
-        const server = await transport.createServer({
-          host: config.netron.listenHost,
-          port: config.netron.listenPort
-        });
+        const serverOptions: any = {};
+
+        if (config.transport.host) serverOptions.host = config.transport.host;
+        if (config.transport.port) serverOptions.port = config.transport.port;
+        if (config.transport.path) serverOptions.path = config.transport.path;
+
+        const server = await transport.createServer(serverOptions);
 
         // Start listening
         await server.listen();
 
         // Store reference
         (netron as any).transportServer = server;
-
-        // Server will handle connections internally through Netron's transport layer
       }
     }
 
@@ -200,18 +229,10 @@ async function initialize() {
       serviceVersion
     });
 
-    // Handle messages from parent
+    // Listen for parent messages
     parentPort?.on('message', async (message) => {
-      switch (message.type) {
-        case 'shutdown':
-          await serviceWrapper.__shutdown();
-          break;
-        case 'ping':
-          parentPort?.postMessage({ type: 'pong' });
-          break;
-        default:
-          // Unknown message type, ignore
-          break;
+      if (message.type === 'shutdown') {
+        await serviceWrapper.__shutdown();
       }
     });
 
@@ -224,19 +245,29 @@ async function initialize() {
       await serviceWrapper.__shutdown();
     });
 
+    // Log successful initialization
+    console.log(`Process ${config.processId} (${serviceName}@${serviceVersion}) initialized at ${transportUrl}`);
+
   } catch (error: any) {
-    console.error('Failed to initialize worker:', error);
+    console.error('Worker initialization failed:', error);
+
+    // Notify parent of failure
     parentPort?.postMessage({
       type: 'error',
-      error: error.message,
-      stack: error.stack
+      processId: config.processId,
+      error: {
+        message: error.message,
+        stack: error.stack
+      }
     });
+
+    // Exit with error code
     process.exit(1);
   }
 }
 
-// Initialize the worker
-initialize().catch((error) => {
-  console.error('Worker initialization failed:', error);
+// Start initialization
+initialize().catch(error => {
+  console.error('Failed to initialize worker:', error);
   process.exit(1);
 });

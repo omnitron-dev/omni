@@ -1,0 +1,576 @@
+/**
+ * Tests for Native HTTP Server implementation
+ */
+
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { HttpNativeServer } from '../../../../src/netron/transport/http/server.js';
+import { LocalPeer } from '../../../../src/netron/local-peer.js';
+import { Definition } from '../../../../src/netron/definition.js';
+import { contract } from '../../../../src/validation/contract.js';
+import { z } from 'zod';
+import type {
+  HttpRequestMessage,
+  HttpBatchRequest,
+  HttpDiscoveryResponse
+} from '../../../../src/netron/transport/http/types.js';
+
+describe('HttpNativeServer', () => {
+  let server: HttpNativeServer;
+  let mockPeer: LocalPeer;
+  let testPort: number;
+
+  beforeEach(() => {
+    // Generate random port for parallel test execution
+    testPort = 3000 + Math.floor(Math.random() * 1000);
+
+    server = new HttpNativeServer({
+      port: testPort,
+      host: 'localhost'
+    });
+
+    // Create mock peer
+    mockPeer = {
+      stubs: new Map(),
+      on: jest.fn(),
+      off: jest.fn(),
+      emit: jest.fn()
+    } as any;
+  });
+
+  afterEach(async () => {
+    if (server) {
+      await server.close();
+    }
+  });
+
+  describe('Server Lifecycle', () => {
+    it('should start and stop server', async () => {
+      await server.listen();
+      expect(server.address).toBe('localhost');
+      expect(server.port).toBe(testPort);
+
+      await server.close();
+    });
+
+    it('should emit listening event when started', async () => {
+      const listener = jest.fn();
+      server.on('listening', listener);
+
+      await server.listen();
+
+      expect(listener).toHaveBeenCalledWith({
+        port: testPort,
+        host: 'localhost'
+      });
+    });
+
+    it('should throw error if already listening', async () => {
+      await server.listen();
+
+      await expect(server.listen()).rejects.toThrow('Server is already listening');
+    });
+  });
+
+  describe('Service Registration', () => {
+    it('should register services from Netron peer', () => {
+      const testDefinition = new Definition({
+        name: 'TestService',
+        version: '1.0.0',
+        description: 'Test service',
+        methods: {
+          testMethod: {}
+        }
+      });
+
+      const stub = {
+        definition: testDefinition,
+        call: jest.fn().mockResolvedValue({ result: 'test' })
+      };
+
+      mockPeer.stubs.set('test-service', stub);
+
+      server.setPeer(mockPeer);
+
+      // Verify service was registered
+      const services = (server as any).services;
+      expect(services.has('TestService')).toBe(true);
+
+      const service = services.get('TestService');
+      expect(service.name).toBe('TestService');
+      expect(service.version).toBe('1.0.0');
+      expect(service.methods.has('testMethod')).toBe(true);
+    });
+
+    it('should handle services with contracts', () => {
+      const userContract = contract({
+        getUser: {
+          input: z.object({ id: z.string() }),
+          output: z.object({ name: z.string(), email: z.string() }),
+          http: {
+            method: 'GET',
+            path: '/users/:id'
+          }
+        }
+      });
+
+      const definition = new Definition({
+        name: 'UserService',
+        contract: userContract,
+        methods: {
+          getUser: {}
+        }
+      });
+
+      const stub = {
+        definition,
+        call: jest.fn()
+      };
+
+      mockPeer.stubs.set('user-service', stub);
+      server.setPeer(mockPeer);
+
+      const services = (server as any).services;
+      const service = services.get('UserService');
+      const method = service.methods.get('getUser');
+
+      expect(method.contract).toBeDefined();
+      expect(method.contract.http).toEqual({
+        method: 'GET',
+        path: '/users/:id'
+      });
+    });
+  });
+
+  describe('Request Handling', () => {
+    beforeEach(async () => {
+      // Setup test service
+      const definition = new Definition({
+        name: 'MathService',
+        methods: {
+          add: {},
+          multiply: {}
+        }
+      });
+
+      const stub = {
+        definition,
+        call: jest.fn().mockImplementation((method, args) => {
+          if (method === 'add') {
+            const { a, b } = args[0];
+            return Promise.resolve(a + b);
+          }
+          if (method === 'multiply') {
+            const { a, b } = args[0];
+            return Promise.resolve(a * b);
+          }
+          throw new Error(`Unknown method: ${method}`);
+        })
+      };
+
+      mockPeer.stubs.set('math-service', stub);
+      server.setPeer(mockPeer);
+      await server.listen();
+    });
+
+    it('should handle service invocation', async () => {
+      const request: HttpRequestMessage = {
+        id: 'test-123',
+        version: '2.0',
+        timestamp: Date.now(),
+        service: 'MathService',
+        method: 'add',
+        input: { a: 5, b: 3 }
+      };
+
+      const response = await fetch(`http://localhost:${testPort}/netron/invoke`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Netron-Version': '2.0'
+        },
+        body: JSON.stringify(request)
+      });
+
+      expect(response.status).toBe(200);
+
+      const result = await response.json();
+      expect(result.success).toBe(true);
+      expect(result.data).toBe(8);
+      expect(result.id).toBe('test-123');
+      expect(result.version).toBe('2.0');
+    });
+
+    it('should handle batch requests', async () => {
+      const batchRequest: HttpBatchRequest = {
+        id: 'batch-123',
+        version: '2.0',
+        timestamp: Date.now(),
+        requests: [
+          {
+            id: 'req-1',
+            service: 'MathService',
+            method: 'add',
+            input: { a: 2, b: 3 }
+          },
+          {
+            id: 'req-2',
+            service: 'MathService',
+            method: 'multiply',
+            input: { a: 4, b: 5 }
+          }
+        ]
+      };
+
+      const response = await fetch(`http://localhost:${testPort}/netron/batch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Netron-Version': '2.0'
+        },
+        body: JSON.stringify(batchRequest)
+      });
+
+      expect(response.status).toBe(200);
+
+      const result = await response.json();
+      expect(result.id).toBe('batch-123');
+      expect(result.responses).toHaveLength(2);
+      expect(result.responses[0].success).toBe(true);
+      expect(result.responses[0].data).toBe(5);
+      expect(result.responses[1].success).toBe(true);
+      expect(result.responses[1].data).toBe(20);
+    });
+
+    it('should handle service discovery', async () => {
+      const response = await fetch(`http://localhost:${testPort}/netron/discovery`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+
+      expect(response.status).toBe(200);
+
+      const discovery: HttpDiscoveryResponse = await response.json();
+      expect(discovery.services).toHaveProperty('MathService');
+      expect(discovery.services.MathService.methods).toContain('add');
+      expect(discovery.services.MathService.methods).toContain('multiply');
+      expect(discovery.server.protocol).toBe('2.0');
+    });
+  });
+
+  describe('OpenAPI Generation', () => {
+    beforeEach(async () => {
+      const userContract = contract({
+        getUser: {
+          input: z.object({ id: z.string().uuid() }),
+          output: z.object({
+            id: z.string(),
+            name: z.string(),
+            email: z.string().email()
+          }),
+          http: {
+            method: 'GET',
+            path: '/api/users/:id',
+            openapi: {
+              summary: 'Get user by ID',
+              tags: ['Users']
+            }
+          }
+        },
+        createUser: {
+          input: z.object({
+            name: z.string(),
+            email: z.string().email()
+          }),
+          output: z.object({
+            id: z.string(),
+            name: z.string(),
+            email: z.string()
+          }),
+          http: {
+            method: 'POST',
+            path: '/api/users',
+            openapi: {
+              summary: 'Create new user',
+              tags: ['Users']
+            }
+          }
+        }
+      });
+
+      const definition = new Definition({
+        name: 'UserService',
+        contract: userContract,
+        methods: {
+          getUser: {},
+          createUser: {}
+        }
+      });
+
+      const stub = {
+        definition,
+        call: jest.fn()
+      };
+
+      mockPeer.stubs.set('user-service', stub);
+      server.setPeer(mockPeer);
+      await server.listen();
+    });
+
+    it('should generate OpenAPI specification', async () => {
+      const response = await fetch(`http://localhost:${testPort}/openapi.json`, {
+        method: 'GET'
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('Content-Type')).toBe('application/json');
+
+      const spec = await response.json();
+      expect(spec.openapi).toBe('3.0.3');
+      expect(spec.info.title).toBe('Netron HTTP Services');
+      expect(spec.paths).toHaveProperty('/api/users/:id');
+      expect(spec.paths['/api/users/:id']).toHaveProperty('get');
+      expect(spec.paths).toHaveProperty('/api/users');
+      expect(spec.paths['/api/users']).toHaveProperty('post');
+    });
+  });
+
+  describe('Error Handling', () => {
+    beforeEach(async () => {
+      const errorDefinition = new Definition({
+        name: 'ErrorService',
+        methods: {
+          throwError: {}
+        }
+      });
+
+      const stub = {
+        definition: errorDefinition,
+        call: jest.fn().mockRejectedValue(new Error('Test error'))
+      };
+
+      mockPeer.stubs.set('error-service', stub);
+      server.setPeer(mockPeer);
+      await server.listen();
+    });
+
+    it('should handle service errors', async () => {
+      const request: HttpRequestMessage = {
+        id: 'error-test',
+        version: '2.0',
+        timestamp: Date.now(),
+        service: 'ErrorService',
+        method: 'throwError',
+        input: {}
+      };
+
+      const response = await fetch(`http://localhost:${testPort}/netron/invoke`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(request)
+      });
+
+      expect(response.status).toBe(500);
+
+      const result = await response.json();
+      expect(result.success).toBe(false);
+      expect(result.error.message).toBe('Test error');
+    });
+
+    it('should handle invalid JSON', async () => {
+      const response = await fetch(`http://localhost:${testPort}/netron/invoke`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: 'invalid json'
+      });
+
+      expect(response.status).toBe(400);
+
+      const result = await response.json();
+      expect(result.error).toBe(true);
+      expect(result.message).toBe('Invalid JSON');
+    });
+
+    it('should handle service not found', async () => {
+      const request: HttpRequestMessage = {
+        id: 'not-found',
+        version: '2.0',
+        timestamp: Date.now(),
+        service: 'NonExistentService',
+        method: 'someMethod',
+        input: {}
+      };
+
+      const response = await fetch(`http://localhost:${testPort}/netron/invoke`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(request)
+      });
+
+      expect(response.status).toBe(404);
+
+      const result = await response.json();
+      expect(result.success).toBe(false);
+      expect(result.error.message).toContain('NonExistentService not found');
+    });
+  });
+
+  describe('Health and Metrics', () => {
+    beforeEach(async () => {
+      await server.listen();
+    });
+
+    it('should provide health check', async () => {
+      const response = await fetch(`http://localhost:${testPort}/health`);
+
+      expect(response.status).toBe(200);
+
+      const health = await response.json();
+      expect(health.status).toBe('online');
+      expect(health.version).toBe('2.0.0');
+      expect(health.uptime).toBeGreaterThan(0);
+    });
+
+    it('should provide metrics', async () => {
+      // Make some requests first
+      await fetch(`http://localhost:${testPort}/health`);
+      await fetch(`http://localhost:${testPort}/health`);
+
+      const response = await fetch(`http://localhost:${testPort}/metrics`);
+
+      expect(response.status).toBe(200);
+
+      const metrics = await response.json();
+      expect(metrics.server.status).toBe('online');
+      expect(metrics.requests.total).toBeGreaterThanOrEqual(2);
+      expect(metrics.requests.active).toBe(0);
+      expect(metrics.requests.errors).toBe(0);
+    });
+  });
+
+  describe('CORS Support', () => {
+    beforeEach(async () => {
+      server = new HttpNativeServer({
+        port: testPort,
+        host: 'localhost',
+        cors: {
+          origin: '*',
+          credentials: true
+        }
+      });
+      await server.listen();
+    });
+
+    it('should handle CORS preflight requests', async () => {
+      const response = await fetch(`http://localhost:${testPort}/netron/invoke`, {
+        method: 'OPTIONS',
+        headers: {
+          'Origin': 'http://example.com',
+          'Access-Control-Request-Method': 'POST'
+        }
+      });
+
+      expect(response.status).toBe(204);
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://example.com');
+      expect(response.headers.get('Access-Control-Allow-Credentials')).toBe('true');
+    });
+
+    it('should add CORS headers to responses', async () => {
+      const response = await fetch(`http://localhost:${testPort}/health`, {
+        headers: {
+          'Origin': 'http://example.com'
+        }
+      });
+
+      // Note: fetch in Node.js doesn't automatically expose CORS headers
+      // This test would need a real browser or different HTTP client to fully test
+      expect(response.status).toBe(200);
+    });
+  });
+
+  describe('REST Route Mapping', () => {
+    beforeEach(async () => {
+      const apiContract = contract({
+        getItem: {
+          input: z.object({ id: z.string() }),
+          output: z.object({ id: z.string(), name: z.string() }),
+          http: {
+            method: 'GET',
+            path: '/api/items/:id'
+          }
+        },
+        createItem: {
+          input: z.object({ name: z.string() }),
+          output: z.object({ id: z.string(), name: z.string() }),
+          http: {
+            method: 'POST',
+            path: '/api/items'
+          }
+        }
+      });
+
+      const definition = new Definition({
+        name: 'ItemService',
+        contract: apiContract,
+        methods: {
+          getItem: {},
+          createItem: {}
+        }
+      });
+
+      const stub = {
+        definition,
+        call: jest.fn().mockImplementation((method, args) => {
+          if (method === 'getItem') {
+            return Promise.resolve({ id: args[0].id, name: `Item ${args[0].id}` });
+          }
+          if (method === 'createItem') {
+            return Promise.resolve({ id: '123', name: args[0].name });
+          }
+        })
+      };
+
+      mockPeer.stubs.set('item-service', stub);
+      server.setPeer(mockPeer);
+      await server.listen();
+    });
+
+    it('should handle GET requests with path parameters', async () => {
+      const response = await fetch(`http://localhost:${testPort}/api/items/abc123`, {
+        method: 'GET'
+      });
+
+      expect(response.status).toBe(200);
+
+      const result = await response.json();
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({
+        id: 'abc123',
+        name: 'Item abc123'
+      });
+    });
+
+    it('should handle POST requests with body', async () => {
+      const response = await fetch(`http://localhost:${testPort}/api/items`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ name: 'New Item' })
+      });
+
+      expect(response.status).toBe(200);
+
+      const result = await response.json();
+      expect(result.success).toBe(true);
+      expect(result.data.name).toBe('New Item');
+    });
+  });
+});

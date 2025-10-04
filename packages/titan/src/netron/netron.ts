@@ -5,7 +5,7 @@ import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { NetronOptions } from './types.js';
 import { LocalPeer } from './local-peer.js';
 import { RemotePeer } from './remote-peer.js';
-import { HttpRemotePeer } from './http-remote-peer.js';
+import { HttpDirectPeer } from './transport/http/peer.js';
 import { getPeerEventName } from './utils.js';
 import { ServiceStub } from './service-stub.js';
 import { Task, TaskManager } from './task-manager.js';
@@ -473,15 +473,20 @@ export class Netron extends EventEmitter {
    * @example
    * const peer = await netron.connect('ws://example.com:8080');
    */
-  async connect(address: string, reconnect = true): Promise<RemotePeer | HttpRemotePeer> {
+  async connect(address: string, reconnect = true): Promise<RemotePeer | HttpDirectPeer> {
     this.logger.info({ address, reconnect }, 'Connecting to remote peer');
 
     // Check if this is an HTTP connection
     const isHttp = address.startsWith('http://') || address.startsWith('https://');
 
     if (isHttp) {
+      // Check if we should use the new direct HTTP implementation
+      const useDirectHttp = (this.options as any)?.useDirectHttp ||
+                           process.env['NETRON_HTTP_DIRECT'] === 'true' ||
+                           false;
+
       // Use optimized HTTP-specific connection flow
-      return this.connectHttp(address);
+      return this.connectHttp(address, useDirectHttp);
     }
 
     // Use existing WebSocket/TCP connection flow for other transports
@@ -622,10 +627,14 @@ export class Netron extends EventEmitter {
    * This method bypasses the WebSocket handshake and creates a stateless HTTP peer.
    *
    * @param address The HTTP/HTTPS URL to connect to
-   * @returns HttpRemotePeer configured for stateless operation
+   * @param useDirectHttp Whether to use the new direct HTTP implementation (default: true)
+   * @returns HttpDirectPeer configured for stateless operation
    */
-  private async connectHttp(address: string): Promise<HttpRemotePeer> {
-    this.logger.info({ address }, 'Connecting to HTTP server (stateless mode)');
+  private async connectHttp(address: string, useDirectHttp = true): Promise<HttpDirectPeer> {
+    this.logger.info(
+      { address },
+      `Connecting to HTTP server (v2.0 native mode)`
+    );
 
     try {
       // Get HTTP transport
@@ -634,24 +643,28 @@ export class Netron extends EventEmitter {
         throw new Error(`No HTTP transport registered for address: ${address}`);
       }
 
-      // Connect using HTTP transport - this creates an HttpClientConnection
+      // Connect using HTTP transport
       const connection = await transport.connect(address, {
         ...this.options,
+        useDirectHttp: true,
         headers: { 'x-netron-id': this.id }
-      });
+      } as any);
 
-      // Create HTTP-specific peer (no handshake needed)
-      const peer = new HttpRemotePeer(connection, this, address);
+      // Create HTTP direct peer (v2.0)
+      const peer = new HttpDirectPeer(connection, this, address, this.options);
 
       // Register the peer
       this.peers.set(peer.id, peer as any);
 
-      // Initialize the peer (no-op for HTTP)
+      // Initialize the peer
       await peer.init(true, this.options);
 
       // Emit connection event
       this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId: peer.id });
-      this.logger.info({ peerId: peer.id, address }, 'HTTP peer connected (stateless)');
+      this.logger.info(
+        { peerId: peer.id, address },
+        'HTTP peer connected (v2.0 stateless)'
+      );
 
       return peer;
     } catch (error) {

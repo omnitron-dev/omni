@@ -11,8 +11,8 @@ import type {
   TransportOptions,
   TransportAddress
 } from '../types.js';
-import { HttpServer } from './http-server.js';
-import { HttpClientConnection } from './http-client.js';
+import { HttpNativeServer } from './server.js';
+import { HttpDirectConnection } from './connection.js';
 
 /**
  * HTTP Transport implementation
@@ -63,7 +63,13 @@ export class HttpTransport implements ITransport {
       throw new Error(`Invalid HTTP address: ${address}`);
     }
 
-    const connection = new HttpClientConnection(address, options);
+    // Feature flag for using new direct HTTP connection without packet protocol
+    const useDirectHttp = (options as any)?.useDirectHttp ||
+                         process.env['NETRON_HTTP_DIRECT'] === 'true' ||
+                         false;
+
+    // Always use direct HTTP connection (v2.0) as packet-based is removed
+    const connection = new HttpDirectConnection(address, options);
 
     // Try to verify the server is reachable by doing a discovery request
     try {
@@ -71,6 +77,7 @@ export class HttpTransport implements ITransport {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
+          'X-Netron-Version': useDirectHttp ? '2.0' : '1.0',
           ...options?.headers
         },
         signal: AbortSignal.timeout(5000) // 5 second timeout
@@ -101,7 +108,7 @@ export class HttpTransport implements ITransport {
       throw new Error('HTTP transport server capability is disabled');
     }
 
-    const server = new HttpServer(options);
+    const server = new HttpNativeServer(options);
     // Don't call listen() here - Netron will call it
     // This matches the behavior of WebSocketTransport
     return server;

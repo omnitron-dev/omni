@@ -1,14 +1,37 @@
 /**
- * HTTP Transport module for Netron
- * Provides HTTP/REST transport while maintaining Netron's service abstraction
+ * HTTP Transport module for Netron v2.0
+ * Provides native HTTP/REST transport with enhanced capabilities
  */
 
+// Core transport
 export { HttpTransport } from './http-transport.js';
-export { HttpServer } from './http-server.js';
-export { HttpClientConnection } from './http-client.js';
-export { HttpInterface } from './http-interface.js';
 
-// Re-export types that HTTP transport uses
+// Native implementations (v2.0)
+export { HttpNativeServer } from './server.js';
+export { HttpDirectPeer } from './peer.js';
+export { HttpDirectConnection } from './connection.js';
+
+// Enhanced client features
+export { EnhancedHttpInterface } from './enhanced-interface.js';
+export { HttpTransportClient } from './client.js';
+export { HttpCacheManager } from './cache-manager.js';
+export { RetryManager } from './retry-manager.js';
+
+// Advanced features (Phase 4)
+export { RequestBatcher } from './request-batcher.js';
+export { SubscriptionManager } from './subscription-manager.js';
+export { OptimisticUpdateManager } from './optimistic-update-manager.js';
+
+// Type safety enhancements
+export { TypedContract, TypedHttpClient, QueryBuilder, createTypedContract, createTypedClient } from './typed-contract.js';
+export { TypedMiddlewarePipeline, TypedMiddlewareFactory, createTypedPipeline } from './typed-middleware.js';
+export type { TypedMiddleware } from './typed-middleware.js';
+export { TypedHttpServer, ServerBuilder, createServer, createService } from './typed-server.js';
+
+// Message types
+export * from './types.js';
+
+// Re-export transport types
 export type {
   ITransport,
   ITransportConnection,
@@ -17,6 +40,33 @@ export type {
   TransportOptions,
   TransportAddress,
   ConnectionState,
-  Packet,
   ServerMetrics
 } from '../types.js';
+
+// Export type safety types
+export type {
+  ContractDefinition,
+  ServiceType,
+  InferInput,
+  InferOutput,
+  ServiceProxy,
+  QueryOptions,
+  MiddlewareConfig
+} from './typed-contract.js';
+export type {
+  TypedHttpMiddlewareContext,
+  TypedMetadata,
+  MiddlewareConfig as TypedMiddlewareConfig
+} from './typed-middleware.js';
+export type {
+  ServiceImplementation,
+  ServiceContext,
+  ServerConfig,
+  ServiceRegistration,
+  RestRouteMapping
+} from './typed-server.js';
+
+// Export advanced feature types
+export type { BatchOptions, BatchStatistics } from './request-batcher.js';
+export type { SubscriptionOptions, SubscriptionStats } from './subscription-manager.js';
+export type { OptimisticUpdateOptions, OptimisticUpdateStats, CacheProvider } from './optimistic-update-manager.js';

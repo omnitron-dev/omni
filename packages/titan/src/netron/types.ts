@@ -137,6 +137,16 @@ export interface MethodInfo {
    * Each object describes an argument's position and type.
    */
   arguments: ArgumentInfo[];
+
+  /**
+   * Optional array of transport names that this method is available on.
+   * If not specified or empty, the method is available on all transports.
+   *
+   * @example
+   * transports: ['ws', 'tcp'] // Method only available via WebSocket and TCP
+   * transports: undefined      // Method available on all transports (default)
+   */
+  transports?: string[];
 }
 
 /**

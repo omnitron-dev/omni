@@ -340,10 +340,15 @@ export const Service = (options?: string | ServiceOptions) => (target: any) => {
       const paramTypes = Reflect.getMetadata('design:paramtypes', target.prototype, key) || [];
       const returnType = Reflect.getMetadata('design:returntype', target.prototype, key)?.name || 'void';
 
+      // Extract transport metadata if specified via @Method({ transports: [...] })
+      const methodTransports = Reflect.getMetadata('method:transports', target.prototype, key);
+
       // Store method metadata
       metadata.methods[key] = {
         type: returnType,
         arguments: paramTypes.map((type: any) => type?.name || 'unknown'),
+        // Include transports if specified, otherwise undefined (available on all transports)
+        ...(methodTransports && { transports: methodTransports })
       };
     }
   }
@@ -438,12 +443,14 @@ export function Factory(name: string) {
 /**
  * Method decorator factory that creates a property or method decorator.
  * This decorator marks class members as publicly accessible in the Titan/Netron service
- * and can optionally mark properties as read-only.
+ * and can optionally mark properties as read-only or specify available transports.
  *
  * This replaces the former @Public decorator from Netron.
  *
  * @param {Object} [options] - Configuration options for the decorator
  * @param {boolean} [options.readonly] - If true, marks the property as read-only
+ * @param {string[]} [options.transports] - Optional array of transport names this method is available on.
+ *                                          If not specified, method is available on all transports.
  * @returns {PropertyDecorator | MethodDecorator} A decorator function that processes the target member
  *
  * @example
@@ -453,12 +460,17 @@ export function Factory(name: string) {
  *
  *   @Method()
  *   public doSomething(): void {
- *     // Implementation
+ *     // Available on all transports (default)
+ *   }
+ *
+ *   @Method({ transports: ['ws', 'tcp'] })
+ *   public wsAndTcpOnly(): void {
+ *     // Only available via WebSocket and TCP
  *   }
  * }
  */
 export const Method =
-  (options?: { readonly?: boolean }) =>
+  (options?: { readonly?: boolean; transports?: string[] }) =>
     (target: any, propertyKey: string | symbol, descriptor?: PropertyDescriptor) => {
       // Mark the member as public/method
       Reflect.defineMetadata('public', true, target, propertyKey);
@@ -467,6 +479,11 @@ export const Method =
       // For properties (when descriptor is undefined), handle readonly flag
       if (!descriptor) {
         Reflect.defineMetadata('readonly', options?.readonly, target, propertyKey);
+      }
+
+      // Store transport metadata if specified
+      if (options?.transports && options.transports.length > 0) {
+        Reflect.defineMetadata('method:transports', options.transports, target, propertyKey);
       }
     };
 

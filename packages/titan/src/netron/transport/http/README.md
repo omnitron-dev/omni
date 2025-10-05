@@ -349,10 +349,10 @@ const server = new HttpServer({
 });
 
 // Register peer with server
-server.registerPeer(peer);
+server.setPeer(peer);
 
 // Start server
-await server.start();
+await server.listen();
 console.log('HTTP server listening on http://localhost:3000');
 ```
 
@@ -1080,16 +1080,16 @@ server.use(MiddlewareStage.POST_INVOKE, async (context, next) => {
 });
 
 // Register peer
-server.registerPeer(peer);
+server.setPeer(peer);
 
 // Start server
-await server.start();
+await server.listen();
 console.log('Server running at http://localhost:3000');
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('Shutting down...');
-  await server.stop();
+  await server.close();
   process.exit(0);
 });
 ```

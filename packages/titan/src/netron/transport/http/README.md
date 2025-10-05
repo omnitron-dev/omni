@@ -62,7 +62,7 @@ The following features are NOT implemented in the current version:
 │                                                              │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │  HttpServer                                            │ │
-│  │  • POST /netron/discovery  (service discovery)        │ │
+│  │  • GET  /netron/discovery  (service discovery)        │ │
 │  │  • POST /netron/invoke     (method invocation)        │ │
 │  │  • POST /netron/batch      (batch requests)           │ │
 │  └────────────────────────────────────────────────────────┘ │
@@ -359,63 +359,54 @@ console.log('HTTP server listening on http://localhost:3000');
 ### Server Configuration
 
 ```typescript
-interface HttpServerOptions {
+interface TransportOptions {
   // Network
-  port?: number;                    // Default: 3000
-  host?: string;                    // Default: 'localhost'
+  port?: number;                    // Server port (default: 3000)
+  host?: string;                    // Server host (default: 'localhost')
 
   // CORS
   cors?: {
-    enabled?: boolean;              // Default: false
+    enabled?: boolean;              // Enable CORS (default: false)
     origins?: string[];             // Allowed origins
-    methods?: string[];             // Allowed methods
+    methods?: string[];             // Allowed HTTP methods
     headers?: string[];             // Allowed headers
     credentials?: boolean;          // Allow credentials
   };
 
-  // Timeouts
-  timeout?: number;                 // Request timeout (ms)
-  keepAliveTimeout?: number;        // Keep-alive timeout (ms)
+  // Connection
+  timeout?: number;                 // Request timeout in milliseconds
+  connectTimeout?: number;          // Connection timeout
 
-  // Body limits
-  maxBodySize?: number;             // Max request body size (bytes)
+  // Compression
+  compression?: boolean | {         // Enable response compression
+    threshold?: number;             // Min size for compression (bytes)
+  };
 
   // Headers
-  headers?: Record<string, string>; // Custom response headers
+  headers?: Record<string, string>; // Custom headers for all requests/responses
+
+  // Buffer configuration
+  bufferSize?: number;              // Buffer size for data transfer
+
+  // Keep-alive
+  keepAlive?: {
+    enabled?: boolean;              // Enable keep-alive
+    interval?: number;              // Keep-alive interval (ms)
+    timeout?: number;               // Keep-alive timeout (ms)
+  };
+
+  // Reconnection (client-side)
+  reconnect?: {
+    enabled?: boolean;              // Enable auto-reconnect
+    maxAttempts?: number;           // Max reconnection attempts
+    delay?: number;                 // Initial delay (ms)
+    maxDelay?: number;              // Max delay (ms)
+    factor?: number;                // Backoff multiplier
+  };
 }
 ```
 
-### Middleware Support
-
-```typescript
-import { HttpServer } from '@omnitron-dev/titan/netron/transport/http';
-import { MiddlewareStage } from '@omnitron-dev/titan/netron/middleware';
-
-const server = new HttpServer({ port: 3000 });
-
-// Add authentication middleware
-server.use(MiddlewareStage.PRE_INVOKE, async (context, next) => {
-  const token = context.request.headers.get('authorization');
-
-  if (!token) {
-    throw new Error('Unauthorized');
-  }
-
-  // Validate token
-  const user = await validateToken(token);
-  context.metadata.user = user;
-
-  return next(context);
-});
-
-// Add logging middleware
-server.use(MiddlewareStage.POST_INVOKE, async (context, next) => {
-  const duration = Date.now() - context.startTime;
-  console.log(`${context.service}.${context.method} - ${duration}ms`);
-
-  return next(context);
-});
-```
+**Note:** HttpServer accepts `TransportOptions` and uses built-in middleware for CORS and compression. Custom middleware cannot be added directly to the server - use Netron peer middleware instead.
 
 ## Client Implementation
 
@@ -490,97 +481,139 @@ await client.close();
 ### TypedContract (Type-Safe Client)
 
 ```typescript
+import { z } from 'zod';
 import { TypedContract } from '@omnitron-dev/titan/netron/transport/http';
 
-// Define service interface
-interface CalculatorService {
-  add(input: { a: number; b: number }): Promise<{ result: number }>;
-  multiply(input: { a: number; b: number }): Promise<{ result: number }>;
-}
+// Define contract with Zod schemas
+const calculatorContract = {
+  add: {
+    input: z.object({ a: z.number(), b: z.number() }),
+    output: z.object({ result: z.number() })
+  },
+  multiply: {
+    input: z.object({ a: z.number(), b: z.number() }),
+    output: z.object({ result: z.number() })
+  }
+} as const;
 
 // Create typed contract
-const contract = new TypedContract<CalculatorService>(
-  'http://localhost:3000',
-  'Calculator@1.0.0'
-);
+const contract = new TypedContract(calculatorContract);
 
-// Initialize
-await contract.connect();
+// Generate HTTP client
+const client = contract.generateClient('http://localhost:3000', {
+  serviceName: 'Calculator@1.0.0'
+});
 
-// Type-safe method calls
-const sum = await contract.call('add', { a: 5, b: 3 });
+// Type-safe method calls with full inference
+const sum = await client.call('add', { a: 5, b: 3 }).execute();
 console.log(sum.result); // 8 - fully typed!
 
-// Cleanup
-await contract.disconnect();
+// Or use direct service proxy
+const result = await client.service.add({ a: 5, b: 3 });
+
+// Batch multiple calls
+const results = await client.batch([
+  { method: 'add', input: { a: 1, b: 2 } },
+  { method: 'multiply', input: { a: 3, b: 4 } }
+]);
 ```
 
 ## Advanced Features
 
 ### Cache Manager
 
-Intelligent caching with TTL, tags, and invalidation:
+Intelligent caching with TTL, tags, and stale-while-revalidate:
 
 ```typescript
 import { HttpCacheManager } from '@omnitron-dev/titan/netron/transport/http';
 
 const cache = new HttpCacheManager({
-  maxSize: 1000,           // Maximum cache entries
-  defaultTTL: 60000,       // Default TTL (60 seconds)
-  cleanupInterval: 30000   // Cleanup interval (30 seconds)
+  maxEntries: 1000,        // Maximum cache entries
+  maxSizeBytes: 10000000,  // Max cache size (10MB)
+  defaultMaxAge: 60000,    // Default max age (60 seconds)
+  debug: false             // Enable debug logging
 });
 
-// Set with TTL
-await cache.set('user:123', userData, {
-  ttl: 300000,             // 5 minutes
+// Get with automatic fetching and caching
+const user = await cache.get(
+  'user:123',
+  async () => {
+    // Fetcher function - called on cache miss
+    return await fetchUserFromDB('123');
+  },
+  {
+    maxAge: 300000,                // 5 minutes
+    staleWhileRevalidate: 60000,   // Serve stale for 1 min while revalidating
+    tags: ['users', 'user:123'],
+    cacheOnError: true             // Return stale on error
+  }
+);
+
+// Manual set
+cache.set('user:123', userData, {
+  maxAge: 300000,
   tags: ['users', 'user:123']
 });
 
-// Get from cache
-const user = await cache.get('user:123');
-
 // Invalidate by tag
-await cache.invalidateByTag('users');
+cache.invalidateByTag('users');
 
-// Wrap function with cache
-const getUser = cache.wrap(
-  async (id: string) => fetchUserFromDB(id),
-  { ttl: 60000, tags: ['users'] }
-);
+// Clear all cache
+cache.clear();
 
-const user = await getUser('123'); // Cached automatically
+// Get statistics
+const stats = cache.getStats();
+console.log(stats); // { hits, misses, revalidations }
 ```
 
 ### Retry Manager
 
-Automatic retries with exponential backoff:
+Automatic retries with exponential backoff and circuit breaker:
 
 ```typescript
 import { RetryManager } from '@omnitron-dev/titan/netron/transport/http';
 
 const retry = new RetryManager({
-  maxAttempts: 3,
-  initialDelay: 1000,      // 1 second
-  maxDelay: 10000,         // 10 seconds
-  backoffMultiplier: 2,    // Exponential backoff
-  retryableErrors: [
-    'NETWORK_ERROR',
-    'TIMEOUT',
-    'SERVICE_UNAVAILABLE'
-  ]
+  defaultOptions: {
+    attempts: 3,           // Number of retry attempts
+    backoff: 'exponential',
+    initialDelay: 1000,    // 1 second
+    maxDelay: 30000,       // 30 seconds max
+    factor: 2,             // Exponential backoff multiplier
+    jitter: 0.1            // Add 10% jitter
+  },
+  circuitBreaker: {
+    threshold: 5,          // Open after 5 failures
+    timeout: 60000,        // Reset after 60 seconds
+    halfOpenAttempts: 3    // Test with 3 attempts
+  },
+  debug: false
 });
 
-// Retry operation
+// Execute with retry
 const result = await retry.execute(
   async () => {
     return await client.invoke('Service', 'method', [input]);
   },
   {
-    onRetry: (attempt, error) => {
-      console.log(`Retry attempt ${attempt}: ${error.message}`);
-    }
+    attempts: 3,
+    backoff: 'exponential',
+    initialDelay: 1000,
+    maxDelay: 10000,
+    shouldRetry: (error, attempt) => {
+      // Custom retry logic
+      return error.code !== 400 && attempt < 3;
+    },
+    onRetry: (attempt, error, delay) => {
+      console.log(`Retry attempt ${attempt}: ${error.message} (delay: ${delay}ms)`);
+    },
+    attemptTimeout: 5000   // Timeout per attempt
   }
 );
+
+// Get retry statistics
+const stats = retry.getStats();
+console.log(stats); // { totalAttempts, successfulRetries, failedRetries }
 ```
 
 ### Request Batcher
@@ -588,20 +621,34 @@ const result = await retry.execute(
 Automatic batching for performance:
 
 ```typescript
-import { RequestBatcher } from '@omnitron-dev/titan/netron/transport/http';
+import {
+  RequestBatcher,
+  createRequestMessage
+} from '@omnitron-dev/titan/netron/transport/http';
 
 const batcher = new RequestBatcher('http://localhost:3000', {
   maxBatchSize: 10,        // Max requests per batch
-  maxWaitTime: 50,         // Max wait time (ms)
-  maxAge: 100              // Max request age (ms)
+  maxBatchWait: 50,        // Max wait time (ms)
+  maxRequestAge: 100,      // Max request age (ms)
+  enableRetry: true,       // Enable retry on failure
+  maxRetries: 2,           // Max retry attempts
+  batchEndpoint: '/netron/batch',
+  headers: {
+    'Authorization': 'Bearer token'
+  }
 });
 
-// Requests are automatically batched
-const promise1 = batcher.add('Service1', 'method1', { a: 1 });
-const promise2 = batcher.add('Service1', 'method2', { b: 2 });
-const promise3 = batcher.add('Service2', 'method3', { c: 3 });
+// Create request messages
+const req1 = createRequestMessage('Service1', 'method1', { a: 1 });
+const req2 = createRequestMessage('Service1', 'method2', { b: 2 });
+const req3 = createRequestMessage('Service2', 'method3', { c: 3 });
 
-// All three sent in single batch request
+// Add to batch queue
+const promise1 = batcher.add(req1);
+const promise2 = batcher.add(req2);
+const promise3 = batcher.add(req3);
+
+// All three sent in single batch request automatically
 const [result1, result2, result3] = await Promise.all([
   promise1,
   promise2,
@@ -610,28 +657,39 @@ const [result1, result2, result3] = await Promise.all([
 
 // Manual flush
 await batcher.flush();
+
+// Get statistics
+const stats = batcher.getStats();
+console.log(stats);
+// { totalBatches, totalRequests, successfulRequests, failedRequests, averageBatchSize }
+
+// Close batcher
+await batcher.close();
 ```
 
 ### Optimistic Update Manager
 
-Client-side mutations with automatic rollback:
+Client-side mutations with automatic rollback on error:
 
 ```typescript
 import { OptimisticUpdateManager } from '@omnitron-dev/titan/netron/transport/http';
 
-const manager = new OptimisticUpdateManager();
+const manager = new OptimisticUpdateManager(
+  undefined,  // Optional cache provider
+  {
+    timeout: 30000,      // Default timeout
+    retry: true,         // Enable retry
+    maxRetries: 2,       // Max retry attempts
+    retryDelay: 1000,    // Retry delay
+    keepOnError: false   // Rollback on error
+  }
+);
 
 // Optimistic update with automatic rollback on error
 const userId = 'user-123';
 
-await manager.mutate(
-  `user:${userId}`,
-
-  // Optimistic update function
-  (currentData) => ({
-    ...currentData,
-    name: 'New Name'  // Immediate UI update
-  }),
+const result = await manager.mutate(
+  `user:${userId}`,  // Key
 
   // Mutation function
   async () => {
@@ -641,76 +699,51 @@ await manager.mutate(
     }]);
   },
 
-  {
-    // On error, automatically rollback to previous value
-    onError: (error) => {
-      console.error('Update failed:', error);
-    },
+  // Optimistic update function (optional)
+  (currentData) => ({
+    ...currentData,
+    name: 'New Name'  // Immediate UI update
+  }),
 
-    // Retry configuration
-    retries: 3,
-    timeout: 5000
+  // Per-mutation options
+  {
+    timeout: 5000,
+    retry: true,
+    maxRetries: 3,
+    retryDelay: 1000,
+    keepOnError: false,  // Rollback on error
+    onCommit: (value) => {
+      console.log('Update committed:', value);
+    },
+    onRollback: (error) => {
+      console.error('Update rolled back:', error);
+    }
   }
 );
 
 // Get current value (optimistic or committed)
-const currentUser = manager.get(`user:${userId}`);
+const currentUser = manager.getValue(`user:${userId}`);
+
+// Clear specific key
+manager.clear(`user:${userId}`);
+
+// Get statistics
+const stats = manager.getStats();
+console.log(stats);
+// { totalUpdates, committedUpdates, rolledBackUpdates, averageCommitTime }
 ```
 
 ## Configuration
 
-### Client Configuration
+HttpServer and HttpConnection both accept `TransportOptions` (see [Server Configuration](#server-configuration) section for full interface).
 
-```typescript
-interface HttpConnectionOptions {
-  // Network
-  timeout?: number;                 // Request timeout (default: 30000ms)
-  headers?: Record<string, string>; // Custom headers
+Advanced features like caching, retries, and batching are configured separately through their respective managers:
+- **HttpCacheManager** - Cache configuration
+- **RetryManager** - Retry and circuit breaker configuration
+- **RequestBatcher** - Batch configuration
+- **OptimisticUpdateManager** - Optimistic update configuration
 
-  // Discovery
-  discoveryInterval?: number;       // Auto-refresh interval (ms)
-  discoveryTimeout?: number;        // Discovery timeout (default: 5000ms)
-
-  // Retry
-  retry?: {
-    maxAttempts?: number;           // Max retry attempts
-    initialDelay?: number;          // Initial delay (ms)
-    maxDelay?: number;              // Max delay (ms)
-    backoffMultiplier?: number;     // Backoff multiplier
-  };
-
-  // Cache
-  cache?: {
-    enabled?: boolean;              // Enable caching
-    maxSize?: number;               // Max cache size
-    defaultTTL?: number;            // Default TTL (ms)
-  };
-
-  // Batching
-  batch?: {
-    enabled?: boolean;              // Enable batching
-    maxBatchSize?: number;          // Max requests per batch
-    maxWaitTime?: number;           // Max wait time (ms)
-  };
-}
-```
-
-### Environment Variables
-
-```bash
-# Server
-HTTP_PORT=3000
-HTTP_HOST=localhost
-HTTP_TIMEOUT=30000
-HTTP_MAX_BODY_SIZE=10485760
-
-# Client
-HTTP_CLIENT_TIMEOUT=10000
-HTTP_DISCOVERY_TIMEOUT=5000
-HTTP_RETRY_MAX_ATTEMPTS=3
-HTTP_CACHE_MAX_SIZE=1000
-HTTP_BATCH_MAX_SIZE=10
-```
+See [Advanced Features](#advanced-features) for complete configuration examples.
 
 ## Error Handling
 
@@ -823,41 +856,58 @@ const result = await client.invoke('Service', 'method', [input], {
 
 ```typescript
 // ✅ Good - Type-safe with TypedContract
-const contract = new TypedContract<MyService>('http://localhost:3000', 'MyService@1.0.0');
-const result = await contract.call('myMethod', { typed: 'input' });
+const contract = new TypedContract(myContractDefinition);
+const client = contract.generateClient('http://localhost:3000', {
+  serviceName: 'MyService@1.0.0'
+});
+const result = await client.call('myMethod', { typed: 'input' }).execute();
 
 // ❌ Avoid - Untyped dynamic calls
-const result = await connection.queryInterface('MyService').myMethod({ untyped: 'input' });
+const service = await connection.queryInterface('MyService');
+const result = await service.myMethod({ untyped: 'input' });
 ```
 
 ### 2. Enable Caching for Read Operations
 
 ```typescript
 // ✅ Good - Cache frequently read data
-const cache = new HttpCacheManager({ defaultTTL: 60000 });
-const getUser = cache.wrap(
-  async (id) => client.invoke('Users', 'getUser', [{ id }]),
-  { ttl: 300000, tags: ['users'] }
-);
+const cache = new HttpCacheManager({
+  maxEntries: 1000,
+  defaultMaxAge: 60000
+});
+
+const getUser = async (id: string) => {
+  return cache.get(
+    `user:${id}`,
+    async () => client.invoke('Users', 'getUser', [{ id }]),
+    { maxAge: 300000, tags: ['users'] }
+  );
+};
 
 // Invalidate when data changes
 await client.invoke('Users', 'updateUser', [userData]);
-await cache.invalidateByTag('users');
+cache.invalidateByTag('users');
 ```
 
 ### 3. Use Request Batching
 
 ```typescript
+import { RequestBatcher, createRequestMessage } from '@omnitron-dev/titan/netron/transport/http';
+
 // ✅ Good - Batch multiple requests
 const batcher = new RequestBatcher('http://localhost:3000', {
   maxBatchSize: 10,
-  maxWaitTime: 50
+  maxBatchWait: 50
 });
 
+const req1 = createRequestMessage('Service', 'method1', input1);
+const req2 = createRequestMessage('Service', 'method2', input2);
+const req3 = createRequestMessage('Service', 'method3', input3);
+
 const results = await Promise.all([
-  batcher.add('Service', 'method1', input1),
-  batcher.add('Service', 'method2', input2),
-  batcher.add('Service', 'method3', input3)
+  batcher.add(req1),
+  batcher.add(req2),
+  batcher.add(req3)
 ]);
 
 // ❌ Avoid - Individual requests
@@ -903,8 +953,8 @@ const manager = new OptimisticUpdateManager();
 // Update UI immediately, rollback on error
 await manager.mutate(
   `item:${id}`,
-  (current) => ({ ...current, status: 'updated' }),
-  async () => client.invoke('Service', 'update', [{ id, status: 'updated' }])
+  async () => client.invoke('Service', 'update', [{ id, status: 'updated' }]),
+  (current) => ({ ...current, status: 'updated' })
 );
 
 // ❌ Avoid - Wait for server response
@@ -958,16 +1008,28 @@ import {
   HttpCacheManager,
   RetryManager,
   RequestBatcher,
-  OptimisticUpdateManager
+  OptimisticUpdateManager,
+  createRequestMessage
 } from '@omnitron-dev/titan/netron/transport/http';
 
 // Setup managers
-const cache = new HttpCacheManager({ defaultTTL: 60000 });
-const retry = new RetryManager({ maxAttempts: 3 });
+const cache = new HttpCacheManager({
+  maxEntries: 1000,
+  defaultMaxAge: 60000
+});
+
+const retry = new RetryManager({
+  defaultOptions: {
+    attempts: 3,
+    backoff: 'exponential'
+  }
+});
+
 const batcher = new RequestBatcher('http://localhost:3000', {
   maxBatchSize: 10,
-  maxWaitTime: 50
+  maxBatchWait: 50
 });
+
 const optimistic = new OptimisticUpdateManager();
 
 // Create connection
@@ -981,35 +1043,46 @@ const connection = new HttpConnection('http://localhost:3000', {
 // Get service
 const userService = await connection.queryInterface('UserService@1.0.0');
 
-// Read operation with caching
-const getUser = cache.wrap(
-  async (id: string) => {
-    return await retry.execute(() => userService.getUser({ id }));
-  },
-  { ttl: 300000, tags: ['users'] }
-);
+// Read operation with caching and retry
+const getUser = async (id: string) => {
+  return cache.get(
+    `user:${id}`,
+    async () => {
+      return retry.execute(
+        async () => userService.getUser({ id }),
+        { attempts: 3 }
+      );
+    },
+    { maxAge: 300000, tags: ['users'] }
+  );
+};
 
 const user = await getUser('123');
 
 // Write operation with optimistic update
 await optimistic.mutate(
   'user:123',
-  (current) => ({ ...current, name: 'New Name' }),
   async () => {
     await userService.updateUser({ id: '123', name: 'New Name' });
-    await cache.invalidateByTag('users');
-  }
+    cache.invalidateByTag('users');
+  },
+  (current) => ({ ...current, name: 'New Name' })
 );
 
 // Batch operations
+const req1 = createRequestMessage('UserService@1.0.0', 'getUser', { id: '123' });
+const req2 = createRequestMessage('UserService@1.0.0', 'getUser', { id: '456' });
+const req3 = createRequestMessage('UserService@1.0.0', 'getUser', { id: '789' });
+
 const results = await Promise.all([
-  batcher.add('UserService@1.0.0', 'getUser', { id: '123' }),
-  batcher.add('UserService@1.0.0', 'getUser', { id: '456' }),
-  batcher.add('UserService@1.0.0', 'getUser', { id: '789' })
+  batcher.add(req1),
+  batcher.add(req2),
+  batcher.add(req3)
 ]);
 
 // Cleanup
 await batcher.flush();
+await batcher.close();
 await connection.close();
 ```
 
@@ -1018,7 +1091,6 @@ await connection.close();
 ```typescript
 import { HttpServer } from '@omnitron-dev/titan/netron/transport/http';
 import { LocalPeer } from '@omnitron-dev/titan/netron';
-import { MiddlewareStage } from '@omnitron-dev/titan/netron/middleware';
 
 // Create peer and register services
 const peer = new LocalPeer();
@@ -1046,49 +1118,40 @@ peer.registerService({
   }
 });
 
-// Create server
+// Create server with CORS and compression
 const server = new HttpServer({
   port: 3000,
   host: '0.0.0.0',
   cors: {
     enabled: true,
-    origins: ['http://localhost:5173', 'https://app.example.com']
+    origins: ['http://localhost:5173', 'https://app.example.com'],
+    credentials: true
+  },
+  compression: {
+    threshold: 1024  // Compress responses > 1KB
   },
   timeout: 30000,
-  maxBodySize: 10 * 1024 * 1024 // 10MB
-});
-
-// Add authentication middleware
-server.use(MiddlewareStage.PRE_INVOKE, async (context, next) => {
-  const token = context.request.headers.get('authorization')?.replace('Bearer ', '');
-
-  if (!token) {
-    throw new Error('Unauthorized');
+  headers: {
+    'X-Powered-By': 'Netron HTTP Transport'
   }
-
-  const user = await validateToken(token);
-  context.metadata.user = user;
-
-  return next(context);
 });
 
-// Add logging middleware
-server.use(MiddlewareStage.POST_INVOKE, async (context, next) => {
-  const duration = Date.now() - context.startTime;
-  console.log(`${context.service}.${context.method} - ${duration}ms`);
-  return next(context);
-});
-
-// Register peer
+// Register peer with server
 server.setPeer(peer);
 
 // Start server
 await server.listen();
-console.log('Server running at http://localhost:3000');
+console.log('Server running at http://0.0.0.0:3000');
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
-  console.log('Shutting down...');
+  console.log('Shutting down gracefully...');
+  await server.close();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('Shutting down gracefully...');
   await server.close();
   process.exit(0);
 });

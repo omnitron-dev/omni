@@ -12,7 +12,7 @@
   ],
   "scripts": {
     "build": "tsc -p ./tsconfig.json",
-    "test": "jest",
+    "test": "NODE_OPTIONS='--experimental-vm-modules' jest",
     "test:bun": "bun test",
     "test:all": "npm run test && npm run test:bun"
   },

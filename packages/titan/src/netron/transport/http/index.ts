@@ -7,12 +7,12 @@
 export { HttpTransport } from './http-transport.js';
 
 // Native implementations (v2.0)
-export { HttpNativeServer } from './server.js';
-export { HttpDirectPeer } from './peer.js';
-export { HttpDirectConnection } from './connection.js';
+export { HttpServer as HttpNativeServer } from './server.js';
+export { HttpRemotePeer } from './peer.js';
+export { HttpConnection } from './connection.js';
 
 // Enhanced client features
-export { EnhancedHttpInterface } from './enhanced-interface.js';
+export { HttpInterface as EnhancedHttpInterface } from './interface.js';
 export { HttpTransportClient } from './client.js';
 export { HttpCacheManager } from './cache-manager.js';
 export { RetryManager } from './retry-manager.js';

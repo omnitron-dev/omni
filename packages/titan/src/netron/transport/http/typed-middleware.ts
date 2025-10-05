@@ -320,7 +320,10 @@ export class TypedMiddlewareFactory {
     const requests = new Map<string, { count: number; resetAt: number }>();
 
     return async (ctx, next) => {
-      const key = (ctx.metadata instanceof TypedMetadata ? ctx.metadata.userId || ctx.metadata.requestId : ctx.metadata.get('userId') || ctx.metadata.get('requestId')) || 'global';
+      const metadata = ctx.metadata as any;
+      const userId = metadata instanceof TypedMetadata ? metadata.userId : metadata.get('userId');
+      const requestId = metadata instanceof TypedMetadata ? metadata.requestId : metadata.get('requestId');
+      const key = userId || requestId || 'global';
       const now = Date.now();
 
       let entry = requests.get(key);
@@ -431,7 +434,7 @@ export class TypedMiddlewareFactory {
     cache: Map<string, any>,
     options: { ttl?: number; keyFn?: (ctx: T) => string } = {}
   ): TypedMiddleware<T> {
-    const { ttl = 60000, keyFn = (ctx) => `${ctx.service}.${ctx.method}:${JSON.stringify(ctx.input)}` } = options;
+    const { ttl = 60000, keyFn = (ctx) => `${ctx.service}.${String(ctx.method)}:${JSON.stringify(ctx.input)}` } = options;
 
     return async (ctx, next) => {
       const key = keyFn(ctx);
@@ -439,10 +442,11 @@ export class TypedMiddlewareFactory {
 
       if (cached && cached.expiresAt > Date.now()) {
         ctx.output = cached.data;
-        if (ctx.metadata instanceof TypedMetadata) {
-          ctx.metadata.cacheHit = true;
+        const metadata = ctx.metadata as any;
+        if (metadata instanceof TypedMetadata) {
+          metadata.cacheHit = true;
         } else {
-          ctx.metadata.set('cacheHit', true);
+          metadata.set('cacheHit', true);
         }
         return;
       }

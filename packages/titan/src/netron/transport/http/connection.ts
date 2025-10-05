@@ -1,5 +1,5 @@
 /**
- * HttpDirectConnection - Native HTTP connection without packet protocol
+ * HttpConnection - Native HTTP connection without packet protocol
  *
  * This connection implementation uses native HTTP JSON messages instead of
  * binary packet encoding for improved performance and compatibility.
@@ -18,7 +18,6 @@ import {
   HttpResponseMessage,
   HttpDiscoveryResponse,
   createRequestMessage,
-  generateRequestId,
   isHttpResponseMessage
 } from './types.js';
 
@@ -26,7 +25,7 @@ import {
  * HTTP Direct Connection
  * Implements ITransportConnection with native HTTP messaging
  */
-export class HttpDirectConnection extends EventEmitter implements ITransportConnection {
+export class HttpConnection extends EventEmitter implements ITransportConnection {
   readonly id: string;
   private _state: ConnectionState = ConnectionState.CONNECTING;
   private baseUrl: string;
@@ -152,8 +151,8 @@ export class HttpDirectConnection extends EventEmitter implements ITransportConn
   async send(data: Buffer | ArrayBuffer | Uint8Array): Promise<void> {
     // For compatibility with existing code, try to parse as JSON
     const buffer = Buffer.isBuffer(data) ? data :
-                  data instanceof Uint8Array ? Buffer.from(data) :
-                  Buffer.from(data);
+      data instanceof Uint8Array ? Buffer.from(data) :
+        Buffer.from(data);
 
     try {
       const str = buffer.toString();
@@ -212,8 +211,8 @@ export class HttpDirectConnection extends EventEmitter implements ITransportConn
     } else {
       // Send raw data
       const buffer = Buffer.isBuffer(data) ? data :
-                    typeof data === 'string' ? Buffer.from(data) :
-                    Buffer.from(JSON.stringify(data));
+        typeof data === 'string' ? Buffer.from(data) :
+          Buffer.from(JSON.stringify(data));
       await this.send(buffer);
     }
   }

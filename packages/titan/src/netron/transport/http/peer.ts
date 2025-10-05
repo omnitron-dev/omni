@@ -1,5 +1,5 @@
 /**
- * HttpDirectPeer - Native HTTP implementation without packet protocol
+ * HttpRemotePeer - Native HTTP implementation without packet protocol
  *
  * This peer implementation uses native HTTP JSON messages instead of
  * binary packet encoding, providing better performance and compatibility
@@ -8,7 +8,7 @@
 
 import { EventEmitter } from 'events';
 import { AbstractPeer } from '../../abstract-peer.js';
-import type { Netron } from '../../netron.js';
+import type { INetron } from '../../netron.types.js';
 import type { ITransportConnection } from '../types.js';
 import type { ILogger } from '../../../modules/logger/logger.types.js';
 import { Definition } from '../../definition.js';
@@ -25,14 +25,11 @@ import {
   HttpRequestHints,
   HttpResponseHints,
   createRequestMessage,
-  createSuccessResponse,
-  createErrorResponse,
-  generateRequestId,
   type HttpDiscoveryResponse
 } from './types.js';
 
 /**
- * HttpDirectPeer - Optimized HTTP peer without packet protocol
+ * HttpRemotePeer - Optimized HTTP peer without packet protocol
  *
  * Key improvements:
  * - Direct JSON messaging without binary encoding
@@ -41,7 +38,7 @@ import {
  * - Request/response correlation without packets
  * - OpenAPI-compatible message format
  */
-export class HttpDirectPeer extends AbstractPeer {
+export class HttpRemotePeer extends AbstractPeer {
   public logger: ILogger;
 
   /** Base URL for HTTP requests */
@@ -77,19 +74,19 @@ export class HttpDirectPeer extends AbstractPeer {
   /** Response interceptors */
   private responseInterceptors: Array<(res: HttpResponseMessage) => HttpResponseMessage | Promise<HttpResponseMessage>> = [];
 
-  constructor(connection: ITransportConnection, netron: Netron, baseUrl: string, options?: NetronOptions) {
+  constructor(connection: ITransportConnection, netron: INetron, baseUrl: string, options?: NetronOptions) {
     // Generate a deterministic ID based on the URL
     const id = `http-direct-${new URL(baseUrl).host}`;
     super(netron, id);
 
     this.connection = connection;
     this.baseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-    this.logger = netron.logger.child({ component: 'HttpDirectPeer', baseUrl });
+    this.logger = netron.logger.child({ component: 'HttpRemotePeer', baseUrl });
 
     // Set default options
     this.defaultOptions = {
       timeout: options?.requestTimeout || 30000,
-      headers: options?.headers as Record<string, string> || {}
+      headers: (options as any)?.headers || {}
     };
   }
 
@@ -98,7 +95,7 @@ export class HttpDirectPeer extends AbstractPeer {
    * For HTTP, we can pre-fetch service discovery to speed up queries
    */
   async init(isClient: boolean, options?: NetronOptions): Promise<void> {
-    this.logger.debug('Initializing HTTP Direct peer');
+    this.logger.debug('Initializing HTTP Remote peer');
 
     if (isClient) {
       // Pre-fetch service discovery for better performance
@@ -431,9 +428,7 @@ export class HttpDirectPeer extends AbstractPeer {
       get(target: any, prop: string) {
         // Check if it's a method
         if (definition.meta.methods[prop]) {
-          return async (...args: any[]) => {
-            return self.call(definition.id, prop, args);
-          };
+          return async (...args: any[]) => self.call(definition.id, prop, args);
         }
 
         // Check if it's a property
@@ -554,7 +549,7 @@ export class HttpDirectPeer extends AbstractPeer {
    * Close the peer connection
    */
   async close(): Promise<void> {
-    this.logger.debug('Closing HTTP Direct peer connection');
+    this.logger.debug('Closing HTTP Remote peer connection');
 
     // Clear caches
     this.interfaces.clear();

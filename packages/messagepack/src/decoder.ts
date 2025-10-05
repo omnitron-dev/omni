@@ -173,7 +173,7 @@ export default class Decoder {
       case 0xc4:
         // buffers up to 2^8 - 1 bytes
         length = buf.readUInt8();
-        if (!length || !isValidDataSize(length, bufLength, 2)) {
+        if (length === undefined || !isValidDataSize(length, bufLength, 2)) {
           return null;
         }
         result = buf.slice(buf.roffset, buf.roffset + length).buffer;

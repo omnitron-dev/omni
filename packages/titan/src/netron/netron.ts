@@ -1,11 +1,11 @@
-import { Redis } from 'ioredis';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 
 import { NetronOptions } from './types.js';
+import type { INetron, ILocalPeer, IPeer } from './netron.types.js';
 import { LocalPeer } from './local-peer.js';
 import { RemotePeer } from './remote-peer.js';
-import { HttpDirectPeer } from './transport/http/peer.js';
+import { HttpRemotePeer } from './transport/http/peer.js';
 import { getPeerEventName } from './utils.js';
 import { ServiceStub } from './service-stub.js';
 import { Task, TaskManager } from './task-manager.js';
@@ -46,7 +46,7 @@ import { unref_service } from './core-tasks/unref-service.js';
  *   discoveryRedisUrl: 'redis://localhost:6379'
  * });
  */
-export class Netron extends EventEmitter {
+export class Netron extends EventEmitter implements INetron {
   /**
    * Unique identifier for this Netron instance.
    * Generated automatically using randomUUID() if not provided in options.
@@ -58,6 +58,13 @@ export class Netron extends EventEmitter {
    * console.log(netron.id); // '550e8400-e29b-41d4-a716-446655440000'
    */
   public id: string;
+
+  /**
+   * UUID alias for interface compatibility
+   */
+  get uuid(): string {
+    return this.id;
+  }
 
   /**
    * Transport server instance for handling incoming connections.
@@ -161,16 +168,6 @@ export class Netron extends EventEmitter {
   //  */
   // public discovery?: ServiceDiscovery;
 
-  /**
-   * Redis client instance for service discovery.
-   * Only initialized when discovery is enabled in options.
-   *
-   * @type {Redis | undefined}
-   * @private
-   * @description Redis client for service discovery coordination
-   */
-  private discoveryRedis?: Redis;
-
   public logger: ILogger;
 
   /**
@@ -269,6 +266,69 @@ export class Netron extends EventEmitter {
       throw new Error(`Transport ${name} not registered`);
     }
     this.defaultTransport = transport;
+  }
+
+  /**
+   * Get the local peer instance
+   * Required by INetron interface
+   */
+  getLocalPeer(): ILocalPeer {
+    return this.peer as ILocalPeer;
+  }
+
+  /**
+   * Find a peer by its ID
+   * Required by INetron interface
+   */
+  findPeer(peerId: string): IPeer | undefined {
+    if (peerId === this.peer.id) {
+      return this.peer as IPeer;
+    }
+    return this.peers.get(peerId) as IPeer | undefined;
+  }
+
+  /**
+   * Track task execution
+   * Required by INetron interface
+   */
+  async trackTask(task: any): Promise<any> {
+    // Use existing task manager if available
+    if (this.taskManager && typeof this.taskManager.runTask === 'function') {
+      return this.taskManager.runTask(task);
+    }
+    return task;
+  }
+
+  /**
+   * Get peer event name (optional implementation)
+   */
+  getPeerEventName(peerId: string, event: string): string {
+    // Combine peer ID and event name
+    return `${getPeerEventName(peerId)}:${event}`;
+  }
+
+  /**
+   * Override on method to return this
+   */
+  override on(event: string | symbol, handler: Function): this {
+    super.on(event, handler);
+    return this;
+  }
+
+  /**
+   * Override off method to return this
+   */
+  override off(event: string | symbol, handler: Function): this {
+    super.off(event, handler);
+    return this;
+  }
+
+  /**
+   * Override removeListener method to return this
+   */
+  override removeListener(event: string | symbol, handler: Function): this {
+    super.removeListener(event, handler);
+    return this;
   }
 
   /**
@@ -473,7 +533,7 @@ export class Netron extends EventEmitter {
    * @example
    * const peer = await netron.connect('ws://example.com:8080');
    */
-  async connect(address: string, reconnect = true): Promise<RemotePeer | HttpDirectPeer> {
+  async connect(address: string, reconnect = true): Promise<RemotePeer | HttpRemotePeer> {
     this.logger.info({ address, reconnect }, 'Connecting to remote peer');
 
     // Check if this is an HTTP connection
@@ -482,8 +542,8 @@ export class Netron extends EventEmitter {
     if (isHttp) {
       // Check if we should use the new direct HTTP implementation
       const useDirectHttp = (this.options as any)?.useDirectHttp ||
-                           process.env['NETRON_HTTP_DIRECT'] === 'true' ||
-                           false;
+        process.env['NETRON_HTTP_DIRECT'] === 'true' ||
+        false;
 
       // Use optimized HTTP-specific connection flow
       return this.connectHttp(address, useDirectHttp);
@@ -512,76 +572,76 @@ export class Netron extends EventEmitter {
 
             // Connect using transport
             const connection = await transport.connect(`${address}?id=${this.id}`, {
-            ...this.options,
-            connectTimeout: this.options?.connectTimeout ?? CONNECT_TIMEOUT,
-            headers: { 'x-netron-id': this.id }
-          });
+              ...this.options,
+              connectTimeout: this.options?.connectTimeout ?? CONNECT_TIMEOUT,
+              headers: { 'x-netron-id': this.id }
+            });
 
-          // Create RemotePeer with transport adapter
-          const adapter = TransportConnectionFactory.fromConnection(connection);
-          const peer = new RemotePeer(adapter as any, this, address);
+            // Create RemotePeer with transport adapter
+            const adapter = TransportConnectionFactory.fromConnection(connection);
+            const peer = new RemotePeer(adapter as any, this, address);
 
-          let resolved = false;
+            let resolved = false;
 
-          // Wait for connection to be established
-          connection.once('connect', () => {
-            this.logger.debug({ address }, 'Connection established');
-            clearTimeout(timeoutId);
-          });
+            // Wait for connection to be established
+            connection.once('connect', () => {
+              this.logger.debug({ address }, 'Connection established');
+              clearTimeout(timeoutId);
+            });
 
-          // Handle first message (handshake)
-          adapter.once('message', async (data: Buffer | ArrayBuffer, isBinary?: boolean) => {
-            try {
-              const str = Buffer.isBuffer(data) ? data.toString() : Buffer.from(data).toString();
-              const message = JSON.parse(str) as { type: 'id'; id: string };
-              if (message.type === 'id') {
-                peer.id = message.id;
-                this.peers.set(peer.id, peer);
+            // Handle first message (handshake)
+            adapter.once('message', async (data: Buffer | ArrayBuffer, isBinary?: boolean) => {
+              try {
+                const str = Buffer.isBuffer(data) ? data.toString() : Buffer.from(data).toString();
+                const message = JSON.parse(str) as { type: 'id'; id: string };
+                if (message.type === 'id') {
+                  peer.id = message.id;
+                  this.peers.set(peer.id, peer);
 
-                // Send our ID back to the server
-                connection.send(Buffer.from(JSON.stringify({ type: 'client-id', id: this.id })));
+                  // Send our ID back to the server
+                  connection.send(Buffer.from(JSON.stringify({ type: 'client-id', id: this.id })));
 
-                await peer.init(true, this.options);
+                  await peer.init(true, this.options);
 
-                peer.once('manual-disconnect', () => {
-                  this.logger.info({ peerId: peer.id }, 'Manual disconnect requested');
-                  manuallyDisconnected = true;
-                });
+                  peer.once('manual-disconnect', () => {
+                    this.logger.info({ peerId: peer.id }, 'Manual disconnect requested');
+                    manuallyDisconnected = true;
+                  });
 
-                connection.once('disconnect', () => {
-                  this.logger.info({ peerId: peer.id }, 'Connection closed');
-                  this.peers.delete(peer.id);
-                  this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peer.id), { peerId: peer.id });
+                  connection.once('disconnect', () => {
+                    this.logger.info({ peerId: peer.id }, 'Connection closed');
+                    this.peers.delete(peer.id);
+                    this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peer.id), { peerId: peer.id });
 
-                  if (reconnect && !manuallyDisconnected) {
-                    attemptReconnect();
-                  }
-                });
+                    if (reconnect && !manuallyDisconnected) {
+                      attemptReconnect();
+                    }
+                  });
 
-                resolved = true;
-                reconnectAttempts = 0;
-                this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId: peer.id });
-                this.logger.info({ peerId: peer.id }, 'Peer connection established');
-                resolve(peer);
-              } else {
-                this.logger.warn({ type: message.type }, 'Invalid handshake message type');
+                  resolved = true;
+                  reconnectAttempts = 0;
+                  this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId: peer.id });
+                  this.logger.info({ peerId: peer.id }, 'Peer connection established');
+                  resolve(peer);
+                } else {
+                  this.logger.warn({ type: message.type }, 'Invalid handshake message type');
+                  await connection.close();
+                  reject(new Error('Invalid handshake'));
+                }
+              } catch (error) {
+                this.logger.error({ error }, 'Error parsing handshake message');
                 await connection.close();
-                reject(new Error('Invalid handshake'));
+                reject(error);
               }
-            } catch (error) {
-              this.logger.error({ error }, 'Error parsing handshake message');
-              await connection.close();
-              reject(error);
-            }
-          });
+            });
 
-          connection.on('error', (err: Error) => {
-            this.logger.error({ error: err }, 'Connection error');
-            clearTimeout(timeoutId);
-            if (!resolved) {
-              reject(err);
-            }
-          });
+            connection.on('error', (err: Error) => {
+              this.logger.error({ error: err }, 'Connection error');
+              clearTimeout(timeoutId);
+              if (!resolved) {
+                reject(err);
+              }
+            });
           } catch (error) {
             clearTimeout(timeoutId);
             reject(error);
@@ -628,9 +688,9 @@ export class Netron extends EventEmitter {
    *
    * @param address The HTTP/HTTPS URL to connect to
    * @param useDirectHttp Whether to use the new direct HTTP implementation (default: true)
-   * @returns HttpDirectPeer configured for stateless operation
+   * @returns HttpRemotePeer configured for stateless operation
    */
-  private async connectHttp(address: string, useDirectHttp = true): Promise<HttpDirectPeer> {
+  private async connectHttp(address: string, useDirectHttp = true): Promise<HttpRemotePeer> {
     this.logger.info(
       { address },
       `Connecting to HTTP server (v2.0 native mode)`
@@ -651,7 +711,7 @@ export class Netron extends EventEmitter {
       } as any);
 
       // Create HTTP direct peer (v2.0)
-      const peer = new HttpDirectPeer(connection, this, address, this.options);
+      const peer = new HttpRemotePeer(connection, this, address, this.options);
 
       // Register the peer
       this.peers.set(peer.id, peer as any);

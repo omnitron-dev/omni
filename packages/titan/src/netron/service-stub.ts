@@ -1,6 +1,6 @@
 import { isAsyncGenerator } from '@omnitron-dev/common';
 
-import { LocalPeer } from './local-peer.js';
+import type { ILocalPeer } from './netron.types.js';
 import { Definition } from './definition.js';
 import { ServiceMetadata } from './types.js';
 import { StreamReference } from './stream-reference.js';
@@ -9,10 +9,10 @@ import {
   isNetronStream,
   isNetronService,
   isServiceReference,
-  isServiceInterface,
   isServiceDefinition,
   isNetronStreamReference,
 } from './predicates.js';
+import { Interface } from './interface.js';
 
 /**
  * ServiceStub is a proxy object for a service instance in the Netron system.
@@ -35,7 +35,7 @@ export class ServiceStub {
    * @throws {Error} If unable to create service definition
    */
   constructor(
-    public peer: LocalPeer,
+    public peer: ILocalPeer,
     public instance: any,
     metaOrDefinition: ServiceMetadata | Definition
   ) {
@@ -131,7 +131,7 @@ export class ServiceStub {
    * @private
    */
   private processResult(result: any) {
-    if (isNetronService(result) || isServiceInterface(result)) {
+    if (isNetronService(result) || result instanceof Interface) {
       return this.peer.refService(result, this.definition);
     } else if (isNetronStream(result)) {
       return StreamReference.from(result);

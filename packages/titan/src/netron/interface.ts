@@ -1,8 +1,9 @@
 import { Reference } from './reference.js';
 import { Definition } from './definition.js';
-import { AbstractPeer } from './abstract-peer.js';
 import { StreamReference } from './stream-reference.js';
-import { isNetronStream, isNetronService, isServiceInterface } from './predicates.js';
+import { isNetronStream } from './stream-utils.js';
+import { isNetronService } from './service-utils.js';
+import { IPeer } from './netron.types.js';
 
 /**
  * List of internal properties that can be read from the Interface instance.
@@ -60,7 +61,7 @@ export class Interface {
    */
   constructor(
     public $def?: Definition,
-    public $peer?: AbstractPeer
+    public $peer?: IPeer
   ) {
     return new Proxy(this, {
       /**
@@ -185,7 +186,7 @@ export class Interface {
    * @throws {Error} If the value type is not supported
    */
   private $processValue(value: any): any {
-    if (isServiceInterface(value)) {
+    if (value instanceof Interface) {
       if (!value.$def) {
         throw new Error('Service interface is not valid: Missing service definition');
       }
@@ -221,7 +222,7 @@ export class Interface {
    * @param {AbstractPeer} peer - The peer instance
    * @returns {Interface} A new Interface instance
    */
-  static create(def: Definition, peer: AbstractPeer): Interface {
+  static create(def: Definition, peer: IPeer): Interface {
     return new Interface(def, peer);
   }
 }

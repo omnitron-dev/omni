@@ -1,12 +1,12 @@
 import type { ILogger } from '../modules/logger/logger.types.js';
 
-import { Netron } from './netron.js';
+import type { INetron } from './netron.types.js';
 import { Interface } from './interface.js';
 import { Definition } from './definition.js';
 import { RemotePeer } from './remote-peer.js';
 import { ServiceStub } from './service-stub.js';
 import { AbstractPeer } from './abstract-peer.js';
-import { isServiceInterface, isServiceDefinition } from './predicates.js';
+import { isServiceDefinition } from './predicates.js';
 import { EventSubscriber, ServiceMetadata, ServiceExposeEvent } from './types.js';
 import { getQualifiedName, getServiceMetadata, getServiceEventName } from './utils.js';
 import { NETRON_EVENT_SERVICE_EXPOSE, NETRON_EVENT_SERVICE_UNEXPOSE } from './constants.js';
@@ -36,11 +36,11 @@ export class LocalPeer extends AbstractPeer {
   /**
    * Constructs a new LocalPeer instance.
    *
-   * @param {Netron} netron - The Netron network instance this peer belongs to.
+   * @param {INetron} netron - The Netron network instance this peer belongs to.
    * @throws {Error} If the provided Netron instance is invalid.
    */
-  constructor(netron: Netron) {
-    super(netron, netron.id);
+  constructor(netron: INetron) {
+    super(netron, netron.uuid);
     this.logger = netron.logger.child({ peerId: this.id });
     this.abilities = {
       allowServiceEvents: netron.options?.allowServiceEvents ?? false,
@@ -246,7 +246,7 @@ export class LocalPeer extends AbstractPeer {
       return existingStub.definition;
     }
 
-    const meta = isServiceInterface(instance) ? instance.$def!.meta : getServiceMetadata(instance);
+    const meta = instance instanceof Interface ? instance.$def!.meta : getServiceMetadata(instance);
     if (!meta) {
       throw new Error('Service metadata not found');
     }
@@ -281,7 +281,7 @@ export class LocalPeer extends AbstractPeer {
    * @param {string} eventName - The name of the event.
    * @param {EventSubscriber} handler - The event handler.
    */
-  subscribe(eventName: string, handler: EventSubscriber) {
+  async subscribe(eventName: string, handler: EventSubscriber): Promise<void> {
     this.netron.on(eventName, handler);
   }
 
@@ -296,7 +296,7 @@ export class LocalPeer extends AbstractPeer {
    *                                   This must be the same function reference that was used in subscribe().
    * @returns {void}
    */
-  unsubscribe(eventName: string, handler: EventSubscriber) {
+  async unsubscribe(eventName: string, handler: EventSubscriber): Promise<void> {
     this.netron.removeListener(eventName, handler);
   }
 
@@ -387,6 +387,23 @@ export class LocalPeer extends AbstractPeer {
   }
 
   /**
+   * Expose method for ILocalPeer interface compatibility
+   * Wrapper for exposeService
+   */
+  async expose(service: any, name?: string): Promise<void> {
+    await this.exposeService(service);
+  }
+
+  /**
+   * Unexpose method for ILocalPeer interface compatibility
+   * Wrapper for unexposeService
+   */
+  async unexpose(service: any, name?: string): Promise<void> {
+    const serviceName = name || getQualifiedName(service);
+    await this.unexposeService(serviceName);
+  }
+
+  /**
    * Retrieves a service definition by its unique identifier.
    * This protected method is used internally to access service definitions
    * and includes error handling for unknown definitions.
@@ -435,3 +452,14 @@ export class LocalPeer extends AbstractPeer {
     return result;
   }
 }
+
+/**
+ * Determines whether the provided object is an instance of the LocalPeer class.
+ * This predicate function is used to identify local peer instances in the Netron
+ * distributed system.
+ *
+ * @param {any} obj - The object to be evaluated for LocalPeer instance membership
+ * @returns {boolean} Returns true if the object is a LocalPeer instance, false otherwise
+ * @see LocalPeer
+ */
+export const isNetronOwnPeer = (obj: any): obj is LocalPeer => obj instanceof LocalPeer;

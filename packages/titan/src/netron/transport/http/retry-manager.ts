@@ -148,6 +148,7 @@ export class RetryManager extends EventEmitter {
     let lastError: any;
     let delay = retryOptions.initialDelay;
 
+    // attempts = number of retries, so we try initial + retries
     for (let attempt = 0; attempt <= retryOptions.attempts; attempt++) {
       try {
         if (this.options.debug) {
@@ -319,8 +320,8 @@ export class RetryManager extends EventEmitter {
       }
     }
 
-    // Default: retry for unknown errors up to 2 times
-    return attempt < 2;
+    // Default: retry for unknown errors
+    return true;
   }
 
   /**
@@ -429,19 +430,7 @@ export class RetryManager extends EventEmitter {
     this.circuitBreaker.failures++;
     this.circuitBreaker.lastFailureTime = now;
 
-    // Check if we should open the circuit
-    if (this.circuitBreaker.state !== 'open' &&
-        this.circuitBreaker.failures >= this.circuitBreaker.options.threshold) {
-      this.circuitBreaker.state = 'open';
-      this.circuitBreaker.nextAttemptTime = now + this.circuitBreaker.options.cooldownTime;
-      this.emit('circuit-breaker-open', { nextAttemptTime: this.circuitBreaker.nextAttemptTime });
-
-      if (this.options.debug) {
-        console.log('[CircuitBreaker] Transitioned to OPEN');
-      }
-    }
-
-    // If in half-open state, go back to open
+    // If in half-open state, go back to open (check this first)
     if (this.circuitBreaker.state === 'half-open') {
       this.circuitBreaker.state = 'open';
       this.circuitBreaker.nextAttemptTime = now + this.circuitBreaker.options.cooldownTime;
@@ -449,6 +438,19 @@ export class RetryManager extends EventEmitter {
 
       if (this.options.debug) {
         console.log('[CircuitBreaker] Transitioned back to OPEN from HALF-OPEN');
+      }
+      return; // Early return to avoid duplicate processing
+    }
+
+    // Check if we should open the circuit from closed state
+    if (this.circuitBreaker.state === 'closed' &&
+        this.circuitBreaker.failures >= this.circuitBreaker.options.threshold) {
+      this.circuitBreaker.state = 'open';
+      this.circuitBreaker.nextAttemptTime = now + this.circuitBreaker.options.cooldownTime;
+      this.emit('circuit-breaker-open', { nextAttemptTime: this.circuitBreaker.nextAttemptTime });
+
+      if (this.options.debug) {
+        console.log('[CircuitBreaker] Transitioned to OPEN');
       }
     }
   }

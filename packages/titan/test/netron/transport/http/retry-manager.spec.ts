@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import { RetryManager, type RetryOptions } from '../../../../src/netron/transport/http/retry-manager.js';
+import { RetryManager } from '../../../../src/netron/transport/http/retry-manager.js';
 import { TitanError, ErrorCode } from '../../../../src/errors/index.js';
 
 describe('RetryManager', () => {
@@ -614,6 +614,459 @@ describe('RetryManager', () => {
         attempts: 3,
         error: 'Always fails'
       });
+    });
+  });
+
+  describe('Debug Logging', () => {
+    let consoleLogSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
+    });
+
+    afterEach(() => {
+      consoleLogSpy.mockRestore();
+    });
+
+    it('should log debug messages when debug mode is enabled', async () => {
+      const debugManager = new RetryManager({ debug: true });
+      let attemptCount = 0;
+
+      const fn = jest.fn(async () => {
+        attemptCount++;
+        if (attemptCount < 2) {
+          throw new Error('Temporary failure');
+        }
+        return 'success';
+      });
+
+      await debugManager.execute(fn, {
+        attempts: 3,
+        initialDelay: 10
+      });
+
+      // Should log attempt numbers
+      expect(consoleLogSpy).toHaveBeenCalledWith('[Retry] Attempt 1/4');
+      expect(consoleLogSpy).toHaveBeenCalledWith('[Retry] Attempt 2/4');
+      // The retry log includes delay and error message as separate arguments
+      expect(consoleLogSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[Retry] Attempt 1 failed, retrying in'),
+        'Temporary failure'
+      );
+    });
+
+    it('should log when error is not retryable', async () => {
+      const debugManager = new RetryManager({ debug: true });
+
+      const fn = jest.fn(async () => {
+        const error = new TypeError('Type error');
+        throw error;
+      });
+
+      try {
+        await debugManager.execute(fn, {
+          attempts: 2,
+          initialDelay: 10
+        });
+      } catch {
+        // Expected
+      }
+
+      expect(consoleLogSpy).toHaveBeenCalledWith('[Retry] Error not retryable:', 'Type error');
+    });
+
+    it('should log when max attempts exceeded', async () => {
+      const debugManager = new RetryManager({ debug: true });
+
+      const fn = jest.fn(async () => {
+        throw new Error('Always fails');
+      });
+
+      try {
+        await debugManager.execute(fn, {
+          attempts: 1,
+          initialDelay: 10
+        });
+      } catch {
+        // Expected
+      }
+
+      expect(consoleLogSpy).toHaveBeenCalledWith('[Retry] Max attempts exceeded');
+    });
+  });
+
+  describe('Error Type Handling', () => {
+    it('should not retry TypeError', async () => {
+      const fn = jest.fn(async () => {
+        throw new TypeError('Type error');
+      });
+
+      try {
+        await retryManager.execute(fn, {
+          attempts: 3,
+          initialDelay: 10
+        });
+      } catch (error: any) {
+        expect(error).toBeInstanceOf(TypeError);
+      }
+
+      expect(fn).toHaveBeenCalledTimes(1); // Should not retry
+    });
+
+    it('should not retry ReferenceError', async () => {
+      const fn = jest.fn(async () => {
+        throw new ReferenceError('Reference error');
+      });
+
+      try {
+        await retryManager.execute(fn, {
+          attempts: 3,
+          initialDelay: 10
+        });
+      } catch (error: any) {
+        expect(error).toBeInstanceOf(ReferenceError);
+      }
+
+      expect(fn).toHaveBeenCalledTimes(1); // Should not retry
+    });
+
+    it('should retry HTTP 429 (Rate Limit) errors', async () => {
+      let attemptCount = 0;
+      const fn = jest.fn(async () => {
+        attemptCount++;
+        const error: any = new Error('Rate limited');
+        error.status = 429;
+        if (attemptCount < 2) {
+          throw error;
+        }
+        return 'success';
+      });
+
+      const result = await retryManager.execute(fn, {
+        attempts: 3,
+        initialDelay: 10
+      });
+
+      expect(result).toBe('success');
+      expect(fn).toHaveBeenCalledTimes(2);
+    });
+
+    it('should retry HTTP 408 (Request Timeout) errors', async () => {
+      let attemptCount = 0;
+      const fn = jest.fn(async () => {
+        attemptCount++;
+        const error: any = new Error('Request timeout');
+        error.status = 408;
+        if (attemptCount < 2) {
+          throw error;
+        }
+        return 'success';
+      });
+
+      const result = await retryManager.execute(fn, {
+        attempts: 3,
+        initialDelay: 10
+      });
+
+      expect(result).toBe('success');
+      expect(fn).toHaveBeenCalledTimes(2);
+    });
+
+    it('should handle TitanError with unknown code', async () => {
+      let attemptCount = 0;
+      const fn = jest.fn(async () => {
+        attemptCount++;
+        const error = new TitanError('Unknown error', 'UNKNOWN_CODE' as any);
+        if (attemptCount < 2) {
+          throw error;
+        }
+        return 'success';
+      });
+
+      const result = await retryManager.execute(fn, {
+        attempts: 3,
+        initialDelay: 10
+      });
+
+      expect(result).toBe('success');
+      expect(fn).toHaveBeenCalledTimes(2); // Should retry once for unknown errors
+    });
+
+    it('should reach default backoff case', async () => {
+      let attemptCount = 0;
+      const fn = jest.fn(async () => {
+        attemptCount++;
+        if (attemptCount < 2) {
+          throw new Error('Temporary failure');
+        }
+        return 'success';
+      });
+
+      const result = await retryManager.execute(fn, {
+        attempts: 3,
+        initialDelay: 10,
+        backoff: 'invalid' as any // Invalid backoff to trigger default case
+      });
+
+      expect(result).toBe('success');
+      expect(fn).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('Circuit Breaker - Advanced', () => {
+    let cbManager: RetryManager;
+    let consoleLogSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
+      cbManager = new RetryManager({
+        debug: true,
+        circuitBreaker: {
+          enabled: true,
+          threshold: 3,
+          cooldownTime: 50,
+          windowTime: 100,
+          successThreshold: 2
+        }
+      });
+    });
+
+    afterEach(() => {
+      consoleLogSpy.mockRestore();
+    });
+
+    it('should log circuit breaker state transitions', async () => {
+      const fn = jest.fn(async () => {
+        throw new Error('Always fails');
+      });
+
+      // Trigger circuit breaker open
+      for (let i = 0; i < 3; i++) {
+        try {
+          await cbManager.execute(fn, {
+            attempts: 0,
+            initialDelay: 10
+          });
+        } catch {
+          // Expected
+        }
+      }
+
+      expect(consoleLogSpy).toHaveBeenCalledWith('[CircuitBreaker] Transitioned to OPEN');
+
+      // Wait for cooldown
+      await new Promise(resolve => setTimeout(resolve, 60));
+
+      // Try again - should transition to half-open
+      try {
+        await cbManager.execute(fn, {
+          attempts: 0,
+          initialDelay: 10
+        });
+      } catch {
+        // Expected
+      }
+
+      expect(consoleLogSpy).toHaveBeenCalledWith('[CircuitBreaker] Transitioned to HALF-OPEN');
+      expect(consoleLogSpy).toHaveBeenCalledWith('[CircuitBreaker] Transitioned back to OPEN from HALF-OPEN');
+    });
+
+    it('should transition from half-open to closed after success threshold', async () => {
+      let failCount = 0;
+      const fn = jest.fn(async () => {
+        failCount++;
+        if (failCount <= 3) {
+          throw new Error('Initial failures');
+        }
+        return 'success';
+      });
+
+      // Trigger circuit breaker open
+      for (let i = 0; i < 3; i++) {
+        try {
+          await cbManager.execute(fn, {
+            attempts: 0,
+            initialDelay: 10
+          });
+        } catch {
+          // Expected
+        }
+      }
+
+      expect(consoleLogSpy).toHaveBeenCalledWith('[CircuitBreaker] Transitioned to OPEN');
+
+      // Wait for cooldown
+      await new Promise(resolve => setTimeout(resolve, 60));
+
+      // Successful attempts to close circuit
+      for (let i = 0; i < 2; i++) {
+        await cbManager.execute(fn, {
+          attempts: 0,
+          initialDelay: 10
+        });
+      }
+
+      expect(consoleLogSpy).toHaveBeenCalledWith('[CircuitBreaker] Transitioned to HALF-OPEN');
+      expect(consoleLogSpy).toHaveBeenCalledWith('[CircuitBreaker] Transitioned to CLOSED');
+    });
+
+    it('should emit circuit breaker events', async () => {
+      const events: any[] = [];
+      cbManager.on('circuit-breaker-open', (data) => events.push({ type: 'open', ...data }));
+      cbManager.on('circuit-breaker-half-open', () => events.push({ type: 'half-open' }));
+      cbManager.on('circuit-breaker-closed', () => events.push({ type: 'closed' }));
+
+      let failCount = 0;
+      const fn = jest.fn(async () => {
+        failCount++;
+        if (failCount <= 3) {
+          throw new Error('Initial failures');
+        }
+        return 'success';
+      });
+
+      // Trigger circuit breaker open
+      for (let i = 0; i < 3; i++) {
+        try {
+          await cbManager.execute(fn, {
+            attempts: 0,
+            initialDelay: 10
+          });
+        } catch {
+          // Expected
+        }
+      }
+
+      expect(events.some(e => e.type === 'open')).toBe(true);
+      expect(events.find(e => e.type === 'open')).toHaveProperty('nextAttemptTime');
+
+      // Wait for cooldown
+      await new Promise(resolve => setTimeout(resolve, 60));
+
+      // Successful attempts to close circuit
+      for (let i = 0; i < 2; i++) {
+        await cbManager.execute(fn, {
+          attempts: 0,
+          initialDelay: 10
+        });
+      }
+
+      expect(events.some(e => e.type === 'half-open')).toBe(true);
+      expect(events.some(e => e.type === 'closed')).toBe(true);
+    });
+
+    it('should reset circuit breaker state on stats reset', async () => {
+      const fn = jest.fn(async () => {
+        throw new Error('Always fails');
+      });
+
+      // Trigger circuit breaker open
+      for (let i = 0; i < 3; i++) {
+        try {
+          await cbManager.execute(fn, {
+            attempts: 0,
+            initialDelay: 10
+          });
+        } catch {
+          // Expected
+        }
+      }
+
+      expect(cbManager.getCircuitBreakerState()).toBe('open');
+
+      // Reset stats should reset circuit breaker
+      const resetHandler = jest.fn();
+      cbManager.on('stats-reset', resetHandler);
+      cbManager.resetStats();
+
+      expect(cbManager.getCircuitBreakerState()).toBe('closed');
+      expect(resetHandler).toHaveBeenCalled();
+
+      const stats = cbManager.getStats();
+      expect(stats.circuitState).toBe('closed');
+    });
+
+    it('should clean up old failures outside window time', async () => {
+      const fastCbManager = new RetryManager({
+        circuitBreaker: {
+          enabled: true,
+          threshold: 3,
+          cooldownTime: 10,
+          windowTime: 30, // Very short window
+          successThreshold: 2
+        }
+      });
+
+      const fn = jest.fn(async () => {
+        throw new Error('Always fails');
+      });
+
+      // First failure
+      try {
+        await fastCbManager.execute(fn, {
+          attempts: 0,
+          initialDelay: 5
+        });
+      } catch {
+        // Expected
+      }
+
+      // Wait longer than window time
+      await new Promise(resolve => setTimeout(resolve, 40));
+
+      // Should have reset failures due to window expiry
+      // Need 3 more failures to open circuit
+      for (let i = 0; i < 2; i++) {
+        try {
+          await fastCbManager.execute(fn, {
+            attempts: 0,
+            initialDelay: 5
+          });
+        } catch {
+          // Expected
+        }
+      }
+
+      // Circuit should still be closed
+      expect(fastCbManager.getCircuitBreakerState()).toBe('closed');
+    });
+  });
+
+  describe('Edge Cases', () => {
+    it('should handle timeout of 0 (no timeout)', async () => {
+      const fn = jest.fn(async () => {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return 'success';
+      });
+
+      const result = await retryManager.execute(fn, {
+        attempts: 0,
+        attemptTimeout: 0 // No timeout
+      });
+
+      expect(result).toBe('success');
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it('should handle negative timeout (no timeout)', async () => {
+      const fn = jest.fn(async () => {
+        await new Promise(resolve => setTimeout(resolve, 50));
+        return 'success';
+      });
+
+      const result = await retryManager.execute(fn, {
+        attempts: 0,
+        attemptTimeout: -1 // Negative means no timeout
+      });
+
+      expect(result).toBe('success');
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it('should handle empty retry delays for avg calculation', () => {
+      const newManager = new RetryManager();
+      const stats = newManager.getStats();
+      expect(stats.avgRetryDelay).toBe(0);
     });
   });
 });

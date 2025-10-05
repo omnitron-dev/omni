@@ -8,7 +8,7 @@ type EventListener = {
   once: boolean;
 };
 
-// Unified EventEmitter implementation that works in Node, Bun, and browser
+// EventEmitter implementation that works in Node, Bun, and browser
 // Combines both synchronous and asynchronous event emission capabilities
 export class EventEmitter {
   private _events: Map<string | symbol, EventListener | EventListener[]> = new Map();

@@ -1,20 +1,18 @@
 /**
- * Enhanced HTTP Interface with Fluent API
+ * HTTP Interface with Fluent API
  *
  * Provides intelligent client features matching TanStack Query capabilities
  * with a fluent, chainable API for optimal developer experience.
  */
 
 import type { Definition } from '../../definition.js';
-import type { HttpTransportClient } from './client.js';
+import { HttpTransportClient } from './client.js';
 import { HttpCacheManager, type CacheOptions } from './cache-manager.js';
 import { RetryManager, type RetryOptions } from './retry-manager.js';
 import type {
   HttpRequestContext,
   HttpRequestHints,
-  HttpRequestMessage,
-  HttpResponseMessage,
-  HttpResponseHints
+  HttpRequestMessage
 } from './types.js';
 
 /**
@@ -62,7 +60,7 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
     private definition: Definition,
     private cacheManager?: HttpCacheManager,
     private retryManager?: RetryManager
-  ) {}
+  ) { }
 
   /**
    * Set the method to call
@@ -304,9 +302,9 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
 }
 
 /**
- * Enhanced HTTP Interface with fluent API
+ * HTTP Interface with fluent API
  */
-export class EnhancedHttpInterface<T = any> {
+export class HttpInterface<T = any> {
   private service: T;
   private cacheManager?: HttpCacheManager;
   private retryManager?: RetryManager;
@@ -452,7 +450,7 @@ export class EnhancedHttpInterface<T = any> {
         }
 
         // Check for async iteration
-        if (prop === Symbol.asyncIterator) {
+        if (typeof prop === 'symbol' && prop === Symbol.asyncIterator) {
           return undefined;
         }
 
@@ -461,19 +459,4 @@ export class EnhancedHttpInterface<T = any> {
       }
     }) as T;
   }
-}
-
-/**
- * HTTP Transport Client interface
- */
-export interface HttpTransportClient {
-  invoke(
-    service: string,
-    method: string,
-    args: any[],
-    options?: {
-      context?: HttpRequestContext;
-      hints?: HttpRequestHints;
-    }
-  ): Promise<any>;
 }

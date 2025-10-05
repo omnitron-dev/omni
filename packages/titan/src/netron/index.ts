@@ -5,12 +5,14 @@ export * from './uid.js';
 export * from './types.js';
 export * from './utils.js';
 export * from './constants.js';
-export * from './predicates.js';
 
 // Core classes - order matters for initialization
 export * from './definition.js';
 export * from './reference.js';
 export * from './stream-reference.js';
+
+// Abstract peer MUST come before Interface and LocalPeer to avoid circular dependency
+export * from './abstract-peer.js';
 
 // Interfaces and decorators
 export * from './interface.js';
@@ -18,6 +20,9 @@ export * from './interface.js';
 // Peer classes
 export * from './local-peer.js';
 export * from './remote-peer.js';
+
+// Predicates - exported after all classes they depend on
+export * from './predicates.js';
 
 // Stream classes
 export * from './writable-stream.js';

@@ -456,9 +456,9 @@ describe('SmartBuffer', () => {
       it(name.toLowerCase(), () => {
         const bb = new SmartBuffer(size);
         let writeLE: string;
-        let readLE;
-        let writeBE;
-        let readBE;
+        let readLE: string;
+        let writeBE: string;
+        let readBE: string;
         if (varint || byte) {
           writeLE = `write${name}`;
           readLE = `read${name}`;
@@ -475,17 +475,18 @@ describe('SmartBuffer', () => {
         expect(bb).toHaveProperty(writeBE);
         expect(bb).toHaveProperty(readBE);
 
-        // Relative BE (always LE for varints)
-        expect(bb[writeBE](input)).toEqual(bb);
-        let val = bb[readBE]();
+        // Относительный BE (для varint всегда LE)
+        // Исправлено: обращение к методу через строку теперь через (bb as any)[writeBE] и (bb as any)[readBE]
+        expect((bb as any)[writeBE](input)).toEqual(bb);
+        let val = (bb as any)[readBE]();
         expect(val).toEqual(output);
         bb.reset();
         expect(bb.toHex()).toEqual(be);
         if (!varint && !byte) {
           bb.reset(true);
           // Relative LE
-          bb[writeLE](input);
-          val = bb[readLE]();
+          (bb as any)[writeLE](input);
+          val = (bb as any)[readLE]();
           expect(val).toEqual(output);
           bb.reset();
           expect(bb.toHex()).toEqual(le);
@@ -493,21 +494,21 @@ describe('SmartBuffer', () => {
         expect(() => {
           // OOB
           bb.roffset = bb.capacity - size + 1;
-          bb[readLE](input);
+          (bb as any)[readLE](input);
         }).toThrow();
         expect(() => {
           // OOB, automatic resizing * 2
-          bb[writeLE](input);
+          (bb as any)[writeLE](input);
         }).not.toThrow();
         expect(bb.capacity).toEqual(size * 2);
         // Absolute
         bb.reset(true);
         if (!varint) {
-          expect(bb[writeLE](input, 1)).toEqual(bb);
+          expect((bb as any)[writeLE](input, 1)).toEqual(bb);
         } else {
-          expect(bb[writeLE](input, 1)).toEqual(size);
+          expect((bb as any)[writeLE](input, 1)).toEqual(size);
         }
-        val = bb[readLE](1);
+        val = (bb as any)[readLE](1);
         if (output instanceof Long) {
           if (!varint) {
             expect(val).toEqual(output);
@@ -527,7 +528,7 @@ describe('SmartBuffer', () => {
     it('bitset', () => {
       const bb = new SmartBuffer(2);
 
-      const run = (data) => {
+      const run = (data: any) => {
         bb.reset(true);
         bb.writeBitSet(data);
         expect(bb.readBitSet()).toEqual(data);

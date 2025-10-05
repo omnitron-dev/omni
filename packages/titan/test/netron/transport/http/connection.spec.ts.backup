@@ -1,0 +1,756 @@
+/**
+ * Comprehensive tests for HttpConnection (HttpConnection)
+ * Tests HTTP connection with native JSON messaging, service discovery, and proxy creation
+ *
+ * Adapted from deleted http-client.spec.ts to work with new v2.0 API
+ */
+
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { HttpConnection } from '../../../../src/netron/transport/http/connection.js';
+import { ConnectionState } from '../../../../src/netron/transport/types.js';
+
+// Mock fetch globally
+const mockFetch = jest.fn() as jest.MockedFunction<typeof fetch>;
+global.fetch = mockFetch;
+
+describe('HttpConnection', () => {
+  let connection: HttpConnection;
+  const baseUrl = 'http://localhost:3000';
+
+  // Helper to create mock Response
+  const createMockResponse = (data: any, ok = true, status = 200) => ({
+    ok,
+    status,
+    statusText: ok ? 'OK' : 'Error',
+    json: jest.fn().mockResolvedValue(data),
+    headers: {
+      get: jest.fn((name: string) => {
+        if (name === 'Content-Type') return 'application/json';
+        return null;
+      })
+    }
+  } as any);
+
+  // Helper to wait for connection to be fully initialized
+  const waitForConnection = async (conn: HttpConnection, timeout = 200): Promise<void> => {
+    const startTime = Date.now();
+
+    // Wait for connect event or timeout
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        resolve(); // Resolve anyway to not block tests
+      }, timeout);
+
+      conn.on('connect', () => {
+        clearTimeout(timer);
+        // Wait a bit more for discovery to start
+        setTimeout(resolve, 50);
+      });
+
+      // If already connected, resolve immediately
+      if (conn.state === ConnectionState.CONNECTED) {
+        clearTimeout(timer);
+        setTimeout(resolve, 50);
+      }
+    });
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockFetch.mockClear();
+
+    // Mock discovery endpoint by default
+    mockFetch.mockImplementation((url: any) => {
+      const urlStr = typeof url === 'string' ? url : url.toString();
+
+      if (urlStr.includes('/netron/discovery')) {
+        return Promise.resolve(createMockResponse({
+          version: '2.0',
+          services: {},
+          contracts: {}
+        }));
+      }
+
+      return Promise.resolve(createMockResponse({
+        id: '1',
+        version: '2.0',
+        timestamp: Date.now(),
+        success: true,
+        data: { result: 'success' }
+      }));
+    });
+  });
+
+  afterEach(async () => {
+    // Wait for any pending setImmediate calls
+    await new Promise(resolve => setImmediate(resolve));
+    await new Promise(resolve => setImmediate(resolve));
+
+    if (connection && connection.state !== ConnectionState.DISCONNECTED) {
+      await connection.close();
+    }
+
+    // Wait for cleanup - increased timeout
+    await new Promise(resolve => setTimeout(resolve, 50));
+  });
+
+  describe('Constructor and Initialization', () => {
+    it('should create connection with base URL', async () => {
+      connection = new HttpConnection(baseUrl);
+
+      expect(connection).toBeInstanceOf(HttpConnection);
+      expect(connection.id).toBeDefined();
+      expect(connection.remoteAddress).toBe(baseUrl);
+
+      // Wait for initialization
+      await new Promise(resolve => setTimeout(resolve, 50));
+    });
+
+    it('should remove trailing slash from base URL', async () => {
+      connection = new HttpConnection('http://localhost:3000/');
+
+      expect(connection.remoteAddress).toBe('http://localhost:3000');
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+    });
+
+    it('should have unique connection ID', async () => {
+      const conn1 = new HttpConnection(baseUrl);
+      const conn2 = new HttpConnection(baseUrl);
+
+      expect(conn1.id).toBeDefined();
+      expect(conn2.id).toBeDefined();
+      expect(conn1.id).not.toBe(conn2.id);
+
+      // Clean up both connections
+      await conn2.close();
+      await conn1.close();
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Set connection to null to skip afterEach cleanup
+      connection = null as any;
+    });
+
+    it('should start in CONNECTING state and transition to CONNECTED', async () => {
+      connection = new HttpConnection(baseUrl);
+
+      // Initially CONNECTING or CONNECTED (due to async initialization)
+      expect([ConnectionState.CONNECTING, ConnectionState.CONNECTED]).toContain(connection.state);
+
+      // Wait for connection to complete
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      expect(connection.state).toBe(ConnectionState.CONNECTED);
+    });
+
+    it('should emit connect event', async () => {
+      const connectPromise = new Promise<void>((resolve) => {
+        const conn = new HttpConnection(baseUrl);
+        conn.on('connect', () => {
+          connection = conn;
+          resolve();
+        });
+      });
+
+      await connectPromise;
+      expect(connection).toBeDefined();
+      await new Promise(resolve => setTimeout(resolve, 50));
+    });
+
+    it('should accept transport options', async () => {
+      connection = new HttpConnection(baseUrl, {
+        timeout: 5000,
+        headers: { 'X-Api-Key': 'test123' }
+      });
+
+      expect(connection).toBeInstanceOf(HttpConnection);
+      await new Promise(resolve => setTimeout(resolve, 50));
+    });
+
+    it('should have undefined localAddress for HTTP client', async () => {
+      connection = new HttpConnection(baseUrl);
+
+      expect(connection.localAddress).toBeUndefined();
+      await new Promise(resolve => setTimeout(resolve, 50));
+    });
+  });
+
+  describe('Service Discovery', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockFetch.mockClear();
+    });
+
+    it('should discover services on initialization', async () => {
+      mockFetch.mockImplementation((url: any) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+
+        if (urlStr.includes('/netron/discovery')) {
+          return Promise.resolve(createMockResponse({
+            version: '2.0',
+            services: {
+              UserService: {
+                version: '1.0.0',
+                methods: ['getUser', 'createUser'],
+                metadata: {}
+              }
+            },
+            contracts: {}
+          }));
+        }
+
+        return Promise.resolve(createMockResponse({ success: true, data: {} }));
+      });
+
+      connection = new HttpConnection(baseUrl);
+
+      // Wait for discovery to complete
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const metrics = connection.getMetrics();
+      expect(metrics.services).toContain('UserService');
+    });
+
+    it('should handle discovery failure gracefully', async () => {
+      mockFetch.mockImplementation((url: any) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+
+        if (urlStr.includes('/netron/discovery')) {
+          return Promise.reject(new Error('Discovery failed'));
+        }
+
+        return Promise.resolve(createMockResponse({ success: true, data: {} }));
+      });
+
+      connection = new HttpConnection(baseUrl);
+
+      // Wait for discovery attempt
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Connection should still work
+      expect(connection.state).toBe(ConnectionState.CONNECTED);
+    });
+
+    it('should cache discovered services', async () => {
+      mockFetch.mockImplementation((url: any) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+
+        if (urlStr.includes('/netron/discovery')) {
+          return Promise.resolve(createMockResponse({
+            version: '2.0',
+            services: {
+              Calculator: {
+                version: '1.0.0',
+                methods: ['add', 'subtract'],
+                metadata: {}
+              }
+            },
+            contracts: {}
+          }));
+        }
+
+        return Promise.resolve(createMockResponse({ success: true, data: {} }));
+      });
+
+      connection = new HttpConnection(baseUrl);
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Discovery should be called only once even with multiple service queries
+      const initialCallCount = mockFetch.mock.calls.filter(call =>
+        (typeof call[0] === 'string' ? call[0] : call[0].toString()).includes('/netron/discovery')
+      ).length;
+
+      await connection.queryInterface('Calculator');
+      await connection.queryInterface('Calculator');
+
+      const finalCallCount = mockFetch.mock.calls.filter(call =>
+        (typeof call[0] === 'string' ? call[0] : call[0].toString()).includes('/netron/discovery')
+      ).length;
+
+      expect(finalCallCount).toBe(initialCallCount); // No additional discovery calls
+    });
+  });
+
+  describe('Query Interface and Service Proxy', () => {
+    it('should create service proxy for discovered service', async () => {
+      mockFetch.mockImplementation((url: any) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+
+        if (urlStr.includes('/netron/discovery')) {
+          return Promise.resolve(createMockResponse({
+            version: '2.0',
+            services: {
+              Calculator: {
+                version: '1.0.0',
+                methods: ['add'],
+                metadata: {}
+              }
+            },
+            contracts: {}
+          }));
+        }
+
+        if (urlStr.includes('/netron/invoke')) {
+          return Promise.resolve(createMockResponse({
+            id: '1',
+            version: '2.0',
+            timestamp: Date.now(),
+            success: true,
+            data: { result: 5 }
+          }));
+        }
+
+        return Promise.resolve(createMockResponse({ success: true }));
+      });
+
+      connection = new HttpConnection(baseUrl);
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const calculator = await connection.queryInterface('Calculator');
+
+      expect(calculator).toBeDefined();
+      expect(calculator.$def).toBeDefined();
+      expect(calculator.$def.meta.name).toBe('Calculator');
+    });
+
+    it('should invoke methods through service proxy', async () => {
+      mockFetch.mockImplementation((url: any) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+
+        if (urlStr.includes('/netron/discovery')) {
+          return Promise.resolve(createMockResponse({
+            version: '2.0',
+            services: {
+              Calculator: {
+                version: '1.0.0',
+                methods: ['add'],
+                metadata: {}
+              }
+            },
+            contracts: {}
+          }));
+        }
+
+        if (urlStr.includes('/netron/invoke')) {
+          return Promise.resolve(createMockResponse({
+            id: '1',
+            version: '2.0',
+            timestamp: Date.now(),
+            success: true,
+            data: { result: 7 }
+          }));
+        }
+
+        return Promise.resolve(createMockResponse({ success: true }));
+      });
+
+      connection = new HttpConnection(baseUrl);
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const calculator = await connection.queryInterface('Calculator');
+      const result = await calculator.add({ a: 3, b: 4 });
+
+      expect(result).toEqual({ result: 7 });
+    });
+
+    it('should handle service method errors', async () => {
+      mockFetch.mockImplementation((url: any) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+
+        if (urlStr.includes('/netron/discovery')) {
+          return Promise.resolve(createMockResponse({
+            version: '2.0',
+            services: {
+              Calculator: {
+                version: '1.0.0',
+                methods: ['divide'],
+                metadata: {}
+              }
+            },
+            contracts: {}
+          }));
+        }
+
+        if (urlStr.includes('/netron/invoke')) {
+          return Promise.resolve(createMockResponse({
+            id: '1',
+            version: '2.0',
+            timestamp: Date.now(),
+            success: false,
+            error: {
+              code: 400,
+              message: 'Division by zero'
+            }
+          }));
+        }
+
+        return Promise.resolve(createMockResponse({ success: true }));
+      });
+
+      connection = new HttpConnection(baseUrl);
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const calculator = await connection.queryInterface('Calculator');
+
+      await expect(calculator.divide({ a: 10, b: 0 }))
+        .rejects.toThrow('Division by zero');
+    });
+
+    it('should create minimal definition for unknown services', async () => {
+      connection = new HttpConnection(baseUrl);
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const unknownService = await connection.queryInterface('UnknownService');
+
+      expect(unknownService).toBeDefined();
+      expect(unknownService.$def).toBeDefined();
+      expect(unknownService.$def.meta.name).toBe('UnknownService');
+    });
+  });
+
+  describe('Send and SendPacket', () => {
+    beforeEach(async () => {
+      connection = new HttpConnection(baseUrl);
+      await new Promise(resolve => setImmediate(resolve));
+    });
+
+    it('should send JSON message via send()', async () => {
+      mockFetch.mockImplementation((url: any) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+
+        if (urlStr.includes('/netron/invoke')) {
+          return Promise.resolve(createMockResponse({
+            id: '1',
+            version: '2.0',
+            timestamp: Date.now(),
+            success: true,
+            data: { result: 'ok' }
+          }));
+        }
+
+        return Promise.resolve(createMockResponse({ success: true }));
+      });
+
+      const message = {
+        service: 'TestService',
+        method: 'testMethod',
+        input: { test: 'data' }
+      };
+
+      const messagePromise = new Promise<void>((resolve) => {
+        connection.on('message', (data: Buffer) => {
+          const response = JSON.parse(data.toString());
+          expect(response.success).toBe(true);
+          resolve();
+        });
+      });
+
+      await connection.send(Buffer.from(JSON.stringify(message)));
+
+      await messagePromise;
+    });
+
+    it('should send packet via sendPacket()', async () => {
+      mockFetch.mockImplementation((url: any) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+
+        if (urlStr.includes('/netron/invoke')) {
+          return Promise.resolve(createMockResponse({
+            id: '1',
+            version: '2.0',
+            timestamp: Date.now(),
+            success: true,
+            data: { result: 'packet-response' }
+          }));
+        }
+
+        return Promise.resolve(createMockResponse({ success: true }));
+      });
+
+      const packet = {
+        id: 'pkt-1',
+        flags: 0,
+        data: {
+          service: 'TestService',
+          method: 'testMethod',
+          input: { value: 123 }
+        }
+      };
+
+      const packetPromise = new Promise<void>((resolve) => {
+        connection.on('packet', (response: any) => {
+          expect(response.data.success).toBe(true);
+          expect(response.data.data).toEqual({ result: 'packet-response' });
+          resolve();
+        });
+      });
+
+      await connection.sendPacket(packet);
+
+      await packetPromise;
+    });
+  });
+
+  describe('HTTP Requests', () => {
+    beforeEach(async () => {
+      connection = new HttpConnection(baseUrl);
+      await new Promise(resolve => setImmediate(resolve));
+    });
+
+    it('should include custom headers in requests', async () => {
+      await connection.close();
+      connection = new HttpConnection(baseUrl, {
+        headers: {
+          'X-Api-Key': 'test-key-123',
+          'X-Custom': 'custom-value'
+        }
+      });
+
+      mockFetch.mockImplementation((url: any) => Promise.resolve(createMockResponse({
+        id: '1',
+        version: '2.0',
+        timestamp: Date.now(),
+        success: true,
+        data: {}
+      })));
+
+      const service = await connection.queryInterface('TestService');
+      await service.testMethod({ test: 'data' }).catch(() => { });
+
+      const invokeCall = mockFetch.mock.calls.find(call =>
+        (typeof call[0] === 'string' ? call[0] : call[0].toString()).includes('/netron/invoke')
+      );
+
+      expect(invokeCall).toBeDefined();
+      expect(invokeCall![1]?.headers).toMatchObject({
+        'X-Api-Key': 'test-key-123',
+        'X-Custom': 'custom-value'
+      });
+    });
+
+    it('should handle HTTP errors', async () => {
+      mockFetch.mockImplementation((url: any) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+
+        if (urlStr.includes('/netron/invoke')) {
+          return Promise.resolve(createMockResponse(
+            { error: { message: 'Server error' } },
+            false,
+            500
+          ));
+        }
+
+        return Promise.resolve(createMockResponse({ success: true }));
+      });
+
+      const service = await connection.queryInterface('TestService');
+
+      await expect(service.failingMethod({}))
+        .rejects.toThrow('HTTP 500');
+    });
+
+    it('should handle request timeout', async () => {
+      await connection.close();
+      connection = new HttpConnection(baseUrl, { timeout: 100 });
+
+      mockFetch.mockImplementation(() => new Promise((resolve) => setTimeout(() => {
+        resolve(createMockResponse({ success: true }));
+      }, 300)));
+
+      const service = await connection.queryInterface('TestService');
+
+      await expect(service.slowMethod({}))
+        .rejects.toThrow('timeout');
+    });
+
+    it('should handle network errors', async () => {
+      mockFetch.mockImplementation((url: any) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+
+        if (urlStr.includes('/netron/invoke')) {
+          return Promise.reject(new Error('Network failure'));
+        }
+
+        return Promise.resolve(createMockResponse({ success: true }));
+      });
+
+      const service = await connection.queryInterface('TestService');
+
+      await expect(service.testMethod({}))
+        .rejects.toThrow('Network failure');
+    });
+  });
+
+  describe('Connection Lifecycle', () => {
+    it('should close connection', async () => {
+      connection = new HttpConnection(baseUrl);
+
+      const disconnectPromise = new Promise<void>((resolve) => {
+        connection.on('disconnect', () => {
+          resolve();
+        });
+      });
+
+      await connection.close();
+
+      await disconnectPromise;
+      expect(connection.state).toBe(ConnectionState.DISCONNECTED);
+    });
+
+    it('should emit disconnect event with code and reason', async () => {
+      connection = new HttpConnection(baseUrl);
+
+      const disconnectPromise = new Promise<any>((resolve) => {
+        connection.on('disconnect', (data: any) => {
+          resolve(data);
+        });
+      });
+
+      await connection.close(1000, 'Normal closure');
+
+      const disconnectData = await disconnectPromise;
+      expect(disconnectData.code).toBe(1000);
+      expect(disconnectData.reason).toBe('Normal closure');
+    });
+
+    it('should not close already closed connection', async () => {
+      connection = new HttpConnection(baseUrl);
+
+      await connection.close();
+
+      // Close again should not throw
+      await expect(connection.close()).resolves.not.toThrow();
+    });
+
+    it('should reconnect', async () => {
+      connection = new HttpConnection(baseUrl);
+
+      await connection.close();
+      expect(connection.state).toBe(ConnectionState.DISCONNECTED);
+
+      const connectPromise = new Promise<void>((resolve) => {
+        connection.on('connect', () => {
+          resolve();
+        });
+      });
+
+      await connection.reconnect();
+
+      await connectPromise;
+      expect(connection.state).toBe(ConnectionState.CONNECTED);
+    });
+
+    it('should check if connection is alive', () => {
+      connection = new HttpConnection(baseUrl);
+
+      expect(connection.isAlive()).toBe(true);
+    });
+
+    it('should return false for isAlive() after close', async () => {
+      connection = new HttpConnection(baseUrl);
+
+      await connection.close();
+
+      expect(connection.isAlive()).toBe(false);
+    });
+  });
+
+  describe('Connection Metrics', () => {
+    it('should return connection metrics', () => {
+      connection = new HttpConnection(baseUrl);
+
+      const metrics = connection.getMetrics();
+
+      expect(metrics).toHaveProperty('id');
+      expect(metrics).toHaveProperty('state');
+      expect(metrics).toHaveProperty('baseUrl');
+      expect(metrics).toHaveProperty('services');
+      expect(metrics).toHaveProperty('pendingRequests');
+
+      expect(metrics.id).toBe(connection.id);
+      expect(metrics.state).toBe(connection.state);
+      expect(metrics.baseUrl).toBe(baseUrl);
+    });
+
+    it('should track services in metrics', async () => {
+      mockFetch.mockImplementation((url: any) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+
+        if (urlStr.includes('/netron/discovery')) {
+          return Promise.resolve(createMockResponse({
+            version: '2.0',
+            services: {
+              ServiceA: { version: '1.0.0', methods: [], metadata: {} },
+              ServiceB: { version: '1.0.0', methods: [], metadata: {} }
+            },
+            contracts: {}
+          }));
+        }
+
+        return Promise.resolve(createMockResponse({ success: true }));
+      });
+
+      connection = new HttpConnection(baseUrl);
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const metrics = connection.getMetrics();
+
+      expect(metrics.services).toContain('ServiceA');
+      expect(metrics.services).toContain('ServiceB');
+    });
+  });
+
+  describe('Edge Cases', () => {
+    it('should handle malformed JSON in send()', async () => {
+      connection = new HttpConnection(baseUrl);
+
+      // Should not throw, just ignore
+      await expect(connection.send(Buffer.from('not json')))
+        .resolves.not.toThrow();
+    });
+
+    it('should handle empty service name in queryInterface', async () => {
+      connection = new HttpConnection(baseUrl);
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const service = await connection.queryInterface('');
+
+      expect(service).toBeDefined();
+      expect(service.$def.meta.name).toBe('');
+    });
+
+    it('should handle concurrent method calls', async () => {
+      mockFetch.mockImplementation((url: any) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+
+        if (urlStr.includes('/netron/invoke')) {
+          return Promise.resolve(createMockResponse({
+            id: '1',
+            version: '2.0',
+            timestamp: Date.now(),
+            success: true,
+            data: { result: Math.random() }
+          }));
+        }
+
+        return Promise.resolve(createMockResponse({ success: true }));
+      });
+
+      connection = new HttpConnection(baseUrl);
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const service = await connection.queryInterface('TestService');
+
+      const [result1, result2, result3] = await Promise.all([
+        service.method1({}),
+        service.method2({}),
+        service.method3({})
+      ]);
+
+      expect(result1).toBeDefined();
+      expect(result2).toBeDefined();
+      expect(result3).toBeDefined();
+    });
+  });
+});

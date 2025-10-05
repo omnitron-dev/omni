@@ -161,14 +161,16 @@ export class HttpCacheManager extends EventEmitter {
       return data;
     } catch (error) {
       // If cacheOnError is enabled and we have stale data, return it
-      if (options.cacheOnError && entry) {
+      // Check both current entry and any existing entry (even if expired)
+      const staleEntry = entry || this.cache.get(key);
+      if (options.cacheOnError && staleEntry) {
         this.emit('cache-error-fallback', { key, error });
 
         if (this.options.debug) {
           console.log(`[Cache] ERROR: ${key}, returning stale data`);
         }
 
-        return entry.data;
+        return staleEntry.data;
       }
 
       throw error;
@@ -179,8 +181,10 @@ export class HttpCacheManager extends EventEmitter {
    * Set cache entry
    */
   set(key: string, data: any, options: CacheOptions): void {
-    // Check if we need to evict entries
-    this.checkCapacity();
+    // Check if we need to evict entries before adding (if key doesn't exist)
+    if (!this.cache.has(key)) {
+      this.checkCapacity();
+    }
 
     // Create cache entry
     const entry: CacheEntry = {
@@ -203,7 +207,11 @@ export class HttpCacheManager extends EventEmitter {
     }
 
     // Set TTL timer for automatic cleanup
-    this.setTTLTimer(key, options.maxAge + (options.staleWhileRevalidate || 0));
+    // If cacheOnError is enabled, keep stale data longer for error fallback
+    const ttl = options.cacheOnError
+      ? Math.max(options.maxAge * 10, 60000) // Keep for 10x maxAge or 60s minimum
+      : options.maxAge + (options.staleWhileRevalidate || 0);
+    this.setTTLTimer(key, ttl);
 
     this.emit('cache-set', { key, options });
   }
@@ -427,7 +435,7 @@ export class HttpCacheManager extends EventEmitter {
    * Check capacity and evict if necessary
    */
   private checkCapacity(): void {
-    // Check max entries
+    // Check max entries - evict if we are at capacity (to make room for new entry)
     if (this.options.maxEntries && this.cache.size >= this.options.maxEntries) {
       this.evictOldest();
     }
@@ -445,9 +453,9 @@ export class HttpCacheManager extends EventEmitter {
    * Evict oldest entries (LRU)
    */
   private evictOldest(): void {
-    // Find oldest entry
+    // Find oldest entry (lowest timestamp = oldest)
     let oldestKey: string | null = null;
-    let oldestTime = Date.now();
+    let oldestTime = Infinity;
 
     for (const [key, entry] of this.cache.entries()) {
       if (entry.timestamp < oldestTime) {

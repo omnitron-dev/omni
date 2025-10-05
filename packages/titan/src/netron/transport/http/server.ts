@@ -13,7 +13,6 @@ import type {
   ServerMetrics
 } from '../types.js';
 import type { LocalPeer } from '../../local-peer.js';
-import type { Definition } from '../../definition.js';
 import { TitanError, ErrorCode } from '../../../errors/index.js';
 import {
   MiddlewarePipeline,
@@ -25,7 +24,6 @@ import {
 } from '../../middleware/index.js';
 import {
   HttpRequestMessage,
-  HttpResponseMessage,
   HttpBatchRequest,
   HttpBatchResponse,
   HttpDiscoveryResponse,
@@ -34,7 +32,7 @@ import {
   isHttpRequestMessage,
   isHttpBatchRequest
 } from './types.js';
-import type { Contract, MethodContract } from '../../../validation/contract.js';
+import type { MethodContract } from '../../../validation/contract.js';
 
 /**
  * Service descriptor for native HTTP handling
@@ -65,7 +63,7 @@ interface MethodDescriptor {
  * Native HTTP Server implementation
  * Handles Netron v2.0 protocol with native JSON messaging
  */
-export class HttpNativeServer extends EventEmitter implements ITransportServer {
+export class HttpServer extends EventEmitter implements ITransportServer {
   readonly connections = new Map<string, ITransportConnection>();
 
   private server: any = null;
@@ -177,12 +175,23 @@ export class HttpNativeServer extends EventEmitter implements ITransportServer {
 
       // Register methods
       for (const methodName of Object.keys(stub.definition.meta.methods || {})) {
+        // Get contract for this method if available
+        let methodContract: any;
+        const contractObj = (stub.definition.meta as any)?.contract;
+        if (contractObj) {
+          // Check if it's a Contract class instance
+          if (contractObj.definition && contractObj.getMethod) {
+            methodContract = contractObj.getMethod(methodName);
+          } else if (contractObj[methodName]) {
+            // Direct contract definition
+            methodContract = contractObj[methodName];
+          }
+        }
+
         descriptor.methods.set(methodName, {
           name: methodName,
-          handler: async (input: any, context: any) => {
-            return stub.call(methodName, [input], this.netronPeer!);
-          },
-          contract: (stub.definition.meta as any)?.contract?.[methodName]
+          handler: async (input: any, context: any) => stub.call(methodName, [input], this.netronPeer!),
+          contract: methodContract
         });
       }
 
@@ -851,15 +860,15 @@ export class HttpNativeServer extends EventEmitter implements ITransportServer {
           });
 
           // Build input from various sources
-          let input: any = {};
+          const input: any = {};
 
-          // Add path parameters
-          if (httpConfig.params && Object.keys(params).length > 0) {
+          // Add path parameters (always include if present)
+          if (Object.keys(params).length > 0) {
             Object.assign(input, params);
           }
 
-          // Add query parameters
-          if (httpConfig.query && Object.keys(query).length > 0) {
+          // Add query parameters (always include if present)
+          if (Object.keys(query).length > 0) {
             Object.assign(input, query);
           }
 

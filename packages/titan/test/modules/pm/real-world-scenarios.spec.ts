@@ -6,8 +6,8 @@
  */
 
 import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { dirname } from 'path';
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import {
   createTestProcessManager,
   TestProcessManager,
@@ -21,9 +21,6 @@ import NotificationService from './processes/notification.process.js';
 import ImageProcessorService from './processes/image-processor.process.js';
 import AnalyticsAggregatorService from './processes/analytics-aggregator.process.js';
 import OrderProcessingWorkflow from './processes/order-processing.workflow.js';
-import ApiGatewayService from './processes/api-gateway.process.js';
-import DatabaseClientService from './processes/database-client.process.js';
-import CachingService from './processes/caching.process.js';
 
 // ESM equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);

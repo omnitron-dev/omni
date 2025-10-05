@@ -6,7 +6,7 @@
  */
 
 import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
+import { dirname } from 'path';
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import {
   createTestProcessManager,

@@ -3,8 +3,6 @@
  */
 
 import {
-  HttpRequestMessage,
-  HttpResponseMessage,
   HttpBatchRequest,
   HttpBatchResponse,
   createRequestMessage,

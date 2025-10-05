@@ -5,9 +5,9 @@
  * OpenAPI specifications from TypeScript contracts.
  */
 
-import type { ContractDefinition, ServiceType, InferInput, InferOutput } from './typed-contract.js';
+import type { ContractDefinition } from './typed-contract.js';
 import { TypedMiddlewarePipeline, type TypedMiddleware } from './typed-middleware.js';
-import { HttpNativeServer } from './server.js';
+import { HttpServer } from './server.js';
 import type { MethodContract } from '../../../validation/contract.js';
 import { z } from 'zod';
 
@@ -97,7 +97,7 @@ export interface RestRouteMapping {
  * Type-Safe HTTP Server
  */
 export class TypedHttpServer {
-  private server: HttpNativeServer;
+  private server: HttpServer;
   private services = new Map<string, ServiceRegistration<any>>();
   private globalPipeline = new TypedMiddlewarePipeline<any>();
   private config: ServerConfig;
@@ -105,11 +105,11 @@ export class TypedHttpServer {
 
   constructor(config: ServerConfig = {}) {
     this.config = config;
-    this.server = new HttpNativeServer({
+    this.server = new HttpServer({
       port: config.port,
       host: config.host,
       cors: config.cors as any,
-      compression: config.compression
+      compression: config.compression as any
     });
   }
 
@@ -336,7 +336,7 @@ export class TypedHttpServer {
   }): Promise<void> {
     // Set up event handlers
     if (options?.onListening) {
-      this.server.on('listening', ({ port }) => options.onListening!(port));
+      this.server.on('listening', ({ port }: { port: number }) => options.onListening!(port));
     }
 
     if (options?.onError) {

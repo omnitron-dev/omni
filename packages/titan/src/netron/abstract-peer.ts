@@ -1,9 +1,8 @@
 import semver from 'semver';
 
-import { Netron } from './netron.js';
+import type { INetron, IPeer } from './netron.types.js';
 import { Interface } from './interface.js';
 import { Definition } from './definition.js';
-import { isServiceInterface } from './predicates.js';
 import { Abilities, EventSubscriber } from './types.js';
 
 /**
@@ -13,7 +12,7 @@ import { Abilities, EventSubscriber } from './types.js';
  *
  * @abstract
  */
-export abstract class AbstractPeer {
+export abstract class AbstractPeer implements IPeer {
   /**
    * Collection of abilities supported by this peer.
    * Abilities represent the capabilities and features that this peer can provide.
@@ -30,11 +29,11 @@ export abstract class AbstractPeer {
   /**
    * Constructs a new AbstractPeer instance.
    *
-   * @param {Netron} netron - The Netron instance this peer belongs to
+   * @param {INetron} netron - The Netron instance this peer belongs to
    * @param {string} id - Unique identifier for this peer
    */
   constructor(
-    public netron: Netron,
+    public netron: INetron,
     public id: string
   ) { }
 
@@ -195,7 +194,7 @@ export abstract class AbstractPeer {
    * @throws {Error} If interface is invalid or not found
    */
   async releaseInterface<T>(iInstance: T, released = new Set<string>()) {
-    if (!isServiceInterface(iInstance) || !iInstance.$def) {
+    if (!(iInstance instanceof Interface) || !iInstance.$def) {
       throw new Error('Invalid interface');
     }
 
@@ -308,3 +307,14 @@ export abstract class AbstractPeer {
     return this.getDefinitionByServiceName(candidates[0]!.key);
   }
 }
+
+/**
+ * Checks if the given object is an instance of the AbstractPeer class.
+ * This predicate is fundamental for peer type validation in the Netron
+ * peer-to-peer communication system.
+ *
+ * @param {any} obj - The object to be checked for AbstractPeer instance membership
+ * @returns {boolean} Returns true if the object is an AbstractPeer instance, false otherwise
+ * @see AbstractPeer
+ */
+export const isNetronPeer = (obj: any): obj is AbstractPeer => obj instanceof AbstractPeer;

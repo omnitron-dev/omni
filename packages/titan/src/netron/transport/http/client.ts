@@ -5,9 +5,9 @@
  * with support for the enhanced interface.
  */
 
-import { HttpDirectConnection } from './connection.js';
-import { HttpDirectPeer } from './peer.js';
-import type { Netron } from '../../netron.js';
+import { HttpConnection } from './connection.js';
+import { HttpRemotePeer } from './peer.js';
+import type { INetron } from '../../netron.types.js';
 import type { TransportOptions } from '../types.js';
 import {
   createRequestMessage,
@@ -21,12 +21,12 @@ import {
  * HTTP Transport Client implementation
  */
 export class HttpTransportClient {
-  private connection?: HttpDirectConnection;
-  private peer?: HttpDirectPeer;
+  private connection?: HttpConnection;
+  private peer?: HttpRemotePeer;
 
   constructor(
     private baseUrl: string,
-    private netron?: Netron,
+    private netron?: INetron,
     private options?: TransportOptions
   ) {
     // Ensure base URL doesn't have trailing slash
@@ -38,10 +38,10 @@ export class HttpTransportClient {
    */
   async initialize(): Promise<void> {
     if (!this.connection) {
-      this.connection = new HttpDirectConnection(this.baseUrl, this.options);
+      this.connection = new HttpConnection(this.baseUrl, this.options);
 
       if (this.netron) {
-        this.peer = new HttpDirectPeer(this.connection, this.netron, this.baseUrl, this.options as any);
+        this.peer = new HttpRemotePeer(this.connection, this.netron, this.baseUrl, this.options as any);
         await this.peer.init(true, this.options as any);
       }
     }
@@ -66,8 +66,8 @@ export class HttpTransportClient {
     if (this.peer) {
       // Get service definition
       const serviceDef = await this.peer.queryInterface(service);
-      if (serviceDef && typeof serviceDef[method] === 'function') {
-        return serviceDef[method](args[0]); // Netron uses single argument
+      if (serviceDef && typeof (serviceDef as any)[method] === 'function') {
+        return (serviceDef as any)[method](args[0]); // Netron uses single argument
       }
     }
 

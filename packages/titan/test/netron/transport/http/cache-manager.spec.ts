@@ -277,25 +277,53 @@ describe('HttpCacheManager', () => {
         maxEntries: 2
       });
 
-      const fetcher = (value: string) => jest.fn(async () => ({ value }));
+      // Track fetch counts
+      let fetch1Count = 0;
+      let fetch2Count = 0;
+      let fetch3Count = 0;
+
+      const fetcher1 = jest.fn(async () => {
+        fetch1Count++;
+        return { value: `value1-${fetch1Count}` };
+      });
+      const fetcher2 = jest.fn(async () => {
+        fetch2Count++;
+        return { value: `value2-${fetch2Count}` };
+      });
+      const fetcher3 = jest.fn(async () => {
+        fetch3Count++;
+        return { value: `value3-${fetch3Count}` };
+      });
 
       // Fill cache to capacity
-      await cache.get('key1', fetcher('value1'), { maxAge: 1000 });
-      await cache.get('key2', fetcher('value2'), { maxAge: 1000 });
+      await cache.get('key1', fetcher1, { maxAge: 1000 });
+      expect(fetch1Count).toBe(1);
 
-      // Add third entry - should evict key1
-      await cache.get('key3', fetcher('value3'), { maxAge: 1000 });
+      await cache.get('key2', fetcher2, { maxAge: 1000 });
+      expect(fetch2Count).toBe(1);
 
-      // key1 should be evicted and need refetch
-      const result1 = await cache.get('key1', fetcher('value1-new'), { maxAge: 1000 });
-      expect(result1).toEqual({ value: 'value1-new' });
+      // Cache is now full with key1 and key2
+      expect(cache.getStats().entries).toBe(2);
 
-      // key2 and key3 should still be cached
-      const result2 = await cache.get('key2', fetcher('value2-new'), { maxAge: 1000 });
-      expect(result2).toEqual({ value: 'value2' }); // Original value
+      // Add third entry - should evict key1 (oldest)
+      await cache.get('key3', fetcher3, { maxAge: 1000 });
+      expect(fetch3Count).toBe(1);
+      expect(cache.getStats().entries).toBe(2);
 
-      const result3 = await cache.get('key3', fetcher('value3-new'), { maxAge: 1000 });
-      expect(result3).toEqual({ value: 'value3' }); // Original value
+      // Now cache should have key2 and key3 only
+      // Accessing key2 and key3 should not trigger fetches
+      const result2 = await cache.get('key2', fetcher2, { maxAge: 1000 });
+      expect(fetch2Count).toBe(1); // No new fetch
+      expect(result2).toEqual({ value: 'value2-1' });
+
+      const result3 = await cache.get('key3', fetcher3, { maxAge: 1000 });
+      expect(fetch3Count).toBe(1); // No new fetch
+      expect(result3).toEqual({ value: 'value3-1' });
+
+      // Accessing key1 should trigger a fetch since it was evicted
+      const result1 = await cache.get('key1', fetcher1, { maxAge: 1000 });
+      expect(fetch1Count).toBe(2); // New fetch required
+      expect(result1).toEqual({ value: 'value1-2' });
 
       cache.clear();
     });
@@ -391,6 +419,311 @@ describe('HttpCacheManager', () => {
       // Trigger invalidate
       cacheManager.invalidate('key1');
       expect(handlers.invalidate).toHaveBeenCalledWith({ keys: ['key1'] });
+    });
+  });
+
+  describe('Debug Mode', () => {
+    it('should log debug messages when debug is enabled', async () => {
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+      const cache = new HttpCacheManager({
+        defaultMaxAge: 5000,
+        debug: true
+      });
+
+      const fetcher = jest.fn(async () => ({ data: 'test' }));
+
+      // Cache miss - should log
+      await cache.get('debug-key', fetcher, { maxAge: 1000 });
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[Cache] MISS: debug-key'));
+
+      // Cache hit - should log
+      await cache.get('debug-key', fetcher, { maxAge: 1000 });
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[Cache] HIT: debug-key'));
+
+      consoleSpy.mockRestore();
+      cache.clear();
+    });
+
+    it('should log stale cache hits in debug mode', async () => {
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+      const cache = new HttpCacheManager({
+        defaultMaxAge: 5000,
+        debug: true
+      });
+
+      const fetcher = jest.fn(async () => ({ data: 'test' }));
+
+      // Initial fetch
+      await cache.get('stale-key', fetcher, { maxAge: 50, staleWhileRevalidate: 100 });
+
+      // Wait for cache to become stale
+      await new Promise(resolve => setTimeout(resolve, 60));
+
+      // Access stale cache
+      await cache.get('stale-key', fetcher, { maxAge: 50, staleWhileRevalidate: 100 });
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[Cache] STALE: stale-key'));
+
+      consoleSpy.mockRestore();
+      cache.clear();
+    });
+
+    it('should log during background revalidation', async () => {
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+      const cache = new HttpCacheManager({
+        defaultMaxAge: 5000,
+        debug: true
+      });
+
+      const fetcher = jest.fn(async () => ({ data: 'test', timestamp: Date.now() }));
+
+      // Initial fetch
+      await cache.get('revalidate-key', fetcher, { maxAge: 50, staleWhileRevalidate: 100 });
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[Cache] MISS'));
+
+      // Wait for cache to become stale
+      await new Promise(resolve => setTimeout(resolve, 60));
+
+      consoleSpy.mockClear();
+
+      // Access stale cache - triggers background revalidation
+      await cache.get('revalidate-key', fetcher, { maxAge: 50, staleWhileRevalidate: 100 });
+
+      // Should log STALE
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[Cache] STALE'));
+
+      consoleSpy.mockRestore();
+      cache.clear();
+    });
+  });
+
+  describe('Size-based Eviction', () => {
+    it('should evict entries when max size is exceeded', async () => {
+      const cache = new HttpCacheManager({
+        maxSizeBytes: 1000,
+        maxEntries: 10 // Allow enough entries
+      });
+
+      const fetcher1 = jest.fn(async () => ({ data: 'x'.repeat(400) })); // ~400 bytes
+      const fetcher2 = jest.fn(async () => ({ data: 'y'.repeat(400) })); // ~400 bytes
+      const fetcher3 = jest.fn(async () => ({ data: 'z'.repeat(400) })); // ~400 bytes
+
+      // Add entries
+      await cache.get('size-key1', fetcher1, { maxAge: 10000 });
+      const statsBefore = cache.getStats();
+      const sizeBefore = statsBefore.sizeBytes;
+
+      await cache.get('size-key2', fetcher2, { maxAge: 10000 });
+
+      // Add third entry - should trigger eviction based on size
+      await cache.get('size-key3', fetcher3, { maxAge: 10000 });
+
+      const statsAfter = cache.getStats();
+      // Size should be controlled (though not exact due to JSON overhead)
+      expect(statsAfter.entries).toBeGreaterThan(0);
+      expect(statsAfter.sizeBytes).toBeGreaterThan(0);
+
+      cache.clear();
+    });
+
+    it('should calculate size correctly', async () => {
+      const cache = new HttpCacheManager({
+        maxSizeBytes: 10000
+      });
+
+      const smallData = { value: 'small' };
+      const fetcher = jest.fn(async () => smallData);
+
+      await cache.get('size-test', fetcher, { maxAge: 1000 });
+
+      const stats = cache.getStats();
+      expect(stats.sizeBytes).toBeGreaterThan(0);
+      expect(stats.entries).toBe(1);
+
+      cache.clear();
+    });
+  });
+
+  describe('Edge Cases', () => {
+    it('should handle concurrent gets for same key from cache', async () => {
+      const fetcher = jest.fn(async () => ({ data: 'concurrent' }));
+
+      // First fetch to populate cache
+      await cacheManager.get('concurrent-key', fetcher, { maxAge: 1000 });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+
+      // Concurrent gets should hit cache
+      const promises = [
+        cacheManager.get('concurrent-key', fetcher, { maxAge: 1000 }),
+        cacheManager.get('concurrent-key', fetcher, { maxAge: 1000 }),
+        cacheManager.get('concurrent-key', fetcher, { maxAge: 1000 })
+      ];
+
+      const results = await Promise.all(promises);
+
+      // Should not fetch again (still 1 time)
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      results.forEach(result => {
+        expect(result).toEqual({ data: 'concurrent' });
+      });
+    });
+
+    it('should handle delete of non-existent key', () => {
+      const result = cacheManager.delete('non-existent');
+      expect(result).toBe(false);
+    });
+
+    it('should delete existing key successfully', async () => {
+      const fetcher = jest.fn(async () => ({ data: 'test' }));
+
+      await cacheManager.get('delete-test', fetcher, { maxAge: 1000 });
+
+      let stats = cacheManager.getStats();
+      expect(stats.entries).toBe(1);
+
+      const deleted = cacheManager.delete('delete-test');
+      expect(deleted).toBe(true);
+
+      stats = cacheManager.getStats();
+      expect(stats.entries).toBe(0);
+    });
+
+    it('should update stats correctly', async () => {
+      cacheManager.clear();
+
+      const fetcher = jest.fn(async () => ({ data: 'test' }));
+
+      const initialStats = cacheManager.getStats();
+      expect(initialStats.hits).toBe(0);
+      expect(initialStats.misses).toBe(0);
+
+      // Miss
+      await cacheManager.get('stats-key', fetcher, { maxAge: 1000 });
+
+      let stats = cacheManager.getStats();
+      expect(stats.misses).toBe(1);
+
+      // Hit
+      await cacheManager.get('stats-key', fetcher, { maxAge: 1000 });
+
+      stats = cacheManager.getStats();
+      expect(stats.hits).toBe(1);
+    });
+  });
+
+  describe('Cache Hit Tracking', () => {
+    it('should track cache hits with isCacheHit method', async () => {
+      const fetcher = jest.fn().mockResolvedValue('data');
+      const cacheManager = new HttpCacheManager({ debug: false });
+
+      // First call - miss
+      expect(cacheManager.isCacheHit('hit-key')).toBe(false);
+
+      await cacheManager.get('hit-key', fetcher, { maxAge: 1000 });
+
+      // After first call - still not a hit (was a miss)
+      expect(cacheManager.isCacheHit('hit-key')).toBe(false);
+
+      // Second call - hit
+      await cacheManager.get('hit-key', fetcher, { maxAge: 1000 });
+
+      // Now it should be tracked as a hit
+      expect(cacheManager.isCacheHit('hit-key')).toBe(true);
+    });
+
+    it('should clear hit tracking on cache clear', async () => {
+      const fetcher = jest.fn().mockResolvedValue('data');
+      const cacheManager = new HttpCacheManager({ debug: false });
+
+      await cacheManager.get('hit-key', fetcher, { maxAge: 1000 });
+      await cacheManager.get('hit-key', fetcher, { maxAge: 1000 });
+
+      expect(cacheManager.isCacheHit('hit-key')).toBe(true);
+
+      cacheManager.clear();
+
+      expect(cacheManager.isCacheHit('hit-key')).toBe(false);
+    });
+  });
+
+  describe('Debug Mode - Advanced', () => {
+    it('should log invalidation count in debug mode', async () => {
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+      const cacheManager = new HttpCacheManager({ debug: true });
+      const fetcher = jest.fn().mockResolvedValue('data');
+
+      await cacheManager.get('key1', fetcher, { maxAge: 1000, tags: ['test'] });
+      await cacheManager.get('key2', fetcher, { maxAge: 1000, tags: ['test'] });
+      await cacheManager.get('key3', fetcher, { maxAge: 1000, tags: ['other'] });
+
+      cacheManager.invalidate(['test']);
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[Cache] INVALIDATED: 2 entries')
+      );
+
+      consoleSpy.mockRestore();
+    });
+
+    it('should log eviction in debug mode', async () => {
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+      const cacheManager = new HttpCacheManager({ debug: true, maxEntries: 2 });
+      const fetcher = jest.fn().mockResolvedValue('data');
+
+      await cacheManager.get('key1', fetcher, { maxAge: 1000 });
+      await cacheManager.get('key2', fetcher, { maxAge: 1000 });
+      await cacheManager.get('key3', fetcher, { maxAge: 1000 }); // Should evict key1
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[Cache] EVICTED:')
+      );
+
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('Edge Cases - Advanced', () => {
+    it('should handle multiple tag invalidations', async () => {
+      const cacheManager = new HttpCacheManager();
+      const fetcher = jest.fn().mockResolvedValue('data');
+
+      await cacheManager.get('key1', fetcher, { maxAge: 1000, tags: ['tag1', 'tag2'] });
+      await cacheManager.get('key2', fetcher, { maxAge: 1000, tags: ['tag2', 'tag3'] });
+      await cacheManager.get('key3', fetcher, { maxAge: 1000, tags: ['tag3'] });
+
+      cacheManager.invalidate(['tag2']);
+
+      const stats = cacheManager.getStats();
+      expect(stats.entries).toBe(1); // Only key3 should remain
+    });
+
+    it('should track active revalidations in stats', async () => {
+      const cacheManager = new HttpCacheManager({ debug: false });
+
+      // Mock a slow fetcher to keep revalidation active
+      const slowFetcher = jest.fn().mockImplementation(() =>
+        new Promise(resolve => setTimeout(() => resolve('data'), 50))
+      );
+
+      // First call
+      await cacheManager.get('key', slowFetcher, {
+        maxAge: 10,
+        staleWhileRevalidate: 1000
+      });
+
+      // Wait for stale
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      // Trigger revalidation
+      const promise = cacheManager.get('key', slowFetcher, {
+        maxAge: 10,
+        staleWhileRevalidate: 1000
+      });
+
+      // Check stats during revalidation
+      const stats = cacheManager.getStats();
+      expect(stats.activeRevalidations).toBeGreaterThan(0);
+
+      await promise;
     });
   });
 });

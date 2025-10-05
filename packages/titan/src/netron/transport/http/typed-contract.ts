@@ -6,7 +6,7 @@
  */
 
 import { z } from 'zod';
-import type { Contract, MethodContract } from '../../../validation/contract.js';
+import type { MethodContract } from '../../../validation/contract.js';
 import { HttpTransportClient } from './client.js';
 import type { OptimisticUpdateOptions } from './optimistic-update-manager.js';
 
@@ -31,28 +31,28 @@ export interface MiddlewareConfig {
  */
 export type ServiceMethod<M extends MethodContract> =
   M['stream'] extends true
-    ? StreamMethod<M>
-    : AsyncMethod<M>;
+  ? StreamMethod<M>
+  : AsyncMethod<M>;
 
 /**
  * Async method type with input/output inference
  */
 export type AsyncMethod<M extends MethodContract> =
   M['input'] extends z.ZodSchema<infer I>
-    ? M['output'] extends z.ZodSchema<infer O>
-      ? (input: I) => Promise<O>
-      : never
-    : never;
+  ? M['output'] extends z.ZodSchema<infer O>
+  ? (input: I) => Promise<O>
+  : never
+  : never;
 
 /**
  * Stream method type with input/output inference
  */
 export type StreamMethod<M extends MethodContract> =
   M['input'] extends z.ZodSchema<infer I>
-    ? M['output'] extends z.ZodSchema<infer O>
-      ? (input: I) => AsyncIterable<O>
-      : never
-    : never;
+  ? M['output'] extends z.ZodSchema<infer O>
+  ? (input: I) => AsyncIterable<O>
+  : never
+  : never;
 
 /**
  * Service type inferred from contract definition
@@ -110,7 +110,7 @@ export interface QueryOptions {
  * Enhanced Contract with perfect type inference
  */
 export class TypedContract<T extends ContractDefinition> {
-  constructor(private definition: T) {}
+  constructor(private definition: T) { }
 
   /**
    * Infer complete service type from contract
@@ -215,9 +215,7 @@ export class TypedHttpClient<
         const methodContract = this.contract.getDefinition()[prop];
         if (!methodContract) return undefined;
 
-        return (input: any) => {
-          return this.call(prop as keyof TContract, input).execute();
-        };
+        return (input: any) => this.call(prop as keyof TContract, input).execute();
       }
     });
   }
@@ -245,7 +243,7 @@ export class TypedHttpClient<
   ): () => void {
     // Implementation would use SubscriptionManager
     console.warn('Subscriptions not yet implemented');
-    return () => {};
+    return () => { };
   }
 }
 
@@ -264,7 +262,7 @@ export class QueryBuilder<
     private method: string,
     private input: InferInput<TContract[TMethod]>,
     private methodContract: TContract[TMethod]
-  ) {}
+  ) { }
 
   /**
    * Configure caching with type preservation
@@ -349,7 +347,15 @@ export class QueryBuilder<
       this.serviceName,
       this.method,
       [this.input],
-      this.options
+      {
+        context: this.options.optimisticUpdate ? {} : undefined,
+        hints: {
+          timeout: this.options.timeout,
+          priority: this.options.priority,
+          cache: this.options.cache,
+          retry: this.options.retry
+        }
+      }
     );
 
     // Validate output if schema exists
@@ -384,7 +390,7 @@ export class MutationBuilder<
   constructor(
     private queryBuilder: QueryBuilder<TContract, TMethod>,
     private optimisticUpdate?: (current: any) => any
-  ) {}
+  ) { }
 
   /**
    * Configure rollback handler

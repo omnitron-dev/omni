@@ -1,9 +1,15 @@
+import { describe, it, expect } from '@jest/globals';
 import Long from 'long';
-import * as fs from 'fs';
-import * as path from 'path';
+import { readFileSync, readdirSync, statSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { SmartBuffer } from '@omnitron-dev/smartbuffer';
 
-import { Serializer, serializer } from '../src';
+import { Serializer, serializer } from '../src/index.js';
+
+// ESM __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 describe('Serializer', () => {
   it('encode/decode booleans', () => {
@@ -19,7 +25,7 @@ describe('Serializer', () => {
   });
 
   describe('1-byte-length-buffers', () => {
-    const build = function (size: number): Buffer {
+    const build = (size: number): Buffer => {
       const buf = Buffer.allocUnsafe(size);
       buf.fill('a');
 
@@ -68,24 +74,25 @@ describe('Serializer', () => {
   });
 
   describe('1-byte-length-exts', () => {
-    const serializer = new Serializer();
+    const customSerializer = new Serializer();
 
-    const MyType = function (this: any, size: number, value: any) {
-      this.value = value;
-      this.size = size;
-    };
+    class MyType {
+      value: string;
+      size: number;
 
-    const mytypeEncode = function (obj: any, resbuf: { write: (arg0: Buffer<ArrayBuffer>) => void }) {
+      constructor(size: number, value: string) {
+        this.value = value;
+        this.size = size;
+      }
+    }
+
+    const mytypeEncode = (obj: MyType, resbuf: { write: (buf: Buffer) => void }) => {
       const buf = Buffer.allocUnsafe(obj.size);
       buf.fill(obj.value);
       resbuf.write(buf);
     };
 
-    const mytypeDecode = function (buf: {
-      length: number;
-      toString: (arg0: string, arg1: number, arg2: number) => any;
-      readUInt8: (arg0: number) => any;
-    }) {
+    const mytypeDecode = (buf: SmartBuffer): MyType => {
       const result = new MyType(buf.length, buf.toString('utf8', 0, 1));
 
       for (let i = 0; i < buf.length; i++) {
@@ -97,7 +104,7 @@ describe('Serializer', () => {
       return result;
     };
 
-    serializer.register(0x42, MyType, mytypeEncode, mytypeDecode);
+    customSerializer.register(0x42, MyType, mytypeEncode, mytypeDecode);
 
     it('encode/decode variable ext data up to 0xff', () => {
       const all: any[] = [];
@@ -123,28 +130,28 @@ describe('Serializer', () => {
       all.push(new MyType(255, 'a'));
 
       all.forEach((orig) => {
-        const encoded = serializer.encode(orig);
-        const output = serializer.decode(encoded);
+        const encoded = customSerializer.encode(orig);
+        const output = customSerializer.decode(encoded);
         expect(output).toEqual(orig);
       });
     });
 
     it('decoding an incomplete variable ext data up to 0xff', () => {
       const length = 250;
-      const obj = serializer.encode(new MyType(length, 'a'));
+      const obj = customSerializer.encode(new MyType(length, 'a'));
       const buf = Buffer.allocUnsafe(length);
       buf[0] = 0xc7;
       buf.writeUInt8(length + 2, 1); // set bigger size
       obj.buffer.copy(buf, 2, 2, length);
       const sbuf = SmartBuffer.wrap(buf);
-      expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
+      expect(() => customSerializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
 
     it('decoding an incomplete header of variable ext data up to 0xff', () => {
       const buf = Buffer.allocUnsafe(2);
       buf[0] = 0xc7;
       const sbuf = new SmartBuffer().write(buf);
-      expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
+      expect(() => customSerializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
   });
 
@@ -241,27 +248,25 @@ describe('Serializer', () => {
 
   describe('2-bytes-length-exts', () => {
     it('encode/decode variable ext data up between 0x0100 and 0xffff', () => {
-      const all: any[] = [];
+      const all: MyType[] = [];
 
-      const MyType = function (this: any, size, value) {
-        this.value = value;
-        this.size = size;
-      };
+      class MyType {
+        value: string;
+        size: number;
 
-      const mytypeEncode = function (
-        obj: { size: number; value: string | number | Uint8Array<ArrayBufferLike> },
-        resbuf: { write: (arg0: Buffer<ArrayBuffer>) => void }
-      ) {
+        constructor(size: number, value: string) {
+          this.value = value;
+          this.size = size;
+        }
+      }
+
+      const mytypeEncode = (obj: MyType, resbuf: { write: (buf: Buffer) => void }) => {
         const buf = Buffer.allocUnsafe(obj.size);
         buf.fill(obj.value);
         resbuf.write(buf);
       };
 
-      const mytypeDecode = function (buf: {
-        length: number;
-        toString: (arg0: string, arg1: number, arg2: number) => any;
-        readUInt8: (arg0: number) => any;
-      }) {
+      const mytypeDecode = (buf: SmartBuffer): MyType => {
         const result = new MyType(buf.length, buf.toString('utf8', 0, 1));
 
         for (let i = 0; i < buf.length; i++) {
@@ -374,8 +379,8 @@ describe('Serializer', () => {
   describe('2-bytes-length-maps', () => {
     const base = 100000;
 
-    const build = function (size: number, value: number) {
-      const map = {};
+    const build = (size: number, value: number): Record<number, number> => {
+      const map: Record<number, number> = {};
 
       for (let i = 0; i < size; i++) {
         map[i + base] = value;
@@ -497,30 +502,28 @@ describe('Serializer', () => {
   });
 
   describe('4-bytes-length-exts', () => {
-    const serializer = new Serializer();
+    const customSerializer = new Serializer();
 
     it('encode/decode variable ext data up between 0x10000 and 0xffffffff', () => {
-      const all: any[] = [];
+      const all: MyType[] = [];
 
-      const MyType = function (this: any, size, value) {
-        this.value = value;
-        this.size = size;
-      };
+      class MyType {
+        value: string;
+        size: number;
 
-      const mytypeEncode = function (
-        obj: { size: number; value: string | number | Uint8Array<ArrayBufferLike> },
-        resbuf: { write: (arg0: Buffer<ArrayBuffer>) => void }
-      ) {
+        constructor(size: number, value: string) {
+          this.value = value;
+          this.size = size;
+        }
+      }
+
+      const mytypeEncode = (obj: MyType, resbuf: { write: (buf: Buffer) => void }) => {
         const buf = Buffer.allocUnsafe(obj.size);
         buf.fill(obj.value);
         resbuf.write(buf);
       };
 
-      const mytypeDecode = function (buf: {
-        length: number;
-        toString: (arg0: string, arg1: number, arg2: number) => any;
-        readUInt8: (arg0: number) => any;
-      }) {
+      const mytypeDecode = (buf: SmartBuffer): MyType => {
         const result = new MyType(buf.length, buf.toString('utf8', 0, 1));
 
         for (let i = 0; i < buf.length; i++) {
@@ -532,14 +535,14 @@ describe('Serializer', () => {
         return result;
       };
 
-      serializer.register(0x52, MyType, mytypeEncode, mytypeDecode);
+      customSerializer.register(0x52, MyType, mytypeEncode, mytypeDecode);
 
       all.push(new MyType(0x10000, 'a'));
       all.push(new MyType(0x10001, 'a'));
       all.push(new MyType(0xffffff, 'a'));
 
       all.forEach((orig) => {
-        expect(serializer.decode(serializer.encode(orig))).toEqual(orig);
+        expect(customSerializer.decode(customSerializer.encode(orig))).toEqual(orig);
       });
     });
   });
@@ -695,11 +698,10 @@ describe('Serializer', () => {
   });
 
   describe('15-elements-maps', () => {
-    const build = function (size: number, value: string | number) {
-      const map = {};
-      let i: number;
+    const build = (size: number, value: string | number): Record<string, string | number> => {
+      const map: Record<string, string | number> = {};
 
-      for (i = 0; i < size; i++) {
+      for (let i = 0; i < size; i++) {
         map[`${i + 100}`] = value;
       }
 
@@ -934,236 +936,258 @@ describe('Serializer', () => {
 
   describe('fixexts', () => {
     it('encode/decode 1 byte fixext data', () => {
-      const serializer = new Serializer();
-      const all: any[] = [];
+      const customSerializer = new Serializer();
+      const all: MyType[] = [];
 
-      const MyType = function (this: any, data) {
-        this.data = data;
-      };
+      class MyType {
+        data: number;
 
-      const mytypeEncode = function (obj: { data: any }, buf: { writeUInt8: (arg0: any) => void }) {
+        constructor(data: number) {
+          this.data = data;
+        }
+      }
+
+      const mytypeEncode = (obj: MyType, buf: { writeUInt8: (value: number) => void }) => {
         buf.writeUInt8(obj.data);
       };
 
-      const mytypeDecode = function (data: { readUInt8: () => any }) {
-        return new MyType(data.readUInt8());
-      };
+      const mytypeDecode = (data: SmartBuffer): MyType => new MyType(data.readUInt8()!);
 
-      serializer.register(0x42, MyType, mytypeEncode, mytypeDecode);
+      customSerializer.register(0x42, MyType, mytypeEncode, mytypeDecode);
 
       all.push(new MyType(0));
       all.push(new MyType(1));
       all.push(new MyType(42));
 
       all.forEach((orig) => {
-        const encoded = serializer.encode(orig);
-        const decoded = serializer.decode(encoded);
+        const encoded = customSerializer.encode(orig);
+        const decoded = customSerializer.decode(encoded);
         expect(decoded).toEqual(orig);
       });
     });
 
     it('encode/decode 2 bytes fixext data', () => {
-      const serializer = new Serializer();
-      const all: any = [];
+      const customSerializer = new Serializer();
+      const all: MyType[] = [];
 
-      const MyType = function (this: any, data) {
-        this.data = data;
-      };
+      class MyType {
+        data: number;
 
-      const mytypeEncode = function (obj: { data: any }, buf: { writeUInt16BE: (arg0: any) => void }) {
+        constructor(data: number) {
+          this.data = data;
+        }
+      }
+
+      const mytypeEncode = (obj: MyType, buf: { writeUInt16BE: (value: number) => void }) => {
         buf.writeUInt16BE(obj.data);
       };
 
-      const mytypeDecode = function (data: { readUInt16BE: () => any }) {
-        // console.log('FUCKING DATAAAAAAAAAAAAA: ',data);
-        return new MyType(data.readUInt16BE());
-      };
+      const mytypeDecode = (data: SmartBuffer): MyType => new MyType(data.readUInt16BE()!!);
 
-      serializer.register(0x42, MyType, mytypeEncode, mytypeDecode);
-
-      all.push(new MyType(0));
-      all.push(new MyType(1));
-      all.push(new MyType(42));
-
-      all.forEach((orig: any) => {
-        expect(serializer.decode(serializer.encode(orig))).toEqual(orig);
-      });
-    });
-
-    it('encode/decode 4 bytes fixext data', () => {
-      const serializer = new Serializer();
-      const all: any[] = [];
-
-      const MyType = function (this: any, data) {
-        this.data = data;
-      };
-
-      const mytypeEncode = function (obj: { data: any }, buf: { writeUInt32BE: (arg0: any) => void }) {
-        buf.writeUInt32BE(obj.data);
-      };
-
-      const mytypeDecode = function (data: { readUInt32BE: () => any }) {
-        return new MyType(data.readUInt32BE());
-      };
-
-      serializer.register(0x44, MyType, mytypeEncode, mytypeDecode);
+      customSerializer.register(0x42, MyType, mytypeEncode, mytypeDecode);
 
       all.push(new MyType(0));
       all.push(new MyType(1));
       all.push(new MyType(42));
 
       all.forEach((orig) => {
-        expect(serializer.decode(serializer.encode(orig))).toEqual(orig);
+        expect(customSerializer.decode(customSerializer.encode(orig))).toEqual(orig);
+      });
+    });
+
+    it('encode/decode 4 bytes fixext data', () => {
+      const customSerializer = new Serializer();
+      const all: MyType[] = [];
+
+      class MyType {
+        data: number;
+
+        constructor(data: number) {
+          this.data = data;
+        }
+      }
+
+      const mytypeEncode = (obj: MyType, buf: { writeUInt32BE: (value: number) => void }) => {
+        buf.writeUInt32BE(obj.data);
+      };
+
+      const mytypeDecode = (data: SmartBuffer): MyType => new MyType(data.readUInt32BE()!!);
+
+      customSerializer.register(0x44, MyType, mytypeEncode, mytypeDecode);
+
+      all.push(new MyType(0));
+      all.push(new MyType(1));
+      all.push(new MyType(42));
+
+      all.forEach((orig) => {
+        expect(customSerializer.decode(customSerializer.encode(orig))).toEqual(orig);
       });
     });
 
     it('encode/decode 8 bytes fixext data', () => {
-      const serializer = new Serializer();
-      const all: any[] = [];
+      const customSerializer = new Serializer();
+      const all: MyType[] = [];
 
-      const MyType = function (this: any, data) {
-        this.data = data;
-      };
+      class MyType {
+        data: number;
 
-      const mytypeEncode = function (obj: { data: number }, buf: { writeUInt32BE: (arg0: number) => void }) {
+        constructor(data: number) {
+          this.data = data;
+        }
+      }
+
+      const mytypeEncode = (obj: MyType, buf: { writeUInt32BE: (value: number) => void }) => {
         buf.writeUInt32BE(obj.data / 2);
         buf.writeUInt32BE(obj.data / 2);
       };
 
-      const mytypeDecode = function (data: { readUInt32BE: () => any }) {
-        return new MyType(data.readUInt32BE() + data.readUInt32BE());
-      };
+      const mytypeDecode = (data: SmartBuffer): MyType =>
+        new MyType(data.readUInt32BE()! + data.readUInt32BE()!);
 
-      serializer.register(0x44, MyType, mytypeEncode, mytypeDecode);
+      customSerializer.register(0x44, MyType, mytypeEncode, mytypeDecode);
 
       all.push(new MyType(2));
       all.push(new MyType(4));
       all.push(new MyType(42));
 
       all.forEach((orig) => {
-        expect(serializer.decode(serializer.encode(orig))).toEqual(orig);
+        expect(customSerializer.decode(customSerializer.encode(orig))).toEqual(orig);
       });
     });
 
     it('encode/decode 16 bytes fixext data', () => {
-      const serializer = new Serializer();
-      const all: any[] = [];
+      const customSerializer = new Serializer();
+      const all: MyType[] = [];
 
-      const MyType = function (this: any, data) {
-        this.data = data;
-      };
+      class MyType {
+        data: number;
 
-      const mytypeEncode = function (obj: { data: number }, buf: { writeUInt32BE: (arg0: number) => void }) {
+        constructor(data: number) {
+          this.data = data;
+        }
+      }
+
+      const mytypeEncode = (obj: MyType, buf: { writeUInt32BE: (value: number) => void }) => {
         buf.writeUInt32BE(obj.data / 4);
         buf.writeUInt32BE(obj.data / 4);
         buf.writeUInt32BE(obj.data / 4);
         buf.writeUInt32BE(obj.data / 4);
       };
 
-      const mytypeDecode = function (data: { readUInt32BE: () => any }) {
-        return new MyType(data.readUInt32BE() + data.readUInt32BE() + data.readUInt32BE() + data.readUInt32BE());
-      };
+      const mytypeDecode = (data: SmartBuffer): MyType =>
+        new MyType(data.readUInt32BE()! + data.readUInt32BE()! + data.readUInt32BE()! + data.readUInt32BE()!);
 
-      serializer.register(0x46, MyType, mytypeEncode, mytypeDecode);
+      customSerializer.register(0x46, MyType, mytypeEncode, mytypeDecode);
 
       all.push(new MyType(4));
       all.push(new MyType(8));
       all.push(new MyType(44));
 
       all.forEach((orig) => {
-        expect(serializer.decode(serializer.encode(orig))).toEqual(orig);
+        expect(customSerializer.decode(customSerializer.encode(orig))).toEqual(orig);
       });
     });
 
     it('encode/decode fixext inside a map', () => {
-      const serializer = new Serializer();
-      const all: any[] = [];
+      const customSerializer = new Serializer();
+      const all: Record<string, MyType | number>[] = [];
 
-      const MyType = function (this: any, data) {
-        this.data = data;
-      };
+      class MyType {
+        data: number;
 
-      const mytypeEncode = function (obj: { data: any }, buf: { writeUInt32BE: (arg0: any) => void }) {
+        constructor(data: number) {
+          this.data = data;
+        }
+      }
+
+      const mytypeEncode = (obj: MyType, buf: { writeUInt32BE: (value: number) => void }) => {
         buf.writeUInt32BE(obj.data);
       };
 
-      const mytypeDecode = function (data: { readUInt32BE: () => any }) {
-        return new MyType(data.readUInt32BE());
-      };
+      const mytypeDecode = (data: SmartBuffer): MyType => new MyType(data.readUInt32BE()!!);
 
-      serializer.register(0x42, MyType, mytypeEncode, mytypeDecode);
+      customSerializer.register(0x42, MyType, mytypeEncode, mytypeDecode);
 
       all.push({ ret: new MyType(42) });
       all.push({ a: new MyType(42), b: new MyType(43) });
 
       all.push(
-        [1, 2, 3, 4, 5, 6].reduce((acc, key) => {
-          acc[key] = new MyType(key);
-          return acc;
-        }, {})
+        [1, 2, 3, 4, 5, 6].reduce(
+          (acc, key) => {
+            acc[key] = new MyType(key);
+            return acc;
+          },
+          {} as Record<number, MyType>
+        )
       );
 
       all.forEach((orig) => {
-        const encoded = serializer.encode(orig);
-        expect(serializer.decode(encoded)).toEqual(orig);
+        const encoded = customSerializer.encode(orig);
+        expect(customSerializer.decode(encoded)).toEqual(orig);
       });
     });
 
     it('encode/decode 8 bytes fixext data', () => {
-      const serializer = new Serializer();
-      const all: any[] = [];
+      const customSerializer = new Serializer();
+      const all: MyType[] = [];
 
-      const MyType = function (this: any, data) {
-        this.data = data;
-      };
+      class MyType {
+        data: number;
 
-      const mytypeEncode = function (obj: { data: number }, buf: { writeUInt32BE: (arg0: number) => void }) {
+        constructor(data: number) {
+          this.data = data;
+        }
+      }
+
+      const mytypeEncode = (obj: MyType, buf: { writeUInt32BE: (value: number) => void }) => {
         buf.writeUInt32BE(obj.data / 2);
         buf.writeUInt32BE(obj.data / 2);
       };
 
-      const mytypeDecode = function (data: { readUInt32BE: () => any }) {
-        return new MyType(data.readUInt32BE() + data.readUInt32BE());
-      };
+      const mytypeDecode = (data: SmartBuffer): MyType =>
+        new MyType(data.readUInt32BE()! + data.readUInt32BE()!);
 
-      serializer.register(0x44, MyType, mytypeEncode, mytypeDecode);
+      customSerializer.register(0x44, MyType, mytypeEncode, mytypeDecode);
 
       all.push(new MyType(2));
       all.push(new MyType(4));
       all.push(new MyType(42));
 
       all.forEach((orig) => {
-        expect(serializer.decode(serializer.encode(orig))).toEqual(orig);
+        expect(customSerializer.decode(customSerializer.encode(orig))).toEqual(orig);
       });
     });
 
     it('encode/decode 16 bytes fixext data', () => {
-      const serializer = new Serializer();
-      const all: any[] = [];
+      const customSerializer = new Serializer();
+      const all: MyType[] = [];
 
-      const MyType = function (this: any, data) {
-        this.data = data;
-      };
+      class MyType {
+        data: number;
 
-      const mytypeEncode = function (obj: { data: number }, buf: { writeUInt32BE: (arg0: number) => void }) {
+        constructor(data: number) {
+          this.data = data;
+        }
+      }
+
+      const mytypeEncode = (obj: MyType, buf: { writeUInt32BE: (value: number) => void }) => {
         buf.writeUInt32BE(obj.data / 4);
         buf.writeUInt32BE(obj.data / 4);
         buf.writeUInt32BE(obj.data / 4);
         buf.writeUInt32BE(obj.data / 4);
       };
 
-      const mytypeDecode = function (data: { readUInt32BE: () => any }) {
-        return new MyType(data.readUInt32BE() + data.readUInt32BE() + data.readUInt32BE() + data.readUInt32BE());
-      };
+      const mytypeDecode = (data: SmartBuffer): MyType =>
+        new MyType(data.readUInt32BE()! + data.readUInt32BE()! + data.readUInt32BE()! + data.readUInt32BE()!);
 
-      serializer.register(0x46, MyType, mytypeEncode, mytypeDecode);
+      customSerializer.register(0x46, MyType, mytypeEncode, mytypeDecode);
 
       all.push(new MyType(4));
       all.push(new MyType(8));
       all.push(new MyType(44));
 
       all.forEach((orig) => {
-        expect(serializer.decode(serializer.encode(orig))).toEqual(orig);
+        expect(customSerializer.decode(customSerializer.encode(orig))).toEqual(orig);
       });
     });
   });
@@ -1191,7 +1215,7 @@ describe('Serializer', () => {
   });
 
   it('should not encode a function inside a map', () => {
-    const noop = function () {};
+    const noop = () => { };
 
     const toEncode = {
       hello: 'world',
@@ -1210,47 +1234,57 @@ describe('Serializer', () => {
   });
 
   it('custom type registeration assertions', () => {
-    const Type0 = function (this: any, value) {
-      this.value = value;
+    class Type0 {
+      value: string;
+
+      constructor(value: string) {
+        this.value = value;
+      }
+    }
+
+    const type0Encode = (obj: Type0, buf: SmartBuffer) => {
+      const strBuf = Buffer.from(obj.value, 'utf8');
+      buf.write(strBuf);
     };
 
-    const type0Encode = function (value: any) {
-      return new Type0(value);
+    const type0Decode = (buf: SmartBuffer) => {
+      const str = buf.toBuffer().toString('utf8');
+      return new Type0(str);
     };
 
-    const type0Decode = function (type0: { value: any }) {
-      return type0.value;
+    class TypeNeg {
+      value: string;
+
+      constructor(value: string) {
+        this.value = value;
+      }
+    }
+
+    const typeNegEncode = (obj: TypeNeg, buf: SmartBuffer) => {
+      const strBuf = Buffer.from(obj.value, 'utf8');
+      buf.write(strBuf);
     };
 
-    const TypeNeg = function (this: any, value) {
-      this.value = value;
+    const typeNegDecode = (buf: SmartBuffer) => {
+      const str = buf.toBuffer().toString('utf8');
+      return new TypeNeg(str);
     };
 
-    const typeNegEncode = function (value: any) {
-      return new TypeNeg(value);
-    };
-
-    const typeNegDecode = function (typeneg: { value: any }) {
-      return typeneg.value;
-    };
-
-    expect(() => serializer.register(0, Type0, type0Decode, type0Encode)).not.toThrow();
-    // @ts-expect-error
+    expect(() => serializer.register(0, Type0, type0Encode, type0Decode)).not.toThrow();
     expect(() => serializer.register(-1, TypeNeg, typeNegEncode, typeNegDecode)).toThrow();
 
     const encoded = serializer.encode(new Type0('hi'));
-    let decoded: any;
+    let decoded: unknown;
     expect(encoded.readUInt8(1)).toEqual(0x0);
     expect(() => (decoded = serializer.decode(encoded))).not.toThrow();
     expect(decoded).toBeInstanceOf(Type0);
   });
 
   describe('object-with-arrays', () => {
-    const build = function (size: number) {
-      const array: any[] = [];
-      let i: number;
+    const build = (size: number): number[] => {
+      const array: number[] = [];
 
-      for (i = 0; i < size; i++) {
+      for (let i = 0; i < size; i++) {
         array.push(42);
       }
 
@@ -1316,14 +1350,17 @@ describe('Serializer', () => {
     });
 
     it('encode/decode map with all files in this directory', () => {
-      const files = fs.readdirSync(__dirname);
-      const map: Record<string, Buffer> = files.reduce((acc, file) => {
-        const nowFile = path.join(__dirname, file);
-        if (!fs.statSync(nowFile).isDirectory()) {
-          acc[file] = fs.readFileSync(nowFile);
-        }
-        return acc;
-      }, {});
+      const files = readdirSync(__dirname);
+      const map: Record<string, Buffer> = files.reduce(
+        (acc, file) => {
+          const nowFile = join(__dirname, file);
+          if (!statSync(nowFile).isDirectory()) {
+            acc[file] = readFileSync(nowFile);
+          }
+          return acc;
+        },
+        {} as Record<string, Buffer>
+      );
 
       for (const [name, buff] of Object.entries(map)) {
         map[name] = Buffer.from(buff);
@@ -1349,14 +1386,17 @@ describe('Serializer', () => {
     });
 
     it('encode/decode map with all files in this directory', () => {
-      const files = fs.readdirSync(__dirname);
-      const map = files.reduce((acc, file) => {
-        const nowFile = path.join(__dirname, file);
-        if (!fs.statSync(nowFile).isDirectory()) {
-          acc[file] = fs.readFileSync(path.join(__dirname, file)).toString('utf8');
-        }
-        return acc;
-      }, {});
+      const files = readdirSync(__dirname);
+      const map = files.reduce(
+        (acc, file) => {
+          const nowFile = join(__dirname, file);
+          if (!statSync(nowFile).isDirectory()) {
+            acc[file] = readFileSync(join(__dirname, file)).toString('utf8');
+          }
+          return acc;
+        },
+        {} as Record<string, string>
+      );
 
       expect(serializer.decode(serializer.encode(map))).toEqual(map);
     });

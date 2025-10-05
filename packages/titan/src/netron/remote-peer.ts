@@ -666,6 +666,9 @@ export class RemotePeer extends AbstractPeer {
         this.logger.debug({ name }, 'Processing TASK packet');
 
         try {
+          if (!this.netron.runTask) {
+            throw new Error('runTask not available');
+          }
           await this.sendResponse(packet, await this.netron.runTask(this, name, ...args));
         } catch (err: any) {
           this.logger.error({ value: err }, 'Error running task:');

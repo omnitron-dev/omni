@@ -4,7 +4,6 @@
  */
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import type { HttpSubscriptionResponse } from './types.js';
 
 /**
  * Subscription entry

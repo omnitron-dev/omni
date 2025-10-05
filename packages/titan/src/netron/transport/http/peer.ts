@@ -9,7 +9,7 @@
 import { EventEmitter } from 'events';
 import { AbstractPeer } from '../../abstract-peer.js';
 import type { INetron } from '../../types.js';
-import type { ITransportConnection } from '../types.js';
+import type { ITransportConnection, TransportOptions } from '../types.js';
 import type { ILogger } from '../../../modules/logger/logger.types.js';
 import { Definition } from '../../definition.js';
 import { TitanError, ErrorCode } from '../../../errors/index.js';
@@ -74,7 +74,7 @@ export class HttpRemotePeer extends AbstractPeer {
   /** Response interceptors */
   private responseInterceptors: Array<(res: HttpResponseMessage) => HttpResponseMessage | Promise<HttpResponseMessage>> = [];
 
-  constructor(connection: ITransportConnection, netron: INetron, baseUrl: string, options?: NetronOptions) {
+  constructor(connection: ITransportConnection, netron: INetron, baseUrl: string, options?: TransportOptions) {
     // Generate a deterministic ID based on the URL
     const id = `http-direct-${new URL(baseUrl).host}`;
     super(netron, id);
@@ -86,7 +86,7 @@ export class HttpRemotePeer extends AbstractPeer {
     // Set default options
     this.defaultOptions = {
       timeout: options?.requestTimeout || 30000,
-      headers: (options as any)?.headers || {}
+      headers: options?.headers || {}
     };
   }
 
@@ -94,7 +94,7 @@ export class HttpRemotePeer extends AbstractPeer {
    * Initialize the HTTP peer
    * For HTTP, we can pre-fetch service discovery to speed up queries
    */
-  async init(isClient: boolean, options?: NetronOptions): Promise<void> {
+  async init(isClient: boolean, options?: TransportOptions): Promise<void> {
     this.logger.debug('Initializing HTTP Remote peer');
 
     if (isClient) {

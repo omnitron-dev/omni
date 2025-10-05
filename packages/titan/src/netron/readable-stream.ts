@@ -162,7 +162,9 @@ export class NetronReadableStream extends Readable {
 
     if (this.timeout) clearTimeout(this.timeout);
 
-    const timeoutDuration = this.peer.netron.options?.streamTimeout ?? 60000;
+    // Use default stream timeout (60 seconds)
+    // Transport-specific timeout can be configured via TransportOptions
+    const timeoutDuration = 60000;
     this.peer.logger.debug({ streamId: this.id, timeoutDuration }, 'Resetting stream timeout');
 
     this.timeout = setTimeout(() => {

@@ -18,7 +18,7 @@ import { ensureStreamReferenceRegistered } from './packet/serializer.js';
 import { TransportRegistry } from './transport/transport-registry.js';
 import { TransportConnectionFactory } from './transport/transport-adapter.js';
 import { WebSocketTransport } from './transport/websocket-transport.js';
-import type { ITransport, ITransportServer, ITransportConnection, TransportFactory } from './transport/types.js';
+import type { ITransport, ITransportServer, ITransportConnection, TransportFactory, TransportOptions } from './transport/types.js';
 
 // Import core tasks
 import { abilities } from './core-tasks/abilities.js';
@@ -182,6 +182,15 @@ export class Netron extends EventEmitter implements INetron {
   private transportRegistry: TransportRegistry;
 
   /**
+   * Storage for default transport options (used for client connections).
+   * Maps transport name to its default options.
+   *
+   * @type {Map<string, TransportOptions>}
+   * @private
+   */
+  private transportOptions: Map<string, TransportOptions> = new Map();
+
+  /**
    * Creates a new Netron instance.
    * Initializes the task manager and local peer.
    * Transports must be registered separately before calling start().
@@ -251,6 +260,21 @@ export class Netron extends EventEmitter implements INetron {
       (this as any).transportServerConfigs = new Map<string, TransportConfig>();
     }
     (this as any).transportServerConfigs.set(name, config);
+  }
+
+  /**
+   * Set default options for a transport (used for client connections).
+   * These options will be used when calling connect() with this transport.
+   * @param name - Transport name (must be registered first)
+   * @param options - Default transport options for client connections
+   */
+  setTransportOptions(name: string, options: TransportOptions): void {
+    const transport = this.transportRegistry.get(name);
+    if (!transport) {
+      throw new Error(`Transport ${name} not registered. Call registerTransport() first.`);
+    }
+
+    this.transportOptions.set(name, options);
   }
 
   /**
@@ -431,7 +455,9 @@ export class Netron extends EventEmitter implements INetron {
 
         // Create RemotePeer with transport adapter for backward compatibility
         const adapter = TransportConnectionFactory.fromConnection(connection);
-        const peer = new RemotePeer(adapter as any, this, peerId);
+        // Get transport-specific options for requestTimeout
+        const transportOpts = this.transportOptions.get(name) || {};
+        const peer = new RemotePeer(adapter as any, this, peerId, transportOpts.requestTimeout);
         this.peers.set(peer.id, peer);
 
         // Send our ID to peer through the adapter (with small delay to ensure client is ready)
@@ -605,30 +631,33 @@ export class Netron extends EventEmitter implements INetron {
 
     const connectPeer = (): Promise<RemotePeer> =>
       new Promise<RemotePeer>((resolve, reject) => {
+        // Parse address to determine transport type
+        const transport = this.getTransportForAddress(address);
+        if (!transport) {
+          throw new Error(`No suitable transport found for address: ${address}`);
+        }
+
+        // Get transport-specific options
+        const transportOpts = this.transportOptions.get(transport.name) || {};
+        const connectTimeout = transportOpts.connectTimeout ?? CONNECT_TIMEOUT;
+
         const timeoutId = setTimeout(() => {
           this.logger.error({ address }, 'Connection timeout');
           reject(new Error('Connection timeout'));
-        }, this.options?.connectTimeout ?? CONNECT_TIMEOUT);
+        }, connectTimeout);
 
         // Wrap async logic in an IIFE
         (async () => {
           try {
-            // Parse address to determine transport type
-            const transport = this.getTransportForAddress(address);
-            if (!transport) {
-              throw new Error(`No suitable transport found for address: ${address}`);
-            }
-
-            // Connect using transport
+            // Connect using transport with transport-specific options
             const connection = await transport.connect(`${address}?id=${this.id}`, {
-              ...this.options,
-              connectTimeout: this.options?.connectTimeout ?? CONNECT_TIMEOUT,
+              ...transportOpts,
               headers: { 'x-netron-id': this.id }
             });
 
             // Create RemotePeer with transport adapter
             const adapter = TransportConnectionFactory.fromConnection(connection);
-            const peer = new RemotePeer(adapter as any, this, address);
+            const peer = new RemotePeer(adapter as any, this, address, transportOpts.requestTimeout);
 
             let resolved = false;
 
@@ -704,14 +733,19 @@ export class Netron extends EventEmitter implements INetron {
      * between attempts, up to the configured maximum number of attempts.
      */
     const attemptReconnect = () => {
-      if (this.options.maxReconnectAttempts && reconnectAttempts >= this.options.maxReconnectAttempts) {
-        this.logger.error(`Reconnect attempts exceeded (${this.options.maxReconnectAttempts}). Giving up.`);
+      // Get reconnection options from transport
+      const transport = this.getTransportForAddress(address);
+      const transportOpts = this.transportOptions.get(transport.name) || {};
+      const maxAttempts = transportOpts.reconnect?.maxAttempts;
+
+      if (maxAttempts && reconnectAttempts >= maxAttempts) {
+        this.logger.error(`Reconnect attempts exceeded (${maxAttempts}). Giving up.`);
         return;
       }
 
       const delay = Math.min(baseDelay * 2 ** reconnectAttempts, 30000);
       this.logger.info(
-        `Reconnecting to ${address} in ${delay} ms (attempt ${reconnectAttempts + 1}/${this.options.maxReconnectAttempts ?? 'unlimited'})...`
+        `Reconnecting to ${address} in ${delay} ms (attempt ${reconnectAttempts + 1}/${maxAttempts ?? 'unlimited'})...`
       );
 
       setTimeout(async () => {
@@ -721,7 +755,7 @@ export class Netron extends EventEmitter implements INetron {
           this.logger.info(`Successfully reconnected to ${address}.`);
         } catch {
           this.logger.warn(
-            `Reconnect failed (${reconnectAttempts}/${this.options.maxReconnectAttempts ?? 'unlimited'}):`
+            `Reconnect failed (${reconnectAttempts}/${maxAttempts ?? 'unlimited'}):`
           );
           attemptReconnect();
         }
@@ -752,21 +786,24 @@ export class Netron extends EventEmitter implements INetron {
         throw new Error(`No HTTP transport registered for address: ${address}`);
       }
 
+      // Get transport-specific options
+      const transportOpts = this.transportOptions.get(transport.name) || {};
+
       // Connect using HTTP transport
       const connection = await transport.connect(address, {
-        ...this.options,
+        ...transportOpts,
         useDirectHttp: true,
         headers: { 'x-netron-id': this.id }
       } as any);
 
       // Create HTTP direct peer (v2.0)
-      const peer = new HttpRemotePeer(connection, this, address, this.options);
+      const peer = new HttpRemotePeer(connection, this, address, transportOpts);
 
       // Register the peer
       this.peers.set(peer.id, peer as any);
 
       // Initialize the peer
-      await peer.init(true, this.options);
+      await peer.init(true, transportOpts);
 
       // Emit connection event
       this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId: peer.id });

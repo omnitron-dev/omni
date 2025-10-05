@@ -227,10 +227,10 @@ describe('RemotePeer', () => {
     const peer = netron.peer;
     peer.exposeService(ctx1);
 
-    const n2 = new Netron(createMockLogger(), {
-      requestTimeout: 500,
-    });
+    const n2 = new Netron(createMockLogger(), {});
     n2.registerTransport('ws', () => new WebSocketTransport());
+    n2.setTransportOptions('ws', { requestTimeout: 500 });
+    await n2.start();
     const peer1 = await n2.connect(`ws://localhost:${testPort}`);
     const iface = await peer1.queryInterface<IService1>('service1');
 
@@ -241,6 +241,7 @@ describe('RemotePeer', () => {
     await delay(1000);
 
     await peer1.disconnect();
+    await n2.stop();
   });
 
   it('should throw if set read-only property', async () => {

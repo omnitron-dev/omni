@@ -76,34 +76,10 @@ export type NetronOptions = {
   taskOverwriteStrategy?: 'replace' | 'skip' | 'throw';
 
   /**
-   * Timeout in milliseconds for establishing connections.
-   * Defaults to 5000ms if not specified.
-   */
-  connectTimeout?: number;
-
-  /**
-   * Timeout in milliseconds for request operations.
-   * Defaults to 5000ms if not specified.
-   */
-  requestTimeout?: number;
-
-  /**
-   * Timeout in milliseconds for stream operations.
-   * Defaults to 5000ms if not specified.
-   */
-  streamTimeout?: number;
-
-  /**
    * Whether to enable service events.
    * When true, events will be emitted when services are exposed or unexposed.
    */
   allowServiceEvents?: boolean;
-
-  /**
-   * Maximum number of reconnection attempts.
-   * If not set, unlimited reconnection attempts will be made.
-   */
-  maxReconnectAttempts?: number;
 
   /**
    * Optional context for the logger.

@@ -55,8 +55,12 @@ export interface TransportOptions {
     maxDelay?: number;
     factor?: number;
   };
-  /** Connection timeout in milliseconds */
+  /** Connection timeout in milliseconds (default: 10000) */
   connectTimeout?: number;
+  /** Request timeout in milliseconds (default: 5000) */
+  requestTimeout?: number;
+  /** Stream timeout in milliseconds (default: 30000) */
+  streamTimeout?: number;
   /** Keep-alive configuration */
   keepAlive?: {
     enabled?: boolean;
@@ -69,7 +73,7 @@ export interface TransportOptions {
   compression?: boolean;
   /** Custom headers or metadata */
   headers?: Record<string, string>;
-  /** Request timeout in milliseconds */
+  /** General timeout in milliseconds (deprecated - use specific timeouts) */
   timeout?: number;
   /** HTTP server specific options */
   host?: string;

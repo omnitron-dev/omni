@@ -69,7 +69,7 @@ export class RemotePeer extends AbstractPeer {
   private responseHandlers = new TimedMap<
     number,
     { successHandler: (response: Packet) => void; errorHandler?: (data: any) => void }
-  >(this.netron.options?.requestTimeout ?? REQUEST_TIMEOUT, (packetId: number) => {
+  >(this.requestTimeout ?? REQUEST_TIMEOUT, (packetId: number) => {
     const handlers = this.deleteResponseHandler(packetId);
     if (handlers?.errorHandler) {
       handlers.errorHandler(new Error('Request timeout exceeded'));
@@ -105,11 +105,13 @@ export class RemotePeer extends AbstractPeer {
    * @param {any} socket - The socket connection to the remote peer (WebSocket or TransportAdapter)
    * @param {Netron} netron - The Netron instance this peer belongs to
    * @param {string} [id=""] - Optional unique identifier for the remote peer
+   * @param {number} [requestTimeout] - Request timeout in milliseconds (overrides default)
    */
   constructor(
     private socket: any, // Can be WebSocket or TransportAdapter
     netron: Netron,
-    id: string = ''
+    id: string = '',
+    private requestTimeout?: number
   ) {
     super(netron, id);
 

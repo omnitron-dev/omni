@@ -3,7 +3,7 @@ import 'reflect-metadata';
 import { delay } from '@omnitron-dev/common';
 
 import { Netron, Public, Service, NetronReadableStream } from '../../src/netron';
-import { createMockLogger } from './test-utils.js';
+import { createMockLogger, createNetronServer, createNetronClient } from './test-utils.js';
 
 // Example service with async generator methods
 @Service('calculator@1.0.0')
@@ -57,19 +57,18 @@ describe('AsyncGenerator Support', () => {
     // Get a random port for the server
     serverPort = 8000 + Math.floor(Math.random() * 1000);
 
-    // Create server with both host and port
-    const serverLogger = createMockLogger();
-    server = await Netron.create(serverLogger, {
-      listenHost: 'localhost',
-      listenPort: serverPort,
-    });
-
-    // Wait for server to be ready
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Create server
+    server = await createNetronServer({ port: serverPort });
 
     // Expose the calculator service
     const service = new CalculatorService();
     await server.peer.exposeService(service);
+
+    // Start server
+    await server.start();
+
+    // Wait for server to be ready
+    await new Promise((resolve) => setTimeout(resolve, 100));
   });
 
   afterEach(async () => {
@@ -79,8 +78,7 @@ describe('AsyncGenerator Support', () => {
 
   it('should support basic async methods', async () => {
     // Create client and connect
-    const clientLogger = createMockLogger();
-    client = await Netron.create(clientLogger, {});
+    client = await createNetronClient();
     const peer = await client.connect(`ws://localhost:${serverPort}`);
 
     // Query the service
@@ -93,8 +91,7 @@ describe('AsyncGenerator Support', () => {
 
   it('should stream fibonacci numbers via async generator', async () => {
     // Create client and connect
-    const clientLogger = createMockLogger();
-    client = await Netron.create(clientLogger, {});
+    client = await createNetronClient();
     const peer = await client.connect(`ws://localhost:${serverPort}`);
 
     // Query the service
@@ -118,8 +115,7 @@ describe('AsyncGenerator Support', () => {
 
   it('should stream numbers with delay', async () => {
     // Create client and connect
-    const clientLogger = createMockLogger();
-    client = await Netron.create(clientLogger, {});
+    client = await createNetronClient();
     const peer = await client.connect(`ws://localhost:${serverPort}`);
 
     // Query the service
@@ -146,8 +142,7 @@ describe('AsyncGenerator Support', () => {
     // TODO: Implement proper error propagation through streams
     // Currently, errors thrown in async generators are not properly propagated to the client
     // Create client and connect
-    const clientLogger = createMockLogger();
-    client = await Netron.create(clientLogger, {});
+    client = await createNetronClient();
     const peer = await client.connect(`ws://localhost:${serverPort}`);
 
     // Query the service
@@ -179,8 +174,7 @@ describe('AsyncGenerator Support', () => {
     // TODO: Implement proper cleanup for infinite generators
     // Currently, breaking out of the for-await loop doesn't signal the server-side generator to stop
     // Create client and connect
-    const clientLogger = createMockLogger();
-    client = await Netron.create(clientLogger, {});
+    client = await createNetronClient();
     const peer = await client.connect(`ws://localhost:${serverPort}`);
 
     // Query the service
@@ -209,8 +203,7 @@ describe('AsyncGenerator Support', () => {
 
   it('should support multiple concurrent async generator calls', async () => {
     // Create client and connect
-    const clientLogger = createMockLogger();
-    client = await Netron.create(clientLogger, {});
+    client = await createNetronClient();
     const peer = await client.connect(`ws://localhost:${serverPort}`);
 
     // Query the service
@@ -260,7 +253,7 @@ describe('AsyncGenerator Support - Local Peer', () => {
 
   beforeEach(async () => {
     const logger = createMockLogger();
-    netron = await Netron.create(logger, {});
+    netron = new Netron(logger, {});
 
     // Expose the service locally
     const service = new CalculatorService();

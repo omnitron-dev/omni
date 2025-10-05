@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 
-import type { INetron, ILocalPeer, IPeer } from './netron.types.js';
-import type { NetronOptions, TransportConfig } from './netron.types.js';
+import type { INetron, ILocalPeer, IPeer } from './types.js';
+import type { NetronOptions, TransportConfig } from './types.js';
 import { LocalPeer } from './local-peer.js';
 import { RemotePeer } from './remote-peer.js';
 import { HttpRemotePeer } from './transport/http/peer.js';

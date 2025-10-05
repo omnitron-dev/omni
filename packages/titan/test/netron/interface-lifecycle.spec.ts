@@ -1,5 +1,5 @@
 import { Netron, Public, Service, RemotePeer } from '../../src/netron';
-import { createMockLogger } from './test-utils.js';
+import { createMockLogger, createNetronServer, createNetronClient } from './test-utils.js';
 
 describe('Interface Lifecycle Tests', () => {
   let netron: Netron;
@@ -51,12 +51,13 @@ describe('Interface Lifecycle Tests', () => {
   }
 
   beforeAll(async () => {
-    const logger = createMockLogger();
-    netron = await Netron.create(logger, { id: 'local', listenHost: 'localhost', listenPort: 7070, allowServiceEvents: true });
+    netron = await createNetronServer({ port: 7070, logger: createMockLogger() });
     await netron.peer.exposeService(new TestService());
+    await netron.start();
 
-    const remoteLogger = createMockLogger();
-    remoteNetron = await Netron.create(remoteLogger, { id: 'remote' });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    remoteNetron = await createNetronClient({ logger: createMockLogger() });
     remotePeer = await remoteNetron.connect('ws://localhost:7070');
   });
 

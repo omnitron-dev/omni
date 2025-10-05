@@ -9,18 +9,24 @@ import {
   NetronWritableStream,
   NETRON_EVENT_PEER_CONNECT,
 } from '../../src/netron/index';
-import { createMockLogger } from './test-utils.js';
+import { createMockLogger, createNetronServer, createNetronClient } from './test-utils.js';
 
 describe('Netron Streams Integration Tests', () => {
   let netronA: Netron;
   let netronB: Netron;
   let peerB: RemotePeer;
+  let testPort: number;
 
   beforeEach(async () => {
+    // Use random port to avoid conflicts during parallel test execution
+    testPort = 9000 + Math.floor(Math.random() * 1000);
+
     const loggerA = createMockLogger();
-    netronA = await Netron.create(loggerA, { allowServiceEvents: true });
+    netronA = await createNetronClient({ logger: loggerA });
+
     const loggerB = createMockLogger();
-    netronB = await Netron.create(loggerB, { listenHost: 'localhost', listenPort: 3002, allowServiceEvents: true });
+    netronB = await createNetronServer({ port: testPort, logger: loggerB });
+    await netronB.start();
   });
 
   afterEach(async () => {
@@ -45,7 +51,7 @@ describe('Netron Streams Integration Tests', () => {
       }
     });
 
-    peerB = await netronA.connect('ws://localhost:3002');
+    peerB = await netronA.connect(`ws://localhost:${testPort}`);
     const writableStream = new NetronWritableStream({ peer: peerB });
 
     // Send data
@@ -82,7 +88,7 @@ describe('Netron Streams Integration Tests', () => {
       }
     });
 
-    peerB = await netronA.connect('ws://localhost:3002');
+    peerB = await netronA.connect(`ws://localhost:${testPort}`);
     const writableStream = new NetronWritableStream({ peer: peerB });
 
     writableStream.write('chunk-1');
@@ -122,7 +128,7 @@ describe('Netron Streams Integration Tests', () => {
       }
     });
 
-    peerB = await netronA.connect('ws://localhost:3002');
+    peerB = await netronA.connect(`ws://localhost:${testPort}`);
 
     const writableStream = new NetronWritableStream({ peer: peerB });
 
@@ -178,7 +184,7 @@ describe('Netron Streams Integration Tests', () => {
       }
     });
 
-    peerB = await netronA.connect('ws://localhost:3002');
+    peerB = await netronA.connect(`ws://localhost:${testPort}`);
     const writableStream = new NetronWritableStream({ peer: peerB });
 
     for (let i = 0; i < chunkCount; i++) {
@@ -209,7 +215,7 @@ describe('Netron Streams Integration Tests', () => {
       }
     });
 
-    peerB = await netronA.connect('ws://localhost:3002');
+    peerB = await netronA.connect(`ws://localhost:${testPort}`);
     const writableStream = new NetronWritableStream({ peer: peerB, isLive: true });
 
     writableStream.write('chunk-1');
@@ -254,7 +260,7 @@ describe('Netron Streams Integration Tests', () => {
       }
     });
 
-    peerB = await netronA.connect('ws://localhost:3002');
+    peerB = await netronA.connect(`ws://localhost:${testPort}`);
     const writableStream = new NetronWritableStream({ peer: peerB, isLive: true });
 
     writableStream.write('live-chunk-1');

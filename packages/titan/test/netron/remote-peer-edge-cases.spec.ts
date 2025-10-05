@@ -8,18 +8,18 @@ import { delay } from '@omnitron-dev/common';
 import { Netron } from '../../src/netron/netron.js';
 import { RemotePeer } from '../../src/netron/remote-peer.js';
 import { Service, Public } from '../../src/decorators/core.js';
-import { createMockLogger } from './test-utils.js';
+import { createMockLogger, createNetronServer, createNetronClient } from './test-utils.js';
 import { Packet, createPacket, encodePacket, TYPE_STREAM } from '../../src/netron/packet/index.js';
 
 describe('RemotePeer Edge Cases', () => {
   let netron: Netron;
 
   beforeEach(async () => {
-    netron = await Netron.create(createMockLogger(), {
-      id: 'test-netron-remote-peer',
-      listenHost: 'localhost',
-      listenPort: 8081,
+    netron = await createNetronServer({
+      port: 8081,
+      logger: createMockLogger()
     });
+    await netron.start();
   });
 
   afterEach(async () => {
@@ -28,7 +28,7 @@ describe('RemotePeer Edge Cases', () => {
 
   describe('exposeService errors', () => {
     it('should throw error when exposing service without @Service decorator', async () => {
-      const n2 = await Netron.create(createMockLogger());
+      const n2 = await createNetronClient();
       const peer = await n2.connect('ws://localhost:8081');
 
       class InvalidService {
@@ -53,7 +53,7 @@ describe('RemotePeer Edge Cases', () => {
 
   describe('get/set/call with invalid definition ID', () => {
     it('should throw error when calling get() with unknown definition ID', async () => {
-      const n2 = await Netron.create(createMockLogger());
+      const n2 = await createNetronClient();
       const peer = await n2.connect('ws://localhost:8081');
 
       expect(() => peer.get('unknown-def-id', 'someProperty')).toThrow('Unknown definition: unknown-def-id');
@@ -63,7 +63,7 @@ describe('RemotePeer Edge Cases', () => {
     });
 
     it('should throw error when calling set() with unknown definition ID', async () => {
-      const n2 = await Netron.create(createMockLogger());
+      const n2 = await createNetronClient();
       const peer = await n2.connect('ws://localhost:8081');
 
       expect(() => peer.set('unknown-def-id', 'someProperty', 'value')).toThrow('Unknown definition: unknown-def-id');
@@ -73,7 +73,7 @@ describe('RemotePeer Edge Cases', () => {
     });
 
     it('should throw error when calling call() with unknown definition ID', async () => {
-      const n2 = await Netron.create(createMockLogger());
+      const n2 = await createNetronClient();
       const peer = await n2.connect('ws://localhost:8081');
 
       expect(() => peer.call('unknown-def-id', 'someMethod', [])).toThrow('Unknown definition: unknown-def-id');
@@ -210,7 +210,7 @@ describe('RemotePeer Edge Cases', () => {
     });
 
     it('should handle unsubscribe for non-existent event', async () => {
-      const n2 = await Netron.create(createMockLogger());
+      const n2 = await createNetronClient();
       const peer = await n2.connect('ws://localhost:8081');
 
       const handler = jest.fn();
@@ -223,7 +223,7 @@ describe('RemotePeer Edge Cases', () => {
     });
 
     it('should handle unsubscribe for non-existent handler', async () => {
-      const n2 = await Netron.create(createMockLogger());
+      const n2 = await createNetronClient();
       const peer = await n2.connect('ws://localhost:8081');
 
       const handler1 = jest.fn();
@@ -292,7 +292,7 @@ describe('RemotePeer Edge Cases', () => {
 
   describe('getDefinitionById errors', () => {
     it('should throw error when getting definition by unknown ID', async () => {
-      const n2 = await Netron.create(createMockLogger());
+      const n2 = await createNetronClient();
       const peer = await n2.connect('ws://localhost:8081');
 
       expect(() => (peer as any).getDefinitionById('unknown-id')).toThrow('Unknown definition: unknown-id');
@@ -302,7 +302,7 @@ describe('RemotePeer Edge Cases', () => {
     });
 
     it('should throw error when getting definition by unknown service name', async () => {
-      const n2 = await Netron.create(createMockLogger());
+      const n2 = await createNetronClient();
       const peer = await n2.connect('ws://localhost:8081');
 
       expect(() => (peer as any).getDefinitionByServiceName('unknown-service')).toThrow('Unknown service: unknown-service');

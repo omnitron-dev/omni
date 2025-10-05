@@ -104,3 +104,40 @@ export function createStreamLogger(writable: Writable, level: string = 'info'): 
 
   return logger;
 }
+/**
+ * Creates a Netron server instance with WebSocket transport
+ */
+export async function createNetronServer(options: { port: number; logger?: any }): Promise<any> {
+  const { Netron } = await import('../../src/netron/netron.js');
+  const { WebSocketTransport } = await import('../../src/netron/transport/websocket-transport.js');
+  
+  const logger = options.logger || createMockLogger();
+  const server = new Netron(logger, {});
+  
+  server.registerTransport('ws', () => new WebSocketTransport());
+  server.registerTransportServer('ws', {
+    name: 'ws',
+    options: { host: 'localhost', port: options.port }
+  });
+  
+  return server;
+}
+
+/**
+ * Creates a Netron client instance with WebSocket transport
+ */
+export async function createNetronClient(options?: { logger?: any }): Promise<any> {
+  const { Netron } = await import('../../src/netron/netron.js');
+  const { WebSocketTransport } = await import('../../src/netron/transport/websocket-transport.js');
+
+  const logger = options?.logger || createMockLogger();
+  const client = new Netron(logger, {});
+
+  client.registerTransport('ws', () => new WebSocketTransport());
+
+  // IMPORTANT: Call start() to register core tasks (abilities, subscribe, emit, etc.)
+  // Even though we're not starting a server, start() registers essential tasks
+  await client.start();
+
+  return client;
+}

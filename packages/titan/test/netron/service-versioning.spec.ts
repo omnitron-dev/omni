@@ -1,7 +1,7 @@
 import { delay } from '@omnitron-dev/common';
 
 import { Public, Netron, Service, RemotePeer } from '../../src/netron';
-import { createMockLogger } from './test-utils.js';
+import { createMockLogger, createNetronServer, createNetronClient } from './test-utils.js';
 
 describe('RemotePeer Service Versioning', () => {
   let localNetron: Netron;
@@ -32,19 +32,24 @@ describe('RemotePeer Service Versioning', () => {
     }
   }
   beforeAll(async () => {
+    const { Netron } = await import('../../src/netron/netron.js');
+    const { WebSocketTransport } = await import('../../src/netron/transport/websocket-transport.js');
+
     const localLogger = createMockLogger();
-    localNetron = await Netron.create(localLogger, {
-      id: 'local',
-      listenHost: 'localhost',
-      listenPort: 9090,
-      allowServiceEvents: true,
+    localNetron = new Netron(localLogger, { allowServiceEvents: true });
+    localNetron.registerTransport('ws', () => new WebSocketTransport());
+    localNetron.registerTransportServer('ws', {
+      name: 'ws',
+      options: { host: 'localhost', port: 9090 }
     });
 
-    const remoteLogger = createMockLogger();
-    remoteNetron = await Netron.create(remoteLogger, { id: 'remote' });
     await localNetron.peer.exposeService(new VersionedServiceV1());
     await localNetron.peer.exposeService(new VersionedServiceV2());
+    await localNetron.start();
 
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    remoteNetron = await createNetronClient({ logger: createMockLogger() });
     remotePeer = await remoteNetron.connect('ws://localhost:9090');
   });
 
@@ -98,7 +103,7 @@ describe('RemotePeer Service Versioning', () => {
   it('should correctly handle unexposing a specific service version', async () => {
     await localNetron.peer.unexposeService('versionedService@1.0.0');
 
-    await delay(100);
+    await delay(300);
 
     const services = remotePeer.getServiceNames();
     expect(services).not.toContain('versionedService@1.0.0');

@@ -12,9 +12,7 @@ describe('Netron API', () => {
 
   beforeEach(async () => {
     netron = await Netron.create(createMockLogger(), {
-      id: 'test-netron-api',
-      listenHost: 'localhost',
-      listenPort: 0 // Use random port
+      id: 'test-netron-api'
     });
   });
 
@@ -27,61 +25,109 @@ describe('Netron API', () => {
   describe('registerTransport', () => {
     it('should register a transport factory', () => {
       const mockFactory: TransportFactory = () => ({
+        name: 'custom-transport',
+        capabilities: { server: true, streaming: false, bidirectional: false, binary: false, reconnection: false, multiplexing: false },
         connect: jest.fn(),
         createServer: jest.fn()
       } as any);
 
       netron.registerTransport('custom-transport', mockFactory);
 
-      const transport = netron.transportRegistry.get('custom-transport');
+      const transport = (netron as any).transportRegistry.get('custom-transport');
       expect(transport).toBeDefined();
+      expect(transport.name).toBe('custom-transport');
     });
 
-    it('should set transport as default when setAsDefault is true', () => {
-      const mockTransport = {
-        connect: jest.fn(),
-        createServer: jest.fn()
-      } as any;
-
-      const mockFactory: TransportFactory = () => mockTransport;
-
-      netron.registerTransport('custom-default', mockFactory, true);
-
-      expect(netron.defaultTransport).toBe(mockTransport);
-    });
-
-    it('should not change default transport when setAsDefault is false', () => {
-      const originalDefault = netron.defaultTransport;
-      const mockFactory: TransportFactory = () => ({
+    it('should allow registering multiple transports', () => {
+      const wsFactory: TransportFactory = () => ({
+        name: 'ws',
+        capabilities: { server: true, streaming: true, bidirectional: true, binary: true, reconnection: true, multiplexing: false },
         connect: jest.fn(),
         createServer: jest.fn()
       } as any);
 
-      netron.registerTransport('custom-non-default', mockFactory, false);
+      const httpFactory: TransportFactory = () => ({
+        name: 'http',
+        capabilities: { server: true, streaming: true, bidirectional: false, binary: false, reconnection: false, multiplexing: true },
+        connect: jest.fn(),
+        createServer: jest.fn()
+      } as any);
 
-      expect(netron.defaultTransport).toBe(originalDefault);
+      netron.registerTransport('ws', wsFactory);
+      netron.registerTransport('http', httpFactory);
+
+      const wsTransport = (netron as any).transportRegistry.get('ws');
+      const httpTransport = (netron as any).transportRegistry.get('http');
+
+      expect(wsTransport).toBeDefined();
+      expect(httpTransport).toBeDefined();
+      expect(wsTransport.name).toBe('ws');
+      expect(httpTransport.name).toBe('http');
     });
   });
 
-  describe('setDefaultTransport', () => {
-    it('should set the default transport by name', () => {
-      const mockTransport = {
+  describe('registerTransportServer', () => {
+    it('should register a transport server configuration', () => {
+      const mockFactory: TransportFactory = () => ({
+        name: 'custom-transport',
+        capabilities: { server: true, streaming: false, bidirectional: false, binary: false, reconnection: false, multiplexing: false },
         connect: jest.fn(),
         createServer: jest.fn()
-      } as any;
+      } as any);
 
-      const mockFactory: TransportFactory = () => mockTransport;
-      netron.registerTransport('new-default', mockFactory);
+      netron.registerTransport('custom-transport', mockFactory);
+      netron.registerTransportServer('custom-transport', {
+        name: 'custom-transport',
+        options: { host: 'localhost', port: 8080 }
+      });
 
-      netron.setDefaultTransport('new-default');
-
-      expect(netron.defaultTransport).toBe(mockTransport);
+      const configs = (netron as any).transportServerConfigs;
+      expect(configs).toBeDefined();
+      expect(configs.get('custom-transport')).toBeDefined();
+      expect(configs.get('custom-transport').options.port).toBe(8080);
     });
 
     it('should throw error when transport is not registered', () => {
       expect(() => {
-        netron.setDefaultTransport('non-existent-transport');
+        netron.registerTransportServer('non-existent-transport', {
+          name: 'non-existent-transport',
+          options: { host: 'localhost', port: 8080 }
+        });
       }).toThrow('Transport non-existent-transport not registered');
+    });
+
+    it('should allow configuring multiple transport servers', () => {
+      const wsFactory: TransportFactory = () => ({
+        name: 'ws',
+        capabilities: { server: true, streaming: true, bidirectional: true, binary: true, reconnection: true, multiplexing: false },
+        connect: jest.fn(),
+        createServer: jest.fn()
+      } as any);
+
+      const httpFactory: TransportFactory = () => ({
+        name: 'http',
+        capabilities: { server: true, streaming: true, bidirectional: false, binary: false, reconnection: false, multiplexing: true },
+        connect: jest.fn(),
+        createServer: jest.fn()
+      } as any);
+
+      netron.registerTransport('ws', wsFactory);
+      netron.registerTransport('http', httpFactory);
+
+      netron.registerTransportServer('ws', {
+        name: 'ws',
+        options: { host: 'localhost', port: 8080 }
+      });
+
+      netron.registerTransportServer('http', {
+        name: 'http',
+        options: { host: 'localhost', port: 8081 }
+      });
+
+      const configs = (netron as any).transportServerConfigs;
+      expect(configs.size).toBe(2);
+      expect(configs.get('ws').options.port).toBe(8080);
+      expect(configs.get('http').options.port).toBe(8081);
     });
   });
 

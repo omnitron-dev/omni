@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 
-import { Netron, Public, Service } from '../../src/netron/index.js';
-import { createMockLogger } from './test-utils.js';
+import { Public, Service } from '../../src/netron/index.js';
+import { createMockLogger, createNetronServer, createNetronClient } from './test-utils.js';
 
 // Simple service with async generator
 @Service('test@1.0.0')
@@ -15,26 +15,25 @@ class TestService {
 }
 
 describe('AsyncGenerator Basic Test', () => {
-  let server: Netron;
-  let client: Netron;
+  let server: any;
+  let client: any;
   let serverPort: number;
 
   beforeEach(async () => {
     serverPort = 9000 + Math.floor(Math.random() * 1000);
 
-    // Create and start server with logger
-    const serverLogger = createMockLogger();
-    server = await Netron.create(serverLogger, {
-      listenHost: 'localhost',
-      listenPort: serverPort,
-    });
-
-    // Wait for server to be ready
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Create server
+    server = await createNetronServer({ port: serverPort });
 
     // Expose service
     const service = new TestService();
     await server.peer.exposeService(service);
+
+    // Start server
+    await server.start();
+
+    // Wait for server to be ready
+    await new Promise((resolve) => setTimeout(resolve, 100));
   });
 
   afterEach(async () => {
@@ -43,9 +42,9 @@ describe('AsyncGenerator Basic Test', () => {
   });
 
   it('should stream numbers from async generator', async () => {
-    // Create client and connect with logger
-    const clientLogger = createMockLogger();
-    client = await Netron.create(clientLogger, {});
+    // Create client
+    client = await createNetronClient();
+
     const peer = await client.connect(`ws://localhost:${serverPort}`);
 
     // Query the service

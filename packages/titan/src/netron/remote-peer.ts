@@ -65,16 +65,12 @@ export class RemotePeer extends AbstractPeer {
   /**
    * Map of response handlers for pending requests with timeout functionality.
    * Each handler contains success and error callbacks.
+   * Initialized in constructor after requestTimeout is set.
    */
-  private responseHandlers = new TimedMap<
+  private responseHandlers!: TimedMap<
     number,
     { successHandler: (response: Packet) => void; errorHandler?: (data: any) => void }
-  >(this.requestTimeout ?? REQUEST_TIMEOUT, (packetId: number) => {
-    const handlers = this.deleteResponseHandler(packetId);
-    if (handlers?.errorHandler) {
-      handlers.errorHandler(new Error('Request timeout exceeded'));
-    }
-  });
+  >;
 
   /** Map of writable streams indexed by stream ID */
   public writableStreams = new Map<number, NetronWritableStream>();
@@ -116,6 +112,17 @@ export class RemotePeer extends AbstractPeer {
     super(netron, id);
 
     this.logger = netron.logger.child({ peerId: this.id, remotePeer: true });
+
+    // Initialize responseHandlers AFTER requestTimeout is set
+    this.responseHandlers = new TimedMap<
+      number,
+      { successHandler: (response: Packet) => void; errorHandler?: (data: any) => void }
+    >(this.requestTimeout ?? REQUEST_TIMEOUT, (packetId: number) => {
+      const handlers = this.deleteResponseHandler(packetId);
+      if (handlers?.errorHandler) {
+        handlers.errorHandler(new Error('Request timeout exceeded'));
+      }
+    });
   }
 
   /**

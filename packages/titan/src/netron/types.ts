@@ -82,6 +82,14 @@ export type NetronOptions = {
   allowServiceEvents?: boolean;
 
   /**
+   * Stream inactivity timeout in milliseconds.
+   * Streams that are inactive for this duration will be closed.
+   * Defaults to 60000ms (60 seconds) if not specified.
+   * This applies to all streams regardless of transport type.
+   */
+  streamTimeout?: number;
+
+  /**
    * Optional context for the logger.
    * This can be used to add additional context to the logs.
    *

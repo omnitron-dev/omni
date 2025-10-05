@@ -89,21 +89,29 @@ export async function waitForPort(
   const startTime = Date.now();
 
   while (Date.now() - startTime < timeout) {
-    return new Promise((resolve, reject) => {
-      const socket = net.createConnection({ port, host });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const socket = net.createConnection({ port, host });
 
-      socket.once('connect', () => {
-        socket.end();
-        resolve();
+        socket.once('connect', () => {
+          socket.end();
+          resolve();
+        });
+
+        socket.once('error', () => {
+          reject(new Error('Connection failed'));
+        });
       });
 
-      socket.once('error', async () => {
-        await new Promise(r => setTimeout(r, interval));
-        if (Date.now() - startTime >= timeout) {
-          reject(new Error(`Port ${port} not available after ${timeout}ms`));
-        }
-      });
-    });
+      // Successfully connected
+      return;
+    } catch (error) {
+      // Connection failed, wait and retry
+      if (Date.now() - startTime >= timeout) {
+        throw new Error(`Port ${port} not available after ${timeout}ms`);
+      }
+      await new Promise(r => setTimeout(r, interval));
+    }
   }
 
   throw new Error(`Timeout waiting for port ${port}`);

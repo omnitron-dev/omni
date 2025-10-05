@@ -194,14 +194,19 @@ interface HttpResponseMessage {
   "server": {
     "version": "2.0.0",
     "protocol": "2.0",
-    "features": ["batch", "discovery"],
-    "metadata": {}
+    "features": ["batch", "discovery", "metrics", "health"],
+    "metadata": {
+      "runtime": "node",
+      "uptime": 123456
+    }
   },
   "services": {
     "Calculator@1.0.0": {
       "name": "Calculator",
       "version": "1.0.0",
-      "methods": ["add", "subtract", "multiply", "divide"]
+      "methods": ["add", "subtract", "multiply", "divide"],
+      "description": "Calculator service",
+      "metadata": {}
     },
     "UserService@2.1.0": {
       "name": "UserService",
@@ -309,7 +314,83 @@ interface HttpResponseMessage {
       "success": true,
       "data": { "result": 28 }
     }
-  ]
+  ],
+  "hints": {
+    "successCount": 2,
+    "failureCount": 0,
+    "totalTime": 45
+  }
+}
+```
+
+**Batch Options:**
+```typescript
+{
+  parallel?: boolean;        // Process requests in parallel (default: true)
+  stopOnError?: boolean;     // Stop on first error (default: false)
+  maxConcurrency?: number;   // Max parallel requests
+}
+```
+
+#### 4. Health Check
+
+**Endpoint:** `GET /health`
+
+**Response (Healthy):**
+```json
+{
+  "status": "online",
+  "uptime": 123456,
+  "services": ["Calculator@1.0.0", "UserService@1.0.0"],
+  "version": "2.0.0"
+}
+```
+
+**Response (Unhealthy):**
+```json
+{
+  "status": "offline",
+  "uptime": 123456,
+  "services": [],
+  "version": "2.0.0"
+}
+```
+
+**HTTP Status:**
+- `200` - Server is healthy
+- `503` - Server is unhealthy
+
+#### 5. Metrics
+
+**Endpoint:** `GET /metrics`
+
+**Response:**
+```json
+{
+  "server": {
+    "status": "online",
+    "uptime": 123456,
+    "connections": 5
+  },
+  "requests": {
+    "total": 1000,
+    "active": 3,
+    "errors": 5,
+    "bytesSent": 500000,
+    "bytesReceived": 300000,
+    "avgResponseTime": 45
+  },
+  "methods": {
+    "Calculator.add": 250,
+    "Calculator.multiply": 150,
+    "UserService.getUser": 600
+  },
+  "statusCodes": {
+    "200": 950,
+    "400": 30,
+    "404": 15,
+    "500": 5
+  }
 }
 ```
 
@@ -749,34 +830,36 @@ See [Advanced Features](#advanced-features) for complete configuration examples.
 
 ### Error Codes
 
-Standard error codes used by HTTP transport:
+HTTP transport uses the `ErrorCode` enum with numeric HTTP status codes:
 
 ```typescript
+import { ErrorCode } from '@omnitron-dev/titan/errors';
+
 // Client errors (4xx)
-'BAD_REQUEST'              // 400 - Invalid request format
-'UNAUTHORIZED'             // 401 - Authentication required
-'FORBIDDEN'                // 403 - Insufficient permissions
-'NOT_FOUND'                // 404 - Service/method not found
-'METHOD_NOT_ALLOWED'       // 405 - HTTP method not allowed
-'REQUEST_TIMEOUT'          // 408 - Request timeout
-'CONFLICT'                 // 409 - Resource conflict
-'PAYLOAD_TOO_LARGE'        // 413 - Request body too large
-'UNPROCESSABLE_ENTITY'     // 422 - Validation error
+ErrorCode.BAD_REQUEST              // 400 - Invalid request format
+ErrorCode.UNAUTHORIZED             // 401 - Authentication required
+ErrorCode.FORBIDDEN                // 403 - Insufficient permissions
+ErrorCode.NOT_FOUND                // 404 - Service/method not found
+ErrorCode.METHOD_NOT_ALLOWED       // 405 - HTTP method not allowed
+ErrorCode.REQUEST_TIMEOUT          // 408 - Request timeout
+ErrorCode.CONFLICT                 // 409 - Resource conflict
+ErrorCode.PAYLOAD_TOO_LARGE        // 413 - Request body too large
+ErrorCode.UNPROCESSABLE_ENTITY     // 422 - Validation error
+ErrorCode.TOO_MANY_REQUESTS        // 429 - Rate limited
 
 // Server errors (5xx)
-'INTERNAL_SERVER_ERROR'    // 500 - Internal server error
-'NOT_IMPLEMENTED'          // 501 - Feature not implemented
-'BAD_GATEWAY'              // 502 - Upstream error
-'SERVICE_UNAVAILABLE'      // 503 - Service temporarily unavailable
-'GATEWAY_TIMEOUT'          // 504 - Upstream timeout
+ErrorCode.INTERNAL_SERVER_ERROR    // 500 - Internal server error
+ErrorCode.NOT_IMPLEMENTED          // 501 - Feature not implemented
+ErrorCode.BAD_GATEWAY              // 502 - Upstream error
+ErrorCode.SERVICE_UNAVAILABLE      // 503 - Service temporarily unavailable
+ErrorCode.GATEWAY_TIMEOUT          // 504 - Upstream timeout
 
-// Custom errors
-'NETWORK_ERROR'            // Network failure
-'DISCOVERY_TIMEOUT'        // Discovery timeout (5s)
-'QUERY_INTERFACE_TIMEOUT'  // queryInterface timeout (1s)
-'INVALID_RESPONSE'         // Invalid response format
-'RETRY_EXHAUSTED'          // All retry attempts failed
+// Custom codes (600+)
+ErrorCode.MULTIPLE_ERRORS          // 600 - Multiple errors occurred
+ErrorCode.UNKNOWN_ERROR            // 601 - Unknown error
 ```
+
+**Note:** Error codes are **numeric values**, not strings. The response `error.code` field contains the numeric code (e.g., `404`, not `"NOT_FOUND"`).
 
 ### Error Handling Pattern
 
@@ -1220,6 +1303,51 @@ Content-Type: application/json
 4. **Service names include version** - "Calculator@1.0.0" instead of "Calculator"
 5. **Message format changed** - Native JSON instead of binary packets
 
+## Advanced API
+
+For advanced use cases, HTTP transport provides additional features:
+
+### HttpInterface (Fluent API)
+
+```typescript
+import { HttpInterface } from '@omnitron-dev/titan/netron/transport/http';
+
+const interface = new HttpInterface(transport, definition);
+
+// Chainable query builder
+const result = await interface
+  .method('getUser')
+  .input({ id: '123' })
+  .cache({ maxAge: 60000, tags: ['users'] })
+  .retry({ attempts: 3 })
+  .transform(data => ({ ...data, cached: true }))
+  .execute();
+```
+
+### TypedHttpServer (OpenAPI Generation)
+
+```typescript
+import { TypedHttpServer } from '@omnitron-dev/titan/netron/transport/http';
+
+const server = new TypedHttpServer({
+  port: 3000,
+  openapi: {
+    title: 'My API',
+    version: '1.0.0',
+    description: 'Auto-generated OpenAPI from contracts'
+  }
+});
+
+server.registerService({
+  name: 'UserService',
+  contract: userServiceContract,
+  implementation: userServiceImpl
+});
+
+// OpenAPI spec available at /openapi.json
+await server.listen();
+```
+
 ## See Also
 
 - [Netron Core Documentation](../../README.md)
@@ -1227,6 +1355,7 @@ Content-Type: application/json
 - [WebSocket Transport](../websocket/README.md)
 - [Middleware System](../../middleware/README.md)
 - [Error Handling](../../../errors/README.md)
+- [Validation & Contracts](../../../validation/README.md)
 
 ---
 

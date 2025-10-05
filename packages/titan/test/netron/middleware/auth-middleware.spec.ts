@@ -532,7 +532,7 @@ describe('Auth Middleware', () => {
       (mockContext.peer as any).getAuthContext = jest.fn().mockReturnValue(undefined);
 
       await expect(middleware(mockContext, next)).rejects.toMatchObject({
-        code: ErrorCode.UNAUTHENTICATED,
+        code: ErrorCode.UNAUTHORIZED,
       });
     });
   });

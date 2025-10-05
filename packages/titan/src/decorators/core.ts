@@ -61,9 +61,11 @@ export interface ExtendedServiceMetadata extends ServiceMetadata {
   contract?: any;
 
   /**
-   * Transports configured for the service
+   * Transport instances configured for the service (internal use)
+   * This shadows the parent transports field which is string[]
+   * @internal
    */
-  transports?: ITransport[];
+  _transports?: ITransport[];
 
   /**
    * Transport configuration options
@@ -329,7 +331,8 @@ export const Service = (options?: string | ServiceOptions) => (target: any) => {
     properties: {},
     methods: {},
     contract: serviceOptions.contract,
-    transports: serviceOptions.transports,
+    transports: serviceOptions.transports?.map(t => t.name),
+    _transports: serviceOptions.transports,
     transportConfig: serviceOptions.transportConfig,
   };
 

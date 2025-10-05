@@ -6,11 +6,10 @@
 
 import { TimedMap } from '@omnitron-dev/common';
 import { Injectable, Optional } from '../../decorators/index.js';
-import type { ILogger } from '../../types.js';
+import type { ILogger } from '../../modules/logger/logger.types.js';
 import type {
   EnhancedPolicyDecision,
   ExecutionContext,
-  PolicyDecision,
   PolicyDefinition,
   PolicyEngineConfig,
   PolicyEvaluationOptions,
@@ -32,7 +31,7 @@ class CircuitBreaker {
       timeout: number;
       resetTimeout: number;
     },
-  ) {}
+  ) { }
 
   isOpen(): boolean {
     if (this.state === 'open') {
@@ -103,8 +102,8 @@ class PolicyCache {
 
   keys(): string[] {
     const keys: string[] = [];
-    for (const [key] of this.cache.entries()) {
-      keys.push(key);
+    for (const entry of this.cache.entries()) {
+      keys.push(entry[0] as string);
     }
     return keys;
   }

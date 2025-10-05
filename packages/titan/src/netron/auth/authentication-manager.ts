@@ -5,7 +5,7 @@
  */
 
 import { Injectable, Optional } from '../../decorators/index.js';
-import type { ILogger } from '../../types.js';
+import type { ILogger } from '../../modules/logger/logger.types.js';
 import type {
   AuthCredentials,
   AuthContext,

@@ -229,7 +229,7 @@ export class RemotePeer extends AbstractPeer {
         {
           serviceName: meta.name,
           transportCount: meta.transports.length,
-          transports: meta.transports.map(t => t.name)
+          transports: meta.transports
         },
         'Service configured with transports'
       );
@@ -241,9 +241,10 @@ export class RemotePeer extends AbstractPeer {
     this.netron.peer.stubs.set(def.id, stub);
     this.netron.peer.serviceInstances.set(instance, stub);
 
-    // Store transport associations for this service
-    if (meta.transports) {
-      this.serviceTransports.set(meta.name, meta.transports);
+    // Store transport associations for this service (use _transports if available)
+    const extendedMeta = meta as any;
+    if (extendedMeta._transports) {
+      this.serviceTransports.set(meta.name, extendedMeta._transports);
     }
 
     return def;

@@ -35,13 +35,13 @@ export async function query_interface(
   serviceName: string,
 ): Promise<Definition | null> {
   // Get the local peer's services registry
-  // netron.services is Map<string, ServiceStub> where key is qualified name
-  const servicesMap = peer.netron.services;
+  // netron.peer.services is Map<string, Definition> where key is qualified name
+  const servicesMap = peer.netron.peer.services;
 
-  // Find the requested service stub
-  const serviceStub = servicesMap.get(serviceName);
+  // Find the requested service definition
+  const definition = servicesMap.get(serviceName);
 
-  if (!serviceStub) {
+  if (!definition) {
     throw new TitanError({
       code: ErrorCode.NOT_FOUND,
       message: `Service '${serviceName}' not found`,
@@ -51,9 +51,6 @@ export async function query_interface(
       },
     });
   }
-
-  // Get definition from stub
-  const definition = serviceStub.definition;
 
   // Get AuthorizationManager from Netron
   const authzManager = (peer.netron as any).authorizationManager;

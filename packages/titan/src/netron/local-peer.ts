@@ -84,7 +84,7 @@ export class LocalPeer extends AbstractPeer {
         {
           serviceName: meta.name,
           transportCount: meta.transports.length,
-          transports: meta.transports.map(t => t.name)
+          transports: meta.transports
         },
         'Service configured with transports'
       );

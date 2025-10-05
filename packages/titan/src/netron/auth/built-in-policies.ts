@@ -168,8 +168,8 @@ export const BuiltInPolicies = {
       const now = context.environment?.timestamp || new Date();
       const currentTime = now.getHours() * 60 + now.getMinutes();
 
-      const [startHour, startMin] = start.split(':').map(Number);
-      const [endHour, endMin] = end.split(':').map(Number);
+      const [startHour = 0, startMin = 0] = start.split(':').map(Number);
+      const [endHour = 23, endMin = 59] = end.split(':').map(Number);
       const startTime = startHour * 60 + startMin;
       const endTime = endHour * 60 + endMin;
 
@@ -352,8 +352,8 @@ export const BuiltInPolicies = {
     description: 'Requires tenant isolation',
     tags: ['abac', 'tenant'],
     evaluate: (context) => {
-      const userTenant = context.auth?.metadata?.tenantId;
-      const resourceTenant = context.resource?.attributes?.tenantId;
+      const userTenant = context.auth?.metadata?.['tenantId'];
+      const resourceTenant = context.resource?.attributes?.['tenantId'];
 
       if (!userTenant) {
         return {
@@ -388,7 +388,7 @@ export const BuiltInPolicies = {
     description: `Requires environment: ${env}`,
     tags: ['abac', 'environment'],
     evaluate: (context) => {
-      const currentEnv = context.environment?.env || 'unknown';
+      const currentEnv = context.environment?.['env'] || 'unknown';
       const allowed = currentEnv === env;
       return {
         allowed,
@@ -410,7 +410,7 @@ export const BuiltInPolicies = {
     description: `Requires feature flag ${flag} to be ${enabled}`,
     tags: ['abac', 'feature'],
     evaluate: (context) => {
-      const flagValue = context.auth?.metadata?.featureFlags?.[flag];
+      const flagValue = context.auth?.metadata?.['featureFlags']?.[flag];
       const allowed = flagValue === enabled;
       return {
         allowed,

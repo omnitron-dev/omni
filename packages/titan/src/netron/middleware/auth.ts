@@ -11,7 +11,7 @@ import type {
   PolicyExpression,
 } from '../auth/types.js';
 import type { PolicyEngine } from '../auth/policy-engine.js';
-import type { ILogger } from '../../types.js';
+import type { ILogger } from '../../modules/logger/logger.types.js';
 import { METADATA_KEYS } from '../../decorators/core.js';
 import { TitanError, ErrorCode } from '../../errors/index.js';
 import type { RemotePeer } from '../remote-peer.js';
@@ -180,7 +180,7 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
     if (typeof methodMetadata.auth === 'boolean') {
       if (methodMetadata.auth && !authContext) {
         throw new TitanError({
-          code: ErrorCode.UNAUTHENTICATED,
+          code: ErrorCode.UNAUTHORIZED,
           message: 'Authentication required',
           details: {
             service: ctx.serviceName,
@@ -206,7 +206,7 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
     // Authentication required if not anonymous
     if (!authContext) {
       throw new TitanError({
-        code: ErrorCode.UNAUTHENTICATED,
+        code: ErrorCode.UNAUTHORIZED,
         message: 'Authentication required',
         details: {
           service: ctx.serviceName,
@@ -322,16 +322,16 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
           authConfig.policies,
           execContext,
         );
-      } else if ('all' in authConfig.policies) {
+      } else if (typeof authConfig.policies === 'object' && 'all' in authConfig.policies && Array.isArray(authConfig.policies.all)) {
         // Explicit AND logic
         policyDecision = await policyEngine.evaluateAll(
-          authConfig.policies.all,
+          authConfig.policies.all as string[],
           execContext,
         );
-      } else if ('any' in authConfig.policies) {
+      } else if (typeof authConfig.policies === 'object' && 'any' in authConfig.policies && Array.isArray(authConfig.policies.any)) {
         // Explicit OR logic
         policyDecision = await policyEngine.evaluateAny(
-          authConfig.policies.any,
+          authConfig.policies.any as string[],
           execContext,
         );
       } else {

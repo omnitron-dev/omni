@@ -635,32 +635,14 @@ export class HttpRemotePeer extends AbstractPeer {
     this.logger.debug({ serviceName: qualifiedName }, 'Querying remote interface via HTTP');
 
     try {
-      // Prepare request
-      const request: HttpRequestMessage = {
-        id: Date.now().toString(),
-        method: 'query_interface',
-        params: [qualifiedName],
-        meta: {
-          hints: {
-            context: {
-              auth: this.defaultOptions.headers?.['Authorization']
-            }
-          }
-        }
-      };
+      // Make HTTP POST request to /netron/query-interface endpoint
+      const response = await this.sendHttpRequest<{ definition: Definition }>(
+        'POST',
+        '/netron/query-interface',
+        { serviceName: qualifiedName }
+      );
 
-      // Execute HTTP request
-      const response = await this.executeRequest(request);
-
-      if (response.error) {
-        throw new TitanError({
-          code: response.error.code as ErrorCode || ErrorCode.INTERNAL_ERROR,
-          message: response.error.message,
-          details: response.error.data
-        });
-      }
-
-      const definition = response.result as Definition;
+      const definition = response.definition;
 
       if (!definition) {
         throw new TitanError({

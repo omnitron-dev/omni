@@ -105,10 +105,19 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
 
   private async _discoverServices(): Promise<void> {
     try {
-      const response = await this.sendHttpRequest<HttpDiscoveryResponse>(
-        'GET',
-        '/netron/discovery'
-      );
+      // Add discovery-specific timeout (5 seconds) to prevent hanging
+      const discoveryTimeout = 5000;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Discovery timeout')), discoveryTimeout);
+      });
+
+      const response = await Promise.race([
+        this.sendHttpRequest<HttpDiscoveryResponse>(
+          'GET',
+          '/netron/discovery'
+        ),
+        timeoutPromise
+      ]);
 
       // Store discovered services
       if (response.services) {
@@ -141,6 +150,7 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
       }
     } catch (error) {
       // If discovery fails, continue anyway - services might still work
+      // This is intentional - we want the connection to be usable even without discovery
       console.warn('Service discovery failed:', error);
     }
   }
@@ -371,12 +381,20 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
    * Query interface (for Netron compatibility)
    */
   async queryInterface(serviceName: string): Promise<any> {
-    // Ensure services are discovered
-    await this.discoverServices();
+    // Try to wait for discovery, but don't hang forever
+    // Use a race between discovery and a fast timeout
+    try {
+      await Promise.race([
+        this.discoverServices(),
+        new Promise((resolve) => setTimeout(resolve, 1000)) // 1 second max wait
+      ]);
+    } catch (error) {
+      // Ignore discovery errors, continue with minimal definition
+    }
 
     const definition = this.services.get(serviceName);
     if (!definition) {
-      // Try to create a minimal definition if we don't have one
+      // Create a minimal definition if we don't have one
       // This allows services to work even without discovery
       const minimalDef: Definition = {
         id: serviceName,

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import { HttpNativeServer } from '../../../../src/netron/transport/http/server.js';
+import { HttpServer } from '../../../../src/netron/transport/http/server.js';
 import { LocalPeer } from '../../../../src/netron/local-peer.js';
 import { Definition } from '../../../../src/netron/definition.js';
 import { contract } from '../../../../src/validation/contract.js';
@@ -14,8 +14,8 @@ import type {
   HttpDiscoveryResponse
 } from '../../../../src/netron/transport/http/types.js';
 
-describe('HttpNativeServer', () => {
-  let server: HttpNativeServer;
+describe('HttpServer (Legacy Tests)', () => {
+  let server: HttpServer;
   let mockPeer: LocalPeer;
   let testPort: number;
 
@@ -23,7 +23,7 @@ describe('HttpNativeServer', () => {
     // Generate random port for parallel test execution
     testPort = 3000 + Math.floor(Math.random() * 1000);
 
-    server = new HttpNativeServer({
+    server = new HttpServer({
       port: testPort,
       host: 'localhost'
     });
@@ -487,7 +487,7 @@ describe('HttpNativeServer', () => {
 
   describe('CORS Support', () => {
     beforeEach(async () => {
-      server = new HttpNativeServer({
+      server = new HttpServer({
         port: testPort,
         host: 'localhost',
         cors: {

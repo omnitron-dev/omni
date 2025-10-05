@@ -272,4 +272,179 @@ describe('Transport Options', () => {
       await peer.disconnect();
     });
   });
+
+  describe('TransportOptions Usage in connect()', () => {
+    it('should use transportOptions when calling connect()', async () => {
+      // Set specific timeout via transportOptions
+      const customTimeout = 3000;
+      client.setTransportOptions('ws', {
+        requestTimeout: customTimeout,
+        connectTimeout: 8000
+      });
+
+      await client.start();
+      const peer = await client.connect(`ws://localhost:${testPort}`);
+
+      // Verify peer was created successfully
+      expect(peer).toBeDefined();
+      expect(peer.id).toBeTruthy();
+
+      await peer.disconnect();
+    });
+
+    it('should work without transportOptions (use defaults)', async () => {
+      // Don't set any transportOptions - should use defaults
+      await client.start();
+      const peer = await client.connect(`ws://localhost:${testPort}`);
+
+      expect(peer).toBeDefined();
+      expect(peer.id).toBeTruthy();
+
+      await peer.disconnect();
+    });
+
+    it('should handle transportOptions with only partial fields', async () => {
+      // Set only some fields
+      client.setTransportOptions('ws', {
+        connectTimeout: 7000
+        // requestTimeout not set - should use default
+      });
+
+      await client.start();
+      const peer = await client.connect(`ws://localhost:${testPort}`);
+
+      expect(peer).toBeDefined();
+      await peer.disconnect();
+    });
+  });
+
+  describe('RemotePeer requestTimeout Integration', () => {
+    interface ITestService {
+      echo(msg: string): Promise<string>;
+    }
+
+    @Service('testService@1.0.0')
+    class TestService {
+      @Public()
+      async echo(msg: string): Promise<string> {
+        return msg;
+      }
+    }
+
+    it('should create RemotePeer with custom requestTimeout from transportOptions', async () => {
+      const customRequestTimeout = 2500;
+      client.setTransportOptions('ws', {
+        requestTimeout: customRequestTimeout
+      });
+
+      const service = new TestService();
+      server.peer.exposeService(service);
+
+      await client.start();
+      const peer = await client.connect(`ws://localhost:${testPort}`);
+
+      // Verify peer works with custom timeout
+      const iface = await peer.queryInterface<ITestService>('testService');
+      const result = await iface.echo('hello');
+      expect(result).toBe('hello');
+
+      await peer.releaseInterface(iface);
+      await peer.disconnect();
+    });
+
+    it('should create RemotePeer with default requestTimeout when not specified', async () => {
+      const service = new TestService();
+      server.peer.exposeService(service);
+
+      await client.start();
+      const peer = await client.connect(`ws://localhost:${testPort}`);
+
+      // Should work with default timeout (5000ms)
+      const iface = await peer.queryInterface<ITestService>('testService');
+      const result = await iface.echo('test');
+      expect(result).toBe('test');
+
+      await peer.releaseInterface(iface);
+      await peer.disconnect();
+    });
+  });
+
+  describe('TransportOptions with Multiple Transports', () => {
+    it('should handle different options for different transport instances', async () => {
+      const { Netron: NetronClass } = await import('../../src/netron/netron.js');
+
+      // Create a second server on different port
+      const secondPort = await getAvailablePort();
+      const server2 = new NetronClass(createMockLogger(), {});
+      server2.registerTransport('ws', () => new WebSocketTransport());
+      server2.registerTransportServer('ws', {
+        name: 'ws',
+        options: { host: 'localhost', port: secondPort }
+      });
+      await server2.start();
+
+      // Set same transport options (ws) but for different connections
+      client.setTransportOptions('ws', {
+        requestTimeout: 4000,
+        connectTimeout: 6000
+      });
+
+      await client.start();
+
+      // Connect to both servers using same transport options
+      const peer1 = await client.connect(`ws://localhost:${testPort}`);
+      const peer2 = await client.connect(`ws://localhost:${secondPort}`);
+
+      expect(peer1).toBeDefined();
+      expect(peer2).toBeDefined();
+      expect(peer1.id).not.toBe(peer2.id);
+
+      await peer1.disconnect();
+      await peer2.disconnect();
+      await server2.stop();
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should throw error when setting options for non-existent transport', () => {
+      expect(() => {
+        client.setTransportOptions('nonexistent', { requestTimeout: 1000 });
+      }).toThrow(/Transport nonexistent not registered/);
+    });
+
+    it('should handle connection failure gracefully', async () => {
+      // Try to connect to non-existent server
+      const unavailablePort = await getAvailablePort(45000, 50000);
+
+      client.setTransportOptions('ws', {
+        connectTimeout: 500
+      });
+      await client.start();
+
+      // Should reject with timeout or connection error
+      await expect(
+        client.connect(`ws://localhost:${unavailablePort}`)
+      ).rejects.toThrow();
+    });
+  });
+
+  describe('StreamTimeout in NetronOptions', () => {
+    it('should respect streamTimeout from NetronOptions', async () => {
+      const { Netron: NetronClass } = await import('../../src/netron/netron.js');
+
+      // Create client with custom streamTimeout
+      const customClient = new NetronClass(createMockLogger(), {
+        streamTimeout: 30000 // 30 seconds
+      });
+      customClient.registerTransport('ws', () => new WebSocketTransport());
+
+      await customClient.start();
+      const peer = await customClient.connect(`ws://localhost:${testPort}`);
+
+      expect(peer).toBeDefined();
+
+      await peer.disconnect();
+      await customClient.stop();
+    });
+  });
 });

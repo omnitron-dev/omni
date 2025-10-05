@@ -9,6 +9,7 @@ import semver from 'semver';
 import type { Constructor } from '../nexus/index.js';
 import type { ServiceMetadata } from '../netron/types.js';
 import type { ITransport } from '../netron/transport/types.js';
+import type { MethodOptions } from '../netron/auth/types.js';
 
 /**
  * Options for the Service decorator
@@ -104,6 +105,14 @@ export const METADATA_KEYS = {
   // Netron/Service metadata
   SERVICE_ANNOTATION: 'netron:service',
   METHOD_ANNOTATION: 'netron:method',
+
+  // Method configuration metadata
+  METHOD_AUTH: 'method:auth',
+  METHOD_RATE_LIMIT: 'method:rateLimit',
+  METHOD_CACHE: 'method:cache',
+  METHOD_PREFETCH: 'method:prefetch',
+  METHOD_AUDIT: 'method:audit',
+  METHOD_OPTIONS: 'method:options',
 } as const;
 
 /**
@@ -445,32 +454,72 @@ export function Factory(name: string) {
  * This decorator marks class members as publicly accessible in the Titan/Netron service
  * and can optionally mark properties as read-only or specify available transports.
  *
+ * Enhanced with auth, rate limiting, caching, prefetch, and audit support.
+ *
  * This replaces the former @Public decorator from Netron.
  *
- * @param {Object} [options] - Configuration options for the decorator
+ * @param {MethodOptions} [options] - Configuration options for the decorator
  * @param {boolean} [options.readonly] - If true, marks the property as read-only
  * @param {string[]} [options.transports] - Optional array of transport names this method is available on.
  *                                          If not specified, method is available on all transports.
+ * @param {object} [options.auth] - Authentication and authorization configuration
+ * @param {string[]} [options.auth.roles] - Required roles (RBAC)
+ * @param {string[]} [options.auth.permissions] - Required permissions (RBAC)
+ * @param {string[]} [options.auth.scopes] - Required OAuth2 scopes
+ * @param {string[] | object} [options.auth.policies] - Policy names or expressions to evaluate
+ * @param {boolean} [options.auth.allowAnonymous] - Allow anonymous access
+ * @param {boolean} [options.auth.inherit] - Inherit class-level policies
+ * @param {boolean} [options.auth.override] - Override class-level policies
+ * @param {RateLimitConfig} [options.rateLimit] - Rate limiting configuration
+ * @param {CacheConfig} [options.cache] - Cache configuration
+ * @param {PrefetchConfig} [options.prefetch] - Resource prefetch configuration
+ * @param {AuditConfig} [options.audit] - Audit configuration
  * @returns {PropertyDecorator | MethodDecorator} A decorator function that processes the target member
  *
  * @example
- * class ExampleService {
- *   @Method({ readonly: true })
- *   public readonly value: string;
+ * // Simple method exposure
+ * @Method()
+ * public doSomething(): void {}
  *
- *   @Method()
- *   public doSomething(): void {
- *     // Available on all transports (default)
+ * // With authentication and authorization
+ * @Method({
+ *   auth: {
+ *     roles: ['user'],
+ *     scopes: ['write:documents'],
+ *     policies: { any: ['resource:owner', 'role:admin'] }
  *   }
+ * })
+ * async updateDocument(id: string) {}
  *
- *   @Method({ transports: ['ws', 'tcp'] })
- *   public wsAndTcpOnly(): void {
- *     // Only available via WebSocket and TCP
+ * // With rate limiting
+ * @Method({
+ *   rateLimit: {
+ *     defaultTier: { name: 'free', limit: 10, burst: 20 },
+ *     tiers: { premium: { limit: 100, burst: 150 } },
+ *     window: 60000
  *   }
- * }
+ * })
+ * async searchDocuments(query: string) {}
+ *
+ * // With caching
+ * @Method({
+ *   cache: {
+ *     ttl: 30000,
+ *     invalidateOn: ['document:updated']
+ *   }
+ * })
+ * async getDocument(id: string) {}
+ *
+ * // Transport filtering
+ * @Method({ transports: ['ws', 'tcp'] })
+ * public wsAndTcpOnly(): void {}
+ *
+ * // Read-only property
+ * @Method({ readonly: true })
+ * public readonly value: string;
  */
 export const Method =
-  (options?: { readonly?: boolean; transports?: string[] }) =>
+  (options?: MethodOptions) =>
     (target: any, propertyKey: string | symbol, descriptor?: PropertyDescriptor) => {
       // Mark the member as public/method
       Reflect.defineMetadata('public', true, target, propertyKey);
@@ -481,9 +530,39 @@ export const Method =
         Reflect.defineMetadata('readonly', options?.readonly, target, propertyKey);
       }
 
-      // Store transport metadata if specified
+      // Store all method options for later retrieval
+      if (options) {
+        Reflect.defineMetadata(METADATA_KEYS.METHOD_OPTIONS, options, target, propertyKey);
+      }
+
+      // Store transport metadata if specified (for backward compatibility)
       if (options?.transports && options.transports.length > 0) {
         Reflect.defineMetadata('method:transports', options.transports, target, propertyKey);
+      }
+
+      // Store auth metadata
+      if (options?.auth !== undefined) {
+        Reflect.defineMetadata(METADATA_KEYS.METHOD_AUTH, options.auth, target, propertyKey);
+      }
+
+      // Store rate limit metadata
+      if (options?.rateLimit) {
+        Reflect.defineMetadata(METADATA_KEYS.METHOD_RATE_LIMIT, options.rateLimit, target, propertyKey);
+      }
+
+      // Store cache metadata
+      if (options?.cache) {
+        Reflect.defineMetadata(METADATA_KEYS.METHOD_CACHE, options.cache, target, propertyKey);
+      }
+
+      // Store prefetch metadata
+      if (options?.prefetch) {
+        Reflect.defineMetadata(METADATA_KEYS.METHOD_PREFETCH, options.prefetch, target, propertyKey);
+      }
+
+      // Store audit metadata
+      if (options?.audit) {
+        Reflect.defineMetadata(METADATA_KEYS.METHOD_AUDIT, options.audit, target, propertyKey);
       }
     };
 

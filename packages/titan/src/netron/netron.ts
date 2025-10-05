@@ -28,6 +28,9 @@ import { subscribe } from './core-tasks/subscribe.js';
 import { unsubscribe } from './core-tasks/unsubscribe.js';
 import { unexpose_service } from './core-tasks/unexpose-service.js';
 import { unref_service } from './core-tasks/unref-service.js';
+import { authenticate } from './core-tasks/authenticate.js';
+import { query_interface } from './core-tasks/query-interface.js';
+import { invalidate_cache } from './core-tasks/invalidate-cache.js';
 
 /**
  * The main Netron class that manages TCP/Unix/WebSocket connections, services, and peer communication.
@@ -911,6 +914,9 @@ export class Netron extends EventEmitter implements INetron {
     this.taskManager.addTask(unsubscribe as Task);
     this.taskManager.addTask(unexpose_service as Task);
     this.taskManager.addTask(unref_service as Task);
+    this.taskManager.addTask(authenticate as Task);
+    this.taskManager.addTask(query_interface as Task);
+    this.taskManager.addTask(invalidate_cache as Task);
 
     this.logger.debug('Core tasks registered successfully');
   }

@@ -438,6 +438,21 @@ export class LocalPeer extends AbstractPeer {
   }
 
   /**
+   * Queries for a service definition.
+   * For LocalPeer, this is essentially a local lookup since all services are local.
+   * This method exists to fulfill the AbstractPeer contract.
+   *
+   * @param {string} qualifiedName - Service name with version (name@version)
+   * @returns {Promise<Definition>} Resolves with the service definition
+   * @throws {Error} If the service is not found
+   * @protected
+   */
+  protected async queryInterfaceRemote(qualifiedName: string): Promise<Definition> {
+    // For LocalPeer, all services are local, so just use local lookup
+    return this.getDefinitionByServiceName(qualifiedName);
+  }
+
+  /**
    * Processes the result of a service call or property access.
    * This private method handles special cases in service results, such as
    * converting service definitions into appropriate interface objects.

@@ -27,6 +27,13 @@ export abstract class AbstractPeer implements IPeer {
   protected interfaces = new Map<string, { instance: Interface; refCount: number }>();
 
   /**
+   * Cache of service definitions indexed by qualified service name (name@version).
+   * This cache reduces network overhead by storing previously fetched definitions.
+   * The cache can be manually invalidated using invalidateDefinitionCache().
+   */
+  protected definitionCache = new Map<string, Definition>();
+
+  /**
    * Constructs a new AbstractPeer instance.
    *
    * @param {INetron} netron - The Netron instance this peer belongs to
@@ -127,8 +134,27 @@ export abstract class AbstractPeer implements IPeer {
   abstract getServiceNames(): string[];
 
   /**
+   * Queries the remote peer for a service definition.
+   * This method must be implemented by subclasses to handle the actual
+   * communication with the remote peer (e.g., via WebSocket task or HTTP request).
+   *
+   * @param {string} qualifiedName - Service name with version (name@version)
+   * @returns {Promise<Definition>} Resolves with the service definition
+   * @abstract
+   * @protected
+   */
+  protected abstract queryInterfaceRemote(qualifiedName: string): Promise<Definition>;
+
+  /**
    * Queries and retrieves an interface for a specified service.
-   * Handles version resolution and interface creation.
+   * Handles version resolution, caching, and interface creation.
+   *
+   * Flow:
+   * 1. Parse service name and version
+   * 2. Check definition cache
+   * 3. If not cached, query remote peer via queryInterfaceRemote()
+   * 4. Cache the definition
+   * 5. Create and return interface
    *
    * @template T - Type of the interface to return
    * @param {string} qualifiedName - Service name with optional version (name@version)
@@ -138,6 +164,7 @@ export abstract class AbstractPeer implements IPeer {
     let name: string;
     let version: string | undefined;
 
+    // Parse service name and version
     if (qualifiedName.includes('@')) {
       [name, version] = qualifiedName.split('@') as [string, string | undefined];
     } else {
@@ -145,15 +172,38 @@ export abstract class AbstractPeer implements IPeer {
       version = '*';
     }
 
-    let def: Definition;
+    // Normalize the qualified name for caching
+    const normalizedName = version === '*' || !version ? name : `${name}@${version}`;
 
-    if (version === '*' || !version) {
-      def = this.findLatestServiceVersion(name);
-    } else {
-      const exactKey = `${name}@${version}`;
-      def = this.getDefinitionByServiceName(exactKey);
+    // Check definition cache first
+    let def = this.definitionCache.get(normalizedName);
+
+    if (!def) {
+      // Not in cache, query remote peer
+      if (version === '*' || !version) {
+        // For wildcard version, find latest locally or query remote
+        try {
+          def = this.findLatestServiceVersion(name);
+        } catch {
+          // If not found locally, query remote
+          def = await this.queryInterfaceRemote(name);
+        }
+      } else {
+        // For specific version, try local first then remote
+        const exactKey = `${name}@${version}`;
+        try {
+          def = this.getDefinitionByServiceName(exactKey);
+        } catch {
+          // If not found locally, query remote
+          def = await this.queryInterfaceRemote(exactKey);
+        }
+      }
+
+      // Cache the definition
+      this.definitionCache.set(normalizedName, def);
     }
 
+    // Create and return interface
     return this.queryInterfaceByDefId(def.id, def);
   }
 
@@ -305,6 +355,95 @@ export abstract class AbstractPeer implements IPeer {
 
     // Return the definition for the highest version found
     return this.getDefinitionByServiceName(candidates[0]!.key);
+  }
+
+  /**
+   * Invalidates cached definitions matching the given pattern.
+   * Supports wildcard patterns using * for matching multiple services.
+   *
+   * @param {string} [pattern] - Optional pattern to match service names.
+   *                            If not provided, all cached definitions are invalidated.
+   *                            Supports wildcard (*) for pattern matching.
+   * @returns {number} The number of cache entries invalidated
+   *
+   * @example
+   * // Invalidate specific service
+   * peer.invalidateDefinitionCache('userService@1.0.0');
+   *
+   * @example
+   * // Invalidate all services starting with "user"
+   * peer.invalidateDefinitionCache('user*');
+   *
+   * @example
+   * // Invalidate all cached definitions
+   * peer.invalidateDefinitionCache();
+   */
+  invalidateDefinitionCache(pattern?: string): number {
+    let invalidatedCount = 0;
+
+    // If no pattern, clear entire cache
+    if (pattern === undefined) {
+      invalidatedCount = this.definitionCache.size;
+      this.definitionCache.clear();
+      return invalidatedCount;
+    }
+
+    // Pattern matching
+    const keysToDelete: string[] = [];
+
+    for (const key of this.definitionCache.keys()) {
+      if (this.matchesPattern(key, pattern)) {
+        keysToDelete.push(key);
+      }
+    }
+
+    // Delete matched keys
+    for (const key of keysToDelete) {
+      this.definitionCache.delete(key);
+      invalidatedCount++;
+    }
+
+    return invalidatedCount;
+  }
+
+  /**
+   * Clears all cached service definitions.
+   * This is equivalent to calling invalidateDefinitionCache() with no arguments.
+   *
+   * @returns {number} The number of cache entries cleared
+   */
+  clearDefinitionCache(): number {
+    const count = this.definitionCache.size;
+    this.definitionCache.clear();
+    return count;
+  }
+
+  /**
+   * Checks if a service name matches a pattern with wildcard support.
+   *
+   * @param {string} serviceName - The service name to check
+   * @param {string} pattern - The pattern to match against (supports * wildcard)
+   * @returns {boolean} True if the service name matches the pattern
+   * @private
+   */
+  private matchesPattern(serviceName: string, pattern: string): boolean {
+    // Exact match
+    if (serviceName === pattern) {
+      return true;
+    }
+
+    // No wildcards - no match
+    if (!pattern.includes('*')) {
+      return false;
+    }
+
+    // Convert pattern to regex
+    const regexPattern = pattern
+      .replace(/[.+?^${}()|[\]\\]/g, '\\$&') // Escape regex special chars
+      .replace(/\*/g, '.*'); // Replace * with .*
+
+    const regex = new RegExp(`^${regexPattern}$`);
+    return regex.test(serviceName);
   }
 }
 

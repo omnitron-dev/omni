@@ -47,6 +47,7 @@ import {
 import { SERVICE_ANNOTATION } from '../decorators/core.js';
 import type { ExtendedServiceMetadata } from '../decorators/core.js';
 import type { ITransport } from './transport/types.js';
+import type { AuthContext } from './auth/types.js';
 
 /**
  * Represents a remote peer in the Netron network.
@@ -92,6 +93,9 @@ export class RemotePeer extends AbstractPeer {
 
   /** Map of transports associated with each service */
   private serviceTransports = new Map<string, ITransport[]>();
+
+  /** Authentication context for this peer */
+  private authContext?: AuthContext;
 
   /**
    * Creates a new instance of RemotePeer.
@@ -150,28 +154,50 @@ export class RemotePeer extends AbstractPeer {
 
     if (isConnector) {
       this.logger.info('Initializing as connector');
-      this.abilities = (await this.runTask('abilities', this.netron.peer.abilities)) as Abilities;
 
-      if (this.abilities.services) {
-        this.logger.info({ count: this.abilities.services.size }, 'Registering remote services');
-        for (const [name, definition] of this.abilities.services) {
-          this.definitions.set(definition.id, definition);
-          this.services.set(name, definition);
+      // Check if legacy abilities exchange is enabled
+      if (options?.legacyAbilitiesExchange) {
+        // DEPRECATED: Legacy abilities exchange protocol
+        this.logger.warn(
+          '⚠️  DEPRECATION WARNING: legacyAbilitiesExchange is deprecated and will be removed in a future version.\n' +
+          'Migration path:\n' +
+          '  1. Remove legacyAbilitiesExchange from NetronOptions\n' +
+          '  2. Use authenticate() core-task for user authentication\n' +
+          '  3. Use query_interface() core-task for service discovery with authorization\n' +
+          '  4. Services are now discovered on-demand with proper permission filtering\n' +
+          'See documentation: https://docs.omnitron.dev/netron/migration/abilities-exchange'
+        );
+
+        this.abilities = (await this.runTask('abilities', this.netron.peer.abilities)) as Abilities;
+
+        if (this.abilities.services) {
+          this.logger.info({ count: this.abilities.services.size }, 'Registering remote services (legacy mode)');
+          for (const [name, definition] of this.abilities.services) {
+            this.definitions.set(definition.id, definition);
+            this.services.set(name, definition);
+          }
         }
-      }
 
-      if (this.abilities.allowServiceEvents) {
-        this.logger.info('Subscribing to service lifecycle events');
-        await this.subscribe(NETRON_EVENT_SERVICE_EXPOSE, (event: ServiceExposeEvent) => {
-          this.logger.info({ event }, 'Service exposed event received');
-          this.definitions.set(event.definition.id, event.definition);
-          this.services.set(event.qualifiedName, event.definition);
-        });
-        await this.subscribe(NETRON_EVENT_SERVICE_UNEXPOSE, (event: ServiceUnexposeEvent) => {
-          this.logger.info({ event }, 'Service unexposed event received');
-          this.definitions.delete(event.defId);
-          this.services.delete(event.qualifiedName);
-        });
+        if (this.abilities.allowServiceEvents) {
+          this.logger.info('Subscribing to service lifecycle events (legacy mode)');
+          await this.subscribe(NETRON_EVENT_SERVICE_EXPOSE, (event: ServiceExposeEvent) => {
+            this.logger.info({ event }, 'Service exposed event received');
+            this.definitions.set(event.definition.id, event.definition);
+            this.services.set(event.qualifiedName, event.definition);
+          });
+          await this.subscribe(NETRON_EVENT_SERVICE_UNEXPOSE, (event: ServiceUnexposeEvent) => {
+            this.logger.info({ event }, 'Service unexposed event received');
+            this.definitions.delete(event.defId);
+            this.services.delete(event.qualifiedName);
+          });
+        }
+      } else {
+        // Modern mode: No abilities exchange, services discovered on-demand
+        this.logger.info('Abilities exchange disabled - using on-demand service discovery');
+        this.logger.debug(
+          'Services will be discovered on-demand via queryInterface() with authorization checks. ' +
+          'Use authenticate() core-task to establish user authentication.'
+        );
       }
     }
   }
@@ -854,5 +880,77 @@ export class RemotePeer extends AbstractPeer {
       throw new Error(`Unknown service: ${name}.`);
     }
     return def;
+  }
+
+  /**
+   * Queries the remote peer for a service definition using the query_interface core-task.
+   * This method executes the query_interface task on the remote peer with authorization checks.
+   *
+   * @param {string} qualifiedName - Service name with version (name@version)
+   * @returns {Promise<Definition>} Resolves with the service definition
+   * @throws {Error} If the service is not found or access is denied
+   * @protected
+   */
+  protected async queryInterfaceRemote(qualifiedName: string): Promise<Definition> {
+    this.logger.debug({ serviceName: qualifiedName }, 'Querying remote interface');
+
+    // Execute query_interface task on remote peer
+    const definition = await this.runTask('query_interface', qualifiedName);
+
+    if (!definition) {
+      throw new Error(`Service '${qualifiedName}' not found on remote peer`);
+    }
+
+    // Store the definition in local maps for future reference
+    this.definitions.set(definition.id, definition);
+    const serviceKey = `${definition.meta.name}@${definition.meta.version}`;
+    this.services.set(serviceKey, definition);
+
+    this.logger.info(
+      {
+        serviceName: qualifiedName,
+        definitionId: definition.id,
+        methodCount: Object.keys(definition.meta.methods || {}).length,
+      },
+      'Remote interface queried successfully',
+    );
+
+    return definition;
+  }
+
+  /**
+   * Get the authentication context for this peer
+   * @returns {AuthContext | undefined} The authentication context if authenticated
+   */
+  getAuthContext(): AuthContext | undefined {
+    return this.authContext;
+  }
+
+  /**
+   * Set the authentication context for this peer
+   * @param {AuthContext} context - The authentication context to set
+   */
+  setAuthContext(context: AuthContext): void {
+    this.authContext = context;
+    this.logger.info(
+      { userId: context.userId, roles: context.roles },
+      'Authentication context set for peer',
+    );
+  }
+
+  /**
+   * Clear the authentication context for this peer
+   */
+  clearAuthContext(): void {
+    this.authContext = undefined;
+    this.logger.info('Authentication context cleared for peer');
+  }
+
+  /**
+   * Check if this peer is authenticated
+   * @returns {boolean} True if the peer has an authentication context
+   */
+  isAuthenticated(): boolean {
+    return this.authContext !== undefined;
   }
 }

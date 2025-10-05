@@ -92,18 +92,38 @@ export class HttpRemotePeer extends AbstractPeer {
 
   /**
    * Initialize the HTTP peer
-   * For HTTP, we can pre-fetch service discovery to speed up queries
+   * Phase 7: Removed pre-fetch service discovery in favor of lazy loading via queryInterfaceRemote()
+   * Phase 8: Added support for legacyAbilitiesExchange flag
    */
   async init(isClient: boolean, options?: TransportOptions): Promise<void> {
     this.logger.debug('Initializing HTTP Remote peer');
 
     if (isClient) {
-      // Pre-fetch service discovery for better performance
-      try {
-        await this.discoverServices();
-      } catch (error) {
-        this.logger.warn({ error }, 'Failed to pre-fetch service discovery');
-        // Continue anyway - discovery will be retried on demand
+      // Check if legacy service discovery is enabled
+      const legacyMode = (options as any)?.legacyAbilitiesExchange;
+
+      if (legacyMode) {
+        // DEPRECATED: Legacy service discovery
+        this.logger.warn(
+          '⚠️  DEPRECATION WARNING: legacyAbilitiesExchange is deprecated for HTTP transport.\n' +
+          'Migration path:\n' +
+          '  1. Remove legacyAbilitiesExchange from TransportOptions\n' +
+          '  2. Services are now discovered on-demand via queryInterfaceRemote()\n' +
+          '  3. Use POST /netron/authenticate for user authentication\n' +
+          '  4. Use POST /netron/query-interface for auth-aware service discovery\n' +
+          'See documentation: https://docs.omnitron.dev/netron/migration/http-discovery'
+        );
+
+        // Legacy mode: Pre-fetch services via /netron/discovery
+        try {
+          await this.discoverServices();
+          this.logger.info('Services pre-fetched via legacy discovery endpoint');
+        } catch (error) {
+          this.logger.warn({ error }, 'Failed to pre-fetch services (legacy mode)');
+        }
+      } else {
+        // Modern mode: On-demand service discovery
+        this.logger.debug('HTTP peer initialized in client mode - services will be loaded on demand');
       }
     }
   }
@@ -600,5 +620,76 @@ export class HttpRemotePeer extends AbstractPeer {
       throw new Error(`Service ${name} not found`);
     }
     return def;
+  }
+
+  /**
+   * Queries the remote peer for a service definition via HTTP endpoint.
+   * This method will use the POST /netron/query-interface endpoint.
+   *
+   * @param {string} qualifiedName - Service name with version (name@version)
+   * @returns {Promise<Definition>} Resolves with the service definition
+   * @throws {TitanError} If the service is not found or access is denied
+   * @protected
+   */
+  protected async queryInterfaceRemote(qualifiedName: string): Promise<Definition> {
+    this.logger.debug({ serviceName: qualifiedName }, 'Querying remote interface via HTTP');
+
+    try {
+      // Prepare request
+      const request: HttpRequestMessage = {
+        id: Date.now().toString(),
+        method: 'query_interface',
+        params: [qualifiedName],
+        meta: {
+          hints: {
+            context: {
+              auth: this.defaultOptions.headers?.['Authorization']
+            }
+          }
+        }
+      };
+
+      // Execute HTTP request
+      const response = await this.executeRequest(request);
+
+      if (response.error) {
+        throw new TitanError({
+          code: response.error.code as ErrorCode || ErrorCode.INTERNAL_ERROR,
+          message: response.error.message,
+          details: response.error.data
+        });
+      }
+
+      const definition = response.result as Definition;
+
+      if (!definition) {
+        throw new TitanError({
+          code: ErrorCode.NOT_FOUND,
+          message: `Service '${qualifiedName}' not found on remote peer`
+        });
+      }
+
+      // Store the definition in local maps for future reference
+      this.definitions.set(definition.id, definition);
+      const serviceKey = `${definition.meta.name}@${definition.meta.version}`;
+      this.services.set(serviceKey, definition);
+
+      this.logger.info(
+        {
+          serviceName: qualifiedName,
+          definitionId: definition.id,
+          methodCount: Object.keys(definition.meta.methods || {}).length,
+        },
+        'Remote interface queried successfully via HTTP',
+      );
+
+      return definition;
+    } catch (error: any) {
+      this.logger.error(
+        { error, serviceName: qualifiedName },
+        'Failed to query remote interface via HTTP'
+      );
+      throw error;
+    }
   }
 }

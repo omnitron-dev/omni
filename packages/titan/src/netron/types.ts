@@ -96,6 +96,33 @@ export type NetronOptions = {
    * @type {Record<string, any>}
    */
   loggerContext?: Record<string, any>;
+
+  /**
+   * Enable legacy abilities exchange protocol.
+   *
+   * **DEPRECATED**: This option is deprecated and will be removed in a future version.
+   * The abilities exchange protocol has been replaced with auth-aware service discovery.
+   *
+   * Migration path:
+   * - Remove this option from your configuration
+   * - Use authenticate() core-task for user authentication
+   * - Use query_interface() core-task for service discovery with authorization
+   * - Services are now discovered on-demand with proper permission filtering
+   *
+   * When enabled:
+   * - Peers will exchange abilities during initial connection (legacy behavior)
+   * - A deprecation warning will be logged
+   * - Full service definitions are sent without authorization filtering
+   *
+   * When disabled (default):
+   * - No abilities exchange during connection
+   * - Services discovered on-demand via query_interface() with auth checks
+   * - Better security and performance
+   *
+   * @deprecated Use auth-aware service discovery instead
+   * @default false
+   */
+  legacyAbilitiesExchange?: boolean;
 };
 
 /**

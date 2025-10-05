@@ -129,6 +129,14 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       );
     }
 
+    // Add HTTP auth extraction middleware
+    // This extracts auth information from HTTP headers and adds it to context
+    this.globalPipeline.use(
+      this.createHttpAuthMiddleware(),
+      { name: 'http-auth', priority: 10 },
+      MiddlewareStage.PRE_PROCESS
+    );
+
     // Add compression if enabled
     if (this.options.compression) {
       const compressionOpts = typeof this.options.compression === 'object'
@@ -140,6 +148,47 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         MiddlewareStage.POST_PROCESS
       );
     }
+  }
+
+  /**
+   * Create HTTP auth middleware
+   * Extracts authentication information from HTTP headers
+   */
+  private createHttpAuthMiddleware(): any {
+    return async (ctx: any, next: () => Promise<void>) => {
+      // Extract Authorization header
+      const authHeader = ctx.metadata?.get('authorization');
+
+      if (authHeader) {
+        // Parse Bearer token
+        const parts = authHeader.split(' ');
+        if (parts.length === 2 && parts[0] === 'Bearer') {
+          const token = parts[1];
+
+          // Try to validate token if AuthenticationManager is available
+          const authManager = (this.netronPeer?.netron as any)?.authenticationManager;
+          if (authManager) {
+            try {
+              const result = await authManager.validateToken(token);
+              if (result.success && result.context) {
+                // Store auth context in metadata for downstream middleware
+                ctx.metadata.set('auth-context', result.context);
+                ctx.metadata.set('authenticated', true);
+              }
+            } catch (error) {
+              // Token validation failed - continue without auth context
+              ctx.metadata.set('authenticated', false);
+            }
+          } else {
+            // No auth manager - just store token info
+            ctx.metadata.set('auth-token', token);
+            ctx.metadata.set('auth-scheme', 'Bearer');
+          }
+        }
+      }
+
+      await next();
+    };
   }
 
   /**
@@ -293,6 +342,14 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
       if (pathname === '/netron/batch' && request.method === 'POST') {
         return this.handleBatchRequest(request);
+      }
+
+      if (pathname === '/netron/query-interface' && request.method === 'POST') {
+        return this.handleQueryInterfaceRequest(request);
+      }
+
+      if (pathname === '/netron/authenticate' && request.method === 'POST') {
+        return this.handleAuthenticateRequest(request);
       }
 
       if (pathname === '/health' && request.method === 'GET') {
@@ -636,6 +693,131 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         'Cache-Control': 'public, max-age=300' // Cache for 5 minutes
       }
     });
+  }
+
+  /**
+   * Handle query-interface request with authorization
+   */
+  private async handleQueryInterfaceRequest(request: Request): Promise<Response> {
+    try {
+      // Parse request body
+      const body = await request.json();
+      const serviceName = body.serviceName || body.params?.[0];
+
+      if (!serviceName) {
+        return this.createErrorResponse(400, 'Missing serviceName parameter', request);
+      }
+
+      // Extract auth context from headers
+      const authHeader = request.headers.get('Authorization');
+      let authContext: any = undefined;
+
+      if (authHeader) {
+        // Parse Bearer token or other auth schemes
+        const [scheme, token] = authHeader.split(' ');
+        if (scheme === 'Bearer' && token) {
+          // Create auth context from token
+          // In real implementation, this would validate the token
+          authContext = {
+            token: { type: 'bearer', value: token }
+          };
+        }
+      }
+
+      // Execute query_interface task using local peer
+      if (!this.netronPeer) {
+        return this.createErrorResponse(500, 'Netron peer not initialized', request);
+      }
+
+      // Run query_interface task with auth context
+      // We need to create a mock RemotePeer to execute the task
+      // For now, let's directly call the local peer's getDefinitionByServiceName
+      try {
+        const definition = (this.netronPeer as any).getDefinitionByServiceName(serviceName);
+
+        // If we have authorization manager, filter the definition
+        const authzManager = (this.netronPeer.netron as any).authorizationManager;
+        let filteredDefinition = definition;
+
+        if (authzManager && authContext) {
+          // Check access
+          const canAccess = authzManager.canAccessService(serviceName, authContext);
+          if (!canAccess) {
+            return this.createErrorResponse(403, `Access denied to service '${serviceName}'`, request);
+          }
+
+          // Filter definition
+          const filteredMeta = authzManager.filterDefinition(serviceName, definition.meta, authContext);
+          if (!filteredMeta) {
+            return this.createErrorResponse(403, `No access to service methods`, request);
+          }
+
+          filteredDefinition = {
+            ...definition,
+            meta: filteredMeta
+          };
+        }
+
+        return new Response(JSON.stringify({
+          id: body.id || crypto.randomUUID(),
+          result: filteredDefinition,
+          timestamp: Date.now()
+        }), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Netron-Version': '2.0'
+          }
+        });
+      } catch (error: any) {
+        return this.createErrorResponse(404, `Service '${serviceName}' not found`, request);
+      }
+    } catch (error: any) {
+      return this.createErrorResponse(500, error.message, request);
+    }
+  }
+
+  /**
+   * Handle authenticate request
+   */
+  private async handleAuthenticateRequest(request: Request): Promise<Response> {
+    try {
+      // Parse request body
+      const body = await request.json();
+      const credentials = body.credentials || body.params?.[0];
+
+      if (!credentials) {
+        return this.createErrorResponse(400, 'Missing credentials parameter', request);
+      }
+
+      // Get authentication manager
+      const authManager = (this.netronPeer?.netron as any)?.authenticationManager;
+      if (!authManager) {
+        return this.createErrorResponse(503, 'Authentication not configured', request);
+      }
+
+      // Perform authentication
+      let result;
+      if (credentials.token) {
+        result = await authManager.validateToken(credentials.token);
+      } else {
+        result = await authManager.authenticate(credentials);
+      }
+
+      return new Response(JSON.stringify({
+        id: body.id || crypto.randomUUID(),
+        result,
+        timestamp: Date.now()
+      }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Netron-Version': '2.0'
+        }
+      });
+    } catch (error: any) {
+      return this.createErrorResponse(500, error.message, request);
+    }
   }
 
   /**

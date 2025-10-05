@@ -10,6 +10,7 @@ import {
 } from '../../../src/netron/middleware/index.js';
 import { TitanError, ErrorCode } from '../../../src/errors/index.js';
 import type { IncomingMessage, ServerResponse } from 'http';
+import * as zlib from 'zlib';
 
 describe('HttpMiddlewareAdapter', () => {
   let adapter: HttpMiddlewareAdapter;
@@ -335,9 +336,6 @@ describe('HttpBuiltinMiddleware', () => {
 
   describe('compressionMiddleware', () => {
     it('should compress response with gzip', async () => {
-      const zlib = require('zlib');
-      const gzipSpy = jest.spyOn(zlib, 'gzipSync');
-
       const middleware = HttpBuiltinMiddleware.compressionMiddleware({
         threshold: 10
       });
@@ -347,14 +345,14 @@ describe('HttpBuiltinMiddleware', () => {
 
       await middleware(mockContext, mockNext);
 
-      expect(gzipSpy).toHaveBeenCalled();
+      // Verify compression was applied
       expect(mockContext.response.setHeader).toHaveBeenCalledWith(
         'Content-Encoding',
         'gzip'
       );
       expect(mockContext.body).toBeInstanceOf(Buffer);
-
-      gzipSpy.mockRestore();
+      // Compressed size should be smaller than original
+      expect((mockContext.body as Buffer).length).toBeLessThan(100);
     });
 
     it('should not compress small responses', async () => {

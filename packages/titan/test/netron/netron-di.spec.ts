@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 
 import { Container } from '../../src/nexus/index.js';
 import { Netron } from '../../src/netron/netron.js';
-import { NetronToken } from '../../src/application.js';
+import { NETRON_TOKEN } from '../../src/application/index.js';
 import { LOGGER_SERVICE_TOKEN } from '../../src/modules/logger/index.js';
 import type { ILogger } from '../../src/modules/logger/logger.types.js';
 import type { NetronOptions } from '../../src/netron/types.js';
@@ -53,12 +53,12 @@ describe('Netron DI Integration', () => {
     const netron = new Netron(logger, options);
 
     // Register as singleton in container
-    container.register(NetronToken, {
+    container.register(NETRON_TOKEN, {
       useValue: netron
     });
 
     // Resolve Netron
-    const resolvedNetron = container.resolve(NetronToken);
+    const resolvedNetron = container.resolve(NETRON_TOKEN);
 
     expect(resolvedNetron).toBeInstanceOf(Netron);
     expect(resolvedNetron.id).toBe('test-netron');
@@ -75,12 +75,12 @@ describe('Netron DI Integration', () => {
     const netron = new Netron(logger);
 
     // Register as singleton in container
-    container.register(NetronToken, {
+    container.register(NETRON_TOKEN, {
       useValue: netron
     });
 
     // Resolve Netron
-    const resolvedNetron = container.resolve(NetronToken);
+    const resolvedNetron = container.resolve(NETRON_TOKEN);
 
     expect(resolvedNetron).toBeInstanceOf(Netron);
     expect(resolvedNetron.id).toBeDefined();

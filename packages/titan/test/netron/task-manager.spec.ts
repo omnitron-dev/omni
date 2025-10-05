@@ -1,7 +1,12 @@
 import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
 import { TaskManager } from '../../src/netron';
 import { syncTask, asyncTask, failingTask, delayedTask } from './fixtures/tasks';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 describe('TaskManager', () => {
   let manager: TaskManager;

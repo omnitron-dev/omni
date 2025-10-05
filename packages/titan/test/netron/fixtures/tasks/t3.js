@@ -1,3 +1,3 @@
-exports.syncTask = function syncTask(a, b) {
+export function syncTask(a, b) {
   return a * b;
 }

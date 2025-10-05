@@ -1,6 +1,6 @@
 import type { ILogger } from '../modules/logger/logger.types.js';
 
-import type { INetron } from './netron.types.js';
+import type { INetron } from './types.js';
 import { Interface } from './interface.js';
 import { Definition } from './definition.js';
 import { RemotePeer } from './remote-peer.js';

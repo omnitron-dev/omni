@@ -3,7 +3,7 @@ import { Definition } from './definition.js';
 import { StreamReference } from './stream-reference.js';
 import { isNetronStream } from './stream-utils.js';
 import { isNetronService } from './service-utils.js';
-import { IPeer } from './netron.types.js';
+import { IPeer } from './types.js';
 
 /**
  * List of internal properties that can be read from the Interface instance.

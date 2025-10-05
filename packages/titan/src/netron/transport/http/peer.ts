@@ -8,7 +8,7 @@
 
 import { EventEmitter } from 'events';
 import { AbstractPeer } from '../../abstract-peer.js';
-import type { INetron } from '../../netron.types.js';
+import type { INetron } from '../../types.js';
 import type { ITransportConnection } from '../types.js';
 import type { ILogger } from '../../../modules/logger/logger.types.js';
 import { Definition } from '../../definition.js';

@@ -1,6 +1,6 @@
 import semver from 'semver';
 
-import type { INetron, IPeer } from './netron.types.js';
+import type { INetron, IPeer } from './types.js';
 import { Interface } from './interface.js';
 import { Definition } from './definition.js';
 import { Abilities, EventSubscriber } from './types.js';

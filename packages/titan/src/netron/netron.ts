@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 
-import { NetronOptions } from './types.js';
 import type { INetron, ILocalPeer, IPeer } from './netron.types.js';
+import type { NetronOptions, TransportConfig } from './netron.types.js';
 import { LocalPeer } from './local-peer.js';
 import { RemotePeer } from './remote-peer.js';
 import { HttpRemotePeer } from './transport/http/peer.js';
@@ -30,7 +30,7 @@ import { unexpose_service } from './core-tasks/unexpose-service.js';
 import { unref_service } from './core-tasks/unref-service.js';
 
 /**
- * The main Netron class that manages WebSocket connections, services, and peer communication.
+ * The main Netron class that manages TCP/Unix/WebSocket connections, services, and peer communication.
  * This class serves as the central hub for creating and managing distributed system components.
  * It extends EventEmitter to provide asynchronous event handling capabilities.
  *
@@ -40,10 +40,9 @@ import { unref_service } from './core-tasks/unref-service.js';
  * @example
  * // Create a new Netron instance
  * const netron = new Netron(logger, {
- *   listenHost: 'localhost',
- *   listenPort: 8080,
- *   discoveryEnabled: true,
- *   discoveryRedisUrl: 'redis://localhost:6379'
+ *   id: 'my-netron-instance',
+ *   taskTimeout: 10000,
+ *   allowServiceEvents: true
  * });
  */
 export class Netron extends EventEmitter implements INetron {
@@ -67,22 +66,25 @@ export class Netron extends EventEmitter implements INetron {
   }
 
   /**
-   * Transport server instance for handling incoming connections.
-   * Only initialized when running in server mode (when listenHost and listenPort are provided).
+   * Map of transport servers (one per registered transport).
+   * Key: transport name (e.g., 'ws', 'http', 'tcp')
+   * Value: ITransportServer instance
    *
-   * @type {ITransportServer | undefined}
-   * @private
-   * @description Manages transport connections and handles the protocol
+   * @type {Map<string, ITransportServer>}
+   * @public
+   * @description Manages multiple transport servers for different protocols
    */
-  private server?: ITransportServer;
+  public transportServers: Map<string, ITransportServer> = new Map();
 
   /**
-   * Get the transport server instance
-   * Used by LocalPeer to register services with HTTP server
-   * @returns The transport server if available
+   * Get the first transport server instance for backward compatibility.
+   * @deprecated Use transportServers map to access specific transport servers
+   * @returns The first transport server if available
    */
   get transportServer(): ITransportServer | undefined {
-    return this.server;
+    // Return the first server for backward compatibility
+    const firstServer = this.transportServers.values().next();
+    return firstServer.done ? undefined : firstServer.value;
   }
 
   /**
@@ -172,7 +174,7 @@ export class Netron extends EventEmitter implements INetron {
 
   /**
    * Transport registry for managing different transport types.
-   * Default transport is WebSocket for backward compatibility.
+   * Multiple transports can be registered and started simultaneously.
    *
    * @type {TransportRegistry}
    * @private
@@ -180,16 +182,9 @@ export class Netron extends EventEmitter implements INetron {
   private transportRegistry: TransportRegistry;
 
   /**
-   * Default transport to use for connections.
-   *
-   * @type {ITransport}
-   * @private
-   */
-  private defaultTransport: ITransport;
-
-  /**
    * Creates a new Netron instance.
    * Initializes the task manager and local peer.
+   * Transports must be registered separately before calling start().
    *
    * @constructor
    * @param {ILogger} logger - Logger instance for Netron
@@ -197,8 +192,8 @@ export class Netron extends EventEmitter implements INetron {
    * @throws {Error} If required options are missing or invalid
    * @example
    * const netron = new Netron(logger, {
-   *   listenHost: 'localhost',
-   *   listenPort: 8080
+   *   taskTimeout: 10000,
+   *   allowServiceEvents: true
    * });
    */
   constructor(logger: ILogger, options: NetronOptions = {}) {
@@ -224,48 +219,38 @@ export class Netron extends EventEmitter implements INetron {
 
     this.peer = new LocalPeer(this);
 
-    // Initialize transport registry with default WebSocket transport
+    // Initialize empty transport registry
+    // Transports must be registered explicitly before calling start()
     this.transportRegistry = new TransportRegistry();
-    const wsTransport = new WebSocketTransport();
-
-    // Register transports only if not already registered
-    if (!this.transportRegistry.has('ws')) {
-      this.transportRegistry.register('ws', () => wsTransport);
-    }
-    if (!this.transportRegistry.has('wss')) {
-      this.transportRegistry.register('wss', () => wsTransport);
-    }
-
-    this.defaultTransport = wsTransport;
   }
 
   /**
-   * Register a transport factory
-   * @param name - Transport name (e.g., 'http', 'tcp', 'unix')
+   * Register a transport factory.
+   * Transports must be registered before calling start().
+   * @param name - Transport name (e.g., 'http', 'tcp', 'unix', 'ws')
    * @param factory - Factory function that creates transport instances
-   * @param setAsDefault - Whether to set this transport as the default
    */
-  registerTransport(name: string, factory: TransportFactory, setAsDefault = false): void {
+  registerTransport(name: string, factory: TransportFactory): void {
     this.transportRegistry.register(name, factory);
-
-    if (setAsDefault) {
-      const transport = this.transportRegistry.get(name);
-      if (transport) {
-        this.defaultTransport = transport;
-      }
-    }
   }
 
   /**
-   * Set the default transport for server operations
-   * @param name - Transport name
+   * Register a transport server with specific configuration.
+   * This allows starting a transport server with custom options when start() is called.
+   * @param name - Transport name (must be registered first)
+   * @param config - Transport-specific server configuration
    */
-  setDefaultTransport(name: string): void {
+  registerTransportServer(name: string, config: TransportConfig): void {
     const transport = this.transportRegistry.get(name);
     if (!transport) {
-      throw new Error(`Transport ${name} not registered`);
+      throw new Error(`Transport ${name} not registered. Call registerTransport() first.`);
     }
-    this.defaultTransport = transport;
+
+    // Store config for use when starting
+    if (!(this as any).transportServerConfigs) {
+      (this as any).transportServerConfigs = new Map<string, TransportConfig>();
+    }
+    (this as any).transportServerConfigs.set(name, config);
   }
 
   /**
@@ -310,7 +295,7 @@ export class Netron extends EventEmitter implements INetron {
   /**
    * Override on method to return this
    */
-  override on(event: string | symbol, handler: Function): this {
+  override on(event: string | symbol, handler: (...args: any[]) => void): this {
     super.on(event, handler);
     return this;
   }
@@ -318,7 +303,7 @@ export class Netron extends EventEmitter implements INetron {
   /**
    * Override off method to return this
    */
-  override off(event: string | symbol, handler: Function): this {
+  override off(event: string | symbol, handler: (...args: any[]) => void): this {
     super.off(event, handler);
     return this;
   }
@@ -326,22 +311,30 @@ export class Netron extends EventEmitter implements INetron {
   /**
    * Override removeListener method to return this
    */
-  override removeListener(event: string | symbol, handler: Function): this {
+  override removeListener(event: string | symbol, handler: (...args: any[]) => void): this {
     super.removeListener(event, handler);
     return this;
   }
 
   /**
-   * Starts the Netron instance, initializing the WebSocket server and loading tasks.
-   * Loads core tasks from the specified directory and sets up the WebSocket server if configured.
+   * Starts the Netron instance, initializing all registered transport servers and loading tasks.
+   * Each registered transport will create its own server with the provided configuration.
    *
    * @method start
    * @async
    * @throws {Error} If Netron is already started
-   * @returns {Promise<void>} Resolves when initialization is complete
+   * @returns {Promise<void>} Resolves when all transports are initialized
    * @example
+   * // Register transports first
+   * netron.registerTransport('ws', () => new WebSocketTransport());
+   * netron.registerTransportServer('ws', { name: 'ws', options: { host: 'localhost', port: 8080 } });
+   *
+   * netron.registerTransport('http', () => new HttpTransport());
+   * netron.registerTransportServer('http', { name: 'http', options: { host: 'localhost', port: 8081 } });
+   *
+   * // Then start all transports
    * await netron.start();
-   * console.log('Netron instance started successfully');
+   * console.log('All transport servers started successfully');
    */
   async start() {
     if (this.isStarted) {
@@ -357,25 +350,56 @@ export class Netron extends EventEmitter implements INetron {
     // Register core tasks directly
     this.registerCoreTasks();
 
-    if (!this.options?.listenHost || !this.options?.listenPort) {
-      this.logger.info('Netron started in client-only mode');
+    // Get configured transport servers
+    const serverConfigs = (this as any).transportServerConfigs as Map<string, TransportConfig> | undefined;
 
-      // if (this.options.discoveryEnabled && this.options.discoveryRedisUrl) {
-      //   this.logger.info('Initializing service discovery in client mode');
-      //   await this.initServiceDiscovery(true);
-      // }
-
+    if (!serverConfigs || serverConfigs.size === 0) {
+      this.logger.info('No transport servers configured, starting in client-only mode');
       this.isStarted = true;
-      return Promise.resolve();
+      return;
     }
 
-    // Create and start transport server
-    return this.defaultTransport.createServer!({
-      host: this.options?.listenHost,
-      port: this.options?.listenPort,
-      headers: { 'x-netron-id': this.id }
-    } as any).then(async (server) => {
-      this.server = server;
+    // Start all configured transport servers
+    const startPromises: Promise<void>[] = [];
+
+    for (const [transportName, config] of serverConfigs) {
+      const transport = this.transportRegistry.get(transportName);
+      if (!transport) {
+        this.logger.warn(`Transport ${transportName} not found in registry, skipping`);
+        continue;
+      }
+
+      if (!transport.capabilities.server) {
+        this.logger.warn(`Transport ${transportName} does not support server mode, skipping`);
+        continue;
+      }
+
+      const startPromise = this.startTransportServer(transportName, transport, config);
+      startPromises.push(startPromise);
+    }
+
+    // Wait for all servers to start
+    await Promise.all(startPromises);
+
+    this.isStarted = true;
+    this.logger.info(`Netron instance started with ${this.transportServers.size} transport server(s)`);
+  }
+
+  /**
+   * Start a single transport server
+   * @private
+   */
+  private async startTransportServer(name: string, transport: ITransport, config: TransportConfig): Promise<void> {
+    try {
+      this.logger.info({ transport: name, config: config.options }, 'Starting transport server');
+
+      const server = await transport.createServer!({
+        ...config.options,
+        headers: { 'x-netron-id': this.id }
+      } as any);
+
+      // Store the server
+      this.transportServers.set(name, server);
 
       // If this is an HTTP server, set the peer for service invocation
       if (server && typeof (server as any).setPeer === 'function') {
@@ -386,17 +410,24 @@ export class Netron extends EventEmitter implements INetron {
       if (server && typeof (server as any).registerService === 'function') {
         for (const [serviceName, stub] of this.services) {
           const meta = stub.definition.meta;
+
+          // Check if service should be exposed on this transport
+          if (meta.transports && !meta.transports.includes(name)) {
+            continue; // Skip this service for this transport
+          }
+
           const contract = (meta as any).contract || (stub.instance?.constructor as any)?.contract;
           (server as any).registerService(meta.name, stub.definition, contract);
         }
       }
 
-      this.server.on('connection', async (connection: ITransportConnection) => {
+      // Setup connection handling
+      server.on('connection', async (connection: ITransportConnection) => {
         // Extract peer ID from connection or generate new one
         const url = connection.remoteAddress || '';
         const peerId = this.extractPeerIdFromConnection(url) || randomUUID();
 
-        this.logger.info({ peerId, address: connection.remoteAddress }, 'New peer connection');
+        this.logger.info({ peerId, address: connection.remoteAddress, transport: name }, 'New peer connection');
 
         // Create RemotePeer with transport adapter for backward compatibility
         const adapter = TransportConnectionFactory.fromConnection(connection);
@@ -419,19 +450,19 @@ export class Netron extends EventEmitter implements INetron {
                 this.peers.delete(peer.id);
                 peer.id = message.id;
                 this.peers.set(peer.id, peer);
-                this.logger.info({ clientId: message.id }, 'Client ID received');
+                this.logger.info({ clientId: message.id, transport: name }, 'Client ID received');
 
                 // Emit connect event after we have the actual client ID
                 this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId: peer.id });
               }
             } catch (error) {
-              this.logger.error({ error }, 'Error parsing client ID message');
+              this.logger.error({ error, transport: name }, 'Error parsing client ID message');
             }
           }
         });
 
         connection.on('disconnect', () => {
-          this.logger.info({ peerId: peer.id }, 'Peer disconnected');
+          this.logger.info({ peerId: peer.id, transport: name }, 'Peer disconnected');
           this.peers.delete(peer.id);
           this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peer.id), { peerId: peer.id });
         });
@@ -439,14 +470,19 @@ export class Netron extends EventEmitter implements INetron {
         await peer.init(false, this.options);
       });
 
-      this.server.on('error', (error: Error) => {
-        this.logger.error({ error }, 'Transport server error');
+      server.on('error', (error: Error) => {
+        this.logger.error({ error, transport: name }, 'Transport server error');
       });
 
-      await this.server.listen();
-      this.logger.info(`Netron server started at ${this.options.listenHost}:${this.options.listenPort}`);
-      this.isStarted = true;
-    });
+      await server.listen();
+
+      const address = config.options?.host || 'unknown';
+      const port = config.options?.port || config.options?.path || 'unknown';
+      this.logger.info(`${name} server started at ${address}:${port}`);
+    } catch (error) {
+      this.logger.error({ error, transport: name }, `Failed to start ${name} server`);
+      throw error;
+    }
   }
 
   // private async initServiceDiscovery(clientMode: boolean): Promise<void> {
@@ -474,8 +510,8 @@ export class Netron extends EventEmitter implements INetron {
   // }
 
   /**
-   * Stops the Netron instance, closing the WebSocket server and cleaning up resources.
-   * Properly shuts down all connections and services.
+   * Stops the Netron instance, closing all transport servers and cleaning up resources.
+   * Properly shuts down all connections, services, and transport servers.
    *
    * @method stop
    * @async
@@ -492,11 +528,24 @@ export class Netron extends EventEmitter implements INetron {
     }
     this.peers.clear();
 
-    // Stop transport server
-    if (this.server) {
-      this.logger.info('Closing transport server');
-      await this.server.close();
-      this.server = undefined;
+    // Stop all transport servers
+    const stopPromises: Promise<void>[] = [];
+    for (const [transportName, server] of this.transportServers) {
+      this.logger.info(`Closing ${transportName} transport server`);
+      stopPromises.push(
+        server.close().catch((error) => {
+          this.logger.error({ error, transport: transportName }, `Error closing ${transportName} server`);
+        })
+      );
+    }
+
+    // Wait for all servers to stop
+    await Promise.all(stopPromises);
+    this.transportServers.clear();
+
+    // Clear transport server configs
+    if ((this as any).transportServerConfigs) {
+      (this as any).transportServerConfigs.clear();
     }
 
     // if (this.discovery) {
@@ -833,18 +882,24 @@ export class Netron extends EventEmitter implements INetron {
    * Helper method to get the appropriate transport for a given address.
    * @private
    * @param {string} address - The address to connect to
-   * @returns {ITransport | undefined} The transport instance or undefined
+   * @returns {ITransport} The transport instance
+   * @throws {Error} If no transport is found for the protocol
    */
   private getTransportForAddress(address: string): ITransport {
     // Parse protocol from address
     const protocolMatch = address.match(/^(\w+):\/\//);
     if (!protocolMatch) {
-      return this.defaultTransport;
+      throw new Error(`Invalid address format: ${address}. Must include protocol (e.g., ws://, http://, tcp://)`);
     }
 
     const protocol = protocolMatch[1]!; // Protocol is guaranteed to exist if regex matches
     const transport = this.transportRegistry.getByProtocol(protocol);
-    return transport ?? this.defaultTransport;
+
+    if (!transport) {
+      throw new Error(`No transport registered for protocol: ${protocol}. Register a transport first with registerTransport('${protocol}', factory).`);
+    }
+
+    return transport;
   }
 
   /**

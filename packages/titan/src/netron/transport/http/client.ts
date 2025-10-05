@@ -7,7 +7,7 @@
 
 import { HttpConnection } from './connection.js';
 import { HttpRemotePeer } from './peer.js';
-import type { INetron } from '../../netron.types.js';
+import type { INetron } from '../../types.js';
 import type { TransportOptions } from '../types.js';
 import {
   createRequestMessage,

@@ -1,6 +1,6 @@
 import { isAsyncGenerator } from '@omnitron-dev/common';
 
-import type { ILocalPeer } from './netron.types.js';
+import type { ILocalPeer } from './types.js';
 import { Definition } from './definition.js';
 import { ServiceMetadata } from './types.js';
 import { StreamReference } from './stream-reference.js';

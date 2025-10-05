@@ -19,7 +19,21 @@ export interface TransportCapabilities {
   streaming: boolean;
   /** Supports bidirectional communication */
   bidirectional: boolean;
-  /** Supports binary data transfer */
+  /**
+   * Protocol is natively binary at wire level.
+   *
+   * True: Protocol transmits raw binary data (TCP, Unix sockets, WebSocket binary frames)
+   * False: Protocol is text-based even if it can carry binary payloads (HTTP)
+   *
+   * This indicates the fundamental nature of the protocol, not the ability to
+   * transport binary data (all transports can carry binary data in some form).
+   *
+   * Examples:
+   * - TCP: true (raw bytes on wire)
+   * - Unix Socket: true (raw bytes on wire)
+   * - WebSocket: true (supports binary frames per spec)
+   * - HTTP: false (text protocol: headers + status line always text, even with binary body)
+   */
   binary: boolean;
   /** Supports automatic reconnection */
   reconnection: boolean;

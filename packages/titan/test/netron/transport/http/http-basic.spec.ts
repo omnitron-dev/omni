@@ -28,7 +28,7 @@ describe('HTTP Transport Basic', () => {
     it('should have correct capabilities', () => {
       expect(transport.capabilities.streaming).toBe(true);
       expect(transport.capabilities.bidirectional).toBe(false);
-      expect(transport.capabilities.binary).toBe(true);
+      expect(transport.capabilities.binary).toBe(false); // HTTP is a text protocol
       expect(transport.capabilities.server).toBe(true);
     });
 

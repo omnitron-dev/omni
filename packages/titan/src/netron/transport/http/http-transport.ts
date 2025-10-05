@@ -31,7 +31,7 @@ export class HttpTransport implements ITransport {
   readonly capabilities: TransportCapabilities = {
     streaming: true,      // Via Server-Sent Events (SSE) or chunked encoding
     bidirectional: false, // HTTP is request-response
-    binary: true,         // Can handle binary data via appropriate content types
+    binary: false,        // HTTP is a text protocol (headers + status line), even though it can carry binary payloads
     reconnection: false,  // HTTP is stateless
     multiplexing: true,   // Multiple requests over same connection (HTTP/1.1 keep-alive, HTTP/2)
     server: true          // Can create HTTP servers

@@ -48,7 +48,7 @@ describe('HttpTransport', () => {
       const capabilities = transport.capabilities;
       expect(capabilities.streaming).toBe(true); // Via SSE
       expect(capabilities.bidirectional).toBe(false); // HTTP is request-response
-      expect(capabilities.binary).toBe(true);
+      expect(capabilities.binary).toBe(false); // HTTP is a text protocol
       expect(capabilities.reconnection).toBe(false); // Stateless protocol
       expect(capabilities.multiplexing).toBe(true);
       expect(capabilities.server).toBe(true);

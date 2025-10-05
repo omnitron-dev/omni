@@ -13,8 +13,7 @@ describe('query_interface core-task', () => {
   let mockNetron: any;
   let mockAuthzManager: any;
   let mockLogger: any;
-  let mockLocalPeer: any;
-  let servicesMap: Map<string, Definition>;
+  let servicesMap: Map<string, any>; // Map of ServiceStub objects
 
   beforeEach(() => {
     mockLogger = {
@@ -27,10 +26,6 @@ describe('query_interface core-task', () => {
 
     servicesMap = new Map();
 
-    mockLocalPeer = {
-      services: servicesMap,
-    };
-
     mockAuthzManager = {
       canAccessService: jest.fn(),
       filterDefinition: jest.fn(),
@@ -38,7 +33,7 @@ describe('query_interface core-task', () => {
 
     mockNetron = {
       authorizationManager: mockAuthzManager,
-      peer: mockLocalPeer,
+      services: servicesMap, // Services are now on Netron, not peer
       logger: mockLogger,
     };
 
@@ -48,6 +43,15 @@ describe('query_interface core-task', () => {
       getAuthContext: jest.fn(),
     } as any;
   });
+
+  // Helper function to create mock ServiceStub
+  function createMockServiceStub(definition: Definition) {
+    return {
+      definition,
+      peer: {},
+      instance: {},
+    };
+  }
 
   describe('service discovery', () => {
     it('should return service definition when found', async () => {
@@ -68,7 +72,7 @@ describe('query_interface core-task', () => {
         },
       };
 
-      servicesMap.set(serviceName, definition);
+      servicesMap.set(serviceName, createMockServiceStub(definition));
       mockAuthzManager.canAccessService.mockReturnValue(true);
       mockAuthzManager.filterDefinition.mockReturnValue(definition.meta);
 
@@ -117,7 +121,7 @@ describe('query_interface core-task', () => {
         permissions: ['admin:delete'],
       };
 
-      servicesMap.set(serviceName, definition);
+      servicesMap.set(serviceName, createMockServiceStub(definition));
       remotePeer.getAuthContext.mockReturnValue(authContext);
       mockAuthzManager.canAccessService.mockReturnValue(true);
       mockAuthzManager.filterDefinition.mockReturnValue(definition.meta);
@@ -148,7 +152,7 @@ describe('query_interface core-task', () => {
         permissions: ['read:documents'],
       };
 
-      servicesMap.set(serviceName, definition);
+      servicesMap.set(serviceName, createMockServiceStub(definition));
       remotePeer.getAuthContext.mockReturnValue(authContext);
       mockAuthzManager.canAccessService.mockReturnValue(false);
 
@@ -180,7 +184,7 @@ describe('query_interface core-task', () => {
         },
       };
 
-      servicesMap.set(serviceName, definition);
+      servicesMap.set(serviceName, createMockServiceStub(definition));
       remotePeer.getAuthContext.mockReturnValue(undefined);
       mockAuthzManager.canAccessService.mockReturnValue(true);
       mockAuthzManager.filterDefinition.mockReturnValue(definition.meta);
@@ -227,7 +231,7 @@ describe('query_interface core-task', () => {
         permissions: ['read:users', 'write:users'],
       };
 
-      servicesMap.set(serviceName, fullDefinition);
+      servicesMap.set(serviceName, createMockServiceStub(fullDefinition));
       remotePeer.getAuthContext.mockReturnValue(authContext);
       mockAuthzManager.canAccessService.mockReturnValue(true);
       mockAuthzManager.filterDefinition.mockReturnValue(filteredMeta);
@@ -265,7 +269,7 @@ describe('query_interface core-task', () => {
         permissions: [],
       };
 
-      servicesMap.set(serviceName, definition);
+      servicesMap.set(serviceName, createMockServiceStub(definition));
       remotePeer.getAuthContext.mockReturnValue(authContext);
       mockAuthzManager.canAccessService.mockReturnValue(true);
       mockAuthzManager.filterDefinition.mockReturnValue(null);
@@ -301,9 +305,7 @@ describe('query_interface core-task', () => {
 
       const peerWithoutAuth = {
         netron: {
-          peer: {
-            services: new Map([[serviceName, definition]]),
-          },
+          services: new Map([[serviceName, createMockServiceStub(definition)]]),
         },
         logger: mockLogger,
         getAuthContext: jest.fn(),
@@ -353,7 +355,7 @@ describe('query_interface core-task', () => {
         permissions: [],
       };
 
-      servicesMap.set(serviceName, definition);
+      servicesMap.set(serviceName, createMockServiceStub(definition));
       remotePeer.getAuthContext.mockReturnValue(authContext);
       mockAuthzManager.canAccessService.mockReturnValue(true);
       mockAuthzManager.filterDefinition.mockReturnValue(filteredMeta);
@@ -392,7 +394,7 @@ describe('query_interface core-task', () => {
         permissions: [],
       };
 
-      servicesMap.set(serviceName, definition);
+      servicesMap.set(serviceName, createMockServiceStub(definition));
       remotePeer.getAuthContext.mockReturnValue(authContext);
       mockAuthzManager.canAccessService.mockReturnValue(false);
 

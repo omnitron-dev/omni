@@ -38,6 +38,10 @@
       "types": "./dist/router/index.d.ts",
       "import": "./dist/router/index.js"
     },
+    "./forms": {
+      "types": "./dist/forms/index.d.ts",
+      "import": "./dist/forms/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

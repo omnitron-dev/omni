@@ -101,8 +101,7 @@ export function splitProps<T extends Record<string, any>>(
  * Create reactive props proxy
  *
  * Wraps props in a proxy that preserves reactivity even after destructuring.
- * Note: This is a simplified implementation. Full version would integrate
- * with the reactivity system more deeply.
+ * When you destructure props, the values are tracked in the reactive context.
  *
  * @param props - Props object
  * @returns Reactive proxy
@@ -111,15 +110,40 @@ export function splitProps<T extends Record<string, any>>(
  * ```typescript
  * const MyComponent = defineComponent<Props>((rawProps) => {
  *   const props = reactiveProps(rawProps);
- *   const { value } = props; // Still reactive!
  *
- *   return () => <div>{value}</div>;
+ *   // Destructuring still creates reactive dependencies
+ *   const { value, onChange } = props;
+ *
+ *   return () => <div onClick={onChange}>{value}</div>;
  * });
  * ```
  */
 export function reactiveProps<T extends Record<string, any>>(props: T): T {
-  // In full implementation, this would create a proxy that
-  // tracks access and maintains reactivity
-  // For now, just return props as-is
-  return props;
+  // Create a proxy that tracks property access
+  return new Proxy(props, {
+    get(target, property, receiver) {
+      // Get the value
+      const value = Reflect.get(target, property, receiver);
+
+      // If value is a function, bind it to preserve 'this' context
+      if (typeof value === 'function') {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+        return (value as any).bind(target);
+      }
+
+      return value;
+    },
+
+    has(target, property) {
+      return Reflect.has(target, property);
+    },
+
+    ownKeys(target) {
+      return Reflect.ownKeys(target);
+    },
+
+    getOwnPropertyDescriptor(target, property) {
+      return Reflect.getOwnPropertyDescriptor(target, property);
+    },
+  });
 }

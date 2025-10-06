@@ -25,6 +25,9 @@ export {
   type Ref,
 } from './refs.js';
 
+// Lazy loading
+export { lazy, preloadComponent, type ComponentLoader } from './lazy.js';
+
 // Types
 export type {
   Component,

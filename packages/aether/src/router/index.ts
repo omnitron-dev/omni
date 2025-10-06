@@ -48,3 +48,21 @@ export {
   useSearchParams,
   useIsActive,
 } from './hooks.js';
+
+// Components
+export { Link } from './Link.js';
+export type { LinkProps } from './Link.js';
+
+// Data Loading
+export {
+  useLoaderData,
+  useActionData,
+  useNavigation,
+  useFetcher,
+  setLoaderData,
+  setActionData,
+  setNavigationState,
+  executeLoader,
+  executeAction,
+} from './data.js';
+export type { Fetcher } from './data.js';

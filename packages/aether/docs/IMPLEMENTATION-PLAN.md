@@ -624,19 +624,27 @@ migrate().catch(console.error);
    - [ ] File-based route scanner (deferred - not in core spec)
    - [ ] Route groups ((group)) (deferred - not in core spec)
 
-2. **Navigation** (Week 1-2)
-   - [ ] `<Link>` component
+2. **Navigation** (Week 1-2) ✅ **COMPLETED**
+   - [x] `<Link>` component (Link.ts)
    - [x] `navigate()` function
    - [x] Browser history integration
-   - [ ] Prefetching strategies
-   - [x] Route guards
+   - [x] Active link states (activeClass, exactActiveClass)
+   - [x] Modified click handling (ctrl, meta, middle button)
+   - [x] External link support
+   - [x] 20 Link component tests passing
+   - [ ] Prefetching strategies (deferred - loader integration needed)
 
-3. **Data Loading** (Week 2)
-   - [ ] `loader()` - SSR data fetching
-   - [ ] `action()` - form mutations
-   - [ ] Resource integration
-   - [ ] Parallel loading
-   - [ ] Cache management
+3. **Data Loading** (Week 2) ⚡ **BASIC IMPLEMENTATION**
+   - [x] Data loading types (LoaderContext, ActionContext)
+   - [x] `useLoaderData()` hook
+   - [x] `useActionData()` hook
+   - [x] `useNavigation()` hook (state tracking)
+   - [x] `useFetcher()` hook (programmatic mutations)
+   - [x] Helper functions (setLoaderData, setActionData, executeLoader, executeAction)
+   - [ ] Full SSR integration (deferred - requires SSR runtime)
+   - [ ] Resource integration (deferred)
+   - [ ] Parallel loading optimization (deferred)
+   - [ ] Advanced cache management (deferred)
 
 4. **Layouts & Boundaries** (Week 2-3)
    - [ ] `+layout.tsx` files
@@ -645,11 +653,11 @@ migrate().catch(console.error);
    - [ ] `+loading.tsx` - loading states
    - [ ] Layout transitions
 
-5. **Testing** (Week 3)
-   - [ ] Router unit tests
-   - [ ] Navigation tests
-   - [ ] Loader/action tests
-   - [ ] E2E routing tests
+5. **Testing** (Week 3) ⚡ **PARTIAL**
+   - [x] Router unit tests (45 tests - route-matcher + router)
+   - [x] Navigation tests (20 tests - Link component)
+   - [ ] Loader/action integration tests (deferred)
+   - [ ] E2E routing tests (deferred)
 
 **Deliverables:**
 - Router module in `@omnitron-dev/aether/router`

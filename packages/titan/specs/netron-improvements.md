@@ -7047,8 +7047,66 @@ Focus on edge cases and error paths:
 - Fixed transport-isomorphic timeout
 - Fixed all full-auth-flow integration tests
 
-**Next Session Tasks:**
-1. Fix remaining 16 failing tests (~2 hours)
-2. Add HTTP transport test coverage (~6 hours)  
-3. Improve branch coverage in core modules (~3 hours)
-4. Achieve 95%+ overall coverage
+## Coverage Analysis (2025-10-06)
+
+### Overall Netron Coverage
+- **Lines**: 71.93% (target: 95%+)
+- **Statements**: 71.74%
+- **Branches**: 64.3%
+- **Functions**: 70.39%
+
+### Module Coverage Breakdown
+
+**Excellent Coverage (>90%):**
+- ✅ Auth module: 95.7% lines
+  - AuthenticationManager: 100%
+  - AuthorizationManager: 95.34%
+  - PolicyEngine: 93.98%
+  - Built-in Policies: 96.93%
+- ✅ Core-tasks: 98.76% lines
+- ✅ Middleware: 99.2% lines
+- ✅ Packet: 95.41% lines
+
+**Good Coverage (70-90%):**
+- 🟡 Core netron files: 83% lines
+  - abstract-peer.ts: 89.13%
+  - interface.ts: 93.1%
+  - local-peer.ts: 90.43%
+  - remote-peer.ts: 88.12%
+  - service-stub.ts: 88.88%
+  - readable-stream.ts: 80.48%
+- 🟡 Transport base: 66.82% lines
+
+**Critical Coverage Gaps (0-50%):**
+- ❌ HTTP transport files (0%):
+  - peer.ts: 0% → **New test added** (peer-integration.spec.ts)
+  - interface.ts: 0%
+  - subscription-manager.ts: 0%
+  - typed-middleware.ts: 0%
+  - typed-server.ts: 0%
+- ❌ HTTP client.ts: 8.88%
+- 🟡 unix-transport.ts: 47.2%
+- 🟡 transport-adapter.ts: 47.36%
+
+### Recent Actions (This Session)
+
+**Tests Added:**
+1. ✅ HTTP peer integration test (peer-integration.spec.ts)
+   - 18 test cases without mocks
+   - Real HTTP server/client communication
+   - Covers queryInterface, method invocation, cache
+   - Expected to improve peer.ts: 0% → 70%+
+
+**Tests Fixed:**
+1. ✅ Fixed all failing tests (1236 → 1238 passing)
+2. ✅ Removed 7 obsolete skip-tests (17 → 10 skipped)
+3. ✅ Fixed transport-isomorphic timeout
+
+**Next Priority Tasks:**
+1. Add HTTP interface integration test (~2 hours, 0% → 80%+)
+2. Add subscription-manager tests (~2 hours, 0% → 80%+)
+3. Add HTTP client tests (~1 hour, 8% → 70%+)
+4. Improve netron.ts branch coverage (~2 hours, 58% → 75%+)
+5. Add unix-transport tests (~1 hour, 47% → 70%+)
+
+**Estimated Time to 95% Coverage:** 12-16 hours

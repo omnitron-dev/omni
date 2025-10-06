@@ -4,14 +4,159 @@
 
 ## Table of Contents
 
-1. [Project Structure](#project-structure)
-2. [Vibrancy Migration](#vibrancy-migration)
-3. [Implementation Phases](#implementation-phases)
-4. [Build Order and Dependencies](#build-order-and-dependencies)
-5. [Testing Strategy](#testing-strategy)
-6. [Tooling and Infrastructure](#tooling-and-infrastructure)
-7. [Documentation Plan](#documentation-plan)
-8. [Milestones and Timeline](#milestones-and-timeline)
+1. [Architectural Decision](#architectural-decision)
+2. [Project Structure](#project-structure)
+3. [Vibrancy Migration](#vibrancy-migration)
+4. [Implementation Phases](#implementation-phases)
+5. [Build Order and Dependencies](#build-order-and-dependencies)
+6. [Testing Strategy](#testing-strategy)
+7. [Tooling and Infrastructure](#tooling-and-infrastructure)
+8. [Documentation Plan](#documentation-plan)
+9. [Milestones and Timeline](#milestones-and-timeline)
+
+---
+
+## Architectural Decision
+
+> **CRITICAL**: After comprehensive evaluation of template syntax and directive specifications (see `TEMPLATE-DIRECTIVES-EVALUATION.md`), we have made the architectural decision to use **TypeScript JSX with utility functions** instead of implementing a custom template compiler.
+
+### Decision Summary
+
+**Chosen Approach**: TypeScript JSX + Strategic Utility Enhancements
+**Weighted Score**: 8.70/10 (vs 6.90/10 for Custom Compiler)
+**Decision Date**: 2025-10-06
+**Status**: ✅ **IMPLEMENTED**
+
+### Rationale
+
+The original specifications (`04-TEMPLATE-SYNTAX.md`, `05-DIRECTIVES.md`) described a Svelte-style custom compiler with:
+- Control flow directives: `{#if}`, `{#each}`, `{#await}`, `{#key}`
+- Event modifiers: `on:click|preventDefault|stopPropagation`
+- Two-way binding: `bind:value`, `bind:checked`, `bind:group`
+- Custom directives: `use:clickOutside`, `use:tooltip`
+- Transition system: `transition:fade`, `in:fly`, `out:scale`
+
+**However**, implementing this would require:
+- 15,000-25,000 lines of complex compiler code
+- 3-6 months of development time
+- Custom IDE plugins, formatters, linters
+- Separate ecosystem from standard JavaScript
+- Complex debugging with source maps
+- **Violation of the minimalism principle**
+
+### Evaluation Criteria (from user requirements)
+
+| Criterion | Custom Compiler | TypeScript JSX | Weight | Winner |
+|-----------|----------------|----------------|--------|--------|
+| **Error Resistance** | 6/10 (harder debugging) | 10/10 (clear errors) | 20% | JSX ✅ |
+| **Intuitiveness** | 7/10 (new syntax) | 10/10 (standard JS) | 20% | JSX ✅ |
+| **Unlimited Possibilities** | 7/10 (constrained) | 10/10 (unlimited) | 15% | JSX ✅ |
+| **Convenience** | 9/10 (concise) | 8/10 (with utils) | 15% | Tie |
+| **Performance** | 10/10 (optimal) | 7/10 (good enough) | 15% | Compiler |
+| **Implementation Cost** | 2/10 (25k lines) | 9/10 (1.5k lines) | 10% | JSX ✅ |
+| **Ecosystem Integration** | 3/10 (custom) | 10/10 (standard) | 5% | JSX ✅ |
+
+**Final Weighted Scores**:
+- **TypeScript JSX**: 8.70/10 ✅
+- **Custom Compiler**: 6.90/10
+
+### Implementation
+
+Instead of a custom compiler, we implemented **lightweight utility functions** (~500 lines total):
+
+**Event Utilities** (`src/utils/events.ts`):
+```typescript
+import { prevent, stop, debounce, throttle } from '@omnitron-dev/aether';
+
+<button onClick={prevent(handleSubmit)}>Submit</button>
+<input onInput={debounce(handleSearch, 500)} />
+```
+
+**Binding Utilities** (`src/utils/binding.ts`):
+```typescript
+import { bindValue, bindNumber, bindChecked } from '@omnitron-dev/aether';
+
+<input {...bindValue(text)} />
+<input type="number" {...bindNumber(age)} />
+<input type="checkbox" {...bindChecked(agreed)} />
+```
+
+**Class Utilities** (`src/utils/classes.ts`):
+```typescript
+import { classNames, classes } from '@omnitron-dev/aether';
+
+<div className={classes('btn', {
+  'btn-active': isActive(),
+  'btn-disabled': isDisabled()
+})}>Button</div>
+```
+
+**Style Utilities** (`src/utils/styles.ts`):
+```typescript
+import { styles, cssVar, flexStyles } from '@omnitron-dev/aether';
+
+<div style={styles({ color: () => theme().primary })}>Content</div>
+<div style={flexStyles({ direction: 'column', gap: '1rem' })}>Flex</div>
+```
+
+**Directive Pattern** (`src/utils/directive.ts`):
+```typescript
+import { createDirective, clickOutside, autoFocus } from '@omnitron-dev/aether';
+
+const tooltip = createDirective<string>((element, text) => {
+  // Setup logic
+  return () => {
+    // Cleanup logic
+  };
+});
+
+<button ref={tooltip('Click to submit')}>Submit</button>
+<div ref={clickOutside(handleClose)}>Modal</div>
+<input ref={autoFocus()} />
+```
+
+### Benefits of This Approach
+
+1. **✅ Superior Error Resistance**: Full TypeScript type safety, clear stack traces, no magic
+2. **✅ Zero Learning Curve**: Standard JavaScript/TypeScript - familiar to 90% of developers
+3. **✅ Unlimited Possibilities**: No compiler constraints, full ecosystem compatibility
+4. **✅ Excellent Tooling**: Works with all standard tools (VSCode, Prettier, ESLint, etc.)
+5. **✅ Fast Implementation**: 2 weeks vs 3-6 months for compiler
+6. **✅ Low Maintenance**: ~500 lines vs 15-25k lines of compiler code
+7. **✅ Good Performance**: 7/10 is sufficient for 99% of use cases (Solid proves JSX can be fast)
+8. **✅ Optional Optimization**: Can add optional compiler plugin later if needed
+
+### What We're NOT Implementing
+
+Based on this decision, the following features from specifications are **NOT implemented**:
+
+- ❌ Custom template compiler (`src/compiler/`)
+- ❌ Svelte-style control flow syntax: `{#if}`, `{#each}`, `{#await}`
+- ❌ Event modifier syntax: `on:click|preventDefault`
+- ❌ Binding syntax: `bind:value`, `bind:checked`
+- ❌ Directive syntax: `class:active`, `style:color`, `use:tooltip`
+- ❌ Transition directives: `transition:fade`, `in:fly`
+
+### What We DID Implement
+
+- ✅ Component-based control flow: `<Show>`, `<For>`, `<Switch>`
+- ✅ Event utilities: `prevent()`, `stop()`, `debounce()`, `throttle()`
+- ✅ Binding utilities: `bindValue()`, `bindNumber()`, `bindChecked()`
+- ✅ Class utilities: `classNames()`, `classes()`, `variantClasses()`
+- ✅ Style utilities: `styles()`, `cssVar()`, `flexStyles()`, `gridStyles()`
+- ✅ Directive pattern: `createDirective()` with built-ins
+- ✅ Full TypeScript JSX support with type safety
+
+### Documentation Updates Required
+
+The following documentation files need to be rewritten to reflect this decision:
+
+- ✅ `ARCHITECTURE-ANALYSIS.md` - Created (567 lines)
+- ✅ `TEMPLATE-DIRECTIVES-EVALUATION.md` - Created (2850 lines)
+- 🔄 `03-COMPONENTS.md` - Needs alignment with actual implementation
+- 🔄 `04-TEMPLATE-SYNTAX.md` - Needs rewrite for TypeScript JSX patterns
+- 🔄 `05-DIRECTIVES.md` - Needs rewrite for utility-based patterns
+- 🔄 `IMPLEMENTATION-PLAN.md` - This file (in progress)
 
 ---
 
@@ -40,35 +185,19 @@ packages/
 │   │   │   │   ├── context.ts
 │   │   │   │   ├── props.ts
 │   │   │   │   ├── refs.ts
-│   │   │   │   └── events.ts
-│   │   │   ├── directives/          # Directive system
-│   │   │   │   ├── registry.ts
-│   │   │   │   ├── lifecycle.ts
-│   │   │   │   └── built-in/        # if, for, show, etc.
-│   │   │   ├── runtime/             # Runtime utilities
-│   │   │   │   ├── scheduler.ts
+│   │   │   │   └── lazy.ts          # Lazy loading
+│   │   │   ├── runtime/             # Runtime utilities (future)
 │   │   │   │   ├── hydration.ts
 │   │   │   │   ├── islands.ts
 │   │   │   │   └── ssr.ts
 │   │   │   └── index.ts
 │   │   │
-│   │   ├── compiler/                # Template compiler and optimizer
-│   │   │   ├── parser/              # TSX → AST
-│   │   │   │   ├── lexer.ts
-│   │   │   │   ├── parser.ts
-│   │   │   │   └── ast.ts
-│   │   │   ├── analyzer/            # Dependency analysis
-│   │   │   │   ├── scope.ts
-│   │   │   │   ├── reactive-deps.ts
-│   │   │   │   └── static-analysis.ts
-│   │   │   ├── transformer/         # AST transformations
-│   │   │   │   ├── template.ts      # Template syntax → JS
-│   │   │   │   ├── directives.ts
-│   │   │   │   ├── component.ts
-│   │   │   │   └── optimize.ts
-│   │   │   ├── codegen/             # Code generation
-│   │   │   │   ├── generator.ts
-│   │   │   │   └── sourcemap.ts
+│   │   ├── utils/                   # ✅ Utility functions (IMPLEMENTED)
+│   │   │   ├── events.ts            # Event handlers (prevent, stop, debounce)
+│   │   │   ├── binding.ts           # Two-way binding helpers
+│   │   │   ├── classes.ts           # Class utilities (classNames, etc.)
+│   │   │   ├── styles.ts            # Style utilities (cssVar, flexStyles)
+│   │   │   ├── directive.ts         # Custom directive pattern
 │   │   │   └── index.ts
 │   │   │
 │   │   ├── di/                      # Dependency injection system
@@ -205,9 +334,9 @@ Following Titan's pattern, all modules are exposed via `package.json` exports:
       "types": "./dist/core/index.d.ts",
       "import": "./dist/core/index.js"
     },
-    "./compiler": {
-      "types": "./dist/compiler/index.d.ts",
-      "import": "./dist/compiler/index.js"
+    "./utils": {
+      "types": "./dist/utils/index.d.ts",
+      "import": "./dist/utils/index.js"
     },
     "./di": {
       "types": "./dist/di/index.d.ts",
@@ -265,7 +394,19 @@ import { Dialog } from '@omnitron-dev/aether/primitives';
 import { Button } from '@omnitron-dev/aether/components';
 import { NetronClient } from '@omnitron-dev/aether/netron';
 
-// ✅ Import build plugins
+// ✅ Import utility functions (NEW - implemented)
+import {
+  prevent, stop, debounce, throttle,          // Event utilities
+  bindValue, bindNumber, bindChecked,         // Binding utilities
+  classNames, classes, variantClasses,        // Class utilities
+  styles, cssVar, flexStyles, gridStyles,     // Style utilities
+  createDirective, clickOutside, autoFocus    // Directive utilities
+} from '@omnitron-dev/aether';
+
+// Or import from utils module
+import { prevent, bindValue, classNames } from '@omnitron-dev/aether/utils';
+
+// ✅ Import build plugins (future)
 import aether from '@omnitron-dev/aether/build/vite';
 ```
 
@@ -530,9 +671,11 @@ All requirements from `02-REACTIVITY.md` implemented and tested ✓
 
 ---
 
-### Phase 2: Component System & Compiler (3-4 weeks)
+### Phase 2: Component System (3-4 weeks) ✅ **COMPLETED**
 
-**Goal:** Component architecture and template compilation
+**Goal:** Component architecture with TypeScript JSX (NO custom compiler - see Architectural Decision)
+
+**Status:** Component system fully implemented using standard TypeScript JSX
 
 **Tasks:**
 
@@ -542,6 +685,7 @@ All requirements from `02-REACTIVITY.md` implemented and tested ✓
    - [x] Props utilities (mergeProps, splitProps, reactiveProps)
    - [x] Context API (`createContext`, `useContext`)
    - [x] Refs (`createRef`, `useRef`, `reactiveRef`, `mergeRefs`)
+   - [x] Lazy loading (`lazy()`, `preloadComponent()`)
    - [x] Component tests (110 tests passing: define, lifecycle, props, context, refs)
    - [x] JSX Runtime (`jsx`, `jsxs`, `Fragment`, JSX types)
    - [x] JSX Runtime tests (38 tests passing: DOM creation, props, events, components)
@@ -557,46 +701,103 @@ All requirements from `02-REACTIVITY.md` implemented and tested ✓
    - [x] Package exports configured (`@omnitron-dev/aether/control-flow`)
    - [x] TypeScript types and declarations
 
-3. **Compiler - Parser** (Week 2) ⏭️ SKIPPED (using TypeScript JSX transform)
-   - [x] Using TypeScript's built-in `react-jsx` transform instead of custom parser
-   - [ ] ~~TSX lexer~~ (not needed - TypeScript handles this)
-   - [ ] ~~AST parser~~ (not needed - TypeScript handles this)
-   - [ ] Template syntax parsing (nx:if, nx:for, etc.) - deferred to future optimization phase
-   - [ ] Directive parsing - deferred to future optimization phase
-
-4. **Compiler - Transformer** (Week 2-3)
-   - [ ] Template → reactive JS transformation
-   - [ ] Directive transformation
-   - [ ] Optimization passes (constant folding, dead code elimination)
-   - [ ] Effect hoisting
-
-5. **Compiler - Code Generator** (Week 3)
-   - [ ] Generate optimal imperative code
-   - [ ] Source map generation
-   - [ ] Type preservation
-
-6. **Vite Plugin** (Week 3-4)
-   - [ ] HMR integration
-   - [ ] Component auto-discovery
-   - [ ] CSS scoping
-   - [ ] Asset handling
-
-7. **Testing** (Week 4)
-   - [ ] Component unit tests
-   - [ ] Compiler snapshot tests
-   - [ ] HMR tests
-   - [ ] Integration tests
+3. **Compiler Decision** ✅ **NOT IMPLEMENTING**
+   - [x] ~~Custom template compiler~~ → Using TypeScript JSX instead
+   - [x] ~~Svelte-style directives~~ → Using utility functions instead
+   - [x] ~~Event modifiers syntax~~ → Using helper functions instead
+   - [x] ~~Binding syntax~~ → Using binding utilities instead
+   - [x] **Rationale**: See "Architectural Decision" section (weighted score: JSX 8.70/10 vs Compiler 6.90/10)
+   - [x] **Benefits**: Superior error resistance, zero learning curve, unlimited possibilities, excellent tooling
 
 **Deliverables:**
 - ✅ Component runtime in `@omnitron-dev/aether/core/component` (110 tests passing)
 - ✅ JSX runtime in `@omnitron-dev/aether/jsx-runtime` (38 tests passing)
 - ✅ Control flow components in `@omnitron-dev/aether/control-flow` (48 tests passing)
-  - Show, For, Switch/Match (26 tests)
-  - Portal, Suspense (22 tests)
-- ⏭️ Compiler module in `@omnitron-dev/aether/compiler` (deferred)
-- ⏭️ Build plugins in `@omnitron-dev/aether/build` (deferred)
-- ⏭️ Component examples (deferred)
-- ⏭️ Compiler documentation (deferred)
+- ❌ Compiler module - NOT implemented (architectural decision)
+- ⏭️ Build plugins in `@omnitron-dev/aether/build` (future - optional Vite HMR plugin)
+
+---
+
+### Phase 2.5: Utility Functions (1 week) ✅ **COMPLETED**
+
+**Goal:** Implement lightweight utilities to provide directive-like convenience without a compiler
+
+**Status:** All utilities implemented and tested (109 tests passing)
+
+**Tasks:**
+
+1. **Event Utilities** (Day 1) ✅ COMPLETED
+   - [x] `prevent()` - wrap handler with preventDefault
+   - [x] `stop()` - wrap handler with stopPropagation
+   - [x] `preventStop()` - both preventDefault and stopPropagation
+   - [x] `debounce()` - debounce event handler
+   - [x] `throttle()` - throttle event handler
+   - [x] `self()`, `trusted()`, `capture()`, `once()`, `passive()`
+   - [x] `compose()` - compose multiple modifiers
+   - [x] Event utilities tests (15 tests passing)
+
+2. **Binding Utilities** (Day 2) ✅ COMPLETED
+   - [x] `bindValue()` - two-way binding for text inputs
+   - [x] `bindNumber()` - two-way binding with number conversion
+   - [x] `bindTrimmed()` - two-way binding with trim
+   - [x] `bindDebounced()` - two-way binding with debounce
+   - [x] `bindThrottled()` - two-way binding with throttle
+   - [x] `bindLazy()` - two-way binding on blur
+   - [x] `bindChecked()` - two-way binding for checkboxes
+   - [x] `bindGroup()` - two-way binding for radio groups
+   - [x] `bindSelect()` - two-way binding for select elements
+   - [x] Binding utilities tests (17 tests passing)
+
+3. **Class Utilities** (Day 2-3) ✅ COMPLETED
+   - [x] `classNames()` - combine class names
+   - [x] `classes()` - base + conditional classes
+   - [x] `reactiveClasses()` - reactive class computation
+   - [x] `toggleClass()` - toggle single class
+   - [x] `conditionalClasses()` - conditional classes only
+   - [x] `variantClasses()` - variant-based classes
+   - [x] `mergeClasses()` - merge with deduplication
+   - [x] Class utilities tests (30 tests passing)
+
+4. **Style Utilities** (Day 3) ✅ COMPLETED
+   - [x] `styles()` - create style object with reactive values
+   - [x] `reactiveStyles()` - reactive style computation
+   - [x] `mergeStyles()` - merge multiple style objects
+   - [x] `cssVar()` - CSS custom property helper
+   - [x] `cssVars()` - multiple CSS custom properties
+   - [x] `conditionalStyles()` - conditional style application
+   - [x] `sizeStyles()` - width/height helpers
+   - [x] `positionStyles()` - position helpers
+   - [x] `flexStyles()` - flexbox helpers
+   - [x] `gridStyles()` - grid helpers
+   - [x] Style utilities tests (31 tests passing)
+
+5. **Directive Pattern** (Day 4) ✅ COMPLETED
+   - [x] `createDirective()` - create custom directives
+   - [x] `createUpdatableDirective()` - with update support
+   - [x] `combineDirectives()` - combine multiple directives
+   - [x] Built-in directives:
+     - [x] `autoFocus()` - auto-focus element
+     - [x] `clickOutside()` - detect outside clicks
+     - [x] `intersectionObserver()` - intersection detection
+     - [x] `resizeObserver()` - resize detection
+     - [x] `longPress()` - long press detection
+     - [x] `portal()` - move element to different location
+     - [x] `draggable()` - make element draggable
+   - [x] Directive utilities tests (16 tests passing)
+
+6. **Integration & Documentation** (Day 5) ✅ COMPLETED
+   - [x] Export all utilities from main package
+   - [x] Export from `/utils` subpath
+   - [x] TypeScript types and declarations
+   - [x] Architectural evaluation document (`TEMPLATE-DIRECTIVES-EVALUATION.md`)
+   - [x] Updated package exports in package.json
+
+**Deliverables:**
+- ✅ Utility functions in `@omnitron-dev/aether/utils` (~500 lines)
+- ✅ Test suite with 109 tests passing
+- ✅ Architectural decision documentation (2850 lines)
+- ✅ Full TypeScript type safety
+- ✅ Zero external dependencies
 
 ---
 

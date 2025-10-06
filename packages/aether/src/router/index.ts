@@ -25,6 +25,8 @@ export type {
   ScrollBehavior,
   Location,
   Router,
+  RouteContext,
+  RouteError,
 } from './types.js';
 
 // Router
@@ -52,6 +54,26 @@ export {
 // Components
 export { Link } from './Link.js';
 export type { LinkProps } from './Link.js';
+
+// Layouts
+export { Outlet, RouteContextSymbol, useRouteContext } from './Outlet.js';
+export {
+  buildLayoutChain,
+  findErrorBoundary,
+  findLoadingComponent,
+  createRouteContext,
+  renderWithLayouts,
+} from './layouts.js';
+
+// Error Boundaries
+export {
+  ErrorBoundary,
+  useRouteError,
+  createRouteError,
+  isRouteError,
+  RouteErrorContext,
+} from './error-boundary.js';
+export type { ErrorBoundaryProps } from './error-boundary.js';
 
 // Data Loading
 export {

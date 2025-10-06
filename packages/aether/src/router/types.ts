@@ -70,6 +70,9 @@ export interface GuardContext {
 export interface RouteDefinition {
   path: string;
   component?: RouteComponent;
+  layout?: RouteComponent;
+  errorBoundary?: RouteComponent;
+  loading?: RouteComponent;
   loader?: RouteLoader;
   action?: RouteAction;
   guards?: RouteGuard[];
@@ -169,4 +172,24 @@ export interface Router {
   afterEach(hook: (to: RouteMatch, from: RouteMatch | null) => void): () => void;
 
   dispose(): void;
+}
+
+/**
+ * Route context for nested routes
+ */
+export interface RouteContext {
+  route: RouteMatch;
+  layouts: RouteComponent[];
+  errorBoundary?: RouteComponent;
+  loading?: RouteComponent;
+}
+
+/**
+ * Route error context
+ */
+export interface RouteError {
+  message: string;
+  stack?: string;
+  statusCode?: number;
+  error?: Error;
 }

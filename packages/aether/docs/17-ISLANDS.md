@@ -999,7 +999,7 @@ Prefetch island data:
 
 ```typescript
 export const UserIsland = island(defineComponent(() => {
-  const [user] = resource(() => api.fetchUser());
+  const user = resource(() => api.fetchUser());
 
   return () => <div>{user()?.name}</div>;
 }), {

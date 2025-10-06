@@ -67,6 +67,36 @@ export {
   type RadioGroupContextValue,
 } from './DropdownMenu.js';
 
+// Select
+export {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectIcon,
+  SelectContent,
+  SelectViewport,
+  SelectItem,
+  SelectItemText,
+  SelectItemIndicator,
+  SelectGroup,
+  SelectLabel,
+  SelectSeparator,
+  SelectContext,
+  type SelectProps,
+  type SelectTriggerProps,
+  type SelectValueProps,
+  type SelectIconProps,
+  type SelectContentProps,
+  type SelectViewportProps,
+  type SelectItemProps,
+  type SelectItemTextProps,
+  type SelectItemIndicatorProps,
+  type SelectGroupProps,
+  type SelectLabelProps,
+  type SelectSeparatorProps,
+  type SelectContextValue,
+} from './Select.js';
+
 // Utilities
 export {
   // ID generation

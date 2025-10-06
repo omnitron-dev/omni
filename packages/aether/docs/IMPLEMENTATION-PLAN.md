@@ -780,8 +780,8 @@ All requirements from `02-REACTIVITY.md` implemented and tested ✓
    - [x] Dialog / Modal (with accessibility, keyboard nav, focus trap)
    - [x] Popover (with smart positioning, collision detection, keyboard nav)
    - [x] Dropdown Menu (keyboard nav, typeahead, checkbox/radio items, separators, labels)
-   - [ ] Tooltip
-   - [ ] Select / Combobox
+   - [x] Select (keyboard nav, typeahead, form integration, item text storage)
+   - [ ] Combobox (with filtering and custom values)
    - [ ] Tabs
    - [ ] Accordion
 
@@ -798,6 +798,7 @@ All requirements from `02-REACTIVITY.md` implemented and tested ✓
    - [x] Dialog component tests (30 tests)
    - [x] Popover component tests (30 tests)
    - [x] Dropdown Menu component tests (57 tests)
+   - [x] Select component tests (61 tests)
    - [ ] Accessibility tests (axe-core)
    - [ ] Keyboard navigation tests
 
@@ -806,12 +807,13 @@ All requirements from `02-REACTIVITY.md` implemented and tested ✓
 - ✅ Dialog primitive with full accessibility
 - ✅ Popover primitive with smart positioning and collision detection
 - ✅ Dropdown Menu primitive with keyboard nav, typeahead, checkbox/radio support
+- ✅ Select primitive with keyboard nav, typeahead, form integration
 - [ ] Primitive examples
 - [ ] Accessibility guide
 
 **Test Coverage:**
-- Total: 833 tests passing (776 + 57 new), 11 skipped
-- Primitives: 232 tests (115 utils + 30 Dialog + 30 Popover + 57 DropdownMenu)
+- Total: 894 tests passing (833 + 61 new), 11 skipped
+- Primitives: 293 tests (115 utils + 30 Dialog + 30 Popover + 57 DropdownMenu + 61 Select)
 - All tests passing
 
 ---

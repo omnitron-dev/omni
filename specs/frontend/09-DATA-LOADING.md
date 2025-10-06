@@ -158,24 +158,30 @@ const [user] = resource<User>(() => fetchUser());
 ### Basic Resource
 
 ```typescript
-import { resource } from 'nexus';
+import { defineComponent, resource } from 'nexus';
 
-const [data] = resource(() => {
-  return fetch('/api/data').then(r => r.json());
+const DataComponent = defineComponent(() => {
+  const data = resource(() => {
+    return fetch('/api/data').then(r => r.json());
+  });
+
+  return () => (
+    <div>
+      {/* Access data */}
+      {data() && <div>{data().title}</div>}
+
+      {/* Check loading state */}
+      {#if data.loading}
+        <Spinner />
+      {/if}
+
+      {/* Check error state */}
+      {#if data.error}
+        <Error message={data.error.message} />
+      {/if}
+    </div>
+  );
 });
-
-// Access data
-<div>{data()?.title}</div>
-
-// Check loading state
-{#if data.loading}
-  <Spinner />
-{/if}
-
-// Check error state
-{#if data.error}
-  <Error message={data.error.message} />
-{/if}
 ```
 
 ### Resource with Source
@@ -183,75 +189,123 @@ const [data] = resource(() => {
 Resource refetches when source changes:
 
 ```typescript
-const userId = signal(1);
+import { defineComponent, signal, resource } from 'nexus';
 
-const [user] = resource(
-  userId,  // Source
-  (id) => fetch(`/api/users/${id}`).then(r => r.json())  // Fetcher
-);
+const UserComponent = defineComponent(() => {
+  const userId = signal(1);
 
-// Change userId triggers refetch
-<button on:click={() => userId.set(2)}>
-  Load User 2
-</button>
+  const user = resource(() =>
+    fetch(`/api/users/${userId()}`).then(r => r.json())
+  );
+
+  return () => (
+    <div>
+      {/* Change userId triggers refetch */}
+      <button on:click={() => userId.set(2)}>
+        Load User 2
+      </button>
+
+      {#if user()}
+        <div>{user().name}</div>
+      {/if}
+    </div>
+  );
+});
 ```
 
-### Multiple Sources
+### Multiple Dependencies
 
 ```typescript
-const userId = signal(1);
-const includeRoles = signal(false);
+import { defineComponent, signal, resource } from 'nexus';
 
-const [user] = resource(
-  () => ({ id: userId(), roles: includeRoles() }),  // Multiple sources
-  ({ id, roles }) => {
+const UserDetailsComponent = defineComponent(() => {
+  const userId = signal(1);
+  const includeRoles = signal(false);
+
+  // Resource automatically tracks all signal dependencies
+  const user = resource(() => {
+    const id = userId();
+    const roles = includeRoles();
     const url = `/api/users/${id}${roles ? '?include=roles' : ''}`;
     return fetch(url).then(r => r.json());
-  }
-);
+  });
+
+  return () => (
+    <div>
+      <button on:click={() => includeRoles.set(!includeRoles())}>
+        Toggle Roles
+      </button>
+      {user() && <UserCard user={user()} />}
+    </div>
+  );
+});
 ```
 
-### Resource Actions
+### Resource Methods
 
 ```typescript
-const [data, { refetch, mutate }] = resource(fetchData);
+import { defineComponent, resource } from 'nexus';
 
-// Refetch data
-<button on:click={refetch}>Refresh</button>
+const DataComponent = defineComponent(() => {
+  const data = resource(() => fetchData());
 
-// Optimistic update
-<button on:click={() => mutate({ ...data(), likes: data().likes + 1 })}>
-  Like
-</button>
+  const handleRefresh = () => {
+    data.refetch(); // Manually trigger refetch
+  };
+
+  const handleOptimisticUpdate = () => {
+    // Optimistic update (mutate local data)
+    data.mutate({ ...data(), likes: data().likes + 1 });
+
+    // Then sync with server
+    api.incrementLikes(data().id);
+  };
+
+  return () => (
+    <div>
+      <button on:click={handleRefresh}>Refresh</button>
+      <button on:click={handleOptimisticUpdate}>Like</button>
+      {data() && <DataView data={data()} />}
+    </div>
+  );
+});
 ```
 
 ### Resource States
 
 ```typescript
-const [data] = resource(fetchData);
+import { defineComponent, resource } from 'nexus';
 
-// State values
-data.state; // 'unresolved' | 'pending' | 'ready' | 'refreshing' | 'errored'
-data.loading; // boolean
-data.error; // Error | undefined
-data(); // Data | undefined
+const DataComponent = defineComponent(() => {
+  const data = resource(() => fetchData());
 
-// Check states
-{#if data.state === 'pending'}
-  <InitialLoading />
-{:else if data.state === 'refreshing'}
-  <RefreshingIndicator />
-{:else if data.state === 'errored'}
-  <Error />
-{:else if data.state === 'ready'}
-  <Content data={data()} />
-{/if}
+  return () => (
+    <div>
+      {/* State values */}
+      {/* data.state: 'unresolved' | 'pending' | 'ready' | 'refreshing' | 'errored' */}
+      {/* data.loading: boolean */}
+      {/* data.error: Error | undefined */}
+      {/* data(): Data | undefined */}
+
+      {/* Check states */}
+      {#if data.state === 'pending'}
+        <InitialLoading />
+      {:else if data.state === 'refreshing'}
+        <RefreshingIndicator />
+      {:else if data.state === 'errored'}
+        <Error message={data.error.message} />
+      {:else if data.state === 'ready'}
+        <Content data={data()} />
+      {/if}
+    </div>
+  );
+});
 ```
 
 ### Resource Options
 
 ```typescript
-const [data] = resource(
+const data = resource(
   source,
   fetcher,
   {

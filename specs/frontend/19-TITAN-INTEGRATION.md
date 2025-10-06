@@ -130,49 +130,105 @@ export default defineComponent(() => {
 
 ## Philosophy
 
-### Unified Framework
+### Contract-Based Integration
 
-**One framework for frontend and backend**:
+**Clean separation with type-safe contracts**:
 
 ```typescript
-// Traditional (separate frameworks)
-// Backend: NestJS/Express
-// Frontend: React/Vue
-// = Different DI, different patterns, separate deployments
+// ❌ Traditional (tightly coupled)
+// Frontend directly imports backend classes
+import { UserService } from '@/backend/services/user.service'; // Bad!
 
-// Nexus + Titan (unified)
-// Backend: Titan
-// Frontend: Nexus
-// = Shared DI, shared patterns, single deployment
+// ✅ Nexus + Titan (contract-based)
+// 1. Define shared interface contract
+export interface IUserService {
+  findAll(): Promise<User[]>;
+}
+
+// 2. Backend implements
+@Service('users@1.0.0')
+export class UserService implements IUserService { ... }
+
+// 3. Frontend creates RPC proxy
+export const UserRPCService = injectable(() => {
+  const netron = inject(NetronClient);
+  return netron.createProxy<IUserService>('users@1.0.0');
+});
+```
+
+### Separate DI Systems
+
+**Each side has its own DI optimized for its needs**:
+
+```typescript
+// Backend DI (Titan)
+// - Constructor injection
+// - Decorators (@Injectable, @Service)
+// - Scopes (singleton, transient, request)
+@Injectable()
+@Service('products@1.0.0')
+export class ProductService {
+  constructor(
+    private db: DatabaseService,
+    private logger: LoggerService
+  ) {}
+}
+
+// Frontend DI (Nexus)
+// - Function-based (injectable())
+// - Lightweight, tree-shakeable
+// - Component-scoped by default
+export const ProductRPCService = injectable(() => {
+  const netron = inject(NetronClient);
+  return netron.createProxy<IProductService>('products@1.0.0');
+});
 ```
 
 ### Type Safety Everywhere
 
-**End-to-end type safety**:
+**End-to-end type safety via interfaces**:
 
 ```typescript
-// Backend
-@Injectable()
-export class ProductService {
+// shared/contracts/product.contract.ts
+export interface IProductService {
+  getProducts(filters?: ProductFilters): Promise<Product[]>;
+  getProductById(id: string): Promise<Product>;
+}
+
+// Backend implementation
+@Service('products@1.0.0')
+export class ProductService implements IProductService {
   @Public()
-  async getProducts(): Promise<Product[]> {
-    return await db.products.findMany();
+  async getProducts(filters?: ProductFilters) {
+    return await this.db.products.findMany({ where: filters });
+  }
+
+  @Public()
+  async getProductById(id: string) {
+    return await this.db.products.findUnique({ where: { id } });
   }
 }
 
-// Frontend (automatic type inference)
-const productService = useRPC(ProductService);
+// Frontend usage - fully typed!
+const ProductPage = defineComponent(() => {
+  const productService = inject(ProductRPCService);
+  const products = resource(() => productService.getProducts());
+  // products() is typed as Product[] | undefined - no manual typing!
 
-const [products] = resource(() => productService.getProducts());
-// products is typed as Product[]! No manual typing needed.
+  return () => (
+    <div>
+      {products() && products().map(p => <ProductCard product={p} />)}
+    </div>
+  );
+});
 ```
 
 ### Zero Boilerplate
 
-**No manual API routes**:
+**No manual API routes needed**:
 
 ```typescript
-// ❌ Traditional (manual API routes)
+// ❌ Traditional (manual REST API)
 // Backend
 app.get('/api/users', async (req, res) => {
   const users = await userService.findAll();
@@ -182,149 +238,288 @@ app.get('/api/users', async (req, res) => {
 // Frontend
 const users = await fetch('/api/users').then(r => r.json());
 
-// ✅ Nexus + Titan (automatic RPC)
-// Backend
-@Injectable()
-export class UserService {
-  @Public()
-  async findAll() {
-    return await db.users.findMany();
-  }
+// ✅ Nexus + Titan (contract + RPC)
+// 1. Interface (shared)
+export interface IUserService {
+  findAll(): Promise<User[]>;
 }
 
-// Frontend
-const userService = useRPC(UserService);
-const users = await userService.findAll();
+// 2. Backend (implements)
+@Service('users@1.0.0')
+export class UserService implements IUserService {
+  @Public()
+  async findAll() { return this.db.users.findMany(); }
+}
+
+// 3. Frontend (proxy)
+const userService = inject(UserRPCService);
+const users = await userService.findAll(); // Type-safe RPC call!
 ```
 
-### Progressive Enhancement
+### Security by Design
 
-**Works without RPC**:
+**Role-based interface projection**:
 
 ```typescript
-// Server: Direct service calls (no RPC)
-export const loader = async ({ inject }) => {
-  const userService = inject(UserService);
-  const users = await userService.findAll(); // Direct call
-  return users;
-};
+// Backend defines roles
+@Service('users@1.0.0')
+export class UserService {
+  @Public()
+  @Roles('user', 'admin')
+  async findAll(): Promise<User[]> { ... }
 
-// Client: RPC (automatic fallback)
-const userService = useRPC(UserService);
-const users = await userService.findAll(); // RPC call
+  @Public()
+  @Roles('admin')
+  async deleteUser(id: string): Promise<void> { ... }
+}
+
+// Frontend receives projected interface based on user's role
+// Regular user: only findAll() available
+// Admin: both findAll() and deleteUser() available
+
+const userService = inject(UserRPCService);
+// TypeScript knows which methods are available based on user role!
+
+## Contract-First Development
+
+### Step 1: Define Interface Contract
+
+Create shared TypeScript interfaces in `shared/contracts/`:
+
+```typescript
+// shared/contracts/user.contract.ts
+export interface IUserService {
+  findAll(): Promise<User[]>;
+  findById(id: string): Promise<User | null>;
+  create(data: CreateUserDTO): Promise<User>;
+  update(id: string, data: UpdateUserDTO): Promise<User>;
+  delete(id: string): Promise<void>;
+}
+
+// shared/models/user.model.ts
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: Date;
+}
+
+export interface CreateUserDTO {
+  name: string;
+  email: string;
+  password: string;
+}
+
+export interface UpdateUserDTO {
+  name?: string;
+  email?: string;
+}
 ```
 
-## Module System
-
-### Unified Modules
-
-Modules work on both frontend and backend:
+### Step 2: Implement Backend Service
 
 ```typescript
-// user.module.ts
-import { defineModule } from 'nexus/titan';
-import { UserService } from './user.service';
-import { UserController } from './user.controller';
-import { UserListComponent } from './components/UserList';
+// backend/services/user.service.ts
+import { Injectable } from '@omnitron-dev/titan';
+import { Service, Public, Roles } from '@omnitron-dev/titan/netron';
+import { IUserService } from '@/shared/contracts/user.contract';
 
-export const UserModule = defineModule({
-  providers: [
-    UserService, // Backend service
-    UserController // Backend controller
-  ],
-  components: [
-    UserListComponent // Frontend component
-  ],
-  exports: [UserService] // Export for DI and RPC
+@Injectable()
+@Service('users@1.0.0')
+export class UserService implements IUserService {
+  constructor(
+    private db: DatabaseService,
+    private logger: LoggerService
+  ) {}
+
+  @Public()
+  @Roles('user', 'admin')
+  async findAll(): Promise<User[]> {
+    this.logger.info('Finding all users');
+    return this.db.users.findMany();
+  }
+
+  @Public()
+  @Roles('user', 'admin')
+  async findById(id: string): Promise<User | null> {
+    return this.db.users.findUnique({ where: { id } });
+  }
+
+  @Public()
+  @Roles('admin')
+  async create(data: CreateUserDTO): Promise<User> {
+    const hashedPassword = await bcrypt.hash(data.password, 10);
+    return this.db.users.create({
+      data: { ...data, password: hashedPassword }
+    });
+  }
+
+  @Public()
+  @Roles('admin')
+  async update(id: string, data: UpdateUserDTO): Promise<User> {
+    return this.db.users.update({ where: { id }, data });
+  }
+
+  @Public()
+  @Roles('admin')
+  async delete(id: string): Promise<void> {
+    await this.db.users.delete({ where: { id } });
+  }
+}
+```
+
+### Step 3: Create Frontend RPC Service
+
+```typescript
+// frontend/services/user-rpc.service.ts
+import { injectable, inject } from 'nexus';
+import { NetronClient } from 'nexus/netron';
+import { IUserService } from '@/shared/contracts/user.contract';
+
+/**
+ * RPC proxy for UserService
+ * Automatically handles:
+ * - Type-safe method calls
+ * - Serialization/deserialization
+ * - Error handling
+ * - Authentication headers
+ */
+export const UserRPCService = injectable(() => {
+  const netron = inject(NetronClient);
+
+  // Create type-safe RPC proxy from interface
+  return netron.createProxy<IUserService>('users@1.0.0');
 });
 ```
 
-### Root Module
-
-Create root application module:
+### Step 4: Use in Components
 
 ```typescript
-// app.module.ts
-import { defineModule } from 'nexus/titan';
-import { ConfigModule } from '@omnitron-dev/titan/module/config';
-import { NexusModule } from 'nexus/titan';
-import { UserModule } from './user/user.module';
-import { ProductModule } from './product/product.module';
+// frontend/pages/users/index.tsx
+import { defineComponent, inject, resource, signal } from 'nexus';
+import { UserRPCService } from '@/services/user-rpc.service';
 
-export const AppModule = defineModule({
-  imports: [
-    ConfigModule.forRoot(),
-    NexusModule.forRoot({
-      entry: './src/entry-server.ts',
-      port: 3000
-    }),
-    UserModule,
-    ProductModule
-  ]
-});
-```
+export default defineComponent(() => {
+  const userService = inject(UserRPCService);
 
-### Feature Modules
+  // Reactive data loading
+  const users = resource(() => userService.findAll());
 
-Create feature modules:
+  const handleDelete = async (id: string) => {
+    if (confirm('Delete user?')) {
+      await userService.delete(id);
+      users.refetch(); // Reload data
+    }
+  };
 
-```typescript
-// product.module.ts
-import { defineModule } from 'nexus/titan';
-import { ProductService } from './product.service';
-import { ProductRepository } from './product.repository';
+  return () => (
+    <div>
+      <h1>Users</h1>
 
-export const ProductModule = defineModule({
-  providers: [ProductService, ProductRepository],
-  exports: [ProductService]
-});
-
-// Import in other modules
-import { ProductModule } from './product/product.module';
-
-export const CartModule = defineModule({
-  imports: [ProductModule], // Access ProductService
-  providers: [CartService]
+      {#if users.loading}
+        <Spinner />
+      {:else if users.error}
+        <Error message={users.error.message} />
+      {:else if users()}
+        <ul>
+          {#each users() as user}
+            <li>
+              {user.name} ({user.email})
+              <button on:click={() => handleDelete(user.id)}>
+                Delete
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
+  );
 });
 ```
 
 ## Dependency Injection
 
-### Shared DI Container
+### Backend DI (Titan)
 
-Services are shared between frontend and backend:
+Backend uses Titan's powerful DI system:
 
 ```typescript
-// Shared service
+// backend/services/order.service.ts
+import { Injectable } from '@omnitron-dev/titan';
+import { Service, Public } from '@omnitron-dev/titan/netron';
+
 @Injectable()
-export class ConfigService {
-  get apiUrl() {
-    return process.env.API_URL || 'http://localhost:3000';
+@Service('orders@1.0.0')
+export class OrderService implements IOrderService {
+  // Constructor injection (Titan DI)
+  constructor(
+    private db: DatabaseService,
+    private userService: UserService,
+    private emailService: EmailService,
+    private logger: LoggerService
+  ) {}
+
+  @Public()
+  async createOrder(userId: string, items: OrderItem[]) {
+    const user = await this.userService.findById(userId);
+    const order = await this.db.orders.create({ data: { userId, items } });
+
+    // Send confirmation email
+    await this.emailService.send({
+      to: user.email,
+      subject: 'Order confirmation',
+      template: 'order-confirmation',
+      data: { order }
+    });
+
+    this.logger.info(`Order created: ${order.id}`);
+    return order;
   }
 }
+```
 
-// Backend usage
-@Injectable()
-export class UserService {
-  constructor(private config: ConfigService) {}
+### Frontend DI (Nexus)
 
-  async findAll() {
-    console.log('API:', this.config.apiUrl);
-    return await db.users.findMany();
-  }
-}
+Frontend uses lightweight, function-based DI:
 
-// Frontend usage
-export default defineComponent(() => {
-  const config = inject(ConfigService);
+```typescript
+// frontend/services/order-rpc.service.ts
+import { injectable, inject } from 'nexus';
+import { NetronClient } from 'nexus/netron';
 
-  return () => <div>API: {config.apiUrl}</div>;
+export const OrderRPCService = injectable(() => {
+  const netron = inject(NetronClient);
+  return netron.createProxy<IOrderService>('orders@1.0.0');
+});
+
+// frontend/services/cart.service.ts
+// Pure frontend service (no backend equivalent)
+export const CartService = injectable(() => {
+  const items = signal<CartItem[]>([]);
+  const orderRPC = inject(OrderRPCService);
+
+  return {
+    items,
+
+    addItem(item: CartItem) {
+      items.set([...items(), item]);
+    },
+
+    removeItem(id: string) {
+      items.set(items().filter(i => i.id !== id));
+    },
+
+    async checkout() {
+      const userId = getCurrentUserId();
+      const order = await orderRPC.createOrder(userId, items());
+      items.set([]); // Clear cart
+      return order;
+    }
+  };
 });
 ```
 
-### Service Injection
-
-Inject services in components:
+### Component Injection
 
 ```typescript
 import { inject } from 'nexus/di';

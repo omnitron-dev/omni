@@ -1,17 +1,31 @@
-# Dependency Injection - Deep Integration with Titan
+# Dependency Injection - Frontend DI System
 
 ## Introduction
 
-The Dependency Injection (DI) system in Nexus is not just a mechanism for injecting dependencies. It is a unified dependency management system, fully integrated with Titan and working the same on both the frontend and backend.
+The Dependency Injection (DI) system in Nexus is a **lightweight, frontend-focused** DI system optimized for reactive UI applications. It is **separate** from Titan's backend DI but connects to it via type-safe RPC contracts.
+
+> **Architecture Note**: Frontend (Nexus) and Backend (Titan) have **separate DI systems**. They communicate via interface contracts, not shared service instances. See `19-TITAN-INTEGRATION.md` for details.
 
 ### Key Principles
 
-1. **Single container** — One DI container for frontend and backend
-2. **Type-safe** — Full type safety
-3. **Tree-shakeable** — Unused services are removed
-4. **Hierarchical** — Hierarchical injection
-5. **Scope-aware** — Supports multiple scopes (singleton, transient, request)
-6. **Zero-config** — Works out of the box
+1. **Frontend-Focused** — Optimized for component-based UI applications
+2. **Lightweight** — Minimal overhead, tree-shakeable
+3. **Function-Based** — Prefer `injectable()` over class decorators
+4. **Type-Safe** — Full TypeScript support
+5. **Reactive** — Works seamlessly with signals and resources
+6. **Module-Scoped** — Services scoped to Nexus modules
+7. **Zero-Config** — Works out of the box
+
+### Difference from Titan DI
+
+| Aspect | Nexus (Frontend) | Titan (Backend) |
+|--------|------------------|-----------------|
+| **Style** | Function-based (`injectable()`) | Class-based (`@Injectable()`) |
+| **Overhead** | Minimal (tree-shakeable) | Feature-rich (scopes, decorators) |
+| **Primary Use** | UI components, client state | Business logic, data access |
+| **Injection** | `inject()` in setup | Constructor injection |
+| **Scope** | Component/Module | Singleton/Transient/Request |
+| **Connection** | Via RPC proxies | Via service implementation |
 
 ## Basic Concepts
 

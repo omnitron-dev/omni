@@ -143,7 +143,7 @@ class Counter extends Component {
 
   render() {
     return (
-      <button onClick={this.increment}>
+      <button on:click={this.increment}>
         {this.state()}
       </button>
     );
@@ -157,7 +157,7 @@ const Counter = defineComponent(() => {
   const count = signal(0);
 
   return () => (
-    <button onClick={() => count.set(count() + 1)}>
+    <button on:click={() => count.set(count() + 1)}>
       {count()}
     </button>
   );
@@ -236,7 +236,7 @@ const Counter = defineComponent<CounterProps>((props) => {
   };
 
   return () => (
-    <button onClick={increment}>
+    <button on:click={increment}>
       {count()}
     </button>
   );
@@ -439,7 +439,7 @@ const ErrorBoundary = defineComponent((props) => {
         <div class="error-boundary">
           <h2>Something went wrong</h2>
           <pre>{error()!.message}</pre>
-          <button onClick={() => error.set(null)}>
+          <button on:click={() => error.set(null)}>
             Try Again
           </button>
         </div>
@@ -530,7 +530,7 @@ interface ButtonProps {
 
 const Button = defineComponent<ButtonProps>((props) => {
   return () => (
-    <button onClick={props.onClick}>
+    <button on:click={props.onClick}>
       {props.text}
     </button>
   );
@@ -673,43 +673,11 @@ const Input = defineComponent<InputProps>((props) => {
   return () => (
     <input
       value={local.value}
-      onInput={(e) => local.onChange(e.target.value)}
+      on:input={(e) => local.onChange(e.target.value)}
       {...rest}
     />
   );
 });
-```
-
-### Reactive Props
-
-**NEW in Phase 1**: Props are automatically reactive when accessed in reactive contexts:
-
-```typescript
-import { reactiveProps, defineComponent, effect } from '@omnitron-dev/aether';
-
-const Counter = defineComponent<{ count: number }>((rawProps) => {
-  // Props are automatically wrapped in reactiveProps by defineComponent
-  // Create effect that depends on props
-  effect(() => {
-    console.log('Count changed:', rawProps.count);
-  });
-
-  return () => <div>Count: {rawProps.count}</div>;
-});
-
-// When props change between renders, effects re-run
-<Counter count={5} />  // Logs: "Count changed: 5"
-<Counter count={10} /> // Logs: "Count changed: 10"
-```
-
-**Important**: Don't destructure props in setup - always access through the proxy:
-
-```typescript
-// ❌ WRONG - Destructuring loses reactivity
-const { count } = props;
-
-// ✅ CORRECT - Access through proxy
-effect(() => console.log(props.count));
 ```
 
 ### Children as Props
@@ -934,7 +902,7 @@ const ThemeToggle = defineComponent(() => {
   const themeCtx = injectContext(ThemeContext);
 
   return () => (
-    <button onClick={themeCtx.toggleTheme}>
+    <button on:click={themeCtx.toggleTheme}>
       Current: {themeCtx.theme()}
     </button>
   );
@@ -974,7 +942,7 @@ const Component = defineComponent(() => {
   const { theme, toggleTheme } = useTheme();
 
   return () => (
-    <button onClick={toggleTheme}>
+    <button on:click={toggleTheme}>
       {theme()}
     </button>
   );
@@ -1071,10 +1039,10 @@ const Form = defineComponent(() => {
       <input ref={setNameRef} name="name" />
       <input ref={setEmailRef} name="email" />
 
-      <button type="button" onClick={focusName}>
+      <button type="button" on:click={focusName}>
         Focus Name
       </button>
-      <button type="button" onClick={focusEmail}>
+      <button type="button" on:click={focusEmail}>
         Focus Email
       </button>
     </form>
@@ -1131,7 +1099,7 @@ const Component = defineComponent(() => {
 ```typescript
 const Button = defineComponent(() => {
   return () => (
-    <button onClick={() => console.log('Clicked')}>
+    <button on:click={() => console.log('Clicked')}>
       Click Me
     </button>
   );
@@ -1147,7 +1115,7 @@ const Button = defineComponent(() => {
   };
 
   return () => (
-    <button onClick={handleClick}>
+    <button on:click={handleClick}>
       Click Me
     </button>
   );
@@ -1156,37 +1124,25 @@ const Button = defineComponent(() => {
 
 ### Event Modifiers
 
-Aether provides utility functions for common event modifiers:
-
 ```typescript
-import { prevent, stop, preventStop } from '@omnitron-dev/aether';
-
 // Prevent default
-<form onSubmit={prevent(handleSubmit)}>
+<form on:submit|preventDefault={handleSubmit}>
 
 // Stop propagation
-<button onClick={stop(handleClick)}>
+<button on:click|stopPropagation={handleClick}>
 
-// Both prevent default and stop propagation
-<a onClick={preventStop(handleClick)}>
+// Capture phase
+<div on:click|capture={handleClick}>
 
-// For more complex cases, wrap manually
-const handleClick = (e: MouseEvent) => {
-  e.preventDefault();
-  e.stopPropagation();
-  // ... your logic
-};
+// Once (runs only once)
+<button on:click|once={handleClick}>
+
+// Passive (improves scroll performance)
+<div on:scroll|passive={handleScroll}>
+
+// Combine multiple modifiers
+<a on:click|preventDefault|stopPropagation={handleClick}>
 ```
-
-**Available Event Utilities**:
-- `prevent(handler)` - Calls preventDefault() before handler
-- `stop(handler)` - Calls stopPropagation() before handler
-- `preventStop(handler)` - Both preventDefault() and stopPropagation()
-- `debounce(handler, ms)` - Debounce handler calls
-- `throttle(handler, ms)` - Throttle handler calls
-- `self(handler)` - Only trigger if event.target matches element
-- `trusted(handler)` - Only trigger for trusted events
-- `compose(...modifiers)` - Compose multiple modifiers
 
 ### Custom Events
 
@@ -1197,7 +1153,7 @@ const Child = defineComponent((props: { onCustomEvent: (data: string) => void })
     props.onCustomEvent('Hello from child');
   };
 
-  return () => <button onClick={emit}>Emit</button>;
+  return () => <button on:click={emit}>Emit</button>;
 });
 
 // Parent
@@ -1215,17 +1171,13 @@ const Parent = defineComponent(() => {
 Aether automatically delegates common events (click, input, change, etc.) for performance:
 
 ```typescript
-import { For } from '@omnitron-dev/aether';
-
 // Automatically delegated to root
 <div>
-  <For each={items()}>
-    {(item) => (
-      <button onClick={() => handleClick(item)}>
-        {item.name}
-      </button>
-    )}
-  </For>
+  {#each items() as item}
+    <button on:click={() => handleClick(item)}>
+      {item.name}
+    </button>
+  {/each}
 </div>
 ```
 
@@ -1235,10 +1187,8 @@ import { For } from '@omnitron-dev/aether';
 
 ### Lazy Loading
 
-**NEW in Phase 1**: Full support for lazy component loading with preloading:
-
 ```typescript
-import { lazy, preloadComponent } from '@omnitron-dev/aether';
+import { lazy } from 'aether';
 
 // Lazy load component
 const HeavyComponent = lazy(() => import('./HeavyComponent'));
@@ -1252,25 +1202,6 @@ const App = defineComponent(() => {
     </div>
   );
 });
-```
-
-**Preloading** for better UX:
-
-```typescript
-const Settings = lazy(() => import('./Settings'));
-
-// Preload on route enter
-onBeforeEnter(async () => {
-  await preloadComponent(Settings);
-});
-
-// Preload on hover
-<button
-  onMouseEnter={() => preloadComponent(Settings)}
-  onClick={() => navigate('/settings')}
->
-  Settings
-</button>
 ```
 
 ### Suspense
@@ -1337,61 +1268,35 @@ const UserProfile = defineComponent(() => {
 
 ## Error Boundaries
 
-**NEW in Phase 1**: Enhanced error boundaries with retry, reset, and component stack tracking.
-
-### Using Built-in ErrorBoundary
+### Basic Error Boundary
 
 ```typescript
-import { ErrorBoundary, useErrorBoundary } from '@omnitron-dev/aether';
+import { defineComponent, onError, signal } from 'aether';
 
-// Simple usage
-<ErrorBoundary
-  fallback={<div>Something went wrong</div>}
-  onError={(error, errorInfo) => {
-    console.error('Error:', error);
-    console.log('Stack:', errorInfo.componentStack);
-    console.log('Count:', errorInfo.errorCount);
-  }}
->
-  <MyComponent />
-</ErrorBoundary>
-```
+const ErrorBoundary = defineComponent((props) => {
+  const error = signal<Error | null>(null);
 
-### Custom Fallback with Retry/Reset
+  onError((err) => {
+    console.error('Error caught:', err);
+    error(err);
+  });
 
-```typescript
-const ErrorFallback = defineComponent(() => {
-  const errorCtx = useErrorBoundary();
+  return () => {
+    if (error()) {
+      return (
+        <div class="error-boundary">
+          <h2>Something went wrong</h2>
+          <pre>{error()!.message}</pre>
+          <pre>{error()!.stack}</pre>
+          <button on:click={() => error(null)}>
+            Reset
+          </button>
+        </div>
+      );
+    }
 
-  return () => (
-    <div class="error-boundary">
-      <h2>Something went wrong</h2>
-      <p>{errorCtx?.error?.message}</p>
-      <button onClick={() => errorCtx?.reset()}>Reset</button>
-      <button onClick={() => errorCtx?.retry()}>Retry</button>
-      <p>Error count: {errorCtx?.error?.errorCount}</p>
-    </div>
-  );
-});
-
-<ErrorBoundary
-  fallback={<ErrorFallback />}
-  maxRetries={3}
-  onReset={() => console.log('Reset')}
->
-  <RiskyComponent />
-</ErrorBoundary>
-```
-
-### Higher-Order Component Pattern
-
-```typescript
-import { withErrorBoundary } from '@omnitron-dev/aether';
-
-const SafeComponent = withErrorBoundary(RiskyComponent, {
-  fallback: <div>Error occurred</div>,
-  onError: (error) => logError(error),
-  maxRetries: 5,
+    return <slot />;
+  };
 });
 ```
 
@@ -1417,7 +1322,7 @@ const ErrorBoundary = defineComponent(() => {
         <div class="error-boundary">
           <h2>Error (Retry {retryCount()})</h2>
           <p>{error()!.message}</p>
-          <button onClick={retry}>Try Again</button>
+          <button on:click={retry}>Try Again</button>
         </div>
       );
     }
@@ -1617,22 +1522,22 @@ const Form = defineComponent(() => {
     <form>
       <input
         value={email.value()}
-        onInput={(e) => email.handleChange(e.target.value)}
-        onBlur={email.handleBlur}
+        on:input={(e) => email.handleChange(e.target.value)}
+        on:blur={email.handleBlur}
       />
-      <Show when={email.error()}>
+      {#if email.error()}
         <span class="error">{email.error()}</span>
-      </Show>
+      {/if}
 
       <input
         type="password"
         value={password.value()}
-        onInput={(e) => password.handleChange(e.target.value)}
-        onBlur={password.handleBlur}
+        on:input={(e) => password.handleChange(e.target.value)}
+        on:blur={password.handleBlur}
       />
-      <Show when={password.error()}>
+      {#if password.error()}
         <span class="error">{password.error()}</span>
-      </Show>
+      {/if}
     </form>
   );
 });
@@ -1707,7 +1612,7 @@ export const Counter = defineComponent(() => {
   const count = signal(0);
 
   return () => (
-    <button onClick={() => count.set(count() + 1)}>
+    <button on:click={() => count.set(count() + 1)}>
       {count()}
     </button>
   );
@@ -1926,7 +1831,7 @@ interface ButtonProps {
 }
 
 const Button = defineComponent<ButtonProps>((props) => {
-  return () => <button onClick={props.onClick}>{props.text}</button>;
+  return () => <button on:click={props.onClick}>{props.text}</button>;
 });
 ```
 

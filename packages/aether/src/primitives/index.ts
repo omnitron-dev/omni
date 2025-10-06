@@ -21,6 +21,22 @@ export {
   type DialogContentProps,
 } from './Dialog.js';
 
+// Popover
+export {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+  PopoverArrow,
+  PopoverClose,
+  PopoverContext,
+  type PopoverProps,
+  type PopoverContextValue,
+  type PopoverTriggerProps,
+  type PopoverContentProps,
+  type PopoverArrowProps,
+  type PopoverCloseProps,
+} from './Popover.js';
+
 // Utilities
 export {
   // ID generation
@@ -39,4 +55,12 @@ export {
   enableBodyScroll,
   isBodyScrollLocked,
   forceUnlockBodyScroll,
+  // Positioning
+  calculatePosition,
+  applyPosition,
+  calculateArrowPosition,
+  type Side,
+  type Align,
+  type PositionConfig,
+  type Position,
 } from './utils/index.js';

@@ -24,3 +24,14 @@ export {
   isBodyScrollLocked,
   forceUnlockBodyScroll,
 } from './scroll-lock.js';
+
+// Positioning
+export {
+  calculatePosition,
+  applyPosition,
+  calculateArrowPosition,
+  type Side,
+  type Align,
+  type PositionConfig,
+  type Position,
+} from './position.js';

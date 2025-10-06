@@ -39,7 +39,33 @@ export async function query_interface(
   const servicesMap = peer.netron.services;
 
   // Find the requested service stub
-  const serviceStub = servicesMap.get(serviceName);
+  // Support wildcard version lookup (e.g., 'mathService' should find 'mathService@1.0.0')
+  let serviceStub = servicesMap.get(serviceName);
+
+  // If not found with exact match, try wildcard version resolution
+  if (!serviceStub && !serviceName.includes('@')) {
+    // Find all services matching the name pattern
+    const regex = new RegExp(`^${serviceName}@([^@]+)$`);
+    const candidates = Array.from(servicesMap.keys())
+      .map((key) => {
+        const match = key.match(regex);
+        if (match) return { version: match[1], key };
+        return null;
+      })
+      .filter((item): item is { version: string; key: string } => item !== null);
+
+    if (candidates.length > 0) {
+      // Sort by version (descending) and pick the latest
+      candidates.sort((a, b) => b.version.localeCompare(a.version));
+      const latestKey = candidates[0]!.key;
+      serviceStub = servicesMap.get(latestKey);
+
+      peer.logger.debug(
+        { serviceName, resolvedTo: latestKey, candidateCount: candidates.length },
+        'Resolved service name to latest version',
+      );
+    }
+  }
 
   if (!serviceStub) {
     throw new TitanError({

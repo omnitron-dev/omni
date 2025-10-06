@@ -838,6 +838,67 @@ export class RemotePeer extends AbstractPeer {
   }
 
   /**
+   * Invalidates cached definitions matching the given pattern.
+   * Overrides AbstractPeer to also clear RemotePeer-specific storage (services and definitions Maps).
+   *
+   * @param {string} [pattern] - Optional pattern to match service names
+   * @returns {number} The number of cache entries invalidated
+   */
+  override invalidateDefinitionCache(pattern?: string): number {
+    // Call parent implementation to invalidate definition cache
+    const count = super.invalidateDefinitionCache(pattern);
+
+    if (!pattern) {
+      // Clear all services and definitions
+      this.services.clear();
+      this.definitions.clear();
+      return count;
+    }
+
+    // Pattern matching - remove matching services and definitions
+    const servicesToDelete: string[] = [];
+    const definitionsToDelete: string[] = [];
+
+    // Find matching services
+    for (const key of this.services.keys()) {
+      if (this.matchesPatternInternal(key, pattern)) {
+        servicesToDelete.push(key);
+        const def = this.services.get(key);
+        if (def) {
+          definitionsToDelete.push(def.id);
+        }
+      }
+    }
+
+    // Delete matched services
+    for (const key of servicesToDelete) {
+      this.services.delete(key);
+    }
+
+    // Delete matched definitions
+    for (const id of definitionsToDelete) {
+      this.definitions.delete(id);
+    }
+
+    return count;
+  }
+
+  /**
+   * Internal pattern matching helper
+   * @private
+   */
+  private matchesPatternInternal(serviceName: string, pattern: string): boolean {
+    if (serviceName === pattern) return true;
+    if (!pattern.includes('*')) return false;
+
+    const regexPattern = pattern
+      .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*/g, '.*');
+    const regex = new RegExp(`^${regexPattern}$`);
+    return regex.test(serviceName);
+  }
+
+  /**
    * Queries the remote peer for a service definition using the query_interface core-task.
    * This method executes the query_interface task on the remote peer with authorization checks.
    *

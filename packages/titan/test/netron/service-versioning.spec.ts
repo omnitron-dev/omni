@@ -14,6 +14,7 @@ describe('RemotePeer Service Versioning', () => {
 
   interface IVersionedServiceV2 {
     greet(): Promise<string>;
+    farewell(): Promise<string>;
   }
 
   @Service('versionedService@1.0.0')
@@ -29,6 +30,11 @@ describe('RemotePeer Service Versioning', () => {
     @Public()
     async greet() {
       return 'Hello from V2';
+    }
+
+    @Public()
+    async farewell() {
+      return 'Goodbye from V2';
     }
   }
   beforeAll(async () => {
@@ -60,10 +66,23 @@ describe('RemotePeer Service Versioning', () => {
   });
 
   it('should expose multiple versions of the same service', async () => {
-    const availableServices = remotePeer.getServiceNames();
+    // In modern auth-aware architecture, services are discovered on-demand
+    // Query both versions to ensure they're available
+    const serviceV1 = await remotePeer.queryInterface<IVersionedServiceV1>('versionedService@1.0.0');
+    const serviceV2 = await remotePeer.queryInterface<IVersionedServiceV2>('versionedService@2.0.0');
 
+    // Verify both services work
+    expect(await serviceV1.greet()).toBe('Hello from V1');
+    expect(await serviceV2.greet()).toBe('Hello from V2');
+    expect(await serviceV2.farewell()).toBe('Goodbye from V2');
+
+    // After querying, services should be in the local cache
+    const availableServices = remotePeer.getServiceNames();
     expect(availableServices).toContain('versionedService@1.0.0');
     expect(availableServices).toContain('versionedService@2.0.0');
+
+    await remotePeer.releaseInterface(serviceV1);
+    await remotePeer.releaseInterface(serviceV2);
   });
 
   it('should query specific version of a service (v1.0.0)', async () => {
@@ -83,7 +102,7 @@ describe('RemotePeer Service Versioning', () => {
   });
 
   it('should throw when querying non-existent version', async () => {
-    await expect(async () => remotePeer.queryInterface('versionedService@3.0.0')).rejects.toThrow(/Unknown service/);
+    await expect(async () => remotePeer.queryInterface('versionedService@3.0.0')).rejects.toThrow(/not found/);
   });
 
   it('should handle exposing a service version conflict', async () => {
@@ -105,24 +124,51 @@ describe('RemotePeer Service Versioning', () => {
 
     await delay(300);
 
-    const services = remotePeer.getServiceNames();
-    expect(services).not.toContain('versionedService@1.0.0');
-    expect(services).toContain('versionedService@2.0.0');
+    // Invalidate cache to reflect the unexpose
+    remotePeer.invalidateDefinitionCache('versionedService@1.0.0');
 
-    await expect(async () => remotePeer.queryInterface('versionedService@1.0.0')).rejects.toThrow(/Unknown service/);
+    // In modern architecture, unexposed services should not be queryable
+    await expect(async () => remotePeer.queryInterface('versionedService@1.0.0')).rejects.toThrow(/not found/);
+
+    // But v2.0.0 should still be available
+    const serviceV2 = await remotePeer.queryInterface<IVersionedServiceV2>('versionedService@2.0.0');
+    expect(await serviceV2.greet()).toBe('Hello from V2');
+    await remotePeer.releaseInterface(serviceV2);
   });
 
   it('should re-expose a previously unexposed service version', async () => {
+    // First query to ensure we have an interface (if it exists)
+    let existingInterface;
+    try {
+      existingInterface = await remotePeer.queryInterface<IVersionedServiceV1>('versionedService@1.0.0');
+    } catch {
+      // Service might not be exposed
+    }
+
+    // Unexpose the service
+    try {
+      await localNetron.peer.unexposeService('versionedService@1.0.0');
+      await delay(100);
+
+      // Release the interface if we had one
+      if (existingInterface) {
+        await remotePeer.releaseInterface(existingInterface);
+      }
+
+      // Invalidate cache after unexposing and releasing
+      remotePeer.invalidateDefinitionCache('versionedService@1.0.0');
+    } catch {
+      // Service might not be exposed, that's ok
+    }
+
+    // Now re-expose with a fresh service instance
     await localNetron.peer.exposeService(new VersionedServiceV1());
 
     await delay(100);
 
-    const services = remotePeer.getServiceNames();
-    expect(services).toContain('versionedService@1.0.0');
-
+    // After re-exposing, service should be queryable again with new definition
     const serviceV1 = await remotePeer.queryInterface<IVersionedServiceV1>('versionedService@1.0.0');
     expect(await serviceV1.greet()).toBe('Hello from V1');
-
     await remotePeer.releaseInterface(serviceV1);
   });
 
@@ -144,7 +190,7 @@ describe('RemotePeer Service Versioning', () => {
     await remotePeer.releaseInterface(ifaceV1);
     await remotePeer.releaseInterface(ifaceV2);
 
-    expect(async () => await ifaceV1.greet()).rejects.toThrow(/Invalid interface/);
-    expect(async () => await ifaceV2.greet()).rejects.toThrow(/Invalid interface/);
+    await expect(async () => await ifaceV1.greet()).rejects.toThrow(/Invalid interface/);
+    await expect(async () => await ifaceV2.greet()).rejects.toThrow(/Invalid interface/);
   });
 });

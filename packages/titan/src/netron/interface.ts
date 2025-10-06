@@ -12,7 +12,7 @@ import { IPeer } from './types.js';
  *
  * @constant {string[]} INTERNAL_READ_PROPERTIES
  */
-const INTERNAL_READ_PROPERTIES = ['$def', '$peer', 'waitForAssigned', '$pendingPromises', 'then'];
+const INTERNAL_READ_PROPERTIES = ['$def', '$peer', 'waitForAssigned', '$pendingPromises', 'then', '$$typeof', 'nodeType', 'tagName'];
 
 /**
  * List of internal properties that can be written to the Interface instance.
@@ -92,11 +92,18 @@ export class Interface {
           return $peer?.get($def.id, prop);
         }
 
-        if (!INTERNAL_READ_PROPERTIES.includes(prop)) {
-          throw new Error(`Unknown member: '${prop}' is not defined in the service interface`);
+        if (INTERNAL_READ_PROPERTIES.includes(prop)) {
+          return Reflect.get(target, prop);
         }
 
-        return Reflect.get(target, prop);
+        // For inspection properties (symbols, special prefixes), return undefined
+        // This allows debugging tools and test frameworks to inspect the object
+        if (typeof prop === 'symbol' || prop.startsWith('$$') || prop.startsWith('@@')) {
+          return undefined;
+        }
+
+        // For regular properties not in the interface, throw an error
+        throw new Error(`Unknown member: '${prop}' is not defined in the service interface`);
       },
 
       /**

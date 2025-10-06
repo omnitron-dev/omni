@@ -107,7 +107,7 @@ describe('Full Auth Flow Integration', () => {
     });
 
     // Configure authentication
-    const authManager = new AuthenticationManager({
+    const authManager = new AuthenticationManager(serverLogger, {
       authenticate: async (credentials: AuthCredentials) => {
         // Simulate user database lookup
         const users: Record<string, any> = {
@@ -133,20 +133,14 @@ describe('Full Auth Flow Integration', () => {
 
         const user = users[credentials.username || ''];
         if (!user || user.password !== credentials.password) {
-          return {
-            success: false,
-            error: 'Invalid credentials'
-          };
+          throw new Error('Invalid credentials');
         }
 
         return {
-          success: true,
-          context: {
-            userId: user.id,
-            username: credentials.username,
-            roles: user.roles,
-            permissions: user.permissions
-          }
+          userId: user.id,
+          username: credentials.username,
+          roles: user.roles,
+          permissions: user.permissions
         };
       },
 
@@ -154,41 +148,34 @@ describe('Full Auth Flow Integration', () => {
         // Simple token validation (in real app, use JWT)
         try {
           const payload = JSON.parse(Buffer.from(token, 'base64').toString());
-          return {
-            success: true,
-            context: payload
-          };
+          return payload;
         } catch {
-          return {
-            success: false,
-            error: 'Invalid token'
-          };
+          throw new Error('Invalid token');
         }
       }
     });
 
     // Configure authorization
-    const authzManager = new AuthorizationManager();
+    const authzManager = new AuthorizationManager(serverLogger);
 
-    // Service-level ACLs
-    authzManager.setServiceACL('userService@1.0.0', {
-      roles: ['user', 'admin', 'guest'],
-      allowAnonymous: false
-    });
-
-    // Method-level ACLs
-    authzManager.setMethodACL('userService@1.0.0', 'updateUser', {
-      roles: ['admin'],
-      permissions: ['write:users']
-    });
-
-    authzManager.setMethodACL('userService@1.0.0', 'deleteUser', {
-      roles: ['admin'],
-      permissions: ['delete:users']
+    // Register ACL with service-level and method-level rules
+    authzManager.registerACL({
+      service: 'userService@1.0.0',
+      allowedRoles: ['user', 'admin', 'guest'],
+      methods: {
+        updateUser: {
+          allowedRoles: ['admin'],
+          requiredPermissions: ['write:users']
+        },
+        deleteUser: {
+          allowedRoles: ['admin'],
+          requiredPermissions: ['delete:users']
+        }
+      }
     });
 
     // Configure policy engine
-    const policyEngine = new PolicyEngine({ logger: serverLogger });
+    const policyEngine = new PolicyEngine(serverLogger);
 
     // Register auth components
     (serverNetron as any).authenticationManager = authManager;
@@ -282,7 +269,7 @@ describe('Full Auth Flow Integration', () => {
       // Try to query without authentication
       try {
         await peer.runTask('query_interface', 'userService@1.0.0');
-        fail('Should have thrown error');
+        throw new Error('Should have thrown error');
       } catch (error: any) {
         expect(error.message).toContain('Access denied');
       }
@@ -314,7 +301,7 @@ describe('Full Auth Flow Integration', () => {
       const users = await service.listAllUsers();
       expect(users.length).toBeGreaterThan(0);
 
-      await service.$release();
+      await peer.releaseInterface(service);
       await peer.disconnect();
     });
 
@@ -333,23 +320,23 @@ describe('Full Auth Flow Integration', () => {
       const user = await service.getUser('user2');
       expect(user).toBeDefined();
 
-      // User cannot update (admin only)
+      // User cannot update (admin only) - method should not be in interface
       try {
         await service.updateUser('user2', { name: 'Bobby' });
-        fail('Should have thrown error');
+        throw new Error('Should have thrown error');
       } catch (error: any) {
-        expect(error.message).toContain('FORBIDDEN');
+        expect(error.message).toContain('Unknown member');
       }
 
-      // User cannot delete (admin only)
+      // User cannot delete (admin only) - method should not be in interface
       try {
         await service.deleteUser('user2');
-        fail('Should have thrown error');
+        throw new Error('Should have thrown error');
       } catch (error: any) {
-        expect(error.message).toContain('FORBIDDEN');
+        expect(error.message).toContain('Unknown member');
       }
 
-      await service.$release();
+      await peer.releaseInterface(service);
       await peer.disconnect();
     });
   });
@@ -381,12 +368,12 @@ describe('Full Auth Flow Integration', () => {
       const allUsers = await adminService.listAllUsers();
       expect(allUsers.length).toBeGreaterThan(0);
 
-      // User cannot list all users
+      // User cannot list all users - method should not be in interface
       try {
         await userService.listAllUsers();
-        fail('Should have thrown error');
+        throw new Error('Should have thrown error');
       } catch (error: any) {
-        expect(error.message).toContain('FORBIDDEN');
+        expect(error.message).toContain('Unknown member');
       }
 
       // Both can read individual users
@@ -395,8 +382,8 @@ describe('Full Auth Flow Integration', () => {
       expect(user1).toEqual(user2);
 
       // Cleanup
-      await adminService.$release();
-      await userService.$release();
+      await adminPeer.releaseInterface(adminService);
+      await userPeer.releaseInterface(userService);
       await adminPeer.disconnect();
       await userPeer.disconnect();
       await clientNetron2.stop();
@@ -420,7 +407,7 @@ describe('Full Auth Flow Integration', () => {
       expect(users).toBeDefined();
       expect(Array.isArray(users)).toBe(true);
 
-      await service.$release();
+      await peer.releaseInterface(service);
       await peer.disconnect();
     });
 
@@ -442,7 +429,7 @@ describe('Full Auth Flow Integration', () => {
       expect(profile).toBeDefined();
       expect(profile.id).toBe('user2');
 
-      await service.$release();
+      await peer.releaseInterface(service);
       await peer.disconnect();
     });
   });

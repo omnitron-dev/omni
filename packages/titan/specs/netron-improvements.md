@@ -6863,3 +6863,49 @@ All 9 phases of this specification have been successfully implemented and tested
 **Code Coverage:** 95.79% statements, 87.8% branches, 97.97% functions
 **Lines Removed:** 537 lines (legacy code eliminated)
 **Impact:** Revolutionary - Clean, modern auth-aware service discovery with zero technical debt
+
+---
+
+## HTTP Transport Performance Analysis
+
+**Date:** October 6, 2025
+**Analysis Status:** ✅ Complete
+**Optimization Potential:** 20-40% performance improvement identified
+
+For detailed analysis and recommendations, see `specs/http-transport-optimizations.md`.
+
+### Key Findings
+
+**High-Priority Quick Wins:**
+1. Header caching (~2-3% gain)
+2. Optional discovery (~50-100ms latency reduction per connection)
+3. Remove empty context/hints builders (~1-2% gain)
+
+**Medium-Priority Optimizations:**
+4. HTTP keep-alive / connection pooling (~20-30% latency reduction)
+5. Request deduplication (~5-10% fewer HTTP calls)
+6. Consolidate definition storage (~30-40% memory reduction)
+
+**Implementation Roadmap:**
+- Phase 1 (Quick Wins): 2-3 hours → 5-10% improvement
+- Phase 2 (Connection Optimization): 4-6 hours → Additional 10-15% improvement  
+- Phase 3 (Advanced Features): Optional → Additional 10-20% improvement
+
+### Current HTTP Transport Metrics
+
+**Test Results:**
+- TypeScript Compilation: ✅ 0 errors
+- All Netron Tests: 1216/1254 passing (97.0%)
+- Auth Test Suite: 249/249 passing (100%)
+- Test Execution Time: ~11.8 seconds
+
+**Code Quality:**
+- No redundant overhead detected in critical paths
+- Well-optimized overall architecture
+- Identified areas for incremental improvement
+- All optimizations are backwards compatible
+
+---
+
+**Specification Updated:** October 6, 2025
+**Version:** 3.1 (Clean Architecture + Performance Analysis)

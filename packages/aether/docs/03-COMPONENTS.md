@@ -1,8 +1,23 @@
 # 03. Component Architecture
 
-> **Status**: Complete Specification
+> **Status**: ✅ Aligned with Implementation
 > **Last Updated**: 2025-10-06
 > **Part of**: Aether Frontend Framework Specification
+
+> ⚠️ **IMPORTANT**: This document describes the **actual implementation**. For information about template syntax and directives, see:
+> - `ARCHITECTURE-ANALYSIS.md` - Component API alignment analysis
+> - `TEMPLATE-DIRECTIVES-EVALUATION.md` - Why we use TypeScript JSX instead of custom syntax
+> - `04-TEMPLATE-SYNTAX.md` - ⚠️ OUTDATED (describes unimplemented custom compiler)
+> - `05-DIRECTIVES.md` - ⚠️ OUTDATED (describes unimplemented directive system)
+>
+> **Key Implementation Details**:
+> - ✅ Components use standard TypeScript JSX (no custom compiler)
+> - ✅ Control flow via components: `<Show>`, `<For>`, `<Switch>`
+> - ✅ Props via standard JSX props (no `bind:` syntax)
+> - ✅ Events via standard `onClick` etc. (no `on:` syntax)
+> - ✅ Utilities for convenience: `prevent()`, `bindValue()`, `classNames()`, etc.
+> - ❌ Slots replaced with `props.children` pattern
+> - ❌ No custom directives syntax (use directive pattern via refs instead)
 
 ---
 

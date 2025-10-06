@@ -1,8 +1,149 @@
 # 04. Template Syntax
 
-> **Status**: Complete Specification
-> **Last Updated**: 2025-10-06
+> **Status**: ⚠️ **OUTDATED - NOT IMPLEMENTED**
+> **Last Updated**: 2025-10-06 (marked as outdated)
 > **Part of**: Aether Frontend Framework Specification
+
+---
+
+## ⚠️ CRITICAL NOTICE ⚠️
+
+**This specification describes a custom template compiler that was NOT implemented.**
+
+After comprehensive architectural evaluation (see `TEMPLATE-DIRECTIVES-EVALUATION.md`), we made the decision to use **standard TypeScript JSX** instead of implementing a custom compiler.
+
+### What This Means:
+
+❌ **NOT IMPLEMENTED** (as described in this document):
+- Custom control flow syntax: `{#if}`, `{#each}`, `{#await}`, `{#key}`
+- Event modifier syntax: `on:click|preventDefault|stopPropagation`
+- Two-way binding syntax: `bind:value`, `bind:checked`, `bind:group`
+- Conditional syntax blocks: `{:else}`, `{:then}`, `{:catch}`
+- Custom template compiler
+- Svelte-like directives
+
+✅ **ACTUALLY IMPLEMENTED** (TypeScript JSX + Utilities):
+- Standard TypeScript JSX: `<button onClick={handler}>Click</button>`
+- Component-based control flow: `<Show>`, `<For>`, `<Switch>`, `<Suspense>`
+- Event utilities: `<button onClick={prevent(handler)}>Submit</button>`
+- Binding utilities: `<input {...bindValue(signal)} />`
+- Class utilities: `<div className={classes('btn', { active: isActive() })}>`
+- Style utilities: `<div style={styles({ color: theme() })}>`
+- Directive pattern: `<button ref={tooltip('text')}>Hover</button>`
+
+### Why the Change?
+
+**Weighted Evaluation Score**: TypeScript JSX (8.70/10) vs Custom Compiler (6.90/10)
+
+**Key Reasons**:
+1. **Superior Error Resistance** (20% weight): TypeScript type safety (10/10) vs source maps (6/10)
+2. **Zero Learning Curve** (20% weight): Standard JavaScript (10/10) vs new syntax (7/10)
+3. **Unlimited Possibilities** (15% weight): No constraints (10/10) vs compiler limits (7/10)
+4. **Fast Implementation**: 2 weeks + 500 lines vs 3-6 months + 15-25k lines
+5. **Better Tooling**: Works with all standard tools (VSCode, Prettier, ESLint, etc.)
+
+### Where to Find Actual Documentation:
+
+For **actual implementation patterns**, see:
+- ✅ **`ARCHITECTURE-ANALYSIS.md`** - Component API alignment
+- ✅ **`TEMPLATE-DIRECTIVES-EVALUATION.md`** - Full architectural evaluation (2850 lines)
+- ✅ **`IMPLEMENTATION-PLAN.md`** - Updated with architectural decision
+- ✅ **`03-COMPONENTS.md`** - Component patterns (aligned with implementation)
+- ✅ **Source code**: `packages/aether/src/utils/` - Utility implementations
+- ✅ **Tests**: `packages/aether/tests/unit/utils/` - Usage examples (109 tests)
+
+### Quick Migration Guide:
+
+If you were expecting the syntax described in this document, here's how to use the actual implementation:
+
+<details>
+<summary><b>Control Flow (Click to expand)</b></summary>
+
+**Spec (NOT implemented)**:
+```tsx
+{#if condition}
+  <p>True</p>
+{:else}
+  <p>False</p>
+{/if}
+```
+
+**Actual Implementation**:
+```tsx
+<Show when={condition} fallback={<p>False</p>}>
+  <p>True</p>
+</Show>
+```
+</details>
+
+<details>
+<summary><b>Lists (Click to expand)</b></summary>
+
+**Spec (NOT implemented)**:
+```tsx
+{#each items as item (item.id)}
+  <div>{item.name}</div>
+{/each}
+```
+
+**Actual Implementation**:
+```tsx
+<For each={items}>
+  {(item) => <div>{item.name}</div>}
+</For>
+```
+</details>
+
+<details>
+<summary><b>Events (Click to expand)</b></summary>
+
+**Spec (NOT implemented)**:
+```tsx
+<button on:click|preventDefault={handleClick}>Click</button>
+```
+
+**Actual Implementation**:
+```tsx
+import { prevent } from '@omnitron-dev/aether';
+<button onClick={prevent(handleClick)}>Click</button>
+```
+</details>
+
+<details>
+<summary><b>Binding (Click to expand)</b></summary>
+
+**Spec (NOT implemented)**:
+```tsx
+<input bind:value={text} />
+<input type="number" bind:value|number={age} />
+```
+
+**Actual Implementation**:
+```tsx
+import { bindValue, bindNumber } from '@omnitron-dev/aether';
+<input {...bindValue(text)} />
+<input type="number" {...bindNumber(age)} />
+```
+</details>
+
+<details>
+<summary><b>Classes (Click to expand)</b></summary>
+
+**Spec (NOT implemented)**:
+```tsx
+<div class:active={isActive()} class:disabled={isDisabled()}>
+```
+
+**Actual Implementation**:
+```tsx
+import { classes } from '@omnitron-dev/aether';
+<div className={classes('base', { active: isActive(), disabled: isDisabled() })}>
+```
+</details>
+
+---
+
+**The rest of this document is preserved for reference only and does NOT reflect the actual implementation.**
 
 ---
 

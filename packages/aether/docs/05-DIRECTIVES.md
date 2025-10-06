@@ -1,8 +1,206 @@
 # 05. Directives System
 
-> **Status**: Complete Specification
-> **Last Updated**: 2025-10-06
+> **Status**: ⚠️ **OUTDATED - NOT IMPLEMENTED**
+> **Last Updated**: 2025-10-06 (marked as outdated)
 > **Part of**: Aether Frontend Framework Specification
+
+---
+
+## ⚠️ CRITICAL NOTICE ⚠️
+
+**This specification describes a custom directive system that was NOT implemented.**
+
+After comprehensive architectural evaluation (see `TEMPLATE-DIRECTIVES-EVALUATION.md`), we made the decision to use **utility functions and ref-based patterns** instead of implementing a custom directive compiler.
+
+### What This Means:
+
+❌ **NOT IMPLEMENTED** (as described in this document):
+- Directive syntax: `on:`, `bind:`, `class:`, `style:`, `use:`, `show:`, `transition:`
+- Event modifiers: `on:click|preventDefault|stopPropagation|debounce`
+- Binding modifiers: `bind:value|number|trim|debounce|lazy`
+- Conditional class syntax: `class:active={condition}`
+- Style directive syntax: `style:color={value}`
+- Custom directive syntax: `use:directiveName={params}`
+- Transition directives: `transition:fade`, `in:fly`, `out:scale`
+
+✅ **ACTUALLY IMPLEMENTED** (Utility Functions):
+
+**Event Utilities** (`@omnitron-dev/aether`):
+```tsx
+import { prevent, stop, debounce, throttle } from '@omnitron-dev/aether';
+
+// Instead of: on:click|preventDefault
+<button onClick={prevent(handleClick)}>Click</button>
+
+// Instead of: on:input|debounce={500}
+<input onInput={debounce(handleInput, 500)} />
+```
+
+**Binding Utilities** (`@omnitron-dev/aether`):
+```tsx
+import { bindValue, bindNumber, bindChecked } from '@omnitron-dev/aether';
+
+// Instead of: bind:value
+<input {...bindValue(text)} />
+
+// Instead of: bind:value|number
+<input type="number" {...bindNumber(age)} />
+
+// Instead of: bind:checked
+<input type="checkbox" {...bindChecked(agreed)} />
+```
+
+**Class Utilities** (`@omnitron-dev/aether`):
+```tsx
+import { classNames, classes } from '@omnitron-dev/aether';
+
+// Instead of: class:active={isActive()} class:disabled={isDisabled()}
+<div className={classes('base', {
+  active: isActive(),
+  disabled: isDisabled()
+})}>Content</div>
+```
+
+**Style Utilities** (`@omnitron-dev/aether`):
+```tsx
+import { styles, cssVar, flexStyles } from '@omnitron-dev/aether';
+
+// Instead of: style:color={color()} style:fontSize={size()}
+<div style={styles({
+  color: () => color(),
+  fontSize: () => `${size()}px`
+})}>Content</div>
+```
+
+**Custom Directive Pattern** (`@omnitron-dev/aether`):
+```tsx
+import { createDirective, clickOutside, autoFocus } from '@omnitron-dev/aether';
+
+// Instead of: use:tooltip={text}
+const tooltip = createDirective<string>((element, text) => {
+  // Setup logic
+  return () => {
+    // Cleanup logic
+  };
+});
+
+<button ref={tooltip('Hover me')}>Button</button>
+
+// Instead of: use:clickOutside={handleClose}
+<div ref={clickOutside(handleClose)}>Modal</div>
+
+// Instead of: use:focus
+<input ref={autoFocus()} />
+```
+
+### Why the Change?
+
+**Weighted Evaluation Score**: TypeScript JSX + Utilities (8.70/10) vs Custom Directives (6.90/10)
+
+**Key Reasons**:
+1. **Superior Error Resistance** (20% weight): Type safety (10/10) vs magic strings (6/10)
+2. **Zero Learning Curve** (20% weight): Standard patterns (10/10) vs custom syntax (7/10)
+3. **Unlimited Possibilities** (15% weight): No constraints (10/10) vs directive limits (7/10)
+4. **Implementation Cost**: ~500 lines of utilities vs 15-25k lines of compiler
+5. **Better Tooling**: Works with all standard tools (no custom parsers needed)
+
+### Where to Find Actual Documentation:
+
+For **actual implementation patterns**, see:
+- ✅ **`TEMPLATE-DIRECTIVES-EVALUATION.md`** - Full architectural evaluation (2850 lines)
+- ✅ **`ARCHITECTURE-ANALYSIS.md`** - Component API analysis
+- ✅ **`IMPLEMENTATION-PLAN.md`** - Updated with architectural decision (Phase 2.5)
+- ✅ **Source code**: `packages/aether/src/utils/` - All utility implementations
+- ✅ **Tests**: `packages/aether/tests/unit/utils/` - 109 tests with usage examples
+
+### Available Utility Functions:
+
+<details>
+<summary><b>Event Utilities (15 tests)</b></summary>
+
+```tsx
+import {
+  prevent,            // preventDefault
+  stop,               // stopPropagation
+  preventStop,        // both
+  debounce,           // debounce handler
+  throttle,           // throttle handler
+  self,               // only if target matches selector
+  trusted,            // only trusted events
+  compose,            // compose modifiers
+} from '@omnitron-dev/aether';
+```
+</details>
+
+<details>
+<summary><b>Binding Utilities (17 tests)</b></summary>
+
+```tsx
+import {
+  bindValue,          // basic two-way binding
+  bindNumber,         // with number conversion
+  bindTrimmed,        // with trim
+  bindDebounced,      // with debounce
+  bindThrottled,      // with throttle
+  bindLazy,           // update on blur
+  bindChecked,        // for checkboxes
+  bindGroup,          // for radio groups
+  bindSelect,         // for select elements
+} from '@omnitron-dev/aether';
+```
+</details>
+
+<details>
+<summary><b>Class Utilities (30 tests)</b></summary>
+
+```tsx
+import {
+  classNames,         // combine classes
+  classes,            // base + conditional
+  conditionalClasses, // conditional only
+  variantClasses,     // variant-based
+  toggleClass,        // toggle single class
+  mergeClasses,       // merge with dedup
+} from '@omnitron-dev/aether';
+```
+</details>
+
+<details>
+<summary><b>Style Utilities (31 tests)</b></summary>
+
+```tsx
+import {
+  styles,             // reactive styles
+  cssVar,             // CSS custom property
+  cssVars,            // multiple CSS vars
+  flexStyles,         // flexbox helpers
+  gridStyles,         // grid helpers
+  sizeStyles,         // width/height
+  positionStyles,     // position helpers
+} from '@omnitron-dev/aether';
+```
+</details>
+
+<details>
+<summary><b>Directive Pattern (16 tests)</b></summary>
+
+```tsx
+import {
+  createDirective,       // create custom directive
+  autoFocus,             // auto-focus element
+  clickOutside,          // detect outside clicks
+  intersectionObserver,  // intersection detection
+  resizeObserver,        // resize detection
+  longPress,             // long press detection
+  portal,                // move to different location
+  draggable,             // make draggable
+} from '@omnitron-dev/aether';
+```
+</details>
+
+---
+
+**The rest of this document is preserved for reference only and does NOT reflect the actual implementation.**
 
 ---
 

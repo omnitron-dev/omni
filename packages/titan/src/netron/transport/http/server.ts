@@ -239,7 +239,11 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
         descriptor.methods.set(methodName, {
           name: methodName,
-          handler: async (input: any, context: any) => stub.call(methodName, [input], this.netronPeer!),
+          handler: async (input: any, context: any) => {
+            // Input is already an array of arguments from HTTP peer
+            const args = Array.isArray(input) ? input : [input];
+            return stub.call(methodName, args, this.netronPeer!);
+          },
           contract: methodContract
         });
       }

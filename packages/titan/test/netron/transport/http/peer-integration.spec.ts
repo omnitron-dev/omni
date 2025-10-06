@@ -150,7 +150,8 @@ describe('HttpRemotePeer Integration (No Mocks)', () => {
       const definition = await httpPeer.queryInterfaceRemote('calculator@1.0.0');
 
       expect(definition).toBeDefined();
-      expect(definition.meta.name).toBe('calculator@1.0.0');
+      expect(definition.meta.name).toBe('calculator');
+      expect(definition.meta.version).toBe('1.0.0');
       expect(definition.meta.methods).toBeDefined();
       expect(Object.keys(definition.meta.methods)).toContain('add');
       expect(Object.keys(definition.meta.methods)).toContain('subtract');

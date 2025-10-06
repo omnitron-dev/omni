@@ -141,7 +141,7 @@ export class HttpRemotePeer extends AbstractPeer {
     const message = createRequestMessage(
       service,
       method,
-      args[0], // Netron uses single argument
+      args, // Pass all arguments as array
       {
         context: this.buildRequestContext(),
         hints: this.buildRequestHints()

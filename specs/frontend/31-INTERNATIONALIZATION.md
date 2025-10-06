@@ -55,7 +55,7 @@ Internationalization (i18n) and localization (l10n) make your app accessible to 
 
 ```typescript
 /**
- * Nexus i18n Features:
+ * Aether i18n Features:
  *
  * ✓ Multiple language support
  * ✓ Automatic language detection
@@ -78,14 +78,14 @@ Install and configure i18n.
 ### Installation
 
 ```bash
-npm install @nexus/i18n
+npm install @aether/i18n
 ```
 
 ### Basic Configuration
 
 ```typescript
 // i18n.ts
-import { createI18n } from '@nexus/i18n';
+import { createI18n } from '@aether/i18n';
 
 export const i18n = createI18n({
   // Default locale
@@ -101,15 +101,15 @@ export const i18n = createI18n({
   messages: {
     en: {
       hello: 'Hello',
-      welcome: 'Welcome to Nexus'
+      welcome: 'Welcome to Aether'
     },
     es: {
       hello: 'Hola',
-      welcome: 'Bienvenido a Nexus'
+      welcome: 'Bienvenido a (Aether)'
     },
     fr: {
       hello: 'Bonjour',
-      welcome: 'Bienvenue chez Nexus'
+      welcome: 'Bienvenue chez (Aether)'
     }
   },
 
@@ -158,7 +158,7 @@ export const i18n = createI18n({
 
 ```typescript
 // main.tsx
-import { I18nProvider } from '@nexus/i18n';
+import { I18nProvider } from '@aether/i18n';
 import { i18n } from './i18n';
 
 render(() => (
@@ -198,7 +198,7 @@ Organize translations in separate files.
 // locales/en/common.json
 {
   "app": {
-    "name": "Nexus",
+    "name": "Aether",
     "tagline": "Build amazing apps"
   },
   "nav": {
@@ -251,7 +251,7 @@ Organize translations in separate files.
 
 ```typescript
 // i18n.ts
-import { createI18n } from '@nexus/i18n';
+import { createI18n } from '@aether/i18n';
 
 // Lazy load translations
 const loadLocaleMessages = async (locale: string) => {
@@ -289,7 +289,7 @@ Access translations in components.
 ### useI18n Hook
 
 ```typescript
-import { useI18n } from '@nexus/i18n';
+import { useI18n } from '@aether/i18n';
 
 export default defineComponent(() => {
   const { t, locale, setLocale } = useI18n();
@@ -344,7 +344,7 @@ t('welcome', { name: 'Bob', count: 3 }); // "Welcome back, Bob. You have 3 new m
 <div innerHTML={t('terms')} />
 
 // Or use Trans component for safe HTML
-import { Trans } from '@nexus/i18n';
+import { Trans } from '@aether/i18n';
 
 <Trans
   i18nKey="terms"
@@ -595,7 +595,7 @@ t('items', { count: 5 }); // "5 items"
 
 ```typescript
 // Define custom plural rule
-import { createI18n } from '@nexus/i18n';
+import { createI18n } from '@aether/i18n';
 
 export const i18n = createI18n({
   pluralRules: {
@@ -747,7 +747,7 @@ d(date, 'full'); // "January 15, 2024, 2:30 PM"
 
 ```typescript
 // Relative time formatting
-import { formatRelativeTime } from '@nexus/i18n';
+import { formatRelativeTime } from '@aether/i18n';
 
 const now = new Date();
 const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -1075,7 +1075,7 @@ Handle i18n on the server.
 
 ```typescript
 // server.ts
-import { createI18n } from '@nexus/i18n';
+import { createI18n } from '@aether/i18n';
 
 export const render = async (req: Request) => {
   // Detect locale from request
@@ -1191,7 +1191,7 @@ Test translations and i18n.
 ### Unit Tests
 
 ```typescript
-import { createI18n } from '@nexus/i18n';
+import { createI18n } from '@aether/i18n';
 
 describe('i18n', () => {
   const i18n = createI18n({
@@ -1332,7 +1332,7 @@ test.describe('i18n', () => {
 
 ```typescript
 // i18n/index.ts
-import { createI18n } from '@nexus/i18n';
+import { createI18n } from '@aether/i18n';
 
 // Lazy load translations
 const loadLocale = async (locale: string) => {
@@ -1411,4 +1411,4 @@ Internationalization makes your app accessible worldwide:
 9. **Management**: Track missing translations
 10. **SEO**: Optimize for search engines
 
-Build global apps with Nexus i18n.
+Build global apps with Aether i18n.

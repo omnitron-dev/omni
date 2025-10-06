@@ -49,7 +49,7 @@ Monitoring is essential for understanding application health, performance, and u
 ### Monitoring Stack
 
 ```typescript
-// Recommended monitoring stack for Nexus
+// Recommended monitoring stack for Aether
 export const monitoringStack = {
   // APM (Application Performance Monitoring)
   apm: 'Sentry', // or 'New Relic', 'Datadog', 'Elastic APM'
@@ -1004,7 +1004,7 @@ Visualize metrics and logs.
 ```json
 {
   "dashboard": {
-    "title": "Nexus Application Dashboard",
+    "title": "Aether Application Dashboard",
     "panels": [
       {
         "title": "Request Rate",
@@ -1054,7 +1054,7 @@ Visualize metrics and logs.
 
 ```typescript
 // dashboard.tsx
-import { defineComponent, signal, onMount } from '@nexus/core';
+import { defineComponent, signal, onMount } from '@aether/core';
 import { Chart } from 'chart.js';
 
 export const MonitoringDashboard = defineComponent(() => {
@@ -1360,7 +1360,7 @@ clsObserver.observe({ entryTypes: ['layout-shift'] });
 
 ## Titan Integration
 
-Monitor Titan backend alongside Nexus frontend.
+Monitor Titan backend alongside Aether frontend.
 
 ### Unified Monitoring
 
@@ -1380,7 +1380,7 @@ export const monitoringConfig = {
   }
 };
 
-// Frontend (Nexus)
+// Frontend (Aether)
 import * as Sentry from '@sentry/browser';
 Sentry.init(monitoringConfig.sentry);
 
@@ -1410,7 +1410,7 @@ fetch('/api/users', {
 
 // Backend (Titan middleware)
 @Injectable()
-export class TracingMiddleware implements INexusMiddleware {
+export class TracingMiddleware implements I(Aether)Middleware {
   use(req: Request, res: Response, next: NextFunction) {
     const traceId = req.headers['x-trace-id'] || generateTraceId();
     req.traceId = traceId;
@@ -1428,12 +1428,12 @@ export class TracingMiddleware implements INexusMiddleware {
 
 Built-in development tools for monitoring.
 
-### Nexus DevTools
+### Aether DevTools
 
 ```typescript
 // Enable DevTools in development
 if (import.meta.env.DEV) {
-  import('@nexus/devtools').then(({ enableDevTools }) => {
+  import('@aether/devtools').then(({ enableDevTools }) => {
     enableDevTools({
       // Component inspector
       inspector: true,

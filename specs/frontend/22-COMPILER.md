@@ -22,7 +22,7 @@
 
 ## Overview
 
-The Nexus compiler transforms your code for **optimal runtime performance**:
+The Aether compiler transforms your code for **optimal runtime performance**:
 
 - 🔄 **JSX to optimized output** - Direct DOM operations
 - ⚡ **Fine-grained reactivity** - Surgical updates only
@@ -139,7 +139,7 @@ render() {
 }
 // Runtime: Create virtual tree, diff, patch DOM
 
-// ✅ Nexus
+// ✅ (Aether)
 const _div = createElement('div');
 const _h1 = createElement('h1');
 _h1.textContent = 'Hello';
@@ -833,7 +833,7 @@ Compilation Benchmarks (10,000 components):
 
 Babel:    ~15s
 SWC:      ~2s
-Nexus:    ~1.5s (optimized SWC + custom transforms)
+Aether:    ~1.5s (optimized SWC + custom transforms)
 ```
 
 ### Runtime Performance
@@ -847,7 +847,7 @@ React:       ~850ms (Virtual DOM)
 Vue:         ~420ms (Virtual DOM)
 Svelte:      ~180ms (Compiled)
 SolidJS:     ~120ms (Fine-grained)
-Nexus:       ~100ms (Fine-grained + optimized)
+Aether:       ~100ms (Fine-grained + optimized)
 ```
 
 ### Bundle Size
@@ -861,7 +861,7 @@ React:       45 KB (min+gzip)
 Vue:         35 KB (min+gzip)
 Svelte:      15 KB (min+gzip)
 SolidJS:     12 KB (min+gzip)
-Nexus:       10 KB (min+gzip)
+Aether:       10 KB (min+gzip)
 ```
 
 ## Best Practices
@@ -1125,6 +1125,6 @@ export const OptimizedComponent = () => {
 
 ---
 
-**The Nexus compiler transforms your code for optimal performance** with fine-grained reactivity, aggressive tree-shaking, and intelligent optimizations. The result is smaller bundles and faster runtime execution.
+**The Aether compiler transforms your code for optimal performance** with fine-grained reactivity, aggressive tree-shaking, and intelligent optimizations. The result is smaller bundles and faster runtime execution.
 
 **Next**: [23. Testing →](./23-TESTING.md)

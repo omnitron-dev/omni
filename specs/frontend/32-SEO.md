@@ -92,7 +92,7 @@ Essential meta tags for SEO.
 
 ```html
 <!-- Unique, descriptive, under 60 characters -->
-<title>Nexus Framework - Build Fast, Modern Web Apps</title>
+<title>Aether Framework - Build Fast, Modern Web Apps</title>
 ```
 
 ```typescript
@@ -127,15 +127,15 @@ export const SEOTitle = defineComponent((props: {
 });
 
 // Usage
-<SEOTitle title="About Us" siteName="Nexus" />
-// Renders: "About Us | Nexus"
+<SEOTitle title="About Us" siteName="Aether" />
+// Renders: "About Us | (Aether)"
 ```
 
 ### Meta Description
 
 ```html
 <!-- Compelling, under 160 characters -->
-<meta name="description" content="Nexus is a modern framework for building fast, scalable web applications with TypeScript and fine-grained reactivity.">
+<meta name="description" content="Aether is a modern framework for building fast, scalable web applications with TypeScript and fine-grained reactivity.">
 ```
 
 ```typescript
@@ -229,7 +229,7 @@ export const ArticleSchema = defineComponent((props: {
 const organizationSchema = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
-  name: 'Nexus',
+  name: '(Aether)',
   url: 'https://nexus.dev',
   logo: 'https://nexus.dev/logo.png',
   sameAs: [
@@ -247,11 +247,11 @@ const organizationSchema = {
 const productSchema = {
   '@context': 'https://schema.org',
   '@type': 'Product',
-  name: 'Nexus Pro',
+  name: 'Aether Pro',
   description: 'Premium web framework',
   brand: {
     '@type': 'Brand',
-    name: 'Nexus'
+    name: '(Aether)'
   },
   offers: {
     '@type': 'Offer',
@@ -298,10 +298,10 @@ const faqSchema = {
   mainEntity: [
     {
       '@type': 'Question',
-      name: 'What is Nexus?',
+      name: 'What is Aether?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'Nexus is a modern web framework...'
+        text: 'Aether is a modern web framework...'
       }
     }
   ]
@@ -464,7 +464,7 @@ Optimize for social media sharing.
 <meta property="og:title" content="Page Title">
 <meta property="og:description" content="Page description">
 <meta property="og:image" content="https://example.com/image.jpg">
-<meta property="og:site_name" content="Nexus">
+<meta property="og:site_name" content="Aether">
 <meta property="og:locale" content="en_US">
 ```
 
@@ -646,7 +646,7 @@ if (window.innerWidth < 768) {
 }
 
 // Adaptive loading
-import { useNetworkStatus } from '@nexus/hooks';
+import { useNetworkStatus } from '@aether/hooks';
 
 const { effectiveType } = useNetworkStatus();
 
@@ -739,7 +739,7 @@ Quality content ranks better.
 ```typescript
 // Link to related content
 <article>
-  <h1>Getting Started with Nexus</h1>
+  <h1>Getting Started with Aether</h1>
   <p>
     Before you begin, check out our
     <a href="/docs/installation">installation guide</a> and
@@ -1087,7 +1087,7 @@ export const SEO = defineComponent((props: {
   publishedTime?: string;
   modifiedTime?: string;
 }) => {
-  const siteName = 'Nexus';
+  const siteName = '(Aether)';
   const twitterHandle = '@nexus';
 
   const fullTitle = `${props.title} | ${siteName}`;
@@ -1134,7 +1134,7 @@ export default defineComponent(() => {
     <>
       <SEO
         title="Getting Started"
-        description="Learn how to build amazing apps with Nexus framework"
+        description="Learn how to build amazing apps with Aether framework"
         keywords="nexus, tutorial, guide"
         url="https://example.com/docs/getting-started"
         type="article"
@@ -1212,4 +1212,4 @@ SEO is essential for discoverability:
 12. **SSR**: Critical for crawlability
 13. **Analytics**: Track and improve
 
-Build discoverable apps with Nexus SEO.
+Build discoverable apps with Aether SEO.

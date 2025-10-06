@@ -2,9 +2,9 @@
 
 ## Introduction
 
-The Dependency Injection (DI) system in Nexus is a **lightweight, frontend-focused** DI system optimized for reactive UI applications. It is **separate** from Titan's backend DI but connects to it via type-safe RPC contracts.
+The Dependency Injection (DI) system in Aether is a **lightweight, frontend-focused** DI system optimized for reactive UI applications. It is **separate** from Titan's backend DI but connects to it via type-safe RPC contracts.
 
-> **Architecture Note**: Frontend (Nexus) and Backend (Titan) have **separate DI systems**. They communicate via interface contracts, not shared service instances. See `19-TITAN-INTEGRATION.md` for details.
+> **Architecture Note**: Frontend (Aether) and Backend (Titan) have **separate DI systems**. They communicate via interface contracts, not shared service instances. See `19-TITAN-INTEGRATION.md` for details.
 
 ### Key Principles
 
@@ -13,13 +13,13 @@ The Dependency Injection (DI) system in Nexus is a **lightweight, frontend-focus
 3. **Function-Based** — Prefer `injectable()` over class decorators
 4. **Type-Safe** — Full TypeScript support
 5. **Reactive** — Works seamlessly with signals and resources
-6. **Module-Scoped** — Services scoped to Nexus modules
+6. **Module-Scoped** — Services scoped to Aether modules
 7. **Zero-Config** — Works out of the box
 
 ### Difference from Titan DI
 
-| Aspect | Nexus (Frontend) | Titan (Backend) |
-|--------|------------------|-----------------|
+| Aspect | Aether (Frontend) | Titan (Backend) |
+|--------|-------------------|-----------------|
 | **Style** | Function-based (`injectable()`) | Class-based (`@Injectable()`) |
 | **Overhead** | Minimal (tree-shakeable) | Feature-rich (scopes, decorators) |
 | **Primary Use** | UI components, client state | Business logic, data access |
@@ -35,7 +35,7 @@ A service is a class or function marked with the `Injectable` decorator/function
 
 ```typescript
 // Function-based service (recommended for simple cases)
-import { injectable } from 'nexus';
+import { injectable } from 'aether';
 
 export const CounterService = injectable(() => {
   const count = signal(0);
@@ -55,7 +55,7 @@ export const CounterService = injectable(() => {
 });
 
 // Class-based service (for complex logic and inheritance)
-import { Injectable } from 'nexus';
+import { Injectable } from 'aether';
 
 @Injectable()
 export class UserService {
@@ -81,7 +81,7 @@ export class UserService {
 Obtain a service instance using the `inject()` function.
 
 ```typescript
-import { defineComponent, inject, onMount } from 'nexus';
+import { defineComponent, inject, onMount } from 'aether';
 import { For } from 'nexus/components';
 import { UserService } from './user.service';
 
@@ -140,7 +140,7 @@ A provider describes how to create a service instance.
 ### Class Provider
 
 ```typescript
-import { defineModule } from 'nexus';
+import { defineModule } from 'aether';
 
 export const AppModule = defineModule({
   id: 'app',
@@ -157,7 +157,7 @@ export const AppModule = defineModule({
 ### Value Provider
 
 ```typescript
-import { defineModule, InjectionToken } from 'nexus';
+import { defineModule, InjectionToken } from 'aether';
 
 export const API_URL = new InjectionToken<string>('API_URL');
 
@@ -172,7 +172,7 @@ export const AppModule = defineModule({
 ### Factory Provider
 
 ```typescript
-import { defineModule, InjectionToken } from 'nexus';
+import { defineModule, InjectionToken } from 'aether';
 
 export const DATABASE_CONNECTION = new InjectionToken<Database>('DB');
 
@@ -196,7 +196,7 @@ export const DatabaseModule = defineModule({
 ### Existing Provider (Aliasing)
 
 ```typescript
-import { defineModule } from 'nexus';
+import { defineModule } from 'aether';
 
 // Create an alias for an existing provider
 export const UserModule = defineModule({
@@ -211,7 +211,7 @@ export const UserModule = defineModule({
 ### Async Provider
 
 ```typescript
-import { defineModule } from 'nexus';
+import { defineModule } from 'aether';
 
 export const ConfigModule = defineModule({
   id: 'config',
@@ -235,7 +235,7 @@ Tokens for primitive values and interfaces.
 ### Creating a Token
 
 ```typescript
-import { InjectionToken } from 'nexus';
+import { InjectionToken } from 'aether';
 
 // For primitives
 export const API_URL = new InjectionToken<string>('API_URL');
@@ -253,7 +253,7 @@ export const LOGGER = new InjectionToken<Logger>('LOGGER');
 ### Using a Token
 
 ```typescript
-import { defineModule } from 'nexus';
+import { defineModule } from 'aether';
 
 // Registration
 export const ApiModule = defineModule({
@@ -370,7 +370,7 @@ export class FeatureService {
 Injectors form a hierarchy.
 
 ```typescript
-import { defineModule } from 'nexus';
+import { defineModule } from 'aether';
 
 // Root Injector (AppModule)
 export const AppModule = defineModule({
@@ -400,7 +400,7 @@ Each component can have its own injector.
 
 ```typescript
 // ParentComponent.tsx
-import { defineComponent, inject } from 'nexus';
+import { defineComponent, inject } from 'aether';
 
 // Provide a service at the component level
 export const providers = [LocalService];
@@ -416,7 +416,7 @@ const ParentComponent = defineComponent(() => {
 });
 
 // ChildComponent.tsx
-import { defineComponent, inject } from 'nexus';
+import { defineComponent, inject } from 'aether';
 
 const ChildComponent = defineComponent(() => {
   // Gets the same LocalService instance from the parent injector
@@ -431,7 +431,7 @@ const ChildComponent = defineComponent(() => {
 A dependency can be optional.
 
 ```typescript
-import { inject, Optional } from 'nexus';
+import { inject, Optional } from 'aether';
 
 @Injectable()
 export class AnalyticsService {
@@ -463,7 +463,7 @@ export const AnalyticsService = injectable(() => {
 Control dependency lookup within the hierarchy.
 
 ```typescript
-import { inject, Self, SkipSelf } from 'nexus';
+import { inject, Self, SkipSelf } from 'aether';
 
 // Self — search only in the current injector
 @Injectable()
@@ -487,7 +487,7 @@ export class ChildService {
 Multiple values for a single token.
 
 ```typescript
-import { defineModule, InjectionToken } from 'nexus';
+import { defineModule, InjectionToken } from 'aether';
 
 // Define a multi token
 export const HTTP_INTERCEPTORS = new InjectionToken<HttpInterceptor[]>('HTTP_INTERCEPTORS');
@@ -526,7 +526,7 @@ export class HttpService {
 
 ## Titan Integration
 
-Nexus uses a unified DI container with Titan.
+Aether uses a unified DI container with Titan.
 
 ### Shared Service
 
@@ -603,7 +603,7 @@ export class UserServiceClient {
   }
 }
 
-// Automatically registered in the Nexus DI container
+// Automatically registered in the Aether DI container
 export const UserModule = defineModule({
   id: 'user',
   providers: [
@@ -620,7 +620,7 @@ export const UserModule = defineModule({
 
 ```typescript
 // routes/users/index.tsx
-import { defineComponent, inject, signal, onMount } from 'nexus';
+import { defineComponent, inject, signal, onMount } from 'aether';
 import { For } from 'nexus/components';
 import { UserService } from '@/services/user.service';
 import { UserCard } from '@/components/UserCard';
@@ -687,7 +687,7 @@ describe('UserComponent', () => {
 ### Dynamic Providers
 
 ```typescript
-import { defineModule } from 'nexus';
+import { defineModule } from 'aether';
 
 // Providers based on configuration
 export const FeatureModule = defineModule({
@@ -710,7 +710,7 @@ export const FeatureModule = defineModule({
 ### Conditional Providers
 
 ```typescript
-import { defineModule } from 'nexus';
+import { defineModule } from 'aether';
 
 // Different providers depending on the environment
 export const LoggerModule = defineModule({
@@ -812,7 +812,7 @@ export class UserService {
 
 ## Conclusion
 
-The DI system in Nexus provides:
+The DI system in Aether provides:
 
 - ✅ **Type Safety** — Full type safety
 - ✅ **Simplicity** — Minimal boilerplate

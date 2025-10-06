@@ -23,7 +23,7 @@
 
 ## Overview
 
-Nexus build system is powered by **Vite** with custom optimizations for:
+Aether build system is powered by **Vite** with custom optimizations for:
 
 - ⚡ **Lightning-fast dev server** with HMR
 - 📦 **Optimized production builds** with Rollup
@@ -215,7 +215,7 @@ npm run clean:all
 
 ```typescript
 // nexus.config.ts
-import { defineConfig } from 'nexus';
+import { defineConfig } from 'aether';
 
 export default defineConfig({
   // App config
@@ -1253,7 +1253,7 @@ interface Plugin {
 
 ```typescript
 // nexus.config.ts
-import { defineConfig } from 'nexus';
+import { defineConfig } from 'aether';
 import { imageOptimization, pwa, compression } from 'nexus/plugins';
 
 export default defineConfig({
@@ -1329,6 +1329,6 @@ export default defineConfig({
 
 ---
 
-**Nexus build system provides a fast, zero-config experience** with powerful optimizations for production. Built on Vite and Rollup, it delivers lightning-fast dev server and optimized production builds.
+**Aether build system provides a fast, zero-config experience** with powerful optimizations for production. Built on Vite and Rollup, it delivers lightning-fast dev server and optimized production builds.
 
 **Next**: [22. Compiler and Optimizations →](./22-COMPILER.md)

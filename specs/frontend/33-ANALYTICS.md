@@ -106,7 +106,7 @@ if (import.meta.env.PROD) {
 ### Page View Tracking
 
 ```typescript
-import { useLocation } from '@nexus/router';
+import { useLocation } from '@aether/router';
 import ReactGA from 'react-ga4';
 
 export const usePageTracking = () => {
@@ -335,7 +335,7 @@ ReactGA.event('view_item', {
   value: 99.99,
   items: [{
     item_id: 'SKU_12345',
-    item_name: 'Nexus Pro License',
+    item_name: 'Aether Pro License',
     item_category: 'Software',
     price: 99.99,
     quantity: 1
@@ -698,7 +698,7 @@ analytics.people.set({
   plan: 'pro'
 });
 analytics.track('Purchase', {
-  product: 'Nexus Pro',
+  product: 'Aether Pro',
   value: 99.99
 });
 ```
@@ -1056,7 +1056,7 @@ if (import.meta.env.PROD) {
 }
 
 // App.tsx
-import { useLocation } from '@nexus/router';
+import { useLocation } from '@aether/router';
 import { trackPageView } from './analytics';
 
 export default defineComponent(() => {
@@ -1085,4 +1085,4 @@ Analytics provide valuable insights:
 9. **A/B Testing**: Optimize with experiments
 10. **Debugging**: Verify implementation
 
-Make data-driven decisions with Nexus analytics.
+Make data-driven decisions with Aether analytics.

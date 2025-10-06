@@ -83,9 +83,9 @@ The manifest provides metadata about your app.
 ```json
 // public/manifest.json
 {
-  "name": "Nexus App",
-  "short_name": "Nexus",
-  "description": "A progressive web app built with Nexus",
+  "name": "Aether App",
+  "short_name": "Aether",
+  "description": "A progressive web app built with Aether",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
@@ -171,7 +171,7 @@ The manifest provides metadata about your app.
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#3b82f6">
-  <meta name="description" content="A progressive web app built with Nexus">
+  <meta name="description" content="A progressive web app built with Aether">
 
   <!-- Manifest -->
   <link rel="manifest" href="/manifest.json">
@@ -179,10 +179,10 @@ The manifest provides metadata about your app.
   <!-- iOS specific -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="Nexus">
+  <meta name="apple-mobile-web-app-title" content="Aether">
   <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
 
-  <title>Nexus App</title>
+  <title>Aether App</title>
 </head>
 <body>
   <div id="root"></div>
@@ -196,8 +196,8 @@ The manifest provides metadata about your app.
 // Generate manifest dynamically
 export const generateManifest = (theme: Theme) => {
   return {
-    name: 'Nexus App',
-    short_name: 'Nexus',
+    name: 'Aether App',
+    short_name: '(Aether)',
     start_url: '/',
     display: 'standalone',
     background_color: theme.colors.background,
@@ -437,7 +437,7 @@ Provide graceful offline experience.
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Offline - Nexus App</title>
+  <title>Offline - Aether App</title>
   <style>
     body {
       font-family: system-ui, sans-serif;
@@ -662,7 +662,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 self.addEventListener('push', (event) => {
   const data = event.data?.json() || {};
 
-  const title = data.title || 'Nexus App';
+  const title = data.title || 'Aether App';
   const options = {
     body: data.body || 'New notification',
     icon: '/icons/icon-192x192.png',
@@ -1296,8 +1296,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'robots.txt', 'icons/*.png'],
       manifest: {
-        name: 'Nexus App',
-        short_name: 'Nexus',
+        name: 'Aether App',
+        short_name: '(Aether)',
         theme_color: '#3b82f6',
         background_color: '#ffffff',
         display: 'standalone',

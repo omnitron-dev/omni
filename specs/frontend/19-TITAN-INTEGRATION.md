@@ -21,9 +21,9 @@
 
 ## Overview
 
-Nexus provides **deep integration with Titan**, the TypeScript framework for distributed applications. This integration enables:
+Aether provides **deep integration with Titan**, the TypeScript framework for distributed applications. This integration enables:
 
-- 🔄 **Separate DI Systems**: Frontend (Nexus) and Backend (Titan) each have their own DI, connected via contracts
+- 🔄 **Separate DI Systems**: Frontend (Aether) and Backend (Titan) each have their own DI, connected via contracts
 - 🌐 **Type-Safe RPC**: Call backend services from frontend with full type safety via interface contracts
 - 📦 **Contract-Based Communication**: Clean separation using shared TypeScript interfaces
 - 🔐 **Role-Based Security**: Netron dynamically projects interfaces based on user roles
@@ -38,7 +38,7 @@ Nexus provides **deep integration with Titan**, the TypeScript framework for dis
 ┌─────────────────────────────────────────────┐
 │                  Browser                     │
 │  ┌──────────────────────────────────────┐  │
-│  │        Nexus Frontend                 │  │
+│  │        Aether Frontend                 │  │
 │  │  - Components                         │  │
 │  │  - Client-side DI                     │  │
 │  │  - Netron RPC Client                  │  │
@@ -50,7 +50,7 @@ Nexus provides **deep integration with Titan**, the TypeScript framework for dis
 ┌─────────────────────────────────────────────┐
 │              Titan Application               │
 │  ┌──────────────────────────────────────┐  │
-│  │          Nexus SSR                    │  │
+│  │          Aether SSR                    │  │
 │  │  - Server rendering                   │  │
 │  │  - Route handling                     │  │
 │  │  - Server components                  │  │
@@ -100,7 +100,7 @@ export class UserService implements IUserService {
 
 // 3. Frontend RPC service
 // frontend/services/user-rpc.service.ts
-import { injectable, inject } from 'nexus';
+import { injectable, inject } from 'aether';
 import { NetronClient } from 'nexus/netron';
 import { IUserService } from '@/shared/contracts/user.contract';
 
@@ -139,7 +139,7 @@ export default defineComponent(() => {
 // Frontend directly imports backend classes
 import { UserService } from '@/backend/services/user.service'; // Bad!
 
-// ✅ Nexus + Titan (contract-based)
+// ✅ Aether + Titan (contract-based)
 // 1. Define shared interface contract
 export interface IUserService {
   findAll(): Promise<User[]>;
@@ -174,7 +174,7 @@ export class ProductService {
   ) {}
 }
 
-// Frontend DI (Nexus)
+// Frontend DI (Aether)
 // - Function-based (injectable())
 // - Lightweight, tree-shakeable
 // - Component-scoped by default
@@ -238,7 +238,7 @@ app.get('/api/users', async (req, res) => {
 // Frontend
 const users = await fetch('/api/users').then(r => r.json());
 
-// ✅ Nexus + Titan (contract + RPC)
+// ✅ Aether + Titan (contract + RPC)
 // 1. Interface (shared)
 export interface IUserService {
   findAll(): Promise<User[]>;
@@ -372,7 +372,7 @@ export class UserService implements IUserService {
 
 ```typescript
 // frontend/services/user-rpc.service.ts
-import { injectable, inject } from 'nexus';
+import { injectable, inject } from 'aether';
 import { NetronClient } from 'nexus/netron';
 import { IUserService } from '@/shared/contracts/user.contract';
 
@@ -396,7 +396,7 @@ export const UserRPCService = injectable(() => {
 
 ```typescript
 // frontend/pages/users/index.tsx
-import { defineComponent, inject, resource, signal } from 'nexus';
+import { defineComponent, inject, resource, signal } from 'aether';
 import { UserRPCService } from '@/services/user-rpc.service';
 
 export default defineComponent(() => {
@@ -478,13 +478,13 @@ export class OrderService implements IOrderService {
 }
 ```
 
-### Frontend DI (Nexus)
+### Frontend DI (Aether)
 
 Frontend uses lightweight, function-based DI:
 
 ```typescript
 // frontend/services/order-rpc.service.ts
-import { injectable, inject } from 'nexus';
+import { injectable, inject } from 'aether';
 import { NetronClient } from 'nexus/netron';
 
 export const OrderRPCService = injectable(() => {
@@ -563,7 +563,7 @@ console.log(context.userId);
 Expose services to frontend:
 
 ```typescript
-import { Injectable, Public } from 'nexus/titan';
+import { Injectable, Public } from 'aether/titan';
 
 @Injectable()
 export class UserService {
@@ -589,7 +589,7 @@ export class UserService {
 Call services from frontend:
 
 ```typescript
-import { useRPC } from 'nexus/titan';
+import { useRPC } from 'aether/titan';
 import { UserService } from '@/services/user.service';
 
 export default defineComponent(() => {
@@ -808,7 +808,7 @@ Use auth service in frontend:
 ```typescript
 // stores/auth.store.ts
 import { defineStore } from 'nexus/state';
-import { useRPC } from 'nexus/titan';
+import { useRPC } from 'aether/titan';
 import { AuthService } from '@/services/auth.service';
 
 export const useAuthStore = defineStore('auth', () => {
@@ -888,7 +888,7 @@ Authenticate RPC calls:
 
 ```typescript
 // Automatic token injection
-import { configureRPC } from 'nexus/titan';
+import { configureRPC } from 'aether/titan';
 
 configureRPC({
   beforeRequest: (request) => {
@@ -1114,7 +1114,7 @@ Modules that span frontend and backend:
 
 ```typescript
 // todo.module.ts
-import { defineModule } from 'nexus/titan';
+import { defineModule } from 'aether/titan';
 import { TodoService } from './todo.service';
 import { TodoController } from './todo.controller';
 import { TodoList } from './components/TodoList';
@@ -1188,17 +1188,17 @@ const [config] = resource(() => configService.getPublicConfig());
 <GoogleMap apiKey={config().googleMapsKey} />
 ```
 
-### Nexus Configuration
+### Aether Configuration
 
-Configure Nexus module:
+Configure Aether module:
 
 ```typescript
 // app.module.ts
-import { NexusModule } from 'nexus/titan';
+import { AetherModule } from 'aether/titan';
 
 export const AppModule = defineModule({
   imports: [
-    NexusModule.forRoot({
+    AetherModule.forRoot({
       entry: './src/entry-server.ts',
       port: 3000,
       publicDir: './public',
@@ -1231,7 +1231,7 @@ npm run build
 # Output:
 # dist/
 # ├── server/        # Titan server
-# ├── client/        # Nexus frontend
+# ├── client/        # Aether frontend
 # └── index.js       # Entry point
 
 # Deploy
@@ -1358,7 +1358,7 @@ async update(id: string, data: any) {
 Implement custom transport:
 
 ```typescript
-import { createRPCTransport } from 'nexus/titan';
+import { createRPCTransport } from 'aether/titan';
 
 const customTransport = createRPCTransport({
   send: async (request) => {
@@ -1385,7 +1385,7 @@ configureRPC({ transport: customTransport });
 Add middleware to RPC calls:
 
 ```typescript
-import { useRPCMiddleware } from 'nexus/titan';
+import { useRPCMiddleware } from 'aether/titan';
 
 useRPCMiddleware({
   before: async (request) => {
@@ -1422,7 +1422,7 @@ useRPCMiddleware({
 Create service proxies:
 
 ```typescript
-import { createServiceProxy } from 'nexus/titan';
+import { createServiceProxy } from 'aether/titan';
 
 const userService = createServiceProxy(UserService, {
   cache: {
@@ -1527,7 +1527,7 @@ export class TodoService {
 }
 
 // TodoList.tsx
-import { useRPC } from 'nexus/titan';
+import { useRPC } from 'aether/titan';
 import { TodoService } from './todo.service';
 
 export const TodoList = defineComponent(() => {
@@ -1595,6 +1595,6 @@ export const TodoModule = defineModule({
 
 ---
 
-**Nexus + Titan integration provides a seamless full-stack experience** with type-safe RPC, unified DI, and zero boilerplate. Build modern web applications with the power of a unified framework.
+**Aether + Titan integration provides a seamless full-stack experience** with type-safe RPC, unified DI, and zero boilerplate. Build modern web applications with the power of a unified framework.
 
 **Next**: [14. Component Library →](./14-COMPONENTS-LIBRARY.md)

@@ -1,8 +1,8 @@
-# Nexus Module System
+# Aether Module System
 
 ## Introduction
 
-The Nexus module system is inspired by Angular NgModules, but simplified and optimized for compile-time analysis and tree-shaking. Modules let you organize an application into logical, loosely coupled blocks with clear boundaries.
+The Aether module system is inspired by Angular NgModules, but simplified and optimized for compile-time analysis and tree-shaking. Modules let you organize an application into logical, loosely coupled blocks with clear boundaries.
 
 ## Module Philosophy
 
@@ -17,7 +17,7 @@ The Nexus module system is inspired by Angular NgModules, but simplified and opt
 
 ### Differences from Angular Modules
 
-| Aspect | Angular Modules | Nexus Modules |
+| Aspect | Angular Modules | Aether Modules |
 |--------|----------------|---------------|
 | Declaration | @NgModule decorator | defineModule() function |
 | Imports | Global, implicit | Explicit ES6 imports |
@@ -32,7 +32,7 @@ The Nexus module system is inspired by Angular NgModules, but simplified and opt
 
 ```typescript
 // auth/auth.module.ts
-import { defineModule } from 'nexus';
+import { defineModule } from 'aether';
 import { LoginComponent } from './components/Login';
 import { RegisterComponent } from './components/Register';
 import { AuthService } from './services/auth.service';
@@ -117,7 +117,7 @@ The only module with a bootstrap component.
 
 ```typescript
 // app/app.module.ts
-import { defineModule } from 'nexus';
+import { defineModule } from 'aether';
 import { App } from './App';
 import { RouterModule } from 'nexus/router';
 import { HttpModule } from 'nexus/http';
@@ -157,7 +157,7 @@ A module that implements a specific feature.
 
 ```typescript
 // blog/blog.module.ts
-import { defineModule } from 'nexus';
+import { defineModule } from 'aether';
 import { BlogList } from './components/BlogList';
 import { BlogPost } from './components/BlogPost';
 import { BlogEditor } from './components/BlogEditor';
@@ -201,7 +201,7 @@ A module with reusable components and utilities.
 
 ```typescript
 // shared/shared.module.ts
-import { defineModule } from 'nexus';
+import { defineModule } from 'aether';
 import { Button } from './components/Button';
 import { Card } from './components/Card';
 import { Modal } from './components/Modal';
@@ -242,7 +242,7 @@ A module with singleton services, imported once in the AppModule.
 
 ```typescript
 // core/core.module.ts
-import { defineModule } from 'nexus';
+import { defineModule } from 'aether';
 import { AuthService } from './services/auth.service';
 import { LoggerService } from './services/logger.service';
 import { ConfigService } from './services/config.service';
@@ -301,7 +301,7 @@ Modules can expose static methods for configuration.
 
 ```typescript
 // nexus/router/router.module.ts
-import { defineModule, ModuleWithProviders } from 'nexus';
+import { defineModule, ModuleWithProviders } from 'aether';
 
 export class RouterModule {
   // For the root module (singleton configuration)
@@ -807,7 +807,7 @@ export const AppModule = defineModule({
 
 ## Conclusion
 
-The Nexus module system provides:
+The Aether module system provides:
 
 - ✅ **Organization**: Clear code structure
 - ✅ **Performance**: Lazy loading and code splitting

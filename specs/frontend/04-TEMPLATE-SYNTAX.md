@@ -2,7 +2,7 @@
 
 > **Status**: Complete Specification
 > **Last Updated**: 2025-10-06
-> **Part of**: Nexus Frontend Framework Specification
+> **Part of**: Aether Frontend Framework Specification
 
 ---
 
@@ -29,7 +29,7 @@
 
 ## Overview
 
-Nexus uses **JSX** (JavaScript XML) as its template syntax, extended with special directives and control flow syntax. JSX provides a familiar, type-safe, and powerful way to describe UI.
+Aether uses **JSX** (JavaScript XML) as its template syntax, extended with special directives and control flow syntax. JSX provides a familiar, type-safe, and powerful way to describe UI.
 
 ### Why JSX?
 
@@ -40,7 +40,7 @@ Nexus uses **JSX** (JavaScript XML) as its template syntax, extended with specia
 - **IDE Support**: Excellent tooling (syntax highlighting, refactoring)
 - **JavaScript**: Full power of JavaScript in templates
 
-**Nexus Extensions**:
+**Aether Extensions**:
 - Control flow: `{#if}`, `{#each}`, `{#await}`
 - Directives: `on:event`, `bind:value`, `class:name`
 - Automatic reactivity tracking
@@ -136,7 +136,7 @@ const value = count();
 
 ### Compile-Time Optimizations
 
-Nexus compiler analyzes JSX at **build time** to optimize runtime:
+Aether compiler analyzes JSX at **build time** to optimize runtime:
 
 ```typescript
 // Source
@@ -234,7 +234,7 @@ div.append(h1, p);
 Group multiple elements without wrapper:
 
 ```typescript
-import { Fragment } from 'nexus';
+import { Fragment } from 'aether';
 
 // With Fragment component
 <Fragment>
@@ -321,7 +321,7 @@ const userInput = signal('<script>alert("XSS")</script>'
 **Raw HTML** (dangerous):
 
 ```typescript
-import { html } from 'nexus';
+import { html } from 'aether';
 
 const htmlContent = signal('<strong>Bold</strong>');
 
@@ -458,7 +458,7 @@ interface Todo {
 }
 
 const todos = signal<Todo[]>([
-  { id: 1, text: 'Learn Nexus', done: false },
+  { id: 1, text: 'Learn (Aether)', done: false },
   { id: 2, text: 'Build app', done: false }
 ]);
 
@@ -697,7 +697,7 @@ const Parent = defineComponent(() => {
 
 ### Event Delegation
 
-Nexus automatically delegates common events for performance:
+Aether automatically delegates common events for performance:
 
 ```typescript
 // All click events delegated to root
@@ -1023,7 +1023,7 @@ const Layout = defineComponent(() => {
 Group elements without wrapper:
 
 ```typescript
-import { Fragment } from 'nexus';
+import { Fragment } from 'aether';
 
 <Fragment>
   <div>First</div>
@@ -1042,7 +1042,7 @@ import { Fragment } from 'nexus';
 Render outside component tree:
 
 ```typescript
-import { Portal } from 'nexus';
+import { Portal } from 'aether';
 
 const Modal = defineComponent(() => {
   return () => (
@@ -1060,7 +1060,7 @@ const Modal = defineComponent(() => {
 Handle async rendering:
 
 ```typescript
-import { Suspense } from 'nexus';
+import { Suspense } from 'aether';
 
 <Suspense fallback={<LoadingSpinner />}>
   <AsyncComponent />
@@ -1072,7 +1072,7 @@ import { Suspense } from 'nexus';
 Catch errors:
 
 ```typescript
-import { ErrorBoundary } from 'nexus';
+import { ErrorBoundary } from 'aether';
 
 <ErrorBoundary fallback={(error) => <ErrorDisplay error={error} />}>
   <App />
@@ -1257,7 +1257,7 @@ const userPromise = signal(fetchUser()
 
 ### JSX Transform
 
-Nexus uses a custom JSX transform optimized for fine-grained reactivity:
+Aether uses a custom JSX transform optimized for fine-grained reactivity:
 
 **Source**:
 
@@ -1342,7 +1342,7 @@ function render() {
 
 ### vs React JSX
 
-| Feature | React | Nexus |
+| Feature | React | Aether |
 |---------|-------|-------|
 | **Syntax** | JSX | JSX + extensions |
 | **Conditionals** | `{condition && <div/>}` | `{#if condition}` or `&&` |
@@ -1354,7 +1354,7 @@ function render() {
 
 ### vs Vue Templates
 
-| Feature | Vue | Nexus |
+| Feature | Vue | Aether |
 |---------|-----|-------|
 | **Syntax** | Template DSL | JSX |
 | **Conditionals** | `v-if`/`v-else` | `{#if}/{:else}` |
@@ -1365,7 +1365,7 @@ function render() {
 
 ### vs Svelte
 
-| Feature | Svelte | Nexus |
+| Feature | Svelte | Aether |
 |---------|--------|-------|
 | **Syntax** | Template DSL | JSX |
 | **Conditionals** | `{#if}` | `{#if}` |
@@ -1374,7 +1374,7 @@ function render() {
 | **Bindings** | `bind:value` | `bind:value` |
 | **Class** | `class:active` | `class:active` |
 
-Nexus is closest to Svelte in template syntax, but uses JSX instead of HTML templates.
+Aether is closest to Svelte in template syntax, but uses JSX instead of HTML templates.
 
 ---
 

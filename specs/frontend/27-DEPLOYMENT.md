@@ -21,7 +21,7 @@
 
 ## Overview
 
-Nexus applications can be deployed in multiple ways depending on your rendering strategy and infrastructure requirements.
+Aether applications can be deployed in multiple ways depending on your rendering strategy and infrastructure requirements.
 
 ### Deployment Options
 
@@ -174,9 +174,9 @@ export default defineConfig({
 // Production build
 {
   "scripts": {
-    "build": "nexus build",
-    "build:staging": "NODE_ENV=staging nexus build",
-    "build:production": "NODE_ENV=production nexus build"
+    "build": "aether build",
+    "build:staging": "NODE_ENV=staging aether build",
+    "build:production": "NODE_ENV=production aether build"
   }
 }
 
@@ -310,12 +310,12 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 
-export class NexusStaticStack extends cdk.Stack {
+export class (Aether)StaticStack extends cdk.Stack {
   constructor(scope: cdk.App, id: string) {
     super(scope, id);
 
     // S3 bucket
-    const bucket = new s3.Bucket(this, 'NexusBucket', {
+    const bucket = new s3.Bucket(this, '(Aether)Bucket', {
       websiteIndexDocument: 'index.html',
       websiteErrorDocument: 'index.html',
       publicReadAccess: true
@@ -354,7 +354,7 @@ Deploy SSR applications to Node.js servers.
 
 ```typescript
 // server.ts
-import { createServer } from '@nexus/server';
+import { createServer } from '@aether/server';
 import express from 'express';
 import compression from 'compression';
 import { fileURLToPath } from 'url';
@@ -518,7 +518,7 @@ Deploy to serverless platforms.
 
 ```typescript
 // Automatic deployment - zero config needed
-// Vercel detects Nexus and configures automatically
+// Vercel detects Aether and configures automatically
 
 // vercel.json (optional customization)
 {
@@ -1717,7 +1717,7 @@ onTTFB(sendToAnalytics);
 
 ## Titan Backend Deployment
 
-Deploy Titan backend alongside Nexus frontend.
+Deploy Titan backend alongside Aether frontend.
 
 ### Monorepo Structure
 
@@ -1726,7 +1726,7 @@ Deploy Titan backend alongside Nexus frontend.
  * Project structure:
  * project/
  * ├── apps/
- * │   ├── frontend/    # Nexus app
+ * │   ├── frontend/    # Aether app
  * │   └── backend/     # Titan app
  * ├── packages/
  * │   └── shared/      # Shared types
@@ -1758,7 +1758,7 @@ services:
     networks:
       - app-network
 
-  # Nexus frontend
+  # Aether frontend
   frontend:
     build:
       context: ./apps/frontend
@@ -1904,27 +1904,27 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 
-export class NexusStack extends cdk.Stack {
+export class (Aether)Stack extends cdk.Stack {
   constructor(scope: cdk.App, id: string) {
     super(scope, id);
 
     // VPC
-    const vpc = new ec2.Vpc(this, 'NexusVPC', {
+    const vpc = new ec2.Vpc(this, '(Aether)VPC', {
       maxAzs: 2
     });
 
     // ECS Cluster
-    const cluster = new ecs.Cluster(this, 'NexusCluster', {
+    const cluster = new ecs.Cluster(this, '(Aether)Cluster', {
       vpc
     });
 
     // Fargate Task Definition
-    const taskDef = new ecs.FargateTaskDefinition(this, 'NexusTask', {
+    const taskDef = new ecs.FargateTaskDefinition(this, '(Aether)Task', {
       memoryLimitMiB: 512,
       cpu: 256
     });
 
-    taskDef.addContainer('NexusContainer', {
+    taskDef.addContainer('(Aether)Container', {
       image: ecs.ContainerImage.fromRegistry('myregistry/nexus-app:latest'),
       portMappings: [{ containerPort: 3000 }],
       environment: {
@@ -1934,14 +1934,14 @@ export class NexusStack extends cdk.Stack {
     });
 
     // Fargate Service
-    const service = new ecs.FargateService(this, 'NexusService', {
+    const service = new ecs.FargateService(this, '(Aether)Service', {
       cluster,
       taskDefinition: taskDef,
       desiredCount: 2
     });
 
     // Load Balancer
-    const lb = new elbv2.ApplicationLoadBalancer(this, 'NexusLB', {
+    const lb = new elbv2.ApplicationLoadBalancer(this, '(Aether)LB', {
       vpc,
       internetFacing: true
     });
@@ -1950,7 +1950,7 @@ export class NexusStack extends cdk.Stack {
       port: 80
     });
 
-    listener.addTargets('NexusTarget', {
+    listener.addTargets('(Aether)Target', {
       port: 3000,
       targets: [service],
       healthCheck: {
@@ -1964,7 +1964,7 @@ export class NexusStack extends cdk.Stack {
 
 ## Summary
 
-Nexus provides flexible deployment options:
+Aether provides flexible deployment options:
 
 1. **Static Hosting**: SSG to CDN (Netlify, Vercel, Cloudflare Pages)
 2. **Server Deployment**: SSR on Node.js (VPS, Railway, DigitalOcean)

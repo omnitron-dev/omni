@@ -1,4 +1,4 @@
-# Nexus Framework — Full Specification
+# Aether Framework — Full Specification
 
 > Minimalist, high-performance frontend framework with deep Titan integration
 
@@ -440,7 +440,7 @@
 
 ---
 
-## Nexus Key Principles
+## Aether Key Principles
 
 ### 1. Minimalism
 
@@ -448,7 +448,7 @@ Every line of code must have a purpose. No boilerplate, no redundancy.
 
 ```typescript
 // Counter.tsx
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 
 export const Counter = defineComponent(() => {
   const count = signal(0);
@@ -510,7 +510,7 @@ export const mode = 'visible';
 
 ## Performance Metrics
 
-| Metric | Nexus | Qwik | Svelte | SolidJS | Vue 3 | React 18 |
+| Metric | Aether | Qwik | Svelte | SolidJS | Vue 3 | React 18 |
 |--------|-------|------|--------|---------|-------|----------|
 | Bundle Size (Hello World) | 1.2KB | 1KB | 2KB | 7KB | 34KB | 42KB |
 | Bundle Size (TodoMVC) | 6KB | 8KB | 12KB | 18KB | 134KB | 156KB |
@@ -524,7 +524,7 @@ export const mode = 'visible';
 
 ```bash
 # Create a project
-npx create-nexus my-app
+npx create-aether my-app
 cd my-app
 
 # Development
@@ -539,4 +539,4 @@ npm run deploy
 
 ---
 
-This specification is a comprehensive guide to the Nexus Framework. Each file contains an in-depth description of the respective aspect of the framework, including code examples, best practices, and detailed explanations of internal mechanics.
+This specification is a comprehensive guide to the Aether Framework. Each file contains an in-depth description of the respective aspect of the framework, including code examples, best practices, and detailed explanations of internal mechanics.

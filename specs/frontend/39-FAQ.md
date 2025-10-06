@@ -29,9 +29,9 @@
 
 ## Getting Started
 
-### What is Nexus?
+### What is Aether?
 
-Nexus is a modern, minimalist frontend framework that combines the best ideas from React, Vue, Svelte, SolidJS, Qwik, and Angular. It features:
+Aether is a modern, minimalist frontend framework that combines the best ideas from React, Vue, Svelte, SolidJS, Qwik, and Angular. It features:
 
 - **Fine-grained reactivity** with signals (like SolidJS)
 - **Type-safe server integration** with Titan backend
@@ -40,11 +40,11 @@ Nexus is a modern, minimalist frontend framework that combines the best ideas fr
 - **Zero-config defaults** with progressive enhancement
 - **Full TypeScript support** with excellent type inference
 
-Nexus is designed for developers who want modern features without the bloat, with seamless integration to the Titan backend framework.
+Aether is designed for developers who want modern features without the bloat, with seamless integration to the Titan backend framework.
 
 ---
 
-### How do I install Nexus?
+### How do I install Aether?
 
 ```bash
 # Using npm
@@ -91,7 +91,7 @@ For SSR, you'll need:
 3. **Self-documenting**: Types serve as inline documentation
 4. **Titan integration**: Type-safe RPC calls to backend services
 
-However, Nexus works perfectly fine with JavaScript if you prefer. All examples in the documentation are available in both languages.
+However, Aether works perfectly fine with JavaScript if you prefer. All examples in the documentation are available in both languages.
 
 ---
 
@@ -118,9 +118,9 @@ However, Nexus works perfectly fine with JavaScript if you prefer. All examples 
 
 ---
 
-### Can I use Nexus in production?
+### Can I use Aether in production?
 
-Yes! Nexus is production-ready and used by several companies for:
+Yes! Aether is production-ready and used by several companies for:
 
 - Enterprise web applications
 - E-commerce platforms
@@ -166,7 +166,7 @@ useEffect(() => {
   console.log(count);
 }, [count]);
 
-// Nexus
+// (Aether)
 const count = signal(0);
 const doubled = computed(() => count() * 2);
 
@@ -185,7 +185,7 @@ createEffect(() => {
 
 ### Why JSX instead of templates?
 
-Nexus uses **JSX** (like React) rather than template syntax (like Vue/Svelte) because:
+Aether uses **JSX** (like React) rather than template syntax (like Vue/Svelte) because:
 
 1. **JavaScript expressiveness**: Full power of JavaScript for logic
 2. **Type safety**: TypeScript works seamlessly with JSX
@@ -193,12 +193,12 @@ Nexus uses **JSX** (like React) rather than template syntax (like Vue/Svelte) be
 4. **Flexibility**: Compose components programmatically
 5. **Tooling**: Excellent editor support
 
-However, Nexus enhances JSX with control flow components (`Show`, `For`, `Switch`) that compile to efficient JavaScript.
+However, Aether enhances JSX with control flow components (`Show`, `For`, `Switch`) that compile to efficient JavaScript.
 
 **Example**:
 
 ```typescript
-// Nexus JSX with control flow
+// Aether JSX with control flow
 <For each={users()}>
   {(user) => <UserCard user={user} />}
 </For>
@@ -224,7 +224,7 @@ function Counter() {
 }
 ```
 
-**Fine-grained (Nexus)**:
+**Fine-grained ((Aether))**:
 ```typescript
 // Setup runs once, render function runs once, only text node updates
 export const Counter = defineComponent(() => {
@@ -247,9 +247,9 @@ export const Counter = defineComponent(() => {
 
 ---
 
-### How does Nexus compare to SolidJS?
+### How does Aether compare to SolidJS?
 
-Nexus is **heavily inspired by SolidJS** and shares many concepts:
+Aether is **heavily inspired by SolidJS** and shares many concepts:
 
 **Similarities**:
 - Signal-based reactivity
@@ -265,7 +265,7 @@ Nexus is **heavily inspired by SolidJS** and shares many concepts:
 4. **Islands architecture**: First-class support
 5. **Opinionated**: More batteries-included approach
 
-**When to choose Nexus**:
+**When to choose (Aether)**:
 - Building full-stack apps with Titan backend
 - Need enterprise features (DI, modules, etc.)
 - Want file-based routing out of the box
@@ -282,7 +282,7 @@ Nexus is **heavily inspired by SolidJS** and shares many concepts:
 ### What's the bundle size like?
 
 **Minimal Hello World**:
-- Nexus runtime: ~6KB gzipped
+- Aether runtime: ~6KB gzipped
 - Hello World app: ~8KB gzipped total
 
 **Realistic Todo App**:
@@ -298,7 +298,7 @@ Nexus is **heavily inspired by SolidJS** and shares many concepts:
 - Vue: ~35KB gzipped (Vue core)
 - Svelte: ~2KB gzipped (minimal runtime)
 - SolidJS: ~7KB gzipped
-- **Nexus: ~6KB gzipped**
+- **Aether: ~6KB gzipped**
 
 With islands architecture and code-splitting, most users download **<20KB JavaScript** for initial page load.
 
@@ -340,7 +340,7 @@ const [state, setState] = createStore({
 
 ### Do I need to worry about dependency tracking?
 
-**No!** Dependency tracking is **completely automatic** in Nexus.
+**No!** Dependency tracking is **completely automatic** in Aether.
 
 ```typescript
 const a = signal(1);
@@ -360,7 +360,7 @@ a.set(10); // sum recomputes
 
 ### How do I prevent unnecessary re-renders?
 
-In Nexus, **re-renders are already minimal** due to fine-grained reactivity. But you can optimize further:
+In Aether, **re-renders are already minimal** due to fine-grained reactivity. But you can optimize further:
 
 **1. Use `computed` for derived values**:
 ```typescript
@@ -583,7 +583,7 @@ export function Counter() {
 
 ### How do I handle component lifecycle?
 
-Nexus has a **simpler lifecycle** than class-based frameworks:
+Aether has a **simpler lifecycle** than class-based frameworks:
 
 **Setup phase** (runs once):
 ```typescript
@@ -621,7 +621,7 @@ createEffect(() => {
 
 ### What's the equivalent of React's `useRef`?
 
-Just use **regular variables** in Nexus!
+Just use **regular variables** in (Aether)!
 
 ```typescript
 export const FocusInput = defineComponent(() => {
@@ -734,7 +734,7 @@ export const Counter = defineComponent(() => {
 
 ### Can I use class components?
 
-**No.** Nexus only supports **functional components** for several reasons:
+**No.** Aether only supports **functional components** for several reasons:
 
 1. **Simpler**: Less boilerplate
 2. **Better composition**: Easier to share logic
@@ -1031,7 +1031,7 @@ Use the `cache` function to deduplicate requests:
 
 ```typescript
 // api.ts
-import { cache } from '@nexus/router';
+import { cache } from '@aether/router';
 
 export const getUser = cache(async (id: string) => {
   console.log('Fetching user:', id);
@@ -1091,7 +1091,7 @@ return () => (
 
 ### Do I need a state management library?
 
-**Probably not!** Nexus has built-in state management:
+**Probably not!** Aether has built-in state management:
 
 **For local state**: Use signals
 ```typescript
@@ -1223,7 +1223,7 @@ Now when settings change in one tab, all other tabs update automatically!
 
 **Option 1: DevTools** (recommended):
 ```typescript
-// Nexus DevTools shows all signals and stores
+// Aether DevTools shows all signals and stores
 // Install browser extension and it works automatically
 ```
 
@@ -1254,7 +1254,7 @@ const user = signal<User | null>(null, { name: 'currentUser' });
 
 ## Forms
 
-### How do I build forms in Nexus?
+### How do I build forms in (Aether)?
 
 **Option 1: Manual state management**:
 ```typescript
@@ -1378,7 +1378,7 @@ const form = createForm({
 **Schema validation (Zod)**:
 ```typescript
 import { z } from 'zod';
-import { validateSchema } from '@nexus/forms';
+import { validateSchema } from '@aether/forms';
 
 const userSchema = z.object({
   email: z.string().email('Invalid email'),
@@ -1482,7 +1482,7 @@ export const ImageUpload = defineComponent(() => {
 
 ### What styling options are available?
 
-Nexus supports **all major styling approaches**:
+Aether supports **all major styling approaches**:
 
 **1. CSS Modules**:
 ```typescript
@@ -1495,7 +1495,7 @@ export const Button = defineComponent(() => {
 
 **2. Scoped CSS with `css` tag**:
 ```typescript
-import { css } from '@nexus/styling';
+import { css } from '@aether/styling';
 
 export const Button = defineComponent(() => {
   const buttonClass = css`
@@ -1510,7 +1510,7 @@ export const Button = defineComponent(() => {
 
 **3. styled components**:
 ```typescript
-import { styled } from '@nexus/styling';
+import { styled } from '@aether/styling';
 
 const Button = styled('button')`
   padding: 8px 16px;
@@ -1593,7 +1593,7 @@ export const darkTheme: Theme = {
 };
 
 // App.tsx
-import { ThemeProvider } from '@nexus/theming';
+import { ThemeProvider } from '@aether/theming';
 
 export const App = defineComponent(() => {
   const theme = signal<'light' | 'dark'>('light');
@@ -1677,7 +1677,7 @@ export const Card = defineComponent(() => {
 
 ### How do I enable SSR?
 
-SSR is **enabled by default** in Nexus! Just build and run:
+SSR is **enabled by default** in (Aether)! Just build and run:
 
 ```bash
 npm run build
@@ -1762,7 +1762,7 @@ export default defineComponent(() => {
 
 **Option 1: Check `isServer`**:
 ```typescript
-import { isServer } from '@nexus/core';
+import { isServer } from '@aether/core';
 
 export const Analytics = defineComponent(() => {
   onMount(() => {
@@ -1778,7 +1778,7 @@ export const Analytics = defineComponent(() => {
 
 **Option 2: Use `clientOnly` wrapper**:
 ```typescript
-import { clientOnly } from '@nexus/core';
+import { clientOnly } from '@aether/core';
 
 const ClientOnlyMap = clientOnly(() => import('./Map'));
 
@@ -1814,7 +1814,7 @@ export const Chart = defineComponent(() => {
 
 ### How does hydration work?
 
-Nexus uses **progressive hydration**:
+Aether uses **progressive hydration**:
 
 1. Server renders HTML
 2. HTML sent to browser (fast FCP)
@@ -1866,10 +1866,10 @@ const Profile = lazy(() => import('./routes/Profile'));
 **2. Tree-shake unused code**:
 ```typescript
 // Import only what you need
-import { signal, computed } from '@nexus/core';
+import { signal, computed } from '@aether/core';
 
 // Instead of
-import * as Nexus from '@nexus/core';
+import * as Aether from '@aether/core';
 ```
 
 **3. Use islands for interactive components**:
@@ -1970,7 +1970,7 @@ return () => <div>{items().filter(i => i.active).length}</div>;
 
 **4. Virtualize long lists**:
 ```typescript
-import { VirtualList } from '@nexus/primitives';
+import { VirtualList } from '@aether/primitives';
 
 <VirtualList
   items={items()}
@@ -1986,10 +1986,10 @@ import { VirtualList } from '@nexus/primitives';
 
 ### How do I test components?
 
-Use `@nexus/testing` (based on Testing Library):
+Use `@aether/testing` (based on Testing Library):
 
 ```typescript
-import { render, screen, fireEvent } from '@nexus/testing';
+import { render, screen, fireEvent } from '@aether/testing';
 import { Counter } from './Counter';
 
 describe('Counter', () => {
@@ -2019,7 +2019,7 @@ describe('Counter', () => {
 Provide context via `wrapper` option:
 
 ```typescript
-import { render, screen } from '@nexus/testing';
+import { render, screen } from '@aether/testing';
 
 const wrapper = defineComponent((props) => {
   return () => (
@@ -2047,7 +2047,7 @@ describe('ProtectedComponent', () => {
 Use `waitFor` for async assertions:
 
 ```typescript
-import { render, screen, waitFor } from '@nexus/testing';
+import { render, screen, waitFor } from '@aether/testing';
 
 describe('UserProfile', () => {
   it('loads and displays user data', async () => {
@@ -2077,9 +2077,9 @@ describe('UserProfile', () => {
 
 ## Deployment
 
-### How do I deploy a Nexus app?
+### How do I deploy a Aether app?
 
-Nexus apps can be deployed to:
+Aether apps can be deployed to:
 
 **1. Vercel** (recommended):
 ```bash
@@ -2283,7 +2283,7 @@ export class UserService {
 }
 
 // app.module.tsx
-import { defineModule } from 'nexus';
+import { defineModule } from 'aether';
 
 export const AppModule = defineModule({
   id: 'app',
@@ -2324,7 +2324,7 @@ function Counter() {
   );
 }
 
-// Nexus
+// (Aether)
 export const Counter = defineComponent(() => {
   const count = signal(0);
 
@@ -2344,7 +2344,7 @@ useEffect(() => {
   console.log(count);
 }, [count]);
 
-// Nexus
+// (Aether)
 createEffect(() => {
   console.log(count());
 });
@@ -2355,7 +2355,7 @@ createEffect(() => {
 // React
 const doubled = useMemo(() => count * 2, [count]);
 
-// Nexus
+// (Aether)
 const doubled = computed(() => count() * 2);
 ```
 
@@ -2365,7 +2365,7 @@ const doubled = computed(() => count() * 2);
 const ThemeContext = React.createContext();
 <ThemeContext.Provider value={theme}>
 
-// Nexus
+// (Aether)
 const ThemeContext = createContext();
 <ThemeContext.Provider value={theme}>
 ```
@@ -2383,7 +2383,7 @@ const count = ref(0);
 const doubled = computed(() => count.value * 2);
 watch(count, (newVal) => console.log(newVal));
 
-// Nexus
+// (Aether)
 const count = signal(0);
 const doubled = computed(() => count() * 2);
 createEffect(() => console.log(count()));
@@ -2403,7 +2403,7 @@ const message = ref('Hello');
 ```
 
 ```typescript
-// Nexus
+// (Aether)
 export const MyComponent = defineComponent(() => {
   const message = signal('Hello');
 
@@ -2417,7 +2417,7 @@ export const MyComponent = defineComponent(() => {
 onMounted(() => { /* ... */ });
 onUnmounted(() => { /* ... */ });
 
-// Nexus
+// (Aether)
 onMount(() => { /* ... */ });
 onCleanup(() => { /* ... */ });
 ```
@@ -2503,7 +2503,7 @@ createEffect(() => {
 **Solution 3**: Use CSS-in-JS with extraction:
 
 ```typescript
-import { css } from '@nexus/styling';
+import { css } from '@aether/styling';
 
 const buttonClass = css`
   /* Styles extracted to CSS file at build */
@@ -2559,9 +2559,9 @@ export const data = () => ({ serverTime: new Date() });
 
 ## Framework Comparison
 
-### Nexus vs React?
+### Aether vs React?
 
-| Feature | Nexus | React |
+| Feature | Aether | React |
 |---------|-------|-------|
 | **Reactivity** | Signals (fine-grained) | Hooks (coarse-grained) |
 | **Re-renders** | Surgical updates | Component re-renders |
@@ -2573,15 +2573,15 @@ export const data = () => ({ serverTime: new Date() });
 | **SSR** | Built-in | Requires Next.js |
 | **Backend integration** | Titan RPC | Separate setup |
 
-**Choose Nexus if**: You want better performance, smaller bundles, and Titan integration.
+**Choose Aether if**: You want better performance, smaller bundles, and Titan integration.
 
 **Choose React if**: You need the massive ecosystem or have existing React codebase.
 
 ---
 
-### Nexus vs Vue?
+### Aether vs Vue?
 
-| Feature | Nexus | Vue |
+| Feature | Aether | Vue |
 |---------|-------|-----|
 | **Reactivity** | Signals | Ref/Reactive |
 | **Templates** | JSX | SFC templates |
@@ -2592,15 +2592,15 @@ export const data = () => ({ serverTime: new Date() });
 | **SSR** | Built-in | Requires Nuxt |
 | **Backend integration** | Titan RPC | Separate setup |
 
-**Choose Nexus if**: You prefer JSX, want Titan integration, or need smaller bundles.
+**Choose Aether if**: You prefer JSX, want Titan integration, or need smaller bundles.
 
 **Choose Vue if**: You prefer template syntax or need Vue's ecosystem.
 
 ---
 
-### Nexus vs SolidJS?
+### Aether vs SolidJS?
 
-| Feature | Nexus | SolidJS |
+| Feature | Aether | SolidJS |
 |---------|-------|---------|
 | **Reactivity** | Signals (identical) | Signals |
 | **Performance** | Excellent | Excellent |
@@ -2611,7 +2611,7 @@ export const data = () => ({ serverTime: new Date() });
 | **Opinionated** | Yes | No |
 | **Ecosystem** | Growing | Growing |
 
-**Choose Nexus if**: You want opinionated framework, file-based routing, and Titan integration.
+**Choose Aether if**: You want opinionated framework, file-based routing, and Titan integration.
 
 **Choose SolidJS if**: You want maximum flexibility and minimal framework.
 
@@ -2634,7 +2634,7 @@ export const data = () => ({ serverTime: new Date() });
 
 ---
 
-### How do I structure a large Nexus app?
+### How do I structure a large Aether app?
 
 ```
 src/
@@ -2708,7 +2708,7 @@ return () => <div>{count()}</div>;
 
 **4. Manual dependency tracking**:
 ```typescript
-// ❌ Not needed in Nexus (only in React)
+// ❌ Not needed in Aether (only in React)
 createEffect(() => {
   console.log(count());
 }, [count]); // No dependency array needed!
@@ -2741,7 +2741,7 @@ export const Counter = defineComponent(() => {
 
 ## Conclusion
 
-This FAQ covers the most common questions about Nexus. For more details:
+This FAQ covers the most common questions about Aether. For more details:
 
 - **Tutorial**: Start building with step-by-step guide
 - **API Reference**: [38-API-REFERENCE.md](38-API-REFERENCE.md)
@@ -2763,6 +2763,6 @@ This FAQ covers the most common questions about Nexus. For more details:
 
 - 1.0.0 (2025-10-06): Initial FAQ
 
-**Contributors**: Nexus Core Team
+**Contributors**: Aether Core Team
 
 **License**: MIT

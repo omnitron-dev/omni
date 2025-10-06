@@ -19,13 +19,13 @@
 
 ## Overview
 
-Migrating to Nexus from other frameworks can be done incrementally with minimal disruption.
+Migrating to Aether from other frameworks can be done incrementally with minimal disruption.
 
-### Why Migrate to Nexus
+### Why Migrate to Aether
 
 ```typescript
 /**
- * Benefits of Migrating to Nexus:
+ * Benefits of Migrating to Aether:
  *
  * 1. Performance
  *    - Fine-grained reactivity (no VDOM)
@@ -72,7 +72,7 @@ Migrating to Nexus from other frameworks can be done incrementally with minimal 
  *    - Timeline: 2-6 months
  *
  * 3. Hybrid
- *    - New features in Nexus
+ *    - New features in (Aether)
  *    - Keep existing code in old framework
  *    - Best for: Gradual transition
  *    - Timeline: 3-12 months
@@ -81,7 +81,7 @@ Migrating to Nexus from other frameworks can be done incrementally with minimal 
 
 ## From React
 
-Migrate from React to Nexus.
+Migrate from React to Aether.
 
 ### Component Comparison
 
@@ -106,8 +106,8 @@ export const Counter: React.FC = () => {
   );
 };
 
-// Nexus Component
-import { defineComponent, signal, createEffect } from '@nexus/core';
+// Aether Component
+import { defineComponent, signal, createEffect } from '@aether/core';
 
 export const Counter = defineComponent(() => {
   const count = signal(0);
@@ -131,7 +131,7 @@ export const Counter = defineComponent(() => {
 
 ```typescript
 /**
- * React Hooks → Nexus Equivalents:
+ * React Hooks → Aether Equivalents:
  *
  * useState → signal
  * useEffect → createEffect
@@ -157,7 +157,7 @@ useEffect(() => {
   };
 }, [dependency]);
 
-// Nexus
+// (Aether)
 const value = signal(0);
 const memoized = computed(() => expensive(value()));
 const callback = () => doSomething(value()); // Always stable
@@ -199,8 +199,8 @@ const Component = () => {
   return <button onClick={() => theme.set('dark')}>{theme}</button>;
 };
 
-// Nexus
-import { createContext, inject, provide, defineComponent, signal } from '@nexus/core';
+// (Aether)
+import { createContext, inject, provide, defineComponent, signal } from '@aether/core';
 
 const ThemeContext = createContext<{
   theme: Accessor<string>;
@@ -269,8 +269,8 @@ const UserProfile = ({ userId }: { userId: string }) => {
   return <div>{user?.name}</div>;
 };
 
-// Nexus with resource
-import { resource, Show } from '@nexus/core';
+// Aether with resource
+import { resource, Show } from '@aether/core';
 
 const UserProfile = defineComponent((props: { userId: string }) => {
   const [user] = resource(
@@ -296,7 +296,7 @@ const UserProfile = defineComponent((props: { userId: string }) => {
 {condition && <Component />}
 {condition ? <ComponentA /> : <ComponentB />}
 
-// Nexus - Same syntax
+// Aether - Same syntax
 {condition() && <Component />}
 {condition() ? <ComponentA /> : <ComponentB />}
 
@@ -308,7 +308,7 @@ const UserProfile = defineComponent((props: { userId: string }) => {
 // React - Lists
 {items.map(item => <Item key={item.id} {...item} />)}
 
-// Nexus - Use For
+// Aether - Use For
 <For each={items()}>
   {(item) => <Item {...item} />}
 </For>
@@ -319,7 +319,7 @@ const UserProfile = defineComponent((props: { userId: string }) => {
   <Child2 />
 </>
 
-// Nexus - Same
+// Aether - Same
 <>
   <Child1 />
   <Child2 />
@@ -328,7 +328,7 @@ const UserProfile = defineComponent((props: { userId: string }) => {
 
 ## From Vue
 
-Migrate from Vue to Nexus.
+Migrate from Vue to Aether.
 
 ### Component Comparison
 
@@ -357,8 +357,8 @@ watch(count, (newVal) => {
 ```
 
 ```typescript
-// Nexus Component
-import { defineComponent, signal, createEffect } from '@nexus/core';
+// Aether Component
+import { defineComponent, signal, createEffect } from '@aether/core';
 
 export const Counter = defineComponent(() => {
   const count = signal(0);
@@ -384,7 +384,7 @@ export const Counter = defineComponent(() => {
 
 ```typescript
 /**
- * Vue → Nexus Reactivity:
+ * Vue → Aether Reactivity:
  *
  * ref → signal
  * reactive → createStore
@@ -405,7 +405,7 @@ watch(count, (newVal, oldVal) => {
   console.log(newVal, oldVal);
 });
 
-// Nexus
+// (Aether)
 const count = signal(0);
 const [state, setState] = createStore({ name: 'Alice', age: 30 });
 const doubled = computed(() => count() * 2);
@@ -446,7 +446,7 @@ createEffect(() => {
 ```
 
 ```typescript
-// Nexus (JSX)
+// Aether (JSX)
 return () => (
   <>
     {/* Conditional */}
@@ -497,8 +497,8 @@ export function useCounter(initial = 0) {
   };
 }
 
-// Nexus Hook (same pattern)
-import { signal, computed } from '@nexus/core';
+// Aether Hook (same pattern)
+import { signal, computed } from '@aether/core';
 
 export function useCounter(initial = 0) {
   const count = signal(initial);
@@ -518,7 +518,7 @@ export function useCounter(initial = 0) {
 
 ## From Angular
 
-Migrate from Angular to Nexus.
+Migrate from Angular to Aether.
 
 ### Component Comparison
 
@@ -544,8 +544,8 @@ export class CounterComponent {
   }
 }
 
-// Nexus Component
-import { defineComponent, signal, createEffect } from '@nexus/core';
+// Aether Component
+import { defineComponent, signal, createEffect } from '@aether/core';
 
 export const Counter = defineComponent(() => {
   const count = signal(0);
@@ -596,7 +596,7 @@ export class UserComponent {
   }
 }
 
-// Nexus (with Titan DI)
+// Aether (with Titan DI)
 import { Injectable, Inject } from '@omnitron-dev/titan/nexus';
 
 @Injectable()
@@ -620,7 +620,7 @@ export const UserComponent = defineComponent(() => {
 
 ```typescript
 /**
- * Angular → Nexus Lifecycle:
+ * Angular → Aether Lifecycle:
  *
  * ngOnInit → onMount
  * ngOnDestroy → onCleanup
@@ -645,7 +645,7 @@ export class MyComponent implements OnInit, OnDestroy {
   }
 }
 
-// Nexus
+// (Aether)
 export const MyComponent = defineComponent((props) => {
   onMount(() => {
     // Initialize
@@ -666,7 +666,7 @@ export const MyComponent = defineComponent((props) => {
 
 ## From Svelte
 
-Migrate from Svelte to Nexus.
+Migrate from Svelte to Aether.
 
 ### Component Comparison
 
@@ -694,8 +694,8 @@ Migrate from Svelte to Nexus.
 ```
 
 ```typescript
-// Nexus Component
-import { defineComponent, signal, computed, createEffect } from '@nexus/core';
+// Aether Component
+import { defineComponent, signal, computed, createEffect } from '@aether/core';
 
 export const Counter = defineComponent(() => {
   const count = signal(0);
@@ -723,7 +723,7 @@ export const Counter = defineComponent(() => {
 
 ```typescript
 /**
- * Svelte → Nexus Reactivity:
+ * Svelte → Aether Reactivity:
  *
  * let variable = value → signal
  * $: computed = expression → computed
@@ -741,7 +741,7 @@ $: {
   console.log(count);
 }
 
-// Nexus
+// (Aether)
 const count = signal(0);
 const doubled = computed(() => count() * 2);
 
@@ -763,8 +763,8 @@ import { count } from './store';
 
 $count++; // Svelte auto-subscription
 
-// Nexus Store
-import { createStore } from '@nexus/core';
+// Aether Store
+import { createStore } from '@aether/core';
 
 export const [count, setCount] = createStore({ value: 0 });
 
@@ -774,32 +774,32 @@ count.set('value', count.value + 1);
 
 ## From Solid.js
 
-Nexus is heavily inspired by Solid.js, so migration is minimal.
+Aether is heavily inspired by Solid.js, so migration is minimal.
 
 ### Differences
 
 ```typescript
 /**
- * Solid.js vs Nexus Differences:
+ * Solid.js vs Aether Differences:
  *
  * 1. DI System
- *    - Nexus: Built-in Titan DI
+ *    - Aether: Built-in Titan DI
  *    - Solid: Manual context/injection
  *
  * 2. Routing
- *    - Nexus: File-based routing
+ *    - Aether: File-based routing
  *    - Solid: Component-based routing
  *
  * 3. Data Loading
- *    - Nexus: Route loaders + resources
+ *    - Aether: Route loaders + resources
  *    - Solid: Resources only
  *
  * 4. Server Integration
- *    - Nexus: Titan RPC built-in
+ *    - Aether: Titan RPC built-in
  *    - Solid: Separate server functions
  *
  * 5. Module System
- *    - Nexus: Unified modules
+ *    - Aether: Unified modules
  *    - Solid: Separate plugins
  *
  * Most code is compatible!
@@ -810,8 +810,8 @@ import { createSignal, createEffect } from 'solid-js';
 
 const [count, setCount] = createSignal(0);
 
-// Nexus - Same!
-import { signal, createEffect } from '@nexus/core';
+// Aether - Same!
+import { signal, createEffect } from '@aether/core';
 
 const count = signal(0);
 ```
@@ -838,7 +838,7 @@ Step-by-step migration process.
 export const migrationPlan = {
   // Phase 1: Setup (1 week)
   phase1: [
-    'Set up Nexus project',
+    'Set up Aether project',
     'Configure build tools',
     'Set up testing',
     'Create shared components'
@@ -872,7 +872,7 @@ export const migrationPlan = {
 ### 2. Setup
 
 ```bash
-# Create new Nexus project
+# Create new Aether project
 npm create nexus@latest
 
 # Install dependencies
@@ -899,8 +899,8 @@ export default defineConfig({
   }
 });
 
-// Mount old React app in Nexus
-import { defineComponent } from '@nexus/core';
+// Mount old React app in (Aether)
+import { defineComponent } from '@aether/core';
 import { createRoot } from 'react-dom/client';
 import { OldApp } from '@old/App';
 
@@ -929,7 +929,7 @@ Migrate gradually without disruption.
 ```typescript
 // Router setup with mixed pages
 export const routes = [
-  // New Nexus pages
+  // New Aether pages
   {
     path: '/',
     component: lazy(() => import('./pages/Home'))
@@ -983,7 +983,7 @@ Migration patterns and solutions.
 ### State Management
 
 ```typescript
-// Migrate Redux to Nexus stores
+// Migrate Redux to Aether stores
 // Old Redux
 const initialState = { count: 0 };
 
@@ -996,7 +996,7 @@ function reducer(state = initialState, action) {
   }
 }
 
-// New Nexus
+// New (Aether)
 const [state, setState] = createStore({ count: 0 });
 
 const increment = () => {
@@ -1026,7 +1026,7 @@ useEffect(() => {
   api.users.getAll().then(setUsers);
 }, []);
 
-// Nexus
+// (Aether)
 const [users] = resource(api.users.getAll);
 ```
 
@@ -1034,7 +1034,7 @@ const [users] = resource(api.users.getAll);
 
 Quick reference for API differences.
 
-### React vs Nexus
+### React vs Aether
 
 ```typescript
 // State
@@ -1062,7 +1062,7 @@ useContext(Context)      → inject(Context)
 {arr.map(x => ...)}      → <For each={arr()}>{x => ...}</For>
 ```
 
-### Vue vs Nexus
+### Vue vs Aether
 
 ```typescript
 // State
@@ -1097,7 +1097,7 @@ Optimize during migration.
  * Angular 15: ~150 KB
  * Svelte: ~2 KB (compiled away)
  * Solid: ~7 KB
- * Nexus: ~8 KB (similar to Solid)
+ * Aether: ~8 KB (similar to Solid)
  *
  * Expect 70-85% reduction from React/Vue
  */
@@ -1133,7 +1133,7 @@ Migrate tests incrementally.
  * Testing Migration:
  *
  * 1. Keep existing tests working
- * 2. Add Nexus tests for new components
+ * 2. Add Aether tests for new components
  * 3. Gradually convert old tests
  * 4. Use same testing library patterns
  */
@@ -1147,7 +1147,7 @@ test('increments counter', () => {
   expect(getByText('Count: 1')).toBeInTheDocument();
 });
 
-// Nexus test (similar!)
+// Aether test (similar!)
 import { render, fireEvent } from '@testing-library/solid';
 
 test('increments counter', () => {
@@ -1167,7 +1167,7 @@ Automate migration where possible.
 // AST transformation example
 import { transform } from '@babel/core';
 
-// Transform React hooks to Nexus
+// Transform React hooks to Aether
 const code = `
   const [count, setCount] = useState(0);
   useEffect(() => {
@@ -1177,7 +1177,7 @@ const code = `
 
 const result = transform(code, {
   plugins: [
-    function reactToNexusPlugin({ types: t }) {
+    function reactTo(Aether)Plugin({ types: t }) {
       return {
         visitor: {
           CallExpression(path) {
@@ -1249,7 +1249,7 @@ Real-world migration examples.
 /**
  * Project: Todo App
  * Size: 5 components, 500 LOC
- * Framework: React → Nexus
+ * Framework: React → Aether
  * Timeline: 2 weeks
  *
  * Results:
@@ -1265,7 +1265,7 @@ Real-world migration examples.
 /**
  * Project: Dashboard App
  * Size: 50 components, 5K LOC
- * Framework: Vue → Nexus
+ * Framework: Vue → Aether
  * Timeline: 8 weeks
  *
  * Strategy:
@@ -1282,13 +1282,13 @@ Real-world migration examples.
 
 ## Summary
 
-Migration to Nexus is achievable:
+Migration to Aether is achievable:
 
 1. **Assess**: Audit codebase and plan
 2. **Incremental**: Migrate page by page
 3. **Coexist**: Run both frameworks together
 4. **Test**: Keep tests passing
-5. **Optimize**: Leverage Nexus performance
+5. **Optimize**: Leverage Aether performance
 6. **Deploy**: Ship incrementally
 
-Nexus offers significant performance and DX improvements while maintaining familiar patterns.
+Aether offers significant performance and DX improvements while maintaining familiar patterns.

@@ -22,7 +22,7 @@
 
 ## Overview
 
-Nexus provides a **fine-grained, signal-based state management system** that scales from simple local component state to complex global application state. Built on the same reactivity primitives as the rest of the framework, state management in Nexus is:
+Aether provides a **fine-grained, signal-based state management system** that scales from simple local component state to complex global application state. Built on the same reactivity primitives as the rest of the framework, state management in Aether is:
 
 - **Type-safe**: Full TypeScript support with inference
 - **Fine-grained**: Surgical updates without unnecessary re-renders
@@ -59,7 +59,7 @@ return () => <div>{count()}</div>;
 
 ### Simplicity Over Ceremony
 
-Unlike Redux or MobX, Nexus state management has **no boilerplate**:
+Unlike Redux or MobX, Aether state management has **no boilerplate**:
 
 ```typescript
 // ❌ Redux-style (verbose)
@@ -74,7 +74,7 @@ const counterReducer = (state = 0, action) => {
 const store = createStore(counterReducer);
 store.dispatch(increment());
 
-// ✅ Nexus-style (simple)
+// ✅ Aether-style (simple)
 const count = signal(0);
 count.set(c => c + 1);
 ```
@@ -343,7 +343,7 @@ const [state, setState] = createStore({ items: [1, 2, 3] });
 setState('items', [...state.items, 4]); // ✅ Also works
 ```
 
-Both patterns work because Nexus tracks **property access**, not object identity.
+Both patterns work because Aether tracks **property access**, not object identity.
 
 ## Creating Stores
 
@@ -1590,7 +1590,7 @@ store.dispatch(increment());
 store.subscribe(() => console.log(store.getState()));
 ```
 
-**Nexus**:
+**Aether**:
 ```typescript
 // Store
 const [state, setState] = createStore({ count: 0 });
@@ -1633,7 +1633,7 @@ class CounterStore {
 const counter = new CounterStore();
 ```
 
-**Nexus**:
+**Aether**:
 ```typescript
 export const useCounterStore = defineStore('counter', () => {
   const [state, setState] = createStore({ count: 0 });
@@ -1664,7 +1664,7 @@ const count = useStore((state) => state.count);
 const increment = useStore((state) => state.increment);
 ```
 
-**Nexus**:
+**Aether**:
 ```typescript
 export const useCounterStore = defineStore('counter', () => {
   const [state, setState] = createStore({ count: 0 });
@@ -1700,7 +1700,7 @@ export const useCounterStore = defineStore('counter', {
 });
 ```
 
-**Nexus**:
+**Aether**:
 ```typescript
 export const useCounterStore = defineStore('counter', () => {
   const [state, setState] = createStore({ count: 0 });
@@ -2378,6 +2378,6 @@ const collab = useCollabStore();
 
 ---
 
-**State management in Nexus is designed to be simple, type-safe, and performant.** The fine-grained reactivity system ensures surgical updates without unnecessary re-renders, while the flexible API supports multiple patterns from simple local state to complex global stores with persistence, synchronization, and DevTools integration.
+**State management in Aether is designed to be simple, type-safe, and performant.** The fine-grained reactivity system ensures surgical updates without unnecessary re-renders, while the flexible API supports multiple patterns from simple local state to complex global stores with persistence, synchronization, and DevTools integration.
 
 **Next**: [11. Styling →](./11-STYLING.md)

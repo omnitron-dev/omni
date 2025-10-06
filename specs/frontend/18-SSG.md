@@ -20,7 +20,7 @@
 
 ## Overview
 
-Nexus provides **powerful Static Site Generation (SSG)** that:
+Aether provides **powerful Static Site Generation (SSG)** that:
 
 - 📄 **Pre-renders pages at build time**
 - ⚡ **Blazing fast performance** - serve static HTML
@@ -185,7 +185,7 @@ export default defineRoute({
   })
 });
 
-// Build: nexus build
+// Build: aether build
 // Output: dist/about/index.html
 ```
 
@@ -791,7 +791,7 @@ Deploy to static hosts:
 
 ```bash
 # Build
-nexus build
+aether build
 
 # Deploy to Vercel
 vercel deploy
@@ -1134,10 +1134,10 @@ Build subset of pages:
 
 ```bash
 # Build only blog pages
-nexus build --filter "blog/**"
+aether build --filter "blog/**"
 
 # Build specific paths
-nexus build --paths "/blog/post-1,/blog/post-2"
+aether build --paths "/blog/post-1,/blog/post-2"
 ```
 
 ### Build Plugins
@@ -1370,6 +1370,6 @@ export default defineRoute({
 
 ---
 
-**Static Site Generation in Nexus combines the performance of static sites with the flexibility of dynamic applications.** With ISR, hybrid rendering, and automatic optimizations, you get the best of both worlds: instant page loads and fresh content.
+**Static Site Generation in Aether combines the performance of static sites with the flexibility of dynamic applications.** With ISR, hybrid rendering, and automatic optimizations, you get the best of both worlds: instant page loads and fresh content.
 
 **Next**: [20. Netron RPC →](./20-NETRON-RPC.md)

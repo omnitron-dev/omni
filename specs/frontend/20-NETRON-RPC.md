@@ -22,7 +22,7 @@
 
 ## Overview
 
-Netron RPC is the **communication layer** between Nexus frontend and Titan backend. It provides:
+Netron RPC is the **communication layer** between Aether frontend and Titan backend. It provides:
 
 - 🔄 **Type-safe RPC**: Full TypeScript type inference
 - ⚡ **WebSocket & HTTP**: Multiple transport protocols
@@ -35,7 +35,7 @@ Netron RPC is the **communication layer** between Nexus frontend and Titan backe
 ### How It Works
 
 ```
-Frontend (Nexus)          Netron RPC          Backend (Titan)
+Frontend (Aether)          Netron RPC          Backend (Titan)
 ─────────────────         ──────────         ────────────────
 
 const service =           ┌─────────┐         @Injectable()
@@ -66,7 +66,7 @@ export class UserService {
 }
 
 // Frontend: Call service
-import { useRPC } from 'nexus/titan';
+import { useRPC } from 'aether/titan';
 import { UserService } from '@/services/user.service';
 
 const userService = useRPC(UserService);
@@ -211,7 +211,7 @@ Call service from frontend:
 
 ```typescript
 // components/UserList.tsx
-import { useRPC } from 'nexus/titan';
+import { useRPC } from 'aether/titan';
 import { UserService } from '@/services/user.service';
 
 export const UserList = defineComponent(() => {
@@ -355,7 +355,7 @@ const userService = useRPC(UserService, { version: '2.0.0' });
 Use RPC services in components:
 
 ```typescript
-import { useRPC } from 'nexus/titan';
+import { useRPC } from 'aether/titan';
 import { UserService } from '@/services/user.service';
 
 export default defineComponent(() => {
@@ -524,7 +524,7 @@ Use JWT tokens:
 
 ```typescript
 // Configure auth globally
-import { configureRPC } from 'nexus/titan';
+import { configureRPC } from 'aether/titan';
 
 configureRPC({
   beforeRequest: (request) => {
@@ -712,7 +712,7 @@ try {
 Intercept outgoing requests:
 
 ```typescript
-import { useRPCInterceptor } from 'nexus/titan';
+import { useRPCInterceptor } from 'aether/titan';
 
 useRPCInterceptor({
   request: async (request) => {
@@ -802,7 +802,7 @@ const user2 = await userService.findById('123');
 Invalidate cache:
 
 ```typescript
-import { invalidateRPCCache } from 'nexus/titan';
+import { invalidateRPCCache } from 'aether/titan';
 
 // Invalidate specific method
 await invalidateRPCCache(UserService, 'findById', ['123']);
@@ -841,7 +841,7 @@ const [user] = resource(
 Batch multiple requests:
 
 ```typescript
-import { batchRPC } from 'nexus/titan';
+import { batchRPC } from 'aether/titan';
 
 // Individual calls (3 round trips)
 const user1 = await userService.findById('1');
@@ -990,7 +990,7 @@ const user = await userService.findById('123');
 Listen to connection events:
 
 ```typescript
-import { onRPCConnect, onRPCDisconnect } from 'nexus/titan';
+import { onRPCConnect, onRPCDisconnect } from 'aether/titan';
 
 onRPCConnect(() => {
   console.log('Connected to RPC server');
@@ -1255,7 +1255,7 @@ export class TodoService {
 }
 
 // Frontend: TodoList.tsx
-import { useRPC } from 'nexus/titan';
+import { useRPC } from 'aether/titan';
 import { TodoService } from '@/services/todo.service';
 
 export const TodoList = defineComponent(() => {
@@ -1293,6 +1293,6 @@ export const TodoList = defineComponent(() => {
 
 ---
 
-**Netron RPC provides seamless, type-safe communication between Nexus frontend and Titan backend.** With automatic routing, built-in authentication, and streaming support, you can build full-stack applications without writing API endpoints.
+**Netron RPC provides seamless, type-safe communication between Aether frontend and Titan backend.** With automatic routing, built-in authentication, and streaming support, you can build full-stack applications without writing API endpoints.
 
 **Next**: [21. Build System →](./21-BUILD-SYSTEM.md)

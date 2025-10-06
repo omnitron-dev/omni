@@ -5,7 +5,7 @@
 - [Overview](#overview)
 - [Philosophy](#philosophy)
 - [Browser DevTools](#browser-devtools)
-- [Nexus DevTools](#nexus-devtools)
+- [Aether DevTools](#aether-devtools)
 - [Source Maps](#source-maps)
 - [Error Tracking](#error-tracking)
 - [Performance Profiling](#performance-profiling)
@@ -21,10 +21,10 @@
 
 ## Overview
 
-Nexus provides **comprehensive debugging tools** for development and production:
+Aether provides **comprehensive debugging tools** for development and production:
 
 - 🔍 **Browser DevTools integration** - Works seamlessly with Chrome/Firefox DevTools
-- 🎯 **Nexus DevTools Extension** - Inspect components, signals, stores
+- 🎯 **Aether DevTools Extension** - Inspect components, signals, stores
 - 🗺️ **Source Maps** - Debug original TypeScript code
 - 🐛 **Error boundaries** - Graceful error handling
 - 📊 **Performance profiling** - Identify bottlenecks
@@ -38,7 +38,7 @@ Nexus provides **comprehensive debugging tools** for development and production:
 Development:
   Code → TypeScript → Source Maps → Browser DevTools
                     ↓
-                  Nexus DevTools
+                  Aether DevTools
                     ↓
                State Inspector
 ```
@@ -211,16 +211,16 @@ console.log(`Render took ${end - start}ms`);
 // Use Performance tab for detailed analysis
 ```
 
-## Nexus DevTools
+## Aether DevTools
 
 ### Installation
 
 ```bash
 # Chrome extension
-https://chrome.google.com/webstore/nexus-devtools
+https://chrome.google.com/webstore/aether-devtools
 
 # Firefox extension
-https://addons.mozilla.org/firefox/nexus-devtools
+https://addons.mozilla.org/firefox/aether-devtools
 ```
 
 ### Component Tree
@@ -614,7 +614,7 @@ Debug RPC calls:
 
 ```typescript
 // Enable RPC logging
-import { configureRPC } from 'nexus/titan';
+import { configureRPC } from 'aether/titan';
 
 configureRPC({
   debug: true,
@@ -1119,6 +1119,6 @@ render(
 
 ---
 
-**Nexus debugging tools provide comprehensive visibility** into your application's behavior during development and production. From browser DevTools integration to custom profiling, you have everything needed to debug effectively.
+**Aether debugging tools provide comprehensive visibility** into your application's behavior during development and production. From browser DevTools integration to custom profiling, you have everything needed to debug effectively.
 
 **Next**: [25. Performance Optimization →](./25-PERFORMANCE.md)

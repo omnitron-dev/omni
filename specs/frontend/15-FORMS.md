@@ -22,7 +22,7 @@
 
 ## Overview
 
-Nexus provides **powerful form handling** with:
+Aether provides **powerful form handling** with:
 
 - **Fine-grained reactivity**: Only re-render what changed
 - **Type-safe validation**: Full TypeScript support
@@ -204,7 +204,7 @@ Benefits:
 ### Complete Integration Example
 
 ```typescript
-import { defineComponent } from 'nexus';
+import { defineComponent } from 'aether';
 import { createForm } from 'nexus/forms';
 import { FormRoot, FormField, FormLabel, FormControl, FormMessage, FormDescription } from 'nexus/primitives';
 import { z } from 'zod';
@@ -297,7 +297,7 @@ export default defineComponent(() => {
 Use primitives like `Select`, `Checkbox`, `RadioGroup` with `createForm`:
 
 ```typescript
-import { defineComponent } from 'nexus';
+import { defineComponent } from 'aether';
 import { createForm } from 'nexus/forms';
 import { FormRoot, FormField, FormLabel, FormControl, FormMessage } from 'nexus/primitives';
 import { Select, Checkbox, RadioGroup } from 'nexus/primitives';
@@ -1917,6 +1917,6 @@ export const RegisterForm = defineComponent(() => {
 
 ---
 
-**Nexus forms are designed to be flexible, type-safe, and accessible.** The fine-grained reactivity ensures optimal performance, while the rich validation system and server integration make it easy to build robust forms for any use case.
+**Aether forms are designed to be flexible, type-safe, and accessible.** The fine-grained reactivity ensures optimal performance, while the rich validation system and server integration make it easy to build robust forms for any use case.
 
 **Next**: [16. Server-Side Rendering →](./16-SSR.md)

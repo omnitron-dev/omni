@@ -19,7 +19,7 @@
 
 ## Overview
 
-Common patterns and solutions for building Nexus applications.
+Common patterns and solutions for building Aether applications.
 
 ### Recipe Format
 
@@ -45,9 +45,9 @@ Common patterns and solutions for building Nexus applications.
 
 ```typescript
 // auth/ProtectedRoute.tsx
-import { defineComponent, Show } from '@nexus/core';
+import { defineComponent, Show } from '@aether/core';
 import { useAuth } from './useAuth';
-import { Navigate } from '@nexus/router';
+import { Navigate } from '@aether/router';
 
 export const ProtectedRoute = defineComponent((props: {
   children: JSX.Element;
@@ -84,7 +84,7 @@ export const ProtectedRoute = defineComponent((props: {
 
 ```typescript
 // auth/useAuth.ts
-import { signal, createEffect, onCleanup, onMount } from '@nexus/core';
+import { signal, createEffect, onCleanup, onMount } from '@aether/core';
 
 export const useAuth = () => {
   const user = signal<User | null>(null);
@@ -193,7 +193,7 @@ export const useAuth = () => {
 
 ```typescript
 // auth/usePermissions.ts
-import { computed } from '@nexus/core';
+import { computed } from '@aether/core';
 import { useAuth } from './useAuth';
 
 export enum Permission {
@@ -262,7 +262,7 @@ export const UserManagement = defineComponent(() => {
 **Solution**:
 
 ```typescript
-import { signal, createEffect, onCleanup, onMount } from '@nexus/core';
+import { signal, createEffect, onCleanup, onMount } from '@aether/core';
 
 export const useInfiniteScroll = <T>(
   fetchFn: (page: number) => Promise<T[]>,
@@ -603,7 +603,7 @@ export const DynamicFieldArray = defineComponent(() => {
 
 ```typescript
 // store/app.ts
-import { createStore } from '@nexus/core';
+import { createStore } from '@aether/core';
 
 export const [appState, setAppState] = createStore({
   user: null as User | null,
@@ -654,7 +654,7 @@ export const Header = defineComponent(() => {
 **Solution**:
 
 ```typescript
-import { createStore, createEffect } from '@nexus/core';
+import { createStore, createEffect } from '@aether/core';
 
 export const createPersistedStore = <T extends object>(
   key: string,
@@ -1231,7 +1231,7 @@ const user = await fetchWithRetry(() =>
 **Solution**:
 
 ```typescript
-import { render, fireEvent } from '@nexus/testing';
+import { render, fireEvent } from '@aether/testing';
 
 describe('Counter', () => {
   it('increments on click', async () => {
@@ -1302,4 +1302,4 @@ This cookbook provides battle-tested patterns for:
 9. **Files**: Drag and drop upload
 10. **Real-time**: WebSocket integration
 
-Use these patterns as building blocks for your Nexus applications.
+Use these patterns as building blocks for your Aether applications.

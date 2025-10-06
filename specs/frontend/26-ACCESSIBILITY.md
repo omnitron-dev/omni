@@ -14,13 +14,13 @@
 - [Motion and Animation](#motion-and-animation)
 - [Testing Accessibility](#testing-accessibility)
 - [Best Practices](#best-practices)
-- [Nexus Integration](#nexus-integration)
+- [(Aether) Integration](#nexus-integration)
 - [API Reference](#api-reference)
 - [Examples](#examples)
 
 ## Overview
 
-Nexus is designed with accessibility as a core principle, not an afterthought. The framework provides built-in tools, components, and patterns to ensure your applications are usable by everyone, including people with disabilities.
+Aether is designed with accessibility as a core principle, not an afterthought. The framework provides built-in tools, components, and patterns to ensure your applications are usable by everyone, including people with disabilities.
 
 ### Why Accessibility Matters
 
@@ -43,7 +43,7 @@ Nexus is designed with accessibility as a core principle, not an afterthought. T
 3. **Understandable**: Information and operation must be understandable
 4. **Robust**: Content must be robust enough to work with assistive technologies
 
-### Nexus Accessibility Features
+### Aether Accessibility Features
 
 - **Semantic HTML by default**: Framework encourages proper markup
 - **ARIA attributes**: Built-in support for ARIA roles and properties
@@ -56,7 +56,7 @@ Nexus is designed with accessibility as a core principle, not an afterthought. T
 
 ## WCAG Compliance
 
-Nexus helps you build applications that comply with Web Content Accessibility Guidelines (WCAG) 2.1/2.2.
+Aether helps you build applications that comply with Web Content Accessibility Guidelines (WCAG) 2.1/2.2.
 
 ### Compliance Levels
 
@@ -67,7 +67,7 @@ Nexus helps you build applications that comply with Web Content Accessibility Gu
  * - Level AA: Acceptable compliance (industry standard)
  * - Level AAA: Optimal compliance (highest standard)
  *
- * Nexus targets Level AA by default, with tools for AAA
+ * Aether targets Level AA by default, with tools for AAA
  */
 
 // Configure accessibility level
@@ -146,7 +146,7 @@ export default defineConfig({
 ### Automated Compliance Checking
 
 ```typescript
-import { checkAccessibility } from '@nexus/testing';
+import { checkAccessibility } from '@aether/testing';
 
 // During development
 if (import.meta.env.DEV) {
@@ -174,12 +174,12 @@ describe('Accessibility', () => {
 
 ## Semantic HTML
 
-Nexus encourages the use of semantic HTML elements for better accessibility and SEO.
+Aether encourages the use of semantic HTML elements for better accessibility and SEO.
 
 ### Semantic Elements
 
 ```typescript
-import { defineComponent } from '@nexus/core';
+import { defineComponent } from '@aether/core';
 
 // ✅ Good - Semantic HTML
 export default defineComponent(() => {
@@ -348,7 +348,7 @@ ARIA (Accessible Rich Internet Applications) attributes provide additional seman
 ### ARIA Roles
 
 ```typescript
-import { defineComponent } from '@nexus/core';
+import { defineComponent } from '@aether/core';
 
 // Common ARIA roles
 export default defineComponent(() => {
@@ -557,7 +557,7 @@ export const Input = defineComponent((props: { error?: string }) => {
 ### Live Regions
 
 ```typescript
-import { signal, createEffect } from '@nexus/core';
+import { signal, createEffect } from '@aether/core';
 
 // Polite live region (non-interrupting)
 export const StatusMessage = defineComponent(() => {
@@ -623,7 +623,7 @@ All interactive elements must be keyboard-accessible.
 ### Tab Order and Focus
 
 ```typescript
-import { defineComponent } from '@nexus/core';
+import { defineComponent } from '@aether/core';
 
 // Natural tab order
 export default defineComponent(() => {
@@ -718,7 +718,7 @@ export const Modal = defineComponent(() => {
 ### Keyboard Shortcuts
 
 ```typescript
-import { onMount, onCleanup } from '@nexus/core';
+import { onMount, onCleanup } from '@aether/core';
 
 // Global keyboard shortcuts
 export const useKeyboardShortcuts = () => {
@@ -951,7 +951,7 @@ export const Links = defineComponent(() => {
 ### Announcements
 
 ```typescript
-import { createSignal, createEffect } from '@nexus/core';
+import { createSignal, createEffect } from '@aether/core';
 
 // Announce messages to screen readers
 export const useAnnouncer = () => {
@@ -1123,7 +1123,7 @@ export const FocusRing = defineComponent((props) => {
 ### Programmatic Focus
 
 ```typescript
-import { ref, onMount } from '@nexus/core';
+import { ref, onMount } from '@aether/core';
 
 // Focus on mount
 export const SearchModal = defineComponent(() => {
@@ -1552,7 +1552,7 @@ export const FieldWithInstructions = defineComponent(() => {
 ### Form Validation
 
 ```typescript
-import { createForm } from '@nexus/forms';
+import { createForm } from '@aether/forms';
 
 // Accessible form validation
 export const SignupForm = defineComponent(() => {
@@ -1716,7 +1716,7 @@ export const RadioGroup = defineComponent() => {
 
 ## Accessible Components
 
-All Nexus components are built with accessibility in mind.
+All Aether components are built with accessibility in mind.
 
 ### Button
 
@@ -2058,12 +2058,12 @@ export const FadeTransition = defineComponent(() => {
 
 ## Testing Accessibility
 
-Nexus provides tools for testing accessibility.
+Aether provides tools for testing accessibility.
 
 ### Automated Testing
 
 ```typescript
-import { render } from '@nexus/testing';
+import { render } from '@aether/testing';
 import { axe, toHaveNoViolations } from 'jest-axe';
 
 expect.extend(toHaveNoViolations);
@@ -2141,7 +2141,7 @@ describe('Component Accessibility', () => {
 ```typescript
 // Enable accessibility DevTools
 if (import.meta.env.DEV) {
-  import('@nexus/devtools').then(({ enableA11yTools }) => {
+  import('@aether/devtools').then(({ enableA11yTools }) => {
     enableA11yTools({
       // Highlight accessibility issues
       highlightIssues: true,
@@ -2346,15 +2346,15 @@ export const Breadcrumbs = defineComponent((props: {
 });
 ```
 
-## Nexus Integration
+## Aether Integration
 
-Nexus provides accessibility features out of the box.
+Aether provides accessibility features out of the box.
 
 ### Automatic ARIA
 
 ```typescript
-// Nexus components have built-in ARIA support
-import { Button, Input, Select } from '@nexus/components';
+// Aether components have built-in ARIA support
+import { Button, Input, Select } from '@aether/components';
 
 export default defineComponent(() => {
   return () => (
@@ -2529,8 +2529,8 @@ export const FocusRing: Component<{ children: JSX.Element }>;
 ### Complete Accessible Form
 
 ```typescript
-import { defineComponent } from '@nexus/core';
-import { createForm } from '@nexus/forms';
+import { defineComponent } from '@aether/core';
+import { createForm } from '@aether/forms';
 import { z } from 'zod';
 
 export default defineComponent(() => {
@@ -2871,7 +2871,7 @@ export const ConfirmDialog = defineComponent((props: {
 
 ## Summary
 
-Nexus provides comprehensive accessibility support:
+Aether provides comprehensive accessibility support:
 
 1. **WCAG Compliance**: Built-in tools for AA/AAA compliance
 2. **Semantic HTML**: Framework encourages proper markup
@@ -2884,4 +2884,4 @@ Nexus provides comprehensive accessibility support:
 9. **Testing Tools**: Built-in accessibility testing
 10. **Best Practices**: Documentation and examples
 
-Accessibility is not optional in Nexus—it's fundamental.
+Accessibility is not optional in (Aether)—it's fundamental.

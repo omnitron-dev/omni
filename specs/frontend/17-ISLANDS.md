@@ -19,12 +19,12 @@
 
 ## Overview
 
-Nexus implements **Islands Architecture** - a pattern where:
+Aether implements **Islands Architecture** - a pattern where:
 
 - 🏝️ **Islands of interactivity** in a sea of static HTML
 - ⚡ **Minimal JavaScript** sent to the client
 - 🎯 **Selective hydration** - only interactive components hydrate
-- 📦 **Automatic detection** - Nexus detects islands automatically
+- 📦 **Automatic detection** - Aether detects islands automatically
 - 🚀 **Better performance** - less JS = faster pages
 
 ### What are Islands?
@@ -154,7 +154,7 @@ export default defineComponent(() => {
 
 ### Automatic Island Detection
 
-Nexus **automatically detects** islands:
+Aether **automatically detects** islands:
 
 ```typescript
 // Automatic island (has event handler)
@@ -224,7 +224,7 @@ export const SearchBar = island(defineComponent(() => {
 
 ### Implicit Islands
 
-Nexus detects islands automatically:
+Aether detects islands automatically:
 
 ```typescript
 // Automatically an island (has onClick)
@@ -944,7 +944,7 @@ export const Chart = island(defineComponent(() => {
 
 ### vs Astro Islands
 
-Nexus Islands vs Astro:
+Aether Islands vs Astro:
 
 **Similarities**:
 - Both use islands pattern
@@ -953,18 +953,18 @@ Nexus Islands vs Astro:
 
 **Differences**:
 
-| Feature | Nexus | Astro |
+| Feature | Aether | Astro |
 |---------|-------|-------|
 | Detection | Automatic | Manual (`client:*` directives) |
-| Framework | Nexus only | Multi-framework |
+| Framework | Aether only | Multi-framework |
 | Hydration | Multiple strategies | Basic strategies |
 | DI | Built-in | N/A |
 
 ### vs Qwik Resumability
 
-Nexus Islands vs Qwik:
+Aether Islands vs Qwik:
 
-**Nexus**:
+**Aether**:
 - Traditional hydration (fast, but some JS)
 - Explicit islands
 - Fine-grained reactivity
@@ -1221,6 +1221,6 @@ export default defineRoute({
 
 ---
 
-**Islands Architecture in Nexus provides the best of both worlds**: the SEO and performance benefits of static HTML with the interactivity of modern web apps. By shipping minimal JavaScript and hydrating selectively, you get fast, accessible, SEO-friendly applications.
+**Islands Architecture in Aether provides the best of both worlds**: the SEO and performance benefits of static HTML with the interactivity of modern web apps. By shipping minimal JavaScript and hydrating selectively, you get fast, accessible, SEO-friendly applications.
 
 **Next**: [19. Titan Integration →](./19-TITAN-INTEGRATION.md)

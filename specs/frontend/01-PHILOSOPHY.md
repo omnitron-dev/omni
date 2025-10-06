@@ -1,8 +1,8 @@
-# Philosophy and Design Principles of Nexus
+# Philosophy and Design Principles of Aether
 
 ## Introduction
 
-Nexus Framework is not just another JavaScript framework. It is a fundamental rethinking of what web application development should look like. Every architectural decision in Nexus was made with three key principles in mind:
+Aether Framework is not just another JavaScript framework. It is a fundamental rethinking of what web application development should look like. Every architectural decision in Aether was made with three key principles in mind:
 
 1. **Minimalism** — Less code, fewer concepts, lower cognitive load
 2. **Performance** — Zero runtime overhead, maximum work at compile time
@@ -74,11 +74,11 @@ export class CounterComponent {
 - RxJS is mandatory for reactivity
 - Steep learning curve
 
-## The Nexus Approach: Elegant Simplicity
+## The Aether Approach: Elegant Simplicity
 
 ```typescript
 // Counter.tsx
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 
 export const Counter = defineComponent(() => {
   const count = signal(0);
@@ -102,9 +102,9 @@ export const Counter = defineComponent(() => {
 
 ### 1.1 Cognitive Load
 
-Every new concept increases cognitive load. Nexus strives for a minimal set of orthogonal primitives.
+Every new concept increases cognitive load. Aether strives for a minimal set of orthogonal primitives.
 
-**Nexus primitives:**
+**Aether primitives:**
 1. **Signals** — reactive state
 2. **Computed** — derived values
 3. **Effects** — side effects
@@ -126,7 +126,7 @@ for (let i = 0; i < 3; i++) {
   count.set(count + 1); // Always sets 1!
 }
 
-// ✅ No surprise: Nexus signal
+// ✅ No surprise: Aether signal
 const count = signal(0);
 count.update(n => n + 1); // Synchronous, works everywhere
 
@@ -149,7 +149,7 @@ for (let i = 0; i < 3; i++) {
   <LoginForm />
 )}
 
-<!-- ✅ Declarative: Nexus -->
+<!-- ✅ Declarative: Aether -->
 <div nx:if={isLoggedIn() && isAdmin()}>
   <AdminDashboard />
 </div>
@@ -213,7 +213,7 @@ function render() {
 
 ### 2.2 Fine-Grained Reactivity
 
-Virtual DOM frameworks re-render the entire component. Nexus updates only the changed nodes.
+Virtual DOM frameworks re-render the entire component. Aether updates only the changed nodes.
 
 ```typescript
 const UserInfo = defineComponent(() => {
@@ -233,7 +233,7 @@ const UserInfo = defineComponent(() => {
 
 When `firstName()` changes:
 - **React/Vue**: Re-render the entire component (3 spans)
-- **Nexus**: Update only the first text node
+- **Aether**: Update only the first text node
 
 ### 2.3 Zero Runtime Overhead
 
@@ -241,7 +241,7 @@ When `firstName()` changes:
 // Bundle size comparison (gzipped)
 {
   "Hello World": {
-    "Nexus": "1.2KB",   // runtime + component
+    "Aether": "1.2KB",   // runtime + component
     "Qwik": "1KB",
     "Svelte": "2KB",
     "SolidJS": "7KB",
@@ -257,7 +257,7 @@ Static content does not require JavaScript.
 
 ```typescript
 // routes/blog/[slug].tsx
-import { defineComponent } from 'nexus';
+import { defineComponent } from 'aether';
 
 export const mode = 'static'; // 0KB JavaScript!
 
@@ -274,7 +274,7 @@ export default defineComponent<{ post: BlogPost }>((props) => {
 Interactivity only where needed:
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 
 export const mode = 'visible'; // JS loads when visible
 
@@ -302,7 +302,7 @@ Client: Hydrate (re-execute all components) (200ms)
 Interactive (Total: ~500ms)
 ```
 
-**Nexus Resumable:**
+**Aether Resumable:**
 ```
 Server: Render HTML + serialize state (1MB + 2KB)
   ↓
@@ -317,7 +317,7 @@ Interactive (Total: ~30ms)
 
 ### 3.1 TypeScript First
 
-Nexus is written in TypeScript and designed with type safety in mind.
+Aether is written in TypeScript and designed with type safety in mind.
 
 ```typescript
 // Automatic type inference
@@ -341,7 +341,7 @@ effect(() => {
 ### 3.2 Props Validation
 
 ```typescript
-import { defineComponent } from 'nexus';
+import { defineComponent } from 'aether';
 
 interface ButtonProps {
   variant: 'primary' | 'secondary' | 'danger';
@@ -436,7 +436,7 @@ const Counter = defineComponent(() => {
 "Objects are not valid as a React child (found: object with keys {name, age})"
 // Where? Why? How to fix?
 
-// ✅ Nexus
+// ✅ (Aether)
 "Cannot interpolate object directly. Did you forget to access a property?
 
   Component: UserCard.tsx:15:8
@@ -449,7 +449,7 @@ const Counter = defineComponent(() => {
 
 ```bash
 # Create project
-npx create-nexus my-app
+npx create-aether my-app
 
 # Everything is preconfigured:
 # - TypeScript
@@ -499,7 +499,7 @@ const Article = defineComponent<ArticleProps>((props) => {
 
 ```typescript
 // Adding interactivity
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 
 export const mode = 'visible'; // JS loads when visible
 
@@ -531,7 +531,7 @@ Critical functionality should work without JS:
 
 ```typescript
 // The form works with and without JS
-import { defineComponent, onMount } from 'nexus';
+import { defineComponent, onMount } from 'aether';
 
 const SubscribeForm = defineComponent(() => {
   let formRef: HTMLFormElement;
@@ -575,7 +575,7 @@ class MyComponent extends BaseComponent {
   }
 }
 
-// ✅ Composition (Nexus)
+// ✅ Composition ((Aether))
 function useFeature() {
   const data = signal([]);
 
@@ -594,7 +594,7 @@ const feature = useFeature();
 
 ```typescript
 // Card.tsx
-import { defineComponent } from 'nexus';
+import { defineComponent } from 'aether';
 
 const Card = defineComponent(() => {
   return () => (
@@ -625,7 +625,7 @@ const Card = defineComponent(() => {
 ### 7.1 Explicit Reactivity
 
 ```typescript
-// ✅ Nexus — explicitly reactive
+// ✅ Aether — explicitly reactive
 const count = signal(0);
 const doubled = computed(() => count() * 2);
 
@@ -644,7 +644,7 @@ watch(() => {
 ### 7.2 Explicit Dependencies
 
 ```typescript
-// ✅ Nexus — dependencies are tracked automatically
+// ✅ Aether — dependencies are tracked automatically
 const fullName = computed(() => {
   return `${firstName()} ${lastName()}`; // Automatically tracks both
 });
@@ -749,7 +749,7 @@ nx migrate v1-to-v2
 
 ## Philosophical Conclusion
 
-Nexus is the answer to the question: "What would a frontend framework look like if it were designed from scratch with the lessons of the last 10 years in mind?"
+Aether is the answer to the question: "What would a frontend framework look like if it were designed from scratch with the lessons of the last 10 years in mind?"
 
 We took the best of:
 - **React**: Component model and unidirectional data flow
@@ -774,4 +774,4 @@ The result is a framework that is:
 - **Convenient**: Excellent DX out of the box
 - **Powerful**: Full-stack integration with Titan
 
-**Nexus is not a compromise. It is a synthesis of the best ideas.**
+**Aether is not a compromise. It is a synthesis of the best ideas.**

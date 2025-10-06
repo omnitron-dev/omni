@@ -2,7 +2,7 @@
 
 ## Introduction
 
-The theming system in Nexus is a comprehensive solution for managing application design via typed tokens. It combines design system best practices with full TypeScript integration and compile-time validation.
+The theming system in Aether is a comprehensive solution for managing application design via typed tokens. It combines design system best practices with full TypeScript integration and compile-time validation.
 
 ### Key Features
 
@@ -457,7 +457,7 @@ The compiler automatically generates CSS custom properties:
 
 ```typescript
 // services/theme.service.ts
-import { injectable, signal, computed, effect } from 'nexus';
+import { injectable, signal, computed, effect } from 'aether';
 import { LightTheme, DarkTheme } from '@/themes';
 
 export const ThemeService = injectable(() => {
@@ -538,7 +538,7 @@ export const ThemeService = injectable(() => {
 
 ```typescript
 // components/ThemeToggle.tsx
-import { defineComponent, inject, Show } from 'nexus';
+import { defineComponent, inject, Show } from 'aether';
 import { ThemeService } from '@/services/theme.service';
 
 const ThemeToggle = defineComponent(() => {
@@ -557,7 +557,7 @@ const ThemeToggle = defineComponent(() => {
 });
 
 // components/ThemedButton.tsx
-import { defineComponent, inject } from 'nexus';
+import { defineComponent, inject } from 'aether';
 import { ThemeService } from '@/services/theme.service';
 
 const ThemedButton = defineComponent(() => {
@@ -584,7 +584,7 @@ const ThemedButton = defineComponent(() => {
 
 ```typescript
 // components/Card.tsx
-import { defineComponent } from 'nexus';
+import { defineComponent } from 'aether';
 
 const Card = defineComponent(() => {
   return () => (
@@ -631,7 +631,7 @@ const Card = defineComponent(() => {
 
 ```typescript
 // components/Button.tsx
-import { defineComponent, inject, computed } from 'nexus';
+import { defineComponent, inject, computed } from 'aether';
 import { ThemeService } from '@/services/theme.service';
 
 interface ButtonProps {
@@ -771,7 +771,7 @@ Themes work with server-side rendering:
 
 ```typescript
 // routes/+layout.tsx
-import { defineComponent } from 'nexus';
+import { defineComponent } from 'aether';
 import { loader, useLoaderData } from 'nexus/routing';
 
 export const load = loader(async ({ request }) => {
@@ -858,7 +858,7 @@ export const DarkTheme = defineTheme({
 
 ## Conclusion
 
-The Nexus theming system provides:
+The Aether theming system provides:
 
 - ✅ **Type Safety** — Full typing for tokens
 - ✅ **DX** — Convenient theme workflows

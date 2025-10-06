@@ -24,7 +24,7 @@
 
 ## Overview
 
-Nexus Component Library is a **styled component library** built on top of Nexus Primitives. It provides:
+Aether Component Library is a **styled component library** built on top of Aether Primitives. It provides:
 
 - 🎨 **Beautiful defaults**: Production-ready designs
 - 🔧 **Fully customizable**: Theme tokens and variant props
@@ -36,11 +36,11 @@ Nexus Component Library is a **styled component library** built on top of Nexus 
 ### Architecture
 
 ```
-Nexus Component Library (Styled)
+Aether Component Library (Styled)
        ↓ Built on
-Nexus Primitives (Headless)
+Aether Primitives (Headless)
        ↓ Uses
-Nexus Core (Reactivity, Components)
+Aether Core (Reactivity, Components)
 ```
 
 **Primitives** (from spec 13): Headless, unstyled, accessible
@@ -1122,6 +1122,6 @@ export const SettingsPage = defineComponent(() => {
 
 ---
 
-**Nexus Component Library provides production-ready, accessible components** built on solid primitives with beautiful defaults and full customization. Use it to build modern web applications quickly without sacrificing quality or flexibility.
+**Aether Component Library provides production-ready, accessible components** built on solid primitives with beautiful defaults and full customization. Use it to build modern web applications quickly without sacrificing quality or flexibility.
 
 **Next**: [18. Static Site Generation →](./18-SSG.md)

@@ -2,7 +2,7 @@
 
 > **Status**: Complete Specification
 > **Last Updated**: 2025-10-06
-> **Part of**: Nexus Frontend Framework Specification
+> **Part of**: Aether Frontend Framework Specification
 
 ---
 
@@ -31,17 +31,17 @@
 
 ## Overview
 
-Components are the fundamental building blocks of Nexus applications. Unlike frameworks that use classes or special syntax, Nexus components are **just functions** that return a render function.
+Components are the fundamental building blocks of Aether applications. Unlike frameworks that use classes or special syntax, Aether components are **just functions** that return a render function.
 
 ### What is a Component?
 
-A component in Nexus is a **function** that:
+A component in Aether is a **function** that:
 1. Sets up reactive state (signals, computed values)
 2. Defines lifecycle hooks (onMount, onCleanup)
 3. Returns a **render function** that produces DOM
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 
 // Simple counter component
 const Counter = defineComponent(() => {
@@ -66,7 +66,7 @@ const Counter = defineComponent(() => {
 
 ### Component vs Function Component
 
-**Nexus** (setup runs once):
+**Aether** (setup runs once):
 ```typescript
 const Counter = defineComponent(() => {
   const count = signal(0);
@@ -97,7 +97,7 @@ function Counter() {
 
 ### Why Function-Based?
 
-Nexus favors **function-based components** over class-based for several reasons:
+Aether favors **function-based components** over class-based for several reasons:
 
 **Problems with Classes**:
 1. **Boilerplate**: `this` binding, constructor, lifecycle methods
@@ -151,7 +151,7 @@ const Counter = defineComponent(() => {
 
 ### Setup/Render Separation
 
-Nexus separates **setup** (runs once) from **render** (runs on updates):
+Aether separates **setup** (runs once) from **render** (runs on updates):
 
 ```typescript
 const MyComponent = defineComponent(() => {
@@ -189,7 +189,7 @@ const MyComponent = defineComponent(() => {
 ### Basic Syntax
 
 ```typescript
-import { defineComponent } from 'nexus';
+import { defineComponent } from 'aether';
 
 const MyComponent = defineComponent(() => {
   // Setup
@@ -204,7 +204,7 @@ const MyComponent = defineComponent(() => {
 ### With Props
 
 ```typescript
-import { defineComponent } from 'nexus';
+import { defineComponent } from 'aether';
 
 interface CounterProps {
   initialValue?: number;
@@ -257,7 +257,7 @@ const MyComponent = defineComponent<MyProps>((props) => {
 ### Default Props
 
 ```typescript
-import { mergeProps } from 'nexus';
+import { mergeProps } from 'aether';
 
 const Button = defineComponent<ButtonProps>((props) => {
   // Merge with defaults
@@ -328,14 +328,14 @@ const List = defineComponent(() => {
 
 ## Lifecycle
 
-Nexus provides lifecycle hooks for managing component behavior:
+Aether provides lifecycle hooks for managing component behavior:
 
 ### onMount
 
 Runs **after** component is inserted into DOM.
 
 ```typescript
-import { defineComponent, onMount } from 'nexus';
+import { defineComponent, onMount } from 'aether';
 
 const MyComponent = defineComponent(() => {
   onMount(() => {
@@ -372,7 +372,7 @@ const MyComponent = defineComponent(() => {
 Runs when component is **unmounted** or **effect re-runs**.
 
 ```typescript
-import { defineComponent, onCleanup } from 'nexus';
+import { defineComponent, onCleanup } from 'aether';
 
 const MyComponent = defineComponent(() => {
   // Cleanup when component unmounts
@@ -405,7 +405,7 @@ const MyComponent = defineComponent(() => {
 Catches errors in component tree.
 
 ```typescript
-import { defineComponent, onError } from 'nexus';
+import { defineComponent, onError } from 'aether';
 
 const ErrorBoundary = defineComponent((props) => {
   const error = signal<Error | null>(null);
@@ -642,7 +642,7 @@ const User = defineComponent<UserProps>((props) => {
 Extract specific props into local signals:
 
 ```typescript
-import { splitProps } from 'nexus';
+import { splitProps } from 'aether';
 
 interface InputProps {
   value: string;
@@ -838,7 +838,7 @@ Context provides a way to pass data through the component tree without props dri
 ### Creating Context
 
 ```typescript
-import { createContext, useContext } from 'nexus';
+import { createContext, useContext } from 'aether';
 
 // Define context type
 interface ThemeContext {
@@ -853,7 +853,7 @@ const ThemeContext = createContext<ThemeContext>('Theme');
 ### Providing Context
 
 ```typescript
-import { provideContext } from 'nexus';
+import { provideContext } from 'aether';
 
 const App = defineComponent(() => {
   const theme = signal<'light' | 'dark'>('light');
@@ -880,7 +880,7 @@ const App = defineComponent(() => {
 ### Consuming Context
 
 ```typescript
-import { injectContext } from 'nexus';
+import { injectContext } from 'aether';
 
 const ThemeToggle = defineComponent(() => {
   // Inject context
@@ -976,7 +976,7 @@ Refs provide direct access to DOM elements.
 ### Basic Ref
 
 ```typescript
-import { defineComponent, signal, onMount } from 'nexus';
+import { defineComponent, signal, onMount } from 'aether';
 
 const Input = defineComponent(() => {
   const inputRef = signal<HTMLInputElement | null>(null);
@@ -1061,7 +1061,7 @@ const Parent = defineComponent(() => {
 ### useRef Helper
 
 ```typescript
-import { useRef } from 'nexus';
+import { useRef } from 'aether';
 
 const Component = defineComponent(() => {
   // useRef is sugar for signal<T | null>(null)
@@ -1153,7 +1153,7 @@ const Parent = defineComponent(() => {
 
 ### Event Delegation
 
-Nexus automatically delegates common events (click, input, change, etc.) for performance:
+Aether automatically delegates common events (click, input, change, etc.) for performance:
 
 ```typescript
 // Automatically delegated to root
@@ -1173,7 +1173,7 @@ Nexus automatically delegates common events (click, input, change, etc.) for per
 ### Lazy Loading
 
 ```typescript
-import { lazy } from 'nexus';
+import { lazy } from 'aether';
 
 // Lazy load component
 const HeavyComponent = lazy(() => import('./HeavyComponent'));
@@ -1192,7 +1192,7 @@ const App = defineComponent(() => {
 ### Suspense
 
 ```typescript
-import { Suspense } from 'nexus';
+import { Suspense } from 'aether';
 
 const App = defineComponent(() => {
   return () => (
@@ -1256,7 +1256,7 @@ const UserProfile = defineComponent(() => {
 ### Basic Error Boundary
 
 ```typescript
-import { defineComponent, onError, signal } from 'nexus';
+import { defineComponent, onError, signal } from 'aether';
 
 const ErrorBoundary = defineComponent((props) => {
   const error = signal<Error | null>(null);
@@ -1342,7 +1342,7 @@ const App = defineComponent(() => {
 
 ### Component Memoization
 
-Unlike React, Nexus **doesn't need** `React.memo` because components don't re-render unless their signals change:
+Unlike React, Aether **doesn't need** `React.memo` because components don't re-render unless their signals change:
 
 ```typescript
 // React - needs memoization
@@ -1351,7 +1351,7 @@ const ExpensiveComponent = React.memo(({ value }) => {
   return <div>{value}</div>;
 });
 
-// Nexus - no memoization needed!
+// Aether - no memoization needed!
 const ExpensiveComponent = defineComponent<{ value: number }>((props) => {
   // Only re-renders when props.value actually changes
   return () => <div>{props.value}</div>;
@@ -1563,7 +1563,7 @@ const MouseTracker = defineComponent((props: {
 
 ## Server Components
 
-Nexus supports Server Components for SSR and SSG.
+Aether supports Server Components for SSR and SSG.
 
 ### Server Component
 
@@ -1591,7 +1591,7 @@ export const UserList = defineServerComponent(async () => {
 // Counter.client.tsx
 'use client'; // Mark as client component
 
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 
 export const Counter = defineComponent(() => {
   const count = signal(0);
@@ -1630,7 +1630,7 @@ export const Page = defineComponent(() => {
 
 ### vs React
 
-| Feature | React | Nexus |
+| Feature | React | Aether |
 |---------|-------|-------|
 | **Component Model** | Function components | Function components |
 | **Re-rendering** | Entire component | Fine-grained (only changed nodes) |
@@ -1643,7 +1643,7 @@ export const Page = defineComponent(() => {
 
 ### vs Vue
 
-| Feature | Vue 3 | Nexus |
+| Feature | Vue 3 | Aether |
 |---------|-------|-------|
 | **Component Model** | Options/Composition API | Function-based |
 | **Reactivity** | Proxy-based | Signal-based |
@@ -1654,7 +1654,7 @@ export const Page = defineComponent(() => {
 
 ### vs Svelte
 
-| Feature | Svelte | Nexus |
+| Feature | Svelte | Aether |
 |---------|--------|-------|
 | **Reactivity** | Compile-time | Runtime signals |
 | **Syntax** | Custom template syntax | JSX |
@@ -1664,7 +1664,7 @@ export const Page = defineComponent(() => {
 
 ### vs SolidJS
 
-| Feature | SolidJS | Nexus |
+| Feature | SolidJS | Aether |
 |---------|---------|-------|
 | **Reactivity** | Signals | Signals (nearly identical) |
 | **API** | Very similar | Nearly identical |

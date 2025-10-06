@@ -2,7 +2,7 @@
 
 > **Status**: Complete Specification
 > **Last Updated**: 2025-10-06
-> **Part of**: Nexus Frontend Framework Specification
+> **Part of**: Aether Frontend Framework Specification
 
 ---
 
@@ -27,7 +27,7 @@
 
 ## Overview
 
-Nexus provides powerful data loading primitives that work seamlessly with SSR, routing, and reactivity. Data loading is **declarative**, **type-safe**, and **automatically managed**.
+Aether provides powerful data loading primitives that work seamlessly with SSR, routing, and reactivity. Data loading is **declarative**, **type-safe**, and **automatically managed**.
 
 ### Key Features
 
@@ -43,7 +43,7 @@ Nexus provides powerful data loading primitives that work seamlessly with SSR, r
 ### Simple Example
 
 ```typescript
-import { resource } from 'nexus';
+import { resource } from 'aether';
 
 const UserProfile = defineComponent(() => {
   const userId = signal(1);
@@ -158,7 +158,7 @@ const [user] = resource<User>(() => fetchUser());
 ### Basic Resource
 
 ```typescript
-import { defineComponent, resource } from 'nexus';
+import { defineComponent, resource } from 'aether';
 
 const DataComponent = defineComponent(() => {
   const data = resource(() => {
@@ -189,7 +189,7 @@ const DataComponent = defineComponent(() => {
 Resource refetches when source changes:
 
 ```typescript
-import { defineComponent, signal, resource } from 'nexus';
+import { defineComponent, signal, resource } from 'aether';
 
 const UserComponent = defineComponent(() => {
   const userId = signal(1);
@@ -216,7 +216,7 @@ const UserComponent = defineComponent(() => {
 ### Multiple Dependencies
 
 ```typescript
-import { defineComponent, signal, resource } from 'nexus';
+import { defineComponent, signal, resource } from 'aether';
 
 const UserDetailsComponent = defineComponent(() => {
   const userId = signal(1);
@@ -244,7 +244,7 @@ const UserDetailsComponent = defineComponent(() => {
 ### Resource Methods
 
 ```typescript
-import { defineComponent, resource } from 'nexus';
+import { defineComponent, resource } from 'aether';
 
 const DataComponent = defineComponent(() => {
   const data = resource(() => fetchData());
@@ -274,7 +274,7 @@ const DataComponent = defineComponent(() => {
 ### Resource States
 
 ```typescript
-import { defineComponent, resource } from 'nexus';
+import { defineComponent, resource } from 'aether';
 
 const DataComponent = defineComponent(() => {
   const data = resource(() => fetchData());
@@ -723,7 +723,7 @@ const [data, { refetch }] = resource(fetchData);
 ### Automatic Revalidation
 
 ```typescript
-import { resource } from 'nexus';
+import { resource } from 'aether';
 
 const [data] = resource(
   fetchData,
@@ -940,7 +940,7 @@ const [data] = resource(
 ### Error Boundaries
 
 ```typescript
-import { ErrorBoundary } from 'nexus';
+import { ErrorBoundary } from 'aether';
 
 const App = defineComponent(() => {
   return () => (

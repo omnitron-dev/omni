@@ -19,7 +19,7 @@
 
 ## Overview
 
-Nexus provides **comprehensive testing tools** built on Vitest:
+Aether provides **comprehensive testing tools** built on Vitest:
 
 - ⚡ **Fast execution** with Vite-powered transforms
 - 🎯 **Component testing** with DOM utilities
@@ -170,7 +170,7 @@ describe('math utils', () => {
 ### Testing Signals
 
 ```typescript
-import { signal, computed, effect } from 'nexus';
+import { signal, computed, effect } from 'aether';
 
 describe('signals', () => {
   it('updates computed when signal changes', () => {
@@ -339,7 +339,7 @@ describe('Button', () => {
 ### Testing Context
 
 ```typescript
-import { createContext } from 'nexus';
+import { createContext } from 'aether';
 
 const ThemeContext = createContext<'light' | 'dark'>('light');
 
@@ -1000,6 +1000,6 @@ describe('Button', () => {
 
 ---
 
-**Nexus testing tools provide everything you need** for unit, component, integration, and E2E testing. Built on Vitest and Playwright, you get fast execution and great developer experience.
+**Aether testing tools provide everything you need** for unit, component, integration, and E2E testing. Built on Vitest and Playwright, you get fast execution and great developer experience.
 
 **Next**: [Summary and Conclusion →](./README.md)

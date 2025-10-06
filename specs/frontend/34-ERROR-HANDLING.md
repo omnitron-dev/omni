@@ -470,7 +470,7 @@ Handle form errors gracefully.
 ### Field-Level Validation
 
 ```typescript
-import { createForm } from '@nexus/forms';
+import { createForm } from '@aether/forms';
 import { z } from 'zod';
 
 export const SignupForm = defineComponent(() => {
@@ -1160,4 +1160,4 @@ Effective error handling is essential:
 9. **Recovery**: Provide retry and fallback
 10. **Testing**: Test error scenarios
 
-Build resilient apps with Nexus error handling.
+Build resilient apps with Aether error handling.

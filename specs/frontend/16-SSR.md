@@ -23,7 +23,7 @@
 
 ## Overview
 
-Nexus provides **first-class server-side rendering** with:
+Aether provides **first-class server-side rendering** with:
 
 - **Streaming SSR**: Stream HTML as it's generated
 - **Selective Hydration**: Only hydrate interactive components
@@ -81,7 +81,7 @@ export default defineRoute({
 
 ### SSR by Default
 
-Nexus **renders on the server by default**:
+Aether **renders on the server by default**:
 
 ```typescript
 // This component renders on the server
@@ -171,7 +171,7 @@ export default defineComponent(() => {
 });
 ```
 
-Nexus **automatically detects** which components need hydration.
+Aether **automatically detects** which components need hydration.
 
 ## Basic SSR
 
@@ -265,11 +265,11 @@ Use Titan for SSR:
 ```typescript
 // server.ts
 import { Application } from '@omnitron-dev/titan';
-import { NexusModule } from 'nexus/titan';
+import { AetherModule } from 'aether/titan';
 import { AppModule } from './app.module';
 
 const app = await Application.create([
-  NexusModule.forRoot({
+  AetherModule.forRoot({
     entry: './src/entry-server.ts'
   }),
   AppModule
@@ -277,7 +277,7 @@ const app = await Application.create([
 
 await app.start();
 
-// Nexus SSR is now running on Titan
+// Aether SSR is now running on Titan
 ```
 
 ## Streaming SSR
@@ -440,7 +440,7 @@ export default defineComponent(() => {
 
 ### Hydration Script
 
-Nexus injects hydration script:
+Aether injects hydration script:
 
 ```html
 <html>
@@ -1111,7 +1111,7 @@ export const updateUser = async (id: string, data: any) => {
 
 ### Bundle Size
 
-Nexus optimizes bundle size:
+Aether optimizes bundle size:
 
 ```typescript
 // Automatic code splitting by route
@@ -1255,18 +1255,18 @@ export const loader = async () => {
 
 ## Titan Integration
 
-### Nexus Module
+### Aether Module
 
-Use Nexus with Titan:
+Use Aether with Titan:
 
 ```typescript
 // app.module.ts
 import { defineModule } from '@omnitron-dev/titan';
-import { NexusModule } from 'nexus/titan';
+import { AetherModule } from 'aether/titan';
 
 export const AppModule = defineModule({
   imports: [
-    NexusModule.forRoot({
+    AetherModule.forRoot({
       entry: './src/entry-server.ts',
       port: 3000
     })
@@ -1311,7 +1311,7 @@ export default defineComponent(async () => {
 Call Titan services via RPC:
 
 ```typescript
-import { useRPC } from 'nexus/titan';
+import { useRPC } from 'aether/titan';
 import { UserService } from '@/services/user.service';
 
 export default defineComponent(() => {
@@ -1666,6 +1666,6 @@ export default defineRoute({
 
 ---
 
-**Nexus SSR is designed for performance and user experience.** Streaming, selective hydration, and server components ensure fast page loads and optimal JavaScript delivery. Deep Titan integration makes it easy to build full-stack applications with type-safe data fetching.
+**Aether SSR is designed for performance and user experience.** Streaming, selective hydration, and server components ensure fast page loads and optimal JavaScript delivery. Deep Titan integration makes it easy to build full-stack applications with type-safe data fetching.
 
 **Next**: [17. Islands Architecture →](./17-ISLANDS.md)

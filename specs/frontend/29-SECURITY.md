@@ -24,7 +24,7 @@
 
 ## Overview
 
-Security is paramount in web applications. Nexus provides built-in security features and follows security best practices.
+Security is paramount in web applications. Aether provides built-in security features and follows security best practices.
 
 ### Security Principles
 
@@ -433,8 +433,8 @@ export class MFAService {
   // Generate secret
   async generateSecret(userId: string): Promise<{ secret: string; qrCode: string }> {
     const secret = speakeasy.generateSecret({
-      name: `Nexus App (${userId})`,
-      issuer: 'Nexus'
+      name: `Aether App (${userId})`,
+      issuer: '(Aether)'
     });
 
     const qrCode = await QRCode.toDataURL(secret.otpauth_url!);
@@ -848,7 +848,7 @@ export default defineComponent(() => {
 
   return () => (
     <div>
-      {/* ✅ Safe - Nexus auto-escapes */}
+      {/* ✅ Safe - Aether auto-escapes */}
       <p>{userInput}</p>
 
       {/* ⚠️  Dangerous - bypasses escaping */}
@@ -1622,7 +1622,7 @@ export class SecurityModule {
   }
 }
 
-// Frontend (Nexus)
+// Frontend (Aether)
 import { securityConfig } from '@shared/security';
 
 // Use same CSRF configuration

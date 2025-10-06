@@ -2,7 +2,7 @@
 
 > **Status**: Complete Specification
 > **Last Updated**: 2025-10-06
-> **Part of**: Nexus Frontend Framework Specification
+> **Part of**: Aether Frontend Framework Specification
 
 ---
 
@@ -30,7 +30,7 @@
 
 ## Overview
 
-Nexus uses **file-based routing** - routes are automatically generated from the file structure in your `routes/` directory. This eliminates manual route configuration and makes the routing structure immediately visible.
+Aether uses **file-based routing** - routes are automatically generated from the file structure in your `routes/` directory. This eliminates manual route configuration and makes the routing structure immediately visible.
 
 ### Key Features
 
@@ -81,7 +81,7 @@ export const routes = [
 ];
 ```
 
-**Nexus File-Based Routing** (automatic):
+**Aether File-Based Routing** (automatic):
 ```
 routes/
 ├── index.tsx           # Just create files
@@ -160,7 +160,7 @@ routes/
 
 ```typescript
 // routes/about.tsx
-import { defineComponent } from 'nexus';
+import { defineComponent } from 'aether';
 
 export default defineComponent(() => {
   return () => (
@@ -1233,7 +1233,7 @@ navigate(-2); // Back 2 pages
 
 ### vs Next.js
 
-| Feature | Next.js | Nexus |
+| Feature | Next.js | Aether |
 |---------|---------|-------|
 | **Routing** | File-based (Pages Router) | File-based |
 | **Dynamic Routes** | `[id].js` | `[id].tsx` |
@@ -1245,7 +1245,7 @@ navigate(-2); // Back 2 pages
 
 ### vs Remix
 
-| Feature | Remix | Nexus |
+| Feature | Remix | Aether |
 |---------|-------|-------|
 | **Routing** | File-based | File-based (similar) |
 | **Data Loading** | `loader` | `loader` (similar) |
@@ -1253,11 +1253,11 @@ navigate(-2); // Back 2 pages
 | **Nested Routes** | Yes | Yes |
 | **Error Boundaries** | Yes | Yes |
 
-Nexus routing is heavily inspired by Remix but integrated with Nexus reactivity.
+Aether routing is heavily inspired by Remix but integrated with Aether reactivity.
 
 ### vs SvelteKit
 
-| Feature | SvelteKit | Nexus |
+| Feature | SvelteKit | Aether |
 |---------|-----------|-------|
 | **Routing** | File-based | File-based (similar) |
 | **Layouts** | `+layout.svelte` | `_layout.tsx` |

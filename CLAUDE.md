@@ -160,6 +160,31 @@ yarn workspace @omnitron-dev/[package-name] test:deno
 - Example implementations
 - Best practices guide
 
+### Frontend Framework
+
+**Aether** - Minimalist, high-performance frontend framework (in development)
+- **Philosophy**: Clean architecture, maximum developer freedom, low cognitive load
+- **Core Features**:
+  - Fine-grained reactivity with signals (inspired by SolidJS)
+  - Function-based components with `defineComponent()`
+  - File-based routing with loaders and actions
+  - Islands architecture for partial hydration
+  - SSR/SSG support out of the box
+- **Integration**:
+  - Contract-based Titan integration via Netron RPC
+  - Separate DI system (lightweight, tree-shakeable)
+  - Type-safe backend communication
+  - Role-based interface projection
+- **Bundle Size**: ~6KB gzipped core runtime
+- **Status**: 📋 Specifications complete, implementation planned
+- **Documentation**: See `specs/frontend/` for complete specifications
+
+**Key Architectural Decision**: Aether and Titan use **separate DI systems** connected via TypeScript interface contracts, not shared service instances. This ensures:
+- Each side optimized for its use case (frontend vs backend)
+- Clean separation of concerns
+- Security via Netron's role-based interface projection
+- Maximum flexibility and developer freedom
+
 ### Integrated into Titan
 
 The following packages have been integrated directly into @omnitron-dev/titan:
@@ -338,9 +363,10 @@ logger.info({ data }, 'message');
 ### Notes for AI Assistants
 
 - The repository has transitioned from @devgrid to @omnitron-dev namespace
-- Nexus and Netron are now integrated into Titan, not separate packages
+- **Nexus** is the DI system inside Titan (backend), **Aether** is the frontend framework
+- Nexus DI and Netron are now integrated into Titan, not separate packages
 - Focus is on runtime compatibility (Node.js and Bun)
-- Titan is the main framework package that integrates all core functionality
+- Titan is the backend framework, Aether is the frontend framework
 - When working with Titan tests, be aware of state management quirks
 - TypeScript versions may vary slightly between packages (5.8.3 - 5.9.2)
 - Always check for breaking changes in dependencies (especially Pino logger)

@@ -22,7 +22,7 @@
 
 ## Overview
 
-Nexus provides **multiple styling approaches** to fit different preferences and use cases:
+Aether provides **multiple styling approaches** to fit different preferences and use cases:
 
 1. **Scoped Styles**: Component-scoped CSS with automatic scoping
 2. **CSS Modules**: File-based scoped CSS with hashed class names
@@ -100,7 +100,7 @@ export default defineComponent(() => {
 
 ### Flexibility Over Prescription
 
-Nexus **doesn't force a single styling solution**. Choose what works best for your project:
+Aether **doesn't force a single styling solution**. Choose what works best for your project:
 
 - **Scoped styles**: Simple, familiar, great for small components
 - **CSS Modules**: Good for medium projects, design systems
@@ -1329,7 +1329,7 @@ Use responsive utility classes:
 
 ### CSS Bundle Optimization
 
-Nexus automatically:
+Aether automatically:
 
 - **Tree-shakes unused styles**
 - **Minifies CSS**
@@ -1523,7 +1523,7 @@ const style = css`
 <div css={style}>Content</div>
 ```
 
-**Nexus**:
+**Aether**:
 ```typescript
 import { css } from 'nexus/styles';
 
@@ -1555,7 +1555,7 @@ const Button = styled.button`
 <Button primary>Click</Button>
 ```
 
-**Nexus**:
+**Aether**:
 ```typescript
 import { styled } from 'nexus/styles';
 
@@ -1590,7 +1590,7 @@ import styles from './Button.module.css';
 <button className={styles.button}>Click</button>
 ```
 
-**Nexus**:
+**Aether**:
 ```typescript
 // Same as above, plus:
 // - Type-safe imports
@@ -1976,6 +1976,6 @@ export const Grid = defineComponent<{ children: any }>((props) => {
 
 ---
 
-**Nexus provides flexible, performant styling solutions** that work with your preferred approach. Whether you choose scoped styles, CSS Modules, CSS-in-JS, Tailwind, or Styled Components, you get the same great developer experience with type safety, theming support, and optimal performance.
+**Aether provides flexible, performant styling solutions** that work with your preferred approach. Whether you choose scoped styles, CSS Modules, CSS-in-JS, Tailwind, or Styled Components, you get the same great developer experience with type safety, theming support, and optimal performance.
 
 **Next**: [15. Forms and Validation →](./15-FORMS.md)

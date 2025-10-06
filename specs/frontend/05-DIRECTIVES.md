@@ -2,7 +2,7 @@
 
 > **Status**: Complete Specification
 > **Last Updated**: 2025-10-06
-> **Part of**: Nexus Frontend Framework Specification
+> **Part of**: Aether Frontend Framework Specification
 
 ---
 
@@ -679,7 +679,7 @@ import {
 A directive is a function that returns an object with lifecycle methods:
 
 ```typescript
-import type { DirectiveFunction } from 'nexus';
+import type { DirectiveFunction } from 'aether';
 
 export const myDirective: DirectiveFunction<Params> = (
   node: HTMLElement,
@@ -705,7 +705,7 @@ export const myDirective: DirectiveFunction<Params> = (
 
 ```typescript
 // directives/tooltip.ts
-import type { DirectiveFunction } from 'nexus';
+import type { DirectiveFunction } from 'aether';
 
 interface TooltipParams {
   text: string;
@@ -1099,7 +1099,7 @@ const tooltipWithLogging = withLogging(tooltip, 'Tooltip');
 ### Typing Directives
 
 ```typescript
-import type { DirectiveFunction } from 'nexus';
+import type { DirectiveFunction } from 'aether';
 
 // Simple directive (boolean parameter)
 export const autofocus: DirectiveFunction<boolean> = (node, enabled) => {
@@ -1277,7 +1277,7 @@ export const tooltip: DirectiveFunction<TooltipOptions | string> = (
 
 ```typescript
 // directives/tooltip.ts
-import type { DirectiveFunction } from 'nexus';
+import type { DirectiveFunction } from 'aether';
 
 interface TooltipOptions {
   text: string;

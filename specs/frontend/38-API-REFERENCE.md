@@ -6,7 +6,7 @@
 
 ## Overview
 
-This document provides a complete API reference for Vibrancy - the reactive core of the Nexus frontend framework. All APIs are fully typed with TypeScript and include detailed examples based on the actual implementation.
+This document provides a complete API reference for Vibrancy - the reactive core of the Aether frontend framework. All APIs are fully typed with TypeScript and include detailed examples based on the actual implementation.
 
 Vibrancy is a fine-grained reactive system inspired by Solid.js, providing signals, computed values, effects, stores, and resources with first-class TypeScript support.
 

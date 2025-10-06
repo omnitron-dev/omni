@@ -2,7 +2,7 @@
 
 > **Status**: Complete Specification
 > **Last Updated**: 2025-10-06
-> **Part of**: Nexus Frontend Framework Specification
+> **Part of**: Aether Frontend Framework Specification
 
 ---
 
@@ -54,7 +54,7 @@ Traditional component libraries couple **behavior** with **presentation**, leadi
 - **Accessibility Gaps**: Often bolted on as an afterthought
 - **Framework Coupling**: Tied to specific styling solutions (CSS-in-JS, CSS Modules, etc.)
 
-**Nexus Primitives Solution**:
+**Aether Primitives Solution**:
 ```typescript
 // Headless = Unstyled but fully functional + accessible
 import { Dialog } from 'nexus/primitives';
@@ -78,11 +78,11 @@ import { Dialog } from 'nexus/primitives';
 - **Accessibility First**: WAI-ARIA compliant out of the box
 - **Composable**: Build complex UIs from simple primitives
 - **Type-Safe**: Full TypeScript support with autocomplete
-- **Framework Coherent**: Integrates with Nexus reactivity and DI
+- **Framework Coherent**: Integrates with Aether reactivity and DI
 
 ### Headless vs Traditional Libraries
 
-| Aspect | Traditional (Material-UI) | Headless (Nexus Primitives) |
+| Aspect | Traditional (Material-UI) | Headless (Aether Primitives) |
 |--------|---------------------------|------------------------------|
 | **Styling** | Pre-styled (theme overrides) | Unstyled (you provide all styles) |
 | **Bundle Size** | 150KB+ (with styles) | 12KB (behavior only) |
@@ -93,7 +93,7 @@ import { Dialog } from 'nexus/primitives';
 
 ### Inspiration
 
-Nexus Primitives draws from the best:
+Aether Primitives draws from the best:
 
 - **Radix UI**: WAI-ARIA compliance, composable API
 - **Headless UI**: Simplicity, framework integration
@@ -101,11 +101,11 @@ Nexus Primitives draws from the best:
 - **React Aria**: Adobe's accessibility expertise
 - **shadcn/ui**: Developer experience, copy-paste philosophy
 
-**But with Nexus advantages**:
+**But with Aether advantages**:
 - Fine-grained reactivity (no Virtual DOM overhead)
 - Compile-time optimizations
 - Deep TypeScript integration
-- Unified with Nexus DI and theming
+- Unified with Aether DI and theming
 - SSR/Islands architecture support
 
 ---
@@ -178,7 +178,7 @@ export const Dialog = defineComponent(() => {
 
 ### Context System
 
-Primitives use Nexus context for component communication:
+Primitives use Aether context for component communication:
 
 ```typescript
 // DialogContext.ts
@@ -481,7 +481,7 @@ A modal dialog that overlays the page content.
 #### Basic Usage
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { Dialog } from 'nexus/primitives';
 
 export const ProfileDialog = defineComponent(() => {
@@ -717,7 +717,7 @@ Focus management automatically handles nested dialogs:
 #### Advanced: Custom Close Behavior
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { Dialog } from 'nexus/primitives';
 
 export const UnsavedChangesDialog = defineComponent(() => {
@@ -745,7 +745,7 @@ export const UnsavedChangesDialog = defineComponent(() => {
 #### Advanced: Animation with `forceMount`
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { Dialog } from 'nexus/primitives';
 import { presence } from 'nexus/primitives/animation';
 
@@ -815,7 +815,7 @@ Non-modal floating element positioned relative to a trigger.
 #### Basic Usage
 
 ```typescript
-import { defineComponent } from 'nexus';
+import { defineComponent } from 'aether';
 import { Popover } from 'nexus/primitives';
 
 export const NotificationsPopover = defineComponent(() => {
@@ -852,7 +852,7 @@ export const NotificationsPopover = defineComponent(() => {
 #### Positioning
 
 ```typescript
-import { defineComponent } from 'nexus';
+import { defineComponent } from 'aether';
 import { Popover } from 'nexus/primitives';
 
 export const PositionedPopover = defineComponent(() => {
@@ -964,7 +964,7 @@ Props:
 #### Advanced: Tooltip Behavior
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { Popover } from 'nexus/primitives';
 
 export const TooltipBehaviorPopover = defineComponent(() => {
@@ -1019,7 +1019,7 @@ A menu of actions or links triggered by a button.
 #### Basic Usage
 
 ```typescript
-import { defineComponent } from 'nexus';
+import { defineComponent } from 'aether';
 import { DropdownMenu } from 'nexus/primitives';
 
 export const ActionsDropdown = defineComponent(() => {
@@ -1112,7 +1112,7 @@ export const ActionsDropdown = defineComponent(() => {
 #### Checkbox Items
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { DropdownMenu } from 'nexus/primitives';
 
 export const ViewDropdown = defineComponent(() => {
@@ -1156,7 +1156,7 @@ export const ViewDropdown = defineComponent(() => {
 #### Radio Items
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { DropdownMenu } from 'nexus/primitives';
 
 export const ThemeDropdown = defineComponent(() => {
@@ -1331,7 +1331,7 @@ Props:
 #### Advanced: Context Menu
 
 ```typescript
-import { defineComponent } from 'nexus';
+import { defineComponent } from 'aether';
 import { ContextMenu } from 'nexus/primitives';
 
 export const BasicContextMenu = defineComponent(() => {
@@ -1372,7 +1372,7 @@ A form control for selecting a value from a list of options.
 #### Basic Usage
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { Select } from 'nexus/primitives';
 
 export const FruitSelect = defineComponent(() => {
@@ -1444,7 +1444,7 @@ export const FruitSelect = defineComponent(() => {
 #### Custom Option Rendering
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { Select } from 'nexus/primitives';
 
 interface User {
@@ -1638,7 +1638,7 @@ Props:
 #### Advanced: Multi-Select
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { MultiSelect } from 'nexus/primitives';
 
 export const TagsMultiSelect = defineComponent(() => {
@@ -1714,7 +1714,7 @@ A searchable select with autocomplete.
 #### Basic Usage
 
 ```typescript
-import { defineComponent, signal, computed } from 'nexus';
+import { defineComponent, signal, computed } from 'aether';
 import { Combobox } from 'nexus/primitives';
 
 export const FrameworkCombobox = defineComponent(() => {
@@ -1777,7 +1777,7 @@ export const FrameworkCombobox = defineComponent(() => {
 #### With Async Data
 
 ```typescript
-import { defineComponent, signal, effect } from 'nexus';
+import { defineComponent, signal, effect } from 'aether';
 import { Combobox } from 'nexus/primitives';
 import { debounce } from 'nexus/utils';
 
@@ -1895,7 +1895,7 @@ A set of layered sections of content (tab panels) displayed one at a time.
 #### Basic Usage
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { Tabs } from 'nexus/primitives';
 
 export const SettingsTabs = defineComponent(() => {
@@ -2091,7 +2091,7 @@ Props:
 #### Advanced: URL-Synchronized Tabs
 
 ```typescript
-import { defineComponent, signal, effect } from 'nexus';
+import { defineComponent, signal, effect } from 'aether';
 import { Tabs } from 'nexus/primitives';
 import { useRouter } from 'nexus/router';
 
@@ -2131,7 +2131,7 @@ Vertically stacked set of interactive headings that expand/collapse content pane
 #### Basic Usage
 
 ```typescript
-import { defineComponent } from 'nexus';
+import { defineComponent } from 'aether';
 import { Accordion } from 'nexus/primitives';
 
 export const FAQAccordion = defineComponent(() => {
@@ -2139,11 +2139,11 @@ export const FAQAccordion = defineComponent(() => {
     <Accordion type="single" collapsible class="accordion-root">
       <Accordion.Item value="item-1" class="accordion-item">
         <Accordion.Trigger class="accordion-trigger">
-          What is Nexus?
+          What is Aether?
           <ChevronDownIcon class="accordion-chevron" />
         </Accordion.Trigger>
         <Accordion.Content class="accordion-content">
-          Nexus is a minimalist frontend framework that combines the best
+          Aether is a minimalist frontend framework that combines the best
           ideas from React, Vue, Svelte, and SolidJS into a cohesive,
           developer-friendly package.
         </Accordion.Content>
@@ -2155,7 +2155,7 @@ export const FAQAccordion = defineComponent(() => {
           <ChevronDownIcon class="accordion-chevron" />
         </Accordion.Trigger>
         <Accordion.Content class="accordion-content">
-          Nexus uses fine-grained reactivity based on signals, similar to
+          Aether uses fine-grained reactivity based on signals, similar to
           SolidJS. This allows surgical DOM updates without a Virtual DOM.
         </Accordion.Content>
       </Accordion.Item>
@@ -2166,7 +2166,7 @@ export const FAQAccordion = defineComponent(() => {
           <ChevronDownIcon class="accordion-chevron" />
         </Accordion.Trigger>
         <Accordion.Content class="accordion-content">
-          Yes! Nexus is used in production by several companies and has
+          Yes! Aether is used in production by several companies and has
           excellent test coverage.
         </Accordion.Content>
       </Accordion.Item>
@@ -2178,7 +2178,7 @@ export const FAQAccordion = defineComponent(() => {
 #### Multiple Items Open
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { Accordion } from 'nexus/primitives';
 
 export const MultiAccordion = defineComponent(() => {
@@ -2351,7 +2351,7 @@ A set of radio buttons where only one can be selected.
 #### Basic Usage
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { RadioGroup } from 'nexus/primitives';
 
 export const PlanSelector = defineComponent(() => {
@@ -2506,7 +2506,7 @@ A set of checkboxes for multi-selection.
 #### Basic Usage
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { Checkbox } from 'nexus/primitives';
 
 export const BasicCheckboxes = defineComponent(() => {
@@ -2548,7 +2548,7 @@ export const BasicCheckboxes = defineComponent(() => {
 #### Select All with Indeterminate
 
 ```typescript
-import { defineComponent, signal, computed } from 'nexus';
+import { defineComponent, signal, computed } from 'aether';
 import { Checkbox } from 'nexus/primitives';
 
 export const SelectAllCheckboxes = defineComponent(() => {
@@ -2729,7 +2729,7 @@ An input for selecting a value from a range.
 #### Basic Usage (Single Value)
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { Slider } from 'nexus/primitives';
 
 export const VolumeSlider = defineComponent(() => {
@@ -2759,7 +2759,7 @@ export const VolumeSlider = defineComponent(() => {
 #### Range Slider (Two Values)
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { Slider } from 'nexus/primitives';
 
 export const PriceRangeSlider = defineComponent(() => {
@@ -2888,7 +2888,7 @@ Props:
 #### Advanced: Custom Value Display
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { Slider } from 'nexus/primitives';
 
 export const BrightnessSliderWithTooltip = defineComponent(() => {
@@ -2951,7 +2951,7 @@ A two-state button for binary options.
 #### Basic Usage
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { Toggle } from 'nexus/primitives';
 
 export const TextFormattingToggles = defineComponent(() => {
@@ -3053,7 +3053,7 @@ An on/off control (like iOS toggle).
 #### Basic Usage
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { Switch } from 'nexus/primitives';
 
 export const SettingsSwitches = defineComponent(() => {
@@ -3197,7 +3197,7 @@ A modal dialog that interrupts the user for important information or actions.
 #### Basic Usage
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { AlertDialog } from 'nexus/primitives';
 
 export const DeleteAccountAlert = defineComponent(() => {
@@ -3336,7 +3336,7 @@ A sliding panel from edge of screen (drawer/slide-over).
 #### Basic Usage
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { Sheet } from 'nexus/primitives';
 
 export const SettingsSheet = defineComponent(() => {
@@ -3586,7 +3586,7 @@ A searchable command menu for quick actions (like VS Code's command palette).
 #### Basic Usage
 
 ```typescript
-import { defineComponent, signal, effect } from 'nexus';
+import { defineComponent, signal, effect } from 'aether';
 import { CommandPalette } from 'nexus/primitives';
 
 export const BasicCommandPalette = defineComponent(() => {
@@ -3677,7 +3677,7 @@ export const BasicCommandPalette = defineComponent(() => {
 #### Advanced: Dynamic Commands
 
 ```typescript
-import { defineComponent, signal, computed, type Component } from 'nexus';
+import { defineComponent, signal, computed, type Component } from 'aether';
 import { CommandPalette } from 'nexus/primitives';
 
 interface Command {
@@ -3940,7 +3940,7 @@ A date input with calendar dropdown.
 #### Basic Usage (Single Date)
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { DatePicker } from 'nexus/primitives';
 
 const DatePickerExample = defineComponent(() => {
@@ -3995,7 +3995,7 @@ const DatePickerExample = defineComponent(() => {
 #### Date Range Selection
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { DateRangePicker } from 'nexus/primitives';
 
 const Example333 = defineComponent(() => {
@@ -4064,7 +4064,7 @@ const Example333 = defineComponent(() => {
 #### With Disabled Dates
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 const Example438 = defineComponent(() => {
   const selectedDate = signal<Date | null>(null);
   const isWeekend = (date: Date) => {
@@ -4153,7 +4153,7 @@ Standalone calendar component (used by DatePicker).
 #### Basic Usage
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { Calendar } from 'nexus/primitives';
 
 const Example105 = defineComponent(() => {
@@ -4192,7 +4192,7 @@ const Example105 = defineComponent(() => {
 #### Multi-Select
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 const Example861 = defineComponent(() => {
   const selectedDates = signal<Date[]>([new Date()]);
 
@@ -4427,7 +4427,7 @@ Form primitives do NOT provide:
 #### Basic Usage
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { FormRoot, FormField, FormLabel, FormControl, FormMessage } from 'nexus/primitives';
 
 const Example530 = defineComponent(() => {
@@ -4475,7 +4475,7 @@ const Example530 = defineComponent(() => {
 Primitives work seamlessly with `createForm` hook (see **15-FORMS.md**):
 
 ```typescript
-import { defineComponent } from 'nexus';
+import { defineComponent } from 'aether';
 import { createForm } from 'nexus/forms';
 import { FormRoot, FormField, FormLabel, FormControl, FormMessage } from 'nexus/primitives';
 import { z } from 'zod';
@@ -4563,7 +4563,7 @@ const Example872 = defineComponent(() => {
 #### With Complex Primitives (Select, Checkbox)
 
 ```typescript
-import { defineComponent } from 'nexus';
+import { defineComponent } from 'aether';
 import { createForm } from 'nexus/forms';
 import { FormRoot, FormField, FormLabel, FormControl, FormMessage } from 'nexus/primitives';
 import { Select, Checkbox } from 'nexus/primitives';
@@ -4766,7 +4766,7 @@ A data table with sorting, filtering, pagination, and selection.
 #### Basic Usage
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { Table } from 'nexus/primitives';
 
 const Example793 = defineComponent(() => {
@@ -4900,7 +4900,7 @@ const Example793 = defineComponent(() => {
 #### With Filtering
 
 ```typescript
-import { defineComponent, signal, computed } from 'nexus';
+import { defineComponent, signal, computed } from 'aether';
 const Example573 = defineComponent(() => {
   const searchQuery = signal('');
   const statusFilter = signal<'all' | 'active' | 'inactive'>('all');
@@ -5136,7 +5136,7 @@ Primitives are designed to be composed together to build complex UIs:
 #### Example: Settings Dialog with Tabs
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { Dialog, Tabs, Switch, Select } from 'nexus/primitives';
 
 const Example221 = defineComponent(() => {
@@ -5222,7 +5222,7 @@ const Example221 = defineComponent(() => {
 #### Example: Data Table with Filters and Actions
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 import { Table, Dropdown, Dialog, AlertDialog } from 'nexus/primitives';
 
 const Example279 = defineComponent(() => {
@@ -5334,7 +5334,7 @@ const Example279 = defineComponent(() => {
 ```
 
 ```typescript
-import { defineComponent } from 'nexus';
+import { defineComponent } from 'aether';
 import styles from './Dialog.module.css';
 
 const Example969 = defineComponent(() => {
@@ -5385,8 +5385,8 @@ Build your own component library on top of primitives:
 
 ```typescript
 // components/ui/Button.tsx
-import { defineComponent } from 'nexus';
-import type { ComponentProps } from 'nexus';
+import { defineComponent } from 'aether';
+import type { ComponentProps } from 'aether';
 
 interface ButtonProps extends ComponentProps<'button'> {
   variant?: 'primary' | 'secondary' | 'destructive';
@@ -5438,7 +5438,7 @@ export const DialogContent = defineComponent((props) => {
 Usage:
 
 ```typescript
-import { defineComponent } from 'nexus';
+import { defineComponent } from 'aether';
 import { Dialog, DialogTrigger, DialogContent } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
 
@@ -5462,7 +5462,7 @@ const Example43 = defineComponent(() => {
 
 ## Theme Integration
 
-Primitives automatically integrate with the Nexus theming system:
+Primitives automatically integrate with the Aether theming system:
 
 ```typescript
 // theme.ts
@@ -5599,7 +5599,7 @@ export const presence = (isPresent: () => boolean) => {
 Usage:
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 const Example285 = defineComponent(() => {
   const isOpen = signal(false);
   const dialogPresence = presence(() => isOpen());
@@ -5712,7 +5712,7 @@ Build your own primitives following the same patterns:
 
 ```typescript
 // components/primitives/Rating.tsx
-import { defineComponent, signal, injectContext, provideContext } from 'nexus';
+import { defineComponent, signal, injectContext, provideContext } from 'aether';
 
 interface RatingContextValue {
   value: Signal<number>;
@@ -5778,7 +5778,7 @@ export const RatingItem = defineComponent((props) => {
 Usage:
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 const Example324 = defineComponent(() => {
   const rating = signal(3);
 
@@ -5858,7 +5858,7 @@ Usage:
 
 ```typescript
 // ✅ Good - Controlled when you need external state
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 
 const ControlledExample = defineComponent(() => {
   const isOpen = signal(false);
@@ -5941,7 +5941,7 @@ Test all primitives with keyboard only:
 ### 6. Performance - Virtual Scrolling for Large Lists
 
 ```typescript
-import { defineComponent } from 'nexus';
+import { defineComponent } from 'aether';
 import { VirtualScroller } from 'nexus/primitives';
 
 const Example327 = defineComponent(() => {
@@ -5966,8 +5966,8 @@ const Example327 = defineComponent(() => {
 ### 7. Error Boundaries
 
 ```typescript
-import { defineComponent } from 'nexus';
-import { ErrorBoundary } from 'nexus';
+import { defineComponent } from 'aether';
+import { ErrorBoundary } from 'aether';
 
 const Example884 = defineComponent(() => {
 
@@ -5989,7 +5989,7 @@ const Example884 = defineComponent(() => {
 ### 8. Loading States
 
 ```typescript
-import { defineComponent, signal } from 'nexus';
+import { defineComponent, signal } from 'aether';
 const Example914 = defineComponent(() => {
   const isLoading = signal(true);
   const data = signal(null);
@@ -6022,14 +6022,14 @@ const Example914 = defineComponent(() => {
 
 ## Summary
 
-Nexus Primitives provide:
+Aether Primitives provide:
 
 ✅ **Unstyled, accessible UI components** - Full control over presentation
 ✅ **WAI-ARIA compliant** - Accessibility baked in
 ✅ **Keyboard navigation** - Full keyboard support out of the box
 ✅ **Composable** - Build complex UIs from simple primitives
 ✅ **Type-safe** - Full TypeScript support
-✅ **Framework coherent** - Integrates with Nexus reactivity, DI, and theming
+✅ **Framework coherent** - Integrates with Aether reactivity, DI, and theming
 ✅ **Flexible** - Controlled or uncontrolled state management
 ✅ **Production-ready** - Battle-tested patterns
 

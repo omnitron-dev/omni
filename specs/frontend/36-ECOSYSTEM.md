@@ -20,13 +20,13 @@
 
 ## Overview
 
-Nexus has a growing ecosystem of plugins and integrations.
+Aether has a growing ecosystem of plugins and integrations.
 
 ### Ecosystem Philosophy
 
 ```typescript
 /**
- * Nexus Ecosystem Principles:
+ * Aether Ecosystem Principles:
  *
  * 1. Modularity
  *    - Small, focused packages
@@ -57,19 +57,19 @@ Nexus has a growing ecosystem of plugins and integrations.
 
 ## Official Plugins
 
-Core plugins maintained by Nexus team.
+Core plugins maintained by Aether team.
 
-### @nexus/router
+### @aether/router
 
 File-based routing with data loading.
 
 ```bash
-npm install @nexus/router
+npm install @aether/router
 ```
 
 ```typescript
 // Auto-generated from file structure
-import { Router } from '@nexus/router';
+import { Router } from '@aether/router';
 
 export default defineComponent(() => {
   return () => <Router />;
@@ -83,16 +83,16 @@ export default defineComponent(() => {
 //     └── index.tsx       → /blog
 ```
 
-### @nexus/forms
+### @aether/forms
 
 Powerful form management and validation.
 
 ```bash
-npm install @nexus/forms zod
+npm install @aether/forms zod
 ```
 
 ```typescript
-import { createForm } from '@nexus/forms';
+import { createForm } from '@aether/forms';
 import { z } from 'zod';
 
 const form = createForm({
@@ -107,16 +107,16 @@ const form = createForm({
 });
 ```
 
-### @nexus/i18n
+### @aether/i18n
 
 Internationalization and localization.
 
 ```bash
-npm install @nexus/i18n
+npm install @aether/i18n
 ```
 
 ```typescript
-import { createI18n } from '@nexus/i18n';
+import { createI18n } from '@aether/i18n';
 
 const i18n = createI18n({
   locale: 'en',
@@ -131,16 +131,16 @@ const { t } = useI18n();
 t('hello'); // "Hello"
 ```
 
-### @nexus/query
+### @aether/query
 
 Advanced data fetching and caching.
 
 ```bash
-npm install @nexus/query
+npm install @aether/query
 ```
 
 ```typescript
-import { createQuery } from '@nexus/query';
+import { createQuery } from '@aether/query';
 
 const user = createQuery({
   queryKey: ['user', userId],
@@ -149,16 +149,16 @@ const user = createQuery({
 });
 ```
 
-### @nexus/devtools
+### @aether/devtools
 
 Development tools and debugging.
 
 ```bash
-npm install -D @nexus/devtools
+npm install -D @aether/devtools
 ```
 
 ```typescript
-import { enableDevTools } from '@nexus/devtools';
+import { enableDevTools } from '@aether/devtools';
 
 if (import.meta.env.DEV) {
   enableDevTools();
@@ -172,7 +172,7 @@ Popular third-party plugins.
 ### UI Component Libraries
 
 ```bash
-# shadcn/ui for Nexus
+# shadcn/ui for Aether
 npm install @nexus-ui/core
 
 # Headless UI
@@ -223,13 +223,13 @@ npm install lucide-solid
 
 ## Creating Plugins
 
-Build your own Nexus plugins.
+Build your own Aether plugins.
 
 ### Plugin Structure
 
 ```typescript
 // my-plugin/src/index.ts
-import { Plugin } from '@nexus/core';
+import { Plugin } from '@aether/core';
 
 export interface MyPluginOptions {
   apiKey: string;
@@ -272,7 +272,7 @@ export const myPlugin = (options: MyPluginOptions): Plugin => {
 };
 
 // Usage
-import { createApp } from '@nexus/core';
+import { createApp } from '@aether/core';
 import { myPlugin } from 'my-plugin';
 
 const app = createApp(App);
@@ -283,7 +283,7 @@ app.use(myPlugin({ apiKey: 'xxx' }));
 
 ```typescript
 // plugin/src/composable.ts
-import { signal, computed, onCleanup } from '@nexus/core';
+import { signal, computed, onCleanup } from '@aether/core';
 
 export interface UseMyPluginOptions {
   initialValue?: string;
@@ -324,7 +324,7 @@ export const MyPluginModule = defineModule({
 
 ```typescript
 // plugin/src/Button.tsx
-import { defineComponent } from '@nexus/core';
+import { defineComponent } from '@aether/core';
 
 export const Button = defineComponent((props: {
   variant?: 'primary' | 'secondary';
@@ -406,9 +406,9 @@ export interface PluginConfig {
 
 ```typescript
 // App with plugins
-import { createApp } from '@nexus/core';
-import { router } from '@nexus/router';
-import { i18n } from '@nexus/i18n';
+import { createApp } from '@aether/core';
+import { router } from '@aether/router';
+import { i18n } from '@aether/i18n';
 import { analytics } from './plugins/analytics';
 
 const app = createApp(App);
@@ -543,7 +543,7 @@ import routes from 'virtual:routes';
 
 Pre-built component libraries.
 
-### Nexus UI (Official)
+### Aether UI (Official)
 
 ```bash
 npm install @nexus-ui/core
@@ -600,10 +600,10 @@ export const Modal = defineComponent((props: { open: boolean }) => {
 
 Advanced state management solutions.
 
-### Nexus Store (Built-in)
+### Aether Store (Built-in)
 
 ```typescript
-import { createStore } from '@nexus/core';
+import { createStore } from '@aether/core';
 
 const [state, setState] = createStore({
   user: null,
@@ -659,7 +659,7 @@ export const Counter = defineComponent(() => {
 
 Router alternatives and extensions.
 
-### @nexus/router (Official)
+### @aether/router (Official)
 
 File-based routing with loaders.
 
@@ -704,12 +704,12 @@ export default defineComponent(() => {
 
 Form handling solutions.
 
-### @nexus/forms (Official)
+### @aether/forms (Official)
 
 Type-safe form validation.
 
 ```typescript
-import { createForm } from '@nexus/forms';
+import { createForm } from '@aether/forms';
 import { z } from 'zod';
 
 const form = createForm({
@@ -741,12 +741,12 @@ const [form, { Form, Field }] = createForm({
 
 Data fetching and caching.
 
-### @nexus/query (Official)
+### @aether/query (Official)
 
-React Query for Nexus.
+React Query for Aether.
 
 ```typescript
-import { createQuery, createMutation } from '@nexus/query';
+import { createQuery, createMutation } from '@aether/query';
 
 const user = createQuery({
   queryKey: ['user', userId],
@@ -827,16 +827,16 @@ export const List = defineComponent(() => {
 
 Testing tools and utilities.
 
-### @nexus/testing (Official)
+### @aether/testing (Official)
 
-Testing utilities for Nexus.
+Testing utilities for Aether.
 
 ```bash
-npm install -D @nexus/testing
+npm install -D @aether/testing
 ```
 
 ```typescript
-import { render, fireEvent } from '@nexus/testing';
+import { render, fireEvent } from '@aether/testing';
 
 test('increments counter', async () => {
   const { getByText } = render(() => <Counter />);
@@ -859,12 +859,12 @@ import { render, fireEvent } from '@testing-library/solid';
 
 Development and debugging tools.
 
-### @nexus/devtools (Official)
+### @aether/devtools (Official)
 
 Browser DevTools extension.
 
 ```typescript
-import { enableDevTools } from '@nexus/devtools';
+import { enableDevTools } from '@aether/devtools';
 
 if (import.meta.env.DEV) {
   enableDevTools({
@@ -954,10 +954,10 @@ my-plugin/
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
-    "@nexus/core": "^1.0.0"
+    "@aether/core": "^1.0.0"
   },
   "devDependencies": {
-    "@nexus/core": "^1.0.0",
+    "@aether/core": "^1.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.3.0"
   }
@@ -1080,7 +1080,7 @@ Plugin development guidelines.
 
 ```typescript
 // src/index.ts
-import { Plugin } from '@nexus/core';
+import { Plugin } from '@aether/core';
 
 export interface MyPluginOptions {
   // Options
@@ -1104,7 +1104,7 @@ export type { MyPluginOptions };
 
 ## Summary
 
-Nexus has a growing ecosystem:
+Aether has a growing ecosystem:
 
 1. **Official Plugins**: Router, Forms, i18n, Query
 2. **Community**: UI libraries, animations, charts
@@ -1114,4 +1114,4 @@ Nexus has a growing ecosystem:
 6. **Quality**: TypeScript-first, tested
 7. **Performance**: Tree-shakeable, optimized
 
-Build and share plugins to extend Nexus.
+Build and share plugins to extend Aether.

@@ -24,7 +24,7 @@
 
 ## Overview
 
-Nexus is **designed for performance from the ground up**:
+Aether is **designed for performance from the ground up**:
 
 - ⚡ **Fine-grained reactivity** - No virtual DOM overhead
 - 📦 **Small bundle size** - 10KB runtime (gzipped)
@@ -37,7 +37,7 @@ Nexus is **designed for performance from the ground up**:
 ### Performance Targets
 
 ```
-Metric                  Target      Nexus Actual
+Metric                  Target      Aether Actual
 ────────────────────────────────────────────────
 First Contentful Paint  < 1.8s      < 0.5s
 Largest Contentful Paint < 2.5s     < 1.2s
@@ -399,7 +399,7 @@ export default {
 ### Lazy Components
 
 ```typescript
-import { lazy } from 'nexus';
+import { lazy } from 'aether';
 
 // Lazy load component
 const AdminPanel = lazy(() => import('./AdminPanel'));
@@ -521,7 +521,7 @@ export default defineComponent(() => {
 Batch state updates:
 
 ```typescript
-import { batch } from 'nexus';
+import { batch } from 'aether';
 
 // ❌ 3 separate updates (3 re-renders)
 name.set('Alice');
@@ -632,7 +632,7 @@ Use resource hints:
 Deduplicate requests:
 
 ```typescript
-import { resource } from 'nexus';
+import { resource } from 'aether';
 
 // Multiple components request same user
 const UserProfile = () => {
@@ -1033,7 +1033,7 @@ React:       850ms
 Vue:         420ms
 Svelte:      180ms
 SolidJS:     120ms
-Nexus:       95ms  ⚡
+Aether:       95ms  ⚡
 
 Bundle Size (min+gzip):
 
@@ -1041,7 +1041,7 @@ React:       45KB
 Vue:         35KB
 Svelte:      15KB
 SolidJS:     12KB
-Nexus:       10KB  📦
+Aether:       10KB  📦
 
 Time to Interactive (SSR):
 
@@ -1049,7 +1049,7 @@ React:       3.2s
 Vue:         2.8s
 Svelte:      1.9s
 SolidJS:     1.6s
-Nexus:       1.3s  🚀
+Aether:       1.3s  🚀
 ```
 
 ## Examples
@@ -1105,6 +1105,6 @@ export default defineComponent(() => {
 
 ---
 
-**Nexus is optimized for performance by default**, but following these best practices ensures your application remains fast as it grows. Monitor, measure, and optimize continuously for the best user experience.
+**Aether is optimized for performance by default**, but following these best practices ensures your application remains fast as it grows. Monitor, measure, and optimize continuously for the best user experience.
 
 **Next**: [26. Accessibility →](./26-ACCESSIBILITY.md)

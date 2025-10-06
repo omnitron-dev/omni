@@ -6,7 +6,7 @@
 
 ## Overview
 
-This document outlines the planned development roadmap for the Nexus frontend framework. Our goal is to build the most developer-friendly, performant, and production-ready framework for building modern web applications with seamless Titan backend integration.
+This document outlines the planned development roadmap for the Aether frontend framework. Our goal is to build the most developer-friendly, performant, and production-ready framework for building modern web applications with seamless Titan backend integration.
 
 ## Table of Contents
 
@@ -58,7 +58,7 @@ This document outlines the planned development roadmap for the Nexus frontend fr
 
 ## Version Strategy
 
-Nexus follows **Semantic Versioning** (SemVer):
+Aether follows **Semantic Versioning** (SemVer):
 
 - **Major versions** (1.0, 2.0): Breaking changes, major new features
 - **Minor versions** (1.1, 1.2): New features, backward compatible
@@ -511,8 +511,8 @@ Areas we're actively researching for future versions:
 **Status**: Research phase
 **Timeline**: v2.0.0 or v3.0.0
 **Benefits**:
-- Use Nexus components in any framework
-- Use any Web Component in Nexus
+- Use Aether components in any framework
+- Use any Web Component in (Aether)
 - Better browser integration
 
 **Challenges**:
@@ -563,25 +563,25 @@ users().forEach(user => console.log(user.name));
 ### Official Packages (Planned)
 
 **Q4 2025 - Q1 2026**:
-1. `@nexus/analytics` - Privacy-focused analytics
-2. `@nexus/auth` - Authentication helpers (JWT, OAuth)
-3. `@nexus/admin` - Admin dashboard components
-4. `@nexus/charts` - Chart components
-5. `@nexus/maps` - Map integration (Mapbox, Google Maps)
+1. `@aether/analytics` - Privacy-focused analytics
+2. `@aether/auth` - Authentication helpers (JWT, OAuth)
+3. `@aether/admin` - Admin dashboard components
+4. `@aether/charts` - Chart components
+5. `@aether/maps` - Map integration (Mapbox, Google Maps)
 
 **Q2 2026 - Q3 2026**:
-6. `@nexus/payments` - Stripe, PayPal integration
-7. `@nexus/cms` - Headless CMS integration
-8. `@nexus/commerce` - E-commerce primitives
-9. `@nexus/media` - Video/audio player components
-10. `@nexus/social` - Social media integrations
+6. `@aether/payments` - Stripe, PayPal integration
+7. `@aether/cms` - Headless CMS integration
+8. `@aether/commerce` - E-commerce primitives
+9. `@aether/media` - Video/audio player components
+10. `@aether/social` - Social media integrations
 
 **Q4 2026 - 2027**:
-11. `@nexus/ai` - AI/ML components (TensorFlow.js)
-12. `@nexus/3d` - 3D rendering (Three.js wrapper)
-13. `@nexus/blockchain` - Web3 integration
-14. `@nexus/iot` - IoT device integration
-15. `@nexus/gaming` - Game development kit
+11. `@aether/ai` - AI/ML components (TensorFlow.js)
+12. `@aether/3d` - 3D rendering (Three.js wrapper)
+13. `@aether/blockchain` - Web3 integration
+14. `@aether/iot` - IoT device integration
+15. `@aether/gaming` - Game development kit
 
 ### Community Packages
 
@@ -632,7 +632,7 @@ We'll support the community with:
 
 ### Open Source Commitment
 
-Nexus is **MIT licensed** and will always be free and open source.
+Aether is **MIT licensed** and will always be free and open source.
 
 **Principles**:
 1. **Transparent development**: All discussions public
@@ -683,7 +683,7 @@ We welcome contributions of all kinds:
 ### Financial Sustainability
 
 **Funding Sources**:
-1. **Titan Cloud**: Hosting platform for Nexus + Titan apps
+1. **Titan Cloud**: Hosting platform for Aether + Titan apps
 2. **Enterprise Support**: Paid support contracts
 3. **Training**: Official workshops and courses
 4. **Sponsorships**: GitHub Sponsors, Open Collective
@@ -714,7 +714,7 @@ We welcome contributions of all kinds:
 - ⏳ **Q1 2026**: 100+ community packages
 - ⏳ **Q2 2026**: Version 1.5.0 with mobile features
 - ⏳ **Q3 2026**: 1,000+ production deployments
-- ⏳ **Q4 2026**: NexusConf (first official conference)
+- ⏳ **Q4 2026**: (Aether)Conf (first official conference)
 - ⏳ **Q4 2026**: 50,000+ weekly npm downloads
 
 ### 2027 Milestones
@@ -723,7 +723,7 @@ We welcome contributions of all kinds:
 - ⏳ **Q2 2027**: 10,000+ GitHub stars
 - ⏳ **Q3 2027**: 500+ community packages
 - ⏳ **Q4 2027**: 100,000+ weekly npm downloads
-- ⏳ **Q4 2027**: First book published about Nexus
+- ⏳ **Q4 2027**: First book published about Aether
 
 ### 2028+ Milestones
 
@@ -731,8 +731,8 @@ We welcome contributions of all kinds:
 - ⏳ **2028**: 50,000+ GitHub stars
 - ⏳ **2028**: 1,000,000+ weekly npm downloads
 - ⏳ **2028**: Top 10 most popular frontend frameworks
-- ⏳ **2029**: Multiple large enterprises using Nexus in production
-- ⏳ **2030**: Nexus becomes industry standard for Titan applications
+- ⏳ **2029**: Multiple large enterprises using Aether in production
+- ⏳ **2030**: Aether becomes industry standard for Titan applications
 
 ---
 
@@ -806,7 +806,7 @@ We want **your input** on the roadmap!
 
 ## Conclusion
 
-Nexus is on a mission to become the **best framework for building modern web applications** with seamless backend integration. We're committed to:
+Aether is on a mission to become the **best framework for building modern web applications** with seamless backend integration. We're committed to:
 
 - **Performance**: Sub-second page loads everywhere
 - **Developer Experience**: Joy in every line of code
@@ -831,6 +831,6 @@ Together, we'll build the future of web development. 🚀
 
 **Next Update**: Q1 2026 (January 2026)
 
-**Contributors**: Nexus Core Team, Community
+**Contributors**: Aether Core Team, Community
 
 **License**: MIT

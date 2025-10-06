@@ -119,8 +119,8 @@ The only module with a bootstrap component.
 // app/app.module.ts
 import { defineModule } from 'aether';
 import { App } from './App';
-import { RouterModule } from 'nexus/router';
-import { HttpModule } from 'nexus/http';
+import { RouterModule } from 'aether/router';
+import { HttpModule } from 'aether/http';
 import { AuthModule } from '@/modules/auth/auth.module';
 import { DashboardModule } from '@/modules/dashboard/dashboard.module';
 
@@ -163,7 +163,7 @@ import { BlogPost } from './components/BlogPost';
 import { BlogEditor } from './components/BlogEditor';
 import { BlogService } from './services/blog.service';
 import { CommentService } from './services/comment.service';
-import { RouterModule } from 'nexus/router';
+import { RouterModule } from 'aether/router';
 import { FormsModule } from '@/modules/forms/forms.module';
 
 export const BlogModule = defineModule({
@@ -710,7 +710,7 @@ MiscModule {
 ### Unit Testing Modules
 
 ```typescript
-import { createTestingModule } from 'nexus/testing';
+import { createTestingModule } from 'aether/testing';
 import { BlogModule } from './blog.module';
 import { BlogService } from './services/blog.service';
 
@@ -738,7 +738,7 @@ describe('BlogModule', () => {
 ### Integration Testing
 
 ```typescript
-import { createTestingModule } from 'nexus/testing';
+import { createTestingModule } from 'aether/testing';
 import { AppModule } from './app.module';
 import { AuthService } from '@/core/services/auth.service';
 

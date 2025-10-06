@@ -874,7 +874,7 @@ configureRPC({
 Debounce RPC calls:
 
 ```typescript
-import { debounce } from 'nexus/utils';
+import { debounce } from 'aether/utils';
 
 const userService = useRPC(UserService);
 
@@ -1150,7 +1150,7 @@ const addTodo = async (text: string) => {
 Implement circuit breaker:
 
 ```typescript
-import { createCircuitBreaker } from 'nexus/resilience';
+import { createCircuitBreaker } from 'aether/resilience';
 
 const circuitBreaker = createCircuitBreaker({
   threshold: 5, // Open after 5 failures

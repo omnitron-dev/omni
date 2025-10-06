@@ -17,6 +17,11 @@ export interface Signal<T> {
 }
 
 /**
+ * Computed - Alias for Signal (used for semantic clarity)
+ */
+export type Computed<T> = Signal<T>;
+
+/**
  * WritableSignal - Mutable signal
  * Extends Signal with mutation capabilities
  */

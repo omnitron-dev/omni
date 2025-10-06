@@ -9,6 +9,7 @@ export default defineConfig({
     'jsx-runtime': 'src/jsx-runtime.ts',
     'jsx-dev-runtime': 'src/jsx-dev-runtime.ts',
     'di/index': 'src/di/index.ts',
+    'router/index': 'src/router/index.ts',
   },
   format: ['esm'],
   dts: true,

@@ -59,7 +59,7 @@ export default defineComponent(() => {
 });
 
 // 3. CSS-in-JS
-import { css } from 'nexus/styles';
+import { css } from 'aether/styles';
 
 const buttonStyle = css({
   background: 'blue',
@@ -82,7 +82,7 @@ export default defineComponent(() => {
 });
 
 // 5. Styled Components
-import { styled } from 'nexus/styles';
+import { styled } from 'aether/styles';
 
 const Button = styled.button`
   background: blue;
@@ -440,7 +440,7 @@ import styles from './Button.module.scss';
 Use the `css` function for runtime styles:
 
 ```typescript
-import { css } from 'nexus/styles';
+import { css } from 'aether/styles';
 
 const buttonStyle = css({
   background: 'blue',
@@ -463,7 +463,7 @@ export default defineComponent(() => {
 Full TypeScript support:
 
 ```typescript
-import { css } from 'nexus/styles';
+import { css } from 'aether/styles';
 
 const style = css({
   display: 'flex',
@@ -481,7 +481,7 @@ const style = css({
 Create dynamic styles with props:
 
 ```typescript
-import { css } from 'nexus/styles';
+import { css } from 'aether/styles';
 
 const createButtonStyle = (props: { variant: 'primary' | 'secondary' }) => css({
   background: props.variant === 'primary' ? 'blue' : 'gray',
@@ -546,7 +546,7 @@ const responsiveStyle = css({
 Define animations:
 
 ```typescript
-import { css, keyframes } from 'nexus/styles';
+import { css, keyframes } from 'aether/styles';
 
 const fadeIn = keyframes({
   from: { opacity: 0 },
@@ -563,7 +563,7 @@ const animatedStyle = css({
 Use zero-runtime extraction for production:
 
 ```typescript
-import { css } from 'nexus/styles/zero-runtime';
+import { css } from 'aether/styles/zero-runtime';
 
 // Extracted at build time, no runtime overhead
 const buttonStyle = css({
@@ -739,7 +739,7 @@ export default {
 Use tagged template literals:
 
 ```typescript
-import { styled } from 'nexus/styles';
+import { styled } from 'aether/styles';
 
 const Button = styled.button`
   background: blue;
@@ -762,7 +762,7 @@ export default defineComponent(() => {
 Style based on props:
 
 ```typescript
-import { styled } from 'nexus/styles';
+import { styled } from 'aether/styles';
 
 interface ButtonProps {
   variant?: 'primary' | 'secondary';
@@ -828,7 +828,7 @@ const SecondaryButton = styled(Button)`
 Use the `variants` helper:
 
 ```typescript
-import { styled, variants } from 'nexus/styles';
+import { styled, variants } from 'aether/styles';
 
 const Button = styled.button(
   {
@@ -888,7 +888,7 @@ const Button = styled.button`
 Access theme in styled components:
 
 ```typescript
-import { styled } from 'nexus/styles';
+import { styled } from 'aether/styles';
 
 const Button = styled.button`
   background: ${props => props.theme.colors.primary};
@@ -940,7 +940,7 @@ Application.create(AppModule).then(app => app.start());
 Define global styles programmatically:
 
 ```typescript
-import { globalStyle } from 'nexus/styles';
+import { globalStyle } from 'aether/styles';
 
 globalStyle(`
   * {
@@ -959,7 +959,7 @@ globalStyle(`
 Apply a CSS reset:
 
 ```typescript
-import { cssReset } from 'nexus/styles';
+import { cssReset } from 'aether/styles';
 
 // Apply modern CSS reset
 cssReset();
@@ -1028,7 +1028,7 @@ import './reset.css';
 Access theme tokens in styles:
 
 ```typescript
-import { css, theme } from 'nexus/styles';
+import { css, theme } from 'aether/styles';
 
 const buttonStyle = css({
   background: theme.colors.primary,
@@ -1059,7 +1059,7 @@ const style = css({
 Switch themes dynamically:
 
 ```typescript
-import { useTheme } from 'nexus/theming';
+import { useTheme } from 'aether/theming';
 
 export default defineComponent(() => {
   const { currentTheme, setTheme } = useTheme();
@@ -1084,7 +1084,7 @@ export default defineComponent(() => {
 Use CSS variables for theming:
 
 ```typescript
-import { css } from 'nexus/styles';
+import { css } from 'aether/styles';
 
 const buttonStyle = css({
   background: 'var(--color-primary)',
@@ -1134,7 +1134,7 @@ const buttonStyle = css({
 Create animations:
 
 ```typescript
-import { css, keyframes } from 'nexus/styles';
+import { css, keyframes } from 'aether/styles';
 
 const fadeIn = keyframes({
   from: { opacity: 0, transform: 'translateY(10px)' },
@@ -1155,7 +1155,7 @@ export default defineComponent(() => {
 Use animation utilities:
 
 ```typescript
-import { css, animations } from 'nexus/styles';
+import { css, animations } from 'aether/styles';
 
 const style = css({
   animation: animations.fadeIn('0.3s', 'ease-in-out'),
@@ -1178,7 +1178,7 @@ const style = css({
 Animate lists:
 
 ```typescript
-import { TransitionGroup } from 'nexus/transitions';
+import { TransitionGroup } from 'aether/transitions';
 
 const itemStyle = css({
   transition: 'all 0.3s ease'
@@ -1207,7 +1207,7 @@ export default defineComponent(() => {
 Animate component mount/unmount:
 
 ```typescript
-import { Transition } from 'nexus/transitions';
+import { Transition } from 'aether/transitions';
 
 export default defineComponent(() => {
   const show = signal(false);
@@ -1260,7 +1260,7 @@ const responsiveStyle = css({
 Use breakpoint utilities:
 
 ```typescript
-import { css, breakpoints } from 'nexus/styles';
+import { css, breakpoints } from 'aether/styles';
 
 const style = css({
   fontSize: '14px',
@@ -1525,7 +1525,7 @@ const style = css`
 
 **Aether**:
 ```typescript
-import { css } from 'nexus/styles';
+import { css } from 'aether/styles';
 
 const style = css({
   color: 'blue',
@@ -1557,7 +1557,7 @@ const Button = styled.button`
 
 **Aether**:
 ```typescript
-import { styled } from 'nexus/styles';
+import { styled } from 'aether/styles';
 
 const Button = styled.button<{ primary?: boolean }>`
   background: ${props => props.primary ? 'blue' : 'gray'};
@@ -1610,7 +1610,7 @@ import styles from './Button.module.css';
 Create a reusable variant system:
 
 ```typescript
-import { css, variant } from 'nexus/styles';
+import { css, variant } from 'aether/styles';
 
 const button = variant({
   base: {
@@ -1660,7 +1660,7 @@ const button = variant({
 Create polymorphic styled components:
 
 ```typescript
-import { styled } from 'nexus/styles';
+import { styled } from 'aether/styles';
 
 const Text = styled('span', {
   variants: {
@@ -1687,7 +1687,7 @@ const Text = styled('span', {
 Create reusable CSS mixins:
 
 ```typescript
-import { css } from 'nexus/styles';
+import { css } from 'aether/styles';
 
 const truncate = (lines = 1) => css({
   overflow: 'hidden',
@@ -1729,7 +1729,7 @@ const style = css(
 Switch themes at runtime:
 
 ```typescript
-import { createTheme, setTheme } from 'nexus/styles';
+import { createTheme, setTheme } from 'aether/styles';
 
 const lightTheme = createTheme({
   colors: {
@@ -1756,7 +1756,7 @@ theme.set(darkTheme);
 Generate atomic CSS utilities:
 
 ```typescript
-import { atomicCss } from 'nexus/styles';
+import { atomicCss } from 'aether/styles';
 
 const utilities = atomicCss({
   m: (value: string) => ({ margin: value }),
@@ -1834,7 +1834,7 @@ function variant<V extends Record<string, Record<string, CSSObject>>>(config: {
 
 ```typescript
 // Button.tsx
-import { styled, variant } from 'nexus/styles';
+import { styled, variant } from 'aether/styles';
 
 const buttonVariants = variant({
   base: {
@@ -1911,7 +1911,7 @@ export const Button = defineComponent<ButtonProps>((props) => {
 
 ```typescript
 // Card.tsx
-import { css } from 'nexus/styles';
+import { css } from 'aether/styles';
 
 const cardStyle = css({
   background: 'white',
@@ -1953,7 +1953,7 @@ export const Card = defineComponent<{
 
 ```typescript
 // Grid.tsx
-import { css } from 'nexus/styles';
+import { css } from 'aether/styles';
 
 const gridStyle = css({
   display: 'grid',

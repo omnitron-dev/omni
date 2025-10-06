@@ -606,21 +606,30 @@ migrate().catch(console.error);
 
 **Goal:** File-based router with loaders and actions
 
+**Status:** 🚧 IN PROGRESS
+
 **Tasks:**
 
-1. **Router Core** (Week 1)
-   - [ ] Route matching algorithm
-   - [ ] File-based route scanner
-   - [ ] Dynamic routes ([param])
-   - [ ] Catch-all routes ([...rest])
-   - [ ] Route groups ((group))
+1. **Router Core** (Week 1) ✅ **COMPLETED**
+   - [x] Route matching algorithm (route-matcher.ts)
+   - [x] Dynamic routes ([param])
+   - [x] Catch-all routes ([...rest])
+   - [x] Optional params ([[param]])
+   - [x] Optional catch-all ([[...rest]])
+   - [x] Core Router implementation (router.ts)
+   - [x] Browser history integration (history/hash/memory modes)
+   - [x] Route guards (beforeEach, afterEach)
+   - [x] Router hooks (useRouter, useParams, useNavigate, useLocation, useSearchParams, useIsActive)
+   - [x] 45 tests passing (route-matcher + router)
+   - [ ] File-based route scanner (deferred - not in core spec)
+   - [ ] Route groups ((group)) (deferred - not in core spec)
 
 2. **Navigation** (Week 1-2)
    - [ ] `<Link>` component
-   - [ ] `navigate()` function
-   - [ ] Browser history integration
+   - [x] `navigate()` function
+   - [x] Browser history integration
    - [ ] Prefetching strategies
-   - [ ] Route guards
+   - [x] Route guards
 
 3. **Data Loading** (Week 2)
    - [ ] `loader()` - SSR data fetching

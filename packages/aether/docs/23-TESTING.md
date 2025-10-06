@@ -203,7 +203,7 @@ describe('signals', () => {
 ### Testing Stores
 
 ```typescript
-import { createStore } from 'nexus/state';
+import { createStore } from 'aether/state';
 
 describe('store', () => {
   it('updates state', () => {
@@ -419,7 +419,7 @@ describe('LoginForm', () => {
 ### Routing
 
 ```typescript
-import { Router, Route } from 'nexus/router';
+import { Router, Route } from 'aether/router';
 
 describe('Navigation', () => {
   it('navigates to route', async () => {

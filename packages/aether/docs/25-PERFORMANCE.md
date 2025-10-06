@@ -495,7 +495,7 @@ const filtered = () => items().filter(item => item.active);
 Render only visible items:
 
 ```typescript
-import { VirtualList } from 'nexus/virtual';
+import { VirtualList } from 'aether/virtual';
 
 export default defineComponent(() => {
   const items = signal(Array.from({ length: 10000 }, (_, i) => ({
@@ -689,7 +689,7 @@ self.addEventListener('fetch', (event) => {
 ### Memory Caching
 
 ```typescript
-import { createCache } from 'nexus/cache';
+import { createCache } from 'aether/cache';
 
 const cache = createCache({
   max: 100, // Max entries
@@ -867,7 +867,7 @@ worker.addEventListener('message', (event) => {
 ### Debounce & Throttle
 
 ```typescript
-import { debounce, throttle } from 'nexus/utils';
+import { debounce, throttle } from 'aether/utils';
 
 // Debounce (wait for pause)
 const debouncedSearch = debounce((query) => {
@@ -885,7 +885,7 @@ const throttledScroll = throttle(() => {
 ### Performance Monitoring
 
 ```typescript
-import { measurePerformance } from 'nexus/performance';
+import { measurePerformance } from 'aether/performance';
 
 const metrics = measurePerformance();
 
@@ -905,7 +905,7 @@ analytics.track('performance', metrics);
 ### Real User Monitoring (RUM)
 
 ```typescript
-import { initRUM } from 'nexus/rum';
+import { initRUM } from 'aether/rum';
 
 initRUM({
   sampleRate: 0.1, // Monitor 10% of users

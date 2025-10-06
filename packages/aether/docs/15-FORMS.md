@@ -34,7 +34,7 @@ Aether provides **powerful form handling** with:
 ### Quick Example
 
 ```typescript
-import { createForm, z } from 'nexus/forms';
+import { createForm, z } from 'aether/forms';
 
 const schema = z.object({
   email: z.string().email(),
@@ -177,7 +177,7 @@ const form = createForm({ /* ... */ });
 
 **With Primitives** (automatic ARIA):
 ```typescript
-import { FormRoot, FormField, FormLabel, FormControl, FormMessage } from 'nexus/primitives';
+import { FormRoot, FormField, FormLabel, FormControl, FormMessage } from 'aether/primitives';
 
 <FormRoot>
   <form on:submit={form.handleSubmit}>
@@ -205,8 +205,8 @@ Benefits:
 
 ```typescript
 import { defineComponent } from 'aether';
-import { createForm } from 'nexus/forms';
-import { FormRoot, FormField, FormLabel, FormControl, FormMessage, FormDescription } from 'nexus/primitives';
+import { createForm } from 'aether/forms';
+import { FormRoot, FormField, FormLabel, FormControl, FormMessage, FormDescription } from 'aether/primitives';
 import { z } from 'zod';
 
 export default defineComponent(() => {
@@ -298,9 +298,9 @@ Use primitives like `Select`, `Checkbox`, `RadioGroup` with `createForm`:
 
 ```typescript
 import { defineComponent } from 'aether';
-import { createForm } from 'nexus/forms';
-import { FormRoot, FormField, FormLabel, FormControl, FormMessage } from 'nexus/primitives';
-import { Select, Checkbox, RadioGroup } from 'nexus/primitives';
+import { createForm } from 'aether/forms';
+import { FormRoot, FormField, FormLabel, FormControl, FormMessage } from 'aether/primitives';
+import { Select, Checkbox, RadioGroup } from 'aether/primitives';
 
 export default defineComponent(() => {
   const form = createForm({
@@ -517,7 +517,7 @@ export default defineComponent(() => {
 The **core form API**:
 
 ```typescript
-import { createForm } from 'nexus/forms';
+import { createForm } from 'aether/forms';
 
 const form = createForm({
   initialValues: {
@@ -660,7 +660,7 @@ Use Zod for schema validation:
 
 ```typescript
 import { z } from 'zod';
-import { createForm } from 'nexus/forms';
+import { createForm } from 'aether/forms';
 
 const schema = z.object({
   email: z.string().email('Invalid email'),
@@ -1033,7 +1033,7 @@ const removeTag = (index: number) => {
 Use field array helper:
 
 ```typescript
-import { createFieldArray } from 'nexus/forms';
+import { createFieldArray } from 'aether/forms';
 
 const form = createForm({
   initialValues: {
@@ -1240,7 +1240,7 @@ const handleSubmit = async (e: Event) => {
 Use React Hook Form patterns:
 
 ```typescript
-import { createForm } from 'nexus/forms';
+import { createForm } from 'aether/forms';
 
 // Similar API to React Hook Form
 const form = createForm({
@@ -1262,7 +1262,7 @@ const emailField = form.register('email');
 Formik-compatible API:
 
 ```typescript
-import { useFormik } from 'nexus/forms';
+import { useFormik } from 'aether/forms';
 
 const formik = useFormik({
   initialValues: { email: '', password: '' },
@@ -1493,7 +1493,7 @@ form.setFieldValue('email', 'test@example.com');
 Debounce validation:
 
 ```typescript
-import { debounce } from 'nexus/utils';
+import { debounce } from 'aether/utils';
 
 const form = createForm({
   initialValues: { username: '' },
@@ -1512,7 +1512,7 @@ const form = createForm({
 Memoize validation:
 
 ```typescript
-import { memo } from 'nexus/utils';
+import { memo } from 'aether/utils';
 
 const validateEmail = memo((value: string) => {
   // Expensive validation
@@ -1801,7 +1801,7 @@ interface FieldArray<T> {
 ### Login Form
 
 ```typescript
-import { createForm, z } from 'nexus/forms';
+import { createForm, z } from 'aether/forms';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email'),
@@ -1855,7 +1855,7 @@ export const LoginForm = defineComponent(() => {
 ### Registration Form
 
 ```typescript
-import { createForm, z } from 'nexus/forms';
+import { createForm, z } from 'aether/forms';
 
 const registerSchema = z.object({
   username: z.string().min(3).max(20),

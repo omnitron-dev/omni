@@ -57,7 +57,7 @@ Traditional component libraries couple **behavior** with **presentation**, leadi
 **Aether Primitives Solution**:
 ```typescript
 // Headless = Unstyled but fully functional + accessible
-import { Dialog } from 'nexus/primitives';
+import { Dialog } from 'aether/primitives';
 
 // You control 100% of the presentation
 <Dialog>
@@ -482,7 +482,7 @@ A modal dialog that overlays the page content.
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { Dialog } from 'nexus/primitives';
+import { Dialog } from 'aether/primitives';
 
 export const ProfileDialog = defineComponent(() => {
   const isOpen = signal(false);
@@ -718,7 +718,7 @@ Focus management automatically handles nested dialogs:
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { Dialog } from 'nexus/primitives';
+import { Dialog } from 'aether/primitives';
 
 export const UnsavedChangesDialog = defineComponent(() => {
   const isOpen = signal(false);
@@ -746,8 +746,8 @@ export const UnsavedChangesDialog = defineComponent(() => {
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { Dialog } from 'nexus/primitives';
-import { presence } from 'nexus/primitives/animation';
+import { Dialog } from 'aether/primitives';
+import { presence } from 'aether/primitives/animation';
 
 export const AnimatedDialog = defineComponent(() => {
   const isOpen = signal(false);
@@ -816,7 +816,7 @@ Non-modal floating element positioned relative to a trigger.
 
 ```typescript
 import { defineComponent } from 'aether';
-import { Popover } from 'nexus/primitives';
+import { Popover } from 'aether/primitives';
 
 export const NotificationsPopover = defineComponent(() => {
   return () => (
@@ -853,7 +853,7 @@ export const NotificationsPopover = defineComponent(() => {
 
 ```typescript
 import { defineComponent } from 'aether';
-import { Popover } from 'nexus/primitives';
+import { Popover } from 'aether/primitives';
 
 export const PositionedPopover = defineComponent(() => {
   return () => (
@@ -965,7 +965,7 @@ Props:
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { Popover } from 'nexus/primitives';
+import { Popover } from 'aether/primitives';
 
 export const TooltipBehaviorPopover = defineComponent(() => {
   const delayOpen = 700; // ms
@@ -1020,7 +1020,7 @@ A menu of actions or links triggered by a button.
 
 ```typescript
 import { defineComponent } from 'aether';
-import { DropdownMenu } from 'nexus/primitives';
+import { DropdownMenu } from 'aether/primitives';
 
 export const ActionsDropdown = defineComponent(() => {
   const handleAction = (action: string) => {
@@ -1113,7 +1113,7 @@ export const ActionsDropdown = defineComponent(() => {
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { DropdownMenu } from 'nexus/primitives';
+import { DropdownMenu } from 'aether/primitives';
 
 export const ViewDropdown = defineComponent(() => {
   const showBookmarks = signal(true);
@@ -1157,7 +1157,7 @@ export const ViewDropdown = defineComponent(() => {
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { DropdownMenu } from 'nexus/primitives';
+import { DropdownMenu } from 'aether/primitives';
 
 export const ThemeDropdown = defineComponent(() => {
   const theme = signal<'light' | 'dark' | 'system'>('system');
@@ -1332,7 +1332,7 @@ Props:
 
 ```typescript
 import { defineComponent } from 'aether';
-import { ContextMenu } from 'nexus/primitives';
+import { ContextMenu } from 'aether/primitives';
 
 export const BasicContextMenu = defineComponent(() => {
   return () => (
@@ -1373,7 +1373,7 @@ A form control for selecting a value from a list of options.
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { Select } from 'nexus/primitives';
+import { Select } from 'aether/primitives';
 
 export const FruitSelect = defineComponent(() => {
   const selectedFruit = signal('apple');
@@ -1445,7 +1445,7 @@ export const FruitSelect = defineComponent(() => {
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { Select } from 'nexus/primitives';
+import { Select } from 'aether/primitives';
 
 interface User {
   id: string;
@@ -1639,7 +1639,7 @@ Props:
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { MultiSelect } from 'nexus/primitives';
+import { MultiSelect } from 'aether/primitives';
 
 export const TagsMultiSelect = defineComponent(() => {
   const selectedTags = signal<string[]>(['react', 'typescript']);
@@ -1715,7 +1715,7 @@ A searchable select with autocomplete.
 
 ```typescript
 import { defineComponent, signal, computed } from 'aether';
-import { Combobox } from 'nexus/primitives';
+import { Combobox } from 'aether/primitives';
 
 export const FrameworkCombobox = defineComponent(() => {
   const frameworks = [
@@ -1778,8 +1778,8 @@ export const FrameworkCombobox = defineComponent(() => {
 
 ```typescript
 import { defineComponent, signal, effect } from 'aether';
-import { Combobox } from 'nexus/primitives';
-import { debounce } from 'nexus/utils';
+import { Combobox } from 'aether/primitives';
+import { debounce } from 'aether/utils';
 
 interface User {
   id: string;
@@ -1896,7 +1896,7 @@ A set of layered sections of content (tab panels) displayed one at a time.
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { Tabs } from 'nexus/primitives';
+import { Tabs } from 'aether/primitives';
 
 export const SettingsTabs = defineComponent(() => {
   const activeTab = signal('account');
@@ -2092,8 +2092,8 @@ Props:
 
 ```typescript
 import { defineComponent, signal, effect } from 'aether';
-import { Tabs } from 'nexus/primitives';
-import { useRouter } from 'nexus/router';
+import { Tabs } from 'aether/primitives';
+import { useRouter } from 'aether/router';
 
 export const URLSyncedTabs = defineComponent(() => {
   const router = useRouter();
@@ -2132,7 +2132,7 @@ Vertically stacked set of interactive headings that expand/collapse content pane
 
 ```typescript
 import { defineComponent } from 'aether';
-import { Accordion } from 'nexus/primitives';
+import { Accordion } from 'aether/primitives';
 
 export const FAQAccordion = defineComponent(() => {
   return () => (
@@ -2179,7 +2179,7 @@ export const FAQAccordion = defineComponent(() => {
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { Accordion } from 'nexus/primitives';
+import { Accordion } from 'aether/primitives';
 
 export const MultiAccordion = defineComponent(() => {
   const openItems = signal(['item-1', 'item-3']);
@@ -2352,7 +2352,7 @@ A set of radio buttons where only one can be selected.
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { RadioGroup } from 'nexus/primitives';
+import { RadioGroup } from 'aether/primitives';
 
 export const PlanSelector = defineComponent(() => {
   const selectedPlan = signal('pro');
@@ -2507,7 +2507,7 @@ A set of checkboxes for multi-selection.
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { Checkbox } from 'nexus/primitives';
+import { Checkbox } from 'aether/primitives';
 
 export const BasicCheckboxes = defineComponent(() => {
   const agreedToTerms = signal(false);
@@ -2549,7 +2549,7 @@ export const BasicCheckboxes = defineComponent(() => {
 
 ```typescript
 import { defineComponent, signal, computed } from 'aether';
-import { Checkbox } from 'nexus/primitives';
+import { Checkbox } from 'aether/primitives';
 
 export const SelectAllCheckboxes = defineComponent(() => {
   const items = ['item1', 'item2', 'item3'];
@@ -2730,7 +2730,7 @@ An input for selecting a value from a range.
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { Slider } from 'nexus/primitives';
+import { Slider } from 'aether/primitives';
 
 export const VolumeSlider = defineComponent(() => {
   const volume = signal(50);
@@ -2760,7 +2760,7 @@ export const VolumeSlider = defineComponent(() => {
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { Slider } from 'nexus/primitives';
+import { Slider } from 'aether/primitives';
 
 export const PriceRangeSlider = defineComponent(() => {
   const priceRange = signal([20, 80]);
@@ -2889,7 +2889,7 @@ Props:
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { Slider } from 'nexus/primitives';
+import { Slider } from 'aether/primitives';
 
 export const BrightnessSliderWithTooltip = defineComponent(() => {
   const brightness = signal(75);
@@ -2952,7 +2952,7 @@ A two-state button for binary options.
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { Toggle } from 'nexus/primitives';
+import { Toggle } from 'aether/primitives';
 
 export const TextFormattingToggles = defineComponent(() => {
   const isBold = signal(false);
@@ -3054,7 +3054,7 @@ An on/off control (like iOS toggle).
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { Switch } from 'nexus/primitives';
+import { Switch } from 'aether/primitives';
 
 export const SettingsSwitches = defineComponent(() => {
   const airplaneMode = signal(false);
@@ -3198,7 +3198,7 @@ A modal dialog that interrupts the user for important information or actions.
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { AlertDialog } from 'nexus/primitives';
+import { AlertDialog } from 'aether/primitives';
 
 export const DeleteAccountAlert = defineComponent(() => {
   const isOpen = signal(false);
@@ -3337,7 +3337,7 @@ A sliding panel from edge of screen (drawer/slide-over).
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { Sheet } from 'nexus/primitives';
+import { Sheet } from 'aether/primitives';
 
 export const SettingsSheet = defineComponent(() => {
   const isOpen = signal(false);
@@ -3587,7 +3587,7 @@ A searchable command menu for quick actions (like VS Code's command palette).
 
 ```typescript
 import { defineComponent, signal, effect } from 'aether';
-import { CommandPalette } from 'nexus/primitives';
+import { CommandPalette } from 'aether/primitives';
 
 export const BasicCommandPalette = defineComponent(() => {
   const isOpen = signal(false);
@@ -3678,7 +3678,7 @@ export const BasicCommandPalette = defineComponent(() => {
 
 ```typescript
 import { defineComponent, signal, computed, type Component } from 'aether';
-import { CommandPalette } from 'nexus/primitives';
+import { CommandPalette } from 'aether/primitives';
 
 interface Command {
   id: string;
@@ -3941,7 +3941,7 @@ A date input with calendar dropdown.
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { DatePicker } from 'nexus/primitives';
+import { DatePicker } from 'aether/primitives';
 
 const DatePickerExample = defineComponent(() => {
   const selectedDate = signal<Date | null>(new Date());
@@ -3996,7 +3996,7 @@ const DatePickerExample = defineComponent(() => {
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { DateRangePicker } from 'nexus/primitives';
+import { DateRangePicker } from 'aether/primitives';
 
 const Example333 = defineComponent(() => {
   interface DateRange {
@@ -4154,7 +4154,7 @@ Standalone calendar component (used by DatePicker).
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { Calendar } from 'nexus/primitives';
+import { Calendar } from 'aether/primitives';
 
 const Example105 = defineComponent(() => {
   const selectedDate = signal<Date>(new Date());
@@ -4428,7 +4428,7 @@ Form primitives do NOT provide:
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { FormRoot, FormField, FormLabel, FormControl, FormMessage } from 'nexus/primitives';
+import { FormRoot, FormField, FormLabel, FormControl, FormMessage } from 'aether/primitives';
 
 const Example530 = defineComponent(() => {
   const email = signal('');
@@ -4476,8 +4476,8 @@ Primitives work seamlessly with `createForm` hook (see **15-FORMS.md**):
 
 ```typescript
 import { defineComponent } from 'aether';
-import { createForm } from 'nexus/forms';
-import { FormRoot, FormField, FormLabel, FormControl, FormMessage } from 'nexus/primitives';
+import { createForm } from 'aether/forms';
+import { FormRoot, FormField, FormLabel, FormControl, FormMessage } from 'aether/primitives';
 import { z } from 'zod';
 
 const Example872 = defineComponent(() => {
@@ -4564,9 +4564,9 @@ const Example872 = defineComponent(() => {
 
 ```typescript
 import { defineComponent } from 'aether';
-import { createForm } from 'nexus/forms';
-import { FormRoot, FormField, FormLabel, FormControl, FormMessage } from 'nexus/primitives';
-import { Select, Checkbox } from 'nexus/primitives';
+import { createForm } from 'aether/forms';
+import { FormRoot, FormField, FormLabel, FormControl, FormMessage } from 'aether/primitives';
+import { Select, Checkbox } from 'aether/primitives';
 
 const Example844 = defineComponent(() => {
   const form = createForm({
@@ -4767,7 +4767,7 @@ A data table with sorting, filtering, pagination, and selection.
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { Table } from 'nexus/primitives';
+import { Table } from 'aether/primitives';
 
 const Example793 = defineComponent(() => {
   interface User {
@@ -5137,7 +5137,7 @@ Primitives are designed to be composed together to build complex UIs:
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { Dialog, Tabs, Switch, Select } from 'nexus/primitives';
+import { Dialog, Tabs, Switch, Select } from 'aether/primitives';
 
 const Example221 = defineComponent(() => {
   const isOpen = signal(false);
@@ -5223,7 +5223,7 @@ const Example221 = defineComponent(() => {
 
 ```typescript
 import { defineComponent, signal } from 'aether';
-import { Table, Dropdown, Dialog, AlertDialog } from 'nexus/primitives';
+import { Table, Dropdown, Dialog, AlertDialog } from 'aether/primitives';
 
 const Example279 = defineComponent(() => {
   const users = signal([/* user data */]);
@@ -5360,7 +5360,7 @@ const Example969 = defineComponent(() => {
 #### 4. CSS-in-JS (styled components)
 
 ```typescript
-import { styled } from 'nexus/styled';
+import { styled } from 'aether/styled';
 
 const StyledOverlay = styled(Dialog.Overlay, {
   position: 'fixed',
@@ -5415,7 +5415,7 @@ export const Button = defineComponent<ButtonProps>((props) => {
 
 ```typescript
 // components/ui/Dialog.tsx
-import * as DialogPrimitive from 'nexus/primitives/dialog';
+import * as DialogPrimitive from 'aether/primitives/dialog';
 
 export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
@@ -5623,7 +5623,7 @@ const Example285 = defineComponent(() => {
 
 ```typescript
 import { render, fireEvent } from '@testing-library/nexus';
-import { Dialog } from 'nexus/primitives';
+import { Dialog } from 'aether/primitives';
 
 describe('Dialog', () => {
   it('opens when trigger is clicked', async () => {
@@ -5942,7 +5942,7 @@ Test all primitives with keyboard only:
 
 ```typescript
 import { defineComponent } from 'aether';
-import { VirtualScroller } from 'nexus/primitives';
+import { VirtualScroller } from 'aether/primitives';
 
 const Example327 = defineComponent(() => {
   const items = Array.from({ length: 10000 }, (_, i) => ({ id: i, name: `Item ${i}` }));

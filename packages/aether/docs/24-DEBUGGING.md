@@ -407,7 +407,7 @@ rollbar deploy --sourcemap dist/
 Catch component errors:
 
 ```typescript
-import { ErrorBoundary } from 'nexus/error';
+import { ErrorBoundary } from 'aether/error';
 
 export default defineComponent(() => {
   return () => (
@@ -508,7 +508,7 @@ export default defineComponent<{ error: Error }>((props) => {
 Profile component renders:
 
 ```typescript
-import { profile } from 'nexus/profiler';
+import { profile } from 'aether/profiler';
 
 const ProfiledComponent = profile(defineComponent(() => {
   // Component code
@@ -584,7 +584,7 @@ setInterval(() => {
 Track render performance:
 
 ```typescript
-import { createRenderProfiler } from 'nexus/profiler';
+import { createRenderProfiler } from 'aether/profiler';
 
 const profiler = createRenderProfiler();
 
@@ -796,7 +796,7 @@ if (import.meta.hot) {
 Inspect component:
 
 ```typescript
-import { debugComponent } from 'nexus/debug';
+import { debugComponent } from 'aether/debug';
 
 export default defineComponent(() => {
   let ref: HTMLElement;
@@ -823,7 +823,7 @@ export default defineComponent(() => {
 Add assertions:
 
 ```typescript
-import { assert, assertDefined, assertType } from 'nexus/debug';
+import { assert, assertDefined, assertType } from 'aether/debug';
 
 const value = computeValue();
 
@@ -1072,7 +1072,7 @@ function profile<T>(
 
 ```typescript
 // main.ts
-import { enableDevTools } from 'nexus/devtools';
+import { enableDevTools } from 'aether/devtools';
 import * as Sentry from '@sentry/browser';
 
 // Enable DevTools in development

@@ -4,14 +4,14 @@
  * Resolve dependencies from the DI container
  */
 
-import { getContext } from '../core/reactivity/context.js';
+import 'reflect-metadata';
 import { getRootInjector } from './container.js';
-import type { InjectableToken, InjectOptions } from './types.js';
+import type { InjectableToken, InjectOptions, Injector } from './types.js';
 
 /**
- * Current injector context key
+ * Current injector context
  */
-const INJECTOR_CONTEXT = Symbol('aether:injector');
+let currentInjectorContext: Injector | null = null;
 
 /**
  * Inject a dependency from the DI container
@@ -28,9 +28,8 @@ const INJECTOR_CONTEXT = Symbol('aether:injector');
  * ```
  */
 export function inject<T>(token: InjectableToken<T>, options?: InjectOptions): T {
-  // Try to get injector from reactive context
-  const context = getContext();
-  const injector = context?.get(INJECTOR_CONTEXT) ?? getRootInjector();
+  // Use current injector context or fallback to root injector
+  const injector = currentInjectorContext ?? getRootInjector();
 
   return injector.get(token, options);
 }
@@ -82,7 +81,7 @@ export function Inject<T = any>(
  * ```
  */
 export function Optional(): ParameterDecorator {
-  return (target: any, propertyKey: string | symbol | undefined, parameterIndex: number) => {
+  return (target: any, _propertyKey: string | symbol | undefined, parameterIndex: number) => {
     const metadata = Reflect.getMetadata?.('inject:optional', target) ?? [];
     metadata.push(parameterIndex);
     Reflect.defineMetadata?.('inject:optional', metadata, target);
@@ -100,7 +99,7 @@ export function Optional(): ParameterDecorator {
  * ```
  */
 export function Self(): ParameterDecorator {
-  return (target: any, propertyKey: string | symbol | undefined, parameterIndex: number) => {
+  return (target: any, _propertyKey: string | symbol | undefined, parameterIndex: number) => {
     const metadata = Reflect.getMetadata?.('inject:self', target) ?? [];
     metadata.push(parameterIndex);
     Reflect.defineMetadata?.('inject:self', metadata, target);
@@ -118,7 +117,7 @@ export function Self(): ParameterDecorator {
  * ```
  */
 export function SkipSelf(): ParameterDecorator {
-  return (target: any, propertyKey: string | symbol | undefined, parameterIndex: number) => {
+  return (target: any, _propertyKey: string | symbol | undefined, parameterIndex: number) => {
     const metadata = Reflect.getMetadata?.('inject:skipSelf', target) ?? [];
     metadata.push(parameterIndex);
     Reflect.defineMetadata?.('inject:skipSelf', metadata, target);
@@ -126,19 +125,15 @@ export function SkipSelf(): ParameterDecorator {
 }
 
 /**
- * Set the current injector in reactive context
+ * Set the current injector context
  */
-export function setInjectorContext(injector: any): void {
-  const context = getContext();
-  if (context) {
-    context.set(INJECTOR_CONTEXT, injector);
-  }
+export function setInjectorContext(injector: Injector | null): void {
+  currentInjectorContext = injector;
 }
 
 /**
- * Get the current injector from reactive context
+ * Get the current injector context
  */
-export function getInjectorContext(): any {
-  const context = getContext();
-  return context?.get(INJECTOR_CONTEXT);
+export function getInjectorContext(): Injector | null {
+  return currentInjectorContext;
 }

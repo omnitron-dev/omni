@@ -22,12 +22,12 @@ export type AbstractType<T = any> = abstract new (...args: any[]) => T;
 /**
  * Injectable token - class, abstract class, or injection token
  */
-export type InjectableToken<T = any> = Type<T> | AbstractType<T> | InjectionToken<T>;
+export type InjectableToken<T = any> = Type<T> | AbstractType<T> | InjectionTokenType<T>;
 
 /**
  * Injection token for primitives and interfaces
  */
-export interface InjectionToken<T = any> {
+export interface InjectionTokenType<T = any> {
   readonly _type: T;
   readonly _desc: string;
   toString(): string;

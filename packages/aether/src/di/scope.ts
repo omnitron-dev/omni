@@ -4,6 +4,7 @@
  * Manages provider scopes and lifetimes
  */
 
+import 'reflect-metadata';
 import type { ProviderScope } from './types.js';
 
 /**

@@ -101,7 +101,7 @@ export class UserService implements IUserService {
 // 3. Frontend RPC service
 // frontend/services/user-rpc.service.ts
 import { injectable, inject } from 'aether';
-import { NetronClient } from 'nexus/netron';
+import { NetronClient } from 'aether/netron';
 import { IUserService } from '@/shared/contracts/user.contract';
 
 export const UserRPCService = injectable(() => {
@@ -373,7 +373,7 @@ export class UserService implements IUserService {
 ```typescript
 // frontend/services/user-rpc.service.ts
 import { injectable, inject } from 'aether';
-import { NetronClient } from 'nexus/netron';
+import { NetronClient } from 'aether/netron';
 import { IUserService } from '@/shared/contracts/user.contract';
 
 /**
@@ -485,7 +485,7 @@ Frontend uses lightweight, function-based DI:
 ```typescript
 // frontend/services/order-rpc.service.ts
 import { injectable, inject } from 'aether';
-import { NetronClient } from 'nexus/netron';
+import { NetronClient } from 'aether/netron';
 
 export const OrderRPCService = injectable(() => {
   const netron = inject(NetronClient);
@@ -522,7 +522,7 @@ export const CartService = injectable(() => {
 ### Component Injection
 
 ```typescript
-import { inject } from 'nexus/di';
+import { inject } from 'aether/di';
 import { UserService } from '@/services/user.service';
 
 export default defineComponent(() => {
@@ -807,7 +807,7 @@ Use auth service in frontend:
 
 ```typescript
 // stores/auth.store.ts
-import { defineStore } from 'nexus/state';
+import { defineStore } from 'aether/state';
 import { useRPC } from 'aether/titan';
 import { AuthService } from '@/services/auth.service';
 
@@ -861,7 +861,7 @@ Protect routes with guards:
 
 ```typescript
 // guards/auth.guard.ts
-import { defineGuard } from 'nexus/router';
+import { defineGuard } from 'aether/router';
 import { useAuthStore } from '@/stores/auth.store';
 
 export const authGuard = defineGuard(async (to, from) => {

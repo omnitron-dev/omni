@@ -83,7 +83,7 @@ export default defineComponent(() => {
 ### Quick Example
 
 ```typescript
-import { island } from 'nexus/islands';
+import { island } from 'aether/islands';
 
 // Static component (no hydration)
 export const StaticHeader = defineComponent(() => {
@@ -208,7 +208,7 @@ export default defineComponent(() => {
 Mark components as islands:
 
 ```typescript
-import { island } from 'nexus/islands';
+import { island } from 'aether/islands';
 
 export const SearchBar = island(defineComponent(() => {
   const query = signal('')
@@ -336,7 +336,7 @@ export const Accordion = island(defineComponent<{ children: any }>((props) => {
 Hydrate island immediately:
 
 ```typescript
-import { island } from 'nexus/islands';
+import { island } from 'aether/islands';
 
 export const CriticalWidget = island(defineComponent(() => {
   // ... component code
@@ -548,7 +548,7 @@ export default defineComponent(() => {
 Hydrate parts of a component:
 
 ```typescript
-import { hydrateOn } from 'nexus/islands';
+import { hydrateOn } from 'aether/islands';
 
 export const ProductCard = defineComponent<{ product: Product }>((props) => {
   return () => (

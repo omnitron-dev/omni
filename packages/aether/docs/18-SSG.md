@@ -698,7 +698,7 @@ export const getStaticProps = async () => {
 Automatic image optimization:
 
 ```typescript
-import { Image } from 'nexus/image';
+import { Image } from 'aether/image';
 
 export default defineComponent(() => {
   return () => (
@@ -1097,7 +1097,7 @@ export const getStaticProps = async () => {
 
 ```typescript
 // ✅ Use Image component
-import { Image } from 'nexus/image';
+import { Image } from 'aether/image';
 
 <Image
   src="/photo.jpg"
@@ -1171,7 +1171,7 @@ Custom SSG logic:
 
 ```typescript
 // scripts/generate.ts
-import { generateStaticPages } from 'nexus/ssg';
+import { generateStaticPages } from 'aether/ssg';
 
 const pages = await generateStaticPages({
   routes: ['/', '/about', '/contact'],

@@ -82,7 +82,7 @@ Obtain a service instance using the `inject()` function.
 
 ```typescript
 import { defineComponent, inject, onMount } from 'aether';
-import { For } from 'nexus/components';
+import { For } from 'aether/components';
 import { UserService } from './user.service';
 
 // In a component
@@ -621,7 +621,7 @@ export const UserModule = defineModule({
 ```typescript
 // routes/users/index.tsx
 import { defineComponent, inject, signal, onMount } from 'aether';
-import { For } from 'nexus/components';
+import { For } from 'aether/components';
 import { UserService } from '@/services/user.service';
 import { UserCard } from '@/components/UserCard';
 
@@ -651,7 +651,7 @@ export default defineComponent(() => {
 ### Mocking Services
 
 ```typescript
-import { createTestingModule } from 'nexus/testing';
+import { createTestingModule } from 'aether/testing';
 import { UserService } from './user.service';
 
 describe('UserComponent', () => {

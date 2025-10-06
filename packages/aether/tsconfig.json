@@ -40,6 +40,6 @@
     "jsx": "react-jsx",
     "jsxImportSource": "@omnitron-dev/aether"
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.spec.ts", "**/*.test.ts", "**/*.bench.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["node_modules", "dist", "**/*.spec.ts", "**/*.test.ts", "**/*.bench.ts", "src/jsx-types.d.ts"]
 }

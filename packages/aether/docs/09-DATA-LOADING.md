@@ -417,7 +417,7 @@ export class UserService {
 **Usage** (automatic RPC):
 
 ```typescript
-import { inject } from 'nexus/di';
+import { inject } from 'aether/di';
 import { UserService } from '@/services/user.service';
 
 const Component = defineComponent(() => {
@@ -443,7 +443,7 @@ Load data before rendering route:
 
 ```typescript
 // routes/users/[id].tsx
-import { defineRoute, useLoaderData } from 'nexus/router';
+import { defineRoute, useLoaderData } from 'aether/router';
 
 interface User {
   id: number;
@@ -491,7 +491,7 @@ export const loader = async ({
 Load critical data immediately, defer non-critical:
 
 ```typescript
-import { defer } from 'nexus/router';
+import { defer } from 'aether/router';
 
 export const loader = async ({ params }) => {
   // Load immediately (blocks render)
@@ -599,7 +599,7 @@ export default defineComponent(() => {
 ### Programmatic Mutations
 
 ```typescript
-import { useFetcher } from 'nexus/router';
+import { useFetcher } from 'aether/router';
 
 const Component = defineComponent(() => {
   const fetcher = useFetcher();
@@ -660,7 +660,7 @@ userId(2);
 ### Cache Keys
 
 ```typescript
-import { cache } from 'nexus/data';
+import { cache } from 'aether/data';
 
 const fetchUser = cache(
   async (id: number) => {
@@ -682,7 +682,7 @@ const fetchUser = cache(
 ### Cache Invalidation
 
 ```typescript
-import { invalidateCache } from 'nexus/data';
+import { invalidateCache } from 'aether/data';
 
 // Invalidate specific key
 invalidateCache('user-1');

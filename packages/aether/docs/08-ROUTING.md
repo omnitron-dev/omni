@@ -108,7 +108,7 @@ routes/
 Routes are fully typed:
 
 ```typescript
-import { useParams, useNavigate } from 'nexus/router';
+import { useParams, useNavigate } from 'aether/router';
 
 // In routes/users/[id].tsx
 const UserProfile = defineComponent(() => {
@@ -248,7 +248,7 @@ routes/
 
 ```typescript
 // routes/users/[id].tsx
-import { useParams } from 'nexus/router';
+import { useParams } from 'aether/router';
 
 export default defineComponent(() => {
   const params = useParams<{ id: string }>();
@@ -336,7 +336,7 @@ const params = useParams<{ categories?: string[] }>();
 
 ```typescript
 // routes/users/[id].tsx
-import { defineRoute } from 'nexus/router';
+import { defineRoute } from 'aether/router';
 
 export default defineRoute({
   // Validate params before rendering
@@ -424,7 +424,7 @@ export default defineComponent(() => {
 `<Outlet />` renders child routes:
 
 ```typescript
-import { Outlet } from 'nexus/router';
+import { Outlet } from 'aether/router';
 
 const Layout = defineComponent(() => {
   return () => (
@@ -439,7 +439,7 @@ const Layout = defineComponent(() => {
 ### Passing Context to Children
 
 ```typescript
-import { Outlet, provideContext } from 'nexus/router';
+import { Outlet, provideContext } from 'aether/router';
 
 const DashboardLayout = defineComponent(() => {
   const user = signal(/* ... */
@@ -486,7 +486,7 @@ routes/
 ### Link Component
 
 ```typescript
-import { Link } from 'nexus/router';
+import { Link } from 'aether/router';
 
 <Link href="/about">About</Link>
 
@@ -520,7 +520,7 @@ import { Link } from 'nexus/router';
 ### Programmatic Navigation
 
 ```typescript
-import { useNavigate } from 'nexus/router';
+import { useNavigate } from 'aether/router';
 
 const Component = defineComponent(() => {
   const navigate = useNavigate();
@@ -575,7 +575,7 @@ navigate('/invalid');
 ### Navigation Guards
 
 ```typescript
-import { useRouter } from 'nexus/router';
+import { useRouter } from 'aether/router';
 
 const App = defineComponent(() => {
   const router = useRouter();
@@ -598,7 +598,7 @@ const App = defineComponent(() => {
 
 ```typescript
 // In route component
-import { redirect } from 'nexus/router';
+import { redirect } from 'aether/router';
 
 export const loader = async () => {
   const user = await getUser();
@@ -625,7 +625,7 @@ Load data before rendering route:
 
 ```typescript
 // routes/users/[id].tsx
-import { defineRoute, useLoaderData } from 'nexus/router';
+import { defineRoute, useLoaderData } from 'aether/router';
 
 interface User {
   id: number;
@@ -656,7 +656,7 @@ export default defineRoute({
 ### Loading States
 
 ```typescript
-import { useLoaderData, useNavigation } from 'nexus/router';
+import { useLoaderData, useNavigation } from 'aether/router';
 
 const Component = defineComponent(() => {
   const user = useLoaderData<User>();
@@ -692,7 +692,7 @@ export const loader = async ({ params }) => {
 ### Deferred Loading
 
 ```typescript
-import { defer, Await } from 'nexus/router';
+import { defer, Await } from 'aether/router';
 
 export const loader = async () => {
   // Load critical data immediately
@@ -798,7 +798,7 @@ routes/
 
 ```typescript
 // routes/_layout.tsx
-import { Outlet } from 'nexus/router';
+import { Outlet } from 'aether/router';
 
 export default defineComponent(() => {
   return () => (
@@ -834,7 +834,7 @@ export default defineComponent(() => {
 
 ```typescript
 // routes/(app)/_layout.tsx
-import { useNavigation } from 'nexus/router';
+import { useNavigation } from 'aether/router';
 
 export default defineComponent(() => {
   const navigation = useNavigation();
@@ -876,7 +876,7 @@ export default defineComponent(() => {
 
 ```typescript
 // routes/_error.tsx
-import { useRouteError } from 'nexus/router';
+import { useRouteError } from 'aether/router';
 
 export default defineComponent(() => {
   const error = useRouteError();
@@ -923,7 +923,7 @@ routes/
 
 ```typescript
 // routes/api/users.ts
-import { defineAPIRoute } from 'nexus/router';
+import { defineAPIRoute } from 'aether/router';
 
 export default defineAPIRoute({
   GET: async ({ request, url }) => {
@@ -1009,7 +1009,7 @@ export default defineMiddleware({
 
 ```typescript
 // routes/_layout.tsx
-import { useLocation } from 'nexus/router';
+import { useLocation } from 'aether/router';
 
 export default defineComponent(() => {
   const location = useLocation();
@@ -1044,7 +1044,7 @@ const PageTransition = defineComponent<{ key: string }>((props) => {
 
 ```typescript
 // Experimental: Use View Transitions API
-import { useNavigate } from 'nexus/router';
+import { useNavigate } from 'aether/router';
 
 const navigate = useNavigate();
 
@@ -1087,7 +1087,7 @@ const navigateWithTransition = async (href: string) => {
 ### Manual Prefetching
 
 ```typescript
-import { usePrefetch } from 'nexus/router';
+import { usePrefetch } from 'aether/router';
 
 const Component = defineComponent(() => {
   const prefetch = usePrefetch();
@@ -1128,7 +1128,7 @@ prefetch('/about', {
 ### useRouter
 
 ```typescript
-import { useRouter } from 'nexus/router';
+import { useRouter } from 'aether/router';
 
 const Component = defineComponent(() => {
   const router = useRouter();
@@ -1153,7 +1153,7 @@ const Component = defineComponent(() => {
 ### useLocation
 
 ```typescript
-import { useLocation } from 'nexus/router';
+import { useLocation } from 'aether/router';
 
 const location = useLocation();
 
@@ -1173,7 +1173,7 @@ console.log(location().href);
 ### useParams
 
 ```typescript
-import { useParams } from 'nexus/router';
+import { useParams } from 'aether/router';
 
 // In routes/users/[id].tsx
 const params = useParams<{ id: string }>();
@@ -1184,7 +1184,7 @@ console.log(params.id); // '123'
 ### useSearchParams
 
 ```typescript
-import { useSearchParams } from 'nexus/router';
+import { useSearchParams } from 'aether/router';
 
 const [searchParams, setSearchParams] = useSearchParams();
 
@@ -1207,7 +1207,7 @@ setSearchParams({ page: '2', sort: 'name' });
 ### useNavigate
 
 ```typescript
-import { useNavigate } from 'nexus/router';
+import { useNavigate } from 'aether/router';
 
 const navigate = useNavigate();
 

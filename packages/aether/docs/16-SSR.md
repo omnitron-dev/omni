@@ -242,7 +242,7 @@ Server entry point:
 
 ```typescript
 // entry-server.ts
-import { renderToString } from 'nexus/server';
+import { renderToString } from 'aether/server';
 import App from './App';
 
 export async function render(url: string) {
@@ -287,7 +287,7 @@ await app.start();
 Stream HTML as components render:
 
 ```typescript
-import { renderToStream } from 'nexus/server';
+import { renderToStream } from 'aether/server';
 
 export async function render(url: string) {
   const stream = renderToStream(<App />, { url });
@@ -464,7 +464,7 @@ Aether injects hydration script:
 Only hydrate specific components:
 
 ```typescript
-import { clientOnly } from 'nexus/hydration';
+import { clientOnly } from 'aether/hydration';
 
 export default defineComponent(() => {
   return () => (
@@ -484,7 +484,7 @@ export default defineComponent(() => {
 Hydrate in priority order:
 
 ```typescript
-import { hydrateOnVisible, hydrateOnIdle } from 'nexus/hydration';
+import { hydrateOnVisible, hydrateOnIdle } from 'aether/hydration';
 
 export default defineComponent(() => {
   return () => (
@@ -597,7 +597,7 @@ export default defineComponent((props: { userId: string }) => {
 Defer non-critical data:
 
 ```typescript
-import { defer, Await } from 'nexus/router';
+import { defer, Await } from 'aether/router';
 
 export const loader = async () => {
   const user = await fetchUser(); // Critical (blocks render)
@@ -662,7 +662,7 @@ export const loader = async ({ params }) => {
 Components that **only render on the server**:
 
 ```typescript
-import { serverOnly } from 'nexus/server';
+import { serverOnly } from 'aether/server';
 
 export const UserProfile = serverOnly(defineComponent(async (props: { id: string }) => {
   // Direct database access (server-only)
@@ -707,7 +707,7 @@ export default defineComponent(async (props: { userId: string }) => {
 Access server-only context:
 
 ```typescript
-import { useServerContext } from 'nexus/server';
+import { useServerContext } from 'aether/server';
 
 export default serverOnly(defineComponent(() => {
   const ctx = useServerContext();
@@ -762,7 +762,7 @@ export const ClientComponent = defineComponent<{ data: any }>((props) => {
 Components that **only render on the client**:
 
 ```typescript
-import { clientOnly } from 'nexus/client';
+import { clientOnly } from 'aether/client';
 
 export const BrowserOnlyWidget = clientOnly(defineComponent(() => {
   // Browser APIs
@@ -824,7 +824,7 @@ export default defineComponent(() => {
 Mark client boundaries:
 
 ```typescript
-import { ClientBoundary } from 'nexus/client';
+import { ClientBoundary } from 'aether/client';
 
 export default defineComponent(() => {
   return () => (
@@ -883,7 +883,7 @@ export default defineComponent(() => {
 Hydrate when needed:
 
 ```typescript
-import { lazyHydrate } from 'nexus/hydration';
+import { lazyHydrate } from 'aether/hydration';
 
 export default defineComponent(() => {
   return () => (
@@ -915,7 +915,7 @@ export default defineComponent(() => {
 Resume from server state without re-execution:
 
 ```typescript
-import { resumable } from 'nexus/hydration';
+import { resumable } from 'aether/hydration';
 
 export const Counter = resumable(defineComponent(() => {
   const count = signal(0);
@@ -938,7 +938,7 @@ export const Counter = resumable(defineComponent(() => {
 Catch errors during SSR:
 
 ```typescript
-import { ErrorBoundary } from 'nexus/error';
+import { ErrorBoundary } from 'aether/error';
 
 export default defineComponent(() => {
   return () => (
@@ -1024,7 +1024,7 @@ export async function render(url: string) {
 Cache entire pages:
 
 ```typescript
-import { cache } from 'nexus/cache';
+import { cache } from 'aether/cache';
 
 export const loader = cache(
   async ({ params }) => {
@@ -1045,7 +1045,7 @@ export const loader = cache(
 Cache component output:
 
 ```typescript
-import { cachedComponent } from 'nexus/cache';
+import { cachedComponent } from 'aether/cache';
 
 export const CachedUserCard = cachedComponent(
   defineComponent<{ userId: string }>(async (props) => {
@@ -1089,7 +1089,7 @@ export const loader = async ({ response }) => {
 Invalidate cache:
 
 ```typescript
-import { invalidateCache } from 'nexus/cache';
+import { invalidateCache } from 'aether/cache';
 
 // Invalidate specific key
 await invalidateCache('user:123');
@@ -1148,7 +1148,7 @@ import { expensiveServerFunction } from './server';
 Measure streaming metrics:
 
 ```typescript
-import { measureSSR } from 'nexus/perf';
+import { measureSSR } from 'aether/perf';
 
 export async function render(url: string) {
   const { html, metrics } = await measureSSR(<App />, { url });
@@ -1168,7 +1168,7 @@ export async function render(url: string) {
 Set meta tags for SEO:
 
 ```typescript
-import { Head } from 'nexus/head';
+import { Head } from 'aether/head';
 
 export default defineComponent(() => {
   return () => (
@@ -1200,7 +1200,7 @@ export default defineComponent(() => {
 Add JSON-LD structured data:
 
 ```typescript
-import { Head } from 'nexus/head';
+import { Head } from 'aether/head';
 
 export default defineComponent(() => {
   const structuredData = {
@@ -1288,7 +1288,7 @@ await app.start();
 Inject Titan services in components:
 
 ```typescript
-import { inject } from 'nexus/di';
+import { inject } from 'aether/di';
 import { UserService } from '@/services/user.service';
 
 export default defineComponent(async () => {
@@ -1338,14 +1338,14 @@ export default defineComponent(() => {
 
 ```typescript
 // ✅ Use streaming
-import { renderToStream } from 'nexus/server';
+import { renderToStream } from 'aether/server';
 
 export async function render(url: string) {
   return renderToStream(<App />, { url });
 }
 
 // ❌ Don't wait for everything
-import { renderToString } from 'nexus/server';
+import { renderToString } from 'aether/server';
 
 export async function render(url: string) {
   return await renderToString(<App />, { url }); // Blocks!
@@ -1434,7 +1434,7 @@ export const UserList = defineComponent(() => {
 Implement custom streaming:
 
 ```typescript
-import { createStreamRenderer } from 'nexus/server';
+import { createStreamRenderer } from 'aether/server';
 
 const renderer = createStreamRenderer({
   onShellReady: (stream) => {

@@ -602,7 +602,7 @@ Add enter/leave animations.
 #### Basic Usage
 
 ```typescript
-import { fade } from 'nexus/transitions';
+import { fade } from 'aether/transitions';
 
 const isVisible = signal(true);
 
@@ -616,7 +616,7 @@ const isVisible = signal(true);
 #### With Parameters
 
 ```typescript
-import { fly } from 'nexus/transitions';
+import { fly } from 'aether/transitions';
 
 {#if isVisible()}
   <div transition:fly={{ y: 200, duration: 300 }}>
@@ -628,7 +628,7 @@ import { fly } from 'nexus/transitions';
 #### Separate In/Out Transitions
 
 ```typescript
-import { fade, fly } from 'nexus/transitions';
+import { fade, fly } from 'aether/transitions';
 
 {#if isVisible()}
   <div in:fly={{ y: -100 }} out:fade>
@@ -647,7 +647,7 @@ import {
   scale,
   blur,
   draw // For SVG paths
-} from 'nexus/transitions';
+} from 'aether/transitions';
 
 // Fade
 <div transition:fade={{ duration: 300 }}>...</div>

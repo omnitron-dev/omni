@@ -4,6 +4,7 @@
  * Mark classes and functions as injectable
  */
 
+import 'reflect-metadata';
 import type { InjectableOptions, Type } from './types.js';
 
 /**

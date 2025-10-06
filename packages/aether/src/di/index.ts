@@ -10,7 +10,7 @@ export type {
   Type,
   AbstractType,
   InjectableToken,
-  InjectionToken,
+  InjectionTokenType,
   Provider,
   ClassProvider,
   ValueProvider,

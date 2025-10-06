@@ -915,7 +915,7 @@ Create compiler plugins:
 
 ```typescript
 // compiler-plugin.ts
-import { Plugin } from 'nexus/compiler';
+import { Plugin } from 'aether/compiler';
 
 export function customPlugin(): Plugin {
   return {
@@ -949,7 +949,7 @@ Use compile-time macros:
 
 ```typescript
 // Define macro
-import { defineMacro } from 'nexus/compiler';
+import { defineMacro } from 'aether/compiler';
 
 export const INLINE = defineMacro((value) => {
   // Executed at compile time
@@ -968,7 +968,7 @@ const config = '{"api":"https://api.example.com"}';
 Manipulate AST:
 
 ```typescript
-import { transform } from 'nexus/compiler';
+import { transform } from 'aether/compiler';
 
 const result = transform(code, {
   visitor: {

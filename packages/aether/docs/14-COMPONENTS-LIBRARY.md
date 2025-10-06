@@ -49,7 +49,7 @@ Aether Core (Reactivity, Components)
 ### Quick Example
 
 ```typescript
-import { Button, Card, Input } from 'nexus/components';
+import { Button, Card, Input } from 'aether/components';
 
 export default defineComponent(() => {
   const email = signal('');
@@ -88,7 +88,7 @@ Components are **styled wrappers around primitives**:
 
 ```typescript
 // Primitive (headless)
-import { Button as ButtonPrimitive } from 'nexus/primitives';
+import { Button as ButtonPrimitive } from 'aether/primitives';
 
 // Component (styled)
 export const Button = styled(ButtonPrimitive, {
@@ -201,12 +201,12 @@ pnpm add nexus
 
 ```typescript
 // Individual imports (tree-shakeable)
-import { Button } from 'nexus/components/Button';
-import { Card } from 'nexus/components/Card';
-import { Input } from 'nexus/components/Input';
+import { Button } from 'aether/components/Button';
+import { Card } from 'aether/components/Card';
+import { Input } from 'aether/components/Input';
 
 // Namespace import
-import * as UI from 'nexus/components';
+import * as UI from 'aether/components';
 
 <UI.Button>Click me</UI.Button>
 ```
@@ -215,8 +215,8 @@ import * as UI from 'nexus/components';
 
 ```typescript
 // app.tsx
-import { ThemeProvider } from 'nexus/theme';
-import { lightTheme } from 'nexus/themes';
+import { ThemeProvider } from 'aether/theme';
+import { lightTheme } from 'aether/themes';
 
 export default defineComponent(() => {
   return () => (
@@ -234,7 +234,7 @@ export default defineComponent(() => {
 Built-in themes:
 
 ```typescript
-import { lightTheme, darkTheme } from 'nexus/themes';
+import { lightTheme, darkTheme } from 'aether/themes';
 
 // Light theme
 <ThemeProvider theme={lightTheme}>
@@ -252,7 +252,7 @@ import { lightTheme, darkTheme } from 'nexus/themes';
 Create custom theme:
 
 ```typescript
-import { createTheme } from 'nexus/theme';
+import { createTheme } from 'aether/theme';
 
 const myTheme = createTheme({
   colors: {
@@ -302,7 +302,7 @@ const myTheme = createTheme({
 Switch themes dynamically:
 
 ```typescript
-import { useTheme } from 'nexus/theme';
+import { useTheme } from 'aether/theme';
 
 export const ThemeToggle = defineComponent(() => {
   const { theme, setTheme } = useTheme();
@@ -327,7 +327,7 @@ export const ThemeToggle = defineComponent(() => {
 **Sizes**: `sm`, `md`, `lg`
 
 ```typescript
-import { Button } from 'nexus/components';
+import { Button } from 'aether/components';
 
 <Button variant="primary" size="md">
   Click me
@@ -381,7 +381,7 @@ interface ButtonProps {
 **Sizes**: `sm`, `md`, `lg`
 
 ```typescript
-import { Input } from 'nexus/components';
+import { Input } from 'aether/components';
 
 <Input
   type="text"
@@ -428,7 +428,7 @@ interface InputProps {
 **Structure**: `Card`, `Card.Header`, `Card.Title`, `Card.Description`, `Card.Content`, `Card.Footer`
 
 ```typescript
-import { Card } from 'nexus/components';
+import { Card } from 'aether/components';
 
 <Card>
   <Card.Header>
@@ -460,7 +460,7 @@ import { Card } from 'nexus/components';
 **Modal dialog with overlay**
 
 ```typescript
-import { Dialog } from 'nexus/components';
+import { Dialog } from 'aether/components';
 
 const open = signal(false);
 
@@ -494,7 +494,7 @@ const open = signal(false);
 **Dropdown menu**
 
 ```typescript
-import { Dropdown } from 'nexus/components';
+import { Dropdown } from 'aether/components';
 
 <Dropdown>
   <Dropdown.Trigger>
@@ -521,7 +521,7 @@ import { Dropdown } from 'nexus/components';
 **Select dropdown**
 
 ```typescript
-import { Select } from 'nexus/components';
+import { Select } from 'aether/components';
 
 const value = signal('apple');
 
@@ -543,7 +543,7 @@ const value = signal('apple');
 **Data table**
 
 ```typescript
-import { Table } from 'nexus/components';
+import { Table } from 'aether/components';
 
 const users = [
   { id: 1, name: 'Alice', email: 'alice@example.com' },
@@ -578,7 +578,7 @@ const users = [
 **Tabbed interface**
 
 ```typescript
-import { Tabs } from 'nexus/components';
+import { Tabs } from 'aether/components';
 
 <Tabs defaultValue="account">
   <Tabs.List>
@@ -606,7 +606,7 @@ import { Tabs } from 'nexus/components';
 **Form components**
 
 ```typescript
-import { Form, Input, Button } from 'nexus/components';
+import { Form, Input, Button } from 'aether/components';
 
 const form = createForm({
   initialValues: { name: '', email: '' },
@@ -641,7 +641,7 @@ const form = createForm({
 **Toast notifications**
 
 ```typescript
-import { toast } from 'nexus/components';
+import { toast } from 'aether/components';
 
 // Success
 toast.success('User created successfully!');
@@ -687,8 +687,8 @@ toast({
 Add custom variants:
 
 ```typescript
-import { styled } from 'nexus/styles';
-import { Button as BaseButton } from 'nexus/components';
+import { styled } from 'aether/styles';
+import { Button as BaseButton } from 'aether/components';
 
 export const Button = styled(BaseButton, {
   variants: {
@@ -710,7 +710,7 @@ export const Button = styled(BaseButton, {
 Extend existing components:
 
 ```typescript
-import { Button as BaseButton } from 'nexus/components';
+import { Button as BaseButton } from 'aether/components';
 
 export const IconButton = defineComponent<{
   icon: JSX.Element;
@@ -840,7 +840,7 @@ All components are **fully accessible**:
 ### Login Form
 
 ```typescript
-import { Card, Form, Input, Button, toast } from 'nexus/components';
+import { Card, Form, Input, Button, toast } from 'aether/components';
 
 export const LoginForm = defineComponent(() => {
   const form = createForm({
@@ -909,7 +909,7 @@ export const LoginForm = defineComponent(() => {
 ### Data Table with Actions
 
 ```typescript
-import { Table, Button, Dropdown, Dialog, toast } from 'nexus/components';
+import { Table, Button, Dropdown, Dialog, toast } from 'aether/components';
 
 export const UserTable = defineComponent<{ users: User[] }>((props) => {
   const deleteId = signal<string | null>(null);
@@ -1001,7 +1001,7 @@ export const UserTable = defineComponent<{ users: User[] }>((props) => {
 ### Settings Page
 
 ```typescript
-import { Tabs, Card, Form, Input, Button, Select } from 'nexus/components';
+import { Tabs, Card, Form, Input, Button, Select } from 'aether/components';
 
 export const SettingsPage = defineComponent(() => {
   const form = createForm({

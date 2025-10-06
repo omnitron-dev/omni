@@ -1409,7 +1409,7 @@ const Component = defineComponent(() => {
 ### Virtual Scrolling
 
 ```typescript
-import { VirtualScroller } from 'nexus/virtual';
+import { VirtualScroller } from 'aether/virtual';
 
 const LargeList = defineComponent(() => {
   const items = signal(Array.from({ length: 10000 }, (_, i) => ({ id: i, name: `Item ${i}` }))
@@ -1569,7 +1569,7 @@ Aether supports Server Components for SSR and SSG.
 
 ```typescript
 // UserList.server.tsx
-import { defineServerComponent } from 'nexus/server';
+import { defineServerComponent } from 'aether/server';
 
 export const UserList = defineServerComponent(async () => {
   // Runs ONLY on server

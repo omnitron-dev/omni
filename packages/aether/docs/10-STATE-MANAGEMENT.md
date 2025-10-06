@@ -36,7 +36,7 @@ Aether provides a **fine-grained, signal-based state management system** that sc
 ### Key Concepts
 
 ```typescript
-import { createStore, defineStore } from 'nexus/state';
+import { createStore, defineStore } from 'aether/state';
 
 // Simple store
 const [state, setState] = createStore({
@@ -249,7 +249,7 @@ return () => <div class={theme.mode}>{/* ... */}</div>;
 ### Creating a Store
 
 ```typescript
-import { createStore } from 'nexus/state';
+import { createStore } from 'aether/state';
 
 // Simple store
 const [state, setState] = createStore({
@@ -321,7 +321,7 @@ setState({
 });
 
 // 4. produce (immer-like)
-import { produce } from 'nexus/state';
+import { produce } from 'aether/state';
 
 setState(produce(draft => {
   draft.count++;
@@ -352,7 +352,7 @@ Both patterns work because Aether tracks **property access**, not object identit
 The **foundational API** for creating reactive stores:
 
 ```typescript
-import { createStore } from 'nexus/state';
+import { createStore } from 'aether/state';
 
 interface State {
   count: number;
@@ -399,7 +399,7 @@ const [state, setState] = createStore(
 **Higher-level API** for creating named stores with methods:
 
 ```typescript
-import { defineStore } from 'nexus/state';
+import { defineStore } from 'aether/state';
 
 export const useCounterStore = defineStore('counter', () => {
   const [state, setState] = createStore({
@@ -529,7 +529,7 @@ Encapsulate state and logic in a module:
 
 ```typescript
 // stores/todos.store.ts
-import { createStore } from 'nexus/state';
+import { createStore } from 'aether/state';
 
 interface Todo {
   id: string;
@@ -591,7 +591,7 @@ console.log(todosStore.filteredTodos());
 Use classes for complex stores:
 
 ```typescript
-import { createStore, computed } from 'nexus/state';
+import { createStore, computed } from 'aether/state';
 
 class TodoStore {
   private [state, setState] = createStore({
@@ -643,7 +643,7 @@ Split large stores into smaller slices:
 
 ```typescript
 // stores/app.store.ts
-import { createStore } from 'nexus/state';
+import { createStore } from 'aether/state';
 
 // User slice
 const createUserSlice = () => {
@@ -763,7 +763,7 @@ const handleCreate = async (data: ProductInput) => {
 Persist state to localStorage:
 
 ```typescript
-import { createStore } from 'nexus/state';
+import { createStore } from 'aether/state';
 
 const [state, setState] = createStore(
   { theme: 'light', language: 'en' },
@@ -800,7 +800,7 @@ const [state, setState] = createStore(
 Implement custom storage backend:
 
 ```typescript
-import { StorageAdapter } from 'nexus/state';
+import { StorageAdapter } from 'aether/state';
 
 class CookieStorage implements StorageAdapter {
   getItem(key: string): string | null {
@@ -953,7 +953,7 @@ state.count++; // All tabs see the update
 Manually sync state:
 
 ```typescript
-import { syncStore } from 'nexus/state';
+import { syncStore } from 'aether/state';
 
 const [state, setState] = createStore({ count: 0 });
 
@@ -1012,8 +1012,8 @@ Use stores as injectable services:
 
 ```typescript
 // stores/auth.store.ts
-import { Injectable } from 'nexus/di';
-import { createStore } from 'nexus/state';
+import { Injectable } from 'aether/di';
+import { createStore } from 'aether/state';
 
 @Injectable()
 export class AuthStore {
@@ -1036,7 +1036,7 @@ export class AuthStore {
 }
 
 // Usage in component
-import { inject } from 'nexus/di';
+import { inject } from 'aether/di';
 import { AuthStore } from '@/stores/auth.store';
 
 export default defineComponent(() => {
@@ -1058,7 +1058,7 @@ Provide stores through DI:
 
 ```typescript
 // app.module.ts
-import { defineModule } from 'nexus/di';
+import { defineModule } from 'aether/di';
 import { AuthStore } from '@/stores/auth.store';
 import { TodoStore } from '@/stores/todo.store';
 
@@ -1203,7 +1203,7 @@ export const useTodoStore = defineStore('todos', () => {
 Enable time travel debugging:
 
 ```typescript
-import { createStore, enableDevTools } from 'nexus/state';
+import { createStore, enableDevTools } from 'aether/state';
 
 const [state, setState] = createStore(
   { count: 0 },
@@ -1252,7 +1252,7 @@ export const useCounterStore = defineStore('counter', () => {
 Export/import state snapshots:
 
 ```typescript
-import { getSnapshot, loadSnapshot } from 'nexus/state';
+import { getSnapshot, loadSnapshot } from 'aether/state';
 
 // Export
 const snapshot = getSnapshot('counter');
@@ -1268,7 +1268,7 @@ loadSnapshot('counter', snapshot);
 Add middleware for logging, tracking:
 
 ```typescript
-import { createStore, applyMiddleware } from 'nexus/state';
+import { createStore, applyMiddleware } from 'aether/state';
 
 const logger = (store: any) => (next: any) => (action: any) => {
   console.log('Action:', action);
@@ -1307,7 +1307,7 @@ setState('c', 3);
 Explicitly batch updates:
 
 ```typescript
-import { batch } from 'nexus/state';
+import { batch } from 'aether/state';
 
 const [state, setState] = createStore({ count: 0, doubled: 0 });
 
@@ -1359,7 +1359,7 @@ const activeTodos = computed(() => state.todos.filter(t => !t.done));
 Compute values only when accessed:
 
 ```typescript
-import { lazy } from 'nexus/state';
+import { lazy } from 'aether/state';
 
 const [state] = createStore({ items: [] as Item[] });
 
@@ -1381,7 +1381,7 @@ console.log(expensiveComputation()); // Just result
 Efficiently update arrays:
 
 ```typescript
-import { reconcile } from 'nexus/state';
+import { reconcile } from 'aether/state';
 
 const [state, setState] = createStore({
   users: [] as User[]
@@ -1811,7 +1811,7 @@ export const createStoreWithMiddleware = (initialState: any, ...middlewares: Mid
 Cache expensive computations:
 
 ```typescript
-import { createComputedCache } from 'nexus/state';
+import { createComputedCache } from 'aether/state';
 
 const [state] = createStore({
   users: [] as User[]
@@ -1877,7 +1877,7 @@ export const useQueueStore = defineStore('queue', () => {
 Debounce store updates:
 
 ```typescript
-import { debounce } from 'nexus/utils';
+import { debounce } from 'aether/utils';
 
 export const useSearchStore = defineStore('search', () => {
   const [state, setState] = createStore({
@@ -2077,7 +2077,7 @@ function loadSnapshot(storeName: string, snapshot: any): void;
 
 ```typescript
 // stores/cart.store.ts
-import { defineStore } from 'nexus/state';
+import { defineStore } from 'aether/state';
 
 interface CartItem {
   productId: string;
@@ -2184,7 +2184,7 @@ const cart = useCartStore();
 
 ```typescript
 // stores/form.store.ts
-import { createStore } from 'nexus/state';
+import { createStore } from 'aether/state';
 
 export function createFormStore<T extends Record<string, any>>(
   initialValues: T,
@@ -2298,7 +2298,7 @@ const form = createFormStore(
 
 ```typescript
 // stores/collab.store.ts
-import { defineStore } from 'nexus/state';
+import { defineStore } from 'aether/state';
 
 interface User {
   id: string;

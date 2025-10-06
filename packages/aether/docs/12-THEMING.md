@@ -21,7 +21,7 @@ The theming system in Aether is a comprehensive solution for managing applicatio
 
 ```typescript
 // themes/light.theme.ts
-import { defineTheme } from 'nexus/theming';
+import { defineTheme } from 'aether/theming';
 
 export const LightTheme = defineTheme({
   name: 'light',
@@ -260,7 +260,7 @@ export const LightTheme = defineTheme({
 
 ```typescript
 // themes/dark.theme.ts
-import { defineTheme } from 'nexus/theming';
+import { defineTheme } from 'aether/theming';
 import { LightTheme } from './light.theme';
 
 export const DarkTheme = defineTheme({
@@ -772,7 +772,7 @@ Themes work with server-side rendering:
 ```typescript
 // routes/+layout.tsx
 import { defineComponent } from 'aether';
-import { loader, useLoaderData } from 'nexus/routing';
+import { loader, useLoaderData } from 'aether/routing';
 
 export const load = loader(async ({ request }) => {
   // Determine theme from cookie or user-agent

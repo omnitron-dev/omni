@@ -4,7 +4,7 @@
  * Tokens for primitives and interfaces
  */
 
-import type { InjectionToken as IInjectionToken } from './types.js';
+import type { InjectionTokenType as IInjectionToken } from './types.js';
 
 /**
  * InjectionToken class for type-safe tokens

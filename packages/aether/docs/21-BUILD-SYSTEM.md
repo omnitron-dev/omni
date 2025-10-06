@@ -113,7 +113,7 @@ export default {
 };
 
 // 3. Add plugins for advanced features
-import { imageOptimization } from 'nexus/plugins';
+import { imageOptimization } from 'aether/plugins';
 
 export default {
   plugins: [imageOptimization()]
@@ -543,7 +543,7 @@ import logoBase64 from './logo.png?raw';
 <img src={logoBase64} alt="Logo" />
 
 // Optimized image component
-import { Image } from 'nexus/image';
+import { Image } from 'aether/image';
 
 <Image
   src="./hero.jpg"
@@ -760,7 +760,7 @@ import {
   pwa,
   sitemap,
   compression
-} from 'nexus/plugins';
+} from 'aether/plugins';
 
 export default defineConfig({
   plugins: [
@@ -1254,7 +1254,7 @@ interface Plugin {
 ```typescript
 // nexus.config.ts
 import { defineConfig } from 'aether';
-import { imageOptimization, pwa, compression } from 'nexus/plugins';
+import { imageOptimization, pwa, compression } from 'aether/plugins';
 
 export default defineConfig({
   // App metadata

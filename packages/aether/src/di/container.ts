@@ -4,6 +4,7 @@
  * Core DI container with hierarchical injection support
  */
 
+import 'reflect-metadata';
 import { ScopeManager, getDefaultScope } from './scope.js';
 import type {
   Container,
@@ -13,10 +14,7 @@ import type {
   Provider,
   Type,
   ProviderScope,
-  ClassProvider,
-  ValueProvider,
   FactoryProvider,
-  ExistingProvider,
 } from './types.js';
 
 /**
@@ -104,7 +102,7 @@ export class DIContainer implements Container, Injector {
   /**
    * Register a provider
    */
-  register<T>(token: InjectableToken<T>, provider: Provider<T>): void {
+  register<T>(_token: InjectableToken<T>, provider: Provider<T>): void {
     const normalized = normalizeProvider(provider);
 
     if (normalized.multi) {

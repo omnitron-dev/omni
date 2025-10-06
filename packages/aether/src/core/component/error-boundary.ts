@@ -367,6 +367,6 @@ export function withErrorBoundary<P = {}>(
 ) {
   return defineComponent<P>((props) => () => ErrorBoundary({
     ...errorBoundaryProps,
-    children: Component(props),
+    children: () => Component(props),
   }));
 }

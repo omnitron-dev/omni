@@ -120,6 +120,7 @@ export function handleComponentError(owner: any, error: Error): void {
   let currentOwner = owner;
   const visitedOwners = new Set();
   let depth = 0;
+  let handlerWasCalled = false;
 
   while (currentOwner) {
     console.log(`[handleComponentError] Checking owner at depth ${depth}:`, currentOwner);
@@ -139,17 +140,29 @@ export function handleComponentError(owner: any, error: Error): void {
     if (ctx && ctx.errorCallbacks.length > 0) {
       console.log(`[handleComponentError] Calling error handlers`);
 
-      // Call all error handlers at this level
+      let anyHandlerSucceeded = false;
+
+      // Call ALL error handlers at this level
       for (const callback of ctx.errorCallbacks) {
+        handlerWasCalled = true;
         try {
           callback(error);
-          // Error was handled, stop propagation
-          console.log('[handleComponentError] Error handled');
-          return;
+          anyHandlerSucceeded = true;
         } catch (handlerError) {
           console.error('Error in error handler:', handlerError);
-          // Continue to next handler or bubble up
+          // Handler failed but we continue calling other handlers
         }
+      }
+
+      // If any handler succeeded OR handlers exist (even if all failed),
+      // consider the error handled and stop propagation
+      if (handlerWasCalled) {
+        if (anyHandlerSucceeded) {
+          console.log('[handleComponentError] Error handled successfully');
+        } else {
+          console.log('[handleComponentError] Error handlers called but all failed, stopping propagation');
+        }
+        return;
       }
     }
 

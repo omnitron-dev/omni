@@ -58,7 +58,7 @@ describe('ErrorBoundary', () => {
 
       ErrorBoundary({
         onError: onErrorSpy,
-        children: ErrorChild({}),
+        children: () => ErrorChild({}),
       });
 
       expect(onErrorSpy).toHaveBeenCalled();
@@ -73,7 +73,7 @@ describe('ErrorBoundary', () => {
 
       ErrorBoundary({
         fallback: FallbackComponent({}),
-        children: ErrorChild({}),
+        children: () => ErrorChild({}),
       });
 
       // Should render fallback (implementation detail)
@@ -89,7 +89,7 @@ describe('ErrorBoundary', () => {
 
       ErrorBoundary({
         onError: errorSpy,
-        children: ErrorChild({}),
+        children: () => ErrorChild({}),
       });
 
       expect(errorSpy).toHaveBeenCalled();
@@ -123,7 +123,7 @@ describe('ErrorBoundary', () => {
 
       ErrorBoundary({
         fallback: FallbackWithReset({}),
-        children: ErrorChild({}),
+        children: () => ErrorChild({}),
       });
     });
 
@@ -151,7 +151,7 @@ describe('ErrorBoundary', () => {
         fallback: FallbackWithReset({}),
         onReset: onResetSpy,
         onError: errorSpy,
-        children: ErrorChild({}),
+        children: () => ErrorChild({}),
       });
 
       // Error should be caught
@@ -180,7 +180,7 @@ describe('ErrorBoundary', () => {
 
       ErrorBoundary({
         fallback: FallbackWithRetry({}),
-        children: ErrorChild({}),
+        children: () => ErrorChild({}),
       });
     });
 
@@ -215,7 +215,7 @@ describe('ErrorBoundary', () => {
       ErrorBoundary({
         fallback: FallbackWithRetry({}),
         maxRetries: 3,
-        children: ErrorChild({}),
+        children: () => ErrorChild({}),
       });
 
       consoleWarnSpy.mockRestore();
@@ -232,7 +232,7 @@ describe('ErrorBoundary', () => {
 
       ErrorBoundary({
         onError: errorSpy,
-        children: ErrorChild({}),
+        children: () => ErrorChild({}),
       });
 
       expect(errorSpy).toHaveBeenCalled();
@@ -251,7 +251,7 @@ describe('ErrorBoundary', () => {
 
       ErrorBoundary({
         onError: errorSpy,
-        children: ErrorChild({}),
+        children: () => ErrorChild({}),
       });
 
       const errorInfo: ErrorInfo = errorSpy.mock.calls[0][1];
@@ -268,7 +268,7 @@ describe('ErrorBoundary', () => {
 
       ErrorBoundary({
         onError: errorSpy,
-        children: ErrorChild({}),
+        children: () => ErrorChild({}),
       });
 
       const errorInfo: ErrorInfo = errorSpy.mock.calls[0][1];
@@ -286,7 +286,7 @@ describe('ErrorBoundary', () => {
 
       ErrorBoundary({
         onError: errorSpy,
-        children: ErrorChild({}),
+        children: () => ErrorChild({}),
       });
 
       const errorInfo: ErrorInfo = errorSpy.mock.calls[0][1];
@@ -332,7 +332,7 @@ describe('ErrorBoundary', () => {
 
       ErrorBoundary({
         fallback: FallbackComponent({}),
-        children: ErrorChild({}),
+        children: () => ErrorChild({}),
       });
     });
   });
@@ -445,7 +445,7 @@ describe('ErrorBoundary', () => {
 
       ErrorBoundary({
         onError: errorSpy,
-        children: ErrorChild({}),
+        children: () => ErrorChild({}),
       });
 
       const errorInfo: ErrorInfo = errorSpy.mock.calls[0][1];
@@ -462,7 +462,7 @@ describe('ErrorBoundary', () => {
 
       ErrorBoundary({
         onError: errorSpy,
-        children: ErrorChild({}),
+        children: () => ErrorChild({}),
       });
 
       // Should still catch and handle

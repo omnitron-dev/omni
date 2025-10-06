@@ -33,66 +33,60 @@ export function defineComponent<P = {}>(
   setup: ComponentSetup<P>,
   name?: string
 ): Component<P> {
-  let render: RenderFunction | undefined;
-  let owner: any;
-  let reactivePropsInstance: any;
-  let isSetupComplete = false;
-
-  // Create component function
+  // Create component function - each call creates a new instance
   const component: Component<P> = (props: P): any => {
+    let render: RenderFunction | undefined;
+    let owner: any;
+
     try {
-      // First call - run setup
-      if (!isSetupComplete) {
-        // Wrap props in reactive proxy
-        reactivePropsInstance = reactiveProps(props);
+      // Wrap props in reactive proxy
+      const reactivePropsInstance = reactiveProps(props);
 
-        // Create owner with parent link (important for error boundaries)
-        const parentOwner = getOwner();
-        owner = new OwnerImpl(parentOwner);
+      // Create owner with parent link (important for error boundaries)
+      const parentOwner = getOwner();
+      owner = new OwnerImpl(parentOwner);
 
-        // Set component name for debugging
-        if (name && owner) {
-          (owner as any).name = name;
-        }
+      // Set component name for debugging
+      if (name && owner) {
+        (owner as any).name = name;
+      }
 
-        // Run setup in component's owner context
-        try {
-          context.runWithOwner(owner, () => {
-            try {
-              // Run setup function (once) with reactive props
-              render = setup(reactivePropsInstance);
-            } catch (error) {
-              // Handle setup errors
-              handleComponentError(owner, error as Error);
-              // Don't throw - error was handled
-            }
-
-            // Register cleanup
-            onCleanup(() => {
-              cleanupComponentContext(owner);
-              owner.dispose();
-            });
-          });
-        } catch (error) {
-          // If error wasn't handled, re-throw
-          if (render === undefined) {
-            return null;
+      // Run setup in component's owner context
+      try {
+        context.runWithOwner(owner, () => {
+          try {
+            // Run setup function with reactive props
+            render = setup(reactivePropsInstance);
+          } catch (error) {
+            // Handle setup errors
+            handleComponentError(owner, error as Error);
+            // Don't throw - error was handled
           }
-        }
 
-        isSetupComplete = true;
-
-        // Trigger mount lifecycle
-        triggerMount(owner);
-      } else {
-        // Subsequent calls - update props
-        if (reactivePropsInstance && reactivePropsInstance[PROPS_UPDATE]) {
-          reactivePropsInstance[PROPS_UPDATE](props);
+          // Register cleanup
+          onCleanup(() => {
+            cleanupComponentContext(owner);
+            owner.dispose();
+          });
+        });
+      } catch (error) {
+        // If error wasn't handled, re-throw
+        if (render === undefined) {
+          return null;
         }
       }
 
+      // Trigger mount lifecycle
+      triggerMount(owner);
+
       // Return render result with error handling
       // Run render in owner context so children have correct parent
+
+      // If render is undefined (setup failed), return null
+      if (!render) {
+        return null;
+      }
+
       try {
         return context.runWithOwner(owner, () => {
           try {

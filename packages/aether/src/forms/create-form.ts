@@ -12,7 +12,6 @@ import type {
   FormConfig,
   FormErrors,
   FormTouched,
-  FieldValidator,
   SchemaValidator,
   ValidationSchema,
   FieldProps,
@@ -27,23 +26,25 @@ function isSchema<T>(validate: any): validate is SchemaValidator<T> {
 
 /**
  * Get nested value from object using dot notation
+ * Reserved for future nested field support
  */
-function getNestedValue(obj: any, path: string): any {
-  return path.split('.').reduce((acc, part) => acc?.[part], obj);
-}
+// function getNestedValue(obj: any, path: string): any {
+//   return path.split('.').reduce((acc, part) => acc?.[part], obj);
+// }
 
 /**
  * Set nested value in object using dot notation
+ * Reserved for future nested field support
  */
-function setNestedValue(obj: any, path: string, value: any): void {
-  const parts = path.split('.');
-  const last = parts.pop()!;
-  const target = parts.reduce((acc, part) => {
-    if (!acc[part]) acc[part] = {};
-    return acc[part];
-  }, obj);
-  target[last] = value;
-}
+// function setNestedValue(obj: any, path: string, value: any): void {
+//   const parts = path.split('.');
+//   const last = parts.pop()!;
+//   const target = parts.reduce((acc, part) => {
+//     if (!acc[part]) acc[part] = {};
+//     return acc[part];
+//   }, obj);
+//   target[last] = value;
+// }
 
 /**
  * Create a form instance with state management and validation

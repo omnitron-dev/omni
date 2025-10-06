@@ -11,6 +11,7 @@ export default defineConfig({
     'di/index': 'src/di/index.ts',
     'router/index': 'src/router/index.ts',
     'forms/index': 'src/forms/index.ts',
+    'control-flow/index': 'src/control-flow/index.ts',
   },
   format: ['esm'],
   dts: true,

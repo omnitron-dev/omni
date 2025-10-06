@@ -42,6 +42,10 @@
       "types": "./dist/forms/index.d.ts",
       "import": "./dist/forms/index.js"
     },
+    "./control-flow": {
+      "types": "./dist/control-flow/index.d.ts",
+      "import": "./dist/control-flow/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

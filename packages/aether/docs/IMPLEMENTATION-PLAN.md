@@ -221,6 +221,10 @@ Following Titan's pattern, all modules are exposed via `package.json` exports:
       "types": "./dist/forms/index.d.ts",
       "import": "./dist/forms/index.js"
     },
+    "./control-flow": {
+      "types": "./dist/control-flow/index.d.ts",
+      "import": "./dist/control-flow/index.js"
+    },
     "./primitives": {
       "types": "./dist/primitives/index.d.ts",
       "import": "./dist/primitives/index.js"
@@ -256,6 +260,7 @@ import { signal } from '@omnitron-dev/aether/core';
 import { defineComponent } from '@omnitron-dev/aether/core';
 import { createRouter } from '@omnitron-dev/aether/router';
 import { createForm } from '@omnitron-dev/aether/forms';
+import { Show, For, Switch, Match } from '@omnitron-dev/aether/control-flow';
 import { Dialog } from '@omnitron-dev/aether/primitives';
 import { Button } from '@omnitron-dev/aether/components';
 import { NetronClient } from '@omnitron-dev/aether/netron';
@@ -518,41 +523,52 @@ migrate().catch(console.error);
    - [x] JSX Runtime tests (38 tests passing: DOM creation, props, events, components)
    - [x] Event system integrated in JSX runtime
 
-2. **Compiler - Parser** (Week 2) ⏭️ SKIPPED (using TypeScript JSX transform)
+2. **Control Flow Components** (Week 2) ✅ **COMPLETED**
+   - [x] `Show` component - conditional rendering with fallback
+   - [x] `For` component - list rendering with keyed reconciliation
+   - [x] `Switch/Match` components - multiple condition handling
+   - [x] Control flow tests (26 tests passing: Show 8, For 9, Switch/Match 9)
+   - [x] Package exports configured (`@omnitron-dev/aether/control-flow`)
+   - [x] TypeScript types and declarations
+
+3. **Compiler - Parser** (Week 2) ⏭️ SKIPPED (using TypeScript JSX transform)
    - [x] Using TypeScript's built-in `react-jsx` transform instead of custom parser
    - [ ] ~~TSX lexer~~ (not needed - TypeScript handles this)
    - [ ] ~~AST parser~~ (not needed - TypeScript handles this)
    - [ ] Template syntax parsing (nx:if, nx:for, etc.) - deferred to future optimization phase
    - [ ] Directive parsing - deferred to future optimization phase
 
-3. **Compiler - Transformer** (Week 2-3)
+4. **Compiler - Transformer** (Week 2-3)
    - [ ] Template → reactive JS transformation
    - [ ] Directive transformation
    - [ ] Optimization passes (constant folding, dead code elimination)
    - [ ] Effect hoisting
 
-4. **Compiler - Code Generator** (Week 3)
+5. **Compiler - Code Generator** (Week 3)
    - [ ] Generate optimal imperative code
    - [ ] Source map generation
    - [ ] Type preservation
 
-5. **Vite Plugin** (Week 3-4)
+6. **Vite Plugin** (Week 3-4)
    - [ ] HMR integration
    - [ ] Component auto-discovery
    - [ ] CSS scoping
    - [ ] Asset handling
 
-6. **Testing** (Week 4)
+7. **Testing** (Week 4)
    - [ ] Component unit tests
    - [ ] Compiler snapshot tests
    - [ ] HMR tests
    - [ ] Integration tests
 
 **Deliverables:**
-- Compiler module in `@omnitron-dev/aether/compiler`
-- Build plugins in `@omnitron-dev/aether/build`
-- Component examples
-- Compiler documentation
+- ✅ Component runtime in `@omnitron-dev/aether/core/component` (110 tests passing)
+- ✅ JSX runtime in `@omnitron-dev/aether/jsx-runtime` (38 tests passing)
+- ✅ Control flow components in `@omnitron-dev/aether/control-flow` (26 tests passing)
+- ⏭️ Compiler module in `@omnitron-dev/aether/compiler` (deferred)
+- ⏭️ Build plugins in `@omnitron-dev/aether/build` (deferred)
+- ⏭️ Component examples (deferred)
+- ⏭️ Compiler documentation (deferred)
 
 ---
 

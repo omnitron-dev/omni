@@ -96,7 +96,11 @@ describe('RemotePeer', () => {
     const peer1 = await n2.connect(`ws://localhost:${testPort}`);
     expect(peer1).toBeInstanceOf(RemotePeer);
     expect(peer1.id).toBe(netron.id);
+
+    // Wait for server to receive client ID (async handshake)
+    await new Promise(resolve => setTimeout(resolve, 50));
     expect(netron.peers.has(n2.id)).toBe(true);
+
     peer1.disconnect();
   });
 
@@ -154,6 +158,10 @@ describe('RemotePeer', () => {
     n2.registerTransport('ws', () => new WebSocketTransport());
 
     const peer1 = await n2.connect(`ws://localhost:${testPort}`);
+
+    // Wait for server to receive client ID (async handshake)
+    await new Promise(resolve => setTimeout(resolve, 50));
+
     const peer2 = netron.peers.get('n2');
 
     expect(peer2).toBeInstanceOf(RemotePeer);
@@ -163,47 +171,16 @@ describe('RemotePeer', () => {
     peer1.disconnect();
   });
 
-  it('should have abilities after connection', async () => {
-    const n2 = new Netron(createMockLogger(), {
-      id: 'n2',
-    });
-    n2.registerTransport('ws', () => new WebSocketTransport());
-
-    const peer1 = await n2.connect(`ws://localhost:${testPort}`);
-    const peer2 = netron.peers.get('n2')!;
-
-    expect(peer1.abilities).toEqual({
-      services: new Map(),
-      allowServiceEvents: true,
-    });
-
-    expect(peer2.abilities).toEqual({
-      allowServiceEvents: false,
-    });
-
-    peer1.disconnect();
+  // Legacy abilities exchange has been removed in favor of auth-aware service discovery
+  it.skip('should have abilities after connection (LEGACY - removed)', async () => {
+    // This test is for legacy abilities exchange which has been replaced
+    // by auth-aware on-demand service discovery via queryInterface
   });
 
-  it('connector side can send abilities', async () => {
-    const n2 = new Netron(createMockLogger(), {
-      id: 'n2',
-      allowServiceEvents: true,
-    });
-    n2.registerTransport('ws', () => new WebSocketTransport());
-
-    const peer1 = await n2.connect(`ws://localhost:${testPort}`);
-    const peer2 = netron.peers.get('n2')!;
-
-    expect(peer1.abilities).toEqual({
-      services: new Map(),
-      allowServiceEvents: true,
-    });
-
-    expect(peer2.abilities).toEqual({
-      allowServiceEvents: true,
-    });
-
-    await peer1.disconnect();
+  // Legacy abilities exchange has been removed in favor of auth-aware service discovery
+  it.skip('connector side can send abilities (LEGACY - removed)', async () => {
+    // This test is for legacy abilities exchange which has been replaced
+    // by auth-aware on-demand service discovery via queryInterface
   });
 
   it('should call methods and access properties of remote service', async () => {
@@ -325,8 +302,8 @@ describe('RemotePeer', () => {
     n2.registerTransport('ws', () => new WebSocketTransport());
     const peer1 = await n2.connect(`ws://localhost:${testPort}`);
 
-    expect(peer1.getServiceNames()).toEqual(['service2']);
-
+    // With modern auth-aware discovery, services are discovered on-demand via queryInterface
+    // No automatic service enumeration - use queryInterface directly
     const iService2 = await peer1.queryInterface<IService2>('service2');
     expect(iService2).toBeInstanceOf(Interface);
     expect((iService2 as any).$def.parentId).toBe('');
@@ -384,24 +361,11 @@ describe('RemotePeer', () => {
     peer1.disconnect();
   });
 
-  it('autosubscribe to expose and unexpose events', async () => {
-    const peer = netron.peer;
-    const n2 = await createNetronClient();
-    const peer1 = await n2.connect(`ws://localhost:${testPort}`);
-
-    await peer.exposeService(new Service1());
-
-    await delay(100);
-
-    expect(peer1.services.keys()).toContain('service1');
-
-    await peer.unexposeService('service1');
-
-    await delay(100);
-
-    expect(peer1.services.size).toBe(0);
-
-    peer1.disconnect();
+  // Auto-subscribe to expose/unexpose events has been removed
+  // Services are now discovered on-demand via queryInterface
+  it.skip('autosubscribe to expose and unexpose events (LEGACY - removed)', async () => {
+    // This test is for automatic service discovery which has been replaced
+    // by on-demand auth-aware discovery via queryInterface core-task
   });
 
   it('subscribe to event', async () => {
@@ -693,9 +657,9 @@ describe('RemotePeer', () => {
     await peer21.exposeService(svc2);
     await delay(100);
 
-    expect(peer.netron.services.keys()).toContain('service2');
-    expect(peer21.services.keys()).toContain('service2');
-    expect(peer31.services.keys()).toContain('service2');
+    // Services are discovered on-demand via queryInterface (no auto-discovery)
+    // Check that we can query the service from all peers
+    expect(peer.netron.services.has('service2')).toBe(true);
 
     let iService2 = await peer.queryInterface<IService2>('service2');
     expect(iService2).toBeInstanceOf(Interface);
@@ -748,26 +712,26 @@ describe('RemotePeer', () => {
     const n2 = await createNetronClient();
     const peer1 = await n2.connect(`ws://localhost:${testPort}`);
 
-    // Запрашиваем интерфейс в первый раз
-    let iface = await peer1.queryInterface<IService1>('service1');
-    expect(iface).toBeInstanceOf(Interface);
+    // Query interface first time
+    const iface1 = await peer1.queryInterface<IService1>('service1');
+    expect(iface1).toBeInstanceOf(Interface);
 
-    // Вызываем метод
-    const result = await iface.echo('test');
-    expect(result).toBe('test');
+    // Call method
+    const result1 = await iface1.echo('test');
+    expect(result1).toBe('test');
 
-    // Релизим интерфейс
-    await peer1.releaseInterface(iface);
+    // Release interface
+    await peer1.releaseInterface(iface1);
 
-    // Запрашиваем интерфейс повторно
-    iface = await peer1.queryInterface<IService1>('service1');
-    expect(iface).toBeInstanceOf(Interface);
+    // Query interface again
+    const iface2 = await peer1.queryInterface<IService1>('service1');
+    expect(iface2).toBeInstanceOf(Interface);
 
-    // Проверяем что методы работают
-    const result2 = await iface.echo('test2');
+    // Verify methods work with new interface
+    const result2 = await iface2.echo('test2');
     expect(result2).toBe('test2');
 
-    await peer1.releaseInterface(iface);
+    await peer1.releaseInterface(iface2);
     await peer1.disconnect();
   });
 });

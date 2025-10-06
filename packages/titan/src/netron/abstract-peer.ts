@@ -172,8 +172,19 @@ export abstract class AbstractPeer implements IPeer {
     // Check definition cache first
     let def = this.definitionCache.get(normalizedName);
 
+    // Verify cached definition still exists (could be deleted after releaseInterface)
+    if (def) {
+      try {
+        this.getDefinitionById(def.id);
+      } catch {
+        // Definition was deleted, invalidate cache entry
+        this.definitionCache.delete(normalizedName);
+        def = undefined;
+      }
+    }
+
     if (!def) {
-      // Not in cache, query remote peer
+      // Not in cache or invalidated, query remote peer
       if (version === '*' || !version) {
         // For wildcard version, find latest locally or query remote
         try {

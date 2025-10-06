@@ -551,7 +551,9 @@ All requirements from `02-REACTIVITY.md` implemented and tested ✓
    - [x] `Show` component - conditional rendering with fallback
    - [x] `For` component - list rendering with keyed reconciliation
    - [x] `Switch/Match` components - multiple condition handling
-   - [x] Control flow tests (26 tests passing: Show 8, For 9, Switch/Match 9)
+   - [x] `Portal` component - render children to different DOM location
+   - [x] `Suspense` component - async rendering with fallback
+   - [x] Control flow tests (48 tests passing: Show 8, For 9, Switch/Match 9, Portal 12, Suspense 10)
    - [x] Package exports configured (`@omnitron-dev/aether/control-flow`)
    - [x] TypeScript types and declarations
 
@@ -588,7 +590,9 @@ All requirements from `02-REACTIVITY.md` implemented and tested ✓
 **Deliverables:**
 - ✅ Component runtime in `@omnitron-dev/aether/core/component` (110 tests passing)
 - ✅ JSX runtime in `@omnitron-dev/aether/jsx-runtime` (38 tests passing)
-- ✅ Control flow components in `@omnitron-dev/aether/control-flow` (26 tests passing)
+- ✅ Control flow components in `@omnitron-dev/aether/control-flow` (48 tests passing)
+  - Show, For, Switch/Match (26 tests)
+  - Portal, Suspense (22 tests)
 - ⏭️ Compiler module in `@omnitron-dev/aether/compiler` (deferred)
 - ⏭️ Build plugins in `@omnitron-dev/aether/build` (deferred)
 - ⏭️ Component examples (deferred)

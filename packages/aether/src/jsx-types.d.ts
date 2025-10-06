@@ -4,7 +4,7 @@
  * Global JSX namespace and intrinsic elements for TypeScript
  */
 
-import type { JSXElement } from './jsx-runtime/types.js';
+import type { JSXElement } from './jsxruntime/types.js';
 
 declare global {
   namespace JSX {

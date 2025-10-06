@@ -7,7 +7,7 @@
 import { defineComponent } from '../core/component/define.js';
 import { computed } from '../core/reactivity/computed.js';
 import { signal } from '../core/reactivity/signal.js';
-import { jsx } from '../jsx-runtime/runtime.js';
+import { jsx } from '../jsxruntime/runtime.js';
 import { useRouter } from './hooks.js';
 import { normalizePath } from './route-matcher.js';
 import type { NavigationOptions } from './types.js';

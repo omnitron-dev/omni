@@ -80,18 +80,17 @@ import { resource } from 'aether';
 const UserProfile = defineComponent(() => {
   const userId = signal(1);
 
-  // Create resource
-  const [user] = resource(
-    userId,  // Source signal
-    (id) => fetch(`/api/users/${id}`).then(r => r.json())  // Fetcher
+  // Create resource - automatically tracks signal dependencies
+  const user = resource(() =>
+    fetch(`/api/users/${userId()}`).then(r => r.json())
   );
 
   return () => (
     <div>
-      {#if user.loading}
+      {#if user.loading()}
         <Spinner />
-      {:else if user.error}
-        <Error message={user.error.message} />
+      {:else if user.error()}
+        <Error message={user.error().message} />
       {:else}
         <div>
           <h1>{user().name}</h1>
@@ -145,13 +144,13 @@ const Component = defineComponent(() => {
 **Declarative** (with Resource):
 ```typescript
 const Component = defineComponent(() => {
-  const [data] = resource(() => fetch('/api/data').then(r => r.json()));
+  const data = resource(() => fetch('/api/data').then(r => r.json()));
 
   return () => (
     <div>
-      {#if data.loading}
+      {#if data.loading()}
         <Spinner />
-      {:else if data.error}
+      {:else if data.error()}
         <Error />
       {:else}
         <Data value={data()} />
@@ -179,8 +178,10 @@ interface User {
   email: string;
 }
 
-const [user] = resource<User>(() => fetchUser());
+const user = resource<User>(() => fetchUser());
 // user() is typed as User | undefined
+// user.loading() is typed as boolean
+// user.error() is typed as Error | undefined
 ```
 
 ---
@@ -206,13 +207,13 @@ const DataComponent = defineComponent(() => {
       {data() && <div>{data().title}</div>}
 
       {/* Check loading state */}
-      {#if data.loading}
+      {#if data.loading()}
         <Spinner />
       {/if}
 
       {/* Check error state */}
-      {#if data.error}
-        <Error message={data.error.message} />
+      {#if data.error()}
+        <Error message={data.error().message} />
       {/if}
     </div>
   );
@@ -399,12 +400,12 @@ import { getUser, updateUser } from '@/lib/api.server';
 const UserProfile = defineComponent(() => {
   const userId = signal(1);
 
-  // Call server function from client
-  const [user] = resource(userId, getUser);
+  // Call server function from client - tracks userId signal
+  const user = resource(() => getUser(userId()));
 
   const handleUpdate = async (name: string) => {
     await updateUser(userId(), { name });
-    refetch(); // Refresh data
+    user.refetch(); // Refresh data
   };
 
   return () => (
@@ -462,12 +463,9 @@ const Component = defineComponent(() => {
   const userService = inject(UserService);
 
   // Automatic RPC call to server
-  const [user] = resource(
-    () => 1,
-    (id) => userService.findById(id)
-  );
+  const user = resource(() => userService.findById(1));
 
-  return () => <div>{user().name}</div>;
+  return () => <div>{user()?.name}</div>;
 });
 ```
 
@@ -691,22 +689,21 @@ export const action = async ({ request }) => {
 
 ### Automatic Caching
 
-Resources are automatically cached:
+Resources automatically cache results and refetch when dependencies change:
 
 ```typescript
-const [user] = resource(
-  () => userId(),
-  fetchUser
-);
+const userId = signal(1);
 
-// First call: fetches from server
-userId(1);
+const user = resource(() => fetchUser(userId()));
 
-// Second call: returns cached data
-userId(1);
+// First access: fetches from server
+console.log(user());
 
-// Different ID: fetches again
-userId(2);
+// Subsequent accesses: returns same data (no refetch)
+console.log(user());
+
+// Change dependency: triggers refetch
+userId.set(2); // Automatically refetches with new ID
 ```
 
 ### Cache Keys
@@ -749,9 +746,8 @@ invalidateCache();
 ### Stale-While-Revalidate
 
 ```typescript
-const [data] = resource(
-  source,
-  fetcher,
+const data = resource(
+  () => fetchData(),
   {
     // Return stale data immediately, revalidate in background
     staleWhileRevalidate: true
@@ -768,10 +764,10 @@ const [data] = resource(
 ### Manual Revalidation
 
 ```typescript
-const [data, { refetch }] = resource(fetchData);
+const data = resource(() => fetchData());
 
 // Manually refetch
-<button on:click={refetch}>Refresh</button>
+<button on:click={() => data.refetch()}>Refresh</button>
 ```
 
 ### Automatic Revalidation
@@ -779,8 +775,8 @@ const [data, { refetch }] = resource(fetchData);
 ```typescript
 import { resource } from 'aether';
 
-const [data] = resource(
-  fetchData,
+const data = resource(
+  () => fetchData(),
   {
     // Revalidate on focus
     revalidateOnFocus: true,
@@ -799,8 +795,8 @@ const [data] = resource(
 ```typescript
 const isActive = signal(true);
 
-const [data] = resource(
-  fetchData,
+const data = resource(
+  () => fetchData(),
   {
     // Only revalidate when active
     refreshInterval: computed(() => isActive() ? 5000 : 0)
@@ -817,20 +813,20 @@ const [data] = resource(
 ### Basic Optimistic Update
 
 ```typescript
-const [todos, { mutate }] = resource(fetchTodos);
+const todos = resource(() => fetchTodos());
 
 const addTodo = async (text: string) => {
   const newTodo = { id: Date.now(), text, done: false };
 
   // Optimistic update (instant UI)
-  mutate([...todos(), newTodo]);
+  todos.mutate([...todos(), newTodo]);
 
   try {
     // Actual API call
     await saveTodo(newTodo);
   } catch (error) {
     // Rollback on error
-    mutate(todos());
+    todos.refetch(); // Or restore previous value
     alert('Failed to save todo');
   }
 };
@@ -839,13 +835,13 @@ const addTodo = async (text: string) => {
 ### Optimistic Update with Rollback
 
 ```typescript
-const [data, { mutate }] = resource(fetchData);
+const data = resource(() => fetchData());
 
 const updateItem = async (id: number, updates: Partial<Item>) => {
   const previousData = data();
 
   // Optimistic update
-  mutate(previousData.map(item =>
+  data.mutate(previousData.map(item =>
     item.id === id ? { ...item, ...updates } : item
   ));
 
@@ -853,7 +849,7 @@ const updateItem = async (id: number, updates: Partial<Item>) => {
     await api.updateItem(id, updates);
   } catch (error) {
     // Automatic rollback
-    mutate(previousData);
+    data.mutate(previousData);
     throw error;
   }
 };
@@ -862,17 +858,17 @@ const updateItem = async (id: number, updates: Partial<Item>) => {
 ### Reconciliation
 
 ```typescript
-const [data, { mutate }] = resource(fetchData);
+const data = resource(() => fetchData());
 
 const handleUpdate = async (updates: Partial<Data>) => {
   // Optimistic update
-  mutate({ ...data(), ...updates });
+  data.mutate({ ...data(), ...updates });
 
   // Server update
   const serverData = await api.update(updates);
 
   // Reconcile with server response
-  mutate(serverData);
+  data.mutate(serverData);
 };
 ```
 
@@ -898,15 +894,15 @@ export const loader = async () => {
 
 ```typescript
 const Component = defineComponent(() => {
-  const [users] = resource(fetchUsers);
-  const [posts] = resource(fetchPosts);
-  const [comments] = resource(fetchComments);
+  const users = resource(() => fetchUsers());
+  const posts = resource(() => fetchPosts());
+  const comments = resource(() => fetchComments());
 
   // All load in parallel
 
   return () => (
     <div>
-      {#if users.loading || posts.loading || comments.loading}
+      {#if users.loading() || posts.loading() || comments.loading()}
         <Spinner />
       {:else}
         <Dashboard
@@ -935,7 +931,7 @@ const Component = defineComponent(() => {
 });
 
 const Users = defineComponent(() => {
-  const [users] = resource(fetchUsers);
+  const users = resource(() => fetchUsers());
   return () => <UserList users={users()} />;
 });
 ```
@@ -974,8 +970,8 @@ export default defineComponent(() => {
 ### Resource Error Handling
 
 ```typescript
-const [data] = resource(
-  fetchData,
+const data = resource(
+  () => fetchData(),
   {
     onError: (error) => {
       console.error('Failed to load:', error);
@@ -985,10 +981,10 @@ const [data] = resource(
 );
 
 // In template
-{#if data.error}
+{#if data.error()}
   <div class="error">
-    Error: {data.error.message}
-    <button on:click={refetch}>Retry</button>
+    Error: {data.error().message}
+    <button on:click={() => data.refetch()}>Retry</button>
   </div>
 {/if}
 ```
@@ -1020,12 +1016,15 @@ interface User {
   email: string;
 }
 
-const [user] = resource<User>(
-  () => userId(),
-  (id) => fetch(`/api/users/${id}`).then(r => r.json())
+const userId = signal(1);
+
+const user = resource<User>(() =>
+  fetch(`/api/users/${userId()}`).then(r => r.json())
 );
 
 // user() is typed as User | undefined
+// user.loading() is typed as boolean
+// user.error() is typed as Error | undefined
 ```
 
 ### Typed Loaders
@@ -1062,7 +1061,7 @@ export async function getUser(id: number): Promise<User> {
 }
 
 // Client usage - fully typed
-const [user] = resource(() => 1, getUser);
+const user = resource(() => getUser(1));
 // user() is typed as User | undefined
 ```
 
@@ -1074,7 +1073,7 @@ const [user] = resource(() => 1, getUser);
 
 ```typescript
 // ✅ Good - declarative
-const [user] = resource(fetchUser);
+const user = resource(() => fetchUser());
 
 // ❌ Bad - imperative
 const user = signal(null);
@@ -1096,9 +1095,9 @@ routes/
 
 ```typescript
 // ✅ Good - handles all states
-{#if data.loading}
+{#if data.loading()}
   <Spinner />
-{:else if data.error}
+{:else if data.error()}
   <Error />
 {:else}
   <Content data={data()} />
@@ -1122,14 +1121,16 @@ const users = await fetchUsers();
 const posts = await fetchPosts();
 ```
 
-### 5. Invalidate Cache After Mutations
+### 5. Refetch After Mutations
 
 ```typescript
-const handleUpdate = async () => {
-  await updateUser(userId(), data);
+const data = resource(() => fetchUser(userId()));
 
-  // Invalidate cache
-  refetch();
+const handleUpdate = async () => {
+  await updateUser(userId(), newData);
+
+  // Refetch to get updated data
+  data.refetch();
 };
 ```
 

@@ -21,7 +21,7 @@
 
 ## Overview
 
-Aether provides **deep integration with Titan**, the TypeScript framework for distributed applications. This integration enables:
+Aether provides **optional integration with Titan**, the TypeScript framework for distributed applications. **This integration is completely optional** - Aether has its own built-in SSR server and can work standalone. When you choose to integrate, it enables:
 
 - 🔄 **Separate DI Systems**: Frontend (Aether) and Backend (Titan) each have their own DI, connected via contracts
 - 🌐 **Type-Safe RPC**: Call backend services from frontend with full type safety via interface contracts
@@ -32,7 +32,7 @@ Aether provides **deep integration with Titan**, the TypeScript framework for di
 
 > **Architecture Decision**: Frontend and backend have **separate DI implementations** connected via type-safe interface contracts. See `ARCHITECTURE-DECISION-TITAN-DI.md` for details.
 
-### Architecture
+### Architecture (Optional Integration)
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -41,22 +41,30 @@ Aether provides **deep integration with Titan**, the TypeScript framework for di
 │  │        Aether Frontend                 │  │
 │  │  - Components                         │  │
 │  │  - Client-side DI                     │  │
-│  │  - Netron RPC Client                  │  │
+│  │  - Netron RPC Client (optional)       │  │
 │  └──────────────────────────────────────┘  │
 └─────────────────────────────────────────────┘
                      │
                      │ HTTP/WebSocket (RPC)
+                     │ (Optional via Netron)
                      │
+┌──────────────────────────────┬──────────────┐
+│   Aether SSR Server          │              │
+│   (Port 3000)                │              │
+│   - Built-in HTTP server     │              │
+│   - Server rendering         │              │
+│   - Route handling           │              │
+│   - Static files             │              │
+└──────────────────────────────┘              │
+                     │                        │
+                     │ Optional               │
+                     │ Netron RPC             │
+                     │                        │
 ┌─────────────────────────────────────────────┐
-│              Titan Application               │
+│        Titan Backend (Optional)              │
+│        (Port 4000)                           │
 │  ┌──────────────────────────────────────┐  │
-│  │          Aether SSR                    │  │
-│  │  - Server rendering                   │  │
-│  │  - Route handling                     │  │
-│  │  - Server components                  │  │
-│  └──────────────────────────────────────┘  │
-│  ┌──────────────────────────────────────┐  │
-│  │         Shared Services               │  │
+│  │         Business Services             │  │
 │  │  - Business logic                     │  │
 │  │  - Data access                        │  │
 │  │  - Authentication                     │  │
@@ -68,6 +76,8 @@ Aether provides **deep integration with Titan**, the TypeScript framework for di
 │  └──────────────────────────────────────┘  │
 └─────────────────────────────────────────────┘
 ```
+
+> **Key Point**: Aether runs on its own port (3000) with its own built-in server. Titan (4000) is optional and connects via Netron RPC.
 
 ### Quick Example
 
@@ -416,10 +426,10 @@ export default defineComponent(() => {
     <div>
       <h1>Users</h1>
 
-      {#if users.loading}
+      {#if users.loading()}
         <Spinner />
-      {:else if users.error}
-        <Error message={users.error.message} />
+      {:else if users.error()}
+        <Error message={users.error().message} />
       {:else if users()}
         <ul>
           {#each users() as user}
@@ -626,10 +636,10 @@ export class UserService {
 
 // Frontend
 const userService = useRPC(UserService);
+const query = signal('');
 
-const [results] = resource(
-  () => query(), // Dependency
-  (q) => userService.search(q, 20) // Call with args
+const results = resource(() =>
+  userService.search(query(), 20)
 );
 ```
 
@@ -681,10 +691,10 @@ export class ProductService {
 // Frontend (automatic type inference!)
 const productService = useRPC(ProductService);
 
-const [products] = resource(() => productService.getProducts());
+const products = resource(() => productService.getProducts());
 
-// products() is typed as Product[]
-products().forEach(p => {
+// products() is typed as Product[] | undefined
+products()?.forEach(p => {
   console.log(p.name); // ✅ TypeScript knows 'name' exists
   console.log(p.invalid); // ❌ Type error
 });
@@ -1183,9 +1193,9 @@ export class ConfigService {
 // Frontend
 const configService = useRPC(ConfigService);
 
-const [config] = resource(() => configService.getPublicConfig());
+const config = resource(() => configService.getPublicConfig());
 
-<GoogleMap apiKey={config().googleMapsKey} />
+<GoogleMap apiKey={config()?.googleMapsKey} />
 ```
 
 ### Aether Configuration
@@ -1533,16 +1543,16 @@ import { TodoService } from './todo.service';
 export const TodoList = defineComponent(() => {
   const todoService = useRPC(TodoService);
 
-  const [todos, { refetch }] = resource(() => todoService.findAll());
+  const todos = resource(() => todoService.findAll());
 
   const handleToggle = async (id: string) => {
     await todoService.toggle(id);
-    refetch();
+    todos.refetch();
   };
 
   const handleDelete = async (id: string) => {
     await todoService.delete(id);
-    refetch();
+    todos.refetch();
   };
 
   return () => (

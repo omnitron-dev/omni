@@ -504,13 +504,13 @@ export class HttpRemotePeer extends AbstractPeer {
 
     try {
       // Make HTTP POST request to /netron/query-interface endpoint
-      const response = await this.sendHttpRequest<{ definition: Definition }>(
+      const response = await this.sendHttpRequest<{ result: Definition }>(
         'POST',
         '/netron/query-interface',
         { serviceName: qualifiedName }
       );
 
-      const definition = response.definition;
+      const definition = response.result;
 
       if (!definition) {
         throw new TitanError({

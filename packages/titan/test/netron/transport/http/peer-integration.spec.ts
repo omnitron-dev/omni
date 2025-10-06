@@ -9,7 +9,6 @@ import { HttpServer } from '../../../../src/netron/transport/http/server.js';
 import { HttpConnection } from '../../../../src/netron/transport/http/connection.js';
 import { Netron } from '../../../../src/netron/netron.js';
 import { Service, Public } from '../../../../src/decorators/core.js';
-import { getAvailablePort } from '../../../../src/netron/transport/utils.js';
 import { createMockLogger } from '../../test-utils.js';
 import type { ILogger } from '../../../../src/modules/logger/logger.types.js';
 
@@ -56,28 +55,53 @@ describe('HttpRemotePeer Integration (No Mocks)', () => {
 
   beforeAll(async () => {
     logger = createMockLogger();
-  });
 
-  beforeEach(async () => {
-    // Get a new port for each test to avoid conflicts
-    serverPort = await getAvailablePort(18000, 19000);
-    baseUrl = `http://localhost:${serverPort}`;
+    // Use a fixed unlikely port for test stability
+    serverPort = 18123;
+    baseUrl = `http://127.0.0.1:${serverPort}`;
 
-    // Create server-side Netron and expose service
+    // Create server-side Netron
     serverNetron = new Netron(logger);
     await serverNetron.start();
 
-    const calcService = new CalculatorService();
-    serverNetron.peer.exposeService(calcService);
-
-    // Create and start HTTP server
-    httpServer = new HttpServer(serverNetron.peer, serverNetron.logger, {
+    // Create HTTP server - use 127.0.0.1 to avoid IPv6/IPv4 confusion
+    httpServer = new HttpServer({
       port: serverPort,
-      host: 'localhost'
+      host: '127.0.0.1'
     });
+
+    // Expose the service
+    const calcService = new CalculatorService();
+    await serverNetron.peer.exposeService(calcService);
+
+    // Attach the server to the local peer (this registers the services)
+    httpServer.setPeer(serverNetron.peer);
+
+    // Start listening
     await httpServer.listen();
 
-    // Create client-side Netron
+    // Wait a bit for server to be fully ready
+    await new Promise(resolve => setTimeout(resolve, 100));
+  });
+
+  afterAll(async () => {
+    try {
+      if (httpServer) {
+        await httpServer.close();
+      }
+      if (serverNetron) {
+        await serverNetron.stop();
+      }
+    } catch (error) {
+      console.error('Cleanup error (ignored):', error);
+    }
+
+    // Add delay to ensure port is fully released
+    await new Promise(resolve => setTimeout(resolve, 500));
+  });
+
+  beforeEach(async () => {
+    // Create client-side Netron and peer for each test
     clientNetron = new Netron(logger);
     await clientNetron.start();
 
@@ -89,32 +113,25 @@ describe('HttpRemotePeer Integration (No Mocks)', () => {
 
   afterEach(async () => {
     try {
+      // Disconnect client resources
       if (httpPeer) {
-        await httpPeer.disconnect();
+        await httpPeer.close();
       }
       if (connection) {
         await connection.close();
       }
-      if (httpServer) {
-        await httpServer.close();
-      }
       if (clientNetron) {
         await clientNetron.stop();
       }
-      if (serverNetron) {
-        await serverNetron.stop();
-      }
-      // Add small delay to ensure port is released
-      await new Promise(resolve => setTimeout(resolve, 100));
     } catch (error) {
-      // Ignore cleanup errors
+      // Ignore cleanup errors (expected for tests that close resources)
     }
   });
 
   describe('Peer Initialization', () => {
     it('should initialize HTTP peer with correct properties', () => {
       expect(httpPeer).toBeDefined();
-      expect(httpPeer.id).toMatch(/^http-direct-localhost/);
+      expect(httpPeer.id).toMatch(/^http-direct-127\.0\.0\.1/);
       expect(httpPeer.netron).toBe(clientNetron);
     });
 
@@ -133,7 +150,7 @@ describe('HttpRemotePeer Integration (No Mocks)', () => {
       const definition = await httpPeer.queryInterfaceRemote('calculator@1.0.0');
 
       expect(definition).toBeDefined();
-      expect(definition.serviceName).toBe('calculator@1.0.0');
+      expect(definition.meta.name).toBe('calculator@1.0.0');
       expect(definition.meta.methods).toBeDefined();
       expect(Object.keys(definition.meta.methods)).toContain('add');
       expect(Object.keys(definition.meta.methods)).toContain('subtract');
@@ -253,12 +270,12 @@ describe('HttpRemotePeer Integration (No Mocks)', () => {
   });
 
   describe('Connection Management', () => {
-    it('should disconnect cleanly', async () => {
+    it('should close cleanly', async () => {
       await httpPeer.queryInterface('calculator@1.0.0');
 
-      await httpPeer.disconnect();
+      await httpPeer.close();
 
-      // Should not be able to query after disconnect
+      // Should not be able to query after close
       // Note: HTTP peer might still work as it's stateless, but connection should be closed
       expect(connection.state).not.toBe('open');
     });
@@ -293,7 +310,7 @@ describe('HttpRemotePeer Integration (No Mocks)', () => {
 
       expect((customPeer as any).defaultOptions.timeout).toBe(5000);
 
-      await customPeer.disconnect();
+      await customPeer.close();
     });
 
     it('should use custom headers from options', async () => {
@@ -307,7 +324,7 @@ describe('HttpRemotePeer Integration (No Mocks)', () => {
 
       expect((customPeer as any).defaultOptions.headers).toHaveProperty('X-Custom-Header', 'test-value');
 
-      await customPeer.disconnect();
+      await customPeer.close();
     });
   });
 });

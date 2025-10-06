@@ -12,6 +12,7 @@ export default defineConfig({
     'router/index': 'src/router/index.ts',
     'forms/index': 'src/forms/index.ts',
     'control-flow/index': 'src/control-flow/index.ts',
+    'primitives/index': 'src/primitives/index.ts',
   },
   format: ['esm'],
   dts: true,

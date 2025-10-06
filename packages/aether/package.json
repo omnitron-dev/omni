@@ -46,6 +46,10 @@
       "types": "./dist/control-flow/index.d.ts",
       "import": "./dist/control-flow/index.js"
     },
+    "./primitives": {
+      "types": "./dist/primitives/index.d.ts",
+      "import": "./dist/primitives/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

@@ -765,21 +765,26 @@ All requirements from `02-REACTIVITY.md` implemented and tested ✓
 
 ---
 
-### Phase 6: UI Primitives (3-4 weeks)
+### Phase 6: UI Primitives (3-4 weeks) - 🚧 IN PROGRESS
 
 **Goal:** Headless, accessible UI components
 
 **Tasks:**
 
-1. **Core Primitives** (Week 1-2)
-   - [ ] Dialog / Modal
+1. **Accessibility Infrastructure** ✅
+   - [x] ID generation utilities (`generateId`, `useId`, `createIdGenerator`)
+   - [x] Focus management (`getFocusableElements`, `trapFocus`, `saveFocus`, `restoreFocus`)
+   - [x] Scroll lock (`disableBodyScroll`, `enableBodyScroll`)
+
+2. **Core Primitives** (Week 1-2) - 🚧
+   - [x] Dialog / Modal (with accessibility, keyboard nav, focus trap)
    - [ ] Popover / Tooltip
    - [ ] Dropdown Menu
    - [ ] Select / Combobox
    - [ ] Tabs
    - [ ] Accordion
 
-2. **Advanced Primitives** (Week 2-3)
+3. **Advanced Primitives** (Week 2-3)
    - [ ] Slider / Range
    - [ ] Toggle / Switch
    - [ ] RadioGroup / CheckboxGroup
@@ -787,21 +792,22 @@ All requirements from `02-REACTIVITY.md` implemented and tested ✓
    - [ ] DatePicker / Calendar
    - [ ] DataTable
 
-3. **Accessibility** (Week 3)
-   - [ ] ARIA attributes
-   - [ ] Keyboard navigation
-   - [ ] Focus management
-   - [ ] Screen reader testing
-
-4. **Testing** (Week 3-4)
-   - [ ] Component tests
+4. **Testing** ✅ (Ongoing)
+   - [x] Primitive utilities tests (85 tests)
+   - [x] Dialog component tests (30 tests)
    - [ ] Accessibility tests (axe-core)
    - [ ] Keyboard navigation tests
 
 **Deliverables:**
-- Primitives module in `@omnitron-dev/aether/primitives`
-- Primitive examples
-- Accessibility guide
+- ✅ Primitives module in `@omnitron-dev/aether/primitives`
+- ✅ Dialog primitive with full accessibility
+- [ ] Primitive examples
+- [ ] Accessibility guide
+
+**Test Coverage:**
+- Total: 716 tests passing, 11 skipped
+- Primitives: 115 tests (85 utils + 30 Dialog)
+- All tests passing
 
 ---
 

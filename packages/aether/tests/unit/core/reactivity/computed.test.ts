@@ -506,7 +506,7 @@ describe('Computed', () => {
       });
     });
 
-    it.skip('should handle nested batches with computeds', async () => {
+    it('should handle nested batches with computeds', async () => {
       await new Promise<void>(resolve => {
         createRoot(d => {
           dispose = d;

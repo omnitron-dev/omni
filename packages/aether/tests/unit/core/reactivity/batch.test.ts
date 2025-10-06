@@ -183,14 +183,52 @@ describe('Batch', () => {
   });
 
   describe('Computed interaction', () => {
-    it.skip('should batch computed updates', () => {
-      // Skipping this test as it has issues with computed not updating properly after batch
-      // This appears to be a bug in the reactive system that needs investigation
+    it('should batch computed updates', () => {
+      createRoot(d => {
+        dispose = d;
+        const a = signal(1);
+        const b = signal(2);
+        const computeFn = vi.fn(() => a() + b());
+        const sum = computed(computeFn);
+
+        // Initial computation
+        expect(sum()).toBe(3);
+        expect(computeFn).toHaveBeenCalledTimes(1);
+
+        // Batch update both signals
+        batch(() => {
+          a.set(10);
+          b.set(20);
+        });
+
+        // Computed should update once, not twice
+        expect(sum()).toBe(30);
+        expect(computeFn).toHaveBeenCalledTimes(2);
+      });
     });
 
-    it.skip('should handle diamond dependencies in batch', () => {
-      // Skipping this test as it has issues with computed not updating properly after batch
-      // This appears to be a bug in the reactive system that needs investigation
+    it('should handle diamond dependencies in batch', () => {
+      createRoot(disposeRoot => {
+        dispose = disposeRoot;
+        const a = signal(1);
+        const b = computed(() => a() * 2);
+        const c = computed(() => a() * 3);
+        const dFn = vi.fn(() => b() + c());
+        const d = computed(dFn);
+
+        // Initial: a=1, b=2, c=3, d=5
+        expect(d()).toBe(5);
+        expect(dFn).toHaveBeenCalledTimes(1);
+
+        // Update a in batch
+        batch(() => {
+          a.set(10);
+        });
+
+        // d should compute once: a=10, b=20, c=30, d=50
+        expect(d()).toBe(50);
+        expect(dFn).toHaveBeenCalledTimes(2);
+      });
     });
   });
 

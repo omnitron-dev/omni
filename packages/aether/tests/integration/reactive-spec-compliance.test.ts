@@ -460,7 +460,7 @@ describe('Aura Reactive System Spec Compliance', () => {
   });
 
   describe('Batch Updates (Spec Section 2.1)', () => {
-    it.skip('should group updates for optimization', () => {
+    it('should group updates for optimization', () => {
       let renderCount = 0;
       
       createRoot(d => {

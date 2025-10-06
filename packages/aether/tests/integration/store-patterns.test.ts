@@ -1,19 +1,17 @@
 /**
  * Integration tests for store patterns with computed and effects
- *
- * NOTE: Temporarily disabled - fixtures file not migrated yet
  */
 
 import { it, vi, expect, describe, afterEach } from 'vitest';
 import { signal, computed, effect, createRoot } from '../../src/core/reactivity/index.js';
-// import {
-//   createMethodBasedStore,
-//   createSignalBasedStore,
-//   createComputedBasedStore,
-//   createComplexStore
-// } from '../fixtures/sample-store-patterns.js';
+import {
+  createMethodBasedStore,
+  createSignalBasedStore,
+  createComputedBasedStore,
+  createComplexStore,
+} from '../fixtures/sample-store-patterns.js';
 
-describe.skip('Store Patterns Integration Tests', () => {
+describe('Store Patterns Integration Tests', () => {
   let dispose: (() => void) | undefined;
 
   afterEach(() => {

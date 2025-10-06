@@ -130,7 +130,7 @@ describe('Resource', () => {
   });
 
   describe('Reactivity', () => {
-    it.skip('should be reactive with signals', async () => {
+    it('should be reactive with signals', async () => {
       const fetcher = async () => 'data';
       
       await createRoot(async d => {
@@ -182,7 +182,7 @@ describe('Resource', () => {
       expect(doubled()).toBe(84);
     });
 
-    it.skip('should trigger effects on state changes', async () => {
+    it('should trigger effects on state changes', async () => {
       const results: string[] = [];
       
       await createRoot(async d => {
@@ -268,28 +268,24 @@ describe('Resource', () => {
       expect(r()).toBe('success');
     });
 
-    it.skip('should handle timeout errors', async () => {
+    it('should handle slow fetchers', async () => {
       const fetcher = async () => {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 50));
         return 'data';
       };
-      
+
       const r = resource(fetcher);
-      
+
       // Should be loading initially
       expect(r.loading()).toBe(true);
-      
-      // Wait less than timeout
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Should still be loading
-      expect(r.loading()).toBe(true);
-      
-      // Wait for completion
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
+      expect(r()).toBeUndefined();
+
+      // Wait for completion (give enough buffer time)
+      await new Promise(resolve => setTimeout(resolve, 150));
+
       expect(r.loading()).toBe(false);
       expect(r()).toBe('data');
+      expect(r.error()).toBeUndefined();
     });
   });
 
@@ -582,21 +578,21 @@ describe('Resource', () => {
       expect(fetchCount).toBe(3);
     });
 
-    it.skip('should support retry pattern', async () => {
+    it('should support retry pattern', async () => {
       let attempts = 0;
       const maxRetries = 3;
-      
+
       const fetcher = createTrackableFunction(async () => {
         attempts++;
         await new Promise(resolve => setTimeout(resolve, 10));
-        
+
         if (attempts < maxRetries) {
           throw new Error(`Attempt ${attempts} failed`);
         }
-        
+
         return { success: true, attempts };
       });
-      
+
       const retryFetcher = async () => {
         let lastError;
         for (let i = 0; i < maxRetries; i++) {
@@ -604,16 +600,22 @@ describe('Resource', () => {
             return await fetcher();
           } catch (e) {
             lastError = e;
-            await new Promise(resolve => setTimeout(resolve, 100));
+            // Only wait between retries, not after last attempt
+            if (i < maxRetries - 1) {
+              await new Promise(resolve => setTimeout(resolve, 50));
+            }
           }
         }
         throw lastError;
       };
-      
+
       const r = resource(retryFetcher);
-      
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
+
+      // Wait for all retries to complete
+      // Calculation: (10ms attempt + 50ms wait) * 2 failed attempts + 10ms final attempt + buffer
+      // = 60ms + 60ms + 10ms + 100ms buffer = 230ms
+      await new Promise(resolve => setTimeout(resolve, 250));
+
       expect(r()).toEqual({ success: true, attempts: 3 });
       expect(r.error()).toBeUndefined();
     });

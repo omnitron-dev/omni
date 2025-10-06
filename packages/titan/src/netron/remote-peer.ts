@@ -846,13 +846,14 @@ export class RemotePeer extends AbstractPeer {
    */
   override invalidateDefinitionCache(pattern?: string): number {
     // Call parent implementation to invalidate definition cache
-    const count = super.invalidateDefinitionCache(pattern);
+    const parentCount = super.invalidateDefinitionCache(pattern);
 
     if (!pattern) {
       // Clear all services and definitions
+      const totalCount = this.services.size + this.definitions.size;
       this.services.clear();
       this.definitions.clear();
-      return count;
+      return parentCount + totalCount;
     }
 
     // Pattern matching - remove matching services and definitions
@@ -880,7 +881,8 @@ export class RemotePeer extends AbstractPeer {
       this.definitions.delete(id);
     }
 
-    return count;
+    // Return total count of invalidated items
+    return parentCount + servicesToDelete.length + definitionsToDelete.length;
   }
 
   /**

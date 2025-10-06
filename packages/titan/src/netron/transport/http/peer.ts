@@ -201,6 +201,66 @@ export class HttpRemotePeer extends AbstractPeer {
   }
 
   /**
+   * Invalidate definition cache for services matching a pattern
+   * @override
+   */
+  override invalidateDefinitionCache(pattern?: string): number {
+    // Call parent implementation to invalidate definition cache
+    const parentCount = super.invalidateDefinitionCache(pattern);
+
+    if (!pattern) {
+      // Clear all services and definitions
+      const totalCount = this.services.size + this.definitions.size;
+      this.services.clear();
+      this.definitions.clear();
+      return parentCount + totalCount;
+    }
+
+    // Pattern matching - remove matching services and definitions
+    const servicesToDelete: string[] = [];
+    const definitionsToDelete: string[] = [];
+
+    // Find matching services
+    for (const key of this.services.keys()) {
+      if (this.matchServicePattern(key, pattern)) {
+        servicesToDelete.push(key);
+        const def = this.services.get(key);
+        if (def) {
+          definitionsToDelete.push(def.id);
+        }
+      }
+    }
+
+    // Delete matched services
+    for (const key of servicesToDelete) {
+      this.services.delete(key);
+    }
+
+    // Delete matched definitions
+    for (const id of definitionsToDelete) {
+      this.definitions.delete(id);
+    }
+
+    // Return total count of invalidated items
+    return parentCount + servicesToDelete.length + definitionsToDelete.length;
+  }
+
+  /**
+   * Pattern matching helper for HTTP peer
+   * @private
+   */
+  private matchServicePattern(serviceName: string, pattern: string): boolean {
+    if (serviceName === pattern) return true;
+    if (!pattern.includes('*')) return false;
+
+    const regexPattern = pattern
+      .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*/g, '.*');
+    const regex = new RegExp(`^${regexPattern}$`);
+    return regex.test(serviceName);
+  }
+
+  /**
    * Execute a task on the remote peer
    */
   async executeTask<T = any>(task: string, payload: any): Promise<T> {

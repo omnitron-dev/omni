@@ -514,13 +514,16 @@ migrate().catch(console.error);
    - [x] Context API (`createContext`, `useContext`)
    - [x] Refs (`createRef`, `useRef`, `reactiveRef`, `mergeRefs`)
    - [x] Component tests (110 tests passing: define, lifecycle, props, context, refs)
-   - [ ] Event system (deferred to JSX runtime integration)
+   - [x] JSX Runtime (`jsx`, `jsxs`, `Fragment`, JSX types)
+   - [x] JSX Runtime tests (38 tests passing: DOM creation, props, events, components)
+   - [x] Event system integrated in JSX runtime
 
-2. **Compiler - Parser** (Week 2)
-   - [ ] TSX lexer
-   - [ ] AST parser
-   - [ ] Template syntax parsing (nx:if, nx:for, etc.)
-   - [ ] Directive parsing
+2. **Compiler - Parser** (Week 2) ⏭️ SKIPPED (using TypeScript JSX transform)
+   - [x] Using TypeScript's built-in `react-jsx` transform instead of custom parser
+   - [ ] ~~TSX lexer~~ (not needed - TypeScript handles this)
+   - [ ] ~~AST parser~~ (not needed - TypeScript handles this)
+   - [ ] Template syntax parsing (nx:if, nx:for, etc.) - deferred to future optimization phase
+   - [ ] Directive parsing - deferred to future optimization phase
 
 3. **Compiler - Transformer** (Week 2-3)
    - [ ] Template → reactive JS transformation
@@ -1278,8 +1281,10 @@ export default defineComponent(() => {
 - ✅ Vibrancy migration complete (271 tests migrated and passing)
 - ✅ Core reactivity system stable (signal, computed, effect, store, resource)
 - ✅ Component runtime working (defineComponent, lifecycle, props, context, refs - 110 tests passing)
-- 🔄 Compiler MVP (in progress - next phase)
-- 🎯 Goal: Build Hello World app
+- ✅ JSX Runtime implemented (jsx, jsxs, Fragment - 38 tests passing)
+- ✅ Components can render with TypeScript JSX transform
+- ✅ Compiler: Using TypeScript's react-jsx instead of custom compiler
+- 🎯 Goal: Build Hello World app - **READY**
 
 ### Milestone 2: Core Features (Months 2-4)
 - ✅ DI system complete

@@ -6,6 +6,8 @@ export default defineConfig({
     'core/index': 'src/core/index.ts',
     'core/reactivity/index': 'src/core/reactivity/index.ts',
     'core/component/index': 'src/core/component/index.ts',
+    'jsx-runtime': 'src/jsx-runtime.ts',
+    'jsx-dev-runtime': 'src/jsx-dev-runtime.ts',
   },
   format: ['esm'],
   dts: true,

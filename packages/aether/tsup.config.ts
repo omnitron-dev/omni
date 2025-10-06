@@ -5,6 +5,7 @@ export default defineConfig({
     index: 'src/index.ts',
     'core/index': 'src/core/index.ts',
     'core/reactivity/index': 'src/core/reactivity/index.ts',
+    'core/component/index': 'src/core/component/index.ts',
   },
   format: ['esm'],
   dts: true,

@@ -44,5 +44,32 @@ export {
   type AsyncComputedOptions,
 } from './core/index.js';
 
+// Component system exports (commonly used)
+export {
+  // Component definition
+  defineComponent,
+  component,
+  // Lifecycle
+  onMount,
+  onError,
+  // Props
+  mergeProps,
+  splitProps,
+  // Context
+  createContext,
+  useContext,
+  // Refs
+  createRef,
+  useRef,
+  reactiveRef,
+  mergeRefs,
+  // Types
+  type Component,
+  type ComponentSetup,
+  type RenderFunction,
+  type Context,
+  type Ref,
+} from './core/index.js';
+
 // Re-export everything from core for convenience
 export * from './core/index.js';

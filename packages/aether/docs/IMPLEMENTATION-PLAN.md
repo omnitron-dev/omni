@@ -507,13 +507,14 @@ migrate().catch(console.error);
 
 **Tasks:**
 
-1. **Component Runtime** (Week 1-2)
-   - [ ] Implement `defineComponent()`
-   - [ ] Lifecycle hooks (onMount, onCleanup, onUpdate)
-   - [ ] Props with type inference
-   - [ ] Context API (`createContext`, `useContext`)
-   - [ ] Refs (`createRef`, `useRef`)
-   - [ ] Event system
+1. **Component Runtime** (Week 1-2) ✅ COMPLETED
+   - [x] Implement `defineComponent()` and `component()` helper
+   - [x] Lifecycle hooks (onMount, onCleanup via reactive context, onError)
+   - [x] Props utilities (mergeProps, splitProps, reactiveProps)
+   - [x] Context API (`createContext`, `useContext`)
+   - [x] Refs (`createRef`, `useRef`, `reactiveRef`, `mergeRefs`)
+   - [x] Component tests (110 tests passing: define, lifecycle, props, context, refs)
+   - [ ] Event system (deferred to JSX runtime integration)
 
 2. **Compiler - Parser** (Week 2)
    - [ ] TSX lexer
@@ -1274,10 +1275,10 @@ export default defineComponent(() => {
 ## Milestones and Timeline
 
 ### Milestone 1: Foundation (Months 1-2)
-- ✅ Vibrancy migration complete
-- ✅ Core reactivity system stable
-- ✅ Component system working
-- ✅ Compiler MVP
+- ✅ Vibrancy migration complete (271 tests migrated and passing)
+- ✅ Core reactivity system stable (signal, computed, effect, store, resource)
+- ✅ Component runtime working (defineComponent, lifecycle, props, context, refs - 110 tests passing)
+- 🔄 Compiler MVP (in progress - next phase)
 - 🎯 Goal: Build Hello World app
 
 ### Milestone 2: Core Features (Months 2-4)

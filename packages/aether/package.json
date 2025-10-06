@@ -18,6 +18,10 @@
       "types": "./dist/core/reactivity/index.d.ts",
       "import": "./dist/core/reactivity/index.js"
     },
+    "./core/component": {
+      "types": "./dist/core/component/index.d.ts",
+      "import": "./dist/core/component/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

@@ -1,0 +1,1912 @@
+# 03. Component Architecture
+
+> **Status**: Complete Specification
+> **Last Updated**: 2025-10-06
+> **Part of**: Nexus Frontend Framework Specification
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Philosophy](#philosophy)
+3. [Component Definition](#component-definition)
+4. [Lifecycle](#lifecycle)
+5. [Props](#props)
+6. [Slots](#slots)
+7. [Context](#context)
+8. [Refs](#refs)
+9. [Events](#events)
+10. [Async Components](#async-components)
+11. [Error Boundaries](#error-boundaries)
+12. [Performance](#performance)
+13. [Composition Patterns](#composition-patterns)
+14. [Server Components](#server-components)
+15. [Comparison](#comparison)
+16. [Best Practices](#best-practices)
+17. [API Reference](#api-reference)
+18. [Examples](#examples)
+
+---
+
+## Overview
+
+Components are the fundamental building blocks of Nexus applications. Unlike frameworks that use classes or special syntax, Nexus components are **just functions** that return a render function.
+
+### What is a Component?
+
+A component in Nexus is a **function** that:
+1. Sets up reactive state (signals, computed values)
+2. Defines lifecycle hooks (onMount, onCleanup)
+3. Returns a **render function** that produces DOM
+
+```typescript
+import { defineComponent, signal } from 'nexus';
+
+// Simple counter component
+const Counter = defineComponent(() => {
+  // 1. Setup (runs ONCE)
+  const count = signal(0);
+
+  console.log('Setup runs once');
+
+  // 2. Return render function (runs on every dependency change)
+  return () => (
+    <div>
+      <p>Count: {count()}</p>
+      <button on:click={() => count.set(count() + 1)}>
+        Increment
+      </button>
+    </div>
+  );
+});
+```
+
+**Key Insight**: The setup function runs **once** when the component is created. The render function re-runs **only for specific DOM nodes** that depend on changed signals (fine-grained reactivity).
+
+### Component vs Function Component
+
+**Nexus** (setup runs once):
+```typescript
+const Counter = defineComponent(() => {
+  const count = signal(0);
+
+  console.log('Setup once'); // Logs once
+
+  return () => {
+    console.log('Render'); // Only logs when count() is read in template
+    return <div>{count()}</div>;
+  };
+});
+```
+
+**React** (entire component re-runs):
+```jsx
+function Counter() {
+  const [count, setCount] = useState(0);
+
+  console.log('Entire component runs'); // Logs on every state change!
+
+  return <div>{count}</div>;
+}
+```
+
+---
+
+## Philosophy
+
+### Why Function-Based?
+
+Nexus favors **function-based components** over class-based for several reasons:
+
+**Problems with Classes**:
+1. **Boilerplate**: `this` binding, constructor, lifecycle methods
+2. **Confusing `this`**: Common source of bugs
+3. **Harder to Optimize**: Harder for compilers to tree-shake
+4. **Less Composable**: Mixins are discouraged, HOCs are complex
+
+**Benefits of Functions**:
+1. **Simplicity**: No `this`, no binding, just closures
+2. **Composability**: Easy to extract and share logic
+3. **Tree-Shaking**: Unused code is eliminated
+4. **Familiar**: Standard JavaScript functions
+
+### Comparison: Class vs Function
+
+**Class-Based** (verbose):
+```typescript
+class Counter extends Component {
+  constructor(props) {
+    super(props);
+    this.state = signal(0);
+    this.increment = this.increment.bind(this); // Annoying!
+  }
+
+  increment() {
+    this.state(this.state() + 1);
+  }
+
+  render() {
+    return (
+      <button on:click={this.increment}>
+        {this.state()}
+      </button>
+    );
+  }
+}
+```
+
+**Function-Based** (concise):
+```typescript
+const Counter = defineComponent(() => {
+  const count = signal(0);
+
+  return () => (
+    <button on:click={() => count.set(count() + 1)}>
+      {count()}
+    </button>
+  );
+});
+```
+
+### Setup/Render Separation
+
+Nexus separates **setup** (runs once) from **render** (runs on updates):
+
+```typescript
+const MyComponent = defineComponent(() => {
+  // ✅ SETUP PHASE (runs once)
+  // - Create signals
+  // - Setup effects
+  // - Define functions
+  // - Setup lifecycle hooks
+
+  const count = signal(0);
+
+  onMount(() => {
+    console.log('Mounted');
+  });
+
+  const increment = () => count.set(count() + 1);
+
+  // ✅ RENDER PHASE (re-runs on fine-grained updates)
+  return () => (
+    <div>
+      {count()} {/* Only this text node updates */}
+    </div>
+  );
+});
+```
+
+**Mental Model**:
+- **Setup** = Constructor (but runs once per component instance)
+- **Render** = What the DOM looks like for current state
+
+---
+
+## Component Definition
+
+### Basic Syntax
+
+```typescript
+import { defineComponent } from 'nexus';
+
+const MyComponent = defineComponent(() => {
+  // Setup
+
+  return () => (
+    // Template
+    <div>Hello World</div>
+  );
+});
+```
+
+### With Props
+
+```typescript
+import { defineComponent } from 'nexus';
+
+interface CounterProps {
+  initialValue?: number;
+  onChange?: (value: number) => void;
+}
+
+const Counter = defineComponent<CounterProps>((props) => {
+  const count = signal(props.initialValue ?? 0);
+
+  const increment = () => {
+    const newValue = count() + 1;
+    count.set(newValue);
+    props.onChange?.(newValue);
+  };
+
+  return () => (
+    <button on:click={increment}>
+      {count()}
+    </button>
+  );
+});
+
+// Usage
+<Counter initialValue={5} onChange={(v) => console.log(v)} />
+```
+
+### Props Destructuring
+
+```typescript
+// ❌ DON'T: Loses reactivity
+const MyComponent = defineComponent<MyProps>(({ value, onChange }) => {
+  // 'value' is no longer reactive!
+  return () => <div>{value}</div>;
+});
+
+// ✅ DO: Keep props object
+const MyComponent = defineComponent<MyProps>((props) => {
+  return () => <div>{props.value}</div>;
+});
+
+// ✅ ALSO OK: Use splitProps for local signals
+const MyComponent = defineComponent<MyProps>((props) => {
+  const [local, others] = splitProps(props, ['value']);
+  const value = signal(local.value); // Now a local signal
+
+  return () => <div>{value()}</div>;
+});
+```
+
+### Default Props
+
+```typescript
+import { mergeProps } from 'nexus';
+
+const Button = defineComponent<ButtonProps>((props) => {
+  // Merge with defaults
+  const merged = mergeProps({ variant: 'primary', size: 'md' }, props);
+
+  return () => (
+    <button class={`btn-${merged.variant} btn-${merged.size}`}>
+      <slot />
+    </button>
+  );
+});
+```
+
+### Component Naming
+
+```typescript
+// ✅ PascalCase for components
+const UserProfile = defineComponent(() => { /* ... */ });
+const TodoList = defineComponent(() => { /* ... */ });
+
+// ❌ camelCase for components (confusing)
+const userProfile = defineComponent(() => { /* ... */ });
+
+// ✅ camelCase for regular functions
+const formatDate = (date: Date) => { /* ... */ };
+```
+
+### Inline Components
+
+```typescript
+// ✅ Define outside (preferred - reused, better debugging)
+const ListItem = defineComponent<{ item: Item }>((props) => {
+  return () => <li>{props.item.name}</li>;
+});
+
+const List = defineComponent(() => {
+  const items = signal([...]
+
+  return () => (
+    <ul>
+      {#each items() as item}
+        <ListItem item={item} />
+      {/each}
+    </ul>
+  );
+});
+
+// ⚠️ Define inside (creates new component on every render)
+const List = defineComponent(() => {
+  const items = signal([...]
+
+  return () => {
+    // New component created every render!
+    const ListItem = defineComponent<{ item: Item }>(() => { /* ... */ });
+
+    return (
+      <ul>
+        {#each items() as item}
+          <ListItem item={item} />
+        {/each}
+      </ul>
+    );
+  };
+});
+```
+
+---
+
+## Lifecycle
+
+Nexus provides lifecycle hooks for managing component behavior:
+
+### onMount
+
+Runs **after** component is inserted into DOM.
+
+```typescript
+import { defineComponent, onMount } from 'nexus';
+
+const MyComponent = defineComponent(() => {
+  onMount(() => {
+    console.log('Component mounted');
+
+    // Access DOM
+    const el = document.getElementById('my-element');
+    el?.focus();
+
+    // Start timers, fetch data, etc.
+    const timer = setInterval(() => {
+      console.log('Tick');
+    }, 1000);
+
+    // Return cleanup function
+    return () => {
+      clearInterval(timer);
+    };
+  });
+
+  return () => <div id="my-element">Hello</div>;
+});
+```
+
+**When to use**:
+- Fetch initial data
+- Setup timers/intervals
+- Initialize third-party libraries
+- Access DOM elements
+- Setup event listeners
+
+### onCleanup
+
+Runs when component is **unmounted** or **effect re-runs**.
+
+```typescript
+import { defineComponent, onCleanup } from 'nexus';
+
+const MyComponent = defineComponent(() => {
+  // Cleanup when component unmounts
+  onCleanup(() => {
+    console.log('Cleaning up');
+  });
+
+  // Also works in effects
+  effect(() => {
+    const subscription = someObservable.subscribe(/* ... */);
+
+    onCleanup(() => {
+      subscription.unsubscribe();
+    });
+  });
+
+  return () => <div>Hello</div>;
+});
+```
+
+**When to use**:
+- Clear timers/intervals
+- Unsubscribe from observables
+- Remove event listeners
+- Cleanup third-party libraries
+- Abort network requests
+
+### onError
+
+Catches errors in component tree.
+
+```typescript
+import { defineComponent, onError } from 'nexus';
+
+const ErrorBoundary = defineComponent((props) => {
+  const error = signal<Error | null>(null);
+
+  onError((err) => {
+    console.error('Caught error:', err);
+    error.set(err);
+
+    // Optionally re-throw to parent
+    // throw err;
+  });
+
+  return () => {
+    if (error()) {
+      return (
+        <div class="error-boundary">
+          <h2>Something went wrong</h2>
+          <pre>{error()!.message}</pre>
+          <button on:click={() => error.set(null)}>
+            Try Again
+          </button>
+        </div>
+      );
+    }
+
+    return <slot />;
+  };
+});
+
+// Usage
+<ErrorBoundary>
+  <MyComponent />
+</ErrorBoundary>
+```
+
+### Lifecycle Order
+
+```typescript
+const MyComponent = defineComponent(() => {
+  console.log('1. Setup runs');
+
+  onMount(() => {
+    console.log('3. onMount runs (after DOM insertion)');
+
+    return () => {
+      console.log('5. onMount cleanup (on unmount)');
+    };
+  });
+
+  onCleanup(() => {
+    console.log('6. onCleanup runs (on unmount)');
+  });
+
+  console.log('2. Setup complete');
+
+  return () => {
+    console.log('4. Render (runs on updates)');
+    return <div>Hello</div>;
+  };
+});
+```
+
+**Order**:
+1. Setup phase runs
+2. Render function called
+3. DOM inserted
+4. `onMount` runs
+5. On updates: Only affected render parts re-run
+6. On unmount: `onMount` cleanup, then `onCleanup`
+
+### Advanced: Custom Lifecycle Hooks
+
+```typescript
+// Custom hook: useInterval
+export const useInterval = (callback: () => void, delay: number) => {
+  onMount(() => {
+    const timer = setInterval(callback, delay);
+    return () => clearInterval(timer);
+  });
+};
+
+// Usage
+const Clock = defineComponent(() => {
+  const time = signal(new Date()
+
+  useInterval(() => {
+    time.set(new Date());
+  }, 1000);
+
+  return () => <div>{time().toLocaleTimeString()}</div>;
+});
+```
+
+---
+
+## Props
+
+Props are how parent components pass data to children.
+
+### Basic Props
+
+```typescript
+interface ButtonProps {
+  text: string;
+  onClick: () => void;
+}
+
+const Button = defineComponent<ButtonProps>((props) => {
+  return () => (
+    <button on:click={props.onClick}>
+      {props.text}
+    </button>
+  );
+});
+
+// Usage
+<Button text="Click me" onClick={() => console.log('Clicked')} />
+```
+
+### Optional Props
+
+```typescript
+interface CardProps {
+  title: string;
+  description?: string; // Optional
+  footer?: string;
+}
+
+const Card = defineComponent<CardProps>((props) => {
+  return () => (
+    <div class="card">
+      <h2>{props.title}</h2>
+      {#if props.description}
+        <p>{props.description}</p>
+      {/if}
+      {#if props.footer}
+        <footer>{props.footer}</footer>
+      {/if}
+    </div>
+  );
+});
+```
+
+### Props with Defaults
+
+```typescript
+interface ButtonProps {
+  text: string;
+  variant?: 'primary' | 'secondary';
+  size?: 'sm' | 'md' | 'lg';
+}
+
+const Button = defineComponent<ButtonProps>((props) => {
+  // Option 1: mergeProps
+  const merged = mergeProps(
+    { variant: 'primary', size: 'md' },
+    props
+  );
+
+  return () => (
+    <button class={`btn-${merged.variant} btn-${merged.size}`}>
+      {merged.text}
+    </button>
+  );
+});
+
+// Option 2: ?? operator
+const Button = defineComponent<ButtonProps>((props) => {
+  return () => (
+    <button class={`btn-${props.variant ?? 'primary'} btn-${props.size ?? 'md'}`}>
+      {props.text}
+    </button>
+  );
+});
+```
+
+### Reactive Props
+
+Props are **reactive** - reading them in the render function creates a dependency:
+
+```typescript
+const Display = defineComponent<{ value: number }>((props) => {
+  return () => (
+    <div>
+      {/* Automatically updates when props.value changes */}
+      Value: {props.value}
+    </div>
+  );
+});
+
+// Parent
+const Parent = defineComponent(() => {
+  const count = signal(0);
+
+  return () => (
+    <Display value={count()} /> {/* Updates automatically */}
+  );
+});
+```
+
+### Props Validation (TypeScript)
+
+```typescript
+interface UserProps {
+  id: number;
+  name: string;
+  email: string;
+  role: 'admin' | 'user';
+}
+
+const User = defineComponent<UserProps>((props) => {
+  // TypeScript ensures type safety
+  return () => (
+    <div>
+      <h2>{props.name}</h2>
+      <p>{props.email}</p>
+      <span>{props.role}</span>
+    </div>
+  );
+});
+
+// ✅ Type-safe
+<User id={1} name="Alice" email="alice@example.com" role="admin" />
+
+// ❌ TypeScript error: missing 'role'
+<User id={1} name="Alice" email="alice@example.com" />
+
+// ❌ TypeScript error: wrong type for 'id'
+<User id="1" name="Alice" email="alice@example.com" role="admin" />
+```
+
+### Props Splitting
+
+Extract specific props into local signals:
+
+```typescript
+import { splitProps } from 'nexus';
+
+interface InputProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+}
+
+const Input = defineComponent<InputProps>((props) => {
+  // Split into local and rest
+  const [local, rest] = splitProps(props, ['value', 'onChange']);
+
+  return () => (
+    <input
+      value={local.value}
+      on:input={(e) => local.onChange(e.target.value)}
+      {...rest}
+    />
+  );
+});
+```
+
+### Children as Props
+
+```typescript
+interface CardProps {
+  header: JSX.Element;
+  footer: JSX.Element;
+  children: JSX.Element;
+}
+
+const Card = defineComponent<CardProps>((props) => {
+  return () => (
+    <div class="card">
+      <div class="card-header">{props.header}</div>
+      <div class="card-body">{props.children}</div>
+      <div class="card-footer">{props.footer}</div>
+    </div>
+  );
+});
+
+// Usage
+<Card
+  header={<h2>Title</h2>}
+  footer={<button>Action</button>}
+>
+  <p>Card content</p>
+</Card>
+```
+
+---
+
+## Slots
+
+Slots allow children to be passed and rendered within a component.
+
+### Default Slot
+
+```typescript
+const Card = defineComponent(() => {
+  return () => (
+    <div class="card">
+      <slot /> {/* Renders children here */}
+    </div>
+  );
+});
+
+// Usage
+<Card>
+  <p>This content goes into the slot</p>
+</Card>
+```
+
+### Named Slots
+
+```typescript
+const Layout = defineComponent(() => {
+  return () => (
+    <div class="layout">
+      <header>
+        <slot name="header" />
+      </header>
+
+      <main>
+        <slot /> {/* Default slot */}
+      </main>
+
+      <footer>
+        <slot name="footer" />
+      </footer>
+    </div>
+  );
+});
+
+// Usage
+<Layout>
+  <div slot="header">
+    <h1>Page Title</h1>
+  </div>
+
+  <p>Main content</p>
+
+  <div slot="footer">
+    <p>© 2025</p>
+  </div>
+</Layout>
+```
+
+### Slot Fallbacks
+
+```typescript
+const Button = defineComponent(() => {
+  return () => (
+    <button>
+      <slot>
+        {/* Fallback if no children provided */}
+        Click Me
+      </slot>
+    </button>
+  );
+});
+
+// Usage
+<Button /> {/* Renders "Click Me" */}
+<Button>Custom Text</Button> {/* Renders "Custom Text" */}
+```
+
+### Scoped Slots
+
+Pass data from child to parent:
+
+```typescript
+interface ListProps<T> {
+  items: T[];
+  children: (item: T, index: number) => JSX.Element;
+}
+
+const List = defineComponent(<T,>(props: ListProps<T>) => {
+  return () => (
+    <ul>
+      {#each props.items as item, index}
+        <li>
+          {props.children(item, index)}
+        </li>
+      {/each}
+    </ul>
+  );
+});
+
+// Usage
+<List items={users}>
+  {(user, index) => (
+    <div>
+      {index + 1}. {user.name}
+    </div>
+  )}
+</List>
+```
+
+### Render Props Pattern
+
+```typescript
+interface DataFetcherProps<T> {
+  url: string;
+  children: (data: T | null, loading: boolean, error: Error | null) => JSX.Element;
+}
+
+const DataFetcher = defineComponent(<T,>(props: DataFetcherProps<T>) => {
+  const [data] = resource(
+    () => props.url,
+    (url) => fetch(url).then(r => r.json())
+  );
+
+  return () => props.children(data(), data.loading, data.error);
+});
+
+// Usage
+<DataFetcher url="/api/users">
+  {(data, loading, error) => {
+    if (loading) return <div>Loading...</div>;
+    if (error) return <div>Error: {error.message}</div>;
+    return <div>Data: {JSON.stringify(data)}</div>;
+  }}
+</DataFetcher>
+```
+
+---
+
+## Context
+
+Context provides a way to pass data through the component tree without props drilling.
+
+### Creating Context
+
+```typescript
+import { createContext, useContext } from 'nexus';
+
+// Define context type
+interface ThemeContext {
+  theme: Signal<'light' | 'dark'>;
+  toggleTheme: () => void;
+}
+
+// Create context
+const ThemeContext = createContext<ThemeContext>('Theme');
+```
+
+### Providing Context
+
+```typescript
+import { provideContext } from 'nexus';
+
+const App = defineComponent(() => {
+  const theme = signal<'light' | 'dark'>('light');
+
+  const toggleTheme = () => {
+    theme(theme() === 'light' ? 'dark' : 'light');
+  };
+
+  // Provide context to children
+  provideContext(ThemeContext, {
+    theme,
+    toggleTheme
+  });
+
+  return () => (
+    <div class={theme()}>
+      <Header />
+      <Main />
+    </div>
+  );
+});
+```
+
+### Consuming Context
+
+```typescript
+import { injectContext } from 'nexus';
+
+const ThemeToggle = defineComponent(() => {
+  // Inject context
+  const themeCtx = injectContext(ThemeContext);
+
+  return () => (
+    <button on:click={themeCtx.toggleTheme}>
+      Current: {themeCtx.theme()}
+    </button>
+  );
+});
+```
+
+### Context with Default Value
+
+```typescript
+const ThemeContext = createContext<ThemeContext>(
+  'Theme',
+  // Default value (if not provided by parent)
+  {
+    theme: signal('light'),
+    toggleTheme: () => {}
+  }
+);
+
+// Now safe to use without provider
+const Component = defineComponent(() => {
+  const ctx = injectContext(ThemeContext); // Won't throw
+
+  return () => <div>{ctx.theme()}</div>;
+});
+```
+
+### Custom Context Hooks
+
+```typescript
+// Create custom hook
+export const useTheme = () => {
+  return injectContext(ThemeContext);
+};
+
+// Usage
+const Component = defineComponent(() => {
+  const { theme, toggleTheme } = useTheme();
+
+  return () => (
+    <button on:click={toggleTheme}>
+      {theme()}
+    </button>
+  );
+});
+```
+
+### Multiple Contexts
+
+```typescript
+// Auth context
+const AuthContext = createContext<AuthContext>('Auth');
+
+// Theme context
+const ThemeContext = createContext<ThemeContext>('Theme');
+
+// Provide multiple contexts
+const App = defineComponent(() => {
+  const auth = useAuthState();
+  const theme = useThemeState();
+
+  provideContext(AuthContext, auth);
+  provideContext(ThemeContext, theme);
+
+  return () => <slot />;
+});
+
+// Use multiple contexts
+const Component = defineComponent(() => {
+  const auth = injectContext(AuthContext);
+  const theme = injectContext(ThemeContext);
+
+  return () => (
+    <div class={theme.theme()}>
+      {auth.user() ? 'Logged in' : 'Guest'}
+    </div>
+  );
+});
+```
+
+---
+
+## Refs
+
+Refs provide direct access to DOM elements.
+
+### Basic Ref
+
+```typescript
+import { defineComponent, signal, onMount } from 'nexus';
+
+const Input = defineComponent(() => {
+  const inputRef = signal<HTMLInputElement | null>(null);
+
+  onMount(() => {
+    // Focus input on mount
+    inputRef()?.focus();
+  });
+
+  return () => (
+    <input ref={setInputRef} type="text" />
+  );
+});
+```
+
+### Ref Callback
+
+```typescript
+const Input = defineComponent(() => {
+  const handleRef = (el: HTMLInputElement | null) => {
+    if (el) {
+      console.log('Element mounted:', el);
+      el.focus();
+    } else {
+      console.log('Element unmounted');
+    }
+  };
+
+  return () => <input ref={handleRef} type="text" />;
+});
+```
+
+### Multiple Refs
+
+```typescript
+const Form = defineComponent(() => {
+  const nameRef = signal<HTMLInputElement | null>(null);
+  const emailRef = signal<HTMLInputElement | null>(null);
+
+  const focusName = () => nameRef()?.focus();
+  const focusEmail = () => emailRef()?.focus();
+
+  return () => (
+    <form>
+      <input ref={setNameRef} name="name" />
+      <input ref={setEmailRef} name="email" />
+
+      <button type="button" on:click={focusName}>
+        Focus Name
+      </button>
+      <button type="button" on:click={focusEmail}>
+        Focus Email
+      </button>
+    </form>
+  );
+});
+```
+
+### Forwarding Refs
+
+```typescript
+interface InputProps {
+  ref?: Signal<HTMLInputElement | null>;
+}
+
+const Input = defineComponent<InputProps>((props) => {
+  return () => <input ref={props.ref} type="text" />;
+});
+
+// Parent
+const Parent = defineComponent(() => {
+  const inputRef = signal<HTMLInputElement | null>(null);
+
+  onMount(() => {
+    inputRef()?.focus();
+  });
+
+  return () => <Input ref={setInputRef} />;
+});
+```
+
+### useRef Helper
+
+```typescript
+import { useRef } from 'nexus';
+
+const Component = defineComponent(() => {
+  // useRef is sugar for signal<T | null>(null)
+  const divRef = useRef<HTMLDivElement>();
+
+  onMount(() => {
+    console.log(divRef()?.offsetWidth);
+  });
+
+  return () => <div ref={divRef}>Hello</div>;
+});
+```
+
+---
+
+## Events
+
+### Inline Handlers
+
+```typescript
+const Button = defineComponent(() => {
+  return () => (
+    <button on:click={() => console.log('Clicked')}>
+      Click Me
+    </button>
+  );
+});
+```
+
+### Function Handlers
+
+```typescript
+const Button = defineComponent(() => {
+  const handleClick = (e: MouseEvent) => {
+    console.log('Clicked at:', e.clientX, e.clientY);
+  };
+
+  return () => (
+    <button on:click={handleClick}>
+      Click Me
+    </button>
+  );
+});
+```
+
+### Event Modifiers
+
+```typescript
+// Prevent default
+<form on:submit|preventDefault={handleSubmit}>
+
+// Stop propagation
+<button on:click|stopPropagation={handleClick}>
+
+// Capture phase
+<div on:click|capture={handleClick}>
+
+// Once (runs only once)
+<button on:click|once={handleClick}>
+
+// Passive (improves scroll performance)
+<div on:scroll|passive={handleScroll}>
+
+// Combine multiple modifiers
+<a on:click|preventDefault|stopPropagation={handleClick}>
+```
+
+### Custom Events
+
+```typescript
+// Child component
+const Child = defineComponent((props: { onCustomEvent: (data: string) => void }) => {
+  const emit = () => {
+    props.onCustomEvent('Hello from child');
+  };
+
+  return () => <button on:click={emit}>Emit</button>;
+});
+
+// Parent
+const Parent = defineComponent(() => {
+  const handleCustom = (data: string) => {
+    console.log('Received:', data);
+  };
+
+  return () => <Child onCustomEvent={handleCustom} />;
+});
+```
+
+### Event Delegation
+
+Nexus automatically delegates common events (click, input, change, etc.) for performance:
+
+```typescript
+// Automatically delegated to root
+<div>
+  {#each items() as item}
+    <button on:click={() => handleClick(item)}>
+      {item.name}
+    </button>
+  {/each}
+</div>
+```
+
+---
+
+## Async Components
+
+### Lazy Loading
+
+```typescript
+import { lazy } from 'nexus';
+
+// Lazy load component
+const HeavyComponent = lazy(() => import('./HeavyComponent'));
+
+const App = defineComponent(() => {
+  return () => (
+    <div>
+      <Suspense fallback={<div>Loading...</div>}>
+        <HeavyComponent />
+      </Suspense>
+    </div>
+  );
+});
+```
+
+### Suspense
+
+```typescript
+import { Suspense } from 'nexus';
+
+const App = defineComponent(() => {
+  return () => (
+    <Suspense fallback={<LoadingSpinner />}>
+      <AsyncComponent />
+    </Suspense>
+  );
+});
+```
+
+### Multiple Suspense Boundaries
+
+```typescript
+const App = defineComponent(() => {
+  return () => (
+    <div>
+      <Suspense fallback={<HeaderSkeleton />}>
+        <Header />
+      </Suspense>
+
+      <Suspense fallback={<ContentSkeleton />}>
+        <MainContent />
+      </Suspense>
+
+      <Suspense fallback={<SidebarSkeleton />}>
+        <Sidebar />
+      </Suspense>
+    </div>
+  );
+});
+```
+
+### Async Data in Components
+
+```typescript
+const UserProfile = defineComponent(() => {
+  const userId = signal(1);
+
+  const [user] = resource(
+    userId,
+    (id) => fetch(`/api/users/${id}`).then(r => r.json())
+  );
+
+  return () => (
+    <div>
+      <Suspense fallback={<div>Loading user...</div>}>
+        <div>
+          <h2>{user()?.name}</h2>
+          <p>{user()?.email}</p>
+        </div>
+      </Suspense>
+    </div>
+  );
+});
+```
+
+---
+
+## Error Boundaries
+
+### Basic Error Boundary
+
+```typescript
+import { defineComponent, onError, signal } from 'nexus';
+
+const ErrorBoundary = defineComponent((props) => {
+  const error = signal<Error | null>(null);
+
+  onError((err) => {
+    console.error('Error caught:', err);
+    error(err);
+  });
+
+  return () => {
+    if (error()) {
+      return (
+        <div class="error-boundary">
+          <h2>Something went wrong</h2>
+          <pre>{error()!.message}</pre>
+          <pre>{error()!.stack}</pre>
+          <button on:click={() => error(null)}>
+            Reset
+          </button>
+        </div>
+      );
+    }
+
+    return <slot />;
+  };
+});
+```
+
+### Error Boundary with Retry
+
+```typescript
+const ErrorBoundary = defineComponent(() => {
+  const error = signal<Error | null>(null);
+  const retryCount = signal(0);
+
+  onError((err) => {
+    error.set(err);
+  });
+
+  const retry = () => {
+    error.set(null);
+    retryCount.set(retryCount() + 1);
+  };
+
+  return () => {
+    if (error()) {
+      return (
+        <div class="error-boundary">
+          <h2>Error (Retry {retryCount()})</h2>
+          <p>{error()!.message}</p>
+          <button on:click={retry}>Try Again</button>
+        </div>
+      );
+    }
+
+    // Re-mount children with new key on retry
+    return <slot key={retryCount()} />;
+  };
+});
+```
+
+### Nested Error Boundaries
+
+```typescript
+const App = defineComponent(() => {
+  return () => (
+    <ErrorBoundary fallback={(error) => <AppError error={error} />}>
+      <Header />
+
+      <ErrorBoundary fallback={(error) => <SectionError error={error} />}>
+        <MainContent />
+      </ErrorBoundary>
+
+      <Footer />
+    </ErrorBoundary>
+  );
+});
+```
+
+---
+
+## Performance
+
+### Component Memoization
+
+Unlike React, Nexus **doesn't need** `React.memo` because components don't re-render unless their signals change:
+
+```typescript
+// React - needs memoization
+const ExpensiveComponent = React.memo(({ value }) => {
+  // Prevent re-render when parent re-renders
+  return <div>{value}</div>;
+});
+
+// Nexus - no memoization needed!
+const ExpensiveComponent = defineComponent<{ value: number }>((props) => {
+  // Only re-renders when props.value actually changes
+  return () => <div>{props.value}</div>;
+});
+```
+
+### Computed for Expensive Calculations
+
+```typescript
+const Component = defineComponent(() => {
+  const items = signal([/* lots of data */]);
+
+  // ❌ Bad - recalculates on every access
+  const total = () => items().reduce((sum, item) => sum + item.price, 0);
+
+  // ✅ Good - cached, only recomputes when items change
+  const total = computed(() => {
+    return items().reduce((sum, item) => sum + item.price, 0);
+  });
+
+  return () => <div>Total: {total()}</div>;
+});
+```
+
+### Batch Updates
+
+```typescript
+const Component = defineComponent(() => {
+  const firstName = signal('');
+  const lastName = signal('');
+  const age = signal(0);
+
+  const updateUser = (user: User) => {
+    // ❌ Bad - triggers effects 3 times
+    firstName.set(user.firstName);
+    lastName.set(user.lastName);
+    age.set(user.age);
+
+    // ✅ Good - triggers effects once
+    batch(() => {
+      firstName.set(user.firstName);
+      lastName.set(user.lastName);
+      age.set(user.age);
+    });
+  };
+
+  return () => (
+    <div>
+      {firstName()} {lastName()}, {age()}
+    </div>
+  );
+});
+```
+
+### Virtual Scrolling
+
+```typescript
+import { VirtualScroller } from 'nexus/virtual';
+
+const LargeList = defineComponent(() => {
+  const items = signal(Array.from({ length: 10000 }, (_, i) => ({ id: i, name: `Item ${i}` }))
+
+  return () => (
+    <VirtualScroller
+      items={items()}
+      itemHeight={50}
+      height={500}
+    >
+      {(item) => (
+        <div class="item">
+          {item.name}
+        </div>
+      )}
+    </VirtualScroller>
+  );
+});
+```
+
+---
+
+## Composition Patterns
+
+### Higher-Order Components
+
+```typescript
+// HOC that adds loading state
+const withLoading = <P extends {}>(
+  Component: ComponentType<P>
+): ComponentType<P & { loading?: boolean }> => {
+  return defineComponent<P & { loading?: boolean }>((props) => {
+    return () => {
+      if (props.loading) {
+        return <LoadingSpinner />;
+      }
+
+      return <Component {...props as P} />;
+    };
+  });
+};
+
+// Usage
+const UserProfile = defineComponent<{ userId: number }>((props) => {
+  return () => <div>User: {props.userId}</div>;
+});
+
+const UserProfileWithLoading = withLoading(UserProfile);
+
+<UserProfileWithLoading userId={1} loading={isLoading()} />
+```
+
+### Composable Functions (Hooks)
+
+```typescript
+// Custom composable for form field
+const useField = (initialValue: string) => {
+  const value = signal(initialValue);
+  const error = signal<string | null>(null);
+  const touched = signal(false);
+
+  const handleChange = (newValue: string) => {
+    value.set(newValue);
+    if (touched()) validate(newValue);
+  };
+
+  const handleBlur = () => {
+    touched.set(true);
+    validate(value());
+  };
+
+  const validate = (val: string) => {
+    if (!val) {
+      error.set('Required');
+    } else {
+      error.set(null);
+    }
+  };
+
+  return {
+    value,
+    error,
+    touched,
+    handleChange,
+    handleBlur
+  };
+};
+
+// Usage
+const Form = defineComponent(() => {
+  const email = useField('');
+  const password = useField('');
+
+  return () => (
+    <form>
+      <input
+        value={email.value()}
+        on:input={(e) => email.handleChange(e.target.value)}
+        on:blur={email.handleBlur}
+      />
+      {#if email.error()}
+        <span class="error">{email.error()}</span>
+      {/if}
+
+      <input
+        type="password"
+        value={password.value()}
+        on:input={(e) => password.handleChange(e.target.value)}
+        on:blur={password.handleBlur}
+      />
+      {#if password.error()}
+        <span class="error">{password.error()}</span>
+      {/if}
+    </form>
+  );
+});
+```
+
+### Render Props
+
+```typescript
+const MouseTracker = defineComponent((props: {
+  children: (x: number, y: number) => JSX.Element
+}) => {
+  const x = signal(0);
+  const y = signal(0);
+
+  const handleMouseMove = (e: MouseEvent) => {
+    x.set(e.clientX);
+    y.set(e.clientY);
+  };
+
+  return () => (
+    <div on:mousemove={handleMouseMove} style="height: 100vh">
+      {props.children(x(), y())}
+    </div>
+  );
+});
+
+// Usage
+<MouseTracker>
+  {(x, y) => (
+    <div>
+      Mouse at ({x}, {y})
+    </div>
+  )}
+</MouseTracker>
+```
+
+---
+
+## Server Components
+
+Nexus supports Server Components for SSR and SSG.
+
+### Server Component
+
+```typescript
+// UserList.server.tsx
+import { defineServerComponent } from 'nexus/server';
+
+export const UserList = defineServerComponent(async () => {
+  // Runs ONLY on server
+  const users = await db.users.findMany();
+
+  return () => (
+    <ul>
+      {#each users as user}
+        <li>{user.name}</li>
+      {/each}
+    </ul>
+  );
+});
+```
+
+### Client Component
+
+```typescript
+// Counter.client.tsx
+'use client'; // Mark as client component
+
+import { defineComponent, signal } from 'nexus';
+
+export const Counter = defineComponent(() => {
+  const count = signal(0);
+
+  return () => (
+    <button on:click={() => count.set(count() + 1)}>
+      {count()}
+    </button>
+  );
+});
+```
+
+### Mixed Components
+
+```typescript
+// Page.tsx
+import { UserList } from './UserList.server';
+import { Counter } from './Counter.client';
+
+export const Page = defineComponent(() => {
+  return () => (
+    <div>
+      {/* Rendered on server */}
+      <UserList />
+
+      {/* Hydrated on client */}
+      <Counter />
+    </div>
+  );
+});
+```
+
+---
+
+## Comparison
+
+### vs React
+
+| Feature | React | Nexus |
+|---------|-------|-------|
+| **Component Model** | Function components | Function components |
+| **Re-rendering** | Entire component | Fine-grained (only changed nodes) |
+| **State** | `useState` | `signal` |
+| **Derived State** | `useMemo` | `computed` (automatic) |
+| **Side Effects** | `useEffect` | `effect` (automatic deps) |
+| **Memoization** | `React.memo`, `useCallback` | Not needed |
+| **Context** | `useContext` | `injectContext` |
+| **Refs** | `useRef` | `signal` or `useRef` |
+
+### vs Vue
+
+| Feature | Vue 3 | Nexus |
+|---------|-------|-------|
+| **Component Model** | Options/Composition API | Function-based |
+| **Reactivity** | Proxy-based | Signal-based |
+| **Template** | SFC template | JSX |
+| **State** | `ref`, `reactive` | `signal`, `createStore` |
+| **Computed** | `computed` | `computed` |
+| **Lifecycle** | `onMounted`, `onUnmounted` | `onMount`, `onCleanup` |
+
+### vs Svelte
+
+| Feature | Svelte | Nexus |
+|---------|--------|-------|
+| **Reactivity** | Compile-time | Runtime signals |
+| **Syntax** | Custom template syntax | JSX |
+| **Updates** | Fine-grained | Fine-grained |
+| **Bundle Size** | Very small | Very small |
+| **Debugging** | Harder (compiled) | Easier (runtime) |
+
+### vs SolidJS
+
+| Feature | SolidJS | Nexus |
+|---------|---------|-------|
+| **Reactivity** | Signals | Signals (nearly identical) |
+| **API** | Very similar | Nearly identical |
+| **Integration** | Standalone | Unified with Titan |
+| **Ecosystem** | Growing | Integrated (DI, RPC, SSR) |
+
+---
+
+## Best Practices
+
+### 1. Keep Components Small and Focused
+
+```typescript
+// ❌ Bad - too much responsibility
+const UserDashboard = defineComponent(() => {
+  // Fetching users
+  // Filtering logic
+  // Sorting logic
+  // Rendering table
+  // Rendering charts
+  // ... 500 lines
+});
+
+// ✅ Good - single responsibility
+const UserDashboard = defineComponent(() => {
+  return () => (
+    <div>
+      <UserFilters />
+      <UserTable />
+      <UserCharts />
+    </div>
+  );
+});
+```
+
+### 2. Extract Reusable Logic into Composables
+
+```typescript
+// ❌ Bad - duplicated logic
+const ComponentA = defineComponent(() => {
+  const data = signal(null);
+  const loading = signal(false);
+
+  onMount(async () => {
+    loading.set(true);
+    const res = await fetch('/api/data');
+    data.set(await res.json());
+    loading.set(false);
+  });
+
+  // ...
+});
+
+// ✅ Good - extracted hook
+const useFetch = (url: string) => {
+  const [data, { refetch }] = resource(
+    () => url,
+    (url) => fetch(url).then(r => r.json())
+  );
+
+  return { data, loading: data.loading, error: data.error, refetch };
+};
+
+const ComponentA = defineComponent(() => {
+  const { data, loading } = useFetch('/api/data');
+  // ...
+});
+```
+
+### 3. Use Computed for Derived State
+
+```typescript
+// ❌ Bad - manual synchronization
+const count = signal(0);
+const doubled = signal(0);
+
+const increment = () => {
+  count.set(count() + 1);
+  doubled.set(count() * 2); // Easy to forget!
+};
+
+// ✅ Good - automatic
+const count = signal(0);
+const doubled = computed(() => count() * 2);
+
+const increment = () => count.set(count() + 1);
+```
+
+### 4. Cleanup Side Effects
+
+```typescript
+// ❌ Bad - memory leak
+onMount(() => {
+  const interval = setInterval(() => {
+    console.log('Tick');
+  }, 1000);
+  // Never cleared!
+});
+
+// ✅ Good - cleanup
+onMount(() => {
+  const interval = setInterval(() => {
+    console.log('Tick');
+  }, 1000);
+
+  return () => clearInterval(interval);
+});
+```
+
+### 5. Avoid Prop Drilling with Context
+
+```typescript
+// ❌ Bad - prop drilling
+<App user={user}>
+  <Layout user={user}>
+    <Sidebar user={user}>
+      <UserMenu user={user} />
+    </Sidebar>
+  </Layout>
+</App>
+
+// ✅ Good - context
+const App = defineComponent(() => {
+  const user = signal(/* ... */);
+  provideContext(UserContext, user);
+
+  return () => <Layout />;
+});
+
+const UserMenu = defineComponent(() => {
+  const user = injectContext(UserContext);
+  return () => <div>{user().name}</div>;
+});
+```
+
+### 6. Type Your Components
+
+```typescript
+// ❌ Bad - no types
+const Button = defineComponent((props) => {
+  return () => <button>{props.text}</button>;
+});
+
+// ✅ Good - typed
+interface ButtonProps {
+  text: string;
+  variant?: 'primary' | 'secondary';
+  onClick?: () => void;
+}
+
+const Button = defineComponent<ButtonProps>((props) => {
+  return () => <button on:click={props.onClick}>{props.text}</button>;
+});
+```
+
+### 7. Use Error Boundaries
+
+```typescript
+// ✅ Wrap risky components
+<ErrorBoundary>
+  <ThirdPartyWidget />
+</ErrorBoundary>
+```
+
+---
+
+## API Reference
+
+### defineComponent()
+
+```typescript
+function defineComponent<P = {}>(
+  setup: (props: P) => () => JSX.Element
+): Component<P>
+```
+
+### onMount()
+
+```typescript
+function onMount(fn: () => void | (() => void)): void
+```
+
+### onCleanup()
+
+```typescript
+function onCleanup(fn: () => void): void
+```
+
+### onError()
+
+```typescript
+function onError(fn: (error: Error) => void): void
+```
+
+### createContext()
+
+```typescript
+function createContext<T>(
+  name: string,
+  defaultValue?: T
+): Context<T>
+```
+
+### provideContext()
+
+```typescript
+function provideContext<T>(
+  context: Context<T>,
+  value: T
+): void
+```
+
+### injectContext()
+
+```typescript
+function injectContext<T>(
+  context: Context<T>
+): T
+```
+
+### lazy()
+
+```typescript
+function lazy<P>(
+  loader: () => Promise<{ default: Component<P> }>
+): Component<P>
+```
+
+### Suspense
+
+```typescript
+<Suspense fallback={JSX.Element}>
+  {children}
+</Suspense>
+```
+
+---
+
+## Examples
+
+See [Examples](#examples) section in Reactivity specification for complete examples.
+
+---
+
+**End of Component Architecture Specification**

@@ -108,30 +108,65 @@ export function triggerMount(owner: any): void {
  * Handle component error
  * Internal API
  *
+ * Searches up the owner tree to find error handlers (error boundaries)
+ *
  * @internal
  */
 export function handleComponentError(owner: any, error: Error): void {
-  const ctx = componentContexts.get(owner);
-  if (!ctx) {
-    throw error; // Re-throw if no context
-  }
+  console.log('[handleComponentError] Called with error:', error.message);
+  console.log('[handleComponentError] Owner:', owner);
 
-  // If there are error handlers, consider error handled even if they fail
-  // This prevents cascading errors
-  if (ctx.errorCallbacks.length === 0) {
-    throw error; // No handlers, re-throw
-  }
+  // Search up the owner tree for error handlers
+  let currentOwner = owner;
+  const visitedOwners = new Set();
+  let depth = 0;
 
-  // Call error handlers
-  for (const callback of ctx.errorCallbacks) {
-    try {
-      callback(error);
-    } catch (handlerError) {
-      console.error('Error in error handler:', handlerError);
+  while (currentOwner) {
+    console.log(`[handleComponentError] Checking owner at depth ${depth}:`, currentOwner);
+
+    // Prevent infinite loops
+    if (visitedOwners.has(currentOwner)) {
+      console.log('[handleComponentError] Loop detected');
+      break;
+    }
+    visitedOwners.add(currentOwner);
+
+    const ctx = componentContexts.get(currentOwner);
+    console.log(`[handleComponentError] Context for owner:`, ctx);
+    console.log(`[handleComponentError] Error callbacks count:`, ctx?.errorCallbacks.length || 0);
+
+    // If this owner has error handlers, call them
+    if (ctx && ctx.errorCallbacks.length > 0) {
+      console.log(`[handleComponentError] Calling error handlers`);
+
+      // Call all error handlers at this level
+      for (const callback of ctx.errorCallbacks) {
+        try {
+          callback(error);
+          // Error was handled, stop propagation
+          console.log('[handleComponentError] Error handled');
+          return;
+        } catch (handlerError) {
+          console.error('Error in error handler:', handlerError);
+          // Continue to next handler or bubble up
+        }
+      }
+    }
+
+    // Move up to parent owner
+    currentOwner = currentOwner.parent;
+    console.log(`[handleComponentError] Moving to parent:`, currentOwner);
+    depth++;
+
+    if (depth > 10) {
+      console.error('[handleComponentError] Max depth exceeded');
+      break;
     }
   }
 
-  // Error was handled (or attempted to be handled), don't re-throw
+  // No error handler found in the entire tree, re-throw
+  console.log('[handleComponentError] No handler found, re-throwing');
+  throw error;
 }
 
 /**

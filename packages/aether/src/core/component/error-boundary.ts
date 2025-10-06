@@ -303,9 +303,14 @@ export const ErrorBoundary = defineComponent<ErrorBoundaryProps>((rawProps) => {
     }
 
     // Render children normally with retry key for re-mounting
+    // Errors from children will be caught by defineComponent and passed to onError
+    const children = typeof rawProps.children === 'function'
+      ? rawProps.children()
+      : rawProps.children;
+
     return jsx('div', {
       key: `error-boundary-${retryKey()}`,
-      children: rawProps.children,
+      children,
     });
   };
 });

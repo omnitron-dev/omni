@@ -32,10 +32,16 @@ describe('ErrorBoundary', () => {
         throw new Error('Test error');
       });
 
-      const result = ErrorBoundary({
-        onError: errorSpy,
-        children: ErrorChild({}),
+      // Wrap in a parent component so ErrorChild is called in the right context
+      const Wrapper = defineComponent(() => {
+        return () => ErrorBoundary({
+          onError: errorSpy,
+          // Pass children as function so it's called inside ErrorBoundary context
+          children: () => ErrorChild({}),
+        });
       });
+
+      Wrapper({});
 
       // Should have caught the error
       expect(errorSpy).toHaveBeenCalled();
@@ -106,10 +112,9 @@ describe('ErrorBoundary', () => {
       });
 
       const FallbackWithReset = defineComponent(() => {
-        const ctx = useErrorBoundary();
+        const errorCtx = useErrorBoundary();
 
         return () => {
-          const errorCtx = ctx();
           expect(errorCtx).toBeTruthy();
           expect(typeof errorCtx?.reset).toBe('function');
           return 'Fallback';
@@ -131,10 +136,9 @@ describe('ErrorBoundary', () => {
       });
 
       const FallbackWithReset = defineComponent(() => {
-        const ctx = useErrorBoundary();
+        const errorCtx = useErrorBoundary();
 
         return () => {
-          const errorCtx = ctx();
           if (errorCtx) {
             // Simulate clicking reset button
             errorCtx.reset();
@@ -165,10 +169,9 @@ describe('ErrorBoundary', () => {
       });
 
       const FallbackWithRetry = defineComponent(() => {
-        const ctx = useErrorBoundary();
+        const errorCtx = useErrorBoundary();
 
         return () => {
-          const errorCtx = ctx();
           expect(errorCtx).toBeTruthy();
           expect(typeof errorCtx?.retry).toBe('function');
           return 'Fallback';
@@ -191,10 +194,9 @@ describe('ErrorBoundary', () => {
       const errorCount = signal(0);
 
       const FallbackWithRetry = defineComponent(() => {
-        const ctx = useErrorBoundary();
+        const errorCtx = useErrorBoundary();
 
         return () => {
-          const errorCtx = ctx();
           if (errorCtx) {
             const currentError = errorCtx.error;
             if (currentError) {
@@ -299,10 +301,9 @@ describe('ErrorBoundary', () => {
   describe('useErrorBoundary hook', () => {
     it('should return null when not inside error boundary', () => {
       const TestComponent = defineComponent(() => {
-        const ctx = useErrorBoundary();
+        const errorCtx = useErrorBoundary();
 
         return () => {
-          const errorCtx = ctx();
           expect(errorCtx).toBeNull();
           return 'Component';
         };
@@ -317,10 +318,9 @@ describe('ErrorBoundary', () => {
       });
 
       const FallbackComponent = defineComponent(() => {
-        const ctx = useErrorBoundary();
+        const errorCtx = useErrorBoundary();
 
         return () => {
-          const errorCtx = ctx();
           expect(errorCtx).toBeTruthy();
           expect(errorCtx?.error).toBeTruthy();
           expect(errorCtx?.error?.message).toBe('Test error');

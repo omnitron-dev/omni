@@ -4,9 +4,8 @@
  * Core component creation and management
  */
 
-import { getOwner, onCleanup } from '../reactivity/context.js';
-import { createRoot } from '../reactivity/batch.js';
-import { triggerMount, cleanupComponentContext } from './lifecycle.js';
+import { getOwner, onCleanup, context, OwnerImpl } from '../reactivity/context.js';
+import { triggerMount, cleanupComponentContext, handleComponentError } from './lifecycle.js';
 import { reactiveProps, PROPS_UPDATE } from './props.js';
 import type { ComponentSetup, Component, RenderFunction } from './types.js';
 
@@ -41,50 +40,79 @@ export function defineComponent<P = {}>(
 
   // Create component function
   const component: Component<P> = (props: P): any => {
-    // First call - run setup
-    if (!isSetupComplete) {
-      // Wrap props in reactive proxy
-      reactivePropsInstance = reactiveProps(props);
+    try {
+      // First call - run setup
+      if (!isSetupComplete) {
+        // Wrap props in reactive proxy
+        reactivePropsInstance = reactiveProps(props);
 
-      // Create reactive scope for component
-      createRoot((rootDispose: () => void) => {
-        // Get the owner (reactive context)
-        owner = getOwner();
+        // Create owner with parent link (important for error boundaries)
+        const parentOwner = getOwner();
+        owner = new OwnerImpl(parentOwner);
 
         // Set component name for debugging
         if (name && owner) {
           (owner as any).name = name;
         }
 
-        // Run setup function (once) with reactive props
-        render = setup(reactivePropsInstance);
+        // Run setup in component's owner context
+        try {
+          context.runWithOwner(owner, () => {
+            try {
+              // Run setup function (once) with reactive props
+              render = setup(reactivePropsInstance);
+            } catch (error) {
+              // Handle setup errors
+              handleComponentError(owner, error as Error);
+              // Don't throw - error was handled
+            }
 
-        // Register cleanup
-        onCleanup(() => {
-          cleanupComponentContext(owner);
-          rootDispose();
-        });
+            // Register cleanup
+            onCleanup(() => {
+              cleanupComponentContext(owner);
+              owner.dispose();
+            });
+          });
+        } catch (error) {
+          // If error wasn't handled, re-throw
+          if (render === undefined) {
+            return null;
+          }
+        }
 
-        return rootDispose;
-      });
+        isSetupComplete = true;
 
-      isSetupComplete = true;
-
-      // Trigger mount lifecycle
-      if (owner) {
+        // Trigger mount lifecycle
         triggerMount(owner);
+      } else {
+        // Subsequent calls - update props
+        if (reactivePropsInstance && reactivePropsInstance[PROPS_UPDATE]) {
+          reactivePropsInstance[PROPS_UPDATE](props);
+        }
       }
-    } else {
-      // Subsequent calls - update props
-      if (reactivePropsInstance && reactivePropsInstance[PROPS_UPDATE]) {
-        reactivePropsInstance[PROPS_UPDATE](props);
-      }
-    }
 
-    // Return render result
-    // Note: In full implementation, this would integrate with
-    // the JSX runtime and create actual DOM elements
-    return render!();
+      // Return render result with error handling
+      // Run render in owner context so children have correct parent
+      try {
+        return context.runWithOwner(owner, () => {
+          try {
+            return render!();
+          } catch (error) {
+            // Handle render errors
+            handleComponentError(owner, error as Error);
+            // Return fallback or null on render error
+            return null;
+          }
+        });
+      } catch (error) {
+        // If error wasn't handled, return null
+        return null;
+      }
+    } catch (error) {
+      // Catch any errors that weren't handled by error boundaries
+      // This is the last resort
+      throw error;
+    }
   };
 
   // Set display name

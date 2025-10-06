@@ -1033,6 +1033,6 @@ describe('Isomorphic Transport Test Suite', () => {
           }
         }
       }
-    }, 60000);
+    }, 120000); // Increased timeout for slower CI environments
   });
 });

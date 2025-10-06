@@ -170,19 +170,6 @@ describe('RemotePeer', () => {
 
     peer1.disconnect();
   });
-
-  // Legacy abilities exchange has been removed in favor of auth-aware service discovery
-  it.skip('should have abilities after connection (LEGACY - removed)', async () => {
-    // This test is for legacy abilities exchange which has been replaced
-    // by auth-aware on-demand service discovery via queryInterface
-  });
-
-  // Legacy abilities exchange has been removed in favor of auth-aware service discovery
-  it.skip('connector side can send abilities (LEGACY - removed)', async () => {
-    // This test is for legacy abilities exchange which has been replaced
-    // by auth-aware on-demand service discovery via queryInterface
-  });
-
   it('should call methods and access properties of remote service', async () => {
     const svc1 = new Service1();
     const peer = netron.peer;
@@ -360,14 +347,6 @@ describe('RemotePeer', () => {
 
     peer1.disconnect();
   });
-
-  // Auto-subscribe to expose/unexpose events has been removed
-  // Services are now discovered on-demand via queryInterface
-  it.skip('autosubscribe to expose and unexpose events (LEGACY - removed)', async () => {
-    // This test is for automatic service discovery which has been replaced
-    // by on-demand auth-aware discovery via queryInterface core-task
-  });
-
   it('subscribe to event', async () => {
     const peer = netron.peer;
     const n2 = await createNetronClient();

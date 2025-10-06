@@ -222,21 +222,8 @@ describe('TcpTransport', () => {
       await server?.close();
     });
 
-    it.skip('should send and receive raw data', async () => {
-      // Skip this test as TCP transport is designed for packet-based communication
-      // Raw data should be sent as packets
-      const testData = Buffer.from('Hello, TCP!');
-
-      // Server listens for data
-      const dataPromise = waitForEvent(serverConnection, 'data');
-
-      // Client sends data
-      await clientConnection.send(testData);
-
-      // Server receives data
-      const receivedData = await dataPromise;
-      expect(Buffer.from(receivedData as any)).toEqual(testData);
-    });
+    // Note: TCP transport is packet-based, not raw data
+    // Raw data tests removed - see packet tests below
 
     it('should send and receive packets', async () => {
       const testPacket = new Packet(123);
@@ -254,38 +241,6 @@ describe('TcpTransport', () => {
       expect(receivedPacket.id).toBe(testPacket.id);
       expect(receivedPacket.getType()).toBe(testPacket.getType());
       expect(receivedPacket.data).toEqual(testPacket.data);
-    });
-
-    it.skip('should handle bidirectional communication', async () => {
-      // Skip: TCP transport is packet-based, not raw data
-      const clientData = Buffer.from('Client message');
-      const serverData = Buffer.from('Server response');
-
-      // Set up listeners
-      const serverDataPromise = waitForEvent(serverConnection, 'data');
-      const clientDataPromise = waitForEvent(clientConnection, 'data');
-
-      // Client sends to server
-      await clientConnection.send(clientData);
-      const serverReceived = await serverDataPromise;
-      expect(Buffer.from(serverReceived as any)).toEqual(clientData);
-
-      // Server responds to client
-      await serverConnection.send(serverData);
-      const clientReceived = await clientDataPromise;
-      expect(Buffer.from(clientReceived as any)).toEqual(serverData);
-    });
-
-    it.skip('should handle large data transfers', async () => {
-      // Skip: TCP transport is packet-based, not raw data
-      const largeData = Buffer.alloc(1024 * 1024, 'x'); // 1MB of 'x'
-
-      const dataPromise = waitForEvent(serverConnection, 'data', 10000);
-
-      await clientConnection.send(largeData);
-
-      const receivedData = await dataPromise;
-      expect(Buffer.from(receivedData as any).length).toBe(largeData.length);
     });
 
     it('should track connection metrics', async () => {

@@ -779,8 +779,8 @@ All requirements from `02-REACTIVITY.md` implemented and tested ✓
 2. **Core Primitives** (Week 1-2) - 🚧
    - [x] Dialog / Modal (with accessibility, keyboard nav, focus trap)
    - [x] Popover (with smart positioning, collision detection, keyboard nav)
+   - [x] Dropdown Menu (keyboard nav, typeahead, checkbox/radio items, separators, labels)
    - [ ] Tooltip
-   - [ ] Dropdown Menu
    - [ ] Select / Combobox
    - [ ] Tabs
    - [ ] Accordion
@@ -797,6 +797,7 @@ All requirements from `02-REACTIVITY.md` implemented and tested ✓
    - [x] Primitive utilities tests (115 tests: 85 focus/id/scroll + 30 position)
    - [x] Dialog component tests (30 tests)
    - [x] Popover component tests (30 tests)
+   - [x] Dropdown Menu component tests (57 tests)
    - [ ] Accessibility tests (axe-core)
    - [ ] Keyboard navigation tests
 
@@ -804,12 +805,13 @@ All requirements from `02-REACTIVITY.md` implemented and tested ✓
 - ✅ Primitives module in `@omnitron-dev/aether/primitives`
 - ✅ Dialog primitive with full accessibility
 - ✅ Popover primitive with smart positioning and collision detection
+- ✅ Dropdown Menu primitive with keyboard nav, typeahead, checkbox/radio support
 - [ ] Primitive examples
 - [ ] Accessibility guide
 
 **Test Coverage:**
-- Total: 776 tests passing (716 + 60 new), 11 skipped
-- Primitives: 175 tests (115 utils + 30 Dialog + 30 Popover)
+- Total: 833 tests passing (776 + 57 new), 11 skipped
+- Primitives: 232 tests (115 utils + 30 Dialog + 30 Popover + 57 DropdownMenu)
 - All tests passing
 
 ---

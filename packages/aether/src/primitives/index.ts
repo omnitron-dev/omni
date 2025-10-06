@@ -37,6 +37,36 @@ export {
   type PopoverCloseProps,
 } from './Popover.js';
 
+// Dropdown Menu
+export {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuCheckboxItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuItemIndicator,
+  DropdownMenuShortcut,
+  DropdownMenuContext,
+  RadioGroupContext,
+  type DropdownMenuProps,
+  type DropdownMenuTriggerProps,
+  type DropdownMenuContentProps,
+  type DropdownMenuItemProps,
+  type DropdownMenuCheckboxItemProps,
+  type DropdownMenuRadioGroupProps,
+  type DropdownMenuRadioItemProps,
+  type DropdownMenuLabelProps,
+  type DropdownMenuSeparatorProps,
+  type DropdownMenuShortcutProps,
+  type DropdownMenuItemIndicatorProps,
+  type DropdownMenuContextValue,
+  type RadioGroupContextValue,
+} from './DropdownMenu.js';
+
 // Utilities
 export {
   // ID generation

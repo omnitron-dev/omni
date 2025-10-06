@@ -17,189 +17,251 @@
 
 ## Project Structure
 
-### Monorepo Layout
+> **Architecture Decision**: Following the Titan pattern, Aether is **one unified package** with internal modules, not a monorepo of separate packages. This simplifies development, testing, versioning, and usage.
+
+### Single Package Structure
 
 ```
 packages/
-├── aether-core/              # Core runtime and reactivity system
+├── aether/                   # Main framework package (@omnitron-dev/aether)
 │   ├── src/
-│   │   ├── reactivity/      # Signal system (migrated from experiments/vibrancy)
-│   │   │   ├── signal.ts
-│   │   │   ├── computed.ts
-│   │   │   ├── effect.ts
-│   │   │   ├── store.ts
-│   │   │   ├── resource.ts
-│   │   │   ├── batch.ts
-│   │   │   └── graph.ts     # Dependency tracking
-│   │   ├── component/       # Component system
-│   │   │   ├── define.ts
-│   │   │   ├── lifecycle.ts
-│   │   │   ├── context.ts
-│   │   │   ├── props.ts
-│   │   │   ├── refs.ts
-│   │   │   └── events.ts
-│   │   ├── directives/      # Directive system
-│   │   │   ├── registry.ts
-│   │   │   ├── lifecycle.ts
-│   │   │   └── built-in/    # if, for, show, etc.
-│   │   ├── runtime/         # Runtime utilities
-│   │   │   ├── scheduler.ts
-│   │   │   ├── hydration.ts
-│   │   │   ├── islands.ts
-│   │   │   └── ssr.ts
-│   │   └── index.ts
-│   ├── tests/               # Tests migrated from experiments/vibrancy
-│   │   ├── reactivity/
-│   │   ├── component/
-│   │   └── directives/
-│   └── package.json
-│
-├── aether-compiler/          # Template compiler and optimizer
-│   ├── src/
-│   │   ├── parser/          # TSX → AST
-│   │   │   ├── lexer.ts
-│   │   │   ├── parser.ts
-│   │   │   └── ast.ts
-│   │   ├── analyzer/        # Dependency analysis
+│   │   ├── core/            # Core reactivity and runtime
+│   │   │   ├── reactivity/  # Signal system (migrated from experiments/vibrancy)
+│   │   │   │   ├── signal.ts
+│   │   │   │   ├── computed.ts
+│   │   │   │   ├── effect.ts
+│   │   │   │   ├── store.ts
+│   │   │   │   ├── resource.ts
+│   │   │   │   ├── batch.ts
+│   │   │   │   └── graph.ts         # Dependency tracking
+│   │   │   ├── component/           # Component system
+│   │   │   │   ├── define.ts
+│   │   │   │   ├── lifecycle.ts
+│   │   │   │   ├── context.ts
+│   │   │   │   ├── props.ts
+│   │   │   │   ├── refs.ts
+│   │   │   │   └── events.ts
+│   │   │   ├── directives/          # Directive system
+│   │   │   │   ├── registry.ts
+│   │   │   │   ├── lifecycle.ts
+│   │   │   │   └── built-in/        # if, for, show, etc.
+│   │   │   ├── runtime/             # Runtime utilities
+│   │   │   │   ├── scheduler.ts
+│   │   │   │   ├── hydration.ts
+│   │   │   │   ├── islands.ts
+│   │   │   │   └── ssr.ts
+│   │   │   └── index.ts
+│   │   │
+│   │   ├── compiler/                # Template compiler and optimizer
+│   │   │   ├── parser/              # TSX → AST
+│   │   │   │   ├── lexer.ts
+│   │   │   │   ├── parser.ts
+│   │   │   │   └── ast.ts
+│   │   │   ├── analyzer/            # Dependency analysis
+│   │   │   │   ├── scope.ts
+│   │   │   │   ├── reactive-deps.ts
+│   │   │   │   └── static-analysis.ts
+│   │   │   ├── transformer/         # AST transformations
+│   │   │   │   ├── template.ts      # Template syntax → JS
+│   │   │   │   ├── directives.ts
+│   │   │   │   ├── component.ts
+│   │   │   │   └── optimize.ts
+│   │   │   ├── codegen/             # Code generation
+│   │   │   │   ├── generator.ts
+│   │   │   │   └── sourcemap.ts
+│   │   │   └── index.ts
+│   │   │
+│   │   ├── di/                      # Dependency injection system
+│   │   │   ├── injectable.ts        # Function-based DI
+│   │   │   ├── inject.ts
+│   │   │   ├── container.ts
 │   │   │   ├── scope.ts
-│   │   │   ├── reactive-deps.ts
-│   │   │   └── static-analysis.ts
-│   │   ├── transformer/     # AST transformations
-│   │   │   ├── template.ts  # Template syntax → JS
-│   │   │   ├── directives.ts
-│   │   │   ├── component.ts
-│   │   │   └── optimize.ts
-│   │   ├── codegen/         # Code generation
-│   │   │   ├── generator.ts
-│   │   │   └── sourcemap.ts
-│   │   ├── plugins/         # Plugin system
-│   │   │   ├── vite.ts
-│   │   │   └── webpack.ts
-│   │   └── index.ts
-│   ├── tests/
+│   │   │   ├── tokens.ts
+│   │   │   ├── module.ts            # defineModule()
+│   │   │   └── index.ts
+│   │   │
+│   │   ├── router/                  # File-based routing
+│   │   │   ├── router.ts            # Core router
+│   │   │   ├── route-matcher.ts
+│   │   │   ├── file-scanner.ts      # Scan routes directory
+│   │   │   ├── loader.ts            # Data loading
+│   │   │   ├── action.ts            # Form actions
+│   │   │   ├── navigation.ts        # Link, navigate()
+│   │   │   ├── guards.ts            # Route guards
+│   │   │   ├── prefetch.ts          # Prefetching
+│   │   │   ├── layouts.ts           # Layout system
+│   │   │   ├── error-boundary.ts
+│   │   │   └── index.ts
+│   │   │
+│   │   ├── forms/                   # Form utilities and validation
+│   │   │   ├── create-form.ts       # Form composition
+│   │   │   ├── field.ts             # Field primitives
+│   │   │   ├── validation/          # Validation engines
+│   │   │   │   ├── validator.ts
+│   │   │   │   ├── zod.ts
+│   │   │   │   └── yup.ts
+│   │   │   ├── transforms.ts
+│   │   │   ├── multi-step.ts
+│   │   │   └── index.ts
+│   │   │
+│   │   ├── primitives/              # Headless UI primitives
+│   │   │   ├── dialog/
+│   │   │   ├── popover/
+│   │   │   ├── dropdown/
+│   │   │   ├── select/
+│   │   │   ├── tabs/
+│   │   │   ├── accordion/
+│   │   │   ├── slider/
+│   │   │   ├── command/
+│   │   │   ├── calendar/
+│   │   │   ├── table/
+│   │   │   ├── utils/               # Accessibility utilities
+│   │   │   └── index.ts
+│   │   │
+│   │   ├── components/              # Styled component library
+│   │   │   ├── button/
+│   │   │   ├── input/
+│   │   │   ├── card/
+│   │   │   ├── alert/
+│   │   │   ├── toast/
+│   │   │   ├── navigation/
+│   │   │   ├── layout/
+│   │   │   ├── theme/               # Theming system
+│   │   │   └── index.ts
+│   │   │
+│   │   ├── netron/                  # Netron RPC client
+│   │   │   ├── client.ts            # WebSocket client
+│   │   │   ├── proxy.ts             # Service proxy generator
+│   │   │   ├── transport.ts
+│   │   │   ├── reconnect.ts
+│   │   │   ├── offline.ts
+│   │   │   ├── optimistic.ts
+│   │   │   └── index.ts
+│   │   │
+│   │   ├── build/                   # Build system and plugins
+│   │   │   ├── vite/                # Vite plugin
+│   │   │   ├── webpack/             # Webpack plugin (optional)
+│   │   │   ├── ssr-renderer.ts
+│   │   │   ├── ssg-generator.ts
+│   │   │   ├── islands.ts
+│   │   │   └── index.ts
+│   │   │
+│   │   └── index.ts                 # Main entry point
+│   │
+│   ├── tests/                       # All tests in one place
+│   │   ├── unit/                    # Unit tests
+│   │   │   ├── core/
+│   │   │   ├── compiler/
+│   │   │   ├── router/
+│   │   │   └── ...
+│   │   ├── integration/             # Integration tests
+│   │   │   ├── routing-data-loading.spec.ts
+│   │   │   ├── forms-validation.spec.ts
+│   │   │   ├── ssr-hydration.spec.ts
+│   │   │   └── titan-integration.spec.ts
+│   │   └── e2e/                     # E2E tests
+│   │       ├── todo-app.spec.ts
+│   │       ├── authentication.spec.ts
+│   │       └── ssr-navigation.spec.ts
+│   │
 │   └── package.json
 │
-├── aether-di/                # Dependency injection system
-│   ├── src/
-│   │   ├── injectable.ts    # Function-based DI
-│   │   ├── inject.ts
-│   │   ├── container.ts
-│   │   ├── scope.ts
-│   │   ├── tokens.ts
-│   │   ├── module.ts        # defineModule()
-│   │   └── index.ts
-│   ├── tests/
-│   └── package.json
-│
-├── aether-router/            # File-based routing
-│   ├── src/
-│   │   ├── router.ts        # Core router
-│   │   ├── route-matcher.ts
-│   │   ├── file-scanner.ts  # Scan routes directory
-│   │   ├── loader.ts        # Data loading
-│   │   ├── action.ts        # Form actions
-│   │   ├── navigation.ts    # Link, navigate()
-│   │   ├── guards.ts        # Route guards
-│   │   ├── prefetch.ts      # Prefetching
-│   │   ├── layouts.ts       # Layout system
-│   │   ├── error-boundary.ts
-│   │   └── index.ts
-│   ├── tests/
-│   └── package.json
-│
-├── aether-forms/             # Form utilities and validation
-│   ├── src/
-│   │   ├── create-form.ts   # Form composition
-│   │   ├── field.ts         # Field primitives
-│   │   ├── validation/      # Validation engines
-│   │   │   ├── validator.ts
-│   │   │   ├── zod.ts
-│   │   │   └── yup.ts
-│   │   ├── transforms.ts
-│   │   ├── multi-step.ts
-│   │   └── index.ts
-│   ├── tests/
-│   └── package.json
-│
-├── aether-primitives/        # Headless UI primitives
-│   ├── src/
-│   │   ├── dialog/
-│   │   ├── popover/
-│   │   ├── dropdown/
-│   │   ├── select/
-│   │   ├── tabs/
-│   │   ├── accordion/
-│   │   ├── slider/
-│   │   ├── command/
-│   │   ├── calendar/
-│   │   ├── table/
-│   │   ├── utils/           # Accessibility utilities
-│   │   └── index.ts
-│   ├── tests/
-│   └── package.json
-│
-├── aether-components/        # Styled component library
-│   ├── src/
-│   │   ├── button/
-│   │   ├── input/
-│   │   ├── card/
-│   │   ├── alert/
-│   │   ├── toast/
-│   │   ├── navigation/
-│   │   ├── layout/
-│   │   ├── theme/           # Theming system
-│   │   └── index.ts
-│   ├── tests/
-│   └── package.json
-│
-├── aether-netron/            # Netron RPC client
-│   ├── src/
-│   │   ├── client.ts        # WebSocket client
-│   │   ├── proxy.ts         # Service proxy generator
-│   │   ├── transport.ts
-│   │   ├── reconnect.ts
-│   │   ├── offline.ts
-│   │   ├── optimistic.ts
-│   │   └── index.ts
-│   ├── tests/
-│   └── package.json
-│
-├── aether-build/             # Build system and plugins
-│   ├── src/
-│   │   ├── vite/            # Vite plugin
-│   │   ├── webpack/         # Webpack plugin (optional)
-│   │   ├── ssr-renderer.ts
-│   │   ├── ssg-generator.ts
-│   │   ├── islands.ts
-│   │   └── index.ts
-│   ├── tests/
-│   └── package.json
-│
-├── aether-cli/               # CLI tools
+├── aether-cli/                      # CLI tools (separate package)
 │   ├── src/
 │   │   ├── commands/
-│   │   │   ├── create.ts    # create-aether
+│   │   │   ├── create.ts            # create-aether
 │   │   │   ├── dev.ts
 │   │   │   ├── build.ts
 │   │   │   ├── deploy.ts
 │   │   │   └── generate.ts
-│   │   ├── templates/       # Project templates
+│   │   ├── templates/               # Project templates
 │   │   └── index.ts
 │   ├── tests/
 │   └── package.json
 │
-├── aether-devtools/          # Browser DevTools extension
-│   ├── src/
-│   │   ├── panel/
-│   │   ├── inspector/
-│   │   ├── profiler/
-│   │   └── index.ts
-│   └── package.json
-│
-└── nexus/                   # Meta-package (re-exports everything)
+└── aether-devtools/                 # Browser DevTools extension (separate package)
     ├── src/
+    │   ├── panel/
+    │   ├── inspector/
+    │   ├── profiler/
     │   └── index.ts
     └── package.json
+```
+
+### Package.json Exports
+
+Following Titan's pattern, all modules are exposed via `package.json` exports:
+
+```json
+{
+  "name": "@omnitron-dev/aether",
+  "version": "0.1.0",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js"
+    },
+    "./compiler": {
+      "types": "./dist/compiler/index.d.ts",
+      "import": "./dist/compiler/index.js"
+    },
+    "./di": {
+      "types": "./dist/di/index.d.ts",
+      "import": "./dist/di/index.js"
+    },
+    "./router": {
+      "types": "./dist/router/index.d.ts",
+      "import": "./dist/router/index.js"
+    },
+    "./forms": {
+      "types": "./dist/forms/index.d.ts",
+      "import": "./dist/forms/index.js"
+    },
+    "./primitives": {
+      "types": "./dist/primitives/index.d.ts",
+      "import": "./dist/primitives/index.js"
+    },
+    "./components": {
+      "types": "./dist/components/index.d.ts",
+      "import": "./dist/components/index.js"
+    },
+    "./netron": {
+      "types": "./dist/netron/index.d.ts",
+      "import": "./dist/netron/index.js"
+    },
+    "./build": {
+      "types": "./dist/build/index.d.ts",
+      "import": "./dist/build/index.js"
+    },
+    "./build/vite": {
+      "types": "./dist/build/vite/index.d.ts",
+      "import": "./dist/build/vite/index.js"
+    }
+  }
+}
+```
+
+### Usage Examples
+
+```typescript
+// ✅ Import from main package
+import { signal, computed, effect } from '@omnitron-dev/aether';
+
+// ✅ Import from specific module (tree-shakeable)
+import { signal } from '@omnitron-dev/aether/core';
+import { defineComponent } from '@omnitron-dev/aether/core';
+import { createRouter } from '@omnitron-dev/aether/router';
+import { createForm } from '@omnitron-dev/aether/forms';
+import { Dialog } from '@omnitron-dev/aether/primitives';
+import { Button } from '@omnitron-dev/aether/components';
+import { NetronClient } from '@omnitron-dev/aether/netron';
+
+// ✅ Import build plugins
+import aether from '@omnitron-dev/aether/build/vite';
 ```
 
 ### Shared Infrastructure
@@ -255,11 +317,11 @@ experiments/vibrancy/
 
 #### Step 1: Prepare Target Structure
 
-Create the target directory in aether-core:
+Create the target directory in the unified aether package:
 
 ```bash
-mkdir -p packages/aether-core/src/reactivity
-mkdir -p packages/aether-core/tests/reactivity
+mkdir -p packages/aether/src/core/reactivity
+mkdir -p packages/aether/tests/unit/core/reactivity
 ```
 
 #### Step 2: Migrate Source Files
@@ -268,30 +330,30 @@ Move and refactor files:
 
 ```bash
 # Core reactivity primitives
-experiments/vibrancy/src/signal.ts        → packages/aether-core/src/reactivity/signal.ts
-experiments/vibrancy/src/computed.ts      → packages/aether-core/src/reactivity/computed.ts
-experiments/vibrancy/src/effect.ts        → packages/aether-core/src/reactivity/effect.ts
-experiments/vibrancy/src/store.ts         → packages/aether-core/src/reactivity/store.ts
-experiments/vibrancy/src/resource.ts      → packages/aether-core/src/reactivity/resource.ts
-experiments/vibrancy/src/batch.ts         → packages/aether-core/src/reactivity/batch.ts
+experiments/vibrancy/src/signal.ts        → packages/aether/src/core/reactivity/signal.ts
+experiments/vibrancy/src/computed.ts      → packages/aether/src/core/reactivity/computed.ts
+experiments/vibrancy/src/effect.ts        → packages/aether/src/core/reactivity/effect.ts
+experiments/vibrancy/src/store.ts         → packages/aether/src/core/reactivity/store.ts
+experiments/vibrancy/src/resource.ts      → packages/aether/src/core/reactivity/resource.ts
+experiments/vibrancy/src/batch.ts         → packages/aether/src/core/reactivity/batch.ts
 
 # Dependency tracking
-experiments/vibrancy/src/graph.ts         → packages/aether-core/src/reactivity/graph.ts
-experiments/vibrancy/src/scheduler.ts     → packages/aether-core/src/reactivity/scheduler.ts
+experiments/vibrancy/src/graph.ts         → packages/aether/src/core/reactivity/graph.ts
+experiments/vibrancy/src/scheduler.ts     → packages/aether/src/core/runtime/scheduler.ts
 
 # Types and utilities
-experiments/vibrancy/src/types.ts         → packages/aether-core/src/reactivity/types.ts
-experiments/vibrancy/src/utils.ts         → packages/aether-core/src/reactivity/utils.ts
+experiments/vibrancy/src/types.ts         → packages/aether/src/core/reactivity/types.ts
+experiments/vibrancy/src/utils.ts         → packages/aether/src/core/reactivity/utils.ts
 ```
 
 #### Step 3: Migrate Tests
 
 ```bash
 # Test files
-experiments/vibrancy/tests/*.spec.ts      → packages/aether-core/tests/reactivity/
+experiments/vibrancy/tests/*.spec.ts      → packages/aether/tests/unit/core/reactivity/
 
 # Test utilities
-experiments/vibrancy/tests/helpers/       → packages/aether-core/tests/helpers/
+experiments/vibrancy/tests/helpers/       → packages/aether/tests/helpers/
 ```
 
 #### Step 4: Update Import Paths
@@ -302,50 +364,32 @@ After migration, update all import paths:
 // OLD (experiments)
 import { signal, computed } from 'experiments/vibrancy';
 
-// NEW (aether-core)
-import { signal, computed } from '@aether/core/reactivity';
-// OR
-import { signal, computed } from 'aether';
+// NEW (unified aether package)
+import { signal, computed } from '@omnitron-dev/aether';
+// OR import from specific module for tree-shaking
+import { signal, computed } from '@omnitron-dev/aether/core';
 ```
 
-#### Step 5: Update Package Configuration
-
-**packages/aether-core/package.json:**
-
-```json
-{
-  "name": "@aether/core",
-  "version": "0.1.0",
-  "exports": {
-    ".": "./dist/index.js",
-    "./reactivity": "./dist/reactivity/index.js",
-    "./component": "./dist/component/index.js",
-    "./directives": "./dist/directives/index.js"
-  },
-  "types": "./dist/index.d.ts"
-}
-```
-
-#### Step 6: Validation
+#### Step 5: Validation
 
 Run migration validation:
 
 ```bash
 # Run tests in new location
-cd packages/aether-core
+cd packages/aether
 npm test
 
-# Verify API compatibility
-npm run test:api
+# Run only reactivity tests
+npm test -- tests/unit/core/reactivity
 
 # Check build
 npm run build
 
-# Verify exports
+# Verify exports work correctly
 npm run test:exports
 ```
 
-#### Step 7: Archive Experiments
+#### Step 6: Archive Experiments
 
 Once migration is validated:
 
@@ -367,8 +411,8 @@ import fs from 'fs/promises';
 import path from 'path';
 
 const MIGRATIONS = [
-  { from: 'experiments/vibrancy/src', to: 'packages/aether-core/src/reactivity' },
-  { from: 'experiments/vibrancy/tests', to: 'packages/aether-core/tests/reactivity' }
+  { from: 'experiments/vibrancy/src', to: 'packages/aether/src/core/reactivity' },
+  { from: 'experiments/vibrancy/tests', to: 'packages/aether/tests/unit/core/reactivity' }
 ];
 
 async function migrate() {
@@ -388,7 +432,7 @@ async function migrate() {
 
       // Update import paths
       const updated = content
-        .replace(/from ['"]experiments\/vibrancy/g, "from '@aether/core/reactivity")
+        .replace(/from ['"]experiments\/vibrancy/g, "from '@omnitron-dev/aether/core")
         .replace(/from ['"]\.\.\/vibrancy/g, "from '../reactivity");
 
       await fs.writeFile(targetPath, updated);
@@ -398,7 +442,7 @@ async function migrate() {
 
   console.log('\n✅ Migration complete!');
   console.log('\nNext steps:');
-  console.log('1. Run tests: cd packages/aether-core && npm test');
+  console.log('1. Run tests: cd packages/aether && npm test');
   console.log('2. Build: npm run build');
   console.log('3. Archive old: mv experiments/vibrancy experiments/vibrancy.archive');
 }
@@ -447,7 +491,7 @@ migrate().catch(console.error);
    - [ ] Edge case validation
 
 **Deliverables:**
-- `@aether/core` package with reactivity system
+- Core reactivity module in `@omnitron-dev/aether/core`
 - Test suite with >95% coverage
 - Performance benchmarks
 - API documentation
@@ -498,8 +542,8 @@ migrate().catch(console.error);
    - [ ] Integration tests
 
 **Deliverables:**
-- `@aether/compiler` package
-- `@aether/build` package with Vite plugin
+- Compiler module in `@omnitron-dev/aether/compiler`
+- Build plugins in `@omnitron-dev/aether/build`
 - Component examples
 - Compiler documentation
 
@@ -536,7 +580,7 @@ migrate().catch(console.error);
    - [ ] Circular dependency detection tests
 
 **Deliverables:**
-- `@aether/di` package
+- DI module in `@omnitron-dev/aether/di`
 - Module examples
 - DI documentation
 
@@ -583,7 +627,7 @@ migrate().catch(console.error);
    - [ ] E2E routing tests
 
 **Deliverables:**
-- `@aether/router` package
+- Router module in `@omnitron-dev/aether/router`
 - Routing examples
 - Migration guide from other routers
 
@@ -620,7 +664,7 @@ migrate().catch(console.error);
    - [ ] Multi-step tests
 
 **Deliverables:**
-- `@aether/forms` package
+- Forms module in `@omnitron-dev/aether/forms`
 - Form examples
 - Validation guide
 
@@ -660,7 +704,7 @@ migrate().catch(console.error);
    - [ ] Keyboard navigation tests
 
 **Deliverables:**
-- `@aether/primitives` package
+- Primitives module in `@omnitron-dev/aether/primitives`
 - Primitive examples
 - Accessibility guide
 
@@ -697,7 +741,7 @@ migrate().catch(console.error);
    - [ ] Visual regression tests (Playwright)
 
 **Deliverables:**
-- `@aether/components` package
+- Components module in `@omnitron-dev/aether/components`
 - Component gallery
 - Theming guide
 
@@ -733,7 +777,7 @@ migrate().catch(console.error);
    - [ ] Offline tests
 
 **Deliverables:**
-- `@aether/netron` package
+- Netron client module in `@omnitron-dev/aether/netron`
 - RPC examples
 - Integration guide with Titan
 
@@ -813,8 +857,8 @@ migrate().catch(console.error);
    - [ ] Migration guides
 
 **Deliverables:**
-- `@aether/cli` package
-- `@aether/devtools` extension
+- `@omnitron-dev/aether-cli` package (separate)
+- `@omnitron-dev/aether-devtools` extension (separate)
 - Testing utilities
 - Documentation site
 
@@ -822,106 +866,81 @@ migrate().catch(console.error);
 
 ## Build Order and Dependencies
 
-### Dependency Graph
+> **Simplified Architecture**: With a unified package structure, build complexity is dramatically reduced. No inter-package dependency management needed!
+
+### Package Dependency Graph
 
 ```mermaid
 graph TD
-    A[aether-core] --> B[aether-compiler]
-    A --> C[aether-di]
-    A --> D[aether-router]
-    A --> E[aether-forms]
-    A --> F[aether-netron]
-
-    B --> G[aether-build]
-    C --> D
-    C --> F
-
-    A --> H[aether-primitives]
-    H --> I[aether-components]
-
-    G --> J[aether-cli]
-
-    A --> K[nexus]
-    B --> K
-    C --> K
-    D --> K
-    E --> K
-    F --> K
-    H --> K
-    I --> K
+    A[@omnitron-dev/aether] --> B[aether-cli]
+    A --> C[aether-devtools]
 ```
+
+**That's it!** The main `@omnitron-dev/aether` package is self-contained with all internal modules (core, compiler, router, forms, primitives, components, netron, build).
 
 ### Build Order
 
-**Tier 1 (No dependencies):**
-1. `aether-core` - Must be built first
+**Simple 2-step build:**
 
-**Tier 2 (Depends on core):**
-2. `aether-compiler`
-3. `aether-di`
-4. `aether-primitives`
+1. **@omnitron-dev/aether** - Main framework (single build)
+2. **aether-cli** & **aether-devtools** - Tooling packages (depend on main framework)
 
-**Tier 3 (Depends on Tier 2):**
-5. `aether-router` (depends on core + di)
-6. `aether-forms` (depends on core)
-7. `aether-netron` (depends on core + di)
-8. `aether-build` (depends on core + compiler)
-9. `aether-components` (depends on core + primitives)
+### Build Commands
 
-**Tier 4 (Depends on Tier 3):**
-10. `aether-cli` (depends on build)
-11. `aether-devtools` (depends on all)
-12. `nexus` (meta-package, depends on all)
+```bash
+# Build main framework
+cd packages/aether
+npm run build
 
-### Automated Build Script
+# Build CLI (depends on aether)
+cd packages/aether-cli
+npm run build
 
-`scripts/build-order.ts`:
+# Build DevTools (depends on aether)
+cd packages/aether-devtools
+npm run build
 
-```typescript
-#!/usr/bin/env node
-import { execSync } from 'child_process';
-
-const BUILD_ORDER = [
-  // Tier 1
-  ['aether-core'],
-  // Tier 2
-  ['aether-compiler', 'aether-di', 'aether-primitives'],
-  // Tier 3
-  ['aether-router', 'aether-forms', 'aether-netron', 'aether-build', 'aether-components'],
-  // Tier 4
-  ['aether-cli', 'aether-devtools', 'nexus']
-];
-
-async function buildAll() {
-  for (const tier of BUILD_ORDER) {
-    console.log(`\n🔨 Building tier: ${tier.join(', ')}\n`);
-
-    // Build in parallel within tier
-    const builds = tier.map(pkg => {
-      return new Promise((resolve, reject) => {
-        try {
-          execSync(`cd packages/${pkg} && npm run build`, {
-            stdio: 'inherit'
-          });
-          resolve(pkg);
-        } catch (err) {
-          reject(err);
-        }
-      });
-    });
-
-    await Promise.all(builds);
-    console.log(`✅ Tier complete\n`);
-  }
-
-  console.log('🎉 All packages built successfully!');
-}
-
-buildAll().catch(err => {
-  console.error('❌ Build failed:', err);
-  process.exit(1);
-});
+# Or build all from root
+npm run build
 ```
+
+### Turbo Configuration
+
+Since we follow the Titan pattern with a unified package, turbo configuration is simple:
+
+**`turbo.json`:**
+
+```json
+{
+  "$schema": "https://turbo.build/schema.json",
+  "pipeline": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "test": {
+      "dependsOn": ["build"],
+      "outputs": ["coverage/**"]
+    },
+    "lint": {
+      "outputs": []
+    }
+  }
+}
+```
+
+### Benefits of Unified Package
+
+✅ **Simpler versioning** - One version for the entire framework
+✅ **Easier testing** - Integration tests work seamlessly
+✅ **Better DX** - Single `npm install @omnitron-dev/aether`
+✅ **Faster builds** - No waiting for dependency chain
+✅ **Consistent APIs** - All modules evolve together
+✅ **Following Titan pattern** - Proven architecture
 
 ---
 
@@ -951,11 +970,11 @@ buildAll().catch(err => {
 
 ### Testing Standards
 
-**Per Package:**
+**Unified Testing Approach:**
 
 ```typescript
-// packages/aether-core/tests/reactivity/signal.spec.ts
-import { signal } from '../../src/reactivity/signal';
+// packages/aether/tests/unit/core/reactivity/signal.spec.ts
+import { signal } from '../../../../src/core/reactivity/signal';
 
 describe('signal()', () => {
   it('should create a signal with initial value', () => {
@@ -980,9 +999,9 @@ describe('signal()', () => {
 **Performance Benchmarks:**
 
 ```typescript
-// packages/aether-core/benchmarks/signal.bench.ts
+// packages/aether/benchmarks/core/reactivity/signal.bench.ts
 import { bench, describe } from 'vitest';
-import { signal } from '../src/reactivity/signal';
+import { signal } from '../../../src/core/reactivity/signal';
 
 describe('Signal Performance', () => {
   bench('create 1000 signals', () => {
@@ -1009,16 +1028,17 @@ describe('Signal Performance', () => {
 
 **Test Coverage Requirements:**
 
-| Package | Unit | Integration | E2E |
-|---------|------|-------------|-----|
-| aether-core | 95%+ | 80%+ | - |
-| aether-compiler | 90%+ | 85%+ | - |
-| aether-di | 95%+ | 80%+ | - |
-| aether-router | 90%+ | 85%+ | 70%+ |
-| aether-forms | 90%+ | 80%+ | 70%+ |
-| aether-primitives | 85%+ | 80%+ | 75%+ |
-| aether-components | 80%+ | - | - |
-| aether-netron | 90%+ | 85%+ | - |
+| Module | Unit | Integration | E2E |
+|--------|------|-------------|-----|
+| **Core (Reactivity)** | 95%+ | 80%+ | - |
+| **Compiler** | 90%+ | 85%+ | - |
+| **DI** | 95%+ | 80%+ | - |
+| **Router** | 90%+ | 85%+ | 70%+ |
+| **Forms** | 90%+ | 80%+ | 70%+ |
+| **Primitives** | 85%+ | 80%+ | 75%+ |
+| **Components** | 80%+ | - | - |
+| **Netron Client** | 90%+ | 85%+ | - |
+| **Overall Package** | **90%+** | **80%+** | **70%+** |
 
 ---
 
@@ -1026,15 +1046,15 @@ describe('Signal Performance', () => {
 
 ### Development Tools
 
-**Monorepo:**
-- Turborepo - Build orchestration
-- Yarn Workspaces - Package management
-- Changesets - Version management
+**Package Management:**
+- Yarn Workspaces - Multi-package management
+- Turborepo - Build orchestration (optional, simple setup)
 
 **Build:**
 - TypeScript - Type checking and compilation
 - Vite - Dev server and bundling
 - ESBuild - Fast builds
+- tsup - Zero-config TypeScript bundler
 
 **Testing:**
 - Vitest - Unit and integration tests (faster than Jest)
@@ -1048,7 +1068,7 @@ describe('Signal Performance', () => {
 
 **CI/CD:**
 - GitHub Actions - Automated testing and builds
-- Changesets - Automated releases
+- Changesets - Version management and releases
 - npm - Package publishing
 
 ### Repository Configuration
@@ -1057,7 +1077,7 @@ describe('Signal Performance', () => {
 
 ```json
 {
-  "name": "aether-monorepo",
+  "name": "omnitron-aether",
   "private": true,
   "workspaces": [
     "packages/*",
@@ -1065,14 +1085,14 @@ describe('Signal Performance', () => {
   ],
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev",
+    "dev": "cd packages/aether && npm run dev",
     "test": "turbo run test",
-    "test:e2e": "turbo run test:e2e",
+    "test:e2e": "cd packages/aether && npm run test:e2e",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "changeset": "changeset",
     "version": "changeset version",
-    "release": "turbo run build && changeset publish"
+    "release": "npm run build && changeset publish"
   },
   "devDependencies": {
     "@changesets/cli": "^2.26.0",
@@ -1361,9 +1381,10 @@ export default defineComponent(() => {
 
 ### Immediate Actions (Week 1)
 
-1. **Setup monorepo structure:**
+1. **Setup unified package structure:**
    ```bash
-   mkdir -p packages/{aether-core,aether-compiler,aether-di,aether-router,aether-forms,aether-primitives,aether-components,aether-netron,aether-build,aether-cli,aether-devtools,nexus}
+   mkdir -p packages/aether/{src/{core,compiler,di,router,forms,primitives,components,netron,build},tests/{unit,integration,e2e}}
+   mkdir -p packages/{aether-cli,aether-devtools}
    ```
 
 2. **Execute Vibrancy migration:**
@@ -1371,22 +1392,24 @@ export default defineComponent(() => {
    node scripts/migrate-vibrancy.ts
    ```
 
-3. **Initialize packages:**
-   - Create package.json for each
-   - Setup tsconfig.json
-   - Configure build scripts
+3. **Initialize main package:**
+   - Create package.json with proper exports
+   - Setup tsconfig.json (strict mode)
+   - Configure build with tsup/vite
+   - Setup Vitest for testing
 
 4. **Setup tooling:**
-   - Initialize Turborepo
-   - Configure ESLint/Prettier
-   - Setup GitHub Actions
+   - Configure ESLint v9 (flat config)
+   - Configure Prettier
+   - Setup GitHub Actions CI/CD
+   - Initialize changesets
 
 ### Week 2 Goals
 
 - ✅ Vibrancy fully migrated and tests passing
-- ✅ aether-core builds successfully
+- ✅ `@omnitron-dev/aether` package structure ready
 - ✅ Basic signal example working
-- ✅ Documentation site skeleton
+- ✅ Build system configured
 
 ### Month 1 Goals
 

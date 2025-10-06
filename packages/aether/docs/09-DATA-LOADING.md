@@ -1,8 +1,38 @@
 # 09. Data Loading
 
-> **Status**: Complete Specification
+> **Specification Status**: Complete
+> **Implementation Status**: ⚡ Partial (Basic Hooks Implemented)
 > **Last Updated**: 2025-10-06
 > **Part of**: Aether Frontend Framework Specification
+
+---
+
+## ⚠️ Implementation Status
+
+This document describes the **complete data loading specification**. However, **only basic features are currently implemented**.
+
+### ✅ **Implemented** (Production-Ready)
+- `useLoaderData<T>()` - Access route loader data
+- `useActionData<T>()` - Access route action results
+- `useNavigation()` - Track navigation state (idle/loading/submitting)
+- `useFetcher()` - Programmatic mutations with state
+- Helper functions: `setLoaderData()`, `setActionData()`, `executeLoader()`, `executeAction()`
+
+### ⚡ **Partially Implemented**
+- Route loaders/actions (types defined, no automatic execution)
+- Navigation state tracking (manual state management required)
+
+### ❌ **Not Implemented** (Deferred)
+- Resources (reactive async data) - uses existing `resource()` from core/reactivity
+- Server functions (type-safe RPC)
+- Automatic loader execution on navigation
+- Automatic caching and revalidation
+- Deferred loading with `defer()` / `<Await>`
+- Suspense integration
+- Optimistic updates
+- SSR integration
+
+**See [ROUTER-IMPLEMENTATION-STATUS.md](./ROUTER-IMPLEMENTATION-STATUS.md) for detailed usage examples.**
 
 ---
 
@@ -29,16 +59,18 @@
 
 Aether provides powerful data loading primitives that work seamlessly with SSR, routing, and reactivity. Data loading is **declarative**, **type-safe**, and **automatically managed**.
 
+> ⚠️ **Note**: This overview describes the planned full implementation. See implementation status above for what is currently available.
+
 ### Key Features
 
-- **Resources**: Reactive async data with loading/error states
-- **Server Functions**: Type-safe RPC calls to server
-- **Route Loaders**: Load data before rendering routes
-- **Mutations**: Handle form submissions and data updates
-- **Automatic Caching**: Smart caching with revalidation
-- **Optimistic Updates**: Instant UI feedback
-- **Suspense Integration**: Works with React Suspense patterns
-- **TypeScript**: Full type safety for data flows
+- **Resources**: Reactive async data with loading/error states (uses core `resource()`)
+- **Server Functions**: Type-safe RPC calls to server (❌ not implemented)
+- **Route Loaders**: Load data before rendering routes (⚡ partial - hooks ready)
+- **Mutations**: Handle form submissions and data updates (⚡ partial - `useFetcher()` available)
+- **Automatic Caching**: Smart caching with revalidation (❌ not implemented)
+- **Optimistic Updates**: Instant UI feedback (❌ not implemented)
+- **Suspense Integration**: Works with React Suspense patterns (❌ not implemented)
+- **TypeScript**: Full type safety for data flows (✅ implemented)
 
 ### Simple Example
 
@@ -154,6 +186,9 @@ const [user] = resource<User>(() => fetchUser());
 ---
 
 ## Resources
+
+> ✅ **IMPLEMENTED** - Use existing `resource()` from `@omnitron-dev/aether` (core/reactivity).
+> See reactivity documentation for full resource() API.
 
 ### Basic Resource
 
@@ -334,6 +369,9 @@ const data = resource(
 
 ## Server Functions
 
+> ❌ **NOT IMPLEMENTED** - This section describes planned functionality.
+> Use Netron RPC integration instead for type-safe client-server communication.
+
 ### Creating Server Functions
 
 Server functions run **only on the server**, but can be called from client code:
@@ -436,6 +474,11 @@ const Component = defineComponent(() => {
 ---
 
 ## Route Loaders
+
+> ⚡ **PARTIALLY IMPLEMENTED** - `useLoaderData()` hook is available, but:
+> - No automatic loader execution on navigation
+> - Manual data management required with `setLoaderData()`
+> - See [ROUTER-IMPLEMENTATION-STATUS.md](./ROUTER-IMPLEMENTATION-STATUS.md) for usage examples
 
 ### Basic Loader
 
@@ -557,6 +600,12 @@ const ErrorBoundary = defineComponent(() => {
 
 ## Mutations
 
+> ⚡ **PARTIALLY IMPLEMENTED** - Available hooks:
+> - ✅ `useActionData()` - Access action results
+> - ✅ `useFetcher()` - Programmatic mutations with state
+> - ❌ Automatic form action execution not implemented
+> - ❌ `<Form>` component not implemented
+
 ### Form Actions
 
 ```typescript
@@ -637,6 +686,9 @@ export const action = async ({ request }) => {
 
 ## Caching
 
+> ❌ **NOT IMPLEMENTED** - This section describes planned functionality.
+> Use `resource()` from core/reactivity for basic caching.
+
 ### Automatic Caching
 
 Resources are automatically cached:
@@ -711,6 +763,8 @@ const [data] = resource(
 
 ## Revalidation
 
+> ❌ **NOT IMPLEMENTED** - This section describes planned functionality.
+
 ### Manual Revalidation
 
 ```typescript
@@ -757,6 +811,8 @@ const [data] = resource(
 ---
 
 ## Optimistic Updates
+
+> ❌ **NOT IMPLEMENTED** - This section describes planned functionality.
 
 ### Basic Optimistic Update
 

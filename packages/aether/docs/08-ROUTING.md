@@ -1,8 +1,39 @@
 # 08. Routing System
 
-> **Status**: Complete Specification
+> **Specification Status**: Complete
+> **Implementation Status**: ⚡ Partial (Core + Navigation Complete)
 > **Last Updated**: 2025-10-06
 > **Part of**: Aether Frontend Framework Specification
+
+---
+
+## ⚠️ Implementation Status
+
+This document describes the **complete routing specification**. However, **only parts are currently implemented**.
+
+### ✅ **Implemented** (Production-Ready, Fully Tested)
+- Core router with history/hash/memory modes
+- Route matching (static, dynamic `[param]`, catch-all `[...rest]`, optional)
+- Navigation (`<Link>` component, `useNavigate()`)
+- Router hooks (`useRouter`, `useParams`, `useLocation`, `useSearchParams`, `useIsActive`)
+- Route guards (`beforeEach`, `afterEach`)
+- Data loading hooks (`useLoaderData`, `useActionData`, `useNavigation`, `useFetcher`)
+- **65 tests passing** (100% coverage of implemented features)
+
+### ⚡ **Partially Implemented**
+- Data loading (hooks ready, no automatic execution)
+- Route guards (hooks ready, limited context)
+
+### ❌ **Not Implemented** (Deferred to Future Phases)
+- File-based routing (automatic route generation)
+- Nested layouts with `<Outlet>`
+- Error boundaries (`_error.tsx`)
+- Prefetching (infrastructure ready)
+- SSR/SSG integration
+- API routes
+- Type-safe navigation with route types
+
+**See [ROUTER-IMPLEMENTATION-STATUS.md](./ROUTER-IMPLEMENTATION-STATUS.md) for detailed status and usage examples.**
 
 ---
 
@@ -143,6 +174,9 @@ routes/
 ---
 
 ## File-Based Routing
+
+> ❌ **NOT IMPLEMENTED** - This section describes planned functionality.
+> Current implementation requires manual route configuration via `createRouter({ routes: [...] })`.
 
 ### Basic Routes
 
@@ -359,6 +393,9 @@ export default defineRoute({
 ---
 
 ## Nested Routes
+
+> ❌ **NOT IMPLEMENTED** - This section describes planned functionality.
+> `<Outlet>` component and layout nesting are not yet available.
 
 ### Layout Nesting
 
@@ -783,6 +820,9 @@ router.beforeEach((to, from, next) => {
 
 ## Layouts
 
+> ❌ **NOT IMPLEMENTED** - This section describes planned functionality.
+> Layout files and `<Outlet>` component are not yet available.
+
 ### Shared Layouts
 
 ```
@@ -857,6 +897,9 @@ export default defineComponent(() => {
 
 ## Error Pages
 
+> ❌ **NOT IMPLEMENTED** - This section describes planned functionality.
+> Error boundaries and error pages are not yet available.
+
 ### 404 Not Found
 
 ```typescript
@@ -906,6 +949,9 @@ Errors bubble up to nearest error boundary.
 ---
 
 ## API Routes
+
+> ❌ **NOT IMPLEMENTED** - This section describes planned functionality.
+> API routes are not yet available.
 
 ### Creating API Routes
 
@@ -1005,6 +1051,9 @@ export default defineMiddleware({
 
 ## Route Transitions
 
+> ❌ **NOT IMPLEMENTED** - This section describes planned functionality.
+> Route transitions are not yet implemented.
+
 ### Page Transitions
 
 ```typescript
@@ -1067,6 +1116,9 @@ const navigateWithTransition = async (href: string) => {
 ---
 
 ## Prefetching
+
+> ⚡ **PARTIALLY IMPLEMENTED** - Infrastructure ready but not functional.
+> `<Link>` component accepts prefetch props, but prefetching is not yet executed.
 
 ### Automatic Prefetching
 

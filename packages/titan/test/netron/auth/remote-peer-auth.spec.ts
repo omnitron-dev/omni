@@ -4,7 +4,6 @@
 
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { RemotePeer } from '../../../src/netron/remote-peer.js';
-import { Netron } from '../../../src/netron/netron.js';
 import type { AuthContext } from '../../../src/netron/auth/types.js';
 
 describe('RemotePeer Authentication', () => {

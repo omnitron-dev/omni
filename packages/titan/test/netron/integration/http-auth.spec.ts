@@ -3,11 +3,10 @@
  * Tests auth-aware service discovery over HTTP transport
  */
 
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { AuthenticationManager } from '../../../src/netron/auth/authentication-manager.js';
 import { AuthorizationManager } from '../../../src/netron/auth/authorization-manager.js';
 import type { AuthContext, AuthCredentials } from '../../../src/netron/auth/types.js';
-import { ErrorCode } from '../../../src/errors/index.js';
 
 describe('HTTP Transport Authentication Integration', () => {
   let mockLogger: any;

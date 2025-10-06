@@ -10,7 +10,6 @@ import {
 } from '../../../src/netron/middleware/index.js';
 import { TitanError, ErrorCode } from '../../../src/errors/index.js';
 import type { IncomingMessage, ServerResponse } from 'http';
-import * as zlib from 'zlib';
 import { EventEmitter } from 'events';
 
 describe('HttpMiddlewareAdapter - Edge Cases', () => {

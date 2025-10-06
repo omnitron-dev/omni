@@ -14,8 +14,6 @@ import type { ILogger } from '../../../modules/logger/logger.types.js';
 import { Definition } from '../../definition.js';
 import { TitanError, ErrorCode } from '../../../errors/index.js';
 import type {
-  Abilities,
-  NetronOptions,
   EventSubscriber,
 } from '../../types.js';
 import {
@@ -24,8 +22,7 @@ import {
   HttpRequestContext,
   HttpRequestHints,
   HttpResponseHints,
-  createRequestMessage,
-  type HttpDiscoveryResponse
+  createRequestMessage
 } from './types.js';
 
 /**
@@ -52,9 +49,6 @@ export class HttpRemotePeer extends AbstractPeer {
 
   /** Definition cache */
   private definitions = new Map<string, Definition>();
-
-  /** Cached abilities from the remote peer */
-  private cachedAbilities: Abilities | null = null;
 
   /** Event emitter for internal events */
   private events = new EventEmitter();
@@ -99,76 +93,13 @@ export class HttpRemotePeer extends AbstractPeer {
     this.logger.debug('Initializing HTTP Remote peer');
 
     if (isClient) {
-      // Check if legacy service discovery is enabled
-      const legacyMode = (options as any)?.legacyAbilitiesExchange;
-
-      if (legacyMode) {
-        // DEPRECATED: Legacy service discovery
-        this.logger.warn(
-          '⚠️  DEPRECATION WARNING: legacyAbilitiesExchange is deprecated for HTTP transport.\n' +
-          'Migration path:\n' +
-          '  1. Remove legacyAbilitiesExchange from TransportOptions\n' +
-          '  2. Services are now discovered on-demand via queryInterfaceRemote()\n' +
-          '  3. Use POST /netron/authenticate for user authentication\n' +
-          '  4. Use POST /netron/query-interface for auth-aware service discovery\n' +
-          'See documentation: https://docs.omnitron.dev/netron/migration/http-discovery'
-        );
-
-        // Legacy mode: Pre-fetch services via /netron/discovery
-        try {
-          await this.discoverServices();
-          this.logger.info('Services pre-fetched via legacy discovery endpoint');
-        } catch (error) {
-          this.logger.warn({ error }, 'Failed to pre-fetch services (legacy mode)');
-        }
-      } else {
-        // Modern mode: On-demand service discovery
-        this.logger.debug('HTTP peer initialized in client mode - services will be loaded on demand');
-      }
-    }
-  }
-
-  /**
-   * Discover available services from the HTTP server
-   */
-  private async discoverServices(): Promise<void> {
-    const response = await this.sendHttpRequest<HttpDiscoveryResponse>(
-      'GET',
-      '/netron/discovery'
-    );
-
-    if (response.services) {
-      for (const [name, service] of Object.entries(response.services)) {
-        const definition: Definition = {
-          id: `${name}-${service.version}`,
-          meta: {
-            name,
-            version: service.version,
-            methods: service.methods.reduce((acc, method) => {
-              acc[method] = { name: method };
-              return acc;
-            }, {} as any),
-            properties: {},
-            ...service.metadata
-          },
-          parentId: '',
-          peerId: this.id
-        };
-
-        this.services.set(name, definition);
-        this.serviceNames.add(name);
-        this.definitions.set(definition.id, definition);
-      }
-    }
-
-    // Cache contracts if provided
-    if (response.contracts) {
-      for (const [name, contract] of Object.entries(response.contracts)) {
-        const definition = this.services.get(name);
-        if (definition && definition.meta) {
-          (definition.meta as any).contract = contract;
-        }
-      }
+      // Modern auth-aware on-demand service discovery
+      this.logger.debug('HTTP peer initialized in client mode - using auth-aware on-demand service discovery');
+      this.logger.debug(
+        'Services will be discovered on-demand via queryInterfaceRemote(). ' +
+        'Use POST /netron/authenticate for user authentication and ' +
+        'POST /netron/query-interface for auth-aware service discovery.'
+      );
     }
   }
 
@@ -267,68 +198,6 @@ export class HttpRemotePeer extends AbstractPeer {
    */
   override getServiceNames(): string[] {
     return Array.from(this.serviceNames);
-  }
-
-  /**
-   * Query interface with optimized HTTP discovery
-   */
-  override async queryInterface<T>(qualifiedName: string): Promise<T> {
-    let name: string;
-    let version: string | undefined;
-
-    if (qualifiedName.includes('@')) {
-      [name, version] = qualifiedName.split('@') as [string, string | undefined];
-    } else {
-      name = qualifiedName;
-      version = '*';
-    }
-
-    // Check if interface already exists
-    const interfaceEntry = this.interfaces.get(name);
-    if (interfaceEntry) {
-      interfaceEntry.refCount++;
-      return interfaceEntry.instance as T;
-    }
-
-    // Ensure services are discovered
-    if (this.services.size === 0) {
-      await this.discoverServices();
-    }
-
-    const definition = this.services.get(name);
-    if (!definition) {
-      throw new TitanError({
-        code: ErrorCode.NOT_FOUND,
-        message: `Service ${qualifiedName} not found`
-      });
-    }
-
-    // Create proxy for the service
-    const proxy = this.createServiceProxy(definition);
-
-    this.interfaces.set(name, { instance: proxy as any, refCount: 1 });
-    return proxy as T;
-  }
-
-  /**
-   * Query abilities from the remote peer
-   */
-  async queryAbilities(): Promise<Abilities> {
-    if (this.cachedAbilities) {
-      return this.cachedAbilities;
-    }
-
-    // Discover services if not done
-    if (this.services.size === 0) {
-      await this.discoverServices();
-    }
-
-    this.cachedAbilities = {
-      services: this.services,
-      allowServiceEvents: false // HTTP doesn't support real-time events yet
-    };
-
-    return this.cachedAbilities;
   }
 
   /**
@@ -575,7 +444,6 @@ export class HttpRemotePeer extends AbstractPeer {
     this.interfaces.clear();
     this.services.clear();
     this.definitions.clear();
-    this.cachedAbilities = null;
 
     // Close the underlying connection
     if (this.connection && typeof this.connection.close === 'function') {

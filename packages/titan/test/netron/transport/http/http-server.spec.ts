@@ -7,7 +7,6 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { HttpServer } from '../../../../src/netron/transport/http/server.js';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import { Definition } from '../../../../src/netron/definition.js';
 
 describe('HttpServer (v2.0 Native Protocol)', () => {
   let server: HttpServer;

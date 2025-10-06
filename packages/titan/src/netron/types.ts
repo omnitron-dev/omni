@@ -8,24 +8,6 @@ import type { ITransportServer, ITransportConnection } from './transport/types.j
 import { Definition } from './definition.js';
 
 /**
- * Represents the capabilities and configuration of a remote peer.
- * This type defines what services and features are available on a remote peer.
- */
-export type Abilities = {
-  /**
-   * Map of service names to their definitions that are exposed by the remote peer.
-   * The key is the qualified service name (name:version) and the value is the service definition.
-   */
-  services?: Map<string, Definition>;
-
-  /**
-   * Indicates whether the remote peer should subscribe to service events.
-   * When true, the peer will receive notifications about service exposure and unexposure.
-   */
-  allowServiceEvents?: boolean;
-};
-
-/**
  * Transport configuration for Netron instance or service.
  * Specifies which transport(s) to use and their options.
  */
@@ -97,32 +79,6 @@ export type NetronOptions = {
    */
   loggerContext?: Record<string, any>;
 
-  /**
-   * Enable legacy abilities exchange protocol.
-   *
-   * **DEPRECATED**: This option is deprecated and will be removed in a future version.
-   * The abilities exchange protocol has been replaced with auth-aware service discovery.
-   *
-   * Migration path:
-   * - Remove this option from your configuration
-   * - Use authenticate() core-task for user authentication
-   * - Use query_interface() core-task for service discovery with authorization
-   * - Services are now discovered on-demand with proper permission filtering
-   *
-   * When enabled:
-   * - Peers will exchange abilities during initial connection (legacy behavior)
-   * - A deprecation warning will be logged
-   * - Full service definitions are sent without authorization filtering
-   *
-   * When disabled (default):
-   * - No abilities exchange during connection
-   * - Services discovered on-demand via query_interface() with auth checks
-   * - Better security and performance
-   *
-   * @deprecated Use auth-aware service discovery instead
-   * @default false
-   */
-  legacyAbilitiesExchange?: boolean;
 };
 
 /**
@@ -405,9 +361,6 @@ export interface IPeer {
   /** Associated Netron instance */
   netron: INetron;
 
-  /** Peer abilities */
-  abilities: Abilities;
-
   /** Query serivce interface by name */
   queryInterface<T = any>(name: string | T, version?: string): Promise<T>;
 
@@ -431,9 +384,6 @@ export interface IPeer {
 
   /** Call method with arguments */
   call(defId: string, name: string, args: any[]): Promise<any>;
-
-  /** Check if peer has ability */
-  hasAbility?(ability: string): boolean;
 }
 
 /**

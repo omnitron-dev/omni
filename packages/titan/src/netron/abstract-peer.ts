@@ -3,7 +3,7 @@ import semver from 'semver';
 import type { INetron, IPeer } from './types.js';
 import { Interface } from './interface.js';
 import { Definition } from './definition.js';
-import { Abilities, EventSubscriber } from './types.js';
+import { EventSubscriber } from './types.js';
 
 /**
  * Abstract base class representing a peer in the Netron network.
@@ -13,12 +13,6 @@ import { Abilities, EventSubscriber } from './types.js';
  * @abstract
  */
 export abstract class AbstractPeer implements IPeer {
-  /**
-   * Collection of abilities supported by this peer.
-   * Abilities represent the capabilities and features that this peer can provide.
-   */
-  public abilities: Abilities = {};
-
   /**
    * Internal map storing interface instances and their reference counts.
    * Key is the definition ID, value contains the interface instance and its reference count.

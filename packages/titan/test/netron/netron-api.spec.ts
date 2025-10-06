@@ -159,7 +159,7 @@ describe('Netron API', () => {
       // Manually add a remote peer to peers map
       const mockRemotePeer = {
         id: 'remote-peer-123',
-        netron: netron,
+        netron,
         close: jest.fn().mockResolvedValue(undefined)
       } as any;
 

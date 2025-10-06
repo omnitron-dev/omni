@@ -2,7 +2,7 @@
  * Transport Utilities Tests
  */
 
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, afterEach } from '@jest/globals';
 import { createServer, Server } from 'node:net';
 import {
   getAvailablePort,

@@ -3,7 +3,7 @@
  * Tests end-to-end scenarios with real Netron instances
  */
 
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { Netron } from '../../../src/netron/netron.js';
 import { AuthenticationManager } from '../../../src/netron/auth/authentication-manager.js';
 import { AuthorizationManager } from '../../../src/netron/auth/authorization-manager.js';

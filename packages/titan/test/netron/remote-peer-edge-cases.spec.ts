@@ -7,9 +7,8 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import { delay } from '@omnitron-dev/common';
 import { Netron } from '../../src/netron/netron.js';
 import { RemotePeer } from '../../src/netron/remote-peer.js';
-import { Service, Public } from '../../src/decorators/core.js';
 import { createMockLogger, createNetronServer, createNetronClient } from './test-utils.js';
-import { Packet, createPacket, encodePacket, TYPE_STREAM } from '../../src/netron/packet/index.js';
+import { Packet, createPacket, TYPE_STREAM } from '../../src/netron/packet/index.js';
 
 describe('RemotePeer Edge Cases', () => {
   let netron: Netron;

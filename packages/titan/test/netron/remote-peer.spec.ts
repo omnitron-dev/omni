@@ -13,7 +13,7 @@ import {
   NETRON_EVENT_PEER_DISCONNECT,
   NETRON_EVENT_SERVICE_UNEXPOSE,
 } from '../../src/netron/index';
-import { createMockLogger, createNetronServer, createNetronClient } from './test-utils.js';
+import { createMockLogger, createNetronClient } from './test-utils.js';
 import { WebSocketTransport } from '../../src/netron/transport/websocket-transport.js';
 
 describe('RemotePeer', () => {
@@ -29,7 +29,6 @@ describe('RemotePeer', () => {
     netron = new Netron(logger, {
       id: 'n1',
       allowServiceEvents: true,
-      legacyAbilitiesExchange: true,  // Use legacy mode for existing tests
     });
 
     netron.registerTransport('ws', () => new WebSocketTransport());
@@ -151,7 +150,6 @@ describe('RemotePeer', () => {
   it('should use specified id', async () => {
     const n2 = new Netron(createMockLogger(), {
       id: 'n2',
-      legacyAbilitiesExchange: true,
     });
     n2.registerTransport('ws', () => new WebSocketTransport());
 
@@ -168,7 +166,6 @@ describe('RemotePeer', () => {
   it('should have abilities after connection', async () => {
     const n2 = new Netron(createMockLogger(), {
       id: 'n2',
-      legacyAbilitiesExchange: true,
     });
     n2.registerTransport('ws', () => new WebSocketTransport());
 
@@ -191,7 +188,6 @@ describe('RemotePeer', () => {
     const n2 = new Netron(createMockLogger(), {
       id: 'n2',
       allowServiceEvents: true,
-      legacyAbilitiesExchange: true,
     });
     n2.registerTransport('ws', () => new WebSocketTransport());
 
@@ -231,7 +227,7 @@ describe('RemotePeer', () => {
     const peer = netron.peer;
     peer.exposeService(ctx1);
 
-    const n2 = new Netron(createMockLogger(), { legacyAbilitiesExchange: true });
+    const n2 = new Netron(createMockLogger(), {});
     n2.registerTransport('ws', () => new WebSocketTransport());
     n2.setTransportOptions('ws', { requestTimeout: 500 });
     await n2.start();
@@ -325,7 +321,7 @@ describe('RemotePeer', () => {
     const peer = netron.peer;
     peer.exposeService(svc2);
 
-    const n2 = new Netron(createMockLogger(), { legacyAbilitiesExchange: true });
+    const n2 = new Netron(createMockLogger(), {});
     n2.registerTransport('ws', () => new WebSocketTransport());
     const peer1 = await n2.connect(`ws://localhost:${testPort}`);
 
@@ -376,7 +372,7 @@ describe('RemotePeer', () => {
     const peer = netron.peer;
     peer.exposeService(svc2);
 
-    const n2 = new Netron(createMockLogger(), { legacyAbilitiesExchange: true });
+    const n2 = new Netron(createMockLogger(), {});
     n2.registerTransport('ws', () => new WebSocketTransport());
     const peer1 = await n2.connect(`ws://localhost:${testPort}`);
     const iService2 = await peer1.queryInterface<IService2>('service2');

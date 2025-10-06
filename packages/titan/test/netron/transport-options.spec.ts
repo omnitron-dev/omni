@@ -2,7 +2,7 @@
  * Tests for transport-specific options functionality
  */
 
-import type { Netron, RemotePeer } from '../../src/netron/netron.js';
+import type { Netron } from '../../src/netron/netron.js';
 import { WebSocketTransport } from '../../src/netron/transport/websocket-transport.js';
 import { Service, Public } from '../../src/decorators/core.js';
 import { createMockLogger } from './test-utils.js';

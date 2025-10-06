@@ -18,15 +18,10 @@ import { NetronWritableStream } from './writable-stream.js';
 import { isServiceDefinition, isNetronStreamReference } from './predicates.js';
 import {
   REQUEST_TIMEOUT,
-  NETRON_EVENT_SERVICE_EXPOSE,
-  NETRON_EVENT_SERVICE_UNEXPOSE,
 } from './constants.js';
 import {
-  Abilities,
   NetronOptions,
   EventSubscriber,
-  ServiceExposeEvent,
-  ServiceUnexposeEvent,
 } from './types.js';
 import {
   Packet,
@@ -153,52 +148,11 @@ export class RemotePeer extends AbstractPeer {
     });
 
     if (isConnector) {
-      this.logger.info('Initializing as connector');
-
-      // Check if legacy abilities exchange is enabled
-      if (options?.legacyAbilitiesExchange) {
-        // DEPRECATED: Legacy abilities exchange protocol
-        this.logger.warn(
-          '⚠️  DEPRECATION WARNING: legacyAbilitiesExchange is deprecated and will be removed in a future version.\n' +
-          'Migration path:\n' +
-          '  1. Remove legacyAbilitiesExchange from NetronOptions\n' +
-          '  2. Use authenticate() core-task for user authentication\n' +
-          '  3. Use query_interface() core-task for service discovery with authorization\n' +
-          '  4. Services are now discovered on-demand with proper permission filtering\n' +
-          'See documentation: https://docs.omnitron.dev/netron/migration/abilities-exchange'
-        );
-
-        this.abilities = (await this.runTask('abilities', this.netron.peer.abilities)) as Abilities;
-
-        if (this.abilities.services) {
-          this.logger.info({ count: this.abilities.services.size }, 'Registering remote services (legacy mode)');
-          for (const [name, definition] of this.abilities.services) {
-            this.definitions.set(definition.id, definition);
-            this.services.set(name, definition);
-          }
-        }
-
-        if (this.abilities.allowServiceEvents) {
-          this.logger.info('Subscribing to service lifecycle events (legacy mode)');
-          await this.subscribe(NETRON_EVENT_SERVICE_EXPOSE, (event: ServiceExposeEvent) => {
-            this.logger.info({ event }, 'Service exposed event received');
-            this.definitions.set(event.definition.id, event.definition);
-            this.services.set(event.qualifiedName, event.definition);
-          });
-          await this.subscribe(NETRON_EVENT_SERVICE_UNEXPOSE, (event: ServiceUnexposeEvent) => {
-            this.logger.info({ event }, 'Service unexposed event received');
-            this.definitions.delete(event.defId);
-            this.services.delete(event.qualifiedName);
-          });
-        }
-      } else {
-        // Modern mode: No abilities exchange, services discovered on-demand
-        this.logger.info('Abilities exchange disabled - using on-demand service discovery');
-        this.logger.debug(
-          'Services will be discovered on-demand via queryInterface() with authorization checks. ' +
-          'Use authenticate() core-task to establish user authentication.'
-        );
-      }
+      this.logger.info('Initializing as connector - using auth-aware on-demand service discovery');
+      this.logger.debug(
+        'Services will be discovered on-demand via queryInterface() with authorization checks. ' +
+        'Use authenticate() core-task to establish user authentication.'
+      );
     }
   }
 

@@ -8,7 +8,6 @@ import { PolicyEngine } from '../../../src/netron/auth/policy-engine.js';
 import type {
   ExecutionContext,
   PolicyDefinition,
-  AuthContext,
 } from '../../../src/netron/auth/types.js';
 
 describe('PolicyEngine Advanced Tests', () => {
@@ -74,9 +73,7 @@ describe('PolicyEngine Advanced Tests', () => {
       const policy: PolicyDefinition = {
         name: 'recoveringPolicy',
         description: 'Policy that recovers',
-        evaluate: async () => {
-          return { allowed: true, reason: 'OK' };
-        },
+        evaluate: async () => ({ allowed: true, reason: 'OK' }),
       };
 
       policyEngine.registerPolicy(policy);
@@ -154,9 +151,7 @@ describe('PolicyEngine Advanced Tests', () => {
       const policy: PolicyDefinition = {
         name: 'cacheTestPolicy',
         description: 'Test cache concurrency',
-        evaluate: async () => {
-          return { allowed: true, reason: 'OK' };
-        },
+        evaluate: async () => ({ allowed: true, reason: 'OK' }),
       };
 
       policyEngine.registerPolicy(policy);

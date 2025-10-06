@@ -4,7 +4,6 @@
 
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { authenticate } from '../../../src/netron/core-tasks/authenticate.js';
-import { RemotePeer } from '../../../src/netron/remote-peer.js';
 import type { AuthCredentials, AuthResult, AuthContext } from '../../../src/netron/auth/types.js';
 import { TitanError, ErrorCode } from '../../../src/errors/index.js';
 

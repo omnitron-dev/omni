@@ -6,11 +6,9 @@
 import type { Netron } from '../../src/netron/netron.js';
 import { WebSocketTransport } from '../../src/netron/transport/websocket-transport.js';
 import { TcpTransport } from '../../src/netron/transport/tcp-transport.js';
-import { HttpTransport } from '../../src/netron/transport/http/http-transport.js';
 import { Service, Method } from '../../src/decorators/core.js';
 import { createMockLogger } from './test-utils.js';
 import { getAvailablePort } from '../../src/netron/transport/utils.js';
-import { delay } from '@omnitron-dev/common';
 
 describe('Multi-Transport Integration', () => {
   let server: Netron;

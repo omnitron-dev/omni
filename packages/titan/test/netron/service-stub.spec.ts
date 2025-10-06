@@ -6,9 +6,6 @@ import { WebSocket } from 'ws';
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { Netron } from '../../src/netron/netron.js';
 import { RemotePeer } from '../../src/netron/remote-peer.js';
-import { ServiceStub } from '../../src/netron/service-stub.js';
-import { NetronWritableStream } from '../../src/netron/writable-stream.js';
-import { StreamReference } from '../../src/netron/stream-reference.js';
 import { createMockLogger } from './test-utils.js';
 import { Service, Public } from '../../src/decorators/core.js';
 

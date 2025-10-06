@@ -2,7 +2,7 @@
  * Edge case tests for Netron Middleware Pipeline
  */
 
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import {
   MiddlewarePipeline,
   MiddlewareStage,

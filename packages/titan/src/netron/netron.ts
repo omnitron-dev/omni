@@ -17,11 +17,9 @@ import { ensureStreamReferenceRegistered } from './packet/serializer.js';
 // Import transport layer
 import { TransportRegistry } from './transport/transport-registry.js';
 import { TransportConnectionFactory } from './transport/transport-adapter.js';
-import { WebSocketTransport } from './transport/websocket-transport.js';
 import type { ITransport, ITransportServer, ITransportConnection, TransportFactory, TransportOptions } from './transport/types.js';
 
 // Import core tasks
-import { abilities } from './core-tasks/abilities.js';
 import { emit } from './core-tasks/emit.js';
 import { expose_service } from './core-tasks/expose-service.js';
 import { subscribe } from './core-tasks/subscribe.js';
@@ -907,7 +905,6 @@ export class Netron extends EventEmitter implements INetron {
     this.logger.debug('Registering core tasks');
 
     // Register each core task
-    this.taskManager.addTask(abilities as Task);
     this.taskManager.addTask(emit as Task);
     this.taskManager.addTask(expose_service as Task);
     this.taskManager.addTask(subscribe as Task);

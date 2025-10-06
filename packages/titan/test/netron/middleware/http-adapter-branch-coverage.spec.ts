@@ -7,8 +7,7 @@ import { IncomingMessage, ServerResponse } from 'http';
 import {
   HttpMiddlewareAdapter,
   HttpBuiltinMiddleware,
-  type HttpMiddlewareContext,
-  type MiddlewareFunction
+  type HttpMiddlewareContext
 } from '../../../src/netron/middleware/index.js';
 
 describe('HttpMiddlewareAdapter - Branch Coverage', () => {

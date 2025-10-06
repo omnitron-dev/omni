@@ -8,6 +8,7 @@ export default defineConfig({
     'core/component/index': 'src/core/component/index.ts',
     'jsx-runtime': 'src/jsx-runtime.ts',
     'jsx-dev-runtime': 'src/jsx-dev-runtime.ts',
+    'di/index': 'src/di/index.ts',
   },
   format: ['esm'],
   dts: true,

@@ -2080,6 +2080,7 @@ __metadata:
     "@vitest/ui": "npm:^3.2.4"
     eslint: "npm:^9.37.0"
     happy-dom: "npm:^19.0.2"
+    reflect-metadata: "npm:^0.2.2"
     tsup: "npm:^8.5.0"
     typescript: "npm:^5.9.3"
     vitest: "npm:^3.2.4"

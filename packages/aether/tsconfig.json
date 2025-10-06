@@ -35,6 +35,8 @@
     "noImplicitOverride": true,
     "noPropertyAccessFromIndexSignature": false,
     "skipLibCheck": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
     "jsx": "react-jsx",
     "jsxImportSource": "@omnitron-dev/aether"
   },

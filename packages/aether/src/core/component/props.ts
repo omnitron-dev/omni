@@ -4,6 +4,9 @@
  * Helper functions for component props manipulation
  */
 
+import { signal, type WritableSignal } from '../reactivity/signal.js';
+import { context } from '../reactivity/context.js';
+
 /**
  * Merge multiple props objects with defaults
  *
@@ -100,50 +103,90 @@ export function splitProps<T extends Record<string, any>>(
 /**
  * Create reactive props proxy
  *
- * Wraps props in a proxy that preserves reactivity even after destructuring.
- * When you destructure props, the values are tracked in the reactive context.
+ * Wraps props in a proxy that preserves reactivity when props change.
+ * The proxy tracks property access in reactive contexts (effects/computed).
+ *
+ * **IMPORTANT**: Do not destructure! Access properties directly through the proxy.
  *
  * @param props - Props object
- * @returns Reactive proxy
+ * @returns Reactive proxy with update method
  *
  * @example
  * ```typescript
  * const MyComponent = defineComponent<Props>((rawProps) => {
  *   const props = reactiveProps(rawProps);
  *
- *   // Destructuring still creates reactive dependencies
- *   const { value, onChange } = props;
+ *   // ✅ CORRECT: Access through proxy
+ *   return () => <div onClick={props.onChange}>{props.value}</div>;
  *
- *   return () => <div onClick={onChange}>{value}</div>;
+ *   // ❌ WRONG: Destructuring loses reactivity
+ *   // const { value } = props;
  * });
  * ```
  */
-export function reactiveProps<T extends Record<string, any>>(props: T): T {
-  // Create a proxy that tracks property access
-  return new Proxy(props, {
-    get(target, property, receiver) {
-      // Get the value
-      const value = Reflect.get(target, property, receiver);
+export function reactiveProps<T extends Record<string, any>>(
+  props: T
+): T & { [PROPS_UPDATE]?: (newProps: T) => void } {
+  // Create signal to store current props
+  const propsSignal: WritableSignal<T> = signal<T>(props);
+
+  // Create proxy that reads from signal
+  const proxy = new Proxy({} as T, {
+    get(_, property) {
+      // Special internal update method
+      if (property === PROPS_UPDATE) {
+        return (newProps: T) => {
+          propsSignal.set(newProps);
+        };
+      }
+
+      // Read from signal - this creates dependency in reactive context
+      // Note: This creates a dependency on the entire props object, not granular per-property
+      // This is simpler and works correctly, though less optimal than per-property tracking
+      const currentProps = propsSignal();
+      const value = Reflect.get(currentProps, property);
 
       // If value is a function, bind it to preserve 'this' context
       if (typeof value === 'function') {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-        return (value as any).bind(target);
+        return (value as any).bind(currentProps);
       }
 
       return value;
     },
 
-    has(target, property) {
-      return Reflect.has(target, property);
+    set(_, property, value) {
+      // Update the prop in the signal
+      const currentProps = context.untrack(() => propsSignal());
+      const newProps = { ...currentProps, [property]: value };
+      propsSignal.set(newProps);
+      return true;
     },
 
-    ownKeys(target) {
-      return Reflect.ownKeys(target);
+    has(_, property) {
+      if (property === PROPS_UPDATE) return true;
+      const currentProps = context.untrack(() => propsSignal());
+      return Reflect.has(currentProps, property);
     },
 
-    getOwnPropertyDescriptor(target, property) {
-      return Reflect.getOwnPropertyDescriptor(target, property);
+    ownKeys(_) {
+      const currentProps = context.untrack(() => propsSignal());
+      return Reflect.ownKeys(currentProps);
+    },
+
+    getOwnPropertyDescriptor(_, property) {
+      if (property === PROPS_UPDATE) {
+        return { configurable: true, enumerable: false, writable: true };
+      }
+      const currentProps = context.untrack(() => propsSignal());
+      return Reflect.getOwnPropertyDescriptor(currentProps, property);
     },
   });
+
+  return proxy as T & { [PROPS_UPDATE]?: (newProps: T) => void };
 }
+
+/**
+ * Internal symbol for props update method
+ * @internal
+ */
+export const PROPS_UPDATE = Symbol('propsUpdate');

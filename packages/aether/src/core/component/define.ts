@@ -7,6 +7,7 @@
 import { getOwner, onCleanup } from '../reactivity/context.js';
 import { createRoot } from '../reactivity/batch.js';
 import { triggerMount, cleanupComponentContext } from './lifecycle.js';
+import { reactiveProps, PROPS_UPDATE } from './props.js';
 import type { ComponentSetup, Component, RenderFunction } from './types.js';
 
 /**
@@ -33,36 +34,51 @@ export function defineComponent<P = {}>(
   setup: ComponentSetup<P>,
   name?: string
 ): Component<P> {
+  let render: RenderFunction | undefined;
+  let owner: any;
+  let reactivePropsInstance: any;
+  let isSetupComplete = false;
+
   // Create component function
   const component: Component<P> = (props: P): any => {
-    let render: RenderFunction | undefined;
-    let owner: any;
+    // First call - run setup
+    if (!isSetupComplete) {
+      // Wrap props in reactive proxy
+      reactivePropsInstance = reactiveProps(props);
 
-    // Create reactive scope for component
-    createRoot((rootDispose: () => void) => {
-      // Get the owner (reactive context)
-      owner = getOwner();
+      // Create reactive scope for component
+      createRoot((rootDispose: () => void) => {
+        // Get the owner (reactive context)
+        owner = getOwner();
 
-      // Set component name for debugging
-      if (name && owner) {
-        (owner as any).name = name;
-      }
+        // Set component name for debugging
+        if (name && owner) {
+          (owner as any).name = name;
+        }
 
-      // Run setup function (once)
-      render = setup(props);
+        // Run setup function (once) with reactive props
+        render = setup(reactivePropsInstance);
 
-      // Register cleanup
-      onCleanup(() => {
-        cleanupComponentContext(owner);
-        rootDispose();
+        // Register cleanup
+        onCleanup(() => {
+          cleanupComponentContext(owner);
+          rootDispose();
+        });
+
+        return rootDispose;
       });
 
-      return rootDispose;
-    });
+      isSetupComplete = true;
 
-    // Trigger mount lifecycle
-    if (owner) {
-      triggerMount(owner);
+      // Trigger mount lifecycle
+      if (owner) {
+        triggerMount(owner);
+      }
+    } else {
+      // Subsequent calls - update props
+      if (reactivePropsInstance && reactivePropsInstance[PROPS_UPDATE]) {
+        reactivePropsInstance[PROPS_UPDATE](props);
+      }
     }
 
     // Return render result

@@ -28,6 +28,17 @@ export {
 // Lazy loading
 export { lazy, preloadComponent, type ComponentLoader } from './lazy.js';
 
+// Error Boundary
+export {
+  ErrorBoundary,
+  useErrorBoundary,
+  withErrorBoundary,
+  ErrorBoundaryContext,
+  type ErrorInfo,
+  type ErrorBoundaryContext as ErrorBoundaryContextType,
+  type ErrorBoundaryProps,
+} from './error-boundary.js';
+
 // Types
 export type {
   Component,

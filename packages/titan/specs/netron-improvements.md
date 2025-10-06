@@ -6909,3 +6909,135 @@ For detailed analysis and recommendations, see `specs/http-transport-optimizatio
 
 **Specification Updated:** October 6, 2025
 **Version:** 3.1 (Clean Architecture + Performance Analysis)
+
+---
+
+## Test Coverage Analysis (October 6, 2025)
+
+**Current Test Statistics:**
+- **Test Suites:** 69 passing / 74 total (93.2%)
+- **Tests:** 1221 passing / 1254 total (97.4%)
+- **Skipped:** 17 tests (legacy abilities functionality)
+- **Failing:** 16 tests (service auto-discovery expectations)
+
+**Code Coverage (Netron module):**
+- **Statements:** 71.59% (3572/4989)
+- **Branches:** 64.30% (1821/2832)
+- **Functions:** 70.25% (770/1096)
+- **Lines:** 71.78% (3496/4870)
+
+### Coverage Gaps Identified
+
+**Critical Files with 0% Coverage (HTTP Transport):**
+1. `transport/http/interface.ts` - 0% coverage
+2. `transport/http/peer.ts` - 15KB, 0% coverage
+3. `subscription-manager.ts` - 15KB, 0% coverage
+4. `typed-middleware.ts` - 13KB, 0% coverage
+5. `typed-server.ts` - 13KB, 0% coverage
+6. `transport/http/client.ts` - 8.9% coverage
+
+**Files with <80% Coverage:**
+- `unix-transport.ts` - 47.2% lines
+- `transport-adapter.ts` - 50.0% lines
+- `websocket-transport.ts` - 71.1% lines
+- `tcp-transport.ts` - 72.2% lines
+- `abstract-peer.ts` - 73.9% lines
+- `netron.ts` - 74.5% lines
+
+### Fixes Implemented
+
+**Definition Cache Invalidation (Critical Bug Fix):**
+- Fixed stale definition cache causing "Unknown definition" errors
+- Added validation before reusing cached definitions
+- Ensures re-query after releaseInterface works correctly
+
+**Test Compatibility Updates:**
+- Fixed 8 failing tests in remote-peer.spec.ts
+- Skipped 3 legacy abilities tests (functionality removed)
+- Fixed async handshake timing issues
+- Updated tests for modern auth-aware service discovery
+
+### Remaining Work
+
+**Immediate (16 Failing Tests):**
+All failing tests expect legacy auto-discovery behavior:
+- `multi-transport.spec.ts` - 3 tests
+- `service-versioning.spec.ts` - 5 tests
+- `method-transport-filter.spec.ts` - 3 tests
+- `full-auth-flow.spec.ts` - 2 tests
+- `transport-options.spec.ts` - 3 tests
+
+**Test Coverage Gaps (To Reach 95%+):**
+1. **HTTP Transport Tests** (~300 lines needed):
+   - Add tests for HTTP peer.ts (0% → 80%+)
+   - Add tests for subscription-manager.ts (0% → 80%+)
+   - Add tests for typed-middleware.ts (0% → 80%+)
+   - Add tests for typed-server.ts (0% → 80%+)
+
+2. **Transport Coverage** (~200 lines needed):
+   - Improve unix-transport.ts (47% → 80%+)
+   - Improve transport-adapter.ts (50% → 80%+)
+   - Improve tcp-transport.ts (72% → 80%+)
+
+3. **Core Coverage** (~150 lines needed):
+   - Improve abstract-peer.ts (74% → 90%+)
+   - Improve netron.ts (75% → 90%+)
+   - Improve websocket-transport.ts (71% → 90%+)
+
+**Estimated Effort:**
+- Fix 16 failing tests: 2-3 hours
+- HTTP transport test coverage: 4-6 hours
+- Other transport coverage: 3-4 hours
+- Core module coverage: 2-3 hours
+- **Total:** 11-16 hours to achieve 95%+ coverage
+
+### Recommendations
+
+**Priority 1 - Fix Failing Tests:**
+Update tests to use modern queryInterface without expecting auto-discovery:
+```typescript
+// Old (expects auto-discovery):
+expect(peer.services.has('serviceName')).toBe(true);
+const service = await peer.queryInterface('serviceName');
+
+// New (on-demand discovery):
+const service = await peer.queryInterface('serviceName');
+expect(service).toBeDefined();
+```
+
+**Priority 2 - HTTP Transport Coverage:**
+Create comprehensive test suite for HTTP transport:
+- `test/netron/transport/http/peer-coverage.spec.ts`
+- `test/netron/transport/http/subscription-manager-coverage.spec.ts`
+- `test/netron/transport/http/typed-middleware-coverage.spec.ts`
+
+**Priority 3 - Branch Coverage:**
+Focus on edge cases and error paths:
+- Error handling paths (currently 64% branch coverage)
+- Timeout scenarios
+- Malformed input handling
+- Connection failure scenarios
+
+### Session Summary
+
+**Completed:**
+- ✅ Verified TypeScript compilation (0 errors)
+- ✅ Analyzed specification compliance
+- ✅ Removed all legacy abilities code (537 lines)
+- ✅ Fixed definition cache invalidation bug
+- ✅ Fixed 8 failing tests in remote-peer.spec.ts
+- ✅ Identified all coverage gaps
+- ✅ Created detailed HTTP transport optimization analysis
+- ✅ Updated specification with progress
+
+**Metrics:**
+- Tests passing: 1221/1254 (97.4%)
+- Code coverage: 71.78% lines
+- Legacy code removed: 100%
+- Specification updated: v3.1
+
+**Next Session Tasks:**
+1. Fix remaining 16 failing tests (~2 hours)
+2. Add HTTP transport test coverage (~6 hours)  
+3. Improve branch coverage in core modules (~3 hours)
+4. Achieve 95%+ overall coverage

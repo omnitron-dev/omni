@@ -1336,7 +1336,7 @@ Commit: (pending)
   - Auto-height calculation
 
 #### Phase 8.13: Critical Layout Primitives ✅ (10 primitives - 855 lines)
-Commit: (pending)
+Commit: 84c368a
 
 **Foundational Layout Components:**
 - ✅ **Box** (~55 lines) - The foundational base component

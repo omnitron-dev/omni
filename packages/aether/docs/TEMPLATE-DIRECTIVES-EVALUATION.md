@@ -967,14 +967,21 @@ const tooltip = createDirective<string>((node, text) => {
 
 ### 8.3 Implementation Plan
 
-**Phase 1: Core Utilities (Week 1)**
-- ✅ Already have: `classNames` utility
-- 🔲 Add: Event handler helpers (prevent, stop, preventStop)
-- 🔲 Add: Binding helpers (bindValue, bindNumber, bindTrimmed, etc.)
-- 🔲 Add: Enhanced class utility with reactive support
-- 🔲 Add: Style utility with reactive support
-- 🔲 Add: Directive creation pattern
-- 🔲 Tests for all utilities
+**Phase 1: Core Utilities** ✅ **COMPLETED** (100% test pass rate - 109/109 tests passing)
+- ✅ Event handler helpers (prevent, stop, preventStop, stopImmediate, self, trusted, debounce, throttle, passive, capture, once, compose) - `src/utils/events.ts`
+- ✅ Binding helpers (bindValue, bindNumber, bindTrimmed, bindDebounced, bindThrottled, bindLazy, bindChecked, bindGroup, bindSelect, composeBinding) - `src/utils/binding.ts`
+- ✅ Enhanced class utility with reactive support (classNames, cx, classes, reactiveClasses, toggleClass, conditionalClasses, variantClasses, mergeClasses) - `src/utils/classes.ts`
+- ✅ Style utility with reactive support (styles, reactiveStyles, mergeStyles, cssVar, conditionalStyles, variantStyles) - `src/utils/styles.ts`
+- ✅ Directive creation pattern (createDirective, createUpdatableDirective, combineDirectives + built-in directives: autoFocus, clickOutside, intersectionObserver, resizeObserver, longPress, swipe) - `src/utils/directive.ts`
+- ✅ Comprehensive tests for all utilities (109 tests total) - `tests/unit/utils/*.spec.ts`
+
+**Test Results**:
+- `tests/unit/utils/events.spec.ts`: 15/15 tests passing
+- `tests/unit/utils/binding.spec.ts`: 17/17 tests passing
+- `tests/unit/utils/classes.spec.ts`: 30/30 tests passing
+- `tests/unit/utils/styles.spec.ts`: 31/31 tests passing
+- `tests/unit/utils/directive.spec.ts`: 16/16 tests passing
+- **Total**: 109/109 tests passing (100% success rate)
 
 **Phase 2: Documentation Update (Week 2)**
 - 🔲 Rewrite 04-TEMPLATE-SYNTAX.md to document actual TypeScript JSX patterns

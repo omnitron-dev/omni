@@ -36,18 +36,22 @@ Comprehensive roadmap for implementing the Aether Frontend Framework - a minimal
 - ✅ **Phase 5**: Router & Data Loading (automatic loaders, layouts, error boundaries, prefetching)
 - ✅ **Phase 6**: SSR/SSG Server (runtime-agnostic HTTP server, SSR renderer)
 - ✅ **Phase 7**: E2E Testing Infrastructure (Playwright setup with multi-browser support)
-- ✅ **Phase 8**: UI Primitives (Tabs, Accordion, Switch + existing Dialog, Popover, Dropdown, Select)
+- ✅ **Phase 8**: UI Primitives - Core Set (Dialog, Popover, Dropdown, Select, Tabs, Accordion, Switch)
+- 🚧 **Phase 8.1**: UI Primitives - Form Components (Form, RadioGroup, Checkbox)
 
 **Key Metrics**:
-- **Lines of Code**: ~22,000+ (core framework + server + primitives)
+- **Lines of Code**: ~23,500+ (core framework + server + primitives)
 - **Test Coverage**: 1133/1145 tests passing (98.9%)
 - **Documentation**: ~45,000+ lines across 20+ specification documents
 - **Examples**: 11 production-ready example files (4,746 lines)
 - **Server**: Runtime-agnostic (Node.js 22+, Bun 1.2+, Deno 2.0+)
-- **Primitives**: 7 headless, accessible components (Dialog, Popover, Dropdown, Select, Tabs, Accordion, Switch)
+- **Primitives**: 10 headless, accessible components
+  - **Layout**: Dialog, Popover, Dropdown, Select, Tabs, Accordion, Switch
+  - **Forms**: Form (6 sub-components), RadioGroup, Checkbox
 
 **Current Focus**:
-- Phase 9: Streaming SSR & Islands (optional enhancements)
+- Complete Phase 8.1: Form components (Toggle, AlertDialog, Slider, Combobox)
+- Phase 9: Styled Components Library
 - Phase 10: Build Tooling & DevEx
 
 ---

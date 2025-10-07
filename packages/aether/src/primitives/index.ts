@@ -664,6 +664,73 @@ export {
   type StepperSeparatorProps,
 } from './Stepper.js';
 
+// ToggleGroup
+export {
+  ToggleGroup,
+  ToggleGroupItem,
+  type ToggleGroupProps,
+  type ToggleGroupItemProps,
+  type ToggleGroupContextValue,
+} from './ToggleGroup.js';
+
+// PinInput
+export {
+  PinInput,
+  PinInputInput,
+  type PinInputProps,
+  type PinInputInputProps,
+  type PinInputContextValue,
+} from './PinInput.js';
+
+// TimePicker
+export {
+  TimePicker,
+  TimePickerTrigger,
+  TimePickerContent,
+  TimePickerColumn,
+  TimePickerItem,
+  type TimePickerProps,
+  type TimePickerTriggerProps,
+  type TimePickerContentProps,
+  type TimePickerColumnProps,
+  type TimePickerItemProps,
+  type TimePickerContextValue,
+  type TimeValue,
+} from './TimePicker.js';
+
+// DateRangePicker
+export {
+  DateRangePicker,
+  DateRangePickerTrigger,
+  DateRangePickerContent,
+  DateRangePickerCalendar,
+  DateRangePickerPreset,
+  type DateRangePickerProps,
+  type DateRangePickerTriggerProps,
+  type DateRangePickerContentProps,
+  type DateRangePickerCalendarProps,
+  type DateRangePickerPresetProps,
+  type DateRangePickerContextValue,
+  type DateRange,
+} from './DateRangePicker.js';
+
+// FileUpload
+export {
+  FileUpload,
+  FileUploadTrigger,
+  FileUploadDropzone,
+  FileUploadItem,
+  FileUploadItemRemove,
+  type FileUploadProps,
+  type FileUploadTriggerProps,
+  type FileUploadDropzoneProps,
+  type FileUploadItemProps,
+  type FileUploadItemRemoveProps,
+  type FileUploadContextValue,
+  type FileWithPreview,
+  type FileRejection,
+} from './FileUpload.js';
+
 // Utilities
 export {
   // ID generation

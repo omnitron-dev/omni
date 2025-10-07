@@ -56,6 +56,11 @@
    - [Rating](#rating)
    - [Tree](#tree)
    - [Stepper](#stepper)
+   - [ToggleGroup](#togglegroup)
+   - [PinInput](#pininput)
+   - [TimePicker](#timepicker)
+   - [DateRangePicker](#daterangepicker)
+   - [FileUpload](#fileupload)
 5. [Composition Patterns](#composition-patterns)
 6. [Customization](#customization)
 7. [Theme Integration](#theme-integration)
@@ -6554,6 +6559,494 @@ const Example = defineComponent(() => {
 - `value: number` - Step index for this content
 
 **`<Stepper.Separator>`** - Visual separator between steps
+
+---
+
+### ToggleGroup
+
+A group of toggle buttons with single or multiple selection support, perfect for formatting toolbars or filter controls.
+
+#### Features
+
+- Single and multiple selection modes
+- Keyboard navigation (arrows, Home, End)
+- Horizontal and vertical orientation
+- Loop navigation support
+- Disabled state handling
+- ARIA toolbar/radiogroup pattern
+- Controlled and uncontrolled modes
+
+#### Basic Usage
+
+```typescript
+import { defineComponent, signal } from 'aether';
+import { ToggleGroup } from 'aether/primitives';
+
+const Example = defineComponent(() => {
+  const alignment = signal('left');
+
+  return () => (
+    <ToggleGroup
+      type="single"
+      value={alignment()}
+      onValueChange={alignment}
+      class="toggle-group"
+    >
+      <ToggleGroup.Item value="left" class="toggle-item">
+        Left
+      </ToggleGroup.Item>
+      <ToggleGroup.Item value="center" class="toggle-item">
+        Center
+      </ToggleGroup.Item>
+      <ToggleGroup.Item value="right" class="toggle-item">
+        Right
+      </ToggleGroup.Item>
+    </ToggleGroup>
+  );
+});
+```
+
+#### With Multiple Selection
+
+```typescript
+const Example = defineComponent(() => {
+  const styles = signal<string[]>(['bold']);
+
+  return () => (
+    <ToggleGroup
+      type="multiple"
+      value={styles()}
+      onValueChange={styles}
+    >
+      <ToggleGroup.Item value="bold">
+        <BoldIcon />
+      </ToggleGroup.Item>
+      <ToggleGroup.Item value="italic">
+        <ItalicIcon />
+      </ToggleGroup.Item>
+      <ToggleGroup.Item value="underline">
+        <UnderlineIcon />
+      </ToggleGroup.Item>
+    </ToggleGroup>
+  );
+});
+```
+
+#### API
+
+**`<ToggleGroup>`** - Root component
+- `value?: string | string[]` - Controlled value (string for single, array for multiple)
+- `onValueChange?: (value: string | string[]) => void` - Value change callback
+- `defaultValue?: string | string[]` - Default value (uncontrolled)
+- `type?: 'single' | 'multiple'` - Selection type (default: 'single')
+- `orientation?: 'horizontal' | 'vertical'` - Orientation (default: 'horizontal')
+- `disabled?: boolean` - Whether the group is disabled
+- `loop?: boolean` - Loop keyboard navigation (default: true)
+- `required?: boolean` - Selection required in single mode (default: false)
+
+**`<ToggleGroup.Item>`** - Individual toggle item
+- `value: string` - Unique value for this item
+- `disabled?: boolean` - Whether this item is disabled
+
+---
+
+### PinInput
+
+PIN/OTP input component with automatic focus management, perfect for two-factor authentication codes.
+
+#### Features
+
+- Automatic focus management between inputs
+- Paste support (splits pasted value across inputs)
+- Numeric, alphanumeric, or custom patterns
+- Masked/password input support
+- Keyboard navigation (arrows, backspace, delete)
+- Auto-submit on completion
+- Controlled and uncontrolled modes
+
+#### Basic Usage
+
+```typescript
+import { defineComponent, signal } from 'aether';
+import { PinInput } from 'aether/primitives';
+
+const Example = defineComponent(() => {
+  const pin = signal('');
+
+  const handleComplete = (value: string) => {
+    console.log('PIN complete:', value);
+    // Auto-submit or validate
+  };
+
+  return () => (
+    <PinInput
+      length={6}
+      type="numeric"
+      value={pin()}
+      onValueChange={pin}
+      onComplete={handleComplete}
+    >
+      {Array.from({ length: 6 }).map((_, i) => (
+        <PinInput.Input key={i} index={i} class="pin-input" />
+      ))}
+    </PinInput>
+  );
+});
+```
+
+#### With Masking
+
+```typescript
+const Example = defineComponent(() => {
+  return () => (
+    <PinInput
+      length={4}
+      type="numeric"
+      mask
+      autoFocus
+    >
+      {Array.from({ length: 4 }).map((_, i) => (
+        <PinInput.Input key={i} index={i} />
+      ))}
+    </PinInput>
+  );
+});
+```
+
+#### API
+
+**`<PinInput>`** - Root component
+- `value?: string` - Controlled value
+- `onValueChange?: (value: string) => void` - Value change callback
+- `defaultValue?: string` - Default value (uncontrolled)
+- `length?: number` - Number of input fields (default: 6)
+- `type?: 'numeric' | 'alphanumeric' | 'all'` - Input type (default: 'numeric')
+- `mask?: boolean` - Mask the input (default: false)
+- `placeholder?: string` - Placeholder character (default: '○')
+- `disabled?: boolean` - Whether inputs are disabled
+- `autoFocus?: boolean` - Auto-focus first input (default: false)
+- `onComplete?: (value: string) => void` - Called when all inputs filled
+
+**`<PinInput.Input>`** - Individual input field
+- `index: number` - Index of this input (0-based)
+
+---
+
+### TimePicker
+
+Time selection component with support for hours, minutes, seconds, and 12/24-hour formats.
+
+#### Features
+
+- 12-hour and 24-hour formats
+- Hour, minute, and optional second selection
+- AM/PM toggle for 12-hour format
+- Configurable step values
+- Keyboard navigation
+- Scroll-based selection
+- Controlled and uncontrolled modes
+- Integration with Popover for dropdown
+
+#### Basic Usage
+
+```typescript
+import { defineComponent, signal } from 'aether';
+import { TimePicker } from 'aether/primitives';
+
+const Example = defineComponent(() => {
+  const time = signal({ hours: 14, minutes: 30, seconds: 0 });
+
+  return () => (
+    <TimePicker
+      value={time()}
+      onValueChange={time}
+      hourFormat={24}
+    >
+      <TimePicker.Trigger class="time-trigger">
+        {/* Display formatted time */}
+      </TimePicker.Trigger>
+
+      <TimePicker.Content class="time-content">
+        <div class="time-columns">
+          <TimePicker.Column type="hours" />
+          <TimePicker.Column type="minutes" />
+        </div>
+      </TimePicker.Content>
+    </TimePicker>
+  );
+});
+```
+
+#### With Seconds and 12-hour Format
+
+```typescript
+const Example = defineComponent(() => {
+  return () => (
+    <TimePicker
+      hourFormat={12}
+      showSeconds
+      minuteStep={15}
+    >
+      <TimePicker.Trigger>Select Time</TimePicker.Trigger>
+      <TimePicker.Content>
+        <TimePicker.Column type="hours" />
+        <TimePicker.Column type="minutes" />
+        <TimePicker.Column type="seconds" />
+        <TimePicker.Column type="period" />
+      </TimePicker.Content>
+    </TimePicker>
+  );
+});
+```
+
+#### API
+
+**`<TimePicker>`** - Root component
+- `value?: TimeValue` - Controlled time value
+- `onValueChange?: (value: TimeValue) => void` - Value change callback
+- `defaultValue?: TimeValue` - Default value (uncontrolled)
+- `hourFormat?: 12 | 24` - Hour format (default: 24)
+- `showSeconds?: boolean` - Show seconds column (default: false)
+- `hourStep?: number` - Hour step increment (default: 1)
+- `minuteStep?: number` - Minute step increment (default: 1)
+- `secondStep?: number` - Second step increment (default: 1)
+- `disabled?: boolean` - Whether picker is disabled
+
+**`<TimePicker.Trigger>`** - Trigger button to open picker
+
+**`<TimePicker.Content>`** - Content container for time columns
+
+**`<TimePicker.Column>`** - Time column (hours/minutes/seconds/period)
+- `type: 'hours' | 'minutes' | 'seconds' | 'period'` - Column type
+
+---
+
+### DateRangePicker
+
+Date range selection component with visual range highlighting and preset support.
+
+#### Features
+
+- Start and end date selection
+- Visual range highlighting
+- Hover preview of range
+- Preset ranges (Today, Last 7 days, etc.)
+- Min/max date constraints
+- Multiple months display
+- Controlled and uncontrolled modes
+- ARIA date picker pattern
+
+#### Basic Usage
+
+```typescript
+import { defineComponent, signal } from 'aether';
+import { DateRangePicker } from 'aether/primitives';
+
+const Example = defineComponent(() => {
+  const range = signal<DateRange>({ start: null, end: null });
+
+  return () => (
+    <DateRangePicker
+      value={range()}
+      onValueChange={range}
+      numberOfMonths={2}
+    >
+      <DateRangePicker.Trigger class="range-trigger">
+        {/* Display formatted range */}
+      </DateRangePicker.Trigger>
+
+      <DateRangePicker.Content class="range-content">
+        <div class="range-presets">
+          <DateRangePicker.Preset
+            range={{
+              start: new Date(),
+              end: new Date()
+            }}
+          >
+            Today
+          </DateRangePicker.Preset>
+          <DateRangePicker.Preset
+            range={{
+              start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+              end: new Date()
+            }}
+          >
+            Last 7 days
+          </DateRangePicker.Preset>
+        </div>
+
+        <div class="range-calendars">
+          <DateRangePicker.Calendar monthOffset={0} />
+          <DateRangePicker.Calendar monthOffset={1} />
+        </div>
+      </DateRangePicker.Content>
+    </DateRangePicker>
+  );
+});
+```
+
+#### With Presets
+
+```typescript
+const presets = [
+  { label: 'Today', range: { start: new Date(), end: new Date() } },
+  { label: 'Yesterday', range: { /* ... */ } },
+  { label: 'Last 7 days', range: { /* ... */ } },
+  { label: 'Last 30 days', range: { /* ... */ } },
+  { label: 'This month', range: { /* ... */ } },
+];
+
+const Example = defineComponent(() => {
+  return () => (
+    <DateRangePicker presets={presets}>
+      {/* ... */}
+    </DateRangePicker>
+  );
+});
+```
+
+#### API
+
+**`<DateRangePicker>`** - Root component
+- `value?: DateRange` - Controlled value
+- `onValueChange?: (value: DateRange) => void` - Value change callback
+- `defaultValue?: DateRange` - Default value (uncontrolled)
+- `min?: Date` - Minimum selectable date
+- `max?: Date` - Maximum selectable date
+- `numberOfMonths?: number` - Months to display (default: 2)
+- `disabled?: boolean` - Whether picker is disabled
+- `closeOnSelect?: boolean` - Close on range selection (default: true)
+
+**`<DateRangePicker.Trigger>`** - Trigger button to open picker
+
+**`<DateRangePicker.Content>`** - Content container for calendars
+
+**`<DateRangePicker.Calendar>`** - Calendar display
+- `monthOffset?: number` - Month offset (0 for first, 1 for second, etc.)
+
+**`<DateRangePicker.Preset>`** - Preset range button
+- `range: DateRange` - Preset date range
+
+---
+
+### FileUpload
+
+File upload component with drag & drop support, file validation, and preview capabilities.
+
+#### Features
+
+- Drag and drop file upload
+- Click to browse file selection
+- Multiple file upload support
+- File type restrictions (accept attribute)
+- File size validation
+- File count limits
+- Image preview support
+- Upload progress tracking
+- Controlled and uncontrolled modes
+
+#### Basic Usage
+
+```typescript
+import { defineComponent, signal } from 'aether';
+import { FileUpload } from 'aether/primitives';
+
+const Example = defineComponent(() => {
+  const files = signal<File[]>([]);
+
+  const handleFilesAdded = (newFiles: File[]) => {
+    console.log('Files added:', newFiles);
+  };
+
+  const handleFilesRejected = (rejections: FileRejection[]) => {
+    console.error('Files rejected:', rejections);
+  };
+
+  return () => (
+    <FileUpload
+      value={files()}
+      onValueChange={files}
+      accept="image/*"
+      multiple
+      maxSize={5 * 1024 * 1024} // 5MB
+      maxFiles={3}
+      onFilesAdded={handleFilesAdded}
+      onFilesRejected={handleFilesRejected}
+    >
+      <FileUpload.Dropzone class="dropzone">
+        <div class="dropzone-content">
+          <p>Drag and drop files here, or click to browse</p>
+          <FileUpload.Trigger class="browse-button">
+            Browse Files
+          </FileUpload.Trigger>
+        </div>
+      </FileUpload.Dropzone>
+
+      <div class="file-list">
+        {files().map(file => (
+          <FileUpload.Item key={file.name} file={file}>
+            <span>{file.name}</span>
+            <span>{(file.size / 1024).toFixed(2)} KB</span>
+            <FileUpload.ItemRemove file={file}>
+              Remove
+            </FileUpload.ItemRemove>
+          </FileUpload.Item>
+        ))}
+      </div>
+    </FileUpload>
+  );
+});
+```
+
+#### With Image Previews
+
+```typescript
+const Example = defineComponent(() => {
+  return () => (
+    <FileUpload accept="image/*" multiple>
+      <FileUpload.Dropzone>
+        Drop images here
+      </FileUpload.Dropzone>
+
+      <div class="preview-grid">
+        {files().map(file => (
+          <FileUpload.Item key={file.name} file={file}>
+            {file.preview && (
+              <img src={file.preview} alt={file.name} />
+            )}
+            <FileUpload.ItemRemove file={file} />
+          </FileUpload.Item>
+        ))}
+      </div>
+    </FileUpload>
+  );
+});
+```
+
+#### API
+
+**`<FileUpload>`** - Root component
+- `value?: File[]` - Controlled files value
+- `onValueChange?: (files: File[]) => void` - Value change callback
+- `defaultValue?: File[]` - Default value (uncontrolled)
+- `accept?: string` - Accepted file types (e.g., "image/*", ".pdf,.doc")
+- `multiple?: boolean` - Allow multiple files (default: false)
+- `maxSize?: number` - Maximum file size in bytes
+- `maxFiles?: number` - Maximum number of files
+- `disabled?: boolean` - Whether upload is disabled
+- `onFilesAdded?: (files: File[]) => void` - Called when files added
+- `onFilesRejected?: (rejections: FileRejection[]) => void` - Called when files rejected
+- `validator?: (file: File) => string | null` - Custom file validator
+
+**`<FileUpload.Trigger>`** - Button to open file browser
+
+**`<FileUpload.Dropzone>`** - Drag and drop zone (also opens file browser on click)
+
+**`<FileUpload.Item>`** - File item display
+- `file: File` - File to display
+
+**`<FileUpload.ItemRemove>`** - Button to remove a file
+- `file: File` - File to remove
 
 ---
 

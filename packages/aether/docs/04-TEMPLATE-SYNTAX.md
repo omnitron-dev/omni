@@ -12,7 +12,7 @@ Aether uses **standard TypeScript JSX** for templates, providing full type safet
 
 ### Architecture Decision
 
-After comprehensive evaluation (see `TEMPLATE-DIRECTIVES-EVALUATION.md`), we chose TypeScript JSX over a custom compiler:
+After comprehensive evaluation, we chose TypeScript JSX over a custom compiler:
 
 **Weighted Score**: TypeScript JSX (8.70/10) vs Custom Compiler (6.90/10)
 

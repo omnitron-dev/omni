@@ -42,19 +42,19 @@ Comprehensive roadmap for implementing the Aether Frontend Framework - a minimal
 - ✅ **Phase 8.3**: UI Primitives - Advanced Overlays (HoverCard, Sheet/Drawer)
 
 **Key Metrics**:
-- **Lines of Code**: ~30,000+ (core framework + server + primitives)
+- **Lines of Code**: ~32,000+ (core framework + server + primitives)
 - **Test Coverage**: 1133/1145 tests passing (98.9%)
 - **Documentation**: ~45,000+ lines across 20+ specification documents
 - **Examples**: 11 production-ready example files (4,746 lines)
 - **Server**: Runtime-agnostic (Node.js 22+, Bun 1.2+, Deno 2.0+)
-- **Primitives**: 49 headless, accessible components (~242KB bundle)
+- **Primitives**: 54 headless, accessible components (~274KB bundle)
   - **Layout & Overlays**: Dialog, Popover, Dropdown, Select, Tabs, Accordion, Sheet, HoverCard
   - **Forms**: Form (6 sub-components), RadioGroup, Checkbox, Switch, Toggle, Input, Textarea, Label
-  - **Advanced Forms**: Slider, Combobox, DatePicker, Calendar
+  - **Advanced Forms**: Slider, Combobox, DatePicker, Calendar, TimePicker, DateRangePicker, ToggleGroup, PinInput
   - **Navigation**: Menubar, Breadcrumb, Toolbar, NavigationMenu, Carousel, Stepper, Pagination
   - **Feedback & Display**: AlertDialog, Tooltip, Toast, Alert, Avatar, Badge, Progress, Rating
   - **Data & Content**: Table, Tree, Code, Kbd, ScrollArea
-  - **Utility**: Separator, ContextMenu, Collapsible, Skeleton, VisuallyHidden, AspectRatio, Card
+  - **Utility**: Separator, ContextMenu, Collapsible, Skeleton, VisuallyHidden, AspectRatio, Card, FileUpload
 
 **Current Focus**:
 - Phase 9: Styled Components Library (Button, Input, Card, Alert)
@@ -1080,7 +1080,7 @@ Commit: (current)
 - ✅ Headless design (0 styles, 100% customizable)
 
 #### Phase 8.9: Essential UI Primitives ✅ (5 primitives - 1690 lines)
-Commit: 8571795 (to be created)
+Commit: 99e69c3
 
 **Navigation & Complex UI:**
 - ✅ **NavigationMenu** (~315 lines, 7 sub-components) - Complex navigation with nested menus
@@ -1122,14 +1122,64 @@ Commit: 8571795 (to be created)
   - Progress indicators
   - ARIA step navigation pattern
 
+#### Phase 8.10: Critical Form & Input Primitives ✅ (5 primitives - 1995 lines)
+Commit: (to be created)
+
+**Advanced Form Controls:**
+- ✅ **ToggleGroup** (~345 lines, 2 sub-components) - Toggle button group with single/multiple selection
+  - Root, Item sub-components
+  - Single and multiple selection modes
+  - Keyboard navigation (arrows, Home, End)
+  - Horizontal/vertical orientation
+  - ARIA toolbar/radiogroup pattern
+  - Loop navigation support
+
+- ✅ **PinInput** (~350 lines, 2 sub-components) - PIN/OTP code input
+  - Root, Input sub-components
+  - Automatic focus management between inputs
+  - Paste support (splits across inputs)
+  - Numeric, alphanumeric, or custom patterns
+  - Masked/password input support
+  - Keyboard navigation and backspace handling
+  - Auto-submit on completion
+
+**Date & Time Pickers:**
+- ✅ **TimePicker** (~370 lines, 4 sub-components) - Time selection with hours/minutes/seconds
+  - Trigger, Content, Column, Item sub-components
+  - 12-hour and 24-hour formats
+  - AM/PM toggle for 12-hour format
+  - Hour, minute, second columns
+  - Configurable step values
+  - Keyboard navigation support
+
+- ✅ **DateRangePicker** (~360 lines, 4 sub-components) - Date range selection
+  - Trigger, Content, Calendar, Preset sub-components
+  - Start and end date selection
+  - Visual range highlighting
+  - Hover preview of range
+  - Preset ranges support (Today, Last 7 days, etc.)
+  - Min/max date constraints
+  - Multiple months display
+
+**File Management:**
+- ✅ **FileUpload** (~570 lines, 4 sub-components) - File upload with drag & drop
+  - Root, Trigger, Dropzone, Item, ItemRemove sub-components
+  - Drag and drop support
+  - Multiple file upload
+  - File type restrictions (accept attribute)
+  - File size validation
+  - File count limits
+  - Image preview support
+  - Upload progress tracking
+
 **Coverage Status:**
 
-**Implemented (49 primitives) - 100% of specification + Essential Extensions COMPLETE! ✅**
+**Implemented (54 primitives) - 100% of specification + Complete Extension Set! ✅**
 
 ✅ **From Specification (26/26):** Dialog, Popover, Dropdown, Select, Tabs, Accordion, Radio Group, Checkbox, Slider, Toggle, Switch, Alert Dialog, Form, Tooltip, Separator, ContextMenu, HoverCard, Sheet, Avatar, Badge, Progress, Toast, Combobox, Command Palette, Calendar, DatePicker, Table
 
-✅ **Additional Essential Primitives (23):**
-- **Form primitives (3):** Label, Input, Textarea
+✅ **Additional Essential Primitives (28):**
+- **Form primitives (8):** Label, Input, Textarea, ToggleGroup, PinInput, TimePicker, DateRangePicker, FileUpload
 - **Layout primitives (1):** ScrollArea
 - **Navigation primitives (6):** Pagination, Menubar, Breadcrumb, NavigationMenu, Carousel, Stepper
 - **Container primitives (2):** Card, Toolbar
@@ -1141,11 +1191,11 @@ Commit: 8571795 (to be created)
 
 **Final Metrics:**
 - ✅ **100% of specification primitives** implemented (26/26)
-- ✅ Added **23 essential utility primitives** for complete developer toolkit
-- ✅ **All complex/specialized primitives** implemented (9 total)
-- ✅ Total **49 production-ready primitives** with full ARIA compliance
-- ✅ Bundle size: **242KB ESM** (~4.9KB per primitive average)
-- ✅ Total lines: **~14,100 lines** of production code
+- ✅ Added **28 essential utility primitives** for complete developer toolkit
+- ✅ **All complex/specialized primitives** implemented (14 total)
+- ✅ Total **54 production-ready primitives** with full ARIA compliance
+- ✅ Bundle size: **274KB ESM** (~5.1KB per primitive average)
+- ✅ Total lines: **~16,100 lines** of production code
 - ✅ All primitives follow consistent patterns: headless, accessible, composable
 
 ---

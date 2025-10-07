@@ -275,6 +275,71 @@ export {
   type SheetContextValue,
 } from './Sheet.js';
 
+// Avatar
+export {
+  Avatar,
+  AvatarImage,
+  AvatarFallback,
+  AvatarContext,
+  type AvatarProps,
+  type AvatarImageProps,
+  type AvatarFallbackProps,
+  type AvatarContextValue,
+} from './Avatar.js';
+
+// Badge
+export {
+  Badge,
+  type BadgeProps,
+} from './Badge.js';
+
+// Progress
+export {
+  Progress,
+  ProgressIndicator,
+  ProgressContext,
+  type ProgressProps,
+  type ProgressIndicatorProps,
+  type ProgressContextValue,
+} from './Progress.js';
+
+// AspectRatio
+export {
+  AspectRatio,
+  type AspectRatioProps,
+} from './AspectRatio.js';
+
+// Toast
+export {
+  Toast,
+  ToastProvider,
+  ToastViewport,
+  ToastContext,
+  type ToastProps,
+  type ToastData,
+  type ToastProviderProps,
+  type ToastViewportProps,
+  type ToastContextValue,
+} from './Toast.js';
+
+// Collapsible
+export {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+  CollapsibleContext,
+  type CollapsibleProps,
+  type CollapsibleTriggerProps,
+  type CollapsibleContentProps,
+  type CollapsibleContextValue,
+} from './Collapsible.js';
+
+// Skeleton
+export {
+  Skeleton,
+  type SkeletonProps,
+} from './Skeleton.js';
+
 // Utilities
 export {
   // ID generation

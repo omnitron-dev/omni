@@ -231,7 +231,7 @@ export const SheetContent = defineComponent<SheetContentProps>((props) => {
     }
   };
 
-  const handleOverlayClick = (e: Event) => {
+  const handleOverlayClick = () => {
     if (props.closeOnOverlayClick !== false) {
       ctx.close();
     }

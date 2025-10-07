@@ -340,6 +340,72 @@ export {
   type SkeletonProps,
 } from './Skeleton.js';
 
+// Label
+export {
+  Label,
+  type LabelProps,
+} from './Label.js';
+
+// Input
+export {
+  Input,
+  type InputProps,
+} from './Input.js';
+
+// Textarea
+export {
+  Textarea,
+  type TextareaProps,
+} from './Textarea.js';
+
+// ScrollArea
+export {
+  ScrollArea,
+  ScrollAreaViewport,
+  ScrollAreaScrollbar,
+  ScrollAreaThumb,
+  type ScrollAreaProps,
+  type ScrollAreaViewportProps,
+  type ScrollAreaScrollbarProps,
+  type ScrollAreaThumbProps,
+  type ScrollAreaContextValue,
+} from './ScrollArea.js';
+
+// Pagination
+export {
+  Pagination,
+  PaginationItems,
+  PaginationPrevious,
+  PaginationNext,
+  type PaginationProps,
+  type PaginationItemsProps,
+  type PaginationPreviousProps,
+  type PaginationNextProps,
+  type PaginationContextValue,
+} from './Pagination.js';
+
+// Menubar
+export {
+  Menubar,
+  MenubarMenu,
+  MenubarTrigger,
+  MenubarContent,
+  MenubarItem,
+  MenubarSeparator,
+  MenubarLabel,
+  MenubarShortcut,
+  type MenubarProps,
+  type MenubarMenuProps,
+  type MenubarTriggerProps,
+  type MenubarContentProps,
+  type MenubarItemProps,
+  type MenubarSeparatorProps,
+  type MenubarLabelProps,
+  type MenubarShortcutProps,
+  type MenubarContextValue,
+  type MenubarMenuContextValue,
+} from './Menubar.js';
+
 // Utilities
 export {
   // ID generation

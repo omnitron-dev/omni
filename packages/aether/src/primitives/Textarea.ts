@@ -1,0 +1,278 @@
+/**
+ * Textarea Component
+ *
+ * A headless textarea component with auto-resize support and validation states.
+ *
+ * @example
+ * ```tsx
+ * <Textarea
+ *   placeholder="Enter your message"
+ *   autoResize
+ *   minRows={3}
+ *   maxRows={10}
+ * />
+ * ```
+ */
+
+import { jsx } from '../jsx-runtime.js';
+import { defineComponent } from '../core/component/index.js';
+import { signal } from '../core/reactivity/index.js';
+import { onMount } from '../core/component/lifecycle.js';
+
+export interface TextareaProps {
+  /**
+   * Textarea value
+   */
+  value?: string;
+
+  /**
+   * Default value (uncontrolled)
+   */
+  defaultValue?: string;
+
+  /**
+   * Placeholder text
+   */
+  placeholder?: string;
+
+  /**
+   * Disabled state
+   */
+  disabled?: boolean;
+
+  /**
+   * Read-only state
+   */
+  readOnly?: boolean;
+
+  /**
+   * Required field
+   */
+  required?: boolean;
+
+  /**
+   * Invalid state (for validation errors)
+   */
+  invalid?: boolean;
+
+  /**
+   * Auto-resize to fit content
+   */
+  autoResize?: boolean;
+
+  /**
+   * Minimum rows (for auto-resize)
+   */
+  minRows?: number;
+
+  /**
+   * Maximum rows (for auto-resize)
+   */
+  maxRows?: number;
+
+  /**
+   * Rows attribute (fixed height)
+   */
+  rows?: number;
+
+  /**
+   * Columns attribute
+   */
+  cols?: number;
+
+  /**
+   * Textarea name
+   */
+  name?: string;
+
+  /**
+   * Textarea ID
+   */
+  id?: string;
+
+  /**
+   * Max length
+   */
+  maxLength?: number;
+
+  /**
+   * ARIA label
+   */
+  'aria-label'?: string;
+
+  /**
+   * ARIA labelledby
+   */
+  'aria-labelledby'?: string;
+
+  /**
+   * ARIA describedby
+   */
+  'aria-describedby'?: string;
+
+  /**
+   * Change handler
+   */
+  onChange?: (value: string) => void;
+
+  /**
+   * Input handler
+   */
+  onInput?: (value: string) => void;
+
+  /**
+   * Blur handler
+   */
+  onBlur?: (event: FocusEvent) => void;
+
+  /**
+   * Focus handler
+   */
+  onFocus?: (event: FocusEvent) => void;
+
+  /**
+   * Additional HTML attributes
+   */
+  [key: string]: any;
+}
+
+/**
+ * Textarea
+ *
+ * A headless textarea component with auto-resize support.
+ *
+ * Features:
+ * - Auto-resize to fit content
+ * - Min/max rows constraints
+ * - Validation states (invalid)
+ * - Disabled and read-only states
+ * - Full ARIA support
+ * - Controlled and uncontrolled modes
+ */
+export const Textarea = defineComponent<TextareaProps>((props) => {
+  const textareaRef = signal<HTMLTextAreaElement | null>(null);
+
+  const adjustHeight = (element: HTMLTextAreaElement) => {
+    if (!props.autoResize) return;
+
+    // Reset height to auto to get the correct scrollHeight
+    element.style.height = 'auto';
+
+    const minRows = props.minRows ?? 1;
+    const maxRows = props.maxRows ?? Infinity;
+
+    // Get line height
+    const computedStyle = window.getComputedStyle(element);
+    const lineHeight = parseFloat(computedStyle.lineHeight);
+
+    // Calculate height based on content
+    let height = element.scrollHeight;
+
+    // Apply min/max constraints
+    const minHeight = lineHeight * minRows;
+    const maxHeight = lineHeight * maxRows;
+
+    height = Math.max(minHeight, Math.min(height, maxHeight));
+
+    element.style.height = `${height}px`;
+  };
+
+  const handleInput = (e: Event) => {
+    const target = e.target as HTMLTextAreaElement;
+    const value = target.value;
+
+    // Auto-resize if enabled
+    if (props.autoResize) {
+      adjustHeight(target);
+    }
+
+    // Call both onInput and onChange for compatibility
+    props.onInput?.(value);
+    props.onChange?.(value);
+  };
+
+  const handleBlur = (e: Event) => {
+    props.onBlur?.(e as FocusEvent);
+  };
+
+  const handleFocus = (e: Event) => {
+    props.onFocus?.(e as FocusEvent);
+  };
+
+  const handleRef = (element: HTMLTextAreaElement | null) => {
+    textareaRef.set(element);
+
+    // Initial resize
+    if (element && props.autoResize) {
+      // Use setTimeout to ensure the element is fully rendered
+      setTimeout(() => adjustHeight(element), 0);
+    }
+  };
+
+  onMount(() => {
+    const element = textareaRef();
+    if (element && props.autoResize) {
+      adjustHeight(element);
+    }
+  });
+
+  return () => {
+    const {
+      value,
+      defaultValue,
+      placeholder,
+      disabled,
+      readOnly,
+      required,
+      invalid,
+      autoResize,
+      minRows,
+      maxRows,
+      rows,
+      cols,
+      name,
+      id,
+      maxLength,
+      onChange,
+      onInput,
+      onBlur,
+      onFocus,
+      ...restProps
+    } = props;
+
+    return jsx('textarea', {
+      ...restProps,
+      ref: handleRef as any,
+      value,
+      defaultValue,
+      placeholder,
+      disabled,
+      readOnly,
+      required,
+      name,
+      id,
+      maxLength,
+      rows: autoResize ? undefined : rows,
+      cols,
+      'data-textarea': '',
+      'data-disabled': disabled ? '' : undefined,
+      'data-readonly': readOnly ? '' : undefined,
+      'data-invalid': invalid ? '' : undefined,
+      'data-autoresize': autoResize ? '' : undefined,
+      'aria-invalid': invalid ? 'true' : undefined,
+      onInput: handleInput,
+      onBlur: handleBlur,
+      onFocus: handleFocus,
+      style: {
+        ...(props.style || {}),
+        ...(autoResize && {
+          overflow: 'hidden',
+          resize: 'none',
+        }),
+      },
+    });
+  };
+});
+
+// Attach display name
+Textarea.displayName = 'Textarea';

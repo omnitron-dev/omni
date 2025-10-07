@@ -731,6 +731,170 @@ export {
   type FileRejection,
 } from './FileUpload.js';
 
+// RangeSlider
+export {
+  RangeSlider,
+  RangeSliderTrack,
+  RangeSliderRange,
+  RangeSliderThumb,
+  type RangeSliderProps,
+  type RangeSliderTrackProps,
+  type RangeSliderRangeProps,
+  type RangeSliderThumbProps,
+  type RangeSliderContextValue,
+  type RangeValue,
+} from './RangeSlider.js';
+
+// MultiSelect
+export {
+  MultiSelect,
+  MultiSelectTrigger,
+  MultiSelectValue,
+  MultiSelectContent,
+  MultiSelectSearch,
+  MultiSelectItem,
+  MultiSelectItemIndicator,
+  MultiSelectActions,
+  type MultiSelectProps,
+  type MultiSelectTriggerProps,
+  type MultiSelectValueProps,
+  type MultiSelectContentProps,
+  type MultiSelectSearchProps,
+  type MultiSelectItemProps,
+  type MultiSelectItemIndicatorProps,
+  type MultiSelectActionsProps,
+  type MultiSelectContextValue,
+} from './MultiSelect.js';
+
+// TagsInput
+export {
+  TagsInput,
+  TagsInputField,
+  TagsInputTag,
+  TagsInputTagRemove,
+  type TagsInputProps,
+  type TagsInputFieldProps,
+  type TagsInputTagProps,
+  type TagsInputTagRemoveProps,
+  type TagsInputContextValue,
+} from './TagsInput.js';
+
+// ColorPicker
+export {
+  ColorPicker,
+  ColorPickerTrigger,
+  ColorPickerContent,
+  ColorPickerArea,
+  ColorPickerHueSlider,
+  ColorPickerAlphaSlider,
+  ColorPickerPreset,
+  type ColorPickerProps,
+  type ColorPickerTriggerProps,
+  type ColorPickerContentProps,
+  type ColorPickerAreaProps,
+  type ColorPickerHueSliderProps,
+  type ColorPickerAlphaSliderProps,
+  type ColorPickerPresetProps,
+  type ColorPickerContextValue,
+  type ColorValue,
+} from './ColorPicker.js';
+
+// Drawer
+export {
+  Drawer,
+  DrawerTrigger,
+  DrawerOverlay,
+  DrawerContent,
+  DrawerTitle,
+  DrawerDescription,
+  DrawerClose,
+  type DrawerProps,
+  type DrawerTriggerProps,
+  type DrawerOverlayProps,
+  type DrawerContentProps,
+  type DrawerTitleProps,
+  type DrawerDescriptionProps,
+  type DrawerCloseProps,
+  type DrawerContextValue,
+  type DrawerSide,
+} from './Drawer.js';
+
+// Editable
+export {
+  Editable,
+  EditablePreview,
+  EditableInput,
+  EditableControls,
+  EditableSubmit,
+  EditableCancel,
+  type EditableProps,
+  type EditablePreviewProps,
+  type EditableInputProps,
+  type EditableControlsProps,
+  type EditableSubmitProps,
+  type EditableCancelProps,
+  type EditableContextValue,
+} from './Editable.js';
+
+// NumberInput
+export {
+  NumberInput,
+  NumberInputField,
+  NumberInputIncrement,
+  NumberInputDecrement,
+  type NumberInputProps,
+  type NumberInputFieldProps,
+  type NumberInputIncrementProps,
+  type NumberInputDecrementProps,
+  type NumberInputContextValue,
+} from './NumberInput.js';
+
+// Empty
+export {
+  Empty,
+  EmptyIcon,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyActions,
+  type EmptyProps,
+  type EmptyIconProps,
+  type EmptyTitleProps,
+  type EmptyDescriptionProps,
+  type EmptyActionsProps,
+} from './Empty.js';
+
+// Spinner
+export {
+  Spinner,
+  type SpinnerProps,
+  type SpinnerSize,
+  type SpinnerVariant,
+} from './Spinner.js';
+
+// Timeline
+export {
+  Timeline,
+  TimelineItem,
+  TimelineMarker,
+  TimelineConnector,
+  TimelineContent,
+  TimelineTitle,
+  TimelineDescription,
+  TimelineTimestamp,
+  type TimelineProps,
+  type TimelineItemProps,
+  type TimelineMarkerProps,
+  type TimelineConnectorProps,
+  type TimelineContentProps,
+  type TimelineTitleProps,
+  type TimelineDescriptionProps,
+  type TimelineTimestampProps,
+  type TimelineContextValue,
+  type TimelineItemContextValue,
+  type TimelineOrientation,
+  type TimelineItemStatus,
+} from './Timeline.js';
+
 // Utilities
 export {
   // ID generation

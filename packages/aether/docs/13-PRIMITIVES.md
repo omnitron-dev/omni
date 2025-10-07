@@ -61,6 +61,16 @@
    - [TimePicker](#timepicker)
    - [DateRangePicker](#daterangepicker)
    - [FileUpload](#fileupload)
+   - [RangeSlider](#rangeslider)
+   - [MultiSelect](#multiselect)
+   - [TagsInput](#tagsinput)
+   - [ColorPicker](#colorpicker)
+   - [Drawer](#drawer)
+   - [Editable](#editable)
+   - [NumberInput](#numberinput)
+   - [Empty](#empty)
+   - [Spinner](#spinner)
+   - [Timeline](#timeline)
 5. [Composition Patterns](#composition-patterns)
 6. [Customization](#customization)
 7. [Theme Integration](#theme-integration)
@@ -7047,6 +7057,1112 @@ const Example = defineComponent(() => {
 
 **`<FileUpload.ItemRemove>`** - Button to remove a file
 - `file: File` - File to remove
+
+---
+
+### RangeSlider
+
+**Slider component with two thumbs for selecting a value range.**
+
+**Features:**
+- Dual thumb slider for min/max range selection
+- Keyboard navigation (arrows, Page Up/Down, Home, End)
+- Min/max value constraints and minimum distance between thumbs
+- Step increments with automatic value snapping
+- Vertical and horizontal orientation
+- Disabled state support
+- Controlled and uncontrolled modes
+- ARIA support with proper role and value announcements
+
+**Basic Usage:**
+
+```tsx
+<RangeSlider
+  defaultValue={{ min: 20, max: 80 }}
+  min={0}
+  max={100}
+  step={5}
+  onValueChange={(value) => console.log(value)}
+>
+  <RangeSlider.Track>
+    <RangeSlider.Range />
+    <RangeSlider.Thumb position="min" />
+    <RangeSlider.Thumb position="max" />
+  </RangeSlider.Track>
+</RangeSlider>
+```
+
+**Advanced Usage:**
+
+```tsx
+// Price range filter with minimum distance
+<RangeSlider
+  value={priceRange()}
+  onValueChange={setPriceRange}
+  min={0}
+  max={1000}
+  step={10}
+  minDistance={50}
+  orientation="horizontal"
+>
+  <div class="range-slider-container">
+    <RangeSlider.Track class="track">
+      <RangeSlider.Range class="range" />
+      <RangeSlider.Thumb position="min" class="thumb">
+        <div class="thumb-label">${priceRange().min}</div>
+      </RangeSlider.Thumb>
+      <RangeSlider.Thumb position="max" class="thumb">
+        <div class="thumb-label">${priceRange().max}</div>
+      </RangeSlider.Thumb>
+    </RangeSlider.Track>
+    <div class="range-values">
+      <span>Min: ${priceRange().min}</span>
+      <span>Max: ${priceRange().max}</span>
+    </div>
+  </div>
+</RangeSlider>
+```
+
+**API:**
+
+**`<RangeSlider>`** - Root container
+- `value?: { min: number, max: number }` - Controlled value
+- `onValueChange?: (value: RangeValue) => void` - Value change callback
+- `defaultValue?: { min: number, max: number }` - Default value (uncontrolled)
+- `min?: number` - Minimum allowed value (default: 0)
+- `max?: number` - Maximum allowed value (default: 100)
+- `step?: number` - Step increment (default: 1)
+- `orientation?: 'horizontal' | 'vertical'` - Orientation (default: 'horizontal')
+- `disabled?: boolean` - Disabled state
+- `minDistance?: number` - Minimum distance between thumbs (default: 0)
+
+**`<RangeSlider.Track>`** - Slider track container
+
+**`<RangeSlider.Range>`** - Visual range indicator (automatically positioned between thumbs)
+
+**`<RangeSlider.Thumb>`** - Draggable thumb
+- `position: 'min' | 'max'` - Which thumb (required)
+
+---
+
+### MultiSelect
+
+**Select component that allows multiple value selection with search and filtering.**
+
+**Features:**
+- Multiple value selection with checkboxes
+- Search/filter options in real-time
+- Select all / Clear all actions
+- Maximum selections limit
+- Keyboard navigation for accessibility
+- Item indicators for selected state
+- Controlled and uncontrolled modes
+- ARIA multi-select support
+
+**Basic Usage:**
+
+```tsx
+<MultiSelect
+  defaultValue={['option1', 'option3']}
+  onValueChange={(values) => console.log(values)}
+>
+  <MultiSelect.Trigger>
+    <MultiSelect.Value placeholder="Select items..." />
+  </MultiSelect.Trigger>
+
+  <MultiSelect.Content>
+    <MultiSelect.Search placeholder="Search..." />
+    <MultiSelect.Actions />
+
+    <MultiSelect.Item value="option1">
+      <MultiSelect.ItemIndicator />
+      Option 1
+    </MultiSelect.Item>
+    <MultiSelect.Item value="option2">
+      <MultiSelect.ItemIndicator />
+      Option 2
+    </MultiSelect.Item>
+    <MultiSelect.Item value="option3">
+      <MultiSelect.ItemIndicator />
+      Option 3
+    </MultiSelect.Item>
+  </MultiSelect.Content>
+</MultiSelect>
+```
+
+**Advanced Usage:**
+
+```tsx
+// User permissions multi-select with max limit
+<MultiSelect
+  value={selectedPermissions()}
+  onValueChange={setSelectedPermissions}
+  maxSelections={5}
+  searchable={true}
+  searchPlaceholder="Search permissions..."
+>
+  <MultiSelect.Trigger class="permissions-trigger">
+    <MultiSelect.Value placeholder="Select up to 5 permissions">
+      {selectedPermissions().length} permissions selected
+    </MultiSelect.Value>
+  </MultiSelect.Trigger>
+
+  <MultiSelect.Content class="permissions-dropdown">
+    <MultiSelect.Search />
+    <MultiSelect.Actions>
+      <button onClick={() => context.selectAll()}>Select Max</button>
+      <button onClick={() => context.clearAll()}>Clear</button>
+    </MultiSelect.Actions>
+
+    <For each={permissions}>
+      {(permission) => (
+        <MultiSelect.Item
+          value={permission.id}
+          disabled={permission.restricted}
+        >
+          <MultiSelect.ItemIndicator>✓</MultiSelect.ItemIndicator>
+          <div>
+            <div class="permission-name">{permission.name}</div>
+            <div class="permission-desc">{permission.description}</div>
+          </div>
+        </MultiSelect.Item>
+      )}
+    </For>
+  </MultiSelect.Content>
+</MultiSelect>
+```
+
+**API:**
+
+**`<MultiSelect>`** - Root container
+- `value?: string[]` - Controlled selected values
+- `onValueChange?: (value: string[]) => void` - Value change callback
+- `defaultValue?: string[]` - Default value (uncontrolled)
+- `placeholder?: string` - Placeholder text
+- `disabled?: boolean` - Disabled state
+- `maxSelections?: number` - Maximum selections (0 = unlimited)
+- `searchable?: boolean` - Whether to show search input
+- `searchPlaceholder?: string` - Search placeholder text
+
+**`<MultiSelect.Trigger>`** - Trigger button to open dropdown
+
+**`<MultiSelect.Value>`** - Display selected values
+- `placeholder?: string` - Placeholder when no items selected
+
+**`<MultiSelect.Content>`** - Dropdown content
+
+**`<MultiSelect.Search>`** - Search input (only shown if searchable=true)
+- `placeholder?: string` - Search placeholder
+
+**`<MultiSelect.Item>`** - Selectable item
+- `value: string` - Item value (required)
+- `disabled?: boolean` - Disabled state
+
+**`<MultiSelect.ItemIndicator>`** - Checkbox indicator for selected state
+
+**`<MultiSelect.Actions>`** - Select all/Clear all action buttons
+
+---
+
+### TagsInput
+
+**Input component for creating multiple tags/chips with keyboard support.**
+
+**Features:**
+- Create tags by typing and pressing Enter or comma
+- Delete tags with Backspace key
+- Paste support (automatically splits by delimiter)
+- Max tags limit with validation
+- Duplicate prevention
+- Custom tag validation
+- Keyboard navigation
+- Controlled and uncontrolled modes
+- ARIA support for tag list
+
+**Basic Usage:**
+
+```tsx
+<TagsInput
+  defaultValue={['tag1', 'tag2']}
+  onValueChange={(tags) => console.log(tags)}
+>
+  <div class="tags-container">
+    <For each={context.tags()}>
+      {(tag) => (
+        <TagsInput.Tag value={tag}>
+          {tag}
+          <TagsInput.TagRemove value={tag} />
+        </TagsInput.Tag>
+      )}
+    </For>
+    <TagsInput.Field placeholder="Add tag..." />
+  </div>
+</TagsInput>
+```
+
+**Advanced Usage:**
+
+```tsx
+// Email tags input with validation
+<TagsInput
+  value={emails()}
+  onValueChange={setEmails}
+  maxTags={10}
+  allowDuplicates={false}
+  delimiter={[',', ';', 'Enter']}
+  validator={(tag) => {
+    if (!/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(tag)) {
+      return 'Invalid email format';
+    }
+    return null;
+  }}
+  onValidationError={(tag, error) => {
+    showToast({ title: 'Invalid Email', description: error });
+  }}
+  onTagAdd={(tag) => console.log('Added:', tag)}
+  onTagRemove={(tag) => console.log('Removed:', tag)}
+>
+  <div class="email-tags-input">
+    <div class="tags-list">
+      <For each={emails()}>
+        {(email) => (
+          <TagsInput.Tag value={email} class="email-tag">
+            <span class="email-icon">📧</span>
+            {email}
+            <TagsInput.TagRemove value={email} class="remove-btn">
+              ×
+            </TagsInput.TagRemove>
+          </TagsInput.Tag>
+        )}
+      </For>
+    </div>
+    <TagsInput.Field
+      placeholder={
+        context.canAddMore()
+          ? 'Enter email address...'
+          : `Max ${maxTags} emails`
+      }
+      class="email-input"
+    />
+    <div class="tag-counter">
+      {emails().length} / {maxTags} emails
+    </div>
+  </div>
+</TagsInput>
+```
+
+**API:**
+
+**`<TagsInput>`** - Root container
+- `value?: string[]` - Controlled tags array
+- `onValueChange?: (value: string[]) => void` - Value change callback
+- `defaultValue?: string[]` - Default value (uncontrolled)
+- `placeholder?: string` - Input placeholder text
+- `delimiter?: string | string[]` - Tag delimiter (default: Enter and comma)
+- `maxTags?: number` - Maximum number of tags (0 = unlimited)
+- `allowDuplicates?: boolean` - Allow duplicate tags (default: false)
+- `disabled?: boolean` - Disabled state
+- `validator?: (tag: string) => string | null` - Custom validator
+- `onTagAdd?: (tag: string) => void` - Called when tag is added
+- `onTagRemove?: (tag: string) => void` - Called when tag is removed
+- `onValidationError?: (tag: string, error: string) => void` - Validation error callback
+
+**`<TagsInput.Field>`** - Input field for creating new tags
+- `placeholder?: string` - Placeholder text
+
+**`<TagsInput.Tag>`** - Tag/chip display
+- `value: string` - Tag value (required)
+
+**`<TagsInput.TagRemove>`** - Button to remove a tag
+- `value: string` - Tag to remove (required)
+
+---
+
+### ColorPicker
+
+**Color selection component with visual picker and multiple format support.**
+
+**Features:**
+- Visual color picker with saturation/brightness area
+- Hue slider for color selection
+- Optional alpha/opacity slider
+- HEX, RGB, HSL input formats
+- Preset colors support
+- Full HSL color space with conversion utilities
+- Eyedropper tool support (where available)
+- Controlled and uncontrolled modes
+- ARIA support for sliders
+
+**Basic Usage:**
+
+```tsx
+<ColorPicker
+  defaultValue={{ h: 210, s: 100, l: 50, a: 1 }}
+  onValueChange={(color) => console.log(color)}
+>
+  <ColorPicker.Trigger />
+
+  <ColorPicker.Content>
+    <ColorPicker.Area />
+    <ColorPicker.HueSlider />
+    <ColorPicker.AlphaSlider />
+  </ColorPicker.Content>
+</ColorPicker>
+```
+
+**Advanced Usage:**
+
+```tsx
+// Theme color picker with presets
+<ColorPicker
+  value={themeColor()}
+  onValueChange={setThemeColor}
+  showAlpha={true}
+  format="hex"
+>
+  <ColorPicker.Trigger class="color-trigger">
+    <div
+      class="color-preview"
+      style={{ background: context.toHex() }}
+    />
+    <span>{context.toHex()}</span>
+  </ColorPicker.Trigger>
+
+  <ColorPicker.Content class="color-picker-panel">
+    <div class="picker-area">
+      <ColorPicker.Area class="saturation-brightness" />
+    </div>
+
+    <div class="sliders">
+      <div class="slider-row">
+        <label>Hue</label>
+        <ColorPicker.HueSlider class="hue-slider" />
+      </div>
+
+      <div class="slider-row">
+        <label>Alpha</label>
+        <ColorPicker.AlphaSlider class="alpha-slider" />
+      </div>
+    </div>
+
+    <div class="color-values">
+      <div class="value-group">
+        <label>HEX</label>
+        <input value={context.toHex()} readOnly />
+      </div>
+      <div class="value-group">
+        <label>RGB</label>
+        <input value={context.toRgb()} readOnly />
+      </div>
+      <div class="value-group">
+        <label>HSL</label>
+        <input value={context.toHsl()} readOnly />
+      </div>
+    </div>
+
+    <div class="presets">
+      <h4>Presets</h4>
+      <div class="preset-grid">
+        <For each={colorPresets}>
+          {(preset) => (
+            <ColorPicker.Preset color={preset.value}>
+              <div
+                class="preset-swatch"
+                style={{ background: preset.value }}
+                title={preset.name}
+              />
+            </ColorPicker.Preset>
+          )}
+        </For>
+      </div>
+    </div>
+  </ColorPicker.Content>
+</ColorPicker>
+```
+
+**API:**
+
+**`<ColorPicker>`** - Root container
+- `value?: ColorValue` - Controlled value ({ h, s, l, a })
+- `onValueChange?: (value: ColorValue) => void` - Value change callback
+- `defaultValue?: ColorValue` - Default value (uncontrolled)
+- `showAlpha?: boolean` - Whether to show alpha slider (default: false)
+- `format?: 'hex' | 'rgb' | 'hsl'` - Display format (default: 'hex')
+- `presets?: string[]` - Preset color values
+- `disabled?: boolean` - Disabled state
+
+**`<ColorPicker.Trigger>`** - Trigger button to open picker
+
+**`<ColorPicker.Content>`** - Picker content panel
+
+**`<ColorPicker.Area>`** - Saturation/brightness picker area (draggable)
+
+**`<ColorPicker.HueSlider>`** - Hue selection slider
+
+**`<ColorPicker.AlphaSlider>`** - Alpha/opacity slider (only shown if showAlpha=true)
+
+**`<ColorPicker.Preset>`** - Preset color swatch
+- `color: string` - Preset color value (hex, rgb, or hsl)
+
+---
+
+### Drawer
+
+**Overlay panel that slides in from the edge of the screen, optimized for mobile.**
+
+**Features:**
+- Slides from top, right, bottom, or left edges
+- Modal and non-modal modes
+- Focus trap and restoration
+- Scroll locking when open
+- Swipe to close support on touch devices
+- Keyboard support (Escape to close)
+- Close on outside click option
+- Controlled and uncontrolled modes
+- ARIA dialog support
+
+**Basic Usage:**
+
+```tsx
+<Drawer defaultOpen={false}>
+  <Drawer.Trigger>Open Drawer</Drawer.Trigger>
+
+  <Drawer.Overlay />
+
+  <Drawer.Content>
+    <Drawer.Title>Drawer Title</Drawer.Title>
+    <Drawer.Description>
+      This is a drawer that slides from the side
+    </Drawer.Description>
+
+    <p>Drawer content goes here...</p>
+
+    <Drawer.Close>Close</Drawer.Close>
+  </Drawer.Content>
+</Drawer>
+```
+
+**Advanced Usage:**
+
+```tsx
+// Mobile menu drawer with navigation
+<Drawer
+  open={isMenuOpen()}
+  onOpenChange={setMenuOpen}
+  side="left"
+  modal={true}
+  closeOnOutsideClick={true}
+  closeOnEscape={true}
+>
+  <Drawer.Trigger class="menu-button">
+    <MenuIcon />
+  </Drawer.Trigger>
+
+  <Drawer.Overlay class="drawer-overlay" />
+
+  <Drawer.Content class="mobile-menu">
+    <div class="menu-header">
+      <Drawer.Title class="menu-title">Menu</Drawer.Title>
+      <Drawer.Close class="close-button">×</Drawer.Close>
+    </div>
+
+    <nav class="menu-nav">
+      <For each={menuItems}>
+        {(item) => (
+          <a
+            href={item.href}
+            onClick={() => {
+              navigate(item.href);
+              setMenuOpen(false);
+            }}
+          >
+            {item.icon}
+            {item.label}
+          </a>
+        )}
+      </For>
+    </nav>
+
+    <div class="menu-footer">
+      <button onClick={handleLogout}>Logout</button>
+    </div>
+  </Drawer.Content>
+</Drawer>
+```
+
+**API:**
+
+**`<Drawer>`** - Root container
+- `open?: boolean` - Controlled open state
+- `onOpenChange?: (open: boolean) => void` - Open state change callback
+- `defaultOpen?: boolean` - Default open state (uncontrolled)
+- `side?: 'top' | 'right' | 'bottom' | 'left'` - Slide direction (default: 'right')
+- `modal?: boolean` - Modal mode blocks interaction behind (default: true)
+- `closeOnOutsideClick?: boolean` - Close when clicking outside (default: true)
+- `closeOnEscape?: boolean` - Close on Escape key (default: true)
+
+**`<Drawer.Trigger>`** - Button to open the drawer
+
+**`<Drawer.Overlay>`** - Backdrop overlay (only shown in modal mode)
+
+**`<Drawer.Content>`** - Drawer content panel (slides in from specified side)
+
+**`<Drawer.Title>`** - Drawer title (required for accessibility)
+
+**`<Drawer.Description>`** - Drawer description
+
+**`<Drawer.Close>`** - Button to close the drawer
+
+---
+
+### Editable
+
+**Inline text editing component with click-to-edit pattern.**
+
+**Features:**
+- Click to edit pattern for inline editing
+- Enter to submit, Escape to cancel
+- Auto-focus on edit mode with text selection
+- Submit on blur option
+- Custom validation support
+- Preview and edit states
+- Controlled and uncontrolled modes
+- ARIA support for editable content
+
+**Basic Usage:**
+
+```tsx
+<Editable defaultValue="Click to edit">
+  <Editable.Preview />
+  <Editable.Input />
+  <Editable.Controls>
+    <Editable.Submit />
+    <Editable.Cancel />
+  </Editable.Controls>
+</Editable>
+```
+
+**Advanced Usage:**
+
+```tsx
+// Inline title editor with validation
+<Editable
+  value={title()}
+  onValueChange={setTitle}
+  placeholder="Enter title..."
+  submitOnBlur={false}
+  selectOnFocus={true}
+  validator={(value) => {
+    if (value.length < 3) return false;
+    if (value.length > 100) return false;
+    return true;
+  }}
+  onEdit={() => console.log('Started editing')}
+  onSubmit={(value) => {
+    saveTitle(value);
+    showToast({ title: 'Title saved!' });
+  }}
+  onCancel={() => console.log('Cancelled editing')}
+>
+  <div class="editable-container">
+    <Editable.Preview class="title-preview">
+      {title() || 'No title set'}
+    </Editable.Preview>
+
+    <Editable.Input
+      class="title-input"
+      placeholder="Enter title..."
+    />
+
+    <Editable.Controls class="edit-controls">
+      <Editable.Submit class="btn-submit">
+        <CheckIcon /> Save
+      </Editable.Submit>
+      <Editable.Cancel class="btn-cancel">
+        <XIcon /> Cancel
+      </Editable.Cancel>
+    </Editable.Controls>
+  </div>
+
+  <Show when={title().length > 0}>
+    <div class="character-count">
+      {title().length} / 100 characters
+    </div>
+  </Show>
+</Editable>
+```
+
+**API:**
+
+**`<Editable>`** - Root container
+- `value?: string` - Controlled value
+- `onValueChange?: (value: string) => void` - Value change callback
+- `defaultValue?: string` - Default value (uncontrolled)
+- `placeholder?: string` - Placeholder text
+- `disabled?: boolean` - Disabled state
+- `startWithEditView?: boolean` - Start in edit mode (default: false)
+- `submitOnBlur?: boolean` - Submit when input loses focus (default: true)
+- `selectOnFocus?: boolean` - Select text on focus (default: true)
+- `validator?: (value: string) => boolean` - Custom validator
+- `onEdit?: () => void` - Called when editing starts
+- `onSubmit?: (value: string) => void` - Called on submit
+- `onCancel?: () => void` - Called on cancel
+
+**`<Editable.Preview>`** - Preview state (shown when not editing)
+
+**`<Editable.Input>`** - Input field (shown when editing)
+
+**`<Editable.Controls>`** - Edit controls container
+
+**`<Editable.Submit>`** - Submit button
+
+**`<Editable.Cancel>`** - Cancel button
+
+---
+
+### NumberInput
+
+**Numeric input with increment/decrement controls and keyboard support.**
+
+**Features:**
+- Increment and decrement buttons
+- Keyboard support (arrows, Page Up/Down, Home/End)
+- Min/max value constraints
+- Step increments with precision control
+- Format options (decimal, currency, percentage)
+- Mouse wheel support (optional)
+- Clamp value on blur
+- Controlled and uncontrolled modes
+- ARIA spinbutton support
+
+**Basic Usage:**
+
+```tsx
+<NumberInput
+  defaultValue={0}
+  min={0}
+  max={100}
+  step={1}
+  onValueChange={(value) => console.log(value)}
+>
+  <NumberInput.Field />
+  <NumberInput.Increment />
+  <NumberInput.Decrement />
+</NumberInput>
+```
+
+**Advanced Usage:**
+
+```tsx
+// Price input with currency formatting
+<NumberInput
+  value={price()}
+  onValueChange={setPrice}
+  min={0}
+  max={9999.99}
+  step={0.01}
+  precision={2}
+  format="currency"
+  allowMouseWheel={true}
+  clampValueOnBlur={true}
+  keepWithinRange={true}
+>
+  <div class="price-input-container">
+    <label>Product Price</label>
+
+    <div class="number-input-group">
+      <NumberInput.Field
+        class="price-field"
+        aria-label="Product price"
+      />
+
+      <div class="stepper-buttons">
+        <NumberInput.Increment class="btn-increment">
+          ▲
+        </NumberInput.Increment>
+        <NumberInput.Decrement class="btn-decrement">
+          ▼
+        </NumberInput.Decrement>
+      </div>
+    </div>
+
+    <div class="price-info">
+      <span>Range: $0.00 - $9,999.99</span>
+      <span>Step: $0.01</span>
+    </div>
+  </div>
+</NumberInput>
+
+// Quantity selector for cart
+<NumberInput
+  value={quantity()}
+  onValueChange={setQuantity}
+  min={1}
+  max={stock()}
+  step={1}
+  precision={0}
+  readonly={outOfStock()}
+>
+  <div class="quantity-selector">
+    <NumberInput.Decrement class="qty-btn">-</NumberInput.Decrement>
+    <NumberInput.Field class="qty-field" />
+    <NumberInput.Increment class="qty-btn">+</NumberInput.Increment>
+  </div>
+  <span class="stock-info">{stock()} in stock</span>
+</NumberInput>
+```
+
+**API:**
+
+**`<NumberInput>`** - Root container
+- `value?: number` - Controlled value
+- `onValueChange?: (value: number) => void` - Value change callback
+- `defaultValue?: number` - Default value (uncontrolled)
+- `min?: number` - Minimum value (default: -Infinity)
+- `max?: number` - Maximum value (default: Infinity)
+- `step?: number` - Step increment (default: 1)
+- `precision?: number` - Decimal places (default: 0)
+- `disabled?: boolean` - Disabled state
+- `readonly?: boolean` - Readonly state
+- `allowMouseWheel?: boolean` - Enable mouse wheel (default: false)
+- `clampValueOnBlur?: boolean` - Clamp to min/max on blur (default: true)
+- `keepWithinRange?: boolean` - Keep value within bounds (default: true)
+- `format?: 'decimal' | 'currency' | 'percentage'` - Display format (default: 'decimal')
+
+**`<NumberInput.Field>`** - Number input field
+
+**`<NumberInput.Increment>`** - Increment button (adds step to value)
+
+**`<NumberInput.Decrement>`** - Decrement button (subtracts step from value)
+
+---
+
+### Empty
+
+**Empty state component for displaying no-data scenarios.**
+
+**Features:**
+- Icon support for visual context
+- Title and description text
+- Action buttons support
+- Customizable layout
+- Pre-built variants (no-data, no-results, error, custom)
+- ARIA live region for status updates
+
+**Basic Usage:**
+
+```tsx
+<Empty variant="no-data">
+  <Empty.Icon>📭</Empty.Icon>
+  <Empty.Title>No data available</Empty.Title>
+  <Empty.Description>
+    There is no data to display at this time.
+  </Empty.Description>
+  <Empty.Actions>
+    <button onClick={loadData}>Load Data</button>
+  </Empty.Actions>
+</Empty>
+```
+
+**Advanced Usage:**
+
+```tsx
+// Search results empty state
+<Show
+  when={searchResults().length > 0}
+  fallback={
+    <Empty variant="no-results" class="search-empty">
+      <Empty.Icon class="empty-icon">
+        <SearchIcon size={64} />
+      </Empty.Icon>
+
+      <Empty.Title class="empty-title">
+        No results found for "{searchQuery()}"
+      </Empty.Title>
+
+      <Empty.Description class="empty-description">
+        We couldn't find any results matching your search.
+        Try adjusting your search terms or filters.
+      </Empty.Description>
+
+      <Empty.Actions class="empty-actions">
+        <button onClick={clearSearch} class="btn-secondary">
+          Clear Search
+        </button>
+        <button onClick={showFilters} class="btn-primary">
+          Adjust Filters
+        </button>
+      </Empty.Actions>
+    </Empty>
+  }
+>
+  {/* Results content */}
+</Show>
+
+// Error state with retry
+<Empty variant="error" class="error-state">
+  <Empty.Icon>⚠️</Empty.Icon>
+  <Empty.Title>Failed to load data</Empty.Title>
+  <Empty.Description>
+    {errorMessage()}
+  </Empty.Description>
+  <Empty.Actions>
+    <button onClick={retryLoad}>Retry</button>
+    <button onClick={goBack}>Go Back</button>
+  </Empty.Actions>
+</Empty>
+```
+
+**API:**
+
+**`<Empty>`** - Root container
+- `variant?: 'no-data' | 'no-results' | 'error' | 'custom'` - Visual variant (default: 'no-data')
+
+**`<Empty.Icon>`** - Icon container (typically emoji or SVG)
+
+**`<Empty.Title>`** - Title text (h3 element)
+
+**`<Empty.Description>`** - Description text (p element)
+
+**`<Empty.Actions>`** - Action buttons container
+
+---
+
+### Spinner
+
+**Loading spinner component with multiple variants and sizes.**
+
+**Features:**
+- Multiple sizes (xs, sm, md, lg, xl)
+- Multiple visual variants (circular, dots, bars)
+- Animation speed control (slow, normal, fast)
+- Label support for screen readers
+- Optional visible label
+- Color variants support
+- ARIA live region for loading state
+
+**Basic Usage:**
+
+```tsx
+<Spinner size="md" variant="circular" label="Loading..." />
+```
+
+**Advanced Usage:**
+
+```tsx
+// Full-page loading overlay
+<Show when={isLoading()}>
+  <div class="loading-overlay">
+    <div class="loading-content">
+      <Spinner
+        size="xl"
+        variant="circular"
+        speed="normal"
+        label="Loading application..."
+        showLabel={true}
+      />
+    </div>
+  </div>
+</Show>
+
+// Inline button loading state
+<button disabled={isSaving()}>
+  <Show
+    when={isSaving()}
+    fallback={<>Save Changes</>}
+  >
+    <Spinner size="sm" variant="dots" label="Saving..." />
+    <span>Saving...</span>
+  </Show>
+</button>
+
+// Data loading indicator
+<div class="data-section">
+  <Show
+    when={!isLoadingData()}
+    fallback={
+      <div class="data-loading">
+        <Spinner
+          size="lg"
+          variant="bars"
+          label="Loading data..."
+          showLabel={true}
+        />
+      </div>
+    }
+  >
+    {/* Data content */}
+  </Show>
+</div>
+```
+
+**API:**
+
+**`<Spinner>`** - Loading spinner
+- `size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'` - Spinner size (default: 'md')
+- `variant?: 'circular' | 'dots' | 'bars'` - Visual style (default: 'circular')
+- `label?: string` - Accessibility label (default: 'Loading...')
+- `speed?: 'slow' | 'normal' | 'fast'` - Animation speed (default: 'normal')
+- `showLabel?: boolean` - Show label visibly (default: false)
+
+---
+
+### Timeline
+
+**Timeline/activity feed component for displaying chronological events.**
+
+**Features:**
+- Vertical and horizontal orientations
+- Item markers (dots, icons, or custom content)
+- Connecting lines between timeline items
+- Item status states (pending, active, completed, error)
+- Timestamps and descriptions support
+- Custom content for each item
+- ARIA list structure
+
+**Basic Usage:**
+
+```tsx
+<Timeline orientation="vertical">
+  <Timeline.Item status="completed">
+    <Timeline.Marker />
+    <Timeline.Connector />
+    <Timeline.Content>
+      <Timeline.Title>Event 1</Timeline.Title>
+      <Timeline.Description>Event description</Timeline.Description>
+      <Timeline.Timestamp>2 hours ago</Timeline.Timestamp>
+    </Timeline.Content>
+  </Timeline.Item>
+
+  <Timeline.Item status="active">
+    <Timeline.Marker />
+    <Timeline.Connector />
+    <Timeline.Content>
+      <Timeline.Title>Event 2</Timeline.Title>
+      <Timeline.Description>Current event</Timeline.Description>
+      <Timeline.Timestamp>Just now</Timeline.Timestamp>
+    </Timeline.Content>
+  </Timeline.Item>
+
+  <Timeline.Item status="pending">
+    <Timeline.Marker />
+    <Timeline.Content>
+      <Timeline.Title>Event 3</Timeline.Title>
+      <Timeline.Description>Upcoming event</Timeline.Description>
+      <Timeline.Timestamp>In 1 hour</Timeline.Timestamp>
+    </Timeline.Content>
+  </Timeline.Item>
+</Timeline>
+```
+
+**Advanced Usage:**
+
+```tsx
+// Order tracking timeline with custom icons
+<Timeline orientation="vertical" class="order-timeline">
+  <For each={orderEvents()}>
+    {(event, index) => (
+      <Timeline.Item status={event.status} class="order-event">
+        <Timeline.Marker class="event-marker">
+          <Show when={event.icon} fallback={<div class="marker-dot" />}>
+            <img src={event.icon} alt={event.title} />
+          </Show>
+        </Timeline.Marker>
+
+        <Show when={index() < orderEvents().length - 1}>
+          <Timeline.Connector class="event-connector" />
+        </Show>
+
+        <Timeline.Content class="event-content">
+          <div class="event-header">
+            <Timeline.Title class="event-title">
+              {event.title}
+            </Timeline.Title>
+            <Timeline.Timestamp class="event-time">
+              {formatDate(event.timestamp)}
+            </Timeline.Timestamp>
+          </div>
+
+          <Timeline.Description class="event-description">
+            {event.description}
+          </Timeline.Description>
+
+          <Show when={event.details}>
+            <div class="event-details">
+              <For each={event.details}>
+                {(detail) => (
+                  <div class="detail-item">
+                    <span class="detail-label">{detail.label}:</span>
+                    <span class="detail-value">{detail.value}</span>
+                  </div>
+                )}
+              </For>
+            </div>
+          </Show>
+        </Timeline.Content>
+      </Timeline.Item>
+    )}
+  </For>
+</Timeline>
+
+// Activity feed with user avatars
+<Timeline orientation="vertical" class="activity-feed">
+  <For each={activities()}>
+    {(activity) => (
+      <Timeline.Item status={getActivityStatus(activity)}>
+        <Timeline.Marker class="activity-marker">
+          <Avatar>
+            <Avatar.Image src={activity.user.avatar} />
+            <Avatar.Fallback>{activity.user.initials}</Avatar.Fallback>
+          </Avatar>
+        </Timeline.Marker>
+
+        <Timeline.Connector />
+
+        <Timeline.Content class="activity-content">
+          <Timeline.Title>
+            <strong>{activity.user.name}</strong> {activity.action}
+          </Timeline.Title>
+
+          <Timeline.Description>
+            {activity.description}
+          </Timeline.Description>
+
+          <Timeline.Timestamp>
+            {formatRelativeTime(activity.timestamp)}
+          </Timeline.Timestamp>
+
+          <Show when={activity.attachment}>
+            <div class="activity-attachment">
+              {renderAttachment(activity.attachment)}
+            </div>
+          </Show>
+        </Timeline.Content>
+      </Timeline.Item>
+    )}
+  </For>
+</Timeline>
+```
+
+**API:**
+
+**`<Timeline>`** - Root container
+- `orientation?: 'vertical' | 'horizontal'` - Timeline direction (default: 'vertical')
+
+**`<Timeline.Item>`** - Timeline item
+- `status?: 'pending' | 'active' | 'completed' | 'error'` - Item status (default: 'pending')
+
+**`<Timeline.Marker>`** - Item marker (dot, icon, or custom content)
+
+**`<Timeline.Connector>`** - Line connecting items
+
+**`<Timeline.Content>`** - Item content container
+
+**`<Timeline.Title>`** - Item title (h4 element)
+
+**`<Timeline.Description>`** - Item description (p element)
+
+**`<Timeline.Timestamp>`** - Item timestamp (time element)
 
 ---
 

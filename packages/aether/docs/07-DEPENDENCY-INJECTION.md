@@ -492,6 +492,241 @@ export class ChildService {
 }
 ```
 
+## Store Injection
+
+### Injecting Stores
+
+Stores (classes decorated with `@Store()`) can be injected like any other service:
+
+```typescript
+// stores/user.store.ts
+import { Injectable, Store, Query } from 'aether';
+import { signal } from 'aether/reactivity';
+
+@Injectable()
+@Store()
+export class UserStore {
+  users = signal<User[]>([]);
+
+  @Query({ service: 'UserService@1.0.0', method: 'getUsers' })
+  async loadUsers() {}
+}
+
+// In a component
+import { defineComponent, useStore } from 'aether';
+import { UserStore } from '@/stores/user.store';
+
+export const UserList = defineComponent(() => {
+  const userStore = useStore(UserStore);
+
+  onMount(() => {
+    userStore.loadUsers();
+  });
+
+  return () => (
+    <div>
+      <For each={userStore.users()}>
+        {user => <UserCard user={user} />}
+      </For>
+    </div>
+  );
+});
+```
+
+### Store Dependencies
+
+Stores can inject other stores and services:
+
+```typescript
+// stores/auth.store.ts
+@Injectable()
+@Store()
+export class AuthStore {
+  user = signal<User | null>(null);
+  token = signal<string | null>(null);
+
+  @Query({ service: 'AuthService@1.0.0', method: 'getCurrentUser' })
+  async loadCurrentUser() {}
+}
+
+// stores/cart.store.ts
+@Injectable()
+@Store()
+export class CartStore {
+  // Inject other stores
+  constructor(
+    private authStore: AuthStore,
+    private netronClient: NetronClient
+  ) {}
+
+  items = signal<CartItem[]>([]);
+
+  @Mutation({
+    service: 'CartService@1.0.0',
+    method: 'checkout',
+    invalidates: ['getCart']
+  })
+  async checkout() {
+    // Access injected store
+    const userId = this.authStore.user()?.id;
+    if (!userId) throw new Error('Not authenticated');
+
+    return { userId, items: this.items() };
+  }
+}
+```
+
+### Store Lifecycle
+
+Stores have the same lifecycle hooks as services:
+
+```typescript
+@Injectable()
+@Store()
+export class ProductStore {
+  products = signal<Product[]>([]);
+
+  // Called when store is created
+  onStoreInit() {
+    console.log('ProductStore initialized');
+    this.loadProducts();
+  }
+
+  // Called when store is destroyed
+  onStoreDestroy() {
+    console.log('ProductStore destroyed');
+    // Cleanup subscriptions, timers, etc.
+  }
+
+  @Query({ service: 'ProductService@1.0.0', method: 'getProducts' })
+  async loadProducts() {}
+}
+```
+
+### Store Scopes
+
+Stores support the same scopes as services:
+
+```typescript
+// Singleton (default) - one instance for entire app
+@Injectable()
+@Store({ scope: 'singleton' })
+export class GlobalStore {
+  // Shared across entire application
+}
+
+// Module scope - one instance per module
+@Injectable()
+@Store({ scope: 'module' })
+export class FeatureStore {
+  // New instance for each module that imports it
+}
+
+// Request scope - one instance per SSR request
+@Injectable()
+@Store({ scope: 'request' })
+export class RequestStore {
+  // New instance for each HTTP request (SSR only)
+}
+
+// Transient scope - new instance on each injection
+@Injectable()
+@Store({ scope: 'transient' })
+export class TempStore {
+  // New instance every time it's injected
+}
+```
+
+### Providing Stores in Modules
+
+Register stores in modules:
+
+```typescript
+import { defineModule } from 'aether';
+import { UserStore } from './stores/user.store';
+import { CartStore } from './stores/cart.store';
+
+export const ShopModule = defineModule({
+  id: 'shop',
+
+  // Register stores
+  stores: [
+    UserStore,
+    CartStore
+  ],
+
+  // Export stores for use in other modules
+  exportStores: [
+    UserStore,
+    CartStore
+  ]
+});
+```
+
+### Using useStore Hook
+
+The recommended way to access stores in components:
+
+```typescript
+import { useStore } from 'aether';
+
+export const ProductList = defineComponent(() => {
+  // Get store instance
+  const productStore = useStore(ProductStore);
+
+  // Reactive access to store state
+  const products = () => productStore.products();
+  const loading = () => productStore.loading();
+
+  return () => (
+    <div>
+      {loading() ? (
+        <Spinner />
+      ) : (
+        <For each={products()}>
+          {product => <ProductCard product={product} />}
+        </For>
+      )}
+    </div>
+  );
+});
+```
+
+### Store Testing
+
+Mock stores in tests:
+
+```typescript
+import { createTestingModule } from 'aether/testing';
+import { UserStore } from './user.store';
+
+describe('UserList', () => {
+  it('should display users', () => {
+    // Create mock store
+    const mockUserStore = {
+      users: signal([
+        { id: '1', name: 'Alice' },
+        { id: '2', name: 'Bob' }
+      ]),
+      loading: signal(false),
+      loadUsers: vi.fn()
+    };
+
+    const module = createTestingModule({
+      components: [UserList],
+      stores: [
+        { provide: UserStore, useValue: mockUserStore }
+      ]
+    });
+
+    const component = module.render(UserList);
+
+    expect(component.getByText('Alice')).toBeInTheDocument();
+    expect(component.getByText('Bob')).toBeInTheDocument();
+  });
+});
+```
+
 ## Multi Providers
 
 Multiple values for a single token.

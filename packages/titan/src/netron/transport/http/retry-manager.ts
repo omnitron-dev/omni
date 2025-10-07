@@ -86,6 +86,9 @@ export class RetryManager extends EventEmitter {
     options: CircuitBreakerOptions;
   };
 
+  // Store Retry-After header delay
+  private retryAfterDelay?: number;
+
   constructor(
     private options: {
       /** Default retry options */
@@ -125,7 +128,7 @@ export class RetryManager extends EventEmitter {
       initialDelay: options.initialDelay || this.options.defaultOptions?.initialDelay || 1000,
       maxDelay: options.maxDelay || this.options.defaultOptions?.maxDelay || 30000,
       jitter: options.jitter ?? this.options.defaultOptions?.jitter ?? 0.1,
-      shouldRetry: options.shouldRetry || this.options.defaultOptions?.shouldRetry || this.defaultShouldRetry,
+      shouldRetry: options.shouldRetry || this.options.defaultOptions?.shouldRetry || this.defaultShouldRetry.bind(this),
       onRetry: options.onRetry || this.options.defaultOptions?.onRetry || (() => {}),
       attemptTimeout: options.attemptTimeout || this.options.defaultOptions?.attemptTimeout || 0,
       factor: options.factor || this.options.defaultOptions?.factor || 2
@@ -187,12 +190,26 @@ export class RetryManager extends EventEmitter {
         }
 
         if (attempt < retryOptions.attempts) {
-          // Calculate delay with jitter
-          const jitteredDelay = this.addJitter(delay, retryOptions.jitter);
-          this.stats.retryDelays.push(jitteredDelay);
+          // Use Retry-After delay if set, otherwise calculate with jitter
+          let actualDelay: number;
+
+          if (this.retryAfterDelay !== undefined) {
+            actualDelay = this.retryAfterDelay;
+
+            if (this.options.debug) {
+              console.log(`[Retry] Using Retry-After delay: ${actualDelay}ms`);
+            }
+
+            // Clear the retry-after delay after using it
+            this.retryAfterDelay = undefined;
+          } else {
+            actualDelay = this.addJitter(delay, retryOptions.jitter);
+          }
+
+          this.stats.retryDelays.push(actualDelay);
 
           if (this.options.debug) {
-            console.log(`[Retry] Attempt ${attempt + 1} failed, retrying in ${jitteredDelay}ms:`, error.message);
+            console.log(`[Retry] Attempt ${attempt + 1} failed, retrying in ${actualDelay}ms:`, error.message);
           }
 
           // Call retry callback
@@ -202,20 +219,22 @@ export class RetryManager extends EventEmitter {
           this.emit('retry', {
             attempt: attempt + 1,
             error: error.message,
-            delay: jitteredDelay
+            delay: actualDelay
           });
 
           // Wait before retry
-          await this.delay(jitteredDelay);
+          await this.delay(actualDelay);
 
-          // Calculate next delay based on backoff strategy
-          delay = this.calculateNextDelay(
-            delay,
-            retryOptions.backoff,
-            retryOptions.factor,
-            retryOptions.maxDelay,
-            retryOptions.initialDelay
-          );
+          // Calculate next delay based on backoff strategy (only if not using Retry-After)
+          if (this.retryAfterDelay === undefined) {
+            delay = this.calculateNextDelay(
+              delay,
+              retryOptions.backoff,
+              retryOptions.factor,
+              retryOptions.maxDelay,
+              retryOptions.initialDelay
+            );
+          }
         } else {
           // Max retries exceeded
           this.stats.failedRetries++;
@@ -285,8 +304,9 @@ export class RetryManager extends EventEmitter {
         return true;
       }
 
-      // 429 (Rate Limit) is retryable
+      // 429 (Rate Limit) is retryable - check for Retry-After header
       if (error.status === 429) {
+        this.extractRetryAfter(error);
         return true;
       }
 
@@ -307,7 +327,10 @@ export class RetryManager extends EventEmitter {
         case ErrorCode.SERVICE_UNAVAILABLE:
         case ErrorCode.REQUEST_TIMEOUT:
         case ErrorCode.TOO_MANY_REQUESTS:
-        case ErrorCode.INTERNAL_ERROR:
+          // Check for Retry-After in error details
+          if (error.code === ErrorCode.TOO_MANY_REQUESTS) {
+            this.extractRetryAfter(error);
+          }
           return true;
         case ErrorCode.INVALID_ARGUMENT:
         case ErrorCode.NOT_FOUND:
@@ -315,6 +338,8 @@ export class RetryManager extends EventEmitter {
         case ErrorCode.FORBIDDEN:
         case ErrorCode.CONFLICT:
           return false;
+        case ErrorCode.INTERNAL_ERROR:
+          return true;
         default:
           return attempt < 2; // Retry once for unknown errors
       }
@@ -322,6 +347,58 @@ export class RetryManager extends EventEmitter {
 
     // Default: retry for unknown errors
     return true;
+  }
+
+  /**
+   * Extract Retry-After header from error
+   */
+  private extractRetryAfter(error: any): void {
+    // Clear previous value
+    this.retryAfterDelay = undefined;
+
+    // Check for Retry-After in headers
+    const retryAfter = error.headers?.['retry-after'] || error.headers?.['Retry-After'];
+
+    if (retryAfter) {
+      // Parse Retry-After (can be seconds or HTTP date)
+      const retryAfterNumber = Number(retryAfter);
+
+      if (!Number.isNaN(retryAfterNumber)) {
+        // It's a number (seconds)
+        this.retryAfterDelay = retryAfterNumber * 1000;
+
+        if (this.options.debug) {
+          console.log(`[Retry] Retry-After header: ${retryAfterNumber}s`);
+        }
+      } else {
+        // It's an HTTP date
+        try {
+          const retryAfterDate = new Date(retryAfter);
+          const delayMs = retryAfterDate.getTime() - Date.now();
+
+          if (delayMs > 0) {
+            this.retryAfterDelay = delayMs;
+
+            if (this.options.debug) {
+              console.log(`[Retry] Retry-After date: ${retryAfter} (delay: ${delayMs}ms)`);
+            }
+          }
+        } catch (err) {
+          if (this.options.debug) {
+            console.warn(`[Retry] Failed to parse Retry-After header: ${retryAfter}`);
+          }
+        }
+      }
+    }
+
+    // Also check TitanError details for retryAfter
+    if (error instanceof TitanError && error.details?.retryAfter) {
+      const retryAfter = error.details.retryAfter;
+
+      if (typeof retryAfter === 'number') {
+        this.retryAfterDelay = retryAfter;
+      }
+    }
   }
 
   /**

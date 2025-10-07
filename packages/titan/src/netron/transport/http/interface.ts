@@ -54,6 +54,10 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
   private options: QueryOptions = {};
   private methodName?: TMethod;
   private methodInput?: any;
+  private abortController?: AbortController;
+
+  // Shared deduplication map across all QueryBuilder instances
+  private static inFlightRequests = new Map<string, Promise<any>>();
 
   constructor(
     private transport: HttpTransportClient,
@@ -183,6 +187,16 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
   }
 
   /**
+   * Cancel the query if it's in progress
+   */
+  cancel(): void {
+    if (this.abortController) {
+      this.abortController.abort();
+      this.abortController = undefined;
+    }
+  }
+
+  /**
    * Execute the query
    */
   async execute(): Promise<any> {
@@ -190,11 +204,61 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
       throw new Error('Method name not specified');
     }
 
+    // Check for deduplication
+    const dedupeKey = this.options.dedupeKey || (this.options.cache ? this.getCacheKey() : undefined);
+
+    if (dedupeKey) {
+      const inFlight = QueryBuilder.inFlightRequests.get(dedupeKey);
+      if (inFlight) {
+        // Request already in flight, return the existing promise
+        return inFlight;
+      }
+    }
+
+    // Create abort controller for cancellation
+    this.abortController = new AbortController();
+
+    // Create the promise and store it for deduplication
+    const promise = this.executeInternal();
+
+    if (dedupeKey) {
+      QueryBuilder.inFlightRequests.set(dedupeKey, promise);
+    }
+
+    try {
+      const result = await promise;
+      return result;
+    } finally {
+      // Clean up
+      if (dedupeKey) {
+        QueryBuilder.inFlightRequests.delete(dedupeKey);
+      }
+      this.abortController = undefined;
+    }
+  }
+
+  /**
+   * Internal execution logic
+   */
+  private async executeInternal(): Promise<any> {
     const startTime = performance.now();
     let cacheHit = false;
     let result: any;
 
     try {
+      // Apply optimistic update if specified
+      if (this.options.optimisticUpdate && this.cacheManager && this.options.cache) {
+        const cacheKey = this.getCacheKey();
+        const current = this.cacheManager.getRaw(cacheKey);
+        const optimistic = this.options.optimisticUpdate(current);
+
+        // Temporarily update cache with optimistic data
+        this.cacheManager.set(cacheKey, optimistic, {
+          ...this.options.cache,
+          tags: [...(this.options.cache.tags || []), '__optimistic__']
+        });
+      }
+
       // Check if we should use cache
       if (this.options.cache && this.cacheManager) {
         const cacheKey = this.getCacheKey();
@@ -239,6 +303,17 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
 
       return result;
     } catch (error) {
+      // Rollback optimistic update on error
+      if (this.options.optimisticUpdate && this.cacheManager) {
+        const cacheKey = this.getCacheKey();
+        this.cacheManager.invalidate(cacheKey);
+      }
+
+      // Handle abort error
+      if ((error as Error).name === 'AbortError') {
+        throw new Error('Query cancelled');
+      }
+
       // Use fallback if available
       if (this.options.fallback !== undefined) {
         return this.options.fallback;

@@ -792,6 +792,12 @@ describe('CalculatorService', () => {
   - CORS, compression, and security configuration
   - Request/response handling with content negotiation
 
+- 🚀 [HTTP Interface & Retry Manager Guide](./transport/http/HTTP-INTERFACE-GUIDE.md) - **Intelligent Client Features**
+  - **RetryManager**: Exponential backoff, circuit breaker, jitter, custom retry logic
+  - **HttpInterface**: Fluent API for queries, caching, retries, transformations
+  - **TanStack Query-like** capabilities with type-safe builder pattern
+  - Complete integration examples and best practices
+
 - 🎯 [Middleware System](./middleware/README.md) - Request/response interception and modification
   - Multi-stage pipeline architecture (PRE_PROCESS, PRE_INVOKE, POST_INVOKE, POST_PROCESS, ERROR)
   - Built-in middleware: authentication, rate limiting, caching, validation

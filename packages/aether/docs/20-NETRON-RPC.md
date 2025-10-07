@@ -4,9 +4,11 @@
 
 - [Overview](#overview)
 - [Philosophy](#philosophy)
+- [Architecture](#architecture)
 - [Basic RPC](#basic-rpc)
 - [Service Exposure](#service-exposure)
 - [Client Usage](#client-usage)
+- [Using Netron in Stores](#using-netron-in-stores)
 - [Streaming](#streaming)
 - [Authentication](#authentication)
 - [Error Handling](#error-handling)
@@ -168,6 +170,165 @@ const service = useRPC(UserService, {
   transport: 'auto'
 });
 ```
+
+## Architecture
+
+### Layered Design
+
+Netron RPC has a modular, layered architecture designed for flexibility and performance:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Application Layer                         │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐            │
+│  │ UserStore  │  │ CartStore  │  │ OrderStore │            │
+│  │            │  │            │  │            │            │
+│  │ @Query     │  │ @Mutation  │  │ @Subscribe │            │
+│  │ @Mutation  │  │ @Subscribe │  │ @Query     │            │
+│  └────────────┘  └────────────┘  └────────────┘            │
+└─────────────────────────────────────────────────────────────┘
+         │                 │                 │
+         └─────────────────┴─────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│              NetronStoreAdapter (Bridge Layer)               │
+│  • Decorator Runtime (@Query, @Mutation, @Subscribe)        │
+│  • Cache Management (Stale-While-Revalidate)                │
+│  • Optimistic Updates (Rollback, Retry)                     │
+│  • Real-Time Subscriptions (WebSocket Upgrade)              │
+│  • Middleware Integration (Auth, Logging, Metrics)          │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│            UnifiedNetronClient (Transport Layer)             │
+│  • Auto-select WebSocket or HTTP                            │
+│  • Fallback on transport failure                            │
+│  • Connection pooling & management                          │
+└─────────────────────────────────────────────────────────────┘
+         │                                      │
+    ┌────┴────┐                        ┌───────┴────────┐
+    ▼         ▼                        ▼                ▼
+┌──────┐  ┌──────┐               ┌──────────┐   ┌──────────┐
+│  WS  │  │ HTTP │               │  Cache   │   │Optimistic│
+│Peer  │  │ Peer │               │ Manager  │   │  Update  │
+└──────┘  └──────┘               └──────────┘   └──────────┘
+    │         │                        │                │
+    └─────────┴────────────────────────┴────────────────┘
+                           │
+                           ▼
+                  ┌──────────────────┐
+                  │ Backend Services │
+                  │  (Titan + Netron)│
+                  └──────────────────┘
+```
+
+### Two Usage Patterns
+
+Netron supports two complementary patterns:
+
+#### 1. **Direct RPC** (Low-level, explicit)
+
+```typescript
+// Manual service access
+const userService = useRPC(UserService);
+const users = await userService.findAll();
+
+// Full control, manual cache management
+```
+
+**Best for:**
+- One-off RPC calls
+- Direct service access
+- Custom cache logic
+- Non-store components
+
+#### 2. **Store Integration** (High-level, declarative)
+
+```typescript
+// Automatic RPC with decorators
+@Store()
+class UserStore {
+  @Query({
+    service: 'UserService@1.0.0',
+    method: 'findAll',
+    cacheTime: 5 * 60 * 1000
+  })
+  async loadUsers(): Promise<User[]> {}
+}
+
+// Automatic caching, optimistic updates, subscriptions
+```
+
+**Best for:**
+- State management
+- Automatic caching
+- Optimistic updates
+- Real-time subscriptions
+- Cross-cutting concerns (auth, logging)
+
+### Transport Architecture
+
+**WebSocket Transport:**
+```typescript
+NetronClient → WebSocket → RemotePeer → MessagePack Packets
+```
+
+- Binary protocol (MessagePack)
+- Real-time bidirectional communication
+- Event subscriptions
+- Service discovery via `query_interface` task
+- Stream support
+
+**HTTP Transport:**
+```typescript
+HttpNetronClient → HTTP/fetch → HttpRemotePeer → JSON Messages
+```
+
+- JSON messaging (OpenAPI-compatible)
+- Stateless request/response
+- Auth-aware service discovery via `/netron/query-interface`
+- Request/response interceptors
+- Cache hints support
+
+### Service Discovery
+
+**Auth-Aware On-Demand Discovery:**
+
+```typescript
+// 1. Client requests service
+await client.queryInterface('UserService@1.0.0')
+
+// 2. Check local cache
+if (definitionCache.has('UserService@1.0.0')) {
+  return cached definition
+}
+
+// 3. Query remote peer (auth-aware)
+// - RemotePeer: WebSocket task 'query_interface'
+// - HttpRemotePeer: POST /netron/query-interface
+
+// 4. Server validates authorization and returns accessible methods
+// - Respects @Authorized decorator
+// - Filters methods based on user roles
+
+// 5. Cache definition and create interface proxy
+definitionCache.set(serviceName, definition)
+return Interface.create(definition, peer)
+```
+
+**Benefits:**
+- No pre-fetching (faster connection)
+- Respects authorization rules
+- Type-safe proxy generation
+- Automatic cache management
+
+### Advanced Features
+
+For detailed architecture and implementation, see:
+- [NETRON-STORE-ARCHITECTURE.md](./NETRON-STORE-ARCHITECTURE.md) - Comprehensive architectural design
+- [19-TITAN-INTEGRATION.md](./19-TITAN-INTEGRATION.md) - Backend integration patterns
 
 ## Basic RPC
 
@@ -418,6 +579,67 @@ const userService = useRPC(UserService, {
   }
 });
 ```
+
+## Using Netron in Stores
+
+For comprehensive information on using Netron RPC within state management stores, see **[10-STATE-MANAGEMENT.md](./10-STATE-MANAGEMENT.md)**.
+
+### Quick Example
+
+```typescript
+import { Injectable, signal } from 'aether';
+import { NetronClient } from 'aether/netron';
+
+interface IUserService {
+  getUsers(): Promise<User[]>;
+  createUser(data: CreateUserDto): Promise<User>;
+}
+
+@Injectable()
+export class UserStore {
+  private users = signal<User[]>([]);
+
+  constructor(private netron: NetronClient) {
+    // Subscribe to real-time events
+    this.netron.subscribe('user.created', (user: User) => {
+      this.users.set([...this.users(), user]);
+    });
+  }
+
+  async loadUsers() {
+    // Type-safe RPC call
+    const service = await this.netron.queryInterface<IUserService>('UserService@1.0.0');
+    const users = await service.getUsers();
+    this.users.set(users);
+  }
+
+  async createUser(data: CreateUserDto) {
+    const service = await this.netron.queryInterface<IUserService>('UserService@1.0.0');
+    const user = await service.createUser(data);
+    this.users.set([...this.users(), user]);
+    return user;
+  }
+
+  getUsers() {
+    return this.users;
+  }
+}
+```
+
+**Key Points:**
+
+1. **Explicit Control** - Developer manages state updates
+2. **Type Safety** - TypeScript interfaces for services
+3. **Fluent API** - Direct method calls via `queryInterface()`
+4. **Real-Time** - WebSocket subscriptions for live updates
+
+See [10-STATE-MANAGEMENT.md](./10-STATE-MANAGEMENT.md) for complete patterns including:
+- Optimistic updates
+- Caching strategies
+- Error handling
+- Async data with `resource()`
+- Best practices
+
 
 ## Streaming
 

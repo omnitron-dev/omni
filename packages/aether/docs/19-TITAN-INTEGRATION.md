@@ -30,8 +30,7 @@ Aether provides **optional integration with Titan**, the TypeScript framework fo
 - ⚡ **Real-Time**: WebSocket support via Netron
 - 🚀 **Single Deployment**: Deploy as one application
 
-> **Architecture Decision**: Frontend and backend have **separate DI implementations** connected via type-safe interface contracts. See `ARCHITECTURE-DECISION-TITAN-DI.md` for details.
-
+> **Architecture Decision**: Frontend and backend have **separate DI implementations** connected via type-safe interface contracts.
 ### Architecture (Optional Integration)
 
 ```
@@ -664,6 +663,224 @@ const fetchUser = async (id: string) => {
   }
 };
 ```
+
+
+## Store ↔ Netron RPC Integration
+
+### Overview
+
+Aether stores use **Netron fluent API** for type-safe communication with Titan backend services. This provides a clean, explicit approach to server state management.
+
+> **See [10-STATE-MANAGEMENT.md](./10-STATE-MANAGEMENT.md) for comprehensive store patterns and examples.**
+
+### Basic Integration Pattern
+
+```typescript
+// 1. Define shared service interface
+// shared/contracts/product.contract.ts
+export interface IProductService {
+  getProducts(filters?: ProductFilters): Promise<Product[]>;
+  getProductById(id: string): Promise<Product>;
+  updateProduct(id: string, data: UpdateProductDto): Promise<Product>;
+  deleteProduct(id: string): Promise<void>;
+}
+
+// 2. Backend service implementation (Titan)
+// backend/services/product.service.ts
+import { Injectable, Service, Public } from '@omnitron-dev/titan';
+
+@Injectable()
+@Service('products@1.0.0')
+export class ProductService implements IProductService {
+  @Public()
+  async getProducts(filters?: ProductFilters): Promise<Product[]> {
+    return await this.db.products.findMany({ where: filters });
+  }
+
+  @Public()
+  async getProductById(id: string): Promise<Product> {
+    return await this.db.products.findUnique({ where: { id } });
+  }
+
+  @Public()
+  async updateProduct(id: string, data: UpdateProductDto): Promise<Product> {
+    return await this.db.products.update({ where: { id }, data });
+  }
+
+  @Public()
+  async deleteProduct(id: string): Promise<void> {
+    await this.db.products.delete({ where: { id } });
+  }
+}
+
+// 3. Frontend store (Aether)
+// frontend/stores/product.store.ts
+import { Injectable, signal, computed } from 'aether';
+import { NetronClient } from 'aether/netron';
+
+@Injectable()
+export class ProductStore {
+  // State
+  private products = signal<Product[]>([]);
+  private selectedProductId = signal<string | null>(null);
+  private loading = signal(false);
+  private error = signal<Error | null>(null);
+
+  // Computed
+  productCount = computed(() => this.products().length);
+  
+  selectedProduct = computed(() => {
+    const id = this.selectedProductId();
+    return id ? this.products().find(p => p.id === id) : null;
+  });
+
+  constructor(private netron: NetronClient) {
+    // Setup real-time subscriptions
+    this.netron.subscribe('product.created', this.handleProductCreated.bind(this));
+    this.netron.subscribe('product.updated', this.handleProductUpdated.bind(this));
+    this.netron.subscribe('product.deleted', this.handleProductDeleted.bind(this));
+  }
+
+  // Actions
+  async loadProducts(filters?: ProductFilters) {
+    this.loading.set(true);
+    this.error.set(null);
+
+    try {
+      // Get type-safe service proxy
+      const service = await this.netron.queryInterface<IProductService>('products@1.0.0');
+      
+      // Call method - fully type-checked!
+      const products = await service.getProducts(filters);
+      
+      this.products.set(products);
+    } catch (err) {
+      this.error.set(err as Error);
+      throw err;
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  async loadProduct(id: string) {
+    const service = await this.netron.queryInterface<IProductService>('products@1.0.0');
+    const product = await service.getProductById(id);
+
+    // Update products list
+    this.products.set(products => {
+      const index = products.findIndex(p => p.id === id);
+      if (index >= 0) {
+        const updated = [...products];
+        updated[index] = product;
+        return updated;
+      }
+      return [...products, product];
+    });
+
+    return product;
+  }
+
+  async updateProduct(id: string, data: UpdateProductDto) {
+    // Optimistic update
+    const previousProducts = this.products();
+    this.products.set(products =>
+      products.map(p => p.id === id ? { ...p, ...data } : p)
+    );
+
+    try {
+      const service = await this.netron.queryInterface<IProductService>('products@1.0.0');
+      const updated = await service.updateProduct(id, data);
+
+      // Update with server response
+      this.products.set(products =>
+        products.map(p => p.id === id ? updated : p)
+      );
+
+      return updated;
+    } catch (err) {
+      // Rollback on error
+      this.products.set(previousProducts);
+      throw err;
+    }
+  }
+
+  async deleteProduct(id: string) {
+    // Optimistic delete
+    const previousProducts = this.products();
+    this.products.set(products => products.filter(p => p.id !== id));
+
+    try {
+      const service = await this.netron.queryInterface<IProductService>('products@1.0.0');
+      await service.deleteProduct(id);
+    } catch (err) {
+      // Rollback on error
+      this.products.set(previousProducts);
+      throw err;
+    }
+  }
+
+  // Getters
+  getProducts() {
+    return this.products;
+  }
+
+  isLoading() {
+    return this.loading;
+  }
+
+  getError() {
+    return this.error;
+  }
+
+  selectProduct(id: string | null) {
+    this.selectedProductId.set(id);
+  }
+
+  // Real-time event handlers
+  private handleProductCreated(product: Product) {
+    this.products.set([...this.products(), product]);
+  }
+
+  private handleProductUpdated(product: Product) {
+    this.products.set(products =>
+      products.map(p => p.id === product.id ? product : p)
+    );
+  }
+
+  private handleProductDeleted(productId: string) {
+    this.products.set(products =>
+      products.filter(p => p.id !== productId)
+    );
+
+    // Clear selection if deleted
+    if (this.selectedProductId() === productId) {
+      this.selectedProductId.set(null);
+    }
+  }
+}
+```
+
+### Key Benefits
+
+1. **Type Safety** - TypeScript interfaces shared between frontend and backend
+2. **Explicit Control** - Developer manages state updates and flow
+3. **Fluent API** - Direct method calls via `queryInterface()`
+4. **Real-Time** - WebSocket subscriptions for live updates
+5. **Optimistic Updates** - Manual but explicit optimistic UI updates
+6. **Error Handling** - Explicit try/catch with rollback logic
+
+### Advanced Patterns
+
+For advanced patterns including:
+- Caching strategies
+- Background data fetching with `resource()`
+- Complex optimistic updates
+- Cache invalidation
+- Subscription cleanup
+- Cross-store dependencies
+
+See **[10-STATE-MANAGEMENT.md](./10-STATE-MANAGEMENT.md)** for complete documentation.
+
 
 ## Type-Safe APIs
 

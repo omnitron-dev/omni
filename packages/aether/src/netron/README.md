@@ -1,6 +1,6 @@
 # Netron Browser Client
 
-> High-performance RPC client for browser applications connecting to Titan backend services
+> High-performance HTTP & RPC client for browser applications connecting to Titan backend services
 
 ## Overview
 

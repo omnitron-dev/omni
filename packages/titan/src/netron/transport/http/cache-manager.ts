@@ -328,6 +328,15 @@ export class HttpCacheManager extends EventEmitter {
   }
 
   /**
+   * Get raw cached data without fetching
+   * Returns undefined if not cached or expired
+   */
+  getRaw(key: string): any | undefined {
+    const entry = this.cache.get(key);
+    return entry ? entry.data : undefined;
+  }
+
+  /**
    * Get cache statistics
    */
   getStats(): CacheStats {

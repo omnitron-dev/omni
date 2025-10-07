@@ -37,6 +37,7 @@ import { LoginComponent } from './components/Login';
 import { RegisterComponent } from './components/Register';
 import { AuthService } from './services/auth.service';
 import { UserService } from './services/user.service';
+import { AuthStore } from './stores/auth.store';
 import { CommonModule } from '@/modules/common/common.module';
 
 export const AuthModule = defineModule({
@@ -60,6 +61,11 @@ export const AuthModule = defineModule({
     UserService
   ],
 
+  // Module stores (NEW: reactive state management)
+  stores: [
+    AuthStore
+  ],
+
   // Exported components (visible to importing modules)
   exports: [
     LoginComponent,
@@ -69,6 +75,11 @@ export const AuthModule = defineModule({
   // Exported services
   exportProviders: [
     AuthService
+  ],
+
+  // Exported stores (NEW: share stores across modules)
+  exportStores: [
+    AuthStore
   ]
 });
 ```
@@ -94,6 +105,15 @@ interface ModuleDefinition {
 
   // Service providers
   providers?: Provider[];
+
+  // ═══════════════════════════════════
+  // NEW: Store support
+  // ═══════════════════════════════════
+  // Stores (reactive state management with @Store() decorator)
+  stores?: StoreClass[];
+
+  // Exported stores (available to importing modules)
+  exportStores?: StoreClass[];
 
   // Exported components
   exports?: (Component | Directive | Pipe)[];
@@ -290,6 +310,159 @@ if (import.meta.hot) {
       imported = true;
     }
   });
+}
+```
+
+## Store Integration
+
+### Registering Stores
+
+Modules can register stores for reactive state management:
+
+```typescript
+// stores/user.store.ts
+import { Injectable, Store, Query, Mutation } from 'aether';
+import { signal } from 'aether/reactivity';
+
+@Injectable()
+@Store()
+export class UserStore {
+  // Reactive state
+  users = signal<User[]>([]);
+  currentUser = signal<User | null>(null);
+
+  // Server query
+  @Query({ service: 'UserService@1.0.0', method: 'getUsers' })
+  async loadUsers() {}
+
+  // Server mutation
+  @Mutation({ service: 'UserService@1.0.0', method: 'updateUser' })
+  async updateUser(id: string, data: UpdateUserDto) {}
+}
+
+// user.module.ts
+import { defineModule } from 'aether';
+import { UserStore } from './stores/user.store';
+import { UserList } from './components/UserList';
+
+export const UserModule = defineModule({
+  id: 'user',
+
+  // Register store
+  stores: [UserStore],
+
+  // Components that will use the store
+  components: [UserList],
+
+  // Export store for use in other modules
+  exportStores: [UserStore]
+});
+```
+
+### Using Stores in Components
+
+Access stores via `useStore()` hook:
+
+```typescript
+// components/UserList.tsx
+import { defineComponent, useStore, onMount } from 'aether';
+import { For, Show } from 'aether/components';
+import { UserStore } from '../stores/user.store';
+
+export const UserList = defineComponent(() => {
+  const userStore = useStore(UserStore);
+
+  onMount(() => {
+    userStore.loadUsers();
+  });
+
+  return () => (
+    <div>
+      <h1>Users ({userStore.users().length})</h1>
+      <Show when={!userStore.loading()}>
+        <For each={userStore.users()}>
+          {user => <UserCard user={user} />}
+        </For>
+      </Show>
+    </div>
+  );
+});
+```
+
+### Cross-Module Store Access
+
+Stores can be exported and imported across modules:
+
+```typescript
+// user/user.module.ts
+export const UserModule = defineModule({
+  id: 'user',
+  stores: [UserStore],
+  exportStores: [UserStore] // Export for other modules
+});
+
+// admin/admin.module.ts
+import { UserModule } from '@/user/user.module';
+
+export const AdminModule = defineModule({
+  id: 'admin',
+  imports: [UserModule], // Import UserModule
+  components: [AdminDashboard]
+});
+
+// admin/components/AdminDashboard.tsx
+import { UserStore } from '@/user/stores/user.store';
+
+export const AdminDashboard = defineComponent(() => {
+  const userStore = useStore(UserStore); // Access imported store
+
+  return () => (
+    <div>
+      <h1>Admin Dashboard</h1>
+      <p>Total Users: {userStore.users().length}</p>
+    </div>
+  );
+});
+```
+
+### Store Scopes
+
+Stores support different scopes:
+
+```typescript
+// Singleton store (default) - shared across entire app
+@Injectable()
+@Store({ scope: 'singleton' })
+export class AuthStore { }
+
+// Module store - new instance per module
+@Injectable()
+@Store({ scope: 'module' })
+export class FeatureStore { }
+
+// Request store - new instance per SSR request
+@Injectable()
+@Store({ scope: 'request' })
+export class RequestStore { }
+```
+
+### Store with Persistence
+
+Stores can persist state automatically:
+
+```typescript
+@Injectable()
+@Store({
+  persist: {
+    key: 'user-preferences',
+    storage: 'local', // or 'session'
+    exclude: ['loading', 'error']
+  }
+})
+export class PreferencesStore {
+  theme = signal<'light' | 'dark'>('light');
+  language = signal('en');
+  loading = signal(false);
 }
 ```
 

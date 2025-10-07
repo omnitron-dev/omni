@@ -486,6 +486,108 @@ export {
   type CodeProps,
 } from './Code.js';
 
+// Table
+export {
+  Table,
+  TableCaption,
+  TableHeader,
+  TableBody,
+  TableFooter,
+  TableRow,
+  TableHead,
+  TableCell,
+  type TableProps,
+  type TableCaptionProps,
+  type TableHeaderProps,
+  type TableBodyProps,
+  type TableFooterProps,
+  type TableRowProps,
+  type TableHeadProps,
+  type TableCellProps,
+} from './Table.js';
+
+// Combobox
+export {
+  Combobox,
+  ComboboxTrigger,
+  ComboboxInput,
+  ComboboxIcon,
+  ComboboxContent,
+  ComboboxViewport,
+  ComboboxItem,
+  ComboboxEmpty,
+  type ComboboxProps,
+  type ComboboxTriggerProps,
+  type ComboboxInputProps,
+  type ComboboxIconProps,
+  type ComboboxContentProps,
+  type ComboboxViewportProps,
+  type ComboboxItemProps,
+  type ComboboxEmptyProps,
+} from './Combobox.js';
+
+// CommandPalette
+export {
+  CommandPalette,
+  CommandPaletteDialog,
+  CommandPaletteInput,
+  CommandPaletteList,
+  CommandPaletteGroup,
+  CommandPaletteItem,
+  CommandPaletteSeparator,
+  CommandPaletteShortcut,
+  CommandPaletteEmpty,
+  type CommandPaletteProps,
+  type CommandPaletteDialogProps,
+  type CommandPaletteInputProps,
+  type CommandPaletteListProps,
+  type CommandPaletteGroupProps,
+  type CommandPaletteItemProps,
+  type CommandPaletteSeparatorProps,
+  type CommandPaletteShortcutProps,
+  type CommandPaletteEmptyProps,
+} from './CommandPalette.js';
+
+// Calendar
+export {
+  Calendar,
+  CalendarHeader,
+  CalendarPrevButton,
+  CalendarNextButton,
+  CalendarHeading,
+  CalendarGrid,
+  CalendarGridHead,
+  CalendarHeadCell,
+  CalendarGridBody,
+  CalendarCell,
+  type CalendarProps,
+  type CalendarHeaderProps,
+  type CalendarPrevButtonProps,
+  type CalendarNextButtonProps,
+  type CalendarHeadingProps,
+  type CalendarGridProps,
+  type CalendarGridHeadProps,
+  type CalendarHeadCellProps,
+  type CalendarGridBodyProps,
+  type CalendarCellProps,
+} from './Calendar.js';
+
+// DatePicker
+export {
+  DatePicker,
+  DatePickerTrigger,
+  DatePickerValue,
+  DatePickerIcon,
+  DatePickerContent,
+  DatePickerCalendar,
+  type DatePickerProps,
+  type DatePickerTriggerProps,
+  type DatePickerValueProps,
+  type DatePickerIconProps,
+  type DatePickerContentProps,
+  type DatePickerCalendarProps,
+} from './DatePicker.js';
+
 // Utilities
 export {
   // ID generation

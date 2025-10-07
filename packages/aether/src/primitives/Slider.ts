@@ -164,10 +164,11 @@ function roundToStep(value: number, step: number): number {
 }
 
 function getClosestValueIndex(values: number[], targetValue: number): number {
+  if (values.length === 0) return 0;
   return values.reduce(
     (closestIndex, currentValue, currentIndex) => {
       const currentDistance = Math.abs(currentValue - targetValue);
-      const closestDistance = Math.abs(values[closestIndex] - targetValue);
+      const closestDistance = Math.abs(values[closestIndex]! - targetValue);
       return currentDistance < closestDistance ? currentIndex : closestIndex;
     },
     0
@@ -229,13 +230,13 @@ export const Slider = defineComponent<SliderProps>((props) => {
     const values = [...valuesArray()];
     values[index] = clamp(roundToStep(newValue, step()), min(), max());
 
-    const finalValue = thumbCount() === 1 ? values[0] : values;
+    const finalValue = thumbCount() === 1 ? values[0]! : values;
     valueSignal.set(finalValue as any);
 
     if (commit) {
-      props.onValueCommit?.(finalValue);
+      props.onValueCommit?.(finalValue as number | number[]);
     } else {
-      props.onValueChange?.(finalValue);
+      props.onValueChange?.(finalValue as number | number[]);
     }
   };
 
@@ -317,7 +318,7 @@ export const SliderTrack = defineComponent<{ children?: any; [key: string]: any 
   return () =>
     jsx('div', {
       ...props,
-      ref: (el: HTMLElement) => (trackRef = el),
+      ref: ((el: HTMLElement) => (trackRef = el)) as any,
       'data-slider-track': '',
       onClick: handleClick,
     });
@@ -335,7 +336,7 @@ export const SliderRange = defineComponent<{ children?: any; [key: string]: any 
 
     if (values.length === 1) {
       // Single value: from min to value
-      const percentage = slider.getPercentage(values[0]);
+      const percentage = slider.getPercentage(values[0]!);
       return isHorizontal
         ? { left: '0%', width: `${percentage}%` }
         : { bottom: '0%', height: `${percentage}%` };
@@ -368,7 +369,6 @@ export const SliderThumb = defineComponent<SliderThumbProps>((props) => {
   const thumbIndex = props.index ?? 0;
 
   let isDragging = false;
-  let startValue = 0;
 
   const value = computed(() => slider.getThumbValue(thumbIndex));
 
@@ -425,7 +425,6 @@ export const SliderThumb = defineComponent<SliderThumbProps>((props) => {
     if (slider.disabled) return;
 
     isDragging = true;
-    startValue = value();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   };
 

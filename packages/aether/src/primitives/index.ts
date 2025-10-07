@@ -213,6 +213,40 @@ export {
   type SliderContextValue,
 } from './Slider.js';
 
+// Tooltip
+export {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipArrow,
+  TooltipContext,
+  type TooltipProps,
+  type TooltipContentProps,
+  type TooltipArrowProps,
+  type TooltipContextValue,
+} from './Tooltip.js';
+
+// Separator
+export {
+  Separator,
+  type SeparatorProps,
+} from './Separator.js';
+
+// ContextMenu
+export {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuLabel,
+  ContextMenuContext,
+  type ContextMenuProps,
+  type ContextMenuTriggerProps,
+  type ContextMenuContentProps,
+  type ContextMenuContextValue,
+} from './ContextMenu.js';
+
 // Utilities
 export {
   // ID generation

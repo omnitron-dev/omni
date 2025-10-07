@@ -193,25 +193,22 @@ export const AlertDialogTrigger = defineComponent<{ children: any; [key: string]
 export const AlertDialogContent = defineComponent<AlertDialogContentProps>((props) => {
   const ctx = useContext(AlertDialogContext);
   let contentRef: HTMLElement | null = null;
-  let cleanupFocus: (() => void) | null = null;
+  let savedFocusElement: HTMLElement | null = null;
 
   onMount(() => {
     if (!ctx.isOpen()) return;
 
     // Save current focus and trap focus within dialog
     if (contentRef) {
-      saveFocus();
+      savedFocusElement = saveFocus();
       trapFocus(contentRef);
-      cleanupFocus = () => {
-        restoreFocus();
-      };
     }
 
     // Disable body scroll
     disableBodyScroll();
 
     return () => {
-      cleanupFocus?.();
+      restoreFocus(savedFocusElement);
       enableBodyScroll();
     };
   });
@@ -246,7 +243,7 @@ export const AlertDialogContent = defineComponent<AlertDialogContentProps>((prop
         onClick: handleOutsideClick,
         children: jsx('div', {
           ...props,
-          ref: (el: HTMLElement) => (contentRef = el),
+          ref: ((el: HTMLElement) => (contentRef = el)) as any,
           id: ctx.contentId,
           role: 'alertdialog',
           'aria-modal': 'true',
@@ -297,8 +294,6 @@ export const AlertDialogDescription = defineComponent<{ children: any; [key: str
  */
 export const AlertDialogAction = defineComponent<{ children: any; [key: string]: any }>(
   (props) => {
-    const ctx = useContext(AlertDialogContext);
-
     return () =>
       jsx('button', {
         ...props,

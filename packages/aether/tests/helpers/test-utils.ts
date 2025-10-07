@@ -7,7 +7,7 @@
 import { signal, type WritableSignal } from '../../src/core/reactivity/signal.js';
 import { computed, type ComputedSignal } from '../../src/core/reactivity/computed.js';
 import { effect } from '../../src/core/reactivity/effect.js';
-import { createRoot } from '../../src/core/reactivity/context.js';
+import { createRoot } from '../../src/core/reactivity/batch.js';
 
 /**
  * Render result with cleanup
@@ -150,7 +150,7 @@ export function trackEffect(fn: () => void): { count: number; cleanup: () => voi
 export function mockFetch(responses: Record<string, any>): () => void {
   const originalFetch = global.fetch;
 
-  global.fetch = async (input: RequestInfo | URL): Promise<Response> => {
+  const mockFn = async (input: RequestInfo | URL): Promise<Response> => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
 
     for (const [pattern, response] of Object.entries(responses)) {
@@ -163,7 +163,9 @@ export function mockFetch(responses: Record<string, any>): () => void {
     }
 
     throw new Error(`No mock response for ${url}`);
-  } as typeof fetch;
+  };
+
+  global.fetch = mockFn as typeof fetch;
 
   return () => {
     global.fetch = originalFetch;

@@ -97,6 +97,48 @@ export {
   type SelectContextValue,
 } from './Select.js';
 
+// Tabs
+export {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+  TabsContext,
+  type TabsProps,
+  type TabsListProps,
+  type TabsTriggerProps,
+  type TabsContentProps,
+  type TabsContextValue,
+} from './Tabs.js';
+
+// Accordion
+export {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+  AccordionContext,
+  AccordionItemContext,
+  type AccordionProps,
+  type AccordionSingleProps,
+  type AccordionMultipleProps,
+  type AccordionItemProps,
+  type AccordionTriggerProps,
+  type AccordionContentProps,
+  type AccordionContextValue,
+  type AccordionItemContextValue,
+} from './Accordion.js';
+
+// Switch
+export {
+  Switch,
+  SwitchThumb,
+  SwitchContext,
+  type SwitchProps,
+  type SwitchThumbProps,
+  type SwitchContextValue,
+} from './Switch.js';
+
 // Utilities
 export {
   // ID generation

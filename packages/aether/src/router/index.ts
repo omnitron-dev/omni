@@ -90,3 +90,10 @@ export {
   executeAction,
 } from './data.js';
 export type { Fetcher } from './data.js';
+
+// Prefetching
+export {
+  prefetchRoute,
+  clearPrefetchCache,
+  isPrefetched,
+} from './prefetch.js';

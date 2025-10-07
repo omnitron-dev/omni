@@ -7,9 +7,11 @@
 import { defineComponent } from '../core/component/define.js';
 import { computed } from '../core/reactivity/computed.js';
 import { signal } from '../core/reactivity/signal.js';
+import { onMount } from '../core/component/lifecycle.js';
 import { jsx } from '../jsxruntime/runtime.js';
 import { useRouter } from './hooks.js';
 import { normalizePath } from './route-matcher.js';
+import { prefetchRoute } from './prefetch.js';
 import type { NavigationOptions } from './types.js';
 
 /**
@@ -130,10 +132,11 @@ export const Link = defineComponent<LinkProps>((props) => {
   const handleMouseEnter = () => {
     isHovering.set(true);
 
-    if (props.prefetch === true || props.prefetch === 'hover') {
-      // TODO: Implement prefetching
-      // This will be implemented when we add loader support
-      // console.debug('Prefetch:', props.href);
+    if ((props.prefetch === true || props.prefetch === 'hover') && props.href && !props.external) {
+      // Prefetch on hover - non-blocking
+      prefetchRoute(router, props.href).catch((err) => {
+        console.warn('Hover prefetch failed:', err);
+      });
     }
   };
 
@@ -142,9 +145,13 @@ export const Link = defineComponent<LinkProps>((props) => {
   };
 
   // Prefetch on render if requested
-  if (props.prefetch === 'render') {
-    // TODO: Implement immediate prefetch
-    // console.debug('Prefetch on render:', props.href);
+  if (props.prefetch === 'render' && props.href && !props.external) {
+    onMount(() => {
+      // Prefetch immediately on component mount
+      prefetchRoute(router, props.href).catch((err) => {
+        console.warn('Render prefetch failed:', err);
+      });
+    });
   }
 
   // Render function

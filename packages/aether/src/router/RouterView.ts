@@ -6,6 +6,7 @@
 
 import { defineComponent } from '../core/component/define.js';
 import { RouteContextSymbol } from './Outlet.js';
+import { ErrorBoundary } from './error-boundary.js';
 import { createRouteContext, renderWithLayouts } from './layouts.js';
 import { useRouter } from './hooks.js';
 import type { RouteDefinition } from './types.js';
@@ -58,7 +59,16 @@ export const RouterView = defineComponent<RouterProps>((props) => {
     const routeContext = createRouteContext(match, props.routes);
 
     // Render with layouts
-    const rendered = renderWithLayouts(routeContext);
+    let rendered = renderWithLayouts(routeContext);
+
+    // Wrap with error boundary if present
+    if (routeContext.errorBoundary) {
+      const ErrorBoundaryComponent = routeContext.errorBoundary;
+      rendered = ErrorBoundary({
+        fallback: ErrorBoundaryComponent,
+        children: rendered
+      });
+    }
 
     // Provide route context to children using createElement
     const Provider = RouteContextSymbol.Provider;

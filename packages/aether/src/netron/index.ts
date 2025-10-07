@@ -35,3 +35,8 @@ export * from './packet/index.js';
 
 // Export decorators from decorators/core
 export { Service, Public, Method } from './decorators.js';
+
+// High-level client API
+export { NetronClient, type NetronClientOptions } from './client.js';
+export { HttpNetronClient, type HttpClientOptions } from './http-client.js';
+export { BrowserLogger, type ILogger } from './logger.js';

@@ -6,7 +6,7 @@
  */
 
 import type { NetronMiddlewareContext } from '../../middleware/types.js';
-import { TitanError, ErrorCode } from '../../../errors/index.js';
+import { TitanError, ErrorCode } from '../../errors.js';
 
 /**
  * Typed metadata with known and custom fields

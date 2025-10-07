@@ -9,7 +9,7 @@
  */
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import { TitanError, ErrorCode } from '../../../errors/index.js';
+import { TitanError, ErrorCode } from '../../errors.js';
 
 /**
  * Retry options

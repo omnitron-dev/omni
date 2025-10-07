@@ -588,6 +588,82 @@ export {
   type DatePickerCalendarProps,
 } from './DatePicker.js';
 
+// NavigationMenu
+export {
+  NavigationMenu,
+  NavigationMenuList,
+  NavigationMenuItem,
+  NavigationMenuTrigger,
+  NavigationMenuContent,
+  NavigationMenuLink,
+  NavigationMenuIndicator,
+  NavigationMenuViewport,
+  type NavigationMenuProps,
+  type NavigationMenuListProps,
+  type NavigationMenuItemProps,
+  type NavigationMenuTriggerProps,
+  type NavigationMenuContentProps,
+  type NavigationMenuLinkProps,
+  type NavigationMenuIndicatorProps,
+  type NavigationMenuViewportProps,
+} from './NavigationMenu.js';
+
+// Carousel
+export {
+  Carousel,
+  CarouselViewport,
+  CarouselSlide,
+  CarouselPrevious,
+  CarouselNext,
+  CarouselIndicators,
+  type CarouselProps,
+  type CarouselViewportProps,
+  type CarouselSlideProps,
+  type CarouselPreviousProps,
+  type CarouselNextProps,
+  type CarouselIndicatorsProps,
+} from './Carousel.js';
+
+// Rating
+export {
+  Rating,
+  RatingItem,
+  type RatingProps,
+  type RatingItemProps,
+} from './Rating.js';
+
+// Tree
+export {
+  Tree,
+  TreeItem,
+  TreeTrigger,
+  TreeContent,
+  TreeLabel,
+  type TreeProps,
+  type TreeItemProps,
+  type TreeTriggerProps,
+  type TreeContentProps,
+  type TreeLabelProps,
+} from './Tree.js';
+
+// Stepper
+export {
+  Stepper,
+  StepperList,
+  StepperItem,
+  StepperTrigger,
+  StepperDescription,
+  StepperContent,
+  StepperSeparator,
+  type StepperProps,
+  type StepperListProps,
+  type StepperItemProps,
+  type StepperTriggerProps,
+  type StepperDescriptionProps,
+  type StepperContentProps,
+  type StepperSeparatorProps,
+} from './Stepper.js';
+
 // Utilities
 export {
   // ID generation

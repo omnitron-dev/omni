@@ -291,13 +291,9 @@ export const Calendar = defineComponent<CalendarProps>((props) => {
     return selected ? isSameDay(date, selected) : false;
   };
 
-  const isDateInCurrentMonth = (date: Date) => {
-    return isSameMonth(date, currentMonth());
-  };
+  const isDateInCurrentMonth = (date: Date) => isSameMonth(date, currentMonth());
 
-  const isToday = (date: Date) => {
-    return isSameDay(date, new Date());
-  };
+  const isToday = (date: Date) => isSameDay(date, new Date());
 
   const isDateDisabledFn = (date: Date) => {
     if (props.disabled) return true;
@@ -307,13 +303,9 @@ export const Calendar = defineComponent<CalendarProps>((props) => {
     return false;
   };
 
-  const monthName = computed(() => {
-    return MONTH_NAMES[currentMonth().getMonth()] || 'January';
-  });
+  const monthName = computed(() => MONTH_NAMES[currentMonth().getMonth()] || 'January');
 
-  const year = computed(() => {
-    return currentMonth().getFullYear();
-  });
+  const year = computed(() => currentMonth().getFullYear());
 
   const days = computed(() => {
     const month = currentMonth();

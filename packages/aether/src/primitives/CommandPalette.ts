@@ -387,13 +387,11 @@ export const CommandPaletteItem = defineComponent<CommandPaletteItemProps>((prop
  * Visual separator between groups
  */
 export const CommandPaletteSeparator = defineComponent<CommandPaletteSeparatorProps>(
-  (props) => () => {
-    return jsx('div', {
+  (props) => () => jsx('div', {
       ...props,
       role: 'separator',
       'data-command-palette-separator': '',
-    });
-  },
+    }),
 );
 
 /**

@@ -6,7 +6,7 @@
 
 import { getOwner, onCleanup, context, OwnerImpl } from '../reactivity/context.js';
 import { triggerMount, cleanupComponentContext, handleComponentError } from './lifecycle.js';
-import { reactiveProps, PROPS_UPDATE } from './props.js';
+import { reactiveProps } from './props.js';
 import type { ComponentSetup, Component, RenderFunction } from './types.js';
 
 /**
@@ -40,7 +40,7 @@ export function defineComponent<P = {}>(
 
     try {
       // Wrap props in reactive proxy
-      const reactivePropsInstance = reactiveProps(props);
+      const reactivePropsInstance = reactiveProps(props as Record<string, any>);
 
       // Create owner with parent link (important for error boundaries)
       const parentOwner = getOwner();
@@ -56,7 +56,8 @@ export function defineComponent<P = {}>(
         context.runWithOwner(owner, () => {
           try {
             // Run setup function with reactive props
-            render = setup(reactivePropsInstance);
+            // Cast to P since reactiveProps adds internal methods
+            render = setup(reactivePropsInstance as P);
           } catch (error) {
             // Handle setup errors
             handleComponentError(owner, error as Error);

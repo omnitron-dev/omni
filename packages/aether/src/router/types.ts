@@ -171,6 +171,7 @@ export interface Router {
   beforeEach(guard: RouteGuard): () => void;
   afterEach(hook: (to: RouteMatch, from: RouteMatch | null) => void): () => void;
 
+  ready(): Promise<void>;
   dispose(): void;
 }
 

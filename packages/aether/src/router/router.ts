@@ -6,6 +6,7 @@
 
 import { signal } from '../core/reactivity/signal.js';
 import { findBestMatch, normalizePath } from './route-matcher.js';
+import { executeLoader, setLoaderData, setNavigationState } from './data.js';
 import type {
   Router,
   RouterConfig,
@@ -113,6 +114,27 @@ export function createRouter(config: RouterConfig = {}): Router {
           return navigate(result.redirect, { replace: true });
         }
       }
+    }
+
+    // Execute loader if defined
+    if (match?.route.loader) {
+      setNavigationState('loading', pathname);
+
+      try {
+        const loaderData = await executeLoader(match.route.loader, {
+          params: match.params,
+          url,
+          request: typeof window !== 'undefined' ? new Request(url.href) : undefined,
+        });
+
+        setLoaderData(pathname, loaderData);
+      } catch (error) {
+        console.error('Loader execution failed:', error);
+        setNavigationState('idle');
+        throw error;
+      }
+
+      setNavigationState('idle');
     }
 
     // Update browser history
@@ -224,12 +246,33 @@ export function createRouter(config: RouterConfig = {}): Router {
   /**
    * Handle popstate events (browser back/forward)
    */
-  function handlePopState(): void {
+  async function handlePopState(): Promise<void> {
     const location = getCurrentLocation();
     currentLocation.set(location);
 
     const match = matchCurrentPath();
     const previousMatch = currentMatch();
+
+    // Execute loader if defined
+    if (match?.route.loader) {
+      setNavigationState('loading', location.pathname);
+
+      try {
+        const url = new URL(location.pathname + location.search + location.hash, window.location.origin);
+        const loaderData = await executeLoader(match.route.loader, {
+          params: match.params,
+          url,
+          request: typeof window !== 'undefined' ? new Request(url.href) : undefined,
+        });
+
+        setLoaderData(location.pathname, loaderData);
+      } catch (error) {
+        console.error('Loader execution failed:', error);
+      }
+
+      setNavigationState('idle');
+    }
+
     currentMatch.set(match);
 
     // Run after hooks
@@ -243,13 +286,35 @@ export function createRouter(config: RouterConfig = {}): Router {
   /**
    * Initialize router
    */
-  function init(): void {
+  async function init(): Promise<void> {
     if (typeof window !== 'undefined') {
       // Listen to popstate events
       window.addEventListener('popstate', handlePopState);
 
       // Initial route match
       const initialMatch = matchCurrentPath();
+
+      // Execute initial loader if defined
+      if (initialMatch?.route.loader) {
+        const location = getCurrentLocation();
+        setNavigationState('loading', location.pathname);
+
+        try {
+          const url = new URL(location.pathname + location.search + location.hash, window.location.origin);
+          const loaderData = await executeLoader(initialMatch.route.loader, {
+            params: initialMatch.params,
+            url,
+            request: new Request(url.href),
+          });
+
+          setLoaderData(location.pathname, loaderData);
+        } catch (error) {
+          console.error('Initial loader execution failed:', error);
+        }
+
+        setNavigationState('idle');
+      }
+
       currentMatch.set(initialMatch);
     }
   }
@@ -263,8 +328,20 @@ export function createRouter(config: RouterConfig = {}): Router {
     }
   }
 
-  // Initialize on creation
-  init();
+  // Store initialization promise
+  let initPromise: Promise<void> | null = null;
+
+  /**
+   * Wait for router to be fully initialized
+   */
+  async function ready(): Promise<void> {
+    if (initPromise) {
+      await initPromise;
+    }
+  }
+
+  // Initialize on creation (non-blocking)
+  initPromise = init();
 
   return {
     config: {
@@ -286,6 +363,7 @@ export function createRouter(config: RouterConfig = {}): Router {
     go,
     beforeEach,
     afterEach,
+    ready,
     dispose,
   };
 }

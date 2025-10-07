@@ -54,6 +54,8 @@ export {
 // Components
 export { Link } from './Link.js';
 export type { LinkProps } from './Link.js';
+export { RouterView } from './RouterView.js';
+export type { RouterProps } from './RouterView.js';
 
 // Layouts
 export { Outlet, RouteContextSymbol, useRouteContext } from './Outlet.js';

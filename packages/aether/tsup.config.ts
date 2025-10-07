@@ -14,6 +14,7 @@ export default defineConfig({
     'control-flow/index': 'src/control-flow/index.ts',
     'primitives/index': 'src/primitives/index.ts',
     'server/index': 'src/server/index.ts',
+    'netron/index': 'src/netron/index.ts',
   },
   format: ['esm'],
   dts: true,

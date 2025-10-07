@@ -54,6 +54,10 @@
       "types": "./dist/server/index.d.ts",
       "import": "./dist/server/index.js"
     },
+    "./netron": {
+      "types": "./dist/netron/index.d.ts",
+      "import": "./dist/netron/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -89,7 +93,9 @@
   "license": "MIT",
   "devDependencies": {
     "@playwright/test": "^1.56.0",
+    "@types/events": "^3",
     "@types/node": "^24.7.0",
+    "@types/semver": "^7.7.1",
     "@typescript-eslint/eslint-plugin": "^8.46.0",
     "@typescript-eslint/parser": "^8.46.0",
     "@vitest/coverage-v8": "^3.2.4",
@@ -104,5 +110,12 @@
   },
   "engines": {
     "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "@omnitron-dev/common": "workspace:*",
+    "@omnitron-dev/messagepack": "workspace:*",
+    "@omnitron-dev/smartbuffer": "workspace:*",
+    "events": "^3.3.0",
+    "semver": "^7.7.2"
   }
 }

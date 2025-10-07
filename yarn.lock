@@ -2288,16 +2288,23 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@omnitron-dev/aether@workspace:packages/aether"
   dependencies:
+    "@omnitron-dev/common": "workspace:*"
+    "@omnitron-dev/messagepack": "workspace:*"
+    "@omnitron-dev/smartbuffer": "workspace:*"
     "@playwright/test": "npm:^1.56.0"
+    "@types/events": "npm:^3"
     "@types/node": "npm:^24.7.0"
+    "@types/semver": "npm:^7.7.1"
     "@typescript-eslint/eslint-plugin": "npm:^8.46.0"
     "@typescript-eslint/parser": "npm:^8.46.0"
     "@vitest/coverage-v8": "npm:^3.2.4"
     "@vitest/ui": "npm:^3.2.4"
     eslint: "npm:^9.37.0"
+    events: "npm:^3.3.0"
     happy-dom: "npm:^19.0.2"
     playwright: "npm:^1.56.0"
     reflect-metadata: "npm:^0.2.2"
+    semver: "npm:^7.7.2"
     tsup: "npm:^8.5.0"
     typescript: "npm:^5.9.3"
     vitest: "npm:^3.2.4"
@@ -2865,6 +2872,13 @@ __metadata:
   version: 1.0.7
   resolution: "@types/estree@npm:1.0.7"
   checksum: 10c0/be815254316882f7c40847336cd484c3bc1c3e34f710d197160d455dc9d6d050ffbf4c3bc76585dba86f737f020ab20bdb137ebe0e9116b0c86c7c0342221b8c
+  languageName: node
+  linkType: hard
+
+"@types/events@npm:^3":
+  version: 3.0.3
+  resolution: "@types/events@npm:3.0.3"
+  checksum: 10c0/3a56f8c51eb4ebc0d05dcadca0c6636c816acc10216ce36c976fad11e54a01f4bb979a07211355686015884753b37f17d74bfdc7aaf4ebb027c1e8a501c7b21d
   languageName: node
   linkType: hard
 
@@ -5632,6 +5646,13 @@ __metadata:
   version: 2.0.3
   resolution: "esutils@npm:2.0.3"
   checksum: 10c0/9a2fe69a41bfdade834ba7c42de4723c97ec776e40656919c62cbd13607c45e127a003f05f724a1ea55e5029a4cf2de444b13009f2af71271e42d93a637137c7
+  languageName: node
+  linkType: hard
+
+"events@npm:^3.3.0":
+  version: 3.3.0
+  resolution: "events@npm:3.3.0"
+  checksum: 10c0/d6b6f2adbccbcda74ddbab52ed07db727ef52e31a61ed26db9feb7dc62af7fc8e060defa65e5f8af9449b86b52cc1a1f6a79f2eafcf4e62add2b7a1fa4a432f6
   languageName: node
   linkType: hard
 

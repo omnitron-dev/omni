@@ -33,6 +33,22 @@ import {
   isHttpBatchRequest
 } from './types.js';
 import type { MethodContract } from '../../../validation/contract.js';
+import type { HttpRequestContext, HttpRequestHints } from './types.js';
+
+/**
+ * Context passed to method handlers
+ * Provides access to request context, hints, and middleware state
+ */
+export interface MethodHandlerContext {
+  /** Request context for tracing and multi-tenancy */
+  context?: HttpRequestContext;
+  /** Client hints for optimization */
+  hints?: HttpRequestHints;
+  /** Original HTTP request */
+  request: Request;
+  /** Middleware context with metadata and timing */
+  middleware: NetronMiddlewareContext & { output?: unknown };
+}
 
 /**
  * Service descriptor for native HTTP handling
@@ -42,15 +58,16 @@ interface ServiceDescriptor {
   version: string;
   methods: Map<string, MethodDescriptor>;
   description?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
  * Method descriptor with enhanced HTTP integration
+ * Generic parameters allow for type-safe input/output when known
  */
-interface MethodDescriptor {
+interface MethodDescriptor<TInput = unknown, TOutput = unknown> {
   name: string;
-  handler: (input: any, context: any) => Promise<any>;
+  handler: (input: TInput, context: MethodHandlerContext) => Promise<TOutput>;
   contract?: MethodContract;
   cacheable?: boolean;
   cacheMaxAge?: number;
@@ -197,7 +214,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   setPeer(peer: LocalPeer): void {
     this.netronPeer = peer;
     this.middlewareAdapter = new HttpMiddlewareAdapter({
-      cors: this.options.cors as any
+      cors: this.options.cors || undefined
     });
 
     // Register services from peer
@@ -213,33 +230,43 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     for (const [id, stub] of this.netronPeer.stubs) {
       const serviceName = stub.definition.meta.name;
       const version = stub.definition.meta.version || '1.0.0';
+      const meta = stub.definition.meta as {
+        description?: string;
+        metadata?: Record<string, unknown>;
+        contract?: unknown;
+      };
 
       const descriptor: ServiceDescriptor = {
         name: serviceName,
         version,
         methods: new Map(),
-        description: (stub.definition.meta as any).description,
-        metadata: (stub.definition.meta as any).metadata
+        description: meta.description,
+        metadata: meta.metadata
       };
 
       // Register methods
       for (const methodName of Object.keys(stub.definition.meta.methods || {})) {
         // Get contract for this method if available
-        let methodContract: any;
-        const contractObj = (stub.definition.meta as any)?.contract;
+        let methodContract: MethodContract | undefined;
+        const contractObj = meta.contract as {
+          definition?: unknown;
+          getMethod?: (name: string) => MethodContract;
+          [key: string]: unknown;
+        } | undefined;
+
         if (contractObj) {
           // Check if it's a Contract class instance
           if (contractObj.definition && contractObj.getMethod) {
             methodContract = contractObj.getMethod(methodName);
           } else if (contractObj[methodName]) {
             // Direct contract definition
-            methodContract = contractObj[methodName];
+            methodContract = contractObj[methodName] as MethodContract;
           }
         }
 
         descriptor.methods.set(methodName, {
           name: methodName,
-          handler: async (input: any, context: any) => {
+          handler: async (input: unknown, context: MethodHandlerContext) => {
             // Input is already an array of arguments from HTTP peer
             const args = Array.isArray(input) ? input : [input];
             return stub.call(methodName, args, this.netronPeer!);
@@ -396,7 +423,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     }
 
     // Create middleware context
-    const metadata = new Map<string, any>();
+    const metadata = new Map<string, unknown>();
     Object.entries(message.context || {}).forEach(([key, value]) => {
       metadata.set(key, value);
     });
@@ -404,8 +431,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     metadata.set('timestamp', message.timestamp);
     metadata.set('hints', message.hints);
 
-    const context: NetronMiddlewareContext & { output?: any } = {
-      peer: null as any, // Will be set properly when we have peer context
+    const context: NetronMiddlewareContext & { output?: unknown } = {
+      peer: this.netronPeer!,
       serviceName: message.service,
       methodName: message.method,
       input: message.input,
@@ -452,14 +479,17 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           }
         }
 
-        // Execute method with timing
-        const methodStart = performance.now();
-        context.output = await method.handler(message.input, {
+        // Create method handler context
+        const handlerContext: MethodHandlerContext = {
           context: message.context,
           hints: message.hints,
           request,
           middleware: context
-        });
+        };
+
+        // Execute method with timing
+        const methodStart = performance.now();
+        context.output = await method.handler(message.input, handlerContext);
         context.metadata.set('serverTime', Math.round(performance.now() - methodStart));
       };
 
@@ -467,8 +497,12 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       await executeHandler();
 
       // Build response with hints
-      const hints: any = {
-        metrics: { serverTime: context.metadata.get('serverTime') }
+      const hints: {
+        metrics?: { serverTime?: number };
+        streaming?: boolean;
+        cache?: { maxAge: number; tags: string[] };
+      } = {
+        metrics: { serverTime: context.metadata.get('serverTime') as number | undefined }
       };
 
       // Add cache hints based on method contract
@@ -499,23 +533,26 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         status: method.contract?.http?.status || 200,
         headers
       });
-    } catch (error: any) {
+    } catch (error) {
       // Error handling through middleware
-      context.error = error;
+      context.error = error instanceof Error ? error : new Error(String(error));
 
       await this.globalPipeline.execute(context, MiddlewareStage.ERROR);
+
+      const titanError = error instanceof TitanError ? error : null;
+      const errorMessage = error instanceof Error ? error.message : 'Internal server error';
 
       const errorResponse = createErrorResponse(
         message.id,
         {
-          code: error.code || ErrorCode.INTERNAL_ERROR,
-          message: error.message || 'Internal server error',
-          details: error.details
+          code: String(titanError?.code || ErrorCode.INTERNAL_SERVER_ERROR),
+          message: errorMessage,
+          details: titanError?.details
         }
       );
 
       return new Response(JSON.stringify(errorResponse), {
-        status: this.getHttpStatusFromError(error),
+        status: this.getHttpStatusFromError(error instanceof Error ? error : new Error(String(error))),
         headers: {
           'Content-Type': 'application/json',
           'X-Netron-Version': '2.0'
@@ -567,10 +604,26 @@ export class HttpServer extends EventEmitter implements ITransportServer {
             throw new Error(`Method ${req.service}.${req.method} not found`);
           }
 
-          const result = await method.handler(req.input, {
+          // Create minimal middleware context for batch requests
+          const metadata = new Map<string, unknown>();
+          metadata.set('requestId', req.id);
+          metadata.set('batchRequest', true);
+
+          const handlerContext: MethodHandlerContext = {
             context: req.context || batchRequest.context,
-            hints: req.hints
-          });
+            hints: req.hints,
+            request,
+            middleware: {
+              peer: this.netronPeer!,
+              serviceName: req.service,
+              methodName: req.method,
+              input: req.input,
+              metadata,
+              timing: { start: performance.now(), middlewareTimes: new Map() }
+            }
+          };
+
+          const result = await method.handler(req.input, handlerContext);
 
           batchResponse.hints!.successCount!++;
           return {
@@ -578,14 +631,17 @@ export class HttpServer extends EventEmitter implements ITransportServer {
             success: true,
             data: result
           };
-        } catch (error: any) {
+        } catch (error) {
+          const titanError = error instanceof TitanError ? error : null;
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
           batchResponse.hints!.failureCount!++;
           return {
             id: req.id,
             success: false,
             error: {
-              code: error.code || ErrorCode.INTERNAL_ERROR,
-              message: error.message
+              code: String(titanError?.code || ErrorCode.INTERNAL_SERVER_ERROR),
+              message: errorMessage
             }
           };
         }
@@ -603,10 +659,26 @@ export class HttpServer extends EventEmitter implements ITransportServer {
             throw new Error(`Method ${req.service}.${req.method} not found`);
           }
 
-          const result = await method.handler(req.input, {
+          // Create minimal middleware context for batch requests
+          const metadata = new Map<string, unknown>();
+          metadata.set('requestId', req.id);
+          metadata.set('batchRequest', true);
+
+          const handlerContext: MethodHandlerContext = {
             context: req.context || batchRequest.context,
-            hints: req.hints
-          });
+            hints: req.hints,
+            request,
+            middleware: {
+              peer: this.netronPeer!,
+              serviceName: req.service,
+              methodName: req.method,
+              input: req.input,
+              metadata,
+              timing: { start: performance.now(), middlewareTimes: new Map() }
+            }
+          };
+
+          const result = await method.handler(req.input, handlerContext);
 
           batchResponse.hints!.successCount!++;
           batchResponse.responses.push({
@@ -614,14 +686,17 @@ export class HttpServer extends EventEmitter implements ITransportServer {
             success: true,
             data: result
           });
-        } catch (error: any) {
+        } catch (error) {
+          const titanError = error instanceof TitanError ? error : null;
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
           batchResponse.hints!.failureCount!++;
           batchResponse.responses.push({
             id: req.id,
             success: false,
             error: {
-              code: error.code || ErrorCode.INTERNAL_ERROR,
-              message: error.message
+              code: String(titanError?.code || ErrorCode.INTERNAL_SERVER_ERROR),
+              message: errorMessage
             }
           });
 

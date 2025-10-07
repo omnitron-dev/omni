@@ -223,7 +223,7 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
       expect(response.status).toBe(404);
       const data = await response.json() as any;
       expect(data.success).toBe(false);
-      expect(data.error.code).toBe(404); // ErrorCode.NOT_FOUND
+      expect(data.error.code).toBe('404'); // ErrorCode.NOT_FOUND as string
     });
 
     it('should handle method not found errors', async () => {
@@ -247,7 +247,7 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
       expect(response.status).toBe(404);
       const data = await response.json() as any;
       expect(data.success).toBe(false);
-      expect(data.error.code).toBe(404); // ErrorCode.NOT_FOUND
+      expect(data.error.code).toBe('404'); // ErrorCode.NOT_FOUND as string
     });
 
     it('should handle method invocation errors', async () => {

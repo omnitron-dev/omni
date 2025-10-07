@@ -27,7 +27,7 @@ Comprehensive roadmap for implementing the Aether Frontend Framework - a minimal
 
 ### Project Status (as of 2025-10-07)
 
-**Completed Work** (Phases 1-8):
+**Completed Work** (Phases 1-8.1):
 - ✅ **Phase 1**: Core Reactivity System (signal, computed, effect, store, resource)
 - ✅ **Phase 2**: Component System (defineComponent, lifecycle, JSX runtime, control flow)
 - ✅ **Phase 2.5**: Utility Functions (events, binding, classes, styles, directives)
@@ -37,22 +37,22 @@ Comprehensive roadmap for implementing the Aether Frontend Framework - a minimal
 - ✅ **Phase 6**: SSR/SSG Server (runtime-agnostic HTTP server, SSR renderer)
 - ✅ **Phase 7**: E2E Testing Infrastructure (Playwright setup with multi-browser support)
 - ✅ **Phase 8**: UI Primitives - Core Set (Dialog, Popover, Dropdown, Select, Tabs, Accordion, Switch)
-- 🚧 **Phase 8.1**: UI Primitives - Form Components (Form, RadioGroup, Checkbox)
+- ✅ **Phase 8.1**: UI Primitives - Form & Interaction (Form, RadioGroup, Checkbox, Toggle, AlertDialog, Slider)
 
 **Key Metrics**:
-- **Lines of Code**: ~23,500+ (core framework + server + primitives)
+- **Lines of Code**: ~25,000+ (core framework + server + primitives)
 - **Test Coverage**: 1133/1145 tests passing (98.9%)
 - **Documentation**: ~45,000+ lines across 20+ specification documents
 - **Examples**: 11 production-ready example files (4,746 lines)
 - **Server**: Runtime-agnostic (Node.js 22+, Bun 1.2+, Deno 2.0+)
-- **Primitives**: 10 headless, accessible components
-  - **Layout**: Dialog, Popover, Dropdown, Select, Tabs, Accordion, Switch
-  - **Forms**: Form (6 sub-components), RadioGroup, Checkbox
+- **Primitives**: 13 headless, accessible components (~128KB bundle)
+  - **Layout**: Dialog, Popover, Dropdown, Select, Tabs, Accordion
+  - **Forms**: Form (6 sub-components), RadioGroup, Checkbox, Switch, Toggle
+  - **Feedback**: AlertDialog (6 sub-components), Slider (4 sub-components)
 
 **Current Focus**:
-- Complete Phase 8.1: Form components (Toggle, AlertDialog, Slider, Combobox)
-- Phase 9: Styled Components Library
-- Phase 10: Build Tooling & DevEx
+- Phase 9: Styled Components Library (Button, Input, Card, Alert)
+- Phase 10: Build Tooling & DevEx (Vite plugin, dev server)
 
 ---
 

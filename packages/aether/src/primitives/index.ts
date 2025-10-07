@@ -180,6 +180,39 @@ export {
   type CheckedState,
 } from './Checkbox.js';
 
+// Toggle
+export {
+  Toggle,
+  type ToggleProps,
+} from './Toggle.js';
+
+// AlertDialog
+export {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContext,
+  type AlertDialogProps,
+  type AlertDialogContentProps,
+  type AlertDialogContextValue,
+} from './AlertDialog.js';
+
+// Slider
+export {
+  Slider,
+  SliderTrack,
+  SliderRange,
+  SliderThumb,
+  SliderContext,
+  type SliderProps,
+  type SliderThumbProps,
+  type SliderContextValue,
+} from './Slider.js';
+
 // Utilities
 export {
   // ID generation

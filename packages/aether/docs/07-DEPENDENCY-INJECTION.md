@@ -2,68 +2,77 @@
 
 ## Introduction
 
-The Dependency Injection (DI) system in Aether is a **lightweight, frontend-focused** DI system optimized for reactive UI applications. It is **separate** from Titan's backend DI but connects to it via type-safe RPC contracts.
+The Dependency Injection (DI) system in Aether is a **lightweight, type-safe** DI system optimized for reactive UI applications. It is **completely separate** from Titan's backend DI and connects to it via type-safe RPC contracts through Netron.
 
-> **Architecture Note**: Frontend (Aether) and Backend (Titan) have **separate DI systems**. They communicate via interface contracts, not shared service instances. See `19-TITAN-INTEGRATION.md` for details.
+> **Critical Architecture Note**: Aether (frontend) and Titan (backend) have **separate, independent DI containers**. They do NOT share service instances. They communicate via **TypeScript interface contracts** and **Netron RPC proxies**. This separation ensures optimal tree-shaking, security, and flexibility. See `19-TITAN-INTEGRATION.md` for details.
 
 ### Key Principles
 
 1. **Frontend-Focused** — Optimized for component-based UI applications
-2. **Lightweight** — Minimal overhead, tree-shakeable
-3. **Function-Based** — Prefer `injectable()` over class decorators
-4. **Type-Safe** — Full TypeScript support
+2. **Lightweight** — ~8KB runtime with reflect-metadata, tree-shakeable
+3. **Class-Based** — Uses `@Injectable()` decorator for services
+4. **Type-Safe** — Full TypeScript support with automatic dependency resolution
 5. **Reactive** — Works seamlessly with signals and resources
-6. **Module-Scoped** — Services scoped to Aether modules
-7. **Zero-Config** — Works out of the box
+6. **Scoped** — Singleton, Module, Transient, and Request scopes
+7. **Hierarchical** — Parent/child injector support
+8. **Optional Decorators** — Can specify dependencies manually without reflect-metadata
 
 ### Difference from Titan DI
 
 | Aspect | Aether (Frontend) | Titan (Backend) |
 |--------|-------------------|-----------------|
-| **Style** | Function-based (`injectable()`) | Class-based (`@Injectable()`) |
-| **Overhead** | Minimal (tree-shakeable) | Feature-rich (scopes, decorators) |
+| **Style** | Class-based (`@Injectable()`) | Class-based (`@Injectable()`) |
+| **Bundle Size** | ~8KB | ~12KB |
 | **Primary Use** | UI components, client state | Business logic, data access |
-| **Injection** | `inject()` in setup | Constructor injection |
-| **Scope** | Component/Module | Singleton/Transient/Request |
-| **Connection** | Via RPC proxies | Via service implementation |
+| **Injection** | `inject()` or constructor | Constructor injection |
+| **Scopes** | Singleton/Module/Transient/Request | Singleton/Transient/Request/Custom |
+| **Connection** | Separate container | Separate container |
+| **Integration** | Via Netron RPC proxies | Via Netron RPC services |
 
 ## Basic Concepts
 
 ### Injectable Service
 
-A service is a class or function marked with the `Injectable` decorator/function.
+A service is a class marked with the `@Injectable()` decorator.
 
 ```typescript
-// Function-based service (recommended for simple cases)
-import { injectable } from 'aether';
+// Simple service
+import { Injectable, signal } from 'aether';
 
-export const CounterService = injectable(() => {
-  const count = signal(0);
+@Injectable()
+export class CounterService {
+  private count = signal(0);
 
-  return {
-    count,
-    increment() {
-      count.set(count() + 1);
-    },
-    decrement() {
-      count.set(count() + 1);
-    },
-    reset() {
-      count.set(0);
-    }
-  };
-});
+  getCount() {
+    return this.count;
+  }
 
-// Class-based service (for complex logic and inheritance)
+  increment() {
+    this.count.set(this.count() + 1);
+  }
+
+  decrement() {
+    this.count.set(this.count() - 1);
+  }
+
+  reset() {
+    this.count.set(0);
+  }
+}
+
+// Service with dependencies
 import { Injectable } from 'aether';
 
 @Injectable()
 export class UserService {
+  // Constructor injection (automatic with reflect-metadata)
+  constructor(private http: HttpService) {}
+
   private users = signal<User[]>([]);
 
   async loadUsers() {
-    const data = await fetch('/api/users').then(r => r.json());
-    this.users(data);
+    const data = await this.http.get('/api/users');
+    this.users.set(data);
   }
 
   get users() {
@@ -71,7 +80,7 @@ export class UserService {
   }
 
   addUser(user: User) {
-    this.users([...this.users(), user]);
+    this.users.set([...this.users(), user]);
   }
 }
 ```
@@ -102,10 +111,10 @@ const UserListComponent = defineComponent(() => {
   );
 });
 
-// In another service
+// In another service (constructor injection)
 @Injectable()
 export class AuthService {
-  // Injection via constructor
+  // Constructor injection (automatic with reflect-metadata)
   constructor(
     private userService: UserService,
     private http: HttpService
@@ -118,19 +127,20 @@ export class AuthService {
   }
 }
 
-// In a function-based service
-export const AuthService = injectable(() => {
-  const userService = inject(UserService);
-  const http = inject(HttpService);
+// Alternative: inject() function (useful in setup functions)
+@Injectable()
+export class AnalyticsService {
+  private logger: LoggerService;
 
-  return {
-    async login(credentials) {
-      const user = await http.post('/auth/login', credentials);
-      userService.addUser(user);
-      return user;
-    }
-  };
-});
+  constructor() {
+    // Manual injection using inject()
+    this.logger = inject(LoggerService);
+  }
+
+  trackEvent(event: string) {
+    this.logger.log(`Event: ${event}`);
+  }
+}
 ```
 
 ## Providers
@@ -526,53 +536,52 @@ export class HttpService {
 
 ## Titan Integration
 
-Aether uses a unified DI container with Titan.
+**Critical**: Aether and Titan have **separate DI containers**. They integrate via **TypeScript interface contracts** and **Netron RPC proxies**.
 
-### Shared Service
+### Architecture: Separate DI Containers
+
+```
+┌────────────────────────────────┐
+│   Aether DI Container         │
+│   (Frontend)                   │
+│   - UI Services                │
+│   - Client State               │
+│   - RPC Proxies ───────┐      │
+└────────────────────────│───────┘
+                         │
+                         │ TypeScript Interface
+                         │ + Netron RPC
+                         │
+┌────────────────────────▼───────┐
+│   Titan DI Container          │
+│   (Backend)                    │
+│   - Business Logic             │
+│   - Database Access            │
+│   - Real Service Implementation│
+└────────────────────────────────┘
+```
+
+### Step 1: Define Shared Interface (Contract)
 
 ```typescript
-// services/user.service.ts — a single file for frontend and backend
-import { Injectable } from '@omnitron-dev/titan';
-
-@Injectable()
-export class UserService {
-  private users = signal<User[]>([]);
-
-  // Backend method (database access)
-  async loadFromDatabase() {
-    if (import.meta.env.SERVER) {
-      const users = await this.db.query('SELECT * FROM users');
-      this.users(users);
-    }
-  }
-
-  // Frontend method (RPC)
-  async loadFromAPI() {
-    if (import.meta.env.CLIENT) {
-      const users = await fetch('/api/users').then(r => r.json());
-      this.users(users);
-    }
-  }
-
-  // Shared method (works everywhere)
-  get users() {
-    return this.users;
-  }
-
-  addUser(user: User) {
-    this.users([...this.users(), user]);
-  }
+// shared/interfaces/user-service.interface.ts
+export interface IUserService {
+  findAll(): Promise<User[]>;
+  findOne(id: number): Promise<User>;
+  create(data: CreateUserDto): Promise<User>;
 }
 ```
 
-### Backend-Only Service (Titan)
+### Step 2: Implement Backend Service (Titan)
 
 ```typescript
+// backend/services/user.service.ts
 import { Injectable, Service, Public } from '@omnitron-dev/titan';
+import { IUserService } from '@shared/interfaces/user-service.interface';
 
 @Injectable()
 @Service('users@1.0.0')
-export class UserService {
+export class UserService implements IUserService {
   constructor(private db: DatabaseService) {}
 
   @Public()
@@ -584,67 +593,102 @@ export class UserService {
   async findOne(id: number): Promise<User> {
     return this.db.queryOne('SELECT * FROM users WHERE id = ?', [id]);
   }
+
+  @Public()
+  async create(data: CreateUserDto): Promise<User> {
+    return this.db.insert('users', data);
+  }
 }
 ```
 
-### Frontend RPC Client (auto-generated)
+### Step 3: Create Frontend RPC Proxy
 
 ```typescript
-// Automatically generated by the compiler
-export class UserServiceClient {
+// frontend/services/user.service.proxy.ts
+import { Injectable } from '@omnitron-dev/aether/di';
+import { NetronClient } from '@omnitron-dev/netron/client';
+import { IUserService } from '@shared/interfaces/user-service.interface';
+
+@Injectable()
+export class UserServiceProxy implements IUserService {
   constructor(private rpc: NetronClient) {}
 
   async findAll(): Promise<User[]> {
-    return this.rpc.call('users@1.0.0', 'findAll', []);
+    return this.rpc.call<User[]>('users@1.0.0', 'findAll');
   }
 
   async findOne(id: number): Promise<User> {
-    return this.rpc.call('users@1.0.0', 'findOne', [id]);
+    return this.rpc.call<User>('users@1.0.0', 'findOne', [id]);
+  }
+
+  async create(data: CreateUserDto): Promise<User> {
+    return this.rpc.call<User>('users@1.0.0', 'create', [data]);
   }
 }
+```
 
-// Automatically registered in the Aether DI container
+### Step 4: Register Proxy in Aether DI
+
+```typescript
+// frontend/modules/user.module.ts
+import { defineModule, InjectionToken } from '@omnitron-dev/aether';
+import { UserServiceProxy } from './services/user.service.proxy';
+import { IUserService } from '@shared/interfaces/user-service.interface';
+
+// Create injection token for interface
+export const USER_SERVICE = new InjectionToken<IUserService>('IUserService');
+
 export const UserModule = defineModule({
   id: 'user',
   providers: [
     {
-      provide: UserService,
-      useClass: UserServiceClient, // On the client
-      // useClass: UserService      // On the server
+      provide: USER_SERVICE,
+      useClass: UserServiceProxy
     }
-  ]
+  ],
+  exportProviders: [USER_SERVICE]
 });
 ```
 
-### Usage in components
+### Step 5: Use in Components (Type-Safe!)
 
 ```typescript
-// routes/users/index.tsx
+// frontend/routes/users/index.tsx
 import { defineComponent, inject, signal, onMount } from 'aether';
 import { For } from 'aether/components';
-import { UserService } from '@/services/user.service';
-import { UserCard } from '@/components/UserCard';
+import { USER_SERVICE } from '@/modules/user.module';
+import { IUserService } from '@shared/interfaces/user-service.interface';
 
 export default defineComponent(() => {
-  // Same code on client and server!
-  const userService = inject(UserService);
+  // Inject interface, get RPC proxy
+  const userService = inject<IUserService>(USER_SERVICE);
   const users = signal<User[]>([]);
 
   onMount(async () => {
-    // On the server: direct method call
-    // On the client: RPC via Netron
-    users(await userService.findAll());
+    // RPC call to backend (looks like local call!)
+    users.set(await userService.findAll());
   });
 
   return () => (
     <div>
       <For each={users()}>
-        {user => <UserCard user={user} />}
+        {user => <div>{user.name}</div>}
       </For>
     </div>
   );
 });
 ```
+
+### Why Separate Containers?
+
+**Benefits:**
+1. **Security**: Backend services never exposed to client
+2. **Tree-Shaking**: Frontend doesn't bundle backend code
+3. **Optimization**: Each DI optimized for its use case
+4. **Flexibility**: Can use different DI strategies
+5. **Type Safety**: Interface contracts enforce API compatibility
+
+**No shared instances, only shared interfaces.**
 
 ## Testing
 
@@ -744,30 +788,33 @@ export class ApiService {
 
 ## Best Practices
 
-### 1. Prefer Function-Based Services
+### 1. Use DI for Testability and Modularity
 
 ```typescript
-// ✅ Good: simpler, less boilerplate
-export const CounterService = injectable(() => {
-  const count = signal(0);
-  return {
-    count,
-    increment: () => count.set(count() + 1)
-  };
-});
-
-// ❌ Bad: unnecessary syntax for simple cases
+// ✅ Good: Injectable service, easy to test and mock
 @Injectable()
 export class CounterService {
-  count = signal(0);
+  private count = signal(0);
+
+  getCount() {
+    return this.count;
+  }
 
   increment() {
-    this.count(this.count() + 1);
+    this.count.set(this.count() + 1);
   }
 }
+
+// ❌ Avoid: Global singleton, hard to test
+export const counterService = {
+  count: signal(0),
+  increment() {
+    this.count.set(this.count() + 1);
+  }
+};
 ```
 
-### 2. Use Injection Tokens for Primitives
+### 2. Use Injection Tokens for Primitives and Interfaces
 
 ```typescript
 // ✅ Good

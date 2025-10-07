@@ -818,13 +818,709 @@ const server = createServer({
 await server.listen();
 ```
 
-## Principle 11: Evolution without Breaking Changes
+## Principle 11: Lightweight Dependency Injection
 
-### 11.1 Backward Compatibility
+### 11.1 Why DI in a Frontend Framework?
+
+**Architectural Decision**: Aether includes a **lightweight, type-safe DI system** designed specifically for frontend applications.
+
+**Common Objection**: "Why use DI? Just import modules directly!"
+
+**Answer**: For simple cases, ES6 imports are sufficient. But DI becomes essential for:
+
+1. **Testing** — Easy to mock dependencies without hacking imports
+2. **Modularity** — Swap implementations without changing consumer code
+3. **Scoping** — Different instances for different contexts (component, module, request)
+4. **Lazy Loading** — Defer service instantiation until actually needed
+5. **Backend Integration** — Seamless Netron RPC proxy injection
+
+```typescript
+// ❌ Without DI: Hard to test
+export class UserComponent {
+  async loadUsers() {
+    const users = await fetch('/api/users'); // Hard-coded dependency
+    // How to mock fetch in tests?
+  }
+}
+
+// ✅ With DI: Easy to test
+@Injectable()
+export class UserComponent {
+  constructor(private http: HttpService) {}
+
+  async loadUsers() {
+    const users = await this.http.get('/api/users');
+  }
+}
+
+// Test
+const mockHttp = { get: vi.fn().mockResolvedValue([]) };
+const component = new UserComponent(mockHttp);
+```
+
+### 11.2 Lightweight vs Angular DI
+
+**Architectural Comparison**: Aether DI vs Angular DI
+
+| Aspect | Angular DI | Aether DI |
+|--------|-----------|-----------|
+| **Bundle Size** | ~40KB | ~8KB |
+| **Decorators Required** | Yes, everywhere | Optional (can use explicit deps) |
+| **Runtime Metadata** | reflect-metadata (~4KB) | reflect-metadata (~4KB) |
+| **Scopes** | 4 (root, module, component, platform) | 4 (singleton, module, transient, request) |
+| **Hierarchical** | Yes | Yes |
+| **Tree-Shakeable** | Limited | Better |
+| **Learning Curve** | Steep | Gentle |
+
+**Trade-off Acknowledged**: Aether DI uses `reflect-metadata` for decorator-based injection, adding ~4KB runtime overhead. This is a **conscious trade-off**:
+
+- **Pro**: Better developer experience, automatic dependency resolution
+- **Con**: 4KB runtime overhead
+- **Alternative**: Manual dependency specification without decorators (zero overhead)
+
+```typescript
+// With reflect-metadata (automatic)
+@Injectable()
+class UserService {
+  constructor(private http: HttpService) {}
+}
+
+// Without reflect-metadata (explicit deps)
+@Injectable({ deps: [HttpService] })
+class UserService {
+  constructor(private http: HttpService) {}
+}
+```
+
+### 11.3 Four Scopes for Different Needs
+
+```typescript
+// Singleton — one instance for entire application
+@Injectable({ scope: 'singleton' }) // default
+class AuthService {}
+
+// Transient — new instance on every injection
+@Injectable({ scope: 'transient' })
+class IdGenerator {
+  id = crypto.randomUUID(); // Different on each injection
+}
+
+// Module — one instance per Aether module
+@Injectable({ scope: 'module' })
+class FeatureStateService {}
+
+// Request — one instance per SSR request (server-only)
+@Injectable({ scope: 'request' })
+class RequestContext {
+  headers = getCurrentRequest().headers;
+}
+```
+
+**When to use each scope:**
+- **Singleton**: Auth, config, global state, API clients
+- **Transient**: ID generators, temporary data, request builders
+- **Module**: Feature-specific state, lazy-loaded services
+- **Request**: User context, request headers, session data (SSR)
+
+### 11.4 Separate Frontend and Backend DI
+
+**Critical Architectural Decision**: Aether and Titan have **separate DI containers**.
+
+```
+┌─────────────────────────────────┐
+│   Aether DI (Frontend)         │
+│   - Lightweight (~8KB)          │
+│   - Component-focused           │
+│   - Client state management     │
+│   - UI services                 │
+└───────────┬─────────────────────┘
+            │
+            │ TypeScript Interfaces
+            │ + Netron RPC Proxies
+            │
+┌───────────▼─────────────────────┐
+│   Titan DI (Backend)           │
+│   - Feature-rich                │
+│   - Business logic              │
+│   - Database access             │
+│   - Background jobs             │
+└─────────────────────────────────┘
+```
+
+**Why Separate?**
+1. **Optimization**: Each optimized for its use case
+2. **Security**: Backend services never exposed to client
+3. **Tree-Shaking**: Frontend doesn't include backend code
+4. **Flexibility**: Can use different DI strategies
+
+**How They Connect**: Via **interface contracts** and **Netron RPC**
+
+```typescript
+// Shared interface (contract)
+export interface IUserService {
+  findAll(): Promise<User[]>;
+  findOne(id: number): Promise<User>;
+}
+
+// Backend implementation (Titan)
+@Injectable()
+@Service('users@1.0.0')
+class UserService implements IUserService {
+  constructor(private db: Database) {}
+
+  async findAll() {
+    return this.db.query('SELECT * FROM users');
+  }
+
+  async findOne(id: number) {
+    return this.db.queryOne('SELECT * FROM users WHERE id = ?', [id]);
+  }
+}
+
+// Frontend proxy (auto-generated by Netron)
+@Injectable()
+class UserServiceProxy implements IUserService {
+  constructor(private rpc: NetronClient) {}
+
+  async findAll() {
+    return this.rpc.call<User[]>('users@1.0.0', 'findAll');
+  }
+
+  async findOne(id: number) {
+    return this.rpc.call<User>('users@1.0.0', 'findOne', [id]);
+  }
+}
+
+// Aether DI registration (automatic)
+providers: [
+  { provide: IUserService, useClass: UserServiceProxy }
+]
+```
+
+**Frontend component** uses the interface, **unaware of RPC**:
+
+```typescript
+const UserList = defineComponent(() => {
+  const userService = inject<IUserService>(IUserService);
+  const users = signal<User[]>([]);
+
+  onMount(async () => {
+    users.set(await userService.findAll()); // RPC call, but looks like local call
+  });
+
+  return () => (
+    <For each={users()}>
+      {(user) => <div>{user.name}</div>}
+    </For>
+  );
+});
+```
+
+### 11.5 Optional: Use ES6 Imports When DI is Overkill
+
+DI is **optional** in Aether. For simple utilities, use ES6 imports:
+
+```typescript
+// ✅ Good: Simple utility, no DI needed
+// utils/format.ts
+export function formatDate(date: Date): string {
+  return date.toISOString();
+}
+
+// component.tsx
+import { formatDate } from './utils/format';
+
+// ❌ Overkill: DI for simple pure function
+@Injectable()
+class DateFormatter {
+  format(date: Date): string {
+    return date.toISOString();
+  }
+}
+```
+
+**Rule of Thumb**: Use DI when you need **testability, mocking, or scope management**. Use ES6 imports for **pure utilities and constants**.
+
+## Principle 12: Module System for Code Organization
+
+### 12.1 Why Modules on Top of ES6 Modules?
+
+**Common Objection**: "We already have ES6 modules. Why another abstraction?"
+
+**Answer**: ES6 modules handle **file imports**. Aether modules handle **application structure**:
+
+| ES6 Modules | Aether Modules |
+|-------------|----------------|
+| File-level imports | Application-level organization |
+| Static imports only | Lazy loading built-in |
+| No DI integration | DI scope boundaries |
+| No code splitting | Automatic code splitting |
+| Import every file | Import entire feature |
+
+**Aether modules are optional**. You can build entire apps with just ES6 imports. Use modules when you need:
+
+1. **Lazy Loading** — Load features on demand
+2. **Code Splitting** — Automatic chunk separation per module
+3. **DI Scoping** — Module-scoped services
+4. **Feature Encapsulation** — Public/private API boundaries
+5. **Team Scalability** — Clear feature ownership
+
+### 12.2 Simpler Than Angular Modules
+
+**Architectural Comparison**: Angular NgModules vs Aether Modules
+
+| Aspect | Angular NgModules | Aether Modules |
+|--------|-------------------|----------------|
+| **Declaration** | `@NgModule` decorator | `defineModule()` function |
+| **Syntax** | Class-based | Object-based |
+| **Imports** | Implicit global | Explicit ES6 imports |
+| **Tree-Shaking** | Limited | Full |
+| **Boilerplate** | High | Low |
+| **Components Array** | Required | Optional |
+| **Bootstrap** | Complex | Simple |
+
+```typescript
+// ❌ Angular: Verbose, class-based
+@NgModule({
+  declarations: [BlogListComponent, BlogPostComponent],
+  imports: [CommonModule, FormsModule],
+  providers: [BlogService],
+  exports: [BlogListComponent]
+})
+export class BlogModule {}
+
+// ✅ Aether: Concise, function-based
+export const BlogModule = defineModule({
+  id: 'blog',
+  imports: [CommonModule, FormsModule],
+  providers: [BlogService],
+  exports: [BlogListComponent]
+});
+```
+
+**Key Simplification**: No `declarations` array needed. Components are auto-discovered via imports.
+
+### 12.3 When to Use Modules vs ES6 Imports
+
+**Decision Tree:**
+
+```
+Is this a major feature (5+ components)?
+  ├─ Yes → Use Aether Module
+  │   ├─ Needs lazy loading? → Use lazy module + router
+  │   └─ Needs DI scoping? → Use module providers
+  │
+  └─ No → Use ES6 imports
+      ├─ Simple component? → Just export it
+      └─ Utility function? → Just export it
+```
+
+**Examples:**
+
+```typescript
+// ✅ Use Module: Large feature with lazy loading
+export const DashboardModule = defineModule({
+  id: 'dashboard',
+  lazy: true, // Load on demand
+  providers: [
+    DashboardService,
+    AnalyticsService,
+    ChartService
+  ]
+});
+
+// In router
+{
+  path: '/dashboard',
+  loadModule: () => import('./modules/dashboard')
+}
+
+// ✅ Use ES6 Imports: Small component
+// components/Button.tsx
+export const Button = defineComponent<ButtonProps>((props) => {
+  return () => <button {...props}>{props.children}</button>;
+});
+
+// Import directly
+import { Button } from '@/components/Button';
+```
+
+### 12.4 Module Benefits: Lazy Loading + Code Splitting
+
+Aether modules automatically create **optimized chunks**:
+
+```typescript
+// Without modules: One giant bundle
+app.js                  // 500 KB - everything
+
+// With modules: Smart chunking
+app.js                  // 50 KB - core + home
+dashboard.lazy.js       // 120 KB - loads when /dashboard visited
+admin.lazy.js           // 80 KB - loads when /admin visited
+blog.lazy.js            // 60 KB - loads when /blog visited
+shared.js               // 40 KB - shared across modules
+```
+
+**Result**: Initial load **10x smaller**, features load **on demand**.
+
+### 12.5 Module Hierarchy and DI Scoping
+
+Modules create **DI scope boundaries**:
+
+```typescript
+// Root Module
+export const AppModule = defineModule({
+  id: 'app',
+  providers: [
+    AppConfig,        // Singleton across entire app
+    AuthService,      // Singleton across entire app
+    HttpService       // Singleton across entire app
+  ]
+});
+
+// Feature Module (lazy loaded)
+export const BlogModule = defineModule({
+  id: 'blog',
+  lazy: true,
+  providers: [
+    BlogService,      // Created when BlogModule loads
+    CommentService    // Created when BlogModule loads
+  ]
+});
+
+// Result:
+// - AuthService created on app init (singleton)
+// - BlogService created when user visits /blog (lazy)
+// - When user leaves /blog, BlogService can be garbage collected
+```
+
+**Benefits:**
+- **Memory Efficiency**: Services created only when needed
+- **Faster Startup**: Less initialization on app boot
+- **Clear Boundaries**: Module services are private by default
+
+### 12.6 When NOT to Use Modules
+
+**Don't use modules for:**
+- Simple websites (< 10 pages)
+- Utility libraries
+- Component libraries
+- Projects with < 3 developers
+
+**Use plain ES6 imports instead**:
+
+```typescript
+// ✅ Simple app: No modules needed
+// src/App.tsx
+import { Home } from './pages/Home';
+import { About } from './pages/About';
+import { Contact } from './pages/Contact';
+
+export const App = defineComponent(() => {
+  return () => (
+    <Router>
+      <Route path="/" component={Home} />
+      <Route path="/about" component={About} />
+      <Route path="/contact" component={Contact} />
+    </Router>
+  );
+});
+```
+
+## Principle 13: Self-Contained Server-Side Rendering
+
+### 13.1 Built-In HTTP Server: No External Dependencies
+
+**Architectural Decision**: Aether includes a **built-in, runtime-agnostic HTTP server**.
+
+**Why?**
+
+```typescript
+// ❌ Traditional frameworks: Need external server
+import express from 'express'; // +500KB
+import { renderToString } from 'react-dom/server';
+
+const app = express();
+app.get('*', (req, res) => {
+  const html = renderToString(<App />);
+  res.send(html);
+});
+
+// ✅ Aether: Self-contained
+import { createServer } from '@omnitron-dev/aether/server';
+
+const server = createServer({
+  mode: 'ssr',
+  routes: [...],
+  port: 3000
+});
+
+await server.listen();
+// No Express, no Fastify, no configuration
+```
+
+**Benefits:**
+1. **Zero Configuration** — Works out of the box
+2. **Optimized** — Server designed specifically for Aether
+3. **Lightweight** — No unnecessary features
+4. **Type-Safe** — Native Web Request/Response APIs
+5. **Portable** — Same code on Node.js, Bun, Deno
+
+### 13.2 Runtime Agnostic: One Codebase, Three Runtimes
+
+**Architectural Innovation**: Aether server **automatically detects runtime** and uses optimal implementation.
+
+```typescript
+// Same code, different runtimes
+import { createServer } from '@omnitron-dev/aether/server';
+
+const server = createServer({ routes, port: 3000 });
+await server.listen();
+
+// On Node.js 22+ → Uses node:http
+// On Bun 1.2+   → Uses Bun.serve() (fastest)
+// On Deno 2.0+  → Uses Deno.serve()
+```
+
+**Runtime Performance**:
+
+| Runtime | Requests/sec | Memory | Startup |
+|---------|--------------|--------|---------|
+| **Bun** | ~90,000 | 25 MB | 8ms |
+| **Node.js** | ~35,000 | 40 MB | 50ms |
+| **Deno** | ~55,000 | 30 MB | 30ms |
+
+**Result**: Write once, deploy anywhere, get optimal performance.
+
+### 13.3 SSR + SSG + Islands: Unified Architecture
+
+**Architectural Synthesis**: Aether provides **three rendering strategies** that work seamlessly together.
+
+```
+┌─────────────────────────────────────────┐
+│         Aether Framework                │
+│                                         │
+│  ┌───────────────────────────────────┐ │
+│  │    Built-in HTTP Server           │ │
+│  └───────────────────────────────────┘ │
+│                                         │
+│  ┌───────────────────────────────────┐ │
+│  │    Rendering Strategies           │ │
+│  │                                   │ │
+│  │  ┌──────┐ ┌─────────┐ ┌────────┐ │ │
+│  │  │ SSR  │ │ Islands │ │  SSG   │ │ │
+│  │  │(Runtime)│(Selective)│(Build)│ │ │
+│  │  └──────┘ └─────────┘ └────────┘ │ │
+│  │           │                       │ │
+│  │           ▼                       │ │
+│  │   Unified Component System       │ │
+│  └───────────────────────────────────┘ │
+│                                         │
+│  ┌───────────────────────────────────┐ │
+│  │    Hydration System               │ │
+│  │  - Auto island detection          │ │
+│  │  - Selective hydration            │ │
+│  │  - Progressive enhancement        │ │
+│  └───────────────────────────────────┘ │
+└─────────────────────────────────────────┘
+```
+
+**Per-Route Strategy Selection:**
+
+```typescript
+// routes/index.tsx → SSG (Static homepage)
+export const getStaticProps = async () => {
+  return { props: { hero: await fetchHero() } };
+};
+
+// routes/blog/[slug].tsx → SSG + ISR (Incremental Static Regeneration)
+export const getStaticProps = async ({ params }) => {
+  return {
+    props: { post: await fetchPost(params.slug) },
+    revalidate: 60 // Re-generate every 60 seconds
+  };
+};
+
+// routes/dashboard.tsx → SSR (User-specific data)
+export const loader = async ({ request }) => {
+  const user = await getUserFromRequest(request);
+  return { user, feed: await fetchFeed(user.id) };
+};
+
+// All routes: Islands for interactivity
+<LikeButton />         {/* Island: ~2KB JS, hydrates immediately */}
+<CommentSection />     {/* Island: ~8KB JS, hydrates when visible */}
+```
+
+**Performance Characteristics:**
+
+| Strategy | TTFB | FCP | LCP | JavaScript | SEO |
+|----------|------|-----|-----|------------|-----|
+| **SSG** | < 100ms | < 0.5s | < 1s | 5-20 KB | ★★★★★ |
+| **SSG + Islands** | < 100ms | < 0.5s | < 1s | 5-30 KB | ★★★★★ |
+| **SSR** | < 300ms | < 1s | < 2s | 10-40 KB | ★★★★★ |
+| **SSR + Islands** | < 300ms | < 1s | < 2s | 10-40 KB | ★★★★★ |
+| **SPA (React)** | < 100ms | > 2s | > 3s | 100+ KB | ★★☆☆☆ |
+
+### 13.4 Server Components: Zero-JS Server-Rendered Content
+
+**Innovation**: Aether supports **server components** that ship **zero JavaScript** to the client.
+
+```typescript
+import { serverOnly } from '@omnitron-dev/aether/server';
+
+// This component NEVER ships JS to client
+export const ServerStats = serverOnly(defineComponent(async () => {
+  // Direct database access (server-only)
+  const stats = await db.stats.aggregate({
+    _count: true,
+    _sum: { views: true }
+  });
+
+  return () => (
+    <div className="stats">
+      <p>Total Posts: {stats._count}</p>
+      <p>Total Views: {stats._sum.views}</p>
+    </div>
+  );
+}));
+
+// Usage
+<article>
+  <ServerStats />           {/* 0 KB JS */}
+  <ArticleContent />        {/* 0 KB JS - static HTML */}
+  <LikeButton />            {/* 2 KB JS - island */}
+  <CommentSection />        {/* 8 KB JS - island */}
+</article>
+
+// Total JS: 10 KB (only interactive parts)
+// Traditional SPA: 100+ KB (everything)
+```
+
+### 13.5 Optional Titan Integration: Standalone or Full-Stack
+
+**Architectural Flexibility**: Aether server works **standalone** or integrates with Titan.
+
+```typescript
+// ✅ Standalone mode (no backend needed)
+import { createServer } from '@omnitron-dev/aether/server';
+
+const server = createServer({
+  mode: 'ssr',
+  routes: [...]
+});
+
+await server.listen(); // Complete SSR app
+
+// ✅ With Titan backend (optional)
+import { createServer } from '@omnitron-dev/aether/server';
+import { createNetronClient } from '@omnitron-dev/netron/client';
+
+const backend = createNetronClient({
+  url: 'ws://localhost:4000',
+  services: { UserService, ProductService }
+});
+
+const server = createServer({
+  mode: 'ssr',
+  routes: [...],
+  providers: [
+    { provide: 'Backend', useValue: backend }
+  ]
+});
+```
+
+**Deployment Options:**
+
+```
+Option 1: Aether Standalone
+┌─────────────────────────┐
+│   Aether SSR Server     │
+│   - HTTP server         │
+│   - Routing             │
+│   - Rendering           │
+│   - Static assets       │
+└─────────────────────────┘
+
+Option 2: Aether + Titan
+┌─────────────────────────┐    ┌─────────────────────────┐
+│   Aether SSR Server     │───▶│   Titan Backend         │
+│   - Frontend rendering  │ RPC│   - Business logic      │
+│   - Client hydration    │    │   - Database            │
+│   - Static assets       │    │   - Authentication      │
+└─────────────────────────┘    └─────────────────────────┘
+```
+
+**Result**: **Maximum flexibility** — start simple, scale to full-stack when needed.
+
+### 13.6 Progressive Enhancement: Works Without JavaScript
+
+Aether SSR pages **work without JavaScript**, then **enhance** with interactivity:
+
+```typescript
+export default defineComponent(() => {
+  return () => (
+    <html>
+      <body>
+        {/* Layer 1: Static HTML (works without JS) */}
+        <header>
+          <nav>
+            <a href="/">Home</a>
+            <a href="/about">About</a>
+          </nav>
+        </header>
+
+        <main>
+          {/* Layer 2: Server-rendered content */}
+          <article>
+            <h1>Article Title</h1>
+            <p>Content rendered on server...</p>
+          </article>
+
+          {/* Layer 3: Islands (enhanced with JS) */}
+          <LikeButton />                    {/* 2 KB JS */}
+          <CommentSection hydrate="visible" /> {/* 8 KB JS, lazy */}
+        </main>
+
+        <footer>© 2025</footer>
+      </body>
+    </html>
+  );
+});
+
+// Progressive enhancement layers:
+// 1. HTML (0 KB JS)     → Works immediately, no JS needed
+// 2. Critical Islands   → 2 KB JS, loads immediately
+// 3. Lazy Islands       → 8 KB JS, loads when visible
+//
+// Total: 10 KB JS (loaded progressively)
+// Traditional SPA: 100+ KB (all upfront)
+```
+
+### 13.7 Trade-offs Acknowledged
+
+**Runtime Overhead**: SSR adds server-side rendering cost.
+
+| Metric | SSR | SSG | SPA |
+|--------|-----|-----|-----|
+| **Server CPU** | High | None | None |
+| **Build Time** | Low | High | Medium |
+| **Cache-ability** | Low | High | Medium |
+| **Personalization** | Easy | Hard | Easy |
+
+**When to use SSR vs SSG:**
+- **SSR**: User-specific content, real-time data, personalization
+- **SSG**: Static content, blogs, marketing pages, documentation
+- **SSG + ISR**: E-commerce, news (static but frequently updated)
+- **Hybrid**: Use both based on route needs
+
+## Principle 14: Evolution without Breaking Changes
+
+### 14.1 Backward Compatibility
 
 New features are added as opt-in, without breaking existing code.
 
-### 11.2 Deprecation Warnings
+### 14.2 Deprecation Warnings
 
 ```typescript
 // Deprecated API
@@ -835,7 +1531,7 @@ signal.value = 5;
 signal.set(5);
 ```
 
-### 11.3 Migration Support
+### 14.3 Migration Support
 
 Clear migration guides and codemods for major version upgrades.
 
@@ -848,7 +1544,9 @@ We took the best of:
 - **SolidJS**: Fine-grained reactivity
 - **TypeScript**: First-class type safety
 - **Standard JSX**: No custom compiler needed
-- **Titan**: Full-stack TypeScript with DI and RPC
+- **Angular**: Structured DI and modules (simplified)
+- **Next.js**: SSR/SSG strategies (self-contained)
+- **Titan**: Optional backend integration via Netron RPC
 
 And discarded the worst:
 - Virtual DOM overhead
@@ -856,13 +1554,44 @@ And discarded the worst:
 - Complex build tooling
 - Magical implicit behavior
 - Manual optimizations
+- Mandatory server dependencies
+- Heavyweight module systems
 
 The result is a framework that is:
-- **Minimal**: ~6KB core runtime, fewer concepts
-- **Fast**: Fine-grained reactivity, zero VDOM overhead
-- **Type-safe**: TypeScript everywhere
+- **Minimal**: ~6KB core runtime, +8KB DI (optional), fewer concepts
+- **Fast**: Fine-grained reactivity, zero VDOM overhead, runtime-agnostic SSR
+- **Type-safe**: TypeScript everywhere, from UI to backend contracts
 - **Standard**: Pure TypeScript/JSX, no custom compiler
-- **Integrated**: Seamless Titan backend integration
+- **Self-Contained**: Built-in HTTP server, no Express/Fastify needed
+- **Flexible**: Works standalone or integrates with Titan backend
+- **Scalable**: Optional module system for large apps, ES6 imports for simple apps
+- **Progressive**: SSR → SSG → Islands, all in one framework
 - **Developer-Friendly**: Excellent DX out of the box
 
-**Aether is not a compromise. It is a synthesis of the best ideas, implemented with pragmatic architectural choices.**
+### 14 Core Principles Summary:
+
+1. **Minimalism** — Fewer concepts, lower cognitive load
+2. **Performance** — Fine-grained reactivity, direct DOM updates
+3. **Type Safety** — TypeScript first, full inference
+4. **Developer Experience** — Hot reload, clear errors, zero config
+5. **Composition Over Inheritance** — Functions, not classes
+6. **Explicit Over Implicit** — No magic, clear dependencies
+7. **Conventions Over Configuration** — File-based routing, auto code splitting
+8. **Utility-Based Enhancement** — Strategic utilities, no custom compiler
+9. **Control Flow Components** — Show/For/Switch, not custom syntax
+10. **Full-Stack Coherence** — TypeScript everywhere, Titan integration
+11. **Lightweight DI** — Optional, type-safe, ~8KB (vs Angular's 40KB)
+12. **Module System** — Optional, for large apps, simpler than Angular
+13. **Self-Contained SSR** — Built-in server, runtime-agnostic, standalone
+14. **Evolution Without Breaking Changes** — Backward compatibility, clear migrations
+
+### Trade-offs Acknowledged:
+
+Aether makes **conscious, documented trade-offs**:
+
+1. **reflect-metadata (~4KB)** for DI — Better DX vs bundle size
+2. **Module system** — Organization vs simplicity (optional)
+3. **Built-in server** — Simplicity vs flexibility (works for 95% of use cases)
+4. **SSR overhead** — Better SEO/performance vs server CPU (use SSG when possible)
+
+**Aether is not a compromise. It is a synthesis of the best ideas, implemented with pragmatic architectural choices, where every trade-off is conscious and documented.**

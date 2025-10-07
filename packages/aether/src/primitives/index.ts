@@ -247,6 +247,34 @@ export {
   type ContextMenuContextValue,
 } from './ContextMenu.js';
 
+// HoverCard
+export {
+  HoverCard,
+  HoverCardTrigger,
+  HoverCardContent,
+  HoverCardArrow,
+  HoverCardContext,
+  type HoverCardProps,
+  type HoverCardContentProps,
+  type HoverCardArrowProps,
+  type HoverCardContextValue,
+} from './HoverCard.js';
+
+// Sheet
+export {
+  Sheet,
+  SheetTrigger,
+  SheetContent,
+  SheetTitle,
+  SheetDescription,
+  SheetClose,
+  SheetContext,
+  type SheetProps,
+  type SheetContentProps,
+  type SheetSide,
+  type SheetContextValue,
+} from './Sheet.js';
+
 // Utilities
 export {
   // ID generation

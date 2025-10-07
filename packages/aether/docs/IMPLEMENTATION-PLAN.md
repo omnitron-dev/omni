@@ -27,7 +27,7 @@ Comprehensive roadmap for implementing the Aether Frontend Framework - a minimal
 
 ### Project Status (as of 2025-10-07)
 
-**Completed Work** (Phases 1-8.2):
+**Completed Work** (Phases 1-8.3):
 - ✅ **Phase 1**: Core Reactivity System (signal, computed, effect, store, resource)
 - ✅ **Phase 2**: Component System (defineComponent, lifecycle, JSX runtime, control flow)
 - ✅ **Phase 2.5**: Utility Functions (events, binding, classes, styles, directives)
@@ -39,17 +39,18 @@ Comprehensive roadmap for implementing the Aether Frontend Framework - a minimal
 - ✅ **Phase 8**: UI Primitives - Core Set (Dialog, Popover, Dropdown, Select, Tabs, Accordion, Switch)
 - ✅ **Phase 8.1**: UI Primitives - Form & Interaction (Form, RadioGroup, Checkbox, Toggle, AlertDialog, Slider)
 - ✅ **Phase 8.2**: UI Primitives - Feedback & Utility (Tooltip, Separator, ContextMenu)
+- ✅ **Phase 8.3**: UI Primitives - Advanced Overlays (HoverCard, Sheet/Drawer)
 
 **Key Metrics**:
-- **Lines of Code**: ~26,000+ (core framework + server + primitives)
+- **Lines of Code**: ~27,000+ (core framework + server + primitives)
 - **Test Coverage**: 1133/1145 tests passing (98.9%)
 - **Documentation**: ~45,000+ lines across 20+ specification documents
 - **Examples**: 11 production-ready example files (4,746 lines)
 - **Server**: Runtime-agnostic (Node.js 22+, Bun 1.2+, Deno 2.0+)
-- **Primitives**: 16 headless, accessible components (~136KB bundle)
-  - **Layout**: Dialog, Popover, Dropdown, Select, Tabs, Accordion
+- **Primitives**: 18 headless, accessible components (~144KB bundle)
+  - **Layout**: Dialog, Popover, Dropdown, Select, Tabs, Accordion, Sheet (5 sub-components)
   - **Forms**: Form (6 sub-components), RadioGroup, Checkbox, Switch, Toggle
-  - **Feedback**: AlertDialog (6 sub-components), Slider (4 sub-components), Tooltip (3 sub-components)
+  - **Feedback**: AlertDialog (6 sub-components), Slider (4 sub-components), Tooltip (3 sub-components), HoverCard (3 sub-components)
   - **Utility**: Separator, ContextMenu (6 sub-components)
 
 **Current Focus**:

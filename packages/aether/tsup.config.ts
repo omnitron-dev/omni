@@ -13,6 +13,7 @@ export default defineConfig({
     'forms/index': 'src/forms/index.ts',
     'control-flow/index': 'src/control-flow/index.ts',
     'primitives/index': 'src/primitives/index.ts',
+    'server/index': 'src/server/index.ts',
   },
   format: ['esm'],
   dts: true,

@@ -13,8 +13,6 @@
 
 import { defineComponent } from '../core/component/index.js';
 import { createContext, useContext } from '../core/component/context.js';
-import type { Signal } from '../core/reactivity/types.js';
-import { computed } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
 
 // ============================================================================

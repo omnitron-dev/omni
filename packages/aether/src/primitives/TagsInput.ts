@@ -253,7 +253,7 @@ export const TagsInputField = defineComponent<TagsInputFieldProps>((props) => {
       e.preventDefault();
       const tags = context.tags();
       if (tags.length > 0) {
-        context.removeTag(tags[tags.length - 1]);
+        context.removeTag(tags[tags.length - 1] as string);
       }
     } else if (e.key === 'Enter' || delimiters.includes(e.key)) {
       e.preventDefault();

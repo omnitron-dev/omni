@@ -895,6 +895,87 @@ export {
   type TimelineItemStatus,
 } from './Timeline.js';
 
+// Resizable
+export {
+  Resizable,
+  ResizablePanel,
+  ResizableHandle,
+  type ResizableProps,
+  type ResizablePanelProps,
+  type ResizableHandleProps,
+  type ResizableContextValue,
+  type ResizableOrientation,
+} from './Resizable.js';
+
+// VirtualList
+export {
+  VirtualList,
+  type VirtualListProps,
+  type VirtualListContextValue,
+} from './VirtualList.js';
+
+// Image
+export {
+  Image,
+  type ImageProps,
+  type ImageLoadingStatus,
+} from './Image.js';
+
+// Mentions
+export {
+  Mentions,
+  MentionsInput,
+  MentionsSuggestions,
+  MentionsSuggestion,
+  type MentionsProps,
+  type MentionsSuggestionsProps,
+  type MentionsSuggestionProps,
+  type MentionsContextValue,
+  type Mention,
+} from './Mentions.js';
+
+// Transfer
+export {
+  Transfer,
+  TransferList,
+  TransferControls,
+  type TransferProps,
+  type TransferContextValue,
+  type TransferItem,
+} from './Transfer.js';
+
+// Affix
+export {
+  Affix,
+  type AffixProps,
+} from './Affix.js';
+
+// Popconfirm
+export {
+  Popconfirm,
+  PopconfirmTrigger,
+  PopconfirmContent,
+  type PopconfirmProps,
+  type PopconfirmContextValue,
+} from './Popconfirm.js';
+
+// Notification
+export {
+  Notification,
+  NotificationProvider,
+  notify,
+  closeNotification,
+  type NotificationProps,
+  type NotificationData,
+  type NotificationPlacement,
+} from './Notification.js';
+
+// Masonry
+export {
+  Masonry,
+  type MasonryProps,
+} from './Masonry.js';
+
 // Utilities
 export {
   // ID generation

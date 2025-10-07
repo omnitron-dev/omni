@@ -71,6 +71,15 @@
    - [Empty](#empty)
    - [Spinner](#spinner)
    - [Timeline](#timeline)
+   - [Resizable](#resizable)
+   - [VirtualList](#virtuallist)
+   - [Image](#image)
+   - [Mentions](#mentions)
+   - [Transfer](#transfer)
+   - [Affix](#affix)
+   - [Popconfirm](#popconfirm)
+   - [Notification](#notification)
+   - [Masonry](#masonry)
 5. [Composition Patterns](#composition-patterns)
 6. [Customization](#customization)
 7. [Theme Integration](#theme-integration)
@@ -8163,6 +8172,891 @@ const Example = defineComponent(() => {
 **`<Timeline.Description>`** - Item description (p element)
 
 **`<Timeline.Timestamp>`** - Item timestamp (time element)
+
+---
+
+### Resizable
+
+Split panes with draggable resize handles for flexible layouts.
+
+#### Features
+
+- Horizontal and vertical split layouts
+- Draggable resize handles
+- Min/max size constraints
+- Controlled and uncontrolled modes
+- Multiple panels support
+- Keyboard accessible
+- Touch-friendly
+
+#### Basic Usage
+
+```typescript
+import { defineComponent } from 'aether';
+import { Resizable } from 'aether/primitives';
+
+const Example222 = defineComponent(() => {
+  return () => (
+    <Resizable orientation="horizontal" defaultSizes={[50, 50]}>
+      <Resizable.Panel minSize={20} maxSize={80}>
+        <div class="panel-content">Left Panel</div>
+      </Resizable.Panel>
+
+      <Resizable.Handle />
+
+      <Resizable.Panel>
+        <div class="panel-content">Right Panel</div>
+      </Resizable.Panel>
+    </Resizable>
+  );
+});
+```
+
+#### Advanced Usage
+
+```typescript
+// Controlled mode with size persistence
+const Example223 = defineComponent(() => {
+  const sizes = signal([30, 70]);
+
+  const handleSizesChange = (newSizes: number[]) => {
+    sizes.set(newSizes);
+    localStorage.setItem('panel-sizes', JSON.stringify(newSizes));
+  };
+
+  return () => (
+    <Resizable
+      orientation="vertical"
+      sizes={sizes()}
+      onSizesChange={handleSizesChange}
+    >
+      <Resizable.Panel id="header" minSize={10}>
+        <header>Header Content</header>
+      </Resizable.Panel>
+
+      <Resizable.Handle />
+
+      <Resizable.Panel id="main">
+        <main>Main Content</main>
+      </Resizable.Panel>
+
+      <Resizable.Handle />
+
+      <Resizable.Panel id="footer" minSize={10} maxSize={30}>
+        <footer>Footer Content</footer>
+      </Resizable.Panel>
+    </Resizable>
+  );
+});
+```
+
+**API:**
+
+**`<Resizable>`** - Root container
+- `sizes?: number[]` - Controlled panel sizes (percentages)
+- `onSizesChange?: (sizes: number[]) => void` - Size change callback
+- `defaultSizes?: number[]` - Initial sizes (uncontrolled)
+- `orientation?: 'horizontal' | 'vertical'` - Layout direction (default: 'horizontal')
+
+**`<Resizable.Panel>`** - Resizable panel
+- `id?: string` - Panel identifier
+- `minSize?: number` - Minimum size percentage
+- `maxSize?: number` - Maximum size percentage
+
+**`<Resizable.Handle>`** - Draggable resize handle
+- `disabled?: boolean` - Disable resizing
+
+---
+
+### VirtualList
+
+Virtualized list for efficiently rendering large datasets by only rendering visible items.
+
+#### Features
+
+- Window/scroll virtualization for performance
+- Dynamic item heights support
+- Overscan for smooth scrolling
+- Horizontal and vertical scrolling
+- Scroll to index/offset
+- Infinite scroll support
+- Item measurement and caching
+- ARIA support
+
+#### Basic Usage
+
+```typescript
+import { defineComponent, signal } from 'aether';
+import { VirtualList } from 'aether/primitives';
+
+const Example224 = defineComponent(() => {
+  const items = signal(Array.from({ length: 10000 }, (_, i) => ({
+    id: i,
+    title: `Item ${i}`,
+    description: `Description for item ${i}`
+  })));
+
+  return () => (
+    <VirtualList
+      count={items().length}
+      height={600}
+      itemSize={80}
+      overscan={5}
+    >
+      {(index) => {
+        const item = items()[index];
+        return (
+          <div class="virtual-item">
+            <h3>{item.title}</h3>
+            <p>{item.description}</p>
+          </div>
+        );
+      }}
+    </VirtualList>
+  );
+});
+```
+
+#### Advanced Usage - Dynamic Heights
+
+```typescript
+// Variable height items
+const Example225 = defineComponent(() => {
+  const items = signal(generateLargeDataset(10000));
+
+  const getItemSize = (index: number) => {
+    const item = items()[index];
+    // Estimate height based on content
+    return item.description.length > 100 ? 120 : 80;
+  };
+
+  return () => (
+    <VirtualList
+      count={items().length}
+      height="100vh"
+      itemSize={getItemSize}
+      overscan={3}
+      direction="vertical"
+    >
+      {(index) => {
+        const item = items()[index];
+        return (
+          <div class="dynamic-item">
+            <h3>{item.title}</h3>
+            <p>{item.description}</p>
+            <Show when={item.tags}>
+              <div class="tags">
+                <For each={item.tags}>
+                  {(tag) => <span class="tag">{tag}</span>}
+                </For>
+              </div>
+            </Show>
+          </div>
+        );
+      }}
+    </VirtualList>
+  );
+});
+```
+
+**API:**
+
+**`<VirtualList>`** - Virtual list container
+- `count: number` - Total number of items
+- `children: (index: number) => any` - Item renderer function
+- `height?: number | string` - Container height (required for vertical)
+- `width?: number | string` - Container width (required for horizontal)
+- `itemSize: number | ((index: number) => number)` - Fixed size or estimator function
+- `overscan?: number` - Items to render outside viewport (default: 3)
+- `direction?: 'vertical' | 'horizontal'` - Scroll direction (default: 'vertical')
+- `scrollToIndex?: number` - Scroll to specific index
+- `scrollBehavior?: ScrollBehavior` - Scroll behavior
+- `onScroll?: (scrollOffset: number) => void` - Scroll callback
+
+---
+
+### Image
+
+Advanced image component with lazy loading, fallback support, and loading states.
+
+#### Features
+
+- Lazy loading with Intersection Observer
+- Loading states (idle, loading, loaded, error)
+- Fallback image support
+- Object-fit modes (cover, contain, fill, etc.)
+- Custom placeholder while loading
+- Error handling with retry
+- ARIA support for accessibility
+
+#### Basic Usage
+
+```typescript
+import { defineComponent } from 'aether';
+import { Image } from 'aether/primitives';
+
+const Example226 = defineComponent(() => {
+  return () => (
+    <Image
+      src="/images/hero.jpg"
+      alt="Hero image"
+      fallbackSrc="/images/placeholder.jpg"
+      fit="cover"
+      lazy={true}
+      class="hero-image"
+    />
+  );
+});
+```
+
+#### Advanced Usage
+
+```typescript
+// With loading states and error handling
+const Example227 = defineComponent(() => {
+  const handleLoad = () => {
+    console.log('Image loaded successfully');
+  };
+
+  const handleError = (error: Event) => {
+    console.error('Failed to load image:', error);
+  };
+
+  return () => (
+    <Image
+      src="/images/large-photo.jpg"
+      alt="Large photo"
+      fallbackSrc="/images/error-placeholder.jpg"
+      fit="contain"
+      lazy={true}
+      onLoad={handleLoad}
+      onError={handleError}
+      style={{
+        width: '100%',
+        height: 'auto',
+        borderRadius: '8px'
+      }}
+    />
+  );
+});
+
+// Gallery with lazy loading
+const Example228 = defineComponent(() => {
+  const images = signal([
+    { id: 1, src: '/gallery/1.jpg', alt: 'Photo 1' },
+    { id: 2, src: '/gallery/2.jpg', alt: 'Photo 2' },
+    { id: 3, src: '/gallery/3.jpg', alt: 'Photo 3' },
+    // ... more images
+  ]);
+
+  return () => (
+    <div class="gallery-grid">
+      <For each={images()}>
+        {(image) => (
+          <Image
+            src={image.src}
+            alt={image.alt}
+            fallbackSrc="/placeholder.jpg"
+            fit="cover"
+            lazy={true}
+            class="gallery-item"
+          />
+        )}
+      </For>
+    </div>
+  );
+});
+```
+
+**API:**
+
+**`<Image>`** - Image component
+- `src: string` - Image source URL
+- `alt: string` - Alternative text
+- `fallbackSrc?: string` - Fallback image on error
+- `fit?: 'fill' | 'contain' | 'cover' | 'none' | 'scale-down'` - Object-fit mode (default: 'cover')
+- `lazy?: boolean` - Enable lazy loading (default: true)
+- `onLoad?: () => void` - Load success callback
+- `onError?: (error: Event) => void` - Load error callback
+
+---
+
+### Mentions
+
+@mentions autocomplete component for text inputs with search and keyboard navigation.
+
+#### Features
+
+- Autocomplete with search
+- Keyboard navigation
+- Custom trigger characters (@, #, etc.)
+- Position-aware popup
+- Mention selection handling
+- Custom mention rendering
+- Filtering support
+- ARIA support
+
+#### Basic Usage
+
+```typescript
+import { defineComponent, signal } from 'aether';
+import { Mentions } from 'aether/primitives';
+
+const Example229 = defineComponent(() => {
+  const value = signal('');
+  const mentions = [
+    { id: '1', display: 'John Doe', value: '@johndoe' },
+    { id: '2', display: 'Jane Smith', value: '@janesmith' },
+    { id: '3', display: 'Bob Johnson', value: '@bobjohnson' },
+  ];
+
+  return () => (
+    <Mentions
+      value={value()}
+      onValueChange={(newValue) => value.set(newValue)}
+      data={mentions}
+      trigger="@"
+      placeholder="Type @ to mention someone..."
+    />
+  );
+});
+```
+
+#### Advanced Usage
+
+```typescript
+// Multiple triggers with custom filtering
+const Example230 = defineComponent(() => {
+  const value = signal('');
+
+  const users = [
+    { id: '1', display: 'John Doe', avatar: '/avatars/john.jpg' },
+    { id: '2', display: 'Jane Smith', avatar: '/avatars/jane.jpg' },
+  ];
+
+  const tags = [
+    { id: 't1', display: 'javascript', count: 1234 },
+    { id: 't2', display: 'typescript', count: 890 },
+  ];
+
+  const handleMentionSelect = (mention) => {
+    console.log('Selected:', mention);
+  };
+
+  return () => (
+    <>
+      <Mentions
+        value={value()}
+        onValueChange={(newValue) => value.set(newValue)}
+        data={users}
+        trigger="@"
+        onMentionSelect={handleMentionSelect}
+        placeholder="Type @ for users or # for tags..."
+      >
+        <Mentions.Trigger />
+        <Mentions.List>
+          <For each={users}>
+            {(user) => (
+              <Mentions.Item value={user}>
+                <div class="mention-item">
+                  <img src={user.avatar} alt={user.display} />
+                  <span>{user.display}</span>
+                </div>
+              </Mentions.Item>
+            )}
+          </For>
+        </Mentions.List>
+      </Mentions>
+    </>
+  );
+});
+```
+
+**API:**
+
+**`<Mentions>`** - Root container
+- `value?: string` - Controlled value
+- `onValueChange?: (value: string) => void` - Value change callback
+- `defaultValue?: string` - Initial value (uncontrolled)
+- `data: Mention[]` - Array of mention options
+- `trigger?: string` - Trigger character (default: '@')
+- `onMentionSelect?: (mention: Mention) => void` - Selection callback
+- `placeholder?: string` - Input placeholder
+
+**`<Mentions.Trigger>`** - Trigger input field
+
+**`<Mentions.List>`** - Mentions dropdown list
+
+**`<Mentions.Item>`** - Individual mention item
+- `value: Mention` - Mention data
+
+---
+
+### Transfer
+
+Transfer items between two lists with selection, search, and bi-directional transfer.
+
+#### Features
+
+- Dual list box pattern
+- Item selection and transfer
+- Search/filter support
+- Bi-directional transfer
+- Custom item rendering
+- Batch transfer
+- Keyboard navigation
+- ARIA support
+
+#### Basic Usage
+
+```typescript
+import { defineComponent, signal } from 'aether';
+import { Transfer } from 'aether/primitives';
+
+const Example231 = defineComponent(() => {
+  const dataSource = [
+    { key: '1', title: 'Item 1', description: 'Description 1' },
+    { key: '2', title: 'Item 2', description: 'Description 2' },
+    { key: '3', title: 'Item 3', description: 'Description 3' },
+    { key: '4', title: 'Item 4', description: 'Description 4' },
+  ];
+
+  const targetKeys = signal(['2']);
+
+  return () => (
+    <Transfer
+      dataSource={dataSource}
+      targetKeys={targetKeys()}
+      onTargetKeysChange={(keys) => targetKeys.set(keys)}
+      render={(item) => item.title}
+    />
+  );
+});
+```
+
+#### Advanced Usage
+
+```typescript
+// With search and custom rendering
+const Example232 = defineComponent(() => {
+  const allItems = signal([
+    { key: '1', title: 'Document.pdf', size: '2.4 MB', type: 'pdf' },
+    { key: '2', title: 'Image.png', size: '1.2 MB', type: 'image' },
+    { key: '3', title: 'Video.mp4', size: '15.8 MB', type: 'video' },
+  ]);
+
+  const selectedKeys = signal([]);
+
+  const renderItem = (item) => (
+    <div class="transfer-item">
+      <div class="item-icon">{getFileIcon(item.type)}</div>
+      <div class="item-details">
+        <div class="item-title">{item.title}</div>
+        <div class="item-meta">{item.size}</div>
+      </div>
+    </div>
+  );
+
+  const handleChange = (newTargetKeys) => {
+    selectedKeys.set(newTargetKeys);
+    console.log('Selected items:', newTargetKeys);
+  };
+
+  return () => (
+    <Transfer
+      dataSource={allItems()}
+      targetKeys={selectedKeys()}
+      onTargetKeysChange={handleChange}
+      render={renderItem}
+      showSearch={true}
+      filterOption={(inputValue, item) =>
+        item.title.toLowerCase().includes(inputValue.toLowerCase())
+      }
+      titles={['Available Files', 'Selected Files']}
+    />
+  );
+});
+```
+
+**API:**
+
+**`<Transfer>`** - Root container
+- `dataSource: TransferItem[]` - All available items
+- `targetKeys?: string[]` - Controlled selected keys
+- `onTargetKeysChange?: (keys: string[]) => void` - Selection callback
+- `defaultTargetKeys?: string[]` - Initial selection (uncontrolled)
+- `render: (item: TransferItem) => any` - Item renderer
+- `showSearch?: boolean` - Show search inputs
+- `filterOption?: (inputValue: string, item: TransferItem) => boolean` - Custom filter
+- `titles?: [string, string]` - List titles
+
+**`<Transfer.Source>`** - Source list container
+
+**`<Transfer.Target>`** - Target list container
+
+**`<Transfer.Controls>`** - Transfer control buttons
+
+---
+
+### Affix
+
+Sticky/fixed positioning component that affixes an element when scrolling.
+
+#### Features
+
+- Auto-affix on scroll
+- Configurable offset (top/bottom)
+- Scroll event handling
+- Position change callbacks
+- Smooth transitions
+- Window and container scrolling support
+
+#### Basic Usage
+
+```typescript
+import { defineComponent } from 'aether';
+import { Affix } from 'aether/primitives';
+
+const Example233 = defineComponent(() => {
+  return () => (
+    <Affix offsetTop={20}>
+      <div class="sticky-header">
+        <h2>Sticky Header</h2>
+        <nav>
+          <a href="#section1">Section 1</a>
+          <a href="#section2">Section 2</a>
+          <a href="#section3">Section 3</a>
+        </nav>
+      </div>
+    </Affix>
+  );
+});
+```
+
+#### Advanced Usage
+
+```typescript
+// Affix with state change callback
+const Example234 = defineComponent(() => {
+  const isAffixed = signal(false);
+
+  const handleChange = (affixed: boolean) => {
+    isAffixed.set(affixed);
+    console.log('Affix state changed:', affixed);
+  };
+
+  return () => (
+    <>
+      <Affix offsetTop={0} onChange={handleChange}>
+        <div class={`toolbar ${isAffixed() ? 'affixed' : ''}`}>
+          <button>Action 1</button>
+          <button>Action 2</button>
+          <button>Action 3</button>
+        </div>
+      </Affix>
+
+      <div class="content">
+        {/* Long content that scrolls */}
+      </div>
+    </>
+  );
+});
+```
+
+**API:**
+
+**`<Affix>`** - Affix container
+- `offsetTop?: number` - Offset from top when affixed
+- `offsetBottom?: number` - Offset from bottom when affixed
+- `onChange?: (affixed: boolean) => void` - Affix state change callback
+
+---
+
+### Popconfirm
+
+Confirmation dialog displayed in a popover, lightweight alternative to AlertDialog.
+
+#### Features
+
+- Lightweight confirmation pattern
+- Popover-based UI
+- Confirm/cancel callbacks
+- Icon and description support
+- Keyboard accessible
+- Auto-positioning
+- Cancel on outside click
+
+#### Basic Usage
+
+```typescript
+import { defineComponent } from 'aether';
+import { Popconfirm } from 'aether/primitives';
+
+const Example235 = defineComponent(() => {
+  const handleConfirm = async () => {
+    await deleteItem();
+    notify.success('Item deleted');
+  };
+
+  return () => (
+    <Popconfirm
+      title="Delete this item?"
+      description="This action cannot be undone."
+      onConfirm={handleConfirm}
+    >
+      <button class="btn-danger">Delete</button>
+    </Popconfirm>
+  );
+});
+```
+
+#### Advanced Usage
+
+```typescript
+// Custom confirmation with async handling
+const Example236 = defineComponent(() => {
+  const loading = signal(false);
+
+  const handleConfirm = async () => {
+    loading.set(true);
+    try {
+      await api.deleteUser(userId);
+      notify.success('User deleted successfully');
+    } catch (error) {
+      notify.error('Failed to delete user');
+    } finally {
+      loading.set(false);
+    }
+  };
+
+  const handleCancel = () => {
+    console.log('Deletion cancelled');
+  };
+
+  return () => (
+    <Popconfirm
+      title="Delete user account?"
+      description="This will permanently delete the user and all associated data."
+      onConfirm={handleConfirm}
+      onCancel={handleCancel}
+      confirmText={loading() ? 'Deleting...' : 'Delete'}
+      cancelText="Cancel"
+      icon={<WarningIcon />}
+    >
+      <button class="btn-danger" disabled={loading()}>
+        Delete User
+      </button>
+    </Popconfirm>
+  );
+});
+```
+
+**API:**
+
+**`<Popconfirm>`** - Root container
+- `title: string` - Confirmation title
+- `description?: string` - Additional description
+- `onConfirm?: () => void | Promise<void>` - Confirm callback
+- `onCancel?: () => void` - Cancel callback
+- `confirmText?: string` - Confirm button text (default: 'Confirm')
+- `cancelText?: string` - Cancel button text (default: 'Cancel')
+- `icon?: any` - Custom icon
+
+**`<Popconfirm.Trigger>`** - Trigger element
+
+**`<Popconfirm.Title>`** - Confirmation title
+
+**`<Popconfirm.Actions>`** - Action buttons container
+
+---
+
+### Notification
+
+Global notification system for displaying messages with auto-dismiss and stacking.
+
+#### Features
+
+- Global notification API
+- Auto-dismiss with duration
+- Stacked notifications
+- Multiple placements (top-left, top-right, bottom-left, bottom-right)
+- Close on click
+- Max notification limit
+- Custom icons and actions
+- ARIA announcements
+
+#### Basic Usage
+
+```typescript
+import { notify } from 'aether/primitives';
+
+// Simple notification
+notify({
+  message: 'Operation completed successfully',
+  type: 'success',
+  duration: 3000
+});
+
+// With title and description
+notify({
+  title: 'Update Available',
+  message: 'A new version of the app is available.',
+  type: 'info',
+  duration: 5000
+});
+
+// Error notification (no auto-dismiss)
+notify({
+  title: 'Error',
+  message: 'Failed to save changes. Please try again.',
+  type: 'error',
+  duration: 0 // Won't auto-dismiss
+});
+```
+
+#### Advanced Usage
+
+```typescript
+// Notification with custom actions
+const Example237 = defineComponent(() => {
+  const showUpdateNotification = () => {
+    const id = notify({
+      title: 'Update Available',
+      message: 'Version 2.0 is now available. Would you like to update?',
+      type: 'info',
+      duration: 0,
+      actions: [
+        {
+          label: 'Update Now',
+          onClick: () => {
+            window.location.reload();
+          }
+        },
+        {
+          label: 'Later',
+          onClick: () => {
+            closeNotification(id);
+          }
+        }
+      ]
+    });
+  };
+
+  return () => (
+    <button onClick={showUpdateNotification}>
+      Check for Updates
+    </button>
+  );
+});
+
+// Notification container with custom placement
+const Example238 = defineComponent(() => {
+  return () => (
+    <Notification placement="top-right" maxCount={3} duration={4000} />
+  );
+});
+```
+
+**API:**
+
+**`notify(options)`** - Show notification
+- `message: string` - Notification message
+- `title?: string` - Notification title
+- `type?: 'success' | 'info' | 'warning' | 'error'` - Notification type
+- `duration?: number` - Auto-dismiss duration in ms (0 = no auto-dismiss, default: 4500)
+- `icon?: any` - Custom icon
+- `actions?: Action[]` - Action buttons
+
+**`closeNotification(id: string)`** - Close specific notification
+
+**`<Notification>`** - Notification container
+- `placement?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'` - Position (default: 'top-right')
+- `maxCount?: number` - Maximum visible notifications
+- `duration?: number` - Default duration
+
+---
+
+### Masonry
+
+Pinterest-style masonry grid layout for displaying items of varying heights.
+
+#### Features
+
+- Multi-column layout
+- Auto-positioned items
+- Configurable columns and gap
+- Responsive column count
+- Auto-height calculation
+- Resize observer integration
+- Smooth animations
+
+#### Basic Usage
+
+```typescript
+import { defineComponent, signal } from 'aether';
+import { Masonry } from 'aether/primitives';
+
+const Example239 = defineComponent(() => {
+  const items = signal([
+    { id: 1, content: 'Short item', height: 200 },
+    { id: 2, content: 'Medium item', height: 300 },
+    { id: 3, content: 'Tall item', height: 400 },
+    { id: 4, content: 'Short item', height: 180 },
+    // ... more items
+  ]);
+
+  return () => (
+    <Masonry columns={3} gap={16}>
+      <For each={items()}>
+        {(item) => (
+          <div class="masonry-item" style={{ height: `${item.height}px` }}>
+            {item.content}
+          </div>
+        )}
+      </For>
+    </Masonry>
+  );
+});
+```
+
+#### Advanced Usage
+
+```typescript
+// Responsive masonry grid
+const Example240 = defineComponent(() => {
+  const photos = signal([
+    { id: 1, src: '/photos/1.jpg', caption: 'Beautiful sunset' },
+    { id: 2, src: '/photos/2.jpg', caption: 'Mountain view' },
+    { id: 3, src: '/photos/3.jpg', caption: 'City lights' },
+    // ... more photos
+  ]);
+
+  const columns = createMediaQuery({
+    '(max-width: 640px)': 1,
+    '(max-width: 1024px)': 2,
+    '(min-width: 1024px)': 3
+  });
+
+  return () => (
+    <Masonry columns={columns()} gap={20} class="photo-grid">
+      <For each={photos()}>
+        {(photo) => (
+          <div class="photo-card">
+            <img src={photo.src} alt={photo.caption} />
+            <div class="photo-caption">{photo.caption}</div>
+          </div>
+        )}
+      </For>
+    </Masonry>
+  );
+});
+```
+
+**API:**
+
+**`<Masonry>`** - Masonry grid container
+- `columns: number` - Number of columns
+- `gap?: number` - Gap between items in pixels (default: 16)
 
 ---
 

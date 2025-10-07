@@ -126,7 +126,6 @@ const useEditableContext = (): EditableContextValue => {
 
 export const Editable = defineComponent<EditableProps>((props) => {
   const disabled = props.disabled ?? false;
-  const submitOnBlur = props.submitOnBlur ?? true;
   const selectOnFocus = props.selectOnFocus ?? true;
   const placeholder = props.placeholder ?? 'Enter text...';
 

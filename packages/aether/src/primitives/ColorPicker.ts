@@ -180,9 +180,9 @@ const hexToRgb = (hex: string): [number, number, number] | null => {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return result
     ? [
-        parseInt(result[1], 16),
-        parseInt(result[2], 16),
-        parseInt(result[3], 16),
+        parseInt(result[1] as string, 16),
+        parseInt(result[2] as string, 16),
+        parseInt(result[3] as string, 16),
       ]
     : null;
 };
@@ -289,9 +289,9 @@ export const ColorPicker = defineComponent<ColorPickerProps>((props) => {
     );
     if (rgbMatch) {
       const [h, s, l] = rgbToHsl(
-        parseInt(rgbMatch[1]),
-        parseInt(rgbMatch[2]),
-        parseInt(rgbMatch[3]),
+        parseInt(rgbMatch[1] as string),
+        parseInt(rgbMatch[2] as string),
+        parseInt(rgbMatch[3] as string),
       );
       const a = rgbMatch[4] ? parseFloat(rgbMatch[4]) : 1;
       return { h, s, l, a };
@@ -303,9 +303,9 @@ export const ColorPicker = defineComponent<ColorPickerProps>((props) => {
     );
     if (hslMatch) {
       return {
-        h: parseInt(hslMatch[1]),
-        s: parseInt(hslMatch[2]),
-        l: parseInt(hslMatch[3]),
+        h: parseInt(hslMatch[1] as string),
+        s: parseInt(hslMatch[2] as string),
+        l: parseInt(hslMatch[3] as string),
         a: hslMatch[4] ? parseFloat(hslMatch[4]) : 1,
       };
     }

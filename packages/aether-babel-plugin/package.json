@@ -26,20 +26,20 @@
     "@babel/core": "^7.0.0"
   },
   "dependencies": {
-    "@babel/types": "^7.23.0",
     "@babel/template": "^7.23.0",
-    "@babel/traverse": "^7.23.0"
+    "@babel/traverse": "^7.23.0",
+    "@babel/types": "^7.23.0"
   },
   "devDependencies": {
     "@babel/core": "^7.23.0",
     "@babel/preset-typescript": "^7.23.0",
     "@types/babel__core": "^7.20.0",
     "@types/babel__traverse": "^7.20.0",
-    "@types/node": "^22.0.0",
-    "typescript": "^5.8.3",
-    "jest": "^30.0.0",
     "@types/jest": "^30.0.0",
-    "ts-jest": "^30.0.0"
+    "@types/node": "^22.0.0",
+    "jest": "^30.0.0",
+    "ts-jest": "^29.4.4",
+    "typescript": "^5.8.3"
   },
   "repository": {
     "type": "git",

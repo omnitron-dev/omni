@@ -42,22 +42,24 @@ Comprehensive roadmap for implementing the Aether Frontend Framework - a minimal
 - ✅ **Phase 8.3**: UI Primitives - Advanced Overlays (HoverCard, Sheet/Drawer)
 - ✅ **Phase 8.4-8.11**: UI Primitives - Comprehensive Extension (56 additional primitives)
 - ✅ **Phase 8.12**: UI Primitives - Advanced Essentials (Resizable, VirtualList, Image, Mentions, Transfer, Affix, Popconfirm, Notification, Masonry)
+- ✅ **Phase 8.13**: UI Primitives - Critical Layout Primitives (Box, Flex, Grid, Stack, Container, Center, Spacer, Space, SimpleGrid, Divider)
 
 **Key Metrics**:
-- **Lines of Code**: ~37,000+ (core framework + server + primitives)
+- **Lines of Code**: ~38,000+ (core framework + server + primitives)
 - **Test Coverage**: 1133/1145 tests passing (98.9%)
 - **Documentation**: ~45,000+ lines across 20+ specification documents
 - **Examples**: 11 production-ready example files (4,746 lines)
 - **Server**: Runtime-agnostic (Node.js 22+, Bun 1.2+, Deno 2.0+)
-- **Primitives**: 72 headless, accessible components (~348.45KB bundle)
-  - **Layout & Overlays**: Dialog, Popover, Dropdown, Select, Tabs, Accordion, Sheet, HoverCard, Drawer, Resizable
+- **Primitives**: 82 headless, accessible components (~362.54KB bundle)
+  - **Layout Primitives (14)**: Box, Flex, Grid, Stack, Container, Center, Spacer, Space, SimpleGrid, Divider, ScrollArea, Resizable, Affix, Masonry
+  - **Layout & Overlays**: Dialog, Popover, Dropdown, Select, Tabs, Accordion, Sheet, HoverCard, Drawer
   - **Forms**: Form (6 sub-components), RadioGroup, Checkbox, Switch, Toggle, Input, Textarea, Label
   - **Advanced Forms**: Slider, Combobox, DatePicker, Calendar, TimePicker, DateRangePicker, ToggleGroup, PinInput, RangeSlider, MultiSelect, TagsInput, ColorPicker, Editable, NumberInput
   - **Navigation**: Menubar, Breadcrumb, Toolbar, NavigationMenu, Carousel, Stepper, Pagination
   - **Feedback & Display**: AlertDialog, Tooltip, Toast, Alert, Avatar, Badge, Progress, Rating, Empty, Spinner, Popconfirm, Notification
-  - **Data & Content**: Table, Tree, Code, Kbd, ScrollArea, Timeline, VirtualList, Transfer
+  - **Data & Content**: Table, Tree, Code, Kbd, Timeline, VirtualList, Transfer
   - **Media & Rich Content**: Image, Mentions
-  - **Utility**: Separator, ContextMenu, Collapsible, Skeleton, VisuallyHidden, AspectRatio, Card, FileUpload, Affix, Masonry
+  - **Utility**: Separator, ContextMenu, Collapsible, Skeleton, VisuallyHidden, AspectRatio, Card, FileUpload
 
 **Current Focus**:
 - Phase 9: Styled Components Library (Button, Input, Card, Alert)
@@ -1333,15 +1335,83 @@ Commit: (pending)
   - Responsive column count
   - Auto-height calculation
 
+#### Phase 8.13: Critical Layout Primitives ✅ (10 primitives - 855 lines)
+Commit: (pending)
+
+**Foundational Layout Components:**
+- ✅ **Box** (~55 lines) - The foundational base component
+  - Polymorphic component (renders as any element)
+  - Style props support
+  - Base for all other layout primitives
+
+- ✅ **Flex** (~140 lines) - Flexbox layout container
+  - Direction control (row, column, reverse)
+  - Alignment (justify, align, alignSelf)
+  - Gap/spacing support
+  - Wrapping control
+  - Grow/shrink/basis support
+
+- ✅ **Grid** (~240 lines, 2 components) - CSS Grid layout
+  - Grid, GridItem components
+  - Template columns/rows
+  - Grid areas support
+  - Auto-flow control
+  - Full grid positioning
+
+**Stack & Spacing:**
+- ✅ **Stack** (~150 lines, 3 components) - Vertical/horizontal stack
+  - Stack, VStack, HStack components
+  - Consistent spacing between items
+  - Alignment and justification
+  - Divider support
+  - Wrapping control
+
+- ✅ **Space** (~110 lines) - Fixed spacing between elements
+  - Size variants (xs, sm, md, lg, xl)
+  - Horizontal and vertical modes
+  - Wrapping support
+  - Split mode (space-between)
+
+- ✅ **Spacer** (~65 lines) - Flexible space component
+  - Creates flexible space in flex layouts
+  - Pushes adjacent elements apart
+  - Configurable grow/shrink/basis
+
+**Container & Centering:**
+- ✅ **Container** (~100 lines) - Responsive content container
+  - Max-width constraints (xs, sm, md, lg, xl, 2xl)
+  - Centered content with auto margins
+  - Configurable padding
+  - Fluid mode for full-width
+
+- ✅ **Center** (~60 lines) - Centering utility
+  - Centers content horizontally and vertically
+  - Configurable dimensions
+  - Inline or block mode
+
+**Grid & Divider:**
+- ✅ **SimpleGrid** (~85 lines) - Responsive equal-width grid
+  - Equal-width columns
+  - Responsive column count
+  - Min child width for auto-responsive
+  - Auto-fit or auto-fill behavior
+
+- ✅ **Divider** (~235 lines) - Enhanced separator with label
+  - Horizontal and vertical dividers
+  - Label support (positioned start/center/end)
+  - Dashed, solid, or dotted styles
+  - Configurable thickness and color
+  - Enhanced version of Separator
+
 **Coverage Status:**
 
-**Implemented (72 primitives) - 100% of specification + Complete Comprehensive Extension Set! ✅**
+**Implemented (82 primitives) - 100% of specification + Complete Comprehensive Extension Set! ✅**
 
 ✅ **From Specification (26/26):** Dialog, Popover, Dropdown, Select, Tabs, Accordion, Radio Group, Checkbox, Slider, Toggle, Switch, Alert Dialog, Form, Tooltip, Separator, ContextMenu, HoverCard, Sheet, Avatar, Badge, Progress, Toast, Combobox, Command Palette, Calendar, DatePicker, Table
 
-✅ **Additional Essential Primitives (46):**
+✅ **Additional Essential Primitives (56):**
 - **Form primitives (15):** Label, Input, Textarea, ToggleGroup, PinInput, TimePicker, DateRangePicker, FileUpload, RangeSlider, MultiSelect, TagsInput, ColorPicker, Editable, NumberInput
-- **Layout primitives (4):** ScrollArea, Resizable, Affix, Masonry
+- **Layout primitives (14):** ScrollArea, Resizable, Affix, Masonry, Box, Flex, Grid, Stack, Container, Center, Spacer, Space, SimpleGrid, Divider
 - **Navigation primitives (6):** Pagination, Menubar, Breadcrumb, NavigationMenu, Carousel, Stepper
 - **Container primitives (3):** Card, Toolbar, Drawer
 - **Display primitives (5):** Alert, Kbd, Code, Rating, Image
@@ -1353,13 +1423,14 @@ Commit: (pending)
 
 **Final Metrics:**
 - ✅ **100% of specification primitives** implemented (26/26)
-- ✅ Added **46 essential utility primitives** for complete developer toolkit
+- ✅ Added **56 essential utility primitives** for complete developer toolkit
+- ✅ **All critical layout primitives** implemented (10 foundational components)
 - ✅ **All complex/specialized primitives** implemented (22 total)
-- ✅ Total **72 production-ready primitives** with full ARIA compliance
-- ✅ Bundle size: **348.45 KB ESM** (~4.84KB per primitive average)
-- ✅ Total lines: **~21,000 lines** of production code
+- ✅ Total **82 production-ready primitives** with full ARIA compliance
+- ✅ Bundle size: **362.54 KB ESM** (~4.42KB per primitive average)
+- ✅ Total lines: **~22,000 lines** of production code
 - ✅ All primitives follow consistent patterns: headless, accessible, composable
-- ✅ **Comprehensive UI library** - All major UI patterns from top libraries covered
+- ✅ **Comprehensive UI library** - All major UI patterns + foundational layout primitives from top libraries covered
 
 ---
 

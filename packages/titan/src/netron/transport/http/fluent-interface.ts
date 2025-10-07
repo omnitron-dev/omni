@@ -23,20 +23,46 @@ export class FluentInterface<TService = any> {
     private definition: Definition,
     private cacheManager?: HttpCacheManager,
     private retryManager?: RetryManager,
-    private globalOptions?: QueryOptions
+    private globalOptions: QueryOptions = {}
   ) {}
+
+  /**
+   * Set global cache configuration that applies to all method calls
+   * @returns this for method chaining
+   */
+  globalCache(options: CacheOptions): this {
+    if (!this.globalOptions) {
+      this.globalOptions = {};
+    }
+    this.globalOptions.cache = options;
+    return this;
+  }
+
+  /**
+   * Set global retry configuration that applies to all method calls
+   * @returns this for method chaining
+   */
+  globalRetry(options: RetryOptions): this {
+    if (!this.globalOptions) {
+      this.globalOptions = {};
+    }
+    this.globalOptions.retry = options;
+    return this;
+  }
 
   /**
    * Configure caching for the next method call
    * @returns ConfigurableProxy with cache settings
    */
   cache(options: CacheOptions | number): ConfigurableProxy<TService> {
+    const mergedOptions = { ...this.globalOptions };
+    mergedOptions.cache = this.normalizeCacheOptions(options);
     return new ConfigurableProxy<TService>(
       this.transport,
       this.definition,
       this.cacheManager,
       this.retryManager,
-      { cache: this.normalizeCacheOptions(options) }
+      mergedOptions
     );
   }
 
@@ -45,12 +71,14 @@ export class FluentInterface<TService = any> {
    * @returns ConfigurableProxy with retry settings
    */
   retry(options: RetryOptions | number): ConfigurableProxy<TService> {
+    const mergedOptions = { ...this.globalOptions };
+    mergedOptions.retry = this.normalizeRetryOptions(options);
     return new ConfigurableProxy<TService>(
       this.transport,
       this.definition,
       this.cacheManager,
       this.retryManager,
-      { retry: this.normalizeRetryOptions(options) }
+      mergedOptions
     );
   }
 
@@ -59,12 +87,13 @@ export class FluentInterface<TService = any> {
    * @returns ConfigurableProxy with dedupe settings
    */
   dedupe(key: string): ConfigurableProxy<TService> {
+    const mergedOptions = { ...this.globalOptions, dedupeKey: key };
     return new ConfigurableProxy<TService>(
       this.transport,
       this.definition,
       this.cacheManager,
       this.retryManager,
-      { dedupeKey: key }
+      mergedOptions
     );
   }
 
@@ -73,12 +102,13 @@ export class FluentInterface<TService = any> {
    * @returns ConfigurableProxy with timeout settings
    */
   timeout(ms: number): ConfigurableProxy<TService> {
+    const mergedOptions = { ...this.globalOptions, timeout: ms };
     return new ConfigurableProxy<TService>(
       this.transport,
       this.definition,
       this.cacheManager,
       this.retryManager,
-      { timeout: ms }
+      mergedOptions
     );
   }
 
@@ -87,12 +117,13 @@ export class FluentInterface<TService = any> {
    * @returns ConfigurableProxy with priority settings
    */
   priority(level: 'high' | 'normal' | 'low'): ConfigurableProxy<TService> {
+    const mergedOptions = { ...this.globalOptions, priority: level };
     return new ConfigurableProxy<TService>(
       this.transport,
       this.definition,
       this.cacheManager,
       this.retryManager,
-      { priority: level }
+      mergedOptions
     );
   }
 
@@ -101,12 +132,13 @@ export class FluentInterface<TService = any> {
    * @returns ConfigurableProxy with transform function
    */
   transform<TOut>(fn: (data: any) => TOut): ConfigurableProxy<TService> {
+    const mergedOptions = { ...this.globalOptions, transform: fn };
     return new ConfigurableProxy<TService>(
       this.transport,
       this.definition,
       this.cacheManager,
       this.retryManager,
-      { transform: fn }
+      mergedOptions
     );
   }
 
@@ -115,12 +147,13 @@ export class FluentInterface<TService = any> {
    * @returns ConfigurableProxy with validation function
    */
   validate(fn: (data: any) => boolean | Promise<boolean>): ConfigurableProxy<TService> {
+    const mergedOptions = { ...this.globalOptions, validate: fn };
     return new ConfigurableProxy<TService>(
       this.transport,
       this.definition,
       this.cacheManager,
       this.retryManager,
-      { validate: fn }
+      mergedOptions
     );
   }
 
@@ -129,12 +162,13 @@ export class FluentInterface<TService = any> {
    * @returns ConfigurableProxy with fallback data
    */
   fallback<T>(data: T): ConfigurableProxy<TService> {
+    const mergedOptions = { ...this.globalOptions, fallback: data };
     return new ConfigurableProxy<TService>(
       this.transport,
       this.definition,
       this.cacheManager,
       this.retryManager,
-      { fallback: data }
+      mergedOptions
     );
   }
 
@@ -143,12 +177,13 @@ export class FluentInterface<TService = any> {
    * @returns ConfigurableProxy with optimistic updater
    */
   optimistic<T>(updater: (current: T | undefined) => T): ConfigurableProxy<TService> {
+    const mergedOptions = { ...this.globalOptions, optimisticUpdate: updater };
     return new ConfigurableProxy<TService>(
       this.transport,
       this.definition,
       this.cacheManager,
       this.retryManager,
-      { optimisticUpdate: updater }
+      mergedOptions
     );
   }
 
@@ -157,12 +192,13 @@ export class FluentInterface<TService = any> {
    * @returns ConfigurableProxy with invalidation tags
    */
   invalidateOn(tags: string[]): ConfigurableProxy<TService> {
+    const mergedOptions = { ...this.globalOptions, invalidateTags: tags };
     return new ConfigurableProxy<TService>(
       this.transport,
       this.definition,
       this.cacheManager,
       this.retryManager,
-      { invalidateTags: tags }
+      mergedOptions
     );
   }
 
@@ -171,12 +207,13 @@ export class FluentInterface<TService = any> {
    * @returns ConfigurableProxy with background refetch interval
    */
   background(interval: number): ConfigurableProxy<TService> {
+    const mergedOptions = { ...this.globalOptions, backgroundRefetch: interval };
     return new ConfigurableProxy<TService>(
       this.transport,
       this.definition,
       this.cacheManager,
       this.retryManager,
-      { backgroundRefetch: interval }
+      mergedOptions
     );
   }
 
@@ -185,12 +222,13 @@ export class FluentInterface<TService = any> {
    * @returns ConfigurableProxy with metrics function
    */
   metrics(fn: (timing: { duration: number; cacheHit?: boolean }) => void): ConfigurableProxy<TService> {
+    const mergedOptions = { ...this.globalOptions, metrics: fn };
     return new ConfigurableProxy<TService>(
       this.transport,
       this.definition,
       this.cacheManager,
       this.retryManager,
-      { metrics: fn }
+      mergedOptions
     );
   }
 

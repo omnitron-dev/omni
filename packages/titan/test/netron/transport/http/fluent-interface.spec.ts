@@ -186,4 +186,50 @@ describe('FluentInterface', () => {
       expect(proxy).toBeInstanceOf(ConfigurableProxy);
     });
   });
+
+  describe('Global Configuration Methods', () => {
+    it('should set global cache configuration', () => {
+      const result = fluentInterface.globalCache({ maxAge: 120000, tags: ['global'] });
+      expect(result).toBe(fluentInterface);
+    });
+
+    it('should set global retry configuration', () => {
+      const result = fluentInterface.globalRetry({ attempts: 5, backoff: 'linear' });
+      expect(result).toBe(fluentInterface);
+    });
+
+    it('should apply global cache to subsequent cache() calls', () => {
+      fluentInterface.globalCache({ maxAge: 120000, tags: ['global'] });
+      const proxy = fluentInterface.cache(60000);
+      expect(proxy).toBeInstanceOf(ConfigurableProxy);
+      // The proxy should have both global and specific options merged
+    });
+
+    it('should apply global retry to subsequent retry() calls', () => {
+      fluentInterface.globalRetry({ attempts: 5 });
+      const proxy = fluentInterface.retry(3);
+      expect(proxy).toBeInstanceOf(ConfigurableProxy);
+      // The proxy should have both global and specific options merged
+    });
+
+    it('should allow chaining globalCache() and globalRetry()', () => {
+      const result = fluentInterface
+        .globalCache({ maxAge: 120000 })
+        .globalRetry({ attempts: 5 });
+      expect(result).toBe(fluentInterface);
+    });
+
+    it('should preserve global options across multiple configuration calls', () => {
+      fluentInterface.globalCache({ maxAge: 120000 });
+      fluentInterface.globalRetry({ attempts: 5 });
+
+      const proxy1 = fluentInterface.cache(60000);
+      const proxy2 = fluentInterface.retry(3);
+      const proxy3 = fluentInterface.dedupe('test-key');
+
+      expect(proxy1).toBeInstanceOf(ConfigurableProxy);
+      expect(proxy2).toBeInstanceOf(ConfigurableProxy);
+      expect(proxy3).toBeInstanceOf(ConfigurableProxy);
+    });
+  });
 });

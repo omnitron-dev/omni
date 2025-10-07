@@ -24,6 +24,12 @@ import {
   HttpResponseHints,
   createRequestMessage
 } from './types.js';
+import { HttpInterface } from './interface.js';
+import { FluentInterface } from './fluent-interface.js';
+import { HttpTransportClient } from './client.js';
+import { HttpCacheManager } from './cache-manager.js';
+import { RetryManager } from './retry-manager.js';
+import type { QueryOptions } from './query-builder.js';
 
 /**
  * HttpRemotePeer - Optimized HTTP peer without packet protocol
@@ -601,5 +607,99 @@ export class HttpRemotePeer extends AbstractPeer {
       );
       throw error;
     }
+  }
+
+  /**
+   * Create HttpInterface for call-based API (backward compatible)
+   *
+   * @template TService - Service interface type
+   * @param qualifiedName - Fully qualified service name (e.g., "UserService@1.0.0")
+   * @param options - Optional configuration (cache, retry managers, global options)
+   * @returns HttpInterface with call().execute() API
+   *
+   * @example
+   * ```typescript
+   * const userService = await peer.createHttpInterface<IUserService>('UserService@1.0.0', {
+   *   cache: new HttpCacheManager(),
+   *   retry: new RetryManager()
+   * });
+   *
+   * const user = await userService.call('getUser', 'user-123').cache(60000).execute();
+   * ```
+   */
+  async createHttpInterface<TService = any>(
+    qualifiedName: string,
+    options?: {
+      cache?: HttpCacheManager;
+      retry?: RetryManager;
+      globalOptions?: QueryOptions;
+    }
+  ): Promise<HttpInterface<TService>> {
+    // Get or fetch service definition
+    const definition = await this.queryInterfaceRemote(qualifiedName);
+
+    // Get or create HTTP transport client
+    const transport = this.getOrCreateHttpClient();
+
+    // Create HttpInterface
+    return new HttpInterface<TService>(
+      transport,
+      definition,
+      options
+    );
+  }
+
+  /**
+   * Create FluentInterface for natural method call API
+   *
+   * This is the recommended way to interact with HTTP services in Netron.
+   * Provides a natural, type-safe API that feels like calling local methods.
+   *
+   * @template TService - Service interface type
+   * @param qualifiedName - Fully qualified service name (e.g., "UserService@1.0.0")
+   * @param options - Optional configuration (cache, retry managers, global options)
+   * @returns FluentInterface with natural method call API
+   *
+   * @example
+   * ```typescript
+   * const userService = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
+   *   cache: new HttpCacheManager(),
+   *   retry: new RetryManager()
+   * });
+   *
+   * // Natural Netron-style method calls
+   * const user = await userService.cache(60000).retry(3).getUser('user-123');
+   * ```
+   */
+  async createFluentInterface<TService = any>(
+    qualifiedName: string,
+    options?: {
+      cache?: HttpCacheManager;
+      retry?: RetryManager;
+      globalOptions?: QueryOptions;
+    }
+  ): Promise<FluentInterface<TService>> {
+    // Get or fetch service definition
+    const definition = await this.queryInterfaceRemote(qualifiedName);
+
+    // Get or create HTTP transport client
+    const transport = this.getOrCreateHttpClient();
+
+    // Create FluentInterface
+    return new FluentInterface<TService>(
+      transport,
+      definition,
+      options?.cache,
+      options?.retry,
+      options?.globalOptions
+    );
+  }
+
+  /**
+   * Get or create HTTP transport client for this peer
+   */
+  private getOrCreateHttpClient(): HttpTransportClient {
+    // Create a new HttpTransportClient with the base URL
+    return new HttpTransportClient(this.baseUrl);
   }
 }

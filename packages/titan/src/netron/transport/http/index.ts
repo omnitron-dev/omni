@@ -13,6 +13,9 @@ export { HttpConnection } from './connection.js';
 
 // Enhanced client features
 export { HttpInterface as EnhancedHttpInterface } from './interface.js';
+export { FluentInterface } from './fluent-interface.js';
+export { ConfigurableProxy } from './configurable-proxy.js';
+export { QueryBuilder } from './query-builder.js';
 export { HttpTransportClient } from './client.js';
 export { HttpCacheManager } from './cache-manager.js';
 export { RetryManager } from './retry-manager.js';
@@ -36,6 +39,9 @@ export type {
   ConnectionState,
   ServerMetrics
 } from '../types.js';
+
+// Export query builder types
+export type { QueryOptions } from './query-builder.js';
 
 // Export advanced feature types
 export type { BatchOptions, BatchStatistics } from './request-batcher.js';

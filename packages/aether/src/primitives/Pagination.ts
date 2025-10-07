@@ -193,9 +193,7 @@ export const Pagination = defineComponent<PaginationProps>((props) => {
     props.onPageChange?.(page);
   };
 
-  const getPageNumbers = () => {
-    return generatePageNumbers(currentPage(), totalPages(), siblingCount(), showFirstLast());
-  };
+  const getPageNumbers = () => generatePageNumbers(currentPage(), totalPages(), siblingCount(), showFirstLast());
 
   const contextValue: PaginationContextValue = {
     currentPage,
@@ -232,8 +230,7 @@ export const Pagination = defineComponent<PaginationProps>((props) => {
 export const PaginationItems = defineComponent<PaginationItemsProps>((props) => {
   const ctx = useContext(PaginationContext);
 
-  const defaultRenderItem = (page: number, isCurrent: boolean) => {
-    return jsx('button', {
+  const defaultRenderItem = (page: number, isCurrent: boolean) => jsx('button', {
       'data-pagination-item': '',
       'data-current': isCurrent ? '' : undefined,
       'aria-current': isCurrent ? 'page' : undefined,
@@ -242,15 +239,12 @@ export const PaginationItems = defineComponent<PaginationItemsProps>((props) => 
       disabled: isCurrent,
       children: page,
     });
-  };
 
-  const defaultRenderEllipsis = () => {
-    return jsx('span', {
+  const defaultRenderEllipsis = () => jsx('span', {
       'data-pagination-ellipsis': '',
       'aria-hidden': 'true',
       children: '...',
     });
-  };
 
   return () => {
     const { renderItem = defaultRenderItem, renderEllipsis = defaultRenderEllipsis, ...restProps } = props;

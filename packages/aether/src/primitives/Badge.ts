@@ -48,12 +48,10 @@ export interface BadgeProps {
  * <Badge data-status="warning">Pending</Badge>
  * ```
  */
-export const Badge = defineComponent<BadgeProps>((props) => {
-  return () =>
+export const Badge = defineComponent<BadgeProps>((props) => () =>
     jsx('span', {
       ...props,
       'data-badge': '',
       role: 'status',
       'aria-live': 'polite',
-    });
-});
+    }));

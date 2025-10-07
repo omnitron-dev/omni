@@ -228,12 +228,10 @@ export const HoverCardTrigger = defineComponent<{ children: any; [key: string]: 
       ctx.close();
     };
 
-    onMount(() => {
-      return () => {
+    onMount(() => () => {
         if (openTimeoutId) clearTimeout(openTimeoutId);
         if (closeTimeoutId) clearTimeout(closeTimeoutId);
-      };
-    });
+      });
 
     return () =>
       jsx('a', {

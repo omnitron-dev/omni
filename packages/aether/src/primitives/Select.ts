@@ -321,14 +321,12 @@ export const SelectValue = defineComponent<SelectValueProps>((props) => {
 // Icon
 // ============================================================================
 
-export const SelectIcon = defineComponent<SelectIconProps>((props) => {
-  return () =>
+export const SelectIcon = defineComponent<SelectIconProps>((props) => () =>
     jsx('span', {
       ...props,
       'aria-hidden': 'true',
       children: props.children,
-    });
-});
+    }));
 
 // ============================================================================
 // Content
@@ -528,16 +526,14 @@ export const SelectContent = defineComponent<SelectContentProps>((props) => {
 // Viewport
 // ============================================================================
 
-export const SelectViewport = defineComponent<SelectViewportProps>((props) => {
-  return () =>
+export const SelectViewport = defineComponent<SelectViewportProps>((props) => () =>
     jsx('div', {
       ...props,
       style: {
         ...(typeof props.style === 'object' ? props.style : {}),
       },
       children: props.children,
-    });
-});
+    }));
 
 // ============================================================================
 // Item
@@ -621,26 +617,22 @@ export const SelectItem = defineComponent<SelectItemProps>((props) => {
 // ItemText
 // ============================================================================
 
-export const SelectItemText = defineComponent<SelectItemTextProps>((props) => {
-  return () =>
+export const SelectItemText = defineComponent<SelectItemTextProps>((props) => () =>
     jsx('span', {
       ...props,
       children: props.children,
-    });
-});
+    }));
 
 // ============================================================================
 // ItemIndicator
 // ============================================================================
 
-export const SelectItemIndicator = defineComponent<SelectItemIndicatorProps>((props) => {
-  return () =>
+export const SelectItemIndicator = defineComponent<SelectItemIndicatorProps>((props) => () =>
     jsx('span', {
       ...props,
       'data-item-indicator': 'true',
       children: props.children,
-    });
-});
+    }));
 
 // ============================================================================
 // Group

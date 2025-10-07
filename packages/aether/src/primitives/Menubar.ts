@@ -381,22 +381,17 @@ export const MenubarItem = defineComponent<MenubarItemProps>((props) => {
 /**
  * Menubar Separator
  */
-export const MenubarSeparator = defineComponent<MenubarSeparatorProps>((props) => {
-  return () => {
-    return jsx('div', {
+export const MenubarSeparator = defineComponent<MenubarSeparatorProps>((props) => () => jsx('div', {
       ...props,
       'data-menubar-separator': '',
       role: 'separator',
       'aria-orientation': 'horizontal',
-    });
-  };
-});
+    }));
 
 /**
  * Menubar Label
  */
-export const MenubarLabel = defineComponent<MenubarLabelProps>((props) => {
-  return () => {
+export const MenubarLabel = defineComponent<MenubarLabelProps>((props) => () => {
     const { children, ...restProps } = props;
 
     return jsx('div', {
@@ -404,14 +399,12 @@ export const MenubarLabel = defineComponent<MenubarLabelProps>((props) => {
       'data-menubar-label': '',
       children,
     });
-  };
-});
+  });
 
 /**
  * Menubar Shortcut
  */
-export const MenubarShortcut = defineComponent<MenubarShortcutProps>((props) => {
-  return () => {
+export const MenubarShortcut = defineComponent<MenubarShortcutProps>((props) => () => {
     const { children, ...restProps } = props;
 
     return jsx('span', {
@@ -420,8 +413,7 @@ export const MenubarShortcut = defineComponent<MenubarShortcutProps>((props) => 
       'aria-hidden': 'true',
       children,
     });
-  };
-});
+  });
 
 // Attach sub-components
 (Menubar as any).Menu = MenubarMenu;

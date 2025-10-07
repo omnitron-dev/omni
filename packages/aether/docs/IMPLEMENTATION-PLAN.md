@@ -883,14 +883,14 @@ _(Note: Phases 1-4 are completed. Below are the remaining phases.)_
 
 **Goal:** Headless, accessible UI components library
 
-**Status:** ✅ Completed - 32 production-ready primitives with full WAI-ARIA compliance
+**Status:** ✅ Completed - 36 production-ready primitives with full WAI-ARIA compliance
 
 **Final Deliverables:**
-- ✅ **32 production-ready primitives** in `@omnitron-dev/aether/primitives` (~178KB ESM bundle)
+- ✅ **36 production-ready primitives** in `@omnitron-dev/aether/primitives` (~187KB ESM bundle)
 - ✅ Full TypeScript support with comprehensive types
 - ✅ Complete accessibility utilities (focus, scroll, positioning, IDs)
 - ✅ Exported via package.json: `@omnitron-dev/aether/primitives`
-- ✅ **~9,300 lines** of production-ready primitive code
+- ✅ **~10,100 lines** of production-ready primitive code
 
 **Implementation Phases:**
 
@@ -979,6 +979,29 @@ Commit: (current)
 - ✅ **Menubar** (~450 lines, 8 sub-components) - Horizontal menu bar (desktop-style menus)
   - Multiple dropdown menus, keyboard navigation, positioning with collision detection
 
+#### Phase 8.6: Container & Navigation Primitives ✅ (4 primitives)
+Commit: (current)
+
+**Container Components:**
+- ✅ **Card** (~190 lines, 6 sub-components) - Versatile content container
+  - Card root, Header, Title, Description, Content, Footer
+  - Flexible composition for diverse use cases
+
+- ✅ **VisuallyHidden** (~75 lines) - Accessibility utility
+  - Hides content visually while keeping it accessible to screen readers
+  - CSS clip technique, maintains document flow, focusable when interactive
+
+**Navigation Components:**
+- ✅ **Breadcrumb** (~230 lines, 6 sub-components) - Navigation breadcrumbs
+  - Shows current page location in site hierarchy
+  - List, Item, Link, Page, Separator components
+  - ARIA navigation pattern with proper roles
+
+- ✅ **Toolbar** (~310 lines, 7 sub-components) - Button and control container
+  - Horizontal/vertical orientation with keyboard navigation
+  - Group, Button, Link, Separator, ToggleGroup, ToggleItem
+  - Arrow key navigation with optional looping, Home/End support
+
 **Accessibility Features (All Primitives):**
 - ✅ Full WAI-ARIA compliance
 - ✅ Keyboard navigation (arrows, Home/End, Enter/Space, ESC, Tab)
@@ -996,10 +1019,16 @@ Commit: (current)
 
 **Coverage Status:**
 
-**Implemented (32 primitives):**
+**Implemented (36 primitives):**
 ✅ **From Specification (22):** Dialog, Popover, Dropdown, Select, Tabs, Accordion, Radio Group, Checkbox, Slider, Toggle, Switch, Alert Dialog, Form, Tooltip, Separator, ContextMenu, HoverCard, Sheet, Avatar, Badge, Progress, Toast
 
-✅ **Additional Essential Primitives (10):** AspectRatio, Collapsible, Skeleton, Label, Input, Textarea, ScrollArea, Pagination, Menubar, (1 more TBD)
+✅ **Additional Essential Primitives (14):**
+- **Form primitives (3):** Label, Input, Textarea
+- **Layout primitives (2):** ScrollArea, AspectRatio
+- **Navigation primitives (3):** Pagination, Menubar, Breadcrumb
+- **Container primitives (2):** Card, Toolbar
+- **Utility primitives (3):** Collapsible, Skeleton, VisuallyHidden
+- **(1 more TBD)**
 
 **Not Implemented (4 specialized primitives - optional future additions):**
 - 🚧 **Combobox** - Searchable select with autocomplete, filtering, virtualization
@@ -1009,13 +1038,9 @@ Commit: (current)
 
 **Notes:**
 - Current set covers **100% of core primitives** from specification
-- Added **10 essential utility primitives** for complete developer toolkit:
-  - **Form primitives**: Label, Input, Textarea (basic form building blocks)
-  - **Layout primitives**: ScrollArea (custom scrollbars)
-  - **Navigation primitives**: Pagination, Menubar (page/menu navigation)
-  - **Utility primitives**: AspectRatio, Collapsible, Skeleton
+- Added **14 essential utility primitives** for complete developer toolkit
 - Remaining 4 primitives are highly specialized and can be added incrementally
-- All 32 implemented primitives are production-ready with full ARIA compliance
+- All 36 implemented primitives are production-ready with full ARIA compliance
 
 ---
 

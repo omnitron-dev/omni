@@ -77,9 +77,7 @@ export function createForm<T extends Record<string, any>>(config: FormConfig<T>)
 
   // Computed state
   const isValid = computed(() => Object.keys(errors()).length === 0);
-  const isDirty = computed(() => {
-    return JSON.stringify(values()) !== JSON.stringify(initialValues);
-  });
+  const isDirty = computed(() => JSON.stringify(values()) !== JSON.stringify(initialValues));
 
   /**
    * Validate a single field

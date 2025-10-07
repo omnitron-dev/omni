@@ -232,22 +232,16 @@ export const ScrollAreaScrollbar = defineComponent<ScrollAreaScrollbarProps>((pr
 
   const isVertical = () => props.orientation === 'vertical';
 
-  const scrollSize = computed(() => {
-    return isVertical() ? ctx.scrollHeight() : ctx.scrollWidth();
-  });
+  const scrollSize = computed(() => isVertical() ? ctx.scrollHeight() : ctx.scrollWidth());
 
-  const clientSize = computed(() => {
-    return isVertical() ? ctx.clientHeight() : ctx.clientWidth();
-  });
+  const clientSize = computed(() => isVertical() ? ctx.clientHeight() : ctx.clientWidth());
 
-  const scrollPosition = computed(() => {
-    return isVertical() ? ctx.scrollY() : ctx.scrollX();
-  });
+  const scrollPosition = computed(() => isVertical() ? ctx.scrollY() : ctx.scrollX());
 
-  const isVisible = computed(() => {
+  const isVisible = computed(() => 
     // Show scrollbar if content is scrollable
-    return scrollSize() > clientSize();
-  });
+     scrollSize() > clientSize()
+  );
 
   // Calculate thumb size (proportional to visible area)
   const thumbSize = computed(() => {

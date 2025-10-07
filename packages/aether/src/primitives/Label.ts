@@ -41,8 +41,7 @@ export interface LabelProps {
  * - ARIA associations via `for` attribute
  * - Works with any form control
  */
-export const Label = defineComponent<LabelProps>((props) => {
-  return () => {
+export const Label = defineComponent<LabelProps>((props) => () => {
     const { for: htmlFor, children, ...restProps } = props;
 
     return jsx('label', {
@@ -51,8 +50,7 @@ export const Label = defineComponent<LabelProps>((props) => {
       'data-label': '',
       children,
     });
-  };
-});
+  });
 
 // Attach sub-components for dot notation
 Label.displayName = 'Label';

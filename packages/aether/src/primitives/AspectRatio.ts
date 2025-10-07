@@ -63,8 +63,7 @@ export interface AspectRatioProps {
  * </AspectRatio>
  * ```
  */
-export const AspectRatio = defineComponent<AspectRatioProps>((props) => {
-  return () => {
+export const AspectRatio = defineComponent<AspectRatioProps>((props) => () => {
     const { ratio, children, style, ...restProps } = props;
 
     // Calculate padding-bottom percentage
@@ -98,5 +97,4 @@ export const AspectRatio = defineComponent<AspectRatioProps>((props) => {
         }),
       ],
     });
-  };
-});
+  });

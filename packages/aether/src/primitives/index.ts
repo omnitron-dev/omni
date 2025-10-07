@@ -406,6 +406,62 @@ export {
   type MenubarMenuContextValue,
 } from './Menubar.js';
 
+// VisuallyHidden
+export {
+  VisuallyHidden,
+  type VisuallyHiddenProps,
+} from './VisuallyHidden.js';
+
+// Card
+export {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+  type CardProps,
+  type CardHeaderProps,
+  type CardTitleProps,
+  type CardDescriptionProps,
+  type CardContentProps,
+  type CardFooterProps,
+} from './Card.js';
+
+// Breadcrumb
+export {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+  type BreadcrumbProps,
+  type BreadcrumbListProps,
+  type BreadcrumbItemProps,
+  type BreadcrumbLinkProps,
+  type BreadcrumbPageProps,
+  type BreadcrumbSeparatorProps,
+} from './Breadcrumb.js';
+
+// Toolbar
+export {
+  Toolbar,
+  ToolbarGroup,
+  ToolbarButton,
+  ToolbarLink,
+  ToolbarSeparator,
+  ToolbarToggleGroup,
+  ToolbarToggleItem,
+  type ToolbarProps,
+  type ToolbarGroupProps,
+  type ToolbarButtonProps,
+  type ToolbarLinkProps,
+  type ToolbarSeparatorProps,
+  type ToolbarToggleGroupProps,
+  type ToolbarToggleItemProps,
+} from './Toolbar.js';
+
 // Utilities
 export {
   // ID generation

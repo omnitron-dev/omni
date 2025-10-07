@@ -98,12 +98,10 @@ export const ErrorBoundary = defineComponent<ErrorBoundaryProps>((props) => {
   });
 
   // Reset error on cleanup
-  onMount(() => {
-    return () => {
+  onMount(() => () => {
       error.set(null);
       hasError.set(false);
-    };
-  });
+    });
 
   return () => {
     if (hasError()) {

@@ -134,7 +134,7 @@ export interface TooltipContextValue {
   disabled: boolean;
 }
 
-const noop = () => {};
+const noop = () => { };
 const noopGetter = () => false;
 
 export const TooltipContext = createContext<TooltipContextValue>(
@@ -199,7 +199,7 @@ export const Tooltip = defineComponent<TooltipProps>((props) => {
 /**
  * Tooltip Trigger component
  */
-export const TooltipTrigger = defineComponent<{ children: any; [key: string]: any }>(
+export const TooltipTrigger = defineComponent<{ children: any;[key: string]: any }>(
   (props) => {
     const ctx = useContext(TooltipContext);
     let openTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -241,11 +241,9 @@ export const TooltipTrigger = defineComponent<{ children: any; [key: string]: an
       ctx.close();
     };
 
-    onMount(() => {
-      return () => {
-        if (openTimeoutId) clearTimeout(openTimeoutId);
-        if (closeTimeoutId) clearTimeout(closeTimeoutId);
-      };
+    onMount(() => () => {
+      if (openTimeoutId) clearTimeout(openTimeoutId);
+      if (closeTimeoutId) clearTimeout(closeTimeoutId);
     });
 
     return () =>

@@ -669,28 +669,24 @@ export const DropdownMenuSeparator = defineComponent<DropdownMenuSeparatorProps>
 // ItemIndicator
 // ============================================================================
 
-export const DropdownMenuItemIndicator = defineComponent<DropdownMenuItemIndicatorProps>((props) => {
-  return () =>
+export const DropdownMenuItemIndicator = defineComponent<DropdownMenuItemIndicatorProps>((props) => () =>
     jsx('span', {
       ...props,
       'data-item-indicator': 'true',
       children: props.children,
-    });
-});
+    }));
 
 // ============================================================================
 // Shortcut
 // ============================================================================
 
-export const DropdownMenuShortcut = defineComponent<DropdownMenuShortcutProps>((props) => {
-  return () =>
+export const DropdownMenuShortcut = defineComponent<DropdownMenuShortcutProps>((props) => () =>
     jsx('span', {
       ...props,
       'data-shortcut': 'true',
       'aria-hidden': 'true',
       children: props.children,
-    });
-});
+    }));
 
 // ============================================================================
 // Sub-component Attachments

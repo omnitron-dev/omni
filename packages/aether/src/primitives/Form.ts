@@ -79,9 +79,7 @@ function useFormField(): FormFieldContextValue {
  *
  * Provides base context for form accessibility.
  */
-export const FormRoot = defineComponent<FormRootProps>((props) => {
-  return () => props.children;
-});
+export const FormRoot = defineComponent<FormRootProps>((props) => () => props.children);
 
 /**
  * FormField - Field wrapper with context

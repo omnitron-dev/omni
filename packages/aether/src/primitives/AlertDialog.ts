@@ -293,8 +293,7 @@ export const AlertDialogDescription = defineComponent<{ children: any; [key: str
  * AlertDialog Action component (confirm/primary action)
  */
 export const AlertDialogAction = defineComponent<{ children: any; [key: string]: any }>(
-  (props) => {
-    return () =>
+  (props) => () =>
       jsx('button', {
         ...props,
         type: 'button',
@@ -302,8 +301,7 @@ export const AlertDialogAction = defineComponent<{ children: any; [key: string]:
           props.onClick?.(e);
           // Don't auto-close, let user handle it via onClick
         },
-      });
-  }
+      })
 );
 
 /**

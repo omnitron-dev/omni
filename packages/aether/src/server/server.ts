@@ -109,9 +109,7 @@ export function createServer(config: ServerConfig): Server {
           port,
           hostname: host,
         },
-        async (request: Request) => {
-          return handleRequest(request);
-        }
+        async (request: Request) => handleRequest(request)
       );
 
       console.log(`✓ Server listening on http://${host}:${port}`);

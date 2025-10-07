@@ -75,8 +75,7 @@ export interface SkeletonProps {
  * </>
  * ```
  */
-export const Skeleton = defineComponent<SkeletonProps>((props) => {
-  return () => {
+export const Skeleton = defineComponent<SkeletonProps>((props) => () => {
     const { width, height, radius, animate = true, style, ...restProps } = props;
 
     return jsx('div', {
@@ -92,5 +91,4 @@ export const Skeleton = defineComponent<SkeletonProps>((props) => {
         borderRadius: typeof radius === 'number' ? `${radius}px` : radius || '4px',
       },
     });
-  };
-});
+  });

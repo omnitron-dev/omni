@@ -293,10 +293,8 @@ export function once<T extends Event>(
 export function compose<T extends Event>(
   modifiers: Array<(handler: (e: T) => void) => (e: T) => void>
 ): (handler: (e: T) => void) => (e: T) => void {
-  return (handler: (e: T) => void) => {
-    return modifiers.reduceRight(
+  return (handler: (e: T) => void) => modifiers.reduceRight(
       (acc, modifier) => modifier(acc),
       handler
     );
-  };
 }

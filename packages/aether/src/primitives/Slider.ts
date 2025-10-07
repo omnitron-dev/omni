@@ -222,9 +222,7 @@ export const Slider = defineComponent<SliderProps>((props) => {
     return ((value - minVal) / (maxVal - minVal)) * 100;
   };
 
-  const getThumbValue = (index: number): number => {
-    return valuesArray()[index] || min();
-  };
+  const getThumbValue = (index: number): number => valuesArray()[index] || min();
 
   const setThumbValue = (index: number, newValue: number, commit = false) => {
     const values = [...valuesArray()];

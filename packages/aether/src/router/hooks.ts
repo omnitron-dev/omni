@@ -48,9 +48,7 @@ export function useParams<T extends RouteParams = RouteParams>(): Computed<T> {
 export function useNavigate() {
   const router = getRouter();
 
-  return (to: string, options?: NavigationOptions) => {
-    return router.navigate(to, options);
-  };
+  return (to: string, options?: NavigationOptions) => router.navigate(to, options);
 }
 
 /**
@@ -83,9 +81,7 @@ export function useLocation() {
 export function useSearchParams(): Computed<URLSearchParams> {
   const location = useLocation();
 
-  return computed(() => {
-    return new URLSearchParams(location().search);
-  });
+  return computed(() => new URLSearchParams(location().search));
 }
 
 /**

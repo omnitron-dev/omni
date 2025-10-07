@@ -1,6 +1,5 @@
 import { Reference } from './reference.js';
 import { Definition } from './definition.js';
-import { ServiceStub } from './service-stub.js';
 import { StreamReference } from './stream-reference.js';
 
 /**
@@ -25,17 +24,6 @@ export const isServiceDefinition = (obj: any) => obj instanceof Definition;
  */
 export const isServiceReference = (obj: any) => obj instanceof Reference;
 
-/**
- * Validates if the provided object is an instance of the ServiceStub class.
- * This predicate function is used to identify service stubs in the Netron
- * service proxy system.
- *
- * @param {any} obj - The object to be evaluated for ServiceStub instance membership
- * @returns {boolean} Returns true if the object is a ServiceStub instance, false otherwise
- * @see ServiceStub
- */
-export const isServiceStub = (obj: any) => obj instanceof ServiceStub;
-
 // isNetronService and isNetronStream moved to utility files to break circular dependencies
 // They are re-exported below for backward compatibility
 
@@ -53,7 +41,6 @@ export const isNetronStreamReference = (obj: any) => obj instanceof StreamRefere
 // Re-export predicates from their source files to maintain API compatibility
 // This avoids circular dependencies in the module graph
 export { isNetronPeer } from './abstract-peer.js';
-export { isNetronOwnPeer } from './local-peer.js';
 
 // Re-export utility predicates to break circular dependencies
 // These predicates are used by interface.ts and other core files

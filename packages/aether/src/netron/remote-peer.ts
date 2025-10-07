@@ -6,11 +6,12 @@ import type { ILogger } from './logger.js';
 import { EventEmitter } from 'events';
 import { TimedMap } from '@omnitron-dev/common';
 
-import { Netron } from './netron.js';
+// Netron orchestrator removed - not used in browser client
+// import { Netron } from './netron.js';
 import { Interface } from './interface.js';
 import { Definition } from './definition.js';
 import { getQualifiedName } from './utils.js';
-import { ServiceStub } from './service-stub.js';
+// ServiceStub removed - browser client doesn't expose services
 import { AbstractPeer } from './abstract-peer.js';
 import { StreamReference } from './stream-reference.js';
 import { NetronReadableStream } from './readable-stream.js';
@@ -39,9 +40,7 @@ import {
   createStreamPacket,
 } from './packet/index.js';
 
-import { SERVICE_ANNOTATION } from './decorators.js';
-import type { ExtendedServiceMetadata } from './decorators.js';
-import type { ITransport } from './transport/types.js';
+import type { INetron } from './types.js';
 import type { AuthContext } from './auth/types.js';
 
 /**
@@ -86,9 +85,6 @@ export class RemotePeer extends AbstractPeer {
   /** Map of all definitions indexed by definition ID */
   public definitions = new Map<string, Definition>();
 
-  /** Map of transports associated with each service */
-  private serviceTransports = new Map<string, ITransport[]>();
-
   /** Authentication context for this peer */
   private authContext?: AuthContext;
 
@@ -98,13 +94,13 @@ export class RemotePeer extends AbstractPeer {
    *
    * @constructor
    * @param {any} socket - The socket connection to the remote peer (WebSocket or TransportAdapter)
-   * @param {Netron} netron - The Netron instance this peer belongs to
+   * @param {INetron} netron - The Netron instance this peer belongs to
    * @param {string} [id=""] - Optional unique identifier for the remote peer
    * @param {number} [requestTimeout] - Request timeout in milliseconds (overrides default)
    */
   constructor(
     private socket: any, // Can be WebSocket or TransportAdapter
-    netron: Netron,
+    netron: INetron,
     id: string = '',
     private requestTimeout?: number
   ) {
@@ -157,90 +153,19 @@ export class RemotePeer extends AbstractPeer {
   }
 
   /**
-   * Exposes a service to the remote peer.
-   * Validates the service metadata and creates necessary stubs.
-   *
-   * @async
-   * @param {any} instance - The service instance to expose
-   * @returns {Promise<Definition>} The service definition
-   * @throws {Error} If the service is invalid or already exposed
+   * REMOVED: exposeService() - Browser client doesn't expose services
+   * Stub implementation throws error
    */
-  async exposeService(instance: any) {
-    const meta = Reflect.getMetadata(SERVICE_ANNOTATION, instance.constructor) as ExtendedServiceMetadata;
-    if (!meta) {
-      throw new Error('Invalid service');
-    }
-
-    if (this.services.has(meta.name)) {
-      throw new Error(`Service already exposed: ${meta.name}`);
-    }
-
-    // If the service has transports configured, store them for later use
-    // Note: The application should decide when and how to use these transports
-    // We don't automatically start them here to avoid conflicts and allow flexibility
-    if (meta.transports && meta.transports.length > 0) {
-      this.logger.info(
-        {
-          serviceName: meta.name,
-          transportCount: meta.transports.length,
-          transports: meta.transports
-        },
-        'Service configured with transports'
-      );
-    }
-
-    const def = await this.runTask('expose_service', meta);
-
-    const stub = new ServiceStub(this.netron.peer, instance, meta);
-    this.netron.peer.stubs.set(def.id, stub);
-    this.netron.peer.serviceInstances.set(instance, stub);
-
-    // Store transport associations for this service (use _transports if available)
-    const extendedMeta = meta as any;
-    if (extendedMeta._transports) {
-      this.serviceTransports.set(meta.name, extendedMeta._transports);
-    }
-
-    return def;
+  async exposeService(_instance: any): Promise<Definition> {
+    throw new Error('exposeService() not supported in browser client - server-only functionality');
   }
 
   /**
-   * Unexposes a service from the remote peer.
-   * Cleans up associated interfaces and stubs.
-   *
-   * @async
-   * @param {string} serviceName - The name of the service to unexpose
-   * @returns {Promise<void>}
+   * REMOVED: unexposeService() - Browser client doesn't expose services
+   * Stub implementation throws error
    */
-  async unexposeService(serviceName: string) {
-    const defId = await this.runTask('unexpose_service', serviceName);
-
-    // Clean up interfaces
-    for (const i of this.interfaces.values()) {
-      if (i.instance.$def?.parentId === defId) {
-        this.releaseInterface(i.instance);
-      }
-    }
-
-    // Clean up stubs
-    const stub = this.netron.peer.stubs.get(defId);
-    if (stub) {
-      this.netron.peer.serviceInstances.delete(stub.instance);
-      this.netron.peer.stubs.delete(defId);
-    }
-
-    // Clean up transport associations for this service
-    const transports = this.serviceTransports.get(serviceName);
-    if (transports) {
-      this.logger.info(
-        {
-          serviceName,
-          transportCount: transports.length
-        },
-        'Cleaning up transport associations for service'
-      );
-      this.serviceTransports.delete(serviceName);
-    }
+  async unexposeService(_ctxId: string, _releaseOriginated?: boolean): Promise<void> {
+    throw new Error('unexposeService() not supported in browser client - server-only functionality');
   }
 
   /**

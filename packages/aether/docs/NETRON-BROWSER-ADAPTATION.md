@@ -3,7 +3,7 @@
 > **Спецификация**: Полный перенос Netron RPC из Titan в Aether с пошаговой адаптацией для браузера
 > **Версия**: 2.0.0 (CORRECTED)
 > **Дата**: 2025-10-07
-> **Статус**: ✅ Week 1 Completed - Ready for Week 2
+> **Статус**: ✅ Week 1 & Week 2 Completed - Ready for Week 3
 
 ---
 
@@ -1447,4 +1447,97 @@ describe('Error Handling', () => {
 - ✅ Полная структура идентична Titan
 
 **Next**: Week 2 - Remove server-only code
+
+## Week 2 Implementation Results ✅
+
+**Дата завершения**: 2025-10-07
+**Статус**: Полностью завершена
+
+### Выполненные задачи
+
+#### ✅ Day 1: Удаление серверных транспортов
+**Удалено**:
+- `transport/tcp-transport.ts` (11 KB)
+- `transport/unix-transport.ts` (10 KB)
+- `transport/websocket-transport.ts` (14 KB)
+- `transport/base-transport.ts` (10 KB)
+- `transport/transport-registry.ts` (5 KB)
+- `transport/http/http-transport.ts`
+- `transport/http/typed-server.ts`
+- `transport/transport-adapter.ts` (14 KB)
+
+**Адаптировано**:
+- `transport/index.ts` - оставлены только types, utils
+- `transport/http/index.ts` - удалены server exports
+
+**Итого удалено**: ~78 KB серверного кода
+
+#### ✅ Day 2: Удаление server orchestrator
+**Удалено**:
+- `netron.ts` (40 KB) - главный orchestrator
+- `local-peer.ts` (19 KB) - локальный peer
+- `service-stub.ts` (6 KB) - service stubs
+
+**Адаптировано**:
+- `remote-peer.ts`:
+  - Удалены методы `exposeService()` и `unexposeService()`
+  - Добавлены stub implementations (throw errors)
+  - Заменен тип `Netron` на `INetron`
+  - Удалены неиспользуемые imports (SERVICE_ANNOTATION, ExtendedServiceMetadata)
+  - Удалено свойство `serviceTransports`
+- `predicates.ts`:
+  - Удалена функция `isServiceStub()`
+  - Удален export `isNetronOwnPeer`
+- `index.ts` - удалены exports удалённых файлов
+
+**Итого удалено**: ~65 KB серверного кода
+
+#### ✅ Day 4-5: Удаление server-only core-tasks
+**Удалено**:
+- `core-tasks/expose-service.ts` (1.6 KB)
+- `core-tasks/unexpose-service.ts` (1.7 KB)
+
+**Сохранено для клиента**:
+- `authenticate.ts` - клиент отправляет auth
+- `emit.ts` - клиент может emit events
+- `query-interface.ts` - клиент запрашивает интерфейсы
+- `subscribe.ts` / `unsubscribe.ts` - клиент подписывается на события
+- `invalidate-cache.ts` - клиент может инвалидировать кеш
+- `unref-service.ts` - клиент освобождает ссылки
+
+**Итого удалено**: ~3 KB серверного кода
+
+#### ✅ Day 6: Удаление server-side auth
+**Удалено**:
+- `auth/authentication-manager.ts` (4 KB)
+- `auth/authorization-manager.ts` (8 KB)
+- `auth/policy-engine.ts` (13 KB)
+- `auth/built-in-policies.ts` (12 KB)
+
+**Адаптировано**:
+- `auth/index.ts` - оставлен только export types
+- `auth/types.ts` - сохранён (AuthContext нужен клиенту)
+
+**Итого удалено**: ~37 KB серверного кода
+
+### Week 2 Deliverables ✅
+- ✅ Удалено **17 server-only файлов** (~183 KB кода)
+- ✅ Адаптированы exports и imports
+- ✅ RemotePeer больше не expose services
+- ✅ Убраны все server-only core-tasks и auth
+- ✅ ESM Build успешен
+- ✅ Осталось только client-side код
+
+### Week 2 Statistics
+
+**Файлы**:
+- До Week 2: 73 файла
+- После Week 2: 56 файлов
+- Удалено: 17 файлов (-23%)
+
+**Код**:
+- Удалено: ~183 KB server-only code
+- Осталось: ~183 KB client code (оценка)
+
+**Next**: Week 3 - Create NetronClient API and browser tests
 

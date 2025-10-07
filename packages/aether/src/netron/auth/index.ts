@@ -1,10 +1,8 @@
 /**
- * Netron Authentication and Authorization Module
- * @module @omnitron-dev/titan/netron/auth
+ * Netron Authentication Module - Browser Client
+ * Only exports types needed by browser client
+ * @module @omnitron-dev/aether/netron/auth
  */
 
+// Export auth types (AuthContext, etc.)
 export * from './types.js';
-export * from './authentication-manager.js';
-export * from './authorization-manager.js';
-export * from './policy-engine.js';
-export * from './built-in-policies.js';

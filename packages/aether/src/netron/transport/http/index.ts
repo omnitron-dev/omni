@@ -1,13 +1,10 @@
 /**
- * HTTP Transport module for Netron v2.0
- * Provides native HTTP/REST transport with enhanced capabilities
+ * HTTP Transport module for Netron v2.0 - Browser Client
+ * Provides native HTTP/REST transport with enhanced client capabilities
+ * Server-only exports have been removed
  */
 
-// Core transport
-export { HttpTransport } from './http-transport.js';
-
-// Native implementations (v2.0)
-export { HttpServer as HttpNativeServer } from './server.js';
+// Native client implementations
 export { HttpRemotePeer } from './peer.js';
 export { HttpConnection } from './connection.js';
 
@@ -22,11 +19,10 @@ export { RequestBatcher } from './request-batcher.js';
 export { SubscriptionManager } from './subscription-manager.js';
 export { OptimisticUpdateManager } from './optimistic-update-manager.js';
 
-// Type safety enhancements
+// Type safety enhancements (client-side)
 export { TypedContract, TypedHttpClient, QueryBuilder, createTypedContract, createTypedClient } from './typed-contract.js';
 export { TypedMiddlewarePipeline, TypedMiddlewareFactory, createTypedPipeline } from './typed-middleware.js';
 export type { TypedMiddleware } from './typed-middleware.js';
-export { TypedHttpServer, ServerBuilder, createServer, createService } from './typed-server.js';
 
 // Message types
 export * from './types.js';
@@ -58,13 +54,6 @@ export type {
   TypedMetadata,
   MiddlewareConfig as TypedMiddlewareConfig
 } from './typed-middleware.js';
-export type {
-  ServiceImplementation,
-  ServiceContext,
-  ServerConfig,
-  ServiceRegistration,
-  RestRouteMapping
-} from './typed-server.js';
 
 // Export advanced feature types
 export type { BatchOptions, BatchStatistics } from './request-batcher.js';

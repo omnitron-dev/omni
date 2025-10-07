@@ -17,8 +17,7 @@ export * from './abstract-peer.js';
 // Interfaces and decorators
 export * from './interface.js';
 
-// Peer classes
-export * from './local-peer.js';
+// Peer classes (browser client only has remote peer)
 export * from './remote-peer.js';
 
 // Predicates - exported after all classes they depend on
@@ -30,13 +29,9 @@ export * from './readable-stream.js';
 
 // Other components
 export * from './task-manager.js';
-export * from './service-stub.js';
 
 // Packet system (includes serializer)
 export * from './packet/index.js';
-
-// Main Netron class
-export * from './netron.js';
 
 // Export decorators from decorators/core
 export { Service, Public, Method } from './decorators.js';

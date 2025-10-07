@@ -5,7 +5,7 @@
 Aether Framework is not just another JavaScript framework. It is a fundamental rethinking of what web application development should look like. Every architectural decision in Aether was made with three key principles in mind:
 
 1. **Minimalism** — Less code, fewer concepts, lower cognitive load
-2. **Performance** — Zero runtime overhead, maximum work at compile time
+2. **Performance** — Fine-grained reactivity, zero virtual DOM overhead
 3. **Type Safety** — TypeScript first, full type inference everywhere
 
 ## Problems with Modern Frameworks
@@ -21,7 +21,7 @@ function Counter() {
     document.title = `Count: ${count}`;
   }, [count]);
 
-  return <button onClick={() => count.set(count + 1)}>{count}</button>;
+  return <button onClick={() => setCount(count + 1)}>{count}</button>;
 }
 ```
 
@@ -84,7 +84,7 @@ export const Counter = defineComponent(() => {
   const count = signal(0);
 
   return () => (
-    <button on:click={() => count.update(n => n + 1)}>
+    <button onClick={() => count.set(count() + 1)}>
       {count()}
     </button>
   );
@@ -92,10 +92,10 @@ export const Counter = defineComponent(() => {
 ```
 
 **Benefits:**
-- No boilerplate (bundle: 1.2KB)
+- No boilerplate (bundle: ~6KB core)
 - Granular updates (only the button text)
 - Obvious reactivity
-- Compile-time optimizations
+- Standard TypeScript/JSX (no custom compiler)
 - TypeScript out of the box
 
 ## Principle 1: Minimalism
@@ -119,26 +119,35 @@ Code should do what you expect.
 ```typescript
 // ❌ Surprise: React useState
 const [count, setCount] = useState(0);
-count.set(count + 1); // Doesn't work in a loop!
+setCount(count + 1); // Doesn't work in a loop!
 
 // Why? Because setCount is asynchronous
 for (let i = 0; i < 3; i++) {
-  count.set(count + 1); // Always sets 1!
+  setCount(count + 1); // Always sets 1!
 }
 
 // ✅ No surprise: Aether signal
 const count = signal(0);
-count.update(n => n + 1); // Synchronous, works everywhere
+count.set(count() + 1); // Synchronous, works everywhere
 
 for (let i = 0; i < 3; i++) {
-  count.update(n => n + 1); // Correctly increments
+  count.set(count() + 1); // Correctly increments
 }
 ```
 
-### 1.3 Fewer Syntactic Constructs
+### 1.3 Standard TypeScript JSX, Not Custom Syntax
 
-```html
-<!-- ❌ Verbose: React -->
+**Architectural Decision**: Aether uses **standard TypeScript JSX** with **strategic utility functions**, not a custom compiler or template syntax.
+
+**Why?**
+- **Error Resistance**: TypeScript catches all errors at compile time
+- **Intuitiveness**: If you know JSX, you know Aether
+- **Unlimited Possibilities**: Full JavaScript power in templates
+- **Ecosystem Integration**: Works with all TypeScript/JSX tools
+- **Implementation Cost**: ~500 lines of utilities vs 15-25K lines for a compiler
+
+```typescript
+// ❌ Verbose: React conditional rendering
 {isLoggedIn ? (
   isAdmin ? (
     <AdminDashboard />
@@ -149,69 +158,23 @@ for (let i = 0; i < 3; i++) {
   <LoginForm />
 )}
 
-<!-- ✅ Declarative: Aether -->
-<div nx:if={isLoggedIn() && isAdmin()}>
+// ✅ Clean: Aether with Show component
+import { Show } from 'aether';
+
+<Show when={isLoggedIn() && isAdmin()}>
   <AdminDashboard />
-</div>
-<div nx:else-if={isLoggedIn()}>
+</Show>
+<Show when={isLoggedIn() && !isAdmin()}>
   <UserDashboard />
-</div>
-<div nx:else>
+</Show>
+<Show when={!isLoggedIn()}>
   <LoginForm />
-</div>
+</Show>
 ```
 
 ## Principle 2: Performance
 
-### 2.1 Compile-Time > Runtime
-
-Shift as much work as possible to compile time.
-
-```html
-<!-- Source -->
-<div class="container">
-  <h1>{title()}</h1>
-  <p nx:if={show()}>{content()}</p>
-</div>
-
-<!-- Compiled (simplified) -->
-function render() {
-  const div = el('div', { class: 'container' });
-  const h1 = el('h1');
-  const h1Text = text();
-  h1.append(h1Text);
-  div.append(h1);
-
-  let p, pText;
-
-  effect(() => h1Text.data = title());
-
-  effect(() => {
-    if (show()) {
-      if (!p) {
-        p = el('p');
-        pText = text();
-        p.append(pText);
-        div.append(p);
-      }
-      pText.data = content();
-    } else if (p) {
-      p.remove();
-      p = pText = null;
-    }
-  });
-
-  return div;
-}
-```
-
-**Result:**
-- Only the necessary code
-- No template interpretation at runtime
-- No Virtual DOM diffing
-- Direct DOM operations
-
-### 2.2 Fine-Grained Reactivity
+### 2.1 Fine-Grained Reactivity
 
 Virtual DOM frameworks re-render the entire component. Aether updates only the changed nodes.
 
@@ -235,13 +198,13 @@ When `firstName()` changes:
 - **React/Vue**: Re-render the entire component (3 spans)
 - **Aether**: Update only the first text node
 
-### 2.3 Zero Runtime Overhead
+### 2.2 Zero Virtual DOM Overhead
 
 ```typescript
 // Bundle size comparison (gzipped)
 {
   "Hello World": {
-    "Aether": "1.2KB",   // runtime + component
+    "Aether": "~6KB",   // runtime + component
     "Qwik": "1KB",
     "Svelte": "2KB",
     "SolidJS": "7KB",
@@ -251,66 +214,35 @@ When `firstName()` changes:
 }
 ```
 
-### 2.4 Islands Architecture
+### 2.3 Direct DOM Updates
 
-Static content does not require JavaScript.
-
-```typescript
-// routes/blog/[slug].tsx
-import { defineComponent } from 'aether';
-
-export const mode = 'static'; // 0KB JavaScript!
-
-export default defineComponent<{ post: BlogPost }>((props) => {
-  return () => (
-    <article>
-      <h1>{props.post.title}</h1>
-      <div>{props.post.content}</div>
-    </article>
-  );
-});
-```
-
-Interactivity only where needed:
+Aether's reactivity compiles to direct DOM operations:
 
 ```typescript
-import { defineComponent, signal } from 'aether';
-
-export const mode = 'visible'; // JS loads when visible
-
-export const CommentsSection = defineComponent(() => {
-  const comments = signal([]);
-
-  return () => <CommentSection comments={comments()} />;
+// Source
+const count = signal(0);
+effect(() => {
+  textNode.data = `Count: ${count()}`;
 });
+
+// No virtual DOM diffing
+// No reconciliation
+// Just direct property updates
 ```
 
-### 2.5 Resumability vs Hydration
+### 2.4 Automatic Batching
 
-**Traditional SSR:**
-```
-Server: Render HTML (1MB)
-  ↓
-Client: Download HTML
-  ↓
-Client: Download JS bundle (200KB)
-  ↓
-Client: Parse & Execute JS (300ms)
-  ↓
-Client: Hydrate (re-execute all components) (200ms)
-  ↓
-Interactive (Total: ~500ms)
-```
+Multiple signal updates are automatically batched:
 
-**Aether Resumable:**
-```
-Server: Render HTML + serialize state (1MB + 2KB)
-  ↓
-Client: Download HTML
-  ↓
-Interactive (Total: ~30ms)
-  ↓
-(JS loads only upon interaction)
+```typescript
+import { batch } from 'aether';
+
+batch(() => {
+  firstName.set('Jane');
+  lastName.set('Smith');
+  age.set(30);
+});
+// Only one render cycle, not three
 ```
 
 ## Principle 3: Type Safety
@@ -321,15 +253,15 @@ Aether is written in TypeScript and designed with type safety in mind.
 
 ```typescript
 // Automatic type inference
-const count = signal(0);        // Signal<number>
-const name = signal('John');    // Signal<string>
+const count = signal(0);        // WritableSignal<number>
+const name = signal('John');    // WritableSignal<string>
 const user = signal<User | null>(null); // Explicit type
 
 // Computed inherits types
-const doubled = computed(() => count() * 2); // Computed<number>
+const doubled = computed(() => count() * 2); // ComputedSignal<number>
 const greeting = computed(() =>
   `Hello, ${name()}`
-); // Computed<string>
+); // ComputedSignal<string>
 
 // Effect is typed
 effect(() => {
@@ -348,6 +280,7 @@ interface ButtonProps {
   size?: 'sm' | 'md' | 'lg';
   disabled?: boolean;
   onClick?: (event: MouseEvent) => void;
+  children?: any;
 }
 
 const Button = defineComponent<ButtonProps>((props) => {
@@ -361,11 +294,11 @@ const Button = defineComponent<ButtonProps>((props) => {
 
   return () => (
     <button
-      class={`btn-${props.variant} btn-${size()}`}
+      className={`btn-${props.variant} btn-${size()}`}
       disabled={disabled()}
-      on:click={props.onClick}
+      onClick={props.onClick}
     >
-      <slot />
+      {props.children}
     </button>
   );
 });
@@ -374,38 +307,36 @@ const Button = defineComponent<ButtonProps>((props) => {
 ### 3.3 Typed Routes
 
 ```typescript
-// Generated route types
-import type { Routes } from '.nexus/routes';
+// Type-safe navigation with router
+import { useRouter } from 'aether/router';
 
-// Type-safe navigation
-navigate('/blog/:slug', {
-  params: { slug: 'my-post' }
-}); // ✅
+const router = useRouter();
 
-navigate('/blog/:id', {
-  params: { id: 123 }
-}); // ❌ TS Error: Route doesn't exist
+// Navigate with type checking
+router.navigate('/blog/my-post');
 
 // Type-safe loader data
-export const load = loader<{ post: BlogPost }>(async ({ params }) => {
+export const loader = async ({ params }: { params: { slug: string } }) => {
   const post = await fetchPost(params.slug); // params.slug: string
   return { post };
-});
+};
 
-const { post } = useLoaderData(); // post: Signal<BlogPost>
+const loaderData = useLoaderData(); // Typed based on loader return
 ```
 
-### 3.4 Service Injection
+### 3.4 Service Injection (with Titan Integration)
 
 ```typescript
-// Type-safe DI
+// Type-safe DI from Titan backend
+import { Injectable } from '@omnitron-dev/titan';
+
 @Injectable()
 class UserService {
   async findAll(): Promise<User[]> { /*...*/ }
   async findOne(id: number): Promise<User> { /*...*/ }
 }
 
-// Usage
+// Usage in frontend (via Netron RPC)
 const userService = inject(UserService); // Type: UserService
 
 const users = await userService.findAll(); // Type: User[]
@@ -436,7 +367,7 @@ const Counter = defineComponent(() => {
 "Objects are not valid as a React child (found: object with keys {name, age})"
 // Where? Why? How to fix?
 
-// ✅ (Aether)
+// ✅ Aether
 "Cannot interpolate object directly. Did you forget to access a property?
 
   Component: UserCard.tsx:15:8
@@ -454,113 +385,25 @@ npx create-aether my-app
 # Everything is preconfigured:
 # - TypeScript
 # - File-based routing
-# - SSR
+# - SSR (via Titan integration)
 # - HMR
 # - Build optimization
 ```
 
 ### 4.4 IDE Integration
 
-The VS Code extension provides:
+Standard TypeScript/JSX provides excellent IDE support:
 - Syntax highlighting for TypeScript/JSX
-- IntelliSense for components and directives
+- IntelliSense for components and props
 - Type checking
 - Auto-imports
 - Refactoring tools
 - Go to definition
 - Find all references
 
-## Principle 5: Progressive Enhancement
+## Principle 5: Composition Over Inheritance
 
-### 5.1 Static First
-
-By default everything is static. JavaScript is added only explicitly.
-
-```typescript
-// Static component
-interface ArticleProps {
-  title: string;
-  content: string;
-}
-
-const Article = defineComponent<ArticleProps>((props) => {
-  return () => (
-    <article>
-      <h1>{props.title}</h1>
-      <p>{props.content}</p>
-    </article>
-  );
-});
-
-// Result: Pure HTML, 0KB JavaScript
-```
-
-### 5.2 Gradual Interactivity
-
-```typescript
-// Adding interactivity
-import { defineComponent, signal } from 'aether';
-
-export const mode = 'visible'; // JS loads when visible
-
-interface InteractiveArticleProps {
-  title: string;
-  content: string;
-}
-
-const InteractiveArticle = defineComponent<InteractiveArticleProps>((props) => {
-  const likes = signal(0);
-
-  return () => (
-    <article>
-      <h1>{props.title}</h1>
-      <p>{props.content}</p>
-
-      {/* Only this button is interactive */}
-      <button on:click={() => likes.update(n => n + 1)}>
-        ❤️ {likes()}
-      </button>
-    </article>
-  );
-});
-```
-
-### 5.3 Works without JavaScript
-
-Critical functionality should work without JS:
-
-```typescript
-// The form works with and without JS
-import { defineComponent, onMount } from 'aether';
-
-const SubscribeForm = defineComponent(() => {
-  let formRef: HTMLFormElement;
-
-  onMount(() => {
-    if (import.meta.env.CLIENT) {
-      enhanceForm(formRef, {
-        onSubmit: async (data) => {
-          await fetch('/api/subscribe', {
-            method: 'POST',
-            body: JSON.stringify(data)
-          });
-        }
-      });
-    }
-  });
-
-  return () => (
-    <form ref={formRef} action="/api/subscribe" method="POST">
-      <input type="email" name="email" required />
-      <button type="submit">Subscribe</button>
-    </form>
-  );
-});
-```
-
-## Principle 6: Composition Over Inheritance
-
-### 6.1 Components as Functions
+### 5.1 Components as Functions
 
 ```typescript
 // ❌ Inheritance (Angular, old Vue)
@@ -575,7 +418,7 @@ class MyComponent extends BaseComponent {
   }
 }
 
-// ✅ Composition ((Aether))
+// ✅ Composition (Aether)
 function useFeature() {
   const data = signal([]);
 
@@ -586,43 +429,56 @@ function useFeature() {
   return { data };
 }
 
-// Usage
-const feature = useFeature();
+// Usage in component
+const MyComponent = defineComponent(() => {
+  const feature = useFeature();
+
+  return () => <div>{feature.data()}</div>;
+});
 ```
 
-### 6.2 Slots for Composition
+### 5.2 Children Pattern for Composition
+
+Aether uses standard `props.children` pattern instead of slots:
 
 ```typescript
 // Card.tsx
 import { defineComponent } from 'aether';
 
-const Card = defineComponent(() => {
+interface CardProps {
+  header?: any;
+  footer?: any;
+  children?: any;
+}
+
+const Card = defineComponent<CardProps>((props) => {
   return () => (
-    <div class="card">
-      <div class="card-header">
-        <slot name="header" />
+    <div className="card">
+      {props.header && (
+        <div className="card-header">{props.header}</div>
+      )}
+      <div className="card-body">
+        {props.children}
       </div>
-      <div class="card-body">
-        <slot />
-      </div>
-      <div class="card-footer">
-        <slot name="footer" />
-      </div>
+      {props.footer && (
+        <div className="card-footer">{props.footer}</div>
+      )}
     </div>
   );
 });
 
 // Usage
-<Card>
-  <h2 slot="header">Title</h2>
+<Card
+  header={<h2>Title</h2>}
+  footer={<button>Action</button>}
+>
   <p>Content</p>
-  <button slot="footer">Action</button>
 </Card>
 ```
 
-## Principle 7: Explicit Over Implicit
+## Principle 6: Explicit Over Implicit
 
-### 7.1 Explicit Reactivity
+### 6.1 Explicit Reactivity
 
 ```typescript
 // ✅ Aether — explicitly reactive
@@ -630,7 +486,7 @@ const count = signal(0);
 const doubled = computed(() => count() * 2);
 
 effect(() => {
-  console.log(count()); // Explicit subscription
+  console.log(count()); // Explicit subscription via ()
 });
 
 // ❌ Vue — implicit reactivity via Proxy
@@ -641,7 +497,7 @@ watch(() => {
 });
 ```
 
-### 7.2 Explicit Dependencies
+### 6.2 Explicit Dependencies
 
 ```typescript
 // ✅ Aether — dependencies are tracked automatically
@@ -655,9 +511,9 @@ const fullName = useMemo(() => {
 }, [firstName, lastName]); // Easy to forget!
 ```
 
-## Principle 8: Conventions over Configuration
+## Principle 7: Conventions over Configuration
 
-### 8.1 File-Based Routing
+### 7.1 File-Based Routing
 
 ```
 routes/
@@ -669,7 +525,7 @@ routes/
 
 No routing configuration is required.
 
-### 8.2 Automatic Code Splitting
+### 7.2 Automatic Code Splitting
 
 ```typescript
 // routes/dashboard.tsx
@@ -681,97 +537,332 @@ No routing configuration is required.
 // No configuration needed!
 ```
 
-### 8.3 Standard Structure
+### 7.3 Standard Structure
 
 ```
 my-app/
   src/
     routes/      # Routes
     components/  # Components
-    services/    # Services
+    services/    # Services (Titan integration)
     stores/      # Stores
     lib/         # Utilities
 ```
 
-## Principle 9: Full-Stack Coherence
+## Principle 8: Utility-Based Enhancement
 
-### 9.1 One Language
+Aether provides **strategic utilities** instead of custom compiler directives:
+
+### 8.1 Event Utilities
+
+```typescript
+import { prevent, stop, throttle, debounce, compose } from 'aether/utils';
+
+// Prevent default
+<form onSubmit={prevent(() => handleSubmit())}>
+
+// Stop propagation
+<div onClick={stop(() => handleClick())}>
+
+// Debounced input
+<input onInput={debounce((e) => search(e.target.value), 300)} />
+
+// Throttled scroll
+<div onScroll={throttle(() => handleScroll(), 100)} />
+
+// Composed handlers
+<button onClick={compose(prevent, stop, () => handleClick())} />
+```
+
+### 8.2 Binding Utilities
+
+```typescript
+import { bindValue, bindChecked, bindNumber } from 'aether/utils';
+
+const name = signal('');
+const age = signal(0);
+const agreed = signal(false);
+
+// Two-way binding for text input
+<input type="text" {...bindValue(name)} />
+
+// Two-way binding for number input
+<input type="number" {...bindNumber(age)} />
+
+// Two-way binding for checkbox
+<input type="checkbox" {...bindChecked(agreed)} />
+```
+
+### 8.3 Class Utilities
+
+```typescript
+import { classes, classNames, variantClasses } from 'aether/utils';
+
+// Conditional classes
+<div className={classes({
+  'active': isActive(),
+  'disabled': isDisabled(),
+  'loading': isLoading()
+})} />
+
+// Class names array
+<div className={classNames('btn', 'btn-primary', size())} />
+
+// Variant-based classes
+<button className={variantClasses('btn', {
+  primary: 'btn-primary',
+  secondary: 'btn-secondary',
+  sm: 'btn-sm',
+  md: 'btn-md',
+}, [variant, size])} />
+```
+
+### 8.4 Style Utilities
+
+```typescript
+import { styles, cssVar, flexStyles, gridStyles } from 'aether/utils';
+
+// Dynamic styles object
+<div style={styles({
+  color: textColor(),
+  fontSize: `${size()}px`,
+  display: visible() ? 'block' : 'none'
+})} />
+
+// CSS variables
+<div style={cssVar({
+  'primary-color': '#3b82f6',
+  'spacing': '1rem'
+})} />
+
+// Flex utilities
+<div style={flexStyles({
+  direction: 'row',
+  justify: 'center',
+  align: 'center',
+  gap: '1rem'
+})} />
+
+// Grid utilities
+<div style={gridStyles({
+  columns: 3,
+  gap: '1rem',
+  autoFlow: 'dense'
+})} />
+```
+
+### 8.5 Custom Directives
+
+```typescript
+import { createDirective } from 'aether/utils';
+
+// Create custom directive
+const clickOutside = createDirective((el, handler) => {
+  const handleClick = (e: Event) => {
+    if (!el.contains(e.target as Node)) {
+      handler();
+    }
+  };
+
+  document.addEventListener('click', handleClick);
+
+  return () => {
+    document.removeEventListener('click', handleClick);
+  };
+});
+
+// Usage with ref
+const handleClickOutside = () => {
+  console.log('Clicked outside!');
+};
+
+<div ref={(el) => clickOutside(el, handleClickOutside)}>
+  Content
+</div>
+```
+
+## Principle 9: Control Flow Components
+
+Aether uses **components** for control flow, not custom syntax:
+
+### 9.1 Show Component
+
+```typescript
+import { Show } from 'aether';
+
+// Conditional rendering
+<Show when={isLoggedIn()}>
+  <Dashboard />
+</Show>
+
+// With fallback
+<Show when={user()} fallback={<Loading />}>
+  {(u) => <UserProfile user={u} />}
+</Show>
+```
+
+### 9.2 For Component
+
+```typescript
+import { For } from 'aether';
+
+// List rendering
+<For each={items()}>
+  {(item, index) => (
+    <div key={item.id}>
+      {index()}: {item.name}
+    </div>
+  )}
+</For>
+```
+
+### 9.3 Switch Component
+
+```typescript
+import { Switch, Match } from 'aether';
+
+// Switch/case rendering
+<Switch fallback={<NotFound />}>
+  <Match when={status() === 'loading'}>
+    <Loading />
+  </Match>
+  <Match when={status() === 'error'}>
+    <Error />
+  </Match>
+  <Match when={status() === 'success'}>
+    <Success />
+  </Match>
+</Switch>
+```
+
+### 9.4 Portal Component
+
+```typescript
+import { Portal } from 'aether';
+
+// Render to different DOM location
+<Portal mount={document.body}>
+  <Modal />
+</Portal>
+```
+
+### 9.5 Suspense Component
+
+```typescript
+import { Suspense } from 'aether';
+
+// Async boundary
+<Suspense fallback={<Loading />}>
+  <AsyncComponent />
+</Suspense>
+```
+
+## Principle 10: Full-Stack Coherence (Titan Integration)
+
+### 10.1 One Language
 
 TypeScript everywhere — frontend, backend, configuration, tests.
 
-### 9.2 Shared Code
+### 10.2 Shared Services via Netron RPC
 
 ```typescript
-// services/user.service.ts — used everywhere!
-
+// Backend service (Titan)
 @Injectable()
 @Service('users@1.0.0')
 export class UserService {
-  // Backend: database access
   async findAll(): Promise<User[]> {
     return this.db.query('SELECT * FROM users');
   }
 }
 
-// Frontend — automatic RPC
-const users = await inject(UserService).findAll();
+// Frontend — automatic RPC via Netron
+import { inject } from 'aether/di';
+
+const MyComponent = defineComponent(() => {
+  const userService = inject(UserService);
+  const users = signal<User[]>([]);
+
+  onMount(async () => {
+    const data = await userService.findAll(); // RPC call
+    users.set(data);
+  });
+
+  return () => (
+    <For each={users()}>
+      {(user) => <div>{user.name}</div>}
+    </For>
+  );
+});
 ```
 
-### 9.3 Type-Safe Communication
+### 10.3 Type-Safe Communication
 
 ```typescript
 // Types are automatically synchronized
 // Backend changed a type → Frontend gets TS errors
 ```
 
-## Principle 10: Evolution without Breaking Changes
+### 10.4 SSR Integration
 
-### 10.1 Backward Compatibility
+Aether's server module integrates seamlessly with Titan:
+
+```typescript
+import { createServer } from 'aether/server';
+
+const server = createServer({
+  routes: [...],
+  mode: 'ssr', // or 'ssg'
+  port: 3000,
+});
+
+await server.listen();
+```
+
+## Principle 11: Evolution without Breaking Changes
+
+### 11.1 Backward Compatibility
 
 New features are added as opt-in, without breaking existing code.
 
-### 10.2 Deprecation Warnings
+### 11.2 Deprecation Warnings
 
 ```typescript
-// Old API
-signal.value = 5; // Warning: Use signal(5) instead. Will be removed in v2.0
+// Deprecated API
+// Warning: This API is deprecated. Use signal.set() instead. Will be removed in v2.0
+signal.value = 5;
 
-// New API
-signal(5);
+// Current API
+signal.set(5);
 ```
 
-### 10.3 Migration Codemods
+### 11.3 Migration Support
 
-```bash
-nx migrate v1-to-v2
-# Automatic codebase migration
-```
+Clear migration guides and codemods for major version upgrades.
 
-## Philosophical Conclusion
+## Architectural Philosophy Conclusion
 
 Aether is the answer to the question: "What would a frontend framework look like if it were designed from scratch with the lessons of the last 10 years in mind?"
 
 We took the best of:
 - **React**: Component model and unidirectional data flow
-- **Vue**: Intuitive template syntax
-- **Svelte**: Compile-time optimizations
 - **SolidJS**: Fine-grained reactivity
-- **Qwik**: Resumability
-- **Angular**: Dependency Injection and modular architecture
-- **Astro**: Islands Architecture
+- **TypeScript**: First-class type safety
+- **Standard JSX**: No custom compiler needed
+- **Titan**: Full-stack TypeScript with DI and RPC
 
 And discarded the worst:
 - Virtual DOM overhead
-- Runtime reactivity systems
-- Boilerplate code
+- Custom template syntax
+- Complex build tooling
 - Magical implicit behavior
-- The need for manual optimizations
+- Manual optimizations
 
 The result is a framework that is:
-- **Minimal**: Less code, fewer concepts
-- **Fast**: ~1KB runtime, ~30ms TTI
+- **Minimal**: ~6KB core runtime, fewer concepts
+- **Fast**: Fine-grained reactivity, zero VDOM overhead
 - **Type-safe**: TypeScript everywhere
-- **Convenient**: Excellent DX out of the box
-- **Powerful**: Full-stack integration with Titan
+- **Standard**: Pure TypeScript/JSX, no custom compiler
+- **Integrated**: Seamless Titan backend integration
+- **Developer-Friendly**: Excellent DX out of the box
 
-**Aether is not a compromise. It is a synthesis of the best ideas.**
+**Aether is not a compromise. It is a synthesis of the best ideas, implemented with pragmatic architectural choices.**

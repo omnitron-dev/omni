@@ -1,0 +1,52 @@
+{
+  "name": "@omnitron-dev/aether-babel-plugin",
+  "version": "0.1.0",
+  "description": "Optional Babel plugin for compile-time optimizations in Aether applications",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "dev": "tsc --watch",
+    "lint": "eslint src tests --ext .ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "aether",
+    "babel",
+    "plugin",
+    "optimization",
+    "compiler",
+    "jsx",
+    "template"
+  ],
+  "author": "Omnitron Dev",
+  "license": "MIT",
+  "peerDependencies": {
+    "@babel/core": "^7.0.0"
+  },
+  "dependencies": {
+    "@babel/types": "^7.23.0",
+    "@babel/template": "^7.23.0",
+    "@babel/traverse": "^7.23.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.23.0",
+    "@babel/preset-typescript": "^7.23.0",
+    "@types/babel__core": "^7.20.0",
+    "@types/babel__traverse": "^7.20.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.3",
+    "jest": "^30.0.0",
+    "@types/jest": "^30.0.0",
+    "ts-jest": "^30.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/omnitron-dev/omni",
+    "directory": "packages/aether-babel-plugin"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -7,25 +7,14 @@ import { ValidationOptions } from './validation-engine.js';
 
 /**
  * HTTP-specific options for method contracts
+ * Simplified for RPC-style invocation without REST routing
  */
 export interface HttpMethodOptions {
-  /** HTTP method (defaults to POST for RPC-style calls) */
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
-
-  /** Path pattern with parameters (defaults to /rpc/{methodName}) */
-  path?: string; // e.g., '/users/:id' or '/api/v1/users/{id}'
-
-  /** Request parsing */
-  query?: z.ZodSchema<any>;     // URL query parameters
-  params?: z.ZodSchema<any>;    // URL path parameters
-  headers?: z.ZodSchema<any>;   // Request headers validation
-  cookies?: z.ZodSchema<any>;   // Cookie validation
-
   /** Response configuration */
   responseHeaders?: Record<string, string>;
   contentType?: string;
   status?: number; // HTTP status code for success (default 200)
-  streaming?: boolean; // Enable streaming response
+  streaming?: boolean; // Enable streaming response (SSE, WebSocket, etc.)
 
   /** OpenAPI documentation metadata */
   openapi?: {
@@ -73,7 +62,7 @@ export class Contract<T extends ContractDefinition = ContractDefinition> {
   constructor(
     public readonly definition: T,
     public readonly metadata: ContractMetadata = {}
-  ) {}
+  ) { }
 
   /**
    * Check if contract has a method
@@ -155,8 +144,8 @@ export namespace ContractTypes {
    */
   export type Errors<T extends MethodContract> = T['errors'] extends Record<number, z.ZodSchema<any>>
     ? {
-        [K in keyof T['errors']]: T['errors'][K] extends z.ZodSchema<infer U> ? U : any;
-      }
+      [K in keyof T['errors']]: T['errors'][K] extends z.ZodSchema<infer U> ? U : any;
+    }
     : never;
 
   /**
@@ -164,10 +153,10 @@ export namespace ContractTypes {
    */
   export type Service<T extends Contract> = T extends Contract<infer D>
     ? {
-        [K in keyof D]: D[K]['stream'] extends true
-          ? (input: Input<D[K]>) => AsyncGenerator<Output<D[K]>, void, unknown>
-          : (input: Input<D[K]>) => Promise<Output<D[K]>>;
-      }
+      [K in keyof D]: D[K]['stream'] extends true
+      ? (input: Input<D[K]>) => AsyncGenerator<Output<D[K]>, void, unknown>
+      : (input: Input<D[K]>) => Promise<Output<D[K]>>;
+    }
     : never;
 }
 

@@ -287,8 +287,6 @@ describe('HttpServer (Legacy Tests)', () => {
             email: z.string().email()
           }),
           http: {
-            method: 'GET',
-            path: '/api/users/:id',
             openapi: {
               summary: 'Get user by ID',
               tags: ['Users']
@@ -306,8 +304,6 @@ describe('HttpServer (Legacy Tests)', () => {
             email: z.string()
           }),
           http: {
-            method: 'POST',
-            path: '/api/users',
             openapi: {
               summary: 'Create new user',
               tags: ['Users']
@@ -352,10 +348,14 @@ describe('HttpServer (Legacy Tests)', () => {
       const spec = await response.json();
       expect(spec.openapi).toBe('3.0.3');
       expect(spec.info.title).toBe('Netron HTTP Services');
-      expect(spec.paths).toHaveProperty('/api/users/:id');
-      expect(spec.paths['/api/users/:id']).toHaveProperty('get');
-      expect(spec.paths).toHaveProperty('/api/users');
-      expect(spec.paths['/api/users']).toHaveProperty('post');
+      // RPC-style paths
+      expect(spec.paths).toHaveProperty('/rpc/UserService/getUser');
+      expect(spec.paths['/rpc/UserService/getUser']).toHaveProperty('post');
+      expect(spec.paths).toHaveProperty('/rpc/UserService/createUser');
+      expect(spec.paths['/rpc/UserService/createUser']).toHaveProperty('post');
+      // Check OpenAPI metadata
+      expect(spec.paths['/rpc/UserService/getUser'].post.summary).toBe('Get user by ID');
+      expect(spec.paths['/rpc/UserService/createUser'].post.summary).toBe('Create new user');
     });
   });
 
@@ -525,88 +525,4 @@ describe('HttpServer (Legacy Tests)', () => {
     });
   });
 
-  describe('REST Route Mapping', () => {
-    beforeEach(async () => {
-      const apiContract = contract({
-        getItem: {
-          input: z.object({ id: z.string() }),
-          output: z.object({ id: z.string(), name: z.string() }),
-          http: {
-            method: 'GET',
-            path: '/api/items/:id'
-          }
-        },
-        createItem: {
-          input: z.object({ name: z.string() }),
-          output: z.object({ id: z.string(), name: z.string() }),
-          http: {
-            method: 'POST',
-            path: '/api/items'
-          }
-        }
-      });
-
-      const definition = new Definition(
-        'item-service-id',
-        'test-peer-id',
-        {
-          name: 'ItemService',
-          version: '1.0.0',
-          contract: apiContract,
-          methods: {
-            getItem: {},
-            createItem: {}
-          },
-          properties: {}
-        }
-      );
-
-      const stub = {
-        definition,
-        call: jest.fn().mockImplementation((method, args) => {
-          if (method === 'getItem') {
-            return Promise.resolve({ id: args[0].id, name: `Item ${args[0].id}` });
-          }
-          if (method === 'createItem') {
-            return Promise.resolve({ id: '123', name: args[0].name });
-          }
-        })
-      };
-
-      mockPeer.stubs.set('item-service', stub);
-      server.setPeer(mockPeer);
-      await server.listen();
-    });
-
-    it('should handle GET requests with path parameters', async () => {
-      const response = await fetch(`http://localhost:${testPort}/api/items/abc123`, {
-        method: 'GET'
-      });
-
-      expect(response.status).toBe(200);
-
-      const result = await response.json();
-      expect(result.success).toBe(true);
-      expect(result.data).toEqual({
-        id: 'abc123',
-        name: 'Item abc123'
-      });
-    });
-
-    it('should handle POST requests with body', async () => {
-      const response = await fetch(`http://localhost:${testPort}/api/items`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ name: 'New Item' })
-      });
-
-      expect(response.status).toBe(200);
-
-      const result = await response.json();
-      expect(result.success).toBe(true);
-      expect(result.data.name).toBe('New Item');
-    });
-  });
 });

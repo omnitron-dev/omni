@@ -26,7 +26,6 @@ export { OptimisticUpdateManager } from './optimistic-update-manager.js';
 export { TypedContract, TypedHttpClient, QueryBuilder, createTypedContract, createTypedClient } from './typed-contract.js';
 export { TypedMiddlewarePipeline, TypedMiddlewareFactory, createTypedPipeline } from './typed-middleware.js';
 export type { TypedMiddleware } from './typed-middleware.js';
-export { TypedHttpServer, ServerBuilder, createServer, createService } from './typed-server.js';
 
 // Message types
 export * from './types.js';
@@ -58,13 +57,6 @@ export type {
   TypedMetadata,
   MiddlewareConfig as TypedMiddlewareConfig
 } from './typed-middleware.js';
-export type {
-  ServiceImplementation,
-  ServiceContext,
-  ServerConfig,
-  ServiceRegistration,
-  RestRouteMapping
-} from './typed-server.js';
 
 // Export advanced feature types
 export type { BatchOptions, BatchStatistics } from './request-batcher.js';

@@ -368,12 +368,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         return this.handleOpenAPIRequest(request);
       }
 
-      // Check for REST-style routes based on contracts
-      const restResponse = await this.handleRestRoute(request);
-      if (restResponse) {
-        return restResponse;
-      }
-
       // No matching route
       return this.createErrorResponse(404, 'Not found', request);
     } catch (error: any) {
@@ -895,14 +889,11 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       }
     };
 
-    // Generate paths from service methods
+    // Generate paths from service methods (RPC-style POST only)
     for (const [serviceName, service] of this.services) {
       for (const [methodName, method] of service.methods) {
         const httpConfig = method.contract?.http;
-
-        // Generate path based on contract or default
-        const basePath = httpConfig?.path || `/rpc/${serviceName}/${methodName}`;
-        const httpMethod = (httpConfig?.method || 'POST').toLowerCase();
+        const basePath = `/rpc/${serviceName}/${methodName}`;
 
         if (!spec.paths[basePath]) {
           spec.paths[basePath] = {};
@@ -913,12 +904,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           summary: httpConfig?.openapi?.summary || method.description || `Invoke ${serviceName}.${methodName}`,
           description: httpConfig?.openapi?.description,
           tags: httpConfig?.openapi?.tags || [serviceName],
-          deprecated: httpConfig?.openapi?.deprecated || method.deprecated
-        };
-
-        // Add request body for POST/PUT/PATCH
-        if (['post', 'put', 'patch'].includes(httpMethod)) {
-          operation.requestBody = {
+          deprecated: httpConfig?.openapi?.deprecated || method.deprecated,
+          requestBody: {
             required: true,
             content: {
               'application/json': {
@@ -927,51 +914,45 @@ export class HttpServer extends EventEmitter implements ITransportServer {
                 }
               }
             }
-          };
-
-          // Store input schema
-          if (method.contract?.input) {
-            spec.components.schemas[`${serviceName}_${methodName}_Input`] = {
-              type: 'object',
-              description: `Input for ${serviceName}.${methodName}`
-            };
-          }
-        }
-
-        // Add query parameters for GET
-        if (httpMethod === 'get' && httpConfig?.query) {
-          operation.parameters = operation.parameters || [];
-          // Add query parameters based on contract
-        }
-
-        // Add responses
-        operation.responses = {
-          '200': {
-            description: 'Successful response',
-            content: {
-              'application/json': {
-                schema: {
-                  $ref: `#/components/schemas/${serviceName}_${methodName}_Output`
+          },
+          responses: {
+            '200': {
+              description: 'Successful response',
+              content: {
+                'application/json': {
+                  schema: {
+                    $ref: `#/components/schemas/${serviceName}_${methodName}_Output`
+                  }
                 }
               }
+            },
+            '400': {
+              description: 'Bad request - Invalid input or validation failed'
+            },
+            '404': {
+              description: 'Service or method not found'
+            },
+            '500': {
+              description: 'Internal server error'
             }
-          },
-          '400': {
-            description: 'Bad request'
-          },
-          '404': {
-            description: 'Not found'
-          },
-          '500': {
-            description: 'Internal server error'
           }
         };
+
+        // Store input schema
+        if (method.contract?.input) {
+          spec.components.schemas[`${serviceName}_${methodName}_Input`] = {
+            type: 'object',
+            description: `Input for ${serviceName}.${methodName}`
+            // TODO: Convert Zod schema to JSON Schema using zod-to-json-schema
+          };
+        }
 
         // Store output schema
         if (method.contract?.output) {
           spec.components.schemas[`${serviceName}_${methodName}_Output`] = {
             type: 'object',
             description: `Output for ${serviceName}.${methodName}`
+            // TODO: Convert Zod schema to JSON Schema using zod-to-json-schema
           };
         }
 
@@ -992,11 +973,13 @@ export class HttpServer extends EventEmitter implements ITransportServer {
             spec.components.schemas[`${serviceName}_${methodName}_Error${statusCode}`] = {
               type: 'object',
               description: `Error ${statusCode} for ${serviceName}.${methodName}`
+              // TODO: Convert Zod schema to JSON Schema
             };
           }
         }
 
-        spec.paths[basePath][httpMethod] = operation;
+        // RPC-style always uses POST
+        spec.paths[basePath].post = operation;
       }
     }
 
@@ -1009,96 +992,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     });
   }
 
-  /**
-   * Handle REST-style routes based on method contracts
-   */
-  private async handleRestRoute(request: Request): Promise<Response | null> {
-    const url = new URL(request.url);
-    const pathname = url.pathname;
-    const method = request.method.toUpperCase();
-
-    // Check each service for REST route matches
-    for (const [serviceName, service] of this.services) {
-      for (const [methodName, methodDesc] of service.methods) {
-        const httpConfig = methodDesc.contract?.http;
-        if (!httpConfig?.path) continue;
-
-        // Check if HTTP method matches
-        const configMethod = (httpConfig.method || 'POST').toUpperCase();
-        if (configMethod !== method) continue;
-
-        // Simple path matching (could be enhanced with proper routing)
-        const pathPattern = httpConfig.path
-          .replace(/\{(\w+)\}/g, '(?<$1>[^/]+)')  // {param} -> named group
-          .replace(/:(\w+)/g, '(?<$1>[^/]+)');     // :param -> named group
-
-        const pathRegex = new RegExp(`^${pathPattern}$`);
-        const match = pathname.match(pathRegex);
-
-        if (match) {
-          // Extract path parameters
-          const params = match.groups || {};
-
-          // Extract query parameters
-          const query: Record<string, any> = {};
-          url.searchParams.forEach((value, key) => {
-            query[key] = value;
-          });
-
-          // Build input from various sources
-          const input: any = {};
-
-          // Add path parameters (always include if present)
-          if (Object.keys(params).length > 0) {
-            Object.assign(input, params);
-          }
-
-          // Add query parameters (always include if present)
-          if (Object.keys(query).length > 0) {
-            Object.assign(input, query);
-          }
-
-          // Add body for POST/PUT/PATCH
-          if (['POST', 'PUT', 'PATCH'].includes(method)) {
-            try {
-              const body = await request.json();
-              Object.assign(input, body);
-            } catch {
-              // No body or invalid JSON
-            }
-          }
-
-          // Create HTTP request message
-          const message: HttpRequestMessage = {
-            id: crypto.randomUUID(),
-            version: '2.0',
-            timestamp: Date.now(),
-            service: serviceName,
-            method: methodName,
-            input,
-            context: {
-              metadata: {
-                httpMethod: method,
-                httpPath: pathname
-              }
-            }
-          };
-
-          // Delegate to invocation handler
-          return this.handleInvocationRequest(
-            new Request(request.url, {
-              ...request,
-              method: 'POST',
-              body: JSON.stringify(message),
-              headers: new Headers(request.headers)
-            })
-          );
-        }
-      }
-    }
-
-    return null;
-  }
 
   /**
    * Handle Node.js style request

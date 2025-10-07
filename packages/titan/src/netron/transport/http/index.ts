@@ -22,11 +22,6 @@ export { RequestBatcher } from './request-batcher.js';
 export { SubscriptionManager } from './subscription-manager.js';
 export { OptimisticUpdateManager } from './optimistic-update-manager.js';
 
-// Type safety enhancements
-export { TypedContract, TypedHttpClient, QueryBuilder, createTypedContract, createTypedClient } from './typed-contract.js';
-export { TypedMiddlewarePipeline, TypedMiddlewareFactory, createTypedPipeline } from './typed-middleware.js';
-export type { TypedMiddleware } from './typed-middleware.js';
-
 // Message types
 export * from './types.js';
 
@@ -41,22 +36,6 @@ export type {
   ConnectionState,
   ServerMetrics
 } from '../types.js';
-
-// Export type safety types
-export type {
-  ContractDefinition,
-  ServiceType,
-  InferInput,
-  InferOutput,
-  ServiceProxy,
-  QueryOptions,
-  MiddlewareConfig
-} from './typed-contract.js';
-export type {
-  TypedHttpMiddlewareContext,
-  TypedMetadata,
-  MiddlewareConfig as TypedMiddlewareConfig
-} from './typed-middleware.js';
 
 // Export advanced feature types
 export type { BatchOptions, BatchStatistics } from './request-batcher.js';

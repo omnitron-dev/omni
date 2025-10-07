@@ -1,1830 +1,1201 @@
-# 04. Template Syntax
+# 04. Template Syntax - TypeScript JSX Implementation
 
-> **Status**: ⚠️ **OUTDATED - NOT IMPLEMENTED**
-> **Last Updated**: 2025-10-06 (marked as outdated)
+> **Status**: ✅ **CURRENT - IMPLEMENTED**
+> **Last Updated**: 2025-10-07
 > **Part of**: Aether Frontend Framework Specification
-
----
-
-## ⚠️ CRITICAL NOTICE ⚠️
-
-**This specification describes a custom template compiler that was NOT implemented.**
-
-After comprehensive architectural evaluation (see `TEMPLATE-DIRECTIVES-EVALUATION.md`), we made the decision to use **standard TypeScript JSX** instead of implementing a custom compiler.
-
-### What This Means:
-
-❌ **NOT IMPLEMENTED** (as described in this document):
-- Custom control flow syntax: `{#if}`, `{#each}`, `{#await}`, `{#key}`
-- Event modifier syntax: `on:click|preventDefault|stopPropagation`
-- Two-way binding syntax: `bind:value`, `bind:checked`, `bind:group`
-- Conditional syntax blocks: `{:else}`, `{:then}`, `{:catch}`
-- Custom template compiler
-- Svelte-like directives
-
-✅ **ACTUALLY IMPLEMENTED** (TypeScript JSX + Utilities):
-- Standard TypeScript JSX: `<button onClick={handler}>Click</button>`
-- Component-based control flow: `<Show>`, `<For>`, `<Switch>`, `<Suspense>`
-- Event utilities: `<button onClick={prevent(handler)}>Submit</button>`
-- Binding utilities: `<input {...bindValue(signal)} />`
-- Class utilities: `<div className={classes('btn', { active: isActive() })}>`
-- Style utilities: `<div style={styles({ color: theme() })}>`
-- Directive pattern: `<button ref={tooltip('text')}>Hover</button>`
-
-### Why the Change?
-
-**Weighted Evaluation Score**: TypeScript JSX (8.70/10) vs Custom Compiler (6.90/10)
-
-**Key Reasons**:
-1. **Superior Error Resistance** (20% weight): TypeScript type safety (10/10) vs source maps (6/10)
-2. **Zero Learning Curve** (20% weight): Standard JavaScript (10/10) vs new syntax (7/10)
-3. **Unlimited Possibilities** (15% weight): No constraints (10/10) vs compiler limits (7/10)
-4. **Fast Implementation**: 2 weeks + 500 lines vs 3-6 months + 15-25k lines
-5. **Better Tooling**: Works with all standard tools (VSCode, Prettier, ESLint, etc.)
-
-### Where to Find Actual Documentation:
-
-For **actual implementation patterns**, see:
-- ✅ **`ARCHITECTURE-ANALYSIS.md`** - Component API alignment
-- ✅ **`TEMPLATE-DIRECTIVES-EVALUATION.md`** - Full architectural evaluation (2850 lines)
-- ✅ **`IMPLEMENTATION-PLAN.md`** - Updated with architectural decision
-- ✅ **`03-COMPONENTS.md`** - Component patterns (aligned with implementation)
-- ✅ **Source code**: `packages/aether/src/utils/` - Utility implementations
-- ✅ **Tests**: `packages/aether/tests/unit/utils/` - Usage examples (109 tests)
-
-### Quick Migration Guide:
-
-If you were expecting the syntax described in this document, here's how to use the actual implementation:
-
-<details>
-<summary><b>Control Flow (Click to expand)</b></summary>
-
-**Spec (NOT implemented)**:
-```tsx
-{#if condition}
-  <p>True</p>
-{:else}
-  <p>False</p>
-{/if}
-```
-
-**Actual Implementation**:
-```tsx
-<Show when={condition} fallback={<p>False</p>}>
-  <p>True</p>
-</Show>
-```
-</details>
-
-<details>
-<summary><b>Lists (Click to expand)</b></summary>
-
-**Spec (NOT implemented)**:
-```tsx
-{#each items as item (item.id)}
-  <div>{item.name}</div>
-{/each}
-```
-
-**Actual Implementation**:
-```tsx
-<For each={items}>
-  {(item) => <div>{item.name}</div>}
-</For>
-```
-</details>
-
-<details>
-<summary><b>Events (Click to expand)</b></summary>
-
-**Spec (NOT implemented)**:
-```tsx
-<button on:click|preventDefault={handleClick}>Click</button>
-```
-
-**Actual Implementation**:
-```tsx
-import { prevent } from '@omnitron-dev/aether';
-<button onClick={prevent(handleClick)}>Click</button>
-```
-</details>
-
-<details>
-<summary><b>Binding (Click to expand)</b></summary>
-
-**Spec (NOT implemented)**:
-```tsx
-<input bind:value={text} />
-<input type="number" bind:value|number={age} />
-```
-
-**Actual Implementation**:
-```tsx
-import { bindValue, bindNumber } from '@omnitron-dev/aether';
-<input {...bindValue(text)} />
-<input type="number" {...bindNumber(age)} />
-```
-</details>
-
-<details>
-<summary><b>Classes (Click to expand)</b></summary>
-
-**Spec (NOT implemented)**:
-```tsx
-<div class:active={isActive()} class:disabled={isDisabled()}>
-```
-
-**Actual Implementation**:
-```tsx
-import { classes } from '@omnitron-dev/aether';
-<div className={classes('base', { active: isActive(), disabled: isDisabled() })}>
-```
-</details>
-
----
-
-**The rest of this document is preserved for reference only and does NOT reflect the actual implementation.**
-
----
-
-## Table of Contents
-
-1. [Overview](#overview)
-2. [Philosophy](#philosophy)
-3. [JSX Basics](#jsx-basics)
-4. [Interpolation](#interpolation)
-5. [Conditionals](#conditionals)
-6. [Loops](#loops)
-7. [Events](#events)
-8. [Bindings](#bindings)
-9. [Attributes](#attributes)
-10. [Special Elements](#special-elements)
-11. [Directives](#directives)
-12. [Advanced Features](#advanced-features)
-13. [Compilation](#compilation)
-14. [Comparison](#comparison)
-15. [Best Practices](#best-practices)
-16. [Examples](#examples)
 
 ---
 
 ## Overview
 
-Aether uses **JSX** (JavaScript XML) as its template syntax, extended with special directives and control flow syntax. JSX provides a familiar, type-safe, and powerful way to describe UI.
+Aether uses **standard TypeScript JSX** for templates, providing full type safety, excellent tooling support, and zero learning curve for developers familiar with React or Solid.js. Instead of a custom template compiler, we provide **lightweight utility functions** that offer directive-like convenience while maintaining all benefits of standard JavaScript.
 
-### Why JSX?
+### Architecture Decision
 
-**Advantages**:
-- **Type Safety**: Full TypeScript support with autocomplete
-- **Familiar**: Used by React, SolidJS, and others
-- **Composable**: Easy to extract and reuse logic
-- **IDE Support**: Excellent tooling (syntax highlighting, refactoring)
-- **JavaScript**: Full power of JavaScript in templates
+After comprehensive evaluation (see `TEMPLATE-DIRECTIVES-EVALUATION.md`), we chose TypeScript JSX over a custom compiler:
 
-**Aether Extensions**:
-- Control flow: `{#if}`, `{#each}`, `{#await}`
-- Directives: `on:event`, `bind:value`, `class:name`
-- Automatic reactivity tracking
+**Weighted Score**: TypeScript JSX (8.70/10) vs Custom Compiler (6.90/10)
 
-### Template Syntax Overview
+**Key Benefits**:
+- ✅ **Superior Error Resistance** (10/10): Full TypeScript type safety, clear stack traces
+- ✅ **Intuitiveness** (10/10): Standard JavaScript, zero learning curve
+- ✅ **Unlimited Possibilities** (10/10): No compiler constraints
+- ✅ **Fast Implementation**: 2 weeks vs 3-6 months
+- ✅ **Perfect Tooling**: VSCode, Prettier, ESLint, Jest - all work out of box
+
+---
+
+## Table of Contents
+
+1. [Basic JSX Syntax](#basic-jsx-syntax)
+2. [Control Flow Components](#control-flow-components)
+3. [Event Handling](#event-handling)
+4. [Two-Way Binding](#two-way-binding)
+5. [Class Management](#class-management)
+6. [Style Management](#style-management)
+7. [Custom Directives](#custom-directives)
+8. [Performance Patterns](#performance-patterns)
+9. [Migration from Spec](#migration-from-spec)
+
+---
+
+## Basic JSX Syntax
+
+Aether uses standard TypeScript JSX. If you know React or Solid, you already know Aether templates.
+
+### Simple Component
 
 ```typescript
-const TodoApp = defineComponent(() => {
-  const todos = signal<Todo[]>([]);
-  const filter = signal<'all' | 'active' | 'completed'>('all');
+import { defineComponent } from '@omnitron-dev/aether';
+import { signal } from '@omnitron-dev/aether/reactivity';
 
-  const filteredTodos = computed(() => {
-    const f = filter();
-    return todos().filter(t => {
-      if (f === 'active') return !t.done;
-      if (f === 'completed') return t.done;
-      return true;
-    });
-  });
+export const Counter = defineComponent(() => {
+  const count = signal(0);
 
   return () => (
-    <div class="todo-app">
-      {/* Interpolation */}
-      <h1>Todos ({filteredTodos().length})</h1>
-
-      {/* Conditionals */}
-      {#if filteredTodos().length === 0}
-        <p>No todos!</p>
-      {:else}
-        {/* Loops */}
-        <ul>
-          {#each filteredTodos() as todo}
-            <li class:done={todo.done}>
-              {/* Events */}
-              <input
-                type="checkbox"
-                checked={todo.done}
-                on:change={() => toggleTodo(todo.id)}
-              />
-              <span>{todo.text}</span>
-            </li>
-          {/each}
-        </ul>
-      {/if}
-
-      {/* Bindings */}
-      <select bind:value={filter}>
-        <option value="all">All</option>
-        <option value="active">Active</option>
-        <option value="completed">Completed</option>
-      </select>
+    <div className="counter">
+      <p>Count: {count()}</p>
+      <button onClick={() => count.set(count() + 1)}>
+        Increment
+      </button>
     </div>
   );
 });
 ```
 
----
+### JSX Elements
 
-## Philosophy
-
-### JSX is Just JavaScript
-
-Unlike template languages (Vue, Svelte, Angular), JSX is **valid JavaScript**:
+All standard HTML elements work as expected:
 
 ```typescript
-// This is valid JavaScript (after JSX transform)
-const element = <div>Hello</div>;
+// Text elements
+<h1>Heading</h1>
+<p>Paragraph</p>
+<span>Inline text</span>
 
-// Equivalent to:
-const element = createElement('div', null, 'Hello');
-```
-
-**Benefits**:
-- No need to learn new syntax
-- Full JavaScript power (map, filter, reduce, etc.)
-- Type checking works naturally
-- Refactoring tools work out of the box
-
-### Reactive by Default
-
-Reading signals in JSX automatically creates dependencies:
-
-```typescript
-const count = signal(0);
-
-// ✅ Reactive - automatically updates
-<div>{count()}</div>
-
-// ❌ Not reactive - just reads once
-const value = count();
-<div>{value}</div>
-```
-
-### Compile-Time Optimizations
-
-Aether compiler analyzes JSX at **build time** to optimize runtime:
-
-```typescript
-// Source
-<div class="container">
-  <h1>{title()}</h1>
-  <p>Static text</p>
-</div>
-
-// Compiled (simplified)
-const div = createElement('div', { class: 'container' });
-const h1 = createElement('h1');
-const p = createElement('p', null, 'Static text');
-
-effect(() => {
-  h1.textContent = title(); // Only this updates
-});
-
-div.append(h1, p);
-```
-
-**Optimizations**:
-- Static nodes created once
-- Only dynamic parts become reactive
-- No Virtual DOM diffing
-
----
-
-## JSX Basics
-
-### Elements
-
-```typescript
-// HTML elements (lowercase)
-<div>Content</div>
-<button>Click</button>
+// Form elements
 <input type="text" />
+<textarea />
+<select>
+  <option value="1">Option 1</option>
+</select>
 
-// Self-closing tags
-<img src="image.jpg" />
-<br />
-<hr />
+// Interactive elements
+<button>Click me</button>
+<a href="/link">Link</a>
 
-// Components (PascalCase)
-<UserProfile />
-<TodoList />
-```
-
-### Attributes
-
-```typescript
-// String literals
-<div class="container"></div>
-<img src="photo.jpg" alt="Photo" />
-
-// Expressions in braces
-<div class={className()}></div>
-<img src={imageUrl()} alt={altText()} />
-
-// Boolean attributes
-<button disabled={isDisabled()}>Submit</button>
-<input type="checkbox" checked={isChecked()} />
-
-// Spread attributes
-<button {...buttonProps}>Click</button>
-```
-
-### Children
-
-```typescript
-// Text
-<div>Hello World</div>
-
-// Expressions
-<div>{userName()}</div>
-
-// Multiple children
-<div>
-  <h1>Title</h1>
-  <p>Paragraph</p>
-</div>
-
-// Mixed content
-<div>
-  Hello, {userName()}! You have {count()} messages.
-</div>
-
-// Arrays (automatically flattened)
-<ul>
-  {todos().map(todo => <li>{todo.text}</li>)}
-</ul>
+// Media
+<img src="/image.jpg" alt="Description" />
+<video src="/video.mp4" />
 ```
 
 ### Fragments
 
-Group multiple elements without wrapper:
+Use fragments to group elements without extra DOM nodes:
 
 ```typescript
-import { Fragment } from 'aether';
-
-// With Fragment component
-<Fragment>
-  <div>First</div>
-  <div>Second</div>
-</Fragment>
-
-// Short syntax (if supported by compiler)
+// Fragment syntax
 <>
-  <div>First</div>
-  <div>Second</div>
-</>
-```
-
-### Comments
-
-```typescript
-<div>
-  {/* JSX comment */}
+  <h1>Title</h1>
   <p>Content</p>
+</>
 
-  {/*
-    Multi-line
-    comment
-  */}
-</div>
+// Or explicit Fragment component
+import { Fragment } from '@omnitron-dev/aether';
+
+<Fragment>
+  <h1>Title</h1>
+  <p>Content</p>
+</Fragment>
 ```
 
----
+### Dynamic Content
 
-## Interpolation
-
-### Basic Interpolation
+Embed reactive expressions directly:
 
 ```typescript
 const name = signal('Alice');
-const age = signal(30);
+const age = signal(25);
 
 <div>
   <p>Name: {name()}</p>
   <p>Age: {age()}</p>
+  <p>Next year: {age() + 1}</p>
 </div>
-```
-
-### Expressions
-
-```typescript
-const count = signal(5);
-
-<div>
-  {/* Arithmetic */}
-  <p>Double: {count() * 2}</p>
-
-  {/* String concatenation */}
-  <p>Message: {'Count is ' + count()}</p>
-
-  {/* Template literals */}
-  <p>Message: {`Count is ${count()}`}</p>
-
-  {/* Ternary */}
-  <p>{count() > 10 ? 'High' : 'Low'}</p>
-
-  {/* Function calls */}
-  <p>{formatNumber(count())}</p>
-
-  {/* Logical operators */}
-  <p>{count() > 0 && 'Positive'}</p>
-  <p>{count() || 'Zero'}</p>
-</div>
-```
-
-### HTML Escaping
-
-**Automatic Escaping** (safe by default):
-
-```typescript
-const userInput = signal('<script>alert("XSS")</script>'
-
-// ✅ Safe - HTML entities escaped
-<div>{userInput()}</div>
-// Renders: &lt;script&gt;alert("XSS")&lt;/script&gt;
-```
-
-**Raw HTML** (dangerous):
-
-```typescript
-import { html } from 'aether';
-
-const htmlContent = signal('<strong>Bold</strong>');
-
-// ⚠️ Dangerous - use only for trusted content
-<div innerHTML={html(htmlContent())}></div>
-```
-
-### Reactive Updates
-
-```typescript
-const count = signal(0);
-
-<div>
-  {/* Automatically updates when count changes */}
-  <p>Count: {count()}</p>
-
-  {/* Computed values also reactive */}
-  <p>Doubled: {count() * 2}</p>
-
-  {/* Function calls are reactive if they read signals */}
-  <p>Formatted: {formatCount()}</p>
-</div>
-
-const formatCount = () => {
-  return `Count is ${count()}`; // Reads signal, so reactive
-};
 ```
 
 ---
 
-## Conditionals
+## Control Flow Components
 
-### if/else
+Instead of custom syntax like `{#if}` or `{#each}`, Aether provides **type-safe components** for control flow.
+
+### Conditional Rendering - `<Show>`
+
+#### Basic Usage
 
 ```typescript
+import { Show } from '@omnitron-dev/aether';
+
 const isLoggedIn = signal(false);
 
-<div>
-  {#if isLoggedIn()}
-    <p>Welcome back!</p>
-  {:else}
-    <p>Please log in</p>
-  {/if}
-</div>
+<Show when={isLoggedIn()} fallback={<p>Please log in</p>}>
+  <p>Welcome back!</p>
+</Show>
 ```
 
-### if/else if/else
+#### With Type Narrowing
 
 ```typescript
+const user = signal<User | null>(null);
+
+<Show when={user()} fallback={<p>Loading...</p>}>
+  {(u) => (
+    // u is typed as User (not User | null)
+    <p>Hello, {u.name}!</p>
+  )}
+</Show>
+```
+
+#### Keyed Updates
+
+```typescript
+// Re-render when key changes
+<Show when={user()} keyed fallback={<p>No user</p>}>
+  {(u) => <UserProfile user={u} />}
+</Show>
+```
+
+### Lists - `<For>`
+
+#### Basic List Rendering
+
+```typescript
+import { For } from '@omnitron-dev/aether';
+
+const items = signal(['Apple', 'Banana', 'Cherry']);
+
+<For each={items()}>
+  {(item, index) => (
+    <li>
+      {index()}: {item}
+    </li>
+  )}
+</For>
+```
+
+#### With Fallback
+
+```typescript
+const items = signal<Item[]>([]);
+
+<For each={items()} fallback={<p>No items found</p>}>
+  {(item) => <ItemCard item={item} />}
+</For>
+```
+
+#### Efficient Updates (Keyed)
+
+```typescript
+// Automatically uses item.id as key if available
+<For each={items()}>
+  {(item) => <div key={item.id}>{item.name}</div>}
+</For>
+
+// Or specify custom key
+<For each={items()} by={(item) => item.id}>
+  {(item) => <div>{item.name}</div>}
+</For>
+```
+
+### Multi-way Conditionals - `<Switch>`
+
+```typescript
+import { Switch, Match } from '@omnitron-dev/aether';
+
 const status = signal<'loading' | 'success' | 'error'>('loading');
 
-<div>
-  {#if status() === 'loading'}
+<Switch>
+  <Match when={status() === 'loading'}>
     <Spinner />
-  {:else if status() === 'success'}
+  </Match>
+  <Match when={status() === 'success'}>
     <SuccessMessage />
-  {:else if status() === 'error'}
+  </Match>
+  <Match when={status() === 'error'}>
     <ErrorMessage />
-  {:else}
-    <UnknownState />
-  {/if}
-</div>
+  </Match>
+</Switch>
 ```
 
-### Ternary Operator
+### Async Components - `<Suspense>`
 
 ```typescript
-// Simple conditions
-<div>
-  {isVisible() ? <Content /> : null}
-</div>
+import { Suspense } from '@omnitron-dev/aether';
 
-<div>
-  {count() > 10 ? 'High' : 'Low'}
-</div>
-
-// Nested ternary (use sparingly)
-<div>
-  {status() === 'loading'
-    ? <Spinner />
-    : status() === 'error'
-    ? <Error />
-    : <Content />
-  }
-</div>
+<Suspense fallback={<LoadingSpinner />}>
+  <AsyncUserProfile userId={userId()} />
+</Suspense>
 ```
 
-### Logical Operators
+#### Nested Suspense
 
 ```typescript
-// && (renders right side if left is truthy)
-<div>
-  {isLoggedIn() && <Dashboard />}
-  {count() > 0 && <Badge count={count()} />}
-</div>
-
-// || (renders right side if left is falsy)
-<div>
-  {userName() || 'Guest'}
-  {imageUrl() || '/default-avatar.png'}
-</div>
-
-// ?? (nullish coalescing)
-<div>
-  {userName() ?? 'Unknown User'}
-</div>
+<Suspense fallback={<PageSkeleton />}>
+  <Header />
+  <Suspense fallback={<ContentSkeleton />}>
+    <MainContent />
+  </Suspense>
+  <Suspense fallback={<SidebarSkeleton />}>
+    <Sidebar />
+  </Suspense>
+</Suspense>
 ```
 
-### Show Directive (Alternative)
+### Error Boundaries - `<ErrorBoundary>`
 
 ```typescript
-// show:condition - element stays in DOM, visibility toggled
-<div show:visible={isVisible()}>
-  This element stays in DOM
-</div>
+import { ErrorBoundary } from '@omnitron-dev/aether';
 
-// Equivalent to:
-<div style:display={isVisible() ? 'block' : 'none'}>
-  This element stays in DOM
-</div>
-```
-
----
-
-## Loops
-
-### each
-
-```typescript
-interface Todo {
-  id: number;
-  text: string;
-  done: boolean;
-}
-
-const todos = signal<Todo[]>([
-  { id: 1, text: 'Learn (Aether)', done: false },
-  { id: 2, text: 'Build app', done: false }
-]);
-
-<ul>
-  {#each todos() as todo}
-    <li>{todo.text}</li>
-  {/each}
-</ul>
-```
-
-### each with index
-
-```typescript
-<ul>
-  {#each todos() as todo, index}
-    <li>
-      {index + 1}. {todo.text}
-    </li>
-  {/each}
-</ul>
-```
-
-### each with key
-
-**Important**: Use `key` for lists that can change order:
-
-```typescript
-<ul>
-  {#each todos() as todo (todo.id)}
-    <li>{todo.text}</li>
-  {/each}
-</ul>
-
-// Alternative syntax
-<ul>
-  {#each todos() as todo}
-    <li key={todo.id}>
-      {todo.text}
-    </li>
-  {/each}
-</ul>
-```
-
-**Why keys matter**:
-- Preserve component state when items reorder
-- Optimize DOM updates
-- Avoid bugs with stateful components
-
-```typescript
-// ❌ Without key - state gets mixed up when reordering
-{#each items() as item}
-  <Counter initialValue={item.count} />
-{/each}
-
-// ✅ With key - state preserved correctly
-{#each items() as item (item.id)}
-  <Counter initialValue={item.count} />
-{/each}
-```
-
-### each/else
-
-```typescript
-<div>
-  {#if todos().length > 0}
-    <ul>
-      {#each todos() as todo}
-        <li>{todo.text}</li>
-      {/each}
-    </ul>
-  {:else}
-    <p>No todos yet!</p>
-  {/if}
-</div>
-
-// Shorter with each/else
-<div>
-  {#each todos() as todo}
-    <li>{todo.text}</li>
-  {:else}
-    <p>No todos yet!</p>
-  {/each}
-</div>
-```
-
-### Nested Loops
-
-```typescript
-interface Category {
-  name: string;
-  items: string[];
-}
-
-const categories = signal<Category[]>([
-  { name: 'Fruits', items: ['Apple', 'Banana'] },
-  { name: 'Vegetables', items: ['Carrot', 'Lettuce'] }
-]);
-
-<div>
-  {#each categories() as category}
+<ErrorBoundary
+  fallback={(error, reset) => (
     <div>
-      <h3>{category.name}</h3>
-      <ul>
-        {#each category.items as item}
-          <li>{item}</li>
-        {/each}
-      </ul>
+      <p>Error: {error.message}</p>
+      <button onClick={reset}>Try Again</button>
     </div>
-  {/each}
-</div>
-```
-
-### Destructuring
-
-```typescript
-interface User {
-  id: number;
-  name: string;
-  email: string;
-}
-
-const users = signal<User[]>([...]);
-
-// Destructure in loop
-{#each users() as { id, name, email }}
-  <div>
-    <h4>{name}</h4>
-    <p>{email}</p>
-  </div>
-{/each}
+  )}
+  onError={(error) => console.error(error)}
+>
+  <RiskyComponent />
+</ErrorBoundary>
 ```
 
 ---
 
-## Events
+## Event Handling
 
-### Event Handlers
+Aether provides **event utility helpers** for common patterns, eliminating boilerplate while maintaining clarity.
 
-```typescript
-<button on:click={() => console.log('Clicked')}>
-  Click Me
-</button>
-
-<input
-  on:input={(e) => console.log(e.target.value)}
-  on:focus={() => console.log('Focused')}
-  on:blur={() => console.log('Blurred')}
-/>
-
-<form on:submit={(e) => {
-  e.preventDefault();
-  handleSubmit();
-}}>
-  <button type="submit">Submit</button>
-</form>
-```
-
-### Event Object
+### Basic Events
 
 ```typescript
-const handleClick = (e: MouseEvent) => {
-  console.log('Button:', e.button);
-  console.log('Position:', e.clientX, e.clientY);
-  console.log('Target:', e.target);
-};
-
-<button on:click={handleClick}>Click</button>
+// Standard JSX event handlers
+<button onClick={() => console.log('clicked')}>Click</button>
+<input onInput={(e) => setText(e.currentTarget.value)} />
+<form onSubmit={(e) => handleSubmit(e)}>Submit</form>
 ```
 
 ### Event Modifiers
 
+Instead of custom syntax like `on:click|preventDefault`, use utility functions:
+
 ```typescript
-// preventDefault
-<form on:submit|preventDefault={handleSubmit}>
-  <button>Submit</button>
-</form>
+import { prevent, stop, preventStop } from '@omnitron-dev/aether/utils';
 
-// stopPropagation
-<div on:click={() => console.log('Parent')}>
-  <button on:click|stopPropagation={() => console.log('Child')}>
-    Click (doesn't bubble)
-  </button>
+// Prevent default
+<button onClick={prevent(handleSubmit)}>Submit</button>
+
+// Stop propagation
+<div onClick={stop(handleClick)}>Click won't bubble</div>
+
+// Both
+<form onSubmit={preventStop(handleFormSubmit)}>...</form>
+```
+
+### Available Event Modifiers
+
+```typescript
+import {
+  prevent,           // preventDefault()
+  stop,              // stopPropagation()
+  stopImmediate,     // stopImmediatePropagation()
+  preventStop,       // both prevent and stop
+  self,              // only if event.target matches selector
+  trusted,           // only trusted events (not programmatic)
+  debounce,          // debounce handler
+  throttle,          // throttle handler
+  compose,           // compose multiple modifiers
+} from '@omnitron-dev/aether/utils';
+```
+
+### Debouncing Events
+
+```typescript
+import { debounce } from '@omnitron-dev/aether/utils';
+
+// Debounce search input
+<input
+  onInput={debounce(handleSearch, 500)}
+  placeholder="Search..."
+/>
+```
+
+### Throttling Events
+
+```typescript
+import { throttle } from '@omnitron-dev/aether/utils';
+
+// Throttle scroll handler
+<div onScroll={throttle(handleScroll, 100)}>
+  Scrollable content
 </div>
+```
 
-// capture (capture phase)
-<div on:click|capture={handleClick}>
-  <button>Click</button>
-</div>
+### Composing Modifiers
 
-// once (runs only once)
-<button on:click|once={handleFirstClick}>
-  Click Me Once
+```typescript
+import { compose, prevent, stop, debounce } from '@omnitron-dev/aether/utils';
+
+// Combine multiple modifiers
+const preventStopDebounce = compose([prevent, stop, (h) => debounce(h, 300)]);
+
+<button onClick={preventStopDebounce(handleClick)}>
+  Click
 </button>
-
-// passive (improves scroll performance)
-<div on:scroll|passive={handleScroll}>
-  Content
-</div>
-
-// self (only if event.target === currentTarget)
-<div on:click|self={handleSelf}>
-  <button>This won't trigger parent handler</button>
-</div>
-
-// Multiple modifiers
-<a href="/page" on:click|preventDefault|stopPropagation={handleClick}>
-  Link
-</a>
 ```
 
-### Custom Events
+### Self Target Filter
 
 ```typescript
-// Child component
-interface ChildProps {
-  onCustomEvent: (data: { value: number }) => void;
-}
+import { self } from '@omnitron-dev/aether/utils';
 
-const Child = defineComponent<ChildProps>((props) => {
-  const emit = () => {
-    props.onCustomEvent({ value: 42 });
-  };
-
-  return () => <button on:click={emit}>Emit</button>;
-});
-
-// Parent
-const Parent = defineComponent(() => {
-  const handleCustom = (data: { value: number }) => {
-    console.log('Received:', data.value);
-  };
-
-  return () => <Child onCustomEvent={handleCustom} />;
-});
+// Only handle clicks on button itself, not children
+<button onClick={self('button', handleClick)}>
+  <span>Icon</span>
+  <span>Text</span>
+</button>
 ```
 
-### Event Delegation
-
-Aether automatically delegates common events for performance:
+### Trusted Events Only
 
 ```typescript
-// All click events delegated to root
-<div>
-  {#each items() as item}
-    <button on:click={() => handleClick(item.id)}>
-      {item.name}
-    </button>
-  {/each}
-</div>
+import { trusted } from '@omnitron-dev/aether/utils';
+
+// Only handle real user interactions, not programmatic
+<button onClick={trusted(handleRealClick)}>
+  Security-sensitive action
+</button>
 ```
 
 ---
 
-## Bindings
+## Two-Way Binding
 
-### Two-Way Binding
+Instead of `bind:value` syntax, Aether provides **binding utilities** that spread props.
 
-**Input**:
+### Text Input Binding
 
 ```typescript
+import { bindValue } from '@omnitron-dev/aether/utils';
+
 const text = signal('');
 
-// Bind input value
-<input bind:value={text} />
+// Simple binding
+<input {...bindValue(text)} />
 
-// Equivalent to:
-<input
-  value={text()}
-  on:input={(e) => text.set(e.target.value)}
-/>
+// With transformation
+<input {...bindValue(text, (v) => v.toUpperCase())} />
 ```
 
-**Checkbox**:
+### Number Input Binding
 
 ```typescript
-const checked = signal(false);
+import { bindNumber } from '@omnitron-dev/aether/utils';
 
-<input type="checkbox" bind:checked={checked} />
+const age = signal(0);
 
-// Equivalent to:
-<input
-  type="checkbox"
-  checked={checked()}
-  on:change={(e) => checked.set(e.target.checked)}
-/>
+<input type="number" {...bindNumber(age)} />
 ```
 
-**Radio**:
+### Trimmed Input Binding
 
 ```typescript
+import { bindTrimmed } from '@omnitron-dev/aether/utils';
+
+const name = signal('');
+
+<input {...bindTrimmed(name)} placeholder="Name" />
+```
+
+### Debounced Binding
+
+```typescript
+import { bindDebounced } from '@omnitron-dev/aether/utils';
+
+const search = signal('');
+
+// Updates signal 500ms after user stops typing
+<input {...bindDebounced(search, 500)} placeholder="Search..." />
+```
+
+### Throttled Binding
+
+```typescript
+import { bindThrottled } from '@omnitron-dev/aether/utils';
+
+const value = signal('');
+
+// Updates signal at most once per 300ms
+<input {...bindThrottled(value, 300)} />
+```
+
+### Lazy Binding (Update on Blur)
+
+```typescript
+import { bindLazy } from '@omnitron-dev/aether/utils';
+
+const email = signal('');
+
+// Only updates when input loses focus
+<input {...bindLazy(email)} type="email" />
+```
+
+### Checkbox Binding
+
+```typescript
+import { bindChecked } from '@omnitron-dev/aether/utils';
+
+const agreed = signal(false);
+
+<input type="checkbox" {...bindChecked(agreed)} />
+<label>I agree to terms</label>
+```
+
+### Radio Group Binding
+
+```typescript
+import { bindGroup } from '@omnitron-dev/aether/utils';
+
 const selected = signal('option1');
 
-<label>
-  <input type="radio" bind:group={selected} value="option1" />
-  Option 1
-</label>
-<label>
-  <input type="radio" bind:group={selected} value="option2" />
-  Option 2
-</label>
+<div>
+  <input type="radio" {...bindGroup(selected, 'option1')} />
+  <label>Option 1</label>
 
-// selected() will be 'option1' or 'option2'
+  <input type="radio" {...bindGroup(selected, 'option2')} />
+  <label>Option 2</label>
+</div>
 ```
 
-**Select**:
+### Select Binding
 
 ```typescript
-const selected = signal('apple');
+import { bindSelect } from '@omnitron-dev/aether/utils';
 
-<select bind:value={selected}>
-  <option value="apple">Apple</option>
-  <option value="banana">Banana</option>
-  <option value="orange">Orange</option>
+const selection = signal('');
+
+<select {...bindSelect(selection)}>
+  <option value="">Choose...</option>
+  <option value="opt1">Option 1</option>
+  <option value="opt2">Option 2</option>
 </select>
 ```
 
-**Multiple Select**:
+### Available Binding Helpers
 
 ```typescript
-const selected = signal<string[]>([]);
-
-<select multiple bind:value={selected}>
-  <option value="red">Red</option>
-  <option value="green">Green</option>
-  <option value="blue">Blue</option>
-</select>
-
-// selected() will be array like ['red', 'blue']
-```
-
-**Textarea**:
-
-```typescript
-const text = signal('');
-
-<textarea bind:value={text}></textarea>
-```
-
-**Contenteditable**:
-
-```typescript
-const html = signal('<strong>Bold</strong>');
-
-<div contenteditable="true" bind:innerHTML={html}></div>
-```
-
-### Binding Modifiers
-
-```typescript
-// number - convert to number
-<input type="number" bind:value|number={age} />
-
-// trim - trim whitespace
-<input type="text" bind:value|trim={name} />
-
-// debounce - debounce updates (milliseconds)
-<input type="text" bind:value|debounce={500}={search} />
-```
-
-### Element Binding
-
-```typescript
-// Bind element dimensions
-const width = signal(0);
-const height = signal(0);
-
-<div bind:clientWidth={width} bind:clientHeight={height}>
-  Size: {width()} x {height()}
-</div>
-
-// Bind scroll position
-const scrollTop = signal(0);
-const scrollLeft = signal(0);
-
-<div bind:scrollTop={scrollTop} bind:scrollLeft={scrollLeft}>
-  Scroll: {scrollTop()}, {scrollLeft()}
-</div>
+import {
+  bindValue,        // Basic value binding
+  bindNumber,       // Auto-convert to number
+  bindTrimmed,      // Auto-trim whitespace
+  bindDebounced,    // Debounced updates
+  bindThrottled,    // Throttled updates
+  bindLazy,         // Update on blur
+  bindChecked,      // Checkbox binding
+  bindGroup,        // Radio group binding
+  bindSelect,       // Select element binding
+  composeBinding,   // Compose binding modifiers
+} from '@omnitron-dev/aether/utils';
 ```
 
 ---
 
-## Attributes
+## Class Management
 
-### Regular Attributes
+Instead of `class:active={isActive}` syntax, use **class utilities**.
 
-```typescript
-<div
-  id="container"
-  class="wrapper"
-  data-id="123"
-  aria-label="Container"
->
-  Content
-</div>
-```
-
-### Dynamic Attributes
+### Basic Class Names
 
 ```typescript
-const id = signal('main');
-const className = signal('container active');
+import { classNames } from '@omnitron-dev/aether/utils';
 
-<div
-  id={id()}
-  class={className()}
-  data-count={count()}
->
-  Content
+// Static classes
+<div className="btn btn-primary">Button</div>
+
+// Dynamic classes with classNames
+<div className={classNames('btn', 'btn-primary', 'btn-large')}>
+  Button
 </div>
 ```
 
 ### Conditional Classes
 
 ```typescript
-// class: directive
-<div
-  class:active={isActive()}
-  class:disabled={isDisabled()}
-  class:loading={isLoading()}
->
-  Content
-</div>
+import { classNames } from '@omnitron-dev/aether/utils';
 
-// Equivalent to:
-<div class={
-  (isActive() ? 'active ' : '') +
-  (isDisabled() ? 'disabled ' : '') +
-  (isLoading() ? 'loading' : '')
-}>
-```
+const isActive = signal(true);
+const isDisabled = signal(false);
 
-### Class Object
-
-```typescript
-const classes = computed(() => ({
+<div className={classNames('btn', {
   active: isActive(),
   disabled: isDisabled(),
-  'btn-primary': variant() === 'primary',
-  'btn-large': size() === 'large'
-}));
-
-<button class={classes()}>Button</button>
+  'btn-primary': !isDisabled()
+})}>
+  Button
+</div>
 ```
 
-### Style Binding
+### Reactive Classes with Functions
 
 ```typescript
-// Inline styles
-<div style={`color: ${color()}; font-size: ${fontSize()}px;`}>
+import { classes } from '@omnitron-dev/aether/utils';
+
+const theme = signal('dark');
+
+<div className={classes('base', {
+  dark: () => theme() === 'dark',
+  light: () => theme() === 'light',
+  active: isActive
+})}>
   Content
 </div>
+```
 
-// style: directive
-<div
-  style:color={color()}
-  style:font-size={`${fontSize()}px`}
-  style:display={isVisible() ? 'block' : 'none'}
->
+### Toggle Single Class
+
+```typescript
+import { toggleClass } from '@omnitron-dev/aether/utils';
+
+const isVisible = signal(true);
+
+<div className={toggleClass('visible', isVisible)}>
   Content
 </div>
+```
 
-// Style object
-const styles = computed(() => ({
+### Variant-Based Classes
+
+```typescript
+import { variantClasses } from '@omnitron-dev/aether/utils';
+
+const variant = signal<'primary' | 'secondary'>('primary');
+const size = signal<'sm' | 'md' | 'lg'>('md');
+
+<button className={variantClasses(
+  'btn',
+  {
+    primary: 'btn-primary',
+    secondary: 'btn-secondary',
+    sm: 'btn-sm',
+    md: 'btn-md',
+    lg: 'btn-lg'
+  },
+  [variant(), size()]
+)}>
+  Button
+</button>
+```
+
+### Merge Classes
+
+```typescript
+import { mergeClasses } from '@omnitron-dev/aether/utils';
+
+const baseClasses = 'btn btn-primary';
+const conditionalClasses = isActive() ? 'active hover' : '';
+
+// Removes duplicates
+<button className={mergeClasses(baseClasses, conditionalClasses, 'btn')}>
+  Button (no duplicate 'btn')
+</button>
+```
+
+### Available Class Utilities
+
+```typescript
+import {
+  classNames,           // Main utility, alias: cx
+  classes,              // With base and conditional
+  reactiveClasses,      // Reactive evaluation
+  toggleClass,          // Single class toggle
+  conditionalClasses,   // Only conditional
+  variantClasses,       // Variant-based
+  mergeClasses,         // Deduplicate classes
+} from '@omnitron-dev/aether/utils';
+```
+
+---
+
+## Style Management
+
+Instead of `style:color={color}` syntax, use **style utilities**.
+
+### Basic Styles
+
+```typescript
+import { styles } from '@omnitron-dev/aether/utils';
+
+const color = signal('red');
+const fontSize = signal(16);
+
+<div style={styles({
   color: color(),
   fontSize: `${fontSize()}px`,
-  fontWeight: isBold() ? 'bold' : 'normal'
-}));
-
-<div style={styles()}>Content</div>
+  padding: '10px',
+  margin: 0
+})}>
+  Styled content
+</div>
 ```
 
-### Boolean Attributes
+### Reactive Styles with Functions
 
 ```typescript
-// Attributes that don't need value
-<button disabled={isDisabled()}>Submit</button>
-<input readonly={isReadonly()} />
-<option selected={isSelected()}>Option</option>
+import { styles } from '@omnitron-dev/aether/utils';
 
-// When false, attribute is removed
-{isDisabled() === false}
-<button>Submit</button> {/* No 'disabled' attribute */}
+const theme = signal({ primary: '#007bff', text: '#333' });
+
+<div style={styles({
+  color: () => theme().text,
+  backgroundColor: () => theme().primary,
+  fontSize: () => `${baseFontSize() * 1.5}px`
+})}>
+  Themed content
+</div>
 ```
 
-### Data Attributes
+### CSS Custom Properties (Variables)
 
 ```typescript
-<div
-  data-id={user().id}
-  data-role={user().role}
-  data-active={isActive()}
->
+import { cssVar, styles } from '@omnitron-dev/aether/utils';
+
+const themeColor = signal('#007bff');
+
+// Single CSS variable
+<div style={cssVar('theme-color', themeColor())}>
+  <p style={{ color: 'var(--theme-color)' }}>Text</p>
+</div>
+
+// Multiple CSS variables
+<div style={styles({
+  '--primary-color': themeColor(),
+  '--secondary-color': '#6c757d',
+  '--spacing': '1rem'
+})}>
   Content
 </div>
 ```
 
-### Spread Attributes
+### Conditional Styles
 
 ```typescript
-const props = signal({
-  id: 'main',
-  class: 'container',
-  'data-test': 'wrapper'
-});
+import { conditionalStyles } from '@omnitron-dev/aether/utils';
 
-<div {...props()}>
-  Content
+const isHighlighted = signal(true);
+
+<div style={conditionalStyles(
+  isHighlighted(),
+  { backgroundColor: 'yellow', fontWeight: 'bold' },
+  { backgroundColor: 'transparent' }
+)}>
+  Conditionally styled
+</div>
+```
+
+### Merge Styles
+
+```typescript
+import { mergeStyles } from '@omnitron-dev/aether/utils';
+
+const baseStyles = { padding: '10px', margin: '5px' };
+const themeStyles = { color: theme().text, backgroundColor: theme().bg };
+
+<div style={mergeStyles(baseStyles, themeStyles, { fontSize: '14px' })}>
+  Merged styles
+</div>
+```
+
+### Layout Helpers
+
+```typescript
+import { flexStyles, gridStyles, sizeStyles } from '@omnitron-dev/aether/utils';
+
+// Flexbox
+<div style={flexStyles({ justify: 'center', align: 'center', gap: '1rem' })}>
+  Flex container
 </div>
 
-// Merge with other attributes
-<div class="base" {...props()}>
-  {/* class will be "base container" */}
+// Grid
+<div style={gridStyles({ columns: 3, gap: '20px' })}>
+  <div>Item 1</div>
+  <div>Item 2</div>
+  <div>Item 3</div>
 </div>
+
+// Size
+<div style={sizeStyles({ width: 300, height: 200 })}>
+  Fixed size
+</div>
+```
+
+### Available Style Utilities
+
+```typescript
+import {
+  styles,              // Main utility
+  reactiveStyles,      // Reactive evaluation
+  mergeStyles,         // Merge multiple style objects
+  cssVar,              // Single CSS custom property
+  cssVars,             // Multiple CSS custom properties
+  conditionalStyles,   // Conditional style objects
+  sizeStyles,          // Width/height helpers
+  positionStyles,      // Position helpers
+  flexStyles,          // Flexbox helpers
+  gridStyles,          // Grid helpers
+} from '@omnitron-dev/aether/utils';
 ```
 
 ---
 
-## Special Elements
+## Custom Directives
 
-### slot
+Instead of `use:directiveName` syntax, use the **directive pattern** with refs.
 
-Render children passed to component:
+### Creating a Directive
 
 ```typescript
-const Card = defineComponent(() => {
-  return () => (
-    <div class="card">
-      <slot /> {/* Children render here */}
-    </div>
-  );
+import { createDirective } from '@omnitron-dev/aether/utils';
+
+// Define tooltip directive
+const tooltip = createDirective<string>((element, text) => {
+  const tooltipEl = document.createElement('div');
+  tooltipEl.className = 'tooltip';
+  tooltipEl.textContent = text;
+
+  const show = () => {
+    document.body.appendChild(tooltipEl);
+    positionTooltip(tooltipEl, element);
+  };
+
+  const hide = () => {
+    tooltipEl.remove();
+  };
+
+  element.addEventListener('mouseenter', show);
+  element.addEventListener('mouseleave', hide);
+
+  // Return cleanup function
+  return () => {
+    hide();
+    element.removeEventListener('mouseenter', show);
+    element.removeEventListener('mouseleave', hide);
+  };
 });
 
-// Usage
-<Card>
-  <p>This goes in the slot</p>
-</Card>
-```
-
-**Named slots**:
-
-```typescript
-const Layout = defineComponent(() => {
-  return () => (
-    <div class="layout">
-      <header><slot name="header" /></header>
-      <main><slot /></main>
-      <footer><slot name="footer" /></footer>
-    </div>
-  );
-});
-
-// Usage
-<Layout>
-  <h1 slot="header">Title</h1>
-  <p>Main content</p>
-  <span slot="footer">Footer</span>
-</Layout>
-```
-
-### Fragment
-
-Group elements without wrapper:
-
-```typescript
-import { Fragment } from 'aether';
-
-<Fragment>
-  <div>First</div>
-  <div>Second</div>
-</Fragment>
-
-// Short syntax
-<>
-  <div>First</div>
-  <div>Second</div>
-</>
-```
-
-### Portal
-
-Render outside component tree:
-
-```typescript
-import { Portal } from 'aether';
-
-const Modal = defineComponent(() => {
-  return () => (
-    <Portal target={document.body}>
-      <div class="modal-overlay">
-        <div class="modal">Modal content</div>
-      </div>
-    </Portal>
-  );
-});
-```
-
-### Suspense
-
-Handle async rendering:
-
-```typescript
-import { Suspense } from 'aether';
-
-<Suspense fallback={<LoadingSpinner />}>
-  <AsyncComponent />
-</Suspense>
-```
-
-### ErrorBoundary
-
-Catch errors:
-
-```typescript
-import { ErrorBoundary } from 'aether';
-
-<ErrorBoundary fallback={(error) => <ErrorDisplay error={error} />}>
-  <App />
-</ErrorBoundary>
-```
-
----
-
-## Directives
-
-### on: (Events)
-
-```typescript
-<button on:click={handleClick}>Click</button>
-<input on:input={handleInput} on:blur={handleBlur} />
-```
-
-### bind: (Two-way binding)
-
-```typescript
-<input bind:value={text} />
-<input type="checkbox" bind:checked={isChecked} />
-<select bind:value={selected}>...</select>
-```
-
-### class: (Conditional classes)
-
-```typescript
-<div
-  class:active={isActive()}
-  class:disabled={isDisabled()}
-/>
-```
-
-### style: (Inline styles)
-
-```typescript
-<div
-  style:color={color()}
-  style:font-size={`${size()}px`}
-/>
-```
-
-### ref (Element reference)
-
-```typescript
-const divRef = signal<HTMLDivElement | null>(null);
-
-<div ref={divRef}>Content</div>
-```
-
-### use: (Custom directives)
-
-```typescript
-import { tooltip } from './directives/tooltip';
-
-<button use:tooltip="Click to submit">
+// Use directive
+<button ref={tooltip('Click to submit')}>
   Submit
 </button>
 ```
 
-**Custom directive**:
+### Built-in Directives
 
 ```typescript
-export const tooltip = (node: HTMLElement, text: string) => {
-  const tooltip = document.createElement('div');
-  tooltip.className = 'tooltip';
-  tooltip.textContent = text;
+import {
+  autoFocus,
+  clickOutside,
+  intersectionObserver,
+  resizeObserver,
+  longPress,
+  swipe,
+} from '@omnitron-dev/aether/utils';
 
-  const showTooltip = () => {
-    document.body.appendChild(tooltip);
-    // Position tooltip
-  };
+// Auto-focus input
+<input ref={autoFocus()} />
 
-  const hideTooltip = () => {
-    tooltip.remove();
-  };
+// Click outside handler
+const handleClose = () => setIsOpen(false);
+<div ref={clickOutside(handleClose)}>
+  Modal content
+</div>
 
-  node.addEventListener('mouseenter', showTooltip);
-  node.addEventListener('mouseleave', hideTooltip);
+// Intersection observer
+<div ref={intersectionObserver({
+  onIntersect: (entry) => console.log('Visible:', entry.isIntersecting),
+  threshold: 0.5
+})}>
+  Lazy-loaded content
+</div>
 
-  return {
-    update(newText: string) {
-      tooltip.textContent = newText;
-    },
-    destroy() {
-      node.removeEventListener('mouseenter', showTooltip);
-      node.removeEventListener('mouseleave', hideTooltip);
-      tooltip.remove();
-    }
-  };
-};
+// Resize observer
+<div ref={resizeObserver((entry) => {
+  console.log('Size:', entry.contentRect.width, entry.contentRect.height);
+})}>
+  Resizable content
+</div>
+
+// Long press
+<button ref={longPress(() => console.log('Long pressed'), 1000)}>
+  Hold me
+</button>
+
+// Swipe gesture
+<div ref={swipe({
+  onSwipeLeft: () => console.log('Swiped left'),
+  onSwipeRight: () => console.log('Swiped right'),
+  threshold: 50
+})}>
+  Swipeable content
+</div>
+```
+
+### Updatable Directives
+
+```typescript
+import { createUpdatableDirective } from '@omnitron-dev/aether/utils';
+
+const coloredBorder = createUpdatableDirective<{ color: string; width: number }>(
+  (element, params) => {
+    const apply = () => {
+      element.style.border = `${params.width}px solid ${params.color}`;
+    };
+
+    apply();
+
+    return {
+      update(newParams) {
+        params = newParams;
+        apply();
+      },
+      destroy() {
+        element.style.border = '';
+      }
+    };
+  }
+);
+
+// Use with reactive parameters
+const borderColor = signal('red');
+<div ref={coloredBorder({ color: borderColor(), width: 2 })}>
+  Content
+</div>
+```
+
+### Combining Directives
+
+```typescript
+import { combineDirectives, autoFocus, tooltip, clickOutside } from '@omnitron-dev/aether/utils';
+
+const multiDirective = combineDirectives([
+  autoFocus(),
+  tooltip('Enter your email'),
+  clickOutside(() => console.log('Clicked outside'))
+]);
+
+<input ref={multiDirective} />
+```
+
+### Available Directive Utilities
+
+```typescript
+import {
+  createDirective,           // Create custom directive
+  createUpdatableDirective,  // Create updatable directive
+  combineDirectives,         // Combine multiple directives
+  autoFocus,                 // Auto-focus element
+  clickOutside,              // Click outside handler
+  intersectionObserver,      // Intersection observer
+  resizeObserver,            // Resize observer
+  longPress,                 // Long press gesture
+  swipe,                     // Swipe gesture
+} from '@omnitron-dev/aether/utils';
 ```
 
 ---
 
-## Advanced Features
+## Performance Patterns
 
-### Dynamic Components
+### Memoization with `computed()`
 
 ```typescript
-const CurrentView = signal<Component>(HomeView);
+import { signal, computed } from '@omnitron-dev/aether/reactivity';
 
-<div>
-  <button on:click={() => CurrentView(HomeView)}>Home</button>
-  <button on:click={() => CurrentView(AboutView)}>About</button>
+const numbers = signal([1, 2, 3, 4, 5]);
 
-  {/* Render dynamic component */}
-  <Dynamic component={CurrentView()} {...props} />
+// Only recomputes when numbers change
+const sum = computed(() =>
+  numbers().reduce((a, b) => a + b, 0)
+);
+
+<div>Sum: {sum()}</div>
+```
+
+### Batching Updates
+
+```typescript
+import { batch } from '@omnitron-dev/aether/reactivity';
+
+const firstName = signal('');
+const lastName = signal('');
+const fullName = computed(() => `${firstName()} ${lastName()}`);
+
+// Update both without triggering fullName twice
+batch(() => {
+  firstName.set('John');
+  lastName.set('Doe');
+});
+// fullName computes only once
+```
+
+### Lazy Loading Components
+
+```typescript
+import { lazy } from '@omnitron-dev/aether/component';
+import { Suspense } from '@omnitron-dev/aether';
+
+// Lazy load heavy component
+const HeavyChart = lazy(() => import('./HeavyChart'));
+
+<Suspense fallback={<div>Loading chart...</div>}>
+  <HeavyChart data={chartData()} />
+</Suspense>
+```
+
+### Virtual Lists (For Large Lists)
+
+```typescript
+import { For } from '@omnitron-dev/aether';
+import { signal, computed } from '@omnitron-dev/aether/reactivity';
+
+const items = signal(Array.from({ length: 10000 }, (_, i) => ({ id: i, name: `Item ${i}` })));
+const scrollTop = signal(0);
+const itemHeight = 50;
+const visibleCount = 20;
+
+const visibleItems = computed(() => {
+  const start = Math.floor(scrollTop() / itemHeight);
+  const end = start + visibleCount;
+  return items().slice(start, end);
+});
+
+<div
+  style={{ height: '1000px', overflow: 'auto' }}
+  onScroll={(e) => scrollTop.set(e.currentTarget.scrollTop)}
+>
+  <div style={{ height: `${items().length * itemHeight}px`, position: 'relative' }}>
+    <For each={visibleItems()}>
+      {(item, index) => (
+        <div
+          style={{
+            position: 'absolute',
+            top: `${(Math.floor(scrollTop() / itemHeight) + index()) * itemHeight}px`,
+            height: `${itemHeight}px`
+          }}
+        >
+          {item.name}
+        </div>
+      )}
+    </For>
+  </div>
 </div>
 ```
 
-### Dynamic Tag Names
+### Avoiding Unnecessary Re-renders
 
 ```typescript
-const Tag = signal<'h1' | 'h2' | 'h3'>('h1');
+import { signal, computed } from '@omnitron-dev/aether/reactivity';
 
-<Dynamic tag={Tag()}>
-  Heading
-</Dynamic>
-```
+const user = signal({ name: 'Alice', age: 25, email: 'alice@example.com' });
 
-### SVG
+// Only re-renders when name changes, not when age or email change
+const userName = computed(() => user().name);
 
-```typescript
-<svg width="100" height="100">
-  <circle
-    cx="50"
-    cy="50"
-    r={radius()}
-    fill={color()}
-  />
-</svg>
-```
-
-### Math (MathML)
-
-```typescript
-<math>
-  <mrow>
-    <msup>
-      <mi>x</mi>
-      <mn>2</mn>
-    </msup>
-  </mrow>
-</math>
-```
-
-### Keyed Blocks
-
-Force recreation of block when key changes:
-
-```typescript
-const userId = signal(1);
-
-{#key userId()}
-  <UserProfile userId={userId()} />
-{/key}
-
-// When userId changes, UserProfile is destroyed and recreated
-```
-
-### Await Blocks
-
-Handle promises in templates:
-
-```typescript
-const userPromise = signal(fetchUser()
-
-{#await userPromise()}
-  <p>Loading...</p>
-{:then user}
-  <p>Hello {user.name}!</p>
-{:catch error}
-  <p>Error: {error.message}</p>
-{/await}
+<div>Name: {userName()}</div>
 ```
 
 ---
 
-## Compilation
+## Migration from Spec
 
-### JSX Transform
+If you were expecting Svelte-like syntax from the original specification, here's how to use the actual implementation:
 
-Aether uses a custom JSX transform optimized for fine-grained reactivity:
+### Control Flow Migration
 
-**Source**:
+| Spec Syntax (NOT implemented) | Actual Implementation |
+|-------------------------------|----------------------|
+| `{#if condition}...{:else}...{/if}` | `<Show when={condition} fallback={...}>...</Show>` |
+| `{#each items as item}...{/each}` | `<For each={items}>{(item) => ...}</For>` |
+| `{#await promise}...{:then}...{:catch}...{/await}` | `<Suspense fallback={...}><Async /></Suspense>` |
+| `{#key value}...{/key}` | `<Show when={value} keyed>...</Show>` |
 
-```typescript
-<div class="container">
-  <h1>{title()}</h1>
-  <p>Static text</p>
-</div>
-```
+### Event Handling Migration
 
-**Compiled** (simplified):
+| Spec Syntax (NOT implemented) | Actual Implementation |
+|-------------------------------|----------------------|
+| `on:click\|preventDefault={handler}` | `onClick={prevent(handler)}` |
+| `on:click\|stopPropagation={handler}` | `onClick={stop(handler)}` |
+| `on:input\|debounce={500}={handler}` | `onInput={debounce(handler, 500)}` |
+| `on:scroll\|throttle={100}={handler}` | `onScroll={throttle(handler, 100)}` |
 
-```typescript
-const _tmpl$ = template('<div class="container"><h1></h1><p>Static text</p></div>');
+### Binding Migration
 
-function render() {
-  const el = _tmpl$.cloneNode(true);
-  const h1 = el.firstChild;
+| Spec Syntax (NOT implemented) | Actual Implementation |
+|-------------------------------|----------------------|
+| `bind:value={text}` | `{...bindValue(text)}` |
+| `bind:value\|number={age}` | `{...bindNumber(age)}` |
+| `bind:value\|trim={name}` | `{...bindTrimmed(name)}` |
+| `bind:value\|debounce={500}={search}` | `{...bindDebounced(search, 500)}` |
+| `bind:checked={agreed}` | `{...bindChecked(agreed)}` |
+| `bind:group={selected}` | `{...bindGroup(selected, value)}` |
 
-  createRenderEffect(() => {
-    h1.textContent = title();
-  });
+### Class/Style Migration
 
-  return el;
-}
-```
+| Spec Syntax (NOT implemented) | Actual Implementation |
+|-------------------------------|----------------------|
+| `class:active={isActive}` | `className={classes('base', { active: isActive })}` |
+| `style:color={textColor}` | `style={styles({ color: textColor })}` |
+| `style:--theme={themeColor}` | `style={cssVar('theme', themeColor)}` |
 
-**Optimizations**:
-1. **Template Cloning**: Static structure cloned, not created from scratch
-2. **Fine-Grained Updates**: Only dynamic parts (like `{title()}`) become reactive
-3. **No Virtual DOM**: Direct DOM manipulation
-4. **Minimal Runtime**: Small bundle size
+### Directive Migration
 
-### Static vs Dynamic
-
-**Static** (created once):
-```typescript
-<div class="container">
-  <p>Static text</p>
-</div>
-```
-
-**Dynamic** (reactive):
-```typescript
-<div class={className()}>
-  <p>{text()}</p>
-</div>
-```
-
-**Mixed** (optimized):
-```typescript
-<div class="container static-class" data-id="123">
-  <h1>{title()}</h1>
-  <p>Static paragraph</p>
-  <span>{count()}</span>
-</div>
-
-// Only title() and count() are reactive
-```
-
-### Compiler Directives
-
-```typescript
-// @once - evaluate once (not reactive)
-<div>{/* @once */ expensiveComputation()}</div>
-
-// @memo - memoize expression
-<div>{/* @memo */ items().map(transform)}</div>
-
-// @ssr-only - only render on server
-{/* @ssr-only */}
-<div>Server only content</div>
-
-// @client-only - only render on client
-{/* @client-only */}
-<div>Client only content</div>
-```
-
----
-
-## Comparison
-
-### vs React JSX
-
-| Feature | React | Aether |
-|---------|-------|-------|
-| **Syntax** | JSX | JSX + extensions |
-| **Conditionals** | `{condition && <div/>}` | `{#if condition}` or `&&` |
-| **Loops** | `.map()` | `{#each}` or `.map()` |
-| **Events** | `onClick` | `on:click` |
-| **Bindings** | Manual (controlled) | `bind:value` |
-| **Class** | `className` | `class` or `class:` |
-| **Fragments** | `<Fragment>` or `<>` | `<Fragment>` or `<>` |
-
-### vs Vue Templates
-
-| Feature | Vue | Aether |
-|---------|-----|-------|
-| **Syntax** | Template DSL | JSX |
-| **Conditionals** | `v-if`/`v-else` | `{#if}/{:else}` |
-| **Loops** | `v-for` | `{#each}` |
-| **Events** | `@click` or `v-on:click` | `on:click` |
-| **Bindings** | `v-model` | `bind:value` |
-| **Class** | `:class` or `v-bind:class` | `class:` |
-
-### vs Svelte
-
-| Feature | Svelte | Aether |
-|---------|--------|-------|
-| **Syntax** | Template DSL | JSX |
-| **Conditionals** | `{#if}` | `{#if}` |
-| **Loops** | `{#each}` | `{#each}` |
-| **Events** | `on:click` | `on:click` |
-| **Bindings** | `bind:value` | `bind:value` |
-| **Class** | `class:active` | `class:active` |
-
-Aether is closest to Svelte in template syntax, but uses JSX instead of HTML templates.
+| Spec Syntax (NOT implemented) | Actual Implementation |
+|-------------------------------|----------------------|
+| `use:tooltip="text"` | `ref={tooltip('text')}` |
+| `use:clickOutside={handler}` | `ref={clickOutside(handler)}` |
+| `use:autoFocus` | `ref={autoFocus()}` |
 
 ---
 
 ## Best Practices
 
-### 1. Keep Templates Simple
+### 1. Prefer Components Over Utilities When Reusing
 
 ```typescript
-// ❌ Bad - too much logic in template
-<div>
-  {users()
-    .filter(u => u.active && u.role === 'admin')
-    .map(u => u.name.toUpperCase())
-    .join(', ')
-  }
-</div>
+// ❌ Not ideal - repetitive
+<button onClick={preventStop(handleClick)} className={classes('btn', { active: isActive() })}>
+  Click
+</button>
+<button onClick={preventStop(handleClick)} className={classes('btn', { active: isActive() })}>
+  Another
+</button>
 
-// ✅ Good - extract to computed
-const activeAdminNames = computed(() => {
-  return users()
-    .filter(u => u.active && u.role === 'admin')
-    .map(u => u.name.toUpperCase())
-    .join(', ');
-});
-
-<div>{activeAdminNames()}</div>
-```
-
-### 2. Use Keys in Lists
-
-```typescript
-// ❌ Bad - no keys
-{#each items() as item}
-  <Item data={item} />
-{/each}
-
-// ✅ Good - with keys
-{#each items() as item (item.id)}
-  <Item data={item} />
-{/each}
-```
-
-### 3. Avoid Inline Functions in Loops
-
-```typescript
-// ❌ Bad - creates new function on every render
-{#each items() as item}
-  <button on:click={() => handleClick(item.id)}>
-    Delete
-  </button>
-{/each}
-
-// ✅ Good - extract function
-const handleItemClick = (id: number) => (e: Event) => {
-  handleClick(id);
-};
-
-{#each items() as item}
-  <button on:click={handleItemClick(item.id)}>
-    Delete
-  </button>
-{/each}
-
-// ✅ Even better - use event delegation
-<div on:click={(e) => {
-  const id = (e.target as HTMLElement).dataset.id;
-  if (id) handleClick(Number(id));
-}}>
-  {#each items() as item}
-    <button data-id={item.id}>Delete</button>
-  {/each}
-</div>
-```
-
-### 4. Use Fragments to Avoid Wrapper Divs
-
-```typescript
-// ❌ Bad - unnecessary wrapper
-<div>
-  <div>First</div>
-  <div>Second</div>
-</div>
-
-// ✅ Good - fragment
-<>
-  <div>First</div>
-  <div>Second</div>
-</>
-```
-
-### 5. Bind Only When Needed
-
-```typescript
-// ❌ Bad - unnecessary bind for read-only
-<input bind:value={search} readonly />
-
-// ✅ Good - just set value
-<input value={search()} readonly />
-
-// ✅ Use bind for user input
-<input bind:value={search} />
-```
-
----
-
-## Examples
-
-### Complete Form
-
-```typescript
-const LoginForm = defineComponent(() => {
-  const email = signal('');
-  const password = signal('');
-  const rememberMe = signal(false);
-  const errors = signal<Record<string, string>>({});
-
-  const validate = () => {
-    const errs: Record<string, string> = {};
-
-    if (!email()) {
-      errs.email = 'Email is required';
-    } else if (!email().includes('@')) {
-      errs.email = 'Invalid email';
-    }
-
-    if (!password()) {
-      errs.password = 'Password is required';
-    } else if (password().length < 8) {
-      errs.password = 'Password must be 8+ characters';
-    }
-
-    errors.set(errs);
-    return Object.keys(errs).length === 0;
-  };
-
-  const handleSubmit = (e: Event) => {
-    e.preventDefault();
-
-    if (validate()) {
-      console.log('Login:', {
-        email: email(),
-        password: password(),
-        rememberMe: rememberMe()
-      });
-    }
-  };
-
+// ✅ Better - create component
+const ActiveButton = defineComponent<{ onClick: () => void; children: any }>((props) => {
   return () => (
-    <form on:submit|preventDefault={handleSubmit} class="login-form">
-      <div class="field">
-        <label for="email">Email</label>
-        <input
-          id="email"
-          type="email"
-          bind:value={email}
-          class:error={!!errors().email}
-          placeholder="you@example.com"
-        />
-        {#if errors().email}
-          <span class="error-message">{errors().email}</span>
-        {/if}
-      </div>
-
-      <div class="field">
-        <label for="password">Password</label>
-        <input
-          id="password"
-          type="password"
-          bind:value={password}
-          class:error={!!errors().password}
-          placeholder="••••••••"
-        />
-        {#if errors().password}
-          <span class="error-message">{errors().password}</span>
-        {/if}
-      </div>
-
-      <div class="field-checkbox">
-        <input
-          id="remember"
-          type="checkbox"
-          bind:checked={rememberMe}
-        />
-        <label for="remember">Remember me</label>
-      </div>
-
-      <button type="submit" class="btn-primary">
-        Log In
-      </button>
-    </form>
+    <button
+      onClick={preventStop(props.onClick)}
+      className={classes('btn', { active: isActive() })}
+    >
+      {props.children}
+    </button>
   );
 });
+
+<ActiveButton onClick={handleClick}>Click</ActiveButton>
+<ActiveButton onClick={handleClick}>Another</ActiveButton>
 ```
 
-### Dynamic Table
+### 2. Use computed() for Expensive Operations
 
 ```typescript
-interface User {
-  id: number;
-  name: string;
-  email: string;
-  role: 'admin' | 'user';
-  active: boolean;
+// ❌ Not ideal - recalculates on every render
+<div>Total: {items().reduce((sum, item) => sum + item.price, 0)}</div>
+
+// ✅ Better - memoized
+const total = computed(() =>
+  items().reduce((sum, item) => sum + item.price, 0)
+);
+<div>Total: {total()}</div>
+```
+
+### 3. Batch Related Updates
+
+```typescript
+// ❌ Not ideal - triggers multiple updates
+setFirstName('John');
+setLastName('Doe');
+setAge(30);
+
+// ✅ Better - single update
+batch(() => {
+  setFirstName('John');
+  setLastName('Doe');
+  setAge(30);
+});
+```
+
+### 4. Use Type-Safe Props
+
+```typescript
+// ✅ Always define prop types
+interface ButtonProps {
+  variant: 'primary' | 'secondary';
+  size: 'sm' | 'md' | 'lg';
+  onClick: () => void;
+  children: any;
 }
 
-const UserTable = defineComponent(() => {
-  const users = signal<User[]>([...]);
-  const sortBy = signal<keyof User>('name');
-  const sortDesc = signal(false);
-  const filter = signal('');
+const Button = defineComponent<ButtonProps>((props) => {
+  // TypeScript ensures props are correct
+  return () => <button className={variantClasses('btn', variants, [props.variant, props.size])}>...</button>;
+});
+```
 
-  const filteredUsers = computed(() => {
-    let result = users();
+### 5. Clean Up Side Effects
 
-    // Filter
-    if (filter()) {
-      const q = filter().toLowerCase();
-      result = result.filter(u =>
-        u.name.toLowerCase().includes(q) ||
-        u.email.toLowerCase().includes(q)
-      );
-    }
+```typescript
+import { onCleanup } from '@omnitron-dev/aether/reactivity';
 
-    // Sort
-    result = [...result].sort((a, b) => {
-      const aVal = a[sortBy()];
-      const bVal = b[sortBy()];
-      const order = sortDesc() ? -1 : 1;
+const MyComponent = defineComponent(() => {
+  const interval = setInterval(() => console.log('tick'), 1000);
 
-      if (aVal < bVal) return -1 * order;
-      if (aVal > bVal) return 1 * order;
-      return 0;
-    });
-
-    return result;
+  onCleanup(() => {
+    clearInterval(interval);
   });
 
-  const toggleSort = (column: keyof User) => {
-    if (sortBy() === column) {
-      sortDesc(!sortDesc());
-    } else {
-      sortBy(column);
-      sortDesc(false);
-    }
-  };
-
-  return () => (
-    <div class="user-table">
-      <div class="table-header">
-        <input
-          type="search"
-          bind:value={filter}
-          placeholder="Search users..."
-          class="search-input"
-        />
-      </div>
-
-      <table>
-        <thead>
-          <tr>
-            {#each ['name', 'email', 'role', 'active'] as column}
-              <th
-                on:click={() => toggleSort(column as keyof User)}
-                class:sorted={sortBy() === column}
-                class:desc={sortBy() === column && sortDesc()}
-              >
-                {column}
-                {#if sortBy() === column}
-                  <span>{sortDesc() ? '▼' : '▲'}</span>
-                {/if}
-              </th>
-            {/each}
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each filteredUsers() as user (user.id)}
-            <tr class:inactive={!user.active}>
-              <td>{user.name}</td>
-              <td>{user.email}</td>
-              <td>
-                <span class={`badge badge-${user.role}`}>
-                  {user.role}
-                </span>
-              </td>
-              <td>
-                <span class={`status ${user.active ? 'active' : 'inactive'}`}>
-                  {user.active ? 'Active' : 'Inactive'}
-                </span>
-              </td>
-              <td>
-                <button on:click={() => editUser(user.id)}>Edit</button>
-                <button on:click={() => deleteUser(user.id)}>Delete</button>
-              </td>
-            </tr>
-          {:else}
-            <tr>
-              <td colspan="5" class="no-results">
-                No users found
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
-  );
+  return () => <div>Component</div>;
 });
 ```
 
 ---
 
-**End of Template Syntax Specification**
+## Performance Comparison
+
+### TypeScript JSX vs Custom Compiler
+
+| Metric | TypeScript JSX | Custom Compiler |
+|--------|---------------|-----------------|
+| **Runtime Performance** | 7/10 (very good) | 10/10 (optimal) |
+| **Build Time** | 10/10 (fast) | 6/10 (slower) |
+| **Bundle Size** | 8/10 (~6KB core + utils) | 9/10 (~4KB core) |
+| **Type Safety** | 10/10 (full TS) | 6/10 (needs plugin) |
+| **Debugging** | 10/10 (clear traces) | 6/10 (source maps) |
+| **Tooling** | 10/10 (standard) | 4/10 (custom) |
+| **Learning Curve** | 10/10 (zero) | 7/10 (new syntax) |
+
+**Verdict**: TypeScript JSX provides **7/10 runtime performance**, which is sufficient for 99% of use cases, while excelling in developer experience, tooling, and type safety. The 3-point performance gap can be addressed with optional compiler plugins in the future without breaking existing code.
+
+---
+
+## Next Steps
+
+- **Component Patterns**: See [03-COMPONENTS.md](./03-COMPONENTS.md)
+- **Directives Deep Dive**: See [05-DIRECTIVES.md](./05-DIRECTIVES.md)
+- **Architectural Decision**: See [TEMPLATE-DIRECTIVES-EVALUATION.md](./TEMPLATE-DIRECTIVES-EVALUATION.md)
+- **Implementation Examples**: See `packages/aether/tests/unit/utils/*.spec.ts`
+
+---
+
+## Summary
+
+Aether's **TypeScript JSX + Utilities** approach provides:
+
+✅ **Zero Learning Curve** - Standard JavaScript/TypeScript
+✅ **Full Type Safety** - TypeScript checks everything
+✅ **Perfect Tooling** - VSCode, Prettier, ESLint, Jest all work
+✅ **Clear Debugging** - No source maps needed
+✅ **Unlimited Flexibility** - No compiler constraints
+✅ **Directive-like Convenience** - Utilities reduce boilerplate
+✅ **Production Ready** - 109/109 utility tests passing
+
+This approach delivers the best balance of **developer experience**, **error resistance**, **flexibility**, and **convenience** without requiring a custom compiler.

@@ -983,12 +983,35 @@ const tooltip = createDirective<string>((node, text) => {
 - `tests/unit/utils/directive.spec.ts`: 16/16 tests passing
 - **Total**: 109/109 tests passing (100% success rate)
 
-**Phase 2: Documentation Update (Week 2)**
-- 🔲 Rewrite 04-TEMPLATE-SYNTAX.md to document actual TypeScript JSX patterns
-- 🔲 Rewrite 05-DIRECTIVES.md to document utility-based patterns
-- 🔲 Add migration examples showing "spec syntax → actual syntax"
-- 🔲 Document when to use each utility
-- 🔲 Performance comparison section
+**Phase 2: Documentation Update** ✅ **COMPLETED**
+- ✅ Rewrite 04-TEMPLATE-SYNTAX.md to document actual TypeScript JSX patterns (1,202 lines)
+  - Complete TypeScript JSX guide with all control flow, events, binding, classes, styles
+  - Built-in directives documentation
+  - Performance patterns and best practices
+  - Migration tables from spec syntax to actual implementation
+  - Performance comparison section
+- ✅ Rewrite 05-DIRECTIVES.md to document utility-based patterns (1,265 lines)
+  - Comprehensive directive pattern documentation
+  - All built-in directives (autoFocus, clickOutside, intersectionObserver, resizeObserver, longPress, swipe)
+  - Custom directive creation guide
+  - Updatable directives and composition patterns
+  - Advanced patterns and best practices
+  - Migration guide from Svelte/Vue directives
+- ✅ Add migration examples showing "spec syntax → actual syntax"
+  - Control flow migration table
+  - Event handling migration table
+  - Binding migration table
+  - Class/Style migration table
+  - Directive migration table
+- ✅ Document when to use each utility
+  - Use cases for each built-in directive
+  - Best practices for 7 key patterns
+  - When to prefer components over utilities
+  - Performance optimization guidelines
+- ✅ Performance comparison section
+  - TypeScript JSX vs Custom Compiler metrics table
+  - 7 comparison dimensions with scores
+  - Verdict and future optimization path
 
 **Phase 3: Examples & Recipes (Week 3)**
 - 🔲 Create example components using new utilities

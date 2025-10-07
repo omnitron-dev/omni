@@ -27,30 +27,30 @@ Comprehensive roadmap for implementing the Aether Frontend Framework - a minimal
 
 ### Project Status (as of 2025-10-07)
 
-**Completed Work** (Phases 1-4):
+**Completed Work** (Phases 1-6):
 - ✅ **Phase 1**: Core Reactivity System (signal, computed, effect, store, resource)
 - ✅ **Phase 2**: Component System (defineComponent, lifecycle, JSX runtime, control flow)
 - ✅ **Phase 2.5**: Utility Functions (events, binding, classes, styles, directives)
 - ✅ **Phase 3**: Dependency Injection & Modules
 - ✅ **Phase 4**: Compiler Optimization Evaluation & POC
+- ✅ **Phase 5**: Router & Data Loading (automatic loaders, layouts, error boundaries, prefetching)
+- ✅ **Phase 6**: SSR/SSG Server (runtime-agnostic HTTP server, SSR renderer)
 
 **Key Metrics**:
-- **Lines of Code**: ~15,000 (core framework)
+- **Lines of Code**: ~18,000+ (core framework + server)
 - **Test Coverage**: 1133/1145 tests passing (98.9%)
 - **Documentation**: ~10,000 lines across 20+ documents
 - **Examples**: 11 production-ready example files (4,746 lines)
+- **Server**: Runtime-agnostic (Node.js 22+, Bun 1.2+, Deno 2.0+)
 
 **Current Focus**:
-- Phase 5: Routing & Data Loading
-- Phase 6: Forms & Validation (enhanced)
-- Phase 7: UI Primitives
-- Phase 8: SSR/SSG/Islands Implementation
+- Phase 7: Forms & Validation (enhanced)
+- Phase 8: UI Primitives
+- Phase 9: Streaming SSR & Islands (optional enhancements)
 
 ---
 
 ## Architectural Decision
-
-> **CRITICAL DECISION (2025-10-06)**: After comprehensive evaluation (`TEMPLATE-DIRECTIVES-EVALUATION.md`), we chose **TypeScript JSX with utility functions** instead of implementing a custom template compiler.
 
 ### Decision Summary
 
@@ -200,6 +200,103 @@ Comprehensive roadmap for implementing the Aether Frontend Framework - a minimal
 - ✅ Performance analysis: Expected 2-4x render improvements
 - ✅ Opt-in architecture with zero impact when disabled
 - ✅ Complete documentation and README
+
+**Files Created**:
+- `babel-plugin-aether/*` (~880 lines)
+- `docs/COMPILER-OPTIMIZATION-EVALUATION.md` (815 lines)
+
+### Phase 5: Router & Data Loading ✅ (2 weeks - COMPLETED)
+
+**Status**: Production-ready router with SSR support
+
+**Delivered**:
+- ✅ Automatic loader execution on navigation
+- ✅ Loader execution in router.navigate() and handlePopState()
+- ✅ Initial loader execution on router initialization
+- ✅ Navigation state tracking (loading/idle/submitting)
+- ✅ RouterView component for rendering with layouts
+- ✅ router.ready() method for initialization wait
+- ✅ Error boundary integration in RouterView
+- ✅ Route prefetching system (hover, render, manual)
+- ✅ Smart prefetch caching (prevents duplicates)
+- ✅ Link component with prefetch support
+
+**Files Created**:
+- `src/router/RouterView.ts` - Route rendering with layouts
+- `src/router/prefetch.ts` - Prefetching infrastructure
+- Updated: `src/router/router.ts` - Loader execution
+- Updated: `src/router/Link.ts` - Prefetch integration
+- Updated: `src/router/types.ts` - Added router.ready()
+
+**API Examples**:
+```typescript
+// Automatic loaders
+const routes = [
+  {
+    path: '/users/:id',
+    component: UserProfile,
+    loader: async ({ params }) => {
+      return fetch(`/api/users/${params.id}`).then(r => r.json());
+    }
+  }
+];
+
+// Prefetching
+<Link href="/users/123" prefetch="hover">User Profile</Link>
+<Link href="/blog" prefetch="render">Blog</Link>
+
+// Manual prefetch
+await prefetchRoute(router, '/about');
+```
+
+### Phase 6: SSR/SSG Server ✅ (2 weeks - COMPLETED)
+
+**Status**: Runtime-agnostic HTTP server with SSR renderer
+
+**Delivered**:
+- ✅ **Built-in HTTP Server** (zero dependencies)
+  - Works on Node.js 22+, Bun 1.2+, Deno 2.0+
+  - Runtime detection and adaptation
+  - Request handling with error recovery
+  - Graceful shutdown support
+
+- ✅ **SSR Renderer**
+  - Component-to-HTML rendering
+  - Loader execution on server
+  - Data serialization for hydration
+  - Meta tags for SEO
+  - Error pages (404, 500)
+  - JSX-to-HTML conversion
+
+**Files Created**:
+- `src/server/types.ts` - Server type definitions (~150 lines)
+- `src/server/renderer.ts` - SSR rendering engine (~380 lines)
+- `src/server/server.ts` - HTTP server (~200 lines)
+- `src/server/index.ts` - Public API
+
+**Export Added**: `@omnitron-dev/aether/server`
+
+**API Example**:
+```typescript
+import { createServer } from '@omnitron-dev/aether/server';
+
+const server = createServer({
+  mode: 'ssr',
+  routes: [
+    { path: '/', component: Home, loader: homeLoader },
+    { path: '/about', component: About }
+  ],
+  port: 3000
+});
+
+await server.listen();
+// ✓ Server listening on http://0.0.0.0:3000
+```
+
+**Runtime Support**:
+- ✅ Node.js 22+ (native http module)
+- ✅ Bun 1.2+ (Bun.serve() API)
+- ✅ Deno 2.0+ (Deno.serve() API)
 
 **Files Created**:
 - `docs/COMPILER-OPTIMIZATION-EVALUATION.md` (815 lines)

@@ -59,6 +59,9 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
   // Shared deduplication map across all QueryBuilder instances
   private static inFlightRequests = new Map<string, Promise<any>>();
 
+  // Background refetch intervals
+  private static backgroundIntervals = new Map<string, NodeJS.Timeout>();
+
   constructor(
     private transport: HttpTransportClient,
     private definition: Definition,
@@ -301,6 +304,11 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
         this.options.metrics({ duration, cacheHit });
       }
 
+      // Setup background refetch if configured
+      if (this.options.backgroundRefetch && this.options.cache && this.cacheManager) {
+        this.setupBackgroundRefetch();
+      }
+
       return result;
     } catch (error) {
       // Rollback optimistic update on error
@@ -373,5 +381,73 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
     }
 
     return `${this.definition.meta.name}.${String(this.methodName)}:${JSON.stringify(this.methodInput)}`;
+  }
+
+  /**
+   * Setup background refetch interval
+   */
+  private setupBackgroundRefetch(): void {
+    if (!this.options.backgroundRefetch || !this.cacheManager) {
+      return;
+    }
+
+    const cacheKey = this.getCacheKey();
+
+    // Clear existing interval if any
+    this.stopBackgroundRefetch(cacheKey);
+
+    // Start new interval
+    const interval = setInterval(async () => {
+      try {
+        // Silently refetch and update cache
+        const result = await this.executeRequest();
+
+        // Apply transform if specified
+        let transformedResult = result;
+        if (this.options.transform) {
+          transformedResult = this.options.transform(result);
+        }
+
+        // Update cache with fresh data
+        if (this.options.cache && this.cacheManager) {
+          this.cacheManager.set(cacheKey, transformedResult, this.options.cache);
+        }
+      } catch (error) {
+        // Silent failure - don't throw errors during background refetch
+        // Optionally could log or emit event
+      }
+    }, this.options.backgroundRefetch);
+
+    // Store interval for cleanup
+    QueryBuilder.backgroundIntervals.set(cacheKey, interval);
+  }
+
+  /**
+   * Stop background refetch for a specific cache key
+   */
+  private stopBackgroundRefetch(cacheKey: string): void {
+    const interval = QueryBuilder.backgroundIntervals.get(cacheKey);
+    if (interval) {
+      clearInterval(interval);
+      QueryBuilder.backgroundIntervals.delete(cacheKey);
+    }
+  }
+
+  /**
+   * Stop all background refetch intervals
+   * Useful for cleanup when shutting down
+   */
+  static stopAllBackgroundRefetch(): void {
+    for (const interval of QueryBuilder.backgroundIntervals.values()) {
+      clearInterval(interval);
+    }
+    QueryBuilder.backgroundIntervals.clear();
+  }
+
+  /**
+   * Get active background refetch count (for debugging/testing)
+   */
+  static getActiveBackgroundRefetchCount(): number {
+    return QueryBuilder.backgroundIntervals.size;
   }
 }

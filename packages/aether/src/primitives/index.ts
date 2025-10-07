@@ -462,6 +462,30 @@ export {
   type ToolbarToggleItemProps,
 } from './Toolbar.js';
 
+// Alert
+export {
+  Alert,
+  AlertIcon,
+  AlertTitle,
+  AlertDescription,
+  type AlertProps,
+  type AlertIconProps,
+  type AlertTitleProps,
+  type AlertDescriptionProps,
+} from './Alert.js';
+
+// Kbd
+export {
+  Kbd,
+  type KbdProps,
+} from './Kbd.js';
+
+// Code
+export {
+  Code,
+  type CodeProps,
+} from './Code.js';
+
 // Utilities
 export {
   // ID generation

@@ -883,14 +883,14 @@ _(Note: Phases 1-4 are completed. Below are the remaining phases.)_
 
 **Goal:** Headless, accessible UI components library
 
-**Status:** ✅ Completed - 36 production-ready primitives with full WAI-ARIA compliance
+**Status:** ✅ Completed - 39 production-ready primitives with full WAI-ARIA compliance
 
 **Final Deliverables:**
-- ✅ **36 production-ready primitives** in `@omnitron-dev/aether/primitives` (~187KB ESM bundle)
+- ✅ **39 production-ready primitives** in `@omnitron-dev/aether/primitives` (~188KB ESM bundle)
 - ✅ Full TypeScript support with comprehensive types
 - ✅ Complete accessibility utilities (focus, scroll, positioning, IDs)
 - ✅ Exported via package.json: `@omnitron-dev/aether/primitives`
-- ✅ **~10,100 lines** of production-ready primitive code
+- ✅ **~10,400 lines** of production-ready primitive code
 
 **Implementation Phases:**
 
@@ -1002,6 +1002,27 @@ Commit: (current)
   - Group, Button, Link, Separator, ToggleGroup, ToggleItem
   - Arrow key navigation with optional looping, Home/End support
 
+#### Phase 8.7: Display & Content Primitives ✅ (3 primitives)
+Commit: (current)
+
+**Display Components:**
+- ✅ **Alert** (~130 lines, 4 sub-components) - Banner for important messages
+  - Root, Icon, Title, Description components
+  - Variants: default, info, success, warning, error
+  - ARIA roles: alert (assertive) or status (polite)
+  - Used for user notifications, warnings, errors
+
+- ✅ **Code** (~90 lines) - Code representation
+  - Inline code with `<code>` element
+  - Block code with `<pre><code>` elements
+  - Language attribute for syntax highlighting hints
+  - Preserves whitespace and formatting in block mode
+
+- ✅ **Kbd** (~60 lines) - Keyboard input representation
+  - Semantic `<kbd>` element
+  - Can be nested for key combinations (⌘+K, Ctrl+Shift+P)
+  - Used for keyboard shortcuts, documentation, help text
+
 **Accessibility Features (All Primitives):**
 - ✅ Full WAI-ARIA compliance
 - ✅ Keyboard navigation (arrows, Home/End, Enter/Space, ESC, Tab)
@@ -1019,16 +1040,17 @@ Commit: (current)
 
 **Coverage Status:**
 
-**Implemented (36 primitives):**
+**Implemented (39 primitives):**
 ✅ **From Specification (22):** Dialog, Popover, Dropdown, Select, Tabs, Accordion, Radio Group, Checkbox, Slider, Toggle, Switch, Alert Dialog, Form, Tooltip, Separator, ContextMenu, HoverCard, Sheet, Avatar, Badge, Progress, Toast
 
-✅ **Additional Essential Primitives (14):**
+✅ **Additional Essential Primitives (17):**
 - **Form primitives (3):** Label, Input, Textarea
 - **Layout primitives (2):** ScrollArea, AspectRatio
 - **Navigation primitives (3):** Pagination, Menubar, Breadcrumb
 - **Container primitives (2):** Card, Toolbar
+- **Display primitives (3):** Alert, Kbd, Code
 - **Utility primitives (3):** Collapsible, Skeleton, VisuallyHidden
-- **(1 more TBD)**
+- **(1 more potential addition: Table)**
 
 **Not Implemented (4 specialized primitives - optional future additions):**
 - 🚧 **Combobox** - Searchable select with autocomplete, filtering, virtualization
@@ -1038,9 +1060,9 @@ Commit: (current)
 
 **Notes:**
 - Current set covers **100% of core primitives** from specification
-- Added **14 essential utility primitives** for complete developer toolkit
+- Added **17 essential utility primitives** for complete developer toolkit
 - Remaining 4 primitives are highly specialized and can be added incrementally
-- All 36 implemented primitives are production-ready with full ARIA compliance
+- All 39 implemented primitives are production-ready with full ARIA compliance
 
 ---
 

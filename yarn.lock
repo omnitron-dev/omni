@@ -2392,6 +2392,26 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@omnitron-dev/msgpack@workspace:packages/msgpack":
+  version: 0.0.0-use.local
+  resolution: "@omnitron-dev/msgpack@workspace:packages/msgpack"
+  dependencies:
+    "@jest/globals": "npm:^30.2.0"
+    "@msgpack/msgpack": "npm:^3.1.2"
+    "@omnitron-dev/common": "workspace:*"
+    "@types/jest": "npm:^30.0.0"
+    "@types/node": "npm:^24.6.2"
+    bson: "npm:^6.10.4"
+    buffer: "npm:^6.0.3"
+    cbor: "npm:^10.0.11"
+    jest: "npm:^30.2.0"
+    long: "npm:^5.3.2"
+    msgpackr: "npm:^1.11.5"
+    ts-jest: "npm:^29.4.4"
+    typescript: "npm:^5.9.3"
+  languageName: unknown
+  linkType: soft
+
 "@omnitron-dev/smartbuffer@workspace:*, @omnitron-dev/smartbuffer@workspace:packages/smartbuffer":
   version: 0.0.0-use.local
   resolution: "@omnitron-dev/smartbuffer@workspace:packages/smartbuffer"

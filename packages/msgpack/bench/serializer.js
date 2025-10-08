@@ -1,9 +1,10 @@
-const bson = require('bson');
-const cbor = require('cbor');
-const msgpackr = require('msgpackr');
-const msgpack = require('@msgpack/msgpack');
-const { performance } = require('perf_hooks');
-const { encode, decode } = require('../dist');
+import * as bson from 'bson';
+import * as cbor from 'cbor';
+import * as msgpackr from 'msgpackr';
+import * as msgpack from '@msgpack/msgpack';
+import { performance } from 'perf_hooks';
+import { encode as oldEncode, decode as oldDecode } from '@omnitron-dev/messagepack';
+import { encode, decode } from '../dist/index.js';
 
 // Create test data
 const testData = {
@@ -51,13 +52,17 @@ const msgpackrDeserialize = () => msgpackr.unpack(msgpackr.pack(testData));
 const bsonSerialize = () => bson.serialize(testData);
 const bsonDeserialize = () => bson.deserialize(bson.serialize(testData));
 
-// CBOR
-const cborSerialize = () => cbor.encode(testData);
-const cborDeserialize = () => cbor.decode(cbor.encode(testData));
+// CBOR (temporarily disabled due to API differences)
+const cborSerialize = () => { }; // cbor.encode(testData);
+const cborDeserialize = () => { }; // cbor.decode(cbor.encode(testData));
 
 // Omnitron MessagePack
 const omniSerialize = () => encode(testData);
 const omniDeserialize = () => decode(encode(testData));
+
+// Old Omnitron MessagePack
+const oldOmniSerialize = () => oldEncode(testData);
+const oldOmniDeserialize = () => oldDecode(oldEncode(testData));
 
 // Run benchmarks
 const results = [
@@ -69,10 +74,12 @@ const results = [
   measurePerformance('MessagePackR Deserialize', msgpackrDeserialize),
   measurePerformance('BSON Serialize', bsonSerialize),
   measurePerformance('BSON Deserialize', bsonDeserialize),
-  measurePerformance('CBOR Serialize', cborSerialize),
-  measurePerformance('CBOR Deserialize', cborDeserialize),
+  // measurePerformance('CBOR Serialize', cborSerialize),
+  // measurePerformance('CBOR Deserialize', cborDeserialize),
+  measurePerformance('Old Omnitron MessagePack Serialize', oldOmniSerialize),
+  measurePerformance('Old Omnitron MessagePack Deserialize', oldOmniDeserialize),
   measurePerformance('Omnitron MessagePack Serialize', omniSerialize),
-  measurePerformance('Omnitron MessagePack Deserialize', omniDeserialize)
+  measurePerformance('Omnitron MessagePack Deserialize', omniDeserialize),
 ];
 
 // Output results
@@ -92,5 +99,6 @@ console.log(`JSON: ${JSON.stringify(testData).length} bytes`);
 console.log(`MessagePack: ${msgpack.encode(testData).length} bytes`);
 console.log(`MessagePackR: ${msgpackr.pack(testData).length} bytes`);
 console.log(`BSON: ${bson.serialize(testData).length} bytes`);
-console.log(`CBOR: ${cbor.encode(testData).length} bytes`);
+// console.log(`CBOR: ${cbor.encode(testData).length} bytes`);
 console.log(`Omnitron MessagePack: ${encode(testData).length} bytes`);
+console.log(`Old Omnitron MessagePack: ${oldEncode(testData).length} bytes`);

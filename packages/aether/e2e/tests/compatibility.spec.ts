@@ -271,7 +271,7 @@ test.describe('Browser-specific Features', () => {
         hasPerformance,
         hasNow,
         duration,
-        isDuration Number: typeof duration === 'number'
+        durationIsNumber: typeof duration === 'number'
       };
     });
 

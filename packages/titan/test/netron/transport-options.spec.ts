@@ -6,7 +6,7 @@ import type { Netron } from '../../src/netron/netron.js';
 import { WebSocketTransport } from '../../src/netron/transport/websocket-transport.js';
 import { Service, Public } from '../../src/decorators/core.js';
 import { createMockLogger } from './test-utils.js';
-import { getAvailablePort } from '../../src/netron/transport/utils.js';
+import { getAvailablePort } from '../../src/utils/port-utils.js';
 import { delay } from '@omnitron-dev/common';
 
 describe('Transport Options', () => {

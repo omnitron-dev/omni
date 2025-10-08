@@ -1,5 +1,5 @@
 /**
- * Transport Utilities Tests
+ * Port Utilities Tests
  */
 
 import { describe, it, expect, afterEach } from '@jest/globals';
@@ -8,9 +8,9 @@ import {
   getAvailablePort,
   isPortAvailable,
   waitForPort
-} from '../../../src/netron/transport/utils.js';
+} from '../../src/utils/port-utils.js';
 
-describe('Transport Utilities', () => {
+describe('Port Utilities', () => {
   let servers: Server[] = [];
 
   afterEach(async () => {

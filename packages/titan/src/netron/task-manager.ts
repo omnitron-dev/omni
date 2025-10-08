@@ -1,6 +1,3 @@
-import { pathToFileURL } from 'url';
-import { readdir } from 'fs/promises';
-
 /**
  * Represents a task function that can be either synchronous or asynchronous.
  * Tasks are the fundamental units of work in the TaskManager system.
@@ -102,30 +99,6 @@ export class TaskManager {
   }
 
   /**
-   * Loads tasks from JavaScript files in the specified directory.
-   * Supports both CommonJS and ES modules through dynamic import.
-   *
-   * @param {string} directory - Path to the directory containing task files
-   * @throws {Error} If directory access or module loading fails
-   */
-  async loadTasksFromDir(directory: string) {
-    try {
-      const files = (await readdir(directory)).filter((f) => f.endsWith('.js'));
-
-      for (const file of files) {
-        let fileUrl = `${directory}/${file}`;
-        if (typeof require !== 'function') {
-          fileUrl = pathToFileURL(`${directory}/${file}`).href;
-        }
-        const module = await import(fileUrl);
-        this._registerModule(module);
-      }
-    } catch (error: any) {
-      throw new Error(`Failed to load tasks from directory (${directory}): ${error.message || error}`);
-    }
-  }
-
-  /**
    * Executes a registered task with the provided arguments.
    * Implements timeout handling and proper cleanup of resources.
    *
@@ -163,19 +136,5 @@ export class TaskManager {
         reject(error);
       }
     });
-  }
-
-  /**
-   * Registers all functions exported by a module as tasks.
-   *
-   * @private
-   * @param {Record<string, unknown>} module - The module containing task functions
-   */
-  private _registerModule(module: Record<string, unknown>) {
-    for (const [, fn] of Object.entries(module)) {
-      if (typeof fn === 'function') {
-        this.addTask(fn as Task);
-      }
-    }
   }
 }

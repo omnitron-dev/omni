@@ -23,7 +23,7 @@ import type {
 import { ProcessStatus } from './types.js';
 import { NetronClient } from './netron-client.js';
 import { ServiceProxyHandler } from './service-proxy.js';
-import { getAvailablePort } from '../../netron/transport/utils.js';
+import { getAvailablePort } from '../../utils/port-utils.js';
 import { MockProcessSpawner } from './mock-process-spawner.js';
 
 /**

@@ -8,7 +8,7 @@ import { WebSocketTransport } from '../../src/netron/transport/websocket-transpo
 import { TcpTransport } from '../../src/netron/transport/tcp-transport.js';
 import { Service, Method } from '../../src/decorators/core.js';
 import { createMockLogger } from './test-utils.js';
-import { getAvailablePort } from '../../src/netron/transport/utils.js';
+import { getAvailablePort } from '../../src/utils/port-utils.js';
 
 describe('Multi-Transport Integration', () => {
   let server: Netron;

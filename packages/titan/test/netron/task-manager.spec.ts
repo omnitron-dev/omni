@@ -1,4 +1,3 @@
-import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
@@ -72,15 +71,6 @@ describe('TaskManager', () => {
 
     manager.addTask(syncTask);
     expect(() => manager.addTask(syncTask)).toThrow(/Task already exists/);
-  });
-
-  // ✅ Test loading tasks from directory
-  it('loading tasks from directory', async () => {
-    await manager.loadTasksFromDir(path.join(__dirname, './fixtures/tasks'));
-    await expect(manager.runTask('asyncTask', 5, 10)).resolves.toBe(15);
-    await expect(manager.runTask('syncTask', 5, 10)).resolves.toBe(50);
-    await expect(manager.runTask('failingTask')).rejects.toThrow('Intentional task failure');
-    await expect(manager.runTask('delayedTask', 1500)).rejects.toThrow(/timed out/i);
   });
 
   // ✅ Test error if task not found

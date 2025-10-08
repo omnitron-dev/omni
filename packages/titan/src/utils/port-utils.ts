@@ -1,5 +1,5 @@
 /**
- * Transport utilities
+ * Network port utilities
  */
 
 import net from 'net';

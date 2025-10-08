@@ -93,8 +93,7 @@ const SIZE_MAP: Record<Exclude<SpaceSize, number>, number> = {
  * </Space>
  * ```
  */
-export const Space = defineComponent<SpaceProps>((props) => {
-  return () => {
+export const Space = defineComponent<SpaceProps>((props) => () => {
     const direction = props.direction ?? 'horizontal';
     const size = props.size ?? 'md';
     const spacing = props.spacing ?? (typeof size === 'number' ? size : SIZE_MAP[size]);
@@ -132,5 +131,4 @@ export const Space = defineComponent<SpaceProps>((props) => {
       ...restProps,
       children,
     });
-  };
-});
+  });

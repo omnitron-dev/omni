@@ -39,8 +39,7 @@ export interface SpinnerProps {
 // Spinner
 // ============================================================================
 
-export const Spinner = defineComponent<SpinnerProps>((props) => {
-  return () => {
+export const Spinner = defineComponent<SpinnerProps>((props) => () => {
     const {
       size = 'md',
       variant = 'circular',
@@ -125,5 +124,4 @@ export const Spinner = defineComponent<SpinnerProps>((props) => {
           }),
       ],
     });
-  };
-});
+  });

@@ -393,9 +393,7 @@ describe('Type Safety Tests', () => {
         retryManager
       );
 
-      const proxy = service.transform<User[]>((data: any) => {
-        return Array.isArray(data) ? data : [data];
-      });
+      const proxy = service.transform<User[]>((data: any) => Array.isArray(data) ? data : [data]);
 
       expect(proxy).toBeInstanceOf(ConfigurableProxy);
     });
@@ -409,9 +407,7 @@ describe('Type Safety Tests', () => {
       );
 
       const proxy1 = service.validate((data: any) => !!data);
-      const proxy2 = service.validate(async (data: any) => {
-        return Promise.resolve(!!data);
-      });
+      const proxy2 = service.validate(async (data: any) => Promise.resolve(!!data));
 
       expect(proxy1).toBeInstanceOf(ConfigurableProxy);
       expect(proxy2).toBeInstanceOf(ConfigurableProxy);

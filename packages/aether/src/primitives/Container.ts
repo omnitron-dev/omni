@@ -84,8 +84,7 @@ const SIZE_MAP: Record<ContainerSize, string> = {
  * </Container>
  * ```
  */
-export const Container = defineComponent<ContainerProps>((props) => {
-  return () => {
+export const Container = defineComponent<ContainerProps>((props) => () => {
     const size = props.size ?? 'lg';
     const centerContent = props.centerContent ?? true;
     const fluid = props.fluid ?? false;
@@ -122,5 +121,4 @@ export const Container = defineComponent<ContainerProps>((props) => {
       ...restProps,
       children,
     });
-  };
-});
+  });

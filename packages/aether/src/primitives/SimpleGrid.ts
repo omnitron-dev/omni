@@ -81,8 +81,7 @@ export interface SimpleGridProps {
  * </SimpleGrid>
  * ```
  */
-export const SimpleGrid = defineComponent<SimpleGridProps>((props) => {
-  return () => {
+export const SimpleGrid = defineComponent<SimpleGridProps>((props) => () => {
     const {
       columns,
       minChildWidth,
@@ -132,5 +131,4 @@ export const SimpleGrid = defineComponent<SimpleGridProps>((props) => {
       ...restProps,
       children,
     });
-  };
-});
+  });

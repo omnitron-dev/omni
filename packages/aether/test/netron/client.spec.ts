@@ -3,7 +3,7 @@
  * Basic unit tests for NetronClient and HttpNetronClient
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { NetronClient, HttpNetronClient, BrowserLogger } from '../../src/netron/index.js';
 
 describe('NetronClient', () => {

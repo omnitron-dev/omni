@@ -54,10 +54,10 @@ describe('HttpServer Type Safety (Phase 2)', () => {
       const typedStub = mockPeer.stubs.get('stub-typed');
       let capturedContext: MethodHandlerContext | undefined;
 
-      typedStub.call.mockImplementation(async (method: string, args: any[], peer: any) => {
+      typedStub.call.mockImplementation(async (method: string, args: any[], peer: any) => 
         // Handler receives MethodHandlerContext
-        return { message: args[0].message, timestamp: Date.now() };
-      });
+         ({ message: args[0].message, timestamp: Date.now() })
+      );
 
       const request = new Request('http://localhost:3457/netron/invoke', {
         method: 'POST',

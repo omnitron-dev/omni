@@ -51,9 +51,7 @@ export class Uid {
  *
  * @returns A RFC4122 v4 compliant UUID string
  */
-export const randomUUID = (): string => {
-  return crypto.randomUUID();
-};
+export const randomUUID = (): string => crypto.randomUUID();
 
 /**
  * Generate a short random ID (first segment of UUID)
@@ -61,6 +59,4 @@ export const randomUUID = (): string => {
  *
  * @returns A short random ID string (8 characters)
  */
-export const generateShortId = (): string => {
-  return crypto.randomUUID().split('-')[0]!;
-};
+export const generateShortId = (): string => crypto.randomUUID().split('-')[0]!;

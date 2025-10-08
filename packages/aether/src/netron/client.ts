@@ -102,13 +102,13 @@ export class NetronClient {
           },
           getServiceNames: () => [],
           emit: () => false,
-          on: function (this: INetron) {
+          on(this: INetron) {
             return this;
           },
-          off: function (this: INetron) {
+          off(this: INetron) {
             return this;
           },
-          removeListener: function (this: INetron) {
+          removeListener(this: INetron) {
             return this;
           },
           getPeerEventName: undefined,

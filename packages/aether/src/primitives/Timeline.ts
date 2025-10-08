@@ -215,8 +215,7 @@ export const TimelineConnector = defineComponent<TimelineConnectorProps>((props)
 // Timeline Content
 // ============================================================================
 
-export const TimelineContent = defineComponent<TimelineContentProps>((props) => {
-  return () => {
+export const TimelineContent = defineComponent<TimelineContentProps>((props) => () => {
     const { children, ...rest } = props;
 
     return jsx('div', {
@@ -224,15 +223,13 @@ export const TimelineContent = defineComponent<TimelineContentProps>((props) => 
       ...rest,
       children,
     });
-  };
-});
+  });
 
 // ============================================================================
 // Timeline Title
 // ============================================================================
 
-export const TimelineTitle = defineComponent<TimelineTitleProps>((props) => {
-  return () => {
+export const TimelineTitle = defineComponent<TimelineTitleProps>((props) => () => {
     const { children, ...rest } = props;
 
     return jsx('h4', {
@@ -240,15 +237,13 @@ export const TimelineTitle = defineComponent<TimelineTitleProps>((props) => {
       ...rest,
       children,
     });
-  };
-});
+  });
 
 // ============================================================================
 // Timeline Description
 // ============================================================================
 
-export const TimelineDescription = defineComponent<TimelineDescriptionProps>((props) => {
-  return () => {
+export const TimelineDescription = defineComponent<TimelineDescriptionProps>((props) => () => {
     const { children, ...rest } = props;
 
     return jsx('p', {
@@ -256,15 +251,13 @@ export const TimelineDescription = defineComponent<TimelineDescriptionProps>((pr
       ...rest,
       children,
     });
-  };
-});
+  });
 
 // ============================================================================
 // Timeline Timestamp
 // ============================================================================
 
-export const TimelineTimestamp = defineComponent<TimelineTimestampProps>((props) => {
-  return () => {
+export const TimelineTimestamp = defineComponent<TimelineTimestampProps>((props) => () => {
     const { children, ...rest } = props;
 
     return jsx('time', {
@@ -272,8 +265,7 @@ export const TimelineTimestamp = defineComponent<TimelineTimestampProps>((props)
       ...rest,
       children,
     });
-  };
-});
+  });
 
 // ============================================================================
 // Attach sub-components

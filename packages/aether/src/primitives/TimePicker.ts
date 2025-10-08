@@ -197,9 +197,7 @@ export const TimePicker = defineComponent<TimePickerProps>((props) => {
     return hours;
   };
 
-  const getPeriod = (): 'AM' | 'PM' => {
-    return currentValue().hours < 12 ? 'AM' : 'PM';
-  };
+  const getPeriod = (): 'AM' | 'PM' => currentValue().hours < 12 ? 'AM' : 'PM';
 
   const contextValue: TimePickerContextValue = {
     value: computed(() => currentValue()),
@@ -256,8 +254,7 @@ export const TimePickerTrigger = defineComponent<TimePickerTriggerProps>((props)
 // TimePicker Content
 // ============================================================================
 
-export const TimePickerContent = defineComponent<TimePickerContentProps>((props) => {
-  return () => {
+export const TimePickerContent = defineComponent<TimePickerContentProps>((props) => () => {
     const { children, ...rest } = props;
 
     return jsx('div', {
@@ -267,8 +264,7 @@ export const TimePickerContent = defineComponent<TimePickerContentProps>((props)
       ...rest,
       children,
     });
-  };
-});
+  });
 
 // ============================================================================
 // TimePicker Column

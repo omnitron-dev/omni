@@ -88,8 +88,7 @@ export interface FlexProps {
  * </Flex>
  * ```
  */
-export const Flex = defineComponent<FlexProps>((props) => {
-  return () => {
+export const Flex = defineComponent<FlexProps>((props) => () => {
     const element = props.as ?? 'div';
     const {
       as,
@@ -133,5 +132,4 @@ export const Flex = defineComponent<FlexProps>((props) => {
       ...restProps,
       children,
     });
-  };
-});
+  });

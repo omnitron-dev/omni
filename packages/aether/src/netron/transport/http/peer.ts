@@ -24,6 +24,12 @@ import {
   HttpResponseHints,
   createRequestMessage
 } from './types.js';
+import { HttpInterface } from './interface.js';
+import { FluentInterface } from './fluent-interface.js';
+import { HttpCacheManager } from './cache-manager.js';
+import { RetryManager } from './retry-manager.js';
+import { HttpTransportClient } from './client.js';
+import type { QueryOptions } from './query-builder.js';
 
 /**
  * HttpRemotePeer - Optimized HTTP peer without packet protocol
@@ -67,6 +73,15 @@ export class HttpRemotePeer extends AbstractPeer {
 
   /** Response interceptors */
   private responseInterceptors: Array<(res: HttpResponseMessage) => HttpResponseMessage | Promise<HttpResponseMessage>> = [];
+
+  /** Cache manager for HTTP responses */
+  private cacheManager?: HttpCacheManager;
+
+  /** Retry manager for failed requests */
+  private retryManager?: RetryManager;
+
+  /** Global query options */
+  private globalOptions: QueryOptions = {};
 
   constructor(connection: ITransportConnection, netron: INetron, baseUrl: string, options?: TransportOptions) {
     // Generate a deterministic ID based on the URL
@@ -602,5 +617,182 @@ export class HttpRemotePeer extends AbstractPeer {
       );
       throw error;
     }
+  }
+
+  /**
+   * Query interface for HTTP service (unified RPC API)
+   *
+   * Overrides AbstractPeer.queryInterface() to return standard HttpInterface
+   * for simple RPC functionality compatible with other transports.
+   *
+   * For advanced HTTP features (caching, retry, etc.), use queryFluentInterface().
+   *
+   * @template TService - Service interface type
+   * @param qualifiedName - Fully qualified service name (e.g., "UserService@1.0.0")
+   * @returns HttpInterface with standard RPC API
+   *
+   * @example
+   * ```typescript
+   * // Unified API - same as other transports (WebSocket, TCP, Unix)
+   * const userService = await peer.queryInterface<IUserService>('UserService@1.0.0');
+   *
+   * // Simple RPC method calls
+   * const user = await userService.getUser('user-123');
+   * const users = await userService.listUsers({ page: 1, limit: 10 });
+   * ```
+   *
+   * @override
+   */
+  override async queryInterface<TService = any>(qualifiedName: string): Promise<TService> {
+    // Get or fetch service definition
+    const definition = await this.queryInterfaceRemote(qualifiedName);
+
+    // Get or create HTTP transport client
+    const transport = this.getOrCreateHttpClient();
+
+    // Create HttpInterface (simple RPC)
+    const httpInterface = new HttpInterface<TService>(transport, definition);
+
+    // Set peer reference for compatibility
+    httpInterface.$peer = this as any;
+
+    // Store in interfaces cache for reference counting
+    const iInfo = { instance: httpInterface as any, refCount: 1 };
+    this.interfaces.set(definition.id, iInfo);
+
+    return httpInterface as any as TService;
+  }
+
+  /**
+   * Query fluent interface for HTTP service (advanced HTTP API)
+   *
+   * Returns FluentInterface with advanced HTTP-specific features like caching,
+   * retry logic, optimistic updates, request deduplication, etc.
+   *
+   * This is HTTP-transport-specific and not available in other transports.
+   *
+   * @template TService - Service interface type
+   * @param qualifiedName - Fully qualified service name (e.g., "UserService@1.0.0")
+   * @returns FluentInterface with advanced HTTP features
+   *
+   * @example
+   * ```typescript
+   * const userService = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
+   *
+   * // Advanced HTTP features
+   * const user = await userService.cache(60000).retry(3).getUser('user-123');
+   * const users = await userService.priority('high').timeout(5000).listUsers();
+   * ```
+   */
+  async queryFluentInterface<TService = any>(qualifiedName: string): Promise<FluentInterface<TService>> {
+    // Get or fetch service definition
+    const definition = await this.queryInterfaceRemote(qualifiedName);
+
+    // Get or create HTTP transport client
+    const transport = this.getOrCreateHttpClient();
+
+    // Create FluentInterface with peer's managers and global options
+    const fluentInterface = new FluentInterface<TService>(
+      transport,
+      definition,
+      this.cacheManager,
+      this.retryManager,
+      this.globalOptions
+    );
+
+    // Set peer reference for compatibility
+    fluentInterface.$peer = this;
+
+    // Store in interfaces cache for reference counting
+    const iInfo = { instance: fluentInterface as any, refCount: 1 };
+    this.interfaces.set(definition.id, iInfo);
+
+    return fluentInterface;
+  }
+
+  /**
+   * Get or create HTTP transport client for this peer
+   */
+  private getOrCreateHttpClient(): HttpTransportClient {
+    // Create a new HttpTransportClient with the base URL
+    return new HttpTransportClient(this.baseUrl);
+  }
+
+  /**
+   * Set cache manager for all interfaces created by this peer
+   *
+   * @param manager - HttpCacheManager instance
+   * @returns this for method chaining
+   *
+   * @example
+   * ```typescript
+   * peer.setCacheManager(new HttpCacheManager({ maxEntries: 1000 }));
+   * const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
+   * // service will use the configured cache manager
+   * ```
+   */
+  setCacheManager(manager: HttpCacheManager): this {
+    this.cacheManager = manager;
+    return this;
+  }
+
+  /**
+   * Set retry manager for all interfaces created by this peer
+   *
+   * @param manager - RetryManager instance
+   * @returns this for method chaining
+   *
+   * @example
+   * ```typescript
+   * peer.setRetryManager(new RetryManager({ maxAttempts: 5 }));
+   * const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
+   * // service will use the configured retry manager
+   * ```
+   */
+  setRetryManager(manager: RetryManager): this {
+    this.retryManager = manager;
+    return this;
+  }
+
+  /**
+   * Set global query options for all interfaces created by this peer
+   *
+   * @param options - Global query options
+   * @returns this for method chaining
+   *
+   * @example
+   * ```typescript
+   * peer.setGlobalOptions({
+   *   cache: { maxAge: 60000 },
+   *   retry: { attempts: 3 }
+   * });
+   * const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
+   * // service will use the global options by default
+   * ```
+   */
+  setGlobalOptions(options: QueryOptions): this {
+    this.globalOptions = options;
+    return this;
+  }
+
+  /**
+   * Get cache manager instance
+   */
+  getCacheManager(): HttpCacheManager | undefined {
+    return this.cacheManager;
+  }
+
+  /**
+   * Get retry manager instance
+   */
+  getRetryManager(): RetryManager | undefined {
+    return this.retryManager;
+  }
+
+  /**
+   * Get global query options
+   */
+  getGlobalOptions(): QueryOptions {
+    return this.globalOptions;
   }
 }

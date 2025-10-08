@@ -1,28 +1,28 @@
 /**
  * HTTP Transport module for Netron v2.0 - Browser Client
  * Provides native HTTP/REST transport with enhanced client capabilities
- * Server-only exports have been removed
+ *
+ * Unified API compatible with Titan backend:
+ * - HttpInterface: Simple RPC proxy (queryInterface)
+ * - FluentInterface: Advanced HTTP features (queryFluentInterface)
  */
 
 // Native client implementations
 export { HttpRemotePeer } from './peer.js';
 export { HttpConnection } from './connection.js';
 
+// Core interfaces
+export { HttpInterface } from './interface.js';
+export { FluentInterface } from './fluent-interface.js';
+export { ConfigurableProxy } from './configurable-proxy.js';
+
 // Enhanced client features
-export { HttpInterface as EnhancedHttpInterface } from './interface.js';
 export { HttpTransportClient } from './client.js';
 export { HttpCacheManager } from './cache-manager.js';
 export { RetryManager } from './retry-manager.js';
 
-// Advanced features (Phase 4)
+// Advanced features
 export { RequestBatcher } from './request-batcher.js';
-export { SubscriptionManager } from './subscription-manager.js';
-export { OptimisticUpdateManager } from './optimistic-update-manager.js';
-
-// Type safety enhancements (client-side)
-export { TypedContract, TypedHttpClient, QueryBuilder, createTypedContract, createTypedClient } from './typed-contract.js';
-export { TypedMiddlewarePipeline, TypedMiddlewareFactory, createTypedPipeline } from './typed-middleware.js';
-export type { TypedMiddleware } from './typed-middleware.js';
 
 // Message types
 export * from './types.js';
@@ -39,6 +39,13 @@ export type {
   ServerMetrics
 } from '../types.js';
 
+// Export QueryOptions type
+export type { QueryOptions } from './query-builder.js';
+
+// Export cache and retry types
+export type { CacheOptions } from './cache-manager.js';
+export type { RetryOptions } from './retry-manager.js';
+
 // Export type safety types
 export type {
   ContractDefinition,
@@ -46,7 +53,6 @@ export type {
   InferInput,
   InferOutput,
   ServiceProxy,
-  QueryOptions,
   MiddlewareConfig
 } from './typed-contract.js';
 export type {
@@ -57,5 +63,3 @@ export type {
 
 // Export advanced feature types
 export type { BatchOptions, BatchStatistics } from './request-batcher.js';
-export type { SubscriptionOptions, SubscriptionStats } from './subscription-manager.js';
-export type { OptimisticUpdateOptions, OptimisticUpdateStats, CacheProvider } from './optimistic-update-manager.js';

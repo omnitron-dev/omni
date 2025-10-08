@@ -135,8 +135,7 @@ const useFileUploadContext = (): FileUploadContextValue => {
 // Helper Functions
 // ============================================================================
 
-const createFilePreview = (file: File): Promise<FileWithPreview> => {
-  return new Promise((resolve) => {
+const createFilePreview = (file: File): Promise<FileWithPreview> => new Promise((resolve) => {
     const fileWithPreview = file as FileWithPreview;
 
     // Only create preview for images
@@ -154,7 +153,6 @@ const createFilePreview = (file: File): Promise<FileWithPreview> => {
       resolve(fileWithPreview);
     }
   });
-};
 
 const validateFile = (
   file: File,
@@ -455,8 +453,7 @@ export const FileUploadDropzone = defineComponent<FileUploadDropzoneProps>((prop
 // FileUpload Item
 // ============================================================================
 
-export const FileUploadItem = defineComponent<FileUploadItemProps>((props) => {
-  return () => {
+export const FileUploadItem = defineComponent<FileUploadItemProps>((props) => () => {
     const { file, children } = props;
 
     return jsx('div', {
@@ -464,8 +461,7 @@ export const FileUploadItem = defineComponent<FileUploadItemProps>((props) => {
       'data-file-name': file.name,
       children,
     });
-  };
-});
+  });
 
 // ============================================================================
 // FileUpload Item Remove

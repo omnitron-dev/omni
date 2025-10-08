@@ -333,8 +333,7 @@ export const TagsInputField = defineComponent<TagsInputFieldProps>((props) => {
 // TagsInput Tag
 // ============================================================================
 
-export const TagsInputTag = defineComponent<TagsInputTagProps>((props) => {
-  return () => {
+export const TagsInputTag = defineComponent<TagsInputTagProps>((props) => () => {
     const { value, children } = props;
 
     return jsx('div', {
@@ -342,8 +341,7 @@ export const TagsInputTag = defineComponent<TagsInputTagProps>((props) => {
       'data-value': value,
       children: children ?? value,
     });
-  };
-});
+  });
 
 // ============================================================================
 // TagsInput Tag Remove

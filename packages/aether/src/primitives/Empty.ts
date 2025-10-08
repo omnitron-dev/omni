@@ -58,8 +58,7 @@ export interface EmptyActionsProps {
 // Empty Root
 // ============================================================================
 
-export const Empty = defineComponent<EmptyProps>((props) => {
-  return () => {
+export const Empty = defineComponent<EmptyProps>((props) => () => {
     const { variant = 'no-data', children, ...rest } = props;
 
     return jsx('div', {
@@ -70,15 +69,13 @@ export const Empty = defineComponent<EmptyProps>((props) => {
       ...rest,
       children,
     });
-  };
-});
+  });
 
 // ============================================================================
 // Empty Icon
 // ============================================================================
 
-export const EmptyIcon = defineComponent<EmptyIconProps>((props) => {
-  return () => {
+export const EmptyIcon = defineComponent<EmptyIconProps>((props) => () => {
     const { children, ...rest } = props;
 
     return jsx('div', {
@@ -87,15 +84,13 @@ export const EmptyIcon = defineComponent<EmptyIconProps>((props) => {
       ...rest,
       children,
     });
-  };
-});
+  });
 
 // ============================================================================
 // Empty Title
 // ============================================================================
 
-export const EmptyTitle = defineComponent<EmptyTitleProps>((props) => {
-  return () => {
+export const EmptyTitle = defineComponent<EmptyTitleProps>((props) => () => {
     const { children, ...rest } = props;
 
     return jsx('h3', {
@@ -103,15 +98,13 @@ export const EmptyTitle = defineComponent<EmptyTitleProps>((props) => {
       ...rest,
       children,
     });
-  };
-});
+  });
 
 // ============================================================================
 // Empty Description
 // ============================================================================
 
-export const EmptyDescription = defineComponent<EmptyDescriptionProps>((props) => {
-  return () => {
+export const EmptyDescription = defineComponent<EmptyDescriptionProps>((props) => () => {
     const { children, ...rest } = props;
 
     return jsx('p', {
@@ -119,15 +112,13 @@ export const EmptyDescription = defineComponent<EmptyDescriptionProps>((props) =
       ...rest,
       children,
     });
-  };
-});
+  });
 
 // ============================================================================
 // Empty Actions
 // ============================================================================
 
-export const EmptyActions = defineComponent<EmptyActionsProps>((props) => {
-  return () => {
+export const EmptyActions = defineComponent<EmptyActionsProps>((props) => () => {
     const { children, ...rest } = props;
 
     return jsx('div', {
@@ -135,8 +126,7 @@ export const EmptyActions = defineComponent<EmptyActionsProps>((props) => {
       ...rest,
       children,
     });
-  };
-});
+  });
 
 // ============================================================================
 // Attach sub-components

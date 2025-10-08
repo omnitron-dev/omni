@@ -57,8 +57,7 @@ export interface CenterProps {
  * </Center>
  * ```
  */
-export const Center = defineComponent<CenterProps>((props) => {
-  return () => {
+export const Center = defineComponent<CenterProps>((props) => () => {
     const {
       inline,
       height,
@@ -84,5 +83,4 @@ export const Center = defineComponent<CenterProps>((props) => {
       ...restProps,
       children,
     });
-  };
-});
+  });

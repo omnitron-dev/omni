@@ -186,9 +186,7 @@ export const MultiSelect = defineComponent<MultiSelectProps>((props) => {
     }
   };
 
-  const isSelected = (value: string): boolean => {
-    return currentValue().includes(value);
-  };
+  const isSelected = (value: string): boolean => currentValue().includes(value);
 
   const canAddMore = (): boolean => {
     if (maxSelections === 0) return true;
@@ -425,16 +423,14 @@ export const MultiSelectItem = defineComponent<MultiSelectItemProps>((props) => 
 // ============================================================================
 
 export const MultiSelectItemIndicator = defineComponent<MultiSelectItemIndicatorProps>(
-  (props) => {
-    return () => {
+  (props) => () => {
       const { children = '✓' } = props;
 
       return jsx('span', {
         'data-multi-select-item-indicator': '',
         children,
       });
-    };
-  },
+    },
 );
 
 // ============================================================================

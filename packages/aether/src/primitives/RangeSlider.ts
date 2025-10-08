@@ -116,13 +116,9 @@ const useRangeSliderContext = (): RangeSliderContextValue => {
 // Helper Functions
 // ============================================================================
 
-const clamp = (value: number, min: number, max: number): number => {
-  return Math.max(min, Math.min(max, value));
-};
+const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
-const roundToStep = (value: number, step: number): number => {
-  return Math.round(value / step) * step;
-};
+const roundToStep = (value: number, step: number): number => Math.round(value / step) * step;
 
 // ============================================================================
 // RangeSlider Root
@@ -138,7 +134,7 @@ export const RangeSlider = defineComponent<RangeSliderProps>((props) => {
 
   // State
   const internalValue: WritableSignal<RangeValue> = signal<RangeValue>(
-    props.defaultValue ?? { min: min, max: max },
+    props.defaultValue ?? { min, max },
   );
 
   const currentValue = (): RangeValue => {
@@ -175,13 +171,9 @@ export const RangeSlider = defineComponent<RangeSliderProps>((props) => {
     setValue({ min: current.min, max: clampedValue });
   };
 
-  const getPercentage = (value: number): number => {
-    return ((value - min) / (max - min)) * 100;
-  };
+  const getPercentage = (value: number): number => ((value - min) / (max - min)) * 100;
 
-  const getValueFromPercentage = (percentage: number): number => {
-    return (percentage / 100) * (max - min) + min;
-  };
+  const getValueFromPercentage = (percentage: number): number => (percentage / 100) * (max - min) + min;
 
   const contextValue: RangeSliderContextValue = {
     value: computed(() => currentValue()),

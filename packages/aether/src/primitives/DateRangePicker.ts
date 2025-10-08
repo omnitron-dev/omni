@@ -146,13 +146,9 @@ const isDateInRange = (date: Date, start: Date | null, end: Date | null): boolea
   return time >= start.getTime() && time <= end.getTime();
 };
 
-const isDateBefore = (date1: Date, date2: Date): boolean => {
-  return date1.getTime() < date2.getTime();
-};
+const isDateBefore = (date1: Date, date2: Date): boolean => date1.getTime() < date2.getTime();
 
-const isDateAfter = (date1: Date, date2: Date): boolean => {
-  return date1.getTime() > date2.getTime();
-};
+const isDateAfter = (date1: Date, date2: Date): boolean => date1.getTime() > date2.getTime();
 
 // ============================================================================
 // DateRangePicker Root
@@ -306,8 +302,7 @@ export const DateRangePickerTrigger = defineComponent<DateRangePickerTriggerProp
 // ============================================================================
 
 export const DateRangePickerContent = defineComponent<DateRangePickerContentProps>(
-  (props) => {
-    return () => {
+  (props) => () => {
       const { children, ...rest } = props;
 
       return jsx('div', {
@@ -317,8 +312,7 @@ export const DateRangePickerContent = defineComponent<DateRangePickerContentProp
         ...rest,
         children,
       });
-    };
-  },
+    },
 );
 
 // ============================================================================
@@ -337,8 +331,7 @@ export const DateRangePickerCalendar = defineComponent<DateRangePickerCalendarPr
       1,
     );
 
-    return () => {
-      return jsx('div', {
+    return () => jsx('div', {
         'data-date-range-picker-calendar': '',
         'data-month-offset': monthOffset,
         children: jsx('div', {
@@ -346,7 +339,6 @@ export const DateRangePickerCalendar = defineComponent<DateRangePickerCalendarPr
           children: `Calendar for ${displayMonth.toLocaleDateString('default', { month: 'long', year: 'numeric' })}`,
         }),
       });
-    };
   },
 );
 

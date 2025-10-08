@@ -266,8 +266,7 @@ export const DrawerContent = defineComponent<DrawerContentProps>((props) => {
 // Drawer Title
 // ============================================================================
 
-export const DrawerTitle = defineComponent<DrawerTitleProps>((props) => {
-  return () => {
+export const DrawerTitle = defineComponent<DrawerTitleProps>((props) => () => {
     const { children, ...rest } = props;
 
     return jsx('h2', {
@@ -275,15 +274,13 @@ export const DrawerTitle = defineComponent<DrawerTitleProps>((props) => {
       ...rest,
       children,
     });
-  };
-});
+  });
 
 // ============================================================================
 // Drawer Description
 // ============================================================================
 
-export const DrawerDescription = defineComponent<DrawerDescriptionProps>((props) => {
-  return () => {
+export const DrawerDescription = defineComponent<DrawerDescriptionProps>((props) => () => {
     const { children, ...rest } = props;
 
     return jsx('p', {
@@ -291,8 +288,7 @@ export const DrawerDescription = defineComponent<DrawerDescriptionProps>((props)
       ...rest,
       children,
     });
-  };
-});
+  });
 
 // ============================================================================
 // Drawer Close

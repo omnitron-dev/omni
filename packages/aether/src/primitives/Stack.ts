@@ -73,8 +73,7 @@ export interface StackProps {
  * </Stack>
  * ```
  */
-export const Stack = defineComponent<StackProps>((props) => {
-  return () => {
+export const Stack = defineComponent<StackProps>((props) => () => {
     const direction = props.direction ?? 'vertical';
     const spacing = props.spacing ?? 0;
     const isVertical = direction === 'vertical';
@@ -131,8 +130,7 @@ export const Stack = defineComponent<StackProps>((props) => {
       ...restProps,
       children: content,
     });
-  };
-});
+  });
 
 // ============================================================================
 // VStack (Vertical Stack) - Convenience wrapper
@@ -151,9 +149,7 @@ export interface VStackProps extends Omit<StackProps, 'direction'> {}
  * </VStack>
  * ```
  */
-export const VStack = defineComponent<VStackProps>((props) => {
-  return () => jsx(Stack, { direction: 'vertical', ...props });
-});
+export const VStack = defineComponent<VStackProps>((props) => () => jsx(Stack, { direction: 'vertical', ...props }));
 
 // ============================================================================
 // HStack (Horizontal Stack) - Convenience wrapper
@@ -172,6 +168,4 @@ export interface HStackProps extends Omit<StackProps, 'direction'> {}
  * </HStack>
  * ```
  */
-export const HStack = defineComponent<HStackProps>((props) => {
-  return () => jsx(Stack, { direction: 'horizontal', ...props });
-});
+export const HStack = defineComponent<HStackProps>((props) => () => jsx(Stack, { direction: 'horizontal', ...props }));

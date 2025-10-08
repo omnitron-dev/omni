@@ -65,8 +65,7 @@ export interface SpacerProps {
  * </Flex>
  * ```
  */
-export const Spacer = defineComponent<SpacerProps>((props) => {
-  return () => {
+export const Spacer = defineComponent<SpacerProps>((props) => () => {
     const grow = props.grow ?? 1;
     const shrink = props.shrink ?? 0;
 
@@ -92,5 +91,4 @@ export const Spacer = defineComponent<SpacerProps>((props) => {
       ...restProps,
       'aria-hidden': 'true',
     });
-  };
-});
+  });

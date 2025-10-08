@@ -122,9 +122,7 @@ const useNumberInputContext = (): NumberInputContextValue => {
 // Helper Functions
 // ============================================================================
 
-const clamp = (value: number, min: number, max: number): number => {
-  return Math.max(min, Math.min(max, value));
-};
+const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
 const roundToPrecision = (value: number, precision: number): number => {
   const multiplier = Math.pow(10, precision);
@@ -184,13 +182,9 @@ export const NumberInput = defineComponent<NumberInputProps>((props) => {
     setValue(current - step);
   };
 
-  const canIncrement = (): boolean => {
-    return !disabled && !readonly && currentValue() + step <= max;
-  };
+  const canIncrement = (): boolean => !disabled && !readonly && currentValue() + step <= max;
 
-  const canDecrement = (): boolean => {
-    return !disabled && !readonly && currentValue() - step >= min;
-  };
+  const canDecrement = (): boolean => !disabled && !readonly && currentValue() - step >= min;
 
   const formatValue = (value: number): string => {
     switch (format) {

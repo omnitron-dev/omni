@@ -169,12 +169,10 @@ const hslToRgb = (h: number, s: number, l: number): [number, number, number] => 
   return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
 };
 
-const rgbToHex = (r: number, g: number, b: number): string => {
-  return (
+const rgbToHex = (r: number, g: number, b: number): string => (
     '#' +
     [r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('')
   );
-};
 
 const hexToRgb = (hex: string): [number, number, number] | null => {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -367,8 +365,7 @@ export const ColorPickerTrigger = defineComponent<ColorPickerTriggerProps>((prop
 // ColorPicker Content
 // ============================================================================
 
-export const ColorPickerContent = defineComponent<ColorPickerContentProps>((props) => {
-  return () => {
+export const ColorPickerContent = defineComponent<ColorPickerContentProps>((props) => () => {
     const { children, ...rest } = props;
 
     return jsx('div', {
@@ -378,8 +375,7 @@ export const ColorPickerContent = defineComponent<ColorPickerContentProps>((prop
       ...rest,
       children,
     });
-  };
-});
+  });
 
 // ============================================================================
 // ColorPicker Area (Saturation/Brightness selector)
@@ -483,8 +479,7 @@ export const ColorPickerHueSlider = defineComponent<ColorPickerHueSliderProps>((
     document.addEventListener('pointerup', handlePointerUp);
   };
 
-  return () => {
-    return jsx('div', {
+  return () => jsx('div', {
       ref: sliderRef,
       'data-color-picker-hue-slider': '',
       role: 'slider',
@@ -495,7 +490,6 @@ export const ColorPickerHueSlider = defineComponent<ColorPickerHueSliderProps>((
       onPointerDown: handlePointerDown,
       ...props,
     });
-  };
 });
 
 // ============================================================================
@@ -543,8 +537,7 @@ export const ColorPickerAlphaSlider = defineComponent<ColorPickerAlphaSliderProp
     document.addEventListener('pointerup', handlePointerUp);
   };
 
-  return () => {
-    return jsx('div', {
+  return () => jsx('div', {
       ref: sliderRef,
       'data-color-picker-alpha-slider': '',
       role: 'slider',
@@ -555,7 +548,6 @@ export const ColorPickerAlphaSlider = defineComponent<ColorPickerAlphaSliderProp
       onPointerDown: handlePointerDown,
       ...props,
     });
-  };
 });
 
 // ============================================================================

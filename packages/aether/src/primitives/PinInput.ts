@@ -327,7 +327,7 @@ export const PinInputInput = defineComponent<PinInputInputProps>((props) => {
       inputMode: context.type === 'numeric' ? 'numeric' : 'text',
       pattern: context.type === 'numeric' ? '[0-9]*' : undefined,
       placeholder: context.placeholder,
-      value: value,
+      value,
       disabled: context.disabled,
       'data-pin-input-field': '',
       'data-index': index,

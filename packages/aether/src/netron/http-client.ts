@@ -70,13 +70,13 @@ export class HttpNetronClient {
       },
       getServiceNames: () => [],
       emit: () => false,
-      on: function (this: INetron) {
+      on (this: INetron) {
         return this;
       },
-      off: function (this: INetron) {
+      off (this: INetron) {
         return this;
       },
-      removeListener: function (this: INetron) {
+      removeListener (this: INetron) {
         return this;
       },
       getPeerEventName: undefined,
@@ -122,12 +122,10 @@ export class HttpNetronClient {
     // The client.invoke will handle initialization if needed
     // But we create a proxy that intercepts method calls
     return new Proxy({} as T, {
-      get: (_target, method: string) => {
-        return async (...args: any[]) => {
+      get: (_target, method: string) => async (...args: any[]) => {
           this.logger.debug({ serviceName, method, args }, 'Invoking method');
           return this.client.invoke(serviceName, method, args);
-        };
-      },
+        },
     }) as T;
   }
 

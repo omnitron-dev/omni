@@ -78,8 +78,7 @@ export interface DividerProps {
  * <Divider thickness={2} color="#2196f3" />
  * ```
  */
-export const Divider = defineComponent<DividerProps>((props) => {
-  return () => {
+export const Divider = defineComponent<DividerProps>((props) => () => {
     const orientation = props.orientation ?? 'horizontal';
     const variant = props.variant ?? 'solid';
     const thickness = props.thickness ?? 1;
@@ -230,5 +229,4 @@ export const Divider = defineComponent<DividerProps>((props) => {
       ...restProps,
       children: dividerChildren,
     });
-  };
-});
+  });

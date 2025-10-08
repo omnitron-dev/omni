@@ -105,8 +105,7 @@ export interface GridProps {
  * </Grid>
  * ```
  */
-export const Grid = defineComponent<GridProps>((props) => {
-  return () => {
+export const Grid = defineComponent<GridProps>((props) => () => {
     const element = props.as ?? 'div';
     const {
       as,
@@ -154,8 +153,7 @@ export const Grid = defineComponent<GridProps>((props) => {
       ...restProps,
       children,
     });
-  };
-});
+  });
 
 // ============================================================================
 // GridItem Component
@@ -200,8 +198,7 @@ export interface GridItemProps {
  * </Grid>
  * ```
  */
-export const GridItem = defineComponent<GridItemProps>((props) => {
-  return () => {
+export const GridItem = defineComponent<GridItemProps>((props) => () => {
     const element = props.as ?? 'div';
     const {
       as,
@@ -235,5 +232,4 @@ export const GridItem = defineComponent<GridItemProps>((props) => {
       ...restProps,
       children,
     });
-  };
-});
+  });

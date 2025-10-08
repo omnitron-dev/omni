@@ -44,8 +44,7 @@ export interface BoxProps {
  * <Box as="article" style={{ padding: '1rem' }}>Article with styles</Box>
  * ```
  */
-export const Box = defineComponent<BoxProps>((props) => {
-  return () => {
+export const Box = defineComponent<BoxProps>((props) => () => {
     const { as, children, ...restProps } = props;
     const element = as ?? 'div';
 
@@ -53,5 +52,4 @@ export const Box = defineComponent<BoxProps>((props) => {
       ...restProps,
       children,
     });
-  };
-});
+  });

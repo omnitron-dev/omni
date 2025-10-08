@@ -54,6 +54,10 @@ describe('Advanced Features Tests - Phase 3', () => {
       'http://localhost:3000'
     );
 
+    // Configure peer with managers
+    peer.setCacheManager(cacheManager);
+    peer.setRetryManager(retryManager);
+
     // Mock queryInterfaceRemote
     jest.spyOn(peer as any, 'queryInterfaceRemote').mockResolvedValue({
       id: 'user-service-def',
@@ -93,10 +97,7 @@ describe('Advanced Features Tests - Phase 3', () => {
         return { id: '123', name: `User${callCount}`, version: callCount };
       });
 
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       // Initial call with background refetch enabled
       const proxy = service.cache(10000).background(100) as any;
@@ -116,10 +117,7 @@ describe('Advanced Features Tests - Phase 3', () => {
       let version = 1;
       jest.spyOn(mockTransport, 'invoke').mockImplementation(async () => ({ id: '123', name: 'John', version: version++ }));
 
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       // Initial call
       const proxy = service.cache(10000).background(100) as any;
@@ -145,10 +143,7 @@ describe('Advanced Features Tests - Phase 3', () => {
         return { id: '123', name: 'John', version: 1 };
       });
 
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       const proxy = service.cache(10000).background(100) as any;
       const user = await proxy.getUser('123');
@@ -168,10 +163,7 @@ describe('Advanced Features Tests - Phase 3', () => {
         version: 1
       });
 
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       // Create multiple background refetch with different cache keys
       const builder1 = service.call('getUser', '123').cache({ maxAge: 10000 }).background(100);
@@ -199,10 +191,7 @@ describe('Advanced Features Tests - Phase 3', () => {
         return { id: '123', name: 'John', version: 1 };
       });
 
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       // Fire 5 concurrent requests
       const promises = Array.from({ length: 5 }, () => {
@@ -226,10 +215,7 @@ describe('Advanced Features Tests - Phase 3', () => {
         return { id: '123', name: 'John', version: 1 };
       });
 
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       // Use custom dedupe key
       const promises = Array.from({ length: 5 }, (_, i) => {
@@ -252,10 +238,7 @@ describe('Advanced Features Tests - Phase 3', () => {
         return { id, name: `User${id}`, version: 1 };
       });
 
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       // Fire concurrent requests with different IDs
       const promises = [
@@ -282,10 +265,7 @@ describe('Advanced Features Tests - Phase 3', () => {
         return { id: '123', name: 'John', version: 1 };
       });
 
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       const builder = service.call('getUser', '123');
 
@@ -306,10 +286,7 @@ describe('Advanced Features Tests - Phase 3', () => {
         version: 1
       });
 
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       const builder = service.call('getUser', '123');
       const result = await builder.execute();
@@ -328,10 +305,7 @@ describe('Advanced Features Tests - Phase 3', () => {
         return { id: '123', name: 'Updated Name', version: 2 };
       });
 
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       const inputData = { id: '123', data: { name: 'Updated Name' } };
       const cacheKey = `UserService@1.0.0.updateUser:${JSON.stringify(inputData)}`;
@@ -368,10 +342,7 @@ describe('Advanced Features Tests - Phase 3', () => {
     it('should rollback optimistic update on error', async () => {
       jest.spyOn(mockTransport, 'invoke').mockRejectedValue(new Error('Update failed'));
 
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       const inputData = { id: '123', data: { name: 'Updated' } };
       const cacheKey = `UserService@1.0.0.updateUser:${JSON.stringify(inputData)}`;
@@ -400,10 +371,7 @@ describe('Advanced Features Tests - Phase 3', () => {
     it('should work with fallback on error', async () => {
       jest.spyOn(mockTransport, 'invoke').mockRejectedValue(new Error('Update failed'));
 
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       const fallbackValue = { id: '123', name: 'Fallback', version: 0 };
       const inputData = { id: '123', data: { name: 'Updated' } };
@@ -431,10 +399,7 @@ describe('Advanced Features Tests - Phase 3', () => {
       let version = 1;
       jest.spyOn(mockTransport, 'invoke').mockImplementation(async () => ({ id: '123', name: 'John', version: version++ }));
 
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       // Use cache + background refetch together
       const proxy = service
@@ -470,10 +435,7 @@ describe('Advanced Features Tests - Phase 3', () => {
         return { id: '123', name: 'John', version: 1 };
       });
 
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       // Multiple concurrent requests with retry
       const promises = Array.from({ length: 3 }, () => {

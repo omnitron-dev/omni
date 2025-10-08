@@ -46,20 +46,5 @@ export type { QueryOptions } from './query-builder.js';
 export type { CacheOptions } from './cache-manager.js';
 export type { RetryOptions } from './retry-manager.js';
 
-// Export type safety types
-export type {
-  ContractDefinition,
-  ServiceType,
-  InferInput,
-  InferOutput,
-  ServiceProxy,
-  MiddlewareConfig
-} from './typed-contract.js';
-export type {
-  TypedHttpMiddlewareContext,
-  TypedMetadata,
-  MiddlewareConfig as TypedMiddlewareConfig
-} from './typed-middleware.js';
-
 // Export advanced feature types
 export type { BatchOptions, BatchStatistics } from './request-batcher.js';

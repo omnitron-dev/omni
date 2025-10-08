@@ -20,20 +20,21 @@ import { TransportRegistry, getTransportForAddress } from './transport-registry.
 import { Packet, encodePacket } from '../packet/index.js';
 
 /**
- * WebSocket compatibility adapter
+ * Binary transport adapter
  *
- * Wraps a transport connection to provide WebSocket-like interface
- * for compatibility with existing RemotePeer implementation.
+ * Wraps a transport connection to provide a standard socket-like interface
+ * compatible with RemotePeer implementation. Works uniformly with all binary
+ * transports (WebSocket, TCP, Unix sockets).
  */
-export class WebSocketCompatibilityAdapter extends EventEmitter {
-  // WebSocket readyState constants
+export class BinaryTransportAdapter extends EventEmitter {
+  // Socket readyState constants (compatible with WebSocket standard)
   static readonly CONNECTING = 0;
   static readonly OPEN = 1;
   static readonly CLOSING = 2;
   static readonly CLOSED = 3;
 
   private connection: ITransportConnection;
-  private _readyState: number = WebSocketCompatibilityAdapter.CONNECTING;
+  private _readyState: number = BinaryTransportAdapter.CONNECTING;
   private _url?: string;
   private _binaryType: 'nodebuffer' | 'arraybuffer' = 'nodebuffer';
 
@@ -45,26 +46,26 @@ export class WebSocketCompatibilityAdapter extends EventEmitter {
   }
 
   /**
-   * WebSocket-compatible readyState property
+   * Standard socket readyState property
    */
   get readyState(): number {
     switch (this.connection.state) {
       case ConnectionState.CONNECTING:
-        return WebSocketCompatibilityAdapter.CONNECTING;
+        return BinaryTransportAdapter.CONNECTING;
       case ConnectionState.CONNECTED:
-        return WebSocketCompatibilityAdapter.OPEN;
+        return BinaryTransportAdapter.OPEN;
       case ConnectionState.DISCONNECTING:
-        return WebSocketCompatibilityAdapter.CLOSING;
+        return BinaryTransportAdapter.CLOSING;
       case ConnectionState.DISCONNECTED:
       case ConnectionState.ERROR:
-        return WebSocketCompatibilityAdapter.CLOSED;
+        return BinaryTransportAdapter.CLOSED;
       default:
-        return WebSocketCompatibilityAdapter.CLOSED;
+        return BinaryTransportAdapter.CLOSED;
     }
   }
 
   /**
-   * WebSocket-compatible properties
+   * Standard socket properties
    */
   get url(): string | undefined {
     return this._url;
@@ -82,7 +83,7 @@ export class WebSocketCompatibilityAdapter extends EventEmitter {
   }
 
   /**
-   * Remote address (for compatibility with ws WebSocket)
+   * Remote address (standard socket interface)
    */
   get _socket(): any {
     return {
@@ -94,12 +95,12 @@ export class WebSocketCompatibilityAdapter extends EventEmitter {
   }
 
   /**
-   * Setup event handlers to map transport events to WebSocket events
+   * Setup event handlers to map transport events to standard socket events
    */
   private setupEventHandlers(): void {
     // Map connect event to open
     this.connection.on('connect', () => {
-      this._readyState = WebSocketCompatibilityAdapter.OPEN;
+      this._readyState = BinaryTransportAdapter.OPEN;
       this.emit('open');
     });
 
@@ -128,13 +129,13 @@ export class WebSocketCompatibilityAdapter extends EventEmitter {
 
     // Map disconnect event to close
     this.connection.on('disconnect', (reason?: string) => {
-      this._readyState = WebSocketCompatibilityAdapter.CLOSED;
+      this._readyState = BinaryTransportAdapter.CLOSED;
       this.emit('close', 1000, Buffer.from(reason || ''));
     });
   }
 
   /**
-   * WebSocket-compatible send method
+   * Standard socket send method
    */
   send(data: any, callback?: (err?: Error) => void): void {
     // Convert data to Buffer
@@ -161,21 +162,21 @@ export class WebSocketCompatibilityAdapter extends EventEmitter {
       .catch(err => {
         if (typeof callback === 'function') callback(err);
         // Log error if no callback provided
-        else console.error('WebSocketCompatibilityAdapter send error:', err);
+        else console.error('BinaryTransportAdapter send error:', err);
       });
   }
 
   /**
-   * WebSocket-compatible close method
+   * Standard socket close method
    */
   close(code?: number, reason?: string): void {
-    this._readyState = WebSocketCompatibilityAdapter.CLOSING;
+    this._readyState = BinaryTransportAdapter.CLOSING;
     this.connection.close(code, reason)
       .catch(error => this.emit('error', error));
   }
 
   /**
-   * WebSocket-compatible ping method
+   * Standard socket ping method
    */
   ping(data?: any, mask?: boolean, callback?: (err?: Error) => void): void {
     if (this.connection.ping) {
@@ -188,7 +189,7 @@ export class WebSocketCompatibilityAdapter extends EventEmitter {
   }
 
   /**
-   * WebSocket-compatible pong method
+   * Standard socket pong method
    */
   pong(data?: any, mask?: boolean, callback?: (err?: Error) => void): void {
     // Most transports don't support explicit pong
@@ -196,10 +197,10 @@ export class WebSocketCompatibilityAdapter extends EventEmitter {
   }
 
   /**
-   * WebSocket-compatible terminate method
+   * Standard socket terminate method
    */
   terminate(): void {
-    this._readyState = WebSocketCompatibilityAdapter.CLOSED;
+    this._readyState = BinaryTransportAdapter.CLOSED;
     this.connection.close(1006, 'Terminated')
       .catch(() => { /* Ignore errors on terminate */ });
   }
@@ -209,7 +210,8 @@ export class WebSocketCompatibilityAdapter extends EventEmitter {
  * Transport-based connection factory
  *
  * Creates connections using the transport abstraction layer
- * while maintaining WebSocket compatibility.
+ * with a standard socket interface. Works uniformly with all binary
+ * transports (WebSocket, TCP, Unix sockets).
  */
 export class TransportConnectionFactory {
   /**
@@ -217,9 +219,9 @@ export class TransportConnectionFactory {
    *
    * @param address - Address to connect to (can be any transport URL)
    * @param options - Connection options
-   * @returns WebSocket-compatible connection
+   * @returns Binary transport adapter with standard socket interface
    */
-  static async connect(address: string, options: TransportOptions = {}): Promise<WebSocketCompatibilityAdapter> {
+  static async connect(address: string, options: TransportOptions = {}): Promise<BinaryTransportAdapter> {
     // Get appropriate transport for address
     const transport = getTransportForAddress(address);
     if (!transport) {
@@ -229,15 +231,15 @@ export class TransportConnectionFactory {
     // Create connection using transport
     const connection = await transport.connect(address, options);
 
-    // Wrap in WebSocket adapter
-    return new WebSocketCompatibilityAdapter(connection, address);
+    // Wrap in binary transport adapter
+    return new BinaryTransportAdapter(connection, address);
   }
 
   /**
-   * Create a WebSocket-compatible connection from an existing transport connection
+   * Create a binary transport adapter from an existing transport connection
    */
-  static fromConnection(connection: ITransportConnection, url?: string): WebSocketCompatibilityAdapter {
-    return new WebSocketCompatibilityAdapter(connection, url);
+  static fromConnection(connection: ITransportConnection, url?: string): BinaryTransportAdapter {
+    return new BinaryTransportAdapter(connection, url);
   }
 
   /**
@@ -253,28 +255,29 @@ export class TransportConnectionFactory {
   }
 
   /**
-   * Get WebSocket adapter from either native WebSocket or transport connection
+   * Get binary transport adapter from either native WebSocket or transport connection
    */
-  static getAdapter(socket: WebSocket | ITransportConnection): WebSocketCompatibilityAdapter {
+  static getAdapter(socket: WebSocket | ITransportConnection): BinaryTransportAdapter {
     if (this.isNativeWebSocket(socket)) {
-      // Create minimal adapter for native WebSocket
+      // Create adapter for native WebSocket (backward compatibility)
       return this.fromNativeWebSocket(socket);
     }
     return this.fromConnection(socket as ITransportConnection);
   }
 
   /**
-   * Create adapter from native WebSocket
+   * Create adapter from native WebSocket (for backward compatibility)
    */
-  private static fromNativeWebSocket(ws: WebSocket): WebSocketCompatibilityAdapter {
+  private static fromNativeWebSocket(ws: WebSocket): BinaryTransportAdapter {
     // Create a minimal transport connection wrapper
     const connection = new NativeWebSocketWrapper(ws);
-    return new WebSocketCompatibilityAdapter(connection, ws.url);
+    return new BinaryTransportAdapter(connection, ws.url);
   }
 }
 
 /**
  * Wrapper for native WebSocket to implement ITransportConnection
+ * (for backward compatibility with code using native WebSocket)
  */
 class NativeWebSocketWrapper extends EventEmitter implements ITransportConnection {
   readonly id: string = Math.random().toString(36).substring(7);

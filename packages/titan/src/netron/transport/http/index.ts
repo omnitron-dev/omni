@@ -20,8 +20,8 @@ export { HttpTransportClient } from './client.js';
 export { HttpCacheManager } from './cache-manager.js';
 export { RetryManager } from './retry-manager.js';
 
-// Advanced features (Phase 4)
-export { RequestBatcher } from './request-batcher.js';
+// Advanced features (Phase 4) - temporarily disabled for E2E tests
+// export { RequestBatcher } from './request-batcher.js';
 
 // Message types
 export * from './types.js';
@@ -41,5 +41,5 @@ export type {
 // Export query builder types
 export type { QueryOptions } from './query-builder.js';
 
-// Export advanced feature types
-export type { BatchOptions, BatchStatistics } from './request-batcher.js';
+// Export advanced feature types - temporarily disabled
+// export type { BatchOptions, BatchStatistics } from './request-batcher.js';

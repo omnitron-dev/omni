@@ -93,7 +93,7 @@ describe('Advanced Features Tests - Phase 3', () => {
         return { id: '123', name: `User${callCount}`, version: callCount };
       });
 
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
         cache: cacheManager,
         retry: retryManager
       });
@@ -114,11 +114,9 @@ describe('Advanced Features Tests - Phase 3', () => {
 
     it('should update cache silently during background refetch', async () => {
       let version = 1;
-      jest.spyOn(mockTransport, 'invoke').mockImplementation(async () => {
-        return { id: '123', name: 'John', version: version++ };
-      });
+      jest.spyOn(mockTransport, 'invoke').mockImplementation(async () => ({ id: '123', name: 'John', version: version++ }));
 
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
         cache: cacheManager,
         retry: retryManager
       });
@@ -147,7 +145,7 @@ describe('Advanced Features Tests - Phase 3', () => {
         return { id: '123', name: 'John', version: 1 };
       });
 
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
         cache: cacheManager,
         retry: retryManager
       });
@@ -170,7 +168,7 @@ describe('Advanced Features Tests - Phase 3', () => {
         version: 1
       });
 
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
         cache: cacheManager,
         retry: retryManager
       });
@@ -201,7 +199,7 @@ describe('Advanced Features Tests - Phase 3', () => {
         return { id: '123', name: 'John', version: 1 };
       });
 
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
         cache: cacheManager,
         retry: retryManager
       });
@@ -228,7 +226,7 @@ describe('Advanced Features Tests - Phase 3', () => {
         return { id: '123', name: 'John', version: 1 };
       });
 
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
         cache: cacheManager,
         retry: retryManager
       });
@@ -254,7 +252,7 @@ describe('Advanced Features Tests - Phase 3', () => {
         return { id, name: `User${id}`, version: 1 };
       });
 
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
         cache: cacheManager,
         retry: retryManager
       });
@@ -284,7 +282,7 @@ describe('Advanced Features Tests - Phase 3', () => {
         return { id: '123', name: 'John', version: 1 };
       });
 
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
         cache: cacheManager,
         retry: retryManager
       });
@@ -308,7 +306,7 @@ describe('Advanced Features Tests - Phase 3', () => {
         version: 1
       });
 
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
         cache: cacheManager,
         retry: retryManager
       });
@@ -330,7 +328,7 @@ describe('Advanced Features Tests - Phase 3', () => {
         return { id: '123', name: 'Updated Name', version: 2 };
       });
 
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
         cache: cacheManager,
         retry: retryManager
       });
@@ -370,7 +368,7 @@ describe('Advanced Features Tests - Phase 3', () => {
     it('should rollback optimistic update on error', async () => {
       jest.spyOn(mockTransport, 'invoke').mockRejectedValue(new Error('Update failed'));
 
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
         cache: cacheManager,
         retry: retryManager
       });
@@ -402,7 +400,7 @@ describe('Advanced Features Tests - Phase 3', () => {
     it('should work with fallback on error', async () => {
       jest.spyOn(mockTransport, 'invoke').mockRejectedValue(new Error('Update failed'));
 
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
         cache: cacheManager,
         retry: retryManager
       });
@@ -431,11 +429,9 @@ describe('Advanced Features Tests - Phase 3', () => {
   describe('Combined Advanced Features', () => {
     it('should work with cache + optimistic + background refetch', async () => {
       let version = 1;
-      jest.spyOn(mockTransport, 'invoke').mockImplementation(async () => {
-        return { id: '123', name: 'John', version: version++ };
-      });
+      jest.spyOn(mockTransport, 'invoke').mockImplementation(async () => ({ id: '123', name: 'John', version: version++ }));
 
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
         cache: cacheManager,
         retry: retryManager
       });
@@ -474,7 +470,7 @@ describe('Advanced Features Tests - Phase 3', () => {
         return { id: '123', name: 'John', version: 1 };
       });
 
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0', {
         cache: cacheManager,
         retry: retryManager
       });

@@ -75,18 +75,19 @@ describe('Fluent API Integration', () => {
     jest.restoreAllMocks();
   });
 
-  describe('createFluentInterface', () => {
+  describe('queryFluentInterface', () => {
     it('should create FluentInterface instance', async () => {
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0');
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       expect(service).toBeInstanceOf(FluentInterface);
     });
 
-    it('should create FluentInterface with managers', async () => {
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+    it('should create FluentInterface with peer managers', async () => {
+      // Set managers on peer
+      peer.setCacheManager(cacheManager);
+      peer.setRetryManager(retryManager);
+
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       expect(service).toBeInstanceOf(FluentInterface);
     });
@@ -94,7 +95,7 @@ describe('Fluent API Integration', () => {
     it('should query remote interface', async () => {
       const queryInterfaceSpy = jest.spyOn(peer as any, 'queryInterfaceRemote');
 
-      await peer.createFluentInterface<IUserService>('UserService@1.0.0');
+      await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       expect(queryInterfaceSpy).toHaveBeenCalledWith('UserService@1.0.0');
     });
@@ -102,10 +103,7 @@ describe('Fluent API Integration', () => {
 
   describe('Natural Method Calls', () => {
     it('should support natural method call syntax', async () => {
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       // Mock transport invoke
       const mockTransport = (service as any).transport || new HttpTransportClient('http://localhost:3000');
@@ -118,10 +116,7 @@ describe('Fluent API Integration', () => {
     });
 
     it('should support configuration chaining', async () => {
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       // Chain multiple configurations
       const configured = service
@@ -144,10 +139,7 @@ describe('Fluent API Integration', () => {
         email: 'john@example.com'
       });
 
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      }) as any;
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0') as any;
 
       // Execute with configuration
       const user = await service.cache(60000).retry(3).getUser('123');
@@ -159,10 +151,7 @@ describe('Fluent API Integration', () => {
 
   describe('Backward Compatibility', () => {
     it('should support call().execute() API', async () => {
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       const transport = new HttpTransportClient('http://localhost:3000');
       (service as any).transport = transport;
@@ -176,10 +165,7 @@ describe('Fluent API Integration', () => {
     });
 
     it('should support direct api proxy', async () => {
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       const transport = new HttpTransportClient('http://localhost:3000');
       (service as any).transport = transport;
@@ -195,10 +181,7 @@ describe('Fluent API Integration', () => {
 
   describe('Cache Integration', () => {
     it('should cache results with fluent API', async () => {
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      }) as any;
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0') as any;
 
       const transport = new HttpTransportClient('http://localhost:3000');
       (service as any).transport = transport;
@@ -220,10 +203,7 @@ describe('Fluent API Integration', () => {
     });
 
     it('should support cache invalidation', async () => {
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       const invalidateSpy = jest.spyOn(cacheManager, 'invalidate');
 
@@ -233,10 +213,7 @@ describe('Fluent API Integration', () => {
     });
 
     it('should support cache clearing', async () => {
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       const clearSpy = jest.spyOn(cacheManager, 'clear');
 
@@ -248,10 +225,7 @@ describe('Fluent API Integration', () => {
 
   describe('Retry Integration', () => {
     it('should retry failed requests', async () => {
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      }) as any;
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0') as any;
 
       const transport = new HttpTransportClient('http://localhost:3000');
       (service as any).transport = transport;
@@ -275,10 +249,7 @@ describe('Fluent API Integration', () => {
 
   describe('Transform and Validate', () => {
     it('should transform response data', async () => {
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      }) as any;
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0') as any;
 
       const transport = new HttpTransportClient('http://localhost:3000');
       (service as any).transport = transport;
@@ -297,10 +268,7 @@ describe('Fluent API Integration', () => {
     });
 
     it('should validate response data', async () => {
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      }) as any;
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0') as any;
 
       const transport = new HttpTransportClient('http://localhost:3000');
       (service as any).transport = transport;
@@ -316,10 +284,7 @@ describe('Fluent API Integration', () => {
     });
 
     it('should use fallback on error', async () => {
-      const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      }) as any;
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0') as any;
 
       const transport = new HttpTransportClient('http://localhost:3000');
       (service as any).transport = transport;
@@ -333,29 +298,23 @@ describe('Fluent API Integration', () => {
     });
   });
 
-  describe('createHttpInterface (Backward Compatibility)', () => {
+  describe('queryInterface (Standard RPC API)', () => {
     it('should create HttpInterface instance', async () => {
-      const service = await peer.createHttpInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+      const service = await peer.queryInterface<IUserService>('UserService@1.0.0');
 
       expect(service).toBeDefined();
-      expect(typeof service.call).toBe('function');
+      expect(typeof service.getUser).toBe('function');
     });
 
-    it('should work with call().execute() pattern', async () => {
-      const service = await peer.createHttpInterface<IUserService>('UserService@1.0.0', {
-        cache: cacheManager,
-        retry: retryManager
-      });
+    it('should work with direct RPC calls', async () => {
+      // Mock getOrCreateHttpClient to return a mockable transport
+      const mockTransport = new HttpTransportClient('http://localhost:3000');
+      jest.spyOn(peer as any, 'getOrCreateHttpClient').mockReturnValue(mockTransport);
 
-      const transport = new HttpTransportClient('http://localhost:3000');
-      (service as any).transport = transport;
+      jest.spyOn(mockTransport, 'invoke').mockResolvedValue({ id: '123', name: 'John', email: 'john@example.com' });
 
-      jest.spyOn(transport, 'invoke').mockResolvedValue({ id: '123', name: 'John', email: 'john@example.com' });
-
-      const user = await service.call('getUser', '123').execute();
+      const service = await peer.queryInterface<IUserService>('UserService@1.0.0');
+      const user = await service.getUser('123');
 
       expect(user).toEqual({ id: '123', name: 'John', email: 'john@example.com' });
     });

@@ -18,13 +18,28 @@ import { ConfigurableProxy } from './configurable-proxy.js';
  * @template TService - Service interface type
  */
 export class FluentInterface<TService = any> {
+  /**
+   * Definition metadata (for compatibility with Interface)
+   * @internal
+   */
+  public $def?: Definition;
+
+  /**
+   * Peer reference (for compatibility with Interface)
+   * @internal
+   */
+  public $peer?: any;
+
   constructor(
     private transport: HttpTransportClient,
     private definition: Definition,
     private cacheManager?: HttpCacheManager,
     private retryManager?: RetryManager,
     private globalOptions: QueryOptions = {}
-  ) {}
+  ) {
+    // Set compatibility properties
+    this.$def = definition;
+  }
 
   /**
    * Set global cache configuration that applies to all method calls

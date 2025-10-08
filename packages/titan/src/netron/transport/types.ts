@@ -134,8 +134,8 @@ export interface ITransportConnection extends EventEmitter {
   /** Close the connection */
   close(code?: number, reason?: string): Promise<void>;
 
-  /** Ping the connection (if supported) */
-  ping?(): Promise<void>;
+  /** Ping the connection and return round-trip time in milliseconds */
+  ping(): Promise<number>;
 
   /** Get connection metrics */
   getMetrics?(): ConnectionMetrics;

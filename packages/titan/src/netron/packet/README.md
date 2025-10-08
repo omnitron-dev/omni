@@ -135,7 +135,7 @@ Payloads are MessagePack-encoded and can be of any type. The structure depends o
 **From `types.ts:39-46`:**
 
 ```typescript
-export const TYPE_PING = 0x00;         // Health check (DEFINED BUT NOT USED)
+export const TYPE_PING = 0x00;         // Health check and latency measurement
 export const TYPE_GET = 0x01;          // Property getter
 export const TYPE_SET = 0x02;          // Property setter
 export const TYPE_CALL = 0x03;         // Method invocation
@@ -146,6 +146,46 @@ export const TYPE_STREAM_CLOSE = 0x07; // Stream closure
 ```
 
 ### Type Details
+
+#### TYPE_PING (0x00)
+
+**Health check and latency measurement** - unified ping protocol for all binary transports.
+
+**Protocol**:
+1. Client sends TYPE_PING packet with impulse=1 (request) and timestamp in data
+2. Server automatically responds with TYPE_PING packet with impulse=0 (response) and echoes timestamp
+3. Client calculates RTT (round-trip time) from response
+
+**Usage** (`base-transport.ts:194-228`):
+```typescript
+const rtt = await connection.ping();
+console.log(`Latency: ${rtt}ms`);
+```
+
+**Implementation Details**:
+- Handled automatically in `BaseConnection.handlePingPacket()`
+- All transports (WebSocket, TCP, Unix) inherit unified ping
+- Updates `metrics.rtt` with latest measurement
+- Timeout: `options.requestTimeout` (default 5000ms)
+
+**Packet Structure**:
+```typescript
+// Request
+{
+  id: packetId,
+  type: TYPE_PING,
+  impulse: 1,
+  data: timestamp  // Date.now()
+}
+
+// Response
+{
+  id: packetId,      // Same ID as request
+  type: TYPE_PING,
+  impulse: 0,
+  data: timestamp    // Echoed from request
+}
+```
 
 #### TYPE_GET (0x01)
 
@@ -483,16 +523,15 @@ The following features are **documented but not implemented**:
 
 1. **No LENGTH field** in packet header
 2. **No CHECKSUM field** or validation
-3. **No TYPE_PING usage** - defined but never used
-4. **No StreamType enum usage** - defined but unused
-5. **No packet pooling** (PacketPool)
-6. **No buffer management** (BufferManager)
-7. **No compression support** (CompressedPacket)
-8. **No packet validation** (PacketValidator)
-9. **No rate limiting** (PacketRateLimiter)
-10. **No input sanitization** (PacketSanitizer)
-11. **No protocol versioning** or handshake
-12. **No backpressure handling** (StreamController)
+3. **No StreamType enum usage** - defined but unused
+4. **No packet pooling** (PacketPool)
+5. **No buffer management** (BufferManager)
+6. **No compression support** (CompressedPacket)
+7. **No packet validation** (PacketValidator)
+8. **No rate limiting** (PacketRateLimiter)
+9. **No input sanitization** (PacketSanitizer)
+10. **No protocol versioning** or handshake
+11. **No backpressure handling** (StreamController)
 
 ### ⚠️ Known Issues
 
@@ -505,11 +544,12 @@ The following features are **documented but not implemented**:
 ### ✅ Working Features
 
 1. **Binary packet encoding/decoding**
-2. **Stream support** with sequence tracking
-3. **Custom type serialization** (Definition, Reference, StreamReference)
-4. **Transport abstraction** (WebSocket, TCP, Unix sockets)
-5. **Error propagation** via TYPE_STREAM_ERROR
-6. **Graceful stream closure** via TYPE_STREAM_CLOSE
+2. **Unified ping protocol** (TYPE_PING) with RTT measurement
+3. **Stream support** with sequence tracking
+4. **Custom type serialization** (Definition, Reference, StreamReference)
+5. **Transport abstraction** (WebSocket, TCP, Unix sockets)
+6. **Error propagation** via TYPE_STREAM_ERROR
+7. **Graceful stream closure** via TYPE_STREAM_CLOSE
 
 ## Implementation Files
 

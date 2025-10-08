@@ -17,7 +17,7 @@ import {
   ConnectionMetrics,
   ServerMetrics
 } from './types.js';
-import { Packet, encodePacket, decodePacket } from '../packet/index.js';
+import { Packet, encodePacket, decodePacket, TYPE_PING } from '../packet/index.js';
 
 /**
  * Base connection class with common functionality
@@ -30,11 +30,13 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
     bytesReceived: 0,
     packetsSent: 0,
     packetsReceived: 0,
-    duration: 0
+    duration: 0,
+    rtt: undefined
   };
   protected connectionStartTime?: number;
   protected reconnectAttempts = 0;
   protected reconnectTimer?: NodeJS.Timeout;
+  private pendingPings = new Map<number, { resolve: (rtt: number) => void; reject: (error: Error) => void; startTime: number; }>();
 
   constructor(protected options: TransportOptions = {}) {
     super();
@@ -90,10 +92,42 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
       try {
         const packet = decodePacket(data);
         this.metrics.packetsReceived++;
-        this.emit('packet', packet);
+
+        // Handle PING packets internally
+        if (packet.getType() === TYPE_PING) {
+          this.handlePingPacket(packet);
+        } else {
+          this.emit('packet', packet);
+        }
       } catch (error: any) {
         // Not a valid packet, emit as raw data
         this.emit('data', data);
+      }
+    }
+  }
+
+  /**
+   * Handle PING packet
+   */
+  private handlePingPacket(packet: Packet): void {
+    // Check if this is a ping request (impulse = 1) or response (impulse = 0)
+    if (packet.getImpulse() === 1) {
+      // This is a ping request - send pong response
+      const pongPacket = new Packet(packet.id);
+      pongPacket.setType(TYPE_PING);
+      pongPacket.setImpulse(0); // Response
+      pongPacket.data = packet.data; // Echo timestamp
+      this.sendPacket(pongPacket).catch(err => {
+        console.error('Failed to send pong:', err);
+      });
+    } else {
+      // This is a pong response - resolve pending ping
+      const pending = this.pendingPings.get(packet.id);
+      if (pending) {
+        this.pendingPings.delete(packet.id);
+        const rtt = Date.now() - pending.startTime;
+        this.metrics.rtt = rtt;
+        pending.resolve(rtt);
       }
     }
   }
@@ -154,6 +188,46 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
   protected abstract doReconnect(): Promise<void>;
 
   /**
+   * Ping the connection using TYPE_PING packet
+   * Returns round-trip time in milliseconds
+   */
+  async ping(): Promise<number> {
+    if (this._state !== ConnectionState.CONNECTED) {
+      throw new Error('Connection is not established');
+    }
+
+    const pingPacket = new Packet(Packet.nextId());
+    pingPacket.setType(TYPE_PING);
+    pingPacket.setImpulse(1); // Request
+    pingPacket.data = Date.now(); // Timestamp
+
+    return new Promise<number>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingPings.delete(pingPacket.id);
+        reject(new Error('Ping timeout'));
+      }, this.options.requestTimeout ?? 5000);
+
+      this.pendingPings.set(pingPacket.id, {
+        resolve: (rtt: number) => {
+          clearTimeout(timeout);
+          resolve(rtt);
+        },
+        reject: (error: Error) => {
+          clearTimeout(timeout);
+          reject(error);
+        },
+        startTime: Date.now()
+      });
+
+      this.sendPacket(pingPacket).catch(err => {
+        clearTimeout(timeout);
+        this.pendingPings.delete(pingPacket.id);
+        reject(err);
+      });
+    });
+  }
+
+  /**
    * Get connection metrics
    */
   getMetrics(): ConnectionMetrics {
@@ -171,6 +245,12 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = undefined;
     }
+
+    // Reject all pending pings
+    for (const [id, pending] of this.pendingPings.entries()) {
+      pending.reject(new Error('Connection closed'));
+    }
+    this.pendingPings.clear();
   }
 }
 

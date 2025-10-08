@@ -209,15 +209,6 @@ export class TcpConnection extends BaseConnection {
   }
 
   /**
-   * Ping the connection (TCP keep-alive)
-   */
-  async ping(): Promise<void> {
-    // TCP doesn't have built-in ping, use keep-alive
-    // or implement application-level ping
-    return Promise.resolve();
-  }
-
-  /**
    * Reconnect the TCP socket
    */
   protected async doReconnect(): Promise<void> {
@@ -446,9 +437,9 @@ export class TcpTransport extends BaseTransport {
     try {
       const parsed = this.parseAddress(address);
       return parsed.protocol === 'tcp' &&
-             !!parsed.host &&
-             !!parsed.port &&
-             !isNaN(parsed.port);
+        !!parsed.host &&
+        !!parsed.port &&
+        !isNaN(parsed.port);
     } catch {
       return false;
     }

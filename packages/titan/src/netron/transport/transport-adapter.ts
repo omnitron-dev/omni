@@ -176,16 +176,13 @@ export class BinaryTransportAdapter extends EventEmitter {
   }
 
   /**
-   * Standard socket ping method
+   * Standard socket ping method (WebSocket compatible signature)
+   * Uses unified TYPE_PING packet protocol from BaseConnection
    */
   ping(data?: any, mask?: boolean, callback?: (err?: Error) => void): void {
-    if (this.connection.ping) {
-      this.connection.ping()
-        .then(() => callback?.())
-        .catch(err => callback?.(err));
-    } else {
-      callback?.(new Error('Ping not supported by transport'));
-    }
+    this.connection.ping()
+      .then(() => callback?.())
+      .catch(err => callback?.(err));
   }
 
   /**
@@ -343,11 +340,29 @@ class NativeWebSocketWrapper extends EventEmitter implements ITransportConnectio
     this.ws.close(code, reason);
   }
 
-  async ping(): Promise<void> {
+  async ping(): Promise<number> {
     return new Promise((resolve, reject) => {
+      const startTime = Date.now();
+
+      const timeout = setTimeout(() => {
+        this.ws.removeListener('pong', pongHandler);
+        reject(new Error('Ping timeout'));
+      }, 5000);
+
+      const pongHandler = () => {
+        clearTimeout(timeout);
+        this.ws.removeListener('pong', pongHandler);
+        const rtt = Date.now() - startTime;
+        resolve(rtt);
+      };
+
+      this.ws.once('pong', pongHandler);
       this.ws.ping((err: Error | undefined) => {
-        if (err) reject(err);
-        else resolve();
+        if (err) {
+          clearTimeout(timeout);
+          this.ws.removeListener('pong', pongHandler);
+          reject(err);
+        }
       });
     });
   }

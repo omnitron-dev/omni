@@ -294,8 +294,9 @@ describe('Unix Domain Socket Transport', () => {
     });
 
     it('should send and receive packets', async () => {
-      const testPacket = new Packet(1, { message: 'Unix packet' });
-      testPacket.serviceId = 'unix-service';
+      const testPacket = new Packet(1);
+      testPacket.setType(1);
+      testPacket.data = { message: 'Unix packet' };
 
       // Server listens for packet
       const packetPromise = waitForEvent(serverConnection, 'packet');
@@ -306,8 +307,8 @@ describe('Unix Domain Socket Transport', () => {
       // Server receives packet
       const receivedPacket = await packetPromise;
       expect(receivedPacket).toBeDefined();
-      expect(receivedPacket.type).toBe(testPacket.type);
-      // ServiceId might not be preserved in encoding/decoding
+      expect(receivedPacket.getType()).toBe(testPacket.getType());
+      expect(receivedPacket.data).toEqual(testPacket.data);
     });
 
     it('should handle bidirectional communication', async () => {
@@ -364,7 +365,9 @@ describe('Unix Domain Socket Transport', () => {
 
     it('should track connection metrics', async () => {
       const testData = Buffer.from('Metric test');
-      const packet = new Packet(1, {});
+      const packet = new Packet(1);
+      packet.setType(1);
+      packet.data = {};
 
       await clientConnection.send(testData);
       await clientConnection.sendPacket(packet);
@@ -492,6 +495,122 @@ describe('Unix Domain Socket Transport', () => {
       await client2.close();
       await client3.close();
       await server.close();
+    });
+  });
+
+  describe('Unified TYPE_PING Protocol', () => {
+    let server: any;
+    let serverConnection: any;
+    let clientConnection: any;
+
+    beforeEach(async () => {
+      server = await transport.createServer(socketPath);
+      await server.listen();
+
+      // Set up server connection handler
+      const connectionPromise = waitForEvent(server, 'connection');
+
+      // Connect client
+      clientConnection = await transport.connect(socketPath);
+      serverConnection = await connectionPromise;
+    });
+
+    afterEach(async () => {
+      await clientConnection?.close();
+      await serverConnection?.close();
+      await server?.close();
+    });
+
+    it('should measure round-trip time using TYPE_PING packets', async () => {
+      // Client sends TYPE_PING packet
+      const rtt = await clientConnection.ping();
+
+      // RTT should be a non-negative number (Unix sockets can be 0ms on fast systems)
+      expect(typeof rtt).toBe('number');
+      expect(rtt).toBeGreaterThanOrEqual(0);
+      expect(rtt).toBeLessThan(1000); // Should be less than 1 second on localhost
+
+      // Check that metrics were updated
+      const metrics = clientConnection.getMetrics();
+      expect(metrics.rtt).toBe(rtt);
+    });
+
+    it('should automatically respond to ping requests', async () => {
+      // Server sends TYPE_PING packet
+      const rtt = await serverConnection.ping();
+
+      // Client should have automatically responded (Unix sockets can be 0ms on fast systems)
+      expect(typeof rtt).toBe('number');
+      expect(rtt).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should handle ping timeout', async () => {
+      // Wait for new server connection
+      const newConnPromise = waitForEvent(server, 'connection');
+
+      // Create connection with short timeout
+      const shortTimeoutClient = await transport.connect(socketPath, {
+        requestTimeout: 100
+      });
+
+      const newServerConn = await newConnPromise;
+
+      // Prevent server from responding to ping by blocking handleData
+      const originalHandleData = (newServerConn as any).handleData;
+      (newServerConn as any).handleData = () => {
+        // Drop all incoming data
+      };
+
+      // Ping should timeout
+      await expect(shortTimeoutClient.ping()).rejects.toThrow('timeout');
+
+      // Restore original handler for cleanup
+      (newServerConn as any).handleData = originalHandleData;
+
+      await shortTimeoutClient.close();
+    });
+
+    it('should fail ping when connection not established', async () => {
+      // Close the connection
+      await clientConnection.close();
+
+      // Wait for disconnect
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Ping should fail
+      await expect(clientConnection.ping()).rejects.toThrow('not established');
+    });
+
+    it('should handle multiple concurrent pings', async () => {
+      // Send multiple pings concurrently
+      const pingPromises = [
+        clientConnection.ping(),
+        clientConnection.ping(),
+        clientConnection.ping()
+      ];
+
+      const rtts = await Promise.all(pingPromises);
+
+      // All pings should succeed (Unix sockets can be 0ms on fast systems)
+      expect(rtts.length).toBe(3);
+      rtts.forEach(rtt => {
+        expect(typeof rtt).toBe('number');
+        expect(rtt).toBeGreaterThanOrEqual(0);
+      });
+    });
+
+    it('should handle bidirectional pings', async () => {
+      // Both client and server send pings simultaneously
+      const [clientRtt, serverRtt] = await Promise.all([
+        clientConnection.ping(),
+        serverConnection.ping()
+      ]);
+
+      // Unix sockets can be 0ms on fast systems
+      expect(typeof clientRtt).toBe('number');
+      expect(clientRtt).toBeGreaterThanOrEqual(0);
+      expect(typeof serverRtt).toBe('number');
+      expect(serverRtt).toBeGreaterThanOrEqual(0);
     });
   });
 

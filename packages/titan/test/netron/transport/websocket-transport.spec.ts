@@ -407,7 +407,7 @@ describe('WebSocketTransport', () => {
   });
 
   describe('Ping/Pong', () => {
-    it('should handle ping messages', async () => {
+    it('should handle native WebSocket ping messages', async () => {
       let serverWs: WebSocket;
 
       // Set up WebSocket server handler
@@ -420,7 +420,7 @@ describe('WebSocketTransport', () => {
       const client = await transport.connect(`ws://127.0.0.1:${testPort}`);
       serverWs = await connectionPromise;
 
-      // Server sends ping
+      // Server sends native WebSocket ping
       const pongPromise = new Promise((resolve) => {
         serverWs.on('pong', resolve);
       });
@@ -433,30 +433,144 @@ describe('WebSocketTransport', () => {
 
       await client.close();
     });
+  });
 
-    it('should send ping when method is called', async () => {
-      let serverWs: WebSocket;
-
-      const connectionPromise = new Promise<WebSocket>((resolve) => {
-        wsServer.on('connection', (ws) => {
-          resolve(ws);
+  describe('Unified TYPE_PING Protocol', () => {
+    it('should measure round-trip time using TYPE_PING packets', async () => {
+      // Create server connection
+      let serverConnection: any;
+      const connectionPromise = new Promise((resolve) => {
+        wsServer.once('connection', async (ws) => {
+          const { WebSocketConnection } = await import('../../../src/netron/transport/websocket-transport.js');
+          const conn = new WebSocketConnection(ws, {}, true);
+          resolve(conn);
         });
       });
 
       const client = await transport.connect(`ws://127.0.0.1:${testPort}`);
-      serverWs = await connectionPromise;
+      serverConnection = await connectionPromise;
 
-      const pingPromise = new Promise((resolve) => {
-        serverWs.on('ping', resolve);
-      });
+      // Client sends TYPE_PING packet
+      const rtt = await client.ping();
 
-      // Client sends ping
-      await client.ping?.();
+      // RTT should be a non-negative number (can be 0ms on fast systems)
+      expect(typeof rtt).toBe('number');
+      expect(rtt).toBeGreaterThanOrEqual(0);
+      expect(rtt).toBeLessThan(1000); // Should be less than 1 second on localhost
 
-      // Server should receive ping
-      await pingPromise;
+      // Check that metrics were updated
+      const metrics = client.getMetrics();
+      expect(metrics.rtt).toBe(rtt);
 
       await client.close();
+      await serverConnection.close();
+    });
+
+    it('should automatically respond to ping requests', async () => {
+      // Create server connection
+      let serverConnection: any;
+      const connectionPromise = new Promise((resolve) => {
+        wsServer.on('connection', async (ws) => {
+          const { WebSocketConnection } = await import('../../../src/netron/transport/websocket-transport.js');
+          const conn = new WebSocketConnection(ws, {}, true);
+          resolve(conn);
+        });
+      });
+
+      const client = await transport.connect(`ws://127.0.0.1:${testPort}`);
+      serverConnection = await connectionPromise;
+
+      // Wait a bit to ensure connection is fully established
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Server sends TYPE_PING packet
+      const rtt = await serverConnection.ping();
+
+      // Client should have automatically responded
+      expect(typeof rtt).toBe('number');
+      expect(rtt).toBeGreaterThan(0);
+
+      await client.close();
+      await serverConnection.close();
+    });
+
+    it('should handle ping timeout', async () => {
+      // Create server connection
+      let serverConnection: any;
+      const connectionPromise = new Promise((resolve) => {
+        wsServer.once('connection', async (ws) => {
+          const { WebSocketConnection } = await import('../../../src/netron/transport/websocket-transport.js');
+          const conn = new WebSocketConnection(ws, {}, true);
+          resolve(conn);
+        });
+      });
+
+      const client = await transport.connect(`ws://127.0.0.1:${testPort}`, {
+        requestTimeout: 100
+      });
+      serverConnection = await connectionPromise;
+
+      // Prevent server from responding to ping
+      const originalHandleData = (serverConnection as any).handleData;
+      (serverConnection as any).handleData = () => {
+        // Drop all incoming data
+      };
+
+      // Ping should timeout
+      await expect(client.ping()).rejects.toThrow('timeout');
+
+      // Restore original handler for cleanup
+      (serverConnection as any).handleData = originalHandleData;
+
+      await client.close();
+      await serverConnection.close();
+    });
+
+    it('should fail ping when connection not established', async () => {
+      const client = await transport.connect(`ws://127.0.0.1:${testPort}`);
+
+      // Close the connection
+      await client.close();
+
+      // Wait for disconnect
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Ping should fail
+      await expect(client.ping()).rejects.toThrow('not established');
+    });
+
+    it('should handle multiple concurrent pings', async () => {
+      // Create server connection
+      let serverConnection: any;
+      const connectionPromise = new Promise((resolve) => {
+        wsServer.on('connection', async (ws) => {
+          const { WebSocketConnection } = await import('../../../src/netron/transport/websocket-transport.js');
+          const conn = new WebSocketConnection(ws, {}, true);
+          resolve(conn);
+        });
+      });
+
+      const client = await transport.connect(`ws://127.0.0.1:${testPort}`);
+      serverConnection = await connectionPromise;
+
+      // Send multiple pings concurrently
+      const pingPromises = [
+        client.ping(),
+        client.ping(),
+        client.ping()
+      ];
+
+      const rtts = await Promise.all(pingPromises);
+
+      // All pings should succeed
+      expect(rtts.length).toBe(3);
+      rtts.forEach(rtt => {
+        expect(typeof rtt).toBe('number');
+        expect(rtt).toBeGreaterThan(0);
+      });
+
+      await client.close();
+      await serverConnection.close();
     });
   });
 

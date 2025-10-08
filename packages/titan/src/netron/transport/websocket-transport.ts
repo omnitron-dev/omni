@@ -188,35 +188,6 @@ export class WebSocketConnection extends BaseConnection {
   }
 
   /**
-   * Ping the connection
-   */
-  async ping(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      if (this.socket.readyState !== WebSocket.OPEN) {
-        reject(new Error('WebSocket is not open'));
-        return;
-      }
-
-      const start = Date.now();
-      let pongHandler: () => void;
-
-      const timeout = setTimeout(() => {
-        this.socket.removeListener('pong', pongHandler);
-        reject(new Error('Ping timeout'));
-      }, 5000);
-
-      pongHandler = () => {
-        clearTimeout(timeout);
-        this.metrics.rtt = Date.now() - start;
-        resolve();
-      };
-
-      this.socket.once('pong', pongHandler);
-      this.socket.ping();
-    });
-  }
-
-  /**
    * Reconnect the WebSocket
    */
   protected async doReconnect(): Promise<void> {

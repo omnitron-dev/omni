@@ -25,11 +25,8 @@ import {
   createRequestMessage
 } from './types.js';
 import { HttpInterface } from './interface.js';
-import { FluentInterface } from './fluent-interface.js';
 import { HttpTransportClient } from './client.js';
-import { HttpCacheManager } from './cache-manager.js';
-import { RetryManager } from './retry-manager.js';
-import type { QueryOptions } from './query-builder.js';
+import { FluentInterface, HttpCacheManager, RetryManager, type QueryOptions } from './fluent-interface/index.js';
 
 /**
  * HttpRemotePeer - Optimized HTTP peer without packet protocol

@@ -5,9 +5,11 @@
 
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { HttpRemotePeer } from '../../../../src/netron/transport/http/peer.js';
-import { FluentInterface } from '../../../../src/netron/transport/http/fluent-interface.js';
-import { HttpCacheManager } from '../../../../src/netron/transport/http/cache-manager.js';
-import { RetryManager } from '../../../../src/netron/transport/http/retry-manager.js';
+import {
+  FluentInterface,
+  HttpCacheManager,
+  RetryManager
+} from '../../../../src/netron/transport/http/fluent-interface/index.js';
 import { HttpTransportClient } from '../../../../src/netron/transport/http/client.js';
 import type { INetron } from '../../../../src/netron/types.js';
 

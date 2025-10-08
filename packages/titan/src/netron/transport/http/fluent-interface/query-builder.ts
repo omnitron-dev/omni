@@ -5,15 +5,15 @@
  * with intelligent features like caching, retry, deduplication, and more.
  */
 
-import type { Definition } from '../../definition.js';
-import { HttpTransportClient } from './client.js';
+import type { Definition } from '../../../definition.js';
+import { HttpTransportClient } from '../client.js';
 import { HttpCacheManager, type CacheOptions } from './cache-manager.js';
 import { RetryManager, type RetryOptions } from './retry-manager.js';
 import type {
   HttpRequestContext,
   HttpRequestHints,
   HttpRequestMessage
-} from './types.js';
+} from '../types.js';
 
 /**
  * Query options for configuring request behavior

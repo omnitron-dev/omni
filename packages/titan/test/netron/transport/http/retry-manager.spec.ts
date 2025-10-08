@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import { RetryManager } from '../../../../src/netron/transport/http/retry-manager.js';
+import { RetryManager } from '../../../../src/netron/transport/http/fluent-interface/index.js';
 import { TitanError, ErrorCode } from '../../../../src/errors/index.js';
 
 describe('RetryManager', () => {

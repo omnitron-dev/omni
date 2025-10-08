@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import { HttpCacheManager } from '../../../../src/netron/transport/http/cache-manager.js';
+import { HttpCacheManager } from '../../../../src/netron/transport/http/fluent-interface/index.js';
 
 describe('HttpCacheManager', () => {
   let cacheManager: HttpCacheManager;

@@ -13,12 +13,16 @@ export { HttpConnection } from './connection.js';
 
 // Enhanced client features
 export { HttpInterface as EnhancedHttpInterface } from './interface.js';
-export { FluentInterface } from './fluent-interface.js';
-export { ConfigurableProxy } from './configurable-proxy.js';
-export { QueryBuilder } from './query-builder.js';
 export { HttpTransportClient } from './client.js';
-export { HttpCacheManager } from './cache-manager.js';
-export { RetryManager } from './retry-manager.js';
+
+// Fluent interface components
+export {
+  FluentInterface,
+  ConfigurableProxy,
+  QueryBuilder,
+  HttpCacheManager,
+  RetryManager
+} from './fluent-interface/index.js';
 
 // Advanced features (Phase 4)
 export { RequestBatcher } from './request-batcher.js';
@@ -38,8 +42,10 @@ export type {
   ServerMetrics
 } from '../types.js';
 
-// Export query builder types
-export type { QueryOptions } from './query-builder.js';
+// Export fluent interface types
+export type { QueryOptions } from './fluent-interface/index.js';
+export type { CacheOptions, CacheStats } from './fluent-interface/index.js';
+export type { RetryOptions, RetryStats, CircuitBreakerOptions } from './fluent-interface/index.js';
 
 // Export advanced feature types
 export type { BatchOptions, BatchStatistics } from './request-batcher.js';

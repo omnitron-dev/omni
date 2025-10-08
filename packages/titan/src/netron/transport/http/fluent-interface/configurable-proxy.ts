@@ -5,8 +5,8 @@
  * with all accumulated settings. Uses JavaScript Proxy for method interception.
  */
 
-import type { Definition } from '../../definition.js';
-import { HttpTransportClient } from './client.js';
+import type { Definition } from '../../../definition.js';
+import { HttpTransportClient } from '../client.js';
 import { HttpCacheManager, type CacheOptions } from './cache-manager.js';
 import { RetryManager, type RetryOptions } from './retry-manager.js';
 import { QueryBuilder, type QueryOptions } from './query-builder.js';

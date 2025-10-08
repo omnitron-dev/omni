@@ -4,10 +4,12 @@
  */
 
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import { ConfigurableProxy } from '../../../../src/netron/transport/http/configurable-proxy.js';
+import {
+  ConfigurableProxy,
+  HttpCacheManager,
+  RetryManager
+} from '../../../../src/netron/transport/http/fluent-interface/index.js';
 import { HttpTransportClient } from '../../../../src/netron/transport/http/client.js';
-import { HttpCacheManager } from '../../../../src/netron/transport/http/cache-manager.js';
-import { RetryManager } from '../../../../src/netron/transport/http/retry-manager.js';
 import type { Definition } from '../../../../src/netron/definition.js';
 
 interface ITestService {

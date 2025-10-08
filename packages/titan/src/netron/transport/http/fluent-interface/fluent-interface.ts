@@ -5,8 +5,8 @@
  * Example: await service.cache(60000).retry(3).getUser('user-123')
  */
 
-import type { Definition } from '../../definition.js';
-import { HttpTransportClient } from './client.js';
+import type { Definition } from '../../../definition.js';
+import { HttpTransportClient } from '../client.js';
 import { HttpCacheManager, type CacheOptions } from './cache-manager.js';
 import { RetryManager, type RetryOptions } from './retry-manager.js';
 import { QueryBuilder, type QueryOptions } from './query-builder.js';

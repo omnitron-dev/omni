@@ -4,12 +4,14 @@
  */
 
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import { FluentInterface } from '../../../../src/netron/transport/http/fluent-interface.js';
-import { ConfigurableProxy } from '../../../../src/netron/transport/http/configurable-proxy.js';
-import { QueryBuilder } from '../../../../src/netron/transport/http/query-builder.js';
+import {
+  FluentInterface,
+  ConfigurableProxy,
+  QueryBuilder,
+  HttpCacheManager,
+  RetryManager
+} from '../../../../src/netron/transport/http/fluent-interface/index.js';
 import { HttpTransportClient } from '../../../../src/netron/transport/http/client.js';
-import { HttpCacheManager } from '../../../../src/netron/transport/http/cache-manager.js';
-import { RetryManager } from '../../../../src/netron/transport/http/retry-manager.js';
 import type { Definition } from '../../../../src/netron/definition.js';
 
 describe('FluentInterface', () => {

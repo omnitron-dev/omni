@@ -501,11 +501,21 @@ export default class Decoder {
     const decode = this.decodingTypes.get(type);
 
     if (decode) {
+      // Save current lastBytesConsumed to protect against corruption from nested calls
+      const savedBytesConsumed = this.lastBytesConsumed;
+
       const dataBuf = buf.slice(dataOffset, dataOffset + size);
       // Wrap in SmartBufferCompat for custom decoders that need read methods
       const smartBuf = SmartBuffer.fromBuffer(dataBuf);
+
+      // Call custom decoder (may make nested decoder.decode() calls)
       const value = decode(smartBuf as any);
+
+      // Restore correct bytesConsumed for this extension type
+      // Custom decoder may have called decode() multiple times, corrupting lastBytesConsumed
+      // We need to use the totalSize of this extension, not lastBytesConsumed
       this.lastBytesConsumed = totalSize;
+
       return value;
     }
 

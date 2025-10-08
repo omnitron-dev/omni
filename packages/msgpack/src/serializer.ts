@@ -96,7 +96,8 @@ export default class Serializer {
 
   decode(buf: Buffer | SmartBuffer | any): any {
     // Handle SmartBufferCompat - must read from current read offset
-    if (buf instanceof SmartBuffer) {
+    // Use duck typing instead of instanceof for cross-package compatibility
+    if (buf && typeof buf.getRemainingBuffer === 'function' && typeof buf.skipRead === 'function') {
       // Get remaining buffer from current read offset
       const remaining = buf.getRemainingBuffer();
       try {

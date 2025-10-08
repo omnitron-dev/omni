@@ -25,6 +25,12 @@ export class SmartBuffer {
     return instance;
   }
 
+  /** Alias for fromBuffer - for backward compatibility */
+  static wrap(buf: Buffer | ArrayBuffer): SmartBuffer {
+    const buffer = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
+    return SmartBuffer.fromBuffer(buffer);
+  }
+
   private ensure(size: number): void {
     const needed = this.position + size;
     if (needed > this.capacity) {

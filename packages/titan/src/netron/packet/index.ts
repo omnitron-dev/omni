@@ -1,5 +1,5 @@
 import { Buffer } from 'buffer';
-import { SmartBuffer } from '@omnitron-dev/smartbuffer';
+import { SmartBuffer } from '@omnitron-dev/msgpack/smart-buffer';
 
 import { Packet } from './packet.js';
 import { serializer } from './serializer.js';
@@ -78,7 +78,7 @@ export const createStreamPacket = (
  * @throws {Error} If the packet data cannot be properly serialized.
  */
 export const encodePacket = (packet: Packet) => {
-  const buf = new SmartBuffer(SmartBuffer.DEFAULT_CAPACITY, true);
+  const buf = new SmartBuffer(128); // Default capacity
 
   // Write the packet's unique identifier and flags to the buffer.
   buf.writeUInt32BE(packet.id);
@@ -118,15 +118,17 @@ export const encodePacket = (packet: Packet) => {
  */
 export const decodePacket = (buf: Buffer | ArrayBuffer) => {
   const buffer = SmartBuffer.wrap(buf);
+
   const pkt = new Packet(buffer.readUInt32BE());
   pkt.flags = buffer.readUInt8()!;
 
   // Attempt to decode the packet's data using the serializer.
-  const result = serializer.decoder.tryDecode(buffer);
-  if (!result) {
-    throw new Error('Invalid packet');
+  // decode() throws Error if buffer is incomplete
+  try {
+    pkt.data = serializer.decode(buffer);
+  } catch (error) {
+    throw new Error('Invalid packet: ' + (error instanceof Error ? error.message : String(error)));
   }
-  pkt.data = result.value;
 
   // If the packet is part of a stream, read the stream-specific information.
   if (pkt.isStreamChunk()) {

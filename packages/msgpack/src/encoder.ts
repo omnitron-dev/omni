@@ -129,31 +129,56 @@ function ensureBuffer(state: EncoderState, size: number): void {
 
 export default class Encoder {
   private state: EncoderState;
+  private encodeDepth: number = 0;  // Track encoding nesting depth
 
   constructor(private encodingTypes: Map<number, OptimizedEncoderInfo>) {
     this.state = new EncoderState();
   }
 
   encode(value: any): Buffer {
-    // Reset state
-    this.state.position = 0;
-    this.state.start = 0;
+    // Check if this is a nested call (from custom encoder)
+    const isNestedCall = this.encodeDepth > 0;
+    this.encodeDepth++;
 
-    // Encode the value
-    this._encode(value);
+    if (isNestedCall) {
+      // For nested calls, use a temporary state to avoid corrupting parent encoding
+      const savedState = this.state;
+      this.state = new EncoderState();
 
-    // Extract result and release buffer to pool
-    const result = this.state.buffer.subarray(this.state.start, this.state.position);
-    // Copy result to avoid mutation issues
-    const copy = Buffer.allocUnsafe(result.length);
-    result.copy(copy);
+      // Encode to the temporary state
+      this._encode(value);
 
-    this.state.release();
+      // Extract result
+      const result = this.state.buffer.subarray(0, this.state.position);
+      const copy = Buffer.allocUnsafe(result.length);
+      result.copy(copy);
 
-    // Create new state for next encode
-    this.state = new EncoderState();
+      // Release temporary state and restore parent state
+      this.state.release();
+      this.state = savedState;
 
-    return copy;
+      this.encodeDepth--;
+      return copy;
+    } else {
+      // Top-level call: use existing state
+      this.state.position = 0;
+      this.state.start = 0;
+
+      // Encode the value
+      this._encode(value);
+
+      // Extract result
+      const result = this.state.buffer.subarray(0, this.state.position);
+      const copy = Buffer.allocUnsafe(result.length);
+      result.copy(copy);
+
+      // Release and create new state for next encode
+      this.state.release();
+      this.state = new EncoderState();
+
+      this.encodeDepth--;
+      return copy;
+    }
   }
 
   private _encode(value: any): void {
@@ -525,15 +550,12 @@ export default class Encoder {
   private encodeCustom(value: any): void {
     for (const [type, info] of this.encodingTypes.entries()) {
       if (info.check(value)) {
-        // Save current position before calling custom encoder
-        // Custom encoder may call s.encode() recursively which corrupts position
-        const savedPosition = this.state.position;
-
-        // Encode using custom encoder
+        // Custom encoder writes to its own SmartBuffer, then returns a Buffer
+        // We don't need to save/restore position because:
+        // 1. Custom encoder creates its own SmartBuffer for encoding
+        // 2. encoder.encode() creates a new state anyway, resetting position
+        // 3. We just need to write the extension at the CURRENT position
         const encoded = info.encode(value);
-
-        // Restore position to where we were before
-        this.state.position = savedPosition;
 
         this.encodeExtension(type, encoded);
         return;

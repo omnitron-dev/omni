@@ -70,8 +70,8 @@ const config: JestConfigWithTsJest = {
     '^@omnitron-dev/testing/(.*)$': '<rootDir>/../testing/src/$1',
     '^@omnitron-dev/eventemitter$': '<rootDir>/../eventemitter/src/index.ts',
     '^@omnitron-dev/common$': '<rootDir>/../common/src/index.ts',
-    '^@omnitron-dev/smartbuffer$': '<rootDir>/../smartbuffer/src/index.ts',
-    '^@omnitron-dev/messagepack$': '<rootDir>/../messagepack/src/index.ts'
+    '^@omnitron-dev/msgpack$': '<rootDir>/../msgpack/src/index.ts',
+    '^@omnitron-dev/msgpack/smart-buffer$': '<rootDir>/../msgpack/src/smart-buffer.ts'
   },
   resolver: 'ts-jest-resolver'
 };

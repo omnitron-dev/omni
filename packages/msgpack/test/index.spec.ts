@@ -3,7 +3,7 @@ import Long from 'long';
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { SmartBufferCompat } from '../src/smart-buffer-compat.js';
+import { SmartBuffer } from '../src/smart-buffer.js';
 
 import { Serializer, serializer } from '../src/index.js';
 
@@ -57,7 +57,7 @@ describe('Serializer', () => {
       buf[0] = 0xc4;
       buf[1] = Math.pow(2, 8) - 1; // set bigger size
       orig.copy(buf, 2);
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       const origLength = sbuf.length;
       expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
       expect(sbuf.length).toEqual(origLength - 2);
@@ -66,7 +66,7 @@ describe('Serializer', () => {
     it('decoding an incomplete header of 2^8-1 bytes buffer', () => {
       const buf = Buffer.allocUnsafe(1);
       buf[0] = 0xc4;
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       const origLength = sbuf.length;
       expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
       expect(sbuf.length).toEqual(origLength - 1);
@@ -92,7 +92,7 @@ describe('Serializer', () => {
       resbuf.write(buf);
     };
 
-    const mytypeDecode = (buf: SmartBufferCompat): MyType => {
+    const mytypeDecode = (buf: SmartBuffer): MyType => {
       const result = new MyType(buf.length, buf.toString('utf8', 0, 1));
 
       for (let i = 0; i < buf.length; i++) {
@@ -143,14 +143,14 @@ describe('Serializer', () => {
       buf[0] = 0xc7;
       buf.writeUInt8(length + 2, 1); // set bigger size
       obj.toBuffer().copy(buf, 2, 2, length);
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => customSerializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
 
     it('decoding an incomplete header of variable ext data up to 0xff', () => {
       const buf = Buffer.allocUnsafe(2);
       buf[0] = 0xc7;
-      const sbuf = new SmartBufferCompat().write(buf);
+      const sbuf = new SmartBuffer().write(buf);
       expect(() => customSerializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
   });
@@ -183,14 +183,14 @@ describe('Serializer', () => {
       buf[0] = 0xd9;
       buf[1] = Buffer.byteLength(str) + 10; // set bigger size
       buf.write(str, 2);
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
 
     it('decoding an incomplete header of a string', () => {
       const buf = Buffer.allocUnsafe(1);
       buf[0] = 0xd9;
-      const sbuf = new SmartBufferCompat().write(buf);
+      const sbuf = new SmartBuffer().write(buf);
       expect(() => serializer.decode(buf)).toThrow(/Incomplete buffer/);
     });
   });
@@ -234,14 +234,14 @@ describe('Serializer', () => {
         obj.write(buf, pos);
         pos += obj.length;
       }
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
 
     it('decoding an incomplete header', () => {
       const buf = Buffer.alloc(2);
       buf[0] = 0xdc;
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
   });
@@ -266,7 +266,7 @@ describe('Serializer', () => {
         resbuf.write(buf);
       };
 
-      const mytypeDecode = (buf: SmartBufferCompat): MyType => {
+      const mytypeDecode = (buf: SmartBuffer): MyType => {
         const result = new MyType(buf.length, buf.toString('utf8', 0, 1));
 
         for (let i = 0; i < buf.length; i++) {
@@ -325,14 +325,14 @@ describe('Serializer', () => {
       buf[0] = 0xda;
       buf.writeUInt16BE(Buffer.byteLength(str) + 10, 1); // set bigger size
       buf.write(str, 3);
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
 
     it('decoding an incomplete header of a string', () => {
       const buf = Buffer.allocUnsafe(2);
       buf[0] = 0xda;
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
   });
@@ -364,14 +364,14 @@ describe('Serializer', () => {
       buf[0] = 0xc5;
       buf[1] = Math.pow(2, 16) - 1; // set bigger size
       orig.copy(buf, 3);
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
 
     it('decoding an incomplete header of 2^16-1 bytes buffer', () => {
       const buf = Buffer.allocUnsafe(2);
       buf[0] = 0xc5;
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
   });
@@ -406,7 +406,7 @@ describe('Serializer', () => {
 
     it('decoding a chopped map', () => {
       const map = serializer.encode(build(Math.pow(2, 12) + 1, 42));
-      const buf = new SmartBufferCompat();
+      const buf = new SmartBuffer();
       buf.writeUInt8(0xde);
       buf.writeUInt16BE(Math.pow(2, 16) - 1); // set bigger size
       buf.write(map.slice(3));
@@ -416,7 +416,7 @@ describe('Serializer', () => {
     it('decoding an incomplete header of a map', () => {
       const buf = Buffer.allocUnsafe(2);
       buf[0] = 0xde;
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
   });
@@ -444,7 +444,7 @@ describe('Serializer', () => {
 
     it('decoding an incomplete array', () => {
       const array = build(0xffff + 42);
-      const buf = new SmartBufferCompat(5 + array.length);
+      const buf = new SmartBuffer(5 + array.length);
       buf.writeUInt8(0xdd);
       buf.writeUInt32BE(array.length + 10); // set bigger size
       for (let i = 0; i < array.length; i++) {
@@ -457,7 +457,7 @@ describe('Serializer', () => {
     it('decoding an incomplete header', () => {
       const buf = Buffer.allocUnsafe(4);
       buf[0] = 0xdd;
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
   });
@@ -489,14 +489,14 @@ describe('Serializer', () => {
       buf[0] = 0xc6;
       buf[1] = Math.pow(2, 32) - 1; // set bigger size
       orig.copy(buf, 5);
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
 
     it('decoding an incomplete header of 2^32-1 bytes buffer', () => {
       const buf = Buffer.allocUnsafe(4);
       buf[0] = 0xc6;
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
   });
@@ -523,7 +523,7 @@ describe('Serializer', () => {
         resbuf.write(buf);
       };
 
-      const mytypeDecode = (buf: SmartBufferCompat): MyType => {
+      const mytypeDecode = (buf: SmartBuffer): MyType => {
         const result = new MyType(buf.length, buf.toString('utf8', 0, 1));
 
         for (let i = 0; i < buf.length; i++) {
@@ -578,14 +578,14 @@ describe('Serializer', () => {
       buf[0] = 0xdb;
       buf.writeUInt32BE(Buffer.byteLength(str) + 10, 1); // set bigger size
       buf.write(str, 5);
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
 
     it('decoding an incomplete header of a string', () => {
       const buf = Buffer.allocUnsafe(4);
       buf[0] = 0xdb;
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
   });
@@ -630,7 +630,7 @@ describe('Serializer', () => {
     it('decoding an incomplete 8-bits unsigned integer', () => {
       const buf = Buffer.allocUnsafe(1);
       buf[0] = 0xcc;
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
   });
@@ -651,7 +651,7 @@ describe('Serializer', () => {
     it('decoding an incomplete 8-bits big-endian signed integer', () => {
       const buf = Buffer.allocUnsafe(1);
       buf[0] = 0xd0;
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
   });
@@ -687,7 +687,7 @@ describe('Serializer', () => {
 
     it('decoding an incomplete array', () => {
       const array = ['a', 'b', 'c'];
-      const buf = new SmartBufferCompat();
+      const buf = new SmartBuffer();
       buf.writeUInt8(0x90 | (array.length + 2)); // set bigger size
       for (let i = 0; i < array.length; i++) {
         const obj = serializer.encode(array[i]);
@@ -754,7 +754,7 @@ describe('Serializer', () => {
 
     it('decoding a chopped map', () => {
       const map = serializer.encode({ a: 'b', c: 'd', e: 'f' }).toBuffer();
-      const buf = new SmartBufferCompat(map.length);
+      const buf = new SmartBuffer(map.length);
       buf.writeUInt8(0x80 | 5); // set bigger size
       buf.write(map.slice(1));
       expect(() => serializer.decode(buf)).toThrow(/Incomplete buffer/);
@@ -780,7 +780,7 @@ describe('Serializer', () => {
     it('decoding an incomplete 16-bits big-endian integer', () => {
       const buf = Buffer.allocUnsafe(2);
       buf[0] = 0xd1;
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
   });
@@ -804,7 +804,7 @@ describe('Serializer', () => {
     it('decoding an incomplete 16-bits big-endian unsigned integer', () => {
       const buf = Buffer.allocUnsafe(2);
       buf[0] = 0xcd;
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(buf)).toThrow(/Incomplete buffer/);
     });
   });
@@ -827,7 +827,7 @@ describe('Serializer', () => {
     it('decoding an incomplete 32-bits big-endian integer', () => {
       const buf = Buffer.allocUnsafe(4);
       buf[0] = 0xd2;
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(buf)).toThrow(/Incomplete buffer/);
     });
   });
@@ -851,7 +851,7 @@ describe('Serializer', () => {
     it('decoding an incomplete 32-bits big-endian unsigned integer', () => {
       const buf = Buffer.allocUnsafe(4);
       buf[0] = 0xce;
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(buf)).toThrow(/Incomplete buffer/);
     });
   });
@@ -886,7 +886,7 @@ describe('Serializer', () => {
     it('decoding an incomplete 64-bits big-endian signed integer', () => {
       const buf = Buffer.allocUnsafe(8);
       buf[0] = 0xd3;
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
   });
@@ -906,7 +906,7 @@ describe('Serializer', () => {
     it('decoding an incomplete 64-bits big-endian unsigned integer', () => {
       const buf = Buffer.allocUnsafe(8);
       buf[0] = 0xcf;
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
   });
@@ -929,7 +929,7 @@ describe('Serializer', () => {
     it('decoding an incomplete 64-bits float numbers', () => {
       const buf = Buffer.allocUnsafe(8);
       buf[0] = 0xcb;
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(buf)).toThrow(/Incomplete buffer/);
     });
   });
@@ -951,7 +951,7 @@ describe('Serializer', () => {
         buf.writeUInt8(obj.data);
       };
 
-      const mytypeDecode = (data: SmartBufferCompat): MyType => new MyType(data.readUInt8()!);
+      const mytypeDecode = (data: SmartBuffer): MyType => new MyType(data.readUInt8()!);
 
       customSerializer.register(0x42, MyType, mytypeEncode, mytypeDecode);
 
@@ -982,7 +982,7 @@ describe('Serializer', () => {
         buf.writeUInt16BE(obj.data);
       };
 
-      const mytypeDecode = (data: SmartBufferCompat): MyType => new MyType(data.readUInt16BE()!!);
+      const mytypeDecode = (data: SmartBuffer): MyType => new MyType(data.readUInt16BE()!!);
 
       customSerializer.register(0x42, MyType, mytypeEncode, mytypeDecode);
 
@@ -1011,7 +1011,7 @@ describe('Serializer', () => {
         buf.writeUInt32BE(obj.data);
       };
 
-      const mytypeDecode = (data: SmartBufferCompat): MyType => new MyType(data.readUInt32BE()!!);
+      const mytypeDecode = (data: SmartBuffer): MyType => new MyType(data.readUInt32BE()!!);
 
       customSerializer.register(0x44, MyType, mytypeEncode, mytypeDecode);
 
@@ -1041,7 +1041,7 @@ describe('Serializer', () => {
         buf.writeUInt32BE(obj.data / 2);
       };
 
-      const mytypeDecode = (data: SmartBufferCompat): MyType =>
+      const mytypeDecode = (data: SmartBuffer): MyType =>
         new MyType(data.readUInt32BE()! + data.readUInt32BE()!);
 
       customSerializer.register(0x44, MyType, mytypeEncode, mytypeDecode);
@@ -1074,7 +1074,7 @@ describe('Serializer', () => {
         buf.writeUInt32BE(obj.data / 4);
       };
 
-      const mytypeDecode = (data: SmartBufferCompat): MyType =>
+      const mytypeDecode = (data: SmartBuffer): MyType =>
         new MyType(data.readUInt32BE()! + data.readUInt32BE()! + data.readUInt32BE()! + data.readUInt32BE()!);
 
       customSerializer.register(0x46, MyType, mytypeEncode, mytypeDecode);
@@ -1104,7 +1104,7 @@ describe('Serializer', () => {
         buf.writeUInt32BE(obj.data);
       };
 
-      const mytypeDecode = (data: SmartBufferCompat): MyType => new MyType(data.readUInt32BE()!!);
+      const mytypeDecode = (data: SmartBuffer): MyType => new MyType(data.readUInt32BE()!!);
 
       customSerializer.register(0x42, MyType, mytypeEncode, mytypeDecode);
 
@@ -1144,7 +1144,7 @@ describe('Serializer', () => {
         buf.writeUInt32BE(obj.data / 2);
       };
 
-      const mytypeDecode = (data: SmartBufferCompat): MyType =>
+      const mytypeDecode = (data: SmartBuffer): MyType =>
         new MyType(data.readUInt32BE()! + data.readUInt32BE()!);
 
       customSerializer.register(0x44, MyType, mytypeEncode, mytypeDecode);
@@ -1177,7 +1177,7 @@ describe('Serializer', () => {
         buf.writeUInt32BE(obj.data / 4);
       };
 
-      const mytypeDecode = (data: SmartBufferCompat): MyType =>
+      const mytypeDecode = (data: SmartBuffer): MyType =>
         new MyType(data.readUInt32BE()! + data.readUInt32BE()! + data.readUInt32BE()! + data.readUInt32BE()!);
 
       customSerializer.register(0x46, MyType, mytypeEncode, mytypeDecode);
@@ -1209,7 +1209,7 @@ describe('Serializer', () => {
     it('decoding an incomplete 32-bits float numbers', () => {
       const buf = Buffer.allocUnsafe(4);
       buf[0] = 0xca;
-      const sbuf = SmartBufferCompat.fromBuffer(buf);
+      const sbuf = SmartBuffer.fromBuffer(buf);
       expect(() => serializer.decode(sbuf)).toThrow(/Incomplete buffer/);
     });
   });
@@ -1242,12 +1242,12 @@ describe('Serializer', () => {
       }
     }
 
-    const type0Encode = (obj: Type0, buf: SmartBufferCompat) => {
+    const type0Encode = (obj: Type0, buf: SmartBuffer) => {
       const strBuf = Buffer.from(obj.value, 'utf8');
       buf.write(strBuf);
     };
 
-    const type0Decode = (buf: SmartBufferCompat) => {
+    const type0Decode = (buf: SmartBuffer) => {
       const str = buf.toBuffer().toString('utf8');
       return new Type0(str);
     };
@@ -1260,12 +1260,12 @@ describe('Serializer', () => {
       }
     }
 
-    const typeNegEncode = (obj: TypeNeg, buf: SmartBufferCompat) => {
+    const typeNegEncode = (obj: TypeNeg, buf: SmartBuffer) => {
       const strBuf = Buffer.from(obj.value, 'utf8');
       buf.write(strBuf);
     };
 
-    const typeNegDecode = (buf: SmartBufferCompat) => {
+    const typeNegDecode = (buf: SmartBuffer) => {
       const str = buf.toBuffer().toString('utf8');
       return new TypeNeg(str);
     };

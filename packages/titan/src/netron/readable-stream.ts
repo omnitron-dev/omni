@@ -1,4 +1,4 @@
-import { Readable, ReadableOptions } from 'stream';
+import { Readable, ReadableOptions } from 'readable-stream';
 
 import { Packet } from './packet/index.js';
 import { RemotePeer } from './remote-peer.js';

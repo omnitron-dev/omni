@@ -1,7 +1,7 @@
 import { Writable, Readable, WritableOptions } from 'stream';
 
 import { Uid } from './uid.js';
-import { RemotePeer } from './remote-peer.js';
+import { WebSocketRemotePeer } from './clients/websocket/peer.js';
 import { Packet, createPacket, TYPE_STREAM_ERROR, TYPE_STREAM_CLOSE } from './packet/index.js';
 
 /**
@@ -21,7 +21,7 @@ const uid = new Uid();
  * @property {boolean} [isLive] - Whether the stream is operating in live/real-time mode
  */
 export interface NetronWritableStreamOptions extends WritableOptions {
-  peer: RemotePeer;
+  peer: WebSocketRemotePeer;
   streamId?: number;
   isLive?: boolean;
 }
@@ -42,7 +42,7 @@ export class NetronWritableStream extends Writable {
   public readonly id: number;
 
   /** The remote peer this stream is associated with */
-  public readonly peer: RemotePeer;
+  public readonly peer: WebSocketRemotePeer;
 
   /** Current chunk index for maintaining write order */
   private index: number = 0;
@@ -58,7 +58,7 @@ export class NetronWritableStream extends Writable {
    *
    * @constructor
    * @param {NetronWritableStreamOptions} options - Configuration options for the stream
-   * @param {RemotePeer} options.peer - The remote peer this stream is associated with
+   * @param {WebSocketRemotePeer} options.peer - The remote peer this stream is associated with
    * @param {number} [options.streamId] - Optional custom stream identifier
    * @param {boolean} [options.isLive=false] - Whether the stream is operating in live mode
    * @param {WritableOptions} [options] - Additional Node.js stream options
@@ -236,14 +236,14 @@ export class NetronWritableStream extends Writable {
    * Optionally pipes data from a source stream if provided.
    *
    * @static
-   * @param {RemotePeer} peer - The remote peer this stream is associated with
+   * @param {WebSocketRemotePeer} peer - The remote peer this stream is associated with
    * @param {AsyncIterable<any> | Readable} [source] - Optional source stream to pipe from
    * @param {boolean} [isLive=false] - Whether the stream is operating in live mode
    * @param {number} [streamId] - Optional custom stream identifier
    * @returns {NetronWritableStream} A new stream instance
    */
   public static create(
-    peer: RemotePeer,
+    peer: WebSocketRemotePeer,
     source?: AsyncIterable<any> | Readable,
     isLive: boolean = false,
     streamId?: number

@@ -3,7 +3,7 @@
  * Provides CRUD operations for testing HTTP transport
  */
 
-import { Service, Public } from '@omnitron-dev/titan/netron';
+import { Service, Public } from '../../../../../titan/src/decorators/core.js';
 
 export interface User {
   id: string;

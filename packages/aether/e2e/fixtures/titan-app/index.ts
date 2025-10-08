@@ -1,10 +1,12 @@
+import 'reflect-metadata';
 /**
  * Titan Test Application for Aether E2E Tests
  * Provides Netron server with HTTP transport for browser client testing
  */
 
-import { Netron } from '@omnitron-dev/titan/netron';
-import { HttpNativeServer as HttpServer } from '@omnitron-dev/titan/netron/transport/http';
+// Import from Titan source files directly (for tsx compatibility)
+import { Netron } from '../../../../titan/src/netron/netron.js';
+import { HttpNativeServer as HttpServer } from '../../../../titan/src/netron/transport/http/index.js';
 import { UserService } from './services/user.service.js';
 import { createMockLogger } from './test-utils.js';
 import http from 'http';
@@ -25,7 +27,7 @@ async function bootstrap() {
   await netron.peer.exposeService(userService);
   console.log('Services exposed: UserService');
 
-  // Create HTTP server
+  // Create HTTP server with CORS enabled for browser E2E tests
   const httpServer = new HttpServer({
     port: 3333,
     host: '0.0.0.0',
@@ -46,7 +48,8 @@ async function bootstrap() {
       res.end(JSON.stringify({
         status: 'ok',
         timestamp: new Date().toISOString(),
-        services: ['UserService@1.0.0']
+        services: ['UserService@1.0.0'],
+        transports: { http: 3333 }
       }));
     } else {
       res.writeHead(404);
@@ -58,7 +61,12 @@ async function bootstrap() {
     console.log('Health check server listening on http://0.0.0.0:3335/health');
   });
 
-  // Handle shutdown
+  // Log ready state
+  console.log('Test application ready');
+  console.log('- Netron HTTP: http://0.0.0.0:3333');
+  console.log('- Health check: http://0.0.0.0:3335/health');
+
+  // Graceful shutdown
   const shutdown = async () => {
     console.log('Shutting down...');
     healthServer.close();
@@ -69,13 +77,9 @@ async function bootstrap() {
 
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
-
-  console.log('Test application ready');
-  console.log('- Netron HTTP: http://0.0.0.0:3333');
-  console.log('- Health check: http://0.0.0.0:3335/health');
 }
 
-bootstrap().catch(err => {
-  console.error('Failed to start application:', err);
+bootstrap().catch((error) => {
+  console.error('Bootstrap failed:', error);
   process.exit(1);
 });

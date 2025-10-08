@@ -1,7 +1,7 @@
 import { Readable, ReadableOptions } from 'stream';
 
 import { Packet } from './packet/index.js';
-import { RemotePeer } from './remote-peer.js';
+import { WebSocketRemotePeer } from './clients/websocket/peer.js';
 
 /**
  * Maximum number of packets that can be buffered in the stream before
@@ -22,7 +22,7 @@ const MAX_BUFFER_SIZE = 10_000;
  * @property {boolean} [isLive=false] - Whether this is a live streaming connection
  */
 export interface NetronReadableStreamOptions extends ReadableOptions {
-  peer: RemotePeer;
+  peer: WebSocketRemotePeer;
   streamId: number;
   isLive?: boolean;
 }
@@ -38,7 +38,7 @@ export interface NetronReadableStreamOptions extends ReadableOptions {
  */
 export class NetronReadableStream extends Readable {
   /** The remote peer this stream is associated with */
-  public readonly peer: RemotePeer;
+  public readonly peer: WebSocketRemotePeer;
 
   /** Internal buffer for storing out-of-order packets */
   private buffer: Map<number, any> = new Map();
@@ -285,7 +285,7 @@ export class NetronReadableStream extends Readable {
    * @param {boolean} [isLive=false] - Whether this is a live stream
    * @returns {NetronReadableStream}
    */
-  public static create(peer: RemotePeer, streamId: number, isLive: boolean = false): NetronReadableStream {
+  public static create(peer: WebSocketRemotePeer, streamId: number, isLive: boolean = false): NetronReadableStream {
     return new NetronReadableStream({ peer, streamId, isLive });
   }
 }

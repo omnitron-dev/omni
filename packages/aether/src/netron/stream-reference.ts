@@ -1,4 +1,4 @@
-import { RemotePeer } from './remote-peer.js';
+import { WebSocketRemotePeer } from './clients/websocket/peer.js';
 import { NetronReadableStream } from './readable-stream.js';
 import { NetronWritableStream } from './writable-stream.js';
 
@@ -62,11 +62,11 @@ export class StreamReference {
    *
    * @static
    * @param {StreamReference} ref - The stream reference to convert
-   * @param {RemotePeer} peer - The remote peer that owns the stream
+   * @param {WebSocketRemotePeer} peer - The remote peer that owns the stream
    * @returns {NetronReadableStream | NetronWritableStream} A new stream instance
    * @throws {Error} If the stream type is invalid or creation fails
    */
-  static to(ref: StreamReference, peer: RemotePeer): NetronReadableStream | NetronWritableStream {
+  static to(ref: StreamReference, peer: WebSocketRemotePeer): NetronReadableStream | NetronWritableStream {
     if (ref.type === 'writable') {
       return NetronReadableStream.create(peer, ref.streamId, ref.isLive);
     } else {

@@ -1,4 +1,4 @@
-import { Writable, Readable, WritableOptions } from 'stream';
+import { Writable, Readable, WritableOptions } from 'readable-stream';
 
 import { Uid } from './uid.js';
 import { RemotePeer } from './remote-peer.js';

@@ -62,25 +62,8 @@ export class HttpTransportClient {
     // Ensure initialized
     await this.initialize();
 
-    // Use peer if available for full Netron compatibility
-    if (this.peer) {
-      // Get service definition
-      const serviceDef = await this.peer.queryInterface(service);
-      if (serviceDef && typeof (serviceDef as any)[method] === 'function') {
-        return (serviceDef as any)[method](args[0]); // Netron uses single argument
-      }
-    }
-
-    // Fallback to direct connection
-    if (this.connection) {
-      const serviceProxy = await this.connection.queryInterface(service);
-      if (serviceProxy && typeof serviceProxy[method] === 'function') {
-        return serviceProxy[method](args[0]);
-      }
-    }
-
-    // Ultimate fallback - direct HTTP request
-    const message = createRequestMessage(service, method, args[0], {
+    // Send direct HTTP request (avoid infinite loop with queryInterface)
+    const message = createRequestMessage(service, method, args, {
       context: options?.context,
       hints: options?.hints
     });
@@ -185,11 +168,13 @@ export class HttpTransportClient {
    * Get connection metrics
    */
   getMetrics(): any {
+    const connectionMetrics = this.connection?.getMetrics();
     return {
+      id: connectionMetrics?.id || 'unknown',
       baseUrl: this.baseUrl,
       connected: !!this.connection,
       hasPeer: !!this.peer,
-      connectionMetrics: this.connection?.getMetrics()
+      connectionMetrics
     };
   }
 }

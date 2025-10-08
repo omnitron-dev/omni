@@ -1,285 +1,270 @@
 /**
- * Netron RPC Client for Browser
- * High-level WebSocket client with automatic reconnection
+ * Browser Netron Client - Client-Only Implementation
+ *
+ * Simplified Netron client for browser that connects to Titan WebSocket server
+ * using the correct packet protocol.
  */
 
-import { RemotePeer } from './remote-peer.js';
-import { BrowserLogger, type ILogger } from './logger.js';
-import type { INetron } from './types.js';
+import { EventEmitter } from '@omnitron-dev/eventemitter';
+import { BrowserWebSocketConnection } from './clients/websocket/client.js';
+import { WebSocketRemotePeer } from './clients/websocket/peer.js';
+import { getQualifiedName } from './utils.js';
 
 /**
- * Options for NetronClient
+ * Simple logger interface
  */
-export interface NetronClientOptions {
-  /** Base URL of WebSocket server */
-  url: string;
-
-  /** Request timeout in milliseconds (default: 30000ms) */
-  timeout?: number;
-
-  /** Enable automatic reconnection on disconnect (default: false) */
-  reconnect?: boolean;
-
-  /** Reconnect interval in milliseconds (default: 5000ms) */
-  reconnectInterval?: number;
-
-  /** Maximum reconnect attempts (default: Infinity) */
-  maxReconnectAttempts?: number;
-
-  /** Custom logger instance */
-  logger?: ILogger;
-
-  /** Binary type for WebSocket (default: 'arraybuffer') */
-  binaryType?: 'blob' | 'arraybuffer';
+interface SimpleLogger {
+  debug(...args: any[]): void;
+  info(...args: any[]): void;
+  warn(...args: any[]): void;
+  error(...args: any[]): void;
 }
 
 /**
- * Netron RPC Client for Browser
- * Supports WebSocket with binary protocol (MessagePack)
- *
- * @example
- * ```typescript
- * const client = new NetronClient({
- *   url: 'ws://localhost:3000',
- *   reconnect: true
- * });
- *
- * await client.connect();
- * const service = await client.queryInterface<MyService>('MyService@1.0.0');
- * const result = await service.myMethod();
- * await client.disconnect();
- * ```
+ * Client options
  */
-export class NetronClient {
-  private ws: WebSocket | null = null;
-  private peer: RemotePeer | null = null;
-  private logger: ILogger;
-  private reconnectAttempts = 0;
-  private shouldReconnect = false;
+export interface BrowserNetronClientOptions {
+  /** Request timeout in milliseconds */
+  timeout?: number;
+  /** Enable reconnection */
+  reconnect?: boolean;
+  /** Reconnection interval */
+  reconnectInterval?: number;
+  /** Maximum reconnection attempts */
+  maxReconnectAttempts?: number;
+  /** Custom logger */
+  logger?: SimpleLogger;
+}
 
-  constructor(private options: NetronClientOptions) {
-    this.logger = options.logger ?? new BrowserLogger({ client: 'NetronClient' });
+/**
+ * Browser Netron Client
+ * Connects to Titan server and provides service interface access
+ */
+export class BrowserNetronClient extends EventEmitter {
+  private connection: BrowserWebSocketConnection | null = null;
+  private peer: WebSocketRemotePeer | null = null;
+  private options: BrowserNetronClientOptions;
+  private logger: SimpleLogger;
+  public id: string;
+
+  constructor(options: BrowserNetronClientOptions = {}) {
+    super();
+    this.options = options;
+    this.logger = options.logger || console;
+
+    // Generate unique client ID
+    this.id = this.generateId();
   }
 
   /**
-   * Connect to Netron server
-   * Establishes WebSocket connection and initializes RemotePeer
-   *
-   * @returns Promise that resolves when connected
-   * @throws Error if connection fails
+   * Connect to Titan WebSocket server
    */
-  async connect(): Promise<void> {
+  async connect(url: string): Promise<void> {
+    this.logger.info(`Connecting to ${url}`);
+
+    // Create WebSocket connection
+    this.connection = new BrowserWebSocketConnection({
+      url,
+      timeout: this.options.timeout,
+      reconnect: this.options.reconnect,
+      reconnectInterval: this.options.reconnectInterval,
+      maxReconnectAttempts: this.options.maxReconnectAttempts,
+    });
+
+    // Connect to server
+    await this.connection.connect();
+
+    // Wait for handshake
+    await this.performHandshake();
+
+    this.logger.info('Connected successfully');
+  }
+
+  /**
+   * Perform handshake with server
+   */
+  private async performHandshake(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.logger.info({ url: this.options.url }, 'Connecting to Netron server');
-
-      this.ws = new WebSocket(this.options.url);
-      this.ws.binaryType = this.options.binaryType ?? 'arraybuffer';
-
-      this.ws.onopen = async () => {
-        this.logger.info({ url: this.options.url }, 'Connected to Netron server');
-        this.reconnectAttempts = 0;
-
-        // Create minimal INetron stub for RemotePeer
-        const netronStub: INetron = {
-          uuid: crypto.randomUUID(),
-          logger: this.logger,
-          options: undefined,
-          services: new Map(),
-          peer: null as any, // Will be set after creation
-          peers: new Map(),
-          transportServers: new Map(),
-          transportServer: undefined,
-          getLocalPeer: () => {
-            throw new Error('getLocalPeer() not available in browser client');
-          },
-          findPeer: () => undefined,
-          trackTask: async () => {
-            throw new Error('trackTask() not available in browser client');
-          },
-          runTask: undefined,
-          emitSpecial: () => {
-            // No-op in browser client
-          },
-          getServiceNames: () => [],
-          emit: () => false,
-          on(this: INetron) {
-            return this;
-          },
-          off(this: INetron) {
-            return this;
-          },
-          removeListener(this: INetron) {
-            return this;
-          },
-          getPeerEventName: undefined,
-        };
-
-        // Create RemotePeer
-        this.peer = new RemotePeer(
-          this.ws!,
-          netronStub,
-          crypto.randomUUID(),
-          this.options.timeout
-        );
-
-        // Set peer reference in stub
-        netronStub.peer = this.peer as any;
-
+      // Wait for server ID message
+      const messageHandler = (data: ArrayBuffer, isBinary: boolean) => {
         try {
-          // Initialize as connector (client mode)
-          await this.peer.init(true);
+          // Try to decode as JSON text (handshake message)
+          // Server sends handshake as Buffer, which arrives as ArrayBuffer
+          const text = new TextDecoder().decode(data);
+          const message = JSON.parse(text);
 
-          // Enable reconnection if configured
-          if (this.options.reconnect !== false) {
-            this.shouldReconnect = true;
+          if (message.type === 'id') {
+            // Server sent us their ID
+            const serverId = message.id;
+            this.logger.info(`Received server ID: ${serverId}`);
+
+            // Create peer with server ID
+            this.peer = new WebSocketRemotePeer(
+              this.connection!,
+              serverId,
+              this.logger,
+              this.options.timeout
+            );
+
+            // Initialize peer
+            this.peer.init().then(() => {
+              // Send our client ID to server
+              const clientIdMessage = JSON.stringify({
+                type: 'client-id',
+                id: this.id,
+              });
+              this.connection!.send(new TextEncoder().encode(clientIdMessage));
+
+              this.connection!.off('message', messageHandler);
+              resolve();
+            }).catch(reject);
           }
-
-          resolve();
         } catch (error) {
-          this.logger.error({ error }, 'Failed to initialize peer');
-          reject(error);
+          // Not JSON or not handshake message, ignore
+          this.logger.debug?.('Non-handshake message during handshake:', error);
         }
       };
 
-      this.ws.onerror = (error) => {
-        this.logger.error({ error }, 'WebSocket error');
-        reject(error);
-      };
+      this.connection!.on('message', messageHandler);
 
-      this.ws.onclose = (event) => {
-        this.logger.warn({ code: event.code, reason: event.reason }, 'WebSocket closed');
-        this.handleReconnect();
-      };
+      // Timeout for handshake
+      setTimeout(() => {
+        this.connection!.off('message', messageHandler);
+        reject(new Error('Handshake timeout'));
+      }, this.options.timeout || 10000);
     });
   }
 
   /**
-   * Query service interface by name
-   * Returns a proxy object that allows calling remote methods
-   *
-   * @param serviceName - Service name with optional version (e.g. 'Calculator@1.0.0')
-   * @returns Promise resolving to service proxy
-   * @throws Error if not connected or service not found
-   *
-   * @example
-   * ```typescript
-   * const calc = await client.queryInterface<Calculator>('Calculator@1.0.0');
-   * const result = await calc.add(2, 3);
-   * ```
-   */
-  async queryInterface<T = any>(serviceName: string): Promise<T> {
-    if (!this.peer) {
-      throw new Error('Not connected. Call connect() first.');
-    }
-    return this.peer.queryInterface<T>(serviceName);
-  }
-
-  /**
-   * Subscribe to events from the server
-   *
-   * @param event - Event name to subscribe to
-   * @param handler - Event handler function
-   * @throws Error if not connected
-   *
-   * @example
-   * ```typescript
-   * await client.subscribe('user.created', (data) => {
-   *   console.log('New user:', data);
-   * });
-   * ```
-   */
-  async subscribe(event: string, handler: (...args: any[]) => void): Promise<void> {
-    if (!this.peer) {
-      throw new Error('Not connected. Call connect() first.');
-    }
-    return this.peer.subscribe(event, handler);
-  }
-
-  /**
-   * Unsubscribe from events
-   *
-   * @param event - Event name to unsubscribe from
-   * @param handler - Event handler to remove
-   * @throws Error if not connected
-   */
-  async unsubscribe(event: string, handler: (...args: any[]) => void): Promise<void> {
-    if (!this.peer) {
-      throw new Error('Not connected. Call connect() first.');
-    }
-    return this.peer.unsubscribe(event, handler);
-  }
-
-  /**
    * Disconnect from server
-   * Closes WebSocket connection and cleans up resources
    */
   async disconnect(): Promise<void> {
-    this.shouldReconnect = false;
-    this.logger.info('Disconnecting from Netron server');
+    this.logger.info('Disconnecting');
 
     if (this.peer) {
-      try {
-        await this.peer.close();
-      } catch (error) {
-        this.logger.warn({ error }, 'Error closing peer');
-      }
+      await this.peer.disconnect();
+      this.peer = null;
     }
 
-    if (this.ws) {
-      this.ws.close();
+    if (this.connection) {
+      await this.connection.disconnect();
+      this.connection = null;
     }
-
-    this.peer = null;
-    this.ws = null;
   }
 
   /**
-   * Check if currently connected to server
-   *
-   * @returns true if WebSocket is open
+   * Query service interface from server
+   */
+  queryInterface<T = any>(serviceName: string): T {
+    if (!this.peer) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+
+    // Split service name into name and version
+    let name: string;
+    let version: string | undefined;
+
+    if (serviceName.includes('@')) {
+      [name, version] = serviceName.split('@');
+    } else {
+      name = serviceName;
+    }
+
+    // Create service proxy
+    return this.createServiceProxy(name, version);
+  }
+
+  /**
+   * Create a proxy for service method calls
+   */
+  private createServiceProxy<T>(serviceName: string, version?: string): T {
+    const qualifiedName = version ? getQualifiedName(serviceName, version) : serviceName;
+
+    // Special properties that should not trigger proxy
+    const SPECIAL_PROPERTIES = [
+      'then',
+      'catch',
+      'finally',
+      'constructor',
+      'prototype',
+      Symbol.toStringTag,
+      Symbol.iterator,
+      Symbol.asyncIterator,
+    ];
+
+    return new Proxy({} as T, {
+      get: (_target, prop: string | symbol) => {
+        // Filter out special properties
+        if (SPECIAL_PROPERTIES.includes(prop as any)) {
+          return undefined;
+        }
+
+        // Return undefined for internal properties
+        if (typeof prop === 'symbol' || prop.startsWith('_')) {
+          return undefined;
+        }
+
+        // Return a function that calls the remote method
+        return async (...args: any[]) => {
+          if (!this.peer) {
+            throw new Error('Not connected');
+          }
+
+          // Query service definition if not already cached
+          let def = Array.from(this.peer.definitions.values()).find(
+            (d) => d.meta.name === qualifiedName
+          );
+
+          if (!def) {
+            // Request service definition from server
+            def = await this.peer.runTask('query_interface', qualifiedName);
+            if (def) {
+              this.peer.refService(def);
+            }
+          }
+
+          if (!def) {
+            throw new Error(`Service not found: ${qualifiedName}`);
+          }
+
+          // Call the method
+          return await this.peer.call(def.id, prop as string, args);
+        };
+      },
+    });
+  }
+
+  /**
+   * Check if connected
    */
   isConnected(): boolean {
-    return this.ws?.readyState === WebSocket.OPEN;
+    return this.connection !== null && this.connection.isConnected();
   }
 
   /**
-   * Get current peer instance
-   * Useful for advanced operations
-   *
-   * @returns RemotePeer instance or null if not connected
+   * Get client metrics
    */
-  getPeer(): RemotePeer | null {
-    return this.peer;
+  getMetrics() {
+    return {
+      id: this.id,
+      connected: this.isConnected(),
+      serverId: this.peer?.id,
+    };
   }
 
   /**
-   * Handle automatic reconnection
-   * Called when WebSocket closes unexpectedly
+   * Generate unique client ID
    */
-  private async handleReconnect(): Promise<void> {
-    if (!this.shouldReconnect) {
-      this.logger.info('Reconnection disabled, not reconnecting');
-      return;
+  private generateId(): string {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
     }
 
-    const maxAttempts = this.options.maxReconnectAttempts ?? Infinity;
-    if (this.reconnectAttempts >= maxAttempts) {
-      this.logger.error({ attempts: this.reconnectAttempts }, 'Max reconnect attempts reached');
-      return;
-    }
-
-    this.reconnectAttempts++;
-    const delay = this.options.reconnectInterval ?? 5000;
-
-    this.logger.info(
-      { delay, attempt: this.reconnectAttempts, maxAttempts },
-      `Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`
-    );
-
-    setTimeout(() => {
-      this.connect().catch((err) => {
-        this.logger.error({ error: err }, 'Reconnect failed');
-      });
-    }, delay);
+    // Fallback for older browsers
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
   }
 }

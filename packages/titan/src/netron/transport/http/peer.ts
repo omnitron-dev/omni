@@ -293,11 +293,15 @@ export class HttpRemotePeer extends AbstractPeer {
    * Send HTTP request message
    */
   private async sendRequestMessage(message: HttpRequestMessage): Promise<HttpResponseMessage> {
+    this.logger.debug({ message }, '[HTTP Peer] Sending request message');
+
     // Apply request interceptors
     let processedMessage = message;
     for (const interceptor of this.requestInterceptors) {
       processedMessage = await interceptor(processedMessage);
     }
+
+    this.logger.debug({ processedMessage }, '[HTTP Peer] After interceptors, sending HTTP request');
 
     const response = await this.sendHttpRequest<HttpResponseMessage>(
       'POST',
@@ -305,12 +309,15 @@ export class HttpRemotePeer extends AbstractPeer {
       processedMessage
     );
 
+    this.logger.debug({ response }, '[HTTP Peer] Received response');
+
     // Apply response interceptors
     let processedResponse = response;
     for (const interceptor of this.responseInterceptors) {
       processedResponse = await interceptor(processedResponse);
     }
 
+    this.logger.debug({ processedResponse }, '[HTTP Peer] After response interceptors');
     return processedResponse;
   }
 
@@ -330,6 +337,8 @@ export class HttpRemotePeer extends AbstractPeer {
       ...this.defaultOptions.headers
     };
 
+    this.logger.debug({ url, method, bodyKeys: body ? Object.keys(body) : [] }, '[HTTP Peer] Sending HTTP request');
+
     const controller = new AbortController();
     const timeoutId = setTimeout(
       () => controller.abort(),
@@ -345,6 +354,8 @@ export class HttpRemotePeer extends AbstractPeer {
       });
 
       clearTimeout(timeoutId);
+
+      this.logger.debug({ status: response.status, ok: response.ok }, '[HTTP Peer] Got HTTP response');
 
       if (!response.ok) {
         // Try to parse error response
@@ -646,12 +657,18 @@ export class HttpRemotePeer extends AbstractPeer {
     // Get or fetch service definition
     const definition = await this.queryInterfaceRemote(qualifiedName);
 
-    // Get or create HTTP transport client
-    const transport = this.getOrCreateHttpClient();
+    // Check if interface already exists in cache (for reference counting)
+    let iInfo = this.interfaces.get(definition.id);
+    if (iInfo !== undefined) {
+      // Interface exists, increment refCount and return existing instance
+      iInfo.refCount++;
+      return iInfo.instance as TService;
+    }
 
     // Create standard HttpInterface (simple RPC)
+    // Pass peer directly to avoid recursive queryInterface calls
     const httpInterface = new HttpInterface<TService>(
-      transport,
+      this,  // Pass peer, not transport client
       definition
     );
 
@@ -659,7 +676,7 @@ export class HttpRemotePeer extends AbstractPeer {
     httpInterface.$peer = this as any;
 
     // Store in interfaces cache for reference counting
-    const iInfo = { instance: httpInterface as any, refCount: 1 };
+    iInfo = { instance: httpInterface as any, refCount: 1 };
     this.interfaces.set(definition.id, iInfo);
 
     return httpInterface as any as TService;

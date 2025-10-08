@@ -77,10 +77,13 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
     setImmediate(() => {
       this.emit('connect');
 
-      // Pre-load service discovery for better performance
-      this.discoverServices().catch((err) => {
-        console.warn('Failed to pre-load service discovery:', err);
-      });
+      // Pre-load service discovery for better performance (unless disabled)
+      const discoveryEnabled = this.options.discovery !== false; // default true
+      if (discoveryEnabled) {
+        this.discoverServices().catch((err) => {
+          console.warn('Failed to pre-load service discovery:', err);
+        });
+      }
     });
   }
 

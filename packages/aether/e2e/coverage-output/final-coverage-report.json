@@ -1,0 +1,238 @@
+{
+  "timestamp": "2025-10-08T14:05:36.221Z",
+  "testResults": {
+    "total": 55,
+    "passed": 50,
+    "successRate": 90.91
+  },
+  "coverage": {
+    "totalFunctions": 860,
+    "executedFunctions": 225,
+    "functionCoverage": 26.16,
+    "totalBytes": 1015048,
+    "executedBytes": 740291,
+    "byteCoverage": 72.93
+  },
+  "tests": [
+    {
+      "name": "HTTP: Create client",
+      "pass": true
+    },
+    {
+      "name": "HTTP: Connect",
+      "pass": true
+    },
+    {
+      "name": "HTTP: Get users",
+      "pass": true
+    },
+    {
+      "name": "HTTP: Get user",
+      "pass": true
+    },
+    {
+      "name": "HTTP: CRUD",
+      "pass": true
+    },
+    {
+      "name": "HTTP: Error handling",
+      "pass": true
+    },
+    {
+      "name": "HTTP: Metrics",
+      "pass": false
+    },
+    {
+      "name": "HTTP: Events rejected",
+      "pass": false
+    },
+    {
+      "name": "HTTP: Concurrent",
+      "pass": true
+    },
+    {
+      "name": "HTTP: Timeout",
+      "pass": true
+    },
+    {
+      "name": "HTTP: Disconnect",
+      "pass": true
+    },
+    {
+      "name": "WS: Create client",
+      "pass": true
+    },
+    {
+      "name": "WS: Connect",
+      "pass": true
+    },
+    {
+      "name": "WS: Get users",
+      "pass": true
+    },
+    {
+      "name": "WS: Get user",
+      "pass": true
+    },
+    {
+      "name": "WS: Error handling",
+      "pass": true
+    },
+    {
+      "name": "WS: CRUD",
+      "pass": true
+    },
+    {
+      "name": "WS: Concurrent",
+      "pass": true
+    },
+    {
+      "name": "WS: Timeout",
+      "pass": true
+    },
+    {
+      "name": "WS: Filters",
+      "pass": true
+    },
+    {
+      "name": "WS: Disconnect",
+      "pass": true
+    },
+    {
+      "name": "WS: Reconnect",
+      "pass": true
+    },
+    {
+      "name": "WS: Proxy",
+      "pass": true
+    },
+    {
+      "name": "Edge: Invalid URL",
+      "pass": true
+    },
+    {
+      "name": "Edge: Before connect",
+      "pass": true
+    },
+    {
+      "name": "Edge: Multiple connects",
+      "pass": true
+    },
+    {
+      "name": "Edge: Disconnect before connect",
+      "pass": true
+    },
+    {
+      "name": "Edge: Non-existent method",
+      "pass": true
+    },
+    {
+      "name": "Edge: Short timeout",
+      "pass": true
+    },
+    {
+      "name": "Edge: Get transport",
+      "pass": false
+    },
+    {
+      "name": "Edge: Multiple disconnects",
+      "pass": true
+    },
+    {
+      "name": "Edge: Subscribe on HTTP",
+      "pass": false
+    },
+    {
+      "name": "Edge: Unsubscribe on HTTP",
+      "pass": false
+    },
+    {
+      "name": "Edge: Invalid WS URL",
+      "pass": true
+    },
+    {
+      "name": "Edge: WS before connect",
+      "pass": true
+    },
+    {
+      "name": "Edge: WS multiple connects",
+      "pass": true
+    },
+    {
+      "name": "Edge: Large response",
+      "pass": true
+    },
+    {
+      "name": "Edge: Null args",
+      "pass": true
+    },
+    {
+      "name": "Edge: Rapid cycles",
+      "pass": true
+    },
+    {
+      "name": "Edge: WS get transport",
+      "pass": true
+    },
+    {
+      "name": "Edge: Custom logger",
+      "pass": true
+    },
+    {
+      "name": "Edge: Invalid WS method",
+      "pass": true
+    },
+    {
+      "name": "Edge: High concurrency",
+      "pass": true
+    },
+    {
+      "name": "Coverage: WS metrics",
+      "pass": true
+    },
+    {
+      "name": "Coverage: Metrics before connect",
+      "pass": true
+    },
+    {
+      "name": "Coverage: State before",
+      "pass": true
+    },
+    {
+      "name": "Coverage: State after",
+      "pass": true
+    },
+    {
+      "name": "Coverage: State disconnect",
+      "pass": true
+    },
+    {
+      "name": "Coverage: WS reconnect options",
+      "pass": true
+    },
+    {
+      "name": "Coverage: Mixed calls",
+      "pass": true
+    },
+    {
+      "name": "Coverage: Sequential ops",
+      "pass": true
+    },
+    {
+      "name": "Coverage: Error then success",
+      "pass": true
+    },
+    {
+      "name": "Coverage: No version",
+      "pass": true
+    },
+    {
+      "name": "Coverage: Proxy properties",
+      "pass": true
+    },
+    {
+      "name": "Coverage: Unique IDs",
+      "pass": true
+    }
+  ]
+}

@@ -77,6 +77,8 @@ export interface TransportOptions {
   timeout?: number;
   /** HTTP server specific options */
   host?: string;
+  /** Enable automatic service discovery (HTTP only, default: true) */
+  discovery?: boolean;
   port?: number;
   cors?: any;
 }

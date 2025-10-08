@@ -1,0 +1,4494 @@
+{
+  "timestamp": "2025-10-08T14:04:09.888Z",
+  "summary": {
+    "totalFunctions": 860,
+    "executedFunctions": 220,
+    "unexecutedFunctions": 640,
+    "functionCoveragePercent": 25.58,
+    "totalBytes": 1011697,
+    "executedBytes": 735164,
+    "byteCoveragePercent": 72.67
+  },
+  "unexecutedFunctions": [
+    {
+      "name": "<instance_members_initializer>",
+      "start": 85856,
+      "end": 92588,
+      "bytes": 6732,
+      "snippet": "peer;"
+    },
+    {
+      "name": "<instance_members_initializer>",
+      "start": 292718,
+      "end": 299361,
+      "bytes": 6643,
+      "snippet": "id;"
+    },
+    {
+      "name": "tryDecode",
+      "start": 270673,
+      "end": 276903,
+      "bytes": 6230,
+      "snippet": "tryDecode(buf) {"
+    },
+    {
+      "name": "inc",
+      "start": 30630,
+      "end": 34638,
+      "bytes": 4008,
+      "snippet": "inc(release, identifier, identifierBase) {"
+    },
+    {
+      "name": "_encode",
+      "start": 264719,
+      "end": 268616,
+      "bytes": 3897,
+      "snippet": "_encode(x, buf) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 76778,
+      "end": 80659,
+      "bytes": 3881,
+      "snippet": "(sub, dom, options) => {"
+    },
+    {
+      "name": "_Interface",
+      "start": 322673,
+      "end": 326280,
+      "bytes": 3607,
+      "snippet": "constructor($def, $peer) {"
+    },
+    {
+      "name": "executeInternal",
+      "start": 343037,
+      "end": 346284,
+      "bytes": 3247,
+      "snippet": "async executeInternal() {"
+    },
+    {
+      "name": "fromDebug",
+      "start": 258376,
+      "end": 261445,
+      "bytes": 3069,
+      "snippet": "fromDebug(str, noAssert = _SmartBuffer.DEFAULT_NOASSERT) {"
+    },
+    {
+      "name": "readString",
+      "start": 230554,
+      "end": 233518,
+      "bytes": 2964,
+      "snippet": "readString(length, metrics, offset) {"
+    },
+    {
+      "name": "writeVarint64",
+      "start": 221417,
+      "end": 224177,
+      "bytes": 2760,
+      "snippet": "writeVarint64(value, offset) {"
+    },
+    {
+      "name": "readVarint64",
+      "start": 224314,
+      "end": 226904,
+      "bytes": 2590,
+      "snippet": "readVarint64(offset) {"
+    },
+    {
+      "name": "divide",
+      "start": 113050,
+      "end": 115455,
+      "bytes": 2405,
+      "snippet": "function divide(divisor) {"
+    },
+    {
+      "name": "pLimit",
+      "start": 5178,
+      "end": 7508,
+      "bytes": 2330,
+      "snippet": "function pLimit(concurrency) {"
+    },
+    {
+      "name": "utf8Slice",
+      "start": 155623,
+      "end": 157930,
+      "bytes": 2307,
+      "snippet": "function utf8Slice(buf, start, end) {"
+    },
+    {
+      "name": "utf8ToBytes",
+      "start": 187965,
+      "end": 189924,
+      "bytes": 1959,
+      "snippet": "function utf8ToBytes(string, units) {"
+    },
+    {
+      "name": "write",
+      "start": 153244,
+      "end": 155142,
+      "bytes": 1898,
+      "snippet": "function write(string, offset, length, encoding) {"
+    },
+    {
+      "name": "multiply",
+      "start": 111102,
+      "end": 112937,
+      "bytes": 1835,
+      "snippet": "function multiply(multiplier) {"
+    },
+    {
+      "name": "parseRange",
+      "start": 50930,
+      "end": 52709,
+      "bytes": 1779,
+      "snippet": "parseRange(range) {"
+    },
+    {
+      "name": "toDebug",
+      "start": 249451,
+      "end": 251228,
+      "bytes": 1777,
+      "snippet": "toDebug(columns = false) {"
+    },
+    {
+      "name": "ensureStreamReferenceRegistered",
+      "start": 286771,
+      "end": 288545,
+      "bytes": 1774,
+      "snippet": "async function ensureStreamReferenceRegistered() {"
+    },
+    {
+      "name": "fill",
+      "start": 181824,
+      "end": 183565,
+      "bytes": 1741,
+      "snippet": "function fill(val, start, end, encoding) {"
+    },
+    {
+      "name": "from",
+      "start": 132704,
+      "end": 134350,
+      "bytes": 1646,
+      "snippet": "function from(value, encodingOrOffset, length) {"
+    },
+    {
+      "name": "arrayIndexOf",
+      "start": 149552,
+      "end": 151182,
+      "bytes": 1630,
+      "snippet": "function arrayIndexOf(arr, val, byteOffset, encoding, dir) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 71271,
+      "end": 72859,
+      "bytes": 1588,
+      "snippet": "(version, range, hilo, options) => {"
+    },
+    {
+      "name": "sendHttpRequest",
+      "start": 367562,
+      "end": 369142,
+      "bytes": 1580,
+      "snippet": "async sendHttpRequest(method, path, body) {"
+    },
+    {
+      "name": "compare2",
+      "start": 146361,
+      "end": 147921,
+      "bytes": 1560,
+      "snippet": "function compare2(target, start, end, thisStart, thisEnd) {"
+    },
+    {
+      "name": "intersects",
+      "start": 63964,
+      "end": 65518,
+      "bytes": 1554,
+      "snippet": "intersects(comp, options) {"
+    },
+    {
+      "name": "bidirectionalIndexOf",
+      "start": 147939,
+      "end": 149489,
+      "bytes": 1550,
+      "snippet": "function bidirectionalIndexOf(buffer, val, byteOffset, encoding, dir) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 58393,
+      "end": 59871,
+      "bytes": 1478,
+      "snippet": "(comp, options) => {"
+    },
+    {
+      "name": "wrap",
+      "start": 253896,
+      "end": 255371,
+      "bytes": 1475,
+      "snippet": "wrap(buffer, encoding, noAssert) {"
+    },
+    {
+      "name": "write",
+      "start": 203122,
+      "end": 204582,
+      "bytes": 1460,
+      "snippet": "write(source, offset, length, encoding = \"utf8\") {"
+    },
+    {
+      "name": "exports.write",
+      "start": 128646,
+      "end": 130095,
+      "bytes": 1449,
+      "snippet": "function(buffer, value, offset, isLE, mLen, nBytes) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 56676,
+      "end": 58106,
+      "bytes": 1430,
+      "snippet": "(comp, options) => {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 68800,
+      "end": 70218,
+      "bytes": 1418,
+      "snippet": "(range, loose) => {"
+    },
+    {
+      "name": "_Range",
+      "start": 48875,
+      "end": 50285,
+      "bytes": 1410,
+      "snippet": "constructor(range, options) {"
+    },
+    {
+      "name": "writeBitSet",
+      "start": 204589,
+      "end": 205969,
+      "bytes": 1380,
+      "snippet": "writeBitSet(value, offset) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 46086,
+      "end": 47439,
+      "bytes": 1353,
+      "snippet": "(version, options) => {"
+    },
+    {
+      "name": "byteLength",
+      "start": 141214,
+      "end": 142564,
+      "bytes": 1350,
+      "snippet": "function byteLength(string, encoding) {"
+    },
+    {
+      "name": "_checkWriteLong",
+      "start": 217223,
+      "end": 218566,
+      "bytes": 1343,
+      "snippet": "_checkWriteLong(value, offset) {"
+    },
+    {
+      "name": "writeCString",
+      "start": 227234,
+      "end": 228557,
+      "bytes": 1323,
+      "snippet": "writeCString(str, offset) {"
+    },
+    {
+      "name": "prepend",
+      "start": 241281,
+      "end": 242604,
+      "bytes": 1323,
+      "snippet": "prepend(source, offset, encoding) {"
+    },
+    {
+      "name": "queryInterfaceRemote",
+      "start": 372977,
+      "end": 374287,
+      "bytes": 1310,
+      "snippet": "async queryInterfaceRemote(qualifiedName) {"
+    },
+    {
+      "name": "slowToString",
+      "start": 142644,
+      "end": 143938,
+      "bytes": 1294,
+      "snippet": "function slowToString(encoding, start, end) {"
+    },
+    {
+      "name": "copyTo",
+      "start": 238571,
+      "end": 239851,
+      "bytes": 1280,
+      "snippet": "copyTo(target, targetOffset, sourceStart, sourceEnd) {"
+    },
+    {
+      "name": "writeVarint32",
+      "start": 218573,
+      "end": 219839,
+      "bytes": 1266,
+      "snippet": "writeVarint32(value, offset) {"
+    },
+    {
+      "name": "copy",
+      "start": 180537,
+      "end": 181761,
+      "bytes": 1224,
+      "snippet": "function copy(target, targetStart, start, end) {"
+    },
+    {
+      "name": "compact",
+      "start": 236338,
+      "end": 237553,
+      "bytes": 1215,
+      "snippet": "compact(begin, end) {"
+    },
+    {
+      "name": "writeVString",
+      "start": 233525,
+      "end": 234724,
+      "bytes": 1199,
+      "snippet": "writeVString(str, offset) {"
+    },
+    {
+      "name": "module.exports",
+      "start": 74413,
+      "end": 75604,
+      "bytes": 1191,
+      "snippet": "(versions, range, options) => {"
+    },
+    {
+      "name": "fill",
+      "start": 240084,
+      "end": 241274,
+      "bytes": 1190,
+      "snippet": "fill(value, begin, end) {"
+    },
+    {
+      "name": "readVarint32",
+      "start": 219976,
+      "end": 221124,
+      "bytes": 1148,
+      "snippet": "readVarint32(offset) {"
+    },
+    {
+      "name": "ConfigurableProxy",
+      "start": 349184,
+      "end": 350326,
+      "bytes": 1142,
+      "snippet": "constructor(transport, definition, cacheManager, retryManager, initialOptions) {"
+    },
+    {
+      "name": "concat",
+      "start": 140090,
+      "end": 141197,
+      "bytes": 1107,
+      "snippet": "function concat(list, length) {"
+    },
+    {
+      "name": "toByteArray",
+      "start": 125053,
+      "end": 126149,
+      "bytes": 1096,
+      "snippet": "function toByteArray(b64) {"
+    },
+    {
+      "name": "fromString",
+      "start": 95396,
+      "end": 96489,
+      "bytes": 1093,
+      "snippet": "function fromString(str, unsigned, radix) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 37153,
+      "end": 38245,
+      "bytes": 1092,
+      "snippet": "(version1, version2) => {"
+    },
+    {
+      "name": "queryInterface",
+      "start": 331042,
+      "end": 332133,
+      "bytes": 1091,
+      "snippet": "async queryInterface(qualifiedName) {"
+    },
+    {
+      "name": "HttpInterface",
+      "start": 338228,
+      "end": 339309,
+      "bytes": 1081,
+      "snippet": "constructor(transport, definition) {"
+    },
+    {
+      "name": "toBuffer",
+      "start": 246173,
+      "end": 247224,
+      "bytes": 1051,
+      "snippet": "toBuffer(forceCopy = false, begin, end) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 268889,
+      "end": 269928,
+      "bytes": 1039,
+      "snippet": "(first) => {"
+    },
+    {
+      "name": "copy",
+      "start": 237560,
+      "end": 238564,
+      "bytes": 1004,
+      "snippet": "copy(begin, end) {"
+    },
+    {
+      "name": "readCString",
+      "start": 228564,
+      "end": 229567,
+      "bytes": 1003,
+      "snippet": "readCString(offset) {"
+    },
+    {
+      "name": "readBitSet",
+      "start": 193776,
+      "end": 194752,
+      "bytes": 976,
+      "snippet": "readBitSet(offset) {"
+    },
+    {
+      "name": "concat",
+      "start": 252908,
+      "end": 253882,
+      "bytes": 974,
+      "snippet": "concat(buffers, encoding, noAssert = _SmartBuffer.DEFAULT_NOASSERT) {"
+    },
+    {
+      "name": "writeString",
+      "start": 229574,
+      "end": 230547,
+      "bytes": 973,
+      "snippet": "writeString(str, offset) {"
+    },
+    {
+      "name": "_checkWrite",
+      "start": 216245,
+      "end": 217216,
+      "bytes": 971,
+      "snippet": "_checkWrite(value, bytes, offset, isFloat = false) {"
+    },
+    {
+      "name": "toString2",
+      "start": 104551,
+      "end": 105484,
+      "bytes": 933,
+      "snippet": "function toString2(radix) {"
+    },
+    {
+      "name": "comparePre",
+      "start": 28922,
+      "end": 29839,
+      "bytes": 917,
+      "snippet": "comparePre(other) {"
+    },
+    {
+      "name": "exports.read",
+      "start": 127732,
+      "end": 128624,
+      "bytes": 892,
+      "snippet": "function(buffer, offset, isLE, mLen, nBytes) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 44807,
+      "end": 45696,
+      "bytes": 889,
+      "snippet": "(a, op, b, loose) => {"
+    },
+    {
+      "name": "invalidateDefinitionCache",
+      "start": 365357,
+      "end": 366237,
+      "bytes": 880,
+      "snippet": "invalidateDefinitionCache(pattern) {"
+    },
+    {
+      "name": "executeRequest",
+      "start": 346331,
+      "end": 347199,
+      "bytes": 868,
+      "snippet": "async executeRequest() {"
+    },
+    {
+      "name": "writeBigIntBE",
+      "start": 211805,
+      "end": 212668,
+      "bytes": 863,
+      "snippet": "writeBigIntBE(value, offset) {"
+    },
+    {
+      "name": "reverse",
+      "start": 243302,
+      "end": 244160,
+      "bytes": 858,
+      "snippet": "reverse(begin, end) {"
+    },
+    {
+      "name": "slice",
+      "start": 245310,
+      "end": 246166,
+      "bytes": 856,
+      "snippet": "slice(begin, end) {"
+    },
+    {
+      "name": "createServiceProxy",
+      "start": 319190,
+      "end": 320046,
+      "bytes": 856,
+      "snippet": "createServiceProxy(definition) {"
+    },
+    {
+      "name": "readVString",
+      "start": 234731,
+      "end": 235584,
+      "bytes": 853,
+      "snippet": "readVString(offset) {"
+    },
+    {
+      "name": "applyGlobalOptions",
+      "start": 360245,
+      "end": 361075,
+      "bytes": 830,
+      "snippet": "applyGlobalOptions(builder, options) {"
+    },
+    {
+      "name": "calculateVarint64",
+      "start": 255883,
+      "end": 256708,
+      "bytes": 825,
+      "snippet": "calculateVarint64(value) {"
+    },
+    {
+      "name": "applyOptions",
+      "start": 352162,
+      "end": 352986,
+      "bytes": 824,
+      "snippet": "applyOptions(builder, options) {"
+    },
+    {
+      "name": "writeBigIntLE",
+      "start": 213430,
+      "end": 214237,
+      "bytes": 807,
+      "snippet": "writeBigIntLE(value, offset) {"
+    },
+    {
+      "name": "toArrayBuffer",
+      "start": 247231,
+      "end": 248022,
+      "bytes": 791,
+      "snippet": "toArrayBuffer() {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 60345,
+      "end": 61127,
+      "bytes": 782,
+      "snippet": "(incPr) => ($0, from, fM, fm, fp, fpr, fb, to, tM, tm, tp, tpr) => {"
+    },
+    {
+      "name": "releaseInterface",
+      "start": 333316,
+      "end": 334098,
+      "bytes": 782,
+      "snippet": "async releaseInterface(iInstance, released = /* @__PURE__ */ new Set()) {"
+    },
+    {
+      "name": "_createServiceProxy",
+      "start": 369232,
+      "end": 370009,
+      "bytes": 777,
+      "snippet": "_createServiceProxy(definition) {"
+    },
+    {
+      "name": "handleReconnect",
+      "start": 395304,
+      "end": 396073,
+      "bytes": 769,
+      "snippet": "async handleReconnect() {"
+    },
+    {
+      "name": "removeListener",
+      "start": 305639,
+      "end": 306405,
+      "bytes": 766,
+      "snippet": "removeListener(event, fn) {"
+    },
+    {
+      "name": "fromByteArray",
+      "start": 126747,
+      "end": 127509,
+      "bytes": 762,
+      "snippet": "function fromByteArray(uint8) {"
+    },
+    {
+      "name": "toUTF8",
+      "start": 252000,
+      "end": 252760,
+      "bytes": 760,
+      "snippet": "toUTF8(begin, end) {"
+    },
+    {
+      "name": "toHex",
+      "start": 251235,
+      "end": 251993,
+      "bytes": 758,
+      "snippet": "toHex(begin, end) {"
+    },
+    {
+      "name": "writeUBigIntBE",
+      "start": 212675,
+      "end": 213423,
+      "bytes": 748,
+      "snippet": "writeUBigIntBE(value, offset) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 263654,
+      "end": 264398,
+      "bytes": 744,
+      "snippet": "(x, type, encFunc, buf) => {"
+    },
+    {
+      "name": "sendPacket",
+      "start": 314440,
+      "end": 315182,
+      "bytes": 742,
+      "snippet": "async sendPacket(packet) {"
+    },
+    {
+      "name": "setupBackgroundRefetch",
+      "start": 347494,
+      "end": 348235,
+      "bytes": 741,
+      "snippet": "setupBackgroundRefetch() {"
+    },
+    {
+      "name": "add",
+      "start": 110048,
+      "end": 110780,
+      "bytes": 732,
+      "snippet": "function add(addend) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 61188,
+      "end": 61907,
+      "bytes": 719,
+      "snippet": "(set, version, options) => {"
+    },
+    {
+      "name": "decodeMap",
+      "start": 276910,
+      "end": 277617,
+      "bytes": 707,
+      "snippet": "decodeMap(buf, length, headerLength) {"
+    },
+    {
+      "name": "compare2",
+      "start": 138869,
+      "end": 139564,
+      "bytes": 695,
+      "snippet": "function compare2(a, b) {"
+    },
+    {
+      "name": "writeUBigIntLE",
+      "start": 214244,
+      "end": 214936,
+      "bytes": 692,
+      "snippet": "writeUBigIntLE(value, offset) {"
+    },
+    {
+      "name": "findLatestServiceVersion",
+      "start": 335067,
+      "end": 335756,
+      "bytes": 689,
+      "snippet": "findLatestServiceVersion(serviceName) {"
+    },
+    {
+      "name": "checkIntBI",
+      "start": 186205,
+      "end": 186888,
+      "bytes": 683,
+      "snippet": "function checkIntBI(value, min, max, buf, offset, byteLength2) {"
+    },
+    {
+      "name": "fromArrayBuffer",
+      "start": 136864,
+      "end": 137545,
+      "bytes": 681,
+      "snippet": "function fromArrayBuffer(array, byteOffset, length) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 55752,
+      "end": 56432,
+      "bytes": 680,
+      "snippet": "(comp, options) => {"
+    },
+    {
+      "name": "execute",
+      "start": 342322,
+      "end": 342992,
+      "bytes": 670,
+      "snippet": "async execute() {"
+    },
+    {
+      "name": "send",
+      "start": 313613,
+      "end": 314282,
+      "bytes": 669,
+      "snippet": "async send(data) {"
+    },
+    {
+      "name": "queryInterface",
+      "start": 318493,
+      "end": 319149,
+      "bytes": 656,
+      "snippet": "async queryInterface(serviceName) {"
+    },
+    {
+      "name": "toString",
+      "start": 248029,
+      "end": 248681,
+      "bytes": 652,
+      "snippet": "toString(encoding, begin, end) {"
+    },
+    {
+      "name": "read",
+      "start": 194759,
+      "end": 195405,
+      "bytes": 646,
+      "snippet": "read(length, offset) {"
+    },
+    {
+      "name": "rotateRight",
+      "start": 119938,
+      "end": 120578,
+      "bytes": 640,
+      "snippet": "function rotateRight(numBits) {"
+    },
+    {
+      "name": "rotateLeft",
+      "start": 119176,
+      "end": 119815,
+      "bytes": 639,
+      "snippet": "function rotateLeft(numBits) {"
+    },
+    {
+      "name": "hexWrite",
+      "start": 151814,
+      "end": 152447,
+      "bytes": 633,
+      "snippet": "function hexWrite(buf, string, offset, length) {"
+    },
+    {
+      "name": "call",
+      "start": 363918,
+      "end": 364545,
+      "bytes": 627,
+      "snippet": "async call(defId, method, args) {"
+    },
+    {
+      "name": "writeIntBE",
+      "start": 175535,
+      "end": 176156,
+      "bytes": 621,
+      "snippet": "function writeIntBE(value, offset, byteLength2, noAssert) {"
+    },
+    {
+      "name": "compareBuild",
+      "start": 29846,
+      "end": 30466,
+      "bytes": 620,
+      "snippet": "compareBuild(other) {"
+    },
+    {
+      "name": "writeIntLE",
+      "start": 174848,
+      "end": 175460,
+      "bytes": 612,
+      "snippet": "function writeIntLE(value, offset, byteLength2, noAssert) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 184947,
+      "end": 185558,
+      "bytes": 611,
+      "snippet": "function(str, range, input) {"
+    },
+    {
+      "name": "intersects",
+      "start": 52716,
+      "end": 53319,
+      "bytes": 603,
+      "snippet": "intersects(range, options) {"
+    },
+    {
+      "name": "wrtBigUInt64BE",
+      "start": 173650,
+      "end": 174243,
+      "bytes": 593,
+      "snippet": "function wrtBigUInt64BE(buf, value, offset, min, max) {"
+    },
+    {
+      "name": "resize",
+      "start": 242712,
+      "end": 243295,
+      "bytes": 583,
+      "snippet": "resize(capacity) {"
+    },
+    {
+      "name": "fromObject",
+      "start": 137598,
+      "end": 138180,
+      "bytes": 582,
+      "snippet": "function fromObject(obj) {"
+    },
+    {
+      "name": "wrtBigUInt64LE",
+      "start": 173022,
+      "end": 173599,
+      "bytes": 577,
+      "snippet": "function wrtBigUInt64LE(buf, value, offset, min, max) {"
+    },
+    {
+      "name": "decodeExt",
+      "start": 278246,
+      "end": 278821,
+      "bytes": 575,
+      "snippet": "decodeExt(buf, type, size, headerSize) {"
+    },
+    {
+      "name": "_SmartBuffer",
+      "start": 193060,
+      "end": 193630,
+      "bytes": 570,
+      "snippet": "constructor(capacity, noAssert = _SmartBuffer.DEFAULT_NOASSERT) {"
+    },
+    {
+      "name": "_checkRead",
+      "start": 215671,
+      "end": 216238,
+      "bytes": 567,
+      "snippet": "_checkRead(bytes, offset) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 76029,
+      "end": 76595,
+      "bytes": 566,
+      "snippet": "(sub, dom, options = {}) => {"
+    },
+    {
+      "name": "skipWrite",
+      "start": 244738,
+      "end": 245303,
+      "bytes": 565,
+      "snippet": "skipWrite(length) {"
+    },
+    {
+      "name": "skipRead",
+      "start": 244167,
+      "end": 244731,
+      "bytes": 564,
+      "snippet": "skipRead(length) {"
+    },
+    {
+      "name": "handleReconnect",
+      "start": 386365,
+      "end": 386928,
+      "bytes": 563,
+      "snippet": "async handleReconnect() {"
+    },
+    {
+      "name": "writeBuffer",
+      "start": 205976,
+      "end": 206538,
+      "bytes": 562,
+      "snippet": "writeBuffer(buf, offset) {"
+    },
+    {
+      "name": "slice",
+      "start": 159699,
+      "end": 160258,
+      "bytes": 559,
+      "snippet": "function slice(start, end) {"
+    },
+    {
+      "name": "addListener",
+      "start": 304574,
+      "end": 305125,
+      "bytes": 551,
+      "snippet": "addListener(event, fn, context, once = false) {"
+    },
+    {
+      "name": "readBigUInt64LE",
+      "start": 163180,
+      "end": 163724,
+      "bytes": 544,
+      "snippet": "function readBigUInt64LE(offset) {"
+    },
+    {
+      "name": "readBigUInt64BE",
+      "start": 163829,
+      "end": 164373,
+      "bytes": 544,
+      "snippet": "function readBigUInt64BE(offset) {"
+    },
+    {
+      "name": "writeUInt64LE",
+      "start": 210709,
+      "end": 211250,
+      "bytes": 541,
+      "snippet": "writeUInt64LE(value, offset) {"
+    },
+    {
+      "name": "writeUInt64BE",
+      "start": 211257,
+      "end": 211798,
+      "bytes": 541,
+      "snippet": "writeUInt64BE(value, offset) {"
+    },
+    {
+      "name": "readBigInt64BE",
+      "start": 167717,
+      "end": 168257,
+      "bytes": 540,
+      "snippet": "function readBigInt64BE(offset) {"
+    },
+    {
+      "name": "writeInt64LE",
+      "start": 209615,
+      "end": 210155,
+      "bytes": 540,
+      "snippet": "writeInt64LE(value, offset) {"
+    },
+    {
+      "name": "writeInt64BE",
+      "start": 210162,
+      "end": 210702,
+      "bytes": 540,
+      "snippet": "writeInt64BE(value, offset) {"
+    },
+    {
+      "name": "invalidateDefinitionCache",
+      "start": 336545,
+      "end": 337084,
+      "bytes": 539,
+      "snippet": "invalidateDefinitionCache(pattern) {"
+    },
+    {
+      "name": "writeUIntBE",
+      "start": 170442,
+      "end": 170971,
+      "bytes": 529,
+      "snippet": "function writeUIntBE(value, offset, byteLength2, noAssert) {"
+    },
+    {
+      "name": "readInt64LE",
+      "start": 198452,
+      "end": 198981,
+      "bytes": 529,
+      "snippet": "readInt64LE(offset) {"
+    },
+    {
+      "name": "readInt64BE",
+      "start": 198988,
+      "end": 199517,
+      "bytes": 529,
+      "snippet": "readInt64BE(offset) {"
+    },
+    {
+      "name": "readUInt64LE",
+      "start": 199524,
+      "end": 200053,
+      "bytes": 529,
+      "snippet": "readUInt64LE(offset) {"
+    },
+    {
+      "name": "readUInt64BE",
+      "start": 200060,
+      "end": 200589,
+      "bytes": 529,
+      "snippet": "readUInt64BE(offset) {"
+    },
+    {
+      "name": "readBigInt64LE",
+      "start": 167086,
+      "end": 167614,
+      "bytes": 528,
+      "snippet": "function readBigInt64LE(offset) {"
+    },
+    {
+      "name": "readBigIntLE",
+      "start": 201580,
+      "end": 202106,
+      "bytes": 526,
+      "snippet": "readBigIntLE(offset) {"
+    },
+    {
+      "name": "get range",
+      "start": 50292,
+      "end": 50817,
+      "bytes": 525,
+      "snippet": "get range() {"
+    },
+    {
+      "name": "writeUIntLE",
+      "start": 169813,
+      "end": 170333,
+      "bytes": 520,
+      "snippet": "function writeUIntLE(value, offset, byteLength2, noAssert) {"
+    },
+    {
+      "name": "readBigIntBE",
+      "start": 200596,
+      "end": 201116,
+      "bytes": 520,
+      "snippet": "readBigIntBE(offset) {"
+    },
+    {
+      "name": "sendRequestMessage",
+      "start": 367009,
+      "end": 367524,
+      "bytes": 515,
+      "snippet": "async sendRequestMessage(message) {"
+    },
+    {
+      "name": "once",
+      "start": 305128,
+      "end": 305636,
+      "bytes": 508,
+      "snippet": "once(event, fn, context) {"
+    },
+    {
+      "name": "queryFluentInterface",
+      "start": 376419,
+      "end": 376926,
+      "bytes": 507,
+      "snippet": "async queryFluentInterface(qualifiedName) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 282207,
+      "end": 282704,
+      "bytes": 497,
+      "snippet": "(buf) => {"
+    },
+    {
+      "name": "fromHex",
+      "start": 261459,
+      "end": 261954,
+      "bytes": 495,
+      "snippet": "fromHex(str, noAssert = _SmartBuffer.DEFAULT_NOASSERT) {"
+    },
+    {
+      "name": "fromString2",
+      "start": 135718,
+      "end": 136209,
+      "bytes": 491,
+      "snippet": "function fromString2(string, encoding) {"
+    },
+    {
+      "name": "fromNumber",
+      "start": 94810,
+      "end": 95296,
+      "bytes": 486,
+      "snippet": "function fromNumber(value, unsigned) {"
+    },
+    {
+      "name": "decodeArray",
+      "start": 277624,
+      "end": 278110,
+      "bytes": 486,
+      "snippet": "decodeArray(buf, length, headerLength) {"
+    },
+    {
+      "name": "zigZagDecode64",
+      "start": 257183,
+      "end": 257663,
+      "bytes": 480,
+      "snippet": "zigZagDecode64(value) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 3869,
+      "end": 4342,
+      "bytes": 473,
+      "snippet": "(value) => {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 281736,
+      "end": 282205,
+      "bytes": 469,
+      "snippet": "(obj, buf) => {"
+    },
+    {
+      "name": "compare",
+      "start": 109237,
+      "end": 109705,
+      "bytes": 468,
+      "snippet": "function compare(other) {"
+    },
+    {
+      "name": "$processValue",
+      "start": 327893,
+      "end": 328361,
+      "bytes": 468,
+      "snippet": "$processValue(value) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 263130,
+      "end": 263593,
+      "bytes": 463,
+      "snippet": "(x, buf) => {"
+    },
+    {
+      "name": "shiftRightUnsigned",
+      "start": 118516,
+      "end": 118978,
+      "bytes": 462,
+      "snippet": "function shiftRightUnsigned(numBits) {"
+    },
+    {
+      "name": "shiftRight",
+      "start": 117927,
+      "end": 118387,
+      "bytes": 460,
+      "snippet": "function shiftRight(numBits) {"
+    },
+    {
+      "name": "readIntBE",
+      "start": 164977,
+      "end": 165434,
+      "bytes": 457,
+      "snippet": "function readIntBE(offset, byteLength2, noAssert) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 54515,
+      "end": 54969,
+      "bytes": 454,
+      "snippet": "(comparators, options) => {"
+    },
+    {
+      "name": "test",
+      "start": 53394,
+      "end": 53846,
+      "bytes": 452,
+      "snippet": "test(version) {"
+    },
+    {
+      "name": "readIntLE",
+      "start": 164453,
+      "end": 164904,
+      "bytes": 451,
+      "snippet": "function readIntLE(offset, byteLength2, noAssert) {"
+    },
+    {
+      "name": "readUBigIntBE",
+      "start": 201123,
+      "end": 201573,
+      "bytes": 450,
+      "snippet": "readUBigIntBE(offset) {"
+    },
+    {
+      "name": "readUBigIntLE",
+      "start": 202113,
+      "end": 202563,
+      "bytes": 450,
+      "snippet": "readUBigIntLE(offset) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 67104,
+      "end": 67552,
+      "bytes": 448,
+      "snippet": "(versions, range, options) => {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 67945,
+      "end": 68392,
+      "bytes": 447,
+      "snippet": "(versions, range, options) => {"
+    },
+    {
+      "name": "zigZagEncode64",
+      "start": 256722,
+      "end": 257169,
+      "bytes": 447,
+      "snippet": "zigZagEncode64(value) {"
+    },
+    {
+      "name": "compare",
+      "start": 28179,
+      "end": 28621,
+      "bytes": 442,
+      "snippet": "compare(other) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 36408,
+      "end": 36848,
+      "bytes": 440,
+      "snippet": "(version, release, options, identifier, identifierBase) => {"
+    },
+    {
+      "name": "boundsError",
+      "start": 187143,
+      "end": 187582,
+      "bytes": 439,
+      "snippet": "function boundsError(value, length, type) {"
+    },
+    {
+      "name": "test",
+      "start": 63524,
+      "end": 63957,
+      "bytes": 433,
+      "snippet": "test(version) {"
+    },
+    {
+      "name": "decodeCodePointsArray",
+      "start": 158008,
+      "end": 158421,
+      "bytes": 413,
+      "snippet": "function decodeCodePointsArray(codePoints) {"
+    },
+    {
+      "name": "writeInt32BE",
+      "start": 177720,
+      "end": 178133,
+      "bytes": 413,
+      "snippet": "function writeInt32BE(value, offset, noAssert) {"
+    },
+    {
+      "name": "isEncoding",
+      "start": 139626,
+      "end": 140029,
+      "bytes": 403,
+      "snippet": "function isEncoding(encoding) {"
+    },
+    {
+      "name": "readUIntBE",
+      "start": 161116,
+      "end": 161518,
+      "bytes": 402,
+      "snippet": "function readUIntBE(offset, byteLength2, noAssert) {"
+    },
+    {
+      "name": "modulo",
+      "start": 115564,
+      "end": 115965,
+      "bytes": 401,
+      "snippet": "function modulo(divisor) {"
+    },
+    {
+      "name": "clone",
+      "start": 235931,
+      "end": 236331,
+      "bytes": 400,
+      "snippet": "clone(copy = false) {"
+    },
+    {
+      "name": "queryInterface",
+      "start": 375177,
+      "end": 375574,
+      "bytes": 397,
+      "snippet": "async queryInterface(qualifiedName) {"
+    },
+    {
+      "name": "shiftLeft",
+      "start": 117421,
+      "end": 117808,
+      "bytes": 387,
+      "snippet": "function shiftLeft(numBits) {"
+    },
+    {
+      "name": "TitanError",
+      "start": 309447,
+      "end": 309834,
+      "bytes": 387,
+      "snippet": "constructor(message, code, details) {"
+    },
+    {
+      "name": "_emitReduceRun",
+      "start": 307753,
+      "end": 308138,
+      "bytes": 385,
+      "snippet": "_emitReduceRun(event, args, inverse = false) {"
+    },
+    {
+      "name": "queryInterfaceByDefId",
+      "start": 332484,
+      "end": 332869,
+      "bytes": 385,
+      "snippet": "queryInterfaceByDefId(defId, def) {"
+    },
+    {
+      "name": "createErrorFromResponse",
+      "start": 370821,
+      "end": 371206,
+      "bytes": 385,
+      "snippet": "createErrorFromResponse(response) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 262692,
+      "end": 263074,
+      "bytes": 382,
+      "snippet": "(value) => {"
+    },
+    {
+      "name": "createDirectProxy",
+      "start": 359284,
+      "end": 359664,
+      "bytes": 380,
+      "snippet": "createDirectProxy() {"
+    },
+    {
+      "name": "toBase64",
+      "start": 248688,
+      "end": 249065,
+      "bytes": 377,
+      "snippet": "toBase64(begin, end) {"
+    },
+    {
+      "name": "readUIntLE",
+      "start": 160635,
+      "end": 161010,
+      "bytes": 375,
+      "snippet": "function readUIntLE(offset, byteLength2, noAssert) {"
+    },
+    {
+      "name": "fromUTF8",
+      "start": 261968,
+      "end": 262343,
+      "bytes": 375,
+      "snippet": "fromUTF8(str, noAssert = _SmartBuffer.DEFAULT_NOASSERT) {"
+    },
+    {
+      "name": "destroy",
+      "start": 92918,
+      "end": 93291,
+      "bytes": 373,
+      "snippet": "destroy(error) {"
+    },
+    {
+      "name": "toBinary",
+      "start": 249072,
+      "end": 249444,
+      "bytes": 372,
+      "snippet": "toBinary(begin, end) {"
+    },
+    {
+      "name": "Buffer4",
+      "start": 132269,
+      "end": 132639,
+      "bytes": 370,
+      "snippet": "function Buffer4(arg, encodingOrOffset, length) {"
+    },
+    {
+      "name": "call",
+      "start": 358668,
+      "end": 359038,
+      "bytes": 370,
+      "snippet": "call(method, input) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 55038,
+      "end": 55405,
+      "bytes": 367,
+      "snippet": "(comp, options) => {"
+    },
+    {
+      "name": "swap64",
+      "start": 144889,
+      "end": 145255,
+      "bytes": 366,
+      "snippet": "function swap64() {"
+    },
+    {
+      "name": "getLens",
+      "start": 124238,
+      "end": 124600,
+      "bytes": 362,
+      "snippet": "function getLens(b64) {"
+    },
+    {
+      "name": "writeInt32LE",
+      "start": 177281,
+      "end": 177641,
+      "bytes": 360,
+      "snippet": "function writeInt32LE(value, offset, noAssert) {"
+    },
+    {
+      "name": "sendRequestMessage",
+      "start": 315228,
+      "end": 315586,
+      "bytes": 358,
+      "snippet": "async sendRequestMessage(message) {"
+    },
+    {
+      "name": "writeUInt32LE",
+      "start": 172181,
+      "end": 172532,
+      "bytes": 351,
+      "snippet": "function writeUInt32LE(value, offset, noAssert) {"
+    },
+    {
+      "name": "writeUInt32BE",
+      "start": 172647,
+      "end": 172998,
+      "bytes": 351,
+      "snippet": "function writeUInt32BE(value, offset, noAssert) {"
+    },
+    {
+      "name": "matchesPattern",
+      "start": 337731,
+      "end": 338073,
+      "bytes": 342,
+      "snippet": "matchesPattern(serviceName, pattern) {"
+    },
+    {
+      "name": "writeInt32LE",
+      "start": 208239,
+      "end": 208580,
+      "bytes": 341,
+      "snippet": "writeInt32LE(value, offset) {"
+    },
+    {
+      "name": "writeInt32BE",
+      "start": 208587,
+      "end": 208928,
+      "bytes": 341,
+      "snippet": "writeInt32BE(value, offset) {"
+    },
+    {
+      "name": "connecting",
+      "start": 382877,
+      "end": 383218,
+      "bytes": 341,
+      "snippet": "(resolve, reject) => {"
+    },
+    {
+      "name": "checkInt",
+      "start": 169347,
+      "end": 169687,
+      "bytes": 340,
+      "snippet": "function checkInt(buf, value, offset, ext, max, min) {"
+    },
+    {
+      "name": "get",
+      "start": 363528,
+      "end": 363865,
+      "bytes": 337,
+      "snippet": "async get(defId, name) {"
+    },
+    {
+      "name": "utf16leToBytes",
+      "start": 190204,
+      "end": 190540,
+      "bytes": 336,
+      "snippet": "function utf16leToBytes(str, units) {"
+    },
+    {
+      "name": "readInt32LE",
+      "start": 197118,
+      "end": 197454,
+      "bytes": 336,
+      "snippet": "readInt32LE(offset) {"
+    },
+    {
+      "name": "readInt32BE",
+      "start": 197461,
+      "end": 197797,
+      "bytes": 336,
+      "snippet": "readInt32BE(offset) {"
+    },
+    {
+      "name": "writeDouble",
+      "start": 179712,
+      "end": 180045,
+      "bytes": 333,
+      "snippet": "function writeDouble(buf, value, offset, littleEndian, noAssert) {"
+    },
+    {
+      "name": "writeUInt32LE",
+      "start": 208935,
+      "end": 209268,
+      "bytes": 333,
+      "snippet": "writeUInt32LE(value, offset) {"
+    },
+    {
+      "name": "writeUInt32BE",
+      "start": 209275,
+      "end": 209608,
+      "bytes": 333,
+      "snippet": "writeUInt32BE(value, offset) {"
+    },
+    {
+      "name": "writeFloat",
+      "start": 178948,
+      "end": 179278,
+      "bytes": 330,
+      "snippet": "function writeFloat(buf, value, offset, littleEndian, noAssert) {"
+    },
+    {
+      "name": "set",
+      "start": 48186,
+      "end": 48513,
+      "bytes": 327,
+      "snippet": "set(key, value) {"
+    },
+    {
+      "name": "set",
+      "start": 363141,
+      "end": 363466,
+      "bytes": 325,
+      "snippet": "async set(defId, name, value) {"
+    },
+    {
+      "name": "alloc",
+      "start": 134928,
+      "end": 135251,
+      "bytes": 323,
+      "snippet": "function alloc(size, fill, encoding) {"
+    },
+    {
+      "name": "NodeError",
+      "start": 183760,
+      "end": 184079,
+      "bytes": 319,
+      "snippet": "constructor() {"
+    },
+    {
+      "name": "matchServicePattern",
+      "start": 366309,
+      "end": 366628,
+      "bytes": 319,
+      "snippet": "matchServicePattern(serviceName, pattern) {"
+    },
+    {
+      "name": "subscribe",
+      "start": 392561,
+      "end": 392879,
+      "bytes": 318,
+      "snippet": "async subscribe(event, handler) {"
+    },
+    {
+      "name": "readUInt32LE",
+      "start": 197804,
+      "end": 198121,
+      "bytes": 317,
+      "snippet": "readUInt32LE(offset) {"
+    },
+    {
+      "name": "readUInt32BE",
+      "start": 198128,
+      "end": 198445,
+      "bytes": 317,
+      "snippet": "readUInt32BE(offset) {"
+    },
+    {
+      "name": "readVarint64ZigZag",
+      "start": 226911,
+      "end": 227227,
+      "bytes": 316,
+      "snippet": "readVarint64ZigZag(offset) {"
+    },
+    {
+      "name": "calculateVarint32",
+      "start": 255385,
+      "end": 255700,
+      "bytes": 315,
+      "snippet": "calculateVarint32(value) {"
+    },
+    {
+      "name": "encodeChunk",
+      "start": 126389,
+      "end": 126702,
+      "bytes": 313,
+      "snippet": "function encodeChunk(uint8, start, end) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 289921,
+      "end": 290234,
+      "bytes": 313,
+      "snippet": "(buf) => {"
+    },
+    {
+      "name": "getNumBitsAbs",
+      "start": 106116,
+      "end": 106426,
+      "bytes": 310,
+      "snippet": "function getNumBitsAbs() {"
+    },
+    {
+      "name": "isHttpResponseMessage",
+      "start": 309898,
+      "end": 310205,
+      "bytes": 307,
+      "snippet": "function isHttpResponseMessage(value) {"
+    },
+    {
+      "name": "readInt16LE",
+      "start": 195769,
+      "end": 196072,
+      "bytes": 303,
+      "snippet": "readInt16LE(offset) {"
+    },
+    {
+      "name": "readInt16BE",
+      "start": 196079,
+      "end": 196382,
+      "bytes": 303,
+      "snippet": "readInt16BE(offset) {"
+    },
+    {
+      "name": "swap32",
+      "start": 144524,
+      "end": 144822,
+      "bytes": 298,
+      "snippet": "function swap32() {"
+    },
+    {
+      "name": "FluentInterface",
+      "start": 353072,
+      "end": 353370,
+      "bytes": 298,
+      "snippet": "constructor(transport, definition, cacheManager, retryManager, globalOptions = {}) {"
+    },
+    {
+      "name": "unsubscribe",
+      "start": 393029,
+      "end": 393327,
+      "bytes": 298,
+      "snippet": "async unsubscribe(event, handler) {"
+    },
+    {
+      "name": "hexSlice",
+      "start": 159011,
+      "end": 159308,
+      "bytes": 297,
+      "snippet": "function hexSlice(buf, start, end) {"
+    },
+    {
+      "name": "writeUInt24BE",
+      "start": 207938,
+      "end": 208232,
+      "bytes": 294,
+      "snippet": "writeUInt24BE(value, offset) {"
+    },
+    {
+      "name": "subscribe",
+      "start": 307457,
+      "end": 307750,
+      "bytes": 293,
+      "snippet": "subscribe(event, listener, once = false) {"
+    },
+    {
+      "name": "cache",
+      "start": 354271,
+      "end": 354563,
+      "bytes": 292,
+      "snippet": "cache(options) {"
+    },
+    {
+      "name": "retry",
+      "start": 354685,
+      "end": 354977,
+      "bytes": 292,
+      "snippet": "retry(options) {"
+    },
+    {
+      "name": "compareMain",
+      "start": 28628,
+      "end": 28915,
+      "bytes": 287,
+      "snippet": "compareMain(other) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 34950,
+      "end": 35236,
+      "bytes": 286,
+      "snippet": "(version, options, throwErrors = false) => {"
+    },
+    {
+      "name": "readUInt24BE",
+      "start": 196829,
+      "end": 197111,
+      "bytes": 282,
+      "snippet": "readUInt24BE(offset) {"
+    },
+    {
+      "name": "serializer2.encode",
+      "start": 291368,
+      "end": 291650,
+      "bytes": 282,
+      "snippet": "function(value, buffer) {"
+    },
+    {
+      "name": "executeTask",
+      "start": 366682,
+      "end": 366963,
+      "bytes": 281,
+      "snippet": "async executeTask(task, payload) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 283062,
+      "end": 283342,
+      "bytes": 280,
+      "snippet": "(buf) => {"
+    },
+    {
+      "name": "readVarint32ZigZag",
+      "start": 221131,
+      "end": 221410,
+      "bytes": 279,
+      "snippet": "readVarint32ZigZag(offset) {"
+    },
+    {
+      "name": "fromValue",
+      "start": 96490,
+      "end": 96768,
+      "bytes": 278,
+      "snippet": "function fromValue(val, unsigned) {"
+    },
+    {
+      "name": "writeInt8",
+      "start": 176230,
+      "end": 176503,
+      "bytes": 273,
+      "snippet": "function writeInt8(value, offset, noAssert) {"
+    },
+    {
+      "name": "writeInt16LE",
+      "start": 176579,
+      "end": 176851,
+      "bytes": 272,
+      "snippet": "function writeInt16LE(value, offset, noAssert) {"
+    },
+    {
+      "name": "writeInt16BE",
+      "start": 176930,
+      "end": 177202,
+      "bytes": 272,
+      "snippet": "function writeInt16BE(value, offset, noAssert) {"
+    },
+    {
+      "name": "writeUInt16LE",
+      "start": 171415,
+      "end": 171683,
+      "bytes": 268,
+      "snippet": "function writeUInt16LE(value, offset, noAssert) {"
+    },
+    {
+      "name": "writeUInt16BE",
+      "start": 171798,
+      "end": 172066,
+      "bytes": 268,
+      "snippet": "function writeUInt16BE(value, offset, noAssert) {"
+    },
+    {
+      "name": "addNumericalSeparator",
+      "start": 185588,
+      "end": 185856,
+      "bytes": 268,
+      "snippet": "function addNumericalSeparator(val) {"
+    },
+    {
+      "name": "decode",
+      "start": 270398,
+      "end": 270666,
+      "bytes": 268,
+      "snippet": "decode(buf) {"
+    },
+    {
+      "name": "equals",
+      "start": 107514,
+      "end": 107780,
+      "bytes": 266,
+      "snippet": "function equals(other) {"
+    },
+    {
+      "name": "toBytesLE",
+      "start": 121221,
+      "end": 121485,
+      "bytes": 264,
+      "snippet": "function toBytesLE() {"
+    },
+    {
+      "name": "toBytesBE",
+      "start": 121554,
+      "end": 121818,
+      "bytes": 264,
+      "snippet": "function toBytesBE() {"
+    },
+    {
+      "name": "swap16",
+      "start": 144193,
+      "end": 144457,
+      "bytes": 264,
+      "snippet": "function swap16() {"
+    },
+    {
+      "name": "background",
+      "start": 357890,
+      "end": 358154,
+      "bytes": 264,
+      "snippet": "background(interval) {"
+    },
+    {
+      "name": "fromArrayView",
+      "start": 136553,
+      "end": 136815,
+      "bytes": 262,
+      "snippet": "function fromArrayView(arrayView) {"
+    },
+    {
+      "name": "waitForAssigned",
+      "start": 327133,
+      "end": 327395,
+      "bytes": 262,
+      "snippet": "async waitForAssigned(prop) {"
+    },
+    {
+      "name": "optimistic",
+      "start": 357157,
+      "end": 357418,
+      "bytes": 261,
+      "snippet": "optimistic(updater) {"
+    },
+    {
+      "name": "_QueryBuilder",
+      "start": 339749,
+      "end": 340009,
+      "bytes": 260,
+      "snippet": "constructor(transport, definition, cacheManager, retryManager) {"
+    },
+    {
+      "name": "utf16leSlice",
+      "start": 159347,
+      "end": 159603,
+      "bytes": 256,
+      "snippet": "function utf16leSlice(buf, start, end) {"
+    },
+    {
+      "name": "invalidateOn",
+      "start": 357521,
+      "end": 357776,
+      "bytes": 255,
+      "snippet": "invalidateOn(tags) {"
+    },
+    {
+      "name": "setStreamInfo",
+      "start": 15618,
+      "end": 15872,
+      "bytes": 254,
+      "snippet": "setStreamInfo(streamId, streamIndex, isLast, isLive) {"
+    },
+    {
+      "name": "emitSerial",
+      "start": 307029,
+      "end": 307283,
+      "bytes": 254,
+      "snippet": "emitSerial(event, ...args) {"
+    },
+    {
+      "name": "to",
+      "start": 302419,
+      "end": 302672,
+      "bytes": 253,
+      "snippet": "to(ref, peer) {"
+    },
+    {
+      "name": "fromArrayLike",
+      "start": 136253,
+      "end": 136504,
+      "bytes": 251,
+      "snippet": "function fromArrayLike(array) {"
+    },
+    {
+      "name": "removeAllListeners",
+      "start": 306474,
+      "end": 306725,
+      "bytes": 251,
+      "snippet": "removeAllListeners(event) {"
+    },
+    {
+      "name": "inspect",
+      "start": 145933,
+      "end": 146181,
+      "bytes": 248,
+      "snippet": "function inspect() {"
+    },
+    {
+      "name": "priority",
+      "start": 355774,
+      "end": 356021,
+      "bytes": 247,
+      "snippet": "priority(level) {"
+    },
+    {
+      "name": "enqueue",
+      "start": 7995,
+      "end": 8240,
+      "bytes": 245,
+      "snippet": "enqueue(value) {"
+    },
+    {
+      "name": "_executeListener",
+      "start": 308141,
+      "end": 308386,
+      "bytes": 245,
+      "snippet": "_executeListener(listener, args) {"
+    },
+    {
+      "name": "fallback",
+      "start": 356807,
+      "end": 357052,
+      "bytes": 245,
+      "snippet": "fallback(data) {"
+    },
+    {
+      "name": "base64clean",
+      "start": 187676,
+      "end": 187920,
+      "bytes": 244,
+      "snippet": "function base64clean(str) {"
+    },
+    {
+      "name": "writeUInt16LE",
+      "start": 207436,
+      "end": 207680,
+      "bytes": 244,
+      "snippet": "writeUInt16LE(value, offset) {"
+    },
+    {
+      "name": "writeUInt16BE",
+      "start": 207687,
+      "end": 207931,
+      "bytes": 244,
+      "snippet": "writeUInt16BE(value, offset) {"
+    },
+    {
+      "name": "transform",
+      "start": 356121,
+      "end": 356364,
+      "bytes": 243,
+      "snippet": "transform(fn) {"
+    },
+    {
+      "name": "readUInt32LE",
+      "start": 162483,
+      "end": 162725,
+      "bytes": 242,
+      "snippet": "function readUInt32LE(offset, noAssert) {"
+    },
+    {
+      "name": "readUInt32BE",
+      "start": 162837,
+      "end": 163079,
+      "bytes": 242,
+      "snippet": "function readUInt32BE(offset, noAssert) {"
+    },
+    {
+      "name": "reconnect",
+      "start": 317814,
+      "end": 318056,
+      "bytes": 242,
+      "snippet": "async reconnect() {"
+    },
+    {
+      "name": "dedupe",
+      "start": 355097,
+      "end": 355339,
+      "bytes": 242,
+      "snippet": "dedupe(key) {"
+    },
+    {
+      "name": "dequeue",
+      "start": 8247,
+      "end": 8488,
+      "bytes": 241,
+      "snippet": "dequeue() {"
+    },
+    {
+      "name": "writeInt16LE",
+      "start": 206940,
+      "end": 207181,
+      "bytes": 241,
+      "snippet": "writeInt16LE(value, offset) {"
+    },
+    {
+      "name": "writeInt16BE",
+      "start": 207188,
+      "end": 207429,
+      "bytes": 241,
+      "snippet": "writeInt16BE(value, offset) {"
+    },
+    {
+      "name": "validate",
+      "start": 356464,
+      "end": 356705,
+      "bytes": 241,
+      "snippet": "validate(fn) {"
+    },
+    {
+      "name": "readInt16LE",
+      "start": 165808,
+      "end": 166048,
+      "bytes": 240,
+      "snippet": "function readInt16LE(offset, noAssert) {"
+    },
+    {
+      "name": "readInt16BE",
+      "start": 166125,
+      "end": 166365,
+      "bytes": 240,
+      "snippet": "function readInt16BE(offset, noAssert) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 24963,
+      "end": 25202,
+      "bytes": 239,
+      "snippet": "(a, b) => {"
+    },
+    {
+      "name": "checkBounds",
+      "start": 185921,
+      "end": 186160,
+      "bytes": 239,
+      "snippet": "function checkBounds(buf, offset, byteLength2) {"
+    },
+    {
+      "name": "timeout",
+      "start": 355439,
+      "end": 355678,
+      "bytes": 239,
+      "snippet": "timeout(ms) {"
+    },
+    {
+      "name": "metrics",
+      "start": 358249,
+      "end": 358488,
+      "bytes": 239,
+      "snippet": "metrics(fn) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 283516,
+      "end": 283754,
+      "bytes": 238,
+      "snippet": "(buf) => {"
+    },
+    {
+      "name": "validateConcurrency",
+      "start": 7509,
+      "end": 7745,
+      "bytes": 236,
+      "snippet": "function validateConcurrency(concurrency) {"
+    },
+    {
+      "name": "get",
+      "start": 47879,
+      "end": 48114,
+      "bytes": 235,
+      "snippet": "get(key) {"
+    },
+    {
+      "name": "off",
+      "start": 320679,
+      "end": 320914,
+      "bytes": 235,
+      "snippet": "off(event, listener) {"
+    },
+    {
+      "name": "readInt32LE",
+      "start": 166442,
+      "end": 166676,
+      "bytes": 234,
+      "snippet": "function readInt32LE(offset, noAssert) {"
+    },
+    {
+      "name": "readInt32BE",
+      "start": 166753,
+      "end": 166987,
+      "bytes": 234,
+      "snippet": "function readInt32BE(offset, noAssert) {"
+    },
+    {
+      "name": "stopBackgroundRefetch",
+      "start": 348304,
+      "end": 348537,
+      "bytes": 233,
+      "snippet": "stopBackgroundRefetch(cacheKey) {"
+    },
+    {
+      "name": "checkOffset",
+      "start": 160274,
+      "end": 160505,
+      "bytes": 231,
+      "snippet": "function checkOffset(offset, ext, length) {"
+    },
+    {
+      "name": "fromBytesLE",
+      "start": 122076,
+      "end": 122306,
+      "bytes": 230,
+      "snippet": "function fromBytesLE(bytes, unsigned) {"
+    },
+    {
+      "name": "fromBytesBE",
+      "start": 122370,
+      "end": 122600,
+      "bytes": 230,
+      "snippet": "function fromBytesBE(bytes, unsigned) {"
+    },
+    {
+      "name": "readInt8",
+      "start": 165506,
+      "end": 165734,
+      "bytes": 228,
+      "snippet": "function readInt8(offset, noAssert) {"
+    },
+    {
+      "name": "fromBigInt",
+      "start": 122705,
+      "end": 122932,
+      "bytes": 227,
+      "snippet": "function fromBigInt(value, unsigned) {"
+    },
+    {
+      "name": "readInt8",
+      "start": 195412,
+      "end": 195639,
+      "bytes": 227,
+      "snippet": "readInt8(offset) {"
+    },
+    {
+      "name": "writeUInt8",
+      "start": 171078,
+      "end": 171303,
+      "bytes": 225,
+      "snippet": "function writeUInt8(value, offset, noAssert) {"
+    },
+    {
+      "name": "blitBuffer",
+      "start": 190726,
+      "end": 190951,
+      "bytes": 225,
+      "snippet": "function blitBuffer(src, dst, offset, length) {"
+    },
+    {
+      "name": "isSafeInteger2",
+      "start": 106503,
+      "end": 106727,
+      "bytes": 224,
+      "snippet": "function isSafeInteger2() {"
+    },
+    {
+      "name": "create",
+      "start": 299958,
+      "end": 300182,
+      "bytes": 224,
+      "snippet": "create(peer, source, isLive = false, streamId) {"
+    },
+    {
+      "name": "getServiceNameFromDefId",
+      "start": 370550,
+      "end": 370774,
+      "bytes": 224,
+      "snippet": "getServiceNameFromDefId(defId) {"
+    },
+    {
+      "name": "asciiSlice",
+      "start": 158486,
+      "end": 158707,
+      "bytes": 221,
+      "snippet": "function asciiSlice(buf, start, end) {"
+    },
+    {
+      "name": "<instance_members_initializer>",
+      "start": 12340,
+      "end": 12560,
+      "bytes": 220,
+      "snippet": "flags = 0;"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 80720,
+      "end": 80940,
+      "bytes": 220,
+      "snippet": "(a, b, options) => {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 80996,
+      "end": 81216,
+      "bytes": 220,
+      "snippet": "(a, b, options) => {"
+    },
+    {
+      "name": "ensureCapacity",
+      "start": 239858,
+      "end": 240077,
+      "bytes": 219,
+      "snippet": "ensureCapacity(capacity) {"
+    },
+    {
+      "name": "base64Slice",
+      "start": 155361,
+      "end": 155578,
+      "bytes": 217,
+      "snippet": "function base64Slice(buf, start, end) {"
+    },
+    {
+      "name": "from",
+      "start": 301628,
+      "end": 301845,
+      "bytes": 217,
+      "snippet": "from(stream) {"
+    },
+    {
+      "name": "toString3",
+      "start": 145324,
+      "end": 145540,
+      "bytes": 216,
+      "snippet": "function toString3() {"
+    },
+    {
+      "name": "latin1Slice",
+      "start": 158750,
+      "end": 158966,
+      "bytes": 216,
+      "snippet": "function latin1Slice(buf, start, end) {"
+    },
+    {
+      "name": "readUInt16LE",
+      "start": 196389,
+      "end": 196602,
+      "bytes": 213,
+      "snippet": "readUInt16LE(offset) {"
+    },
+    {
+      "name": "readUInt16BE",
+      "start": 196609,
+      "end": 196822,
+      "bytes": 213,
+      "snippet": "readUInt16BE(offset) {"
+    },
+    {
+      "name": "listeners",
+      "start": 303434,
+      "end": 303646,
+      "bytes": 212,
+      "snippet": "listeners(event) {"
+    },
+    {
+      "name": "checkIEEE754",
+      "start": 178690,
+      "end": 178901,
+      "bytes": 211,
+      "snippet": "function checkIEEE754(buf, value, offset, ext, max, min) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 11152,
+      "end": 11362,
+      "bytes": 210,
+      "snippet": "(target, val, offset, count) => {"
+    },
+    {
+      "name": "toBigInt",
+      "start": 123253,
+      "end": 123461,
+      "bytes": 208,
+      "snippet": "function toBigInt() {"
+    },
+    {
+      "name": "invalidate",
+      "start": 359707,
+      "end": 359912,
+      "bytes": 205,
+      "snippet": "invalidate(pattern) {"
+    },
+    {
+      "name": "error",
+      "start": 388308,
+      "end": 388512,
+      "bytes": 204,
+      "snippet": "error(obj, msg) {"
+    },
+    {
+      "name": "getCacheKey",
+      "start": 347238,
+      "end": 347440,
+      "bytes": 202,
+      "snippet": "getCacheKey() {"
+    },
+    {
+      "name": "warn",
+      "start": 388104,
+      "end": 388305,
+      "bytes": 201,
+      "snippet": "warn(obj, msg) {"
+    },
+    {
+      "name": "byteLength",
+      "start": 124637,
+      "end": 124836,
+      "bytes": 199,
+      "snippet": "function byteLength(b64) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 289334,
+      "end": 289533,
+      "bytes": 199,
+      "snippet": "(obj, buf) => {"
+    },
+    {
+      "name": "calculateString",
+      "start": 257756,
+      "end": 257954,
+      "bytes": 198,
+      "snippet": "calculateString(str) {"
+    },
+    {
+      "name": "set code",
+      "start": 184141,
+      "end": 184338,
+      "bytes": 197,
+      "snippet": "set code(value) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 11416,
+      "end": 11612,
+      "bytes": 196,
+      "snippet": "(target, offset, count) => {"
+    },
+    {
+      "name": "Reference",
+      "start": 84751,
+      "end": 84947,
+      "bytes": 196,
+      "snippet": "constructor(defId) {"
+    },
+    {
+      "name": "writeUInt8",
+      "start": 206741,
+      "end": 206933,
+      "bytes": 192,
+      "snippet": "writeUInt8(value, offset) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 41311,
+      "end": 41501,
+      "bytes": 190,
+      "snippet": "(a, b, loose) => {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 284258,
+      "end": 284448,
+      "bytes": 190,
+      "snippet": "(obj, buf) => {"
+    },
+    {
+      "name": "equals2",
+      "start": 145676,
+      "end": 145865,
+      "bytes": 189,
+      "snippet": "function equals2(b) {"
+    },
+    {
+      "name": "readDoubleBE",
+      "start": 169135,
+      "end": 169324,
+      "bytes": 189,
+      "snippet": "function readDoubleBE(offset, noAssert) {"
+    },
+    {
+      "name": "writeInt8",
+      "start": 206545,
+      "end": 206734,
+      "bytes": 189,
+      "snippet": "writeInt8(value, offset) {"
+    },
+    {
+      "name": "stopAllBackgroundRefetch",
+      "start": 348659,
+      "end": 348848,
+      "bytes": 189,
+      "snippet": "stopAllBackgroundRefetch() {"
+    },
+    {
+      "name": "readFloatBE",
+      "start": 168602,
+      "end": 168790,
+      "bytes": 188,
+      "snippet": "function readFloatBE(offset, noAssert) {"
+    },
+    {
+      "name": "readDoubleLE",
+      "start": 168868,
+      "end": 169056,
+      "bytes": 188,
+      "snippet": "function readDoubleLE(offset, noAssert) {"
+    },
+    {
+      "name": "asciiToBytes",
+      "start": 189969,
+      "end": 190157,
+      "bytes": 188,
+      "snippet": "function asciiToBytes(str) {"
+    },
+    {
+      "name": "readFloatLE",
+      "start": 168338,
+      "end": 168525,
+      "bytes": 187,
+      "snippet": "function readFloatLE(offset, noAssert) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 292041,
+      "end": 292227,
+      "bytes": 186,
+      "snippet": "(id, impulse, action, data) => {"
+    },
+    {
+      "name": "readUInt16LE",
+      "start": 161889,
+      "end": 162074,
+      "bytes": 185,
+      "snippet": "function readUInt16LE(offset, noAssert) {"
+    },
+    {
+      "name": "readUInt16BE",
+      "start": 162186,
+      "end": 162371,
+      "bytes": 185,
+      "snippet": "function readUInt16BE(offset, noAssert) {"
+    },
+    {
+      "name": "listenerCount",
+      "start": 303649,
+      "end": 303834,
+      "bytes": 185,
+      "snippet": "listenerCount(event) {"
+    },
+    {
+      "name": "isInstance",
+      "start": 190994,
+      "end": 191178,
+      "bytes": 184,
+      "snippet": "function isInstance(obj, type) {"
+    },
+    {
+      "name": "toNumber",
+      "start": 104302,
+      "end": 104484,
+      "bytes": 182,
+      "snippet": "function toNumber() {"
+    },
+    {
+      "name": "retry",
+      "start": 340834,
+      "end": 341015,
+      "bytes": 181,
+      "snippet": "retry(options) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 282880,
+      "end": 283060,
+      "bytes": 180,
+      "snippet": "(obj, buf) => {"
+    },
+    {
+      "name": "cache",
+      "start": 340610,
+      "end": 340789,
+      "bytes": 179,
+      "snippet": "cache(options) {"
+    },
+    {
+      "name": "fromValueWithBigInt",
+      "start": 122995,
+      "end": 123173,
+      "bytes": 178,
+      "snippet": "function fromValueWithBigInt(value, unsigned) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 66068,
+      "end": 66244,
+      "bytes": 176,
+      "snippet": "(version, range, options) => {"
+    },
+    {
+      "name": "writeDoubleLE",
+      "start": 215305,
+      "end": 215481,
+      "bytes": 176,
+      "snippet": "writeDoubleLE(value, offset) {"
+    },
+    {
+      "name": "writeDoubleBE",
+      "start": 215488,
+      "end": 215664,
+      "bytes": 176,
+      "snippet": "writeDoubleBE(value, offset) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 184511,
+      "end": 184686,
+      "bytes": 175,
+      "snippet": "function(name) {"
+    },
+    {
+      "name": "writeFloatLE",
+      "start": 214943,
+      "end": 215117,
+      "bytes": 174,
+      "snippet": "writeFloatLE(value, offset) {"
+    },
+    {
+      "name": "writeFloatBE",
+      "start": 215124,
+      "end": 215298,
+      "bytes": 174,
+      "snippet": "writeFloatBE(value, offset) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 10924,
+      "end": 11097,
+      "bytes": 173,
+      "snippet": "(target, offset, count) => {"
+    },
+    {
+      "name": "_StreamReference",
+      "start": 300978,
+      "end": 301151,
+      "bytes": 173,
+      "snippet": "constructor(streamId, type, isLive, peerId) {"
+    },
+    {
+      "name": "emitParallel",
+      "start": 306857,
+      "end": 307026,
+      "bytes": 169,
+      "snippet": "emitParallel(event, ...args) {"
+    },
+    {
+      "name": "getDefinitionById",
+      "start": 372185,
+      "end": 372354,
+      "bytes": 169,
+      "snippet": "getDefinitionById(defId) {"
+    },
+    {
+      "name": "getDefinitionByServiceName",
+      "start": 372405,
+      "end": 372574,
+      "bytes": 169,
+      "snippet": "getDefinitionByServiceName(name) {"
+    },
+    {
+      "name": "and",
+      "start": 116758,
+      "end": 116921,
+      "bytes": 163,
+      "snippet": "function and(other) {"
+    },
+    {
+      "name": "xor",
+      "start": 117195,
+      "end": 117358,
+      "bytes": 163,
+      "snippet": "function xor(other) {"
+    },
+    {
+      "name": "or",
+      "start": 116977,
+      "end": 117139,
+      "bytes": 162,
+      "snippet": "function or(other) {"
+    },
+    {
+      "name": "writeBigInt64LE",
+      "start": 178234,
+      "end": 178396,
+      "bytes": 162,
+      "snippet": "function writeBigInt64LE(value, offset = 0) {"
+    },
+    {
+      "name": "writeBigInt64BE",
+      "start": 178501,
+      "end": 178663,
+      "bytes": 162,
+      "snippet": "function writeBigInt64BE(value, offset = 0) {"
+    },
+    {
+      "name": "validateNumber",
+      "start": 186931,
+      "end": 187092,
+      "bytes": 161,
+      "snippet": "function validateNumber(value, name) {"
+    },
+    {
+      "name": "on",
+      "start": 320300,
+      "end": 320460,
+      "bytes": 160,
+      "snippet": "on(event, listener) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 321664,
+      "end": 321824,
+      "bytes": 160,
+      "snippet": "(obj) => {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 3652,
+      "end": 3811,
+      "bytes": 159,
+      "snippet": "(obj) => obj != null && (Boolean(obj.constructor) && typeof obj.constructor.isBuffer === \"function\" ..."
+    },
+    {
+      "name": "<anonymous>",
+      "start": 60121,
+      "end": 60280,
+      "bytes": 159,
+      "snippet": "(comp, options) => {"
+    },
+    {
+      "name": "readUInt8",
+      "start": 161622,
+      "end": 161780,
+      "bytes": 158,
+      "snippet": "function readUInt8(offset, noAssert) {"
+    },
+    {
+      "name": "subscribe",
+      "start": 364614,
+      "end": 364767,
+      "bytes": 153,
+      "snippet": "async subscribe(eventName, _handler) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 58173,
+      "end": 58325,
+      "bytes": 152,
+      "snippet": "(comp, options) => {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 39641,
+      "end": 39792,
+      "bytes": 151,
+      "snippet": "(version, options) => {"
+    },
+    {
+      "name": "globalCache",
+      "start": 353731,
+      "end": 353882,
+      "bytes": 151,
+      "snippet": "globalCache(options) {"
+    },
+    {
+      "name": "globalRetry",
+      "start": 354005,
+      "end": 354156,
+      "bytes": 151,
+      "snippet": "globalRetry(options) {"
+    },
+    {
+      "name": "reset",
+      "start": 235774,
+      "end": 235924,
+      "bytes": 150,
+      "snippet": "reset(resetWOffset = false) {"
+    },
+    {
+      "name": "handleCacheHints",
+      "start": 370346,
+      "end": 370494,
+      "bytes": 148,
+      "snippet": "handleCacheHints(service, method, _input, _output, cacheHints) {"
+    },
+    {
+      "name": "ucs2Write",
+      "start": 153008,
+      "end": 153154,
+      "bytes": 146,
+      "snippet": "function ucs2Write(buf, string, offset, length) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 279951,
+      "end": 280097,
+      "bytes": 146,
+      "snippet": "(obj) => {"
+    },
+    {
+      "name": "subtract",
+      "start": 110842,
+      "end": 110987,
+      "bytes": 145,
+      "snippet": "function subtract(subtrahend) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 70541,
+      "end": 70685,
+      "bytes": 144,
+      "snippet": "(range, options) => {"
+    },
+    {
+      "name": "utf8Write",
+      "start": 152486,
+      "end": 152629,
+      "bytes": 143,
+      "snippet": "function utf8Write(buf, string, offset, length) {"
+    },
+    {
+      "name": "writeBigUInt64LE",
+      "start": 174373,
+      "end": 174516,
+      "bytes": 143,
+      "snippet": "function writeBigUInt64LE(value, offset = 0) {"
+    },
+    {
+      "name": "writeBigUInt64BE",
+      "start": 174623,
+      "end": 174766,
+      "bytes": 143,
+      "snippet": "function writeBigUInt64BE(value, offset = 0) {"
+    },
+    {
+      "name": "tripletToBase64",
+      "start": 126194,
+      "end": 126336,
+      "bytes": 142,
+      "snippet": "function tripletToBase64(num) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 283372,
+      "end": 283514,
+      "bytes": 142,
+      "snippet": "(obj, buf) => {"
+    },
+    {
+      "name": "retry",
+      "start": 350648,
+      "end": 350790,
+      "bytes": 142,
+      "snippet": "retry(options) {"
+    },
+    {
+      "name": "cache",
+      "start": 350462,
+      "end": 350602,
+      "bytes": 140,
+      "snippet": "cache(options) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 73920,
+      "end": 74059,
+      "bytes": 139,
+      "snippet": "(r1, r2, options) => {"
+    },
+    {
+      "name": "fromBytes",
+      "start": 121878,
+      "end": 122014,
+      "bytes": 136,
+      "snippet": "function fromBytes(bytes, unsigned, le) {"
+    },
+    {
+      "name": "toJSON",
+      "start": 155208,
+      "end": 155344,
+      "bytes": 136,
+      "snippet": "function toJSON() {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 283881,
+      "end": 284016,
+      "bytes": 135,
+      "snippet": "(buf) => {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 35967,
+      "end": 36101,
+      "bytes": 134,
+      "snippet": "(version, options) => {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 284450,
+      "end": 284584,
+      "bytes": 134,
+      "snippet": "(buf) => {"
+    },
+    {
+      "name": "setType",
+      "start": 12967,
+      "end": 13099,
+      "bytes": 132,
+      "snippet": "setType(type) {"
+    },
+    {
+      "name": "readDoubleLE",
+      "start": 202844,
+      "end": 202976,
+      "bytes": 132,
+      "snippet": "readDoubleLE(offset) {"
+    },
+    {
+      "name": "readDoubleBE",
+      "start": 202983,
+      "end": 203115,
+      "bytes": 132,
+      "snippet": "readDoubleBE(offset) {"
+    },
+    {
+      "name": "SlowBuffer",
+      "start": 138489,
+      "end": 138620,
+      "bytes": 131,
+      "snippet": "function SlowBuffer(length) {"
+    },
+    {
+      "name": "lastIndexOf",
+      "start": 151662,
+      "end": 151792,
+      "bytes": 130,
+      "snippet": "function lastIndexOf(val, byteOffset, encoding) {"
+    },
+    {
+      "name": "readFloatLE",
+      "start": 202570,
+      "end": 202700,
+      "bytes": 130,
+      "snippet": "readFloatLE(offset) {"
+    },
+    {
+      "name": "readFloatBE",
+      "start": 202707,
+      "end": 202837,
+      "bytes": 130,
+      "snippet": "readFloatBE(offset) {"
+    },
+    {
+      "name": "_byteLength",
+      "start": 124879,
+      "end": 125008,
+      "bytes": 129,
+      "snippet": "function _byteLength(b64, validLen, placeHoldersLen) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 184755,
+      "end": 184883,
+      "bytes": 128,
+      "snippet": "function(name, actual) {"
+    },
+    {
+      "name": "base64Write",
+      "start": 152837,
+      "end": 152963,
+      "bytes": 126,
+      "snippet": "function base64Write(buf, string, offset, length) {"
+    },
+    {
+      "name": "setConcurrency",
+      "start": 306728,
+      "end": 306854,
+      "bytes": 126,
+      "snippet": "setConcurrency(concurrency) {"
+    },
+    {
+      "name": "negate",
+      "start": 109817,
+      "end": 109942,
+      "bytes": 125,
+      "snippet": "function negate() {"
+    },
+    {
+      "name": "indexOf",
+      "start": 151464,
+      "end": 151589,
+      "bytes": 125,
+      "snippet": "function indexOf(val, byteOffset, encoding) {"
+    },
+    {
+      "name": "clearDefinitionCache",
+      "start": 337289,
+      "end": 337414,
+      "bytes": 125,
+      "snippet": "clearDefinitionCache() {"
+    },
+    {
+      "name": "asciiWrite",
+      "start": 152670,
+      "end": 152794,
+      "bytes": 124,
+      "snippet": "function asciiWrite(buf, string, offset, length) {"
+    },
+    {
+      "name": "encode",
+      "start": 264588,
+      "end": 264712,
+      "bytes": 124,
+      "snippet": "encode(x, buf) {"
+    },
+    {
+      "name": "writeVarint32ZigZag",
+      "start": 219846,
+      "end": 219969,
+      "bytes": 123,
+      "snippet": "writeVarint32ZigZag(value, offset) {"
+    },
+    {
+      "name": "writeVarint64ZigZag",
+      "start": 224184,
+      "end": 224307,
+      "bytes": 123,
+      "snippet": "writeVarint64ZigZag(value, offset) {"
+    },
+    {
+      "name": "decodeFixExt",
+      "start": 278117,
+      "end": 278239,
+      "bytes": 122,
+      "snippet": "decodeFixExt(buf, size) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 281136,
+      "end": 281257,
+      "bytes": 121,
+      "snippet": "(id, message, stack) => {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 59937,
+      "end": 60057,
+      "bytes": 120,
+      "snippet": "(comp, options) => {"
+    },
+    {
+      "name": "alloc",
+      "start": 252774,
+      "end": 252894,
+      "bytes": 120,
+      "snippet": "alloc(capacity, noAssert = _SmartBuffer.DEFAULT_NOASSERT) {"
+    },
+    {
+      "name": "writeDoubleBE",
+      "start": 180346,
+      "end": 180465,
+      "bytes": 119,
+      "snippet": "function writeDoubleBE(value, offset, noAssert) {"
+    },
+    {
+      "name": "create",
+      "start": 93769,
+      "end": 93887,
+      "bytes": 118,
+      "snippet": "create(peer, streamId, isLive = false) {"
+    },
+    {
+      "name": "greaterThanOrEqual",
+      "start": 108928,
+      "end": 109046,
+      "bytes": 118,
+      "snippet": "function greaterThanOrEqual(other) {"
+    },
+    {
+      "name": "writeDoubleLE",
+      "start": 180147,
+      "end": 180265,
+      "bytes": 118,
+      "snippet": "function writeDoubleLE(value, offset, noAssert) {"
+    },
+    {
+      "name": "unexposeAllServices",
+      "start": 330342,
+      "end": 330460,
+      "bytes": 118,
+      "snippet": "unexposeAllServices() {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 385918,
+      "end": 386036,
+      "bytes": 118,
+      "snippet": "() => {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 66594,
+      "end": 66711,
+      "bytes": 117,
+      "snippet": "(range, options) => new Range(range, options).set.map((comp) => comp.map((c) => c.value).join(\" \").t..."
+    },
+    {
+      "name": "toSigned",
+      "start": 120700,
+      "end": 120817,
+      "bytes": 117,
+      "snippet": "function toSigned() {"
+    },
+    {
+      "name": "toUnsigned",
+      "start": 120886,
+      "end": 121003,
+      "bytes": 117,
+      "snippet": "function toUnsigned() {"
+    },
+    {
+      "name": "writeFloatBE",
+      "start": 179572,
+      "end": 179689,
+      "bytes": 117,
+      "snippet": "function writeFloatBE(value, offset, noAssert) {"
+    },
+    {
+      "name": "Definition",
+      "start": 285669,
+      "end": 285786,
+      "bytes": 117,
+      "snippet": "constructor(id, peerId, meta) {"
+    },
+    {
+      "name": "writeFloatLE",
+      "start": 179377,
+      "end": 179493,
+      "bytes": 116,
+      "snippet": "function writeFloatLE(value, offset, noAssert) {"
+    },
+    {
+      "name": "readUInt8",
+      "start": 195646,
+      "end": 195762,
+      "bytes": 116,
+      "snippet": "readUInt8(offset) {"
+    },
+    {
+      "name": "lessThanOrEqual",
+      "start": 108387,
+      "end": 108502,
+      "bytes": 115,
+      "snippet": "function lessThanOrEqual(other) {"
+    },
+    {
+      "name": "includes",
+      "start": 151281,
+      "end": 151394,
+      "bytes": 113,
+      "snippet": "function includes(val, byteOffset, encoding) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 55574,
+      "end": 55686,
+      "bytes": 112,
+      "snippet": "(comp, options) => {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 56498,
+      "end": 56610,
+      "bytes": 112,
+      "snippet": "(comp, options) => {"
+    },
+    {
+      "name": "countLeadingZeros",
+      "start": 116271,
+      "end": 116383,
+      "bytes": 112,
+      "snippet": "function countLeadingZeros() {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 383790,
+      "end": 383901,
+      "bytes": 111,
+      "snippet": "(error) => {"
+    },
+    {
+      "name": "greaterThan",
+      "start": 108688,
+      "end": 108798,
+      "bytes": 110,
+      "snippet": "function greaterThan(other) {"
+    },
+    {
+      "name": "normalizeRetryOptions",
+      "start": 360132,
+      "end": 360242,
+      "bytes": 110,
+      "snippet": "normalizeRetryOptions(options) {"
+    },
+    {
+      "name": "normalizeCacheOptions",
+      "start": 360021,
+      "end": 360129,
+      "bytes": 108,
+      "snippet": "normalizeCacheOptions(options) {"
+    },
+    {
+      "name": "exposeService",
+      "start": 364925,
+      "end": 365033,
+      "bytes": 108,
+      "snippet": "async exposeService(_instance) {"
+    },
+    {
+      "name": "buildRequestHints",
+      "start": 370185,
+      "end": 370293,
+      "bytes": 108,
+      "snippet": "buildRequestHints() {"
+    },
+    {
+      "name": "setImpulse",
+      "start": 13841,
+      "end": 13948,
+      "bytes": 107,
+      "snippet": "setImpulse(val) {"
+    },
+    {
+      "name": "lessThan",
+      "start": 108159,
+      "end": 108266,
+      "bytes": 107,
+      "snippet": "function lessThan(other) {"
+    },
+    {
+      "name": "background",
+      "start": 351866,
+      "end": 351973,
+      "bytes": 107,
+      "snippet": "background(interval) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 35549,
+      "end": 35654,
+      "bytes": 105,
+      "snippet": "(version, options) => {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 131815,
+      "end": 131919,
+      "bytes": 104,
+      "snippet": "function() {"
+    },
+    {
+      "name": "isBuffer2",
+      "start": 138705,
+      "end": 138809,
+      "bytes": 104,
+      "snippet": "function isBuffer2(b) {"
+    },
+    {
+      "name": "<instance_members_initializer>",
+      "start": 339458,
+      "end": 339562,
+      "bytes": 104,
+      "snippet": "$def;"
+    },
+    {
+      "name": "optimistic",
+      "start": 351569,
+      "end": 351673,
+      "bytes": 104,
+      "snippet": "optimistic(updater) {"
+    },
+    {
+      "name": "notEquals",
+      "start": 107891,
+      "end": 107994,
+      "bytes": 103,
+      "snippet": "function notEquals(other) {"
+    },
+    {
+      "name": "countTrailingZeros",
+      "start": 116526,
+      "end": 116628,
+      "bytes": 102,
+      "snippet": "function countTrailingZeros() {"
+    },
+    {
+      "name": "setError",
+      "start": 14572,
+      "end": 14673,
+      "bytes": 101,
+      "snippet": "setError(val) {"
+    },
+    {
+      "name": "Buffer4.from",
+      "start": 134396,
+      "end": 134497,
+      "bytes": 101,
+      "snippet": "function(value, encodingOrOffset, length) {"
+    },
+    {
+      "name": "fromBase64",
+      "start": 257968,
+      "end": 258069,
+      "bytes": 101,
+      "snippet": "fromBase64(str) {"
+    },
+    {
+      "name": "fromBinary",
+      "start": 258261,
+      "end": 258362,
+      "bytes": 101,
+      "snippet": "fromBinary(str) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 131583,
+      "end": 131683,
+      "bytes": 100,
+      "snippet": "function() {"
+    },
+    {
+      "name": "invalidateOn",
+      "start": 351723,
+      "end": 351821,
+      "bytes": 98,
+      "snippet": "invalidateOn(tags) {"
+    },
+    {
+      "name": "<instance_members_initializer>",
+      "start": 353512,
+      "end": 353607,
+      "bytes": 95,
+      "snippet": "$def;"
+    },
+    {
+      "name": "prependTo",
+      "start": 242611,
+      "end": 242705,
+      "bytes": 94,
+      "snippet": "prependTo(target, offset) {"
+    },
+    {
+      "name": "buildRequestContext",
+      "start": 370051,
+      "end": 370145,
+      "bytes": 94,
+      "snippet": "buildRequestContext() {"
+    },
+    {
+      "name": "ctz32",
+      "start": 94126,
+      "end": 94218,
+      "bytes": 92,
+      "snippet": "function ctz32(value) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 283787,
+      "end": 283879,
+      "bytes": 92,
+      "snippet": "(obj, buf) => {"
+    },
+    {
+      "name": "appendTo",
+      "start": 235591,
+      "end": 235682,
+      "bytes": 91,
+      "snippet": "appendTo(target, offset) {"
+    },
+    {
+      "name": "background",
+      "start": 341439,
+      "end": 341529,
+      "bytes": 90,
+      "snippet": "background(interval) {"
+    },
+    {
+      "name": "getActiveBackgroundRefetchCount",
+      "start": 348935,
+      "end": 349025,
+      "bytes": 90,
+      "snippet": "getActiveBackgroundRefetchCount() {"
+    },
+    {
+      "name": "priority",
+      "start": 351070,
+      "end": 351160,
+      "bytes": 90,
+      "snippet": "priority(level) {"
+    },
+    {
+      "name": "addResponseInterceptor",
+      "start": 371383,
+      "end": 371473,
+      "bytes": 90,
+      "snippet": "addResponseInterceptor(interceptor) {"
+    },
+    {
+      "name": "BufferBigIntNotDefined",
+      "start": 191826,
+      "end": 191914,
+      "bytes": 88,
+      "snippet": "function BufferBigIntNotDefined() {"
+    },
+    {
+      "name": "emitReduceRight",
+      "start": 307366,
+      "end": 307454,
+      "bytes": 88,
+      "snippet": "emitReduceRight(event, ...args) {"
+    },
+    {
+      "name": "fallback",
+      "start": 351436,
+      "end": 351524,
+      "bytes": 88,
+      "snippet": "fallback(data) {"
+    },
+    {
+      "name": "addRequestInterceptor",
+      "start": 371250,
+      "end": 371338,
+      "bytes": 88,
+      "snippet": "addRequestInterceptor(interceptor) {"
+    },
+    {
+      "name": "swap",
+      "start": 144025,
+      "end": 144112,
+      "bytes": 87,
+      "snippet": "function swap(b, n, m) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 284049,
+      "end": 284136,
+      "bytes": 87,
+      "snippet": "(obj, buf) => {"
+    },
+    {
+      "name": "optimistic",
+      "start": 341193,
+      "end": 341280,
+      "bytes": 87,
+      "snippet": "optimistic(updater) {"
+    },
+    {
+      "name": "base64ToBytes",
+      "start": 190591,
+      "end": 190677,
+      "bytes": 86,
+      "snippet": "function base64ToBytes(str) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 311758,
+      "end": 311844,
+      "bytes": 86,
+      "snippet": "(err) => {"
+    },
+    {
+      "name": "transform",
+      "start": 351196,
+      "end": 351282,
+      "bytes": 86,
+      "snippet": "transform(fn) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 396615,
+      "end": 396701,
+      "bytes": 86,
+      "snippet": "async () => {"
+    },
+    {
+      "name": "dedupe",
+      "start": 350834,
+      "end": 350919,
+      "bytes": 85,
+      "snippet": "dedupe(key) {"
+    },
+    {
+      "name": "on",
+      "start": 304487,
+      "end": 304571,
+      "bytes": 84,
+      "snippet": "on(event, fn, context) {"
+    },
+    {
+      "name": "validate",
+      "start": 351317,
+      "end": 351401,
+      "bytes": 84,
+      "snippet": "validate(fn) {"
+    },
+    {
+      "name": "not",
+      "start": 116117,
+      "end": 116200,
+      "bytes": 83,
+      "snippet": "function not() {"
+    },
+    {
+      "name": "toBytes",
+      "start": 121071,
+      "end": 121154,
+      "bytes": 83,
+      "snippet": "function toBytes(le) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 321336,
+      "end": 321419,
+      "bytes": 83,
+      "snippet": "(obj) => obj instanceof NetronReadableStream || obj instanceof NetronWritableStream"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 396407,
+      "end": 396490,
+      "bytes": 83,
+      "snippet": "() => {"
+    },
+    {
+      "name": "timeout",
+      "start": 350953,
+      "end": 351035,
+      "bytes": 82,
+      "snippet": "timeout(ms) {"
+    },
+    {
+      "name": "metrics",
+      "start": 352016,
+      "end": 352098,
+      "bytes": 82,
+      "snippet": "metrics(fn) {"
+    },
+    {
+      "name": "setGlobalOptions",
+      "start": 378551,
+      "end": 378633,
+      "bytes": 82,
+      "snippet": "setGlobalOptions(options) {"
+    },
+    {
+      "name": "clear",
+      "start": 8495,
+      "end": 8576,
+      "bytes": 81,
+      "snippet": "clear() {"
+    },
+    {
+      "name": "toString",
+      "start": 184347,
+      "end": 184428,
+      "bytes": 81,
+      "snippet": "toString() {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 284138,
+      "end": 284219,
+      "bytes": 81,
+      "snippet": "(buf) => {"
+    },
+    {
+      "name": "invalidateOn",
+      "start": 341063,
+      "end": 341144,
+      "bytes": 81,
+      "snippet": "invalidateOn(tags) {"
+    },
+    {
+      "name": "getType",
+      "start": 13346,
+      "end": 13426,
+      "bytes": 80,
+      "snippet": "getType() {"
+    },
+    {
+      "name": "toInt",
+      "start": 104158,
+      "end": 104238,
+      "bytes": 80,
+      "snippet": "function toInt() {"
+    },
+    {
+      "name": "Buffer4.alloc",
+      "start": 135300,
+      "end": 135380,
+      "bytes": 80,
+      "snippet": "function(size, fill, encoding) {"
+    },
+    {
+      "name": "setCacheManager",
+      "start": 377506,
+      "end": 377586,
+      "bytes": 80,
+      "snippet": "setCacheManager(manager) {"
+    },
+    {
+      "name": "setRetryManager",
+      "start": 378007,
+      "end": 378087,
+      "bytes": 80,
+      "snippet": "setRetryManager(manager) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 270126,
+      "end": 270205,
+      "bytes": 79,
+      "snippet": "(dataLength, bufLength, headerLength) => bufLength >= headerLength + dataLength"
+    },
+    {
+      "name": "$processArgs",
+      "start": 328721,
+      "end": 328800,
+      "bytes": 79,
+      "snippet": "$processArgs(args) {"
+    },
+    {
+      "name": "getOrCreateHttpClient",
+      "start": 376996,
+      "end": 377075,
+      "bytes": 79,
+      "snippet": "getOrCreateHttpClient() {"
+    },
+    {
+      "name": "assert",
+      "start": 235689,
+      "end": 235767,
+      "bytes": 78,
+      "snippet": "assert(assert) {"
+    },
+    {
+      "name": "emitReduce",
+      "start": 307286,
+      "end": 307363,
+      "bytes": 77,
+      "snippet": "emitReduce(event, ...args) {"
+    },
+    {
+      "name": "isLastChunk",
+      "start": 16477,
+      "end": 16553,
+      "bytes": 76,
+      "snippet": "isLastChunk() {"
+    },
+    {
+      "name": "isNegative",
+      "start": 106983,
+      "end": 107058,
+      "bytes": 75,
+      "snippet": "function isNegative() {"
+    },
+    {
+      "name": "isPositive",
+      "start": 107129,
+      "end": 107204,
+      "bytes": 75,
+      "snippet": "function isPositive() {"
+    },
+    {
+      "name": "zigZagEncode32",
+      "start": 255714,
+      "end": 255789,
+      "bytes": 75,
+      "snippet": "zigZagEncode32(n) {"
+    },
+    {
+      "name": "btoa",
+      "start": 258083,
+      "end": 258158,
+      "bytes": 75,
+      "snippet": "btoa(str) {"
+    },
+    {
+      "name": "atob",
+      "start": 258172,
+      "end": 258247,
+      "bytes": 75,
+      "snippet": "atob(b64) {"
+    },
+    {
+      "name": "removeListener",
+      "start": 320917,
+      "end": 320992,
+      "bytes": 75,
+      "snippet": "removeListener(event, listener) {"
+    },
+    {
+      "name": "getImpulse",
+      "start": 14117,
+      "end": 14190,
+      "bytes": 73,
+      "snippet": "getImpulse() {"
+    },
+    {
+      "name": "isZero",
+      "start": 106797,
+      "end": 106870,
+      "bytes": 73,
+      "snippet": "function isZero() {"
+    },
+    {
+      "name": "priority",
+      "start": 341675,
+      "end": 341748,
+      "bytes": 73,
+      "snippet": "priority(level) {"
+    },
+    {
+      "name": "isStreamChunk",
+      "start": 16120,
+      "end": 16192,
+      "bytes": 72,
+      "snippet": "isStreamChunk() {"
+    },
+    {
+      "name": "isLive",
+      "start": 16803,
+      "end": 16875,
+      "bytes": 72,
+      "snippet": "isLive() {"
+    },
+    {
+      "name": "isAlive",
+      "start": 318105,
+      "end": 318176,
+      "bytes": 71,
+      "snippet": "isAlive() {"
+    },
+    {
+      "name": "fallback",
+      "start": 342009,
+      "end": 342080,
+      "bytes": 71,
+      "snippet": "fallback(data) {"
+    },
+    {
+      "name": "isLong",
+      "start": 94055,
+      "end": 94125,
+      "bytes": 70,
+      "snippet": "function isLong(obj) {"
+    },
+    {
+      "name": "getError",
+      "start": 14831,
+      "end": 14900,
+      "bytes": 69,
+      "snippet": "getError() {"
+    },
+    {
+      "name": "transform",
+      "start": 341792,
+      "end": 341861,
+      "bytes": 69,
+      "snippet": "transform(fn) {"
+    },
+    {
+      "name": "getHighBitsUnsigned",
+      "start": 105689,
+      "end": 105757,
+      "bytes": 68,
+      "snippet": "function getHighBitsUnsigned() {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 269989,
+      "end": 270057,
+      "bytes": 68,
+      "snippet": "(value, bytesConsumed) => ({"
+    },
+    {
+      "name": "encode",
+      "start": 280179,
+      "end": 280247,
+      "bytes": 68,
+      "snippet": "encode(x, buf) {"
+    },
+    {
+      "name": "dedupe",
+      "start": 341322,
+      "end": 341390,
+      "bytes": 68,
+      "snippet": "dedupe(key) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 40126,
+      "end": 40193,
+      "bytes": 67,
+      "snippet": "(a, b, loose) => new SemVer(a, loose).compare(new SemVer(b, loose))"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 290630,
+      "end": 290697,
+      "bytes": 67,
+      "snippet": "(obj, buf) => {"
+    },
+    {
+      "name": "validate",
+      "start": 341904,
+      "end": 341971,
+      "bytes": 67,
+      "snippet": "validate(fn) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 73166,
+      "end": 73232,
+      "bytes": 66,
+      "snippet": "(version, range, options) => outside(version, range, \">\", options)"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 73531,
+      "end": 73597,
+      "bytes": 66,
+      "snippet": "(version, range, options) => outside(version, range, \"<\", options)"
+    },
+    {
+      "name": "getLowBitsUnsigned",
+      "start": 105968,
+      "end": 106034,
+      "bytes": 66,
+      "snippet": "function getLowBitsUnsigned() {"
+    },
+    {
+      "name": "get length",
+      "start": 193637,
+      "end": 193703,
+      "bytes": 66,
+      "snippet": "get length() {"
+    },
+    {
+      "name": "zigZagDecode32",
+      "start": 255803,
+      "end": 255869,
+      "bytes": 66,
+      "snippet": "zigZagDecode32(n) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 384811,
+      "end": 384877,
+      "bytes": 66,
+      "snippet": "(error) => {"
+    },
+    {
+      "name": "reset",
+      "start": 9843,
+      "end": 9908,
+      "bytes": 65,
+      "snippet": "reset(initialValue = 0) {"
+    },
+    {
+      "name": "calculateUTF8Chars",
+      "start": 257677,
+      "end": 257742,
+      "bytes": 65,
+      "snippet": "calculateUTF8Chars(str) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 282735,
+      "end": 282800,
+      "bytes": 65,
+      "snippet": "(obj, buf) => {"
+    },
+    {
+      "name": "timeout",
+      "start": 341569,
+      "end": 341634,
+      "bytes": 65,
+      "snippet": "timeout(ms) {"
+    },
+    {
+      "name": "metrics",
+      "start": 342114,
+      "end": 342179,
+      "bytes": 65,
+      "snippet": "metrics(fn) {"
+    },
+    {
+      "name": "getServiceNames",
+      "start": 365197,
+      "end": 365262,
+      "bytes": 65,
+      "snippet": "getServiceNames() {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 41839,
+      "end": 41902,
+      "bytes": 63,
+      "snippet": "(list, loose) => list.sort((a, b) => compareBuild(a, b, loose))"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 42228,
+      "end": 42291,
+      "bytes": 63,
+      "snippet": "(list, loose) => list.sort((a, b) => compareBuild(b, a, loose))"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 192357,
+      "end": 192420,
+      "bytes": 63,
+      "snippet": "(value) => typeof value === \"string\" || value instanceof String"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 281318,
+      "end": 281381,
+      "bytes": 63,
+      "snippet": "(err) => stdIdMap[err.constructor.name] ?? stdIdMap[Error.name]"
+    },
+    {
+      "name": "off",
+      "start": 306408,
+      "end": 306471,
+      "bytes": 63,
+      "snippet": "off(event, fn) {"
+    },
+    {
+      "name": "method",
+      "start": 340397,
+      "end": 340460,
+      "bytes": 63,
+      "snippet": "method(name) {"
+    },
+    {
+      "name": "input",
+      "start": 340509,
+      "end": 340572,
+      "bytes": 63,
+      "snippet": "input(data) {"
+    },
+    {
+      "name": "decode",
+      "start": 280254,
+      "end": 280316,
+      "bytes": 62,
+      "snippet": "decode(buf) {"
+    },
+    {
+      "name": "eventNames",
+      "start": 303369,
+      "end": 303431,
+      "bytes": 62,
+      "snippet": "eventNames() {"
+    },
+    {
+      "name": "serializer2.decode",
+      "start": 291677,
+      "end": 291738,
+      "bytes": 61,
+      "snippet": "function(buffer) {"
+    },
+    {
+      "name": "create",
+      "start": 329176,
+      "end": 329237,
+      "bytes": 61,
+      "snippet": "create(def, peer) {"
+    },
+    {
+      "name": "isEven",
+      "start": 107391,
+      "end": 107451,
+      "bytes": 60,
+      "snippet": "function isEven() {"
+    },
+    {
+      "name": "<instance_members_initializer>",
+      "start": 340061,
+      "end": 340121,
+      "bytes": 60,
+      "snippet": "options = {};"
+    },
+    {
+      "name": "isOdd",
+      "start": 107270,
+      "end": 107329,
+      "bytes": 59,
+      "snippet": "function isOdd() {"
+    },
+    {
+      "name": "numberIsNaN",
+      "start": 191221,
+      "end": 191280,
+      "bytes": 59,
+      "snippet": "function numberIsNaN(obj) {"
+    },
+    {
+      "name": "get capacity",
+      "start": 193710,
+      "end": 193769,
+      "bytes": 59,
+      "snippet": "get capacity() {"
+    },
+    {
+      "name": "randomUUID",
+      "start": 10061,
+      "end": 10119,
+      "bytes": 58,
+      "snippet": "randomUUID() {"
+    },
+    {
+      "name": "delete",
+      "start": 48121,
+      "end": 48179,
+      "bytes": 58,
+      "snippet": "delete(key) {"
+    },
+    {
+      "name": "unexposeService",
+      "start": 365104,
+      "end": 365159,
+      "bytes": 55,
+      "snippet": "async unexposeService(_ctxId, _releaseOriginated) {"
+    },
+    {
+      "name": "getGlobalOptions",
+      "start": 378878,
+      "end": 378933,
+      "bytes": 55,
+      "snippet": "getGlobalOptions() {"
+    },
+    {
+      "name": "getTransport",
+      "start": 394070,
+      "end": 394125,
+      "bytes": 55,
+      "snippet": "getTransport() {"
+    },
+    {
+      "name": "getHighBits",
+      "start": 105554,
+      "end": 105608,
+      "bytes": 54,
+      "snippet": "function getHighBits() {"
+    },
+    {
+      "name": "Buffer4.allocUnsafeSlow",
+      "start": 135658,
+      "end": 135712,
+      "bytes": 54,
+      "snippet": "function(size) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 55464,
+      "end": 55517,
+      "bytes": 53,
+      "snippet": "(id) => !id || id.toLowerCase() === \"x\" || id === \"*\""
+    },
+    {
+      "name": "getCacheManager",
+      "start": 378680,
+      "end": 378733,
+      "bytes": 53,
+      "snippet": "getCacheManager() {"
+    },
+    {
+      "name": "getRetryManager",
+      "start": 378780,
+      "end": 378833,
+      "bytes": 53,
+      "snippet": "getRetryManager() {"
+    },
+    {
+      "name": "getLowBits",
+      "start": 105837,
+      "end": 105889,
+      "bytes": 52,
+      "snippet": "function getLowBits() {"
+    },
+    {
+      "name": "get api",
+      "start": 359151,
+      "end": 359203,
+      "bytes": 52,
+      "snippet": "get api() {"
+    },
+    {
+      "name": "get remoteAddress",
+      "start": 311223,
+      "end": 311273,
+      "bytes": 50,
+      "snippet": "get remoteAddress() {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 316014,
+      "end": 316064,
+      "bytes": 50,
+      "snippet": "() => {"
+    },
+    {
+      "name": "clearCache",
+      "start": 359948,
+      "end": 359998,
+      "bytes": 50,
+      "snippet": "clearCache() {"
+    },
+    {
+      "name": "toString",
+      "start": 28123,
+      "end": 28172,
+      "bytes": 49,
+      "snippet": "toString() {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 282802,
+      "end": 282850,
+      "bytes": 48,
+      "snippet": "(buf) => new Date(buf.readUInt64BE().toNumber())"
+    },
+    {
+      "name": "cancel",
+      "start": 342236,
+      "end": 342284,
+      "bytes": 48,
+      "snippet": "cancel() {"
+    },
+    {
+      "name": "releaseInterfaceInternal",
+      "start": 372096,
+      "end": 372144,
+      "bytes": 48,
+      "snippet": "async releaseInterfaceInternal(_iInstance) {"
+    },
+    {
+      "name": "Queue",
+      "start": 7941,
+      "end": 7988,
+      "bytes": 47,
+      "snippet": "constructor() {"
+    },
+    {
+      "name": "get size",
+      "start": 8583,
+      "end": 8630,
+      "bytes": 47,
+      "snippet": "get size() {"
+    },
+    {
+      "name": "Packet",
+      "start": 12149,
+      "end": 12196,
+      "bytes": 47,
+      "snippet": "constructor(id) {"
+    },
+    {
+      "name": "toString",
+      "start": 50876,
+      "end": 50923,
+      "bytes": 47,
+      "snippet": "toString() {"
+    },
+    {
+      "name": "toString",
+      "start": 63470,
+      "end": 63517,
+      "bytes": 47,
+      "snippet": "toString() {"
+    },
+    {
+      "name": "nextId",
+      "start": 286672,
+      "end": 286719,
+      "bytes": 47,
+      "snippet": "nextId() {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 291018,
+      "end": 291065,
+      "bytes": 47,
+      "snippet": "(buf) => new Reference(serializer2.decode(buf))"
+    },
+    {
+      "name": "removeListener",
+      "start": 397041,
+      "end": 397088,
+      "bytes": 47,
+      "snippet": "removeListener() {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 2245,
+      "end": 2291,
+      "bytes": 46,
+      "snippet": "(id) => {"
+    },
+    {
+      "name": "nextId",
+      "start": 17148,
+      "end": 17193,
+      "bytes": 45,
+      "snippet": "nextId() {"
+    },
+    {
+      "name": "debug",
+      "start": 18657,
+      "end": 18702,
+      "bytes": 45,
+      "snippet": "(...args) => console.error(\"SEMVER\", ...args)"
+    },
+    {
+      "name": "format",
+      "start": 50824,
+      "end": 50869,
+      "bytes": 45,
+      "snippet": "format() {"
+    },
+    {
+      "name": "unsubscribe",
+      "start": 364811,
+      "end": 364856,
+      "bytes": 45,
+      "snippet": "async unsubscribe(_eventName, _handler) {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 43281,
+      "end": 43325,
+      "bytes": 44,
+      "snippet": "(a, b, loose) => compare2(a, b, loose) === 0"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 43629,
+      "end": 43673,
+      "bytes": 44,
+      "snippet": "(a, b, loose) => compare2(a, b, loose) !== 0"
+    },
+    {
+      "name": "get code",
+      "start": 184088,
+      "end": 184132,
+      "bytes": 44,
+      "snippet": "get code() {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 312418,
+      "end": 312462,
+      "bytes": 44,
+      "snippet": "() => reject(new Error(\"Discovery timeout\"))"
+    },
+    {
+      "name": "<instance_members_initializer>",
+      "start": 326630,
+      "end": 326674,
+      "bytes": 44,
+      "snippet": "$pendingPromises = /* @__PURE__ */ new Map()"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 43979,
+      "end": 44022,
+      "bytes": 43,
+      "snippet": "(a, b, loose) => compare2(a, b, loose) >= 0"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 44328,
+      "end": 44371,
+      "bytes": 43,
+      "snippet": "(a, b, loose) => compare2(a, b, loose) <= 0"
+    },
+    {
+      "name": "get localAddress",
+      "start": 311276,
+      "end": 311319,
+      "bytes": 43,
+      "snippet": "get localAddress() {"
+    },
+    {
+      "name": "next",
+      "start": 9657,
+      "end": 9699,
+      "bytes": 42,
+      "snippet": "next() {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 42597,
+      "end": 42639,
+      "bytes": 42,
+      "snippet": "(a, b, loose) => compare2(a, b, loose) > 0"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 42939,
+      "end": 42981,
+      "bytes": 42,
+      "snippet": "(a, b, loose) => compare2(a, b, loose) < 0"
+    },
+    {
+      "name": "get state",
+      "start": 311179,
+      "end": 311220,
+      "bytes": 41,
+      "snippet": "get state() {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 10832,
+      "end": 10872,
+      "bytes": 40,
+      "snippet": "(target, offset) => target >> offset & 1"
+    },
+    {
+      "name": "resetId",
+      "start": 17423,
+      "end": 17463,
+      "bytes": 40,
+      "snippet": "resetId() {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 38558,
+      "end": 38598,
+      "bytes": 40,
+      "snippet": "(a, loose) => new SemVer(a, loose).major"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 38913,
+      "end": 38953,
+      "bytes": 40,
+      "snippet": "(a, loose) => new SemVer(a, loose).minor"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 39268,
+      "end": 39308,
+      "bytes": 40,
+      "snippet": "(a, loose) => new SemVer(a, loose).patch"
+    },
+    {
+      "name": "get isConnected",
+      "start": 372009,
+      "end": 372049,
+      "bytes": 40,
+      "snippet": "get isConnected() {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 40528,
+      "end": 40566,
+      "bytes": 38,
+      "snippet": "(a, b, loose) => compare2(b, a, loose)"
+    },
+    {
+      "name": "off",
+      "start": 396997,
+      "end": 397033,
+      "bytes": 36,
+      "snippet": "off() {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 192479,
+      "end": 192514,
+      "bytes": 35,
+      "snippet": "(obj) => obj instanceof SmartBuffer"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 279914,
+      "end": 279949,
+      "bytes": 35,
+      "snippet": "(obj) => obj instanceof constructor"
+    },
+    {
+      "name": "on",
+      "start": 396954,
+      "end": 396989,
+      "bytes": 35,
+      "snippet": "on() {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 2014,
+      "end": 2048,
+      "bytes": 34,
+      "snippet": "(fn) => Promise.resolve().then(fn)"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 25280,
+      "end": 25314,
+      "bytes": 34,
+      "snippet": "(a, b) => compareIdentifiers(b, a)"
+    },
+    {
+      "name": "<instance_members_initializer>",
+      "start": 350383,
+      "end": 350415,
+      "bytes": 32,
+      "snippet": "accumulatedOptions = {};"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 40921,
+      "end": 40951,
+      "bytes": 30,
+      "snippet": "(a, b) => compare2(a, b, true)"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 54351,
+      "end": 54380,
+      "bytes": 29,
+      "snippet": "(c) => c.value === \"<0.0.0-0\""
+    },
+    {
+      "name": "<anonymous>",
+      "start": 10167,
+      "end": 10192,
+      "bytes": 25,
+      "snippet": "() => crypto.randomUUID()"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 380366,
+      "end": 380390,
+      "bytes": 24,
+      "snippet": "() => controller.abort()"
+    },
+    {
+      "name": "Readable",
+      "start": 85252,
+      "end": 85275,
+      "bytes": 23,
+      "snippet": "constructor() {"
+    },
+    {
+      "name": "Writable",
+      "start": 85369,
+      "end": 85392,
+      "bytes": 23,
+      "snippet": "constructor() {"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 54435,
+      "end": 54456,
+      "bytes": 21,
+      "snippet": "(c) => c.value === \"\""
+    },
+    {
+      "name": "StreamReference",
+      "start": 300324,
+      "end": 300345,
+      "bytes": 21,
+      "snippet": "() => StreamReference"
+    },
+    {
+      "name": "<instance_members_initializer>",
+      "start": 309428,
+      "end": 309443,
+      "bytes": 15,
+      "snippet": "code;"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 396782,
+      "end": 396797,
+      "bytes": 15,
+      "snippet": "() => {"
+    },
+    {
+      "name": "<instance_members_initializer>",
+      "start": 286122,
+      "end": 286135,
+      "bytes": 13,
+      "snippet": "parentId = \"\""
+    },
+    {
+      "name": "<anonymous>",
+      "start": 396548,
+      "end": 396560,
+      "bytes": 12,
+      "snippet": "() => void 0"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 396926,
+      "end": 396937,
+      "bytes": 11,
+      "snippet": "() => false"
+    },
+    {
+      "name": "<anonymous>",
+      "start": 1956,
+      "end": 1965,
+      "bytes": 9,
+      "snippet": "() => \"/\""
+    },
+    {
+      "name": "<anonymous>",
+      "start": 396861,
+      "end": 396869,
+      "bytes": 8,
+      "snippet": "() => []"
+    }
+  ]
+}

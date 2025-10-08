@@ -1,6 +1,16 @@
-import { randomUUID } from './uid.js';
-
 import { ServiceMetadata } from './types.js';
+
+// Browser-compatible UUID generation
+const randomUUID = typeof crypto !== 'undefined' && crypto.randomUUID
+  ? () => crypto.randomUUID()
+  : () => {
+      // Fallback for older browsers
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    };
 
 /**
  * The Definition class represents a service definition within the Netron framework.

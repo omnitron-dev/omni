@@ -10,7 +10,7 @@
 
 import type { Definition } from '../../definition.js';
 import type { IPeer } from '../../types.js';
-import { HttpTransportClient } from './client.js';
+import type { HttpRemotePeer } from './peer.js';
 
 /**
  * HTTP Interface - Standard RPC API
@@ -43,7 +43,7 @@ export class HttpInterface<T = any> {
   public $peer?: IPeer;
 
   constructor(
-    private transport: HttpTransportClient,
+    private peer: HttpRemotePeer,
     private definition: Definition
   ) {
     // Set compatibility properties
@@ -69,21 +69,26 @@ export class HttpInterface<T = any> {
         }
 
         // Internal properties
-        if (prop === 'transport' || prop === 'definition') {
+        if (prop === 'peer' || prop === 'definition') {
           return Reflect.get(target, prop);
+        }
+
+        // CRITICAL: Don't intercept promise-like properties
+        // When JavaScript checks if object is a Promise, it looks for 'then'
+        // If we return a function, it thinks this is a Promise and tries to await it
+        if (prop === 'then' || prop === 'catch' || prop === 'finally' || prop === 'constructor') {
+          return undefined;
         }
 
         // Check if it's a method in the service definition
         if (target.definition.meta.methods && target.definition.meta.methods[prop]) {
           // Return async function that calls the remote method
           return async (...args: any[]) => {
-            const serviceName = target.definition.meta.name;
-            const methodName = prop;
-
-            // Call remote method via HTTP transport
-            const result = await target.transport.invoke(
-              serviceName,
-              methodName,
+            // Call remote method directly via peer.call()
+            // This avoids recursive queryInterface calls
+            const result = await target.peer.call(
+              target.definition.id,
+              prop,
               args
             );
 

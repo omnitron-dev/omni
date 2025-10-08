@@ -3,7 +3,7 @@ const cbor = require('cbor');
 const msgpackr = require('msgpackr');
 const msgpack = require('@msgpack/msgpack');
 const { performance } = require('perf_hooks');
-const { encode, decode } = require('@omnitron-dev/messagepack');
+const { encode, decode } = require('../dist');
 
 // Create test data
 const testData = {

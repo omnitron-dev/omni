@@ -1,5 +1,3 @@
-import { SERVICE_ANNOTATION, ExtendedServiceMetadata } from './decorators.js';
-
 /**
  * Generates a standardized event name for service-related events.
  * This function creates a predictable naming pattern for service events
@@ -23,18 +21,6 @@ export const getServiceEventName = (serviceName: string) => `svc:${serviceName}`
  * getPeerEventName('peer-123') // returns 'peer:peer-123'
  */
 export const getPeerEventName = (peerId: string) => `peer:${peerId}`;
-
-/**
- * Retrieves the service metadata associated with a service instance.
- * This function uses reflection to access metadata that was previously
- * attached to the service's constructor using decorators.
- *
- * @param {any} instance - The service instance to retrieve metadata for
- * @returns {ServiceMetadata} The metadata associated with the service
- * @throws {Error} If the metadata cannot be retrieved or is invalid
- */
-export const getServiceMetadata = (instance: any): ExtendedServiceMetadata | undefined =>
-  Reflect.getMetadata(SERVICE_ANNOTATION, instance.constructor) as ExtendedServiceMetadata;
 
 /**
  * Constructs a qualified name by combining a base name with an optional version.

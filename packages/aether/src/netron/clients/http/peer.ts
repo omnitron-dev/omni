@@ -580,20 +580,28 @@ export class HttpRemotePeer extends AbstractPeer {
 
     try {
       // Make HTTP POST request to /netron/query-interface endpoint
-      const response = await this.sendHttpRequest<{ result: Definition }>(
+      const response = await this.sendHttpRequest<HttpResponseMessage>(
         'POST',
         '/netron/query-interface',
         { serviceName: qualifiedName }
       );
 
-      const definition = response.result;
+      // Server returns HTTP Response Message format (v2.0) with data field containing ServiceMetadata
+      const definitionMeta = response.data;
 
-      if (!definition) {
+      if (!definitionMeta) {
         throw new TitanError({
           code: ErrorCode.NOT_FOUND,
           message: `Service '${qualifiedName}' not found on remote peer`
         });
       }
+
+      // Create a Definition object from the metadata
+      const definition = new Definition(
+        Definition.nextId(),
+        this.id,
+        definitionMeta
+      );
 
       // Store the definition in local maps for future reference
       this.definitions.set(definition.id, definition);

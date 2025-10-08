@@ -415,10 +415,12 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     try {
       message = await request.json();
     } catch (error) {
+      console.error('[HTTP Server] Failed to parse JSON:', error);
       return this.createErrorResponse(400, 'Invalid JSON', request);
     }
 
     if (!isHttpRequestMessage(message)) {
+      console.error('[HTTP Server] Invalid request format:', message);
       return this.createErrorResponse(400, 'Invalid request format', request);
     }
 

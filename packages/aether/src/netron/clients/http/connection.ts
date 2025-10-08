@@ -432,7 +432,7 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
           const request = createRequestMessage(
             definition.meta.name,
             prop,
-            args[0] // Netron uses single argument
+            args // Pass full arguments array
           );
 
           const response = await self.sendRequestMessage(request);

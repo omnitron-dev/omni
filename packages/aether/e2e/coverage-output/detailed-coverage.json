@@ -1,0 +1,118 @@
+{
+  "timestamp": "2025-10-08T14:03:21.280Z",
+  "totalBytes": 398284,
+  "coveredBytes": 398284,
+  "coveragePercent": 100,
+  "functionsAnalyzed": 860,
+  "testResults": {
+    "success": true,
+    "results": [
+      {
+        "test": "HTTP created",
+        "pass": true
+      },
+      {
+        "test": "HTTP connected",
+        "pass": true
+      },
+      {
+        "test": "HTTP getUsers",
+        "pass": true
+      },
+      {
+        "test": "HTTP getUser",
+        "pass": true
+      },
+      {
+        "test": "HTTP createUser",
+        "pass": true
+      },
+      {
+        "test": "HTTP updateUser",
+        "pass": true
+      },
+      {
+        "test": "HTTP deleteUser",
+        "pass": true
+      },
+      {
+        "test": "HTTP findUsers",
+        "pass": true
+      },
+      {
+        "test": "HTTP metrics",
+        "pass": true
+      },
+      {
+        "test": "HTTP error handling",
+        "pass": true
+      },
+      {
+        "test": "HTTP multiple clients",
+        "pass": true
+      },
+      {
+        "test": "HTTP disconnected",
+        "pass": true
+      },
+      {
+        "test": "WS created",
+        "pass": true
+      },
+      {
+        "test": "WS connected",
+        "pass": true
+      },
+      {
+        "test": "WS getUsers",
+        "pass": true
+      },
+      {
+        "test": "WS getUser",
+        "pass": true
+      },
+      {
+        "test": "WS createUser",
+        "pass": true
+      },
+      {
+        "test": "WS updateUser",
+        "pass": true
+      },
+      {
+        "test": "WS deleteUser",
+        "pass": true
+      },
+      {
+        "test": "WS concurrent",
+        "pass": true
+      },
+      {
+        "test": "WS findUsers",
+        "pass": true
+      },
+      {
+        "test": "WS metrics",
+        "pass": true
+      },
+      {
+        "test": "WS multiple clients",
+        "pass": true
+      },
+      {
+        "test": "WS disconnected",
+        "pass": true
+      },
+      {
+        "test": "Error before connect",
+        "pass": true
+      },
+      {
+        "test": "QueryInterface without version",
+        "pass": true
+      }
+    ],
+    "totalTests": 26,
+    "passed": 26
+  }
+}

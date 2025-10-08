@@ -4,7 +4,7 @@
  */
 
 import type { ILogger } from './logger.js';
-import type { ITransportServer, ITransportConnection } from './transport/types.js';
+import type { ITransportServer, ITransportConnection } from './clients/types.js';
 import { Definition } from './definition.js';
 
 /**

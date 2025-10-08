@@ -105,8 +105,8 @@ describe('HttpRemotePeer Integration (No Mocks)', () => {
     clientNetron = new Netron(logger);
     await clientNetron.start();
 
-    // Create HTTP connection and peer
-    connection = new HttpConnection(baseUrl);
+    // Create HTTP connection and peer (disable auto-discovery for faster tests)
+    connection = new HttpConnection(baseUrl, { discovery: false });
     httpPeer = new HttpRemotePeer(connection, clientNetron, baseUrl);
     await httpPeer.init(true);
   });

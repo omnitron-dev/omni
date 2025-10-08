@@ -80,7 +80,7 @@ export class HttpTransportClient {
     }
 
     // Ultimate fallback - direct HTTP request
-    const message = createRequestMessage(service, method, args[0], {
+    const message = createRequestMessage(service, method, args, {
       context: options?.context,
       hints: options?.hints
     });

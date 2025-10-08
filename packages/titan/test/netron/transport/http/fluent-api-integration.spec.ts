@@ -311,16 +311,14 @@ describe('Fluent API Integration', () => {
     });
 
     it('should work with direct RPC calls', async () => {
-      // Mock getOrCreateHttpClient to return a mockable transport
-      const mockTransport = new HttpTransportClient('http://localhost:3000');
-      jest.spyOn(peer as any, 'getOrCreateHttpClient').mockReturnValue(mockTransport);
-
-      jest.spyOn(mockTransport, 'invoke').mockResolvedValue({ id: '123', name: 'John', email: 'john@example.com' });
+      // Mock peer.call() since HttpInterface now calls peer.call() directly
+      jest.spyOn(peer, 'call').mockResolvedValue({ id: '123', name: 'John', email: 'john@example.com' });
 
       const service = await peer.queryInterface<IUserService>('UserService@1.0.0');
       const user = await service.getUser('123');
 
       expect(user).toEqual({ id: '123', name: 'John', email: 'john@example.com' });
+      expect(peer.call).toHaveBeenCalled();
     });
   });
 });

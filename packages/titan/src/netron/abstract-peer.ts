@@ -249,11 +249,14 @@ export abstract class AbstractPeer implements IPeer {
    * @throws {Error} If interface is invalid or not found
    */
   async releaseInterface<T>(iInstance: T, released = new Set<string>()) {
-    if (!(iInstance instanceof Interface) || !iInstance.$def) {
+    // Duck-type check: any object with $def property is considered an interface
+    // This supports both Interface and HttpInterface instances
+    const hasDefProperty = iInstance && typeof iInstance === 'object' && '$def' in iInstance;
+    if (!hasDefProperty || !(iInstance as any).$def) {
       throw new Error('Invalid interface');
     }
 
-    const defId = iInstance.$def.id;
+    const defId = (iInstance as any).$def.id;
     if (released.has(defId)) return;
     released.add(defId);
 
@@ -267,14 +270,14 @@ export abstract class AbstractPeer implements IPeer {
       this.interfaces.delete(defId);
 
       for (const i of this.interfaces.values()) {
-        if (i.instance.$def?.parentId === defId) {
+        if ((i.instance as any).$def?.parentId === defId) {
           this.releaseInterface(i.instance);
         }
       }
 
       await this.releaseInterfaceInternal(iInstance);
-      iInstance.$def = undefined;
-      iInstance.$peer = undefined;
+      (iInstance as any).$def = undefined;
+      (iInstance as any).$peer = undefined;
     }
   }
 

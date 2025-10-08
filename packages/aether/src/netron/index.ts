@@ -17,9 +17,6 @@ export * from './abstract-peer.js';
 // Interfaces and decorators
 export * from './interface.js';
 
-// Peer classes (browser client only has remote peer)
-export * from './remote-peer.js';
-
 // Predicates - exported after all classes they depend on
 export * from './predicates.js';
 
@@ -36,7 +33,11 @@ export * from './packet/index.js';
 // Export decorators from decorators/core
 export { Service, Public, Method } from './decorators.js';
 
-// High-level client API
-export { NetronClient, type NetronClientOptions } from './client.js';
-export { HttpNetronClient, type HttpClientOptions } from './http-client.js';
+// Logger
 export { BrowserLogger, type ILogger } from './logger.js';
+
+// Browser client exports (main API)
+export { BrowserNetronClient, type BrowserNetronClientOptions } from './client.js';
+export { WebSocketRemotePeer as BrowserRemotePeer } from './clients/websocket/peer.js';
+export { BrowserWebSocketConnection, type WebSocketClientOptions } from './clients/websocket/client.js';
+export { HttpNetronClient, type HttpClientOptions } from './http-client.js';

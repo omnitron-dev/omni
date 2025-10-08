@@ -3,7 +3,7 @@ import type { ILogger } from '../modules/logger/logger.types.js';
  * Imports required dependencies for the RemotePeer class implementation.
  * @module remote-peer
  */
-import { EventEmitter } from 'events';
+import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { TimedMap } from '@omnitron-dev/common';
 
 import { Netron } from './netron.js';

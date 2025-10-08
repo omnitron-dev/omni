@@ -3,7 +3,7 @@
  * High-level HTTP client without WebSocket (REST API mode)
  */
 
-import { HttpTransportClient } from './transport/http/client.js';
+import { HttpTransportClient } from './clients/http/client.js';
 import { BrowserLogger, type ILogger } from './logger.js';
 import type { INetron } from './types.js';
 

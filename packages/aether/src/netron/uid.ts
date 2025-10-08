@@ -1,62 +1,62 @@
-/**
- * Unique identifier generation for Netron
- * Browser-compatible implementation using native crypto API
- */
+import { MAX_UID_VALUE } from './constants.js';
 
 /**
- * Uid class for generating sequential numeric IDs and random UUIDs
+ * A class that provides functionality for generating and managing unique identifiers (UIDs)
+ * within the Netron system. This implementation ensures thread-safe and sequential
+ * generation of unique identifiers while maintaining a strict upper bound.
  *
- * @example
- * ```typescript
- * const uid = new Uid();
- * const id1 = uid.next(); // 1
- * const id2 = uid.next(); // 2
- *
- * const uuid = Uid.randomUUID(); // 'a1b2c3d4-...'
- * ```
+ * @class Uid
+ * @description Core identifier generation system for packet tracking and correlation
+ * @property {number} value - Current UID value, stored as an unsigned 32-bit integer
  */
 export class Uid {
-  private id = 0;
+  /**
+   * Current UID value, stored as an unsigned 32-bit integer.
+   * The value is initialized using a zero-fill right shift to ensure proper
+   * unsigned integer representation.
+   *
+   * @private
+   * @type {number}
+   */
+  private value: number = 0 >>> 0;
 
   /**
-   * Get the next sequential ID
-   * @returns The next numeric ID
+   * Creates a new Uid instance with an optional initial value.
+   * The constructor ensures proper initialization by calling reset() with
+   * the provided initial value.
+   *
+   * @constructor
+   * @param {number} [initialValue=0] - The starting value for UID generation
+   */
+  constructor(initialValue: number = 0) {
+    this.reset(initialValue);
+  }
+
+  /**
+   * Generates the next unique identifier in sequence.
+   * This method implements a circular counter that wraps around to 1 when
+   * reaching MAX_UID_VALUE, ensuring continuous unique identifier generation
+   * within the defined bounds.
+   *
+   * @method next
+   * @returns {number} The next unique identifier in sequence
+   * @throws {Error} If the maximum UID value is exceeded
    */
   next(): number {
-    return ++this.id;
+    this.value = this.value === MAX_UID_VALUE ? 1 : this.value + 1;
+    return this.value;
   }
 
   /**
-   * Reset the UID counter to a specific value
-   * @param initialValue - The value to reset to (default: 0)
+   * Resets the UID generator to a specified initial value.
+   * The value is converted to an unsigned 32-bit integer using a zero-fill
+   * right shift operation to ensure proper numeric representation.
+   *
+   * @method reset
+   * @param {number} [initialValue=0] - The value to reset the generator to
+   * @throws {Error} If the initial value exceeds MAX_UID_VALUE
    */
-  reset(initialValue: number = 0): void {
-    this.id = initialValue;
-  }
-
-  /**
-   * Generate a random UUID using browser's native crypto API
-   * @returns A RFC4122 v4 compliant UUID string
-   */
-  static randomUUID(): string {
-    // Browser native crypto.randomUUID()
-    // Supported in all modern browsers (Chrome 92+, Firefox 95+, Safari 15.4+)
-    return crypto.randomUUID();
+  reset(initialValue: number = 0) {
+    this.value = initialValue >>> 0;
   }
 }
-
-/**
- * Generate a random UUID
- * Convenience function for generating UUIDs
- *
- * @returns A RFC4122 v4 compliant UUID string
- */
-export const randomUUID = (): string => crypto.randomUUID();
-
-/**
- * Generate a short random ID (first segment of UUID)
- * Useful for shorter IDs when full UUID is not needed
- *
- * @returns A short random ID string (8 characters)
- */
-export const generateShortId = (): string => crypto.randomUUID().split('-')[0]!;

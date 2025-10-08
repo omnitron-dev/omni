@@ -60,26 +60,15 @@ export default defineConfig({
     },
   ],
 
-  // Run Titan test server before tests
-  webServer: [
-    {
-      command: 'tsx e2e/fixtures/titan-app/index.ts',
-      url: 'http://localhost:3335/health',
-      reuseExistingServer: !process.env.CI,
-      timeout: 30000,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    },
-    {
-      command: 'npx http-server e2e/pages -p 3456 --cors',
-      url: 'http://localhost:3456',
-      reuseExistingServer: !process.env.CI,
-      timeout: 10000,
-    },
-  ],
+  // NOTE: Servers must be started manually before running tests:
+  // 1. Titan server: npx tsx packages/aether/e2e/fixtures/titan-app/index.ts (from repo root)
+  // 2. HTTP server: npx http-server packages/aether/e2e/pages -p 3456 --cors (from repo root)
+
+  // Explicitly disable webServer (override parent config)
+  webServer: undefined,
 
   // Test timeout
-  timeout: 60000,
+  timeout: 30000,
 
   // Global timeout
   globalTimeout: 600000,

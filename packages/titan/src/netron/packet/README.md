@@ -9,50 +9,80 @@
   - [Payload Format](#payload-format)
 - [Packet Types](#packet-types)
 - [Serialization](#serialization)
-  - [MessagePack Protocol](#messagepack-protocol)
+  - [Custom MessagePack Implementation](#custom-messagepack-implementation)
   - [Type Mapping](#type-mapping)
   - [Custom Types](#custom-types)
 - [Streaming Protocol](#streaming-protocol)
-  - [Stream Initialization](#stream-initialization)
-  - [Data Transmission](#data-transmission)
-  - [Stream Termination](#stream-termination)
-- [Error Handling](#error-handling)
-- [Performance Optimizations](#performance-optimizations)
-- [Examples](#examples)
-- [Protocol Versioning](#protocol-versioning)
-- [Security Considerations](#security-considerations)
+- [API Reference](#api-reference)
+- [Current Limitations](#current-limitations)
+- [Implementation Files](#implementation-files)
 
 ## Overview
 
-The Netron Packet Protocol is a binary protocol designed for efficient RPC communication. It uses MessagePack for serialization and implements a compact header structure for minimal overhead while maintaining flexibility and extensibility.
+The Netron Packet Protocol is a binary protocol designed for efficient RPC communication over binary transports (WebSocket, TCP, Unix sockets). It uses a custom MessagePack implementation for serialization and implements a compact header structure for minimal overhead.
 
 ### Design Goals
 
 - **Efficiency**: Minimal overhead with binary encoding
 - **Type Safety**: Strong typing with serialization validation
 - **Streaming Support**: Native support for async iterables
-- **Error Recovery**: Built-in error handling and recovery
-- **Extensibility**: Support for custom types and future extensions
+- **Transport Agnostic**: Works with WebSocket, TCP, and Unix sockets
+- **Extensibility**: Support for custom types through MessagePack extensions
+
+### Important Notes
+
+⚠️ **HTTP Transport Exception**: The HTTP transport (`packages/titan/src/netron/transport/http`) uses native JSON/HTTP messages instead of binary packets for better REST compatibility and debugging. This packet protocol is **only used for binary transports**.
 
 ## Packet Structure
 
 ### Binary Format
 
-Each packet consists of a header and optional payload:
+Each packet consists of a compact header and serialized payload:
 
 ```
-┌─────────────────────────────────────────────┐
-│                   HEADER                    │
-├─────────┬────────┬──────────┬───────────────┤
-│  FLAGS  │   ID   │  LENGTH  │   CHECKSUM    │
-│ (1 byte)│(4 bytes)│(4 bytes) │   (4 bytes)   │
-├─────────┴────────┴──────────┴───────────────┤
-│                   PAYLOAD                   │
-│              (Variable Length)               │
-└─────────────────────────────────────────────┘
+┌─────────────────────────────────────────┐
+│              PACKET HEADER              │
+├──────────────┬──────────────────────────┤
+│      ID      │         FLAGS            │
+│   (4 bytes)  │        (1 byte)          │
+├──────────────┴──────────────────────────┤
+│              SERIALIZED DATA            │
+│            (Variable Length)            │
+├─────────────────────────────────────────┤
+│         STREAM METADATA (Optional)      │
+│    Stream ID (4 bytes)                  │
+│    Stream Index (4 bytes)               │
+└─────────────────────────────────────────┘
+```
+
+**Actual Implementation** (`index.ts:80-98`):
+```typescript
+export const encodePacket = (packet: Packet) => {
+  const buf = new SmartBuffer(128);
+
+  buf.writeUInt32BE(packet.id);           // 4 bytes: Packet ID
+  buf.writeUInt8(packet.flags);           // 1 byte: Control flags
+  serializer.encode(packet.data, buf);    // Variable: Serialized payload
+
+  if (packet.isStreamChunk()) {
+    buf.writeUInt32BE(packet.streamId!);  // 4 bytes: Stream ID
+    buf.writeUInt32BE(packet.streamIndex!); // 4 bytes: Stream index
+  }
+
+  return buf.toBuffer();
+};
 ```
 
 ### Header Fields
+
+#### ID (32 bits, big-endian)
+
+Unique packet identifier for correlation:
+
+- **Request packets**: Generate using `Packet.nextId()`
+- **Response packets**: Echo request ID
+- **Stream packets**: Share common packet ID within stream
+- Range: 0 to 4,294,967,295
 
 #### FLAGS (8 bits)
 
@@ -61,68 +91,51 @@ The flags byte contains control information:
 ```
 Bit 7   6   5   4   3   2   1   0
 ┌───┬───┬───┬───┬───┬───┬───┬───┐
-│ERR│IMP│LIV│EOS│  TYPE (4 bits) │
+│ERR│IMP│LIV│EOS│ TYPE (4 bits) │
 └───┴───┴───┴───┴───┴───┴───┴───┘
-
-ERR (bit 7): Error flag
-IMP (bit 6): Impulse (0=Response, 1=Request)
-LIV (bit 5): Live stream flag
-EOS (bit 4): End of stream flag
-TYPE (bits 0-3): Packet type
 ```
 
-**Detailed Flag Descriptions:**
+**Detailed Flag Descriptions** (`packet.ts:86-91`):
 
-- **ERR (Error Flag)**: Indicates packet contains error information
-- **IMP (Impulse)**: Distinguishes requests (1) from responses (0)
-- **LIV (Live Stream)**: Indicates ongoing streaming data
-- **EOS (End of Stream)**: Marks the final packet in a stream
-- **TYPE**: 4-bit field for packet type (0x00-0x0F)
+- **TYPE (bits 0-3)**: Packet type (0x00-0x0F)
+- **EOS (bit 4)**: End of stream flag
+- **LIV (bit 5)**: Live stream indicator
+- **IMP (bit 6)**: Impulse (0=Response, 1=Request)
+- **ERR (bit 7)**: Error flag
 
-#### ID (32 bits)
-
-Unique packet identifier for correlation:
-
-- **Request packets**: Generate new ID
-- **Response packets**: Echo request ID
-- **Stream packets**: Share common stream ID
-
-#### LENGTH (32 bits)
-
-Payload size in bytes (0 to 4,294,967,295)
-
-#### CHECKSUM (32 bits)
-
-CRC32 checksum of payload for integrity verification
+**Bit Manipulation** (`packet.ts:16-84`):
+```typescript
+const IMPULSE_OFFSET = 6;
+const ERROR_OFFSET = 7;
+const TYPE_OFFSET = 0;
+const TYPE_SIZE = 4;
+const EOS_OFFSET = 4;
+const LIVE_OFFSET = 5;
+```
 
 ### Payload Format
 
-Payloads are MessagePack-encoded arrays with type-specific structures:
-
-#### Basic RPC Structure
+Payloads are MessagePack-encoded and can be of any type. The structure depends on the packet type and application logic. Common patterns:
 
 ```typescript
-// Request payload
-[
-  service: string,    // Service identifier
-  method: string,     // Method name
-  args: any[]        // Method arguments
-]
+// RPC Call payload
+['service@1.0.0', 'methodName', [arg1, arg2, ...]]
 
-// Response payload
-[
-  result: any,       // Method result
-  error?: Error      // Optional error
-]
+// Stream chunk payload
+{ streamId: 123, data: ... }
+
+// Error payload
+{ code: 'ERROR_CODE', message: 'Error message', stack: '...' }
 ```
 
 ## Packet Types
 
 ### Core Types
 
+**From `types.ts:39-46`:**
+
 ```typescript
-// Type definitions from types.ts
-export const TYPE_PING = 0x00;         // Health check
+export const TYPE_PING = 0x00;         // Health check (DEFINED BUT NOT USED)
 export const TYPE_GET = 0x01;          // Property getter
 export const TYPE_SET = 0x02;          // Property setter
 export const TYPE_CALL = 0x03;         // Method invocation
@@ -134,831 +147,450 @@ export const TYPE_STREAM_CLOSE = 0x07; // Stream closure
 
 ### Type Details
 
-#### TYPE_PING (0x00)
-
-Health check and latency measurement:
-
-```typescript
-// Request
-{
-  impulse: 1,
-  type: TYPE_PING,
-  payload: [timestamp: number]
-}
-
-// Response
-{
-  impulse: 0,
-  type: TYPE_PING,
-  payload: [timestamp: number, serverTime: number]
-}
-```
-
 #### TYPE_GET (0x01)
 
-Property retrieval:
-
-```typescript
-// Request
-{
-  impulse: 1,
-  type: TYPE_GET,
-  payload: [
-    service: string,
-    property: string
-  ]
-}
-
-// Response
-{
-  impulse: 0,
-  type: TYPE_GET,
-  payload: [value: any]
-}
-```
+Property retrieval - currently defined but usage depends on RemotePeer implementation.
 
 #### TYPE_SET (0x02)
 
-Property modification:
-
-```typescript
-// Request
-{
-  impulse: 1,
-  type: TYPE_SET,
-  payload: [
-    service: string,
-    property: string,
-    value: any
-  ]
-}
-
-// Response
-{
-  impulse: 0,
-  type: TYPE_SET,
-  payload: [success: boolean]
-}
-```
+Property modification - currently defined but usage depends on RemotePeer implementation.
 
 #### TYPE_CALL (0x03)
 
-Remote method invocation:
+Remote method invocation - primary packet type for RPC calls.
 
+**Usage** (`remote-peer.ts:480`):
 ```typescript
-// Request
-{
-  impulse: 1,
-  type: TYPE_CALL,
-  payload: [
-    service: string,
-    method: string,
-    args: any[]
-  ]
-}
-
-// Response
-{
-  impulse: 0,
-  type: TYPE_CALL,
-  payload: [result: any]
-}
+const packet = createPacket(Packet.nextId(), 1, TYPE_CALL, data);
 ```
 
 #### TYPE_TASK (0x04)
 
-Task execution:
-
-```typescript
-// Request
-{
-  impulse: 1,
-  type: TYPE_TASK,
-  payload: [
-    taskName: string,
-    params: any
-  ]
-}
-
-// Response
-{
-  impulse: 0,
-  type: TYPE_TASK,
-  payload: [
-    taskId: string,
-    status: 'queued' | 'running' | 'completed' | 'failed'
-  ]
-}
-```
+Task execution - for async task management.
 
 #### TYPE_STREAM (0x05)
 
-Streaming data chunk:
+Streaming data chunk with sequence tracking.
 
+**Usage** (`index.ts:47-61`):
 ```typescript
-{
-  type: TYPE_STREAM,
-  flags: {
-    live: boolean,     // Ongoing stream
-    eos: boolean       // End of stream
-  },
-  payload: [
-    streamId: string,
-    sequenceNumber: number,
-    data: any
-  ]
-}
+export const createStreamPacket = (
+  id: number,
+  streamId: number,
+  streamIndex: number,
+  isLast: boolean,
+  isLive: boolean,
+  data: any
+) => {
+  const packet = new Packet(id);
+  packet.setImpulse(1);
+  packet.setType(TYPE_STREAM);
+  packet.setStreamInfo(streamId, streamIndex, isLast, isLive);
+  packet.data = data;
+  return packet;
+};
 ```
 
 #### TYPE_STREAM_ERROR (0x06)
 
-Stream error notification:
+Stream error notification - sent when stream encounters an error.
 
+**Usage** (`writable-stream.ts:132`):
 ```typescript
-{
-  type: TYPE_STREAM_ERROR,
-  payload: [
-    streamId: string,
-    error: {
-      code: string,
-      message: string,
-      details?: any
-    }
-  ]
-}
+createPacket(Packet.nextId(), 1, TYPE_STREAM_ERROR, {
+  streamId: this.id,
+  message: err.message,
+  stack: err.stack
+})
 ```
 
 #### TYPE_STREAM_CLOSE (0x07)
 
-Stream closure notification:
+Stream closure notification - explicit stream termination.
 
+**Usage** (`writable-stream.ts:213`):
 ```typescript
-{
-  type: TYPE_STREAM_CLOSE,
-  payload: [
-    streamId: string,
-    reason?: string
-  ]
-}
+createPacket(Packet.nextId(), 1, TYPE_STREAM_CLOSE, {
+  streamId: this.id,
+  reason: closeReason,
+})
 ```
 
 ## Serialization
 
-### MessagePack Protocol
+### Custom MessagePack Implementation
 
-Netron uses MessagePack for efficient binary serialization:
+Netron uses a **custom MessagePack implementation** from `@omnitron-dev/msgpack`, not the standard `@msgpack/msgpack` library.
 
+**From `serializer.ts:1-15`:**
 ```typescript
-import * as msgpack from '@msgpack/msgpack';
+import { SmartBuffer } from '@omnitron-dev/msgpack/smart-buffer';
+import { Serializer, registerCommonTypesFor } from '@omnitron-dev/msgpack';
 
-// Serialization
-const encoded = msgpack.encode(data);
-
-// Deserialization
-const decoded = msgpack.decode(buffer);
+export const serializer = new Serializer();
+registerCommonTypesFor(serializer);
 ```
 
 ### Type Mapping
 
-#### JavaScript to MessagePack
+The custom serializer handles standard JavaScript types with MessagePack encoding:
 
-| JavaScript Type | MessagePack Type | Size |
-|----------------|------------------|------|
+| JavaScript Type | MessagePack Type | Notes |
+|----------------|------------------|-------|
 | null | nil | 1 byte |
 | boolean | bool | 1 byte |
 | number (int) | int8-64 | 1-9 bytes |
-| number (float) | float32/64 | 5/9 bytes |
+| number (float) | float64 | 9 bytes |
 | string | str | 1-5 + length |
 | Buffer | bin | 1-5 + length |
 | Array | array | 1-5 + items |
 | Object | map | 1-5 + pairs |
-| Date | ext (type 0) | Variable |
-| RegExp | ext (type 1) | Variable |
-| Reference | ext (type 2) | Variable |
-| Definition | ext (type 3) | Variable |
-| StreamRef | ext (type 4) | Variable |
 
 ### Custom Types
 
-#### Service Reference
+#### Definition (Extension Type 109)
 
-Serialized as MessagePack extension type 2:
+Service definition metadata.
 
+**From `serializer.ts:40-74`:**
 ```typescript
-class Reference {
-  id: string;
-  meta: {
-    methods: Record<string, any>;
-    properties: Record<string, any>;
-  };
-}
-
-// Serialization
-const ext = new ExtensionCodec();
-ext.register({
-  type: 2,
-  encode: (ref: Reference) => {
-    return msgpack.encode([ref.id, ref.meta]);
+serializer.register(
+  109,
+  Definition,
+  (obj: Definition, buf: SmartBuffer) => {
+    serializer.encode(obj.id, buf);
+    serializer.encode(obj.parentId, buf);
+    serializer.encode(obj.peerId, buf);
+    serializer.encode(obj.meta, buf);
   },
-  decode: (data: Uint8Array) => {
-    const [id, meta] = msgpack.decode(data);
-    return new Reference(id, meta);
+  (buf: SmartBuffer) => {
+    const id = serializer.decode(buf);
+    const parentId = serializer.decode(buf);
+    const peerId = serializer.decode(buf);
+    const meta = serializer.decode(buf);
+    const def = new Definition(id, peerId, meta);
+    def.parentId = parentId;
+    return def;
   }
-});
+);
 ```
 
-#### Service Definition
+#### Reference (Extension Type 108)
 
-Serialized as MessagePack extension type 3:
+Service reference for remote service access.
 
+**From `serializer.ts:85-107`:**
 ```typescript
-class Definition {
-  id: string;
-  meta: ServiceMetadata;
-}
-
-// Extension registration
-ext.register({
-  type: 3,
-  encode: (def: Definition) => {
-    return msgpack.encode([def.id, def.meta]);
+serializer.register(
+  108,
+  Reference,
+  (obj: any, buf: SmartBuffer) => {
+    serializer.encode(obj.defId, buf);
   },
-  decode: (data: Uint8Array) => {
-    const [id, meta] = msgpack.decode(data);
-    return new Definition(id, meta);
-  }
-});
+  (buf: SmartBuffer) => new Reference(serializer.decode(buf))
+);
 ```
 
-#### Stream Reference
+#### StreamReference (Extension Type 107)
 
-Serialized as MessagePack extension type 4:
+Stream connection reference with lazy registration to avoid circular dependencies.
 
+**From `serializer.ts:110-172`:**
 ```typescript
-class StreamReference {
-  streamId: string;
-  metadata: Record<string, any>;
-}
-
-// Extension registration
-ext.register({
-  type: 4,
-  encode: (stream: StreamReference) => {
-    return msgpack.encode([stream.streamId, stream.metadata]);
+// Lazy registration via ensureStreamReferenceRegistered()
+serializer.register(
+  107,
+  StreamReferenceClass,
+  (obj: any, buf: SmartBuffer) => {
+    serializer.encode(obj.streamId.toString(), buf);
+    buf.writeUInt8(obj.type === 'writable' ? 1 : 0);
+    buf.writeUInt8(obj.isLive ? 1 : 0);
+    serializer.encode(obj.peerId, buf);
   },
-  decode: (data: Uint8Array) => {
-    const [streamId, metadata] = msgpack.decode(data);
-    return new StreamReference(streamId, metadata);
+  (buf: SmartBuffer) => {
+    const streamId = Number(serializer.decode(buf));
+    const streamType = buf.readUInt8() === 1 ? 'writable' : 'readable';
+    const isLive = buf.readUInt8() === 1;
+    const peerId = serializer.decode(buf);
+    return new StreamReferenceClass(streamId, streamType, isLive, peerId);
   }
-});
+);
 ```
 
 ## Streaming Protocol
 
-### Stream Initialization
+### Stream Management
 
-Starting a new stream:
+Streams are managed through packet sequences with metadata:
 
+**Stream Initialization** (`remote-peer.ts`):
+1. Send TYPE_CALL packet with method invocation
+2. Receive StreamReference in response
+3. Start receiving TYPE_STREAM packets with same streamId
+
+**Stream Data Flow**:
 ```typescript
-// 1. Send stream initialization
-const initPacket = new Packet();
-initPacket.setType(TYPE_CALL);
-initPacket.setImpulse(1);
-initPacket.setData([
-  'service',
-  'streamMethod',
-  [args]
-]);
-
-// 2. Receive stream reference
-const response = await send(initPacket);
-const streamRef = response.getData()[0]; // StreamReference
-
-// 3. Start receiving stream packets
-```
-
-### Data Transmission
-
-Stream data flow:
-
-```typescript
-// Stream packet structure
-interface StreamPacket {
-  type: TYPE_STREAM;
+// Each stream packet contains:
+{
+  id: packetId,           // Unique packet ID
+  type: TYPE_STREAM,      // 0x05
   flags: {
-    live: true,    // Stream is active
-    eos: false     // Not end of stream
-  };
-  payload: [
-    streamId: string,
-    sequence: number,
-    chunk: any
-  ];
-}
-
-// Sending stream data
-async function* sendStream(data: AsyncIterable<any>) {
-  let sequence = 0;
-  for await (const chunk of data) {
-    const packet = new Packet();
-    packet.setType(TYPE_STREAM);
-    packet.setLive(true);
-    packet.setData([streamId, sequence++, chunk]);
-    yield packet;
-  }
-
-  // Send end-of-stream
-  const endPacket = new Packet();
-  endPacket.setType(TYPE_STREAM);
-  endPacket.setEOS(true);
-  endPacket.setData([streamId, sequence, null]);
-  yield endPacket;
+    live: boolean,        // Bit 5
+    eos: boolean          // Bit 4 (end of stream)
+  },
+  streamId: number,       // Unique stream identifier
+  streamIndex: number,    // Sequential chunk number
+  data: any              // Actual chunk data
 }
 ```
 
-### Stream Termination
+**Stream Termination**:
 
-Proper stream cleanup:
-
+Normal completion:
 ```typescript
-// Normal termination
-const closePacket = new Packet();
-closePacket.setType(TYPE_STREAM_CLOSE);
-closePacket.setData([streamId, 'completed']);
-
-// Error termination
-const errorPacket = new Packet();
-errorPacket.setType(TYPE_STREAM_ERROR);
-errorPacket.setData([
+createPacket(id, 1, TYPE_STREAM_CLOSE, {
   streamId,
-  {
-    code: 'STREAM_ERROR',
-    message: 'Unexpected error',
-    details: error
-  }
-]);
+  reason: 'completed'
+})
 ```
 
-### Backpressure Handling
+Error termination:
+```typescript
+createPacket(id, 1, TYPE_STREAM_ERROR, {
+  streamId,
+  message: errorMessage,
+  stack: errorStack
+})
+```
 
-Managing stream flow control:
+## API Reference
+
+### Factory Functions
+
+#### `createPacket(id, impulse, type, data)`
+
+Creates a standard packet.
+
+**Parameters**:
+- `id: number` - Unique packet identifier
+- `impulse: PacketImpulse` - 0 (response) or 1 (request)
+- `type: PacketType` - Packet type constant
+- `data: any` - Payload data
+
+**Returns**: `Packet`
+
+**Example**:
+```typescript
+const packet = createPacket(
+  Packet.nextId(),
+  1,
+  TYPE_CALL,
+  ['service@1.0.0', 'method', [arg1, arg2]]
+);
+```
+
+#### `createStreamPacket(id, streamId, streamIndex, isLast, isLive, data)`
+
+Creates a stream packet with metadata.
+
+**Parameters**:
+- `id: number` - Unique packet identifier
+- `streamId: number` - Stream identifier
+- `streamIndex: number` - Chunk sequence number
+- `isLast: boolean` - Is this the last chunk
+- `isLive: boolean` - Is this a live stream
+- `data: any` - Chunk data
+
+**Returns**: `Packet`
+
+#### `encodePacket(packet)`
+
+Encodes packet to binary buffer for transmission.
+
+**Parameters**:
+- `packet: Packet` - Packet to encode
+
+**Returns**: `Buffer`
+
+#### `decodePacket(buffer)`
+
+Decodes binary buffer to packet.
+
+**Parameters**:
+- `buffer: Buffer | ArrayBuffer` - Binary data to decode
+
+**Returns**: `Packet`
+
+**Throws**: `Error` if buffer is incomplete or invalid
+
+### Packet Class
+
+#### Constructor
 
 ```typescript
-class StreamController {
-  private buffer: any[] = [];
-  private maxBuffer = 100;
-  private paused = false;
-
-  async write(chunk: any): Promise<void> {
-    if (this.buffer.length >= this.maxBuffer) {
-      this.paused = true;
-      await this.drain();
-    }
-    this.buffer.push(chunk);
-  }
-
-  async drain(): Promise<void> {
-    while (this.buffer.length > this.maxBuffer / 2) {
-      await new Promise(resolve => setTimeout(resolve, 10));
-    }
-    this.paused = false;
-  }
-}
+constructor(id: number)
 ```
 
-## Error Handling
-
-### Error Packet Structure
+#### Properties
 
 ```typescript
-interface ErrorPacket {
-  flags: {
-    error: true
-  };
-  payload: {
-    code: string;
-    message: string;
-    stack?: string;
-    details?: any;
-  };
-}
+public flags: number          // Control flags (uint8)
+public data: any             // Payload data
+public streamId?: number     // Stream ID (if stream packet)
+public streamIndex?: number  // Stream chunk index (if stream packet)
+public id: number            // Packet ID (readonly via constructor)
 ```
 
-### Error Codes
+#### Methods
 
-Standard error codes:
-
+**Type Management**:
 ```typescript
-enum ErrorCode {
-  // Protocol errors
-  INVALID_PACKET = 'E001',
-  CHECKSUM_MISMATCH = 'E002',
-  UNSUPPORTED_TYPE = 'E003',
-  SERIALIZATION_ERROR = 'E004',
-
-  // Service errors
-  SERVICE_NOT_FOUND = 'E101',
-  METHOD_NOT_FOUND = 'E102',
-  INVALID_ARGUMENTS = 'E103',
-  EXECUTION_ERROR = 'E104',
-
-  // Stream errors
-  STREAM_NOT_FOUND = 'E201',
-  STREAM_CLOSED = 'E202',
-  STREAM_ERROR = 'E203',
-  STREAM_TIMEOUT = 'E204',
-
-  // Connection errors
-  CONNECTION_LOST = 'E301',
-  TIMEOUT = 'E302',
-  RATE_LIMITED = 'E303'
-}
+setType(type: PacketType): void
+getType(): PacketType
 ```
 
-### Error Recovery
-
-Implementing error recovery:
-
+**Impulse Management**:
 ```typescript
-class PacketHandler {
-  async handlePacket(packet: Packet): Promise<void> {
-    try {
-      // Verify checksum
-      if (!packet.verifyChecksum()) {
-        throw new Error(ErrorCode.CHECKSUM_MISMATCH);
-      }
-
-      // Process packet
-      await this.process(packet);
-    } catch (error) {
-      // Send error response
-      const errorPacket = new Packet();
-      errorPacket.setError(true);
-      errorPacket.setImpulse(0);
-      errorPacket.setId(packet.getId());
-      errorPacket.setData({
-        code: error.code || ErrorCode.EXECUTION_ERROR,
-        message: error.message,
-        stack: error.stack
-      });
-
-      await this.send(errorPacket);
-    }
-  }
-}
+setImpulse(val: PacketImpulse): void  // 0 or 1
+getImpulse(): PacketImpulse
 ```
 
-## Performance Optimizations
-
-### Packet Pooling
-
-Reuse packet instances:
-
+**Error Flag**:
 ```typescript
-class PacketPool {
-  private pool: Packet[] = [];
-  private maxSize = 100;
-
-  acquire(): Packet {
-    if (this.pool.length > 0) {
-      const packet = this.pool.pop()!;
-      packet.reset();
-      return packet;
-    }
-    return new Packet();
-  }
-
-  release(packet: Packet): void {
-    if (this.pool.length < this.maxSize) {
-      packet.reset();
-      this.pool.push(packet);
-    }
-  }
-}
+setError(val: 0 | 1): void
+getError(): number
 ```
 
-### Buffer Management
-
-Efficient buffer operations:
-
+**Stream Information**:
 ```typescript
-class BufferManager {
-  private buffers: ArrayBuffer[] = [];
-  private currentBuffer?: ArrayBuffer;
-  private offset = 0;
-
-  write(data: Uint8Array): void {
-    if (!this.currentBuffer || this.offset + data.length > this.currentBuffer.byteLength) {
-      this.currentBuffer = new ArrayBuffer(65536); // 64KB
-      this.buffers.push(this.currentBuffer);
-      this.offset = 0;
-    }
-
-    new Uint8Array(this.currentBuffer, this.offset).set(data);
-    this.offset += data.length;
-  }
-
-  getBuffer(): ArrayBuffer {
-    // Combine all buffers
-    const totalSize = this.buffers.reduce((sum, buf) => sum + buf.byteLength, 0);
-    const result = new ArrayBuffer(totalSize);
-    let offset = 0;
-
-    for (const buffer of this.buffers) {
-      new Uint8Array(result, offset).set(new Uint8Array(buffer));
-      offset += buffer.byteLength;
-    }
-
-    return result;
-  }
-}
+setStreamInfo(streamId: number, streamIndex: number, isLast: boolean, isLive: boolean): void
+isStreamChunk(): boolean
+isLastChunk(): boolean
+isLive(): boolean
 ```
 
-### Compression
-
-Optional payload compression:
-
+**Static Methods**:
 ```typescript
-import { compress, decompress } from 'lz4';
-
-class CompressedPacket extends Packet {
-  setCompressedData(data: any): void {
-    const serialized = msgpack.encode(data);
-
-    if (serialized.length > 1024) { // Compress if > 1KB
-      const compressed = compress(serialized);
-      this.setData(compressed);
-      this.setCompressed(true);
-    } else {
-      this.setData(serialized);
-      this.setCompressed(false);
-    }
-  }
-
-  getCompressedData(): any {
-    const data = this.getData();
-
-    if (this.isCompressed()) {
-      const decompressed = decompress(data);
-      return msgpack.decode(decompressed);
-    }
-
-    return msgpack.decode(data);
-  }
-}
+static nextId(): number  // Generate unique ID
+static resetId(): void   // Reset ID generator (use with caution)
 ```
 
-## Examples
+## Current Limitations
 
-### Basic RPC Call
+### ❌ Missing Features Described in Old Documentation
 
-```typescript
-// Client side
-const packet = new Packet();
-packet.setType(TYPE_CALL);
-packet.setImpulse(1);
-packet.setId(generateId());
-packet.setData([
-  'calculator@1.0.0',
-  'add',
-  [10, 20]
-]);
+The following features are **documented but not implemented**:
 
-const response = await connection.sendPacket(packet);
-const result = response.getData()[0]; // 30
-```
+1. **No LENGTH field** in packet header
+2. **No CHECKSUM field** or validation
+3. **No TYPE_PING usage** - defined but never used
+4. **No StreamType enum usage** - defined but unused
+5. **No packet pooling** (PacketPool)
+6. **No buffer management** (BufferManager)
+7. **No compression support** (CompressedPacket)
+8. **No packet validation** (PacketValidator)
+9. **No rate limiting** (PacketRateLimiter)
+10. **No input sanitization** (PacketSanitizer)
+11. **No protocol versioning** or handshake
+12. **No backpressure handling** (StreamController)
 
-### Streaming Example
+### ⚠️ Known Issues
 
-```typescript
-// Server side - streaming method
-async *streamData(count: number): AsyncGenerator<number> {
-  for (let i = 0; i < count; i++) {
-    yield i;
-    await delay(100);
-  }
-}
+1. **HTTP Transport Incompatibility**: HTTP transport uses native JSON messages, not packets
+2. **Binary Detection Heuristic**: `base-transport.ts:78-83` uses simple heuristics to detect text vs binary
+3. **No Packet Size Limits**: Unlike documented, there's no MAX_PACKET_SIZE validation
+4. **ID Collision Risk**: `Packet.resetId()` can cause ID collisions if packets are in flight
+5. **StreamReference Circular Dependency**: Requires lazy registration to avoid import cycles
 
-// Client side - consuming stream
-const streamRef = await service.streamData(10);
-for await (const value of streamRef) {
-  console.log('Received:', value);
-}
-```
+### ✅ Working Features
 
-### Error Handling Example
-
-```typescript
-try {
-  const packet = new Packet();
-  packet.setType(TYPE_CALL);
-  packet.setData(['service', 'method', []]);
-
-  const response = await send(packet);
-
-  if (response.hasError()) {
-    const error = response.getData();
-    throw new Error(`${error.code}: ${error.message}`);
-  }
-
-  return response.getData()[0];
-} catch (error) {
-  console.error('RPC failed:', error);
-}
-```
-
-## Protocol Versioning
-
-### Version Negotiation
-
-Protocol version is negotiated during connection:
-
-```typescript
-// Initial handshake
-{
-  type: 'handshake',
-  version: '1.0.0',
-  capabilities: ['compression', 'streaming', 'binary']
-}
-
-// Version response
-{
-  type: 'handshake_ack',
-  version: '1.0.0',  // Agreed version
-  selectedCapabilities: ['streaming', 'binary']
-}
-```
-
-### Backward Compatibility
-
-Maintaining compatibility:
-
-```typescript
-class ProtocolHandler {
-  private handlers = new Map<string, PacketHandler>();
-
-  constructor() {
-    this.handlers.set('1.0.0', new HandlerV1());
-    this.handlers.set('1.1.0', new HandlerV1_1());
-    this.handlers.set('2.0.0', new HandlerV2());
-  }
-
-  handle(packet: Packet, version: string): void {
-    const handler = this.handlers.get(version) || this.handlers.get('1.0.0');
-    handler.handle(packet);
-  }
-}
-```
-
-## Security Considerations
-
-### Packet Validation
-
-Always validate incoming packets:
-
-```typescript
-class PacketValidator {
-  validate(packet: Packet): void {
-    // Check packet size
-    if (packet.size > MAX_PACKET_SIZE) {
-      throw new Error('Packet too large');
-    }
-
-    // Verify checksum
-    if (!packet.verifyChecksum()) {
-      throw new Error('Invalid checksum');
-    }
-
-    // Validate type
-    if (!isValidType(packet.getType())) {
-      throw new Error('Invalid packet type');
-    }
-
-    // Check payload structure
-    this.validatePayload(packet);
-  }
-
-  private validatePayload(packet: Packet): void {
-    const data = packet.getData();
-
-    // Type-specific validation
-    switch (packet.getType()) {
-      case TYPE_CALL:
-        if (!Array.isArray(data) || data.length !== 3) {
-          throw new Error('Invalid CALL payload');
-        }
-        break;
-      // ... other types
-    }
-  }
-}
-```
-
-### Rate Limiting
-
-Prevent packet flooding:
-
-```typescript
-class PacketRateLimiter {
-  private counts = new Map<string, number>();
-  private resetTime = Date.now() + 60000;
-
-  check(source: string): boolean {
-    if (Date.now() > this.resetTime) {
-      this.counts.clear();
-      this.resetTime = Date.now() + 60000;
-    }
-
-    const count = this.counts.get(source) || 0;
-    if (count > 1000) { // 1000 packets per minute
-      return false;
-    }
-
-    this.counts.set(source, count + 1);
-    return true;
-  }
-}
-```
-
-### Input Sanitization
-
-Sanitize packet data:
-
-```typescript
-class PacketSanitizer {
-  sanitize(data: any): any {
-    if (typeof data === 'string') {
-      // Remove control characters
-      return data.replace(/[\x00-\x1F\x7F]/g, '');
-    }
-
-    if (Array.isArray(data)) {
-      return data.map(item => this.sanitize(item));
-    }
-
-    if (data && typeof data === 'object') {
-      const sanitized: any = {};
-      for (const [key, value] of Object.entries(data)) {
-        sanitized[this.sanitize(key)] = this.sanitize(value);
-      }
-      return sanitized;
-    }
-
-    return data;
-  }
-}
-```
+1. **Binary packet encoding/decoding**
+2. **Stream support** with sequence tracking
+3. **Custom type serialization** (Definition, Reference, StreamReference)
+4. **Transport abstraction** (WebSocket, TCP, Unix sockets)
+5. **Error propagation** via TYPE_STREAM_ERROR
+6. **Graceful stream closure** via TYPE_STREAM_CLOSE
 
 ## Implementation Files
 
 ### Core Files
 
-- `packet.ts` - Main Packet class implementation
-- `types.ts` - Type definitions and constants
-- `serializer.ts` - MessagePack serialization logic
-- `index.ts` - Module exports
+- **`packet.ts`** - Packet class with bit manipulation
+- **`types.ts`** - Type definitions and constants
+- **`serializer.ts`** - MessagePack serialization with custom types
+- **`index.ts`** - Public API and encode/decode functions
 
-### Class Hierarchy
+### Usage Examples
 
-```mermaid
-classDiagram
-    class Packet {
-        -flags: number
-        -id: number
-        -data: any
-        +setType(type: PacketType)
-        +getType(): PacketType
-        +setImpulse(impulse: PacketImpulse)
-        +getImpulse(): PacketImpulse
-        +setError(error: boolean)
-        +hasError(): boolean
-        +setData(data: any)
-        +getData(): any
-        +serialize(): Buffer
-        +deserialize(buffer: Buffer)
-    }
-
-    class Serializer {
-        -extensionCodec: ExtensionCodec
-        +encode(data: any): Uint8Array
-        +decode(buffer: Uint8Array): any
-        +registerExtension(type: number, handler: ExtHandler)
-    }
-
-    class PacketPool {
-        -pool: Packet[]
-        -maxSize: number
-        +acquire(): Packet
-        +release(packet: Packet)
-    }
-
-    Packet --> Serializer: uses
-    PacketPool --> Packet: manages
+**Binary Transport** (`base-transport.ts:62-66`):
+```typescript
+async sendPacket(packet: Packet): Promise<void> {
+  const encoded = encodePacket(packet);
+  await this.send(encoded);
+  this.metrics.packetsSent++;
+}
 ```
+
+**Packet Decoding** (`base-transport.ts:89-93`):
+```typescript
+try {
+  const packet = decodePacket(data);
+  this.metrics.packetsReceived++;
+  this.emit('packet', packet);
+} catch (error) {
+  this.emit('data', data); // Fallback for non-packet data
+}
+```
+
+**Remote Procedure Call** (`remote-peer.ts:480`):
+```typescript
+const packet = createPacket(Packet.nextId(), 1, type, data);
+this.responseHandlers.set(packet.id, {
+  successHandler,
+  errorHandler
+});
+await this.sendPacket(packet);
+```
+
+**Stream Error Handling** (`writable-stream.ts:132-135`):
+```typescript
+this.peer.sendPacket(
+  createPacket(Packet.nextId(), 1, TYPE_STREAM_ERROR, {
+    streamId: this.id,
+    message: err.message,
+    stack: err.stack
+  })
+);
+```
+
+## Migration Notes
+
+### From Old Documentation
+
+If you were relying on the old README documentation:
+
+1. **Remove checksum verification** - not implemented
+2. **Don't use LENGTH field** - doesn't exist
+3. **Custom extension type IDs are different**:
+   - Definition: 109 (not 3)
+   - Reference: 108 (not 2)
+   - StreamReference: 107 (not 4)
+4. **No protocol versioning** - all peers must use same version
+5. **Use @omnitron-dev/msgpack** not @msgpack/msgpack
+6. **Payload structure is flexible** - not restricted to arrays
+
+### Best Practices
+
+1. **Always use factory functions**: `createPacket()` and `createStreamPacket()`
+2. **Check packet type** before processing payload
+3. **Handle decode errors**: `decodePacket()` throws on invalid data
+4. **Use Packet.nextId()**: Don't manually generate IDs
+5. **Clean up streams**: Always send TYPE_STREAM_CLOSE or TYPE_STREAM_ERROR
 
 ## See Also
 
 - [Netron Main Documentation](../README.md)
 - [Transport Layer](../transport/README.md)
-- [Core Tasks](../core-tasks/README.md)
-- [Serialization Guide](./serializer.ts)
+- [Binary Transports](../transport/websocket-transport.ts)
+- [HTTP Transport](../transport/http/) - Uses JSON, not packets!
+- [MessagePack Implementation](../../../../msgpack/README.md)

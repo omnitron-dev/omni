@@ -22,7 +22,6 @@ export { RetryManager } from './retry-manager.js';
 
 // Advanced features (Phase 4)
 export { RequestBatcher } from './request-batcher.js';
-export { OptimisticUpdateManager } from './optimistic-update-manager.js';
 
 // Message types
 export * from './types.js';
@@ -44,4 +43,3 @@ export type { QueryOptions } from './query-builder.js';
 
 // Export advanced feature types
 export type { BatchOptions, BatchStatistics } from './request-batcher.js';
-export type { OptimisticUpdateOptions, OptimisticUpdateStats, CacheProvider } from './optimistic-update-manager.js';

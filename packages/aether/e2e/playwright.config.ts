@@ -64,7 +64,7 @@ export default defineConfig({
   webServer: [
     {
       command: 'tsx e2e/fixtures/titan-app/index.ts',
-      url: 'http://localhost:3333/health',
+      url: 'http://localhost:3335/health',
       reuseExistingServer: !process.env.CI,
       timeout: 30000,
       stdout: 'pipe',

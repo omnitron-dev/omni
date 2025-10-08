@@ -3,7 +3,6 @@
  * Provides CRUD operations for testing HTTP transport
  */
 
-import { Injectable } from '@omnitron-dev/titan/nexus';
 import { Service, Public } from '@omnitron-dev/titan/netron';
 
 export interface User {
@@ -32,7 +31,6 @@ export interface UpdateUserDto {
  * Test User Service
  * Provides CRUD operations for testing
  */
-@Injectable()
 @Service('UserService@1.0.0')
 export class UserService {
   private users = new Map<string, User>();

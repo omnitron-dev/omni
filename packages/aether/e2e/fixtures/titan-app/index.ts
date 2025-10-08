@@ -1,78 +1,78 @@
 /**
  * Titan Test Application for Aether E2E Tests
- * Provides Netron server with HTTP and WebSocket transports
+ * Provides Netron server with HTTP transport for browser client testing
  */
 
-import { Application, Module } from '@omnitron-dev/titan';
-import { NetronModule } from '@omnitron-dev/titan/netron';
+import { Netron } from '@omnitron-dev/titan/netron';
+import { HttpNativeServer as HttpServer } from '@omnitron-dev/titan/netron/transport/http';
 import { UserService } from './services/user.service.js';
-import { StreamService } from './services/stream.service.js';
-import { EventService } from './services/event.service.js';
+import { createMockLogger } from './test-utils.js';
 import http from 'http';
 
-@Module({
-  imports: [
-    NetronModule.forRoot({
-      transports: [
-        {
-          type: 'http',
-          port: 3333,
-          host: '0.0.0.0',
-          cors: true
-        },
-        {
-          type: 'websocket',
-          port: 3334,
-          host: '0.0.0.0'
-        }
-      ]
-    })
-  ],
-  providers: [UserService, StreamService, EventService]
-})
-class AppModule {}
-
 async function bootstrap() {
-  const app = await Application.create(AppModule, {
-    disableGracefulShutdown: false
+  const logger = createMockLogger();
+
+  // Create Netron instance
+  const netron = new Netron(logger);
+  await netron.start();
+
+  console.log('Netron server started');
+
+  // Create services
+  const userService = new UserService();
+
+  // Expose services
+  await netron.peer.exposeService(userService);
+  console.log('Services exposed: UserService');
+
+  // Create HTTP server
+  const httpServer = new HttpServer({
+    port: 3333,
+    host: '0.0.0.0',
+    cors: true
   });
 
-  // Create health check endpoint
+  // Attach server to peer
+  httpServer.setPeer(netron.peer);
+
+  // Start HTTP server
+  await httpServer.listen();
+  console.log('HTTP server listening on http://0.0.0.0:3333');
+
+  // Create simple health check endpoint
   const healthServer = http.createServer((req, res) => {
     if (req.url === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() }));
+      res.end(JSON.stringify({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        services: ['UserService@1.0.0']
+      }));
     } else {
       res.writeHead(404);
       res.end('Not Found');
     }
   });
 
-  healthServer.listen(3333, '0.0.0.0', () => {
-    console.log('Health check server listening on http://0.0.0.0:3333/health');
+  healthServer.listen(3335, '0.0.0.0', () => {
+    console.log('Health check server listening on http://0.0.0.0:3335/health');
   });
-
-  await app.start();
-
-  console.log('Titan test application started');
-  console.log('- Netron HTTP transport: http://0.0.0.0:3333');
-  console.log('- Netron WebSocket transport: ws://0.0.0.0:3334');
-  console.log('- Services: UserService, StreamService, EventService');
 
   // Handle shutdown
-  process.on('SIGTERM', async () => {
-    console.log('Received SIGTERM, shutting down...');
+  const shutdown = async () => {
+    console.log('Shutting down...');
     healthServer.close();
-    await app.stop();
+    await httpServer.close();
+    await netron.stop();
     process.exit(0);
-  });
+  };
 
-  process.on('SIGINT', async () => {
-    console.log('Received SIGINT, shutting down...');
-    healthServer.close();
-    await app.stop();
-    process.exit(0);
-  });
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+
+  console.log('Test application ready');
+  console.log('- Netron HTTP: http://0.0.0.0:3333');
+  console.log('- Health check: http://0.0.0.0:3335/health');
 }
 
 bootstrap().catch(err => {

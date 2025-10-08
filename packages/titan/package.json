@@ -32,6 +32,10 @@
       "types": "./dist/netron/index.d.ts",
       "default": "./dist/netron/index.js"
     },
+    "./netron/transport/http": {
+      "types": "./dist/netron/transport/http/index.d.ts",
+      "default": "./dist/netron/transport/http/index.js"
+    },
     "./nexus": {
       "types": "./dist/nexus/index.d.ts",
       "default": "./dist/nexus/index.js"

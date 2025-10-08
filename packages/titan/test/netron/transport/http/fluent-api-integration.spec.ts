@@ -55,6 +55,10 @@ describe('Fluent API Integration', () => {
       'http://localhost:3000'
     );
 
+    // Configure peer with managers
+    peer.setCacheManager(cacheManager);
+    peer.setRetryManager(retryManager);
+
     // Mock queryInterfaceRemote to return definition
     jest.spyOn(peer as any, 'queryInterfaceRemote').mockResolvedValue({
       id: 'user-service-def',

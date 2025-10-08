@@ -128,6 +128,7 @@ export function contract<T extends ContractDefinition>(
 /**
  * Type helpers for extracting types from contracts
  */
+// eslint-disable-next-line @typescript-eslint/no-namespace
 export namespace ContractTypes {
   /**
    * Extract input type from a method contract
@@ -163,6 +164,7 @@ export namespace ContractTypes {
 /**
  * Predefined contracts for common patterns
  */
+// eslint-disable-next-line @typescript-eslint/no-namespace
 export namespace Contracts {
   /**
    * CRUD contract template

@@ -4,9 +4,11 @@
  * Handles database migrations
  */
 
+import { createHash } from 'node:crypto';
+import { EventEmitter } from 'events';
+
 import { Injectable, Inject } from '../../../decorators/index.js';
 import { Kysely, sql, Transaction } from 'kysely';
-import { EventEmitter } from 'events';
 import type { IDatabaseManager } from '../database.types.js';
 import { DATABASE_MANAGER, MIGRATIONS_TABLE, MIGRATIONS_LOCK_TABLE } from '../database.constants.js';
 import type {
@@ -582,9 +584,8 @@ export class ${this.toPascalCase(name)}Migration implements IMigration {
    */
   private calculateChecksum(migration: IMigration): string {
     // Simple checksum based on function strings
-    const crypto = require('crypto');
     const content = migration.up.toString() + migration.down.toString();
-    return crypto.createHash('sha256').update(content).digest('hex');
+    return createHash('sha256').update(content).digest('hex');
   }
 
   /**

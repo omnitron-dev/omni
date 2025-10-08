@@ -131,7 +131,8 @@ module.exports = [
       'experiments/**',
       '**/examples/**', // Игнорируем примеры
       '**/test/**/fixtures/**', // Игнорируем test fixtures
-      '**/test/**/helpers/**' // Игнорируем test helpers
+      '**/test/**/helpers/**', // Игнорируем test helpers
+      '**/e2e/**' // Игнорируем e2e тесты
     ]
   },
   // Базовая конфигурация
@@ -180,5 +181,11 @@ module.exports = [
       globals: { ...globals.browser, ...globals.node, ...globals.jest },
     },
     ...customConfig,
+    rules: {
+      ...customConfig.rules,
+      '@typescript-eslint/no-shadow': 0, // Allow variable shadowing in tests
+      'consistent-return': 0, // Allow inconsistent returns in tests
+      'no-useless-catch': 0, // Allow catch blocks for testing
+    },
   },
 ];

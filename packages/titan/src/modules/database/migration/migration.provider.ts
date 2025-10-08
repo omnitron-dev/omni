@@ -191,13 +191,6 @@ export class MigrationProvider implements IMigrationProvider {
    */
   private async importMigration(filePath: string): Promise<any> {
     try {
-      // In Node.js environment
-      if (typeof require !== 'undefined') {
-        // Clear require cache for hot reload
-        delete require.cache[require.resolve(filePath)];
-        return require(filePath);
-      }
-
       // In ESM environment
       const fileUrl = `file://${filePath}`;
       return await import(fileUrl);

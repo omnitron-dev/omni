@@ -301,12 +301,12 @@ class NativeWebSocketWrapper extends EventEmitter implements ITransportConnectio
   }
 
   get remoteAddress(): string | undefined {
-    // @ts-expect-error
+    // @ts-expect-error - Accessing internal _socket property
     return this.ws._socket?.remoteAddress;
   }
 
   get localAddress(): string | undefined {
-    // @ts-expect-error
+    // @ts-expect-error - Accessing internal _socket property
     return this.ws._socket?.localAddress;
   }
 

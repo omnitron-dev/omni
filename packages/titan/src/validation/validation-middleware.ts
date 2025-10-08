@@ -87,31 +87,15 @@ export class ValidationMiddleware {
       // Validate input
       let validatedInput = args[0];
       if (inputValidator) {
-        try {
-          validatedInput = await inputValidator.validateAsync(args[0]);
-        } catch (error) {
-          // Re-throw validation errors
-          throw error;
-        }
+        validatedInput = await inputValidator.validateAsync(args[0]);
       }
 
       // Call original method
-      let result;
-      try {
-        result = await original.call(context, validatedInput, ...args.slice(1));
-      } catch (error) {
-        // Preserve original errors
-        throw error;
-      }
+      let result = await original.call(context, validatedInput, ...args.slice(1));
 
       // Validate output
       if (outputValidator) {
-        try {
-          result = await outputValidator.validateAsync(result);
-        } catch (error) {
-          // Re-throw validation errors
-          throw error;
-        }
+        result = await outputValidator.validateAsync(result);
       }
 
       return result;

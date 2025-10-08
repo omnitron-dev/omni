@@ -61,9 +61,7 @@ describe('Extension type roundtrip', () => {
       (obj: Inner, buf: SmartBuffer) => {
         ser.encode(obj.value, buf);
       },
-      (buf: SmartBuffer) => {
-        return new Inner(ser.decode(buf));
-      }
+      (buf: SmartBuffer) => new Inner(ser.decode(buf))
     );
 
     ser.register(

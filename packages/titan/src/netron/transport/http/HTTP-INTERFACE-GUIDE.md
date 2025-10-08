@@ -1,29 +1,52 @@
 # HTTP Interface & Retry Manager - Complete Guide
 
 > **Comprehensive documentation for Titan's HTTP transport intelligent client features**
-> **Status**: Enterprise Grade (Phase 1 Complete)
-> **Last Updated**: 2025-10-07
+> **Status**: Enterprise Grade - Enhanced Fluent API Available!
+> **Last Updated**: 2025-10-08
+
+---
+
+## 🎉 New: Enhanced Fluent API
+
+**The recommended way to use HTTP transport is now the Enhanced Fluent API!**
+
+```typescript
+// ✨ NEW: Natural Netron-style calls
+const user = await userService
+  .cache(60000)
+  .retry(3)
+  .getUser('user-123');
+
+// 📖 See: FLUENT-API-GUIDE.md for complete documentation
+```
 
 ---
 
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Architecture](#architecture)
-3. [RetryManager](#retrymanager)
+2. [Quick Start](#quick-start)
+3. [Enhanced Fluent API (NEW!)](#enhanced-fluent-api)
+   - [Creating Fluent Interfaces](#creating-fluent-interfaces)
+   - [Configuration Methods](#configuration-methods)
+   - [Advanced Features](#advanced-features)
+   - [Migration from HttpInterface](#migration-from-httpinterface)
+4. [Architecture](#architecture)
+5. [RetryManager](#retrymanager)
    - [Features](#retry-features)
    - [Configuration](#retry-configuration)
    - [Circuit Breaker](#circuit-breaker)
    - [Examples](#retry-examples)
-4. [HttpInterface](#httpinterface)
+6. [HttpInterface (Legacy)](#httpinterface)
    - [Fluent API](#fluent-api)
    - [QueryBuilder](#querybuilder)
    - [Integration](#integration)
    - [Examples](#interface-examples)
-5. [Complete Integration Examples](#complete-integration-examples)
-6. [Best Practices](#best-practices)
-7. [Performance Considerations](#performance-considerations)
-8. [Troubleshooting](#troubleshooting)
+7. [Complete Integration Examples](#complete-integration-examples)
+8. [Best Practices](#best-practices)
+9. [Performance Considerations](#performance-considerations)
+10. [Troubleshooting](#troubleshooting)
+11. [Additional Resources](#additional-resources)
 
 ---
 
@@ -55,6 +78,292 @@ The HTTP transport provides **TanStack Query-like capabilities** for Netron RPC 
 | Query Cancellation | ❌ | ✅ | ❌ |
 | Optimistic Updates | ❌ | ✅ | ✅ (integration) |
 | Background Refetch | ❌ | ⚡ (partial) | ✅ (partial) |
+
+---
+
+## Quick Start
+
+### Option 1: Enhanced Fluent API (Recommended)
+
+```typescript
+import { HttpRemotePeer } from '@omnitron-dev/titan/netron';
+import { HttpCacheManager, RetryManager } from '@omnitron-dev/titan/netron/transport/http';
+
+// Create fluent interface
+const userService = await peer.createFluentInterface<IUserService>(
+  'UserService@1.0.0',
+  {
+    cache: new HttpCacheManager(),
+    retry: new RetryManager()
+  }
+);
+
+// Natural method calls with configuration
+const user = await userService
+  .cache(60000)
+  .retry(3)
+  .getUser('user-123');
+```
+
+### Option 2: HttpInterface (Legacy)
+
+```typescript
+// Create interface
+const userService = await peer.createHttpInterface<IUserService>(
+  'UserService@1.0.0'
+);
+
+// Call with .execute()
+const user = await userService
+  .call('getUser', 'user-123')
+  .cache(60000)
+  .retry(3)
+  .execute();
+```
+
+**See [Enhanced Fluent API](#enhanced-fluent-api) for complete documentation.**
+
+---
+
+## Enhanced Fluent API
+
+The Enhanced Fluent API provides a natural, Netron-native way to call remote services with powerful configuration options.
+
+### Why Use Enhanced Fluent API?
+
+**Natural Netron-Style Calls**:
+```typescript
+// ✨ Enhanced Fluent API (Recommended)
+const user = await userService
+  .cache(60000)
+  .retry(3)
+  .getUser('user-123');
+```
+
+**vs Traditional API**:
+```typescript
+// Old call().execute() pattern
+const user = await userService
+  .call('getUser', 'user-123')
+  .cache(60000)
+  .retry(3)
+  .execute();
+```
+
+### Key Benefits
+
+- **🎯 Natural**: Call methods directly on service interface
+- **⚡ Performant**: Minimal overhead, optimized execution
+- **🔧 Flexible**: Chain configurations as needed
+- **💪 Type-Safe**: Full TypeScript support
+- **🚀 Feature-Rich**: All HttpInterface features + more
+- **📦 Composable**: Reusable configuration presets
+
+### Creating Fluent Interfaces
+
+```typescript
+import { HttpRemotePeer } from '@omnitron-dev/titan/netron';
+import { HttpCacheManager, RetryManager } from '@omnitron-dev/titan/netron/transport/http';
+
+// Create HTTP peer
+const peer = new HttpRemotePeer(
+  connection,
+  netron,
+  'http://localhost:3000'
+);
+
+// Create fluent interface
+const userService = await peer.createFluentInterface<IUserService>(
+  'UserService@1.0.0',
+  {
+    cache: new HttpCacheManager(),
+    retry: new RetryManager(),
+    globalOptions: {
+      // Optional: Default options for all calls
+      retry: { attempts: 3 },
+      timeout: 5000
+    }
+  }
+);
+```
+
+### Configuration Methods
+
+All configuration methods return a `ConfigurableProxy` that allows method chaining:
+
+```typescript
+// Simple configurations
+await service.cache(60000).getUser('123');
+await service.retry(3).getUser('123');
+await service.timeout(5000).getUser('123');
+
+// Advanced configurations
+await service
+  .cache({
+    maxAge: 60000,
+    staleWhileRevalidate: 10000,
+    tags: ['users']
+  })
+  .retry({
+    attempts: 5,
+    backoff: 'exponential'
+  })
+  .timeout(10000)
+  .priority('high')
+  .getUser('123');
+```
+
+**Available Configuration Methods**:
+
+- `.cache(options)` - Enable caching
+- `.retry(options)` - Enable retry logic
+- `.timeout(ms)` - Set request timeout
+- `.priority(level)` - Set request priority
+- `.transform(fn)` - Transform response data
+- `.validate(fn)` - Validate response
+- `.fallback(data)` - Provide fallback on error
+- `.optimistic(updater)` - Optimistic cache updates
+- `.invalidateOn(tags)` - Set cache invalidation tags
+- `.dedupe(key)` - Custom deduplication key
+- `.background(interval)` - Background refetch
+- `.metrics(fn)` - Track metrics
+
+See [FLUENT-API-GUIDE.md](./FLUENT-API-GUIDE.md) for complete API reference.
+
+### Advanced Features
+
+#### 1. Global Configuration
+
+Set default options for all method calls:
+
+```typescript
+const service = await peer.createFluentInterface<IUserService>(
+  'UserService@1.0.0',
+  {
+    globalOptions: {
+      cache: { maxAge: 60000 },
+      retry: { attempts: 3 }
+    }
+  }
+);
+
+// All calls inherit global options
+await service.getUser('123');  // Uses global cache + retry
+```
+
+#### 2. Optimistic Updates
+
+Instant UI feedback with automatic rollback:
+
+```typescript
+const updated = await userService
+  .cache(60000)
+  .optimistic((current: User) => ({
+    ...current,
+    name: 'New Name'
+  }))
+  .updateUser('123', { name: 'New Name' });
+
+// Cache updated immediately, rolled back if request fails
+```
+
+#### 3. Background Refetch
+
+Keep data fresh automatically:
+
+```typescript
+const products = await productService
+  .cache({ maxAge: 300000 })
+  .background(60000)  // Refresh every minute
+  .getProducts();
+
+// First call: Fresh data
+// Subsequent calls: Cached (instant)
+// Every 60s: Silent background refresh
+```
+
+#### 4. Request Deduplication
+
+Prevent duplicate concurrent requests:
+
+```typescript
+// Multiple components call simultaneously
+const [user1, user2, user3] = await Promise.all([
+  userService.cache(60000).getUser('123'),
+  userService.cache(60000).getUser('123'),
+  userService.cache(60000).getUser('123')
+]);
+
+// Only 1 HTTP request made!
+```
+
+#### 5. Query Cancellation
+
+Cancel in-flight requests:
+
+```typescript
+const builder = service.call('getUser', '123');
+
+// Start request
+const promise = builder.execute();
+
+// Cancel if needed
+builder.cancel();
+
+// Promise rejects with 'Query cancelled'
+await promise;  // throws
+```
+
+### Migration from HttpInterface
+
+**Old API (HttpInterface)**:
+```typescript
+const service = await peer.createHttpInterface<IUserService>('UserService@1.0.0');
+
+const user = await service
+  .call('getUser', 'user-123')
+  .cache(60000)
+  .retry(3)
+  .execute();
+```
+
+**New API (FluentInterface)**:
+```typescript
+const service = await peer.createFluentInterface<IUserService>('UserService@1.0.0');
+
+const user = await service
+  .cache(60000)
+  .retry(3)
+  .getUser('user-123');
+```
+
+**Migration Steps**:
+
+1. Replace `createHttpInterface` with `createFluentInterface`
+2. Remove `.call()` and `.execute()` - call methods directly
+3. Update global configuration to use `globalOptions`
+
+**Both APIs work side-by-side** - gradual migration is supported!
+
+### Complete Examples
+
+See [FLUENT-API-EXAMPLES.md](./FLUENT-API-EXAMPLES.md) for:
+
+- E-Commerce Application
+- User Management System
+- Real-Time Analytics Dashboard
+- Microservices Communication
+- Social Media Platform
+- Financial Trading System
+
+### Performance
+
+See [PERFORMANCE.md](./PERFORMANCE.md) for:
+
+- Benchmark results
+- Performance characteristics
+- Optimization strategies
+- Best practices
 
 ---
 
@@ -1402,3 +1711,40 @@ The HTTP Interface and Retry Manager provide **enterprise-grade** resilience and
 - Fallback support
 
 Use these tools to build **resilient, performant microservices** with confidence.
+
+---
+
+## Additional Resources
+
+### Documentation
+
+- **[FLUENT-API-GUIDE.md](./FLUENT-API-GUIDE.md)** - Complete guide to Enhanced Fluent API
+- **[FLUENT-API-EXAMPLES.md](./FLUENT-API-EXAMPLES.md)** - Real-world examples for all features
+- **[PERFORMANCE.md](./PERFORMANCE.md)** - Performance benchmarks and optimization guide
+- **[ENHANCED-FLUENT-API-SPEC.md](./ENHANCED-FLUENT-API-SPEC.md)** - Technical specification
+
+### Quick Links
+
+- **Migration Guide**: See [Enhanced Fluent API - Migration](#migration-from-httpinterface)
+- **Examples**: See [FLUENT-API-EXAMPLES.md](./FLUENT-API-EXAMPLES.md)
+- **API Reference**: See [FLUENT-API-GUIDE.md - API Reference](./FLUENT-API-GUIDE.md#api-reference)
+- **Troubleshooting**: See [FLUENT-API-GUIDE.md - Troubleshooting](./FLUENT-API-GUIDE.md#troubleshooting)
+
+### Getting Started
+
+1. **Read**: [Enhanced Fluent API](#enhanced-fluent-api) section above
+2. **Try**: [Quick Start](#quick-start) examples
+3. **Learn**: [FLUENT-API-EXAMPLES.md](./FLUENT-API-EXAMPLES.md)
+4. **Optimize**: [PERFORMANCE.md](./PERFORMANCE.md)
+
+### Support
+
+- Open an issue on GitHub
+- Check existing documentation
+- Review examples and guides
+
+---
+
+**Last Updated**: 2025-10-08
+**Version**: 1.0.0 (Enhanced Fluent API)
+**Status**: ✅ Production Ready

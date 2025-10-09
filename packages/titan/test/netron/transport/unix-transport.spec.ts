@@ -13,7 +13,7 @@ import { Socket } from 'node:net';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path, { join } from 'node:path';
-import { waitForEvent, delay } from '../../utils/index.js';
+import { waitForEvent } from '../../utils/index.js';
 
 // Helper to generate unique socket path
 function getSocketPath(): string {

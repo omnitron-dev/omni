@@ -17,7 +17,7 @@ import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promises as fs } from 'node:fs';
-import { getFreeHttpPort as getFreePort, waitForEvent, delay } from '../../utils/index.js';
+import { getFreeHttpPort as getFreePort, waitForEvent } from '../../utils/index.js';
 
 // Helper to generate unique socket path
 function getSocketPath(): string {
@@ -233,16 +233,14 @@ describe('TitanError Serialization Across Transports', () => {
 
     afterEach(async () => {
       // Close all clients first
-      const closePromises = Array.from(wsServer.clients).map(client => {
-        return new Promise<void>((resolve) => {
+      const closePromises = Array.from(wsServer.clients).map(client => new Promise<void>((resolve) => {
           if (client.readyState === 1) { // OPEN
             client.once('close', () => resolve());
             client.close();
           } else {
             resolve();
           }
-        });
-      });
+        }));
 
       await Promise.all(closePromises);
 

@@ -4,7 +4,7 @@
 
 import { z } from 'zod';
 import { Application, Module, Injectable } from '../src/index.js';
-import { Contract, Validate, ValidationOptions, contract } from '../src/decorators/validation.js';
+import { Contract, Validate, WithValidationOptions, contract } from '../src/decorators/validation.js';
 import { ValidationEngine, ValidationMiddleware } from '../src/validation/index.js';
 
 // Define validation schemas
@@ -69,7 +69,7 @@ type UserType = z.infer<typeof UserSchema>;
  */
 @Injectable()
 @Contract(UserServiceContract)
-@ValidationOptions({
+@WithValidationOptions({
   mode: 'strip', // Strip unknown properties
   coerce: false, // Don't coerce types
   abortEarly: false // Collect all validation errors

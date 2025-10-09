@@ -81,38 +81,38 @@ export const Button = defineComponent<ButtonProps>((props) => {
         type={props.type ?? 'button'}
         disabled={props.disabled || props.loading}
         onClick={handleClick}
-        className={classes(
-          variantClasses(
-            'btn',
+        className={
+          classes(
+            variantClasses(
+              'btn',
+              {
+                // Variants
+                primary: 'btn-primary',
+                secondary: 'btn-secondary',
+                danger: 'btn-danger',
+                ghost: 'btn-ghost',
+                // Sizes
+                sm: 'btn-sm',
+                md: 'btn-md',
+                lg: 'btn-lg',
+              },
+              [variant, size]
+            ),
             {
-              // Variants
-              primary: 'btn-primary',
-              secondary: 'btn-secondary',
-              danger: 'btn-danger',
-              ghost: 'btn-ghost',
-              // Sizes
-              sm: 'btn-sm',
-              md: 'btn-md',
-              lg: 'btn-lg',
-            },
-            [variant, size]
-          ),
-          {
-            'btn-disabled': props.disabled,
-            'btn-loading': props.loading,
-            'btn-full-width': props.fullWidth,
-            'btn-pressed': isPressed(),
-          }
-        ) + (props.className ? ` ${props.className}` : '')}
+              'btn-disabled': props.disabled,
+              'btn-loading': props.loading,
+              'btn-full-width': props.fullWidth,
+              'btn-pressed': isPressed(),
+            }
+          ) + (props.className ? ` ${props.className}` : '')
+        }
       >
         {props.loading && (
           <span className="btn-spinner" aria-hidden="true">
             ⟳
           </span>
         )}
-        <span className={props.loading ? 'btn-content-loading' : 'btn-content'}>
-          {props.children}
-        </span>
+        <span className={props.loading ? 'btn-content-loading' : 'btn-content'}>{props.children}</span>
       </button>
     );
   };
@@ -231,9 +231,7 @@ export const Button = defineComponent<ButtonProps>((props) => {
 export const BasicButtonExample = defineComponent(() => {
   return () => (
     <div>
-      <Button onClick={() => console.log('clicked')}>
-        Click Me
-      </Button>
+      <Button onClick={() => console.log('clicked')}>Click Me</Button>
     </div>
   );
 });
@@ -290,10 +288,12 @@ export const FormSubmitExample = defineComponent(() => {
   };
 
   return () => (
-    <form onSubmit={(e) => {
-      e.preventDefault();
-      handleSubmit();
-    }}>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        handleSubmit();
+      }}
+    >
       <input type="text" placeholder="Enter text..." style={{ marginRight: '0.5rem' }} />
       <Button type="submit" variant="primary">
         Submit

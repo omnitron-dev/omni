@@ -24,11 +24,7 @@ import { isStaticJSXTree, countJSXElements, jsxToHTMLString } from '../utils/ast
 /**
  * Apply template cloning optimization to static JSX elements
  */
-export function templateCloning(
-  path: NodePath<t.JSXElement>,
-  state: PluginState,
-  opts: PluginOptions
-): void {
+export function templateCloning(path: NodePath<t.JSXElement>, state: PluginState, opts: PluginOptions): void {
   // Skip if not static or too small
   if (!isStaticJSXTree(path)) {
     return;
@@ -74,10 +70,7 @@ export function templateCloning(
 
     // Replace JSX with template clone expression
     const cloneExpression = t.memberExpression(
-      t.memberExpression(
-        t.identifier(templateId),
-        t.identifier('content')
-      ),
+      t.memberExpression(t.identifier(templateId), t.identifier('content')),
       t.identifier('cloneNode')
     );
 

@@ -6,7 +6,7 @@ import {
   batch,
   createRoot,
   store,
-  type WritableSignal
+  type WritableSignal,
 } from '../../../src/core/reactivity/index.js';
 
 describe('Signal Performance', () => {
@@ -36,7 +36,7 @@ describe('Signal Performance', () => {
     for (let i = 0; i < 1000; i++) {
       signals.push(signal(i));
     }
-    
+
     batch(() => {
       for (let i = 0; i < 1000; i++) {
         signals[i].set(i * 2);
@@ -49,7 +49,7 @@ describe('Computed Performance', () => {
   bench('create simple computed chain (10 levels)', () => {
     const source = signal(0);
     let prev = source as any;
-    
+
     for (let i = 0; i < 10; i++) {
       const comp = computed(() => prev.get() + 1);
       prev = comp;
@@ -59,7 +59,7 @@ describe('Computed Performance', () => {
   bench('read computed 10000 times (cached)', () => {
     const s = signal(0);
     const c = computed(() => s.get() * 2);
-    
+
     for (let i = 0; i < 10000; i++) {
       c.get();
     }
@@ -68,7 +68,7 @@ describe('Computed Performance', () => {
   bench('invalidate and recompute 1000 times', () => {
     const s = signal(0);
     const c = computed(() => s.get() * 2);
-    
+
     for (let i = 0; i < 1000; i++) {
       s.set(i);
       c.get();
@@ -80,7 +80,7 @@ describe('Computed Performance', () => {
     const left = computed(() => source.get() * 2);
     const right = computed(() => source.get() * 3);
     const diamond = computed(() => left.get() + right.get());
-    
+
     for (let i = 0; i < 1000; i++) {
       source.set(i);
       diamond.get();
@@ -90,11 +90,11 @@ describe('Computed Performance', () => {
   bench('wide dependency graph (100 computeds from 1 signal)', () => {
     const source = signal(0);
     const computeds = [];
-    
+
     for (let i = 0; i < 100; i++) {
       computeds.push(computed(() => source.get() * i));
     }
-    
+
     source.set(1);
     for (const c of computeds) {
       c.get();
@@ -104,12 +104,12 @@ describe('Computed Performance', () => {
   bench('deep dependency graph (100 levels)', () => {
     const source = signal(0);
     let prev = source as any;
-    
+
     for (let i = 0; i < 100; i++) {
       const comp = computed(() => prev.get() + 1);
       prev = comp;
     }
-    
+
     source.set(1);
     prev.get();
   });
@@ -118,7 +118,7 @@ describe('Computed Performance', () => {
 describe('Effect Performance', () => {
   bench('create and dispose 1000 effects', () => {
     const s = signal(0);
-    
+
     const dispose = createRoot((d) => {
       for (let i = 0; i < 1000; i++) {
         effect(() => {
@@ -127,14 +127,14 @@ describe('Effect Performance', () => {
       }
       return d;
     });
-    
+
     dispose();
   });
 
   bench('trigger 100 effects', () => {
     const s = signal(0);
     let count = 0;
-    
+
     const dispose = createRoot((d) => {
       for (let i = 0; i < 100; i++) {
         effect(() => {
@@ -144,11 +144,11 @@ describe('Effect Performance', () => {
       }
       return d;
     });
-    
+
     for (let i = 0; i < 10; i++) {
       s.set(i);
     }
-    
+
     dispose();
   });
 
@@ -157,7 +157,7 @@ describe('Effect Performance', () => {
     for (let i = 0; i < 100; i++) {
       signals.push(signal(i));
     }
-    
+
     let count = 0;
     const dispose = createRoot((d) => {
       effect(() => {
@@ -168,13 +168,13 @@ describe('Effect Performance', () => {
       });
       return d;
     });
-    
+
     batch(() => {
       for (let i = 0; i < 100; i++) {
         signals[i].set(i * 2);
       }
     });
-    
+
     dispose();
   });
 });
@@ -189,15 +189,15 @@ describe('Store Performance', () => {
           theme: 'dark',
           notifications: {
             email: true,
-            push: false
-          }
-        }
+            push: false,
+          },
+        },
       },
       items: Array.from({ length: 100 }, (_, i) => ({
         id: i,
         name: `Item ${i}`,
-        value: i * 10
-      }))
+        value: i * 10,
+      })),
     });
   });
 
@@ -205,11 +205,11 @@ describe('Store Performance', () => {
     const state = store({
       user: {
         settings: {
-          theme: 'dark'
-        }
-      }
+          theme: 'dark',
+        },
+      },
     });
-    
+
     for (let i = 0; i < 10000; i++) {
       const theme = state.user.settings.theme;
     }
@@ -219,11 +219,11 @@ describe('Store Performance', () => {
     const state = store({
       user: {
         settings: {
-          theme: 'dark'
-        }
-      }
+          theme: 'dark',
+        },
+      },
     });
-    
+
     for (let i = 0; i < 1000; i++) {
       state.user.settings.theme = i % 2 === 0 ? 'dark' : 'light';
     }
@@ -231,19 +231,19 @@ describe('Store Performance', () => {
 
   bench('array operations', () => {
     const state = store({
-      items: [] as number[]
+      items: [] as number[],
     });
-    
+
     // Push 100 items
     for (let i = 0; i < 100; i++) {
       state.items.push(i);
     }
-    
+
     // Modify items
     for (let i = 0; i < 100; i++) {
       state.items[i] = i * 2;
     }
-    
+
     // Remove items
     while (state.items.length > 0) {
       state.items.pop();
@@ -252,9 +252,9 @@ describe('Store Performance', () => {
 
   bench('batch store updates', () => {
     const state = store({
-      counters: Array.from({ length: 100 }, (_, i) => ({ value: i }))
+      counters: Array.from({ length: 100 }, (_, i) => ({ value: i })),
     });
-    
+
     batch(() => {
       for (let i = 0; i < 100; i++) {
         state.counters[i].value = i * 2;
@@ -302,69 +302,65 @@ describe('Real-world Scenarios', () => {
       text: string;
       done: boolean;
     }
-    
+
     const todos = store<{ items: Todo[] }>({
       items: Array.from({ length: 100 }, (_, i) => ({
         id: i,
         text: `Todo ${i}`,
-        done: false
-      }))
+        done: false,
+      })),
     });
-    
-    const completedCount = computed(() => 
-      todos.items.filter(t => t.done).length
-    );
-    
+
+    const completedCount = computed(() => todos.items.filter((t) => t.done).length);
+
     const dispose = createRoot((d) => {
       effect(() => {
         const count = completedCount.get();
       });
       return d;
     });
-    
+
     // Toggle all todos
     batch(() => {
       for (let i = 0; i < 100; i++) {
         todos.items[i].done = !todos.items[i].done;
       }
     });
-    
+
     dispose();
   });
 
   bench('form with 50 fields and validation', () => {
     const form = store({
-      fields: Object.fromEntries(
-        Array.from({ length: 50 }, (_, i) => [`field${i}`, ''])
-      )
+      fields: Object.fromEntries(Array.from({ length: 50 }, (_, i) => [`field${i}`, ''])),
     });
-    
+
     const validations = [];
     for (let i = 0; i < 50; i++) {
-      validations.push(computed(() => {
-        const value = form.fields[`field${i}`];
-        return value.length >= 3;
-      }));
+      validations.push(
+        computed(() => {
+          const value = form.fields[`field${i}`];
+          return value.length >= 3;
+        })
+      );
     }
-    
-    const isValid = computed(() => 
-      validations.every(v => v.get())
-    );
-    
+
+    const isValid = computed(() => validations.every((v) => v.get()));
+
     const dispose = createRoot((d) => {
       effect(() => {
         const valid = isValid.get();
       });
       return d;
     });
-    
+
     // Update all fields
     batch(() => {
       for (let i = 0; i < 50; i++) {
         form.fields[`field${i}`] = `value${i}`;
       }
     });
-    
+
     dispose();
   });
 
@@ -372,19 +368,19 @@ describe('Real-world Scenarios', () => {
     const data = store({
       points: Array.from({ length: 1000 }, (_, i) => ({
         x: i,
-        y: Math.sin(i / 100) * 100
-      }))
+        y: Math.sin(i / 100) * 100,
+      })),
     });
-    
+
     const stats = {
-      min: computed(() => Math.min(...data.points.map(p => p.y))),
-      max: computed(() => Math.max(...data.points.map(p => p.y))),
+      min: computed(() => Math.min(...data.points.map((p) => p.y))),
+      max: computed(() => Math.max(...data.points.map((p) => p.y))),
       avg: computed(() => {
         const sum = data.points.reduce((acc, p) => acc + p.y, 0);
         return sum / data.points.length;
-      })
+      }),
     };
-    
+
     const dispose = createRoot((d) => {
       effect(() => {
         const min = stats.min.get();
@@ -393,14 +389,14 @@ describe('Real-world Scenarios', () => {
       });
       return d;
     });
-    
+
     // Update data
     batch(() => {
       for (let i = 0; i < 1000; i++) {
         data.points[i].y = Math.cos(i / 100) * 100;
       }
     });
-    
+
     dispose();
   });
 });

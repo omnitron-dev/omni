@@ -2,6 +2,7 @@
  * Tests for ValidationMiddleware - TDD approach
  */
 
+import 'reflect-metadata';
 import { z } from 'zod';
 import { ValidationMiddleware } from '../../src/validation/validation-middleware.js';
 import { ValidationEngine } from '../../src/validation/validation-engine.js';
@@ -395,6 +396,414 @@ describe('ValidationMiddleware', () => {
 
       // Invalid call
       await expect(wrappedService.getUser('not-a-uuid')).rejects.toThrow();
+    });
+
+    it('should skip methods not in service', () => {
+      const service = {
+        async existingMethod(input: any) {
+          return input;
+        }
+      };
+
+      const serviceContract = contract({
+        existingMethod: {
+          input: z.string(),
+          output: z.string()
+        },
+        missingMethod: {
+          input: z.string(),
+          output: z.string()
+        }
+      });
+
+      const wrappedService = middleware.wrapService(service, serviceContract);
+
+      expect(wrappedService.existingMethod).toBeDefined();
+      expect((wrappedService as any).missingMethod).toBeUndefined();
+    });
+
+    it('should skip non-function properties', () => {
+      const service = {
+        async method(input: any) {
+          return input;
+        },
+        property: 'not-a-function'
+      };
+
+      const serviceContract = contract({
+        method: {
+          input: z.string(),
+          output: z.string()
+        },
+        property: {
+          input: z.string(),
+          output: z.string()
+        }
+      });
+
+      const wrappedService = middleware.wrapService(service, serviceContract);
+
+      expect(wrappedService.method).toBeDefined();
+      expect((wrappedService as any).property).toBe('not-a-function');
+    });
+  });
+
+  describe('createHandler', () => {
+    it('should create handler with hooks', async () => {
+      const service = {
+        async process(input: any) {
+          return { processed: true, ...input };
+        }
+      };
+
+      const serviceContract = contract({
+        process: {
+          input: z.object({ value: z.number() }),
+          output: z.object({ processed: z.boolean(), value: z.number() })
+        }
+      });
+
+      const beforeCalls: any[] = [];
+      const afterCalls: any[] = [];
+
+      const handler = middleware.createHandler(service, serviceContract, {
+        beforeValidation: (method, input) => {
+          beforeCalls.push({ method, input });
+        },
+        afterValidation: (method, output) => {
+          afterCalls.push({ method, output });
+        }
+      });
+
+      await handler.process({ value: 42 });
+
+      expect(beforeCalls).toHaveLength(1);
+      expect(beforeCalls[0].method).toBe('process');
+      expect(beforeCalls[0].input).toEqual({ value: 42 });
+
+      expect(afterCalls).toHaveLength(1);
+      expect(afterCalls[0].method).toBe('process');
+      expect(afterCalls[0].output).toEqual({ processed: true, value: 42 });
+    });
+
+    it('should call error hook on validation failure', async () => {
+      const service = {
+        async process(input: any) {
+          return input;
+        }
+      };
+
+      const serviceContract = contract({
+        process: {
+          input: z.object({ value: z.number() }),
+          output: z.object({ value: z.number() })
+        }
+      });
+
+      const errorCalls: any[] = [];
+
+      const handler = middleware.createHandler(service, serviceContract, {
+        onError: (method, error) => {
+          errorCalls.push({ method, error });
+        }
+      });
+
+      try {
+        await handler.process({ value: 'invalid' });
+        fail('Should have thrown');
+      } catch (error) {
+        expect(errorCalls).toHaveLength(1);
+        expect(errorCalls[0].method).toBe('process');
+        expect(errorCalls[0].error).toBeDefined();
+      }
+    });
+
+    it('should work without hooks', async () => {
+      const service = {
+        async process(input: any) {
+          return input;
+        }
+      };
+
+      const serviceContract = contract({
+        process: {
+          input: z.object({ value: z.number() }),
+          output: z.object({ value: z.number() })
+        }
+      });
+
+      const handler = middleware.createHandler(service, serviceContract);
+
+      const result = await handler.process({ value: 42 });
+      expect(result).toEqual({ value: 42 });
+    });
+
+    it('should access non-function properties', () => {
+      const service = {
+        async process(input: any) {
+          return input;
+        },
+        config: { setting: 'value' }
+      };
+
+      const serviceContract = contract({
+        process: {
+          input: z.any(),
+          output: z.any()
+        }
+      });
+
+      const handler = middleware.createHandler(service, serviceContract, {});
+
+      expect((handler as any).config).toEqual({ setting: 'value' });
+    });
+  });
+
+  describe('shouldSkipValidation', () => {
+    it('should skip validation when metadata has skipValidation', () => {
+      const service = { method() { } };
+
+      const shouldSkip = middleware.shouldSkipValidation(
+        service,
+        'method',
+        { skipValidation: true }
+      );
+
+      expect(shouldSkip).toBe(true);
+    });
+
+    it('should skip validation when @NoValidation is used', () => {
+      const service = { method() { } };
+
+      Reflect.defineMetadata('validation:disabled', true, service, 'method');
+
+      const shouldSkip = middleware.shouldSkipValidation(service, 'method');
+
+      expect(shouldSkip).toBe(true);
+    });
+
+    it('should not skip validation by default', () => {
+      const service = { method() { } };
+
+      const shouldSkip = middleware.shouldSkipValidation(service, 'method');
+
+      expect(shouldSkip).toBe(false);
+    });
+  });
+
+  describe('getMethodContract', () => {
+    it('should get method-level validation contract', () => {
+      const service = { method() { } };
+      const methodContract = {
+        input: z.string(),
+        output: z.string()
+      };
+
+      Reflect.defineMetadata('validation:method', methodContract, service, 'method');
+
+      const retrieved = middleware.getMethodContract(service, 'method');
+
+      expect(retrieved).toBe(methodContract);
+    });
+
+    it('should get class contract for method', () => {
+      const service = { method() { } };
+      const classContract = contract({
+        method: {
+          input: z.string(),
+          output: z.string()
+        }
+      });
+
+      const retrieved = middleware.getMethodContract(service, 'method', classContract);
+
+      expect(retrieved).toBeDefined();
+      expect(retrieved?.input).toBeDefined();
+      expect(retrieved?.output).toBeDefined();
+    });
+
+    it('should prioritize method-level over class contract', () => {
+      const service = { method() { } };
+      const methodContract = {
+        input: z.number(),
+        output: z.number()
+      };
+      const classContract = contract({
+        method: {
+          input: z.string(),
+          output: z.string()
+        }
+      });
+
+      Reflect.defineMetadata('validation:method', methodContract, service, 'method');
+
+      const retrieved = middleware.getMethodContract(service, 'method', classContract);
+
+      expect(retrieved).toBe(methodContract);
+    });
+
+    it('should return undefined when no contract found', () => {
+      const service = { method() { } };
+
+      const retrieved = middleware.getMethodContract(service, 'method');
+
+      expect(retrieved).toBeUndefined();
+    });
+  });
+
+  describe('applyToInstance', () => {
+    it('should apply validation to instance with contract', async () => {
+      class UserService {
+        async createUser(input: any) {
+          return { id: '123', ...input };
+        }
+      }
+
+      const serviceContract = contract({
+        createUser: {
+          input: z.object({ name: z.string() }),
+          output: z.object({ id: z.string(), name: z.string() })
+        }
+      });
+
+      Reflect.defineMetadata('validation:contract', serviceContract, UserService);
+
+      const instance = new UserService();
+      const wrapped = middleware.applyToInstance(instance);
+
+      const result = await wrapped.createUser({ name: 'Test' });
+      expect(result).toEqual({ id: '123', name: 'Test' });
+    });
+
+    it('should return instance unchanged when no contract', () => {
+      class SimpleService {
+        async method(input: any) {
+          return input;
+        }
+      }
+
+      const instance = new SimpleService();
+      const wrapped = middleware.applyToInstance(instance);
+
+      expect(wrapped).toBe(instance);
+    });
+
+    it('should merge class options with provided options', async () => {
+      class UserService {
+        async process(input: any) {
+          return input;
+        }
+      }
+
+      const serviceContract = contract({
+        process: {
+          input: z.object({ value: z.number() }),
+          output: z.object({ value: z.number() })
+        }
+      });
+
+      Reflect.defineMetadata('validation:contract', serviceContract, UserService);
+      Reflect.defineMetadata('validation:options', { mode: 'strip' }, UserService);
+
+      const instance = new UserService();
+      const wrapped = middleware.applyToInstance(instance, undefined, { coerce: true });
+
+      // Should work with coercion
+      const result = await wrapped.process({ value: '42' } as any);
+      expect(result.value).toBe(42);
+    });
+
+    it('should use provided contract over class contract', async () => {
+      class UserService {
+        async process(input: any) {
+          return input;
+        }
+      }
+
+      const classContract = contract({
+        process: {
+          input: z.string(),
+          output: z.string()
+        }
+      });
+
+      const overrideContract = contract({
+        process: {
+          input: z.number(),
+          output: z.number()
+        }
+      });
+
+      Reflect.defineMetadata('validation:contract', classContract, UserService);
+
+      const instance = new UserService();
+      const wrapped = middleware.applyToInstance(instance, overrideContract);
+
+      const result = await wrapped.process(42);
+      expect(result).toBe(42);
+
+      await expect(wrapped.process('string')).rejects.toThrow();
+    });
+  });
+
+  describe('Edge cases and error scenarios', () => {
+    it('should throw when wrapping non-existent method', () => {
+      const service = {};
+
+      const methodContract = {
+        input: z.string(),
+        output: z.string()
+      };
+
+      expect(() => {
+        middleware.wrapMethod(service, 'nonExistent', methodContract);
+      }).toThrow();
+    });
+
+    it('should throw when streaming method does not return async generator', async () => {
+      const service = {
+        notAGenerator(input: any) {
+          return 'not a generator';
+        }
+      };
+
+      const methodContract = {
+        input: z.any(),
+        output: z.any(),
+        stream: true
+      };
+
+      const wrapped = middleware.wrapMethod(service, 'notAGenerator', methodContract);
+
+      try {
+        const generator = wrapped.call(service, {}) as AsyncGenerator;
+        await generator.next();
+        fail('Should have thrown');
+      } catch (error: any) {
+        expect(error.message).toContain('async generator');
+      }
+    });
+
+    it('should handle multiple arguments in wrapped methods', async () => {
+      const service = {
+        async methodWithMultipleArgs(input: any, arg2: string, arg3: number) {
+          return { input, arg2, arg3 };
+        }
+      };
+
+      const methodContract = {
+        input: z.object({ value: z.number() }),
+        output: z.any()
+      };
+
+      const wrapped = middleware.wrapMethod(service, 'methodWithMultipleArgs', methodContract);
+
+      const result = await wrapped.call(service, { value: 42 }, 'test', 123);
+      expect(result).toEqual({
+        input: { value: 42 },
+        arg2: 'test',
+        arg3: 123
+      });
     });
   });
 });

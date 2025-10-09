@@ -565,7 +565,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     const hasAuth = request.headers.has('Authorization');
     const hasOrigin = request.headers.has('Origin');
     const needsCors = this.options.cors && hasOrigin;
-    const hasCustomMiddleware = this.globalPipeline.getMetrics().totalExecutions > 0;
+    const hasCustomMiddleware = this.globalPipeline.getMetrics().executions > 0;
 
     if (!hasAuth && !needsCors && !hasCustomMiddleware) {
       return this.handleSimpleInvocation(request, message);
@@ -576,7 +576,9 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     const metadata = new Map<string, unknown>();
     // Use for...in loop for better performance
     for (const key in requestContext) {
-      metadata.set(key, requestContext[key]);
+      if (Object.prototype.hasOwnProperty.call(requestContext, key)) {
+        metadata.set(key, requestContext[key as keyof HttpRequestContext]);
+      }
     }
     metadata.set('requestId', message.id);
     metadata.set('timestamp', message.timestamp);

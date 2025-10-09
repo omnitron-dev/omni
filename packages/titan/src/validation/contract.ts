@@ -62,7 +62,7 @@ export class Contract<T extends ContractDefinition = ContractDefinition> {
   constructor(
     public readonly definition: T,
     public readonly metadata: ContractMetadata = {}
-  ) { }
+  ) {}
 
   /**
    * Check if contract has a method
@@ -82,10 +82,7 @@ export class Contract<T extends ContractDefinition = ContractDefinition> {
    * Create a new contract with additional methods
    */
   extend<U extends ContractDefinition>(additional: U): Contract<T & U> {
-    return new Contract(
-      { ...this.definition, ...additional },
-      this.metadata
-    );
+    return new Contract({ ...this.definition, ...additional }, this.metadata);
   }
 
   /**
@@ -118,10 +115,7 @@ export class Contract<T extends ContractDefinition = ContractDefinition> {
 /**
  * Helper function to create a contract
  */
-export function contract<T extends ContractDefinition>(
-  definition: T,
-  metadata?: ContractMetadata
-): Contract<T> {
+export function contract<T extends ContractDefinition>(definition: T, metadata?: ContractMetadata): Contract<T> {
   return new Contract(definition, metadata || {});
 }
 
@@ -143,22 +137,24 @@ export namespace ContractTypes {
   /**
    * Extract error types from a method contract
    */
-  export type Errors<T extends MethodContract> = T['errors'] extends Record<number, z.ZodSchema<any>>
-    ? {
-      [K in keyof T['errors']]: T['errors'][K] extends z.ZodSchema<infer U> ? U : any;
-    }
-    : never;
+  export type Errors<T extends MethodContract> =
+    T['errors'] extends Record<number, z.ZodSchema<any>>
+      ? {
+          [K in keyof T['errors']]: T['errors'][K] extends z.ZodSchema<infer U> ? U : any;
+        }
+      : never;
 
   /**
    * Extract service interface from contract
    */
-  export type Service<T extends Contract> = T extends Contract<infer D>
-    ? {
-      [K in keyof D]: D[K]['stream'] extends true
-      ? (input: Input<D[K]>) => AsyncGenerator<Output<D[K]>, void, unknown>
-      : (input: Input<D[K]>) => Promise<Output<D[K]>>;
-    }
-    : never;
+  export type Service<T extends Contract> =
+    T extends Contract<infer D>
+      ? {
+          [K in keyof D]: D[K]['stream'] extends true
+            ? (input: Input<D[K]>) => AsyncGenerator<Output<D[K]>, void, unknown>
+            : (input: Input<D[K]>) => Promise<Output<D[K]>>;
+        }
+      : never;
 }
 
 /**
@@ -169,10 +165,7 @@ export namespace Contracts {
   /**
    * CRUD contract template
    */
-  export function crud<T extends z.ZodObject<any>>(
-    entitySchema: T,
-    idSchema: z.ZodSchema<any> = z.string().uuid()
-  ) {
+  export function crud<T extends z.ZodObject<any>>(entitySchema: T, idSchema: z.ZodSchema<any> = z.string().uuid()) {
     type Entity = z.infer<T>;
 
     return contract({
@@ -180,78 +173,75 @@ export namespace Contracts {
         input: entitySchema,
         output: entitySchema,
         errors: {
-          409: z.object({ code: z.literal('ALREADY_EXISTS'), message: z.string() })
-        }
+          409: z.object({ code: z.literal('ALREADY_EXISTS'), message: z.string() }),
+        },
       },
       read: {
         input: idSchema,
-        output: entitySchema.nullable() as z.ZodSchema<Entity | null>
+        output: entitySchema.nullable() as z.ZodSchema<Entity | null>,
       },
       update: {
         input: z.object({
           id: idSchema,
-          data: entitySchema.partial() as any
+          data: entitySchema.partial() as any,
         }),
         output: entitySchema,
         errors: {
-          404: z.object({ code: z.literal('NOT_FOUND'), message: z.string() })
-        }
+          404: z.object({ code: z.literal('NOT_FOUND'), message: z.string() }),
+        },
       },
       delete: {
         input: idSchema,
         output: z.boolean(),
         errors: {
-          404: z.object({ code: z.literal('NOT_FOUND'), message: z.string() })
-        }
+          404: z.object({ code: z.literal('NOT_FOUND'), message: z.string() }),
+        },
       },
       list: {
         input: z.object({
           offset: z.number().int().min(0).default(0),
           limit: z.number().int().min(1).max(100).default(20),
-          filter: z.record(z.string(), z.any()).optional()
+          filter: z.record(z.string(), z.any()).optional(),
         }),
         output: z.object({
           items: z.array(entitySchema),
           total: z.number(),
           offset: z.number(),
-          limit: z.number()
-        })
-      }
+          limit: z.number(),
+        }),
+      },
     });
   }
 
   /**
    * Streaming contract template
    */
-  export function streaming<T extends z.ZodSchema<any>>(
-    itemSchema: T,
-    filterSchema: z.ZodSchema<any> = z.any()
-  ) {
+  export function streaming<T extends z.ZodSchema<any>>(itemSchema: T, filterSchema: z.ZodSchema<any> = z.any()) {
     return contract({
       subscribe: {
         input: filterSchema,
         output: itemSchema,
-        stream: true
+        stream: true,
       },
       unsubscribe: {
         input: z.string(), // subscription ID
-        output: z.boolean()
-      }
+        output: z.boolean(),
+      },
     });
   }
 
   /**
    * RPC contract template
    */
-  export function rpc<
-    TInput extends z.ZodSchema<any>,
-    TOutput extends z.ZodSchema<any>
-  >(input: TInput, output: TOutput) {
+  export function rpc<TInput extends z.ZodSchema<any>, TOutput extends z.ZodSchema<any>>(
+    input: TInput,
+    output: TOutput
+  ) {
     return contract({
       execute: {
         input,
-        output
-      }
+        output,
+      },
     });
   }
 }
@@ -266,10 +256,7 @@ export class ContractBuilder<T extends ContractDefinition = {}> {
   /**
    * Add a method to the contract
    */
-  method<K extends string, M extends MethodContract>(
-    name: K,
-    contract: M
-  ): ContractBuilder<T & Record<K, M>> {
+  method<K extends string, M extends MethodContract>(name: K, contract: M): ContractBuilder<T & Record<K, M>> {
     (this.definition as any)[name] = contract;
     return this as any;
   }

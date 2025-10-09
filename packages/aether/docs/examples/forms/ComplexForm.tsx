@@ -18,14 +18,7 @@
 
 import { defineComponent, Show, Switch, Match } from '@omnitron-dev/aether';
 import { signal, computed } from '@omnitron-dev/aether/reactivity';
-import {
-  bindValue,
-  bindNumber,
-  bindChecked,
-  bindGroup,
-  preventStop,
-  classes,
-} from '@omnitron-dev/aether/utils';
+import { bindValue, bindNumber, bindChecked, bindGroup, preventStop, classes } from '@omnitron-dev/aether/utils';
 
 /**
  * Account type options
@@ -212,9 +205,7 @@ export const ComplexForm = defineComponent<ComplexFormProps>((props) => {
             />
           ))}
         </div>
-        <p style={{ margin: 0, fontSize: '0.875rem', color: '#6b7280' }}>
-          Step {currentStep()} of 5
-        </p>
+        <p style={{ margin: 0, fontSize: '0.875rem', color: '#6b7280' }}>Step {currentStep()} of 5</p>
       </div>
 
       {/* Step content */}
@@ -230,25 +221,16 @@ export const ComplexForm = defineComponent<ComplexFormProps>((props) => {
                     display: 'flex',
                     alignItems: 'center',
                     padding: '1rem',
-                    border:
-                      accountType() === 'personal'
-                        ? '2px solid #3b82f6'
-                        : '2px solid #e5e7eb',
+                    border: accountType() === 'personal' ? '2px solid #3b82f6' : '2px solid #e5e7eb',
                     borderRadius: '0.5rem',
                     cursor: 'pointer',
                     transition: 'border-color 0.15s',
                   }}
                 >
-                  <input
-                    type="radio"
-                    {...bindGroup(accountType, 'personal')}
-                    style={{ marginRight: '0.75rem' }}
-                  />
+                  <input type="radio" {...bindGroup(accountType, 'personal')} style={{ marginRight: '0.75rem' }} />
                   <div>
                     <strong>Personal Account</strong>
-                    <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#6b7280' }}>
-                      For individual use
-                    </p>
+                    <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#6b7280' }}>For individual use</p>
                   </div>
                 </label>
 
@@ -257,20 +239,13 @@ export const ComplexForm = defineComponent<ComplexFormProps>((props) => {
                     display: 'flex',
                     alignItems: 'center',
                     padding: '1rem',
-                    border:
-                      accountType() === 'business'
-                        ? '2px solid #3b82f6'
-                        : '2px solid #e5e7eb',
+                    border: accountType() === 'business' ? '2px solid #3b82f6' : '2px solid #e5e7eb',
                     borderRadius: '0.5rem',
                     cursor: 'pointer',
                     transition: 'border-color 0.15s',
                   }}
                 >
-                  <input
-                    type="radio"
-                    {...bindGroup(accountType, 'business')}
-                    style={{ marginRight: '0.75rem' }}
-                  />
+                  <input type="radio" {...bindGroup(accountType, 'business')} style={{ marginRight: '0.75rem' }} />
                   <div>
                     <strong>Business Account</strong>
                     <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#6b7280' }}>
@@ -285,16 +260,12 @@ export const ComplexForm = defineComponent<ComplexFormProps>((props) => {
           {/* Step 2: Personal/Business Info */}
           <Match when={currentStep() === 2}>
             <div>
-              <h3>
-                {accountType() === 'personal' ? 'Personal Information' : 'Business Information'}
-              </h3>
+              <h3>{accountType() === 'personal' ? 'Personal Information' : 'Business Information'}</h3>
 
               <Show when={accountType() === 'personal'}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                      First Name
-                    </label>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>First Name</label>
                     <input
                       type="text"
                       {...bindValue(firstName)}
@@ -310,9 +281,7 @@ export const ComplexForm = defineComponent<ComplexFormProps>((props) => {
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                      Last Name
-                    </label>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Last Name</label>
                     <input
                       type="text"
                       {...bindValue(lastName)}
@@ -332,9 +301,7 @@ export const ComplexForm = defineComponent<ComplexFormProps>((props) => {
               <Show when={accountType() === 'business'}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                      Company Name
-                    </label>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Company Name</label>
                     <input
                       type="text"
                       {...bindValue(companyName)}
@@ -350,9 +317,7 @@ export const ComplexForm = defineComponent<ComplexFormProps>((props) => {
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                      Tax ID / EIN
-                    </label>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Tax ID / EIN</label>
                     <input
                       type="text"
                       {...bindValue(taxId)}
@@ -377,9 +342,7 @@ export const ComplexForm = defineComponent<ComplexFormProps>((props) => {
               <h3>Contact Information</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                    Email
-                  </label>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Email</label>
                   <input
                     type="email"
                     {...bindValue(email)}
@@ -395,9 +358,7 @@ export const ComplexForm = defineComponent<ComplexFormProps>((props) => {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                    Phone
-                  </label>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Phone</label>
                   <input
                     type="tel"
                     {...bindValue(phone)}
@@ -413,9 +374,7 @@ export const ComplexForm = defineComponent<ComplexFormProps>((props) => {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                    Address
-                  </label>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Address</label>
                   <input
                     type="text"
                     {...bindValue(address)}
@@ -432,9 +391,7 @@ export const ComplexForm = defineComponent<ComplexFormProps>((props) => {
 
                 <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
                   <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                      City
-                    </label>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>City</label>
                     <input
                       type="text"
                       {...bindValue(city)}
@@ -450,9 +407,7 @@ export const ComplexForm = defineComponent<ComplexFormProps>((props) => {
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                      ZIP Code
-                    </label>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>ZIP Code</label>
                     <input
                       type="text"
                       {...bindValue(zipCode)}
@@ -495,9 +450,7 @@ export const ComplexForm = defineComponent<ComplexFormProps>((props) => {
                         onChange={(e) => {
                           const checked = (e.target as HTMLInputElement).checked;
                           notifications.set(
-                            checked
-                              ? [...notifications(), 'email']
-                              : notifications().filter((n) => n !== 'email')
+                            checked ? [...notifications(), 'email'] : notifications().filter((n) => n !== 'email')
                           );
                         }}
                         style={{ marginRight: '0.5rem' }}
@@ -512,9 +465,7 @@ export const ComplexForm = defineComponent<ComplexFormProps>((props) => {
                         onChange={(e) => {
                           const checked = (e.target as HTMLInputElement).checked;
                           notifications.set(
-                            checked
-                              ? [...notifications(), 'sms']
-                              : notifications().filter((n) => n !== 'sms')
+                            checked ? [...notifications(), 'sms'] : notifications().filter((n) => n !== 'sms')
                           );
                         }}
                         style={{ marginRight: '0.5rem' }}
@@ -529,9 +480,7 @@ export const ComplexForm = defineComponent<ComplexFormProps>((props) => {
                         onChange={(e) => {
                           const checked = (e.target as HTMLInputElement).checked;
                           notifications.set(
-                            checked
-                              ? [...notifications(), 'push']
-                              : notifications().filter((n) => n !== 'push')
+                            checked ? [...notifications(), 'push'] : notifications().filter((n) => n !== 'push')
                           );
                         }}
                         style={{ marginRight: '0.5rem' }}
@@ -542,9 +491,7 @@ export const ComplexForm = defineComponent<ComplexFormProps>((props) => {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                    Language
-                  </label>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Language</label>
                   <select
                     value={language()}
                     onChange={(e) => language.set((e.target as HTMLSelectElement).value)}
@@ -579,12 +526,8 @@ export const ComplexForm = defineComponent<ComplexFormProps>((props) => {
                 }}
               >
                 <div style={{ marginBottom: '1.5rem' }}>
-                  <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.875rem', color: '#6b7280' }}>
-                    Account Type
-                  </h4>
-                  <p style={{ margin: 0 }}>
-                    {accountType() === 'personal' ? 'Personal Account' : 'Business Account'}
-                  </p>
+                  <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.875rem', color: '#6b7280' }}>Account Type</h4>
+                  <p style={{ margin: 0 }}>{accountType() === 'personal' ? 'Personal Account' : 'Business Account'}</p>
                 </div>
 
                 <div style={{ marginBottom: '1.5rem' }}>
@@ -592,21 +535,15 @@ export const ComplexForm = defineComponent<ComplexFormProps>((props) => {
                     {accountType() === 'personal' ? 'Name' : 'Company'}
                   </h4>
                   <p style={{ margin: 0 }}>
-                    {accountType() === 'personal'
-                      ? `${firstName()} ${lastName()}`
-                      : companyName()}
+                    {accountType() === 'personal' ? `${firstName()} ${lastName()}` : companyName()}
                   </p>
                   <Show when={accountType() === 'business'}>
-                    <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#6b7280' }}>
-                      Tax ID: {taxId()}
-                    </p>
+                    <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#6b7280' }}>Tax ID: {taxId()}</p>
                   </Show>
                 </div>
 
                 <div style={{ marginBottom: '1.5rem' }}>
-                  <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.875rem', color: '#6b7280' }}>
-                    Contact
-                  </h4>
+                  <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.875rem', color: '#6b7280' }}>Contact</h4>
                   <p style={{ margin: 0 }}>{email()}</p>
                   <p style={{ margin: '0.25rem 0 0' }}>{phone()}</p>
                   <p style={{ margin: '0.25rem 0 0' }}>
@@ -615,21 +552,17 @@ export const ComplexForm = defineComponent<ComplexFormProps>((props) => {
                 </div>
 
                 <div>
-                  <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.875rem', color: '#6b7280' }}>
-                    Preferences
-                  </h4>
-                  <p style={{ margin: 0 }}>
-                    Newsletter: {newsletter() ? 'Yes' : 'No'}
-                  </p>
+                  <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.875rem', color: '#6b7280' }}>Preferences</h4>
+                  <p style={{ margin: 0 }}>Newsletter: {newsletter() ? 'Yes' : 'No'}</p>
                   <p style={{ margin: '0.25rem 0 0' }}>
                     Notifications: {notifications().length > 0 ? notifications().join(', ') : 'None'}
                   </p>
-                  <p style={{ margin: '0.25rem 0 0' }}>
-                    Language: {language()}
-                  </p>
+                  <p style={{ margin: '0.25rem 0 0' }}>Language: {language()}</p>
                 </div>
 
-                <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#fff', borderRadius: '0.25rem' }}>
+                <div
+                  style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#fff', borderRadius: '0.25rem' }}
+                >
                   <button
                     type="button"
                     onClick={() => goToStep(1)}

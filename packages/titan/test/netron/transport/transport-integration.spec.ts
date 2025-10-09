@@ -21,7 +21,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer as createHttpServer } from 'node:http';
 import { WebSocketServer } from 'ws';
-import { getFreePort, waitForEvent, delay } from '../../utils/index.js';
+import { getFreePort, waitForEvent } from '../../utils/index.js';
 
 // Test configuration
 const TCP_TEST_PORT = 19000;

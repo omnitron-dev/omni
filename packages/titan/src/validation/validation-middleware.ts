@@ -28,7 +28,8 @@ export class ValidationMiddleware {
   wrapMethod(
     target: any,
     method: string,
-    contract?: MethodContract
+    contract?: MethodContract,
+    overrideOptions?: ValidationOptions
   ): MethodWrapper {
     // If no contract, return original method
     if (!contract || (!contract.input && !contract.output)) {
@@ -44,32 +45,21 @@ export class ValidationMiddleware {
       throw Errors.notFound('Method', method);
     }
 
-    // Compile validators if needed
-    const inputValidator = contract.input
-      ? this.engine.compile(contract.input, contract.options)
-      : null;
+    // Merge contract options with override options
+    const effectiveOptions = overrideOptions ? { ...contract.options, ...overrideOptions } : contract.options;
 
-    const outputValidator = contract.output
-      ? this.engine.compile(contract.output, contract.options)
-      : null;
+    // Compile validators if needed
+    const inputValidator = contract.input ? this.engine.compile(contract.input, effectiveOptions) : null;
+
+    const outputValidator = contract.output ? this.engine.compile(contract.output, effectiveOptions) : null;
 
     // Handle streaming methods
     if (contract.stream) {
-      return this.wrapStreamingMethod(
-        original,
-        target,
-        inputValidator,
-        outputValidator
-      );
+      return this.wrapStreamingMethod(original, target, inputValidator, outputValidator);
     }
 
     // Handle regular async methods
-    return this.wrapAsyncMethod(
-      original,
-      target,
-      inputValidator,
-      outputValidator
-    );
+    return this.wrapAsyncMethod(original, target, inputValidator, outputValidator);
   }
 
   /**
@@ -163,7 +153,7 @@ export class ValidationMiddleware {
   /**
    * Wrap all methods of a service based on contract
    */
-  wrapService<T>(service: T, contract: Contract): WrappedService<T> {
+  wrapService<T>(service: T, contract: Contract, overrideOptions?: ValidationOptions): WrappedService<T> {
     // Create a proxy to intercept method calls
     const wrappedMethods = new Map<string, MethodWrapper>();
 
@@ -172,10 +162,7 @@ export class ValidationMiddleware {
       const methodContract = contract.getMethod(methodName);
 
       if ((service as any)[methodName] && typeof (service as any)[methodName] === 'function') {
-        wrappedMethods.set(
-          methodName,
-          this.wrapMethod(service, methodName, methodContract)
-        );
+        wrappedMethods.set(methodName, this.wrapMethod(service, methodName, methodContract, overrideOptions));
       }
     }
 
@@ -189,7 +176,7 @@ export class ValidationMiddleware {
 
         // Otherwise, return the original property
         return Reflect.get(target, prop, receiver);
-      }
+      },
     }) as WrappedService<T>;
   }
 
@@ -203,9 +190,10 @@ export class ValidationMiddleware {
       beforeValidation?: (method: string, input: any) => void;
       afterValidation?: (method: string, output: any) => void;
       onError?: (method: string, error: any) => void;
+      validationOptions?: ValidationOptions;
     }
   ): T {
-    const wrappedService = this.wrapService(service, contract);
+    const wrappedService = this.wrapService(service, contract, options?.validationOptions);
 
     // Add hooks if provided
     if (options) {
@@ -243,7 +231,7 @@ export class ValidationMiddleware {
           }
 
           return original;
-        }
+        },
       }) as T;
     }
 
@@ -253,11 +241,7 @@ export class ValidationMiddleware {
   /**
    * Check if validation should be skipped for a method
    */
-  shouldSkipValidation(
-    target: any,
-    method: string,
-    metadata?: any
-  ): boolean {
+  shouldSkipValidation(target: any, method: string, metadata?: any): boolean {
     // Check for @NoValidation decorator metadata
     if (metadata?.skipValidation) {
       return true;
@@ -275,11 +259,7 @@ export class ValidationMiddleware {
   /**
    * Get method validation contract from metadata
    */
-  getMethodContract(
-    target: any,
-    method: string,
-    classContract?: Contract
-  ): MethodContract | undefined {
+  getMethodContract(target: any, method: string, classContract?: Contract): MethodContract | undefined {
     // First check for method-level validation
     const methodValidation = Reflect.getMetadata('validation:method', target, method);
     if (methodValidation) {
@@ -297,11 +277,7 @@ export class ValidationMiddleware {
   /**
    * Apply validation to a class instance
    */
-  applyToInstance<T>(
-    instance: T,
-    contract?: Contract,
-    options?: ValidationOptions
-  ): T {
+  applyToInstance<T>(instance: T, contract?: Contract, options?: ValidationOptions): T {
     // Get class contract if not provided
     const classContract = contract || Reflect.getMetadata('validation:contract', (instance as any).constructor);
 
@@ -313,8 +289,9 @@ export class ValidationMiddleware {
     const classOptions = Reflect.getMetadata('validation:options', (instance as any).constructor) || {};
     const mergedOptions = { ...classOptions, ...options };
 
-    // Create wrapped instance
+    // Create wrapped instance with merged validation options
     return this.createHandler(instance, classContract, {
+      validationOptions: mergedOptions,
       beforeValidation: (method, input) => {
         // Can add logging or metrics here
       },
@@ -323,7 +300,7 @@ export class ValidationMiddleware {
       },
       onError: (method, error) => {
         // Can add error handling here
-      }
+      },
     });
   }
 }

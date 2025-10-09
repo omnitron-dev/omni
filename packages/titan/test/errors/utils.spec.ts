@@ -2,7 +2,7 @@
  * Comprehensive tests for error utilities
  */
 
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect } from '@jest/globals';
 import {
   tryAsync,
   trySync,

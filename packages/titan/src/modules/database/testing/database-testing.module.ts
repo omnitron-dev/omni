@@ -453,14 +453,12 @@ export class DatabaseTestingModule {
       },
       {
         provide: DATABASE_TESTING_SERVICE,
-        useFactory: async (manager: DatabaseManager) => {
-          return new DatabaseTestingService(
+        useFactory: async (manager: DatabaseManager) => new DatabaseTestingService(
             manager,
             defaultOptions,
             undefined,  // migrationRunner (optional)
             undefined   // transactionManager (optional)
-          );
-        },
+          ),
         inject: [DATABASE_MANAGER],
         async: true,
       },

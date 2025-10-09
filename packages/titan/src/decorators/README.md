@@ -566,12 +566,12 @@ class UserService {
 }
 ```
 
-#### `@ValidationOptions(options)`
+#### `@WithValidationOptions(options)`
 
 Sets global validation options for a service.
 
 ```typescript
-@ValidationOptions({
+@WithValidationOptions({
   strict: true,
   stripUnknown: true,
   abortEarly: false
@@ -1584,7 +1584,7 @@ export {
 // Validation decorators
 export {
   Contract,
-  ValidationOptions,
+  WithValidationOptions,
   NoValidation,
   ValidationBatch,
   ValidateInput,

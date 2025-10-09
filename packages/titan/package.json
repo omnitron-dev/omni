@@ -40,6 +40,10 @@
       "types": "./dist/nexus/index.d.ts",
       "default": "./dist/nexus/index.js"
     },
+    "./validation": {
+      "types": "./dist/validation/index.d.ts",
+      "default": "./dist/validation/index.js"
+    },
     "./module/redis": {
       "types": "./dist/modules/redis/index.d.ts",
       "default": "./dist/modules/redis/index.js"

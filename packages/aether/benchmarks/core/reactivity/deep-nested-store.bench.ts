@@ -9,7 +9,7 @@ function createDeepNestedObject(depth: number, breadth: number = 3): any {
     return {
       value: Math.random(),
       id: Math.random().toString(36),
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 
@@ -19,7 +19,7 @@ function createDeepNestedObject(depth: number, breadth: number = 3): any {
   }
   obj.metadata = {
     level: depth,
-    nodeCount: breadth
+    nodeCount: breadth,
   };
   return obj;
 }
@@ -283,20 +283,20 @@ describe('Deep Nested Store Benchmarks', () => {
               text: `Comment ${c}`,
               replies: Array.from({ length: 5 }, (_, r) => ({
                 id: r,
-                text: `Reply ${r}`
-              }))
+                text: `Reply ${r}`,
+              })),
             });
           }
           posts.push({
             id: p,
             title: `Post ${p}`,
-            comments
+            comments,
           });
         }
         users.push({
           id: u,
           name: `User ${u}`,
-          posts
+          posts,
         });
       }
       return { users };
@@ -311,7 +311,7 @@ describe('Deep Nested Store Benchmarks', () => {
         s.users[5].posts[5].comments.push({
           id: 999,
           text: 'New comment',
-          replies: []
+          replies: [],
         });
 
         dispose();

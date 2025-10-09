@@ -61,7 +61,9 @@ function hasDynamicAttributes(element: t.JSXOpeningElement): boolean {
 /**
  * Check if a JSX child is static
  */
-function isStaticJSXChild(child: t.JSXText | t.JSXExpressionContainer | t.JSXSpreadChild | t.JSXElement | t.JSXFragment): boolean {
+function isStaticJSXChild(
+  child: t.JSXText | t.JSXExpressionContainer | t.JSXSpreadChild | t.JSXElement | t.JSXFragment
+): boolean {
   if (t.isJSXText(child)) {
     return true; // Text is always static
   }
@@ -96,12 +98,7 @@ export function isStaticExpression(expr: t.Expression | t.JSXEmptyExpression): b
   }
 
   // Literals are static
-  if (
-    t.isStringLiteral(expr) ||
-    t.isNumericLiteral(expr) ||
-    t.isBooleanLiteral(expr) ||
-    t.isNullLiteral(expr)
-  ) {
+  if (t.isStringLiteral(expr) || t.isNumericLiteral(expr) || t.isBooleanLiteral(expr) || t.isNullLiteral(expr)) {
     return true;
   }
 

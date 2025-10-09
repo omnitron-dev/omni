@@ -68,14 +68,7 @@ export const LoginForm = defineComponent<LoginFormProps>((props) => {
 
   // Form validity
   const isFormValid = computed(() => {
-    return (
-      email() &&
-      password() &&
-      !emailError() &&
-      !passwordError() &&
-      !isSubmitting() &&
-      !props.loading
-    );
+    return email() && password() && !emailError() && !passwordError() && !isSubmitting() && !props.loading;
   });
 
   // Mark field as touched
@@ -132,10 +125,7 @@ export const LoginForm = defineComponent<LoginFormProps>((props) => {
 
       {/* Email field */}
       <div style={{ marginBottom: '1.5rem' }}>
-        <label
-          htmlFor="email"
-          style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}
-        >
+        <label htmlFor="email" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
           Email
         </label>
         <input
@@ -172,10 +162,7 @@ export const LoginForm = defineComponent<LoginFormProps>((props) => {
 
       {/* Password field */}
       <div style={{ marginBottom: '1.5rem' }}>
-        <label
-          htmlFor="password"
-          style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}
-        >
+        <label htmlFor="password" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
           Password
         </label>
         <input
@@ -275,9 +262,7 @@ export const LoginWithErrorExample = defineComponent(() => {
     }
   };
 
-  return () => (
-    <LoginForm onLogin={handleLogin} loading={loading()} error={error()} />
-  );
+  return () => <LoginForm onLogin={handleLogin} loading={loading()} error={error()} />;
 });
 
 /**

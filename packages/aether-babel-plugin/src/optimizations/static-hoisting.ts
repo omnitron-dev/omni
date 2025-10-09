@@ -20,11 +20,7 @@ import { isStaticExpression } from '../utils/ast-utils';
 /**
  * Apply static hoisting to JSX attributes
  */
-export function staticHoisting(
-  path: NodePath<t.JSXElement>,
-  state: PluginState,
-  opts: PluginOptions
-): void {
+export function staticHoisting(path: NodePath<t.JSXElement>, state: PluginState, opts: PluginOptions): void {
   // For POC: This is a simplified version
   // Full implementation would traverse attributes and hoist static values
 

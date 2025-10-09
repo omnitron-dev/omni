@@ -4,7 +4,7 @@
 
 import 'reflect-metadata';
 import { z } from 'zod';
-import { Contract, Validate, NoValidation, ValidationOptions } from '../../src/decorators/validation.js';
+import { Contract, Validate, NoValidation, WithValidationOptions } from '../../src/decorators/validation.js';
 import { contract } from '../../src/validation/contract.js';
 import { ValidationMiddleware } from '../../src/validation/validation-middleware.js';
 import { ValidationEngine } from '../../src/validation/validation-engine.js';
@@ -193,9 +193,9 @@ describe('Validation Decorators', () => {
     });
   });
 
-  describe('@ValidationOptions decorator', () => {
+  describe('@WithValidationOptions decorator', () => {
     it('should apply global validation options to service', () => {
-      @ValidationOptions({
+      @WithValidationOptions({
         cacheValidators: true,
         lazyCompilation: true,
         stripUnknown: true,
@@ -217,7 +217,7 @@ describe('Validation Decorators', () => {
     });
 
     it('should be inherited by methods', () => {
-      @ValidationOptions({
+      @WithValidationOptions({
         mode: 'strip',
         coerce: true
       })

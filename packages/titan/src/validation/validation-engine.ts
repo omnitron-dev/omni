@@ -56,20 +56,20 @@ export class ValidationError extends Error {
       return {
         code: this.code,
         message: errors[0]?.message || 'Validation failed',
-        errors: errors.map(e => e.message)
+        errors: errors.map((e) => e.message),
       };
     }
 
     return {
       code: this.code,
       message: 'Validation failed',
-      errors: errors.map(error => ({
+      errors: errors.map((error) => ({
         path: error.path.join('.'),
         message: error.message,
         code: error.code,
         expected: (error as any).expected,
-        received: (error as any).received
-      }))
+        received: (error as any).received,
+      })),
     };
   }
 }
@@ -123,15 +123,17 @@ export class ValidationEngine {
     }
 
     // Create options key
-    const optionsKey = options ? JSON.stringify({
-      mode: options.mode,
-      abortEarly: options.abortEarly,
-      coerce: options.coerce,
-      skipValidation: options.skipValidation,
-      errorFormat: options.errorFormat,
-      stripUnknown: options.stripUnknown,
-      coerceTypes: options.coerceTypes
-    }) : 'default';
+    const optionsKey = options
+      ? JSON.stringify({
+          mode: options.mode,
+          abortEarly: options.abortEarly,
+          coerce: options.coerce,
+          skipValidation: options.skipValidation,
+          errorFormat: options.errorFormat,
+          stripUnknown: options.stripUnknown,
+          coerceTypes: options.coerceTypes,
+        })
+      : 'default';
 
     return `${schemaId}_${optionsKey}`;
   }
@@ -222,7 +224,7 @@ export class ValidationEngine {
       is: (data: unknown): data is T => {
         const result = optimized.safeParse(data);
         return result.success;
-      }
+      },
     };
   }
 
@@ -274,6 +276,7 @@ export class ValidationEngine {
     // For objects, recursively apply coercion
     if (schema instanceof z.ZodObject) {
       const shape = (schema as any).shape;
+      const unknownKeys = (schema as any)._def.unknownKeys; // Get mode BEFORE creating new object
       const coercedShape: any = {};
 
       for (const key in shape) {
@@ -291,11 +294,11 @@ export class ValidationEngine {
 
       // Preserve the mode settings
       const baseObject = z.object(coercedShape);
-      if ((schema as any)._def.unknownKeys === 'strip') {
+      if (unknownKeys === 'strip') {
         return baseObject.strip() as any;
-      } else if ((schema as any)._def.unknownKeys === 'strict') {
+      } else if (unknownKeys === 'strict') {
         return baseObject.strict() as any;
-      } else if ((schema as any)._def.unknownKeys === 'passthrough') {
+      } else if (unknownKeys === 'passthrough') {
         return baseObject.passthrough() as any;
       }
       return baseObject as any;

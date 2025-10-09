@@ -246,10 +246,7 @@ export const RegistrationForm = defineComponent<RegistrationFormProps>((props) =
 
       {/* Name field */}
       <div style={{ marginBottom: '1.25rem' }}>
-        <label
-          htmlFor="name"
-          style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}
-        >
+        <label htmlFor="name" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
           Full Name
         </label>
         <input
@@ -269,18 +266,13 @@ export const RegistrationForm = defineComponent<RegistrationFormProps>((props) =
           disabled={isSubmitting() || props.loading}
         />
         <Show when={nameError()}>
-          <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#c00' }}>
-            {nameError()}
-          </p>
+          <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#c00' }}>{nameError()}</p>
         </Show>
       </div>
 
       {/* Email field */}
       <div style={{ marginBottom: '1.25rem' }}>
-        <label
-          htmlFor="email"
-          style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}
-        >
+        <label htmlFor="email" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
           Email
         </label>
         <input
@@ -300,18 +292,13 @@ export const RegistrationForm = defineComponent<RegistrationFormProps>((props) =
           disabled={isSubmitting() || props.loading}
         />
         <Show when={emailError()}>
-          <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#c00' }}>
-            {emailError()}
-          </p>
+          <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#c00' }}>{emailError()}</p>
         </Show>
       </div>
 
       {/* Password field */}
       <div style={{ marginBottom: '1.25rem' }}>
-        <label
-          htmlFor="password"
-          style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}
-        >
+        <label htmlFor="password" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
           Password
         </label>
         <input
@@ -339,10 +326,7 @@ export const RegistrationForm = defineComponent<RegistrationFormProps>((props) =
                 style={{
                   flex: 1,
                   height: '4px',
-                  backgroundColor:
-                    passwordStrength().level >= 1
-                      ? passwordStrength().color
-                      : '#ddd',
+                  backgroundColor: passwordStrength().level >= 1 ? passwordStrength().color : '#ddd',
                   borderRadius: '2px',
                 }}
               />
@@ -350,10 +334,7 @@ export const RegistrationForm = defineComponent<RegistrationFormProps>((props) =
                 style={{
                   flex: 1,
                   height: '4px',
-                  backgroundColor:
-                    passwordStrength().level >= 2
-                      ? passwordStrength().color
-                      : '#ddd',
+                  backgroundColor: passwordStrength().level >= 2 ? passwordStrength().color : '#ddd',
                   borderRadius: '2px',
                 }}
               />
@@ -361,10 +342,7 @@ export const RegistrationForm = defineComponent<RegistrationFormProps>((props) =
                 style={{
                   flex: 1,
                   height: '4px',
-                  backgroundColor:
-                    passwordStrength().level >= 3
-                      ? passwordStrength().color
-                      : '#ddd',
+                  backgroundColor: passwordStrength().level >= 3 ? passwordStrength().color : '#ddd',
                   borderRadius: '2px',
                 }}
               />
@@ -382,18 +360,13 @@ export const RegistrationForm = defineComponent<RegistrationFormProps>((props) =
         </Show>
 
         <Show when={passwordError()}>
-          <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#c00' }}>
-            {passwordError()}
-          </p>
+          <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#c00' }}>{passwordError()}</p>
         </Show>
       </div>
 
       {/* Confirm password field */}
       <div style={{ marginBottom: '1.25rem' }}>
-        <label
-          htmlFor="confirmPassword"
-          style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}
-        >
+        <label htmlFor="confirmPassword" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
           Confirm Password
         </label>
         <input
@@ -413,9 +386,7 @@ export const RegistrationForm = defineComponent<RegistrationFormProps>((props) =
           disabled={isSubmitting() || props.loading}
         />
         <Show when={confirmPasswordError()}>
-          <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#c00' }}>
-            {confirmPasswordError()}
-          </p>
+          <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#c00' }}>{confirmPasswordError()}</p>
         </Show>
       </div>
 
@@ -437,9 +408,7 @@ export const RegistrationForm = defineComponent<RegistrationFormProps>((props) =
           </span>
         </label>
         <Show when={termsError()}>
-          <p style={{ margin: '0.25rem 0 0 1.5rem', fontSize: '0.875rem', color: '#c00' }}>
-            {termsError()}
-          </p>
+          <p style={{ margin: '0.25rem 0 0 1.5rem', fontSize: '0.875rem', color: '#c00' }}>{termsError()}</p>
         </Show>
       </div>
 
@@ -513,14 +482,7 @@ export const FullRegistrationExample = defineComponent(() => {
     }
   };
 
-  return () => (
-    <RegistrationForm
-      onRegister={handleRegister}
-      loading={loading()}
-      error={error()}
-      success={success()}
-    />
-  );
+  return () => <RegistrationForm onRegister={handleRegister} loading={loading()} error={error()} success={success()} />;
 });
 
 /**

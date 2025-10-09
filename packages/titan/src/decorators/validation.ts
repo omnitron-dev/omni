@@ -5,7 +5,7 @@
 import 'reflect-metadata';
 import { z } from 'zod';
 import { Contract as ContractClass, MethodContract } from '../validation/contract.js';
-import { ValidationOptions as IValidationOptions } from '../validation/validation-engine.js';
+import type { ValidationOptions as IValidationOptions } from '../validation/validation-engine.js';
 
 /**
  * Apply a validation contract to a service class
@@ -39,8 +39,12 @@ export function NoValidation(): MethodDecorator {
 
 /**
  * Apply global validation options to a service
+ * @decorator
+ * @example
+ * @WithValidationOptions({ strict: true, stripUnknown: false })
+ * class MyService { }
  */
-export function ValidationOptions(options: IValidationOptions): ClassDecorator {
+export function WithValidationOptions(options: IValidationOptions): ClassDecorator {
   return function (target: any) {
     Reflect.defineMetadata('validation:options', options, target);
     return target;
@@ -96,7 +100,7 @@ export function ValidateStream(
     input,
     output,
     stream: true,
-    options
+    options,
   });
 }
 
@@ -123,28 +127,25 @@ export namespace ValidationSchemas {
   // Pagination input
   export const pagination = z.object({
     offset: z.number().int().min(0).default(0),
-    limit: z.number().int().min(1).max(100).default(20)
+    limit: z.number().int().min(1).max(100).default(20),
   });
 
   // Sort input
   export const sort = z.object({
     field: z.string(),
-    order: z.enum(['asc', 'desc']).default('asc')
+    order: z.enum(['asc', 'desc']).default('asc'),
   });
 
   // Common filter
   export const filter = z.record(z.string(), z.any()).optional();
 
   // ID input
-  export const idInput = z.union([
-    z.string().uuid(),
-    z.number().int().positive()
-  ]);
+  export const idInput = z.union([z.string().uuid(), z.number().int().positive()]);
 
   // Success response
   export const successResponse = z.object({
     success: z.boolean(),
-    message: z.string().optional()
+    message: z.string().optional(),
   });
 
   // Error response
@@ -152,7 +153,7 @@ export namespace ValidationSchemas {
     error: z.boolean(),
     message: z.string(),
     code: z.string().optional(),
-    details: z.any().optional()
+    details: z.any().optional(),
   });
 
   // List response
@@ -162,7 +163,7 @@ export namespace ValidationSchemas {
       total: z.number(),
       offset: z.number(),
       limit: z.number(),
-      hasMore: z.boolean().optional()
+      hasMore: z.boolean().optional(),
     });
   }
 
@@ -192,31 +193,31 @@ export namespace ValidationPresets {
     return {
       create: Validate({
         input: entitySchema,
-        output: entitySchema
+        output: entitySchema,
       }),
       read: Validate({
         input: idSchema,
-        output: entitySchema.nullable()
+        output: entitySchema.nullable(),
       }),
       update: Validate({
         input: z.object({
           id: idSchema,
-          data: entitySchema.partial()
+          data: entitySchema.partial(),
         }),
-        output: entitySchema
+        output: entitySchema,
       }),
       delete: Validate({
         input: idSchema,
-        output: ValidationSchemas.successResponse
+        output: ValidationSchemas.successResponse,
       }),
       list: Validate({
         input: z.object({
           pagination: ValidationSchemas.pagination.optional(),
           filter: ValidationSchemas.filter,
-          sort: ValidationSchemas.sort.optional()
+          sort: ValidationSchemas.sort.optional(),
         }),
-        output: ValidationSchemas.listResponse(entitySchema)
-      })
+        output: ValidationSchemas.listResponse(entitySchema),
+      }),
     };
   }
 
@@ -227,45 +228,47 @@ export namespace ValidationPresets {
     login: Validate({
       input: z.object({
         email: ValidationSchemas.email,
-        password: z.string().min(8)
+        password: z.string().min(8),
       }),
       output: z.object({
         token: z.string(),
         refreshToken: z.string().optional(),
-        user: z.any()
-      })
+        user: z.any(),
+      }),
     }),
     register: Validate({
-      input: z.object({
-        email: ValidationSchemas.email,
-        password: z.string().min(8),
-        confirmPassword: z.string(),
-        name: z.string().min(2).optional()
-      }).refine(data => data.password === data.confirmPassword, {
-        message: "Passwords don't match",
-        path: ['confirmPassword']
-      }),
+      input: z
+        .object({
+          email: ValidationSchemas.email,
+          password: z.string().min(8),
+          confirmPassword: z.string(),
+          name: z.string().min(2).optional(),
+        })
+        .refine((data) => data.password === data.confirmPassword, {
+          message: "Passwords don't match",
+          path: ['confirmPassword'],
+        }),
       output: z.object({
         user: z.any(),
-        token: z.string().optional()
-      })
+        token: z.string().optional(),
+      }),
     }),
     logout: Validate({
       input: z.object({
         token: z.string().optional(),
-        everywhere: z.boolean().optional()
+        everywhere: z.boolean().optional(),
       }),
-      output: ValidationSchemas.successResponse
+      output: ValidationSchemas.successResponse,
     }),
     refresh: Validate({
       input: z.object({
-        refreshToken: z.string()
+        refreshToken: z.string(),
       }),
       output: z.object({
         token: z.string(),
-        refreshToken: z.string().optional()
-      })
-    })
+        refreshToken: z.string().optional(),
+      }),
+    }),
   };
 }
 
@@ -275,6 +278,7 @@ export namespace ValidationPresets {
 export type {
   Contract as ContractType,
   MethodContract,
-  ValidationOptions as ValidationOptionsType
+  ValidationOptions as ValidationOptionsType,
+  ValidationOptions, // Also export without alias
 } from '../validation/index.js';
 export { contract, contractBuilder, Contracts } from '../validation/index.js';

@@ -11,7 +11,6 @@ import {
   PermissionError,
   RateLimitError
 } from '../../src/errors/http.js';
-import { ErrorCode } from '../../src/errors/codes.js';
 
 describe('HTTP Errors', () => {
   describe('HttpError', () => {

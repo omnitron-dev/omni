@@ -26,13 +26,7 @@
 import { defineComponent } from '@omnitron-dev/aether';
 import { Show, Portal } from '@omnitron-dev/aether';
 import { signal } from '@omnitron-dev/aether/reactivity';
-import {
-  clickOutside,
-  autoFocus,
-  combineDirectives,
-  preventStop,
-  createDirective,
-} from '@omnitron-dev/aether/utils';
+import { clickOutside, autoFocus, combineDirectives, preventStop, createDirective } from '@omnitron-dev/aether/utils';
 
 /**
  * Modal Props
@@ -321,15 +315,9 @@ export const BasicModalExample = defineComponent(() => {
 
   return () => (
     <div>
-      <button onClick={() => isOpen.set(true)}>
-        Open Modal
-      </button>
+      <button onClick={() => isOpen.set(true)}>Open Modal</button>
 
-      <Modal
-        isOpen={isOpen()}
-        onClose={() => isOpen.set(false)}
-        title="Basic Modal"
-      >
+      <Modal isOpen={isOpen()} onClose={() => isOpen.set(false)} title="Basic Modal">
         <p>This is a basic modal example.</p>
         <p>Click outside, press Escape, or click the X to close.</p>
       </Modal>
@@ -348,9 +336,7 @@ export const ModalWithFooterExample = defineComponent(() => {
 
   return () => (
     <div>
-      <button onClick={() => isOpen.set(true)}>
-        Open Confirmation Modal
-      </button>
+      <button onClick={() => isOpen.set(true)}>Open Confirmation Modal</button>
 
       <Modal
         isOpen={isOpen()}
@@ -358,12 +344,8 @@ export const ModalWithFooterExample = defineComponent(() => {
         title="Confirm Action"
         footer={
           <>
-            <button onClick={() => isOpen.set(false)}>
-              Cancel
-            </button>
-            <button onClick={handleConfirm}>
-              Confirm
-            </button>
+            <button onClick={() => isOpen.set(false)}>Cancel</button>
+            <button onClick={handleConfirm}>Confirm</button>
           </>
         }
       >
@@ -413,9 +395,7 @@ export const FormModalExample = defineComponent(() => {
 
   return () => (
     <div>
-      <button onClick={() => isOpen.set(true)}>
-        Open Form Modal
-      </button>
+      <button onClick={() => isOpen.set(true)}>Open Form Modal</button>
 
       <Modal
         isOpen={isOpen()}

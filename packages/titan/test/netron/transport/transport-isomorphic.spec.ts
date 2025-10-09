@@ -25,7 +25,7 @@ import { join } from 'node:path';
 import { createServer as createHttpServer } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { promises as fs } from 'node:fs';
-import { getFreePort, waitForEvent, delay } from '../../utils/index.js';
+import { getFreePort, waitForEvent } from '../../utils/index.js';
 
 // Transport test configuration
 interface TransportTestConfig {

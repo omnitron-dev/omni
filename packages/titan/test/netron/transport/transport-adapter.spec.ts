@@ -14,7 +14,7 @@ import { createServer } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { promisify } from 'node:util';
 import type { ITransportConnection, ITransportServer } from '../../../src/netron/transport/types.js';
-import { getFreeHttpPort as getFreePort, waitForEvent, delay } from '../../utils/index.js';
+import { getFreeHttpPort as getFreePort, delay } from '../../utils/index.js';
 import { Packet } from '../../../src/netron/packet/index.js';
 
 describe('TransportAdapter', () => {

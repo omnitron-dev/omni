@@ -65,16 +65,11 @@ export const DynamicForm = defineComponent<DynamicFormProps>((props) => {
   const isSubmitting = signal(false);
 
   // Dynamic contacts list
-  const contacts = signal<ContactItem[]>([
-    { id: crypto.randomUUID(), name: '', email: '', phone: '' },
-  ]);
+  const contacts = signal<ContactItem[]>([{ id: crypto.randomUUID(), name: '', email: '', phone: '' }]);
 
   // Add new contact
   const addContact = () => {
-    contacts.set([
-      ...contacts(),
-      { id: crypto.randomUUID(), name: '', email: '', phone: '' },
-    ]);
+    contacts.set([...contacts(), { id: crypto.randomUUID(), name: '', email: '', phone: '' }]);
   };
 
   // Remove contact by id
@@ -85,11 +80,7 @@ export const DynamicForm = defineComponent<DynamicFormProps>((props) => {
 
   // Update contact field
   const updateContact = (id: string, field: keyof ContactItem, value: string) => {
-    contacts.set(
-      contacts().map((c) =>
-        c.id === id ? { ...c, [field]: value } : c
-      )
-    );
+    contacts.set(contacts().map((c) => (c.id === id ? { ...c, [field]: value } : c)));
   };
 
   // Validation
@@ -130,19 +121,11 @@ export const DynamicForm = defineComponent<DynamicFormProps>((props) => {
   });
 
   const hasContactErrors = computed(() => {
-    return contactErrors().some((ce) =>
-      Object.values(ce.errors).some((e) => e !== null)
-    );
+    return contactErrors().some((ce) => Object.values(ce.errors).some((e) => e !== null));
   });
 
   const isFormValid = computed(() => {
-    return (
-      !projectNameError() &&
-      !descriptionError() &&
-      !hasContactErrors() &&
-      !isSubmitting() &&
-      !props.loading
-    );
+    return !projectNameError() && !descriptionError() && !hasContactErrors() && !isSubmitting() && !props.loading;
   });
 
   // Handle form submission
@@ -181,10 +164,7 @@ export const DynamicForm = defineComponent<DynamicFormProps>((props) => {
 
       {/* Project Name */}
       <div style={{ marginBottom: '1.5rem' }}>
-        <label
-          htmlFor="projectName"
-          style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}
-        >
+        <label htmlFor="projectName" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
           Project Name *
         </label>
         <input
@@ -201,18 +181,13 @@ export const DynamicForm = defineComponent<DynamicFormProps>((props) => {
           placeholder="My Awesome Project"
         />
         <Show when={projectNameError()}>
-          <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#c00' }}>
-            {projectNameError()}
-          </p>
+          <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#c00' }}>{projectNameError()}</p>
         </Show>
       </div>
 
       {/* Description */}
       <div style={{ marginBottom: '2rem' }}>
-        <label
-          htmlFor="description"
-          style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}
-        >
+        <label htmlFor="description" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
           Description *
         </label>
         <textarea
@@ -230,9 +205,7 @@ export const DynamicForm = defineComponent<DynamicFormProps>((props) => {
           placeholder="Describe your project..."
         />
         <Show when={descriptionError()}>
-          <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#c00' }}>
-            {descriptionError()}
-          </p>
+          <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#c00' }}>{descriptionError()}</p>
         </Show>
       </div>
 
@@ -288,9 +261,7 @@ export const DynamicForm = defineComponent<DynamicFormProps>((props) => {
                     marginBottom: '1rem',
                   }}
                 >
-                  <h4 style={{ margin: 0, fontSize: '1rem' }}>
-                    Contact #{index() + 1}
-                  </h4>
+                  <h4 style={{ margin: 0, fontSize: '1rem' }}>Contact #{index() + 1}</h4>
                   <Show when={contacts().length > 1}>
                     <button
                       type="button"
@@ -313,19 +284,11 @@ export const DynamicForm = defineComponent<DynamicFormProps>((props) => {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   {/* Name */}
                   <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                      Name *
-                    </label>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Name *</label>
                     <input
                       type="text"
                       value={contact.name}
-                      onInput={(e) =>
-                        updateContact(
-                          contact.id,
-                          'name',
-                          (e.target as HTMLInputElement).value
-                        )
-                      }
+                      onInput={(e) => updateContact(contact.id, 'name', (e.target as HTMLInputElement).value)}
                       style={{
                         width: '100%',
                         padding: '0.5rem',
@@ -336,27 +299,17 @@ export const DynamicForm = defineComponent<DynamicFormProps>((props) => {
                       placeholder="John Doe"
                     />
                     <Show when={errors.name}>
-                      <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#c00' }}>
-                        {errors.name}
-                      </p>
+                      <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#c00' }}>{errors.name}</p>
                     </Show>
                   </div>
 
                   {/* Email */}
                   <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                      Email *
-                    </label>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Email *</label>
                     <input
                       type="email"
                       value={contact.email}
-                      onInput={(e) =>
-                        updateContact(
-                          contact.id,
-                          'email',
-                          (e.target as HTMLInputElement).value
-                        )
-                      }
+                      onInput={(e) => updateContact(contact.id, 'email', (e.target as HTMLInputElement).value)}
                       style={{
                         width: '100%',
                         padding: '0.5rem',
@@ -367,27 +320,17 @@ export const DynamicForm = defineComponent<DynamicFormProps>((props) => {
                       placeholder="john@example.com"
                     />
                     <Show when={errors.email}>
-                      <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#c00' }}>
-                        {errors.email}
-                      </p>
+                      <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#c00' }}>{errors.email}</p>
                     </Show>
                   </div>
 
                   {/* Phone */}
                   <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                      Phone *
-                    </label>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Phone *</label>
                     <input
                       type="tel"
                       value={contact.phone}
-                      onInput={(e) =>
-                        updateContact(
-                          contact.id,
-                          'phone',
-                          (e.target as HTMLInputElement).value
-                        )
-                      }
+                      onInput={(e) => updateContact(contact.id, 'phone', (e.target as HTMLInputElement).value)}
                       style={{
                         width: '100%',
                         padding: '0.5rem',
@@ -398,9 +341,7 @@ export const DynamicForm = defineComponent<DynamicFormProps>((props) => {
                       placeholder="+1 (555) 123-4567"
                     />
                     <Show when={errors.phone}>
-                      <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#c00' }}>
-                        {errors.phone}
-                      </p>
+                      <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#c00' }}>{errors.phone}</p>
                     </Show>
                   </div>
                 </div>
@@ -431,9 +372,7 @@ export const DynamicForm = defineComponent<DynamicFormProps>((props) => {
           transition: 'background-color 0.15s',
         }}
       >
-        {isSubmitting() || props.loading
-          ? 'Submitting...'
-          : 'Submit Project Registration'}
+        {isSubmitting() || props.loading ? 'Submitting...' : 'Submit Project Registration'}
       </button>
     </form>
   );

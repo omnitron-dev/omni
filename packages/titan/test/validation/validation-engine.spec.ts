@@ -311,5 +311,331 @@ describe('ValidationEngine', () => {
       const uniqueValidators = new Set(validators);
       expect(uniqueValidators.size).toBe(5);
     });
+
+    it('should clear cache', () => {
+      const schema = z.string();
+      engine.compile(schema);
+
+      expect(engine.getCacheSize()).toBeGreaterThan(0);
+
+      engine.clearCache();
+      expect(engine.getCacheSize()).toBe(0);
+    });
+
+    it('should get cache size', () => {
+      const initialSize = engine.getCacheSize();
+
+      engine.compile(z.string());
+      expect(engine.getCacheSize()).toBe(initialSize + 1);
+
+      engine.compile(z.number());
+      expect(engine.getCacheSize()).toBe(initialSize + 2);
+    });
+  });
+
+  describe('schema optimization', () => {
+    it('should handle passthrough mode', () => {
+      const schema = z.object({
+        id: z.string(),
+        name: z.string()
+      });
+
+      const validator = engine.compile(schema, { mode: 'passthrough' });
+
+      const dataWithExtra = {
+        id: '123',
+        name: 'Test',
+        extra: 'field'
+      };
+
+      const result = validator.validate(dataWithExtra);
+      expect(result).toEqual(dataWithExtra);
+      expect((result as any).extra).toBe('field');
+    });
+
+    it('should not modify schemas with effects/transforms', () => {
+      const schema = z.string().transform(s => s.toUpperCase());
+      const validator = engine.compile(schema, { mode: 'strict' });
+
+      const result = validator.validate('test');
+      expect(result).toBe('TEST');
+    });
+  });
+
+  describe('coercion edge cases', () => {
+    it('should coerce dates', () => {
+      const schema = z.object({
+        createdAt: z.date()
+      });
+
+      const validator = engine.compile(schema, { coerce: true });
+
+      const data = {
+        createdAt: '2024-01-01T00:00:00.000Z'
+      };
+
+      const result = validator.validate(data);
+      expect(result.createdAt).toBeInstanceOf(Date);
+    });
+
+    it('should coerce top-level fields', () => {
+      const schema = z.object({
+        id: z.string(),
+        age: z.number(),
+        price: z.number(),
+        active: z.boolean()
+      });
+
+      const validator = engine.compile(schema, { coerce: true });
+
+      const data = {
+        id: '123',
+        age: '25',
+        price: '29.99',
+        active: 'true'
+      };
+
+      const result = validator.validate(data);
+      expect(result.id).toBe('123');
+      expect(result.age).toBe(25);
+      expect(result.price).toBe(29.99);
+      expect(result.active).toBe(true);
+    });
+  });
+
+  describe('async validation edge cases', () => {
+    it('should handle async validation with coercion', async () => {
+      const schema = z.object({
+        age: z.number(),
+        active: z.boolean()
+      });
+
+      const validator = engine.compile(schema, { coerce: true });
+
+      const data = {
+        age: '25',
+        active: 'true'
+      };
+
+      const result = await validator.validateAsync(data);
+      expect(result.age).toBe(25);
+      expect(result.active).toBe(true);
+    });
+
+    it('should handle async abortEarly option', async () => {
+      const schema = z.object({
+        email: z.string().email(),
+        age: z.number().min(18),
+        name: z.string().min(2)
+      });
+
+      const validator = engine.compile(schema, { abortEarly: true });
+
+      const invalidData = {
+        email: 'invalid',
+        age: 15,
+        name: 'a'
+      };
+
+      try {
+        await validator.validateAsync(invalidData);
+        fail('Should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(ValidationError);
+        const json = (error as ValidationError).toJSON();
+        expect(json.errors.length).toBe(1);
+      }
+    });
+  });
+
+  describe('error formatting', () => {
+    it('should handle detailed error format', () => {
+      const schema = z.object({
+        email: z.string().email(),
+        age: z.number().int().min(18)
+      });
+
+      const validator = engine.compile(schema, { errorFormat: 'detailed' });
+
+      try {
+        validator.validate({
+          email: 'invalid',
+          age: 15
+        });
+        fail('Should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(ValidationError);
+        const json = (error as ValidationError).toJSON();
+
+        expect(json.code).toBe('VALIDATION_ERROR');
+        expect(json.message).toBe('Validation failed');
+        expect(json.errors).toBeInstanceOf(Array);
+        expect(json.errors.length).toBeGreaterThan(0);
+        expect(json.errors[0]).toHaveProperty('path');
+        expect(json.errors[0]).toHaveProperty('message');
+        expect(json.errors[0]).toHaveProperty('code');
+      }
+    });
+
+    it('should handle null zodError gracefully', () => {
+      const validationError = new ValidationError(null as any);
+      const json = validationError.toJSON();
+
+      expect(json.code).toBe('VALIDATION_ERROR');
+      expect(json.message).toBe('Validation failed');
+      expect(json.errors).toEqual([]);
+    });
+  });
+
+  describe('real-world scenarios', () => {
+    it('should validate user registration', () => {
+      interface User {
+        email: string;
+        password: string;
+        age: number;
+        role: 'admin' | 'user';
+        preferences?: {
+          newsletter: boolean;
+          notifications: boolean;
+        };
+      }
+
+      const userSchema = z.object({
+        email: z.string().email(),
+        password: z.string().min(8),
+        age: z.number().int().min(18).max(120),
+        role: z.enum(['admin', 'user']),
+        preferences: z.object({
+          newsletter: z.boolean(),
+          notifications: z.boolean()
+        }).optional()
+      });
+
+      const validator = engine.compile(userSchema);
+
+      const validUser = {
+        email: 'user@example.com',
+        password: 'SecurePass123',
+        age: 25,
+        role: 'user' as const,
+        preferences: {
+          newsletter: true,
+          notifications: false
+        }
+      };
+
+      expect(() => validator.validate(validUser)).not.toThrow();
+    });
+
+    it('should validate product catalog entry', () => {
+      const productSchema = z.object({
+        id: z.string().uuid(),
+        name: z.string().min(1).max(200),
+        price: z.number().positive(),
+        currency: z.enum(['USD', 'EUR', 'GBP']),
+        stock: z.number().int().min(0),
+        tags: z.array(z.string()).min(1).max(10),
+        metadata: z.record(z.string(), z.any()).optional()
+      });
+
+      const validator = engine.compile(productSchema, { mode: 'strip' });
+
+      const validProduct = {
+        id: '123e4567-e89b-12d3-a456-426614174000',
+        name: 'Test Product',
+        price: 29.99,
+        currency: 'USD' as const,
+        stock: 100,
+        tags: ['electronics', 'gadget'],
+        extraField: 'should be stripped'
+      };
+
+      const result = validator.validate(validProduct);
+      expect((result as any).extraField).toBeUndefined();
+      expect(result.tags).toEqual(['electronics', 'gadget']);
+    });
+
+    it('should validate API response with nested objects', () => {
+      const responseSchema = z.object({
+        status: z.enum(['success', 'error']),
+        data: z.object({
+          user: z.object({
+            id: z.string(),
+            name: z.string(),
+            email: z.string().email()
+          }),
+          session: z.object({
+            token: z.string(),
+            expiresAt: z.string().datetime()
+          })
+        }).nullable(),
+        error: z.object({
+          code: z.string(),
+          message: z.string()
+        }).nullable()
+      });
+
+      const validator = engine.compile(responseSchema);
+
+      const validResponse = {
+        status: 'success' as const,
+        data: {
+          user: {
+            id: '123',
+            name: 'John Doe',
+            email: 'john@example.com'
+          },
+          session: {
+            token: 'abc123',
+            expiresAt: '2024-12-31T23:59:59.000Z'
+          }
+        },
+        error: null
+      };
+
+      expect(() => validator.validate(validResponse)).not.toThrow();
+    });
+
+    it('should validate union types', () => {
+      const eventSchema = z.discriminatedUnion('type', [
+        z.object({
+          type: z.literal('user.created'),
+          userId: z.string().uuid(),
+          email: z.string().email()
+        }),
+        z.object({
+          type: z.literal('user.deleted'),
+          userId: z.string().uuid()
+        }),
+        z.object({
+          type: z.literal('user.updated'),
+          userId: z.string().uuid(),
+          changes: z.record(z.string(), z.any())
+        })
+      ]);
+
+      const validator = engine.compile(eventSchema);
+
+      const events = [
+        {
+          type: 'user.created',
+          userId: '123e4567-e89b-12d3-a456-426614174000',
+          email: 'user@example.com'
+        },
+        {
+          type: 'user.deleted',
+          userId: '123e4567-e89b-12d3-a456-426614174000'
+        },
+        {
+          type: 'user.updated',
+          userId: '123e4567-e89b-12d3-a456-426614174000',
+          changes: { name: 'New Name' }
+        }
+      ];
+
+      events.forEach(event => {
+        expect(() => validator.validate(event)).not.toThrow();
+      });
+    });
   });
 });

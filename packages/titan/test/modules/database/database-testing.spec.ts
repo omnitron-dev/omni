@@ -16,7 +16,6 @@ import {
   BaseRepository,
   DatabaseManager,
   DATABASE_TESTING_SERVICE,
-  TitanDatabaseModule,
 } from '../../../src/modules/database/index.js';
 import { DatabaseTestingModule, DatabaseTestingService } from '../../../src/modules/database/testing/database-testing.module.js';
 import { DatabaseTestManager, DockerContainer } from '../../utils/docker-test-manager.js';

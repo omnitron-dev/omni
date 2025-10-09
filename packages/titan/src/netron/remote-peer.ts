@@ -16,6 +16,7 @@ import { StreamReference } from './stream-reference.js';
 import { NetronReadableStream } from './readable-stream.js';
 import { NetronWritableStream } from './writable-stream.js';
 import { isServiceDefinition, isNetronStreamReference } from './predicates.js';
+import { NetronErrors, Errors } from '../errors/index.js';
 import {
   REQUEST_TIMEOUT,
 } from './constants.js';
@@ -168,11 +169,11 @@ export class RemotePeer extends AbstractPeer {
   async exposeService(instance: any) {
     const meta = Reflect.getMetadata(SERVICE_ANNOTATION, instance.constructor) as ExtendedServiceMetadata;
     if (!meta) {
-      throw new Error('Invalid service');
+      throw Errors.badRequest('Invalid service');
     }
 
     if (this.services.has(meta.name)) {
-      throw new Error(`Service already exposed: ${meta.name}`);
+      throw Errors.conflict(`Service already exposed: ${meta.name}`);
     }
 
     // If the service has transports configured, store them for later use
@@ -303,7 +304,7 @@ export class RemotePeer extends AbstractPeer {
   get(defId: string, name: string) {
     const def = this.definitions.get(defId);
     if (!def) {
-      throw new Error(`Unknown definition: ${defId}`);
+      throw Errors.notFound('Definition', defId);
     }
 
     return new Promise<any>((resolve, reject) => {
@@ -332,7 +333,7 @@ export class RemotePeer extends AbstractPeer {
   set(defId: string, name: string, value: any) {
     const def = this.definitions.get(defId);
     if (!def) {
-      throw new Error(`Unknown definition: ${defId}`);
+      throw Errors.notFound('Definition', defId);
     }
 
     return new Promise<void>((resolve, reject) => {
@@ -361,7 +362,7 @@ export class RemotePeer extends AbstractPeer {
   call(defId: string, method: string, args: any[]) {
     const def = this.definitions.get(defId);
     if (!def) {
-      throw new Error(`Unknown definition: ${defId}`);
+      throw Errors.notFound('Definition', defId);
     }
 
     args = this.processArgs(def, args);
@@ -657,7 +658,7 @@ export class RemotePeer extends AbstractPeer {
 
         try {
           if (!this.netron.runTask) {
-            throw new Error('runTask not available');
+            throw Errors.notImplemented('runTask not available');
           }
           await this.sendResponse(packet, await this.netron.runTask(this, name, ...args));
         } catch (err: any) {
@@ -832,7 +833,7 @@ export class RemotePeer extends AbstractPeer {
   protected getDefinitionByServiceName(name: string) {
     const def = this.services.get(name);
     if (def === void 0) {
-      throw new Error(`Unknown service: ${name}.`);
+      throw NetronErrors.serviceNotFound(name);
     }
     return def;
   }
@@ -916,7 +917,7 @@ export class RemotePeer extends AbstractPeer {
     const definition = await this.runTask('query_interface', qualifiedName);
 
     if (!definition) {
-      throw new Error(`Service '${qualifiedName}' not found on remote peer`);
+      throw NetronErrors.serviceNotFound(qualifiedName);
     }
 
     // Store the definition in local maps for future reference

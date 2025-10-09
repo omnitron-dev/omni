@@ -13,6 +13,7 @@ import {
   ITransportConnection,
   ITransportServer
 } from './types.js';
+import { Errors } from '../../errors/index.js';
 
 /**
  * Unix socket specific options
@@ -93,7 +94,10 @@ export class UnixSocketTransport extends TcpTransport {
 
     // Reject non-Unix addresses
     if (parsed.protocol && parsed.protocol !== 'unix') {
-      throw new Error(`Invalid Unix socket address: ${address}. Protocol '${parsed.protocol}' is not supported.`);
+      throw Errors.badRequest(`Invalid Unix socket address: ${address}. Protocol '${parsed.protocol}' is not supported.`, {
+        address,
+        protocol: parsed.protocol
+      });
     }
 
     const socketPath = parsed.path || address;
@@ -107,7 +111,7 @@ export class UnixSocketTransport extends TcpTransport {
     try {
       const stats = await fs.stat(absolutePath);
       if (!stats.isSocket()) {
-        throw new Error(`Path ${absolutePath} is not a Unix socket`);
+        throw Errors.badRequest(`Path ${absolutePath} is not a Unix socket`, { path: absolutePath });
       }
     } catch (error: any) {
       if (error.code !== 'ENOENT') {
@@ -152,10 +156,10 @@ export class UnixSocketTransport extends TcpTransport {
       options = pathOrOptions;
       socketPath = (options as any).path;
       if (!socketPath) {
-        throw new Error('Unix socket server requires a path');
+        throw Errors.badRequest('Unix socket server requires a path');
       }
     } else {
-      throw new Error('Unix socket server requires a path');
+      throw Errors.badRequest('Unix socket server requires a path');
     }
 
     // Ensure socket path is absolute
@@ -288,7 +292,10 @@ export class NamedPipeTransport extends TcpTransport {
 
     // Reject non-pipe addresses
     if (parsed.protocol && parsed.protocol !== 'pipe') {
-      throw new Error(`Invalid named pipe address: ${address}. Protocol '${parsed.protocol}' is not supported.`);
+      throw Errors.badRequest(`Invalid named pipe address: ${address}. Protocol '${parsed.protocol}' is not supported.`, {
+        address,
+        protocol: parsed.protocol
+      });
     }
 
     const pipeName = parsed.path || address;
@@ -334,10 +341,10 @@ export class NamedPipeTransport extends TcpTransport {
       options = pathOrOptions;
       pipeName = (options as any).name || (options as any).path;
       if (!pipeName) {
-        throw new Error('Named pipe server requires a name');
+        throw Errors.badRequest('Named pipe server requires a name');
       }
     } else {
-      throw new Error('Named pipe server requires a name');
+      throw Errors.badRequest('Named pipe server requires a name');
     }
 
     // Build Windows pipe path

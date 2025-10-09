@@ -15,6 +15,7 @@ import {
   ITransportServer,
   ConnectionState
 } from './types.js';
+import { NetronErrors, Errors } from '../../errors/index.js';
 
 /**
  * WebSocket-specific options
@@ -193,7 +194,7 @@ export class WebSocketConnection extends BaseConnection {
   protected async doReconnect(): Promise<void> {
     // WebSocket doesn't support direct reconnection,
     // would need to create new socket with same URL
-    throw new Error('WebSocket reconnection requires creating new connection');
+    throw Errors.notImplemented('WebSocket reconnection requires creating new connection');
   }
 
   /**
@@ -287,7 +288,7 @@ export class WebSocketServerAdapter extends BaseServer {
       // Also return a promise that resolves after the event is emitted
       await new Promise(resolve => setImmediate(resolve));
     } else {
-      throw new Error('WebSocketServer is not configured to listen. Provide port or server option.');
+      throw Errors.badRequest('WebSocketServer is not configured to listen. Provide port or server option.');
     }
   }
 
@@ -340,7 +341,7 @@ export class WebSocketTransport extends BaseTransport {
       const protocol = options.headers?.['X-Forwarded-Proto'] === 'https' ? 'wss' : 'ws';
       url = `${protocol}://${parsed.host}:${parsed.port}${parsed.path || ''}`;
     } else {
-      throw new Error(`Invalid WebSocket address: ${address}`);
+      throw Errors.badRequest(`Invalid WebSocket address: ${address}`, { address, parsed });
     }
 
     // Detect environment
@@ -378,7 +379,7 @@ export class WebSocketTransport extends BaseTransport {
       // Browser environment
       const BrowserWebSocket = (window as any).WebSocket || (window as any).MozWebSocket;
       if (!BrowserWebSocket) {
-        throw new Error('WebSocket is not supported in this browser');
+        throw Errors.notImplemented('WebSocket is not supported in this browser');
       }
 
       const socket = new BrowserWebSocket(url, options.protocols) as unknown as WebSocket;
@@ -387,7 +388,7 @@ export class WebSocketTransport extends BaseTransport {
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
           socket.close();
-          reject(new Error('Connection timeout'));
+          reject(NetronErrors.connectionTimeout('websocket', url));
         }, options.connectTimeout ?? 10000);
 
         connection.once('connect', () => {
@@ -409,7 +410,7 @@ export class WebSocketTransport extends BaseTransport {
   override async createServer(options: WebSocketOptions = {}): Promise<ITransportServer> {
     // Check if we're in Node.js
     if (typeof window !== 'undefined') {
-      throw new Error('Cannot create WebSocket server in browser environment');
+      throw Errors.notImplemented('Cannot create WebSocket server in browser environment');
     }
 
     // Parse host and port from options

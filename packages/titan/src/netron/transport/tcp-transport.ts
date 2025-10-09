@@ -13,6 +13,7 @@ import {
   ITransportServer,
   ConnectionState
 } from './types.js';
+import { NetronErrors, Errors } from '../../errors/index.js';
 
 /**
  * TCP-specific options
@@ -110,7 +111,7 @@ export class TcpConnection extends BaseConnection {
 
     // Handle timeout
     this.socket.on('timeout', () => {
-      this.emit('error', new Error('Socket timeout'));
+      this.emit('error', NetronErrors.connectionTimeout('tcp', this.remoteAddress || 'unknown'));
       this.socket.destroy();
     });
   }
@@ -147,7 +148,7 @@ export class TcpConnection extends BaseConnection {
   async send(data: Buffer | ArrayBuffer | Uint8Array): Promise<void> {
     return new Promise((resolve, reject) => {
       if (this.socket.readyState !== 'open') {
-        reject(new Error('Socket is not open'));
+        reject(NetronErrors.connectionClosed('tcp', 'Socket is not open'));
         return;
       }
 
@@ -214,7 +215,7 @@ export class TcpConnection extends BaseConnection {
   protected async doReconnect(): Promise<void> {
     const { remoteAddress, remotePort } = this.socket;
     if (!remoteAddress || !remotePort) {
-      throw new Error('Cannot reconnect: no remote address');
+      throw NetronErrors.connectionFailed('tcp', 'unknown', new Error('Cannot reconnect: no remote address'));
     }
 
     const newSocket = net.createConnection({
@@ -225,7 +226,7 @@ export class TcpConnection extends BaseConnection {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         newSocket.destroy();
-        reject(new Error('Reconnection timeout'));
+        reject(NetronErrors.connectionTimeout('tcp', `${remoteAddress}:${remotePort}`));
       }, this.options.connectTimeout ?? 10000);
 
       newSocket.once('connect', () => {
@@ -368,7 +369,7 @@ export class TcpTransport extends BaseTransport {
     const parsed = this.parseAddress(address);
 
     if (!parsed.host || !parsed.port) {
-      throw new Error(`Invalid TCP address: ${address}`);
+      throw Errors.badRequest(`Invalid TCP address: ${address}`, { address, parsed });
     }
 
     const socket = net.createConnection({
@@ -380,7 +381,7 @@ export class TcpTransport extends BaseTransport {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         socket.destroy();
-        reject(new Error('Connection timeout'));
+        reject(NetronErrors.connectionTimeout('tcp', address));
       }, options.connectTimeout ?? 10000);
 
       socket.once('connect', () => {

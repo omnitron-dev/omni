@@ -13,6 +13,7 @@ import type {
 } from '../types.js';
 import { HttpServer } from './server.js';
 import { HttpConnection } from './connection.js';
+import { NetronErrors, Errors } from '../../../errors/index.js';
 
 /**
  * HTTP Transport implementation
@@ -60,7 +61,7 @@ export class HttpTransport implements ITransport {
    */
   async connect(address: string, options?: TransportOptions): Promise<ITransportConnection> {
     if (!this.isValidAddress(address)) {
-      throw new Error(`Invalid HTTP address: ${address}`);
+      throw Errors.badRequest(`Invalid HTTP address: ${address}`, { address });
     }
 
     // Feature flag for using new direct HTTP connection without packet protocol
@@ -85,12 +86,12 @@ export class HttpTransport implements ITransport {
 
       // If server doesn't exist or returns an error (except 404), throw
       if (!response.ok && response.status !== 404) {
-        throw new Error(`Server returned ${response.status} ${response.statusText}`);
+        throw NetronErrors.connectionFailed('http', address, new Error(`Server returned ${response.status} ${response.statusText}`));
       }
     } catch (error: any) {
       // Network error - server is not reachable
       if (error.cause?.code === 'ECONNREFUSED' || error.message?.includes('fetch failed')) {
-        throw new Error(`Cannot connect to server at ${address}: ${error.cause?.code || error.message}`);
+        throw NetronErrors.connectionFailed('http', address, error);
       }
       // Re-throw other errors
       throw error;
@@ -105,7 +106,7 @@ export class HttpTransport implements ITransport {
    */
   async createServer(options?: TransportOptions): Promise<ITransportServer> {
     if (!this.capabilities.server) {
-      throw new Error('HTTP transport server capability is disabled');
+      throw Errors.notImplemented('HTTP transport server capability is disabled');
     }
 
     const server = new HttpServer(options);
@@ -131,7 +132,7 @@ export class HttpTransport implements ITransport {
    */
   parseAddress(address: string): TransportAddress {
     if (!this.isValidAddress(address)) {
-      throw new Error(`Invalid HTTP address: ${address}`);
+      throw Errors.badRequest(`Invalid HTTP address: ${address}`, { address });
     }
 
     const url = new URL(address);

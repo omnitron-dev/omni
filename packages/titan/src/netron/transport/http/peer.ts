@@ -405,48 +405,6 @@ export class HttpRemotePeer extends AbstractPeer {
   }
 
   /**
-   * Create service proxy
-   */
-  private createServiceProxy(definition: Definition): any {
-    const self = this;
-
-    return new Proxy({}, {
-      get(target: any, prop: string) {
-        // Check if it's a method
-        if (definition.meta.methods[prop]) {
-          return async (...args: any[]) => self.call(definition.id, prop, args);
-        }
-
-        // Check if it's a property
-        if (definition.meta.properties && definition.meta.properties[prop]) {
-          return self.get(definition.id, prop);
-        }
-
-        // Special properties
-        if (prop === '$def') {
-          return definition;
-        }
-
-        if (prop === '$peer') {
-          return self;
-        }
-
-        // Unknown property
-        return undefined;
-      },
-
-      set(target: any, prop: string, value: any) {
-        if (definition.meta.properties && definition.meta.properties[prop]) {
-          self.set(definition.id, prop, value);
-          return true;
-        }
-
-        return false;
-      }
-    });
-  }
-
-  /**
    * Build request context
    */
   private buildRequestContext(): HttpRequestContext {

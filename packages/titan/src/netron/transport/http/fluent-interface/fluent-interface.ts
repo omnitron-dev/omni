@@ -247,33 +247,6 @@ export class FluentInterface<TService = any> {
     );
   }
 
-  // Backward compatibility methods
-
-  /**
-   * Original call-based API (backward compatible)
-   * @deprecated Use fluent API instead: service.cache().retry().method(args)
-   */
-  call<M extends keyof TService>(method: M, input?: any): QueryBuilder<TService, M> {
-    const builder = new QueryBuilder<TService, M>(
-      this.transport,
-      this.definition,
-      this.cacheManager,
-      this.retryManager
-    );
-
-    builder.method(method);
-    if (input !== undefined) {
-      builder.input(input);
-    }
-
-    // Apply global options
-    if (this.globalOptions) {
-      this.applyGlobalOptions(builder, this.globalOptions);
-    }
-
-    return builder;
-  }
-
   /**
    * Direct service proxy (no configuration)
    * For simple calls: await service.api.getUser(id)
@@ -291,7 +264,25 @@ export class FluentInterface<TService = any> {
       get: (target: any, methodName: string | symbol) => {
         if (typeof methodName === 'symbol') return undefined;
         return (...args: any[]) => {
-          const builder = self.call(methodName as keyof TService, args.length === 1 ? args[0] : args);
+          // Create QueryBuilder directly instead of using deprecated call() method
+          const builder = new QueryBuilder<TService, keyof TService>(
+            self.transport,
+            self.definition,
+            self.cacheManager,
+            self.retryManager
+          );
+
+          builder.method(methodName as keyof TService);
+          const input = args.length === 1 ? args[0] : args;
+          if (input !== undefined) {
+            builder.input(input);
+          }
+
+          // Apply global options
+          if (self.globalOptions) {
+            self.applyGlobalOptions(builder, self.globalOptions);
+          }
+
           return builder.execute();
         };
       }

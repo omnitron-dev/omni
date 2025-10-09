@@ -167,12 +167,12 @@ describe('Advanced Features Tests - Phase 3', () => {
 
       const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
-      // Create multiple background refetch with different cache keys
-      const builder1 = service.call('getUser', '123').cache({ maxAge: 10000 }).background(100);
-      const builder2 = service.call('getUsers').cache({ maxAge: 20000 }).background(200);
+      // Create multiple background refetch with different cache keys using fluent API
+      const proxy1 = service.cache({ maxAge: 10000 }).background(100) as any;
+      const proxy2 = service.cache({ maxAge: 20000 }).background(200) as any;
 
-      await builder1.execute();
-      await builder2.execute();
+      await proxy1.getUser('123');
+      await proxy2.getUsers();
 
       expect(QueryBuilder.getActiveBackgroundRefetchCount()).toBe(2);
 
@@ -259,47 +259,6 @@ describe('Advanced Features Tests - Phase 3', () => {
     });
   });
 
-  describe('Query Cancellation', () => {
-    it('should cancel query using abort controller', async () => {
-      jest.spyOn(mockTransport, 'invoke').mockImplementation(async () => {
-        // Simulate slow request
-        await new Promise(resolve => setTimeout(resolve, 100));
-        return { id: '123', name: 'John', version: 1 };
-      });
-
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
-
-      const builder = service.call('getUser', '123');
-
-      // Cancel before starting execution
-      builder.cancel();
-
-      // Start query after cancel
-      const promise = builder.execute();
-
-      // Should throw cancellation error immediately
-      await expect(promise).rejects.toThrow('Query cancelled');
-    });
-
-    it('should handle cancellation of already completed query', async () => {
-      jest.spyOn(mockTransport, 'invoke').mockResolvedValue({
-        id: '123',
-        name: 'John',
-        version: 1
-      });
-
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
-
-      const builder = service.call('getUser', '123');
-      const result = await builder.execute();
-
-      expect(result).toBeDefined();
-
-      // Cancel after completion (should be no-op)
-      expect(() => builder.cancel()).not.toThrow();
-    });
-  });
-
   describe('Optimistic Updates', () => {
     it('should apply optimistic update to cache immediately', async () => {
       jest.spyOn(mockTransport, 'invoke').mockImplementation(async () => {
@@ -309,24 +268,25 @@ describe('Advanced Features Tests - Phase 3', () => {
 
       const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
-      const inputData = { id: '123', data: { name: 'Updated Name' } };
-      const cacheKey = `UserService@1.0.0.updateUser:${JSON.stringify(inputData)}`;
+      const userId = '123';
+      const updateData = { name: 'Updated Name' };
+      // Cache key matches the actual arguments passed to the method
+      const cacheKey = `UserService@1.0.0.updateUser:["123",{"name":"Updated Name"}]`;
 
       // Set initial cached value
       cacheManager.set(cacheKey, { id: '123', name: 'John', version: 1 }, { maxAge: 10000 });
 
-      // Update with optimistic update
-      const builder = service
-        .call('updateUser', inputData)
+      // Update with optimistic update using fluent API
+      const proxy = service
         .cache({ maxAge: 10000 })
         .optimistic((current: any) => ({
           ...(current || {}),
           id: '123',
           name: 'Optimistic Name',
           version: (current?.version || 0) + 1
-        }));
+        })) as any;
 
-      const updatePromise = builder.execute();
+      const updatePromise = proxy.updateUser(userId, updateData);
 
       // Wait a bit for optimistic update to be applied
       await new Promise(resolve => setTimeout(resolve, 10));
@@ -346,24 +306,25 @@ describe('Advanced Features Tests - Phase 3', () => {
 
       const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
-      const inputData = { id: '123', data: { name: 'Updated' } };
-      const cacheKey = `UserService@1.0.0.updateUser:${JSON.stringify(inputData)}`;
+      const userId = '123';
+      const updateData = { name: 'Updated' };
+      // Cache key matches the actual arguments passed to the method
+      const cacheKey = `UserService@1.0.0.updateUser:["123",{"name":"Updated"}]`;
 
       // Set initial cached value
       cacheManager.set(cacheKey, { id: '123', name: 'John', version: 1 }, { maxAge: 10000 });
 
-      // Try update with optimistic update
-      const builder = service
-        .call('updateUser', inputData)
+      // Try update with optimistic update using fluent API
+      const proxy = service
         .cache({ maxAge: 10000 })
         .optimistic((current: any) => ({
           ...(current || {}),
           id: '123',
           name: 'Optimistic Name',
           version: (current?.version || 0) + 1
-        }));
+        })) as any;
 
-      await expect(builder.execute()).rejects.toThrow();
+      await expect(proxy.updateUser(userId, updateData)).rejects.toThrow();
 
       // Cache should be invalidated (rolled back)
       const cachedValue = cacheManager.getRaw(cacheKey);
@@ -376,10 +337,10 @@ describe('Advanced Features Tests - Phase 3', () => {
       const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       const fallbackValue = { id: '123', name: 'Fallback', version: 0 };
-      const inputData = { id: '123', data: { name: 'Updated' } };
+      const userId = '123';
+      const updateData = { name: 'Updated' };
 
-      const builder = service
-        .call('updateUser', inputData)
+      const proxy = service
         .cache({ maxAge: 10000 })
         .optimistic((current: any) => ({
           ...(current || {}),
@@ -387,9 +348,9 @@ describe('Advanced Features Tests - Phase 3', () => {
           name: 'Optimistic',
           version: 1
         }))
-        .fallback(fallbackValue);
+        .fallback(fallbackValue) as any;
 
-      const result = await builder.execute();
+      const result = await proxy.updateUser(userId, updateData);
 
       // Should use fallback instead of throwing
       expect(result).toEqual(fallbackValue);

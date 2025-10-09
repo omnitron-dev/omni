@@ -26,7 +26,6 @@ import {
   HttpRequestMessage,
   HttpBatchRequest,
   HttpBatchResponse,
-  HttpDiscoveryResponse,
   createSuccessResponse,
   createErrorResponse,
   isHttpRequestMessage,

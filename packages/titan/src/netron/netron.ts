@@ -79,17 +79,6 @@ export class Netron extends EventEmitter implements INetron {
   public transportServers: Map<string, ITransportServer> = new Map();
 
   /**
-   * Get the first transport server instance for backward compatibility.
-   * @deprecated Use transportServers map to access specific transport servers
-   * @returns The first transport server if available
-   */
-  get transportServer(): ITransportServer | undefined {
-    // Return the first server for backward compatibility
-    const firstServer = this.transportServers.values().next();
-    return firstServer.done ? undefined : firstServer.value;
-  }
-
-  /**
    * Map of special events that need to be processed sequentially.
    * Used to ensure ordered processing of related events and prevent race conditions.
    * Key: event ID, Value: array of {name, data} pairs

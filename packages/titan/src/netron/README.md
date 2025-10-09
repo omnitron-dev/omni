@@ -269,7 +269,7 @@ class Netron extends EventEmitter {
   // Properties
   id: string;                    // Unique instance ID
   peer: LocalPeer;               // Local peer instance
-  transportServer?: ITransportServer;  // Server instance
+  transportServers: Map<string, ITransportServer>;  // Transport servers map
 
   // Core methods
   listen(): Promise<void>;       // Start server

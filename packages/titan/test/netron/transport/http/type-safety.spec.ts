@@ -431,19 +431,5 @@ describe('Type Safety Tests', () => {
       const check: HttpInterface<IUserService> = service;
       expect(check).toBeDefined();
     });
-
-    it('should support call() API in FluentInterface', () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
-
-      const builder = service.call('getUser', '123');
-
-      // Type check: should return QueryBuilder
-      expect(builder).toBeDefined();
-    });
   });
 });

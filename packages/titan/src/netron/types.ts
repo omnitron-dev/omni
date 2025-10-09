@@ -310,13 +310,6 @@ export interface INetron {
    */
   transportServers: Map<string, ITransportServer>;
 
-  /**
-   * Legacy property for backward compatibility
-   * Returns the first transport server or undefined
-   * @deprecated Use transportServers map instead
-   */
-  transportServer?: ITransportServer;
-
   /** Get local peer */
   getLocalPeer(): ILocalPeer;
 

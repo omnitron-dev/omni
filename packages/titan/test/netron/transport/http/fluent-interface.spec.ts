@@ -108,26 +108,7 @@ describe('FluentInterface', () => {
     });
   });
 
-  describe('Backward Compatibility', () => {
-    it('should support call() API', () => {
-      const builder = fluentInterface.call('getUser', '123');
-      expect(builder).toBeInstanceOf(QueryBuilder);
-    });
-
-    it('should apply global options to call() builder', () => {
-      const fluentWithGlobal = new FluentInterface(
-        transport,
-        definition,
-        cacheManager,
-        retryManager,
-        { cache: { maxAge: 30000 }, retry: { attempts: 2 } }
-      );
-
-      const builder = fluentWithGlobal.call('getUser', '123');
-      expect(builder).toBeInstanceOf(QueryBuilder);
-      // Options should be applied internally
-    });
-
+  describe('API Proxy', () => {
     it('should provide api proxy for direct method calls', () => {
       const api = fluentInterface.api;
       expect(api).toBeDefined();

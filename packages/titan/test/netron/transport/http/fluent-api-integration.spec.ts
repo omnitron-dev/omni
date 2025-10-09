@@ -156,20 +156,6 @@ describe('Fluent API Integration', () => {
   });
 
   describe('Backward Compatibility', () => {
-    it('should support call().execute() API', async () => {
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
-
-      const transport = new HttpTransportClient('http://localhost:3000');
-      (service as any).transport = transport;
-
-      jest.spyOn(transport, 'invoke').mockResolvedValue({ id: '123', name: 'John', email: 'john@example.com' });
-
-      // Old API should still work
-      const user = await service.call('getUser', '123').cache(60000).execute();
-
-      expect(user).toEqual({ id: '123', name: 'John', email: 'john@example.com' });
-    });
-
     it('should support direct api proxy', async () => {
       const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 

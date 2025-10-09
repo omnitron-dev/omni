@@ -216,8 +216,9 @@ async function initialize() {
         // Start listening
         await server.listen();
 
-        // Store reference
-        (netron as any).transportServer = server;
+        // Store reference - determine transport name from config
+        const transportName = config.transport.type || 'default';
+        netron.transportServers.set(transportName, server);
       }
     }
 

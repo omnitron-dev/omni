@@ -12,7 +12,7 @@ import {
   type TransportOptions
 } from '../types.js';
 import type { Definition } from '../../definition.js';
-import { TitanError, ErrorCode, NetronErrors, Errors } from '../../../errors/index.js';
+import { TitanError, ErrorCode, NetronErrors } from '../../../errors/index.js';
 import {
   HttpRequestMessage,
   HttpResponseMessage,

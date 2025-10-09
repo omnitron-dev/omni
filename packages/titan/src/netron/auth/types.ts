@@ -382,9 +382,3 @@ export interface MethodOptions {
   /** Audit configuration */
   audit?: AuditConfig;
 }
-
-/**
- * Method auth configuration (from @Method decorator)
- * @deprecated Use MethodOptions instead
- */
-export interface MethodAuthConfig extends MethodOptions {}

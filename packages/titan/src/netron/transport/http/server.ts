@@ -13,7 +13,7 @@ import type {
   ServerMetrics
 } from '../types.js';
 import type { LocalPeer } from '../../local-peer.js';
-import { TitanError, ErrorCode, NetronErrors, Errors, toTitanError } from '../../../errors/index.js';
+import { TitanError, ErrorCode, NetronErrors, Errors, toTitanError, mapToHttp } from '../../../errors/index.js';
 import {
   MiddlewarePipeline,
   MiddlewareStage,
@@ -541,47 +541,31 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
       await this.globalPipeline.execute(context, MiddlewareStage.ERROR);
 
-      const titanError = error instanceof TitanError ? error : null;
-      const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+      // Convert to TitanError and use mapToHttp for consistent error mapping
+      const titanError = toTitanError(error);
 
+      // Map error to HTTP response format
+      const httpError = mapToHttp(titanError);
+
+      // Create error response payload
+      // Use the mapped HTTP status code for consistency with HTTP status header
       const errorResponse = createErrorResponse(
         message.id,
         {
-          code: String(titanError?.code || ErrorCode.INTERNAL_SERVER_ERROR),
-          message: errorMessage,
-          details: titanError?.details
+          code: String(httpError.status),
+          message: titanError.message,
+          details: titanError.details
         }
       );
 
       // Build response headers with context information
       const headers: HeadersInit = {
-        'Content-Type': 'application/json',
+        ...httpError.headers,
         'X-Netron-Version': '2.0'
       };
 
-      // Add context headers from TitanError if available
-      if (titanError) {
-        if (titanError.requestId) {
-          headers['X-Request-ID'] = titanError.requestId;
-        }
-        if (titanError.correlationId) {
-          headers['X-Correlation-ID'] = titanError.correlationId;
-        }
-        if (titanError.traceId) {
-          headers['X-Trace-ID'] = titanError.traceId;
-        }
-        if (titanError.spanId) {
-          headers['X-Span-ID'] = titanError.spanId;
-        }
-
-        // Add retry-after header for rate limit errors
-        if (titanError.code === ErrorCode.TOO_MANY_REQUESTS && titanError.details?.retryAfter) {
-          headers['Retry-After'] = String(titanError.details.retryAfter);
-        }
-      }
-
       return new Response(JSON.stringify(errorResponse), {
-        status: titanError?.httpStatus || ErrorCode.INTERNAL_SERVER_ERROR,
+        status: httpError.status,
         headers
       });
     }
@@ -1196,11 +1180,15 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    * Handle errors
    */
   private handleError(error: any, request: Request): Response {
-    let status = 500;
-    let message = 'Internal server error';
-    let code: string | undefined;
+    // Convert to TitanError and use mapToHttp for consistent error mapping
+    const titanError = toTitanError(error);
+
+    // Map error to HTTP response format
+    const httpError = mapToHttp(titanError);
+
+    // Build headers with CORS support
     const headers = new Headers({
-      'Content-Type': 'application/json',
+      ...httpError.headers,
       'X-Netron-Version': '2.0'
     });
 
@@ -1213,70 +1201,15 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       }
     }
 
-    if (error instanceof TitanError) {
-      status = error.httpStatus;
-      message = error.message;
-      code = String(error.code);
-
-      // Add context headers from TitanError
-      if (error.requestId) {
-        headers.set('X-Request-ID', error.requestId);
-      }
-      if (error.correlationId) {
-        headers.set('X-Correlation-ID', error.correlationId);
-      }
-      if (error.traceId) {
-        headers.set('X-Trace-ID', error.traceId);
-      }
-      if (error.spanId) {
-        headers.set('X-Span-ID', error.spanId);
-      }
-
-      // Add retry-after header for rate limit errors
-      if (error.code === ErrorCode.TOO_MANY_REQUESTS && error.details?.retryAfter) {
-        headers.set('Retry-After', String(error.details.retryAfter));
-      }
-    } else if (error instanceof Error) {
-      message = error.message;
-    }
-
     return new Response(
       JSON.stringify({
         error: true,
-        message,
-        code,
+        message: titanError.message,
+        code: String(httpError.status),
         timestamp: Date.now()
       }),
-      { status, headers }
+      { status: httpError.status, headers }
     );
-  }
-
-  /**
-   * Get HTTP status from error
-   */
-  private getHttpStatusFromError(error: any): number {
-    if (error instanceof TitanError) {
-      switch (error.code) {
-        case ErrorCode.NOT_FOUND:
-          return 404;
-        case ErrorCode.INVALID_ARGUMENT:
-        case ErrorCode.VALIDATION_ERROR:
-          return 400;
-        case ErrorCode.UNAUTHORIZED:
-          return 401;
-        case ErrorCode.FORBIDDEN:
-          return 403;
-        case ErrorCode.CONFLICT:
-          return 409;
-        case ErrorCode.TOO_MANY_REQUESTS:
-          return 429;
-        case ErrorCode.SERVICE_UNAVAILABLE:
-          return 503;
-        default:
-          return 500;
-      }
-    }
-    return 500;
   }
 
   /**

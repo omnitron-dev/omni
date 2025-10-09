@@ -227,7 +227,8 @@ describe('HttpServer Type Safety (Phase 2)', () => {
       const data = await response.json();
       expect(data.success).toBe(false);
       expect(data.error.code).toBe('500');
-      expect(data.error.message).toBe('Internal server error');
+      // toTitanError preserves the original message from non-Error values
+      expect(data.error.message).toBe('String error');
     });
 
     it('should convert error codes to strings for HTTP response', async () => {

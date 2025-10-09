@@ -9,11 +9,11 @@ import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { UnixSocketTransport, NamedPipeTransport } from '../../../src/netron/transport/unix-transport.js';
 import { ConnectionState } from '../../../src/netron/transport/types.js';
 import { Packet } from '../../../src/netron/packet/index.js';
-import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { Socket } from 'node:net';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { waitForEvent, delay } from '../../utils/index.js';
 
 // Helper to generate unique socket path
 function getSocketPath(): string {
@@ -27,20 +27,6 @@ function getSocketPath(): string {
     // Unix domain socket
     return join(tmpdir(), `test-${timestamp}-${random}.sock`);
   }
-}
-
-// Helper to wait for event
-function waitForEvent<T = any>(emitter: EventEmitter, event: string, timeout = 5000): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`Timeout waiting for event: ${event}`));
-    }, timeout);
-
-    emitter.once(event, (data: T) => {
-      clearTimeout(timer);
-      resolve(data);
-    });
-  });
 }
 
 // Helper to clean up socket files

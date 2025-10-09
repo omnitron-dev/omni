@@ -69,7 +69,7 @@ export class DockerTestManager {
   private defaultNetwork?: string;
 
   private constructor(options: DockerTestManagerOptions = {}) {
-    this.dockerPath = options.dockerPath || '/usr/local/bin/docker';
+    this.dockerPath = options.dockerPath || this.findDockerPath();
     this.basePort = options.basePort || 10000;
     this.maxRetries = options.maxRetries || 20;
     this.startupTimeout = options.startupTimeout || 30000;
@@ -95,18 +95,142 @@ export class DockerTestManager {
     return DockerTestManager.instance;
   }
 
+  /**
+   * Find Docker executable path across different platforms
+   *
+   * Detection strategy:
+   * 1. Try 'which docker' (Unix) or 'where docker' (Windows) to find in PATH
+   * 2. Check platform-specific common locations
+   * 3. Validate the found path works with 'docker version'
+   *
+   * Supported platforms:
+   * - macOS: /usr/local/bin/docker, /opt/homebrew/bin/docker, docker in PATH
+   * - Linux: /usr/bin/docker, /usr/local/bin/docker, /snap/bin/docker, docker in PATH
+   * - Windows: docker.exe in PATH, C:\Program Files\Docker\Docker\resources\bin\docker.exe
+   */
+  private findDockerPath(): string {
+    const isWindows = process.platform === 'win32';
+    const whichCommand = isWindows ? 'where' : 'which';
+    const dockerBinary = isWindows ? 'docker.exe' : 'docker';
+
+    // Strategy 1: Try to find Docker in PATH using which/where
+    try {
+      const result = execSync(`${whichCommand} ${dockerBinary}`, {
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'ignore'],
+      }).trim();
+
+      // On Windows, 'where' can return multiple paths (one per line)
+      // Take the first one
+      const dockerPath = result.split('\n')[0].trim();
+
+      if (dockerPath && this.testDockerPath(dockerPath)) {
+        if (this.verbose) {
+          console.log(`Found Docker in PATH: ${dockerPath}`);
+        }
+        return dockerPath;
+      }
+    } catch {
+      // Command failed, continue to fallback paths
+    }
+
+    // Strategy 2: Check platform-specific common locations
+    const fallbackPaths = this.getDockerFallbackPaths();
+
+    for (const path of fallbackPaths) {
+      if (this.testDockerPath(path)) {
+        if (this.verbose) {
+          console.log(`Found Docker at fallback path: ${path}`);
+        }
+        return path;
+      }
+    }
+
+    // Strategy 3: If all else fails, try just 'docker' or 'docker.exe' and hope it's in PATH
+    if (this.testDockerPath(dockerBinary)) {
+      if (this.verbose) {
+        console.log(`Using Docker from PATH: ${dockerBinary}`);
+      }
+      return dockerBinary;
+    }
+
+    // No Docker found
+    throw new Error(
+      `Docker executable not found. Please install Docker and ensure it's in your PATH.\n` +
+        `Searched paths:\n` +
+        `  - PATH using '${whichCommand} ${dockerBinary}'\n` +
+        `  - ${fallbackPaths.join('\n  - ')}\n` +
+        `\n` +
+        `Platform: ${process.platform}\n` +
+        `For more information, visit: https://docs.docker.com/get-docker/`
+    );
+  }
+
+  /**
+   * Get platform-specific fallback paths for Docker
+   */
+  private getDockerFallbackPaths(): string[] {
+    switch (process.platform) {
+      case 'darwin': // macOS
+        return [
+          '/usr/local/bin/docker', // Intel Mac / Docker Desktop
+          '/opt/homebrew/bin/docker', // Apple Silicon Mac / Homebrew
+          '/Applications/Docker.app/Contents/Resources/bin/docker', // Docker Desktop
+        ];
+
+      case 'linux':
+        return [
+          '/usr/bin/docker', // Most common Linux location
+          '/usr/local/bin/docker', // Alternative Linux location
+          '/snap/bin/docker', // Snap package
+          '/var/lib/snapd/snap/bin/docker', // Snap on some distros
+          '/opt/docker/bin/docker', // Custom installations
+        ];
+
+      case 'win32': // Windows
+        return [
+          'docker.exe', // Should be in PATH
+          'C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe',
+          'C:\\ProgramData\\DockerDesktop\\version-bin\\docker.exe',
+        ];
+
+      default:
+        // Unknown platform, try generic paths
+        return ['/usr/local/bin/docker', '/usr/bin/docker', 'docker'];
+    }
+  }
+
+  /**
+   * Test if a Docker path is valid by running 'docker version'
+   */
+  private testDockerPath(dockerPath: string): boolean {
+    try {
+      execSync(`"${dockerPath}" version`, {
+        stdio: 'ignore',
+        timeout: 5000, // 5 second timeout
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private verifyDocker(): void {
     try {
-      execSync(`${this.dockerPath} version`, { stdio: 'ignore' });
-    } catch (error) {
-      throw new Error('Docker is not available. Please install Docker to run tests.');
+      execSync(`"${this.dockerPath}" version`, { stdio: 'ignore' });
+    } catch {
+      throw new Error(
+        `Docker is not available at path: ${this.dockerPath}\n` +
+          `Please install Docker or verify it's properly configured.\n` +
+          `Visit: https://docs.docker.com/get-docker/`
+      );
     }
   }
 
   private async findAvailablePort(): Promise<number> {
     for (let i = 0; i < this.maxRetries; i++) {
       const port = this.basePort + Math.floor(Math.random() * 10000);
-      if (!this.usedPorts.has(port) && await this.isPortAvailable(port)) {
+      if (!this.usedPorts.has(port) && (await this.isPortAvailable(port))) {
         this.usedPorts.add(port);
         return port;
       }
@@ -159,7 +283,7 @@ export class DockerTestManager {
     const labels = {
       'test.id': id,
       'test.cleanup': 'true',
-      ...options.labels
+      ...options.labels,
     };
     for (const [key, value] of Object.entries(labels)) {
       dockerArgs.push('--label', `${key}=${value}`);
@@ -224,7 +348,7 @@ export class DockerTestManager {
     // Start container using execFileSync to properly handle arguments with spaces
     try {
       execFileSync(this.dockerPath, dockerArgs, {
-        stdio: this.verbose ? 'inherit' : 'ignore'
+        stdio: this.verbose ? 'inherit' : 'ignore',
       });
     } catch (error) {
       throw new Error(`Failed to start container ${name}: ${error}`);
@@ -252,8 +376,8 @@ export class DockerTestManager {
 
         // Stop and remove container
         try {
-          execSync(`${this.dockerPath} stop ${name}`, { stdio: 'ignore' });
-          execSync(`${this.dockerPath} rm ${name}`, { stdio: 'ignore' });
+          execSync(`"${this.dockerPath}" stop ${name}`, { stdio: 'ignore' });
+          execSync(`"${this.dockerPath}" rm ${name}`, { stdio: 'ignore' });
         } catch (error) {
           console.warn(`Failed to cleanup container ${name}: ${error}`);
         }
@@ -265,7 +389,7 @@ export class DockerTestManager {
 
         // Remove from tracking
         this.containers.delete(id);
-      }
+      },
     };
 
     this.containers.set(id, container);
@@ -275,10 +399,7 @@ export class DockerTestManager {
   private async ensureNetwork(network: string): Promise<void> {
     if (!this.networks.has(network)) {
       try {
-        execSync(
-          `${this.dockerPath} network create ${network} --label test.cleanup=true`,
-          { stdio: 'ignore' }
-        );
+        execSync(`"${this.dockerPath}" network create ${network} --label test.cleanup=true`, { stdio: 'ignore' });
         this.networks.add(network);
       } catch {
         // Network might already exist
@@ -295,10 +416,9 @@ export class DockerTestManager {
       // Check if container is healthy
       if (options?.healthcheck) {
         try {
-          const healthStatus = execSync(
-            `${this.dockerPath} inspect --format='{{.State.Health.Status}}' ${name}`,
-            { encoding: 'utf8' }
-          ).trim();
+          const healthStatus = execSync(`"${this.dockerPath}" inspect --format='{{.State.Health.Status}}' ${name}`, {
+            encoding: 'utf8',
+          }).trim();
 
           if (healthStatus === 'healthy') {
             return;
@@ -313,13 +433,13 @@ export class DockerTestManager {
         const containerInfo = this.containers.get(name);
         if (containerInfo) {
           const hostPort = containerInfo.ports.get(options.port);
-          if (hostPort && await this.isPortListening('127.0.0.1', hostPort)) {
+          if (hostPort && (await this.isPortListening('127.0.0.1', hostPort))) {
             return;
           }
         }
       }
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
 
     throw new Error(`Container ${name} failed to start within ${timeout}ms`);
@@ -358,15 +478,13 @@ export class DockerTestManager {
   }
 
   async cleanupAll(): Promise<void> {
-    const cleanupPromises = Array.from(this.containers.values()).map(
-      container => container.cleanup()
-    );
+    const cleanupPromises = Array.from(this.containers.values()).map((container) => container.cleanup());
     await Promise.all(cleanupPromises);
 
     // Cleanup networks
     for (const network of this.networks) {
       try {
-        execSync(`${this.dockerPath} network rm ${network}`, { stdio: 'ignore' });
+        execSync(`"${this.dockerPath}" network rm ${network}`, { stdio: 'ignore' });
       } catch {
         // Ignore errors
       }
@@ -386,23 +504,55 @@ export class DockerTestManager {
 
   private cleanupSync(): void {
     try {
-      // Force remove all test containers
-      execSync(
-        `${this.dockerPath} ps -a --filter "label=test.cleanup=true" -q | xargs -r ${this.dockerPath} rm -f`,
-        { stdio: 'ignore' }
-      );
+      const isWindows = process.platform === 'win32';
+      const xargsCmd = isWindows ? '' : 'xargs -r'; // Windows doesn't have xargs by default
 
-      // Remove test networks
-      execSync(
-        `${this.dockerPath} network ls --filter "label=test.cleanup=true" -q | xargs -r ${this.dockerPath} network rm`,
-        { stdio: 'ignore' }
-      );
+      if (isWindows) {
+        // Windows-specific cleanup using PowerShell-style commands
+        try {
+          execSync(
+            `"${this.dockerPath}" ps -a --filter "label=test.cleanup=true" -q --format "{{.ID}}" | ForEach-Object { "${this.dockerPath}" rm -f $_ }`,
+            { stdio: 'ignore', shell: 'powershell.exe' }
+          );
+        } catch {
+          // Fallback: Try getting IDs and removing one by one
+          try {
+            const containerIds = execSync(`"${this.dockerPath}" ps -a --filter "label=test.cleanup=true" -q`, {
+              encoding: 'utf8',
+              stdio: ['pipe', 'pipe', 'ignore'],
+            }).trim();
+            if (containerIds) {
+              containerIds.split('\n').forEach((id) => {
+                try {
+                  execSync(`"${this.dockerPath}" rm -f ${id.trim()}`, { stdio: 'ignore' });
+                } catch {
+                  // Ignore individual failures
+                }
+              });
+            }
+          } catch {
+            // Ignore errors
+          }
+        }
+      } else {
+        // Unix-like systems
+        execSync(
+          `"${this.dockerPath}" ps -a --filter "label=test.cleanup=true" -q | ${xargsCmd} "${this.dockerPath}" rm -f`,
+          { stdio: 'ignore' }
+        );
 
-      // Remove test volumes
-      execSync(
-        `${this.dockerPath} volume ls --filter "label=test.cleanup=true" -q | xargs -r ${this.dockerPath} volume rm`,
-        { stdio: 'ignore' }
-      );
+        // Remove test networks
+        execSync(
+          `"${this.dockerPath}" network ls --filter "label=test.cleanup=true" -q | ${xargsCmd} "${this.dockerPath}" network rm`,
+          { stdio: 'ignore' }
+        );
+
+        // Remove test volumes
+        execSync(
+          `"${this.dockerPath}" volume ls --filter "label=test.cleanup=true" -q | ${xargsCmd} "${this.dockerPath}" volume rm`,
+          { stdio: 'ignore' }
+        );
+      }
     } catch {
       // Ignore errors during cleanup
     }
@@ -448,19 +598,19 @@ export class DatabaseTestManager {
         POSTGRES_DB: database,
         POSTGRES_USER: user,
         POSTGRES_PASSWORD: password,
-        POSTGRES_HOST_AUTH_METHOD: 'trust'
+        POSTGRES_HOST_AUTH_METHOD: 'trust',
       },
       healthcheck: {
         test: ['CMD-SHELL', `pg_isready -U ${user}`],
         interval: '1s',
         timeout: '3s',
         retries: 5,
-        startPeriod: '2s'
+        startPeriod: '2s',
       },
       waitFor: {
         healthcheck: true,
-        timeout: 30000
-      }
+        timeout: 30000,
+      },
     });
   }
 
@@ -487,19 +637,19 @@ export class DatabaseTestManager {
         MYSQL_USER: user,
         MYSQL_PASSWORD: password,
         MYSQL_ROOT_PASSWORD: rootPassword,
-        MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+        MYSQL_ALLOW_EMPTY_PASSWORD: 'yes',
       },
       healthcheck: {
         test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost'],
         interval: '1s',
         timeout: '3s',
         retries: 10,
-        startPeriod: '5s'
+        startPeriod: '5s',
       },
       waitFor: {
         healthcheck: true,
-        timeout: 30000
-      }
+        timeout: 30000,
+      },
     });
   }
 

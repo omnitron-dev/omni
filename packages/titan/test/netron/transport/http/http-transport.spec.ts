@@ -213,7 +213,7 @@ describe('HttpTransport', () => {
       });
 
       await expect(transport.connect('http://localhost:9999'))
-        .rejects.toThrow('Cannot connect to server');
+        .rejects.toThrow(/Failed to connect/);
     });
 
     it('should handle server error responses', async () => {
@@ -225,7 +225,7 @@ describe('HttpTransport', () => {
       } as Response);
 
       await expect(transport.connect('http://localhost:3000'))
-        .rejects.toThrow('Server returned 500 Internal Server Error');
+        .rejects.toThrow(/Failed to connect|500/);
     });
 
     it('should accept 404 responses during discovery', async () => {

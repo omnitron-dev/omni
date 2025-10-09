@@ -16,28 +16,16 @@ import {
   BaseTransport
 } from '../../../src/netron/transport/index.js';
 import { ConnectionState } from '../../../src/netron/transport/types.js';
-import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer as createHttpServer } from 'node:http';
 import { WebSocketServer } from 'ws';
+import { getFreePort, waitForEvent, delay } from '../../utils/index.js';
 
 // Test configuration
 const TCP_TEST_PORT = 19000;
 const WS_TEST_PORT = 19100;
-
-// Helper to get free port
-async function getFreePort(basePort: number = 20000): Promise<number> {
-  const net = await import('node:net');
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.listen(0, () => {
-      const port = (server.address() as any).port;
-      server.close(() => resolve(port));
-    });
-  });
-}
 
 // Helper to get unique socket path
 function getSocketPath(): string {
@@ -51,22 +39,8 @@ function getSocketPath(): string {
   }
 }
 
-// Helper to wait for event
-function waitForEvent<T = any>(emitter: EventEmitter, event: string, timeout = 5000): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`Timeout waiting for event: ${event}`));
-    }, timeout);
-
-    emitter.once(event, (data: T) => {
-      clearTimeout(timer);
-      resolve(data);
-    });
-  });
-}
-
 // Helper to wait for message (handles both data and packet events)
-function waitForMessage<T = any>(connection: EventEmitter, timeout = 5000): Promise<T> {
+function waitForMessage<T = any>(connection: any, timeout = 5000): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       reject(new Error(`Timeout waiting for message`));

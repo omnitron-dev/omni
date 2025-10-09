@@ -7,35 +7,10 @@
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { WebSocketTransport } from '../../../src/netron/transport/websocket-transport.js';
 import { ConnectionState } from '../../../src/netron/transport/types.js';
-import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { createServer } from 'http';
-import { WebSocketServer, WebSocket } from 'ws';
+import { WebSocketServer } from 'ws';
 import { promisify } from 'node:util';
-
-// Helper to find free port
-async function getFreePort(): Promise<number> {
-  return new Promise((resolve) => {
-    const server = createServer();
-    server.listen(0, () => {
-      const port = (server.address() as any).port;
-      server.close(() => resolve(port));
-    });
-  });
-}
-
-// Helper to wait for event
-function waitForEvent<T = any>(emitter: EventEmitter, event: string, timeout = 5000): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`Timeout waiting for event: ${event}`));
-    }, timeout);
-
-    emitter.once(event, (data: T) => {
-      clearTimeout(timer);
-      resolve(data);
-    });
-  });
-}
+import { getFreeHttpPort as getFreePort, waitForEvent, delay } from '../../utils/index.js';
 
 describe('WebSocketTransport', () => {
   let transport: WebSocketTransport;
@@ -64,7 +39,7 @@ describe('WebSocketTransport', () => {
     await promisify(httpServer.close).bind(httpServer)();
 
     // Small delay to ensure cleanup
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await delay(100);
   });
 
   describe('Basic Functionality', () => {
@@ -202,7 +177,7 @@ describe('WebSocketTransport', () => {
       });
 
       // Wait a bit for the connection to be established
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await delay(100);
 
       expect(receivedHeaders).toBeDefined();
       expect(receivedHeaders['authorization']).toBe('Bearer test-token');
@@ -269,7 +244,7 @@ describe('WebSocketTransport', () => {
       serverWs = await connectionPromise;
 
       // Wait a bit to ensure connection is fully established
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await delay(100);
     });
 
     afterEach(async () => {
@@ -481,7 +456,7 @@ describe('WebSocketTransport', () => {
       serverConnection = await connectionPromise;
 
       // Wait a bit to ensure connection is fully established
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await delay(50);
 
       // Server sends TYPE_PING packet
       const rtt = await serverConnection.ping();
@@ -533,7 +508,7 @@ describe('WebSocketTransport', () => {
       await client.close();
 
       // Wait for disconnect
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await delay(100);
 
       // Ping should fail
       await expect(client.ping()).rejects.toThrow('not established');
@@ -659,7 +634,7 @@ describe('WebSocketTransport', () => {
       await client.close(4001, 'Custom close reason');
 
       // Wait for close to propagate
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await delay(100);
 
       expect(closeCode).toBe(4001);
       expect(closeReason).toBe('Custom close reason');

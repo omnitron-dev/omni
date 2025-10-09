@@ -94,27 +94,59 @@ export interface TransportMappingOptions {
  * Map TitanError to HTTP status codes
  */
 const httpStatusMap: Record<number, number> = {
-  // Direct mappings (most are already HTTP status codes)
+  // 2xx Success
+  [ErrorCode.OK]: 200,
+  [ErrorCode.CREATED]: 201,
+  [ErrorCode.ACCEPTED]: 202,
+  [ErrorCode.NO_CONTENT]: 204,
+
+  // 4xx Client Errors
   [ErrorCode.BAD_REQUEST]: 400,
   [ErrorCode.UNAUTHORIZED]: 401,
+  [ErrorCode.PAYMENT_REQUIRED]: 402,
   [ErrorCode.FORBIDDEN]: 403,
   [ErrorCode.NOT_FOUND]: 404,
   [ErrorCode.METHOD_NOT_ALLOWED]: 405,
+  [ErrorCode.NOT_ACCEPTABLE]: 406,
+  [ErrorCode.PROXY_AUTHENTICATION_REQUIRED]: 407,
   [ErrorCode.REQUEST_TIMEOUT]: 408,
   [ErrorCode.CONFLICT]: 409,
   [ErrorCode.GONE]: 410,
+  [ErrorCode.LENGTH_REQUIRED]: 411,
+  [ErrorCode.PRECONDITION_FAILED]: 412,
   [ErrorCode.PAYLOAD_TOO_LARGE]: 413,
+  [ErrorCode.URI_TOO_LONG]: 414,
+  [ErrorCode.UNSUPPORTED_MEDIA_TYPE]: 415,
+  [ErrorCode.RANGE_NOT_SATISFIABLE]: 416,
+  [ErrorCode.EXPECTATION_FAILED]: 417,
+  [ErrorCode.IM_A_TEAPOT]: 418,
+  [ErrorCode.MISDIRECTED_REQUEST]: 421,
   [ErrorCode.UNPROCESSABLE_ENTITY]: 422,
+  [ErrorCode.LOCKED]: 423,
+  [ErrorCode.FAILED_DEPENDENCY]: 424,
+  [ErrorCode.TOO_EARLY]: 425,
+  [ErrorCode.UPGRADE_REQUIRED]: 426,
+  [ErrorCode.PRECONDITION_REQUIRED]: 428,
   [ErrorCode.TOO_MANY_REQUESTS]: 429,
+  [ErrorCode.REQUEST_HEADER_FIELDS_TOO_LARGE]: 431,
+  [ErrorCode.UNAVAILABLE_FOR_LEGAL_REASONS]: 451,
+
+  // 5xx Server Errors
   [ErrorCode.INTERNAL_SERVER_ERROR]: 500,
   [ErrorCode.NOT_IMPLEMENTED]: 501,
   [ErrorCode.BAD_GATEWAY]: 502,
   [ErrorCode.SERVICE_UNAVAILABLE]: 503,
   [ErrorCode.GATEWAY_TIMEOUT]: 504,
+  [ErrorCode.HTTP_VERSION_NOT_SUPPORTED]: 505,
+  [ErrorCode.VARIANT_ALSO_NEGOTIATES]: 506,
+  [ErrorCode.INSUFFICIENT_STORAGE]: 507,
+  [ErrorCode.LOOP_DETECTED]: 508,
+  [ErrorCode.NOT_EXTENDED]: 510,
+  [ErrorCode.NETWORK_AUTHENTICATION_REQUIRED]: 511,
 
-  // Custom codes
-  [ErrorCode.MULTIPLE_ERRORS]: 600,
-  [ErrorCode.UNKNOWN_ERROR]: 601
+  // Custom error codes (600+) - map to 500 Internal Server Error
+  [ErrorCode.MULTIPLE_ERRORS]: 500,
+  [ErrorCode.UNKNOWN_ERROR]: 500
 };
 
 /**
@@ -172,18 +204,42 @@ export function mapToTransport(
 }
 
 /**
+ * Export mapToHttp for direct use by HTTP transport
+ */
+export { mapToHttp };
+
+/**
  * Map to HTTP response
  */
 function mapToHttp(error: TitanError, options?: TransportMappingOptions): HttpErrorResponse {
   const status = httpStatusMap[error.code] || error.httpStatus || 500;
 
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+
+  // Add context headers if present
+  if (error.requestId) {
+    headers['X-Request-ID'] = error.requestId;
+  }
+  if (error.correlationId) {
+    headers['X-Correlation-ID'] = error.correlationId;
+  }
+  if (error.traceId) {
+    headers['X-Trace-ID'] = error.traceId;
+  }
+  if (error.spanId) {
+    headers['X-Span-ID'] = error.spanId;
+  }
+
+  // Add Retry-After header for rate limit errors
+  if (error.code === ErrorCode.TOO_MANY_REQUESTS && error.details?.retryAfter) {
+    headers['Retry-After'] = String(error.details.retryAfter);
+  }
+
   return {
     status,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(error.requestId && { 'X-Request-Id': error.requestId }),
-      ...(error.correlationId && { 'X-Correlation-Id': error.correlationId })
-    },
+    headers,
     body: {
       error: {
         code: getErrorName(error.code),

@@ -20,12 +20,12 @@ import {
   NamedPipeTransport
 } from '../../../src/netron/transport/index.js';
 import { Packet, encodePacket } from '../../../src/netron/packet/index.js';
-import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer as createHttpServer } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { promises as fs } from 'node:fs';
+import { getFreePort, waitForEvent, delay } from '../../utils/index.js';
 
 // Transport test configuration
 interface TransportTestConfig {
@@ -36,18 +36,6 @@ interface TransportTestConfig {
   setupServer?: () => Promise<any>;
   teardownServer?: () => Promise<void>;
   skipTests?: string[];
-}
-
-// Helper to get free port
-async function getFreePort(): Promise<number> {
-  const net = await import('node:net');
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.listen(0, () => {
-      const port = (server.address() as any).port;
-      server.close(() => resolve(port));
-    });
-  });
 }
 
 // Helper to get unique socket path
@@ -62,23 +50,6 @@ function getSocketPath(): string {
   }
 }
 
-// Helper to wait for event with timeout
-function waitForEvent<T = any>(
-  emitter: EventEmitter,
-  event: string,
-  timeout = 5000
-): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`Timeout waiting for event: ${event}`));
-    }, timeout);
-
-    emitter.once(event, (data: T) => {
-      clearTimeout(timer);
-      resolve(data);
-    });
-  });
-}
 
 // Helper to wait for condition
 async function waitForCondition(

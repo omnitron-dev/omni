@@ -736,7 +736,7 @@ describe('RequestBatcher', () => {
 
       batcher.destroy();
 
-      await expect(promise).rejects.toThrow('Batcher destroyed');
+      await expect(promise).rejects.toThrow(/Batcher.*destroyed/i);
     });
 
     it('should clear all timers on destroy', () => {

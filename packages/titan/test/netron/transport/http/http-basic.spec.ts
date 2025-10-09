@@ -84,7 +84,7 @@ describe('HTTP Transport Basic', () => {
       });
 
       await expect(transport.connect('http://localhost:9999'))
-        .rejects.toThrow('Cannot connect to server');
+        .rejects.toThrow(/Failed to connect/);
     });
   });
 

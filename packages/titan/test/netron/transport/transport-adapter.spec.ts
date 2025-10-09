@@ -9,36 +9,11 @@ import { TransportAdapter } from '../../../src/netron/transport/transport-adapte
 import { TransportRegistry } from '../../../src/netron/transport/transport-registry.js';
 import { TcpTransport } from '../../../src/netron/transport/tcp-transport.js';
 import { ConnectionState } from '../../../src/netron/transport/types.js';
-import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 import { promisify } from 'node:util';
 import type { ITransportConnection, ITransportServer } from '../../../src/netron/transport/types.js';
-
-// Helper to find free port
-async function getFreePort(): Promise<number> {
-  return new Promise((resolve) => {
-    const server = createServer();
-    server.listen(0, () => {
-      const port = (server.address() as any).port;
-      server.close(() => resolve(port));
-    });
-  });
-}
-
-// Helper to wait for event
-function waitForEvent<T = any>(emitter: EventEmitter, event: string, timeout = 5000): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`Timeout waiting for event: ${event}`));
-    }, timeout);
-
-    emitter.once(event, (data: T) => {
-      clearTimeout(timer);
-      resolve(data);
-    });
-  });
-}
+import { getFreeHttpPort as getFreePort, waitForEvent, delay } from '../../utils/index.js';
 
 describe('TransportAdapter', () => {
   let adapter: TransportAdapter;

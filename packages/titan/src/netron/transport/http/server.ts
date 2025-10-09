@@ -363,10 +363,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       }
 
       // Handle special endpoints
-      if (pathname === '/netron/discovery' && request.method === 'GET') {
-        return this.handleDiscoveryRequest(request);
-      }
-
       if (pathname === '/netron/invoke' && request.method === 'POST') {
         return this.handleInvocationRequest(request);
       }
@@ -875,56 +871,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       headers: {
         'Content-Type': 'application/json',
         'X-Netron-Version': '2.0'
-      }
-    });
-  }
-
-  /**
-   * Handle discovery request
-   */
-  private handleDiscoveryRequest(request: Request): Response {
-    const discovery: HttpDiscoveryResponse = {
-      services: {},
-      contracts: {},
-      server: {
-        version: '2.0.0',
-        protocol: '2.0',
-        features: ['batch', 'discovery', 'metrics', 'health'],
-        metadata: {
-          runtime: this.detectRuntime(),
-          uptime: Date.now() - this.startTime
-        }
-      },
-      timestamp: Date.now()
-    };
-
-    for (const [name, service] of this.services) {
-      discovery.services[name] = {
-        name: service.name,
-        version: service.version,
-        methods: Array.from(service.methods.keys()),
-        description: service.description,
-        metadata: service.metadata
-      };
-
-      // Include contracts if available
-      const contracts: any = {};
-      for (const [methodName, method] of service.methods) {
-        if (method.contract) {
-          contracts[methodName] = method.contract;
-        }
-      }
-      if (Object.keys(contracts).length > 0) {
-        discovery.contracts![name] = contracts;
-      }
-    }
-
-    return new Response(JSON.stringify(discovery), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Netron-Version': '2.0',
-        'Cache-Control': 'public, max-age=300' // Cache for 5 minutes
       }
     });
   }

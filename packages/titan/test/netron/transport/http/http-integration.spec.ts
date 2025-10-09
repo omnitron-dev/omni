@@ -100,19 +100,6 @@ describe('HTTP Transport Integration (v2.0)', () => {
       expect(transport.capabilities.server).toBe(true);
     });
 
-    it('should handle discovery requests', async () => {
-      const request = new Request(`${baseUrl}/netron/discovery`, {
-        method: 'GET'
-      });
-
-      const response = await server.handleRequest(request);
-
-      expect(response.status).toBe(200);
-      const data = await response.json() as any;
-      expect(data.server).toBeDefined();
-      expect(data.server.protocol).toBe('2.0');
-    });
-
     it('should handle invocation requests with valid message', async () => {
       // Setup mock peer with service
       const mockStub = {
@@ -186,14 +173,6 @@ describe('HTTP Transport Integration (v2.0)', () => {
       connection = new HttpConnection(baseUrl);
     });
 
-    it('should discover services', async () => {
-      await new Promise(resolve => setTimeout(resolve, 150));
-
-      const metrics = connection.getMetrics();
-      expect(metrics.services).toBeDefined();
-      expect(metrics.services).toContain('Calculator@1.0.0');
-    });
-
     it('should send messages', async () => {
       mockFetch.mockResolvedValue({
         ok: true,
@@ -230,30 +209,16 @@ describe('HTTP Transport Integration (v2.0)', () => {
       await testServer.close();
     });
 
-    it('should handle connection errors gracefully', async () => {
-      mockFetch.mockRejectedValue(new Error('Connection refused'));
-
-      await expect(
-        transport.connect('http://localhost:9999')
-      ).rejects.toThrow();
+    it('should create connection without verifying server', async () => {
+      // HTTP connections are stateless and don't verify server on connect
+      const connection = await transport.connect('http://localhost:9999');
+      expect(connection).toBeDefined();
     });
   });
 
   describe('Protocol Version', () => {
     beforeEach(() => {
       server = new HttpServer({ port: testPort });
-    });
-
-    it('should advertise v2.0 protocol', async () => {
-      const request = new Request(`${baseUrl}/netron/discovery`, {
-        method: 'GET'
-      });
-
-      const response = await server.handleRequest(request);
-      const data = await response.json() as any;
-
-      expect(data.server.protocol).toBe('2.0');
-      expect(data.server.version).toBeDefined();
     });
 
     it('should include protocol version in responses', async () => {
@@ -384,7 +349,7 @@ describe('HTTP Transport Integration (v2.0)', () => {
     });
 
     it('should track metrics', async () => {
-      const request = new Request(`${baseUrl}/netron/discovery`, {
+      const request = new Request(`${baseUrl}/health`, {
         method: 'GET'
       });
 

@@ -16,7 +16,6 @@ import { TitanError, ErrorCode, NetronErrors, Errors } from '../../../errors/ind
 import {
   HttpRequestMessage,
   HttpResponseMessage,
-  HttpDiscoveryResponse,
   createRequestMessage,
   isHttpResponseMessage
 } from './types.js';
@@ -34,8 +33,6 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
 
   // Service discovery cache
   private services = new Map<string, Definition>();
-  private contracts = new Map<string, any>();
-  private discoveryPromise: Promise<void> | null = null;
 
   // Request tracking
   private pendingRequests = new Map<string, {
@@ -76,14 +73,6 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
     // Emit connect event asynchronously
     setImmediate(() => {
       this.emit('connect');
-
-      // Pre-load service discovery for better performance (unless disabled)
-      const discoveryEnabled = this.options.discovery !== false; // default true
-      if (discoveryEnabled) {
-        this.discoverServices().catch((err) => {
-          console.warn('Failed to pre-load service discovery:', err);
-        });
-      }
     });
   }
 
@@ -94,69 +83,6 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
     return `http-direct-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   }
 
-  /**
-   * Discover services from the HTTP server
-   */
-  private async discoverServices(): Promise<void> {
-    if (this.discoveryPromise) {
-      return this.discoveryPromise;
-    }
-
-    this.discoveryPromise = this._discoverServices();
-    return this.discoveryPromise;
-  }
-
-  private async _discoverServices(): Promise<void> {
-    try {
-      // Add discovery-specific timeout (5 seconds) to prevent hanging
-      const discoveryTimeout = 5000;
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(Errors.timeout('Service discovery', discoveryTimeout)), discoveryTimeout);
-      });
-
-      const response = await Promise.race([
-        this.sendHttpRequest<HttpDiscoveryResponse>(
-          'GET',
-          '/netron/discovery'
-        ),
-        timeoutPromise
-      ]);
-
-      // Store discovered services
-      if (response.services) {
-        for (const [name, service] of Object.entries(response.services)) {
-          const definition: Definition = {
-            id: `${name}-${service.version}`,
-            meta: {
-              name,
-              version: service.version,
-              methods: service.methods.reduce((acc, method) => {
-                acc[method] = { name: method };
-                return acc;
-              }, {} as any),
-              properties: {},
-              ...service.metadata
-            },
-            parentId: '',
-            peerId: this.id
-          };
-
-          this.services.set(name, definition);
-        }
-      }
-
-      // Store contracts if provided
-      if (response.contracts) {
-        for (const [name, contract] of Object.entries(response.contracts)) {
-          this.contracts.set(name, contract);
-        }
-      }
-    } catch (error) {
-      // If discovery fails, continue anyway - services might still work
-      // This is intentional - we want the connection to be usable even without discovery
-      console.warn('Service discovery failed:', error);
-    }
-  }
 
   /**
    * Send data using native HTTP messaging
@@ -387,9 +313,6 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
 
     this._state = ConnectionState.CONNECTED;
     this.emit('connect');
-
-    // Re-discover services
-    await this.discoverServices();
   }
 
   /**
@@ -416,17 +339,6 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
    * Query interface (for Netron compatibility)
    */
   async queryInterface(serviceName: string): Promise<any> {
-    // Try to wait for discovery, but don't hang forever
-    // Use a race between discovery and a fast timeout
-    try {
-      await Promise.race([
-        this.discoverServices(),
-        new Promise((resolve) => setTimeout(resolve, 1000)) // 1 second max wait
-      ]);
-    } catch (error) {
-      // Ignore discovery errors, continue with minimal definition
-    }
-
     const definition = this.services.get(serviceName);
     if (!definition) {
       // Create a minimal definition if we don't have one

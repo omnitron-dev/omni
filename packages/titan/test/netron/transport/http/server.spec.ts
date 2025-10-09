@@ -258,22 +258,6 @@ describe('HttpServer (Legacy Tests)', () => {
       expect(result.responses[1].data).toBe(20);
     });
 
-    it('should handle service discovery', async () => {
-      const response = await fetch(`http://localhost:${testPort}/netron/discovery`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
-
-      expect(response.status).toBe(200);
-
-      const discovery: HttpDiscoveryResponse = await response.json();
-      expect(discovery.services).toHaveProperty('MathService');
-      expect(discovery.services.MathService.methods).toContain('add');
-      expect(discovery.services.MathService.methods).toContain('multiply');
-      expect(discovery.server.protocol).toBe('2.0');
-    });
   });
 
   describe('OpenAPI Generation', () => {

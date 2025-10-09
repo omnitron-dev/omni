@@ -463,7 +463,7 @@ export const BuiltInPolicies = {
             allowed: true,
             reason: `Within rate limit: ${remaining} remaining`,
             metadata: {
-              remaining: remaining,
+              remaining,
             },
           };
         } catch (error) {

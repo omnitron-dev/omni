@@ -32,18 +32,8 @@ describe('HttpConnection - Lifecycle and Communication', () => {
     jest.clearAllMocks();
     mockFetch.mockClear();
 
-    // Mock discovery endpoint by default
-    mockFetch.mockImplementation((url: any) => {
-      const urlStr = typeof url === 'string' ? url : url.toString();
-
-      if (urlStr.includes('/netron/discovery')) {
-        return Promise.resolve(createMockResponse({
-          version: '2.0',
-          services: {},
-          contracts: {}
-        }));
-      }
-
+    // Mock default successful responses
+    mockFetch.mockImplementation(() => {
       return Promise.resolve(createMockResponse({
         id: '1',
         version: '2.0',

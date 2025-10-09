@@ -9,7 +9,6 @@ import {
   MemoryAuditAdapter,
   FileAuditAdapter,
   type AuditStorageAdapter,
-  type AuditFilter,
 } from '../../../src/netron/auth/audit-logger.js';
 import type { AuditEvent, PolicyDecision } from '../../../src/netron/auth/types.js';
 import type { ILogger } from '../../../src/modules/logger/logger.types.js';
@@ -748,12 +747,10 @@ describe('AuditLogger', () => {
         save: async (event) => {
           customEvents.push(event);
         },
-        query: async (filter) => {
-          return customEvents.filter((e) => {
+        query: async (filter) => customEvents.filter((e) => {
             if (filter.userId && e.userId !== filter.userId) return false;
             return true;
-          });
-        },
+          }),
         clear: async () => {
           customEvents.length = 0;
         },

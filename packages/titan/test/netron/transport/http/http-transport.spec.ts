@@ -205,54 +205,16 @@ describe('HttpTransport', () => {
       expect(() => transport.parseAddress('ws://localhost')).toThrow();
     });
 
-    it('should handle connection failures gracefully', async () => {
-      // Mock fetch to simulate connection failure
-      mockFetch.mockRejectedValue({
-        message: 'fetch failed',
-        cause: { code: 'ECONNREFUSED' }
-      });
-
-      await expect(transport.connect('http://localhost:9999'))
-        .rejects.toThrow(/Failed to connect/);
-    });
-
-    it('should handle server error responses', async () => {
-      // Mock 500 Internal Server Error
-      mockFetch.mockResolvedValue({
-        ok: false,
-        status: 500,
-        statusText: 'Internal Server Error'
-      } as Response);
-
-      await expect(transport.connect('http://localhost:3000'))
-        .rejects.toThrow(/Failed to connect|500/);
-    });
-
-    it('should accept 404 responses during discovery', async () => {
-      // Mock 404 Not Found (server exists but no discovery endpoint)
-      mockFetch.mockResolvedValue({
-        ok: false,
-        status: 404,
-        statusText: 'Not Found'
-      } as Response);
-
-      const connection = await transport.connect('http://localhost:3000');
+    it('should create connection without verifying server', async () => {
+      // HTTP connections are stateless and don't verify server on connect
+      const connection = await transport.connect('http://localhost:9999');
       expect(connection).toBeDefined();
+      expect(connection.state).toBe(ConnectionState.CONNECTED);
     });
   });
 
   describe('Options and Configuration', () => {
     it('should support custom headers', async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          version: '2.0',
-          services: {},
-          contracts: {}
-        })
-      } as Response);
-
       const options: TransportOptions = {
         headers: {
           'Authorization': 'Bearer token123',
@@ -262,30 +224,9 @@ describe('HttpTransport', () => {
 
       const connection = await transport.connect('http://localhost:3000', options);
       expect(connection).toBeDefined();
-
-      // Verify headers were passed to fetch
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            'Authorization': 'Bearer token123',
-            'X-Custom-Header': 'value'
-          })
-        })
-      );
     });
 
     it('should support timeout configuration', async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          version: '2.0',
-          services: {},
-          contracts: {}
-        })
-      } as Response);
-
       const options: TransportOptions = {
         timeout: 10000
       };

@@ -18,36 +18,6 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
     // Mock global fetch
     mockFetch = jest.fn();
     global.fetch = mockFetch;
-
-    // Default successful discovery response
-    mockFetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      headers: {
-        get: jest.fn((name: string) => {
-          if (name === 'Content-Type') return 'application/json';
-          if (name === 'X-Netron-Version') return '2.0';
-          return null;
-        })
-      },
-      json: jest.fn().mockResolvedValue({
-        server: {
-          version: '2.0.0',
-          protocol: '2.0',
-          features: ['batch', 'discovery'],
-          metadata: {}
-        },
-        services: {
-          'Calculator@1.0.0': {
-            name: 'Calculator@1.0.0',
-            version: '1.0.0',
-            methods: ['add', 'subtract', 'multiply', 'divide']
-          }
-        },
-        contracts: {},
-        timestamp: Date.now()
-      })
-    });
   });
 
   afterEach(async () => {
@@ -138,63 +108,6 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
     });
   });
 
-  describe('Service Discovery', () => {
-    it('should attempt service discovery on connection', async () => {
-      connection = new HttpConnection(baseUrl);
-
-      // Wait for async initialization
-      await new Promise(resolve => setTimeout(resolve, 150));
-
-      // Verify discovery request was made
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/netron/discovery'),
-        expect.any(Object)
-      );
-    });
-
-    it('should cache discovered services in metrics', async () => {
-      connection = new HttpConnection(baseUrl);
-
-      // Wait for discovery
-      await new Promise(resolve => setTimeout(resolve, 150));
-
-      const metrics = connection.getMetrics();
-      expect(metrics.services).toBeDefined();
-      expect(Array.isArray(metrics.services)).toBe(true);
-      expect(metrics.services).toContain('Calculator@1.0.0');
-    });
-
-    it('should handle discovery errors gracefully', async () => {
-      mockFetch.mockRejectedValue(new Error('Network error'));
-
-      connection = new HttpConnection(baseUrl);
-
-      // Should still transition to CONNECTED even if discovery fails
-      await new Promise(resolve => setTimeout(resolve, 150));
-
-      // Connection should still be usable
-      expect(connection.state).toBe(ConnectionState.CONNECTED);
-    });
-
-    it('should handle 404 on discovery endpoint', async () => {
-      mockFetch.mockResolvedValue({
-        ok: false,
-        status: 404,
-        statusText: 'Not Found',
-        headers: {
-          get: jest.fn()
-        },
-        json: jest.fn().mockRejectedValue(new Error('Not found'))
-      });
-
-      connection = new HttpConnection(baseUrl);
-
-      await new Promise(resolve => setTimeout(resolve, 150));
-
-      expect(connection.state).toBe(ConnectionState.CONNECTED);
-    });
-  });
-
   describe('Connection Lifecycle', () => {
     it('should emit connect event', (done) => {
       connection = new HttpConnection(baseUrl);
@@ -254,62 +167,21 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
       expect(metrics.baseUrl).toBe(baseUrl);
     });
 
-    it('should include service list after discovery', async () => {
+    it('should include empty service list', () => {
       connection = new HttpConnection(baseUrl);
-
-      await new Promise(resolve => setTimeout(resolve, 150));
 
       const metrics = connection.getMetrics();
       expect(metrics.services).toBeDefined();
       expect(Array.isArray(metrics.services)).toBe(true);
+      expect(metrics.services).toEqual([]);
     });
   });
 
   describe('Error Handling', () => {
-    it('should handle network errors during initialization', async () => {
-      mockFetch.mockRejectedValue(new Error('Network error'));
-
+    it('should handle network errors during initialization', () => {
       connection = new HttpConnection(baseUrl);
-
-      // Should not throw, but handle gracefully
-      await new Promise(resolve => setTimeout(resolve, 150));
 
       expect(connection).toBeDefined();
-      expect(connection.state).toBe(ConnectionState.CONNECTED);
-    });
-
-    it('should handle malformed discovery response', async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        headers: {
-          get: jest.fn()
-        },
-        json: jest.fn().mockRejectedValue(new Error('Invalid JSON'))
-      });
-
-      connection = new HttpConnection(baseUrl);
-
-      await new Promise(resolve => setTimeout(resolve, 150));
-
-      // Should still be connected despite invalid response
-      expect(connection.state).toBe(ConnectionState.CONNECTED);
-    });
-
-    it('should handle server errors', async () => {
-      mockFetch.mockResolvedValue({
-        ok: false,
-        status: 500,
-        statusText: 'Internal Server Error',
-        headers: {
-          get: jest.fn()
-        }
-      });
-
-      connection = new HttpConnection(baseUrl);
-
-      await new Promise(resolve => setTimeout(resolve, 150));
-
       expect(connection.state).toBe(ConnectionState.CONNECTED);
     });
   });
@@ -422,77 +294,6 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
 
       await connection.close();
       expect(connection.state).toBe(ConnectionState.DISCONNECTED);
-    });
-  });
-
-  describe('Service Discovery Edge Cases', () => {
-    it('should handle discovery timeout', async () => {
-      // Mock fetch to reject immediately to simulate timeout behavior without waiting
-      mockFetch.mockRejectedValue(new Error('Timeout'));
-
-      connection = new HttpConnection(baseUrl);
-
-      // Wait for discovery attempt
-      await new Promise(resolve => setTimeout(resolve, 200));
-
-      // Should still be connected despite timeout
-      expect(connection.state).toBe(ConnectionState.CONNECTED);
-    });
-
-    it('should store contracts from discovery response', async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        headers: { get: jest.fn() },
-        json: jest.fn().mockResolvedValue({
-          services: {
-            'TestService@1.0.0': {
-              name: 'TestService@1.0.0',
-              version: '1.0.0',
-              methods: ['test']
-            }
-          },
-          contracts: {
-            'TestService': {
-              interface: 'ITestService',
-              methods: { test: { params: [], returns: 'string' } }
-            }
-          }
-        })
-      });
-
-      connection = new HttpConnection(baseUrl);
-      await new Promise(resolve => setTimeout(resolve, 150));
-
-      const metrics = connection.getMetrics();
-      expect(metrics.services).toContain('TestService@1.0.0');
-    });
-
-    it('should handle empty services response', async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        headers: { get: jest.fn() },
-        json: jest.fn().mockResolvedValue({
-          services: {},
-          contracts: {}
-        })
-      });
-
-      connection = new HttpConnection(baseUrl);
-      await new Promise(resolve => setTimeout(resolve, 150));
-
-      const metrics = connection.getMetrics();
-      expect(metrics.services).toEqual([]);
-    });
-
-    it('should handle discovery with disabled option', async () => {
-      connection = new HttpConnection(baseUrl, { discovery: false });
-
-      await new Promise(resolve => setTimeout(resolve, 150));
-
-      // Discovery should not be called when disabled
-      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 
@@ -668,21 +469,6 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
       await new Promise(resolve => connection.once('connect', resolve));
       await connection.close();
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        headers: { get: jest.fn() },
-        json: jest.fn().mockResolvedValue({
-          services: {
-            'Calculator@1.0.0': {
-              name: 'Calculator@1.0.0',
-              version: '1.0.0',
-              methods: ['add']
-            }
-          }
-        })
-      });
-
       await connection.reconnect();
 
       expect(connection.state).toBe(ConnectionState.CONNECTED);
@@ -700,35 +486,6 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
       await connectPromise;
 
       expect(connection.state).toBe(ConnectionState.CONNECTED);
-    }, 5000);
-
-    it('should re-discover services on reconnect', async () => {
-      connection = new HttpConnection(baseUrl);
-
-      await new Promise(resolve => connection.once('connect', resolve));
-      await connection.close();
-
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        headers: { get: jest.fn() },
-        json: jest.fn().mockResolvedValue({
-          services: {
-            'NewService@1.0.0': {
-              name: 'NewService@1.0.0',
-              version: '1.0.0',
-              methods: ['test']
-            }
-          }
-        })
-      });
-
-      await connection.reconnect();
-
-      await new Promise(resolve => setTimeout(resolve, 150));
-
-      const metrics = connection.getMetrics();
-      expect(metrics.services).toContain('NewService@1.0.0');
     }, 5000);
   });
 

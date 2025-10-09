@@ -72,31 +72,6 @@ export class HttpTransport implements ITransport {
     // Always use direct HTTP connection (v2.0) as packet-based is removed
     const connection = new HttpConnection(address, options);
 
-    // Try to verify the server is reachable by doing a discovery request
-    try {
-      const response = await fetch(`${address}/netron/discovery`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'X-Netron-Version': useDirectHttp ? '2.0' : '1.0',
-          ...options?.headers
-        },
-        signal: AbortSignal.timeout(5000) // 5 second timeout
-      });
-
-      // If server doesn't exist or returns an error (except 404), throw
-      if (!response.ok && response.status !== 404) {
-        throw NetronErrors.connectionFailed('http', address, new Error(`Server returned ${response.status} ${response.statusText}`));
-      }
-    } catch (error: any) {
-      // Network error - server is not reachable
-      if (error.cause?.code === 'ECONNREFUSED' || error.message?.includes('fetch failed')) {
-        throw NetronErrors.connectionFailed('http', address, error);
-      }
-      // Re-throw other errors
-      throw error;
-    }
-
     return connection;
   }
 

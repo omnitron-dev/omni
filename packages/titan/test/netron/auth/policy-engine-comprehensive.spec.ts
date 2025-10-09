@@ -8,7 +8,6 @@ import { PolicyEngine } from '../../../src/netron/auth/policy-engine.js';
 import type {
   ExecutionContext,
   PolicyDefinition,
-  PolicyDecision,
 } from '../../../src/netron/auth/types.js';
 
 describe('PolicyEngine - Comprehensive Tests', () => {

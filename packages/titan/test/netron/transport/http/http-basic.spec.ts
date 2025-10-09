@@ -49,43 +49,11 @@ describe('HTTP Transport Basic', () => {
 
   describe('Connection Creation', () => {
     it('should create client connection', async () => {
-      // Mock successful discovery response
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          version: '2.0',
-          services: {},
-          contracts: {}
-        })
-      } as Response);
-
       const connection = await transport.connect('http://localhost:3000');
       expect(connection).toBeDefined();
       expect(connection).toBeInstanceOf(HttpConnection);
-
-      // Verify fetch was called for discovery
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:3000/netron/discovery',
-        expect.objectContaining({
-          method: 'GET',
-          headers: expect.objectContaining({
-            'Accept': 'application/json'
-          })
-        })
-      );
     });
 
-    it('should throw error for unreachable server', async () => {
-      // Mock connection refused error
-      mockFetch.mockRejectedValue({
-        message: 'fetch failed',
-        cause: { code: 'ECONNREFUSED' }
-      });
-
-      await expect(transport.connect('http://localhost:9999'))
-        .rejects.toThrow(/Failed to connect/);
-    });
   });
 
   describe('Server Creation', () => {

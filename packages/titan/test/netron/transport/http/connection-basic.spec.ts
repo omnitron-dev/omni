@@ -32,18 +32,8 @@ describe('HttpConnection - Basic Functionality', () => {
     jest.clearAllMocks();
     mockFetch.mockClear();
 
-    // Mock discovery endpoint by default
-    mockFetch.mockImplementation((url: any) => {
-      const urlStr = typeof url === 'string' ? url : url.toString();
-
-      if (urlStr.includes('/netron/discovery')) {
-        return Promise.resolve(createMockResponse({
-          version: '2.0',
-          services: {},
-          contracts: {}
-        }));
-      }
-
+    // Mock default responses
+    mockFetch.mockImplementation(() => {
       return Promise.resolve(createMockResponse({
         id: '1',
         version: '2.0',
@@ -177,31 +167,15 @@ describe('HttpConnection - Basic Functionality', () => {
       expect(metrics.baseUrl).toBe(baseUrl);
     });
 
-    it('should track services in metrics', async () => {
-      mockFetch.mockImplementation((url: any) => {
-        const urlStr = typeof url === 'string' ? url : url.toString();
-
-        if (urlStr.includes('/netron/discovery')) {
-          return Promise.resolve(createMockResponse({
-            version: '2.0',
-            services: {
-              ServiceA: { version: '1.0.0', methods: [], metadata: {} },
-              ServiceB: { version: '1.0.0', methods: [], metadata: {} }
-            },
-            contracts: {}
-          }));
-        }
-
-        return Promise.resolve(createMockResponse({ success: true }));
-      });
-
+    it('should include empty service list in metrics', async () => {
       connection = new HttpConnection(baseUrl);
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       const metrics = connection.getMetrics();
 
-      expect(metrics.services).toContain('ServiceA');
-      expect(metrics.services).toContain('ServiceB');
+      expect(metrics.services).toBeDefined();
+      expect(Array.isArray(metrics.services)).toBe(true);
+      expect(metrics.services).toEqual([]);
     });
   });
 });

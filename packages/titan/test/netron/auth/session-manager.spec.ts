@@ -5,8 +5,6 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import {
   SessionManager,
-  type Session,
-  type SessionConfig,
 } from '../../../src/netron/auth/session-manager.js';
 import type { AuthContext } from '../../../src/netron/auth/types.js';
 

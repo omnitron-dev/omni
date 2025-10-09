@@ -119,53 +119,6 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
     });
   });
 
-  describe('Discovery Endpoint', () => {
-    it('should handle /netron/discovery requests', async () => {
-      const request = new Request('http://localhost:3456/netron/discovery', {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
-
-      const response = await server.handleRequest(request);
-
-      expect(response.status).toBe(200);
-      expect(response.headers.get('Content-Type')).toContain('application/json');
-
-      const data = await response.json() as any;
-      expect(data.server.protocol).toBe('2.0');
-      expect(data.services).toBeDefined();
-      expect(data.services['Calculator@1.0.0']).toBeDefined();
-      expect(data.services['UserService@1.0.0']).toBeDefined();
-    });
-
-    it('should include service methods in discovery', async () => {
-      const request = new Request('http://localhost:3456/netron/discovery', {
-        method: 'GET'
-      });
-
-      const response = await server.handleRequest(request);
-      const data = await response.json() as any;
-
-      const calculator = data.services['Calculator@1.0.0'];
-      expect(calculator.methods).toContain('add');
-      expect(calculator.methods).toContain('subtract');
-    });
-
-    it('should include service version in discovery', async () => {
-      const request = new Request('http://localhost:3456/netron/discovery', {
-        method: 'GET'
-      });
-
-      const response = await server.handleRequest(request);
-      const data = await response.json() as any;
-
-      const calculator = data.services['Calculator@1.0.0'];
-      expect(calculator.version).toBe('1.0.0');
-    });
-  });
-
   describe('Invocation Endpoint', () => {
     it('should handle /netron/invoke POST requests', async () => {
       const calculatorStub = mockPeer.stubs.get('stub-1');

@@ -6,7 +6,7 @@
 
 import { Injectable, Optional } from '../../decorators/index.js';
 import type { ILogger } from '../../modules/logger/logger.types.js';
-import type { AuditEvent, PolicyDecision } from './types.js';
+import type { AuditEvent } from './types.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 

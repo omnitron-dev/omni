@@ -2,11 +2,9 @@
  * Tests for RateLimiter
  */
 
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import {
   RateLimiter,
-  type RateLimitConfig,
-  type RateLimitTier,
 } from '../../../src/netron/auth/rate-limiter.js';
 
 describe('RateLimiter', () => {

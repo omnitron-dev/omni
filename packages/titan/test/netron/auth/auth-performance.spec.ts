@@ -3,7 +3,7 @@
  * Comprehensive performance benchmarks and load testing
  */
 
-import { describe, it, expect, beforeEach, jest, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { AuthenticationManager } from '../../../src/netron/auth/authentication-manager.js';
 import { SessionManager } from '../../../src/netron/auth/session-manager.js';
 import { PolicyEngine } from '../../../src/netron/auth/policy-engine.js';

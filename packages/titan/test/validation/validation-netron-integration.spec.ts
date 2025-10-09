@@ -13,7 +13,6 @@ import { Service } from '../../src/decorators/core.js';
 import { Contract } from '../../src/decorators/validation.js';
 import { contract } from '../../src/validation/index.js';
 import { createMockLogger } from '../netron/test-utils.js';
-import type { RemotePeer } from '../../src/netron/remote-peer.js';
 import type { HttpRemotePeer } from '../../src/netron/transport/http/peer.js';
 
 // Test port management

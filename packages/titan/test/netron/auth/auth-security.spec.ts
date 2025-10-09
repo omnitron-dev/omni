@@ -3,14 +3,13 @@
  * Tests for security vulnerabilities and attack resistance
  */
 
-import { describe, it, expect, beforeEach, jest, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { AuthenticationManager } from '../../../src/netron/auth/authentication-manager.js';
 import { SessionManager } from '../../../src/netron/auth/session-manager.js';
 import { PolicyEngine } from '../../../src/netron/auth/policy-engine.js';
 import type {
   AuthCredentials,
   AuthContext,
-  NetronAuthConfig,
   ExecutionContext,
   PolicyDefinition,
 } from '../../../src/netron/auth/types.js';
@@ -492,13 +491,11 @@ describe('Auth Security Tests', () => {
     it('should handle Unicode and emoji in credentials', async () => {
       const authManager = new AuthenticationManager(mockLogger);
 
-      const mockAuth = jest.fn(async (creds: AuthCredentials) => {
-        return {
+      const mockAuth = jest.fn(async (creds: AuthCredentials) => ({
           userId: creds.username!,
           roles: ['user'],
           permissions: [],
-        };
-      });
+        }));
 
       authManager.configure({ authenticate: mockAuth });
 

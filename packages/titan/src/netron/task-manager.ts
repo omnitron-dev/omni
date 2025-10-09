@@ -1,3 +1,5 @@
+import { Errors } from '../errors/index.js';
+
 /**
  * Represents a task function that can be either synchronous or asynchronous.
  * Tasks are the fundamental units of work in the TaskManager system.
@@ -74,10 +76,10 @@ export class TaskManager {
    */
   addTask(fn: Task) {
     if (typeof fn !== 'function') {
-      throw new Error('Task must be a function');
+      throw Errors.badRequest('Task must be a function');
     }
     if (!fn.name) {
-      throw new Error('Task function must have a name');
+      throw Errors.badRequest('Task function must have a name');
     }
 
     const existingTask = this.tasks.get(fn.name);
@@ -89,9 +91,9 @@ export class TaskManager {
         case 'skip':
           return;
         case 'throw':
-          throw new Error(`Task already exists: ${fn.name}`);
+          throw Errors.conflict(`Task already exists: ${fn.name}`);
         default:
-          throw new Error(`Unknown overwrite strategy: ${this.overwriteStrategy}`);
+          throw Errors.badRequest(`Unknown overwrite strategy: ${this.overwriteStrategy}`);
       }
     } else {
       this.tasks.set(fn.name, fn);
@@ -112,12 +114,12 @@ export class TaskManager {
   async runTask(name: string, ...args: any[]): Promise<any> {
     const task = this.tasks.get(name);
     if (!task) {
-      throw new Error(`Task not found: ${name}`);
+      throw Errors.notFound('Task', name);
     }
 
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        reject(new Error(`Task timed out: ${name} (${this.timeout}ms)`));
+        reject(Errors.timeout(`Task: ${name}`, this.timeout));
       }, this.timeout);
 
       try {

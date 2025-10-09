@@ -1,3 +1,4 @@
+import { Errors } from '../errors/index.js';
 import { Reference } from './reference.js';
 import { Definition } from './definition.js';
 import { StreamReference } from './stream-reference.js';
@@ -78,7 +79,7 @@ export class Interface {
        */
       get: (target: Interface, prop: string) => {
         if (!this.$def) {
-          throw new Error('Invalid interface: Service definition is missing');
+          throw Errors.badRequest('Invalid interface: Service definition is missing');
         }
 
         if (this.$def?.meta.methods[prop]) {
@@ -103,7 +104,7 @@ export class Interface {
         }
 
         // For regular properties not in the interface, throw an error
-        throw new Error(`Unknown member: '${prop}' is not defined in the service interface`);
+        throw Errors.badRequest(`Unknown member: '${prop}' is not defined in the service interface`);
       },
 
       /**
@@ -124,15 +125,15 @@ export class Interface {
         }
 
         if (!this.$def) {
-          throw new Error('Invalid interface: Service definition is missing');
+          throw Errors.badRequest('Invalid interface: Service definition is missing');
         }
 
         if (!$def?.meta.properties[prop]) {
-          throw new Error(`Unknown member: '${prop}' is not defined in the service interface`);
+          throw Errors.badRequest(`Unknown member: '${prop}' is not defined in the service interface`);
         }
 
         if (this.$def?.meta.properties[prop]?.readonly) {
-          throw new Error(`Property is not writable: '${prop}' is marked as readonly`);
+          throw Errors.badRequest(`Property is not writable: '${prop}' is marked as readonly`);
         }
 
         let resolvePromise: () => void = () => { };
@@ -195,11 +196,11 @@ export class Interface {
   private $processValue(value: any): any {
     if (value instanceof Interface) {
       if (!value.$def) {
-        throw new Error('Service interface is not valid: Missing service definition');
+        throw Errors.badRequest('Service interface is not valid: Missing service definition');
       }
       return new Reference(value.$def.id);
     } else if (isNetronService(value)) {
-      throw Error('Unsupported value type: Direct service exposure is not yet implemented');
+      throw Errors.notImplemented('Unsupported value type: Direct service exposure is not yet implemented');
     } else if (isNetronStream(value)) {
       return StreamReference.from(value);
     }

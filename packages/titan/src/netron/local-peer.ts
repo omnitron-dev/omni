@@ -1,5 +1,6 @@
 import type { ILogger } from '../modules/logger/logger.types.js';
 
+import { NetronErrors, Errors } from '../errors/index.js';
 import type { INetron } from './types.js';
 import { Interface } from './interface.js';
 import { Definition } from './definition.js';
@@ -58,19 +59,19 @@ export class LocalPeer extends AbstractPeer {
     const meta = getServiceMetadata(instance);
     if (!meta) {
       this.logger.error('Invalid service: Service metadata could not be retrieved');
-      throw new Error('Invalid service: Service metadata could not be retrieved');
+      throw Errors.badRequest('Invalid service: Service metadata could not be retrieved');
     }
 
     const existingStub = this.serviceInstances.get(instance);
     if (existingStub) {
       this.logger.warn({ name: meta.name }, 'Service instance already exposed');
-      throw new Error(`Service instance already exposed: ${meta.name}`);
+      throw Errors.conflict(`Service instance already exposed: ${meta.name}`);
     }
 
     const serviceKey = getQualifiedName(meta.name, meta.version);
     if (this.netron.services.has(serviceKey)) {
       this.logger.warn({ serviceKey }, 'Service already exposed');
-      throw new Error(`Service already exposed: ${serviceKey}`);
+      throw Errors.conflict(`Service already exposed: ${serviceKey}`);
     }
 
     // If the service has transports configured, store them for later use
@@ -245,7 +246,7 @@ export class LocalPeer extends AbstractPeer {
 
     const meta = instance instanceof Interface ? instance.$def!.meta : getServiceMetadata(instance);
     if (!meta) {
-      throw new Error('Service metadata not found');
+      throw Errors.badRequest('Service metadata not found');
     }
     const stub = new ServiceStub(this, instance, meta);
     stub.definition.parentId = parentDef.id;
@@ -378,7 +379,7 @@ export class LocalPeer extends AbstractPeer {
   getStubByDefinitionId(defId: string) {
     const stub = this.stubs.get(defId);
     if (stub === void 0) {
-      throw new Error(`Unknown definition: ${defId}.`);
+      throw Errors.notFound('Definition', defId);
     }
     return stub;
   }
@@ -412,7 +413,7 @@ export class LocalPeer extends AbstractPeer {
   protected getDefinitionById(defId: string): Definition {
     const stub = this.stubs.get(defId);
     if (stub === void 0) {
-      throw new Error(`Unknown definition: ${defId}.`);
+      throw Errors.notFound('Definition', defId);
     }
     return stub.definition;
   }
@@ -429,7 +430,7 @@ export class LocalPeer extends AbstractPeer {
   protected getDefinitionByServiceName(name: string): Definition {
     const stub = this.netron.services.get(name);
     if (stub === void 0) {
-      throw new Error(`Unknown service: ${name}.`);
+      throw NetronErrors.serviceNotFound(name);
     }
     return stub.definition;
   }

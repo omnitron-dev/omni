@@ -1,3 +1,5 @@
+import { Errors } from '../errors/index.js';
+
 /**
  * Represents a reference to a service definition within the Netron distributed system.
  * This class serves as a lightweight proxy that maintains a connection to a service
@@ -33,7 +35,7 @@ export class Reference {
    */
   constructor(public defId: string) {
     if (!defId || typeof defId !== 'string') {
-      throw new Error('Service definition ID must be a non-empty string');
+      throw Errors.badRequest('Service definition ID must be a non-empty string');
     }
   }
 }

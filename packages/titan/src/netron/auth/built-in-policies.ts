@@ -408,48 +408,77 @@ export const BuiltInPolicies = {
   }),
 
   /**
-   * Rate limiting policy
-   * Note: This is a simple in-memory rate limiter
-   * For production, use a distributed rate limiter (Redis)
+   * Rate limiting policy (simple version)
+   * Uses RateLimiter internally with automatic cleanup
+   * For advanced features (tiers, queuing, burst), use requireRateLimit()
    */
   rateLimit: (
     maxRequests: number,
     windowMs: number,
   ): PolicyDefinition => {
-    const requests = new Map<string, number[]>();
+    // Create a minimal logger for RateLimiter
+    const minimalLogger: any = {
+      debug: () => {},
+      warn: () => {},
+      error: () => {},
+      child: () => minimalLogger,
+    };
+
+    // Use production-ready RateLimiter internally
+    const limiter = new RateLimiter(minimalLogger, {
+      strategy: 'sliding', // Keep sliding window as original implementation
+      window: windowMs,
+      defaultTier: { name: 'default', limit: maxRequests },
+    });
 
     return {
       name: `ratelimit:${maxRequests}/${windowMs}`,
       description: `Max ${maxRequests} requests per ${windowMs}ms`,
       tags: ['ratelimit'],
-      evaluate: (context) => {
+      evaluate: async (context) => {
         const userId =
           context.auth?.userId || context.environment?.ip || 'anonymous';
-        const now = Date.now();
 
-        const userRequests = requests.get(userId) || [];
-        const recentRequests = userRequests.filter((t) => now - t < windowMs);
+        try {
+          // Check and consume in one operation
+          const checkResult = await limiter.check(userId);
 
-        if (recentRequests.length >= maxRequests) {
+          if (!checkResult.allowed) {
+            return {
+              allowed: false,
+              reason: `Rate limit exceeded: ${maxRequests}/${windowMs}ms`,
+              metadata: {
+                retryAfter: checkResult.retryAfter,
+              },
+            };
+          }
+
+          // Consume the request
+          await limiter.consume(userId);
+
+          // Calculate remaining AFTER consume (so it's accurate)
+          const remaining = checkResult.remaining - 1;
+
+          return {
+            allowed: true,
+            reason: `Within rate limit: ${remaining} remaining`,
+            metadata: {
+              remaining: remaining,
+            },
+          };
+        } catch (error) {
+          // If consume throws (rate limit exceeded), return denied
           return {
             allowed: false,
-            reason: `Rate limit exceeded: ${recentRequests.length}/${maxRequests}`,
+            reason: `Rate limit exceeded: ${maxRequests}/${windowMs}ms`,
             metadata: {
-              retryAfter: Math.min(...recentRequests) + windowMs - now,
+              retryAfter: windowMs,
             },
           };
         }
-
-        recentRequests.push(now);
-        requests.set(userId, recentRequests);
-
-        return {
-          allowed: true,
-          reason: `Within rate limit: ${recentRequests.length}/${maxRequests}`,
-          metadata: {
-            remaining: maxRequests - recentRequests.length,
-          },
-        };
+      },
+      onDestroy: () => {
+        limiter.destroy();
       },
     };
   },

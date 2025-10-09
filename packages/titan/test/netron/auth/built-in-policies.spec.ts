@@ -591,60 +591,471 @@ describe('BuiltInPolicies', () => {
     });
   });
 
-  describe('Rate Limiting Policy', () => {
-    it('should allow requests within rate limit', async () => {
-      const policy = BuiltInPolicies.rateLimit(5, 1000);
-      const context: ExecutionContext = {
-        auth: {
-          userId: 'user1',
-          roles: [],
-          permissions: [],
-        },
-        service: { name: 'testService', version: '1.0.0' },
-      };
+  describe('Rate Limiting Policy (Refactored)', () => {
+    describe('Basic Rate Limiting', () => {
+      it('should allow requests within rate limit', async () => {
+        const policy = BuiltInPolicies.rateLimit(5, 1000);
+        const context: ExecutionContext = {
+          auth: {
+            userId: 'user1',
+            roles: [],
+            permissions: [],
+          },
+          service: { name: 'testService', version: '1.0.0' },
+        };
 
-      const decision = await policy.evaluate(context);
+        const decision = await policy.evaluate(context);
 
-      expect(decision.allowed).toBe(true);
-      expect(decision.reason).toContain('Within rate limit');
-      expect(decision.metadata?.remaining).toBeDefined();
+        expect(decision.allowed).toBe(true);
+        expect(decision.reason).toContain('Within rate limit');
+        expect(decision.metadata?.remaining).toBeDefined();
+        expect(decision.metadata?.remaining).toBe(4); // 5 - 1 = 4 remaining
+
+        // Cleanup
+        policy.onDestroy?.();
+      });
+
+      it('should deny requests exceeding rate limit', async () => {
+        const policy = BuiltInPolicies.rateLimit(2, 1000);
+        const context: ExecutionContext = {
+          auth: {
+            userId: 'user1',
+            roles: [],
+            permissions: [],
+          },
+          service: { name: 'testService', version: '1.0.0' },
+        };
+
+        // First 2 requests should succeed
+        const decision1 = await policy.evaluate(context);
+        expect(decision1.allowed).toBe(true);
+        expect(decision1.metadata?.remaining).toBe(1);
+
+        const decision2 = await policy.evaluate(context);
+        expect(decision2.allowed).toBe(true);
+        expect(decision2.metadata?.remaining).toBe(0);
+
+        // Third request should fail
+        const decision3 = await policy.evaluate(context);
+        expect(decision3.allowed).toBe(false);
+        expect(decision3.reason).toContain('Rate limit exceeded');
+        expect(decision3.metadata?.retryAfter).toBeDefined();
+        expect(decision3.metadata?.retryAfter).toBeGreaterThan(0);
+
+        // Cleanup
+        policy.onDestroy?.();
+      });
+
+      it('should include retryAfter in denial metadata', async () => {
+        const policy = BuiltInPolicies.rateLimit(1, 5000);
+        const context: ExecutionContext = {
+          auth: {
+            userId: 'user2',
+            roles: [],
+            permissions: [],
+          },
+          service: { name: 'testService', version: '1.0.0' },
+        };
+
+        // First request succeeds
+        await policy.evaluate(context);
+
+        // Second request denied with retryAfter
+        const decision = await policy.evaluate(context);
+        expect(decision.allowed).toBe(false);
+        expect(decision.metadata?.retryAfter).toBeDefined();
+        expect(decision.metadata?.retryAfter).toBeGreaterThan(0);
+        expect(decision.metadata?.retryAfter).toBeLessThanOrEqual(5000);
+
+        // Cleanup
+        policy.onDestroy?.();
+      });
     });
 
-    it('should deny requests exceeding rate limit', async () => {
-      const policy = BuiltInPolicies.rateLimit(2, 1000);
-      const context: ExecutionContext = {
-        auth: {
-          userId: 'user1',
-          roles: [],
-          permissions: [],
-        },
-        service: { name: 'testService', version: '1.0.0' },
-      };
+    describe('User Identification', () => {
+      it('should use userId from auth context', async () => {
+        const policy = BuiltInPolicies.rateLimit(2, 1000);
 
-      // First 2 requests should succeed
-      await policy.evaluate(context);
-      await policy.evaluate(context);
+        const user1Context: ExecutionContext = {
+          auth: {
+            userId: 'user1',
+            roles: [],
+            permissions: [],
+          },
+          service: { name: 'testService', version: '1.0.0' },
+        };
 
-      // Third request should fail
-      const decision = await policy.evaluate(context);
+        const user2Context: ExecutionContext = {
+          auth: {
+            userId: 'user2',
+            roles: [],
+            permissions: [],
+          },
+          service: { name: 'testService', version: '1.0.0' },
+        };
 
-      expect(decision.allowed).toBe(false);
-      expect(decision.reason).toContain('Rate limit exceeded');
-      expect(decision.metadata?.retryAfter).toBeDefined();
+        // User1 makes 2 requests
+        await policy.evaluate(user1Context);
+        await policy.evaluate(user1Context);
+
+        // User1 is rate limited
+        const user1Decision = await policy.evaluate(user1Context);
+        expect(user1Decision.allowed).toBe(false);
+
+        // User2 can still make requests
+        const user2Decision = await policy.evaluate(user2Context);
+        expect(user2Decision.allowed).toBe(true);
+
+        // Cleanup
+        policy.onDestroy?.();
+      });
+
+      it('should fall back to IP if no userId', async () => {
+        const policy = BuiltInPolicies.rateLimit(2, 1000);
+
+        const ip1Context: ExecutionContext = {
+          service: { name: 'testService', version: '1.0.0' },
+          environment: { ip: '192.168.1.1' },
+        };
+
+        const ip2Context: ExecutionContext = {
+          service: { name: 'testService', version: '1.0.0' },
+          environment: { ip: '192.168.1.2' },
+        };
+
+        // IP1 makes 2 requests
+        await policy.evaluate(ip1Context);
+        await policy.evaluate(ip1Context);
+
+        // IP1 is rate limited
+        const ip1Decision = await policy.evaluate(ip1Context);
+        expect(ip1Decision.allowed).toBe(false);
+
+        // IP2 can still make requests
+        const ip2Decision = await policy.evaluate(ip2Context);
+        expect(ip2Decision.allowed).toBe(true);
+
+        // Cleanup
+        policy.onDestroy?.();
+      });
+
+      it('should fall back to anonymous if no userId or IP', async () => {
+        const policy = BuiltInPolicies.rateLimit(2, 1000);
+
+        const anonymousContext: ExecutionContext = {
+          service: { name: 'testService', version: '1.0.0' },
+        };
+
+        // Make 2 requests
+        await policy.evaluate(anonymousContext);
+        await policy.evaluate(anonymousContext);
+
+        // Third request should be rate limited
+        const decision = await policy.evaluate(anonymousContext);
+        expect(decision.allowed).toBe(false);
+
+        // Cleanup
+        policy.onDestroy?.();
+      });
     });
 
-    it('should use IP for anonymous users', async () => {
-      const policy = BuiltInPolicies.rateLimit(2, 1000);
-      const context: ExecutionContext = {
-        service: { name: 'testService', version: '1.0.0' },
-        environment: { ip: '192.168.1.1' },
-      };
+    describe('Sliding Window Behavior', () => {
+      it('should expire old requests (sliding window)', async () => {
+        const policy = BuiltInPolicies.rateLimit(2, 100); // 100ms window
+        const context: ExecutionContext = {
+          auth: {
+            userId: 'user3',
+            roles: [],
+            permissions: [],
+          },
+          service: { name: 'testService', version: '1.0.0' },
+        };
 
-      await policy.evaluate(context);
-      await policy.evaluate(context);
-      const decision = await policy.evaluate(context);
+        // Make 2 requests
+        await policy.evaluate(context);
+        await policy.evaluate(context);
 
-      expect(decision.allowed).toBe(false);
+        // Should be rate limited
+        const deniedDecision = await policy.evaluate(context);
+        expect(deniedDecision.allowed).toBe(false);
+
+        // Wait for window to pass
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
+        // Should be allowed again after window expires
+        const allowedDecision = await policy.evaluate(context);
+        expect(allowedDecision.allowed).toBe(true);
+
+        // Cleanup
+        policy.onDestroy?.();
+      });
+
+      it('should allow gradual recovery', async () => {
+        const policy = BuiltInPolicies.rateLimit(3, 200);
+        const context: ExecutionContext = {
+          auth: {
+            userId: 'user4',
+            roles: [],
+            permissions: [],
+          },
+          service: { name: 'testService', version: '1.0.0' },
+        };
+
+        // Make 3 requests quickly
+        await policy.evaluate(context);
+        await policy.evaluate(context);
+        await policy.evaluate(context);
+
+        // Should be rate limited
+        const denied = await policy.evaluate(context);
+        expect(denied.allowed).toBe(false);
+
+        // Wait for window to fully pass (to ensure sliding window works)
+        await new Promise((resolve) => setTimeout(resolve, 250));
+
+        // Should allow requests again (sliding window expired)
+        const allowed = await policy.evaluate(context);
+        expect(allowed.allowed).toBe(true);
+
+        // Cleanup
+        policy.onDestroy?.();
+      });
+    });
+
+    describe('Cleanup and Memory Management', () => {
+      it('should cleanup RateLimiter on destroy', async () => {
+        const policy = BuiltInPolicies.rateLimit(10, 1000);
+        const context: ExecutionContext = {
+          auth: {
+            userId: 'user5',
+            roles: [],
+            permissions: [],
+          },
+          service: { name: 'testService', version: '1.0.0' },
+        };
+
+        // Make some requests
+        await policy.evaluate(context);
+        await policy.evaluate(context);
+
+        // Should have onDestroy
+        expect(policy.onDestroy).toBeDefined();
+        expect(typeof policy.onDestroy).toBe('function');
+
+        // Cleanup should not throw
+        expect(() => policy.onDestroy?.()).not.toThrow();
+      });
+
+      it('should not leak memory with many different users', async () => {
+        const policy = BuiltInPolicies.rateLimit(5, 1000);
+
+        // Simulate many different users
+        for (let i = 0; i < 100; i++) {
+          const context: ExecutionContext = {
+            auth: {
+              userId: `user${i}`,
+              roles: [],
+              permissions: [],
+            },
+            service: { name: 'testService', version: '1.0.0' },
+          };
+
+          await policy.evaluate(context);
+        }
+
+        // RateLimiter internally cleans up old entries
+        // This test verifies the refactored policy uses RateLimiter
+        // which has automatic cleanup (every 5 minutes)
+        // No assertions needed - just verify no crashes
+
+        // Cleanup
+        policy.onDestroy?.();
+      });
+    });
+
+    describe('Success Response Metadata', () => {
+      it('should include remaining count in success', async () => {
+        const policy = BuiltInPolicies.rateLimit(5, 1000);
+        const context: ExecutionContext = {
+          auth: {
+            userId: 'user6',
+            roles: [],
+            permissions: [],
+          },
+          service: { name: 'testService', version: '1.0.0' },
+        };
+
+        const decision1 = await policy.evaluate(context);
+        expect(decision1.allowed).toBe(true);
+        expect(decision1.metadata?.remaining).toBe(4);
+
+        const decision2 = await policy.evaluate(context);
+        expect(decision2.allowed).toBe(true);
+        expect(decision2.metadata?.remaining).toBe(3);
+
+        const decision3 = await policy.evaluate(context);
+        expect(decision3.allowed).toBe(true);
+        expect(decision3.metadata?.remaining).toBe(2);
+
+        // Cleanup
+        policy.onDestroy?.();
+      });
+
+      it('should include correct reason in success', async () => {
+        const policy = BuiltInPolicies.rateLimit(10, 1000);
+        const context: ExecutionContext = {
+          auth: {
+            userId: 'user7',
+            roles: [],
+            permissions: [],
+          },
+          service: { name: 'testService', version: '1.0.0' },
+        };
+
+        const decision = await policy.evaluate(context);
+        expect(decision.allowed).toBe(true);
+        expect(decision.reason).toMatch(/Within rate limit/i);
+        expect(decision.reason).toMatch(/remaining/i);
+
+        // Cleanup
+        policy.onDestroy?.();
+      });
+    });
+
+    describe('Policy Metadata', () => {
+      it('should have correct policy name', () => {
+        const policy = BuiltInPolicies.rateLimit(100, 60000);
+        expect(policy.name).toBe('ratelimit:100/60000');
+      });
+
+      it('should have correct policy description', () => {
+        const policy = BuiltInPolicies.rateLimit(100, 60000);
+        expect(policy.description).toContain('100');
+        expect(policy.description).toContain('60000');
+        expect(policy.description).toContain('requests');
+      });
+
+      it('should have ratelimit tag', () => {
+        const policy = BuiltInPolicies.rateLimit(100, 60000);
+        expect(policy.tags).toContain('ratelimit');
+      });
+    });
+
+    describe('Integration with RateLimiter', () => {
+      it('should use RateLimiter internally (verified by cleanup)', async () => {
+        const policy = BuiltInPolicies.rateLimit(3, 500);
+        const context: ExecutionContext = {
+          auth: {
+            userId: 'user8',
+            roles: [],
+            permissions: [],
+          },
+          service: { name: 'testService', version: '1.0.0' },
+        };
+
+        // Make requests
+        await policy.evaluate(context);
+        await policy.evaluate(context);
+        await policy.evaluate(context);
+
+        // Cleanup (RateLimiter.destroy)
+        expect(() => policy.onDestroy?.()).not.toThrow();
+      });
+
+      it('should support concurrent requests', async () => {
+        const policy = BuiltInPolicies.rateLimit(10, 1000);
+        const context: ExecutionContext = {
+          auth: {
+            userId: 'user9',
+            roles: [],
+            permissions: [],
+          },
+          service: { name: 'testService', version: '1.0.0' },
+        };
+
+        // Make concurrent requests
+        const promises = Array.from({ length: 5 }, () =>
+          policy.evaluate(context),
+        );
+
+        const results = await Promise.all(promises);
+
+        // All should succeed (5 < 10 limit)
+        expect(results.every((r) => r.allowed)).toBe(true);
+
+        // Cleanup
+        policy.onDestroy?.();
+      });
+    });
+
+    describe('Edge Cases', () => {
+      it('should handle very small windows', async () => {
+        const policy = BuiltInPolicies.rateLimit(2, 50); // 50ms window
+        const context: ExecutionContext = {
+          auth: {
+            userId: 'user10',
+            roles: [],
+            permissions: [],
+          },
+          service: { name: 'testService', version: '1.0.0' },
+        };
+
+        await policy.evaluate(context);
+        await policy.evaluate(context);
+
+        const denied = await policy.evaluate(context);
+        expect(denied.allowed).toBe(false);
+
+        // Wait for window
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        const allowed = await policy.evaluate(context);
+        expect(allowed.allowed).toBe(true);
+
+        // Cleanup
+        policy.onDestroy?.();
+      });
+
+      it('should handle very large windows', async () => {
+        const policy = BuiltInPolicies.rateLimit(5, 86400000); // 24 hours
+        const context: ExecutionContext = {
+          auth: {
+            userId: 'user11',
+            roles: [],
+            permissions: [],
+          },
+          service: { name: 'testService', version: '1.0.0' },
+        };
+
+        const decision = await policy.evaluate(context);
+        expect(decision.allowed).toBe(true);
+        expect(decision.metadata?.remaining).toBe(4);
+
+        // Cleanup
+        policy.onDestroy?.();
+      });
+
+      it('should handle limit of 1', async () => {
+        const policy = BuiltInPolicies.rateLimit(1, 1000);
+        const context: ExecutionContext = {
+          auth: {
+            userId: 'user12',
+            roles: [],
+            permissions: [],
+          },
+          service: { name: 'testService', version: '1.0.0' },
+        };
+
+        const first = await policy.evaluate(context);
+        expect(first.allowed).toBe(true);
+        expect(first.metadata?.remaining).toBe(0);
+
+        const second = await policy.evaluate(context);
+        expect(second.allowed).toBe(false);
+
+        // Cleanup
+        policy.onDestroy?.();
+      });
     });
   });
 

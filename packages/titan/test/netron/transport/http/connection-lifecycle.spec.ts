@@ -33,15 +33,13 @@ describe('HttpConnection - Lifecycle and Communication', () => {
     mockFetch.mockClear();
 
     // Mock default successful responses
-    mockFetch.mockImplementation(() => {
-      return Promise.resolve(createMockResponse({
+    mockFetch.mockImplementation(() => Promise.resolve(createMockResponse({
         id: '1',
         version: '2.0',
         timestamp: Date.now(),
         success: true,
         data: { result: 'success' }
-      }));
-    });
+      })));
   });
 
   afterEach(async () => {

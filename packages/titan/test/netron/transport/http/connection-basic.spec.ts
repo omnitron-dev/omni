@@ -33,15 +33,13 @@ describe('HttpConnection - Basic Functionality', () => {
     mockFetch.mockClear();
 
     // Mock default responses
-    mockFetch.mockImplementation(() => {
-      return Promise.resolve(createMockResponse({
+    mockFetch.mockImplementation(() => Promise.resolve(createMockResponse({
         id: '1',
         version: '2.0',
         timestamp: Date.now(),
         success: true,
         data: { result: 'success' }
-      }));
-    });
+      })));
   });
 
   afterEach(async () => {

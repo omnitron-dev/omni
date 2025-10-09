@@ -13,7 +13,7 @@ import type {
 } from '../types.js';
 import { HttpServer } from './server.js';
 import { HttpConnection } from './connection.js';
-import { NetronErrors, Errors } from '../../../errors/index.js';
+import { Errors } from '../../../errors/index.js';
 
 /**
  * HTTP Transport implementation

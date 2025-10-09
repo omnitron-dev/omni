@@ -7,7 +7,6 @@ import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import {
   FluentInterface,
   ConfigurableProxy,
-  QueryBuilder,
   HttpCacheManager,
   RetryManager
 } from '../../../../src/netron/transport/http/fluent-interface/index.js';

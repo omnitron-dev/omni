@@ -10,8 +10,7 @@ import { contract } from '../../../../src/validation/contract.js';
 import { z } from 'zod';
 import type {
   HttpRequestMessage,
-  HttpBatchRequest,
-  HttpDiscoveryResponse
+  HttpBatchRequest
 } from '../../../../src/netron/transport/http/types.js';
 
 describe('HttpServer (Legacy Tests)', () => {

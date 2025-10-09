@@ -162,6 +162,9 @@ export interface PolicyDefinition {
 
   /** Policy tags (for organization) */
   tags?: string[];
+
+  /** Optional cleanup function called when policy is destroyed */
+  onDestroy?: () => void;
 }
 
 /**

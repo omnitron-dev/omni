@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 
 import type { INetron, ILocalPeer, IPeer } from './types.js';
@@ -29,6 +28,7 @@ import { unref_service } from './core-tasks/unref-service.js';
 import { authenticate } from './core-tasks/authenticate.js';
 import { query_interface } from './core-tasks/query-interface.js';
 import { invalidate_cache } from './core-tasks/invalidate-cache.js';
+import { uuid } from './uuid.js';
 
 /**
  * The main Netron class that manages TCP/Unix/WebSocket connections, services, and peer communication.
@@ -210,7 +210,7 @@ export class Netron extends EventEmitter implements INetron {
     super();
 
     this.options = options;
-    this.id = options.id ?? randomUUID();
+    this.id = options.id ?? uuid();
 
     // Store base logger as private field
     (this as any).baseLogger = logger;
@@ -450,7 +450,7 @@ export class Netron extends EventEmitter implements INetron {
       server.on('connection', async (connection: ITransportConnection) => {
         // Extract peer ID from connection or generate new one
         const url = connection.remoteAddress || '';
-        const peerId = this.extractPeerIdFromConnection(url) || randomUUID();
+        const peerId = this.extractPeerIdFromConnection(url) || uuid();
 
         this.logger.info({ peerId, address: connection.remoteAddress, transport: name }, 'New peer connection');
 

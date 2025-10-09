@@ -6,6 +6,7 @@
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { randomUUID } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import {
   ITransport,
   ITransportConnection,
@@ -125,7 +126,7 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
       const pending = this.pendingPings.get(packet.id);
       if (pending) {
         this.pendingPings.delete(packet.id);
-        const rtt = Date.now() - pending.startTime;
+        const rtt = performance.now() - pending.startTime;
         this.metrics.rtt = rtt;
         pending.resolve(rtt);
       }
@@ -216,7 +217,7 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
           clearTimeout(timeout);
           reject(error);
         },
-        startTime: Date.now()
+        startTime: performance.now()
       });
 
       this.sendPacket(pingPacket).catch(err => {

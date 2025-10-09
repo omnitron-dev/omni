@@ -1,6 +1,5 @@
-import { randomUUID } from 'node:crypto';
-
 import { ServiceMetadata } from './types.js';
+import { uuid } from './uuid.js';
 
 /**
  * The Definition class represents a service definition within the Netron framework.
@@ -57,6 +56,6 @@ export class Definition {
    * // Returns something like: '123e4567-e89b-12d3-a456-426614174000'
    */
   static nextId(): string {
-    return randomUUID();
+    return uuid();
   }
 }

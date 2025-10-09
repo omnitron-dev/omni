@@ -4,6 +4,7 @@ import type { INetron, IPeer } from './types.js';
 import { Interface } from './interface.js';
 import { Definition } from './definition.js';
 import { EventSubscriber } from './types.js';
+import { NetronErrors, Errors } from '../errors/index.js';
 
 /**
  * Abstract base class representing a peer in the Netron network.
@@ -253,7 +254,7 @@ export abstract class AbstractPeer implements IPeer {
     // This supports both Interface and HttpInterface instances
     const hasDefProperty = iInstance && typeof iInstance === 'object' && '$def' in iInstance;
     if (!hasDefProperty || !(iInstance as any).$def) {
-      throw new Error('Invalid interface');
+      throw Errors.badRequest('Invalid interface');
     }
 
     const defId = (iInstance as any).$def.id;
@@ -262,7 +263,7 @@ export abstract class AbstractPeer implements IPeer {
 
     const iInfo = this.interfaces.get(defId);
     if (!iInfo) {
-      throw new Error('Invalid interface');
+      throw Errors.badRequest('Invalid interface');
     }
 
     iInfo.refCount--;
@@ -358,7 +359,7 @@ export abstract class AbstractPeer implements IPeer {
 
     // If no matching versions were found, throw an error
     if (candidates.length === 0) {
-      throw new Error(`Unknown service: ${serviceName}`);
+      throw NetronErrors.serviceNotFound(serviceName);
     }
 
     // Return the definition for the highest version found

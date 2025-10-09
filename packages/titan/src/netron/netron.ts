@@ -9,6 +9,7 @@ import { getPeerEventName } from './utils.js';
 import { ServiceStub } from './service-stub.js';
 import { Task, TaskManager } from './task-manager.js';
 import type { ILogger } from '../modules/logger/logger.types.js';
+import { Errors } from '../errors/index.js';
 // import { ServiceInfo, ServiceDiscovery } from './service-discovery/index.js';
 import { CONNECT_TIMEOUT, NETRON_EVENT_PEER_CONNECT, NETRON_EVENT_PEER_DISCONNECT } from './constants.js';
 import { ensureStreamReferenceRegistered } from './packet/serializer.js';
@@ -253,7 +254,7 @@ export class Netron extends EventEmitter implements INetron {
   registerTransportServer(name: string, config: TransportConfig): void {
     const transport = this.transportRegistry.get(name);
     if (!transport) {
-      throw new Error(`Transport ${name} not registered. Call registerTransport() first.`);
+      throw Errors.notFound('Transport', name);
     }
 
     // Store config for use when starting
@@ -272,7 +273,7 @@ export class Netron extends EventEmitter implements INetron {
   setTransportOptions(name: string, options: TransportOptions): void {
     const transport = this.transportRegistry.get(name);
     if (!transport) {
-      throw new Error(`Transport ${name} not registered. Call registerTransport() first.`);
+      throw Errors.notFound('Transport', name);
     }
 
     this.transportOptions.set(name, options);
@@ -364,7 +365,7 @@ export class Netron extends EventEmitter implements INetron {
   async start() {
     if (this.isStarted) {
       this.logger.warn('Netron instance already started');
-      throw new Error('Netron already started');
+      throw Errors.conflict('Netron already started');
     }
 
     this.logger.info('Starting Netron instance');
@@ -635,7 +636,7 @@ export class Netron extends EventEmitter implements INetron {
         // Parse address to determine transport type
         const transport = this.getTransportForAddress(address);
         if (!transport) {
-          throw new Error(`No suitable transport found for address: ${address}`);
+          throw Errors.notFound('Transport', address);
         }
 
         // Get transport-specific options
@@ -784,7 +785,7 @@ export class Netron extends EventEmitter implements INetron {
       // Get HTTP transport
       const transport = this.getTransportForAddress(address);
       if (!transport) {
-        throw new Error(`No HTTP transport registered for address: ${address}`);
+        throw Errors.notFound('HTTP transport', address);
       }
 
       // Get transport-specific options
@@ -929,14 +930,14 @@ export class Netron extends EventEmitter implements INetron {
     // Parse protocol from address
     const protocolMatch = address.match(/^(\w+):\/\//);
     if (!protocolMatch) {
-      throw new Error(`Invalid address format: ${address}. Must include protocol (e.g., ws://, http://, tcp://)`);
+      throw Errors.badRequest(`Invalid address format: ${address}. Must include protocol (e.g., ws://, http://, tcp://)`, { address });
     }
 
     const protocol = protocolMatch[1]!; // Protocol is guaranteed to exist if regex matches
     const transport = this.transportRegistry.getByProtocol(protocol);
 
     if (!transport) {
-      throw new Error(`No transport registered for protocol: ${protocol}. Register a transport first with registerTransport('${protocol}', factory).`);
+      throw Errors.notFound('Transport', protocol);
     }
 
     return transport;

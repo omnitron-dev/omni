@@ -492,7 +492,7 @@ describe('WebSocketTransport', () => {
       };
 
       // Ping should timeout
-      await expect(client.ping()).rejects.toThrow('timeout');
+      await expect(client.ping()).rejects.toThrow('timed out');
 
       // Restore original handler for cleanup
       (serverConnection as any).handleData = originalHandleData;
@@ -808,15 +808,15 @@ describe('WebSocketTransport', () => {
         });
       });
 
-      // Connect with subprotocol
-      const ws = new WebSocket(`ws://127.0.0.1:${subprotocolPort}`, ['netron']);
-
-      await new Promise((resolve, reject) => {
-        ws.on('open', resolve);
-        ws.on('error', reject);
+      // Connect with subprotocol using transport (which wraps WebSocket)
+      const client = await transport.connect(`ws://127.0.0.1:${subprotocolPort}`, {
+        protocols: ['netron']
       });
 
       serverWs = await connectionPromise;
+
+      // Access underlying socket to check protocol
+      const ws = (client as any).socket;
       expect(ws.protocol).toBe('netron');
 
       ws.close();

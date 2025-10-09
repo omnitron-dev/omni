@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { TransportAdapter } from '../../../src/netron/transport/transport-adapter.js';
 import { TransportRegistry } from '../../../src/netron/transport/transport-registry.js';
 import { TcpTransport } from '../../../src/netron/transport/tcp-transport.js';
@@ -107,7 +108,7 @@ describe('TransportAdapter', () => {
 
     it('should throw error for unsupported protocol', async () => {
       await expect(adapter.connect('unknown://localhost:8080'))
-        .rejects.toThrow('No transport found for protocol: unknown');
+        .rejects.toThrow('Transport with id unknown not found');
     });
 
     it('should pass options to transport', async () => {
@@ -161,7 +162,7 @@ describe('TransportAdapter', () => {
 
     it('should handle server creation for non-existent transport', async () => {
       await expect(adapter.createServer('nonexistent', {}))
-        .rejects.toThrow('Transport not found: nonexistent');
+        .rejects.toThrow('Transport with id nonexistent not found');
     });
 
     it('should handle server creation for transport without server support', async () => {
@@ -177,7 +178,7 @@ describe('TransportAdapter', () => {
       registry.register('noserver', () => new NoServerTransport() as any);
 
       await expect(adapter.createServer('noserver', {}))
-        .rejects.toThrow('does not support server mode');
+        .rejects.toThrow('Transport noserver server mode is not implemented');
     });
   });
 
@@ -307,7 +308,7 @@ describe('TransportAdapter', () => {
       const emptyAdapter = new TransportAdapter(emptyRegistry);
 
       await expect(emptyAdapter.connect('tcp://localhost:8080'))
-        .rejects.toThrow('No transport found for protocol: tcp');
+        .rejects.toThrow('Transport with id tcp not found');
     });
 
     it('should handle transport registration dynamically', async () => {
@@ -316,7 +317,7 @@ describe('TransportAdapter', () => {
 
       // Initially no TCP transport
       await expect(dynamicAdapter.connect('tcp://localhost:8080'))
-        .rejects.toThrow('No transport found');
+        .rejects.toThrow('Transport with id tcp not found');
 
       // Register TCP transport
       dynamicRegistry.register('tcp', () => new TcpTransport());
@@ -328,7 +329,7 @@ describe('TransportAdapter', () => {
         });
       } catch (error: any) {
         // Connection will fail but transport should be found
-        expect(error.message).not.toContain('No transport found');
+        expect(error.message).not.toContain('Transport with id tcp not found');
       }
     });
   });

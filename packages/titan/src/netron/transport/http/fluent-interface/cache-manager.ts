@@ -345,10 +345,10 @@ export class HttpCacheManager extends EventEmitter {
     const misses = this.stats.misses;
     const hitRate = hits + misses > 0 ? (hits / (hits + misses)) * 100 : 0;
 
-    // Estimate size
+    // Estimate size - optimized: avoid expensive JSON.stringify in loop
     let sizeBytes = 0;
     for (const entry of this.cache.values()) {
-      sizeBytes += JSON.stringify(entry.data).length;
+      sizeBytes += this.estimateSize(entry.data);
     }
 
     // Count active revalidations
@@ -367,6 +367,43 @@ export class HttpCacheManager extends EventEmitter {
       sizeBytes,
       activeRevalidations
     };
+  }
+
+  /**
+   * Quick size estimation without expensive JSON.stringify
+   * Provides rough estimation for cache size management
+   */
+  private estimateSize(data: any): number {
+    if (data === null || data === undefined) return 4;
+
+    const type = typeof data;
+
+    // Primitives
+    if (type === 'string') return data.length * 2; // UTF-16 encoding
+    if (type === 'number') return 8;
+    if (type === 'boolean') return 4;
+
+    // Arrays
+    if (Array.isArray(data)) {
+      let size = 16; // base array overhead
+      for (const item of data) {
+        size += this.estimateSize(item);
+      }
+      return size;
+    }
+
+    // Objects
+    if (type === 'object') {
+      let size = 16; // base object overhead
+      for (const key in data) {
+        size += key.length * 2; // key size
+        size += this.estimateSize(data[key]); // value size
+      }
+      return size;
+    }
+
+    // Fallback for other types
+    return 16;
   }
 
   /**

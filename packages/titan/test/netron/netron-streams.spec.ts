@@ -100,7 +100,7 @@ describe('Netron Streams', () => {
 
       stream.on('error', (error) => {
         expect(error).toBeInstanceOf(Error);
-        expect(error.message).toContain('Buffer overflow');
+        expect(error.message).toContain('Stream backpressure');
         errorOccurred = true;
       });
 

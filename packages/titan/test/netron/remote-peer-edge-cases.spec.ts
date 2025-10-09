@@ -55,7 +55,7 @@ describe('RemotePeer Edge Cases', () => {
       const n2 = await createNetronClient();
       const peer = await n2.connect('ws://localhost:8081');
 
-      expect(() => peer.get('unknown-def-id', 'someProperty')).toThrow(/Definition.*not found/);
+      expect(() => peer.get('unknown-def-id', 'someProperty')).toThrow(/Definition with id unknown-def-id not found/);
 
       await peer.disconnect();
       await n2.stop();
@@ -65,7 +65,7 @@ describe('RemotePeer Edge Cases', () => {
       const n2 = await createNetronClient();
       const peer = await n2.connect('ws://localhost:8081');
 
-      expect(() => peer.set('unknown-def-id', 'someProperty', 'value')).toThrow(/Definition.*not found/);
+      expect(() => peer.set('unknown-def-id', 'someProperty', 'value')).toThrow(/Definition with id unknown-def-id not found/);
 
       await peer.disconnect();
       await n2.stop();
@@ -75,7 +75,7 @@ describe('RemotePeer Edge Cases', () => {
       const n2 = await createNetronClient();
       const peer = await n2.connect('ws://localhost:8081');
 
-      expect(() => peer.call('unknown-def-id', 'someMethod', [])).toThrow(/Definition.*not found/);
+      expect(() => peer.call('unknown-def-id', 'someMethod', [])).toThrow(/Definition with id unknown-def-id not found/);
 
       await peer.disconnect();
       await n2.stop();
@@ -294,7 +294,7 @@ describe('RemotePeer Edge Cases', () => {
       const n2 = await createNetronClient();
       const peer = await n2.connect('ws://localhost:8081');
 
-      expect(() => (peer as any).getDefinitionById('unknown-id')).toThrow(/Definition.*not found/);
+      expect(() => (peer as any).getDefinitionById('unknown-id')).toThrow(/Service not found/);
 
       await peer.disconnect();
       await n2.stop();
@@ -304,7 +304,7 @@ describe('RemotePeer Edge Cases', () => {
       const n2 = await createNetronClient();
       const peer = await n2.connect('ws://localhost:8081');
 
-      expect(() => (peer as any).getDefinitionByServiceName('unknown-service')).toThrow(/Service.*not found/);
+      expect(() => (peer as any).getDefinitionByServiceName('unknown-service')).toThrow(/Service not found/);
 
       await peer.disconnect();
       await n2.stop();

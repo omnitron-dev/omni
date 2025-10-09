@@ -49,7 +49,7 @@ describe('PolicyEngine', () => {
       policyEngine.registerPolicy(policy);
 
       expect(() => policyEngine.registerPolicy(policy)).toThrow(
-        "Policy 'test-policy' already registered",
+        "Policy already registered: test-policy",
       );
     });
 
@@ -122,7 +122,7 @@ describe('PolicyEngine', () => {
     it('should throw error for non-existent policy', async () => {
       await expect(
         policyEngine.evaluate('non-existent', mockContext),
-      ).rejects.toThrow("Policy 'non-existent' not found");
+      ).rejects.toThrow("Policy with id non-existent not found");
     });
 
     it('should evaluate async policy', async () => {

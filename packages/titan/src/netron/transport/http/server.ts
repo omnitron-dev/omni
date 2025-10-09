@@ -407,6 +407,139 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   }
 
   /**
+   * Pre-parse common headers to avoid repeated parsing
+   */
+  private parseCommonHeaders(request: Request) {
+    return {
+      contentType: request.headers.get('Content-Type'),
+      authorization: request.headers.get('Authorization'),
+      origin: request.headers.get('Origin'),
+      requestId: request.headers.get('X-Request-ID'),
+      traceId: request.headers.get('X-Trace-ID'),
+      correlationId: request.headers.get('X-Correlation-ID'),
+      spanId: request.headers.get('X-Span-ID'),
+      netronVersion: request.headers.get('X-Netron-Version')
+    };
+  }
+
+  /**
+   * Handle simple invocation without middleware (fast-path)
+   * This is called when no auth, CORS, or custom middleware is needed
+   */
+  private async handleSimpleInvocation(request: Request, message: HttpRequestMessage): Promise<Response> {
+    try {
+      // Get service descriptor
+      const service = this.services.get(message.service);
+      if (!service) {
+        throw new TitanError({
+          code: ErrorCode.NOT_FOUND,
+          message: `Service ${message.service} not found`
+        });
+      }
+
+      // Get method descriptor
+      const method = service.methods.get(message.method);
+      if (!method) {
+        throw new TitanError({
+          code: ErrorCode.NOT_FOUND,
+          message: `Method ${message.method} not found in service ${message.service}`
+        });
+      }
+
+      // Validate input if contract exists
+      if (method.contract?.input) {
+        const validation = method.contract.input.safeParse(message.input);
+        if (!validation.success) {
+          throw new TitanError({
+            code: ErrorCode.INVALID_ARGUMENT,
+            message: 'Input validation failed',
+            details: validation.error
+          });
+        }
+      }
+
+      // Create minimal handler context (no middleware)
+      const metadata = new Map<string, unknown>();
+      metadata.set('requestId', message.id);
+      const handlerContext: MethodHandlerContext = {
+        context: message.context,
+        hints: message.hints,
+        request,
+        middleware: {
+          peer: this.netronPeer!,
+          serviceName: message.service,
+          methodName: message.method,
+          input: message.input,
+          metadata,
+          timing: { start: performance.now(), middlewareTimes: new Map() }
+        }
+      };
+
+      // Execute method directly
+      const methodStart = performance.now();
+      const result = await method.handler(message.input, handlerContext);
+      const serverTime = Math.round(performance.now() - methodStart);
+
+      // Build minimal response
+      const hints: {
+        metrics?: { serverTime?: number };
+        streaming?: boolean;
+        cache?: { maxAge: number; tags: string[] };
+      } = {
+        metrics: { serverTime }
+      };
+
+      // Add cache hints if applicable
+      if (method.cacheable || method.contract?.http?.responseHeaders?.['Cache-Control']) {
+        hints.cache = {
+          maxAge: method.cacheMaxAge || 300000,
+          tags: method.cacheTags || []
+        };
+      }
+
+      const response = createSuccessResponse(message.id, result, hints);
+
+      // Minimal headers
+      const headers: HeadersInit = {
+        'Content-Type': method.contract?.http?.contentType || 'application/json',
+        'X-Netron-Version': '2.0'
+      };
+
+      if (method.contract?.http?.responseHeaders) {
+        Object.assign(headers, method.contract.http.responseHeaders);
+      }
+
+      return new Response(JSON.stringify(response), {
+        status: method.contract?.http?.status || 200,
+        headers
+      });
+    } catch (error) {
+      // Optimized error handling without middleware
+      const titanError = error instanceof TitanError ? error : toTitanError(error);
+      const httpError = mapToHttp(titanError);
+
+      const errorResponse = createErrorResponse(
+        message.id,
+        {
+          code: String(httpError.status),
+          message: titanError.message,
+          details: titanError.details
+        }
+      );
+
+      const headers: HeadersInit = {
+        ...httpError.headers,
+        'X-Netron-Version': '2.0'
+      };
+
+      return new Response(JSON.stringify(errorResponse), {
+        status: httpError.status,
+        headers
+      });
+    }
+  }
+
+  /**
    * Handle service invocation request with middleware pipeline
    */
   private async handleInvocationRequest(request: Request): Promise<Response> {
@@ -424,11 +557,27 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       return this.createErrorResponse(400, 'Invalid request format', request);
     }
 
-    // Create middleware context
+    // OPTIMIZATION: Fast-path for simple requests
+    // Skip middleware pipeline if:
+    // 1. No Authorization header (no auth required)
+    // 2. No CORS needed (no Origin header or CORS disabled)
+    // 3. No custom middleware in pipeline beyond built-in ones
+    const hasAuth = request.headers.has('Authorization');
+    const hasOrigin = request.headers.has('Origin');
+    const needsCors = this.options.cors && hasOrigin;
+    const hasCustomMiddleware = this.globalPipeline.getMetrics().totalExecutions > 0;
+
+    if (!hasAuth && !needsCors && !hasCustomMiddleware) {
+      return this.handleSimpleInvocation(request, message);
+    }
+
+    // Create middleware context - optimized: use for...in loop instead of Object.entries
+    const requestContext = message.context || {};
     const metadata = new Map<string, unknown>();
-    Object.entries(message.context || {}).forEach(([key, value]) => {
-      metadata.set(key, value);
-    });
+    // Use for...in loop for better performance
+    for (const key in requestContext) {
+      metadata.set(key, requestContext[key]);
+    }
     metadata.set('requestId', message.id);
     metadata.set('timestamp', message.timestamp);
     metadata.set('hints', message.hints);
@@ -537,12 +686,12 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       });
     } catch (error) {
       // Error handling through middleware
-      context.error = toTitanError(error);
+      // Optimization: fast-path for TitanError instances - avoid double conversion
+      const titanError = error instanceof TitanError ? error : toTitanError(error);
+
+      context.error = titanError;
 
       await this.globalPipeline.execute(context, MiddlewareStage.ERROR);
-
-      // Convert to TitanError and use mapToHttp for consistent error mapping
-      const titanError = toTitanError(error);
 
       // Map error to HTTP response format
       const httpError = mapToHttp(titanError);
@@ -1180,8 +1329,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    * Handle errors
    */
   private handleError(error: any, request: Request): Response {
-    // Convert to TitanError and use mapToHttp for consistent error mapping
-    const titanError = toTitanError(error);
+    // Optimization: fast-path for TitanError instances - avoid double conversion
+    const titanError = error instanceof TitanError ? error : toTitanError(error);
 
     // Map error to HTTP response format
     const httpError = mapToHttp(titanError);

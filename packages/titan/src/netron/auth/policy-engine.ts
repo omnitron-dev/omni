@@ -16,6 +16,7 @@ import type {
   PolicyExpression,
 } from './types.js';
 import { Errors } from '../../errors/index.js';
+import type { AuditLogger } from './audit-logger.js';
 
 /**
  * Circuit breaker for policy evaluation
@@ -143,14 +144,17 @@ export class PolicyEngine {
   private circuitBreakers = new Map<string, CircuitBreaker>();
   private logger: ILogger;
   private debugMode = false;
+  private auditLogger?: AuditLogger;
 
   constructor(
     logger: ILogger,
     @Optional() private config?: PolicyEngineConfig,
+    @Optional() auditLogger?: AuditLogger,
   ) {
     this.logger = logger.child({ component: 'PolicyEngine' });
     this.debugMode = config?.debug ?? false;
     this.policyCache = new PolicyCache(config?.defaultCacheTTL ?? 60000);
+    this.auditLogger = auditLogger;
   }
 
   /**
@@ -193,6 +197,27 @@ export class PolicyEngine {
   }
 
   /**
+   * Unregister a policy by name
+   * @param policyName - Name of the policy to unregister
+   * @returns true if policy was removed, false if not found
+   */
+  unregisterPolicy(policyName: string): boolean {
+    const removed = this.policies.delete(policyName);
+
+    if (removed) {
+      // Remove circuit breaker if exists
+      this.circuitBreakers.delete(policyName);
+
+      // Clear related cache entries
+      this.clearCache(policyName);
+
+      this.logger.debug({ policyName }, 'Policy unregistered');
+    }
+
+    return removed;
+  }
+
+  /**
    * Evaluate a single policy with caching and timeout
    */
   async evaluate(
@@ -201,6 +226,11 @@ export class PolicyEngine {
     options?: PolicyEvaluationOptions,
   ): Promise<EnhancedPolicyDecision> {
     const startTime = performance.now();
+    const trace: Array<{ step: string; timestamp: number; data?: any }> = [];
+
+    if (this.debugMode) {
+      trace.push({ step: 'start', timestamp: performance.now() - startTime });
+    }
 
     // Check cache
     if (!options?.skipCache) {
@@ -208,7 +238,14 @@ export class PolicyEngine {
       const cached = this.policyCache.get(cacheKey);
       if (cached) {
         this.logger.debug({ policyName, cached: true }, 'Policy cache hit');
+        if (this.debugMode) {
+          trace.push({ step: 'cache_hit', timestamp: performance.now() - startTime });
+          return { ...cached, trace };
+        }
         return cached;
+      }
+      if (this.debugMode) {
+        trace.push({ step: 'cache_miss', timestamp: performance.now() - startTime });
       }
     }
 
@@ -220,12 +257,24 @@ export class PolicyEngine {
     // Check circuit breaker
     const circuitBreaker = this.circuitBreakers.get(policyName);
     if (circuitBreaker?.isOpen()) {
+      if (this.debugMode) {
+        trace.push({
+          step: 'circuit_breaker_open',
+          timestamp: performance.now() - startTime,
+          data: { state: circuitBreaker.getState() },
+        });
+      }
       return {
         allowed: false,
         reason: `Policy '${policyName}' circuit breaker open`,
         policyName,
         evaluationTime: performance.now() - startTime,
+        trace: this.debugMode ? trace : undefined,
       };
+    }
+
+    if (this.debugMode) {
+      trace.push({ step: 'evaluate_start', timestamp: performance.now() - startTime });
     }
 
     try {
@@ -237,12 +286,26 @@ export class PolicyEngine {
         options?.signal,
       );
 
+      // Validate decision structure
+      if (!decision || typeof decision.allowed !== 'boolean') {
+        throw new Error('Policy must return a decision with "allowed" boolean field');
+      }
+
+      if (this.debugMode) {
+        trace.push({
+          step: 'evaluate_complete',
+          timestamp: performance.now() - startTime,
+          data: { allowed: decision.allowed },
+        });
+      }
+
       const evaluationTime = performance.now() - startTime;
 
       const enhancedDecision: EnhancedPolicyDecision = {
         ...decision,
         policyName,
         evaluationTime,
+        trace: this.debugMode ? trace : undefined,
       };
 
       // Cache successful evaluations
@@ -251,6 +314,9 @@ export class PolicyEngine {
           options?.cacheTTL ?? this.config?.defaultCacheTTL ?? 60000;
         const cacheKey = this.getCacheKey(policyName, context);
         this.policyCache.set(cacheKey, enhancedDecision, cacheTTL);
+        if (this.debugMode) {
+          trace.push({ step: 'cached', timestamp: performance.now() - startTime });
+        }
       }
 
       // Record success in circuit breaker
@@ -269,9 +335,34 @@ export class PolicyEngine {
         'Policy evaluated',
       );
 
+      // Audit policy decision
+      if (this.auditLogger) {
+        await this.auditLogger.logAuth({
+          timestamp: new Date(),
+          userId: context.auth?.userId,
+          service: context.service.name,
+          method: context.method?.name ?? 'unknown',
+          authDecision: decision,
+          success: decision.allowed,
+          metadata: {
+            policyName,
+            evaluationTime,
+            resource: context.resource,
+          },
+        });
+      }
+
       return enhancedDecision;
     } catch (error: any) {
       const evaluationTime = performance.now() - startTime;
+
+      if (this.debugMode) {
+        trace.push({
+          step: 'error',
+          timestamp: performance.now() - startTime,
+          data: { message: error.message },
+        });
+      }
 
       // Record failure in circuit breaker
       circuitBreaker?.recordFailure();
@@ -286,11 +377,29 @@ export class PolicyEngine {
         'Policy evaluation error',
       );
 
+      // Audit policy error
+      if (this.auditLogger) {
+        await this.auditLogger.logAuth({
+          timestamp: new Date(),
+          userId: context.auth?.userId,
+          service: context.service.name,
+          method: context.method?.name ?? 'unknown',
+          success: false,
+          error: `Policy evaluation failed: ${error.message}`,
+          metadata: {
+            policyName,
+            evaluationTime,
+            circuitBreakerState: circuitBreaker?.getState(),
+          },
+        });
+      }
+
       return {
         allowed: false,
         reason: `Policy evaluation failed: ${error.message}`,
         policyName,
         evaluationTime,
+        trace: this.debugMode ? trace : undefined,
       };
     }
   }
@@ -426,6 +535,43 @@ export class PolicyEngine {
     }
 
     throw Errors.badRequest('Invalid policy expression', { expression });
+  }
+
+  /**
+   * Evaluate same policy for multiple contexts in parallel
+   * Useful for batch authorization checks
+   *
+   * @param contexts - Array of execution contexts to evaluate
+   * @param policyName - Name of the policy to evaluate
+   * @param options - Optional evaluation options
+   * @returns Array of policy decisions in the same order as contexts
+   *
+   * @example
+   * const contexts = users.map(user => ({ auth: user, service, method }));
+   * const decisions = await engine.evaluateBatch(contexts, 'canAccess');
+   */
+  async evaluateBatch(
+    contexts: ExecutionContext[],
+    policyName: string,
+    options?: PolicyEvaluationOptions,
+  ): Promise<EnhancedPolicyDecision[]> {
+    const startTime = performance.now();
+
+    // Evaluate all contexts in parallel
+    const decisions = await Promise.all(
+      contexts.map((context) => this.evaluate(policyName, context, options)),
+    );
+
+    this.logger.debug(
+      {
+        policyName,
+        contextCount: contexts.length,
+        evaluationTime: performance.now() - startTime,
+      },
+      'Batch evaluation completed',
+    );
+
+    return decisions;
   }
 
   /**

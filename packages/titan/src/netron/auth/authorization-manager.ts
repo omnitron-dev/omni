@@ -9,15 +9,51 @@ import type { ILogger } from '../../modules/logger/logger.types.js';
 import type { AuthContext, ServiceACL } from './types.js';
 
 /**
+ * Options for pattern matching
+ */
+export interface PatternMatchOptions {
+  /** Case-insensitive matching */
+  caseInsensitive?: boolean;
+}
+
+/**
  * Authorization Manager
  * Manages service ACLs and performs authorization checks
  */
 @Injectable()
 export class AuthorizationManager {
   private acls: ServiceACL[] = [];
+  private superAdminRole = 'superadmin';
+  private patternMatchOptions: PatternMatchOptions = {};
 
   constructor(private logger: ILogger) {
     this.logger = logger.child({ component: 'AuthorizationManager' });
+  }
+
+  /**
+   * Set the super admin role that bypasses all ACL checks
+   * @param role Role name for super admin
+   */
+  setSuperAdminRole(role: string): void {
+    this.superAdminRole = role;
+    this.logger.debug({ role }, 'Super admin role updated');
+  }
+
+  /**
+   * Get the current super admin role
+   * @returns Super admin role name
+   */
+  getSuperAdminRole(): string {
+    return this.superAdminRole;
+  }
+
+  /**
+   * Set pattern matching options
+   * @param options Pattern matching options
+   */
+  setPatternMatchOptions(options: PatternMatchOptions): void {
+    this.patternMatchOptions = { ...options };
+    this.logger.debug({ options }, 'Pattern match options updated');
   }
 
   /**
@@ -52,12 +88,40 @@ export class AuthorizationManager {
   }
 
   /**
+   * Remove a service ACL
+   * @param serviceName Service name or pattern to remove
+   * @returns True if ACL was removed, false if not found
+   */
+  removeACL(serviceName: string): boolean {
+    const initialLength = this.acls.length;
+    this.acls = this.acls.filter((acl) => acl.service !== serviceName);
+    const removed = this.acls.length < initialLength;
+
+    if (removed) {
+      this.logger.debug({ serviceName }, 'ACL removed');
+    } else {
+      this.logger.debug({ serviceName }, 'ACL not found for removal');
+    }
+
+    return removed;
+  }
+
+  /**
    * Check if user can access a service
    * @param serviceName Service name
    * @param auth Authentication context
    * @returns True if access is allowed
    */
   canAccessService(serviceName: string, auth?: AuthContext): boolean {
+    // Check for super admin bypass
+    if (auth && this.isSuperAdmin(auth)) {
+      this.logger.debug(
+        { serviceName, userId: auth.userId },
+        'Super admin access granted (bypass)',
+      );
+      return true;
+    }
+
     // Find matching ACL
     const acl = this.findMatchingACL(serviceName);
 
@@ -127,6 +191,15 @@ export class AuthorizationManager {
     methodName: string,
     auth?: AuthContext,
   ): boolean {
+    // Check for super admin bypass
+    if (auth && this.isSuperAdmin(auth)) {
+      this.logger.debug(
+        { serviceName, methodName, userId: auth.userId },
+        'Super admin method access granted (bypass)',
+      );
+      return true;
+    }
+
     // Find matching ACL
     const acl = this.findMatchingACL(serviceName);
 
@@ -139,19 +212,11 @@ export class AuthorizationManager {
       return true;
     }
 
-    // Check service-level access first
-    if (!this.canAccessService(serviceName, auth)) {
-      return false;
-    }
-
     // Check method-specific ACL if defined
     const methodACL = acl.methods?.[methodName];
-    if (!methodACL) {
-      // No method-specific ACL - service-level access is sufficient
-      return true;
-    }
 
-    if (!auth) {
+    // If method ACL exists without auth context, deny access
+    if (methodACL && !auth) {
       this.logger.debug(
         { serviceName, methodName },
         'Method ACL defined but no auth context, denying access',
@@ -159,17 +224,42 @@ export class AuthorizationManager {
       return false;
     }
 
-    // Check method-specific roles
-    if (methodACL.allowedRoles && methodACL.allowedRoles.length > 0) {
-      const hasRole = methodACL.allowedRoles.some((role) =>
-        auth.roles.includes(role),
-      );
+    // Determine if method ACL overrides service ACL
+    const override = (methodACL as any)?.__override === true;
+
+    // If not overriding, check service-level access first
+    if (!override && !this.canAccessServiceDirect(serviceName, auth, acl)) {
+      return false;
+    }
+
+    // No method-specific ACL - service-level access is sufficient
+    if (!methodACL) {
+      return true;
+    }
+
+    if (!auth) {
+      // This should not happen due to earlier check, but for type safety
+      return false;
+    }
+
+    // Build effective ACL by merging service and method ACLs (unless override)
+    const effectiveRoles = override
+      ? methodACL.allowedRoles
+      : this.mergeRoles(acl.allowedRoles, methodACL.allowedRoles);
+
+    const effectivePermissions = override
+      ? methodACL.requiredPermissions
+      : this.mergePermissions(acl.requiredPermissions, methodACL.requiredPermissions);
+
+    // Check effective roles
+    if (effectiveRoles && effectiveRoles.length > 0) {
+      const hasRole = effectiveRoles.some((role) => auth.roles.includes(role));
       if (!hasRole) {
         this.logger.debug(
           {
             serviceName,
             methodName,
-            requiredRoles: methodACL.allowedRoles,
+            requiredRoles: effectiveRoles,
             userRoles: auth.roles,
           },
           'User lacks required role for method',
@@ -178,12 +268,9 @@ export class AuthorizationManager {
       }
     }
 
-    // Check method-specific permissions
-    if (
-      methodACL.requiredPermissions &&
-      methodACL.requiredPermissions.length > 0
-    ) {
-      const hasAllPermissions = methodACL.requiredPermissions.every((perm) =>
+    // Check effective permissions
+    if (effectivePermissions && effectivePermissions.length > 0) {
+      const hasAllPermissions = effectivePermissions.every((perm) =>
         auth.permissions.includes(perm),
       );
       if (!hasAllPermissions) {
@@ -191,7 +278,7 @@ export class AuthorizationManager {
           {
             serviceName,
             methodName,
-            requiredPermissions: methodACL.requiredPermissions,
+            requiredPermissions: effectivePermissions,
             userPermissions: auth.permissions,
           },
           'User lacks required permissions for method',
@@ -294,22 +381,136 @@ export class AuthorizationManager {
    * @returns True if matches
    */
   private matchesPattern(serviceName: string, pattern: string): boolean {
+    // Apply case-insensitive matching if enabled
+    const name = this.patternMatchOptions.caseInsensitive
+      ? serviceName.toLowerCase()
+      : serviceName;
+    const pat = this.patternMatchOptions.caseInsensitive
+      ? pattern.toLowerCase()
+      : pattern;
+
     // Exact match
-    if (serviceName === pattern) {
+    if (name === pat) {
       return true;
     }
 
     // No wildcards - no match
-    if (!pattern.includes('*')) {
+    if (!pat.includes('*')) {
+      return false;
+    }
+
+    // Validate pattern - ensure wildcards are not adjacent
+    if (pat.includes('**')) {
+      this.logger.debug({ pattern }, 'Invalid pattern: adjacent wildcards not allowed');
       return false;
     }
 
     // Convert pattern to regex
-    const regexPattern = pattern
+    const regexPattern = pat
       .replace(/[.+?^${}()|[\]\\]/g, '\\$&') // Escape regex special chars
       .replace(/\*/g, '.*'); // Replace * with .*
 
-    const regex = new RegExp(`^${regexPattern}$`);
-    return regex.test(serviceName);
+    const flags = this.patternMatchOptions.caseInsensitive ? 'i' : '';
+    const regex = new RegExp(`^${regexPattern}$`, flags);
+    return regex.test(name);
+  }
+
+  /**
+   * Check if user is super admin
+   * @param auth Authentication context
+   * @returns True if user has super admin role
+   */
+  private isSuperAdmin(auth: AuthContext): boolean {
+    return auth.roles.includes(this.superAdminRole);
+  }
+
+  /**
+   * Check service access directly without super admin check
+   * Used internally by canAccessMethod to avoid duplicate super admin checks
+   */
+  private canAccessServiceDirect(
+    serviceName: string,
+    auth: AuthContext | undefined,
+    acl: ServiceACL,
+  ): boolean {
+    // If ACL exists but no auth context, deny access
+    if (!auth) {
+      return false;
+    }
+
+    // Check roles
+    if (acl.allowedRoles && acl.allowedRoles.length > 0) {
+      const hasRole = acl.allowedRoles.some((role) => auth.roles.includes(role));
+      if (!hasRole) {
+        return false;
+      }
+    }
+
+    // Check permissions
+    if (acl.requiredPermissions && acl.requiredPermissions.length > 0) {
+      const hasAllPermissions = acl.requiredPermissions.every((perm) =>
+        auth.permissions.includes(perm),
+      );
+      if (!hasAllPermissions) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Merge role arrays for inheritance
+   * Method roles are added to service roles (logical OR)
+   */
+  private mergeRoles(
+    serviceRoles?: string[],
+    methodRoles?: string[],
+  ): string[] | undefined {
+    if (!serviceRoles && !methodRoles) {
+      return undefined;
+    }
+
+    const merged = new Set<string>();
+
+    if (serviceRoles) {
+      for (const role of serviceRoles) {
+        merged.add(role);
+      }
+    }
+
+    if (methodRoles) {
+      for (const role of methodRoles) {
+        merged.add(role);
+      }
+    }
+
+    return Array.from(merged);
+  }
+
+  /**
+   * Merge permission arrays for inheritance
+   * Method permissions are added to service permissions (all required)
+   */
+  private mergePermissions(
+    servicePermissions?: string[],
+    methodPermissions?: string[],
+  ): string[] | undefined {
+    if (!servicePermissions && !methodPermissions) {
+      return undefined;
+    }
+
+    const merged: string[] = [];
+
+    if (servicePermissions) {
+      merged.push(...servicePermissions);
+    }
+
+    if (methodPermissions) {
+      merged.push(...methodPermissions);
+    }
+
+    // Remove duplicates
+    return Array.from(new Set(merged));
   }
 }

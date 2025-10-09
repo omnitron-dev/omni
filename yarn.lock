@@ -2091,66 +2091,66 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@kysera/audit@npm:^0.3.0":
-  version: 0.3.0
-  resolution: "@kysera/audit@npm:0.3.0"
+"@kysera/audit@npm:^0.4.1":
+  version: 0.4.1
+  resolution: "@kysera/audit@npm:0.4.1"
   dependencies:
     zod: "npm:^4.1.11"
   peerDependencies:
-    "@kysera/repository": 0.3.0
-    kysely: ^0.28.0
-  checksum: 10c0/e1a3209170f2b612107a9fa15d0e0f10bc060d0f51ff2fa70a664711a8a5f4e029c2c3067fa5c2dc812acccbe6b10156d293244a9bec292eaa371c3accef99ee
-  languageName: node
-  linkType: hard
-
-"@kysera/core@npm:0.3.0, @kysera/core@npm:^0.3.0":
-  version: 0.3.0
-  resolution: "@kysera/core@npm:0.3.0"
-  peerDependencies:
-    kysely: ">=0.28.0"
-  checksum: 10c0/fc48884e983292aa162e6dd38684f197680e1dca76c74adec1c895ce3ce85fcafe5a50ba3eab8a7b8e505d35c9ac3a4816ba4ac44ffcb3cc264f0cbe12703f90
-  languageName: node
-  linkType: hard
-
-"@kysera/migrations@npm:^0.3.0":
-  version: 0.3.0
-  resolution: "@kysera/migrations@npm:0.3.0"
-  peerDependencies:
-    kysely: ^0.28.0
-  checksum: 10c0/bb8dd1745fd0d0302749255a31ab45c21bbbb70c715c61e09a7ca40f2882c7841153589d792154048cb3d4d9ec6a3e658bf9a3e55abe3779af9fb7e7366d8f56
-  languageName: node
-  linkType: hard
-
-"@kysera/repository@npm:0.3.0, @kysera/repository@npm:^0.3.0":
-  version: 0.3.0
-  resolution: "@kysera/repository@npm:0.3.0"
-  dependencies:
-    "@kysera/core": "npm:0.3.0"
-  peerDependencies:
-    kysely: ">=0.28.0"
-    zod: ^4.1.11
-  checksum: 10c0/8cdcf0a88515323f4eafbaa64da1f362ed281ff98db4a59e8e1b32a659c2bd6e4c84bb1f30a84f3ecd5476d8eb2c6e1d49891ebf85294f3f373057b3dd1b73e8
-  languageName: node
-  linkType: hard
-
-"@kysera/soft-delete@npm:^0.3.0":
-  version: 0.3.0
-  resolution: "@kysera/soft-delete@npm:0.3.0"
-  dependencies:
-    "@kysera/repository": "npm:0.3.0"
-  peerDependencies:
-    kysely: ">=0.28.0"
-  checksum: 10c0/1b46236713b5afefe7ae3ded60bf80207f0b63032680a174281bc80d5c91afd07671cd3a2cdb5bc3ec8af5b9219ede115ed0b27af5e08400683c7b4e55e61077
-  languageName: node
-  linkType: hard
-
-"@kysera/timestamps@npm:^0.3.0":
-  version: 0.3.0
-  resolution: "@kysera/timestamps@npm:0.3.0"
-  peerDependencies:
-    "@kysera/repository": 0.3.0
+    "@kysera/repository": 0.4.1
     kysely: ^0.28.7
-  checksum: 10c0/5f71c8047f4593c04615e8a6dffede9c813d4447d9d511b40d448bb881f174952f9369bf0f81d1e89ffb23a8c89616685a6f122cac740d8ded9ac76764389c97
+  checksum: 10c0/92046a330d3fe4208a3bdc882de718f9bab36897e99768dce807467c26cd101607b6f7c49d86e39b688ca805b024d58359875b9389b9f3821c4d29a56ca068e6
+  languageName: node
+  linkType: hard
+
+"@kysera/core@npm:0.4.1, @kysera/core@npm:^0.4.1":
+  version: 0.4.1
+  resolution: "@kysera/core@npm:0.4.1"
+  peerDependencies:
+    kysely: ">=0.28.7"
+  checksum: 10c0/1aed19cfad4af1a91b59dd62202025b05ff5962fe1facf81141382b9462607738225f2e2b1cd3c2867429d0fe208926c2e416ec2b7a5b344c041debe1c820528
+  languageName: node
+  linkType: hard
+
+"@kysera/migrations@npm:^0.4.1":
+  version: 0.4.1
+  resolution: "@kysera/migrations@npm:0.4.1"
+  peerDependencies:
+    kysely: ^0.28.7
+  checksum: 10c0/0d8527fb0caf8b424c42e888a87c35b609ea9f45351ae2c3c85e52328cfd901fab177f232cffca8575dc1927e8270d80465d2aa2077b02862aa8adc48352e96f
+  languageName: node
+  linkType: hard
+
+"@kysera/repository@npm:0.4.1, @kysera/repository@npm:^0.4.1":
+  version: 0.4.1
+  resolution: "@kysera/repository@npm:0.4.1"
+  dependencies:
+    "@kysera/core": "npm:0.4.1"
+  peerDependencies:
+    kysely: ">=0.28.7"
+    zod: ^4.1.11
+  checksum: 10c0/43f4343bcd75856fdc3f32acfde7464d6b3e8aee5793ffbdc049338417d2b831ea9e1236cfec57a57f421ff57efe2352e905b141582f86b7003a0394f167d8e0
+  languageName: node
+  linkType: hard
+
+"@kysera/soft-delete@npm:^0.4.1":
+  version: 0.4.1
+  resolution: "@kysera/soft-delete@npm:0.4.1"
+  dependencies:
+    "@kysera/repository": "npm:0.4.1"
+  peerDependencies:
+    kysely: ">=0.28.7"
+  checksum: 10c0/bde37c066c6fe3ab8800562c0bc02809f263a4d9ce36330c4f6f069629da384d83c140eb95c30e6e557dd6899dd82b366b1538583a99b46aab212027482e0ba1
+  languageName: node
+  linkType: hard
+
+"@kysera/timestamps@npm:^0.4.1":
+  version: 0.4.1
+  resolution: "@kysera/timestamps@npm:0.4.1"
+  peerDependencies:
+    "@kysera/repository": 0.4.1
+    kysely: ^0.28.7
+  checksum: 10c0/9e5685f505070947fa1b35496cc8da5733d20d55e9c261decc58da8896e5adbdbf290424cd148fae4adbdda538bebc2fabef872dd65a0e1e87c4bce8d040b9fc
   languageName: node
   linkType: hard
 
@@ -2474,12 +2474,12 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@omnitron-dev/titan@workspace:packages/titan"
   dependencies:
-    "@kysera/audit": "npm:^0.3.0"
-    "@kysera/core": "npm:^0.3.0"
-    "@kysera/migrations": "npm:^0.3.0"
-    "@kysera/repository": "npm:^0.3.0"
-    "@kysera/soft-delete": "npm:^0.3.0"
-    "@kysera/timestamps": "npm:^0.3.0"
+    "@kysera/audit": "npm:^0.4.1"
+    "@kysera/core": "npm:^0.4.1"
+    "@kysera/migrations": "npm:^0.4.1"
+    "@kysera/repository": "npm:^0.4.1"
+    "@kysera/soft-delete": "npm:^0.4.1"
+    "@kysera/timestamps": "npm:^0.4.1"
     "@omnitron-dev/common": "workspace:*"
     "@omnitron-dev/eventemitter": "workspace:*"
     "@omnitron-dev/msgpack": "workspace:*"
@@ -2499,24 +2499,25 @@ __metadata:
     glob: "npm:^11.0.3"
     http-server: "npm:^14.1.1"
     ioredis: "npm:^5.8.0"
+    ipaddr.js: "npm:^2.2.0"
     jest: "npm:^30.1.3"
     kysely: "npm:^0.28.7"
     minimatch: "npm:^10.0.3"
     msgpackr: "npm:^1.11.5"
-    mysql2: "npm:^3.15.0"
+    mysql2: "npm:^3.15.2"
     node-cron: "npm:^4.2.1"
-    pg: "npm:^8.16.0"
+    pg: "npm:^8.16.3"
     pino: "npm:^9.11.0"
     pino-pretty: "npm:^13.1.1"
     readable-stream: "npm:^4.7.0"
     reflect-metadata: "npm:^0.2.2"
-    semver: "npm:^7.7.2"
+    semver: "npm:^7.7.3"
     ts-jest: "npm:^29.4.4"
     ts-jest-resolver: "npm:^2.0.1"
     typescript: "npm:^5.9.2"
     ws: "npm:^8.18.3"
     yaml: "npm:^2.8.1"
-    zod: "npm:^4.1.11"
+    zod: "npm:^4.1.12"
   languageName: unknown
   linkType: soft
 
@@ -6676,6 +6677,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"ipaddr.js@npm:^2.2.0":
+  version: 2.2.0
+  resolution: "ipaddr.js@npm:2.2.0"
+  checksum: 10c0/e4ee875dc1bd92ac9d27e06cfd87cdb63ca786ff9fd7718f1d4f7a8ef27db6e5d516128f52d2c560408cbb75796ac2f83ead669e73507c86282d45f84c5abbb6
+  languageName: node
+  linkType: hard
+
 "is-array-buffer@npm:^3.0.4, is-array-buffer@npm:^3.0.5":
   version: 3.0.5
   resolution: "is-array-buffer@npm:3.0.5"
@@ -8702,9 +8710,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"mysql2@npm:^3.15.0":
-  version: 3.15.1
-  resolution: "mysql2@npm:3.15.1"
+"mysql2@npm:^3.15.2":
+  version: 3.15.2
+  resolution: "mysql2@npm:3.15.2"
   dependencies:
     aws-ssl-profiles: "npm:^1.1.1"
     denque: "npm:^2.1.0"
@@ -8715,7 +8723,7 @@ __metadata:
     named-placeholders: "npm:^1.1.3"
     seq-queue: "npm:^0.0.5"
     sqlstring: "npm:^2.3.2"
-  checksum: 10c0/b40a90fda387a818f36e7fe486b41bfefafc7ee2925c53da761a8e3237fd63ddf72f8c64f8ff4a13abd593e8f72add852d405b5b011fe8b0763f428a2281f3ad
+  checksum: 10c0/7b42d6e9d6bbc447ce3f2a9ac55979a4a240d66ca0a39bbd8422fdf25dbb938e7e9b419b616b8ad1519c53aec51577fad3fe8bd4e70997a91b469fce1ac30b83
   languageName: node
   linkType: hard
 
@@ -9243,7 +9251,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"pg@npm:^8.16.0":
+"pg@npm:^8.16.3":
   version: 8.16.3
   resolution: "pg@npm:8.16.3"
   dependencies:
@@ -10114,6 +10122,15 @@ __metadata:
   bin:
     semver: bin/semver.js
   checksum: 10c0/aca305edfbf2383c22571cb7714f48cadc7ac95371b4b52362fb8eeffdfbc0de0669368b82b2b15978f8848f01d7114da65697e56cd8c37b0dab8c58e543f9ea
+  languageName: node
+  linkType: hard
+
+"semver@npm:^7.7.3":
+  version: 7.7.3
+  resolution: "semver@npm:7.7.3"
+  bin:
+    semver: bin/semver.js
+  checksum: 10c0/4afe5c986567db82f44c8c6faef8fe9df2a9b1d98098fc1721f57c696c4c21cebd572f297fc21002f81889492345b8470473bc6f4aff5fb032a6ea59ea2bc45e
   languageName: node
   linkType: hard
 
@@ -12022,6 +12039,13 @@ __metadata:
   version: 4.1.11
   resolution: "zod@npm:4.1.11"
   checksum: 10c0/ce6a4c4acfbf51d7dd0f2669c82f207d62a1f00264eef608994b94eb99d86a74c99f59b0dd3e61ef82909ee136631378b709e0908f0a02a2d5c21d0c497de5db
+  languageName: node
+  linkType: hard
+
+"zod@npm:^4.1.12":
+  version: 4.1.12
+  resolution: "zod@npm:4.1.12"
+  checksum: 10c0/b64c1feb19e99d77075261eaf613e0b2be4dfcd3551eff65ad8b4f2a079b61e379854d066f7d447491fcf193f45babd8095551a9d47973d30b46b6d8e2c46774
   languageName: node
   linkType: hard
 

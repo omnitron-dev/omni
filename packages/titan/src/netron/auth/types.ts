@@ -249,51 +249,9 @@ export interface NetronAuthConfig {
   acls?: ServiceACL[];
 }
 
-/**
- * Rate limit tier configuration
- */
-export interface RateLimitTier {
-  /** Tier name (e.g., 'free', 'premium', 'enterprise') */
-  name: string;
-
-  /** Base limit (requests per window) */
-  limit: number;
-
-  /** Burst allowance (temporary spike tolerance) */
-  burst?: number;
-
-  /** Priority (higher = processed first when queued) */
-  priority?: number;
-}
-
-/**
- * Advanced rate limit configuration
- */
-export interface RateLimitConfig {
-  /** Default tier for unauthenticated users */
-  defaultTier?: RateLimitTier;
-
-  /** Tiers by role or custom key */
-  tiers?: Record<string, RateLimitTier>;
-
-  /** Time window in milliseconds */
-  window?: number;
-
-  /** Queue requests instead of rejecting (FIFO) */
-  queue?: boolean;
-
-  /** Max queue size */
-  maxQueueSize?: number;
-
-  /** Custom tier selector */
-  getTier?: (ctx: ExecutionContext) => string;
-
-  /** Simple rate limit (legacy support) */
-  maxRequests?: number;
-
-  /** Simple window (legacy support) */
-  windowMs?: number;
-}
+// Rate limit types moved to rate-limiter.ts to avoid circular dependencies
+// Re-exported here for convenience
+// export type { RateLimitTier, RateLimitConfig, RateLimitStrategy } from './rate-limiter.js';
 
 /**
  * Cache configuration for method results
@@ -368,6 +326,12 @@ export interface AuditEvent {
   /** Auth decision */
   authDecision?: PolicyDecision;
 
+  /** Success status */
+  success: boolean;
+
+  /** Error message (if failed) */
+  error?: string;
+
   /** Request metadata */
   metadata?: Record<string, any>;
 }
@@ -407,7 +371,7 @@ export interface MethodOptions {
   };
 
   /** Rate limiting configuration */
-  rateLimit?: RateLimitConfig;
+  rateLimit?: any; // RateLimitConfig from rate-limiter.ts
 
   /** Cache configuration */
   cache?: CacheConfig;

@@ -15,6 +15,8 @@ import {
   Repository,
   BaseRepository,
   DatabaseManager,
+  DATABASE_TESTING_SERVICE,
+  TitanDatabaseModule,
 } from '../../../src/modules/database/index.js';
 import { DatabaseTestingModule, DatabaseTestingService } from '../../../src/modules/database/testing/database-testing.module.js';
 import { DatabaseTestManager, DockerContainer } from '../../utils/docker-test-manager.js';
@@ -124,7 +126,7 @@ class BlogService {
     PostRepository,
     CommentRepository,
   ],
-  exports: [BlogService],
+  exports: [BlogService, DATABASE_TESTING_SERVICE],
 })
 class TestAppModule {}
 
@@ -136,14 +138,27 @@ describe('DatabaseTestingModule', () => {
 
   describe('SQLite In-Memory Testing', () => {
     beforeEach(async () => {
-      app = await Application.create(TestAppModule, {
+      @Module({
+        imports: [
+          DatabaseTestingModule.forTest({
+            transactional: true,
+            autoMigrate: false,  // Disable migrations for manual schema creation
+            autoClean: true,
+          }),
+        ],
+        providers: [BlogService],
+      })
+      class LocalTestModule {}
+
+      app = await Application.create({
+        imports: [LocalTestModule],
         disableCoreModules: true,
         disableGracefulShutdown: true,
       });
 
-      testService = app.get<DatabaseTestingService>(DatabaseTestingService);
-      blogService = app.get<BlogService>(BlogService);
-      userRepo = app.get<UserRepository>(UserRepository);
+      testService = await app.resolveAsync<DatabaseTestingService>(DATABASE_TESTING_SERVICE);
+      blogService = await app.resolveAsync<BlogService>(BlogService);
+      userRepo = await app.resolveAsync<UserRepository>(UserRepository);
 
       // Initialize test database
       await testService.initialize();
@@ -355,7 +370,8 @@ describe('DatabaseTestingModule', () => {
       })
       class PgTestModule {}
 
-      pgApp = await Application.create(PgTestModule, {
+      pgApp = await Application.create({
+        imports: [PgTestModule],
         disableDefaultProviders: true,
       });
 
@@ -508,7 +524,8 @@ describe('DatabaseTestingModule', () => {
       })
       class MySQLTestModule {}
 
-      mysqlApp = await Application.create(MySQLTestModule, {
+      mysqlApp = await Application.create({
+        imports: [MySQLTestModule],
         disableDefaultProviders: true,
       });
 
@@ -683,11 +700,12 @@ describe('DatabaseTestingModule', () => {
       })
       class AdvancedTestModule {}
 
-      app = await Application.create(AdvancedTestModule, {
+      app = await Application.create({
+        imports: [AdvancedTestModule],
         disableDefaultProviders: true,
       });
 
-      testService = app.get<DatabaseTestingService>(DatabaseTestingService);
+      testService = app.get<DatabaseTestingService>(DATABASE_TESTING_SERVICE);
       await testService.initialize();
 
       // Create tables
@@ -825,11 +843,12 @@ describe('DatabaseTestingModule', () => {
     let testService: DatabaseTestingService;
 
     beforeEach(async () => {
-      app = await Application.create(TestAppModule, {
+      app = await Application.create({
+        imports: [TestAppModule],
         disableDefaultProviders: true,
       });
 
-      testService = app.get<DatabaseTestingService>(DatabaseTestingService);
+      testService = app.get<DatabaseTestingService>(DATABASE_TESTING_SERVICE);
       await testService.initialize();
 
       const db = testService.getTestConnection();

@@ -549,4 +549,29 @@ export class TitanDatabaseModule {
 
     return providers;
   }
+
+  /**
+   * Register repositories for feature modules
+   */
+  static forFeature(repositories: any[] = []): DynamicModule {
+    const providers: Array<[string | symbol, ProviderDefinition<any>]> = [];
+
+    for (const RepositoryClass of repositories) {
+      const token = getRepositoryToken(RepositoryClass);
+      providers.push([
+        token,
+        {
+          useFactory: async (factory: RepositoryFactory) => await factory.get(RepositoryClass),
+          inject: [DATABASE_REPOSITORY_FACTORY],
+          async: true,
+        }
+      ]);
+    }
+
+    return {
+      module: TitanDatabaseModule,
+      providers,
+      exports: providers.map(p => p[0]),
+    };
+  }
 }

@@ -2500,6 +2500,13 @@ export class Application implements IApplication {
     if (dynamicModule.global && dynamicModule.exports) {
       // Store global exports for later access
       (moduleInstance as any).__globalExports = dynamicModule.exports;
+
+      // Make exported providers globally available
+      for (const exportToken of dynamicModule.exports) {
+        // If the provider is already registered in the module's providers,
+        // we don't need to do anything extra as it's already in the global container
+        // The container itself handles the global scope
+      }
     }
   }
 

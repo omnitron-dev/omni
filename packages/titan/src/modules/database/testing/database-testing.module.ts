@@ -17,6 +17,7 @@ import {
   DATABASE_MANAGER,
   DATABASE_MIGRATION_SERVICE,
   DATABASE_TRANSACTION_MANAGER,
+  DATABASE_TESTING_SERVICE,
 } from '../database.constants.js';
 import type { DatabaseModuleOptions } from '../database.types.js';
 
@@ -441,7 +442,7 @@ export class DatabaseTestingModule {
     if (!options.connection) {
       defaultOptions.connection = {
         dialect: 'sqlite',
-        filename: ':memory:',
+        connection: ':memory:',
       } as any;
     }
 
@@ -450,11 +451,24 @@ export class DatabaseTestingModule {
         provide: 'DATABASE_TESTING_OPTIONS',
         useValue: defaultOptions,
       },
-      DatabaseTestingService,
+      {
+        provide: DATABASE_TESTING_SERVICE,
+        useFactory: async (manager: DatabaseManager) => {
+          return new DatabaseTestingService(
+            manager,
+            defaultOptions,
+            undefined,  // migrationRunner (optional)
+            undefined   // transactionManager (optional)
+          );
+        },
+        inject: [DATABASE_MANAGER],
+        async: true,
+      },
     ];
 
     return {
       module: DatabaseTestingModule,
+      global: true,
       imports: [
         TitanDatabaseModule.forRoot({
           ...defaultOptions,
@@ -462,7 +476,7 @@ export class DatabaseTestingModule {
         }) as any,
       ],
       providers,
-      exports: [DatabaseTestingService],
+      exports: [DATABASE_TESTING_SERVICE],
     };
   }
 

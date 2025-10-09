@@ -556,6 +556,9 @@ export function isMultiToken(token: any): token is MultiToken {
  * @returns True if the token is optional
  */
 export function isOptionalToken(token: Token): boolean {
+  if (typeof token === 'string' || typeof token === 'symbol') {
+    return false;
+  }
   return token.metadata?.optional === true || ('isOptional' in token && (token as any).isOptional === true);
 }
 

@@ -59,6 +59,24 @@ export function Repository<Entity = any>(config: RepositoryConfig<Entity>): Clas
       Reflect.defineMetadata('database:connection-name', config.connection, target);
     }
 
+    // Register in global metadata for auto-discovery
+    const globalRepos = Reflect.getMetadata('database:repositories', global) || [];
+    globalRepos.push({
+      target,
+      metadata: {
+        table: config.table,
+        connection: config.connection,
+        schema: config.schema,
+        createSchema: config.createSchema,
+        updateSchema: config.updateSchema,
+        plugins: config.plugins,
+        softDelete: config.softDelete,
+        timestamps: config.timestamps,
+        audit: config.audit,
+      }
+    });
+    Reflect.defineMetadata('database:repositories', globalRepos, global);
+
     return target;
   };
 }

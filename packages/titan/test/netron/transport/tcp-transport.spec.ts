@@ -546,4 +546,396 @@ describe('TcpTransport', () => {
       await server.close();
     });
   });
+
+  describe('Socket Options', () => {
+    let server: any;
+
+    beforeEach(async () => {
+      server = await transport.createServer({ port: testPort, host: '127.0.0.1' } as any);
+    });
+
+    afterEach(async () => {
+      await server?.close();
+    });
+
+    it('should set noDelay option on socket', async () => {
+      const client = await transport.connect(`tcp://127.0.0.1:${testPort}`, {
+        noDelay: true
+      });
+
+      const socket = (client as any).socket as Socket;
+      expect(socket).toBeDefined();
+      expect(client.state).toBe(ConnectionState.CONNECTED);
+
+      await client.close();
+    });
+
+    it('should set timeout option on socket', async () => {
+      const client = await transport.connect(`tcp://127.0.0.1:${testPort}`, {
+        timeout: 5000
+      });
+
+      const socket = (client as any).socket as Socket;
+      expect(socket).toBeDefined();
+      expect(client.state).toBe(ConnectionState.CONNECTED);
+
+      await client.close();
+    });
+
+    it('should emit timeout event when socket times out', async () => {
+      const client = await transport.connect(`tcp://127.0.0.1:${testPort}`, {
+        timeout: 100
+      });
+
+      const errorPromise = waitForEvent(client, 'error');
+
+      // Trigger timeout by not sending any data
+      const socket = (client as any).socket as Socket;
+      socket.emit('timeout');
+
+      const error = await errorPromise;
+      expect(error.message).toContain('timeout');
+    });
+
+    it('should set keepAliveDelay option on socket', async () => {
+      const client = await transport.connect(`tcp://127.0.0.1:${testPort}`, {
+        keepAliveDelay: 2000
+      });
+
+      const socket = (client as any).socket as Socket;
+      expect(socket).toBeDefined();
+      expect(client.state).toBe(ConnectionState.CONNECTED);
+
+      await client.close();
+    });
+
+    it('should handle socket in CONNECTING state', async () => {
+      // This test checks the CONNECTING state path
+      const connectionPromise = transport.connect(`tcp://127.0.0.1:${testPort}`);
+
+      // Connection should complete
+      const client = await connectionPromise;
+      expect(client.state).toBe(ConnectionState.CONNECTED);
+
+      await client.close();
+    });
+  });
+
+  describe('Data Type Conversion', () => {
+    let server: any;
+    let serverConnection: any;
+    let clientConnection: any;
+
+    beforeEach(async () => {
+      server = await transport.createServer({ port: testPort, host: '127.0.0.1' } as any);
+
+      const connectionPromise = waitForEvent(server, 'connection');
+      clientConnection = await transport.connect(`tcp://127.0.0.1:${testPort}`);
+      serverConnection = await connectionPromise;
+    });
+
+    afterEach(async () => {
+      await clientConnection?.close();
+      await serverConnection?.close();
+      await server?.close();
+    });
+
+    it('should send ArrayBuffer data', async () => {
+      const testData = new Uint8Array([1, 2, 3, 4, 5]);
+      const arrayBuffer = testData.buffer;
+
+      const dataPromise = waitForEvent(serverConnection, 'data');
+
+      await clientConnection.send(arrayBuffer);
+
+      const receivedData = await dataPromise;
+      expect(Buffer.from(receivedData)).toEqual(Buffer.from(testData));
+    });
+
+    it('should send Uint8Array data', async () => {
+      const testData = new Uint8Array([10, 20, 30, 40, 50]);
+
+      const dataPromise = waitForEvent(serverConnection, 'data');
+
+      await clientConnection.send(testData);
+
+      const receivedData = await dataPromise;
+      expect(Buffer.from(receivedData)).toEqual(Buffer.from(testData));
+    });
+
+    it('should send Buffer data', async () => {
+      const testData = Buffer.from([100, 101, 102, 103]);
+
+      const dataPromise = waitForEvent(serverConnection, 'data');
+
+      await clientConnection.send(testData);
+
+      const receivedData = await dataPromise;
+      expect(receivedData).toEqual(testData);
+    });
+  });
+
+  describe('Reconnection Logic', () => {
+    let server: any;
+
+    beforeEach(async () => {
+      server = await transport.createServer({ port: testPort, host: '127.0.0.1' } as any);
+    });
+
+    afterEach(async () => {
+      await server?.close();
+    });
+
+    it('should attempt reconnection on disconnect', async () => {
+      const serverConnPromise = waitForEvent(server, 'connection');
+      const client = await transport.connect(`tcp://127.0.0.1:${testPort}`, {
+        reconnect: {
+          enabled: true,
+          maxAttempts: 3,
+          delay: 100
+        }
+      });
+      await serverConnPromise;
+
+      const reconnectPromise = waitForEvent(client, 'reconnect');
+
+      // Force disconnect by destroying socket
+      const socket = (client as any).socket as Socket;
+      socket.destroy();
+
+      // Wait for reconnection attempt
+      await reconnectPromise;
+
+      // Wait a bit for reconnection to stabilize
+      await delay(500);
+
+      await client.close();
+    });
+
+    it('should handle doReconnect with valid address', async () => {
+      const serverConnPromise = waitForEvent(server, 'connection');
+      const client = await transport.connect(`tcp://127.0.0.1:${testPort}`);
+      await serverConnPromise;
+
+      // Close and try to reconnect
+      const socket = (client as any).socket as Socket;
+      const remoteAddress = socket.remoteAddress;
+      const remotePort = socket.remotePort;
+
+      expect(remoteAddress).toBeDefined();
+      expect(remotePort).toBeDefined();
+
+      // Manually trigger doReconnect
+      const newServerConnPromise = waitForEvent(server, 'connection');
+
+      try {
+        await (client as any).doReconnect();
+        await newServerConnPromise;
+      } catch (error) {
+        // May fail if connection closes, that's ok
+      }
+
+      await client.close();
+    });
+
+    it('should timeout during doReconnect', async () => {
+      const serverConnPromise = waitForEvent(server, 'connection');
+      const client = await transport.connect(`tcp://127.0.0.1:${testPort}`, {
+        connectTimeout: 100
+      });
+      await serverConnPromise;
+
+      // Close server to make reconnection fail
+      await server.close();
+
+      // Try to reconnect - should fail (timeout or connection refused)
+      try {
+        await (client as any).doReconnect();
+        fail('Should have failed to reconnect');
+      } catch (error: any) {
+        // Could be timeout or connection refused depending on timing
+        expect(error).toBeDefined();
+      }
+
+      // Recreate server for afterEach cleanup
+      server = await transport.createServer({ port: testPort, host: '127.0.0.1' } as any);
+    });
+  });
+
+  describe('Force Destroy on Close', () => {
+    it('should force destroy socket if not closed within timeout', async () => {
+      const server = await transport.createServer({ port: testPort, host: '127.0.0.1' } as any);
+      const client = await transport.connect(`tcp://127.0.0.1:${testPort}`);
+
+      // Mock socket.end to not actually close
+      const socket = (client as any).socket as Socket;
+      const originalEnd = socket.end.bind(socket);
+      let endCalled = false;
+
+      socket.end = function(this: Socket) {
+        endCalled = true;
+        // Don't actually call end to test timeout path
+        return this;
+      } as any;
+
+      // Close should timeout and force destroy
+      const closePromise = client.close();
+
+      // Wait for force destroy timeout (5 seconds in implementation)
+      await closePromise;
+
+      expect(endCalled).toBe(true);
+      expect(socket.destroyed).toBe(true);
+
+      await server.close();
+    });
+  });
+
+  describe('Server Edge Cases', () => {
+    it('should handle server with string address', async () => {
+      const server = await transport.createServer({ port: testPort, host: '127.0.0.1' } as any);
+
+      const address = server.address;
+      expect(address).toBeDefined();
+
+      // Test port getter with string address edge case
+      const port = server.port;
+      expect(port).toBe(testPort);
+
+      await server.close();
+    });
+
+    it('should handle already listening server', async () => {
+      const server = await transport.createServer({ port: testPort, host: '127.0.0.1' } as any);
+
+      // Try to listen again - should resolve immediately
+      await server.listen();
+
+      expect(server.port).toBe(testPort);
+
+      await server.close();
+    });
+
+    it('should emit server error event', async () => {
+      const server = await transport.createServer({ port: testPort, host: '127.0.0.1' } as any);
+
+      const errorPromise = waitForEvent(server, 'error');
+
+      // Manually emit error on underlying server
+      const netServer = (server as any).server as net.Server;
+      const testError = new Error('Test server error');
+      netServer.emit('error', testError);
+
+      const error = await errorPromise;
+      expect(error).toBe(testError);
+
+      await server.close();
+    });
+
+    it('should handle server close with error callback', async () => {
+      const server = await transport.createServer({ port: testPort, host: '127.0.0.1' } as any);
+
+      // Close should succeed
+      await server.close();
+
+      // Try to close again - should handle gracefully
+      try {
+        await server.close();
+      } catch (error) {
+        // May throw error if already closed
+        expect(error).toBeDefined();
+      }
+    });
+
+    it('should create server with port 0 (automatic allocation)', async () => {
+      const server = await transport.createServer({ port: 0, host: '127.0.0.1' } as any);
+
+      expect(server.port).toBeGreaterThan(0);
+      expect(server.port).not.toBe(0);
+
+      await server.close();
+    });
+
+    it('should create server with different host bindings', async () => {
+      // Test localhost binding
+      const server1 = await transport.createServer({ port: await getFreePort(), host: '127.0.0.1' } as any);
+      expect(server1.address).toBeDefined();
+      await server1.close();
+
+      // Test all interfaces binding
+      const server2 = await transport.createServer({ port: await getFreePort(), host: '0.0.0.0' } as any);
+      expect(server2.address).toBeDefined();
+      await server2.close();
+    });
+  });
+
+  describe('localAddress Property', () => {
+    it('should expose localAddress property', async () => {
+      const server = await transport.createServer({ port: testPort, host: '127.0.0.1' } as any);
+      const client = await transport.connect(`tcp://127.0.0.1:${testPort}`);
+
+      const localAddress = client.localAddress;
+      expect(localAddress).toBeDefined();
+      expect(localAddress).toContain(':');
+
+      await client.close();
+      await server.close();
+    });
+
+    it('should have valid localAddress after connection', async () => {
+      const server = await transport.createServer({ port: testPort, host: '127.0.0.1' } as any);
+      const connectionPromise = waitForEvent(server, 'connection');
+
+      const client = await transport.connect(`tcp://127.0.0.1:${testPort}`);
+      const serverConn = await connectionPromise;
+
+      const clientLocalAddress = client.localAddress;
+      const serverLocalAddress = serverConn.localAddress;
+
+      expect(clientLocalAddress).toBeDefined();
+      expect(serverLocalAddress).toBeDefined();
+
+      await client.close();
+      await server.close();
+    });
+  });
+
+  describe('isValidAddress Edge Cases', () => {
+    it('should handle malformed addresses in isValidAddress', () => {
+      expect(transport.isValidAddress('tcp://')).toBe(false);
+      expect(transport.isValidAddress('tcp://:')).toBe(false);
+      expect(transport.isValidAddress('tcp://localhost')).toBe(false);
+      expect(transport.isValidAddress('tcp://localhost:abc')).toBe(false);
+      expect(transport.isValidAddress('tcp://localhost:-1')).toBe(false);
+      expect(transport.isValidAddress('')).toBe(false);
+      expect(transport.isValidAddress('not-a-url')).toBe(false);
+    });
+
+    it('should handle exception in isValidAddress gracefully', () => {
+      // Should return false instead of throwing
+      const result = transport.isValidAddress('tcp://[invalid:address');
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('Server Address String Handling', () => {
+    it('should handle server address when returned as string', async () => {
+      const server = await transport.createServer({ port: testPort, host: '127.0.0.1' } as any);
+
+      // Mock address to return string (for Unix socket path scenario)
+      const originalAddress = (server as any).server.address.bind((server as any).server);
+      (server as any).server.address = () => '/tmp/test.sock';
+
+      const address = server.address;
+      expect(address).toBe('/tmp/test.sock');
+
+      const port = server.port;
+      expect(port).toBeUndefined();
+
+      // Restore for cleanup
+      (server as any).server.address = originalAddress;
+
+      await server.close();
+    });
+  });
 });

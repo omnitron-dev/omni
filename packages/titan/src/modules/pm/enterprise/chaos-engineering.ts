@@ -6,6 +6,7 @@
 
 import { EventEmitter } from 'events';
 
+import { Errors } from '../../../errors/index.js';
 /**
  * Chaos Experiment
  */
@@ -282,11 +283,11 @@ export class ChaosOrchestrator extends EventEmitter {
   async runExperiment(experimentId: string): Promise<ChaosResult> {
     const experiment = this.experiments.get(experimentId);
     if (!experiment) {
-      throw new Error(`Experiment ${experimentId} not found`);
+      throw Errors.notFound(`Experiment ${experimentId} not found`);
     }
 
     if (this.running.has(experimentId)) {
-      throw new Error(`Experiment ${experimentId} is already running`);
+      throw Errors.notFound(`Experiment ${experimentId} is already running`);
     }
 
     this.running.add(experimentId);
@@ -313,7 +314,7 @@ export class ChaosOrchestrator extends EventEmitter {
       });
 
       if (!result.steadyStateBefore) {
-        throw new Error('Steady state not achieved before experiment');
+        throw Errors.notFound('Steady state not achieved before experiment');
       }
 
       // Execute chaos methods

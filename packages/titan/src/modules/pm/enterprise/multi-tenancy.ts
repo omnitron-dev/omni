@@ -6,6 +6,7 @@
  */
 
 import type { ILogger } from '../../logger/logger.types.js';
+import { Errors } from '../../../errors/index.js';
 import type { ServiceProxy, IProcessPool } from '../types.js';
 
 /**
@@ -127,7 +128,7 @@ export class MultiTenancyManager {
   ): Promise<ServiceProxy<T>> {
     const tenant = this.tenants.get(tenantId);
     if (!tenant) {
-      throw new Error(`Tenant ${tenantId} not found`);
+      throw Errors.notFound(`Tenant ${tenantId} not found`);
     }
 
     // Check quota
@@ -233,22 +234,22 @@ export class MultiTenancyManager {
     switch (resource) {
       case 'process':
         if (quota.maxProcesses && usage.processes >= quota.maxProcesses) {
-          throw new Error(`Tenant ${tenantId} exceeded process quota`);
+          throw Errors.notFound(`Tenant ${tenantId} exceeded process quota`);
         }
         break;
       case 'memory':
         if (quota.maxMemory && usage.memory >= this.parseMemory(quota.maxMemory)) {
-          throw new Error(`Tenant ${tenantId} exceeded memory quota`);
+          throw Errors.notFound(`Tenant ${tenantId} exceeded memory quota`);
         }
         break;
       case 'cpu':
         if (quota.maxCpu && usage.cpu >= quota.maxCpu) {
-          throw new Error(`Tenant ${tenantId} exceeded CPU quota`);
+          throw Errors.notFound(`Tenant ${tenantId} exceeded CPU quota`);
         }
         break;
       case 'requests':
         if (quota.maxRequests && usage.requests >= quota.maxRequests) {
-          throw new Error(`Tenant ${tenantId} exceeded request quota`);
+          throw Errors.notFound(`Tenant ${tenantId} exceeded request quota`);
         }
         break;
       default:
@@ -349,7 +350,7 @@ export class TenantProcessPool<T> implements ITenantProcessPool<T> {
   private async createTenantPool(tenantId: string): Promise<IProcessPool<T>> {
     const tenant = this.multiTenancyManager.getTenant(tenantId);
     if (!tenant) {
-      throw new Error(`Tenant ${tenantId} not found`);
+      throw Errors.notFound(`Tenant ${tenantId} not found`);
     }
 
     // Create pool with tenant isolation

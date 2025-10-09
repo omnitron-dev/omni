@@ -6,6 +6,7 @@
 
 import { EventEmitter } from 'events';
 
+import { Errors } from '../../../errors/index.js';
 /**
  * Self-Healing Configuration
  */
@@ -440,7 +441,7 @@ export class SelfHealingManager extends EventEmitter {
           }
           break;
         default:
-          throw new Error(`Unknown remediation action: ${action.action}`);
+          throw Errors.notFound(`Unknown remediation action: ${action.action}`);
       }
 
       remediation.status = 'completed';

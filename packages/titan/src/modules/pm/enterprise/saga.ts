@@ -6,6 +6,7 @@
  */
 
 import { EventEmitter } from 'events';
+import { Errors } from '../../../errors/index.js';
 import type { ILogger } from '../../logger/logger.types.js';
 
 /**
@@ -93,7 +94,7 @@ export class SagaOrchestrator extends EventEmitter {
     const steps = this.stepDefinitions.get(sagaName);
 
     if (!steps) {
-      throw new Error(`Saga ${sagaName} not found`);
+      throw Errors.notFound(`Saga ${sagaName} not found`);
     }
 
     // Create saga context
@@ -225,7 +226,7 @@ export class SagaOrchestrator extends EventEmitter {
       }
 
       if (batch.length === 0 && completed.size < steps.size) {
-        throw new Error('Circular dependency detected in saga');
+        throw Errors.notFound('Circular dependency detected in saga');
       }
 
       if (batch.length > 0) {
@@ -435,7 +436,7 @@ export class SagaOrchestrator extends EventEmitter {
 
     while (completedSteps.size < steps.size) {
       if (Date.now() - startTime > timeout) {
-        throw new Error('Saga timeout');
+        throw Errors.notFound('Saga timeout');
       }
       await this.delay(100);
     }
@@ -536,7 +537,7 @@ export class DistributedTransactionManager {
   async prepare(txId: string): Promise<boolean> {
     const transaction = this.transactions.get(txId);
     if (!transaction) {
-      throw new Error(`Transaction ${txId} not found`);
+      throw Errors.notFound(`Transaction ${txId} not found`);
     }
 
     transaction.state = 'preparing';
@@ -567,7 +568,7 @@ export class DistributedTransactionManager {
   async commit(txId: string): Promise<void> {
     const transaction = this.transactions.get(txId);
     if (!transaction || transaction.state !== 'prepared') {
-      throw new Error(`Transaction ${txId} cannot be committed`);
+      throw Errors.notFound(`Transaction ${txId} cannot be committed`);
     }
 
     transaction.state = 'committing';
@@ -593,7 +594,7 @@ export class DistributedTransactionManager {
   async rollback(txId: string): Promise<void> {
     const transaction = this.transactions.get(txId);
     if (!transaction) {
-      throw new Error(`Transaction ${txId} not found`);
+      throw Errors.notFound(`Transaction ${txId} not found`);
     }
 
     transaction.state = 'rolling-back';
@@ -629,7 +630,7 @@ export class DistributedTransactionManager {
   addParticipant(txId: string, participantId: string): void {
     const transaction = this.transactions.get(txId);
     if (!transaction) {
-      throw new Error(`Transaction ${txId} not found`);
+      throw Errors.notFound(`Transaction ${txId} not found`);
     }
 
     transaction.participants.add(participantId);

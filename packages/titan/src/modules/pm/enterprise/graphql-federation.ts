@@ -6,6 +6,7 @@
 
 import { EventEmitter } from 'events';
 
+import { Errors } from '../../../errors/index.js';
 /**
  * GraphQL Service Configuration
  */
@@ -144,7 +145,7 @@ export class GraphQLService {
     const resolvers = this.resolvers.get(type);
 
     if (!resolvers) {
-      throw new Error(`No resolvers for ${type}`);
+      throw Errors.notFound(`No resolvers for ${type}`);
     }
 
     const results: Record<string, any> = {};
@@ -170,14 +171,14 @@ export class GraphQLService {
     const subscriptions = this.subscriptions.get('Subscription');
 
     if (!subscriptions) {
-      throw new Error('No subscription resolvers');
+      throw Errors.notFound('No subscription resolvers');
     }
 
     const field = operation.fields[0]; // Simplified - take first field
     const subscription = subscriptions.get(field);
 
     if (!subscription) {
-      throw new Error(`No subscription resolver for ${field}`);
+      throw Errors.notFound(`No subscription resolver for ${field}`);
     }
 
     return subscription.subscribe({}, variables || {}, context, {});

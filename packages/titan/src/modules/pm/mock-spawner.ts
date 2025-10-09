@@ -7,6 +7,7 @@
 
 import { EventEmitter } from 'events';
 import { Netron } from '../../netron/index.js';
+import { Errors } from '../../errors/index.js';
 import type { ProcessMethod } from './common-types.js';
 import type { ILogger } from '../logger/logger.types.js';
 import type { IProcessOptions, IProcessManagerConfig } from './types.js';
@@ -78,7 +79,7 @@ class MockWorker extends EventEmitter {
   async callMethod(methodName: string, args: any[]): Promise<any> {
     const method = this.publicMethods.get(methodName);
     if (!method) {
-      throw new Error(`Method ${methodName} not found or not public`);
+      throw Errors.notFound('Method', methodName);
     }
     return await method(...args);
   }

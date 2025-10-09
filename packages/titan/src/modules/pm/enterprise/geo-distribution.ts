@@ -5,6 +5,7 @@
  */
 
 import { EventEmitter } from 'events';
+import { Errors } from '../../../errors/index.js';
 import type { ServiceProxy } from '../types.js';
 
 /**
@@ -247,12 +248,12 @@ export class GlobalLoadBalancer extends EventEmitter {
     const regionServices = this.services.get(region.id);
 
     if (!regionServices) {
-      throw new Error(`No services available in region ${region.id}`);
+      throw Errors.notFound(`No services available in region ${region.id}`);
     }
 
     const service = regionServices.get(serviceName);
     if (!service) {
-      throw new Error(`Service ${serviceName} not available in region ${region.id}`);
+      throw Errors.notFound(`Service ${serviceName} not available in region ${region.id}`);
     }
 
     this.emit('request:routed', { serviceName, region: region.id, context });
@@ -268,7 +269,7 @@ export class GlobalLoadBalancer extends EventEmitter {
       .filter(r => r.active && this.healthStatus.get(r.id));
 
     if (healthyRegions.length === 0) {
-      throw new Error('No healthy regions available');
+      throw Errors.notFound('No healthy regions available');
     }
 
     switch (strategy) {
@@ -613,7 +614,7 @@ export class RaftConsensus extends EventEmitter {
    */
   async replicate(entry: any): Promise<boolean> {
     if (this.state !== 'leader') {
-      throw new Error('Not the leader');
+      throw Errors.notFound('Not the leader');
     }
 
     this.log.push(entry);

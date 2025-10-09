@@ -8,6 +8,7 @@
 import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
 
+import { Errors } from '../../../errors/index.js';
 // ============================================================================
 // Distributed Lock Pattern
 // ============================================================================
@@ -73,7 +74,7 @@ export class DistributedLockManager {
       return lock;
     }
 
-    throw new Error(`Failed to acquire lock for resource: ${resource}`);
+    throw Errors.notFound(`Failed to acquire lock for resource: ${resource}`);
   }
 
   /**

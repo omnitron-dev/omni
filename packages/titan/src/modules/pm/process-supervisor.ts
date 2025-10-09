@@ -4,6 +4,7 @@
  * Implements supervision trees for fault-tolerant process management
  */
 
+import { Errors } from '../../errors/index.js';
 import type { ILogger } from '../logger/logger.types.js';
 import type {
   ISupervisorOptions,
@@ -90,7 +91,7 @@ export class ProcessSupervisor {
   private getSupervisorMetadata(): any {
     const metadata = Reflect.getMetadata(SUPERVISOR_METADATA_KEY, this.SupervisorClass);
     if (!metadata) {
-      throw new Error('Supervisor metadata not found');
+      throw Errors.notFound('Supervisor metadata', this.SupervisorClass.name);
     }
 
     // Resolve process classes from property values
@@ -336,7 +337,7 @@ export class ProcessSupervisor {
 
     // In a real implementation, this would notify parent supervisor
     // or trigger system-wide error handling
-    throw new Error(`Critical child ${name} failed: ${error.message}`);
+    throw Errors.internal(`Critical child ${name} failed: ${error.message}`, error);
   }
 
   /**

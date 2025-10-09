@@ -6,6 +6,7 @@
  */
 
 import type { ILogger } from '../../logger/logger.types.js';
+import { Errors } from '../../../errors/index.js';
 import type { ServiceProxy } from '../types.js';
 import type { ProcessMethod } from '../common-types.js';
 
@@ -237,13 +238,13 @@ class CircuitBreaker {
       if (timeSinceLastFail > resetTimeout) {
         this.transitionToHalfOpen();
       } else {
-        throw new Error('Circuit breaker is open');
+        throw Errors.notFound('Circuit breaker is open');
       }
     }
 
     if (this.state === 'half-open') {
       if (this.halfOpenRequests >= (this.config.halfOpenRequests || 3)) {
-        throw new Error('Circuit breaker is half-open, max requests reached');
+        throw Errors.notFound('Circuit breaker is half-open, max requests reached');
       }
       this.halfOpenRequests++;
     }
@@ -355,7 +356,7 @@ class RateLimiter {
 
     // Check if we have tokens
     if (this.tokens < 1) {
-      throw new Error('Rate limit exceeded');
+      throw Errors.notFound('Rate limit exceeded');
     }
 
     this.tokens--;
@@ -374,7 +375,7 @@ class RateLimiter {
     }
 
     if (this.windowRequests >= maxRequests) {
-      throw new Error('Rate limit exceeded');
+      throw Errors.notFound('Rate limit exceeded');
     }
 
     this.windowRequests++;
@@ -392,7 +393,7 @@ class RateLimiter {
     }
 
     if (this.windowRequests >= maxRequests) {
-      throw new Error('Rate limit exceeded');
+      throw Errors.notFound('Rate limit exceeded');
     }
 
     this.windowRequests++;
@@ -440,7 +441,7 @@ class Bulkhead {
 
     // Check queue size
     if (this.queue.length >= maxQueue) {
-      throw new Error('Bulkhead queue full');
+      throw Errors.notFound('Bulkhead queue full');
     }
 
     // Queue the request

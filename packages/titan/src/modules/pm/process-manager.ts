@@ -10,6 +10,7 @@ import { randomUUID } from 'crypto';
 import path from 'path';
 
 import { Injectable } from '../../decorators/index.js';
+import { Errors } from '../../errors/index.js';
 import type { ILogger } from '../logger/logger.types.js';
 
 import type {
@@ -240,7 +241,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
   async workflow<T>(WorkflowPathOrClass: string | (new () => T)): Promise<T> {
     // For now, workflows must be classes, not file paths
     if (typeof WorkflowPathOrClass === 'string') {
-      throw new Error('Workflow file paths are not yet supported. Please pass the workflow class directly.');
+      throw Errors.notImplemented('Workflow file paths are not yet supported. Please pass the workflow class directly.');
     }
 
     const workflow = new ProcessWorkflow<T>(
@@ -388,7 +389,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
       await Promise.race([
         Promise.all(shutdownPromises),
         new Promise<void>((_, reject) =>
-          setTimeout(() => reject(new Error('Shutdown timeout')), timeout)
+          setTimeout(() => reject(Errors.timeout('Process Manager shutdown', timeout)), timeout)
         )
       ]);
     } catch (error) {
@@ -441,7 +442,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
   private async waitForProcessReady(processId: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error(`Process ${processId} failed to start`));
+        reject(Errors.timeout(`Process ${processId} startup`, 30000));
       }, 30000);
 
       const checkReady = () => {
@@ -451,7 +452,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
           resolve();
         } else if (processInfo?.status === ProcessStatus.FAILED) {
           clearTimeout(timeout);
-          reject(new Error(`Process ${processId} failed to start`));
+          reject(Errors.internal(`Process ${processId} failed to start`));
         } else {
           setTimeout(checkReady, 100);
         }

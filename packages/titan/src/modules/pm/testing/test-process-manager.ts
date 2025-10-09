@@ -5,6 +5,7 @@
  * for simulating failures, controlling timing, and verifying behavior.
  */
 
+import { Errors } from '../../../errors/index.js';
 import { ProcessManager } from '../process-manager.js';
 import { ProcessStatus } from '../types.js';
 import type {
@@ -126,7 +127,7 @@ export class TestProcessManager extends ProcessManager {
 
     const info = this.getProcess(processId);
     if (!info) {
-      throw new Error(`Process not found: ${processId}`);
+      throw Errors.notFound('Process', processId);
     }
 
     // Emit crash event
@@ -354,10 +355,10 @@ export class TestProcessManager extends ProcessManager {
   ): void {
     const info = this.getProcess(processId);
     if (!info) {
-      throw new Error(`Process not found: ${processId}`);
+      throw Errors.notFound('Process', processId);
     }
     if (info.status !== expectedStatus) {
-      throw new Error(
+      throw Errors.badRequest(
         `Expected process ${processId} to have status ${expectedStatus}, but got ${info.status}`
       );
     }

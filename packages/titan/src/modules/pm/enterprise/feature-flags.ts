@@ -6,6 +6,7 @@
 
 import { EventEmitter } from 'events';
 
+import { Errors } from '../../../errors/index.js';
 /**
  * Feature Flag
  */
@@ -513,7 +514,7 @@ export class FeatureFlagManager extends EventEmitter {
    */
   importFlags(data: any): void {
     if (!data.flags || !Array.isArray(data.flags)) {
-      throw new Error('Invalid import data');
+      throw Errors.notFound('Invalid import data');
     }
 
     for (const flag of data.flags) {
@@ -559,7 +560,7 @@ export function FeatureFlag(flagId: string, options: { fallback?: any } = {}) {
             ? options.fallback.apply(this, args)
             : options.fallback;
         }
-        throw new Error(`Feature ${flagId} is disabled`);
+        throw Errors.notFound(`Feature ${flagId} is disabled`);
       }
 
       // If variant value is a function, use it instead

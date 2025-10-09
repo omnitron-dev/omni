@@ -6,6 +6,7 @@
  */
 
 import { EventEmitter } from 'events';
+import { Errors } from '../../../errors/index.js';
 import type { ILogger } from '../../logger/logger.types.js';
 
 /**
@@ -328,7 +329,7 @@ export class CommandBus {
   async execute<TResult>(command: ICommand): Promise<TResult> {
     const handler = this.handlers.get(command.type);
     if (!handler) {
-      throw new Error(`No handler registered for command ${command.type}`);
+      throw Errors.notFound(`No handler registered for command ${command.type}`);
     }
 
     return handler.handle(command);
@@ -357,7 +358,7 @@ export class QueryBus {
   async execute<TResult>(query: IQuery): Promise<TResult> {
     const handler = this.handlers.get(query.type);
     if (!handler) {
-      throw new Error(`No handler registered for query ${query.type}`);
+      throw Errors.notFound(`No handler registered for query ${query.type}`);
     }
 
     return handler.handle(query);

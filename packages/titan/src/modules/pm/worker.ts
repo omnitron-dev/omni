@@ -9,6 +9,7 @@
 
 import { parentPort, workerData } from 'worker_threads';
 import { Netron, LocalPeer } from '../../netron/index.js';
+import { Errors } from '../../errors/index.js';
 import 'reflect-metadata';
 
 // Worker configuration from parent
@@ -41,7 +42,7 @@ async function initialize() {
     const ProcessClass = module[config.className];
 
     if (!ProcessClass) {
-      throw new Error(`Class ${config.className} not found in module ${config.modulePath}`);
+      throw Errors.notFound('Class', `${config.className} in module ${config.modulePath}`);
     }
 
     // Create process instance

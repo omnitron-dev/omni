@@ -8,6 +8,7 @@
 import 'reflect-metadata';
 import { parentPort, workerData } from 'worker_threads';
 import { Netron } from '../../netron/index.js';
+import { Errors } from '../../errors/index.js';
 
 // Worker configuration from parent
 interface WorkerConfig {
@@ -38,7 +39,7 @@ async function initialize() {
     const ProcessClass = ProcessModule.default;
 
     if (!ProcessClass) {
-      throw new Error(`No default export found in ${config.processPath}`);
+      throw Errors.notFound('Default export', config.processPath);
     }
 
     // Create process instance
@@ -199,7 +200,7 @@ async function initialize() {
       const transport = getTransportForAddress(transportUrl);
 
       if (!transport) {
-        throw new Error(`No transport available for URL: ${transportUrl}`);
+        throw Errors.notFound('Transport for URL', transportUrl);
       }
 
       // Create server if transport supports it

@@ -8,6 +8,7 @@ import { EventEmitter } from 'events';
 import { Transform, Readable, Writable, pipeline } from 'stream';
 import { randomUUID } from 'crypto';
 
+import { Errors } from '../../../errors/index.js';
 /**
  * Change Event
  */
@@ -520,11 +521,11 @@ export class StreamPipeline<T = any> {
    */
   async execute(): Promise<void> {
     if (!this.source) {
-      throw new Error('No source configured');
+      throw Errors.notFound('No source configured');
     }
 
     if (!this.sink) {
-      throw new Error('No sink configured');
+      throw Errors.notFound('No sink configured');
     }
 
     // Create node streams

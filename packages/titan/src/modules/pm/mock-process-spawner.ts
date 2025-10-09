@@ -8,6 +8,7 @@
 import { EventEmitter } from 'events';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { Errors } from '../../errors/index.js';
 import type { ProcessMethod } from './common-types.js';
 import type { ILogger } from '../logger/logger.types.js';
 import type {
@@ -164,7 +165,7 @@ export class MockWorker extends EventEmitter {
     const method = this.publicMethods.get(methodName);
     if (!method) {
       if (this.metrics) this.metrics.errors = (this.metrics.errors || 0) + 1;
-      throw new Error(`Method ${methodName} not found or not public`);
+      throw Errors.notFound('Method', methodName);
     }
 
     try {
@@ -410,7 +411,7 @@ export class MockProcessSpawner implements IProcessSpawner {
           if (firstKey && module[firstKey]) {
             ProcessClass = module[firstKey];
           } else {
-            throw new Error('No default export found');
+            throw Errors.notFound('Default export', 'process file');
           }
         }
         serviceName = options.name || path.basename(processPathOrClass, '.js');

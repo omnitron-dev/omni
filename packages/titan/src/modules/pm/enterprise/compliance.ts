@@ -8,6 +8,7 @@ import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
 import { createHash, createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 
+import { Errors } from '../../../errors/index.js';
 /**
  * Compliance Standards
  */
@@ -300,7 +301,7 @@ export class AuditLogger extends EventEmitter {
    */
   private parseRetention(retention: string): number {
     const match = retention.match(/^(\d+)([ymdh])$/);
-    if (!match) throw new Error(`Invalid retention: ${retention}`);
+    if (!match) throw Errors.notFound(`Invalid retention: ${retention}`);
 
     const [, value, unit] = match;
     const num = parseInt(value || '0', 10);
@@ -310,7 +311,7 @@ export class AuditLogger extends EventEmitter {
       case 'm': return num * 30 * 24 * 60 * 60 * 1000;
       case 'd': return num * 24 * 60 * 60 * 1000;
       case 'h': return num * 60 * 60 * 1000;
-      default: throw new Error(`Unknown retention unit: ${unit}`);
+      default: throw Errors.notFound(`Unknown retention unit: ${unit}`);
     }
   }
 
@@ -493,7 +494,7 @@ export class ComplianceManager extends EventEmitter {
       case 'restriction':
         return this.handleRestrictionRequest(request);
       default:
-        throw new Error(`Unknown request type: ${request.type}`);
+        throw Errors.notFound(`Unknown request type: ${request.type}`);
     }
   }
 

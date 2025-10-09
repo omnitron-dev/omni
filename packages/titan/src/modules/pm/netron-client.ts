@@ -6,6 +6,7 @@
 
 import { Netron } from '../../netron/index.js';
 import { RemotePeer } from '../../netron/remote-peer.js';
+import { Errors } from '../../errors/index.js';
 import type { ILogger } from '../logger/logger.types.js';
 
 /**
@@ -38,7 +39,7 @@ export class NetronClient {
    */
   async connect(transportUrl: string): Promise<void> {
     if (this.connected) {
-      throw new Error('Already connected');
+      throw Errors.conflict('Already connected');
     }
 
     try {
@@ -47,7 +48,7 @@ export class NetronClient {
       const transport = getTransportForAddress(transportUrl);
 
       if (!transport) {
-        throw new Error(`No transport available for URL: ${transportUrl}`);
+        throw Errors.notFound('Transport for URL', transportUrl);
       }
 
       // Connect to the remote process
@@ -72,7 +73,7 @@ export class NetronClient {
    */
   async queryInterface<T>(serviceName: string): Promise<T | null> {
     if (!this.connected || !this.remotePeer) {
-      throw new Error('Not connected to process');
+      throw Errors.conflict('Not connected to process');
     }
 
     try {
@@ -91,12 +92,12 @@ export class NetronClient {
   async call(serviceName: string, methodName: string, args: any[]): Promise<any> {
     const service = await this.queryInterface(serviceName);
     if (!service) {
-      throw new Error(`Service ${serviceName} not found`);
+      throw Errors.notFound('Service', serviceName);
     }
 
     const method = (service as any)[methodName];
     if (typeof method !== 'function') {
-      throw new Error(`Method ${methodName} not found on service ${serviceName}`);
+      throw Errors.notFound('Method', `${serviceName}.${methodName}`);
     }
 
     return await method(...args);

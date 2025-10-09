@@ -6,6 +6,7 @@
 
 import { EventEmitter } from 'events';
 import { v4 as uuidv4 } from 'uuid';
+import { Errors } from '../../../errors/index.js';
 import type { ILogger } from '../../logger/logger.types.js';
 
 /**
@@ -124,7 +125,7 @@ export class DistributedTransactionCoordinator extends EventEmitter {
   async commit(transactionId: string): Promise<void> {
     const context = this.transactions.get(transactionId);
     if (!context) {
-      throw new Error(`Transaction ${transactionId} not found`);
+      throw Errors.notFound(`Transaction ${transactionId} not found`);
     }
 
     try {
@@ -146,7 +147,7 @@ export class DistributedTransactionCoordinator extends EventEmitter {
       } else {
         // Abort transaction
         await this.abortTransaction(context);
-        throw new Error('Transaction aborted: Not all participants prepared');
+        throw Errors.notFound('Transaction aborted: Not all participants prepared');
       }
     } catch (error) {
       context.error = error as Error;
@@ -410,7 +411,7 @@ export class TransactionParticipant implements ITransactionParticipant {
    */
   async commit(): Promise<void> {
     if (!this.preparedState) {
-      throw new Error('Cannot commit: not prepared');
+      throw Errors.notFound('Cannot commit: not prepared');
     }
 
     // Apply the prepared state permanently

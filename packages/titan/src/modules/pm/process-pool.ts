@@ -8,6 +8,7 @@
 import { cpus } from 'os';
 import path from 'path';
 import { EventEmitter } from 'events';
+import { Errors } from '../../errors/index.js';
 import type { ILogger } from '../logger/logger.types.js';
 import type {
   IProcessPool,
@@ -278,7 +279,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
    */
   async scale(newSize: number): Promise<void> {
     if (this.isShuttingDown) {
-      throw new Error('Cannot scale during shutdown');
+      throw Errors.conflict('Cannot scale pool during shutdown');
     }
 
     const currentSize = this.workers.size;
@@ -324,7 +325,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
     while (this.queue.length > 0) {
       const request = this.queue.shift();
       if (request) {
-        request.reject(new Error('Pool is draining'));
+        request.reject(Errors.conflict('Pool is draining'));
       }
     }
 
@@ -374,13 +375,13 @@ export class ProcessPool<T> implements IProcessPool<T> {
     // Check circuit breaker
     if (this.poolOptions.circuitBreaker?.enabled && this.circuitBreaker.isOpen) {
       if (!this.shouldTryHalfOpen()) {
-        throw new Error('Circuit breaker is open');
+        throw Errors.conflict('Circuit breaker is open');
       }
     }
 
     // Check if draining
     if (this.isDraining) {
-      throw new Error('Pool is draining, not accepting new requests');
+      throw Errors.conflict('Pool is draining, not accepting new requests');
     }
 
     // Queue if no workers available
@@ -490,11 +491,11 @@ export class ProcessPool<T> implements IProcessPool<T> {
     if (healthyWorkers.length === 0) {
       // Fallback to any worker if no healthy ones
       if (this.workers.size === 0) {
-        throw new Error('No workers available in pool');
+        throw Errors.conflict('No workers available in pool');
       }
       const firstWorker = this.workers.values().next().value;
       if (!firstWorker) {
-        throw new Error('No workers available in pool');
+        throw Errors.conflict('No workers available in pool');
       }
       return firstWorker;
     }
@@ -533,7 +534,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
    */
   private selectRoundRobin(workers: WorkerInfo<T>[]): WorkerInfo<T> {
     if (workers.length === 0) {
-      throw new Error('No workers available');
+      throw Errors.conflict('No workers available');
     }
     const worker = workers[this.currentRoundRobinIndex % workers.length];
     this.currentRoundRobinIndex++;
@@ -554,7 +555,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
    */
   private selectRandom(workers: WorkerInfo<T>[]): WorkerInfo<T> {
     if (workers.length === 0) {
-      throw new Error('No workers available');
+      throw Errors.conflict('No workers available');
     }
     const index = Math.floor(Math.random() * workers.length);
     return workers[index]!;
@@ -565,7 +566,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
    */
   private selectWeighted(workers: WorkerInfo<T>[]): WorkerInfo<T> {
     if (workers.length === 0) {
-      throw new Error('No workers available');
+      throw Errors.conflict('No workers available');
     }
 
     const weights = workers.map(w => 1 / (w.currentLoad + 1));
@@ -610,7 +611,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
    */
   private selectConsistentHash(workers: WorkerInfo<T>[]): WorkerInfo<T> {
     if (workers.length === 0) {
-      throw new Error('No workers available');
+      throw Errors.conflict('No workers available');
     }
     // Simple hash based on request counter for now
     const hash = this.requestIdCounter % workers.length;
@@ -653,7 +654,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
         result = await Promise.race([
           (worker.proxy as any)[method](...args),
           new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Request timeout')), timeout)
+            setTimeout(() => reject(Errors.timeout('Request', timeout)), timeout)
           )
         ]);
       } else {
@@ -705,7 +706,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
    */
   private async queueRequest(method: string, args: any[]): Promise<any> {
     if (this.queue.length >= (this.poolOptions.maxQueueSize || 100)) {
-      throw new Error('Pool queue is full');
+      throw Errors.conflict('Pool queue is full');
     }
 
     return new Promise((resolve, reject) => {
@@ -725,7 +726,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
           const index = this.queue.indexOf(request);
           if (index !== -1) {
             this.queue.splice(index, 1);
-            reject(new Error('Request timeout in queue'));
+            reject(Errors.timeout('Request in queue', this.poolOptions.requestTimeout!));
           }
         }, this.poolOptions.requestTimeout);
       }

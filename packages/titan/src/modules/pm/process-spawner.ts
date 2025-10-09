@@ -12,6 +12,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import os from 'os';
+import { Errors } from '../../errors/index.js';
 import type { ILogger } from '../logger/logger.types.js';
 import type {
   IProcessSpawner,
@@ -248,7 +249,7 @@ export class ProcessSpawner implements IProcessSpawner {
     try {
       await fs.access(processPath);
     } catch (error) {
-      throw new Error(`Process file not found: ${processPath}`);
+      throw Errors.notFound('Process file', processPath);
     }
 
     // Prepare transport configuration
@@ -456,7 +457,7 @@ export class ProcessSpawner implements IProcessSpawner {
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        reject(new Error('Worker startup timeout'));
+        reject(Errors.timeout('Worker startup', timeout));
       }, timeout);
 
       const messageHandler = (data: any) => {

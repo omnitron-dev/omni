@@ -6,6 +6,7 @@
  */
 
 import 'reflect-metadata';
+import { Errors } from '../../errors/index.js';
 import type {
   IProcessOptions,
   IProcessMetadata,
@@ -324,7 +325,7 @@ export function CircuitBreaker(options: ICircuitBreakerOptions): MethodDecorator
           if (fallback && typeof (this as any)[fallback] === 'function') {
             return (this as any)[fallback](...args);
           }
-          throw new Error('Circuit breaker is open');
+          throw Errors.conflict('Circuit breaker is open');
         }
       }
 

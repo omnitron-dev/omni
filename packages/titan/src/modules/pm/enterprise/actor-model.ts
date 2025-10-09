@@ -7,6 +7,7 @@
 import { EventEmitter } from 'events';
 import { v4 as uuid } from 'uuid';
 
+import { Errors } from '../../../errors/index.js';
 /**
  * Actor Message
  */
@@ -347,7 +348,7 @@ class ActorInstance<T extends Actor = Actor> extends EventEmitter {
         throw error;
       default:
         // Unknown action, escalate
-        throw new Error(`Unknown supervisor action: ${action}`);
+        throw Errors.notFound(`Unknown supervisor action: ${action}`);
     }
   }
 
@@ -403,7 +404,7 @@ export class ActorSystem {
     const id = name || uuid();
 
     if (this.actors.has(id)) {
-      throw new Error(`Actor ${id} already exists`);
+      throw Errors.notFound(`Actor ${id} already exists`);
     }
 
     const actor = new ActorClass();

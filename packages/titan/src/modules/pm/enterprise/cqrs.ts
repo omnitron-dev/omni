@@ -7,6 +7,7 @@
 
 import { EventEmitter } from 'events';
 import { v4 as uuidv4 } from 'uuid';
+import { Errors } from '../../../errors/index.js';
 import type { ILogger } from '../../logger/logger.types.js';
 
 /**
@@ -202,7 +203,7 @@ export class CommandBus extends EventEmitter {
     // Find handler
     const handler = this.handlers.get(command.type);
     if (!handler) {
-      throw new Error(`No handler registered for command type: ${command.type}`);
+      throw Errors.notFound(`No handler registered for command type: ${command.type}`);
     }
 
     // Execute command
@@ -273,7 +274,7 @@ export class QueryBus extends EventEmitter {
     // Find handler
     const handler = this.handlers.get(query.type);
     if (!handler) {
-      throw new Error(`No handler registered for query type: ${query.type}`);
+      throw Errors.notFound(`No handler registered for query type: ${query.type}`);
     }
 
     // Execute query

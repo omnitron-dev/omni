@@ -5,6 +5,7 @@
  * with DAG (Directed Acyclic Graph) support for parallel execution
  */
 
+import { Errors } from '../../errors/index.js';
 import type { ILogger } from '../logger/logger.types.js';
 import type {
   IWorkflowStage,
@@ -103,7 +104,7 @@ export class ProcessWorkflow<T> {
   private getWorkflowMetadata(): any {
     const metadata = Reflect.getMetadata(WORKFLOW_METADATA_KEY, this.WorkflowClass);
     if (!metadata) {
-      throw new Error('Workflow metadata not found');
+      throw Errors.notFound('Workflow metadata', this.WorkflowClass.name);
     }
     return metadata;
   }
@@ -117,7 +118,7 @@ export class ProcessWorkflow<T> {
 
     // Detect cycles
     if (this.hasCycle(dag)) {
-      throw new Error('Circular dependency detected in workflow');
+      throw Errors.badRequest('Circular dependency detected in workflow');
     }
 
     // Topological sort with level assignment
@@ -399,7 +400,7 @@ export class ProcessWorkflow<T> {
     return Promise.race([
       handler(input),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Stage timeout')), timeout)
+        setTimeout(() => reject(Errors.timeout('Stage', timeout)), timeout)
       )
     ]);
   }

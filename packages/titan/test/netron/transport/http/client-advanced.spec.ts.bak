@@ -227,17 +227,17 @@ describe('HttpTransportClient - Advanced Coverage', () => {
       (client as any).peer = mockPeer;
 
       // Mock connection to handle the fallback
-      const mockConnService = {
+      const mockConnectionService = {
         add: jest.fn().mockResolvedValue(100)
       };
 
-      const mockConn = (client as any).connection;
-      mockConn.queryInterface = jest.fn().mockResolvedValue(mockConnService);
+      const mockConnection = (client as any).connection;
+      mockConnection.queryInterface = jest.fn().mockResolvedValue(mockConnectionService);
 
       const result = await client.invoke('Calculator@1.0.0', 'add', [{ a: 60, b: 40 }]);
       expect(result).toBe(100);
       expect(mockPeer.queryInterface).toHaveBeenCalled();
-      expect(mockConn.queryInterface).toHaveBeenCalled();
+      expect(mockConnection.queryInterface).toHaveBeenCalled();
     });
 
     it('should fallback when peer method is not a function', async () => {
@@ -258,16 +258,16 @@ describe('HttpTransportClient - Advanced Coverage', () => {
       (client as any).peer = mockPeer;
 
       // Mock connection fallback
-      const mockConn = (client as any).connection;
-      const mockConnService = {
+      const mockConnection = (client as any).connection;
+      const mockConnectionService = {
         multiply: jest.fn().mockResolvedValue(200)
       };
 
-      mockConn.queryInterface = jest.fn().mockResolvedValue(mockConnService);
+      mockConnection.queryInterface = jest.fn().mockResolvedValue(mockConnectionService);
 
       const result = await client.invoke('Calculator@1.0.0', 'multiply', [{ a: 10, b: 20 }]);
       expect(result).toBe(200);
-      expect(mockConn.queryInterface).toHaveBeenCalled();
+      expect(mockConnection.queryInterface).toHaveBeenCalled();
     });
   });
 
@@ -278,32 +278,32 @@ describe('HttpTransportClient - Advanced Coverage', () => {
       await client.initialize();
 
       // Mock connection service
-      const mockConn = (client as any).connection;
-      const mockConnService = {
+      const mockConnection = (client as any).connection;
+      const mockConnectionService = {
         add: jest.fn().mockResolvedValue(150)
       };
 
-      if (mockConn) {
-        mockConn.queryInterface = jest.fn().mockResolvedValue(mockConnService);
+      if (mockConnection) {
+        mockConnection.queryInterface = jest.fn().mockResolvedValue(mockConnectionService);
       }
 
       const result = await client.invoke('Calculator@1.0.0', 'add', [{ a: 100, b: 50 }]);
       expect(result).toBe(150);
-      expect(mockConnService.add).toHaveBeenCalledWith({ a: 100, b: 50 });
+      expect(mockConnectionService.add).toHaveBeenCalledWith({ a: 100, b: 50 });
     });
 
     it('should create service proxy via connection', async () => {
       client = new HttpTransportClient('http://localhost:3000');
       await client.initialize();
 
-      const mockConn = (client as any).connection;
+      const mockConnection = (client as any).connection;
       const mockService = {
         subtract: jest.fn().mockResolvedValue(25),
         multiply: jest.fn().mockResolvedValue(500)
       };
 
-      if (mockConn) {
-        mockConn.queryInterface = jest.fn().mockResolvedValue(mockService);
+      if (mockConnection) {
+        mockConnection.queryInterface = jest.fn().mockResolvedValue(mockService);
       }
 
       // Call multiple methods via connection
@@ -342,11 +342,11 @@ describe('HttpTransportClient - Advanced Coverage', () => {
       client = new HttpTransportClient('http://localhost:3000');
       await client.initialize();
 
-      const mockConn = (client as any).connection;
+      const mockConnection = (client as any).connection;
 
       // Return service but without the requested method
-      if (mockConn) {
-        mockConn.queryInterface = jest.fn().mockResolvedValue({
+      if (mockConnection) {
+        mockConnection.queryInterface = jest.fn().mockResolvedValue({
           otherMethod: jest.fn()
         });
       }
@@ -746,18 +746,19 @@ describe('HttpTransportClient - Advanced Coverage', () => {
       await client.initialize();
 
       // Inject mock peer
-      const mockConn = (client as any).connection;
+      const mockConnection = (client as any).connection;
       const mockPeer = {
         queryInterface: jest.fn(),
         close: jest.fn().mockResolvedValue(undefined)
       };
       (client as any).peer = mockPeer;
 
-      const connectionCloseSpy = jest.spyOn(mockConn, 'close');
+      const connectionCloseSpy = jest.spyOn(mockConnection, 'close');
 
       await client.close();
 
       expect(mockPeer.close).toHaveBeenCalled();
+      const mockConnection = (client as any).connection;
       expect(connectionCloseSpy).toHaveBeenCalled();
     });
 
@@ -765,14 +766,13 @@ describe('HttpTransportClient - Advanced Coverage', () => {
       client = new HttpTransportClient('http://localhost:3000');
       await client.initialize();
 
-      const mockConn = (client as any).connection;
-      const connectionCloseSpy = jest.spyOn(mockConn, 'close');
+      const connectionCloseSpy = jest.spyOn(mockConnection, 'close');
 
       await client.close();
 
       expect(connectionCloseSpy).toHaveBeenCalled();
       // Verify connection was actually closed
-      expect(mockConn.state).toBe(ConnectionState.DISCONNECTED);
+      expect(mockConnection.state).toBe(ConnectionState.DISCONNECTED);
     });
 
     it('should handle close when not initialized', async () => {
@@ -782,17 +782,16 @@ describe('HttpTransportClient - Advanced Coverage', () => {
       await expect(client.close()).resolves.not.toThrow();
     });
 
+      const mockConnection = (client as any).connection;
     it('should be idempotent - multiple close calls', async () => {
       client = new HttpTransportClient('http://localhost:3000');
       await client.initialize();
-
-      const mockConn = (client as any).connection;
 
       await client.close();
       await client.close(); // Second close should not throw
 
       // Connection stays defined but is in DISCONNECTED state
-      expect(mockConn.state).toBe(ConnectionState.DISCONNECTED);
+      expect(mockConnection.state).toBe(ConnectionState.DISCONNECTED);
     });
 
     it('should close both peer and connection in correct order', async () => {
@@ -801,7 +800,7 @@ describe('HttpTransportClient - Advanced Coverage', () => {
 
       const closeCalls: string[] = [];
 
-      const mockConn = (client as any).connection;
+      const mockConnection = (client as any).connection;
       // Inject mock peer
       const mockPeer = {
         queryInterface: jest.fn(),
@@ -811,7 +810,7 @@ describe('HttpTransportClient - Advanced Coverage', () => {
       };
       (client as any).peer = mockPeer;
 
-      jest.spyOn(mockConn, 'close').mockImplementation(async () => {
+      jest.spyOn(mockConnection, 'close').mockImplementation(async () => {
         closeCalls.push('connection');
       });
 

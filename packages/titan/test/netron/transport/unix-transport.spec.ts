@@ -548,7 +548,7 @@ describe('Unix Domain Socket Transport', () => {
       };
 
       // Ping should timeout
-      await expect(shortTimeoutClient.ping()).rejects.toThrow('timeout');
+      await expect(shortTimeoutClient.ping()).rejects.toThrow(/timed out after/);
 
       // Restore original handler for cleanup
       (newServerConn as any).handleData = originalHandleData;

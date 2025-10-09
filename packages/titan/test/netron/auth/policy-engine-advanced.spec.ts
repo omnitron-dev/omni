@@ -516,7 +516,7 @@ describe('PolicyEngine Advanced Tests', () => {
       // Missing policy throws an error
       await expect(
         policyEngine.evaluate('nonExistentPolicy', context),
-      ).rejects.toThrow("Policy 'nonExistentPolicy' not found");
+      ).rejects.toThrow('Policy with id nonExistentPolicy not found');
     });
   });
 

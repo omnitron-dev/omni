@@ -6,6 +6,7 @@
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { Inject, Optional, Injectable } from '../../decorators/index.js';
+import { Errors } from '../../errors/index.js';
 
 import {
   ERROR_MESSAGES,
@@ -164,7 +165,7 @@ export class SchedulerExecutor {
           const method = instance[job.method];
 
           if (!method) {
-            throw new Error(`Method ${job.method} not found on target`);
+            throw Errors.notFound(`Method ${job.method}`, 'target');
           }
 
           // Call the method with context

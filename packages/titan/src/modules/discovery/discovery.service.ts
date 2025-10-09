@@ -15,6 +15,7 @@ import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { Injectable, Inject, Optional } from '../../decorators/index.js';
+import { Errors } from '../../errors/index.js';
 import type { ILogger } from '../logger/logger.types.js';
 import {
   type NodeInfo,
@@ -66,7 +67,7 @@ export class DiscoveryService implements IDiscoveryService {
     @Optional() @Inject(DISCOVERY_OPTIONS_TOKEN) options?: DiscoveryOptions
   ) {
     if (!redis) {
-      throw new Error('Redis instance must be provided for DiscoveryService');
+      throw Errors.badRequest('Redis instance must be provided for DiscoveryService');
     }
 
     this.redis = redis;
@@ -105,7 +106,7 @@ export class DiscoveryService implements IDiscoveryService {
    */
   async start(): Promise<void> {
     if (this.stopped) {
-      throw new Error('Cannot start a stopped DiscoveryService');
+      throw Errors.conflict('Cannot start a stopped DiscoveryService');
     }
 
     // Set up PubSub if enabled

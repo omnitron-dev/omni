@@ -1,4 +1,5 @@
 import { Redis, Cluster } from 'ioredis';
+import { Errors } from '../../errors/index.js';
 
 import { RedisClient, RedisClientOptions, RedisModuleOptions } from './redis.types.js';
 import {
@@ -142,7 +143,7 @@ export class RedisManager {
 
           const connected = await waitForConnection(client, timeout);
           if (!connected) {
-            throw new Error(`Failed to connect Redis client "${namespace}" within timeout (${timeout}ms). Status: ${(client as any).status}`);
+            throw Errors.timeout(`Redis client "${namespace}" connection`, timeout);
           }
         }
 
@@ -250,7 +251,7 @@ export class RedisManager {
     const client = this.clients.get(ns);
 
     if (!client) {
-      throw new Error(`Redis client with namespace "${ns}" not found`);
+      throw Errors.notFound('Redis client', ns);
     }
 
     return client;
@@ -268,7 +269,7 @@ export class RedisManager {
     const namespace = getClientNamespace(options);
 
     if (this.clients.has(namespace)) {
-      throw new Error(`Redis client with namespace "${namespace}" already exists`);
+      throw Errors.conflict(`Redis client with namespace "${namespace}" already exists`);
     }
 
     const mergedOptions = mergeOptions(this.options.commonOptions, options);
@@ -352,7 +353,7 @@ export class RedisManager {
     const sha = this.getScriptSha(scriptName, ns);
 
     if (!sha) {
-      throw new Error(`Script "${scriptName}" not loaded for client "${ns}"`);
+      throw Errors.notFound(`Script "${scriptName}" for client`, ns);
     }
 
     try {
@@ -361,7 +362,7 @@ export class RedisManager {
       if (error.message?.includes('NOSCRIPT')) {
         const script = this.options.scripts?.find(s => s.name === scriptName);
         if (!script) {
-          throw new Error(`Script "${scriptName}" not found in configuration`);
+          throw Errors.notFound(`Script "${scriptName}" in configuration`, '');
         }
 
         const content = script.content || loadScriptContent(script.path!);

@@ -13,6 +13,7 @@
 
 import { createToken } from '../../nexus/index.js';
 import { ZodType } from 'zod';
+import { Errors } from '../../errors/index.js';
 
 import { ConfigService } from './config.service.js';
 import { ConfigLoaderService } from './config-loader.service.js';
@@ -132,7 +133,9 @@ export class ConfigModule {
             if (schema) {
               const result = schema.safeParse(value);
               if (!result.success) {
-                throw new Error(`Configuration validation failed for ${name}: ${result.error.message}`);
+                throw Errors.badRequest(`Configuration validation failed for ${name}`, {
+                  errors: result.error.issues
+                });
               }
               return result.data;
             }

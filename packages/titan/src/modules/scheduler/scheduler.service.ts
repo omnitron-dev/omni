@@ -6,6 +6,7 @@
 
 import * as cron from 'node-cron';
 import { Inject, Optional, Injectable } from '../../decorators/index.js';
+import { Errors } from '../../errors/index.js';
 
 import {
   ERROR_MESSAGES,
@@ -91,7 +92,7 @@ export class SchedulerService {
    */
   async start(): Promise<void> {
     if (this.isStarted) {
-      throw new Error(ERROR_MESSAGES.SCHEDULER_ALREADY_STARTED);
+      throw Errors.conflict(ERROR_MESSAGES.SCHEDULER_ALREADY_STARTED);
     }
 
     this.isStarted = true;
@@ -181,7 +182,7 @@ export class SchedulerService {
 
     // Validate cron expression
     if (!cron.validate(pattern)) {
-      throw new Error(`${ERROR_MESSAGES.INVALID_CRON_EXPRESSION}: ${pattern}`);
+      throw Errors.badRequest(`${ERROR_MESSAGES.INVALID_CRON_EXPRESSION}: ${pattern}`);
     }
 
     // Create cron job
@@ -453,7 +454,7 @@ export class SchedulerService {
   stopJob(name: string): void {
     const job = this.registry.getJob(name);
     if (!job) {
-      throw new Error(`${ERROR_MESSAGES.JOB_NOT_FOUND}: ${name}`);
+      throw Errors.notFound('Scheduled job', name);
     }
 
     // Stop based on type
@@ -487,7 +488,7 @@ export class SchedulerService {
   startJob(name: string): void {
     const job = this.registry.getJob(name);
     if (!job) {
-      throw new Error(`${ERROR_MESSAGES.JOB_NOT_FOUND}: ${name}`);
+      throw Errors.notFound('Scheduled job', name);
     }
 
     // Schedule the job
@@ -568,7 +569,7 @@ export class SchedulerService {
   async triggerJob(name: string): Promise<IJobExecutionResult> {
     const job = this.registry.getJob(name);
     if (!job) {
-      throw new Error(`${ERROR_MESSAGES.JOB_NOT_FOUND}: ${name}`);
+      throw Errors.notFound('Scheduled job', name);
     }
 
     return this.executor.executeJob(job);

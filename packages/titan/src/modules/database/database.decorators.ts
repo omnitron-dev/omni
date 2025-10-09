@@ -11,6 +11,7 @@ import {
   DATABASE_MANAGER,
   METADATA_KEYS,
 } from './database.constants.js';
+import { Errors } from '../../errors/index.js';
 import type {
   RepositoryConfig,
   PaginationOptions,
@@ -121,7 +122,7 @@ export function Transactional(options?: TransactionOptions): MethodDecorator {
         const databaseService = (this as any).databaseService;
 
         if (!databaseService) {
-          throw new Error(
+          throw Errors.internal(
             `@Transactional decorator requires TransactionManager or DatabaseService to be injected in ${target.constructor.name}`
           );
         }
@@ -208,7 +209,7 @@ export function Paginated(defaults?: Partial<PaginationOptions>): MethodDecorato
       const databaseService = (this as any).databaseService;
 
       if (!databaseService) {
-        throw new Error(
+        throw Errors.internal(
           `@Paginated decorator requires DatabaseService to be injected in ${target.constructor.name}`
         );
       }
@@ -257,7 +258,7 @@ export function Query(sql: string): MethodDecorator {
       const db = (this as any).db;
 
       if (!db) {
-        throw new Error(
+        throw Errors.internal(
           `@Query decorator requires database connection in ${target.constructor.name}`
         );
       }

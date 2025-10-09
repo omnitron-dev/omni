@@ -6,6 +6,7 @@
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
 import { Inject, Injectable } from '../../decorators/index.js';
+import { Errors } from '../../errors/index.js';
 
 import { EVENT_EMITTER_TOKEN } from './tokens.js';
 
@@ -271,7 +272,7 @@ export class EventSchedulerService {
   async retryJob(jobId: string): Promise<void> {
     const job = this.jobs.get(jobId);
     if (!job || job.status !== 'failed') {
-      throw new Error(`Job ${jobId} not found or not in failed state`);
+      throw Errors.notFound(`Job ${jobId}`, 'or not in failed state');
     }
 
     job.status = 'pending';
@@ -302,7 +303,7 @@ export class EventSchedulerService {
   async executeJob(jobId: string): Promise<void> {
     const job = this.jobs.get(jobId);
     if (!job) {
-      throw new Error(`Job ${jobId} not found`);
+      throw Errors.notFound('Job', jobId);
     }
 
     await this.runJob(job);
@@ -426,7 +427,7 @@ export class EventSchedulerService {
       if (cron === '0 * * * *') return 3600000; // Every hour
       if (cron === '0 0 * * *') return 86400000; // Every day
     } else {
-      throw new Error('Invalid cron expression');
+      throw Errors.badRequest('Invalid cron expression');
     }
 
     // Default to every hour

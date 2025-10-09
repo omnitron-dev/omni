@@ -1,4 +1,5 @@
 import { Injectable } from '../../decorators/index.js';
+import { Errors } from '../../errors/index.js';
 import { Redis } from 'ioredis';
 import { hash } from './utils.js';
 
@@ -241,19 +242,19 @@ export class TemplateEngine {
    */
   private validateTemplate(template: NotificationTemplate): void {
     if (!template.id) {
-      throw new Error('Template ID is required');
+      throw Errors.badRequest('Template ID is required');
     }
 
     if (!template.name) {
-      throw new Error('Template name is required');
+      throw Errors.badRequest('Template name is required');
     }
 
     if (!template.channels || template.channels.length === 0) {
-      throw new Error('At least one channel is required');
+      throw Errors.badRequest('At least one channel is required');
     }
 
     if (!template.content || Object.keys(template.content).length === 0) {
-      throw new Error('Template content is required');
+      throw Errors.badRequest('Template content is required');
     }
   }
 

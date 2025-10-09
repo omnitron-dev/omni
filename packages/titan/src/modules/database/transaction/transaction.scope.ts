@@ -10,6 +10,7 @@ import type { IDatabaseManager } from '../database.types.js';
 import type { RepositoryFactory } from '../repository/repository.factory.js';
 import type { ITransactionScope, TransactionContext } from './transaction.types.js';
 import { TransactionManager } from './transaction.manager.js';
+import { Errors } from '../../../errors/index.js';
 
 /**
  * Transaction scope implementation
@@ -38,7 +39,7 @@ export class TransactionScope implements ITransactionScope {
     // Create new repository with transaction
     const metadata = this.repositoryFactory.getMetadata(repositoryClass);
     if (!metadata) {
-      throw new Error(`Repository ${repositoryClass.name} not registered`);
+      throw Errors.notFound('Repository', repositoryClass.name);
     }
 
     // Create repository with transaction connection
@@ -165,7 +166,7 @@ export class TransactionScopeFactory {
     return this.transactionManager.executeInTransaction(async (trx) => {
       const context = this.transactionManager.getCurrentTransaction();
       if (!context) {
-        throw new Error('No transaction context available');
+        throw Errors.internal('No transaction context available');
       }
 
       const scope = this.createScope(trx, context);
@@ -202,7 +203,7 @@ export function RequiresTransactionScope(): MethodDecorator {
       const dbManager = (this as any).dbManager;
 
       if (!transactionManager) {
-        throw new Error(
+        throw Errors.internal(
           `@RequiresTransactionScope requires TransactionManager to be injected in ${target.constructor.name}`
         );
       }

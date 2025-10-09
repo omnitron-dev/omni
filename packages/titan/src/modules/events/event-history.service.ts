@@ -8,6 +8,7 @@ import type { EventRecord, EventFilter } from '@omnitron-dev/eventemitter';
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
 import { Inject, Injectable } from '../../decorators/index.js';
+import { Errors } from '../../errors/index.js';
 
 import { EVENT_EMITTER_TOKEN } from './tokens.js';
 
@@ -538,7 +539,7 @@ export class EventHistoryService {
    */
   async restoreSnapshot(name: string): Promise<void> {
     if (!this.customStorage) {
-      throw new Error('No storage configured for snapshots');
+      throw Errors.badRequest('No storage configured for snapshots');
     }
 
     const snapshot = await this.customStorage.loadSnapshot(name);

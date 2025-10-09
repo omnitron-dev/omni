@@ -10,6 +10,7 @@ import * as mysql from 'mysql2';
 import BetterSqlite3 from 'better-sqlite3';
 type Database = BetterSqlite3.Database;
 import { Injectable } from '../../decorators/index.js';
+import { Errors } from '../../errors/index.js';
 import type {
   DatabaseConnection,
   DatabaseDialect,
@@ -248,7 +249,7 @@ export class DatabaseManager implements IDatabaseManager {
       }
 
       default:
-        throw new Error(ERROR_MESSAGES.INVALID_DIALECT(config.dialect));
+        throw Errors.badRequest(ERROR_MESSAGES.INVALID_DIALECT(config.dialect));
     }
   }
 
@@ -300,7 +301,7 @@ export class DatabaseManager implements IDatabaseManager {
     const info = this.connections.get(name);
 
     if (!info) {
-      throw new Error(ERROR_MESSAGES.CONNECTION_NOT_FOUND(name));
+      throw Errors.notFound('Database connection', name);
     }
 
     if (!info.connected && !info.connecting) {
@@ -309,7 +310,7 @@ export class DatabaseManager implements IDatabaseManager {
     }
 
     if (!info.connected) {
-      throw new Error(ERROR_MESSAGES.CONNECTION_FAILED(name, info.lastError?.message || 'Unknown error'));
+      throw Errors.unavailable(name, info.lastError?.message || 'Unknown error');
     }
 
     return info.instance;
@@ -329,7 +330,7 @@ export class DatabaseManager implements IDatabaseManager {
   private async reconnect(name: string): Promise<void> {
     const info = this.connections.get(name);
     if (!info) {
-      throw new Error(ERROR_MESSAGES.CONNECTION_NOT_FOUND(name));
+      throw Errors.notFound('Database connection', name);
     }
 
     this.logger.info({ name }, 'Attempting to reconnect to database');

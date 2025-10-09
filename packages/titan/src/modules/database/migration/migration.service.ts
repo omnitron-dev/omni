@@ -11,6 +11,7 @@ import { Injectable, Inject } from '../../../decorators/index.js';
 import { Kysely, sql, Transaction } from 'kysely';
 import type { IDatabaseManager } from '../database.types.js';
 import { DATABASE_MANAGER, MIGRATIONS_TABLE, MIGRATIONS_LOCK_TABLE } from '../database.constants.js';
+import { Errors } from '../../../errors/index.js';
 import type {
   IMigration,
   MigrationMetadata,
@@ -131,7 +132,7 @@ export class MigrationService extends EventEmitter {
       if (!opts.dryRun) {
         const acquired = await this.lock.acquire(this.config.lockTimeout);
         if (!acquired) {
-          throw new Error('Could not acquire migration lock');
+          throw Errors.conflict('Could not acquire migration lock');
         }
         this.emit('lock.acquired' as MigrationEventType);
       }
@@ -155,7 +156,7 @@ export class MigrationService extends EventEmitter {
       for (const metadata of toRun) {
         const migration = await this.provider.getMigration(metadata.version);
         if (!migration) {
-          throw new Error(`Migration ${metadata.version} not found`);
+          throw Errors.notFound('Migration', metadata.version);
         }
 
         const migrationResult = await this.runMigration(
@@ -168,7 +169,7 @@ export class MigrationService extends EventEmitter {
         result.migrations.push(migrationResult);
 
         if (migrationResult.status === 'failed' && !opts.continueOnError) {
-          throw new Error(`Migration ${metadata.version} failed: ${migrationResult.error}`);
+          throw Errors.internal(`Migration ${metadata.version} failed: ${migrationResult.error}`);
         }
       }
 
@@ -215,7 +216,7 @@ export class MigrationService extends EventEmitter {
       if (!opts.dryRun) {
         const acquired = await this.lock.acquire(this.config.lockTimeout);
         if (!acquired) {
-          throw new Error('Could not acquire migration lock');
+          throw Errors.conflict('Could not acquire migration lock');
         }
         this.emit('lock.acquired' as MigrationEventType);
       }
@@ -228,7 +229,7 @@ export class MigrationService extends EventEmitter {
       if (opts.targetVersion) {
         const targetIndex = toRollback.findIndex(m => m.version === opts.targetVersion);
         if (targetIndex === -1) {
-          throw new Error(`Target version ${opts.targetVersion} not found in applied migrations`);
+          throw Errors.notFound('Target version', opts.targetVersion);
         }
         toRollback = toRollback.slice(0, targetIndex);
       } else if (opts.steps) {
@@ -245,12 +246,12 @@ export class MigrationService extends EventEmitter {
       for (const applied of toRollback) {
         const metadata = await this.provider.getMetadata(applied.version);
         if (!metadata) {
-          throw new Error(`Migration metadata for ${applied.version} not found`);
+          throw Errors.notFound('Migration metadata', applied.version);
         }
 
         const migration = await this.provider.getMigration(applied.version);
         if (!migration) {
-          throw new Error(`Migration ${applied.version} not found`);
+          throw Errors.notFound('Migration', applied.version);
         }
 
         const migrationResult = await this.runMigration(
@@ -263,7 +264,7 @@ export class MigrationService extends EventEmitter {
         result.migrations.push(migrationResult);
 
         if (migrationResult.status === 'failed' && !opts.continueOnError) {
-          throw new Error(`Rollback of ${metadata.version} failed: ${migrationResult.error}`);
+          throw Errors.internal(`Rollback of ${metadata.version} failed: ${migrationResult.error}`);
         }
       }
 
@@ -366,7 +367,7 @@ export class MigrationService extends EventEmitter {
    */
   async reset(connection?: string, force: boolean = false): Promise<MigrationResult> {
     if (!force) {
-      throw new Error('Reset requires force flag to prevent accidental data loss');
+      throw Errors.badRequest('Reset requires force flag to prevent accidental data loss');
     }
 
     const status = await this.status(connection);

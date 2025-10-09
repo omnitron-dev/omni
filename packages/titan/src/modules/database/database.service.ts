@@ -16,6 +16,7 @@ import {
 } from '@kysera/core';
 import { EventsService } from '../events/index.js';
 import { DatabaseManager } from './database.manager.js';
+import { Errors } from '../../errors/index.js';
 import {
   DATABASE_MANAGER,
   DATABASE_DEFAULT_CONNECTION,
@@ -179,7 +180,7 @@ export class DatabaseService {
       }
     }
 
-    throw new Error('Transaction failed after maximum retries');
+    throw Errors.internal('Transaction failed after maximum retries');
   }
 
   /**
@@ -284,7 +285,7 @@ export class DatabaseService {
     // For MySQL and SQLite, use ? placeholders
     const parts = sqlString.split('?');
     if (parts.length - 1 !== params.length) {
-      throw new Error(`Parameter count mismatch: expected ${parts.length - 1}, got ${params.length}`);
+      throw Errors.badRequest(`Parameter count mismatch: expected ${parts.length - 1}, got ${params.length}`);
     }
 
     // Build the SQL with bound parameters for MySQL/SQLite

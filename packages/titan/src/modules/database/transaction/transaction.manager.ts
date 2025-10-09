@@ -12,6 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { AsyncLocalStorage } from 'async_hooks';
 import { DATABASE_MANAGER } from '../database.constants.js';
 import type { IDatabaseManager, DatabaseDialect } from '../database.types.js';
+import { Errors } from '../../../errors/index.js';
 import {
   TransactionIsolationLevel,
   TransactionState,
@@ -119,7 +120,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
         return this.executeInNewTransaction(fn, opts);
 
       default:
-        throw new Error(`Unknown propagation: ${propagation}`);
+        throw Errors.badRequest(`Unknown propagation: ${propagation}`);
     }
   }
 
@@ -254,7 +255,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
   ): Promise<T> {
     const trx = this.connections.get(context.id);
     if (!trx) {
-      throw new Error(`Transaction connection not found: ${context.id}`);
+      throw Errors.notFound('Transaction connection', context.id);
     }
 
     return fn(trx);
@@ -270,7 +271,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
   ): Promise<T> {
     const parentTrx = this.connections.get(parentContext.id);
     if (!parentTrx) {
-      throw new Error(`Parent transaction connection not found: ${parentContext.id}`);
+      throw Errors.notFound('Parent transaction connection', parentContext.id);
     }
 
     const savepointName = `sp_${uuidv4().replace(/-/g, '_')}`;
@@ -445,7 +446,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
         // It uses DEFERRED, IMMEDIATE, or EXCLUSIVE
         break;
       default:
-        throw new Error(`Unsupported dialect for isolation level: ${dialect}`);
+        throw Errors.badRequest(`Unsupported dialect for isolation level: ${dialect}`);
     }
   }
 
@@ -469,7 +470,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
         // SQLite doesn't support read-only transactions at this level
         break;
       default:
-        throw new Error(`Unsupported dialect for read-only: ${dialect}`);
+        throw Errors.badRequest(`Unsupported dialect for read-only: ${dialect}`);
     }
   }
 
@@ -572,32 +573,32 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
   }
 
   async begin(options?: TransactionOptions): Promise<TransactionContext> {
-    throw new Error('Manual transaction management not yet implemented');
+    throw Errors.notImplemented('Manual transaction management');
   }
 
   async commit(): Promise<void> {
-    throw new Error('Manual transaction management not yet implemented');
+    throw Errors.notImplemented('Manual transaction management');
   }
 
   async rollback(error?: Error): Promise<void> {
-    throw new Error('Manual transaction management not yet implemented');
+    throw Errors.notImplemented('Manual transaction management');
   }
 
   async savepoint(name: string): Promise<void> {
     const trx = this.getCurrentTransactionConnection();
-    if (!trx) throw new Error('No active transaction');
+    if (!trx) throw Errors.conflict('No active transaction');
     await this.createSavepoint(trx, name);
   }
 
   async releaseSavepoint(name: string): Promise<void> {
     const trx = this.getCurrentTransactionConnection();
-    if (!trx) throw new Error('No active transaction');
+    if (!trx) throw Errors.conflict('No active transaction');
     await this.releaseSavepointInternal(trx, name);
   }
 
   async rollbackToSavepoint(name: string): Promise<void> {
     const trx = this.getCurrentTransactionConnection();
-    if (!trx) throw new Error('No active transaction');
+    if (!trx) throw Errors.conflict('No active transaction');
     await this.rollbackToSavepointInternal(trx, name);
   }
 
@@ -617,13 +618,13 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
 
   async setIsolationLevel(level: TransactionIsolationLevel): Promise<void> {
     const trx = this.getCurrentTransactionConnection();
-    if (!trx) throw new Error('No active transaction');
+    if (!trx) throw Errors.conflict('No active transaction');
     await this.setTransactionIsolationLevel(trx, level);
   }
 
   async setReadOnly(readOnly: boolean): Promise<void> {
     const trx = this.getCurrentTransactionConnection();
-    if (!trx) throw new Error('No active transaction');
+    if (!trx) throw Errors.conflict('No active transaction');
     await this.setTransactionReadOnly(trx, readOnly);
   }
 

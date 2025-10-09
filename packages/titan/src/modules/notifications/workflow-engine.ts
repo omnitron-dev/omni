@@ -1,4 +1,5 @@
 import { Injectable } from '../../decorators/index.js';
+import { Errors } from '../../errors/index.js';
 import { Redis } from 'ioredis';
 import { NotificationService, NotificationPayload, Recipient, SendOptions } from './notifications.service.js';
 import { generateUuid, sleep } from './utils.js';
@@ -151,7 +152,7 @@ export class WorkflowEngine {
   ): Promise<WorkflowResult> {
     const workflow = this.workflows.get(workflowId);
     if (!workflow) {
-      throw new Error(`Workflow not found: ${workflowId}`);
+      throw Errors.notFound('Workflow', workflowId);
     }
 
     const instance = this.createInstance(workflow, context);
@@ -289,7 +290,7 @@ export class WorkflowEngine {
         return this.executeBatchStep(step, instance);
 
       default:
-        throw new Error(`Unknown step type: ${step.type}`);
+        throw Errors.badRequest(`Unknown step type: ${step.type}`);
     }
   }
 
@@ -751,16 +752,16 @@ export class WorkflowEngine {
    */
   private validateWorkflow(workflow: NotificationWorkflow): void {
     if (!workflow.id) {
-      throw new Error('Workflow ID is required');
+      throw Errors.badRequest('Workflow ID is required');
     }
     if (!workflow.name) {
-      throw new Error('Workflow name is required');
+      throw Errors.badRequest('Workflow name is required');
     }
     if (!workflow.trigger) {
-      throw new Error('Workflow trigger is required');
+      throw Errors.badRequest('Workflow trigger is required');
     }
     if (!workflow.steps || workflow.steps.length === 0) {
-      throw new Error('Workflow must have at least one step');
+      throw Errors.badRequest('Workflow must have at least one step');
     }
   }
 

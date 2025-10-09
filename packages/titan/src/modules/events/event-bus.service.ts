@@ -8,6 +8,7 @@ import type { EventMetadata } from '@omnitron-dev/eventemitter';
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
 import { Inject, Injectable, Optional } from '../../decorators/index.js';
+import { Errors } from '../../errors/index.js';
 
 import { EVENT_EMITTER_TOKEN } from './tokens.js';
 import { LOGGER_TOKEN } from './tokens.js';
@@ -587,7 +588,7 @@ export class EventBusService {
   ): Promise<void> {
     const responseChannel = message.metadata?.['responseChannel'];
     if (!responseChannel) {
-      throw new Error('Cannot reply to message without responseChannel');
+      throw Errors.badRequest('Cannot reply to message without responseChannel');
     }
 
     await this.publish(responseChannel, data, {

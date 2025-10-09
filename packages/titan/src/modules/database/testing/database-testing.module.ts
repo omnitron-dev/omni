@@ -12,6 +12,7 @@ import { TitanDatabaseModule } from '../database.module.js';
 import { DatabaseManager } from '../database.manager.js';
 import { MigrationRunner } from '../migration/migration.runner.js';
 import { TransactionManager } from '../transaction/transaction.manager.js';
+import { Errors } from '../../../errors/index.js';
 import {
   DATABASE_MANAGER,
   DATABASE_MIGRATION_SERVICE,
@@ -321,7 +322,7 @@ export class DatabaseTestingService {
    */
   async createSavepoint(name: string): Promise<void> {
     if (!this.currentTransaction) {
-      throw new Error('Savepoints require transactional mode');
+      throw Errors.conflict('Savepoints require transactional mode');
     }
 
     await sql`SAVEPOINT ${sql.ref(name)}`.execute(this.currentTransaction);
@@ -332,7 +333,7 @@ export class DatabaseTestingService {
    */
   async rollbackToSavepoint(name: string): Promise<void> {
     if (!this.currentTransaction) {
-      throw new Error('Savepoints require transactional mode');
+      throw Errors.conflict('Savepoints require transactional mode');
     }
 
     await sql`ROLLBACK TO SAVEPOINT ${sql.ref(name)}`.execute(this.currentTransaction);

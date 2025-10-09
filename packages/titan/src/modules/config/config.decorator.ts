@@ -8,6 +8,7 @@ import 'reflect-metadata';
 import { Token, createToken } from '../../nexus/index.js';
 import { Inject } from '../../decorators/index.js';
 import { ZodType } from 'zod';
+import { Errors } from '../../errors/index.js';
 import { CONFIG_INJECT_METADATA_KEY, CONFIG_SCHEMA_METADATA_KEY } from './types.js';
 
 /**
@@ -170,7 +171,9 @@ export function ConfigValidate(schema: ZodType) {
       set(value) {
         const result = schema.safeParse(value);
         if (!result.success) {
-          throw new Error(`Validation failed for ${String(propertyKey)}: ${result.error.message}`);
+          throw Errors.badRequest(`Validation failed for ${String(propertyKey)}`, {
+            errors: result.error.issues
+          });
         }
         this[originalKey] = result.data;
       },

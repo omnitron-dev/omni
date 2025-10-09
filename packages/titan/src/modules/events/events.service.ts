@@ -13,6 +13,7 @@ import type {
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
 import { Inject, Injectable } from '../../decorators/index.js';
+import { Errors } from '../../errors/index.js';
 
 import { EventMetadataService } from './event-metadata.service.js';
 import { EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN } from './tokens.js';
@@ -555,7 +556,7 @@ export class EventsService {
               const testData = JSON.parse(JSON.stringify(data));
               const mockHandler = (d: any) => {
                 if (d.fail) {
-                  throw new Error('Transaction failed');
+                  throw Errors.internal('Transaction failed');
                 }
               };
               mockHandler(testData);
@@ -835,7 +836,7 @@ export class EventsService {
             }
           }
           // Should not reach here, but TypeScript needs this
-          throw new Error('Retry loop completed without success');
+          throw Errors.internal('Retry loop completed without success');
         } else {
           // Call handler with data and metadata
           return await handler(data, metadata, ...restArgs);

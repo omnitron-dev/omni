@@ -9,6 +9,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { Injectable } from '../../decorators/index.js';
+import { Errors } from '../../errors/index.js';
 
 import type {
   ConfigSource,
@@ -47,7 +48,10 @@ export class ConfigLoaderService implements IConfigLoader {
         }
       } catch (error) {
         if (!source.optional) {
-          throw new Error(`Failed to load required config source ${source.name || source.type}: ${error}`);
+          throw Errors.badRequest(`Failed to load required config source ${source.name || source.type}`, {
+            source: source.name || source.type,
+            error: error instanceof Error ? error.message : String(error)
+          });
         }
         // Skip optional sources that fail
       }
@@ -73,7 +77,9 @@ export class ConfigLoaderService implements IConfigLoader {
       case 'remote':
         return this.loadRemote(source);
       default:
-        throw new Error(`Unsupported configuration source type: ${(source as any).type}`);
+        throw Errors.badRequest(`Unsupported configuration source type: ${(source as any).type}`, {
+          type: (source as any).type
+        });
     }
   }
 
@@ -88,7 +94,7 @@ export class ConfigLoaderService implements IConfigLoader {
       if (source.optional) {
         return {};
       }
-      throw new Error(`Config file not found: ${filePath}`);
+      throw Errors.notFound('Config file', filePath);
     }
 
     // Read file content
@@ -117,7 +123,10 @@ export class ConfigLoaderService implements IConfigLoader {
         break;
 
       default:
-        throw new Error(`Unsupported config file format: ${format}`);
+        throw Errors.badRequest(`Unsupported config file format: ${format}`, {
+          format,
+          filePath
+        });
     }
 
     // Apply transformation if specified
@@ -219,7 +228,11 @@ export class ConfigLoaderService implements IConfigLoader {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw Errors.badRequest(`Failed to fetch remote config: HTTP ${response.status}`, {
+          url: source.url,
+          status: response.status,
+          statusText: response.statusText
+        });
       }
 
       const contentType = response.headers.get('content-type') || '';

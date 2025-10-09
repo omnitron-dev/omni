@@ -3,6 +3,7 @@
  */
 
 import 'reflect-metadata';
+import { Errors } from '../../errors/index.js';
 
 import {
   SCHEDULER_METADATA
@@ -64,7 +65,7 @@ export function Cron(expression: CronExpression, options?: ICronOptions): Method
 export function Interval(milliseconds: number, options?: IIntervalOptions): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     if (milliseconds <= 0) {
-      throw new Error('Interval must be greater than 0');
+      throw Errors.badRequest('Interval must be greater than 0', { milliseconds });
     }
 
     const metadata: IJobMetadata = {
@@ -109,7 +110,7 @@ export function Interval(milliseconds: number, options?: IIntervalOptions): Meth
 export function Timeout(milliseconds: number, options?: ITimeoutOptions): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     if (milliseconds < 0) {
-      throw new Error('Timeout must be non-negative');
+      throw Errors.badRequest('Timeout must be non-negative', { milliseconds });
     }
 
     const metadata: IJobMetadata = {

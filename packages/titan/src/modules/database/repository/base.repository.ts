@@ -15,6 +15,7 @@ import {
   paginateCursor,
   parseDatabaseError,
 } from '@kysera/core';
+import { Errors } from '../../../errors/index.js';
 import type {
   IBaseRepository,
   RepositoryConfig,
@@ -98,7 +99,12 @@ export class BaseRepository<
       return schema.parse(data) as T;
     } catch (error) {
       if (error instanceof z.ZodError) {
-        throw new Error(`Validation failed: ${error.message}`);
+        const fieldErrors = error.issues.map((e: any) => ({
+          field: e.path.join('.'),
+          message: e.message,
+          code: e.code
+        }));
+        throw Errors.validation(fieldErrors);
       }
       throw error;
     }
@@ -116,7 +122,12 @@ export class BaseRepository<
       return this.config.schemas.entity.parse(result) as T;
     } catch (error) {
       if (error instanceof z.ZodError) {
-        throw new Error(`Database result validation failed: ${error.message}`);
+        const fieldErrors = error.issues.map((e: any) => ({
+          field: e.path.join('.'),
+          message: e.message,
+          code: e.code
+        }));
+        throw Errors.validation(fieldErrors);
       }
       throw error;
     }

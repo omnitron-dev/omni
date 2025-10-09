@@ -17,6 +17,7 @@ import { timestampsPlugin } from '@kysera/timestamps';
 import { DatabaseManager } from '../database.manager.js';
 import { BaseRepository } from './base.repository.js';
 import { PluginManager } from '../plugins/plugin.manager.js';
+import { Errors } from '../../../errors/index.js';
 import {
   BUILT_IN_PLUGINS,
 } from '../database.constants.js';
@@ -200,7 +201,7 @@ export class RepositoryFactory implements IRepositoryFactory {
         return this.repositories.get(target) as T;
       }
 
-      throw new Error(`Repository for ${target.name || target} is not registered`);
+      throw Errors.notFound('Repository', target.name || target);
     }
 
     return repository as T;
@@ -226,7 +227,7 @@ export class RepositoryFactory implements IRepositoryFactory {
   createWithTransaction<T = any>(target: any, transaction: Transaction<any>): T {
     const metadata = this.metadata.get(target);
     if (!metadata) {
-      throw new Error(`Repository metadata for ${target.name || target} not found`);
+      throw Errors.notFound('Repository metadata', target.name || target);
     }
 
     // Create repository config from metadata
@@ -326,7 +327,7 @@ export class RepositoryFactory implements IRepositoryFactory {
         getRepository: <T = any>(target: any): T => {
           const metadata = this.metadata.get(target);
           if (!metadata) {
-            throw new Error(`Repository metadata for ${target.name || target} not found`);
+            throw Errors.notFound('Repository metadata', target.name || target);
           }
 
           const config: RepositoryConfig = {

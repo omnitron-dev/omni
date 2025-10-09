@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { Redis, Cluster } from 'ioredis';
+import { Errors } from '../../errors/index.js';
 
 import { RedisClient, RedisClientOptions } from './redis.types.js';
 
@@ -27,7 +28,7 @@ export function getClientNamespace(options: RedisClientOptions): string {
 export function createRedisClient(options: RedisClientOptions = {}): RedisClient {
   if (options.cluster) {
     if (!options.cluster.nodes || options.cluster.nodes.length === 0) {
-      throw new Error('Cluster configuration requires nodes');
+      throw Errors.badRequest('Cluster configuration requires nodes');
     }
     return new Cluster(options.cluster.nodes, {
       enableReadyCheck: true,

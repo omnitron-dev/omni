@@ -1,5 +1,6 @@
 import { getRedisClientToken, REDIS_MANAGER } from './redis.constants.js';
 import { LockOptions, CacheOptions, RateLimitOptions } from './redis.types.js';
+import { Errors } from '../../errors/index.js';
 
 // Simple parameter decorator for dependency injection
 function createInjectDecorator(token: string | symbol): ParameterDecorator {
@@ -190,7 +191,7 @@ export function RedisLock(options?: LockOptions): MethodDecorator {
         }
       }
 
-      throw new Error(`Failed to acquire lock for key: ${fullKey}`);
+      throw Errors.timeout(`Lock acquisition for key: ${fullKey}`, retries * retryDelay);
     };
 
     return descriptor;
@@ -266,13 +267,13 @@ export function RedisRateLimit(options: RateLimitOptions): MethodDecorator {
           await client.setex(blockKey, Math.ceil(options.blockDuration / 1000), '1');
         }
 
-        throw new Error(`Rate limit exceeded: ${count}/${limit} requests`);
+        throw Errors.tooManyRequests();
       }
 
       // Check if blocked
       const blocked = await client.get(`${key}:blocked`);
       if (blocked) {
-        throw new Error('Rate limit blocked');
+        throw Errors.tooManyRequests();
       }
 
       return originalMethod.apply(this, args);

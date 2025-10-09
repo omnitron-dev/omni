@@ -6,6 +6,7 @@
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { Inject, Optional, Injectable } from '../../decorators/index.js';
+import { Errors } from '../../errors/index.js';
 
 import {
   ERROR_MESSAGES,
@@ -66,7 +67,7 @@ export class SchedulerRegistry {
   ): IScheduledJob {
     // Check if job already exists
     if (this.hasJob(name)) {
-      throw new Error(`${ERROR_MESSAGES.JOB_ALREADY_EXISTS}: ${name}`);
+      throw Errors.conflict(`${ERROR_MESSAGES.JOB_ALREADY_EXISTS}: ${name}`);
     }
 
     const job: IScheduledJob = {
@@ -116,7 +117,7 @@ export class SchedulerRegistry {
   updateJobStatus(name: string, status: JobStatus): void {
     const job = this.jobs.get(name);
     if (!job) {
-      throw new Error(`${ERROR_MESSAGES.JOB_NOT_FOUND}: ${name}`);
+      throw Errors.notFound('Scheduled job', name);
     }
 
     // Remove from old status set
@@ -145,7 +146,7 @@ export class SchedulerRegistry {
   ): void {
     const job = this.jobs.get(name);
     if (!job) {
-      throw new Error(`${ERROR_MESSAGES.JOB_NOT_FOUND}: ${name}`);
+      throw Errors.notFound('Scheduled job', name);
     }
 
     if (execution.lastExecution) {
@@ -184,7 +185,7 @@ export class SchedulerRegistry {
   markJobRunning(name: string, isRunning: boolean): void {
     const job = this.jobs.get(name);
     if (!job) {
-      throw new Error(`${ERROR_MESSAGES.JOB_NOT_FOUND}: ${name}`);
+      throw Errors.notFound('Scheduled job', name);
     }
     job.isRunning = isRunning;
     job.updatedAt = new Date();

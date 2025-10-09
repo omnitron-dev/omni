@@ -1,4 +1,5 @@
 import { Injectable } from '../../decorators/index.js';
+import { Errors } from '../../errors/index.js';
 import { NotificationPayload, Recipient, SendOptions } from './notifications.service.js';
 
 export enum ChannelType {
@@ -236,7 +237,7 @@ export class EmailChannel implements NotificationChannel {
 
   async send(recipient: Recipient, content: ChannelContent): Promise<void> {
     if (!recipient.email) {
-      throw new Error('Recipient email not provided');
+      throw Errors.badRequest('Recipient email not provided');
     }
 
     // In real implementation, would send via email service
@@ -275,7 +276,7 @@ export class SMSChannel implements NotificationChannel {
 
   async send(recipient: Recipient, content: ChannelContent): Promise<void> {
     if (!recipient.phone) {
-      throw new Error('Recipient phone not provided');
+      throw Errors.badRequest('Recipient phone not provided');
     }
 
     // In real implementation, would send via SMS service

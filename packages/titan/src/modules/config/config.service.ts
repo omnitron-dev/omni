@@ -6,6 +6,7 @@
 
 import { Injectable, Inject, Optional } from '../../decorators/index.js';
 import { ZodType } from 'zod';
+import { Errors } from '../../errors/index.js';
 
 import {
   CONFIG_OPTIONS_TOKEN,
@@ -89,7 +90,9 @@ export class ConfigService implements IConfigProvider {
       if (this.options.validateOnStartup && this.schema) {
         const result = this.validator.validate(this.config, this.schema);
         if (!result.success) {
-          throw new Error(`Configuration validation failed: ${JSON.stringify(result.errors)}`);
+          throw Errors.badRequest('Configuration validation failed', {
+            errors: result.errors
+          });
         }
         this.metadata.validated = true;
       }
@@ -189,7 +192,9 @@ export class ConfigService implements IConfigProvider {
     const result = schema.safeParse(value);
 
     if (!result.success) {
-      throw new Error(`Configuration validation failed for ${path || 'root'}: ${result.error.message}`);
+      throw Errors.badRequest(`Configuration validation failed for ${path || 'root'}`, {
+        errors: result.error.issues
+      });
     }
 
     return result.data;
@@ -244,7 +249,9 @@ export class ConfigService implements IConfigProvider {
       if (!result.success) {
         // Restore old config on validation failure
         this.config = oldConfig;
-        throw new Error(`Configuration validation failed: ${JSON.stringify(result.errors)}`);
+        throw Errors.badRequest('Configuration validation failed', {
+          errors: result.errors
+        });
       }
     }
 

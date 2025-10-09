@@ -8,6 +8,7 @@ import { promises as fs } from 'fs';
 import { join, resolve, basename, extname } from 'path';
 import { pathToFileURL } from 'url';
 import { Injectable } from '../../../decorators/index.js';
+import { Errors } from '../../../errors/index.js';
 import type {
   IPluginLoader,
   ITitanPlugin,
@@ -43,7 +44,7 @@ export class PluginLoader implements IPluginLoader {
         return await this.loadFromFile(path);
       }
     } catch (error) {
-      throw new Error(`Failed to load plugin from "${path}": ${error}`);
+      throw Errors.internal(`Failed to load plugin from "${path}"`, error as Error);
     }
   }
 
@@ -57,7 +58,7 @@ export class PluginLoader implements IPluginLoader {
     try {
       await fs.access(resolvedPath);
     } catch {
-      throw new Error(`Plugin file not found: ${resolvedPath}`);
+      throw Errors.notFound('Plugin file', resolvedPath);
     }
 
     // Import the module
@@ -89,7 +90,7 @@ export class PluginLoader implements IPluginLoader {
 
       return plugin;
     } catch (error) {
-      throw new Error(`Failed to load plugin package "${packageName}": ${error}`);
+      throw Errors.internal(`Failed to load plugin package "${packageName}"`, error as Error);
     }
   }
 
@@ -127,7 +128,7 @@ export class PluginLoader implements IPluginLoader {
       return this.ensureTitanPlugin(module, name);
     }
 
-    throw new Error(`No valid plugin export found in module`);
+    throw Errors.badRequest('No valid plugin export found in module');
   }
 
   /**
@@ -190,7 +191,7 @@ export class PluginLoader implements IPluginLoader {
     try {
       await fs.access(resolvedDir);
     } catch {
-      throw new Error(`Plugin directory not found: ${resolvedDir}`);
+      throw Errors.notFound('Plugin directory', resolvedDir);
     }
 
     // Read directory contents
@@ -286,7 +287,7 @@ export class PluginLoader implements IPluginLoader {
   createFromFactory(name: string, options?: any): ITitanPlugin {
     const factory = this.pluginFactories.get(name);
     if (!factory) {
-      throw new Error(`Plugin factory "${name}" not found`);
+      throw Errors.notFound('Plugin factory', name);
     }
 
     return this.ensureTitanPlugin(factory(options), name);
@@ -349,12 +350,12 @@ export class PluginLoader implements IPluginLoader {
       const config = JSON.parse(content);
 
       if (!Array.isArray(config.plugins)) {
-        throw new Error('Invalid plugin configuration: plugins must be an array');
+        throw Errors.badRequest('Invalid plugin configuration: plugins must be an array');
       }
 
       return config.plugins;
     } catch (error) {
-      throw new Error(`Failed to load plugin configuration from "${configPath}": ${error}`);
+      throw Errors.internal(`Failed to load plugin configuration from "${configPath}"`, error as Error);
     }
   }
 

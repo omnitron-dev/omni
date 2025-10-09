@@ -7,6 +7,7 @@
 import type { ITitanPlugin } from '../plugin.types.js';
 import type { Kysely, UpdateQueryBuilder, InsertQueryBuilder } from 'kysely';
 import { sql } from 'kysely';
+import { Errors } from '../../../../errors/index.js';
 
 export interface OptimisticLockingOptions {
   /**
@@ -70,14 +71,14 @@ export function optimisticLockingPlugin(
         // Get current record
         const current = await this.findById(id);
         if (!current) {
-          throw new Error(`Record with id ${id} not found`);
+          throw Errors.notFound('Record', String(id));
         }
 
         // Check version if provided
         if (expectedVersion !== undefined) {
           if (current[versionColumn] !== expectedVersion) {
             if (strict) {
-              throw new Error(
+              throw Errors.conflict(
                 `Version mismatch: expected ${expectedVersion}, got ${current[versionColumn]}`
               );
             }
@@ -101,7 +102,7 @@ export function optimisticLockingPlugin(
           .executeTakeFirst();
 
         if (!result && strict) {
-          throw new Error('Concurrent update detected');
+          throw Errors.conflict('Concurrent update detected');
         }
 
         return result;
@@ -115,12 +116,12 @@ export function optimisticLockingPlugin(
         if (expectedVersion !== undefined) {
           const current = await this.findById(id);
           if (!current) {
-            throw new Error(`Record with id ${id} not found`);
+            throw Errors.notFound('Record', String(id));
           }
 
           if (current[versionColumn] !== expectedVersion) {
             if (strict) {
-              throw new Error(
+              throw Errors.conflict(
                 `Version mismatch: expected ${expectedVersion}, got ${current[versionColumn]}`
               );
             }
@@ -147,7 +148,7 @@ export function optimisticLockingPlugin(
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
           const current = await this.findById(id);
           if (!current) {
-            throw new Error(`Record with id ${id} not found`);
+            throw Errors.notFound('Record', String(id));
           }
 
           const updated = updateFn(current);
@@ -158,7 +159,7 @@ export function optimisticLockingPlugin(
           }
 
           if (attempt === maxRetries) {
-            throw new Error(`Failed to update after ${maxRetries} attempts`);
+            throw Errors.conflict(`Failed to update after ${maxRetries} attempts`);
           }
 
           // Wait before retry with exponential backoff

@@ -8,6 +8,7 @@ import { EventEmitter } from 'events';
 import { Injectable, Inject } from '../../../decorators/index.js';
 import type { Kysely, Transaction } from 'kysely';
 import type { Plugin as KyseraPlugin } from '@kysera/repository';
+import { Errors } from '../../../errors/index.js';
 
 // Built-in Kysera plugins
 import { softDeletePlugin } from '@kysera/soft-delete';
@@ -170,7 +171,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
   ): void {
     // Check if already registered
     if (this.registry.has(name)) {
-      throw new Error(`Plugin "${name}" is already registered`);
+      throw Errors.conflict(`Plugin "${name}" is already registered`);
     }
 
     // Convert Kysera plugin to Titan plugin if needed
@@ -246,7 +247,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
    */
   private validatePlugin(plugin: ITitanPlugin): void {
     if (!plugin.name) {
-      throw new Error('Plugin must have a name');
+      throw Errors.badRequest('Plugin must have a name');
     }
 
     // Check for required methods (at least one extension method)
@@ -256,7 +257,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
       plugin.extendTransaction;
 
     if (!hasExtension) {
-      throw new Error(
+      throw Errors.badRequest(
         `Plugin "${plugin.name}" must implement at least one extension method`
       );
     }
@@ -265,7 +266,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
     if (plugin.dependencies) {
       for (const dep of plugin.dependencies) {
         if (!this.registry.has(dep)) {
-          throw new Error(
+          throw Errors.badRequest(
             `Plugin "${plugin.name}" depends on unregistered plugin "${dep}"`
           );
         }
@@ -294,7 +295,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
   async initializePlugin(name: string, options?: any): Promise<void> {
     const entry = this.registry.get(name);
     if (!entry) {
-      throw new Error(`Plugin "${name}" not found`);
+      throw Errors.notFound('Plugin', name);
     }
 
     if (entry.state === PluginState.INITIALIZED || entry.state === PluginState.ACTIVE) {
@@ -358,7 +359,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
         error: error as Error,
       });
 
-      throw new Error(`Failed to initialize plugin "${name}": ${error}`);
+      throw Errors.internal(`Failed to initialize plugin "${name}"`, error as Error);
     }
   }
 
@@ -542,7 +543,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
   enablePlugin(name: string): void {
     const entry = this.registry.get(name);
     if (!entry) {
-      throw new Error(`Plugin "${name}" not found`);
+      throw Errors.notFound('Plugin', name);
     }
 
     if (!entry.config) {
@@ -564,7 +565,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
   disablePlugin(name: string): void {
     const entry = this.registry.get(name);
     if (!entry) {
-      throw new Error(`Plugin "${name}" not found`);
+      throw Errors.notFound('Plugin', name);
     }
 
     if (!entry.config) {
@@ -632,7 +633,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
     if (name) {
       const entry = this.registry.get(name);
       if (!entry || !entry.metrics) {
-        throw new Error(`Metrics not available for plugin "${name}"`);
+        throw Errors.notFound(`Metrics for plugin`, name);
       }
       return entry.metrics;
     }
@@ -683,7 +684,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
     if (typeof config.plugin === 'string') {
       // Load from file or package
       if (!this.loader) {
-        throw new Error('Plugin loader not configured');
+        throw Errors.internal('Plugin loader not configured');
       }
 
       const plugin = await this.loader.loadPlugin(config.plugin);

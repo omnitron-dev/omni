@@ -6,6 +6,7 @@
 
 import { z } from 'zod';
 import type { ITitanPlugin } from '../plugin.types.js';
+import { Errors } from '../../../../errors/index.js';
 
 export interface ValidationOptions {
   /**
@@ -91,11 +92,12 @@ export function validationPlugin(options: ValidationOptions = {}): ITitanPlugin 
           }
         } catch (error) {
           if (error instanceof z.ZodError) {
-            const message = formatError(error.issues);
-            const validationError = new Error(message) as any;
-            validationError.name = 'ValidationError';
-            validationError.errors = error.issues;
-            throw validationError;
+            const fieldErrors = error.issues.map(e => ({
+              field: String(e.path.join('.')),
+              message: e.message,
+              code: e.code
+            }));
+            throw Errors.validation(fieldErrors);
           }
           throw error;
         }
@@ -172,7 +174,7 @@ export function validationPlugin(options: ValidationOptions = {}): ITitanPlugin 
         for (const [table, schemas] of Object.entries(options.schemas)) {
           for (const [type, schema] of Object.entries(schemas)) {
             if (schema && !(schema instanceof z.ZodType)) {
-              throw new Error(
+              throw Errors.badRequest(
                 `Invalid schema for ${table}.${type}: must be a Zod schema`
               );
             }

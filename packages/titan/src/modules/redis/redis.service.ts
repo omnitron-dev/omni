@@ -1,5 +1,6 @@
 import { Redis, ChainableCommander } from 'ioredis';
 import { isCluster } from './redis.utils.js';
+import { Errors } from '../../errors/index.js';
 import { RedisClient } from './redis.types.js';
 import { RedisManager } from './redis.manager.js';
 
@@ -13,7 +14,7 @@ export class RedisService {
   getOrThrow(namespace?: string): RedisClient {
     const client = this.getClient(namespace);
     if (!client) {
-      throw new Error(`Redis client "${namespace || 'default'}" not found`);
+      throw Errors.notFound('Redis client', namespace || 'default');
     }
     return client;
   }

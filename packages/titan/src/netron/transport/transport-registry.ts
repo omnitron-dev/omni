@@ -8,6 +8,7 @@ import { ITransport, ITransportRegistry, TransportFactory } from './types.js';
 import { WebSocketTransport } from './websocket-transport.js';
 import { TcpTransport } from './tcp-transport.js';
 import { UnixSocketTransport } from './unix-transport.js';
+import { Errors } from '../../errors/index.js';
 
 /**
  * Global transport registry implementation
@@ -54,11 +55,11 @@ export class TransportRegistry implements ITransportRegistry {
    */
   register(name: string, factory: TransportFactory): void {
     if (!name || name.trim() === '') {
-      throw new Error('Transport name cannot be empty');
+      throw Errors.badRequest('Transport name cannot be empty');
     }
 
     if (typeof factory !== 'function') {
-      throw new Error('Transport factory must be a function');
+      throw Errors.badRequest('Transport factory must be a function', { type: typeof factory });
     }
 
     // Allow overriding existing transport

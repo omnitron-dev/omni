@@ -18,6 +18,7 @@ import {
 } from './types.js';
 import { TransportRegistry, getTransportForAddress } from './transport-registry.js';
 import { Packet, encodePacket } from '../packet/index.js';
+import { Errors } from '../../errors/index.js';
 
 /**
  * Binary transport adapter
@@ -77,7 +78,7 @@ export class BinaryTransportAdapter extends EventEmitter {
 
   set binaryType(type: string) {
     if (type !== 'nodebuffer' && type !== 'arraybuffer') {
-      throw new Error('Invalid binary type');
+      throw Errors.badRequest('Invalid binary type', { type, allowed: ['nodebuffer', 'arraybuffer'] });
     }
     this._binaryType = type as 'nodebuffer' | 'arraybuffer';
   }
@@ -149,7 +150,7 @@ export class BinaryTransportAdapter extends EventEmitter {
     } else if (typeof data === 'string') {
       buffer = Buffer.from(data);
     } else {
-      const error = new Error('Invalid data type');
+      const error = Errors.badRequest('Invalid data type', { type: typeof data });
       if (callback) callback(error);
       else throw error;
       return;
@@ -222,7 +223,7 @@ export class TransportConnectionFactory {
     // Get appropriate transport for address
     const transport = getTransportForAddress(address);
     if (!transport) {
-      throw new Error(`No transport available for address: ${address}`);
+      throw Errors.notFound('Transport', address);
     }
 
     // Create connection using transport
@@ -346,7 +347,7 @@ class NativeWebSocketWrapper extends EventEmitter implements ITransportConnectio
 
       const timeout = setTimeout(() => {
         this.ws.removeListener('pong', pongHandler);
-        reject(new Error('Ping timeout'));
+        reject(Errors.timeout('Ping', 5000));
       }, 5000);
 
       const pongHandler = () => {
@@ -385,7 +386,7 @@ export class TransportAdapter {
     // First try to detect the protocol from the address format
     const match = address.match(/^([a-z]+):\/\//i);
     if (!match || !match[1]) {
-      throw new Error(`Invalid address format: ${address}`);
+      throw Errors.badRequest('Invalid address format', { address });
     }
 
     const protocol = match[1].toLowerCase();
@@ -393,7 +394,7 @@ export class TransportAdapter {
     // Then check if we have a transport for this protocol
     const transport = this.registry.getByProtocol(protocol);
     if (!transport) {
-      throw new Error(`No transport found for protocol: ${protocol}`);
+      throw Errors.notFound('Transport', protocol);
     }
 
     return transport.connect(address, options);
@@ -405,11 +406,11 @@ export class TransportAdapter {
   async createServer(transportName: string, options?: TransportOptions): Promise<ITransportServer> {
     const transport = this.registry.get(transportName);
     if (!transport) {
-      throw new Error(`Transport not found: ${transportName}`);
+      throw Errors.notFound('Transport', transportName);
     }
 
     if (!transport.createServer) {
-      throw new Error(`Transport ${transportName} does not support server mode`);
+      throw Errors.notImplemented(`Transport ${transportName} server mode`);
     }
 
     return transport.createServer(options);
@@ -441,12 +442,12 @@ export class TransportAdapter {
   parseAddress(address: string): TransportAddress {
     const protocol = this.detectProtocol(address);
     if (!protocol) {
-      throw new Error(`Invalid address format: ${address}`);
+      throw Errors.badRequest('Invalid address format', { address });
     }
 
     const transport = this.registry.getByProtocol(protocol);
     if (!transport) {
-      throw new Error(`No transport found for protocol: ${protocol}`);
+      throw Errors.notFound('Transport', protocol);
     }
 
     return transport.parseAddress(address);

@@ -4,6 +4,7 @@
 
 import { ValidationEngine, CompiledValidator, ValidationOptions } from './validation-engine.js';
 import { Contract, MethodContract } from './contract.js';
+import { Errors } from '../errors/index.js';
 
 /**
  * Method wrapper type
@@ -33,14 +34,14 @@ export class ValidationMiddleware {
     if (!contract || (!contract.input && !contract.output)) {
       const original = target[method];
       if (!original) {
-        throw new Error(`Method ${method} not found on target`);
+        throw Errors.notFound('Method', method);
       }
       return original.bind(target);
     }
 
     const original = target[method];
     if (!original) {
-      throw new Error(`Method ${method} not found on target`);
+      throw Errors.notFound('Method', method);
     }
 
     // Compile validators if needed
@@ -133,7 +134,7 @@ export class ValidationMiddleware {
 
         // Ensure we have an async generator
         if (!result || typeof result[Symbol.asyncIterator] !== 'function') {
-          throw new Error('Stream method must return an async generator');
+          throw Errors.badRequest('Stream method must return an async generator');
         }
 
         generator = result;

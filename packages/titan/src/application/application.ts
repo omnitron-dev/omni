@@ -6,6 +6,7 @@ import os from 'node:os';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { Token, Container, createToken, InjectionToken, Provider } from '../nexus/index.js';
 import { Netron, type NetronOptions } from '../netron/index.js';
+import { Errors } from '../errors/index.js';
 
 import { ConfigModule, CONFIG_SERVICE_TOKEN } from '../modules/config/index.js';
 import { LoggerModule, LOGGER_SERVICE_TOKEN } from '../modules/logger/index.js';
@@ -222,12 +223,12 @@ export class Application implements IApplication {
 
     if (this._state !== ApplicationState.Created && this._state !== ApplicationState.Stopped) {
       if (this._state === ApplicationState.Started) {
-        throw new Error('Application is already started or starting');
+        throw Errors.conflict('Application is already started or starting');
       }
       if (this._state === ApplicationState.Failed) {
-        throw new Error('Cannot start from failed state');
+        throw Errors.conflict('Cannot start from failed state');
       }
-      throw new Error(`Cannot start application in state: ${this._state}`);
+      throw Errors.conflict(`Cannot start application in state: ${this._state}`);
     }
 
     // Create and track the start promise
@@ -609,7 +610,7 @@ export class Application implements IApplication {
   replaceModule<T extends IModule = IModule>(nameOrToken: string | Token<T>, module: T): this {
     // Prevent module replacement after the application has started
     if (this._isStarted || this._state === ApplicationState.Started || this._state === ApplicationState.Starting) {
-      throw new Error('Cannot replace modules after application has started');
+      throw Errors.conflict('Cannot replace modules after application has started');
     }
 
     // Find the token if string name provided
@@ -710,7 +711,7 @@ export class Application implements IApplication {
 
     // Validate that we have a module instance
     if (!moduleInstance) {
-      throw new Error('Failed to create module instance from provided input');
+      throw Errors.internal('Failed to create module instance from provided input');
     }
 
     // Get module metadata from @Module decorator
@@ -912,7 +913,7 @@ export class Application implements IApplication {
           return module as T;
         }
       }
-      throw new Error(`Module not found: ${nameOrToken}`);
+      throw Errors.notFound('Module', nameOrToken);
     }
 
     // Otherwise use token
@@ -929,7 +930,7 @@ export class Application implements IApplication {
         // Module not found
       }
 
-      throw new Error(`Module not found: ${token.name}`);
+      throw Errors.notFound('Module', token.name);
     }
 
     return this._modules.get(token) as T;
@@ -1593,7 +1594,7 @@ export class Application implements IApplication {
       return resolved;
     } catch {
       // Provide a better error message
-      throw new Error(`Module not found: ${token.name || token.toString()}`);
+      throw Errors.notFound('Module', token.name || token.toString());
     }
   }
 
@@ -1646,7 +1647,7 @@ export class Application implements IApplication {
   async registerDynamic(module: IModule): Promise<void> {
     // Check if app is running
     if (this._state !== ApplicationState.Started) {
-      throw new Error('Application must be running to register dynamic modules');
+      throw Errors.conflict('Application must be running to register dynamic modules');
     }
 
     // Check dependencies
@@ -1655,12 +1656,12 @@ export class Application implements IApplication {
         // Convert dependency to appropriate type for hasModule
         if (typeof dep === 'string') {
           if (!this.hasModule(dep)) {
-            throw new Error(`Module ${module.name} requires missing dependency: ${dep}`);
+            throw Errors.notFound('Module dependency', `${module.name} requires ${dep}`);
           }
         } else if (dep && typeof dep === 'object' && 'id' in dep) {
           // It's a Token
           if (!this.hasModule(dep as Token<any>)) {
-            throw new Error(`Module ${module.name} requires missing dependency: ${dep.toString()}`);
+            throw Errors.notFound('Module dependency', `${module.name} requires ${dep.toString()}`);
           }
         }
         // Skip other types of dependencies (symbols, constructors, etc)
@@ -1838,7 +1839,7 @@ export class Application implements IApplication {
       }
 
       if (visiting.has(token)) {
-        throw new Error(`Circular dependency detected in module: ${token.name}`);
+        throw Errors.conflict(`Circular dependency detected in module: ${token.name}`);
       }
 
       visiting.add(token);
@@ -2129,7 +2130,7 @@ export class Application implements IApplication {
     // Add timeout
     const timeoutPromise = new Promise<void>((_, reject) => {
       setTimeout(() => {
-        reject(new Error(`Shutdown timeout after ${this._shutdownTimeout}ms`));
+        reject(Errors.timeout('Shutdown', this._shutdownTimeout));
       }, this._shutdownTimeout);
     });
 
@@ -2191,7 +2192,7 @@ export class Application implements IApplication {
 
         if (task.timeout) {
           const timeoutPromise = new Promise<void>((_, reject) => {
-            setTimeout(() => reject(new Error(`Task timeout: ${task.name}`)), task.timeout);
+            setTimeout(() => reject(Errors.timeout(`Task ${task.name}`, task.timeout!)), task.timeout);
           });
           taskPromise = Promise.race([taskPromise, timeoutPromise]);
         }
@@ -2208,7 +2209,7 @@ export class Application implements IApplication {
         // Continue with other tasks even if one fails
         if (task.critical) {
           // Critical task failed, abort shutdown
-          throw new Error(`Critical shutdown task failed: ${task.name}`);
+          throw Errors.internal(`Critical shutdown task failed: ${task.name}`);
         }
       }
     }
@@ -2384,7 +2385,7 @@ export class Application implements IApplication {
 
                   // Validate that module has required properties
                   if (!moduleInstance.name) {
-                    const error = new Error(`Module ${exported.name || exportName} is missing required 'name' property`);
+                    const error = Errors.badRequest(`Module ${exported.name || exportName} is missing required 'name' property`);
                     validationErrors.push(error);
                     this._logger?.warn(`Invalid module: ${error.message}`);
                     continue;
@@ -2400,7 +2401,7 @@ export class Application implements IApplication {
                     this._logger?.debug(`Registered module: ${moduleInstance.name}`);
                   }
                 } catch (err: any) {
-                  const error = new Error(`Failed to instantiate module ${exported.name}: ${err.message}`);
+                  const error = Errors.internal(`Failed to instantiate module ${exported.name}: ${err.message}`);
                   validationErrors.push(error);
                   this._logger?.warn(error.message);
                 }
@@ -2431,14 +2432,14 @@ export class Application implements IApplication {
       const hasInvalidModules = validationErrors.some(e => e.message.includes('missing required'));
       if (hasInvalidModules) {
         const errorMessages = validationErrors.map(e => e.message).join('; ');
-        throw new Error(`Module discovery failed: ${errorMessages}`);
+        throw Errors.badRequest(`Module discovery failed: ${errorMessages}`);
       }
     }
 
     // Also throw for critical errors (syntax errors)
     if (criticalErrors.length > 0) {
       const errorMessages = criticalErrors.map(e => e.message).join('; ');
-      throw new Error(`Module discovery failed with ${criticalErrors.length} critical error(s): ${errorMessages}`);
+      throw Errors.internal(`Module discovery failed with ${criticalErrors.length} critical error(s): ${errorMessages}`);
     }
 
     return modules;
@@ -2523,7 +2524,7 @@ export class Application implements IApplication {
     return Promise.race([
       promise,
       new Promise<T>((_, reject) => {
-        setTimeout(() => reject(new Error(message)), timeout);
+        setTimeout(() => reject(Errors.timeout(message, timeout)), timeout);
       })
     ]);
   }

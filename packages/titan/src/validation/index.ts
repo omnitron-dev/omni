@@ -1,5 +1,9 @@
 /**
  * Validation module exports
+ *
+ * For usage guide and examples, see ./README.md
+ * For Netron integration details, see ./INTEGRATION.md
+ * For architectural decisions, see ./ADR-001-VALIDATION-ARCHITECTURE.md
  */
 
 export { ValidationEngine, ValidationError, ServiceError } from './validation-engine.js';

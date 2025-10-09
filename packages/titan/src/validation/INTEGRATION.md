@@ -1791,6 +1791,7 @@ The Titan validation subsystem provides a robust, high-performance solution for 
 - **Full Documentation**: OpenAPI generation and contract discovery
 
 For more information, see:
+- [Validation Subsystem README](./README.md) - Complete guide and API reference
 - [Validation Engine API](./validation-engine.ts)
 - [Contract API](./contract.ts)
 - [Validation Middleware](./validation-middleware.ts)

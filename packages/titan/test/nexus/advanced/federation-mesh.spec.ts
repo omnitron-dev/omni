@@ -554,7 +554,7 @@ describe('Service Mesh', () => {
         return 'too-late';
       };
 
-      await expect(breaker.call(slowCall)).rejects.toThrow('Request timeout');
+      await expect(breaker.call(slowCall)).rejects.toThrow(/timed out after/);
     });
   });
 

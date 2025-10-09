@@ -420,7 +420,7 @@ describe('Titan Application', () => {
       app = createApp();
       const token = createToken<TestModule>('nonexistent');
 
-      expect(() => app.get(token)).toThrow('Module not found: nonexistent');
+      expect(() => app.get(token)).toThrow('Module with id nonexistent not found');
     });
 
     it('should configure modules with config', () => {

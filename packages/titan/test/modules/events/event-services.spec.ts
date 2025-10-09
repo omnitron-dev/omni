@@ -259,7 +259,7 @@ describe('EventBusService', () => {
     it('should timeout on no response', async () => {
       await expect(
         service.request('no-handler', 'data', { timeout: 100 })
-      ).rejects.toThrow('timeout');
+      ).rejects.toThrow(/timed out after/);
     });
   });
 

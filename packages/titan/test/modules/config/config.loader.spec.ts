@@ -451,7 +451,7 @@ database.port=5432
         data: {}
       };
 
-      await expect(loader.load(source as any)).rejects.toThrow('Unsupported configuration source type');
+      await expect(loader.load(source as any)).rejects.toThrow(/Failed to load required config source/);
     });
 
     it('should handle file read errors', async () => {

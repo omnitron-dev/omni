@@ -89,7 +89,7 @@ describe('Titan Application Edge Cases', () => {
       };
 
       // Should catch and throw module not found (covers lines 304-305, 334)
-      expect(() => app.get(NonExistentToken)).toThrow('Module not found: NonExistent');
+      expect(() => app.get(NonExistentToken)).toThrow('Module with id NonExistent not found');
 
       // Restore
       app.container.resolve = originalResolve.bind(app.container);

@@ -219,7 +219,7 @@ describe('EventsService', () => {
       await new Promise(resolve => setTimeout(resolve, 60));
       
       expect(errorHandler).toHaveBeenCalledWith(
-        expect.objectContaining({ message: expect.stringContaining('timeout') }),
+        expect.objectContaining({ message: expect.stringContaining('timed out after') }),
         {},
         expect.any(Object)
       );
@@ -359,7 +359,7 @@ describe('EventsService', () => {
     it('should timeout if event does not occur', async () => {
       await expect(
         service.waitFor('never.event', 100)
-      ).rejects.toThrow('Timeout');
+      ).rejects.toThrow(/timed out after/);
     });
 
     it('should filter events when waiting', async () => {

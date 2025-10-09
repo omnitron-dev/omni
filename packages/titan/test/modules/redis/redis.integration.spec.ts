@@ -882,7 +882,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
       await expect(service.callApi(1)).resolves.toBe('called-1');
 
       // Fourth call should fail
-      await expect(service.callApi(1)).rejects.toThrow('Rate limit exceeded');
+      await expect(service.callApi(1)).rejects.toThrow('Too many requests');
 
       expect(successCount).toBe(3);
 

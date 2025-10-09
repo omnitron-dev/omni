@@ -359,13 +359,27 @@ export class HttpRemotePeer extends AbstractPeer {
         try {
           const errorData = await response.json();
           if (errorData.error) {
+            // Extract context headers from response
+            const requestId = response.headers.get('X-Request-ID') || undefined;
+            const correlationId = response.headers.get('X-Correlation-ID') || undefined;
+            const traceId = response.headers.get('X-Trace-ID') || undefined;
+            const spanId = response.headers.get('X-Span-ID') || undefined;
+
             throw new TitanError({
               code: (typeof errorData.error.code === 'number' ? errorData.error.code : ErrorCode.INTERNAL_ERROR) as ErrorCode,
               message: errorData.error.message,
-              details: errorData.error.details
+              details: errorData.error.details,
+              requestId,
+              correlationId,
+              traceId,
+              spanId
             });
           }
-        } catch {
+        } catch (parseError) {
+          // If it's already a TitanError, rethrow it
+          if (parseError instanceof TitanError) {
+            throw parseError;
+          }
           // Fallback to HTTP status error
         }
 

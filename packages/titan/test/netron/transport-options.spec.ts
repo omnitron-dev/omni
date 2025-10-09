@@ -53,7 +53,7 @@ describe('Transport Options', () => {
     it('should throw when setting options for unregistered transport', () => {
       expect(() => {
         client.setTransportOptions('http', { requestTimeout: 1000 });
-      }).toThrow(/Transport http not registered/);
+      }).toThrow(/Transport.*not found/);
     });
 
     it('should allow setting options before connecting', async () => {
@@ -410,7 +410,7 @@ describe('Transport Options', () => {
     it('should throw error when setting options for non-existent transport', () => {
       expect(() => {
         client.setTransportOptions('nonexistent', { requestTimeout: 1000 });
-      }).toThrow(/Transport nonexistent not registered/);
+      }).toThrow(/Transport.*not found/);
     });
 
     it('should handle connection failure gracefully', async () => {

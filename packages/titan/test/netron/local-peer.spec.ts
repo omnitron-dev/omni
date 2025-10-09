@@ -90,11 +90,11 @@ describe('LocalPeer', () => {
     const ctx1 = new Service1();
     await peer.exposeService(ctx1);
     peer.unexposeService('service1');
-    expect(async () => peer.unexposeService('service1')).rejects.toThrow(/Unknown service/);
+    expect(async () => peer.unexposeService('service1')).rejects.toThrow(/Service.*not found/);
   });
 
   it('should throw if unexpose service with unknown name', async () => {
-    expect(async () => await netron.peer.unexposeService('unknown')).rejects.toThrow(/Unknown service/);
+    expect(async () => await netron.peer.unexposeService('unknown')).rejects.toThrow(/Service.*not found/);
   });
 
   it('should throw if exposed instance is not service', async () => {
@@ -115,7 +115,7 @@ describe('LocalPeer', () => {
   it('should throw when query interface with unknown name', async () => {
     const peer = netron.peer;
 
-    await expect(async () => peer.queryInterface('unknown')).rejects.toThrow(/Unknown service/);
+    await expect(async () => peer.queryInterface('unknown')).rejects.toThrow(/Service.*not found/);
   });
 
   it('should return interface for service and release it', async () => {

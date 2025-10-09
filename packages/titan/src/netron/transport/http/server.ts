@@ -553,12 +553,36 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         }
       );
 
-      return new Response(JSON.stringify(errorResponse), {
-        status: this.getHttpStatusFromError(toTitanError(error)),
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Netron-Version': '2.0'
+      // Build response headers with context information
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        'X-Netron-Version': '2.0'
+      };
+
+      // Add context headers from TitanError if available
+      if (titanError) {
+        if (titanError.requestId) {
+          headers['X-Request-ID'] = titanError.requestId;
         }
+        if (titanError.correlationId) {
+          headers['X-Correlation-ID'] = titanError.correlationId;
+        }
+        if (titanError.traceId) {
+          headers['X-Trace-ID'] = titanError.traceId;
+        }
+        if (titanError.spanId) {
+          headers['X-Span-ID'] = titanError.spanId;
+        }
+
+        // Add retry-after header for rate limit errors
+        if (titanError.code === ErrorCode.TOO_MANY_REQUESTS && titanError.details?.retryAfter) {
+          headers['Retry-After'] = String(titanError.details.retryAfter);
+        }
+      }
+
+      return new Response(JSON.stringify(errorResponse), {
+        status: titanError?.httpStatus || ErrorCode.INTERNAL_SERVER_ERROR,
+        headers
       });
     }
   }
@@ -1175,16 +1199,56 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     let status = 500;
     let message = 'Internal server error';
     let code: string | undefined;
+    const headers = new Headers({
+      'Content-Type': 'application/json',
+      'X-Netron-Version': '2.0'
+    });
+
+    // Apply CORS headers if configured
+    const origin = request.headers.get('Origin');
+    if (origin && this.options.cors) {
+      headers.set('Access-Control-Allow-Origin', origin);
+      if ((this.options.cors as any).credentials) {
+        headers.set('Access-Control-Allow-Credentials', 'true');
+      }
+    }
 
     if (error instanceof TitanError) {
-      status = this.getHttpStatusFromError(error);
+      status = error.httpStatus;
       message = error.message;
       code = String(error.code);
+
+      // Add context headers from TitanError
+      if (error.requestId) {
+        headers.set('X-Request-ID', error.requestId);
+      }
+      if (error.correlationId) {
+        headers.set('X-Correlation-ID', error.correlationId);
+      }
+      if (error.traceId) {
+        headers.set('X-Trace-ID', error.traceId);
+      }
+      if (error.spanId) {
+        headers.set('X-Span-ID', error.spanId);
+      }
+
+      // Add retry-after header for rate limit errors
+      if (error.code === ErrorCode.TOO_MANY_REQUESTS && error.details?.retryAfter) {
+        headers.set('Retry-After', String(error.details.retryAfter));
+      }
     } else if (error instanceof Error) {
       message = error.message;
     }
 
-    return this.createErrorResponse(status, message, request);
+    return new Response(
+      JSON.stringify({
+        error: true,
+        message,
+        code,
+        timestamp: Date.now()
+      }),
+      { status, headers }
+    );
   }
 
   /**

@@ -300,7 +300,7 @@ if (!process.env.REDIS_URL) {
       await client.expire('lock:fail', 5);
 
       // Should throw
-      await expect(service.process()).rejects.toThrow('Failed to acquire lock');
+      await expect(service.process()).rejects.toThrow(/timed out after/);
 
       // Cleanup
       await client.del('lock:fail');
@@ -403,7 +403,7 @@ if (!process.env.REDIS_URL) {
       await expect(service.callApi(1)).resolves.toBe('called-1');
 
       // Fourth call should fail
-      await expect(service.callApi(1)).rejects.toThrow('Rate limit exceeded');
+      await expect(service.callApi(1)).rejects.toThrow('Too many requests');
 
       // Different user should work
       await expect(service.callApi(2)).resolves.toBe('called-2');
@@ -437,7 +437,7 @@ if (!process.env.REDIS_URL) {
       await service.callEndpoint(1, 'posts'); // Different endpoint
 
       // Third call to users should fail
-      await expect(service.callEndpoint(1, 'users')).rejects.toThrow('Rate limit exceeded');
+      await expect(service.callEndpoint(1, 'users')).rejects.toThrow('Too many requests');
 
       // Posts should still work
       await expect(service.callEndpoint(1, 'posts')).resolves.toBe('posts-1');
@@ -504,12 +504,12 @@ if (!process.env.REDIS_URL) {
       // User 1 - 2 calls
       await service.action(1);
       await service.action(1);
-      await expect(service.action(1)).rejects.toThrow('Rate limit exceeded');
+      await expect(service.action(1)).rejects.toThrow('Too many requests');
 
       // User 2 - should have separate limit
       await service.action(2);
       await service.action(2);
-      await expect(service.action(2)).rejects.toThrow('Rate limit exceeded');
+      await expect(service.action(2)).rejects.toThrow('Too many requests');
 
       // Check rate limit keys exist
       const keys = await client.keys('user:*');

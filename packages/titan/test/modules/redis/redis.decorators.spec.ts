@@ -339,7 +339,7 @@ describe('Redis Decorators', () => {
       // Set a lock that won't expire during retries
       await client.set('lock:timeout-lock:1', 'locked', 'EX', 10);
 
-      await expect(service.process(1)).rejects.toThrow('Failed to acquire lock');
+      await expect(service.process(1)).rejects.toThrow(/timed out after/);
 
       // Clean up
       await client.del('lock:timeout-lock:1');
@@ -389,7 +389,7 @@ describe('Redis Decorators', () => {
       }
 
       // 4th call should fail
-      await expect(service.limitedApi(1)).rejects.toThrow('Rate limit exceeded');
+      await expect(service.limitedApi(1)).rejects.toThrow('Too many requests');
     });
 
     it('should reset after window expires', async () => {
@@ -412,7 +412,7 @@ describe('Redis Decorators', () => {
       await service.windowApi(1);
 
       // Should fail
-      await expect(service.windowApi(1)).rejects.toThrow('Rate limit exceeded');
+      await expect(service.windowApi(1)).rejects.toThrow('Too many requests');
 
       // Wait for window to expire
       await new Promise(resolve => setTimeout(resolve, 1100));
@@ -446,8 +446,8 @@ describe('Redis Decorators', () => {
       await service.apiCall(1, 'posts');
 
       // Both should be at their limits
-      await expect(service.apiCall(1, 'users')).rejects.toThrow('Rate limit exceeded');
-      await expect(service.apiCall(1, 'posts')).rejects.toThrow('Rate limit exceeded');
+      await expect(service.apiCall(1, 'users')).rejects.toThrow('Too many requests');
+      await expect(service.apiCall(1, 'posts')).rejects.toThrow('Too many requests');
     });
 
     it('should handle different users independently', async () => {
@@ -465,12 +465,12 @@ describe('Redis Decorators', () => {
       // User 1 uses their limit
       await service.userApi(1);
       await service.userApi(1);
-      await expect(service.userApi(1)).rejects.toThrow('Rate limit exceeded');
+      await expect(service.userApi(1)).rejects.toThrow('Too many requests');
 
       // User 2 should still be able to call
       await service.userApi(2);
       await service.userApi(2);
-      await expect(service.userApi(2)).rejects.toThrow('Rate limit exceeded');
+      await expect(service.userApi(2)).rejects.toThrow('Too many requests');
     });
 
     it('should fall back on Redis error', async () => {
@@ -550,7 +550,7 @@ describe('Redis Decorators', () => {
       await expect(service.errorOperation()).rejects.toThrow('Operation failed');
 
       // Second call should fail on rate limit
-      await expect(service.errorOperation()).rejects.toThrow('Rate limit exceeded');
+      await expect(service.errorOperation()).rejects.toThrow('Too many requests');
     });
   });
 

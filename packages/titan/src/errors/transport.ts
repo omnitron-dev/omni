@@ -200,9 +200,10 @@ function mapToHttp(error: TitanError, options?: TransportMappingOptions): HttpEr
  * Map to WebSocket message
  */
 function mapToWebSocket(error: TitanError, options?: TransportMappingOptions): WebSocketErrorMessage {
+  const requestId = options?.requestId || error.requestId;
   return {
     type: 'error',
-    ...(options?.requestId && { id: options.requestId }),
+    ...(requestId && { id: requestId }),
     error: {
       code: error.code,
       name: getErrorName(error.code),

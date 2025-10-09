@@ -93,7 +93,7 @@ describe('Netron API', () => {
           name: 'non-existent-transport',
           options: { host: 'localhost', port: 8080 }
         });
-      }).toThrow('Transport non-existent-transport not registered');
+      }).toThrow(/Transport.*not found/);
     });
 
     it('should allow configuring multiple transport servers', () => {

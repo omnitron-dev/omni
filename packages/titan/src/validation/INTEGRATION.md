@@ -1795,7 +1795,6 @@ For more information, see:
 - [Validation Engine API](./validation-engine.ts)
 - [Contract API](./contract.ts)
 - [Validation Middleware](./validation-middleware.ts)
-- [Architecture Decision Record](./ADR-001-VALIDATION-ARCHITECTURE.md)
 
 **Last Updated**: 2025-10-09
 **Version**: 1.0

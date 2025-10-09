@@ -456,8 +456,6 @@ Titan Framework
 - 21 files in Netron (HTTP server, middleware, local peer)
 - 39+ files outside Netron (decorators, events, config, services)
 
-See [ADR-001-VALIDATION-ARCHITECTURE.md](./ADR-001-VALIDATION-ARCHITECTURE.md) for detailed architectural decision.
-
 ## Performance
 
 The validation engine is optimized for high-throughput scenarios:
@@ -746,12 +744,6 @@ type UserServiceInterface = ContractTypes.Service<UserContract>;
   - Real-world examples (CRUD, auth, streaming, complex schemas)
   - OpenAPI generation
   - Best practices and performance considerations
-
-- **[ADR-001-VALIDATION-ARCHITECTURE.md](./ADR-001-VALIDATION-ARCHITECTURE.md)** - Architectural decision record
-  - Why validation is an independent subsystem
-  - Analysis of alternatives (moving to Netron, duplication, separate package)
-  - Usage metrics (60+ files)
-  - Future evolution plans
 
 ### Code Examples
 

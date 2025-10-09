@@ -797,7 +797,7 @@ export class NotificationManager {
     this.consumerLoops.set(loopKey, loopEntry);
 
     // NOW start the actual loop
-    const loopPromise = (async () => {
+    loopPromise = (async () => {
       this.logger.info(`Starting shared consumer loop for ${stream}:${group}`);
 
       let lastPendingCheck = Date.now();

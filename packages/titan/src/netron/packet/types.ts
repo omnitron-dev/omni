@@ -73,6 +73,7 @@ export const TYPE_STREAM_CLOSE = 0x07;
  * }
  */
 export type PacketType =
+  | typeof TYPE_PING
   | typeof TYPE_GET
   | typeof TYPE_SET
   | typeof TYPE_CALL

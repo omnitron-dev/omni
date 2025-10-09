@@ -320,6 +320,38 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
   }
 
   /**
+   * Ping the server to measure round-trip time
+   * HTTP implementation uses a lightweight discovery request
+   */
+  async ping(): Promise<number> {
+    if (this._state !== ConnectionState.CONNECTED) {
+      throw new Error('Connection is not established');
+    }
+
+    const startTime = Date.now();
+
+    try {
+      // Use discovery endpoint as a lightweight ping
+      const response = await fetch(`${this.baseUrl}/discover`, {
+        method: 'GET',
+        signal: this.abortController?.signal,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Ping failed with status ${response.status}`);
+      }
+
+      const rtt = Date.now() - startTime;
+      return rtt;
+    } catch (error) {
+      throw new Error(`Ping failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
    * Close the connection
    */
   async close(code?: number, reason?: string): Promise<void> {

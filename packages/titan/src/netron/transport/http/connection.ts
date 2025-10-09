@@ -111,7 +111,7 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
       // Add discovery-specific timeout (5 seconds) to prevent hanging
       const discoveryTimeout = 5000;
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Discovery timeout')), discoveryTimeout);
+        setTimeout(() => reject(Errors.timeout('Service discovery', discoveryTimeout)), discoveryTimeout);
       });
 
       const response = await Promise.race([
@@ -369,7 +369,7 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
     // Reject all pending requests
     for (const [id, pending] of this.pendingRequests) {
       clearTimeout(pending.timeout);
-      pending.reject(new Error('Connection closed'));
+      pending.reject(NetronErrors.connectionClosed('http', reason));
     }
     this.pendingRequests.clear();
 

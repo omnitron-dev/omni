@@ -118,7 +118,7 @@ export class DistributedLockManager {
   private waitForLock(resource: string, timeout: number): Promise<void> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        reject(new Error(`Lock wait timeout for resource: ${resource}`));
+        reject(Errors.timeout(`resource lock: ${resource}`, timeout));
       }, timeout);
 
       // Add to queue

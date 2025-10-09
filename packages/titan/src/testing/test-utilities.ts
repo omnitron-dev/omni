@@ -1,3 +1,5 @@
+import { Errors } from '../errors/factories.js';
+
 /**
  * Wait for a condition to be true
  */
@@ -20,7 +22,7 @@ export async function waitFor(
     await delay(interval);
   }
 
-  throw new Error(`Timeout waiting for condition: ${message}`);
+  throw Errors.timeout('waitFor: ' + message, timeout);
 }
 
 /**
@@ -126,7 +128,7 @@ export class EventCollector<T = any> {
 
     const timer = setTimeout(() => {
       this.emitter.off(eventName, listener);
-      deferred.reject(new Error(`Timeout waiting for event: ${eventName}`));
+      deferred.reject(Errors.timeout('event: ' + eventName, timeout));
     }, timeout);
 
     try {
@@ -286,12 +288,12 @@ export class PerfTimer {
   measure(name: string, startMark: string, endMark?: string): number {
     const start = this.marks.get(startMark);
     if (!start) {
-      throw new Error(`Mark ${startMark} not found`);
+      throw Errors.notFound('performance mark', startMark);
     }
 
     const end = endMark ? this.marks.get(endMark) : performance.now();
     if (!end) {
-      throw new Error(`Mark ${endMark} not found`);
+      throw Errors.notFound('performance mark', endMark);
     }
 
     const duration = end - start;

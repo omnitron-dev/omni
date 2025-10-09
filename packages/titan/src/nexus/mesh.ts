@@ -9,6 +9,7 @@
 
 import { createToken } from './token.js';
 import { ProviderDefinition, InjectionToken } from './types.js';
+import { Errors, HttpErrors } from '../errors/index.js';
 
 /**
  * Service instance information
@@ -147,7 +148,7 @@ export class ConsulServiceDiscovery implements ServiceDiscovery {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to register service: ${response.statusText}`);
+        throw HttpErrors.fromStatus(response.status, `Failed to register service: ${response.statusText}`);
       }
     }
 
@@ -165,7 +166,7 @@ export class ConsulServiceDiscovery implements ServiceDiscovery {
     );
 
     if (!response.ok) {
-      throw new Error(`Failed to deregister service: ${response.statusText}`);
+      throw HttpErrors.fromStatus(response.status, `Failed to deregister service: ${response.statusText}`);
     }
 
     // Update local cache
@@ -536,7 +537,7 @@ export class CircuitBreaker {
       if (this.shouldAttemptReset()) {
         this.state = CircuitState.HalfOpen;
       } else {
-        throw new Error('Circuit breaker is open');
+        throw Errors.unavailable('Service', 'Circuit breaker is open');
       }
     }
 
@@ -563,7 +564,7 @@ export class CircuitBreaker {
     return Promise.race([
       promise,
       new Promise<T>((_, reject) =>
-        setTimeout(() => reject(new Error('Request timeout')), timeout)
+        setTimeout(() => reject(Errors.timeout('request', timeout)), timeout)
       )
     ]);
   }
@@ -667,7 +668,7 @@ export class ServiceProxy<T = any> {
     const execute = async () => {
       const instance = this.loadBalancer.selectInstance();
       if (!instance) {
-        throw new Error(`No healthy instances available for ${this.config.serviceName}`);
+        throw Errors.unavailable(this.config.serviceName, 'No healthy instances');
       }
 
       this.loadBalancer.recordConnection(instance.id);
@@ -742,12 +743,12 @@ export class ServiceProxy<T = any> {
       });
 
       if (!response.ok) {
-        throw new Error(`Remote call failed: ${response.statusText}`);
+        throw HttpErrors.fromStatus(response.status, `Remote call failed: ${response.statusText}`);
       }
 
       const result = await response.json();
       if (result.error) {
-        throw new Error(result.error);
+        throw Errors.internal(result.error);
       }
 
       return result.data;
@@ -811,7 +812,7 @@ export function createRemoteProxy<T extends object>(options: {
           return async (...args: any[]) => {
             const endpoint = loadBalancer.next();
             if (!endpoint) {
-              throw new Error('No healthy endpoints available');
+              throw Errors.unavailable('Service', 'No healthy endpoints');
             }
 
             // Simulate remote call
@@ -832,7 +833,7 @@ export function createRemoteProxy<T extends object>(options: {
                   const result = await response.json();
                   return result;
                 }
-                throw new Error(`HTTP ${response.status}`);
+                throw HttpErrors.fromStatus(response.status);
               } catch (error) {
                 attempts++;
                 if (attempts >= maxAttempts) throw error;
@@ -842,7 +843,7 @@ export function createRemoteProxy<T extends object>(options: {
               }
             }
             // This should never be reached, but ensures all paths return
-            throw new Error('Failed to complete request after all retry attempts');
+            throw Errors.internal('Request failed after all retry attempts');
           };
         }
         return undefined;
@@ -850,7 +851,7 @@ export function createRemoteProxy<T extends object>(options: {
     }) as T;
   }
 
-  throw new Error('Either discovery or endpoints must be provided');
+  throw Errors.badRequest('Either discovery or endpoints must be provided');
 }
 
 /**
@@ -1093,7 +1094,7 @@ export class HealthCheck {
             timestamp: this.lastCheck
           };
         } else {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          throw HttpErrors.fromStatus(response.status, response.statusText);
         }
       } finally {
         clearTimeout(timeoutId);

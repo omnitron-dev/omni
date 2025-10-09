@@ -15,6 +15,7 @@ import type {
   PolicyEvaluationOptions,
   PolicyExpression,
 } from './types.js';
+import { Errors } from '../../errors/index.js';
 
 /**
  * Circuit breaker for policy evaluation
@@ -166,7 +167,7 @@ export class PolicyEngine {
     },
   ): void {
     if (this.policies.has(policy.name)) {
-      throw new Error(`Policy '${policy.name}' already registered`);
+      throw Errors.conflict('Policy already registered: ' + policy.name, { policyName: policy.name });
     }
 
     this.policies.set(policy.name, policy);
@@ -213,7 +214,7 @@ export class PolicyEngine {
 
     const policy = this.policies.get(policyName);
     if (!policy) {
-      throw new Error(`Policy '${policyName}' not found`);
+      throw Errors.notFound('Policy', policyName);
     }
 
     // Check circuit breaker
@@ -424,7 +425,7 @@ export class PolicyEngine {
       };
     }
 
-    throw new Error('Invalid policy expression');
+    throw Errors.badRequest('Invalid policy expression', { expression });
   }
 
   /**
@@ -500,12 +501,12 @@ export class PolicyEngine {
       promise,
       new Promise<T>((_, reject) => {
         const timer = setTimeout(
-          () => reject(new Error('Policy evaluation timeout')),
+          () => reject(Errors.timeout('Policy evaluation timeout', timeout)),
           timeout,
         );
         signal?.addEventListener('abort', () => {
           clearTimeout(timer);
-          reject(new Error('Policy evaluation aborted'));
+          reject(Errors.internal('Policy evaluation aborted'));
         });
       }),
     ]);

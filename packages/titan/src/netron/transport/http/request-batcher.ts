@@ -9,7 +9,7 @@ import type {
   HttpBatchRequest,
   HttpBatchResponse
 } from './types.js';
-import { NetronErrors } from '../../../errors/index.js';
+import { NetronErrors, Errors } from '../../../errors/index.js';
 
 /**
  * Batch request entry with promise resolution
@@ -251,7 +251,7 @@ export class RequestBatcher extends EventEmitter {
               error: result.error
             });
           } else {
-            entry.reject(new Error(result.error?.message || 'Request failed'));
+            entry.reject(Errors.internal(result.error?.message || 'Request failed'));
             this.stats.failedRequests++;
 
             this.emit('request-failure', {
@@ -399,7 +399,7 @@ export class RequestBatcher extends EventEmitter {
 
     // Reject any pending requests
     for (const entry of this.queue) {
-      entry.reject(new Error('Batcher destroyed'));
+      entry.reject(Errors.unavailable('Request batcher', 'Batcher has been destroyed'));
     }
 
     this.queue = [];

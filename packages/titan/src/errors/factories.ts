@@ -9,7 +9,6 @@ import { TitanError } from './core.js';
 import { ErrorCode } from './codes.js';
 import { ValidationError } from './validation.js';
 import {
-  NetronError,
   ServiceNotFoundError,
   MethodNotFoundError,
   TransportError,
@@ -20,7 +19,6 @@ import {
 } from './netron.js';
 import {
   HttpError,
-  ApiError,
   AuthError,
   PermissionError,
   RateLimitError

@@ -266,7 +266,7 @@ class ActorInstance<T extends Actor = Actor> extends EventEmitter {
       const messageId = uuid();
       const timer = setTimeout(() => {
         this.removeListener(messageId, handleReply);
-        reject(new Error(`Ask timeout after ${timeout}ms`));
+        reject(Errors.timeout('actor ask', timeout));
       }, timeout);
 
       const handleReply = (reply: any) => {

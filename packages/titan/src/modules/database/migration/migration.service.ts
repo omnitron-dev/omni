@@ -537,7 +537,7 @@ export class ${this.toPascalCase(name)}Migration implements IMigration {
     await Promise.race([
       migration[direction](db),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`Migration timeout after ${timeoutMs}ms`)), timeoutMs)
+        setTimeout(() => reject(Errors.timeout('database migration', timeoutMs)), timeoutMs)
       ),
     ]);
   }

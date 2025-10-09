@@ -9,7 +9,7 @@ import { getPeerEventName } from './utils.js';
 import { ServiceStub } from './service-stub.js';
 import { Task, TaskManager } from './task-manager.js';
 import type { ILogger } from '../modules/logger/logger.types.js';
-import { Errors } from '../errors/index.js';
+import { Errors, NetronErrors } from '../errors/index.js';
 // import { ServiceInfo, ServiceDiscovery } from './service-discovery/index.js';
 import { CONNECT_TIMEOUT, NETRON_EVENT_PEER_CONNECT, NETRON_EVENT_PEER_DISCONNECT } from './constants.js';
 import { ensureStreamReferenceRegistered } from './packet/serializer.js';
@@ -645,7 +645,7 @@ export class Netron extends EventEmitter implements INetron {
 
         const timeoutId = setTimeout(() => {
           this.logger.error({ address }, 'Connection timeout');
-          reject(new Error('Connection timeout'));
+          reject(NetronErrors.connectionTimeout(transport.name, address));
         }, connectTimeout);
 
         // Wrap async logic in an IIFE
@@ -706,7 +706,7 @@ export class Netron extends EventEmitter implements INetron {
                 } else {
                   this.logger.warn({ type: message.type }, 'Invalid handshake message type');
                   await connection.close();
-                  reject(new Error('Invalid handshake'));
+                  reject(NetronErrors.invalidRequest('Invalid handshake message type', { type: message.type }));
                 }
               } catch (error) {
                 this.logger.error({ error }, 'Error parsing handshake message');
@@ -1008,7 +1008,7 @@ export class Netron extends EventEmitter implements INetron {
       try {
         const timeoutPromise = new Promise((_, reject) => {
           const timeoutId = setTimeout(() => {
-            reject(new Error(`Emit timeout for event: ${eventData.name}`));
+            reject(Errors.timeout('Event emission: ' + eventData.name, 5000));
           }, 5000);
           this.emitParallel(eventData.name, eventData.data)
             .finally(() => clearTimeout(timeoutId))

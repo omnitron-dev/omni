@@ -1,22 +1,12 @@
 import { RedisManager } from './redis.manager.js';
+import { TitanError } from '../../errors/core.js';
+import { ErrorCode } from '../../errors/codes.js';
 
 export interface HealthIndicatorResult {
   [key: string]: {
     status: 'up' | 'down';
     [key: string]: any;
   };
-}
-
-export class HealthCheckError extends Error {
-  public readonly causes: HealthIndicatorResult;
-
-  constructor(
-    message: string,
-    causes: HealthIndicatorResult,
-  ) {
-    super(message);
-    this.causes = causes;
-  }
 }
 
 export abstract class HealthIndicator {
@@ -53,23 +43,35 @@ export class RedisHealthIndicator extends HealthIndicator {
         });
       }
 
-      throw new HealthCheckError(
-        'Redis check failed',
-        this.getStatus(key, false, {
-          namespace: namespace || 'default',
-          healthy: false,
-          latency,
-        }),
-      );
+      throw new TitanError({
+        code: ErrorCode.SERVICE_UNAVAILABLE,
+        message: 'Redis check failed',
+        details: {
+          service: 'Redis health check',
+          causes: [
+            this.getStatus(key, false, {
+              namespace: namespace || 'default',
+              healthy: false,
+              latency,
+            }),
+          ],
+        },
+      });
     } catch (error) {
-      throw new HealthCheckError(
-        'Redis check failed',
-        this.getStatus(key, false, {
-          namespace: namespace || 'default',
-          error: (error as Error).message,
-          healthy: false,
-        }),
-      );
+      throw new TitanError({
+        code: ErrorCode.SERVICE_UNAVAILABLE,
+        message: 'Redis check failed',
+        details: {
+          service: 'Redis health check',
+          causes: [
+            this.getStatus(key, false, {
+              namespace: namespace || 'default',
+              error: (error as Error).message,
+              healthy: false,
+            }),
+          ],
+        },
+      });
     }
   }
 
@@ -97,23 +99,35 @@ export class RedisHealthIndicator extends HealthIndicator {
         });
       }
 
-      throw new HealthCheckError(
-        'Some Redis clients are not healthy',
-        this.getStatus('redis', false, {
-          clients: details,
-        }),
-      );
+      throw new TitanError({
+        code: ErrorCode.SERVICE_UNAVAILABLE,
+        message: 'Some Redis clients are not healthy',
+        details: {
+          service: 'Redis health check',
+          causes: [
+            this.getStatus('redis', false, {
+              clients: details,
+            }),
+          ],
+        },
+      });
     } catch (error) {
-      if (error instanceof HealthCheckError) {
+      if (error instanceof TitanError) {
         throw error;
       }
 
-      throw new HealthCheckError(
-        'Redis health check failed',
-        this.getStatus('redis', false, {
-          error: (error as Error).message,
-        }),
-      );
+      throw new TitanError({
+        code: ErrorCode.SERVICE_UNAVAILABLE,
+        message: 'Redis health check failed',
+        details: {
+          service: 'Redis health check',
+          causes: [
+            this.getStatus('redis', false, {
+              error: (error as Error).message,
+            }),
+          ],
+        },
+      });
     }
   }
 
@@ -126,13 +140,19 @@ export class RedisHealthIndicator extends HealthIndicator {
         ping: pingResult,
       });
     } catch (error) {
-      throw new HealthCheckError(
-        'Redis ping failed',
-        this.getStatus('redis', false, {
-          namespace: namespace || 'default',
-          error: (error as Error).message,
-        }),
-      );
+      throw new TitanError({
+        code: ErrorCode.SERVICE_UNAVAILABLE,
+        message: 'Redis ping failed',
+        details: {
+          service: 'Redis health check',
+          causes: [
+            this.getStatus('redis', false, {
+              namespace: namespace || 'default',
+              error: (error as Error).message,
+            }),
+          ],
+        },
+      });
     }
   }
 

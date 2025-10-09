@@ -13,7 +13,7 @@ import type {
   ServerMetrics
 } from '../types.js';
 import type { LocalPeer } from '../../local-peer.js';
-import { TitanError, ErrorCode, NetronErrors, Errors } from '../../../errors/index.js';
+import { TitanError, ErrorCode, NetronErrors, Errors, toTitanError } from '../../../errors/index.js';
 import {
   MiddlewarePipeline,
   MiddlewareStage,
@@ -537,7 +537,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       });
     } catch (error) {
       // Error handling through middleware
-      context.error = error instanceof Error ? error : new Error(String(error));
+      context.error = toTitanError(error);
 
       await this.globalPipeline.execute(context, MiddlewareStage.ERROR);
 
@@ -554,7 +554,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       );
 
       return new Response(JSON.stringify(errorResponse), {
-        status: this.getHttpStatusFromError(error instanceof Error ? error : new Error(String(error))),
+        status: this.getHttpStatusFromError(toTitanError(error)),
         headers: {
           'Content-Type': 'application/json',
           'X-Netron-Version': '2.0'

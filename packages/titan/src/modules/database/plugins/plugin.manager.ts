@@ -707,7 +707,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
     return Promise.race([
       promise,
       new Promise<T>((_, reject) =>
-        setTimeout(() => reject(new Error(message)), timeout)
+        setTimeout(() => reject(Errors.timeout('plugin operation: ' + message, timeout)), timeout)
       ),
     ]);
   }

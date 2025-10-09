@@ -630,7 +630,7 @@ export class EventsService {
     return new Promise((resolve, reject) => {
       const timer = timeout
         ? setTimeout(() => {
-          reject(new Error(`Timeout waiting for event: ${event}`));
+          reject(Errors.timeout('event emission', timeout));
           unsubscribe();
         }, timeout)
         : null;
@@ -846,13 +846,14 @@ export class EventsService {
       // Wrap with timeout if specified
       if (options?.timeout) {
         const originalExecution = handlerExecution;
+        const timeoutMs = options.timeout;
         handlerExecution = async (): Promise<void> => {
           let timeoutId: NodeJS.Timeout | undefined;
           const handlerPromise = originalExecution();
           const timeoutPromise = new Promise<void>((_, reject) => {
             timeoutId = setTimeout(
-              () => reject(new Error(`Handler timeout after ${options.timeout}ms`)),
-              options.timeout
+              () => reject(Errors.timeout('event handler', timeoutMs)),
+              timeoutMs
             );
           });
 

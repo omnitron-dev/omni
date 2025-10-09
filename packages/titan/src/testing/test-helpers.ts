@@ -9,6 +9,7 @@ import type { IConfigModuleOptions as ConfigModuleOptions } from '../modules/con
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { Errors } from '../errors/factories.js';
 
 /**
  * Create a temporary directory for tests
@@ -74,7 +75,7 @@ export async function waitFor(
     await new Promise(resolve => setTimeout(resolve, interval));
   }
 
-  throw new Error(`Condition not met within ${timeout}ms`);
+  throw Errors.timeout('waitFor', timeout);
 }
 
 /**
@@ -87,7 +88,7 @@ export async function waitForEvent<T = any>(
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
-      reject(new Error(`Event "${event}" not emitted within ${timeout}ms`));
+      reject(Errors.timeout('event: ' + event, timeout));
     }, timeout);
 
     emitter.once(event, (data: T) => {

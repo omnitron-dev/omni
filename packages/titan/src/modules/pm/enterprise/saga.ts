@@ -401,7 +401,7 @@ export class SagaOrchestrator extends EventEmitter {
     return Promise.race([
       promise,
       new Promise<T>((_, reject) =>
-        setTimeout(() => reject(new Error('Step timeout')), timeout)
+        setTimeout(() => reject(Errors.timeout('saga step', timeout)), timeout)
       )
     ]);
   }

@@ -18,9 +18,6 @@ import {
   TransactionState,
   TransactionPropagation,
   TransactionEventType,
-  TransactionTimeoutError,
-  TransactionDeadlockError,
-  TransactionPropagationError,
   DEADLOCK_ERROR_CODES,
 } from './transaction.types.js';
 import type {
@@ -95,20 +92,20 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
       case TransactionPropagation.MANDATORY:
         // Must have existing transaction
         if (!currentContext) {
-          throw new TransactionPropagationError(
-            'Transaction required but none exists',
-            propagation
-          );
+          throw Errors.badRequest('Invalid transaction propagation', {
+            propagation,
+            message: 'Transaction required but none exists'
+          });
         }
         return this.executeInExistingTransaction(fn, currentContext, opts);
 
       case TransactionPropagation.NEVER:
         // Must not have transaction
         if (currentContext) {
-          throw new TransactionPropagationError(
-            'Transaction exists but none allowed',
-            propagation
-          );
+          throw Errors.badRequest('Invalid transaction propagation', {
+            propagation,
+            message: 'Transaction exists but none allowed'
+          });
         }
         return fn(await this.manager.getConnection(opts.connection) as any);
 
@@ -367,11 +364,11 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
 
         // Don't retry on last attempt
         if (attempt === maxAttempts) {
-          throw new TransactionDeadlockError(
-            `Transaction failed after ${maxAttempts} attempts due to deadlock`,
-            '',
-            attempt
-          );
+          throw Errors.conflict('Transaction deadlock detected', {
+            transactionId: '',
+            attempt,
+            message: `Transaction failed after ${maxAttempts} attempts due to deadlock`
+          });
         }
 
         // Calculate delay
@@ -415,10 +412,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
       fn(),
       new Promise<T>((_, reject) =>
         setTimeout(
-          () => reject(new TransactionTimeoutError(
-            `Transaction timeout after ${timeout}ms`,
-            transactionId
-          )),
+          () => reject(Errors.timeout('transaction: ' + transactionId, timeout)),
           timeout
         )
       ),

@@ -11,6 +11,7 @@ import type {
   ServiceProxy,
   IProcessOptions
 } from './types.js';
+import { Errors } from '../../errors/factories.js';
 
 /**
  * Health checker for processes
@@ -178,7 +179,7 @@ export class ProcessHealthChecker extends EventEmitter {
       }
     }
 
-    throw lastError || new Error('Health check failed');
+    throw lastError || Errors.unavailable('process health check', 'Health check failed after retries');
   }
 
   /**
@@ -267,7 +268,7 @@ export class ProcessHealthChecker extends EventEmitter {
     return Promise.race([
       promise,
       new Promise<T>((_, reject) =>
-        setTimeout(() => reject(new Error('Health check timeout')), timeout)
+        setTimeout(() => reject(Errors.timeout('health check', timeout)), timeout)
       )
     ]);
   }

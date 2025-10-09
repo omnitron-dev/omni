@@ -366,7 +366,7 @@ export class DistributedTransactionCoordinator extends EventEmitter {
     return Promise.race([
       promise,
       new Promise<T>((_, reject) =>
-        setTimeout(() => reject(new Error(errorMessage)), timeout)
+        setTimeout(() => reject(Errors.timeout(`distributed transaction: ${errorMessage}`, timeout)), timeout)
       )
     ]);
   }

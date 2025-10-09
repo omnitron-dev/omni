@@ -1,15 +1,16 @@
 /**
  * Module Federation support for Nexus DI
- * 
+ *
  * @module federation
  * @packageDocumentation
- * 
+ *
  * Enables sharing modules across applications and microservices
  */
 
 import { createToken } from './token.js';
 import { Container } from './container.js';
 import { IModule, Provider, DynamicModule, InjectionToken } from './types.js';
+import { Errors, HttpErrors } from '../errors/index.js';
 
 /**
  * Remote module configuration
@@ -150,7 +151,7 @@ export class ModuleFederationContainer {
     if (!config) {
       config = this.remotes.get(name);
       if (!config) {
-        throw new Error(`Remote module ${name} not found`);
+        throw Errors.notFound('Remote module', name);
       }
     }
 
@@ -205,7 +206,7 @@ export class ModuleFederationContainer {
             this.modules.set(config.name, fallback);
             return fallback;
           }
-          throw new Error(`Failed to load remote module ${config.name}: ${error}`);
+          throw Errors.internal(`Failed to load remote module ${config.name}`, error instanceof Error ? error : undefined);
         }
         // Use configured delay or exponential backoff
         const delay = retryConfig.delay || Math.pow(2, attempt) * 1000;
@@ -213,7 +214,7 @@ export class ModuleFederationContainer {
       }
     }
 
-    throw new Error(`Failed to load remote module ${config.name} after ${retryConfig.maxAttempts} attempts: ${lastError}`);
+    throw Errors.unavailable(config.name, `Failed after ${retryConfig.maxAttempts} attempts`);
   }
 
   /**
@@ -233,7 +234,7 @@ export class ModuleFederationContainer {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw HttpErrors.fromStatus(response.status);
       }
 
       // Try to get JSON first (for testing), fallback to text
@@ -268,7 +269,7 @@ export class ModuleFederationContainer {
       if (shared?.has(id as any)) {
         return shared.get(id as any);
       }
-      throw new Error(`Module ${id} not found in shared scope`);
+      throw Errors.notFound('Module in shared scope', id);
     };
 
     moduleFactory(exports, require);
@@ -695,7 +696,7 @@ export class FederationHost {
   async getRemoteModule<T>(remoteName: string, moduleName: string): Promise<T> {
     const federation = (this.container as any)[`remote_${remoteName}`];
     if (!federation) {
-      throw new Error(`Remote ${remoteName} not found`);
+      throw Errors.notFound('Remote', remoteName);
     }
 
     const module = await federation.loadRemoteModule(moduleName);
@@ -823,7 +824,7 @@ export class ModuleFederationRuntime {
   async loadModule(containerName: string, moduleName: string): Promise<IModule> {
     const container = this.containers.get(containerName);
     if (!container) {
-      throw new Error(`Container ${containerName} not found`);
+      throw Errors.notFound('Container', containerName);
     }
 
     return container.loadRemoteModule(moduleName);

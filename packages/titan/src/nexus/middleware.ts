@@ -3,6 +3,7 @@
  */
 
 import { InjectionToken, ResolutionContext } from './types.js';
+import { Errors, ValidationError, TitanError, ErrorCode } from '../errors/index.js';
 
 /**
  * Middleware execution result
@@ -132,7 +133,7 @@ export class MiddlewarePipeline {
 
       // Only enforce the "no multiple calls" rule for non-retry scenarios
       if (!retryContext && i <= index) {
-        throw new Error('Middleware called next() multiple times');
+        throw Errors.internal('Middleware called next() multiple times');
       }
 
       // Update index for non-retry middleware
@@ -180,7 +181,7 @@ export class MiddlewarePipeline {
 
     const dispatch = (i: number): T => {
       if (i <= index) {
-        throw new Error('Middleware called next() multiple times');
+        throw Errors.internal('Middleware called next() multiple times');
       }
 
       index = i;
@@ -199,7 +200,11 @@ export class MiddlewarePipeline {
         const result = middleware.execute(context, () => dispatch(i + 1));
         // Check if it's a promise (which shouldn't happen in sync mode)
         if (result instanceof Promise) {
-          throw new Error(`Middleware ${middleware.name} returned a promise in sync mode. Use resolveAsync() instead.`);
+          throw new TitanError({
+            code: ErrorCode.INTERNAL_ERROR,
+            message: 'Middleware async/sync mismatch: ' + middleware.name,
+            details: { middleware: middleware.name }
+          });
         }
         return result as T;
       } catch (error: any) {
@@ -365,7 +370,7 @@ export const RetryMiddleware = createMiddleware({
           }
         }
 
-        throw lastError || new Error('All retry attempts failed');
+        throw lastError || Errors.internal('All retry attempts failed');
       })();
     }
 
@@ -385,7 +390,7 @@ export const ValidationMiddleware = createMiddleware({
     if (context['validate']) {
       const validation = context['validate'](context);
       if (validation === false) {
-        throw new Error('Validation failed');
+        throw ValidationError.fromFieldErrors([{ field: 'input', message: 'Validation failed' }]);
       }
     }
 
@@ -398,7 +403,7 @@ export const ValidationMiddleware = createMiddleware({
         if (context['validateResult']) {
           const validation = context['validateResult'](value);
           if (validation === false) {
-            throw new Error('Result validation failed');
+            throw ValidationError.fromFieldErrors([{ field: 'result', message: 'Result validation failed' }]);
           }
         }
         return value;
@@ -409,7 +414,7 @@ export const ValidationMiddleware = createMiddleware({
     if (context['validateResult']) {
       const validation = context['validateResult'](result);
       if (validation === false) {
-        throw new Error('Result validation failed');
+        throw ValidationError.fromFieldErrors([{ field: 'result', message: 'Result validation failed' }]);
       }
     }
 
@@ -505,7 +510,7 @@ export class CircuitBreakerMiddleware implements Middleware {
 
     // Check circuit state
     if (this.state.get(key) === 'open') {
-      throw new Error(`Circuit breaker is open`);
+      throw Errors.unavailable('Service', 'Circuit breaker is open');
     }
 
     try {
@@ -587,7 +592,7 @@ export class RateLimitMiddleware implements Middleware {
     if (timestamps && timestamps.length >= this.limit) {
       const resetTime = (timestamps[0] || now) + this.window;
       const retryAfter = Math.ceil((resetTime - now) / 1000);
-      throw new Error(`Rate limit exceeded. Retry after ${retryAfter} seconds`);
+      throw Errors.tooManyRequests(retryAfter);
     }
 
     // Add current request
@@ -625,7 +630,7 @@ export class RetryMiddlewareClass implements Middleware {
       }
     }
 
-    throw lastError || new Error('All retry attempts failed');
+    throw lastError || Errors.internal('All retry attempts failed');
   };
 
   // Plugin interface implementation

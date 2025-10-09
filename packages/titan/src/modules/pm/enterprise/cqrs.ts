@@ -230,7 +230,7 @@ export class CommandBus extends EventEmitter {
     return Promise.race([
       promise,
       new Promise<T>((_, reject) =>
-        setTimeout(() => reject(new Error('Command timeout')), timeout)
+        setTimeout(() => reject(Errors.timeout('CQRS command', timeout)), timeout)
       )
     ]);
   }
@@ -324,7 +324,7 @@ export class QueryBus extends EventEmitter {
     return Promise.race([
       promise,
       new Promise<T>((_, reject) =>
-        setTimeout(() => reject(new Error('Query timeout')), timeout)
+        setTimeout(() => reject(Errors.timeout('CQRS query', timeout)), timeout)
       )
     ]);
   }

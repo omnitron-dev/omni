@@ -6,6 +6,7 @@ import { Redis, RedisOptions } from 'ioredis';
 import { randomUUID, createHash } from 'node:crypto';
 import { defer, Deferred, delay as delayMs } from '@omnitron-dev/common';
 
+import { Errors } from '../errors/factories.js';
 import { StatsTracker } from './stats.js';
 import { defaultLogger } from './utils/logger.js';
 import { Middleware, MiddlewareManager } from './middleware.js';
@@ -144,7 +145,7 @@ export class NotificationManager {
   ): Promise<T> {
     const sha = this.luaScripts.get(scriptName);
     if (!sha) {
-      throw new Error(`Lua script ${scriptName} not loaded.`);
+      throw Errors.notFound('Lua script', scriptName);
     }
 
     return this.redis.evalsha(sha, keys.length, ...keys, ...args) as T;

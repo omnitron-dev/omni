@@ -9,6 +9,7 @@ import { Redis, RedisOptions } from 'ioredis';
 import { RedisManager } from '../modules/redis/redis.manager.js';
 import { RedisService } from '../modules/redis/redis.service.js';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
+import { Errors } from '../errors/factories.js';
 
 /**
  * Redis test fixture configuration
@@ -76,7 +77,7 @@ export async function createRedisTestFixture(
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         client.removeAllListeners();
-        reject(new Error('Redis connection timeout in test fixture'));
+        reject(Errors.timeout('Redis connection in test fixture', 10000));
       }, 10000); // 10 second timeout
 
       client.once('ready', () => {
@@ -177,7 +178,7 @@ export async function waitForRedis(
   return Promise.race([
     operation(),
     new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Redis operation timeout')), timeout)
+      setTimeout(() => reject(Errors.timeout('Redis operation', timeout)), timeout)
     ),
   ]);
 }

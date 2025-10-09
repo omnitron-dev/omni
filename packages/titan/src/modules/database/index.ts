@@ -156,9 +156,6 @@ export {
   TransactionPropagation,
   TransactionState,
   TransactionEventType,
-  TransactionTimeoutError,
-  TransactionDeadlockError,
-  TransactionPropagationError,
 } from './transaction/transaction.types.js';
 
 // Plugin system

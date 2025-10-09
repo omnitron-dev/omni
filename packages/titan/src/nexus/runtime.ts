@@ -2,6 +2,8 @@
  * Runtime detection utilities for cross-platform support
  */
 
+import { Errors } from '../errors/index.js';
+
 /**
  * Supported runtime environments
  */
@@ -172,7 +174,7 @@ export function getGlobalObject(): any {
   if (typeof self !== 'undefined') {
     return self;
   }
-  throw new Error('Unable to locate global object');
+  throw Errors.internal('Unable to locate global object');
 }
 
 /**
@@ -209,7 +211,7 @@ export async function loadRuntimeModule<T>(modulePaths: {
     const module = await import(modulePath);
     return module.default || module;
   } catch (error) {
-    throw new Error(`Failed to load module '${modulePath}' for runtime '${runtime}': ${error}`);
+    throw Errors.internal(`Failed to load module '${modulePath}' for runtime '${runtime}'`, error instanceof Error ? error : undefined);
   }
 }
 

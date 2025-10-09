@@ -372,40 +372,6 @@ export const DEADLOCK_ERROR_CODES = {
 } as const;
 
 /**
- * Transaction timeout error
- */
-export class TransactionTimeoutError extends Error {
-  constructor(message: string, public readonly transactionId: string) {
-    super(message);
-    this.name = 'TransactionTimeoutError';
-  }
-}
-
-/**
- * Transaction deadlock error
- */
-export class TransactionDeadlockError extends Error {
-  constructor(
-    message: string,
-    public readonly transactionId: string,
-    public readonly attempt: number
-  ) {
-    super(message);
-    this.name = 'TransactionDeadlockError';
-  }
-}
-
-/**
- * Transaction propagation error
- */
-export class TransactionPropagationError extends Error {
-  constructor(message: string, public readonly propagation: TransactionPropagation) {
-    super(message);
-    this.name = 'TransactionPropagationError';
-  }
-}
-
-/**
  * Transaction scope interface for dependency injection
  */
 export interface ITransactionScope {

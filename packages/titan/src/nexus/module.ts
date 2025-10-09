@@ -14,6 +14,7 @@ import {
   ServiceIdentifier,
   ModuleMetadata
 } from './types.js';
+import { Errors, ValidationError } from '../errors/index.js';
 
 /**
  * Module options for forRoot pattern
@@ -217,14 +218,14 @@ export class ModuleCompiler {
 
       resolve<T>(token: InjectionToken<T>): T {
         if (!this.container) {
-          throw new Error('Module container not initialized');
+          throw Errors.internal('Module container not initialized');
         }
         return this.container.resolve(token);
       },
 
       async resolveAsync<T>(token: InjectionToken<T>): Promise<T> {
         if (!this.container) {
-          throw new Error('Module container not initialized');
+          throw Errors.internal('Module container not initialized');
         }
         return this.container.resolveAsync(token);
       }
@@ -503,10 +504,10 @@ export function createConfigModule<T = any>(options: {
         try {
           const isValid = options.validate(config);
           if (isValid === false) {
-            throw new Error(`Configuration validation failed for ${options.name}`);
+            throw ValidationError.fromFieldErrors([{ field: 'config', message: `Validation failed for ${options.name}` }]);
           }
         } catch (error) {
-          throw new Error(`Configuration validation failed for ${options.name}: ${error}`);
+          throw ValidationError.fromFieldErrors([{ field: 'config', message: `Validation failed: ${error}` }]);
         }
       }
 

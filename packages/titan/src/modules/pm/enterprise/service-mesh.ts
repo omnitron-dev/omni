@@ -195,7 +195,7 @@ export class ServiceMeshProxy<T> {
       fn(),
       new Promise<R>((_, reject) =>
         setTimeout(
-          () => reject(new Error(`Operation timed out after ${timeout}ms`)),
+          () => reject(Errors.timeout('service mesh operation', timeout)),
           timeout
         )
       )
@@ -454,7 +454,7 @@ class Bulkhead {
         const index = this.queue.indexOf(entry);
         if (index !== -1) {
           this.queue.splice(index, 1);
-          reject(new Error('Bulkhead queue timeout'));
+          reject(Errors.timeout('bulkhead queue', queueTimeout));
         }
       }, queueTimeout);
     }).then(() => ({
@@ -520,7 +520,7 @@ class RetryManager {
       }
     }
 
-    throw lastError || new Error('Retry failed');
+    throw lastError || Errors.internal('Retry failed');
   }
 
   private calculateDelay(

@@ -120,7 +120,7 @@ export class RemotePeer extends AbstractPeer {
     >(this.requestTimeout ?? REQUEST_TIMEOUT, (packetId: number) => {
       const handlers = this.deleteResponseHandler(packetId);
       if (handlers?.errorHandler) {
-        handlers.errorHandler(new Error('Request timeout exceeded'));
+        handlers.errorHandler(Errors.timeout('RPC request', this.requestTimeout ?? REQUEST_TIMEOUT));
       }
     });
   }
@@ -542,7 +542,7 @@ export class RemotePeer extends AbstractPeer {
           });
         }
       } else {
-        reject(new Error('Socket closed'));
+        reject(NetronErrors.connectionClosed(this.socket.constructor?.name ?? 'unknown', 'Socket closed during RPC'));
       }
     });
   }
@@ -692,7 +692,7 @@ export class RemotePeer extends AbstractPeer {
         this.logger.error({ streamId, message }, 'Stream error received');
         const stream = this.readableStreams.get(streamId);
         if (stream) {
-          stream.destroy(new Error(message));
+          stream.destroy(NetronErrors.streamError(streamId, new Error(message)));
         }
         break;
       }
@@ -817,7 +817,7 @@ export class RemotePeer extends AbstractPeer {
   protected getDefinitionById(defId: string) {
     const def = this.definitions.get(defId);
     if (!def) {
-      throw new Error(`Unknown definition: ${defId}.`);
+      throw NetronErrors.serviceNotFound(defId);
     }
     return def;
   }

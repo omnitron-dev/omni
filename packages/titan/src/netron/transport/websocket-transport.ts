@@ -143,7 +143,7 @@ export class WebSocketConnection extends BaseConnection {
   async send(data: Buffer | ArrayBuffer | Uint8Array): Promise<void> {
     return new Promise((resolve, reject) => {
       if (this.socket.readyState !== WebSocket.OPEN) {
-        reject(new Error('WebSocket is not open'));
+        reject(NetronErrors.connectionClosed('websocket', 'WebSocket is not in OPEN state'));
         return;
       }
 
@@ -362,7 +362,7 @@ export class WebSocketTransport extends BaseTransport {
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
           socket.terminate();
-          reject(new Error('Connection timeout'));
+          reject(NetronErrors.connectionTimeout('websocket', address));
         }, options.connectTimeout ?? 10000);
 
         socket.once('open', () => {

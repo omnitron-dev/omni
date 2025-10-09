@@ -3,6 +3,7 @@
  */
 
 import { Token, Scope, MultiToken, TokenMetadata } from './types.js';
+import { Errors } from '../errors/factories.js';
 
 /**
  * Token registry for caching tokens by name
@@ -65,7 +66,7 @@ export function createToken<T = any>(
   metadata: Partial<TokenMetadata> = {}
 ): EnhancedToken<T> {
   if (!name || (typeof name === 'string' && name.trim() === '')) {
-    throw new Error('Token name cannot be empty');
+    throw Errors.badRequest('Token name cannot be empty', { name });
   }
 
   // Create a registry key based on name only for consistent token identity
@@ -136,7 +137,7 @@ export function createMultiToken<T = any>(
   const tokenName = name || `MultiToken_${Math.random().toString(36).substr(2, 9)}`;
 
   if (!tokenName || tokenName.trim() === '') {
-    throw new Error('Token name cannot be empty');
+    throw Errors.badRequest('Token name cannot be empty', { name: tokenName });
   }
 
   const symbol = Symbol(tokenName);
@@ -193,7 +194,7 @@ export function createOptionalToken<T = any>(
   metadata: Partial<TokenMetadata> = {}
 ): EnhancedOptionalToken<T> {
   if (!name || name.trim() === '') {
-    throw new Error('Token name cannot be empty');
+    throw Errors.badRequest('Token name cannot be empty', { name });
   }
 
   const symbol = Symbol(name);
@@ -252,7 +253,7 @@ export function createConfigToken<T = any>(
   } = {}
 ): ConfigToken<T> {
   if (!name || name.trim() === '') {
-    throw new Error('Token name cannot be empty');
+    throw Errors.badRequest('Token name cannot be empty', { name });
   }
 
   const symbol = Symbol(name);
@@ -310,7 +311,7 @@ export function createLazyToken<T = any>(
   metadata: Partial<TokenMetadata> = {}
 ): LazyToken<T> {
   if (!name || name.trim() === '') {
-    throw new Error('Token name cannot be empty');
+    throw Errors.badRequest('Token name cannot be empty', { name });
   }
 
   const symbol = Symbol(name);
@@ -369,7 +370,7 @@ export function createScopedToken<T = any>(
   metadata: Partial<TokenMetadata> = {}
 ): EnhancedToken<T> {
   if (!name || name.trim() === '') {
-    throw new Error('Token name cannot be empty');
+    throw Errors.badRequest('Token name cannot be empty', { name });
   }
 
   const symbol = Symbol(`${name}:${scope}`);
@@ -425,7 +426,7 @@ export function createAsyncToken<T = any>(
   metadata: Partial<TokenMetadata> = {}
 ): EnhancedToken<T> {
   if (!name || name.trim() === '') {
-    throw new Error('Token name cannot be empty');
+    throw Errors.badRequest('Token name cannot be empty', { name });
   }
 
   const symbol = Symbol(name);
@@ -481,7 +482,7 @@ export function createStreamToken<T = any>(
   metadata: Partial<TokenMetadata> = {}
 ): EnhancedToken<AsyncIterable<T>> {
   if (!name || name.trim() === '') {
-    throw new Error('Token name cannot be empty');
+    throw Errors.badRequest('Token name cannot be empty', { name });
   }
 
   const symbol = Symbol(name);

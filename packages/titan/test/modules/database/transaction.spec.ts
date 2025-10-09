@@ -20,8 +20,8 @@ import {
   DATABASE_TRANSACTION_MANAGER,
   TransactionPropagation,
   TransactionIsolationLevel,
-  TransactionTimeoutError,
 } from '../../../src/modules/database/index.js';
+import { TitanError } from '../../../src/errors/index.js';
 import { sql } from 'kysely';
 import { DatabaseTestManager } from '../../utils/docker-test-manager.js';
 
@@ -284,7 +284,7 @@ describe('Transaction Management', () => {
           },
           { timeout: 100 }
         )
-      ).rejects.toThrow(TransactionTimeoutError);
+      ).rejects.toThrow(TitanError);
     });
 
     it('should support manual transaction control', async () => {

@@ -13,7 +13,7 @@ import {
   ITransportConnection,
   ITransportServer
 } from './types.js';
-import { Errors } from '../../errors/index.js';
+import { NetronErrors, Errors } from '../../errors/index.js';
 
 /**
  * Unix socket specific options
@@ -127,7 +127,7 @@ export class UnixSocketTransport extends TcpTransport {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         socket.destroy();
-        reject(new Error('Connection timeout'));
+        reject(NetronErrors.connectionTimeout('unix', socketPath));
       }, options.connectTimeout ?? 10000);
 
       socket.once('connect', () => {
@@ -312,7 +312,7 @@ export class NamedPipeTransport extends TcpTransport {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         socket.destroy();
-        reject(new Error('Connection timeout'));
+        reject(NetronErrors.connectionTimeout('ipc', pipePath));
       }, options.connectTimeout ?? 10000);
 
       socket.once('connect', () => {

@@ -2,6 +2,7 @@ import { Readable, ReadableOptions } from 'readable-stream';
 
 import { Packet } from './packet/index.js';
 import { RemotePeer } from './remote-peer.js';
+import { NetronErrors } from '../errors/index.js';
 
 /**
  * Maximum number of packets that can be buffered in the stream before
@@ -107,7 +108,7 @@ export class NetronReadableStream extends Readable {
 
     if (this.buffer.size > MAX_BUFFER_SIZE) {
       this.peer.logger.error({ streamId: this.id, size: this.buffer.size }, 'Stream buffer overflow');
-      this.destroy(new Error(`Buffer overflow: more than ${MAX_BUFFER_SIZE} packets buffered`));
+      this.destroy(NetronErrors.streamBackpressure(String(this.id), this.buffer.size));
       return;
     }
 
@@ -169,7 +170,7 @@ export class NetronReadableStream extends Readable {
     this.timeout = setTimeout(() => {
       const message = `Stream ${this.id} inactive for ${timeoutDuration}ms, closing.`;
       this.peer.logger.warn(message);
-      this.destroy(new Error(message));
+      this.destroy(NetronErrors.streamClosed(String(this.id), message));
     }, timeoutDuration);
   }
 

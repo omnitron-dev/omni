@@ -10,7 +10,7 @@ import * as mysql from 'mysql2';
 import BetterSqlite3 from 'better-sqlite3';
 type Database = BetterSqlite3.Database;
 import { Injectable } from '../../decorators/index.js';
-import { Errors } from '../../errors/index.js';
+import { Errors, TitanError, ErrorCode } from '../../errors/index.js';
 import type {
   DatabaseConnection,
   DatabaseDialect,
@@ -183,7 +183,11 @@ export class DatabaseManager implements IDatabaseManager {
         error: error as Error,
       });
 
-      throw new Error(errorMessage);
+      throw new TitanError({
+        code: ErrorCode.SERVICE_UNAVAILABLE,
+        message: `Database connection ${name} is unavailable: ${errorMessage}`,
+        details: { connection: name, error: errorMessage }
+      });
     }
   }
 
@@ -284,7 +288,7 @@ export class DatabaseManager implements IDatabaseManager {
   private async testConnection(db: Kysely<any>, dialect: DatabaseDialect): Promise<void> {
     const timeout = this.options.queryTimeout || DEFAULT_TIMEOUTS.query;
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Connection test timeout')), timeout)
+      setTimeout(() => reject(Errors.timeout('database connection test', timeout)), timeout)
     );
 
     const testQuery = dialect === 'sqlite'

@@ -4,6 +4,7 @@ import { SmartBuffer } from '@omnitron-dev/msgpack/smart-buffer';
 import { Packet } from './packet.js';
 import { serializer } from './serializer.js';
 import { PacketType, TYPE_STREAM, PacketImpulse } from './types.js';
+import { NetronErrors } from '../../errors/index.js';
 
 export * from './types.js';
 
@@ -127,7 +128,7 @@ export const decodePacket = (buf: Buffer | ArrayBuffer) => {
   try {
     pkt.data = serializer.decode(buffer);
   } catch (error) {
-    throw new Error('Invalid packet: ' + (error instanceof Error ? error.message : String(error)));
+    throw NetronErrors.serializeDecode(buf, error instanceof Error ? error : new Error(String(error)));
   }
 
   // If the packet is part of a stream, read the stream-specific information.

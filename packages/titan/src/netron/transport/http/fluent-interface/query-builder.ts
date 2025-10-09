@@ -14,6 +14,7 @@ import type {
   HttpRequestHints,
   HttpRequestMessage
 } from '../types.js';
+import { Errors } from '../../../../errors/index.js';
 
 /**
  * Query options for configuring request behavior
@@ -204,7 +205,7 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
    */
   async execute(): Promise<any> {
     if (!this.methodName) {
-      throw new Error('Method name not specified');
+      throw Errors.badRequest('Method name not specified');
     }
 
     // Check for deduplication
@@ -247,7 +248,7 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
     try {
       // Check if already aborted before starting
       if (this.abortController.signal.aborted) {
-        throw new Error('Query cancelled');
+        throw Errors.internal('Query cancelled');
       }
 
       // Handle optimistic updates separately
@@ -280,7 +281,7 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
       } else {
         // Check abort again before making request
         if (this.abortController.signal.aborted) {
-          throw new Error('Query cancelled');
+          throw Errors.internal('Query cancelled');
         }
 
         // Check if we should use cache
@@ -302,7 +303,7 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
 
           // Check if cancelled after cache operation
           if (this.abortController.signal.aborted) {
-            throw new Error('Query cancelled');
+            throw Errors.internal('Query cancelled');
           }
         } else if (this.options.retry && this.retryManager) {
           // Use retry manager
@@ -313,7 +314,7 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
 
           // Check if cancelled after retry
           if (this.abortController.signal.aborted) {
-            throw new Error('Query cancelled');
+            throw Errors.internal('Query cancelled');
           }
         } else {
           // Direct execution
@@ -321,14 +322,14 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
 
           // Check if cancelled after request
           if (this.abortController.signal.aborted) {
-            throw new Error('Query cancelled');
+            throw Errors.internal('Query cancelled');
           }
         }
       }
 
       // Check abort before post-processing
       if (this.abortController.signal.aborted) {
-        throw new Error('Query cancelled');
+        throw Errors.internal('Query cancelled');
       }
 
       // Apply transform if specified
@@ -340,7 +341,7 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
       if (this.options.validate) {
         const isValid = await this.options.validate(result);
         if (!isValid) {
-          throw new Error('Response validation failed');
+          throw Errors.badRequest('Response validation failed', { validator: this.options.validate });
         }
       }
 
@@ -359,7 +360,7 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
     } catch (error) {
       // Handle abort error
       if ((error as Error).name === 'AbortError' || (error as Error).message === 'Query cancelled') {
-        throw new Error('Query cancelled');
+        throw Errors.internal('Query cancelled');
       }
 
       // Use fallback if available

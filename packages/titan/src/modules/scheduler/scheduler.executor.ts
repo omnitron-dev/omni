@@ -6,10 +6,9 @@
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { Inject, Optional, Injectable } from '../../decorators/index.js';
-import { Errors } from '../../errors/index.js';
+import { Errors, TitanError, ErrorCode } from '../../errors/index.js';
 
 import {
-  ERROR_MESSAGES,
   SCHEDULER_EVENTS,
   SCHEDULER_CONFIG_TOKEN,
   SCHEDULER_LISTENERS_TOKEN
@@ -85,7 +84,7 @@ export class SchedulerExecutor {
           executionId,
           'cancelled',
           undefined,
-          new Error('Job is already running'),
+          Errors.conflict('Job execution already in progress', { jobId: job.id }),
           0
         );
       }
@@ -145,7 +144,7 @@ export class SchedulerExecutor {
       const timeoutId = setTimeout(() => {
         if (!completed) {
           completed = true;
-          reject(new Error(ERROR_MESSAGES.JOB_TIMEOUT));
+          reject(Errors.timeout('scheduled job: ' + job.name + ' (' + job.id + ')', timeout));
         }
       }, timeout);
 
@@ -154,7 +153,11 @@ export class SchedulerExecutor {
         if (!completed) {
           completed = true;
           clearTimeout(timeoutId);
-          reject(new Error('Job cancelled'));
+          reject(new TitanError({
+            code: ErrorCode.INTERNAL_ERROR,
+            message: 'Job execution cancelled',
+            details: { jobId: job.id }
+          }));
         }
       });
 

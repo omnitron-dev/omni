@@ -391,7 +391,7 @@ export class DatabaseService {
    */
   private async withTimeout<T>(promise: Promise<T>, timeout: number): Promise<T> {
     const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`Operation timed out after ${timeout}ms`)), timeout)
+      setTimeout(() => reject(Errors.timeout('database operation', timeout)), timeout)
     );
 
     return Promise.race([promise, timeoutPromise]);

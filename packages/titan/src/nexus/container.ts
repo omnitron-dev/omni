@@ -19,6 +19,7 @@ import {
   DependencyNotFoundError,
   DuplicateRegistrationError
 } from './errors.js';
+import { Errors, toTitanError } from '../errors/factories.js';
 import {
   Scope,
   IModule,
@@ -625,7 +626,7 @@ export class Container implements IContainer {
 
         if (!hasAccess) {
           const tokenName = getTokenName(token);
-          throw new Error(`Token "${tokenName}" from module "${tokenModule}" is not exported and cannot be accessed from outside the module`);
+          throw Errors.forbidden(`Token not accessible: ${tokenName}`, { token: tokenName, module: tokenModule });
         }
       }
     }
@@ -1065,8 +1066,9 @@ export class Container implements IContainer {
 
             // Apply timeout to individual attempts if specified
             if (asyncProvider.timeout && asyncProvider.timeout > 0) {
+              const timeoutMs = asyncProvider.timeout;
               const timeoutPromise = new Promise<never>((_, reject) => {
-                setTimeout(() => reject(new Error('Async resolution timeout')), asyncProvider.timeout);
+                setTimeout(() => reject(Errors.timeout('async resolution', timeoutMs)), timeoutMs);
               });
               result = Promise.race([result, timeoutPromise]);
             }
@@ -1085,8 +1087,9 @@ export class Container implements IContainer {
 
           // Apply timeout if specified (no retry)
           if (asyncProvider.timeout && asyncProvider.timeout > 0) {
+            const timeoutMs = asyncProvider.timeout;
             const timeoutPromise = new Promise<never>((_, reject) => {
-              setTimeout(() => reject(new Error('Async resolution timeout')), asyncProvider.timeout);
+              setTimeout(() => reject(Errors.timeout('async resolution', timeoutMs)), timeoutMs);
             });
             factoryResult = Promise.race([factoryResult, timeoutPromise]);
           }
@@ -1296,7 +1299,7 @@ export class Container implements IContainer {
             Promise.race([
               this.resolveAsync(token),
               new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error('Timeout')), timeout)
+                setTimeout(() => reject(Errors.timeout('operation', timeout)), timeout)
               )
             ]) :
             this.resolveAsync(token)
@@ -1327,7 +1330,7 @@ export class Container implements IContainer {
 
     if (timeout > 0) {
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(`Batch resolution timed out after ${timeout}ms`)), timeout);
+        setTimeout(() => reject(Errors.timeout('batch resolution', timeout)), timeout);
       });
 
       return Promise.race([resolvePromise, timeoutPromise]) as any;
@@ -1501,7 +1504,7 @@ export class Container implements IContainer {
     if (module.requires) {
       for (const requiredModule of module.requires) {
         if (!this.modules.has(requiredModule)) {
-          throw new Error(`Required module not found: ${requiredModule}`);
+          throw Errors.notFound('Module', requiredModule);
         }
       }
     }
@@ -1982,7 +1985,7 @@ export class Container implements IContainer {
       try {
         return await operation();
       } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
+        lastError = toTitanError(error);
 
         if (attempt === maxAttempts) {
           break;
@@ -2173,7 +2176,7 @@ export class Container implements IContainer {
           try {
             instance = this.resolve(token);
           } catch (e) {
-            error = e instanceof Error ? e : new Error(String(e));
+            error = toTitanError(e);
             throw error;
           }
         }
@@ -2213,7 +2216,7 @@ export class Container implements IContainer {
             }
             return (instance as any)[prop];
           }).catch(e => {
-            error = e instanceof Error ? e : new Error(String(e));
+            error = toTitanError(e);
             throw error;
           });
         }

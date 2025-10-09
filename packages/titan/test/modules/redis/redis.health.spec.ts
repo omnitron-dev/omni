@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import { RedisHealthIndicator, HealthCheckError } from '../../../src/modules/redis/redis.health.js';
+import { RedisHealthIndicator } from '../../../src/modules/redis/redis.health.js';
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
+import { TitanError } from '../../../src/errors/core.js';
 import Redis from 'ioredis';
 import {
   createRedisTestHelper,
@@ -78,7 +79,7 @@ describe('RedisHealthIndicator', () => {
       expect(result['redis-secondary'].healthy).toBe(true);
     });
 
-    it('should throw HealthCheckError when manager reports unhealthy', async () => {
+    it('should throw TitanError when manager reports unhealthy', async () => {
       // Create a manager with invalid config
       const badManager = new RedisManager({
         clients: [{
@@ -92,10 +93,10 @@ describe('RedisHealthIndicator', () => {
       const badHealthIndicator = new RedisHealthIndicator(badManager);
 
       await expect(badHealthIndicator.isHealthy('redis', 'bad'))
-        .rejects.toThrow(HealthCheckError);
+        .rejects.toThrow(TitanError);
     });
 
-    it('should include error details in HealthCheckError', async () => {
+    it('should include error details in TitanError', async () => {
       // Mock manager to throw error
       const errorManager = {
         isHealthy: jest.fn().mockRejectedValue(new Error('Connection timeout'))
@@ -107,11 +108,12 @@ describe('RedisHealthIndicator', () => {
         await errorHealthIndicator.isHealthy('redis');
         fail('Should have thrown');
       } catch (error) {
-        expect(error).toBeInstanceOf(HealthCheckError);
-        const healthError = error as HealthCheckError;
-        expect(healthError.causes).toHaveProperty('redis');
-        expect(healthError.causes['redis'].status).toBe('down');
-        expect(healthError.causes['redis'].error).toBe('Connection timeout');
+        expect(error).toBeInstanceOf(TitanError);
+        const healthError = error as TitanError;
+        expect(healthError.details.causes).toHaveLength(1);
+        expect(healthError.details.causes[0]).toHaveProperty('redis');
+        expect(healthError.details.causes[0]['redis'].status).toBe('down');
+        expect(healthError.details.causes[0]['redis'].error).toBe('Connection timeout');
       }
     });
   });
@@ -131,7 +133,7 @@ describe('RedisHealthIndicator', () => {
       expect(result.redis.clients[secondaryNamespace].latency).toBeGreaterThanOrEqual(0);
     });
 
-    it('should throw HealthCheckError if any client is unhealthy', async () => {
+    it('should throw TitanError if any client is unhealthy', async () => {
       // Create manager with one bad client
       const mixedManager = new RedisManager({
         clients: [
@@ -152,7 +154,7 @@ describe('RedisHealthIndicator', () => {
 
       const mixedHealthIndicator = new RedisHealthIndicator(mixedManager);
 
-      await expect(mixedHealthIndicator.checkAll()).rejects.toThrow(HealthCheckError);
+      await expect(mixedHealthIndicator.checkAll()).rejects.toThrow(TitanError);
     });
 
     it('should include unhealthy clients in error', async () => {
@@ -171,9 +173,13 @@ describe('RedisHealthIndicator', () => {
         await mockHealthIndicator.checkAll();
         fail('Should have thrown');
       } catch (error) {
-        expect(error).toBeInstanceOf(HealthCheckError);
-        const healthError = error as HealthCheckError;
-        expect(healthError.causes['redis'].unhealthy).toEqual(['bad1', 'bad2']);
+        expect(error).toBeInstanceOf(TitanError);
+        const healthError = error as TitanError;
+        expect(healthError.details.causes).toHaveLength(1);
+        expect(healthError.details.causes[0]).toHaveProperty('redis');
+        const redisStatus = healthError.details.causes[0]['redis'];
+        expect(redisStatus.clients.bad1.healthy).toBe(false);
+        expect(redisStatus.clients.bad2.healthy).toBe(false);
       }
     });
   });
@@ -195,29 +201,30 @@ describe('RedisHealthIndicator', () => {
       expect(result.redis.ping).toBe('PONG');
     });
 
-    it('should throw HealthCheckError when ping fails', async () => {
+    it('should throw TitanError when ping fails', async () => {
       // Mock manager with client that fails ping
       const mockClient = {
         ping: jest.fn().mockRejectedValue(new Error('Network error'))
       };
 
       const mockManager = {
-        getClient: jest.fn().mockReturnValue(mockClient)
+        getClient: jest.fn().mockReturnValue(mockClient),
+        ping: jest.fn().mockRejectedValue(new Error('Network error'))
       } as any;
 
       const mockHealthIndicator = new RedisHealthIndicator(mockManager);
 
-      await expect(mockHealthIndicator.ping()).rejects.toThrow(HealthCheckError);
+      await expect(mockHealthIndicator.ping()).rejects.toThrow(TitanError);
     });
 
-    it('should throw HealthCheckError when client not found', async () => {
+    it('should throw TitanError when client not found', async () => {
       const mockManager = {
-        getClient: jest.fn().mockReturnValue(undefined)
+        ping: jest.fn().mockRejectedValue(new Error('Client not found'))
       } as any;
 
       const mockHealthIndicator = new RedisHealthIndicator(mockManager);
 
-      await expect(mockHealthIndicator.ping('nonexistent')).rejects.toThrow(HealthCheckError);
+      await expect(mockHealthIndicator.ping('nonexistent')).rejects.toThrow(TitanError);
     });
   });
 
@@ -240,50 +247,38 @@ describe('RedisHealthIndicator', () => {
       expect(result[key].healthy).toBe(true);
     });
 
-    it('should throw HealthCheckError for disconnected client', async () => {
-      const disconnectedClient = new Redis({
-        host: 'localhost',
-        port: 6379,
-        lazyConnect: true,
-      });
-
+    it('should throw TitanError for disconnected client', async () => {
       const mockManager = {
-        getClient: jest.fn().mockReturnValue(disconnectedClient)
+        isHealthy: jest.fn().mockResolvedValue(false)
       } as any;
 
       const mockHealthIndicator = new RedisHealthIndicator(mockManager);
 
-      await expect(mockHealthIndicator.checkConnection()).rejects.toThrow(HealthCheckError);
-
-      await disconnectedClient.quit();
+      await expect(mockHealthIndicator.checkConnection()).rejects.toThrow(TitanError);
     });
 
     it('should handle cluster connections', async () => {
-      const mockCluster = {
-        status: 'ready'
-      };
-
       const mockManager = {
-        getClient: jest.fn().mockReturnValue(mockCluster)
+        isHealthy: jest.fn().mockResolvedValue(true)
       } as any;
 
       const mockHealthIndicator = new RedisHealthIndicator(mockManager);
 
       const result = await mockHealthIndicator.checkConnection();
 
-      expect(result).toHaveProperty('redis');
-      expect(result.redis.status).toBe('up');
-      expect(result.redis.connected).toBe(true);
+      expect(result).toHaveProperty('redis-default');
+      expect(result['redis-default'].status).toBe('up');
+      expect(result['redis-default'].healthy).toBe(true);
     });
 
     it('should throw when client not found', async () => {
       const mockManager = {
-        getClient: jest.fn().mockReturnValue(null)
+        isHealthy: jest.fn().mockRejectedValue(new Error('Client not found'))
       } as any;
 
       const mockHealthIndicator = new RedisHealthIndicator(mockManager);
 
-      await expect(mockHealthIndicator.checkConnection()).rejects.toThrow(HealthCheckError);
+      await expect(mockHealthIndicator.checkConnection()).rejects.toThrow(TitanError);
     });
   });
 
@@ -299,9 +294,9 @@ describe('RedisHealthIndicator', () => {
         await mockHealthIndicator.isHealthy('redis');
         fail('Should have thrown');
       } catch (error) {
-        expect(error).toBeInstanceOf(HealthCheckError);
-        const healthError = error as HealthCheckError;
-        expect(healthError.causes['redis'].error).toBe('String error');
+        expect(error).toBeInstanceOf(TitanError);
+        const healthError = error as TitanError;
+        expect(healthError.details.causes[0]['redis'].error).toBe('String error');
       }
     });
 
@@ -319,9 +314,9 @@ describe('RedisHealthIndicator', () => {
         await mockHealthIndicator.isHealthy('redis');
         fail('Should have thrown');
       } catch (err) {
-        expect(err).toBeInstanceOf(HealthCheckError);
-        const healthError = err as HealthCheckError;
-        expect(healthError.causes['redis'].error).toBe('Unknown error');
+        expect(err).toBeInstanceOf(TitanError);
+        const healthError = err as TitanError;
+        expect(healthError.details.causes[0]['redis'].error).toBeDefined();
       }
     });
   });

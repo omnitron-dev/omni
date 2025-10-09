@@ -8,6 +8,7 @@ import { Injectable, Inject } from '../../decorators/index.js';
 import { Pool } from 'pg';
 import * as mysql from 'mysql2';
 import { sql } from 'kysely';
+import { Errors } from '../../errors/factories.js';
 import { DatabaseManager } from './database.manager.js';
 import { MigrationService } from './migration/migration.service.js';
 import { TransactionManager } from './transaction/transaction.manager.js';
@@ -152,7 +153,7 @@ export class DatabaseHealthIndicator {
       await Promise.race([
         sql`SELECT 1`.execute(db),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Health check timeout')), timeout)
+          setTimeout(() => reject(Errors.timeout('database health check', timeout)), timeout)
         ),
       ]);
 

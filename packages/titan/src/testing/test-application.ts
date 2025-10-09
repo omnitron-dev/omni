@@ -8,6 +8,7 @@
 import { Application } from '../application/index.js';
 import { Container } from '../nexus/index.js';
 import type { IApplicationOptions } from '../types.js';
+import { Errors } from '../errors/factories.js';
 
 /**
  * Test application builder with simplified API
@@ -55,7 +56,7 @@ export class TestApplication {
    */
   get<T>(token: any): T {
     if (!this.container) {
-      throw new Error('Application not initialized');
+      throw Errors.internal('Application not initialized');
     }
     return this.container.resolve<T>(token);
   }
@@ -75,7 +76,7 @@ export class TestApplication {
    */
   getApplication(): Application {
     if (!this.app) {
-      throw new Error('Application not initialized');
+      throw Errors.internal('Application not initialized');
     }
     return this.app;
   }

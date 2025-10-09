@@ -8,7 +8,7 @@ import type { EventMetadata } from '@omnitron-dev/eventemitter';
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
 import { Inject, Injectable, Optional } from '../../decorators/index.js';
-import { Errors } from '../../errors/index.js';
+import { Errors, toTitanError } from '../../errors/index.js';
 
 import { EVENT_EMITTER_TOKEN } from './tokens.js';
 import { LOGGER_TOKEN } from './tokens.js';
@@ -373,7 +373,7 @@ export class EventBusService {
           this.logger?.error({ err, event }, 'Error in event handler');
           // Emit error event
           if (event !== 'error') {
-            await this.emit('error', { error: err instanceof Error ? err : new Error(String(err)), event });
+            await this.emit('error', { error: toTitanError(err), event });
           }
         }
       }
@@ -549,13 +549,14 @@ export class EventBusService {
   ): Promise<TResponse> {
     const requestId = this.generateMessageId();
     const responseChannel = `${channel}.response.${requestId}`;
+    const timeout = options?.timeout;
 
     return new Promise((resolve, reject) => {
-      const timer = options?.timeout
+      const timer = timeout
         ? setTimeout(() => {
           unsubscribe();
-          reject(new Error(`Request timeout for channel: ${channel}`));
-        }, options.timeout)
+          reject(Errors.timeout(`channel request: ${channel}`, timeout));
+        }, timeout)
         : null;
 
       // Subscribe to response

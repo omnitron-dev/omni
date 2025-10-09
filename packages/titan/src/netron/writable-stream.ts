@@ -3,6 +3,7 @@ import { Writable, Readable, WritableOptions } from 'readable-stream';
 import { Uid } from './uid.js';
 import { RemotePeer } from './remote-peer.js';
 import { Packet, createPacket, TYPE_STREAM_ERROR, TYPE_STREAM_CLOSE } from './packet/index.js';
+import { NetronErrors } from '../errors/index.js';
 
 /**
  * Global UID generator instance for creating unique stream identifiers.
@@ -115,7 +116,7 @@ export class NetronWritableStream extends Writable {
   override _write(chunk: any, _: BufferEncoding, callback: (error?: Error | null) => void): void {
     if (this.isClosed) {
       this.peer.logger.warn({ streamId: this.id }, 'Attempt to write to closed stream');
-      callback(new Error('Stream is already closed'));
+      callback(NetronErrors.streamClosed(String(this.id), 'Attempt to write to closed stream'));
       return;
     }
 
@@ -153,7 +154,7 @@ export class NetronWritableStream extends Writable {
   override _final(callback: (error?: Error | null) => void): void {
     if (this.isClosed) {
       this.peer.logger.warn({ streamId: this.id }, 'Attempt to finalize closed stream');
-      callback(new Error('Stream is already closed'));
+      callback(NetronErrors.streamClosed(String(this.id), 'Attempt to finalize closed stream'));
       return;
     }
 

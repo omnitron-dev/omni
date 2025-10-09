@@ -19,6 +19,7 @@ import {
   ServerMetrics
 } from './types.js';
 import { Packet, encodePacket, decodePacket, TYPE_PING } from '../packet/index.js';
+import { NetronErrors, Errors } from '../../errors/index.js';
 
 /**
  * Base connection class with common functionality
@@ -194,7 +195,7 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
    */
   async ping(): Promise<number> {
     if (this._state !== ConnectionState.CONNECTED) {
-      throw new Error('Connection is not established');
+      throw NetronErrors.connectionClosed('connection', 'Connection is not established');
     }
 
     const pingPacket = new Packet(Packet.nextId());
@@ -205,7 +206,7 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
     return new Promise<number>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingPings.delete(pingPacket.id);
-        reject(new Error('Ping timeout'));
+        reject(Errors.timeout('Ping', this.options.requestTimeout ?? 5000));
       }, this.options.requestTimeout ?? 5000);
 
       this.pendingPings.set(pingPacket.id, {
@@ -249,7 +250,7 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
 
     // Reject all pending pings
     for (const [id, pending] of this.pendingPings.entries()) {
-      pending.reject(new Error('Connection closed'));
+      pending.reject(NetronErrors.connectionClosed('connection', 'Connection closed during ping'));
     }
     this.pendingPings.clear();
   }
@@ -369,9 +370,9 @@ export abstract class BaseTransport implements ITransport {
    */
   createServer?(options?: TransportOptions): Promise<ITransportServer> {
     if (!this.capabilities.server) {
-      throw new Error(`Transport ${this.name} does not support server mode`);
+      throw Errors.notImplemented('Server mode for transport ' + this.name);
     }
-    throw new Error(`Transport ${this.name} has not implemented createServer`);
+    throw Errors.notImplemented('createServer for transport ' + this.name);
   }
 
   /**
@@ -401,7 +402,7 @@ export abstract class BaseTransport implements ITransport {
 
       const parsedPort = port ? parseInt(port, 10) : undefined;
       if (parsedPort !== undefined && (parsedPort < 0 || parsedPort > 65535)) {
-        throw new Error(`Port number out of range: ${parsedPort}`);
+        throw Errors.badRequest('Port number out of range: ' + parsedPort, { port: parsedPort });
       }
 
       return {

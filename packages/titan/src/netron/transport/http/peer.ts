@@ -489,7 +489,7 @@ export class HttpRemotePeer extends AbstractPeer {
       });
     }
 
-    return new Error('Unknown error');
+    return Errors.internal('Unknown error');
   }
 
   /**

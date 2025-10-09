@@ -2,6 +2,8 @@
  * Async test utilities for handling timeouts, retries, and event listeners
  */
 
+import { Errors } from '../errors/factories.js';
+
 /**
  * Wait for a condition to be true with timeout
  */
@@ -20,7 +22,7 @@ export async function waitForCondition(
     await new Promise(resolve => setTimeout(resolve, interval));
   }
 
-  throw new Error(`Condition not met within ${timeout}ms`);
+  throw Errors.timeout('waitForCondition', timeout);
 }
 
 /**
@@ -35,7 +37,7 @@ export async function withTimeout<T>(
 
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
-      reject(new Error(`${errorMessage} after ${timeout}ms`));
+      reject(Errors.timeout(errorMessage, timeout));
     }, timeout);
   });
 
@@ -188,7 +190,7 @@ export async function waitForEvents(
   for (const event of events) {
     const promise = new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
-        reject(new Error(`Event "${event}" not received within ${timeout}ms`));
+        reject(Errors.timeout('event: ' + event, timeout));
       }, timeout);
 
       const handler = (data: any) => {
@@ -229,7 +231,7 @@ export async function collectEvents<T>(
 
   const timeoutId = setTimeout(() => {
     target.off(event, handler);
-    deferred.reject(new Error(`Condition not met within ${timeout}ms`));
+    deferred.reject(Errors.timeout('collectEvents', timeout));
   }, timeout);
 
   try {

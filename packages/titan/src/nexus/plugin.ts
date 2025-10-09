@@ -4,6 +4,7 @@
 
 import { createMiddleware } from './middleware.js';
 import { IContainer, InjectionToken, ResolutionContext } from './types.js';
+import { Errors, ValidationError } from '../errors/index.js';
 
 /**
  * Plugin hook function type
@@ -118,7 +119,7 @@ export class PluginManager {
   install(plugin: Plugin): void {
     // Check if already installed
     if (this.plugins.has(plugin.name)) {
-      throw new Error(`Plugin ${plugin.name} is already installed`);
+      throw Errors.conflict(`Plugin already installed`, { plugin: plugin.name });
     }
 
     // Check requirements (compatibility)
@@ -128,7 +129,7 @@ export class PluginManager {
           // Check nexus version compatibility
           const nexusVersion = '2.0.0'; // Current version
           if (!this.isCompatibleVersion(nexusVersion, versionRange)) {
-            throw new Error(`Plugin ${plugin.name} requires nexus ${versionRange}, but ${nexusVersion} is installed`);
+            throw Errors.badRequest(`Plugin version incompatible`, { plugin: plugin.name, required: versionRange, actual: nexusVersion });
           }
         }
         // Add other requirement checks as needed
@@ -139,7 +140,7 @@ export class PluginManager {
     if (plugin.dependencies) {
       for (const dep of plugin.dependencies) {
         if (!this.plugins.has(dep)) {
-          throw new Error(`Plugin ${plugin.name} depends on ${dep}`);
+          throw Errors.notFound('Plugin dependency', dep);
         }
       }
     }
@@ -164,13 +165,13 @@ export class PluginManager {
   uninstall(pluginName: string): void {
     const plugin = this.plugins.get(pluginName);
     if (!plugin) {
-      throw new Error(`Plugin ${pluginName} is not installed`);
+      throw Errors.notFound('Plugin', pluginName);
     }
 
     // Check if other plugins depend on this
     for (const [name, p] of this.plugins) {
       if (p.dependencies?.includes(pluginName)) {
-        throw new Error(`Cannot uninstall ${pluginName}: ${name} depends on it`);
+        throw Errors.conflict(`Cannot uninstall plugin`, { plugin: pluginName, dependentPlugin: name });
       }
     }
 
@@ -400,7 +401,7 @@ export function ValidationPlugin(options: { validators?: Record<string, (value: 
           for (const [key, validator] of Object.entries(options.validators)) {
             if (context && context[key]) {
               if (!validator(context[key])) {
-                throw new Error(`Validation failed for ${key}`);
+                throw ValidationError.fromFieldErrors([{ field: key, message: 'Validation failed' }]);
               }
             }
           }

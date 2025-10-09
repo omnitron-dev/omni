@@ -9,6 +9,7 @@ import { Application } from './application.js';
 import { Module, Injectable } from '../decorators/index.js';
 import type { IApplicationOptions, IModule } from '../types.js';
 import { Token, createToken as nexusCreateToken } from '../nexus/index.js';
+import { TitanError, ErrorCode } from '../errors/index.js';
 
 /**
  * Create and start a Titan application with zero configuration
@@ -281,10 +282,11 @@ export function inject<T = any>(token: Token<T> | string): T {
   // For now, return a proxy that will be resolved later
   return new Proxy({} as any, {
     get(target, prop) {
-      throw new Error(
-        `Dependency ${String(token)} not injected. ` +
-        `Make sure the service is registered and the application is started.`
-      );
+      throw new TitanError({
+        code: ErrorCode.INTERNAL_ERROR,
+        message: `Dependency ${String(token)} not injected. Make sure the service is registered and the application is started.`,
+        details: { token: String(token) }
+      });
     }
   }) as T;
 }

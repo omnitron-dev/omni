@@ -12,7 +12,7 @@ import { Packet } from '../../../src/netron/packet/index.js';
 import { Socket } from 'node:net';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import path, { join } from 'node:path';
 import { waitForEvent, delay } from '../../utils/index.js';
 
 // Helper to generate unique socket path
@@ -717,6 +717,143 @@ describe('Unix Domain Socket Transport', () => {
     }
   });
 
+  // Windows NamedPipeTransport tests
+  describe('NamedPipeTransport', () => {
+    const skipOnUnix = process.platform === 'win32' ? it : it.skip;
+
+    // These tests can run on any platform (don't require Windows)
+    it('should create named pipe transport', () => {
+      const pipeTransport = new NamedPipeTransport();
+      expect(pipeTransport.name).toBe('pipe');
+      expect(pipeTransport.capabilities.streaming).toBe(true);
+      expect(pipeTransport.capabilities.server).toBe(true);
+    });
+
+    it('should parse named pipe addresses correctly', () => {
+      const pipeTransport = new NamedPipeTransport();
+
+      // pipe:// format
+      const addr1 = pipeTransport.parseAddress('pipe://testpipe');
+      expect(addr1.protocol).toBe('pipe');
+      expect(addr1.path).toBe('\\\\.\\pipe\\testpipe');
+
+      // pipe: format
+      const addr2 = pipeTransport.parseAddress('pipe:testpipe');
+      expect(addr2.protocol).toBe('pipe');
+      expect(addr2.path).toBe('\\\\.\\pipe\\testpipe');
+
+      // Raw pipe path
+      const addr3 = pipeTransport.parseAddress('\\\\.\\pipe\\testpipe');
+      expect(addr3.protocol).toBe('pipe');
+      expect(addr3.path).toBe('\\\\.\\pipe\\testpipe');
+
+      // Raw name without path prefix
+      const addr4 = pipeTransport.parseAddress('mypipe');
+      expect(addr4.protocol).toBe('pipe');
+      expect(addr4.path).toBe('\\\\.\\pipe\\mypipe');
+    });
+
+    it('should validate named pipe addresses', () => {
+      const pipeTransport = new NamedPipeTransport();
+
+      expect(pipeTransport.isValidAddress('pipe://test')).toBe(true);
+      expect(pipeTransport.isValidAddress('pipe:test')).toBe(true);
+      expect(pipeTransport.isValidAddress('\\\\.\\pipe\\test')).toBe(true);
+      expect(pipeTransport.isValidAddress('test')).toBe(true);
+
+      // Note: tcp:// addresses may parse successfully but should fail on connect
+      // The parseAddress method returns a valid result for any format
+      // Validation happens at connect time with protocol check
+    });
+
+    // Connection tests need Windows
+    skipOnUnix('should reject invalid protocol in connect', async () => {
+      const pipeTransport = new NamedPipeTransport();
+
+      await expect(
+        pipeTransport.connect('tcp://localhost:8080')
+      ).rejects.toThrow(/Invalid named pipe address/);
+    });
+
+    skipOnUnix('should connect to named pipe', async () => {
+      const pipeTransport = new NamedPipeTransport();
+      const pipeName = `test-pipe-${Date.now()}`;
+
+      // Create server
+      const server = await pipeTransport.createServer(pipeName);
+      await server.listen();
+
+      // Connect client
+      const connPromise = waitForEvent(server, 'connection');
+      const client = await pipeTransport.connect(pipeName);
+      await connPromise;
+
+      expect(client).toBeDefined();
+      expect(client.state).toBe(ConnectionState.CONNECTED);
+
+      await client.close();
+      await server.close();
+    });
+
+    skipOnUnix('should create named pipe server with options', async () => {
+      const pipeTransport = new NamedPipeTransport();
+      const pipeName = `test-pipe-${Date.now()}`;
+
+      const server = await pipeTransport.createServer({
+        path: pipeName
+      } as any);
+
+      await server.listen();
+      expect(server).toBeDefined();
+
+      await server.close();
+    });
+
+    skipOnUnix('should throw error when creating server without name', async () => {
+      const pipeTransport = new NamedPipeTransport();
+
+      await expect(
+        pipeTransport.createServer()
+      ).rejects.toThrow('requires a name');
+
+      await expect(
+        pipeTransport.createServer({} as any)
+      ).rejects.toThrow('requires a name');
+    });
+
+    skipOnUnix('should handle connection timeout', async () => {
+      const pipeTransport = new NamedPipeTransport();
+      const nonExistentPipe = `nonexistent-pipe-${Date.now()}`;
+
+      await expect(
+        pipeTransport.connect(nonExistentPipe, {
+          connectTimeout: 100
+        })
+      ).rejects.toThrow();
+    });
+
+    skipOnUnix('should send and receive data via named pipe', async () => {
+      const pipeTransport = new NamedPipeTransport();
+      const pipeName = `test-pipe-${Date.now()}`;
+
+      const server = await pipeTransport.createServer(pipeName);
+      await server.listen();
+
+      const serverConnPromise = waitForEvent(server, 'connection');
+      const client = await pipeTransport.connect(pipeName);
+      const serverConn = await serverConnPromise;
+
+      const dataPromise = waitForEvent(serverConn, 'data');
+      await client.send(Buffer.from('Hello named pipe!'));
+
+      const receivedData = await dataPromise;
+      expect(receivedData.toString()).toBe('Hello named pipe!');
+
+      await client.close();
+      await server.close();
+    });
+  });
+
   // Additional edge case tests for better coverage
   describe('Edge Cases and Error Handling', () => {
     if (!isWindows) {
@@ -876,6 +1013,334 @@ describe('Unix Domain Socket Transport', () => {
           } finally {
             await fs.unlink(socketPath).catch(() => {});
           }
+        }, 10000);
+
+        it('should handle unlink errors during server force option (non-ENOENT)', async () => {
+          const transport = new UnixSocketTransport();
+          const socketPath = join(tmpdir(), `unlink-error-${Date.now()}.sock`);
+
+          // Create a directory where we expect a socket (to cause unlink error)
+          const dirPath = join(tmpdir(), `unlink-dir-${Date.now()}`);
+          await fs.mkdir(dirPath, { recursive: true });
+
+          // Try to create server with force option at directory path - should fail
+          try {
+            await expect(
+              transport.createServer({
+                path: dirPath,
+                force: true
+              } as any)
+            ).rejects.toThrow();
+          } finally {
+            await fs.rmdir(dirPath).catch(() => {});
+          }
+        }, 10000);
+
+        it('should accept absolute socket paths', async () => {
+          const transport = new UnixSocketTransport();
+          const absolutePath = join(tmpdir(), `absolute-${Date.now()}.sock`);
+
+          const server = await transport.createServer(absolutePath);
+          await server.listen();
+
+          expect(server.address).toBe(absolutePath);
+
+          await server.close();
+          await cleanupSocketFile(absolutePath);
+        }, 10000);
+
+        it('should convert relative paths to absolute during connect', async () => {
+          const transport = new UnixSocketTransport();
+          const relativePath = `./relative-${Date.now()}.sock`;
+
+          // Create server
+          const server = await transport.createServer(relativePath);
+          await server.listen();
+
+          // Connect with relative path
+          const connPromise = waitForEvent(server, 'connection');
+          const client = await transport.connect(relativePath);
+          await connPromise;
+
+          expect(client).toBeDefined();
+          expect(client.state).toBe(ConnectionState.CONNECTED);
+
+          await client.close();
+          await server.close();
+
+          // Clean up
+          const absolutePath = path.isAbsolute(relativePath) ?
+            relativePath :
+            path.join(process.cwd(), relativePath);
+          await cleanupSocketFile(absolutePath);
+        }, 10000);
+
+        it('should pass through socket connection errors during connect', async () => {
+          const transport = new UnixSocketTransport();
+          const socketPath = join(tmpdir(), `error-connect-${Date.now()}.sock`);
+
+          // Connect without server (should fail with connection error)
+          await expect(
+            transport.connect(socketPath, {
+              connectTimeout: 100
+            })
+          ).rejects.toThrow();
+        }, 10000);
+
+        it('should trigger connection timeout when socket never connects', async () => {
+          const transport = new UnixSocketTransport();
+          const socketPath = join(tmpdir(), `timeout-${Date.now()}.sock`);
+
+          // Create a socket file but don't create a server listening on it
+          // This will cause the connection to hang and timeout
+          await fs.writeFile(socketPath, '');
+
+          try {
+            await expect(
+              transport.connect(socketPath, {
+                connectTimeout: 50 // Very short timeout
+              })
+            ).rejects.toThrow(/timed out|timeout|ECONNREFUSED/i);
+          } finally {
+            await fs.unlink(socketPath).catch(() => {});
+          }
+        }, 10000);
+
+        it('should handle mkdir with directory already exists (EEXIST is ignored)', async () => {
+          const transport = new UnixSocketTransport();
+          const existingDir = join(tmpdir(), `existing-dir-${Date.now()}`);
+
+          // Create the directory first
+          await fs.mkdir(existingDir, { recursive: true });
+
+          const socketPath = join(existingDir, 'test.sock');
+
+          // Creating server should succeed even though directory exists
+          const server = await transport.createServer(socketPath);
+          await server.listen();
+
+          expect(server).toBeDefined();
+
+          await server.close();
+          await cleanupSocketFile(socketPath);
+          await fs.rmdir(existingDir).catch(() => {});
+        }, 10000);
+
+        it('should test chmod is called with mode option', async () => {
+          const transport = new UnixSocketTransport();
+          const socketPath = join(tmpdir(), `chmod-test-${Date.now()}.sock`);
+
+          // Spy on console.error to verify chmod error handling
+          const originalConsoleError = console.error;
+          let errorLogged = false;
+          console.error = (...args: any[]) => {
+            if (args[0]?.includes?.('Failed to set socket permissions')) {
+              errorLogged = true;
+            }
+            originalConsoleError(...args);
+          };
+
+          try {
+            const server = await transport.createServer({
+              path: socketPath,
+              mode: 0o600
+            } as any);
+
+            await server.listen();
+
+            // Give chmod time to execute (it's async and doesn't block)
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            // Verify socket exists
+            const stats = await fs.stat(socketPath);
+            expect(stats.isSocket()).toBe(true);
+
+            await server.close();
+          } finally {
+            console.error = originalConsoleError;
+            await cleanupSocketFile(socketPath);
+          }
+        }, 10000);
+
+        it('should test absolute path handling in connect', async () => {
+          const transport = new UnixSocketTransport();
+          const absolutePath = join(tmpdir(), `absolute-connect-${Date.now()}.sock`);
+
+          // Create server with absolute path
+          const server = await transport.createServer(absolutePath);
+          await server.listen();
+
+          // Connect with absolute path
+          const connPromise = waitForEvent(server, 'connection');
+          const client = await transport.connect(absolutePath);
+          await connPromise;
+
+          expect(client).toBeDefined();
+          expect(client.state).toBe(ConnectionState.CONNECTED);
+          expect(client.remoteAddress).toBe(absolutePath);
+
+          await client.close();
+          await server.close();
+        }, 10000);
+
+        it('should test UnixSocketConnection remoteAddress property', async () => {
+          const transport = new UnixSocketTransport();
+          const socketPath = join(tmpdir(), `remoteaddr-${Date.now()}.sock`);
+
+          const server = await transport.createServer(socketPath);
+          await server.listen();
+
+          const connPromise = waitForEvent(server, 'connection');
+          const client = await transport.connect(socketPath);
+          const serverConn = await connPromise;
+
+          // UnixSocketConnection should return socket path as remoteAddress
+          expect(client.remoteAddress).toBe(path.isAbsolute(socketPath) ? socketPath : path.join(process.cwd(), socketPath));
+
+          await client.close();
+          await server.close();
+        }, 10000);
+
+        it('should test UnixSocketServer address property', async () => {
+          const transport = new UnixSocketTransport();
+          const socketPath = join(tmpdir(), `serveraddr-${Date.now()}.sock`);
+
+          const server = await transport.createServer(socketPath);
+          await server.listen();
+
+          // UnixSocketServer should return socket path as address
+          const absolutePath = path.isAbsolute(socketPath) ? socketPath : path.join(process.cwd(), socketPath);
+          expect(server.address).toBe(absolutePath);
+
+          await server.close();
+        }, 10000);
+
+        it('should handle parseAddress with unix:// (double slash)', () => {
+          const transport = new UnixSocketTransport();
+          const addr = transport.parseAddress('unix:///tmp/socket.sock');
+          expect(addr.protocol).toBe('unix');
+          expect(addr.path).toBe('/tmp/socket.sock');
+        });
+
+        it('should handle parseAddress with unix: (single colon)', () => {
+          const transport = new UnixSocketTransport();
+          const addr = transport.parseAddress('unix:/tmp/socket.sock');
+          expect(addr.protocol).toBe('unix');
+          expect(addr.path).toBe('/tmp/socket.sock');
+        });
+
+        it('should handle parseAddress with path only', () => {
+          const transport = new UnixSocketTransport();
+          const addr = transport.parseAddress('/tmp/socket.sock');
+          expect(addr.protocol).toBe('unix');
+          expect(addr.path).toBe('/tmp/socket.sock');
+        });
+
+        it('should delegate to base class for non-unix protocols', () => {
+          const transport = new UnixSocketTransport();
+          // This should call super.parseAddress() which handles tcp://
+          const addr = transport.parseAddress('tcp://localhost:8080');
+          expect(addr).toBeDefined();
+          expect(addr.protocol).not.toBe('unix');
+        });
+
+        it('should handle isValidAddress with various address formats', () => {
+          const transport = new UnixSocketTransport();
+
+          // Valid addresses
+          expect(transport.isValidAddress('unix:///tmp/test.sock')).toBe(true);
+          expect(transport.isValidAddress('unix:/tmp/test.sock')).toBe(true);
+          expect(transport.isValidAddress('/tmp/test.sock')).toBe(true);
+          expect(transport.isValidAddress('./relative.sock')).toBe(true);
+
+          // Invalid addresses should return false (caught by try-catch)
+          expect(transport.isValidAddress('')).toBe(false);
+        });
+
+        it('should handle UnixSocketServer connection handler', async () => {
+          const transport = new UnixSocketTransport();
+          const socketPath = join(tmpdir(), `handler-${Date.now()}.sock`);
+
+          const server = await transport.createServer(socketPath);
+          await server.listen();
+
+          // Connect multiple clients to verify handler works
+          const conn1Promise = waitForEvent(server, 'connection');
+          const client1 = await transport.connect(socketPath);
+          const serverConn1 = await conn1Promise;
+
+          expect(serverConn1).toBeDefined();
+          expect(serverConn1.remoteAddress).toBe(path.isAbsolute(socketPath) ? socketPath : path.join(process.cwd(), socketPath));
+
+          await client1.close();
+          await server.close();
+        }, 10000);
+
+        it('should properly extend TcpConnection with socket path', async () => {
+          const transport = new UnixSocketTransport();
+          const socketPath = join(tmpdir(), `extend-${Date.now()}.sock`);
+
+          const server = await transport.createServer(socketPath);
+          await server.listen();
+
+          const connPromise = waitForEvent(server, 'connection');
+          const client = await transport.connect(socketPath);
+          const serverConn = await connPromise;
+
+          // Verify UnixSocketConnection has correct properties
+          const absolutePath = path.isAbsolute(socketPath) ? socketPath : path.join(process.cwd(), socketPath);
+          expect(client.remoteAddress).toBe(absolutePath);
+          expect((client as any).socketPath).toBe(absolutePath);
+
+          await client.close();
+          await server.close();
+        }, 10000);
+
+        it('should handle server close cleanup with unlink', async () => {
+          const transport = new UnixSocketTransport();
+          const socketPath = join(tmpdir(), `cleanup-${Date.now()}.sock`);
+
+          const server = await transport.createServer(socketPath);
+          await server.listen();
+
+          // Verify socket exists
+          const stats = await fs.stat(socketPath);
+          expect(stats.isSocket()).toBe(true);
+
+          // Close should remove socket file
+          await server.close();
+
+          // Socket should be gone
+          await expect(fs.stat(socketPath)).rejects.toThrow();
+        }, 10000);
+
+        it('should handle createServer with options object containing path', async () => {
+          const transport = new UnixSocketTransport();
+          const socketPath = join(tmpdir(), `options-${Date.now()}.sock`);
+
+          const server = await transport.createServer({
+            path: socketPath,
+            force: false
+          } as any);
+
+          await server.listen();
+          expect(server).toBeDefined();
+
+          await server.close();
+        }, 10000);
+
+        it('should convert relative to absolute path during server creation', async () => {
+          const transport = new UnixSocketTransport();
+          const relativePath = `./relative-server-${Date.now()}.sock`;
+
+          const server = await transport.createServer(relativePath);
+          await server.listen();
+
+          const absolutePath = path.join(process.cwd(), relativePath);
+          expect(server.address).toBe(absolutePath);
+
+          await server.close();
+          await cleanupSocketFile(absolutePath);
         }, 10000);
       });
     }

@@ -246,6 +246,7 @@ export class TransportConnectionFactory {
   static isNativeWebSocket(socket: any): socket is WebSocket {
     return socket instanceof WebSocket ||
            (typeof socket === 'object' &&
+            socket !== null &&
             'readyState' in socket &&
             'send' in socket &&
             'close' in socket &&

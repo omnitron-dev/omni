@@ -9,6 +9,7 @@ import type {
   HttpBatchRequest,
   HttpBatchResponse
 } from './types.js';
+import { NetronErrors } from '../../../errors/index.js';
 
 /**
  * Batch request entry with promise resolution
@@ -217,7 +218,7 @@ export class RequestBatcher extends EventEmitter {
       });
 
       if (!response.ok) {
-        throw new Error(`Batch request failed: ${response.status} ${response.statusText}`);
+        throw NetronErrors.invalidRequest(`Batch request failed: ${response.status} ${response.statusText}`, { status: response.status, statusText: response.statusText });
       }
 
       const batchResponse: HttpBatchResponse = await response.json();

@@ -12,7 +12,7 @@ import {
   type TransportOptions
 } from '../types.js';
 import type { Definition } from '../../definition.js';
-import { TitanError, ErrorCode } from '../../../errors/index.js';
+import { TitanError, ErrorCode, NetronErrors, Errors } from '../../../errors/index.js';
 import {
   HttpRequestMessage,
   HttpResponseMessage,
@@ -325,7 +325,7 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
    */
   async ping(): Promise<number> {
     if (this._state !== ConnectionState.CONNECTED) {
-      throw new Error('Connection is not established');
+      throw NetronErrors.connectionClosed('http', 'Connection is not established');
     }
 
     const startTime = Date.now();
@@ -341,13 +341,13 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
       });
 
       if (!response.ok) {
-        throw new Error(`Ping failed with status ${response.status}`);
+        throw NetronErrors.connectionFailed('http', this.baseUrl, new Error(`Ping failed with status ${response.status}`));
       }
 
       const rtt = Date.now() - startTime;
       return rtt;
     } catch (error) {
-      throw new Error(`Ping failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw NetronErrors.connectionFailed('http', this.baseUrl, error instanceof Error ? error : new Error(String(error)));
     }
   }
 

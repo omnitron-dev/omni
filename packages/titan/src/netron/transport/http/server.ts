@@ -13,7 +13,7 @@ import type {
   ServerMetrics
 } from '../types.js';
 import type { LocalPeer } from '../../local-peer.js';
-import { TitanError, ErrorCode } from '../../../errors/index.js';
+import { TitanError, ErrorCode, NetronErrors, Errors } from '../../../errors/index.js';
 import {
   MiddlewarePipeline,
   MiddlewareStage,
@@ -284,7 +284,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    */
   async listen(): Promise<void> {
     if (this.server) {
-      throw new Error('Server is already listening');
+      throw Errors.conflict('Server is already listening');
     }
 
     const runtime = this.detectRuntime();
@@ -306,7 +306,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           maxRequestBodySize: (this.options as any).maxBodySize || 10 * 1024 * 1024
         });
       } else {
-        throw new Error('Bun runtime detected but Bun.serve not available');
+        throw Errors.notImplemented('Bun runtime detected but Bun.serve not available');
       }
     } else if (runtime === 'deno') {
       // Use Deno's native server
@@ -603,7 +603,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           const method = service?.methods.get(req.method);
 
           if (!service || !method) {
-            throw new Error(`Method ${req.service}.${req.method} not found`);
+            throw NetronErrors.methodNotFound(req.service, req.method);
           }
 
           // Create minimal middleware context for batch requests
@@ -658,7 +658,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           const method = service?.methods.get(req.method);
 
           if (!service || !method) {
-            throw new Error(`Method ${req.service}.${req.method} not found`);
+            throw NetronErrors.methodNotFound(req.service, req.method);
           }
 
           // Create minimal middleware context for batch requests

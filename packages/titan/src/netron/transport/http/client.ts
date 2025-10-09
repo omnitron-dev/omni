@@ -16,6 +16,7 @@ import {
   type HttpRequestContext,
   type HttpRequestHints
 } from './types.js';
+import { NetronErrors } from '../../../errors/index.js';
 
 /**
  * HTTP Transport Client implementation
@@ -88,7 +89,8 @@ export class HttpTransportClient {
     const response = await this.sendRequest(message);
 
     if (!response.success) {
-      throw new Error(response.error?.message || 'Method invocation failed');
+      const errorMsg = response.error?.message || 'Method invocation failed';
+      throw NetronErrors.invalidResponse(service, method, { error: response.error, message: errorMsg });
     }
 
     return response.data;

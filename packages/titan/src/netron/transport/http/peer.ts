@@ -12,7 +12,7 @@ import type { INetron } from '../../types.js';
 import type { ITransportConnection, TransportOptions } from '../types.js';
 import type { ILogger } from '../../../modules/logger/logger.types.js';
 import { Definition } from '../../definition.js';
-import { TitanError, ErrorCode } from '../../../errors/index.js';
+import { TitanError, ErrorCode, NetronErrors, Errors } from '../../../errors/index.js';
 import type {
   EventSubscriber,
 } from '../../types.js';
@@ -195,7 +195,7 @@ export class HttpRemotePeer extends AbstractPeer {
    * Expose a service (not supported for HTTP client)
    */
   override async exposeService(instance: any): Promise<Definition> {
-    throw new Error('Service exposure not supported from HTTP client');
+    throw Errors.notImplemented('Service exposure not supported from HTTP client');
   }
 
   /**
@@ -557,7 +557,7 @@ export class HttpRemotePeer extends AbstractPeer {
   protected getDefinitionById(defId: string): Definition {
     const def = this.definitions.get(defId);
     if (!def) {
-      throw new Error(`Definition ${defId} not found`);
+      throw Errors.notFound('Definition', defId);
     }
     return def;
   }
@@ -568,7 +568,7 @@ export class HttpRemotePeer extends AbstractPeer {
   protected getDefinitionByServiceName(name: string): Definition {
     const def = this.services.get(name);
     if (!def) {
-      throw new Error(`Service ${name} not found`);
+      throw NetronErrors.serviceNotFound(name);
     }
     return def;
   }

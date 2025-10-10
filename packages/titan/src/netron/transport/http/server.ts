@@ -577,8 +577,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         });
       }
 
-      // Validate input using consolidated helper
-      this.validateMethodInput(message.input, method.contract);
+      // Validate input using consolidated helper and get transformed data
+      const validatedInput = this.validateMethodInput(message.input, method.contract);
 
       // Create minimal handler context (no middleware)
       const metadata = new Map<string, unknown>();
@@ -591,15 +591,15 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           peer: this.netronPeer!,
           serviceName: message.service,
           methodName: message.method,
-          input: message.input,
+          input: validatedInput,
           metadata,
           timing: { start: performance.now(), middlewareTimes: new Map() }
         }
       };
 
-      // Execute method directly
+      // Execute method directly with validated input (includes defaults)
       const methodStart = performance.now();
-      const result = await method.handler(message.input, handlerContext);
+      const result = await method.handler(validatedInput, handlerContext);
       const serverTime = Math.round(performance.now() - methodStart);
 
       // Build minimal response
@@ -766,8 +766,11 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
       // Execute method handler
       const executeHandler = async () => {
-        // Validate input using consolidated helper
-        this.validateMethodInput(message.input, method.contract);
+        // Validate input using consolidated helper and get transformed data
+        const validatedInput = this.validateMethodInput(message.input, method.contract);
+
+        // Update context with validated input
+        context.input = validatedInput;
 
         // Create method handler context
         const handlerContext: MethodHandlerContext = {
@@ -777,9 +780,9 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           middleware: context
         };
 
-        // Execute method with timing
+        // Execute method with timing using validated input (includes defaults)
         const methodStart = performance.now();
-        context.output = await method.handler(message.input, handlerContext);
+        context.output = await method.handler(validatedInput, handlerContext);
         context.metadata.set('serverTime', Math.round(performance.now() - methodStart));
       };
 
@@ -1571,16 +1574,19 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   /**
    * Validate method input against contract
    * Consolidated from 2 duplicate implementations
+   * @returns The validated and transformed input (with defaults applied), or original input if no validation
    */
-  private validateMethodInput(input: unknown, contract?: MethodContract): void {
+  private validateMethodInput(input: unknown, contract?: MethodContract): unknown {
     if (!contract?.input) {
-      return;
+      return input;
     }
 
     // For HTTP transport, input comes as an array of arguments
     // Most methods take a single object parameter, so extract it
     let valueToValidate = input;
+    let isArrayInput = false;
     if (Array.isArray(input)) {
+      isArrayInput = true;
       // If it's a single-element array, validate the first element
       // This handles the common case of methods with a single object parameter
       if (input.length === 1) {
@@ -1608,5 +1614,9 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         }
       });
     }
+
+    // Return the validated data (with defaults applied by Zod)
+    // If input was an array, wrap the validated value back in an array
+    return isArrayInput && input.length === 1 ? [validation.data] : validation.data;
   }
 }

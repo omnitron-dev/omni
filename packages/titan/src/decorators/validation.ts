@@ -12,7 +12,16 @@ import type { ValidationOptions as IValidationOptions } from '../validation/vali
  */
 export function Contract<T extends ContractClass>(contract: T): ClassDecorator {
   return function (target: any) {
+    // Store contract in reflection metadata for retrieval
     Reflect.defineMetadata('validation:contract', contract, target);
+
+    // Also merge into service metadata if it exists (for proper propagation to transport servers)
+    const serviceMetadata = Reflect.getMetadata('netron:service', target);
+    if (serviceMetadata) {
+      serviceMetadata.contract = contract;
+      Reflect.defineMetadata('netron:service', serviceMetadata, target);
+    }
+
     return target;
   };
 }

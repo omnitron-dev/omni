@@ -15,8 +15,9 @@ import { contract } from '../../src/validation/index.js';
 import { createMockLogger } from '../netron/test-utils.js';
 import type { HttpRemotePeer } from '../../src/netron/transport/http/peer.js';
 
-// Test port management
-const getRandomPort = () => 9000 + Math.floor(Math.random() * 1000);
+// Test port management - sequential to avoid conflicts
+let portCounter = 9000;
+const getSequentialPort = () => portCounter++;
 
 describe('Netron-Validation Integration (Real HTTP)', () => {
   let serverNetron: Netron;
@@ -25,7 +26,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
   let serverUrl: string;
 
   beforeAll(async () => {
-    serverPort = getRandomPort();
+    serverPort = getSequentialPort();
     serverUrl = `http://localhost:${serverPort}`;
 
     // Create server with real HTTP transport
@@ -106,6 +107,9 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     });
 
     afterEach(async () => {
+      // Unexpose service first to prevent new connections
+      await serverNetron.peer.unexposeService('calculator@1.0.0');
+
       // HTTP interfaces are stateless and don't need to be released
       // if (calculator) {
       //   await peer.releaseInterface(calculator);
@@ -113,8 +117,9 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       if (peer) {
         await peer.close();
       }
-      // Unexpose service to allow next test to expose it again
-      await serverNetron.peer.unexposeService('calculator@1.0.0');
+
+      // Small delay to ensure cleanup completes
+      await new Promise(resolve => setTimeout(resolve, 10));
     });
 
     it('should successfully validate and execute add method', async () => {
@@ -203,6 +208,9 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     });
 
     afterEach(async () => {
+      // Unexpose service first to prevent new connections
+      await serverNetron.peer.unexposeService('user@1.0.0');
+
       // HTTP interfaces are stateless and don't need to be released
       // if (userService) {
       //   await peer.releaseInterface(userService);
@@ -210,7 +218,9 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       if (peer) {
         await peer.close();
       }
-      await serverNetron.peer.unexposeService('user@1.0.0');
+
+      // Small delay to ensure cleanup completes
+      await new Promise(resolve => setTimeout(resolve, 10));
     });
 
     it('should reject invalid email format', async () => {
@@ -330,6 +340,9 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     });
 
     afterEach(async () => {
+      // Unexpose service first to prevent new connections
+      await serverNetron.peer.unexposeService('stream@1.0.0');
+
       // HTTP interfaces are stateless and don't need to be released
       // if (streamService) {
       //   await peer.releaseInterface(streamService);
@@ -337,7 +350,9 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       if (peer) {
         await peer.close();
       }
-      await serverNetron.peer.unexposeService('stream@1.0.0');
+
+      // Small delay to ensure cleanup completes
+      await new Promise(resolve => setTimeout(resolve, 10));
     });
 
     it('should validate input for streaming method', async () => {
@@ -454,6 +469,9 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     });
 
     afterEach(async () => {
+      // Unexpose service first to prevent new connections
+      await serverNetron.peer.unexposeService('metadata@1.0.0');
+
       // HTTP interfaces are stateless and don't need to be released
       // if (metadataService) {
       //   await peer.releaseInterface(metadataService);
@@ -461,7 +479,9 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       if (peer) {
         await peer.close();
       }
-      await serverNetron.peer.unexposeService('metadata@1.0.0');
+
+      // Small delay to ensure cleanup completes
+      await new Promise(resolve => setTimeout(resolve, 10));
     });
 
     it('should execute method with custom HTTP metadata', async () => {
@@ -580,14 +600,19 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     });
 
     afterEach(async () => {
+      // Unexpose services first to prevent new connections
+      await serverNetron.peer.unexposeService('math@1.0.0');
+      await serverNetron.peer.unexposeService('string@1.0.0');
+      await serverNetron.peer.unexposeService('data@1.0.0');
+
       // HTTP interfaces are stateless and don't need to be released
       // if (mathService) await peer.releaseInterface(mathService);
       // if (stringService) await peer.releaseInterface(stringService);
       // if (dataService) await peer.releaseInterface(dataService);
       if (peer) await peer.close();
-      await serverNetron.peer.unexposeService('math@1.0.0');
-      await serverNetron.peer.unexposeService('string@1.0.0');
-      await serverNetron.peer.unexposeService('data@1.0.0');
+
+      // Small delay to ensure cleanup completes
+      await new Promise(resolve => setTimeout(resolve, 10));
     });
 
     it('should validate MathService operations', async () => {
@@ -701,6 +726,9 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     });
 
     afterEach(async () => {
+      // Unexpose service first to prevent new connections
+      await serverNetron.peer.unexposeService('tracked@1.0.0');
+
       // HTTP interfaces are stateless and don't need to be released
       // if (trackedService) {
       //   await peer.releaseInterface(trackedService);
@@ -708,7 +736,9 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       if (peer) {
         await peer.close();
       }
-      await serverNetron.peer.unexposeService('tracked@1.0.0');
+
+      // Small delay to ensure cleanup completes
+      await new Promise(resolve => setTimeout(resolve, 10));
     });
 
     it('should execute validation middleware before method', async () => {
@@ -769,6 +799,9 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     });
 
     afterEach(async () => {
+      // Unexpose service first to prevent new connections
+      await serverNetron.peer.unexposeService('perf@1.0.0');
+
       // HTTP interfaces are stateless and don't need to be released
       // if (perfService) {
       //   await peer.releaseInterface(perfService);
@@ -776,7 +809,9 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       if (peer) {
         await peer.close();
       }
-      await serverNetron.peer.unexposeService('perf@1.0.0');
+
+      // Small delay to ensure cleanup completes
+      await new Promise(resolve => setTimeout(resolve, 10));
     });
 
     it('should handle 100 sequential requests with validation', async () => {
@@ -924,10 +959,15 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       expect(result.settings.retries).toBe(3);
       expect(result.settings.enabled).toBe(true);
 
+      // Unexpose service first to prevent new connections
+      await serverNetron.peer.unexposeService('config@1.0.0');
+
       // HTTP interfaces are stateless and don't need to be released
       // await peer.releaseInterface(configService);
       await peer.close();
-      await serverNetron.peer.unexposeService('config@1.0.0');
+
+      // Small delay to ensure cleanup completes
+      await new Promise(resolve => setTimeout(resolve, 10));
     });
 
     it('should support complex nested validation', async () => {
@@ -1024,10 +1064,15 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
         orderService.processOrder(invalidOrder)
       ).rejects.toThrow();
 
+      // Unexpose service first to prevent new connections
+      await serverNetron.peer.unexposeService('order@1.0.0');
+
       // HTTP interfaces are stateless and don't need to be released
       // await peer.releaseInterface(orderService);
       await peer.close();
-      await serverNetron.peer.unexposeService('order@1.0.0');
+
+      // Small delay to ensure cleanup completes
+      await new Promise(resolve => setTimeout(resolve, 10));
     });
 
     it('should support discriminated unions', async () => {
@@ -1104,10 +1149,15 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
         })
       ).rejects.toThrow();
 
+      // Unexpose service first to prevent new connections
+      await serverNetron.peer.unexposeService('event@1.0.0');
+
       // HTTP interfaces are stateless and don't need to be released
       // await peer.releaseInterface(eventService);
       await peer.close();
-      await serverNetron.peer.unexposeService('event@1.0.0');
+
+      // Small delay to ensure cleanup completes
+      await new Promise(resolve => setTimeout(resolve, 10));
     });
   });
 });

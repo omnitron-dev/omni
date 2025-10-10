@@ -262,13 +262,34 @@ export class ValidationEngine {
    * Apply type coercion to schema
    */
   private applyCoercion<T>(schema: z.ZodSchema<T>): z.ZodSchema<T> {
-    return this.applyCoercionRecursive(schema) as z.ZodSchema<T>;
+    // Detect mode from optimized schema for inheritance
+    let mode: 'strip' | 'strict' | 'passthrough' | undefined;
+    if (schema instanceof z.ZodObject) {
+      const catchall = (schema as any)._def?.catchall;
+      // Check both ._def.typeName and .type for compatibility
+      const catchallType = catchall?._def?.typeName || catchall?.type;
+      if (catchallType === 'ZodNever' || catchallType === 'never') {
+        mode = 'strict';
+      } else if (catchallType === 'ZodUnknown' || catchallType === 'unknown' || catchallType === 'ZodAny') {
+        mode = 'passthrough';
+      } else {
+        mode = 'strip';
+      }
+    }
+    return this.applyCoercionRecursive(schema, mode) as z.ZodSchema<T>;
   }
 
   /**
    * Recursively apply coercion to schema and all nested schemas
+   * @param schema The schema to apply coercion to
+   * @param inheritedMode The mode inherited from parent object
+   * @param insideArray Whether we're currently inside an array (to avoid Zod v4 preprocess issues)
    */
-  private applyCoercionRecursive(schema: any): any {
+  private applyCoercionRecursive(
+    schema: any,
+    inheritedMode?: 'strip' | 'strict' | 'passthrough',
+    insideArray = false
+  ): any {
     // Get the base type name - check both .type and ._def.typeName for compatibility
     const typeName = schema.type || schema._def?.typeName;
     const constructorName = schema.constructor?.name;
@@ -276,27 +297,27 @@ export class ValidationEngine {
     // Handle wrapper types (optional, nullable, default) by unwrapping and re-wrapping
     if (typeName === 'optional' || constructorName === 'ZodOptional') {
       const innerSchema = schema._def.innerType;
-      const coercedInner = this.applyCoercionRecursive(innerSchema);
+      const coercedInner = this.applyCoercionRecursive(innerSchema, inheritedMode, insideArray);
       return coercedInner.optional();
     }
 
     if (typeName === 'nullable' || constructorName === 'ZodNullable') {
       const innerSchema = schema._def.innerType;
-      const coercedInner = this.applyCoercionRecursive(innerSchema);
+      const coercedInner = this.applyCoercionRecursive(innerSchema, inheritedMode, insideArray);
       return coercedInner.nullable();
     }
 
     if (typeName === 'default' || constructorName === 'ZodDefault') {
       const innerSchema = schema._def.innerType;
       const defaultValue = schema._def.defaultValue;
-      const coercedInner = this.applyCoercionRecursive(innerSchema);
+      const coercedInner = this.applyCoercionRecursive(innerSchema, inheritedMode, insideArray);
       return coercedInner.default(typeof defaultValue === 'function' ? defaultValue : () => defaultValue);
     }
 
     // Handle effects (refinements, transforms) - need to coerce the base type
     if (typeName === 'ZodEffects' || constructorName === 'ZodEffects') {
       const innerSchema = schema._def.schema;
-      const coercedInner = this.applyCoercionRecursive(innerSchema);
+      const coercedInner = this.applyCoercionRecursive(innerSchema, inheritedMode, insideArray);
 
       // We can't easily preserve effects, so we return the coerced inner schema
       // This is a limitation - refinements will be lost
@@ -305,22 +326,22 @@ export class ValidationEngine {
     }
 
     // Handle basic coercible types with checks (min, max, int, positive, etc)
-    // For numbers with constraints, we need to preserve the checks
+    // Note: Inside arrays, we skip coercion entirely to avoid Zod v4 internal compilation errors
     if (typeName === 'number' || constructorName === 'ZodNumber') {
-      // If there are no checks, just use simple coercion
-      const checks = schema._def?.checks || [];
-      if (checks.length === 0) {
-        return z.coerce.number();
+      if (insideArray) {
+        // Inside arrays: return original schema without coercion to avoid Zod v4 bugs
+        // This is a limitation - coercion won't work for primitives inside arrays
+        return schema;
       }
 
-      // If there are checks, use preprocess to coerce then validate with original schema
+      // Outside arrays: use custom preprocess for proper edge case handling
       // This preserves all validation logic including .positive(), .int(), etc.
       // IMPORTANT: Preserve undefined for optional fields
       return z.preprocess((val) => {
         if (val === undefined) return undefined; // Preserve undefined for optional fields
         if (typeof val === 'number') return val;
         if (typeof val === 'string') {
-          // Empty string should fail
+          // Empty string should fail - this is critical for data integrity
           if (val.trim() === '') {
             throw new Error('Cannot coerce empty string to number');
           }
@@ -339,8 +360,14 @@ export class ValidationEngine {
     }
 
     if (typeName === 'boolean' || constructorName === 'ZodBoolean') {
-      // Zod's default coerce.boolean() has issues - it treats any non-empty string as true
-      // We need a custom transformation that properly handles 'false', '0', etc.
+      if (insideArray) {
+        // Inside arrays: return original schema without coercion to avoid Zod v4 bugs
+        // This is a limitation - coercion won't work for primitives inside arrays
+        return schema;
+      }
+
+      // Outside arrays: use custom preprocess for proper edge case handling
+      // Properly handles 'false', '0', etc.
       // IMPORTANT: Return undefined for undefined input to maintain optional semantics
       return z.preprocess((val) => {
         if (val === undefined) return undefined; // Preserve undefined for optional fields
@@ -377,69 +404,58 @@ export class ValidationEngine {
       return z.coerce.bigint();
     }
 
-    // Handle arrays - recursively coerce elements
+    // Handle arrays - Skip coercion entirely to avoid Zod v4 internal compilation errors
+    // This is a known limitation with Zod v4 - coercion inside arrays causes internal errors
     if (typeName === 'array' || constructorName === 'ZodArray') {
-      const elementSchema = schema._def.type;
-      const coercedElement = this.applyCoercionRecursive(elementSchema);
-      return z.array(coercedElement);
+      // Return original array schema without any coercion
+      // This means validation will work but coercion won't for array elements
+      return schema;
     }
 
-    // Handle objects - recursively coerce all fields
+    // Handle objects - recursively coerce all fields and inherit mode
     if (typeName === 'object' || constructorName === 'ZodObject') {
       const shape = schema.shape || schema._def.shape();
-      // Determine mode from catchall field
+
+      // Determine current object's mode from catchall
       const catchall = schema._def.catchall;
+      // Check both ._def.typeName and .type for compatibility
+      const catchallType = catchall?._def?.typeName || catchall?.type;
       let mode: 'strip' | 'strict' | 'passthrough' | undefined;
-      if (catchall?.type === 'never') {
+      if (catchallType === 'ZodNever' || catchallType === 'never') {
         mode = 'strict';
-      } else if (catchall?.type === 'unknown') {
+      } else if (catchallType === 'ZodUnknown' || catchallType === 'unknown' || catchallType === 'ZodAny') {
         mode = 'passthrough';
+      } else if (inheritedMode) {
+        // Inherit mode from parent if current schema doesn't have explicit mode
+        mode = inheritedMode;
       } else {
         mode = 'strip'; // Default
       }
 
       const coercedShape: any = {};
 
+      // Recursively coerce all fields, passing down the mode and insideArray flag
       for (const key in shape) {
         const fieldSchema = shape[key];
-        const coercedField = this.applyCoercionRecursive(fieldSchema);
-
-        // If the coerced field is an object and doesn't have a mode set,
-        // inherit the parent's mode
-        const fieldTypeName = coercedField?.type || coercedField?._def?.typeName;
-        const fieldConstructorName = coercedField?.constructor?.name;
-        if (fieldTypeName === 'object' || fieldConstructorName === 'ZodObject') {
-          const fieldCatchall = coercedField._def.catchall;
-          // Only apply parent mode if child doesn't have one (or is strip)
-          if (!fieldCatchall || fieldCatchall.type === undefined) {
-            if (mode === 'strip') {
-              coercedShape[key] = coercedField.strip();
-            } else if (mode === 'strict') {
-              coercedShape[key] = coercedField.strict();
-            } else if (mode === 'passthrough') {
-              coercedShape[key] = coercedField.passthrough();
-            } else {
-              coercedShape[key] = coercedField;
-            }
-          } else {
-            coercedShape[key] = coercedField;
-          }
-        } else {
-          coercedShape[key] = coercedField;
-        }
+        coercedShape[key] = this.applyCoercionRecursive(fieldSchema, mode, insideArray);
       }
 
       // Create new object with coerced shape
-      const baseObject = z.object(coercedShape);
+      let baseObject = z.object(coercedShape);
 
-      // Preserve the mode settings
-      if (mode === 'strict') {
-        return baseObject.strict();
-      } else if (mode === 'passthrough') {
-        return baseObject.passthrough();
-      } else {
-        return baseObject.strip();
+      // Apply the mode to the object
+      // Note: Inside arrays, skip mode application to avoid Zod v4 compilation errors
+      if (!insideArray) {
+        if (mode === 'strict') {
+          baseObject = baseObject.strict() as any;
+        } else if (mode === 'passthrough') {
+          baseObject = baseObject.passthrough() as any;
+        } else {
+          baseObject = baseObject.strip() as any;
+        }
       }
+
+      return baseObject;
     }
 
     // For all other types, return as-is

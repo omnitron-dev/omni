@@ -57,7 +57,9 @@ export class RedisFallback {
 
   private static async isDockerAvailable(): Promise<boolean> {
     try {
-      execSync('/usr/local/bin/docker version', { stdio: 'ignore' });
+      // Use 'docker' command which will search PATH
+      // Works cross-platform (docker on Unix, docker.exe on Windows)
+      execSync('docker version', { stdio: 'ignore' });
       return true;
     } catch {
       return false;

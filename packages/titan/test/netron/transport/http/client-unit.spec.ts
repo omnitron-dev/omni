@@ -267,29 +267,26 @@ describe('HttpTransportClient - Unit Tests', () => {
     it('should handle HTTP error with JSON body', async () => {
       const client = new HttpTransportClient('http://localhost:3000');
       const message = createRequestMessage('TestService', 'testMethod', [{}]);
-      const errorResponse: HttpResponseMessage = {
-        id: message.id,
-        version: '2.0',
-        timestamp: Date.now(),
-        success: false,
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'Invalid input parameters'
-        }
-      };
 
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 400,
         statusText: 'Bad Request',
-        json: jest.fn().mockResolvedValue(errorResponse)
+        headers: new Map(),
+        json: jest.fn().mockResolvedValue({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid input parameters'
+          }
+        })
       });
 
       const result = await (client as any).sendRequest(message);
 
-      expect(result).toEqual(errorResponse);
       expect(result.success).toBe(false);
-      expect(result.error?.code).toBe('VALIDATION_ERROR');
+      // parseHttpError converts VALIDATION_ERROR string to ErrorCode 422, then back to UNPROCESSABLE_ENTITY
+      expect(result.error?.code).toBe('UNPROCESSABLE_ENTITY');
+      expect(result.error?.message).toBe('Invalid input parameters');
     });
 
     it('should handle HTTP error without JSON body', async () => {
@@ -300,14 +297,16 @@ describe('HttpTransportClient - Unit Tests', () => {
         ok: false,
         status: 500,
         statusText: 'Internal Server Error',
+        headers: new Map(),
         json: jest.fn().mockRejectedValue(new Error('Not JSON'))
       });
 
       const result = await (client as any).sendRequest(message);
 
       expect(result.success).toBe(false);
-      expect(result.error?.code).toBe('HTTP_ERROR');
-      expect(result.error?.message).toBe('HTTP 500: Internal Server Error');
+      // parseHttpError converts 500 to INTERNAL_SERVER_ERROR
+      expect(result.error?.code).toBe('INTERNAL_SERVER_ERROR');
+      expect(result.error?.message).toBe('Internal Server Error');
       expect(result.id).toBe(message.id);
       expect(result.version).toBe('2.0');
     });
@@ -320,14 +319,16 @@ describe('HttpTransportClient - Unit Tests', () => {
         ok: false,
         status: 404,
         statusText: 'Not Found',
+        headers: new Map(),
         json: jest.fn().mockRejectedValue(new Error('Not JSON'))
       });
 
       const result = await (client as any).sendRequest(message);
 
       expect(result.success).toBe(false);
-      expect(result.error?.code).toBe('HTTP_ERROR');
-      expect(result.error?.message).toBe('HTTP 404: Not Found');
+      // parseHttpError converts 404 to NOT_FOUND
+      expect(result.error?.code).toBe('NOT_FOUND');
+      expect(result.error?.message).toBe('Not Found');
     });
 
     it('should handle timeout (AbortError)', async () => {
@@ -344,7 +345,8 @@ describe('HttpTransportClient - Unit Tests', () => {
       const result = await (client as any).sendRequest(message);
 
       expect(result.success).toBe(false);
-      expect(result.error?.code).toBe('TIMEOUT');
+      // AbortError maps to REQUEST_TIMEOUT (408)
+      expect(result.error?.code).toBe('REQUEST_TIMEOUT');
       expect(result.error?.message).toContain('Request timeout after 100ms');
       expect(result.id).toBe(message.id);
       expect(result.version).toBe('2.0');
@@ -359,7 +361,8 @@ describe('HttpTransportClient - Unit Tests', () => {
       const result = await (client as any).sendRequest(message);
 
       expect(result.success).toBe(false);
-      expect(result.error?.code).toBe('NETWORK_ERROR');
+      // Network errors map to INTERNAL_SERVER_ERROR
+      expect(result.error?.code).toBe('INTERNAL_SERVER_ERROR');
       expect(result.error?.message).toBe('Network connection failed');
       expect(result.id).toBe(message.id);
       expect(result.version).toBe('2.0');
@@ -374,7 +377,8 @@ describe('HttpTransportClient - Unit Tests', () => {
       const result = await (client as any).sendRequest(message);
 
       expect(result.success).toBe(false);
-      expect(result.error?.code).toBe('NETWORK_ERROR');
+      // DNS errors map to INTERNAL_SERVER_ERROR
+      expect(result.error?.code).toBe('INTERNAL_SERVER_ERROR');
       expect(result.error?.message).toContain('ENOTFOUND');
     });
 
@@ -387,7 +391,8 @@ describe('HttpTransportClient - Unit Tests', () => {
       const result = await (client as any).sendRequest(message);
 
       expect(result.success).toBe(false);
-      expect(result.error?.code).toBe('NETWORK_ERROR');
+      // Connection errors map to INTERNAL_SERVER_ERROR
+      expect(result.error?.code).toBe('INTERNAL_SERVER_ERROR');
       expect(result.error?.message).toContain('ECONNREFUSED');
     });
 
@@ -456,11 +461,8 @@ describe('HttpTransportClient - Unit Tests', () => {
         ok: false,
         status: 403,
         statusText: 'Forbidden',
+        headers: new Map(),
         json: jest.fn().mockResolvedValue({
-          id: message.id,
-          version: '2.0',
-          timestamp: Date.now(),
-          success: false,
           error: {
             code: 'PERMISSION_DENIED',
             message: 'User lacks required permissions',
@@ -472,7 +474,8 @@ describe('HttpTransportClient - Unit Tests', () => {
       const result = await (client as any).sendRequest(message);
 
       expect(result.success).toBe(false);
-      expect(result.error?.code).toBe('PERMISSION_DENIED');
+      // parseHttpError converts 403 to FORBIDDEN
+      expect(result.error?.code).toBe('FORBIDDEN');
       expect(result.error?.message).toBe('User lacks required permissions');
       expect(result.error?.details).toEqual({ requiredRole: 'admin' });
     });

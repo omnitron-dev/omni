@@ -49,3 +49,73 @@ export const getServiceMetadata = (instance: any): ExtendedServiceMetadata | und
  * getQualifiedName('auth') // returns 'auth'
  */
 export const getQualifiedName = (name: string, version?: string) => `${name}${version ? `@${version}` : ''}`;
+
+/**
+ * Runtime environment types
+ */
+export type RuntimeEnvironment = 'node' | 'bun' | 'deno' | 'browser';
+
+/**
+ * Detect the current runtime environment
+ * Consolidated from multiple implementations in server.ts and http-transport.ts
+ */
+export function detectRuntime(): RuntimeEnvironment {
+  if (typeof window !== 'undefined') {
+    return 'browser';
+  }
+  // @ts-expect-error - Bun global may not be available
+  if (typeof globalThis.Bun !== 'undefined') {
+    return 'bun';
+  }
+  if (typeof (global as any).Deno !== 'undefined') {
+    return 'deno';
+  }
+  return 'node';
+}
+
+/**
+ * Generate a unique request ID
+ * Consolidated from multiple implementations across the codebase
+ *
+ * Uses crypto.randomUUID() for better uniqueness and performance
+ */
+export function generateRequestId(): string {
+  // Use crypto.randomUUID if available (Node 14.17+, all browsers)
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  // Fallback for older environments
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
+/**
+ * Parse common HTTP headers from a Request object
+ * Avoids repeated header parsing in multiple places
+ */
+export interface CommonHeaders {
+  contentType?: string | null;
+  authorization?: string | null;
+  origin?: string | null;
+  requestId?: string | null;
+  traceId?: string | null;
+  correlationId?: string | null;
+  spanId?: string | null;
+  netronVersion?: string | null;
+}
+
+/**
+ * Extract commonly used headers from a Request object
+ */
+export function parseCommonHeaders(request: Request): CommonHeaders {
+  return {
+    contentType: request.headers.get('Content-Type'),
+    authorization: request.headers.get('Authorization'),
+    origin: request.headers.get('Origin'),
+    requestId: request.headers.get('X-Request-ID'),
+    traceId: request.headers.get('X-Trace-ID'),
+    correlationId: request.headers.get('X-Correlation-ID'),
+    spanId: request.headers.get('X-Span-ID'),
+    netronVersion: request.headers.get('X-Netron-Version')
+  };
+}

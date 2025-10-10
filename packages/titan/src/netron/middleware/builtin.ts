@@ -7,6 +7,8 @@
 import type { NetronMiddlewareContext, MiddlewareFunction } from './types.js';
 import { TitanError, ErrorCode } from '../../errors/index.js';
 import * as zlib from 'zlib';
+import { generateRequestId } from '../utils.js';
+import { extractBearerToken } from '../auth/utils.js';
 
 /**
  * Transport-agnostic built-in middleware
@@ -17,12 +19,11 @@ export class NetronBuiltinMiddleware {
    */
   static requestId(): MiddlewareFunction {
     return async (ctx, next) => {
-      // Generate request ID if not already present
+      // Generate request ID if not already present using consolidated utility
       if (!ctx.metadata) {
         ctx.metadata = new Map();
       }
-      const requestId = ctx.metadata.get('requestId') ||
-        `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+      const requestId = ctx.metadata.get('requestId') || generateRequestId();
       ctx.metadata.set('requestId', requestId);
       await next();
     };
@@ -215,9 +216,7 @@ export class NetronBuiltinMiddleware {
         });
       }
 
-      const token = authHeader.startsWith('Bearer ')
-        ? authHeader.substring(7)
-        : authHeader;
+      const token = extractBearerToken(authHeader) || authHeader;
 
       try {
         const user = await authenticator.verify(token);

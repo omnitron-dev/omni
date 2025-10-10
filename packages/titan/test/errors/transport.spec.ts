@@ -8,10 +8,13 @@ import {
   mapToTransport,
   HttpTransportAdapter,
   WebSocketTransportAdapter,
-  createTransportAdapter
+  createTransportAdapter,
+  parseHttpError,
+  mapToHttp
 } from '../../src/errors/transport.js';
 import { TitanError } from '../../src/errors/core.js';
 import { ErrorCode } from '../../src/errors/codes.js';
+import { RateLimitError, AuthError } from '../../src/errors/http.js';
 
 describe('Transport Mapping', () => {
   describe('GraphQL Transport', () => {
@@ -406,6 +409,328 @@ describe('Transport Mapping', () => {
       expect(() => {
         mapToTransport(error, 'unsupported' as TransportType);
       }).toThrow('Unsupported transport: unsupported');
+    });
+  });
+
+  describe('HTTP Error Parsing', () => {
+    describe('parseHttpError()', () => {
+      it('should parse basic HTTP error from status and body', () => {
+        const error = parseHttpError(404, {
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Resource not found',
+            details: { id: '123' }
+          }
+        });
+
+        expect(error).toBeInstanceOf(TitanError);
+        expect(error.code).toBe(ErrorCode.NOT_FOUND);
+        expect(error.message).toBe('Resource not found');
+        expect(error.details).toEqual({ id: '123' });
+      });
+
+      it('should parse error with numeric code', () => {
+        const error = parseHttpError(400, {
+          error: {
+            code: 400,
+            message: 'Bad request',
+            details: { field: 'email' }
+          }
+        });
+
+        expect(error.code).toBe(ErrorCode.BAD_REQUEST);
+        expect(error.message).toBe('Bad request');
+        expect(error.details).toEqual({ field: 'email' });
+      });
+
+      it('should use status as fallback when code is missing', () => {
+        const error = parseHttpError(500, {
+          error: {
+            message: 'Server error'
+          }
+        });
+
+        expect(error.code).toBe(500);
+        expect(error.message).toBe('Server error');
+      });
+
+      it('should extract tracing headers', () => {
+        const error = parseHttpError(
+          404,
+          { error: { code: 'NOT_FOUND', message: 'Not found' } },
+          {
+            'X-Request-ID': 'req-123',
+            'X-Correlation-ID': 'corr-456',
+            'X-Trace-ID': 'trace-789',
+            'X-Span-ID': 'span-abc'
+          }
+        );
+
+        expect(error.requestId).toBe('req-123');
+        expect(error.correlationId).toBe('corr-456');
+        expect(error.traceId).toBe('trace-789');
+        expect(error.spanId).toBe('span-abc');
+      });
+
+      it('should handle case-insensitive headers', () => {
+        const error = parseHttpError(
+          404,
+          { error: { code: 'NOT_FOUND', message: 'Not found' } },
+          {
+            'x-request-id': 'req-lowercase',
+            'X-Correlation-ID': 'corr-mixedcase'
+          }
+        );
+
+        expect(error.requestId).toBe('req-lowercase');
+        expect(error.correlationId).toBe('corr-mixedcase');
+      });
+
+      it('should parse rate limit errors with headers', () => {
+        const error = parseHttpError(
+          429,
+          { error: { code: 'TOO_MANY_REQUESTS', message: 'Rate limit exceeded' } },
+          {
+            'Retry-After': '60',
+            'X-RateLimit-Limit': '100',
+            'X-RateLimit-Remaining': '0',
+            'X-RateLimit-Reset': '1609459200'
+          }
+        );
+
+        expect(error).toBeInstanceOf(RateLimitError);
+        const rateLimitError = error as RateLimitError;
+        expect(rateLimitError.retryAfter).toBe(60);
+        expect(rateLimitError.limit).toBe(100);
+        expect(rateLimitError.remaining).toBe(0);
+        expect(rateLimitError.resetTime).toEqual(new Date(1609459200000));
+      });
+
+      it('should parse auth errors with WWW-Authenticate header', () => {
+        const error = parseHttpError(
+          401,
+          { error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
+          {
+            'WWW-Authenticate': 'Bearer realm="api"'
+          }
+        );
+
+        expect(error).toBeInstanceOf(AuthError);
+        const authError = error as AuthError;
+        expect(authError.authType).toBe('Bearer');
+        expect(authError.realm).toBe('api');
+      });
+
+      it('should parse auth error with Basic scheme', () => {
+        const error = parseHttpError(
+          401,
+          { error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
+          {
+            'WWW-Authenticate': 'Basic realm="admin"'
+          }
+        );
+
+        expect(error).toBeInstanceOf(AuthError);
+        const authError = error as AuthError;
+        expect(authError.authType).toBe('Basic');
+        expect(authError.realm).toBe('admin');
+      });
+
+      it('should handle error body without nested error object', () => {
+        const error = parseHttpError(500, {
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Internal error',
+          details: { stack: 'error stack' }
+        });
+
+        expect(error.code).toBe(ErrorCode.INTERNAL_SERVER_ERROR);
+        expect(error.message).toBe('Internal error');
+        expect(error.details).toEqual({ stack: 'error stack' });
+      });
+
+      it('should generate default message if none provided', () => {
+        const error = parseHttpError(503, {});
+
+        expect(error.message).toBe('HTTP 503');
+        expect(error.code).toBe(503);
+      });
+
+      it('should handle all standard error codes', () => {
+        const codes = [400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504];
+
+        codes.forEach(status => {
+          const error = parseHttpError(status, {
+            error: { code: status, message: `Error ${status}` }
+          });
+
+          expect(error.code).toBe(status);
+          expect(error.message).toBe(`Error ${status}`);
+        });
+      });
+    });
+
+    describe('Round-trip mapping (TitanError → HTTP → TitanError)', () => {
+      it('should preserve basic error information', () => {
+        const original = new TitanError({
+          code: ErrorCode.NOT_FOUND,
+          message: 'User not found',
+          details: { userId: '123' }
+        });
+
+        const httpResponse = mapToHttp(original);
+        const parsed = parseHttpError(httpResponse.status, httpResponse.body, httpResponse.headers);
+
+        expect(parsed.code).toBe(original.code);
+        expect(parsed.message).toBe(original.message);
+        expect(parsed.details).toEqual(original.details);
+      });
+
+      it('should preserve tracing information', () => {
+        const original = new TitanError({
+          code: ErrorCode.INTERNAL_ERROR,
+          message: 'Internal error',
+          requestId: 'req-abc',
+          correlationId: 'corr-def',
+          traceId: 'trace-ghi',
+          spanId: 'span-jkl'
+        });
+
+        const httpResponse = mapToHttp(original);
+        const parsed = parseHttpError(httpResponse.status, httpResponse.body, httpResponse.headers);
+
+        expect(parsed.requestId).toBe(original.requestId);
+        expect(parsed.correlationId).toBe(original.correlationId);
+        expect(parsed.traceId).toBe(original.traceId);
+        expect(parsed.spanId).toBe(original.spanId);
+      });
+
+      it('should preserve rate limit information', () => {
+        const resetTime = new Date('2025-01-01T00:00:00Z');
+        const original = new RateLimitError('Rate limit exceeded', {}, {
+          limit: 100,
+          remaining: 0,
+          resetTime,
+          retryAfter: 60
+        });
+
+        const httpResponse = mapToHttp(original);
+        const parsed = parseHttpError(httpResponse.status, httpResponse.body, httpResponse.headers);
+
+        expect(parsed).toBeInstanceOf(RateLimitError);
+        const rateLimitError = parsed as RateLimitError;
+        expect(rateLimitError.limit).toBe(100);
+        expect(rateLimitError.remaining).toBe(0);
+        expect(rateLimitError.retryAfter).toBe(60);
+        expect(rateLimitError.resetTime?.getTime()).toBe(resetTime.getTime());
+      });
+
+      it('should preserve auth information', () => {
+        const original = new AuthError('Bearer token required', {}, {
+          authType: 'Bearer',
+          realm: 'api'
+        });
+
+        const httpResponse = mapToHttp(original);
+        const parsed = parseHttpError(httpResponse.status, httpResponse.body, httpResponse.headers);
+
+        expect(parsed).toBeInstanceOf(AuthError);
+        const authError = parsed as AuthError;
+        expect(authError.authType).toBe('Bearer');
+        expect(authError.realm).toBe('api');
+      });
+
+      it('should handle errors with retryable status', () => {
+        const original = new TitanError({
+          code: ErrorCode.SERVICE_UNAVAILABLE,
+          message: 'Service temporarily unavailable'
+        });
+
+        const httpResponse = mapToHttp(original);
+        const parsed = parseHttpError(httpResponse.status, httpResponse.body, httpResponse.headers);
+
+        expect(parsed.code).toBe(ErrorCode.SERVICE_UNAVAILABLE);
+        expect(parsed.isRetryable()).toBe(true);
+      });
+
+      it('should handle validation errors correctly', () => {
+        const original = new TitanError({
+          code: ErrorCode.VALIDATION_ERROR,
+          message: 'Validation failed',
+          details: {
+            errors: [
+              { field: 'email', message: 'Invalid email' },
+              { field: 'password', message: 'Too short' }
+            ]
+          }
+        });
+
+        const httpResponse = mapToHttp(original);
+        const parsed = parseHttpError(httpResponse.status, httpResponse.body, httpResponse.headers);
+
+        expect(parsed.code).toBe(ErrorCode.VALIDATION_ERROR);
+        expect(parsed.message).toBe('Validation failed');
+        expect(parsed.details.errors).toHaveLength(2);
+      });
+
+      it('should maintain error category after round-trip', () => {
+        const codes = [
+          ErrorCode.BAD_REQUEST,
+          ErrorCode.UNAUTHORIZED,
+          ErrorCode.NOT_FOUND,
+          ErrorCode.INTERNAL_ERROR,
+          ErrorCode.SERVICE_UNAVAILABLE
+        ];
+
+        codes.forEach(code => {
+          const original = new TitanError({ code, message: 'Test error' });
+          const httpResponse = mapToHttp(original);
+          const parsed = parseHttpError(httpResponse.status, httpResponse.body, httpResponse.headers);
+
+          expect(parsed.category).toBe(original.category);
+        });
+      });
+    });
+
+    describe('Enhanced mapToHttp() headers', () => {
+      it('should include WWW-Authenticate header for AuthError', () => {
+        const error = new AuthError('Bearer token required', {}, {
+          authType: 'Bearer',
+          realm: 'api'
+        });
+
+        const httpResponse = mapToHttp(error);
+
+        expect(httpResponse.headers['WWW-Authenticate']).toBe('Bearer realm="api"');
+      });
+
+      it('should include full rate limit headers for RateLimitError', () => {
+        const resetTime = new Date('2025-01-01T00:00:00Z');
+        const error = new RateLimitError('Rate limit exceeded', {}, {
+          limit: 100,
+          remaining: 0,
+          resetTime,
+          retryAfter: 60
+        });
+
+        const httpResponse = mapToHttp(error);
+
+        expect(httpResponse.headers['X-RateLimit-Limit']).toBe('100');
+        expect(httpResponse.headers['X-RateLimit-Remaining']).toBe('0');
+        expect(httpResponse.headers['X-RateLimit-Reset']).toBe(String(Math.floor(resetTime.getTime() / 1000)));
+        expect(httpResponse.headers['Retry-After']).toBe('60');
+      });
+
+      it('should include Retry-After for generic rate limit errors', () => {
+        const error = new TitanError({
+          code: ErrorCode.TOO_MANY_REQUESTS,
+          message: 'Too many requests',
+          details: { retryAfter: 30 }
+        });
+
+        const httpResponse = mapToHttp(error);
+
+        expect(httpResponse.headers['Retry-After']).toBe('30');
+      });
     });
   });
 });

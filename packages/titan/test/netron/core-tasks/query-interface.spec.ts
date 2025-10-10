@@ -92,7 +92,8 @@ describe('query_interface core-task', () => {
       } catch (error: any) {
         expect(error.code).toBe(ErrorCode.NOT_FOUND);
         expect(error.message).toContain('Service \'nonexistent@1.0.0\' not found');
-        expect(error.details.availableServices).toBeDefined();
+        // availableServices removed from error details for security (commit 2d3767b)
+        expect(error.details.serviceName).toBe(serviceName);
       }
     });
   });

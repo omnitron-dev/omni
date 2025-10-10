@@ -17,6 +17,8 @@ import {
   type HttpRequestHints
 } from './types.js';
 import { NetronErrors } from '../../../errors/index.js';
+import { parseHttpError } from '../../../errors/transport.js';
+import { ErrorCode, getErrorName } from '../../../errors/codes.js';
 
 /**
  * HTTP Transport Client implementation
@@ -122,20 +124,41 @@ export class HttpTransportClient {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        // Try to parse error response
+        // Parse HTTP error to TitanError
+        const headers: Record<string, string> = {};
+        response.headers.forEach((value, key) => {
+          headers[key] = value;
+        });
+
         try {
-          const errorData = await response.json();
-          return errorData;
-        } catch {
-          // Return generic error
+          const errorBody = await response.json();
+          const titanError = parseHttpError(response.status, errorBody, headers);
+
           return {
             id: message.id,
             version: '2.0',
             timestamp: Date.now(),
             success: false,
             error: {
-              code: 'HTTP_ERROR',
-              message: `HTTP ${response.status}: ${response.statusText}`
+              code: getErrorName(titanError.code),
+              message: titanError.message,
+              details: titanError.details
+            }
+          };
+        } catch {
+          // Fallback if body parsing fails
+          const titanError = parseHttpError(response.status, {
+            error: { message: response.statusText }
+          }, headers);
+
+          return {
+            id: message.id,
+            version: '2.0',
+            timestamp: Date.now(),
+            success: false,
+            error: {
+              code: getErrorName(titanError.code),
+              message: titanError.message
             }
           };
         }
@@ -152,7 +175,7 @@ export class HttpTransportClient {
           timestamp: Date.now(),
           success: false,
           error: {
-            code: 'TIMEOUT',
+            code: getErrorName(ErrorCode.REQUEST_TIMEOUT),
             message: `Request timeout after ${timeout}ms`
           }
         };
@@ -164,7 +187,7 @@ export class HttpTransportClient {
         timestamp: Date.now(),
         success: false,
         error: {
-          code: 'NETWORK_ERROR',
+          code: getErrorName(ErrorCode.INTERNAL_ERROR),
           message: error.message
         }
       };

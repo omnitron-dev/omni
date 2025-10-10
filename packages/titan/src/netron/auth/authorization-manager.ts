@@ -227,13 +227,12 @@ export class AuthorizationManager {
     // Determine if method ACL overrides service ACL
     const override = (methodACL as any)?.__override === true;
 
-    // If not overriding, check service-level access first
-    if (!override && !this.canAccessServiceDirect(serviceName, auth, acl)) {
-      return false;
-    }
-
     // No method-specific ACL - service-level access is sufficient
     if (!methodACL) {
+      // Check service-level access
+      if (!this.canAccessServiceDirect(serviceName, auth, acl)) {
+        return false;
+      }
       return true;
     }
 
@@ -242,14 +241,17 @@ export class AuthorizationManager {
       return false;
     }
 
-    // Build effective ACL by merging service and method ACLs (unless override)
-    const effectiveRoles = override
+    // Build effective ACL
+    // For method-level ACLs: if method defines roles/permissions, they REPLACE service-level ones (more restrictive)
+    // If method doesn't define them, inherit from service level
+    // If override is true, completely ignore service-level ACL
+    const effectiveRoles = override || methodACL.allowedRoles
       ? methodACL.allowedRoles
-      : this.mergeRoles(acl.allowedRoles, methodACL.allowedRoles);
+      : acl.allowedRoles;
 
-    const effectivePermissions = override
+    const effectivePermissions = override || methodACL.requiredPermissions
       ? methodACL.requiredPermissions
-      : this.mergePermissions(acl.requiredPermissions, methodACL.requiredPermissions);
+      : acl.requiredPermissions;
 
     // Check effective roles
     if (effectiveRoles && effectiveRoles.length > 0) {

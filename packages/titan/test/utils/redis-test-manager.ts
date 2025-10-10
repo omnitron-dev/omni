@@ -36,7 +36,7 @@ export class RedisTestManager {
   private cleanup: boolean;
   private verbose: boolean;
   private dockerComposeFile: string;
-  private dockerPath: string = '/usr/local/bin/docker';
+  private dockerPath: string;
 
   private constructor(options: RedisTestManagerOptions = {}) {
     this.basePort = options.basePort || 16379; // Start from port 16379 for tests
@@ -45,6 +45,7 @@ export class RedisTestManager {
     this.cleanup = options.cleanup !== false;
     this.verbose = options.verbose || false;
     this.dockerComposeFile = path.join(__dirname, '../docker/docker-compose.test.yml');
+    this.dockerPath = this.findDockerPath();
 
     // Register cleanup on process exit
     if (this.cleanup) {
@@ -59,6 +60,114 @@ export class RedisTestManager {
       RedisTestManager.instance = new RedisTestManager(options);
     }
     return RedisTestManager.instance;
+  }
+
+  /**
+   * Find Docker executable path across different platforms
+   * Uses the same strategy as docker-test-manager.ts for consistency
+   */
+  private findDockerPath(): string {
+    const isWindows = process.platform === 'win32';
+    const whichCommand = isWindows ? 'where' : 'which';
+    const dockerBinary = isWindows ? 'docker.exe' : 'docker';
+
+    // Strategy 1: Try to find Docker in PATH using which/where
+    try {
+      const result = execSync(`${whichCommand} ${dockerBinary}`, {
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'ignore'],
+      }).trim();
+
+      // On Windows, 'where' can return multiple paths (one per line)
+      const dockerPath = result.split('\n')[0].trim();
+
+      if (dockerPath && this.testDockerPath(dockerPath)) {
+        if (this.verbose) {
+          console.log(`Found Docker in PATH: ${dockerPath}`);
+        }
+        return dockerPath;
+      }
+    } catch {
+      // Command failed, continue to fallback paths
+    }
+
+    // Strategy 2: Check platform-specific common locations
+    const fallbackPaths = this.getDockerFallbackPaths();
+
+    for (const dockerPath of fallbackPaths) {
+      if (this.testDockerPath(dockerPath)) {
+        if (this.verbose) {
+          console.log(`Found Docker at fallback path: ${dockerPath}`);
+        }
+        return dockerPath;
+      }
+    }
+
+    // Strategy 3: If all else fails, try just 'docker' or 'docker.exe' and hope it's in PATH
+    if (this.testDockerPath(dockerBinary)) {
+      if (this.verbose) {
+        console.log(`Using Docker from PATH: ${dockerBinary}`);
+      }
+      return dockerBinary;
+    }
+
+    // No Docker found
+    throw new Error(
+      `Docker executable not found. Please install Docker and ensure it's in your PATH.\n` +
+        `Searched paths:\n` +
+        `  - PATH using '${whichCommand} ${dockerBinary}'\n` +
+        `  - ${fallbackPaths.join('\n  - ')}\n` +
+        `\nPlatform: ${process.platform}\n` +
+        `For more information, visit: https://docs.docker.com/get-docker/`
+    );
+  }
+
+  /**
+   * Get platform-specific fallback paths for Docker
+   */
+  private getDockerFallbackPaths(): string[] {
+    switch (process.platform) {
+      case 'darwin': // macOS
+        return [
+          '/usr/local/bin/docker', // Intel Mac / Docker Desktop
+          '/opt/homebrew/bin/docker', // Apple Silicon Mac / Homebrew
+          '/Applications/Docker.app/Contents/Resources/bin/docker', // Docker Desktop
+        ];
+
+      case 'linux':
+        return [
+          '/usr/bin/docker', // Most common Linux location
+          '/usr/local/bin/docker', // Alternative Linux location
+          '/snap/bin/docker', // Snap package
+          '/var/lib/snapd/snap/bin/docker', // Snap on some distros
+          '/opt/docker/bin/docker', // Custom installations
+        ];
+
+      case 'win32': // Windows
+        return [
+          'docker.exe', // Should be in PATH
+          'C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe',
+          'C:\\ProgramData\\DockerDesktop\\version-bin\\docker.exe',
+        ];
+
+      default:
+        return ['/usr/local/bin/docker', '/usr/bin/docker', 'docker'];
+    }
+  }
+
+  /**
+   * Test if a Docker path is valid by running 'docker version'
+   */
+  private testDockerPath(dockerPath: string): boolean {
+    try {
+      execSync(`"${dockerPath}" version`, {
+        stdio: 'ignore',
+        timeout: 5000, // 5 second timeout
+      });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async findAvailablePort(): Promise<number> {
@@ -99,12 +208,7 @@ export class RedisTestManager {
     }
 
     // Create container using Docker
-    try {
-      // Check if Docker is available
-      execSync(`${this.dockerPath} version`, { stdio: 'ignore' });
-    } catch (error) {
-      throw new Error('Docker is not available. Please install Docker to run Redis tests.');
-    }
+    // Docker availability is already verified in constructor via findDockerPath()
 
     const env = {
       ...process.env,
@@ -113,7 +217,7 @@ export class RedisTestManager {
     };
 
     // Start Redis container using docker-compose (v2 syntax)
-    const startCmd = `${this.dockerPath} compose -f ${this.dockerComposeFile} up -d redis-test`;
+    const startCmd = `"${this.dockerPath}" compose -f "${this.dockerComposeFile}" up -d redis-test`;
 
     try {
       execSync(startCmd, {
@@ -145,7 +249,7 @@ export class RedisTestManager {
         }
 
         // Stop and remove container
-        const stopCmd = `${this.dockerPath} compose -f ${this.dockerComposeFile} down -v`;
+        const stopCmd = `"${this.dockerPath}" compose -f "${this.dockerComposeFile}" down -v`;
         try {
           execSync(stopCmd, {
             env,
@@ -181,7 +285,7 @@ export class RedisTestManager {
       };
 
       // Start cluster node
-      const startCmd = `${this.dockerPath} compose -f ${this.dockerComposeFile} up -d redis-cluster-node${i + 1}`;
+      const startCmd = `"${this.dockerPath}" compose -f "${this.dockerComposeFile}" up -d redis-cluster-node${i + 1}`;
 
       try {
         execSync(startCmd, {
@@ -209,7 +313,7 @@ export class RedisTestManager {
           if (client && client.status === 'ready') {
             await client.quit();
           }
-          const stopCmd = `${this.dockerPath} compose -f ${this.dockerComposeFile} down -v`;
+          const stopCmd = `"${this.dockerPath}" compose -f "${this.dockerComposeFile}" down -v`;
           try {
             execSync(stopCmd, { env, stdio: 'ignore' });
           } catch (error) {
@@ -237,7 +341,7 @@ export class RedisTestManager {
     const firstContainer = containers[0];
 
     try {
-      const createClusterCmd = `${this.dockerPath} exec redis-test-${firstContainer.id} redis-cli --cluster create ${clusterNodes} --cluster-replicas 0 --cluster-yes`;
+      const createClusterCmd = `"${this.dockerPath}" exec redis-test-${firstContainer.id} redis-cli --cluster create ${clusterNodes} --cluster-replicas 0 --cluster-yes`;
       execSync(createClusterCmd, {
         stdio: this.verbose ? 'inherit' : 'ignore',
         timeout: 10000
@@ -298,17 +402,41 @@ export class RedisTestManager {
   private cleanupSync(): void {
     // Synchronous cleanup for process exit
     try {
-      // Force remove all test containers
-      const cleanupCmd = `${this.dockerPath} ps -a --filter "label=test.cleanup=true" -q | xargs -r ${this.dockerPath} rm -f`;
-      execSync(cleanupCmd, { stdio: 'ignore' });
+      const isWindows = process.platform === 'win32';
 
-      // Remove test networks
-      const networkCleanupCmd = `${this.dockerPath} network ls --filter "label=test.cleanup=true" -q | xargs -r ${this.dockerPath} network rm`;
-      execSync(networkCleanupCmd, { stdio: 'ignore' });
+      if (isWindows) {
+        // Windows doesn't have xargs, so we get IDs and remove one by one
+        try {
+          const containerIds = execSync(`"${this.dockerPath}" ps -a --filter "label=test.cleanup=true" -q`, {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+          }).trim();
+          if (containerIds) {
+            containerIds.split('\n').forEach((id) => {
+              try {
+                execSync(`"${this.dockerPath}" rm -f ${id.trim()}`, { stdio: 'ignore' });
+              } catch {
+                // Ignore individual failures
+              }
+            });
+          }
+        } catch {
+          // Ignore errors
+        }
+      } else {
+        // Unix-like systems with xargs
+        // Force remove all test containers
+        const cleanupCmd = `"${this.dockerPath}" ps -a --filter "label=test.cleanup=true" -q | xargs -r "${this.dockerPath}" rm -f`;
+        execSync(cleanupCmd, { stdio: 'ignore' });
 
-      // Remove test volumes
-      const volumeCleanupCmd = `${this.dockerPath} volume ls --filter "label=test.cleanup=true" -q | xargs -r ${this.dockerPath} volume rm`;
-      execSync(volumeCleanupCmd, { stdio: 'ignore' });
+        // Remove test networks
+        const networkCleanupCmd = `"${this.dockerPath}" network ls --filter "label=test.cleanup=true" -q | xargs -r "${this.dockerPath}" network rm`;
+        execSync(networkCleanupCmd, { stdio: 'ignore' });
+
+        // Remove test volumes
+        const volumeCleanupCmd = `"${this.dockerPath}" volume ls --filter "label=test.cleanup=true" -q | xargs -r "${this.dockerPath}" volume rm`;
+        execSync(volumeCleanupCmd, { stdio: 'ignore' });
+      }
     } catch (error) {
       // Ignore errors during cleanup
     }

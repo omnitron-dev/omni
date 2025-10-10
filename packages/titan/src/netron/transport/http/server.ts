@@ -33,6 +33,8 @@ import {
 } from './types.js';
 import type { MethodContract } from '../../../validation/contract.js';
 import type { HttpRequestContext, HttpRequestHints } from './types.js';
+import { detectRuntime, generateRequestId } from '../../utils.js';
+import { extractBearerToken } from '../../auth/utils.js';
 
 /**
  * Context passed to method handlers
@@ -176,11 +178,10 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       const authHeader = ctx.metadata?.get('authorization');
 
       if (authHeader) {
-        // Parse Bearer token
-        const parts = authHeader.split(' ');
-        if (parts.length === 2 && parts[0] === 'Bearer') {
-          const token = parts[1];
+        // Parse Bearer token using consolidated utility
+        const token = extractBearerToken(authHeader);
 
+        if (token) {
           // Try to validate token if AuthenticationManager is available
           const authManager = (this.netronPeer?.netron as any)?.authenticationManager;
           if (authManager) {
@@ -286,7 +287,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       throw Errors.conflict('Server is already listening');
     }
 
-    const runtime = this.detectRuntime();
+    const runtime = detectRuntime();
     const port = this.port || 3000;
     const host = this.address || 'localhost';
 
@@ -441,24 +442,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         });
       }
 
-      // Validate input if contract exists
-      if (method.contract?.input) {
-        const validation = method.contract.input.safeParse(message.input);
-        if (!validation.success) {
-          // Only expose minimal validation error info to prevent schema disclosure
-          throw new TitanError({
-            code: ErrorCode.INVALID_ARGUMENT,
-            message: 'Input validation failed',
-            details: {
-              message: 'Request data does not match expected format',
-              // In development, include field paths but not schema structure
-              ...(process.env['NODE_ENV'] === 'development' && {
-                fields: validation.error.issues.map(i => i.path.join('.'))
-              })
-            }
-          });
-        }
-      }
+      // Validate input using consolidated helper
+      this.validateMethodInput(message.input, method.contract);
 
       // Create minimal handler context (no middleware)
       const metadata = new Map<string, unknown>();
@@ -622,24 +607,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
       // Execute method handler
       const executeHandler = async () => {
-        // Validate input if contract exists
-        if (method.contract?.input) {
-          const validation = method.contract.input.safeParse(message.input);
-          if (!validation.success) {
-            // Only expose minimal validation error info to prevent schema disclosure
-            throw new TitanError({
-              code: ErrorCode.INVALID_ARGUMENT,
-              message: 'Input validation failed',
-              details: {
-                message: 'Request data does not match expected format',
-                // In development, include field paths but not schema structure
-                ...(process.env['NODE_ENV'] === 'development' && {
-                  fields: validation.error.issues.map(i => i.path.join('.'))
-                })
-              }
-            });
-          }
-        }
+        // Validate input using consolidated helper
+        this.validateMethodInput(message.input, method.contract);
 
         // Create method handler context
         const handlerContext: MethodHandlerContext = {
@@ -774,24 +743,12 @@ export class HttpServer extends EventEmitter implements ITransportServer {
             throw NetronErrors.methodNotFound(req.service, req.method);
           }
 
-          // Create minimal middleware context for batch requests
-          const metadata = new Map<string, unknown>();
-          metadata.set('requestId', req.id);
-          metadata.set('batchRequest', true);
-
-          const handlerContext: MethodHandlerContext = {
-            context: req.context || batchRequest.context,
-            hints: req.hints,
+          // Create handler context using consolidated helper
+          const handlerContext = this.createMethodHandlerContext(
+            { ...req, context: req.context || batchRequest.context },
             request,
-            middleware: {
-              peer: this.netronPeer!,
-              serviceName: req.service,
-              methodName: req.method,
-              input: req.input,
-              metadata,
-              timing: { start: performance.now(), middlewareTimes: new Map() }
-            }
-          };
+            { batchRequest: true }
+          );
 
           const result = await method.handler(req.input, handlerContext);
 
@@ -829,24 +786,12 @@ export class HttpServer extends EventEmitter implements ITransportServer {
             throw NetronErrors.methodNotFound(req.service, req.method);
           }
 
-          // Create minimal middleware context for batch requests
-          const metadata = new Map<string, unknown>();
-          metadata.set('requestId', req.id);
-          metadata.set('batchRequest', true);
-
-          const handlerContext: MethodHandlerContext = {
-            context: req.context || batchRequest.context,
-            hints: req.hints,
+          // Create handler context using consolidated helper
+          const handlerContext = this.createMethodHandlerContext(
+            { ...req, context: req.context || batchRequest.context },
             request,
-            middleware: {
-              peer: this.netronPeer!,
-              serviceName: req.service,
-              methodName: req.method,
-              input: req.input,
-              metadata,
-              timing: { start: performance.now(), middlewareTimes: new Map() }
-            }
-          };
+            { batchRequest: true }
+          );
 
           const result = await method.handler(req.input, handlerContext);
 
@@ -906,9 +851,9 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       let authContext: any = undefined;
 
       if (authHeader) {
-        // Parse Bearer token or other auth schemes
-        const [scheme, token] = authHeader.split(' ');
-        if (scheme === 'Bearer' && token) {
+        // Parse Bearer token using consolidated utility
+        const token = extractBearerToken(authHeader);
+        if (token) {
           // Create auth context from token
           // In real implementation, this would validate the token
           authContext = {
@@ -1315,13 +1260,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       'X-Netron-Version': '2.0'
     });
 
-    const origin = request.headers.get('Origin');
-    if (origin && this.options.cors) {
-      headers.set('Access-Control-Allow-Origin', origin);
-      if ((this.options.cors as any).credentials) {
-        headers.set('Access-Control-Allow-Credentials', 'true');
-      }
-    }
+    // Apply CORS headers using consolidated helper
+    this.applyCorsHeaders(headers, request);
 
     return new Response(
       JSON.stringify({
@@ -1349,14 +1289,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       'X-Netron-Version': '2.0'
     });
 
-    // Apply CORS headers if configured
-    const origin = request.headers.get('Origin');
-    if (origin && this.options.cors) {
-      headers.set('Access-Control-Allow-Origin', origin);
-      if ((this.options.cors as any).credentials) {
-        headers.set('Access-Control-Allow-Credentials', 'true');
-      }
-    }
+    // Apply CORS headers using consolidated helper
+    this.applyCorsHeaders(headers, request);
 
     return new Response(
       JSON.stringify({
@@ -1395,7 +1329,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    */
   async close(): Promise<void> {
     if (this.server) {
-      const runtime = this.detectRuntime();
+      const runtime = detectRuntime();
 
       if (runtime === 'bun') {
         this.server.stop();
@@ -1450,19 +1384,73 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   }
 
   /**
-   * Detect runtime environment
+   * Apply CORS headers to response headers
+   * Consolidated from 4 duplicate implementations
    */
-  private detectRuntime(): 'node' | 'bun' | 'deno' | 'browser' {
-    if (typeof window !== 'undefined') {
-      return 'browser';
+  private applyCorsHeaders(headers: Headers, request: Request): void {
+    const origin = request.headers.get('Origin');
+    if (origin && this.options.cors) {
+      headers.set('Access-Control-Allow-Origin', origin);
+      if ((this.options.cors as any).credentials) {
+        headers.set('Access-Control-Allow-Credentials', 'true');
+      }
     }
-    // @ts-expect-error - Bun global may not be available
-    if (typeof globalThis.Bun !== 'undefined') {
-      return 'bun';
+  }
+
+  /**
+   * Create method handler context
+   * Consolidated from 4 duplicate implementations in batch and invocation handlers
+   */
+  private createMethodHandlerContext(
+    message: { id: string; service: string; method: string; input: unknown; context?: HttpRequestContext; hints?: HttpRequestHints },
+    request: Request,
+    options?: { batchRequest?: boolean }
+  ): MethodHandlerContext {
+    const metadata = new Map<string, unknown>();
+    metadata.set('requestId', message.id);
+
+    if (options?.batchRequest) {
+      metadata.set('batchRequest', true);
     }
-    if (typeof (global as any).Deno !== 'undefined') {
-      return 'deno';
+
+    return {
+      context: message.context,
+      hints: message.hints,
+      request,
+      middleware: {
+        peer: this.netronPeer!,
+        serviceName: message.service,
+        methodName: message.method,
+        input: message.input,
+        metadata,
+        timing: { start: performance.now(), middlewareTimes: new Map() }
+      }
+    };
+  }
+
+  /**
+   * Validate method input against contract
+   * Consolidated from 2 duplicate implementations
+   */
+  private validateMethodInput(input: unknown, contract?: MethodContract): void {
+    if (!contract?.input) {
+      return;
     }
-    return 'node';
+
+    const validation = contract.input.safeParse(input);
+    if (!validation.success) {
+      // Only expose minimal validation error info to prevent schema disclosure
+      throw new TitanError({
+        code: ErrorCode.INVALID_ARGUMENT,
+        message: 'Input validation failed',
+        details: {
+          message: 'Request data does not match expected format',
+          // In development, include field paths but not schema structure
+          ...(process.env['NODE_ENV'] === 'development' && {
+            fields: validation.error.issues.map(i => i.path.join('.'))
+          })
+        }
+      });
+    }
   }
 }

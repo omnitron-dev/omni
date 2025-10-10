@@ -83,14 +83,16 @@ describe('Method-Level Transport Filtering', () => {
       expect(definition.meta.methods.publicMethod).toBeDefined();
       expect(definition.meta.methods.publicMethod.transports).toBeUndefined(); // Available on all
 
+      // Note: transports were removed from ServiceMetadata for security reasons
+      // They are now stored on ServiceStub instead, not exposed in metadata
       expect(definition.meta.methods.wsOnly).toBeDefined();
-      expect(definition.meta.methods.wsOnly.transports).toEqual(['ws']);
+      expect(definition.meta.methods.wsOnly.transports).toBeUndefined();
 
       expect(definition.meta.methods.tcpOnly).toBeDefined();
-      expect(definition.meta.methods.tcpOnly.transports).toEqual(['tcp']);
+      expect(definition.meta.methods.tcpOnly.transports).toBeUndefined();
 
       expect(definition.meta.methods.wsAndTcp).toBeDefined();
-      expect(definition.meta.methods.wsAndTcp.transports).toEqual(['ws', 'tcp']);
+      expect(definition.meta.methods.wsAndTcp.transports).toBeUndefined();
     });
 
     it('should expose all methods via interface (filtering is application-level)', async () => {
@@ -132,44 +134,18 @@ describe('Method-Level Transport Filtering', () => {
       const service = new TestService();
       const definition = await server.peer.exposeService(service);
 
-      // Application-level filtering logic
-      const filterMethodsByTransport = (definition: any, transport: string) => {
-        const filtered: string[] = [];
-        for (const [methodName, methodInfo] of Object.entries(definition.meta.methods as any)) {
-          // If method has no transports specified, it's available on all
-          if (!methodInfo.transports) {
-            filtered.push(methodName);
-            continue;
-          }
+      // Note: Transport filtering is no longer exposed in ServiceMetadata for security
+      // Transport restrictions are now enforced at the ServiceStub level, not client-visible
+      // This test now verifies all methods are exposed (no transport filtering in metadata)
 
-          // If method specifies transports, check if current transport is included
-          if (methodInfo.transports.includes(transport)) {
-            filtered.push(methodName);
-          }
-        }
-        return filtered;
-      };
+      const allMethods = Object.keys(definition.meta.methods);
+      expect(allMethods).toContain('publicMethod');
+      expect(allMethods).toContain('wsOnly');
+      expect(allMethods).toContain('tcpOnly');
+      expect(allMethods).toContain('wsAndTcp');
 
-      // Test filtering for WebSocket
-      const wsMethods = filterMethodsByTransport(definition, 'ws');
-      expect(wsMethods).toContain('publicMethod');
-      expect(wsMethods).toContain('wsOnly');
-      expect(wsMethods).toContain('wsAndTcp');
-      expect(wsMethods).not.toContain('tcpOnly');
-
-      // Test filtering for TCP
-      const tcpMethods = filterMethodsByTransport(definition, 'tcp');
-      expect(tcpMethods).toContain('publicMethod');
-      expect(tcpMethods).toContain('tcpOnly');
-      expect(tcpMethods).toContain('wsAndTcp');
-      expect(tcpMethods).not.toContain('wsOnly');
-
-      // Test filtering for unknown transport
-      const unknownMethods = filterMethodsByTransport(definition, 'unknown');
-      expect(unknownMethods).toContain('publicMethod');
-      expect(unknownMethods).not.toContain('wsOnly');
-      expect(unknownMethods).not.toContain('tcpOnly');
-      expect(unknownMethods).not.toContain('wsAndTcp');
+      // All methods are visible in metadata (no filtering)
+      expect(allMethods).toHaveLength(4);
     });
   });
 
@@ -270,9 +246,10 @@ describe('Method-Level Transport Filtering', () => {
       const service = new MixedService();
       const definition = await server.peer.exposeService(service);
 
+      // Transports are no longer exposed in metadata for security
       expect(definition.meta.methods.allTransports.transports).toBeUndefined();
-      expect(definition.meta.methods.wsOnly.transports).toEqual(['ws']);
-      expect(definition.meta.methods.bothTransports.transports).toEqual(['ws', 'tcp']);
+      expect(definition.meta.methods.wsOnly.transports).toBeUndefined();
+      expect(definition.meta.methods.bothTransports.transports).toBeUndefined();
     });
 
     it('should preserve transport metadata through serialization', async () => {
@@ -283,9 +260,10 @@ describe('Method-Level Transport Filtering', () => {
       const serialized = JSON.stringify(definition.meta);
       const deserialized = JSON.parse(serialized);
 
+      // Transports are no longer in metadata
       expect(deserialized.methods.allTransports.transports).toBeUndefined();
-      expect(deserialized.methods.wsOnly.transports).toEqual(['ws']);
-      expect(deserialized.methods.bothTransports.transports).toEqual(['ws', 'tcp']);
+      expect(deserialized.methods.wsOnly.transports).toBeUndefined();
+      expect(deserialized.methods.bothTransports.transports).toBeUndefined();
     });
   });
 
@@ -316,9 +294,8 @@ describe('Method-Level Transport Filtering', () => {
       const service = new EdgeService();
       const definition = await server.peer.exposeService(service);
 
-      // Metadata should store whatever was specified
-      // Validation is application-level concern
-      expect(definition.meta.methods.nonexistentTransport.transports).toEqual(['nonexistent']);
+      // Transports are no longer stored in metadata
+      expect(definition.meta.methods.nonexistentTransport.transports).toBeUndefined();
     });
   });
 

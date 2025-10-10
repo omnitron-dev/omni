@@ -725,7 +725,7 @@ describe('AuthorizationManager', () => {
       expect(authzManager.canAccessMethod('testService', 'anyMethod', userContext)).toBe(true);
     });
 
-    it('should extend service ACL with method ACL by default', () => {
+    it('should replace service ACL with method ACL by default', () => {
       authzManager.registerACL({
         service: 'testService',
         allowedRoles: ['user'],
@@ -750,22 +750,22 @@ describe('AuthorizationManager', () => {
 
       const justAdminContext: AuthContext = {
         userId: 'admin456',
-        roles: ['admin'], // Only admin, lacks service access
+        roles: ['admin'], // Only admin role
         permissions: [],
       };
 
-      // User has service access and merged method access (user OR admin role)
+      // User no longer has method access - method ACL replaces service ACL
       expect(authzManager.canAccessMethod('testService', 'restrictedMethod', userContext)).toBe(
-        true,
+        false,
       );
       // Admin with both roles can access
       expect(authzManager.canAccessMethod('testService', 'restrictedMethod', adminContext)).toBe(
         true,
       );
-      // Admin without user role cannot access (no service access)
+      // Admin with only admin role can access (method ACL replaced service ACL)
       expect(
         authzManager.canAccessMethod('testService', 'restrictedMethod', justAdminContext),
-      ).toBe(false);
+      ).toBe(true);
     });
 
     it('should override service ACL when __override flag is set', () => {
@@ -944,7 +944,7 @@ describe('AuthorizationManager', () => {
 
       expect(result.methods.publicMethod).toBeDefined();
       expect(result.methods.publicMethod.params).toHaveLength(1);
-      expect(result.methods.adminMethod).toBeDefined(); // User role inherited
+      expect(result.methods.adminMethod).toBeUndefined(); // User role does NOT grant access - method ACL replaces service ACL
     });
 
     it('should return full definition when no auth context and no ACL', () => {
@@ -1102,7 +1102,7 @@ describe('AuthorizationManager', () => {
       expect(authzManager.canAccessMethod('testService', 'writeMethod', hasMethodPerms)).toBe(true);
     });
 
-    it('should handle method with both roles and permissions inheritance', () => {
+    it('should handle method with both roles and permissions replacement', () => {
       authzManager.registerACL({
         service: 'testService',
         allowedRoles: ['user'],
@@ -1121,26 +1121,28 @@ describe('AuthorizationManager', () => {
         permissions: ['service:read'],
       };
 
-      const userWithBoth: AuthContext = {
+      const adminWithWriteOnly: AuthContext = {
         userId: 'user2',
+        roles: ['admin'],
+        permissions: ['service:write'],
+      };
+
+      const userWithBoth: AuthContext = {
+        userId: 'user3',
         roles: ['user', 'admin'],
         permissions: ['service:read', 'service:write'],
       };
 
-      const userWithWriteNoRead: AuthContext = {
-        userId: 'user3',
-        roles: ['user', 'admin'],
-        permissions: ['service:write'], // Missing service:read
-      };
-
-      // User needs both service perms and method perms (merged)
+      // Method ACL replaces service ACL - user role no longer works
       expect(authzManager.canAccessMethod('testService', 'writeMethod', userWithReadOnly)).toBe(
         false,
       );
+      // Admin with write permission can access (method ACL replaces service ACL)
+      expect(authzManager.canAccessMethod('testService', 'writeMethod', adminWithWriteOnly)).toBe(
+        true,
+      );
+      // User with both roles and permissions can access
       expect(authzManager.canAccessMethod('testService', 'writeMethod', userWithBoth)).toBe(true);
-      expect(
-        authzManager.canAccessMethod('testService', 'writeMethod', userWithWriteNoRead),
-      ).toBe(false);
     });
 
     it('should reject patterns with adjacent wildcards', () => {
@@ -1231,8 +1233,8 @@ describe('AuthorizationManager', () => {
       // Should filter quickly
       expect(filterTime).toBeLessThan(100); // < 100ms
 
-      // Should have all methods (user role inherited)
-      expect(Object.keys(result.methods)).toHaveLength(100);
+      // Should have only even-numbered methods (50 total) - method ACL replaces service ACL
+      expect(Object.keys(result.methods)).toHaveLength(50);
     });
   });
 });

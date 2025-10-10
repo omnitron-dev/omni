@@ -14,6 +14,7 @@ import type {
 import { HttpServer } from './server.js';
 import { HttpConnection } from './connection.js';
 import { Errors } from '../../../errors/index.js';
+import { detectRuntime } from '../../utils.js';
 
 /**
  * HTTP Transport implementation
@@ -37,23 +38,6 @@ export class HttpTransport implements ITransport {
     multiplexing: true,   // Multiple requests over same connection (HTTP/1.1 keep-alive, HTTP/2)
     server: true          // Can create HTTP servers
   };
-
-  /**
-   * Detect current runtime environment
-   */
-  private detectRuntime(): 'node' | 'bun' | 'deno' | 'browser' {
-    if (typeof window !== 'undefined') {
-      return 'browser';
-    }
-    // @ts-expect-error - Bun global may not be available
-    if (typeof globalThis.Bun !== 'undefined') {
-      return 'bun';
-    }
-    if (typeof (global as any).Deno !== 'undefined') {
-      return 'deno';
-    }
-    return 'node';
-  }
 
   /**
    * Connect to a remote HTTP endpoint
@@ -167,7 +151,7 @@ export class HttpTransport implements ITransport {
   getMetrics(): any {
     return {
       transport: 'http',
-      runtime: this.detectRuntime(),
+      runtime: detectRuntime(),
       capabilities: this.capabilities
     };
   }

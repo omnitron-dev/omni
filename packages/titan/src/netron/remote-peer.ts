@@ -902,8 +902,43 @@ export class RemotePeer extends AbstractPeer {
   }
 
   /**
+   * Override queryInterface to skip caching when authorization is present.
+   * When auth is configured, each user gets a filtered definition based on their permissions,
+   * so we cannot use a shared cache.
+   *
+   * @template T - Type of the interface to return
+   * @param {string} qualifiedName - Service name with optional version (name@version)
+   * @returns {Promise<T>} Resolves with the requested interface instance
+   */
+  override async queryInterface<T>(qualifiedName: string): Promise<T> {
+    // Check if authorization manager is configured
+    const authzManager = (this.netron as any).authorizationManager;
+
+    // If no auth manager, use default caching behavior from parent
+    if (!authzManager) {
+      return super.queryInterface<T>(qualifiedName);
+    }
+
+    // With auth, skip all caching and always query fresh to get user-specific filtered definition
+    this.logger.debug(
+      { serviceName: qualifiedName, isAuthenticated: this.isAuthenticated() },
+      'Querying interface with authorization (skipping all caches)'
+    );
+
+    const definition = await this.queryInterfaceRemote(qualifiedName);
+
+    // Create interface directly without caching in interfaces Map
+    // This ensures each user gets an interface bound to their filtered definition
+    const instance = Interface.create(definition, this);
+    return instance as T;
+  }
+
+  /**
    * Queries the remote peer for a service definition using the query_interface core-task.
    * This method executes the query_interface task on the remote peer with authorization checks.
+   *
+   * NOTE: Definitions are NOT cached when authorization is configured, as each user may
+   * receive a different filtered definition based on their permissions.
    *
    * @param {string} qualifiedName - Service name with version (name@version)
    * @returns {Promise<Definition>} Resolves with the service definition
@@ -914,6 +949,7 @@ export class RemotePeer extends AbstractPeer {
     this.logger.debug({ serviceName: qualifiedName }, 'Querying remote interface');
 
     // Execute query_interface task on remote peer
+    // This will apply authorization filtering based on the peer's auth context
     const definition = await this.runTask('query_interface', qualifiedName);
 
     if (!definition) {
@@ -930,6 +966,7 @@ export class RemotePeer extends AbstractPeer {
         serviceName: qualifiedName,
         definitionId: definition.id,
         methodCount: Object.keys(definition.meta.methods || {}).length,
+        isAuthenticated: this.isAuthenticated(),
       },
       'Remote interface queried successfully',
     );

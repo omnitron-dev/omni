@@ -67,7 +67,7 @@ describe('HttpRemotePeer Integration (No Mocks)', () => {
     // Create HTTP server - use 127.0.0.1 to avoid IPv6/IPv4 confusion
     httpServer = new HttpServer({
       port: serverPort,
-      host: '127.0.0.1'
+      host: '127.0.0.1',
     });
 
     // Expose the service
@@ -81,7 +81,7 @@ describe('HttpRemotePeer Integration (No Mocks)', () => {
     await httpServer.listen();
 
     // Wait a bit for server to be fully ready
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
   });
 
   afterAll(async () => {
@@ -96,8 +96,8 @@ describe('HttpRemotePeer Integration (No Mocks)', () => {
       console.error('Cleanup error (ignored):', error);
     }
 
-    // Add delay to ensure port is fully released
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // CRITICAL FIX: Increase delay to 1000ms to ensure port is fully released
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   });
 
   beforeEach(async () => {
@@ -210,7 +210,7 @@ describe('HttpRemotePeer Integration (No Mocks)', () => {
         calculator.add(2, 2),
         calculator.add(3, 3),
         calculator.subtract(10, 5),
-        calculator.subtract(20, 10)
+        calculator.subtract(20, 10),
       ]);
 
       expect(results).toEqual([2, 4, 6, 5, 10]);
@@ -300,12 +300,7 @@ describe('HttpRemotePeer Integration (No Mocks)', () => {
 
   describe('Request Options', () => {
     it('should use default timeout from options', async () => {
-      const customPeer = new HttpRemotePeer(
-        connection,
-        clientNetron,
-        baseUrl,
-        { requestTimeout: 5000 }
-      );
+      const customPeer = new HttpRemotePeer(connection, clientNetron, baseUrl, { requestTimeout: 5000 });
       await customPeer.init(true);
 
       expect((customPeer as any).defaultOptions.timeout).toBe(5000);
@@ -314,12 +309,9 @@ describe('HttpRemotePeer Integration (No Mocks)', () => {
     });
 
     it('should use custom headers from options', async () => {
-      const customPeer = new HttpRemotePeer(
-        connection,
-        clientNetron,
-        baseUrl,
-        { headers: { 'X-Custom-Header': 'test-value' } }
-      );
+      const customPeer = new HttpRemotePeer(connection, clientNetron, baseUrl, {
+        headers: { 'X-Custom-Header': 'test-value' },
+      });
       await customPeer.init(true);
 
       expect((customPeer as any).defaultOptions.headers).toHaveProperty('X-Custom-Header', 'test-value');

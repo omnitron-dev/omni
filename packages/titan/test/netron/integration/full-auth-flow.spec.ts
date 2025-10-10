@@ -24,7 +24,7 @@ class UserService {
   ]);
 
   @Method({
-    auth: true  // Require authentication, any role
+    auth: true, // Require authentication, any role
   })
   async getCurrentUser(authContext: AuthContext) {
     return this.users.get(authContext.userId);
@@ -32,8 +32,8 @@ class UserService {
 
   @Method({
     auth: {
-      roles: ['user', 'admin']
-    }
+      roles: ['user', 'admin'],
+    },
   })
   async getUser(userId: string) {
     return this.users.get(userId);
@@ -42,8 +42,8 @@ class UserService {
   @Method({
     auth: {
       roles: ['admin'],
-      permissions: ['write:users']
-    }
+      permissions: ['write:users'],
+    },
   })
   async updateUser(userId: string, data: any) {
     const user = this.users.get(userId);
@@ -56,8 +56,8 @@ class UserService {
   @Method({
     auth: {
       roles: ['admin'],
-      permissions: ['delete:users']
-    }
+      permissions: ['delete:users'],
+    },
   })
   async deleteUser(userId: string) {
     const user = this.users.get(userId);
@@ -69,8 +69,8 @@ class UserService {
 
   @Method({
     auth: {
-      policies: ['requireRole:admin']
-    }
+      policies: ['requireRole:admin'],
+    },
   })
   async listAllUsers() {
     return Array.from(this.users.values());
@@ -79,9 +79,9 @@ class UserService {
   @Method({
     auth: {
       policies: {
-        any: ['requireRole:admin', 'requirePermission:read:own-profile']
-      }
-    }
+        any: ['requireRole:admin', 'requirePermission:read:own-profile'],
+      },
+    },
   })
   async getProfile(userId: string) {
     // For now, just return the user (auth is checked at framework level)
@@ -96,7 +96,11 @@ describe('Full Auth Flow Integration', () => {
   let serverPort: number;
 
   beforeEach(async () => {
-    serverPort = 9000 + Math.floor(Math.random() * 1000);
+    // CRITICAL FIX: Use JEST_WORKER_ID for worker-safe port allocation
+    const workerId = parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
+    const basePort = 9000 + (workerId - 1) * 1000; // Each worker gets 1000 ports
+    const offset = Math.floor(Math.random() * 900); // Random offset within range
+    serverPort = basePort + offset;
 
     // Setup server Netron with full auth
     const serverLogger = createMockLogger();
@@ -113,20 +117,20 @@ describe('Full Auth Flow Integration', () => {
             id: 'user1',
             password: 'admin123',
             roles: ['admin', 'user'],
-            permissions: ['read:users', 'write:users', 'delete:users', 'read:own-profile']
+            permissions: ['read:users', 'write:users', 'delete:users', 'read:own-profile'],
           },
           'user@example.com': {
             id: 'user2',
             password: 'user123',
             roles: ['user'],
-            permissions: ['read:users', 'read:own-profile']
+            permissions: ['read:users', 'read:own-profile'],
           },
           'guest@example.com': {
             id: 'user3',
             password: 'guest123',
             roles: ['guest'],
-            permissions: ['read:own-profile']
-          }
+            permissions: ['read:own-profile'],
+          },
         };
 
         const user = users[credentials.username || ''];
@@ -138,7 +142,7 @@ describe('Full Auth Flow Integration', () => {
           userId: user.id,
           username: credentials.username,
           roles: user.roles,
-          permissions: user.permissions
+          permissions: user.permissions,
         };
       },
 
@@ -150,7 +154,7 @@ describe('Full Auth Flow Integration', () => {
         } catch {
           throw new Error('Invalid token');
         }
-      }
+      },
     });
 
     // Configure authorization
@@ -163,16 +167,16 @@ describe('Full Auth Flow Integration', () => {
       methods: {
         updateUser: {
           allowedRoles: ['admin'],
-          requiredPermissions: ['write:users']
+          requiredPermissions: ['write:users'],
         },
         deleteUser: {
           allowedRoles: ['admin'],
-          requiredPermissions: ['delete:users']
+          requiredPermissions: ['delete:users'],
         },
         listAllUsers: {
-          allowedRoles: ['admin']
-        }
-      }
+          allowedRoles: ['admin'],
+        },
+      },
     });
 
     // Configure policy engine
@@ -187,7 +191,7 @@ describe('Full Auth Flow Integration', () => {
     serverNetron.registerTransport('ws', () => new WebSocketTransport());
     serverNetron.registerTransportServer('ws', {
       name: 'ws',
-      options: { host: 'localhost', port: serverPort }
+      options: { host: 'localhost', port: serverPort },
     });
 
     await serverNetron.start();
@@ -198,24 +202,31 @@ describe('Full Auth Flow Integration', () => {
     // Setup client Netron
     const clientLogger = createMockLogger();
     clientNetron = new Netron(clientLogger, {
-      id: 'client'
+      id: 'client',
     });
 
     clientNetron.registerTransport('ws', () => new WebSocketTransport());
   });
 
   afterEach(async () => {
+    // CRITICAL FIX: Add proper WebSocket cleanup delays
+    // Wait for WebSocket connections to properly close before stopping
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
     await clientNetron?.stop();
     await serverNetron?.stop();
+
+    // CRITICAL FIX: Additional delay for port release after WebSocket server stops
+    await new Promise((resolve) => setTimeout(resolve, 300));
   });
 
   describe('WebSocket Authentication Flow', () => {
     it('should authenticate successfully with valid credentials', async () => {
-      const peer = await clientNetron.connect(`ws://localhost:${serverPort}`) as RemotePeer;
+      const peer = (await clientNetron.connect(`ws://localhost:${serverPort}`)) as RemotePeer;
 
       const authResult = await peer.runTask('authenticate', {
         username: 'admin@example.com',
-        password: 'admin123'
+        password: 'admin123',
       });
 
       expect(authResult.success).toBe(true);
@@ -227,11 +238,11 @@ describe('Full Auth Flow Integration', () => {
     });
 
     it('should fail authentication with invalid credentials', async () => {
-      const peer = await clientNetron.connect(`ws://localhost:${serverPort}`) as RemotePeer;
+      const peer = (await clientNetron.connect(`ws://localhost:${serverPort}`)) as RemotePeer;
 
       const authResult = await peer.runTask('authenticate', {
         username: 'admin@example.com',
-        password: 'wrong-password'
+        password: 'wrong-password',
       });
 
       expect(authResult.success).toBe(false);
@@ -243,12 +254,12 @@ describe('Full Auth Flow Integration', () => {
 
   describe('Service Discovery with Authorization', () => {
     it('should query service interface with filtered methods based on auth', async () => {
-      const peer = await clientNetron.connect(`ws://localhost:${serverPort}`) as RemotePeer;
+      const peer = (await clientNetron.connect(`ws://localhost:${serverPort}`)) as RemotePeer;
 
       // Authenticate as regular user
       await peer.runTask('authenticate', {
         username: 'user@example.com',
-        password: 'user123'
+        password: 'user123',
       });
 
       // Query service interface
@@ -265,7 +276,7 @@ describe('Full Auth Flow Integration', () => {
     });
 
     it('should deny access to service for unauthenticated users', async () => {
-      const peer = await clientNetron.connect(`ws://localhost:${serverPort}`) as RemotePeer;
+      const peer = (await clientNetron.connect(`ws://localhost:${serverPort}`)) as RemotePeer;
 
       // Try to query without authentication
       try {
@@ -281,12 +292,12 @@ describe('Full Auth Flow Integration', () => {
 
   describe('Method-Level Authorization', () => {
     it('should allow admin to access all methods', async () => {
-      const peer = await clientNetron.connect(`ws://localhost:${serverPort}`) as RemotePeer;
+      const peer = (await clientNetron.connect(`ws://localhost:${serverPort}`)) as RemotePeer;
 
       // Authenticate as admin
       await peer.runTask('authenticate', {
         username: 'admin@example.com',
-        password: 'admin123'
+        password: 'admin123',
       });
 
       const service = await peer.queryInterface<any>('userService@1.0.0');
@@ -307,12 +318,12 @@ describe('Full Auth Flow Integration', () => {
     });
 
     it('should deny non-admin users from calling admin methods', async () => {
-      const peer = await clientNetron.connect(`ws://localhost:${serverPort}`) as RemotePeer;
+      const peer = (await clientNetron.connect(`ws://localhost:${serverPort}`)) as RemotePeer;
 
       // Authenticate as regular user
       await peer.runTask('authenticate', {
         username: 'user@example.com',
-        password: 'user123'
+        password: 'user123',
       });
 
       const service = await peer.queryInterface<any>('userService@1.0.0');
@@ -345,20 +356,20 @@ describe('Full Auth Flow Integration', () => {
   describe('Multi-User Scenarios', () => {
     it('should handle multiple users with different permissions simultaneously', async () => {
       // Connect as admin
-      const adminPeer = await clientNetron.connect(`ws://localhost:${serverPort}`) as RemotePeer;
+      const adminPeer = (await clientNetron.connect(`ws://localhost:${serverPort}`)) as RemotePeer;
       await adminPeer.runTask('authenticate', {
         username: 'admin@example.com',
-        password: 'admin123'
+        password: 'admin123',
       });
 
       // Connect as regular user (need second client)
       const clientNetron2 = new Netron(createMockLogger(), { id: 'client2' });
       clientNetron2.registerTransport('ws', () => new WebSocketTransport());
 
-      const userPeer = await clientNetron2.connect(`ws://localhost:${serverPort}`) as RemotePeer;
+      const userPeer = (await clientNetron2.connect(`ws://localhost:${serverPort}`)) as RemotePeer;
       await userPeer.runTask('authenticate', {
         username: 'user@example.com',
-        password: 'user123'
+        password: 'user123',
       });
 
       // Get services
@@ -393,12 +404,12 @@ describe('Full Auth Flow Integration', () => {
 
   describe('Policy-Based Authorization', () => {
     it('should evaluate policies for method access', async () => {
-      const peer = await clientNetron.connect(`ws://localhost:${serverPort}`) as RemotePeer;
+      const peer = (await clientNetron.connect(`ws://localhost:${serverPort}`)) as RemotePeer;
 
       // Authenticate as admin
       await peer.runTask('authenticate', {
         username: 'admin@example.com',
-        password: 'admin123'
+        password: 'admin123',
       });
 
       const service = await peer.queryInterface<any>('userService@1.0.0');
@@ -413,12 +424,12 @@ describe('Full Auth Flow Integration', () => {
     });
 
     it('should support OR policies (any)', async () => {
-      const peer = await clientNetron.connect(`ws://localhost:${serverPort}`) as RemotePeer;
+      const peer = (await clientNetron.connect(`ws://localhost:${serverPort}`)) as RemotePeer;
 
       // Authenticate as regular user
       await peer.runTask('authenticate', {
         username: 'user@example.com',
-        password: 'user123'
+        password: 'user123',
       });
 
       const service = await peer.queryInterface<any>('userService@1.0.0');
@@ -436,14 +447,14 @@ describe('Full Auth Flow Integration', () => {
 
   describe('Token-Based Authentication', () => {
     it('should authenticate with token', async () => {
-      const peer = await clientNetron.connect(`ws://localhost:${serverPort}`) as RemotePeer;
+      const peer = (await clientNetron.connect(`ws://localhost:${serverPort}`)) as RemotePeer;
 
       // Create a token (simplified - in real app, server would issue JWT)
       const tokenPayload = {
         userId: 'user1',
         username: 'admin@example.com',
         roles: ['admin', 'user'],
-        permissions: ['read:users', 'write:users', 'delete:users']
+        permissions: ['read:users', 'write:users', 'delete:users'],
       };
 
       const token = Buffer.from(JSON.stringify(tokenPayload)).toString('base64');
@@ -461,12 +472,12 @@ describe('Full Auth Flow Integration', () => {
 
   describe('Cache Invalidation', () => {
     it('should invalidate service definition cache', async () => {
-      const peer = await clientNetron.connect(`ws://localhost:${serverPort}`) as RemotePeer;
+      const peer = (await clientNetron.connect(`ws://localhost:${serverPort}`)) as RemotePeer;
 
       // Authenticate
       await peer.runTask('authenticate', {
         username: 'admin@example.com',
-        password: 'admin123'
+        password: 'admin123',
       });
 
       // Query service (should cache definition)

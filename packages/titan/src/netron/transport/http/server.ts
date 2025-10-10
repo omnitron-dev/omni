@@ -1469,20 +1469,46 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
   /**
    * Close the server
+   * CRITICAL FIX: Wait for active requests to complete before closing
+   * and add runtime-specific port release delays to prevent EADDRINUSE errors
    */
   async close(): Promise<void> {
     if (this.server) {
       const runtime = detectRuntime();
 
+      // CRITICAL FIX: Wait for active requests to complete (up to 5 seconds)
+      const maxWaitTime = 5000; // 5 seconds
+      const checkInterval = 50; // Check every 50ms
+      const startTime = Date.now();
+
+      while (this.metrics.activeRequests > 0 && Date.now() - startTime < maxWaitTime) {
+        await new Promise((resolve) => setTimeout(resolve, checkInterval));
+      }
+
+      // Log warning if we're forcing close with active requests
+      if (this.metrics.activeRequests > 0 && this.netronPeer?.logger) {
+        this.netronPeer.logger.warn(
+          { activeRequests: this.metrics.activeRequests },
+          'Forcing server close with active requests still pending'
+        );
+      }
+
       if (runtime === 'bun') {
         this.server.stop();
+        // CRITICAL FIX: Add delay for Bun to release port (100ms)
+        await new Promise((resolve) => setTimeout(resolve, 100));
       } else if (runtime === 'deno') {
         await this.server.close();
+        // CRITICAL FIX: Add delay for Deno to release port (100ms)
+        await new Promise((resolve) => setTimeout(resolve, 100));
       } else {
         // Node.js
         await new Promise<void>((resolve) => {
           this.server.close(() => resolve());
         });
+        // CRITICAL FIX: Add delay for Node.js to release port (200ms)
+        // Node.js needs more time to properly release the port
+        await new Promise((resolve) => setTimeout(resolve, 200));
       }
 
       this.server = null;
@@ -1589,7 +1615,10 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   private async collectAsyncGeneratorValues(generator: AsyncGenerator<unknown>): Promise<unknown[]> {
     // DEFENSIVE: Validate generator exists and is an async generator
     if (!generator || !isAsyncGenerator(generator)) {
-      this.netronPeer?.logger?.warn({ generatorType: typeof generator }, 'Invalid async generator - returning empty array');
+      this.netronPeer?.logger?.warn(
+        { generatorType: typeof generator },
+        'Invalid async generator - returning empty array'
+      );
       return [];
     }
 
@@ -1695,6 +1724,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
     // Return the validated data (with defaults applied by Zod)
     // If input was an array, wrap the validated value back in an array
-    return isArrayInput && input.length === 1 ? [validation.data] : validation.data;
+    return isArrayInput && Array.isArray(input) && input.length === 1 ? [validation.data] : validation.data;
   }
 }

@@ -15,9 +15,14 @@ import { contract } from '../../src/validation/index.js';
 import { createMockLogger } from '../netron/test-utils.js';
 import type { HttpRemotePeer } from '../../src/netron/transport/http/peer.js';
 
-// Test port management - sequential to avoid conflicts
-let portCounter = 9000;
-const getSequentialPort = () => portCounter++;
+// Test port management - worker-safe to avoid conflicts in parallel test execution
+// CRITICAL FIX: Use JEST_WORKER_ID to ensure each worker gets unique port range
+const getWorkerSafePort = () => {
+  const workerId = parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
+  const basePort = 9000 + (workerId - 1) * 1000; // Each worker gets 1000 ports
+  const offset = Math.floor(Math.random() * 900); // Random offset within range
+  return basePort + offset;
+};
 
 describe('Netron-Validation Integration (Real HTTP)', () => {
   let serverNetron: Netron;
@@ -26,7 +31,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
   let serverUrl: string;
 
   beforeAll(async () => {
-    serverPort = getSequentialPort();
+    serverPort = getWorkerSafePort();
     serverUrl = `http://localhost:${serverPort}`;
 
     // Create server with real HTTP transport
@@ -108,7 +113,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
 
     afterEach(async () => {
       // CRITICAL FIX: Wait for in-flight requests to complete before cleanup
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Unexpose service first to prevent new connections
       await serverNetron.peer.unexposeService('calculator@1.0.0');
@@ -120,11 +125,11 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       if (peer) {
         await peer.close();
         // Additional delay after close for connection cleanup
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
 
       // Small delay to ensure cleanup completes
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it('should successfully validate and execute add method', async () => {
@@ -210,7 +215,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
 
     afterEach(async () => {
       // CRITICAL FIX: Wait for in-flight requests to complete before cleanup
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Unexpose service first to prevent new connections
       await serverNetron.peer.unexposeService('user@1.0.0');
@@ -222,11 +227,11 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       if (peer) {
         await peer.close();
         // Additional delay after close for connection cleanup
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
 
       // Small delay to ensure cleanup completes
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it('should reject invalid email format', async () => {
@@ -347,7 +352,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
 
     afterEach(async () => {
       // CRITICAL FIX: Wait for in-flight requests to complete before cleanup
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Unexpose service first to prevent new connections
       await serverNetron.peer.unexposeService('stream@1.0.0');
@@ -359,11 +364,11 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       if (peer) {
         await peer.close();
         // Additional delay after close for connection cleanup
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
 
       // Small delay to ensure cleanup completes
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it('should validate input for streaming method', async () => {
@@ -481,7 +486,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
 
     afterEach(async () => {
       // CRITICAL FIX: Wait for in-flight requests to complete before cleanup
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Unexpose service first to prevent new connections
       await serverNetron.peer.unexposeService('metadata@1.0.0');
@@ -493,11 +498,11 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       if (peer) {
         await peer.close();
         // Additional delay after close for connection cleanup
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
 
       // Small delay to ensure cleanup completes
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it('should execute method with custom HTTP metadata', async () => {
@@ -615,7 +620,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
 
     afterEach(async () => {
       // CRITICAL FIX: Wait for in-flight requests to complete before cleanup
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Unexpose services first to prevent new connections
       await serverNetron.peer.unexposeService('math@1.0.0');
@@ -629,11 +634,11 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       if (peer) {
         await peer.close();
         // Additional delay after close for connection cleanup
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
 
       // Small delay to ensure cleanup completes
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it('should validate MathService operations', async () => {
@@ -738,7 +743,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
 
     afterEach(async () => {
       // CRITICAL FIX: Wait for in-flight requests to complete before cleanup
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Unexpose service first to prevent new connections
       await serverNetron.peer.unexposeService('tracked@1.0.0');
@@ -750,11 +755,11 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       if (peer) {
         await peer.close();
         // Additional delay after close for connection cleanup
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
 
       // Small delay to ensure cleanup completes
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it('should execute validation middleware before method', async () => {
@@ -814,7 +819,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
 
     afterEach(async () => {
       // CRITICAL FIX: Wait for in-flight requests to complete before cleanup
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Unexpose service first to prevent new connections
       await serverNetron.peer.unexposeService('perf@1.0.0');
@@ -826,11 +831,11 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       if (peer) {
         await peer.close();
         // Additional delay after close for connection cleanup
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
 
       // Small delay to ensure cleanup completes
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it('should handle 100 sequential requests with validation', async () => {
@@ -997,7 +1002,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       expect(result.settings.enabled).toBe(true);
 
       // CRITICAL FIX: Wait for in-flight requests to complete before cleanup
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Unexpose service first to prevent new connections
       await serverNetron.peer.unexposeService('config@1.0.0');
@@ -1009,7 +1014,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
 
       // Small delay to ensure cleanup completes
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it('should support complex nested validation', async () => {
@@ -1106,7 +1111,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       await expect(orderService.processOrder(invalidOrder)).rejects.toThrow();
 
       // CRITICAL FIX: Wait for in-flight requests to complete before cleanup
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Unexpose service first to prevent new connections
       await serverNetron.peer.unexposeService('order@1.0.0');
@@ -1118,7 +1123,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
 
       // Small delay to ensure cleanup completes
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it('should support discriminated unions', async () => {
@@ -1196,7 +1201,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       ).rejects.toThrow();
 
       // CRITICAL FIX: Wait for in-flight requests to complete before cleanup
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Unexpose service first to prevent new connections
       await serverNetron.peer.unexposeService('event@1.0.0');
@@ -1208,7 +1213,7 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
 
       // Small delay to ensure cleanup completes
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
   });
 });

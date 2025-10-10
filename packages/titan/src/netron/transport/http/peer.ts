@@ -12,7 +12,7 @@ import type { INetron } from '../../types.js';
 import type { ITransportConnection, TransportOptions } from '../types.js';
 import type { ILogger } from '../../../modules/logger/logger.types.js';
 import { Definition } from '../../definition.js';
-import { TitanError, ErrorCode, NetronErrors, Errors } from '../../../errors/index.js';
+import { TitanError, ErrorCode, Errors } from '../../../errors/index.js';
 import type { EventSubscriber } from '../../types.js';
 import {
   HttpRequestMessage,
@@ -107,8 +107,8 @@ export class HttpRemotePeer extends AbstractPeer {
       this.logger.debug('HTTP peer initialized in client mode - using auth-aware on-demand service discovery');
       this.logger.debug(
         'Services will be discovered on-demand via queryInterface(). ' +
-          'Use POST /netron/authenticate for user authentication. ' +
-          'Service definitions are resolved internally by the server during POST /netron/invoke calls.'
+        'Use POST /netron/authenticate for user authentication. ' +
+        'Service definitions are resolved internally by the server during POST /netron/invoke calls.'
       );
     }
   }
@@ -713,8 +713,8 @@ export class HttpRemotePeer extends AbstractPeer {
   protected async queryInterfaceRemote(qualifiedName: string): Promise<Definition> {
     throw Errors.notImplemented(
       'HTTP transport does not fetch service definitions. ' +
-        'Services are resolved on-demand during method invocation. ' +
-        'Use queryInterface() to create a service proxy.'
+      'Services are resolved on-demand during method invocation. ' +
+      'Use queryInterface() to create a service proxy.'
     );
   }
 
@@ -727,7 +727,7 @@ export class HttpRemotePeer extends AbstractPeer {
   protected getDefinitionById(defId: string): Definition {
     throw Errors.notImplemented(
       'HTTP transport does not use definitions on the client side. ' +
-        'Service methods are invoked directly via HTTP requests without definition metadata.'
+      'Service methods are invoked directly via HTTP requests without definition metadata.'
     );
   }
 
@@ -740,7 +740,7 @@ export class HttpRemotePeer extends AbstractPeer {
   protected getDefinitionByServiceName(name: string): Definition {
     throw Errors.notImplemented(
       'HTTP transport does not use definitions on the client side. ' +
-        'Service methods are invoked directly via HTTP requests without definition metadata.'
+      'Service methods are invoked directly via HTTP requests without definition metadata.'
     );
   }
 

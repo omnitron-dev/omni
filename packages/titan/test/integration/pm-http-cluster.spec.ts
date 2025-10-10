@@ -14,7 +14,7 @@
  */
 
 import 'reflect-metadata';
-import { describe, it, expect, beforeEach, afterEach, beforeAll, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { createTestProcessManager, TestProcessManager } from '../../src/modules/pm/testing/test-process-manager.js';
 import { PoolStrategy } from '../../src/modules/pm/types.js';
 import {

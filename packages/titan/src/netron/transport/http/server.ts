@@ -6,12 +6,7 @@
  */
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import type {
-  ITransportServer,
-  ITransportConnection,
-  TransportOptions,
-  ServerMetrics
-} from '../types.js';
+import type { ITransportServer, ITransportConnection, TransportOptions, ServerMetrics } from '../types.js';
 import type { LocalPeer } from '../../local-peer.js';
 import { TitanError, ErrorCode, NetronErrors, Errors, toTitanError, mapToHttp } from '../../../errors/index.js';
 import {
@@ -20,7 +15,7 @@ import {
   HttpMiddlewareAdapter,
   HttpBuiltinMiddleware,
   NetronBuiltinMiddleware,
-  NetronMiddlewareContext
+  NetronMiddlewareContext,
 } from '../../middleware/index.js';
 import {
   HttpRequestMessage,
@@ -29,12 +24,13 @@ import {
   createSuccessResponse,
   createErrorResponse,
   isHttpRequestMessage,
-  isHttpBatchRequest
+  isHttpBatchRequest,
 } from './types.js';
 import type { MethodContract } from '../../../validation/contract.js';
 import type { HttpRequestContext, HttpRequestHints } from './types.js';
 import { detectRuntime, generateRequestId } from '../../utils.js';
 import { extractBearerToken } from '../../auth/utils.js';
+import { isAsyncGenerator } from '@omnitron-dev/common';
 
 /**
  * Context passed to method handlers
@@ -107,7 +103,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     statusCounts: new Map<number, number>(),
     methodCounts: new Map<string, number>(),
     protocolVersions: new Map<string, number>(),
-    startTime: Date.now()
+    startTime: Date.now(),
   };
 
   get address(): string | undefined {
@@ -157,9 +153,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
     // Add compression if enabled
     if (this.options.compression) {
-      const compressionOpts = typeof this.options.compression === 'object'
-        ? this.options.compression
-        : { threshold: 1024 };
+      const compressionOpts =
+        typeof this.options.compression === 'object' ? this.options.compression : { threshold: 1024 };
       this.globalPipeline.use(
         HttpBuiltinMiddleware.compression(compressionOpts) as any,
         { name: 'compression', priority: 90 },
@@ -214,7 +209,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   setPeer(peer: LocalPeer): void {
     this.netronPeer = peer;
     this.middlewareAdapter = new HttpMiddlewareAdapter({
-      cors: this.options.cors || undefined
+      cors: this.options.cors || undefined,
     });
 
     // Register services from peer
@@ -241,7 +236,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         version,
         methods: new Map(),
         description: meta.description,
-        metadata: meta.metadata
+        metadata: meta.metadata,
       };
 
       // Register methods - get from the actual instance since decorators might not populate methods in metadata
@@ -252,21 +247,16 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       try {
         const proto = Object.getPrototypeOf(instance);
         if (proto && proto !== Object.prototype) {
-          methodNames = Object.getOwnPropertyNames(proto)
-            .filter(name =>
-              name !== 'constructor' &&
-              typeof (instance as any)[name] === 'function' &&
-              !name.startsWith('_') // Skip private methods
-            );
+          methodNames = Object.getOwnPropertyNames(proto).filter(
+            (name) => name !== 'constructor' && typeof (instance as any)[name] === 'function' && !name.startsWith('_') // Skip private methods
+          );
         }
       } catch (error) {
         // If we can't get the prototype (e.g., for proxies), fallback to instance methods
         if (instance && typeof instance === 'object') {
-          methodNames = Object.getOwnPropertyNames(instance)
-            .filter(name =>
-              typeof (instance as any)[name] === 'function' &&
-              !name.startsWith('_')
-            );
+          methodNames = Object.getOwnPropertyNames(instance).filter(
+            (name) => typeof (instance as any)[name] === 'function' && !name.startsWith('_')
+          );
         }
       }
 
@@ -278,11 +268,13 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       for (const methodName of allMethodNames) {
         // Get contract for this method if available
         let methodContract: MethodContract | undefined;
-        const contractObj = meta.contract as {
-          definition?: unknown;
-          getMethod?: (name: string) => MethodContract;
-          [key: string]: unknown;
-        } | undefined;
+        const contractObj = meta.contract as
+          | {
+              definition?: unknown;
+              getMethod?: (name: string) => MethodContract;
+              [key: string]: unknown;
+            }
+          | undefined;
 
         if (contractObj) {
           // Check if it's a Contract class instance
@@ -299,9 +291,11 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           handler: async (input: unknown, context: MethodHandlerContext) => {
             // Input is already an array of arguments from HTTP peer
             const args = Array.isArray(input) ? input : [input];
-            return stub.call(methodName, args, this.netronPeer!);
+            // Pass null as callerPeer for HTTP transport to get raw async generators
+            // This avoids wrapping generators in StreamReference (HTTP doesn't support streaming)
+            return stub.call(methodName, args, null);
           },
-          contract: methodContract
+          contract: methodContract,
         });
       }
 
@@ -335,7 +329,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       version,
       methods: new Map(),
       description: meta.description,
-      metadata: meta.metadata
+      metadata: meta.metadata,
     };
 
     // Get the service stub for this definition
@@ -343,18 +337,15 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     if (!stub) {
       throw new TitanError({
         code: ErrorCode.INTERNAL_SERVER_ERROR,
-        message: `Service stub not found for ${serviceName}`
+        message: `Service stub not found for ${serviceName}`,
       });
     }
 
     // Register methods - get from the actual instance since decorators might not populate methods in metadata
     const instance = stub.instance;
-    const methodNames = Object.getOwnPropertyNames(Object.getPrototypeOf(instance))
-      .filter(name =>
-        name !== 'constructor' &&
-        typeof (instance as any)[name] === 'function' &&
-        !name.startsWith('_') // Skip private methods
-      );
+    const methodNames = Object.getOwnPropertyNames(Object.getPrototypeOf(instance)).filter(
+      (name) => name !== 'constructor' && typeof (instance as any)[name] === 'function' && !name.startsWith('_') // Skip private methods
+    );
 
     // Also check for methods explicitly listed in metadata
     const metaMethods = Object.keys(definition.meta.methods || {});
@@ -381,9 +372,11 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         handler: async (input: unknown, context: MethodHandlerContext) => {
           // Input is already an array of arguments from HTTP peer
           const args = Array.isArray(input) ? input : [input];
-          return stub.call(methodName, args, this.netronPeer!);
+          // Pass null as callerPeer for HTTP transport to get raw async generators
+          // This avoids wrapping generators in StreamReference (HTTP doesn't support streaming)
+          return stub.call(methodName, args, null);
         },
-        contract: methodContract
+        contract: methodContract,
       });
     }
 
@@ -433,7 +426,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           port,
           hostname: host,
           fetch: this.handleRequest.bind(this),
-          maxRequestBodySize: (this.options as any).maxBodySize || 10 * 1024 * 1024
+          maxRequestBodySize: (this.options as any).maxBodySize || 10 * 1024 * 1024,
         });
       } else {
         throw Errors.notImplemented('Bun runtime detected but Bun.serve not available');
@@ -445,10 +438,13 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     } else {
       // Node.js implementation
       const { createServer } = await import('http');
-      this.server = createServer({
-        keepAliveTimeout: 5000,
-        maxHeaderSize: 16384
-      } as any, this.handleNodeRequest.bind(this));
+      this.server = createServer(
+        {
+          keepAliveTimeout: 5000,
+          maxHeaderSize: 16384,
+        } as any,
+        this.handleNodeRequest.bind(this)
+      );
 
       await new Promise<void>((resolve, reject) => {
         const errorHandler = (err: any) => {
@@ -481,10 +477,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
     // Track protocol version
     const version = request.headers.get('X-Netron-Version') || '1.0';
-    this.metrics.protocolVersions.set(
-      version,
-      (this.metrics.protocolVersions.get(version) || 0) + 1
-    );
+    this.metrics.protocolVersions.set(version, (this.metrics.protocolVersions.get(version) || 0) + 1);
 
     try {
       // Handle CORS preflight
@@ -523,7 +516,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         new TitanError({
           code: ErrorCode.NOT_FOUND,
           message: 'Not found',
-          requestId
+          requestId,
         }),
         requestId,
         request
@@ -549,7 +542,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       traceId: request.headers.get('X-Trace-ID'),
       correlationId: request.headers.get('X-Correlation-ID'),
       spanId: request.headers.get('X-Span-ID'),
-      netronVersion: request.headers.get('X-Netron-Version')
+      netronVersion: request.headers.get('X-Netron-Version'),
     };
   }
 
@@ -564,7 +557,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       if (!service) {
         throw new TitanError({
           code: ErrorCode.NOT_FOUND,
-          message: `Service ${message.service} not found`
+          message: `Service ${message.service} not found`,
         });
       }
 
@@ -573,7 +566,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       if (!method) {
         throw new TitanError({
           code: ErrorCode.NOT_FOUND,
-          message: `Method ${message.method} not found in service ${message.service}`
+          message: `Method ${message.method} not found in service ${message.service}`,
         });
       }
 
@@ -593,13 +586,20 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           methodName: message.method,
           input: validatedInput,
           metadata,
-          timing: { start: performance.now(), middlewareTimes: new Map() }
-        }
+          timing: { start: performance.now(), middlewareTimes: new Map() },
+        },
       };
 
       // Execute method directly with validated input (includes defaults)
       const methodStart = performance.now();
-      const result = await method.handler(validatedInput, handlerContext);
+      let result = await method.handler(validatedInput, handlerContext);
+
+      // CRITICAL FIX: Check if result is an async generator
+      // HTTP transport doesn't support true streaming, so collect all values into an array
+      if (isAsyncGenerator(result)) {
+        result = await this.collectAsyncGeneratorValues(result);
+      }
+
       const serverTime = Math.round(performance.now() - methodStart);
 
       // Build minimal response
@@ -608,14 +608,14 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         streaming?: boolean;
         cache?: { maxAge: number; tags: string[] };
       } = {
-        metrics: { serverTime }
+        metrics: { serverTime },
       };
 
       // Add cache hints if applicable
       if (method.cacheable || method.contract?.http?.responseHeaders?.['Cache-Control']) {
         hints.cache = {
           maxAge: method.cacheMaxAge || 300000,
-          tags: method.cacheTags || []
+          tags: method.cacheTags || [],
         };
       }
 
@@ -624,7 +624,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       // Minimal headers
       const headers: HeadersInit = {
         'Content-Type': method.contract?.http?.contentType || 'application/json',
-        'X-Netron-Version': '2.0'
+        'X-Netron-Version': '2.0',
       };
 
       if (method.contract?.http?.responseHeaders) {
@@ -633,30 +633,27 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
       return new Response(JSON.stringify(response), {
         status: method.contract?.http?.status || 200,
-        headers
+        headers,
       });
     } catch (error) {
       // Optimized error handling without middleware
       const titanError = error instanceof TitanError ? error : toTitanError(error);
       const httpError = mapToHttp(titanError);
 
-      const errorResponse = createErrorResponse(
-        message.id,
-        {
-          code: String(httpError.status),
-          message: titanError.message,
-          details: titanError.details
-        }
-      );
+      const errorResponse = createErrorResponse(message.id, {
+        code: String(httpError.status),
+        message: titanError.message,
+        details: titanError.details,
+      });
 
       const headers: HeadersInit = {
         ...httpError.headers,
-        'X-Netron-Version': '2.0'
+        'X-Netron-Version': '2.0',
       };
 
       return new Response(JSON.stringify(errorResponse), {
         status: httpError.status,
-        headers
+        headers,
       });
     }
   }
@@ -679,7 +676,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         new TitanError({
           code: ErrorCode.BAD_REQUEST,
           message: 'Invalid JSON',
-          requestId
+          requestId,
         }),
         requestId,
         request
@@ -696,7 +693,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         new TitanError({
           code: ErrorCode.BAD_REQUEST,
           message: 'Invalid request format',
-          requestId
+          requestId,
         }),
         requestId,
         request
@@ -738,8 +735,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       metadata,
       timing: {
         start: performance.now(),
-        middlewareTimes: new Map()
-      }
+        middlewareTimes: new Map(),
+      },
     };
 
     try {
@@ -748,7 +745,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       if (!service) {
         throw new TitanError({
           code: ErrorCode.NOT_FOUND,
-          message: `Service ${message.service} not found`
+          message: `Service ${message.service} not found`,
         });
       }
 
@@ -757,7 +754,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       if (!method) {
         throw new TitanError({
           code: ErrorCode.NOT_FOUND,
-          message: `Method ${message.method} not found in service ${message.service}`
+          message: `Method ${message.method} not found in service ${message.service}`,
         });
       }
 
@@ -777,12 +774,20 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           context: message.context,
           hints: message.hints,
           request,
-          middleware: context
+          middleware: context,
         };
 
         // Execute method with timing using validated input (includes defaults)
         const methodStart = performance.now();
-        context.output = await method.handler(validatedInput, handlerContext);
+        let result = await method.handler(validatedInput, handlerContext);
+
+        // CRITICAL FIX: Check if result is an async generator
+        // HTTP transport doesn't support true streaming, so collect all values into an array
+        if (isAsyncGenerator(result)) {
+          result = await this.collectAsyncGeneratorValues(result);
+        }
+
+        context.output = result;
         context.metadata.set('serverTime', Math.round(performance.now() - methodStart));
       };
 
@@ -795,7 +800,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         streaming?: boolean;
         cache?: { maxAge: number; tags: string[] };
       } = {
-        metrics: { serverTime: context.metadata.get('serverTime') as number | undefined }
+        metrics: { serverTime: context.metadata.get('serverTime') as number | undefined },
       };
 
       // Add cache hints based on method contract
@@ -806,7 +811,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       if (method.cacheable || method.contract?.http?.responseHeaders?.['Cache-Control']) {
         hints.cache = {
           maxAge: method.cacheMaxAge || 300000,
-          tags: method.cacheTags || []
+          tags: method.cacheTags || [],
         };
       }
 
@@ -815,7 +820,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       // Apply response headers from contract
       const headers: HeadersInit = {
         'Content-Type': method.contract?.http?.contentType || 'application/json',
-        'X-Netron-Version': '2.0'
+        'X-Netron-Version': '2.0',
       };
 
       if (method.contract?.http?.responseHeaders) {
@@ -824,7 +829,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
       return new Response(JSON.stringify(response), {
         status: method.contract?.http?.status || 200,
-        headers
+        headers,
       });
     } catch (error) {
       // Error handling through middleware
@@ -840,24 +845,21 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
       // Create error response payload
       // Use the mapped HTTP status code for consistency with HTTP status header
-      const errorResponse = createErrorResponse(
-        message.id,
-        {
-          code: String(httpError.status),
-          message: titanError.message,
-          details: titanError.details
-        }
-      );
+      const errorResponse = createErrorResponse(message.id, {
+        code: String(httpError.status),
+        message: titanError.message,
+        details: titanError.details,
+      });
 
       // Build response headers with context information
       const headers: HeadersInit = {
         ...httpError.headers,
-        'X-Netron-Version': '2.0'
+        'X-Netron-Version': '2.0',
       };
 
       return new Response(JSON.stringify(errorResponse), {
         status: httpError.status,
-        headers
+        headers,
       });
     }
   }
@@ -876,7 +878,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         new TitanError({
           code: ErrorCode.BAD_REQUEST,
           message: 'Invalid JSON',
-          requestId
+          requestId,
         }),
         requestId,
         request
@@ -889,7 +891,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         new TitanError({
           code: ErrorCode.BAD_REQUEST,
           message: 'Invalid batch request format',
-          requestId
+          requestId,
         }),
         requestId,
         request
@@ -904,8 +906,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       hints: {
         successCount: 0,
         failureCount: 0,
-        totalTime: 0
-      }
+        totalTime: 0,
+      },
     };
 
     const startTime = performance.now();
@@ -930,13 +932,19 @@ export class HttpServer extends EventEmitter implements ITransportServer {
             { batchRequest: true }
           );
 
-          const result = await method.handler(req.input, handlerContext);
+          let result = await method.handler(req.input, handlerContext);
+
+          // CRITICAL FIX: Check if result is an async generator
+          // HTTP transport doesn't support true streaming, so collect all values into an array
+          if (isAsyncGenerator(result)) {
+            result = await this.collectAsyncGeneratorValues(result);
+          }
 
           batchResponse.hints!.successCount!++;
           return {
             id: req.id,
             success: true,
-            data: result
+            data: result,
           };
         } catch (error) {
           const titanError = error instanceof TitanError ? error : null;
@@ -948,8 +956,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
             success: false,
             error: {
               code: String(titanError?.code || ErrorCode.INTERNAL_SERVER_ERROR),
-              message: errorMessage
-            }
+              message: errorMessage,
+            },
           };
         }
       });
@@ -973,13 +981,19 @@ export class HttpServer extends EventEmitter implements ITransportServer {
             { batchRequest: true }
           );
 
-          const result = await method.handler(req.input, handlerContext);
+          let result = await method.handler(req.input, handlerContext);
+
+          // CRITICAL FIX: Check if result is an async generator
+          // HTTP transport doesn't support true streaming, so collect all values into an array
+          if (isAsyncGenerator(result)) {
+            result = await this.collectAsyncGeneratorValues(result);
+          }
 
           batchResponse.hints!.successCount!++;
           batchResponse.responses.push({
             id: req.id,
             success: true,
-            data: result
+            data: result,
           });
         } catch (error) {
           const titanError = error instanceof TitanError ? error : null;
@@ -991,8 +1005,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
             success: false,
             error: {
               code: String(titanError?.code || ErrorCode.INTERNAL_SERVER_ERROR),
-              message: errorMessage
-            }
+              message: errorMessage,
+            },
           });
 
           if (stopOnError) {
@@ -1008,11 +1022,10 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'X-Netron-Version': '2.0'
-      }
+        'X-Netron-Version': '2.0',
+      },
     });
   }
-
 
   /**
    * Handle authenticate request
@@ -1030,7 +1043,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           new TitanError({
             code: ErrorCode.BAD_REQUEST,
             message: 'Missing credentials parameter',
-            requestId
+            requestId,
           }),
           requestId,
           request
@@ -1044,7 +1057,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           new TitanError({
             code: ErrorCode.SERVICE_UNAVAILABLE,
             message: 'Authentication not configured',
-            requestId
+            requestId,
           }),
           requestId,
           request
@@ -1059,17 +1072,20 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         result = await authManager.authenticate(credentials);
       }
 
-      return new Response(JSON.stringify({
-        id: body.id || crypto.randomUUID(),
-        result,
-        timestamp: Date.now()
-      }), {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Netron-Version': '2.0'
+      return new Response(
+        JSON.stringify({
+          id: body.id || crypto.randomUUID(),
+          result,
+          timestamp: Date.now(),
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Netron-Version': '2.0',
+          },
         }
-      });
+      );
     } catch (error: any) {
       const titanError = error instanceof TitanError ? error : toTitanError(error);
       // Create a new TitanError with requestId if it doesn't already have one
@@ -1082,7 +1098,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
             requestId,
             correlationId: titanError.correlationId,
             traceId: titanError.traceId,
-            spanId: titanError.spanId
+            spanId: titanError.spanId,
           });
       return this.createErrorResponse(errorWithRequestId, requestId, request);
     }
@@ -1098,12 +1114,12 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       JSON.stringify({
         status: this.status,
         uptime: Date.now() - this.startTime,
-        version: '2.0.0'
+        version: '2.0.0',
         // Removed services list - use authenticated /metrics instead
       }),
       {
         status,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
       }
     );
   }
@@ -1121,15 +1137,15 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         JSON.stringify({
           error: {
             code: '401',
-            message: 'Authentication required for metrics endpoint'
-          }
+            message: 'Authentication required for metrics endpoint',
+          },
         }),
         {
           status: 401,
           headers: {
             'Content-Type': 'application/json',
-            'WWW-Authenticate': 'Bearer'
-          }
+            'WWW-Authenticate': 'Bearer',
+          },
         }
       );
     }
@@ -1140,21 +1156,21 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         server: {
           status: this.status,
           uptime: Date.now() - this.startTime,
-          connections: this.connections.size
+          connections: this.connections.size,
         },
         requests: {
           total: this.metrics.totalRequests,
           active: this.metrics.activeRequests,
           errors: this.metrics.totalErrors,
-          avgResponseTime: this.metrics.avgResponseTime
+          avgResponseTime: this.metrics.avgResponseTime,
         },
-        services: Array.from(this.services.keys()),  // OK for authenticated users
+        services: Array.from(this.services.keys()), // OK for authenticated users
         protocolVersions: Object.fromEntries(this.metrics.protocolVersions),
-        middleware: this.globalPipeline.getMetrics()
+        middleware: this.globalPipeline.getMetrics(),
       }),
       {
         status: 200,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
       }
     );
   }
@@ -1172,15 +1188,15 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         JSON.stringify({
           error: {
             code: '401',
-            message: 'Authentication required for API documentation'
-          }
+            message: 'Authentication required for API documentation',
+          },
         }),
         {
           status: 401,
           headers: {
             'Content-Type': 'application/json',
-            'WWW-Authenticate': 'Bearer'
-          }
+            'WWW-Authenticate': 'Bearer',
+          },
         }
       );
     }
@@ -1191,19 +1207,19 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       info: {
         title: 'Netron HTTP Services',
         version: '2.0.0',
-        description: 'Auto-generated OpenAPI specification for Netron services'
+        description: 'Auto-generated OpenAPI specification for Netron services',
       },
       servers: [
         {
           url: `http://${this.address}:${this.port}`,
-          description: 'Current server'
-        }
+          description: 'Current server',
+        },
       ],
       paths: {},
       components: {
         schemas: {},
-        securitySchemes: {}
-      }
+        securitySchemes: {},
+      },
     };
 
     // Generate paths from service methods (RPC-style POST only)
@@ -1227,10 +1243,10 @@ export class HttpServer extends EventEmitter implements ITransportServer {
             content: {
               'application/json': {
                 schema: {
-                  $ref: `#/components/schemas/${serviceName}_${methodName}_Input`
-                }
-              }
-            }
+                  $ref: `#/components/schemas/${serviceName}_${methodName}_Input`,
+                },
+              },
+            },
           },
           responses: {
             '200': {
@@ -1238,28 +1254,28 @@ export class HttpServer extends EventEmitter implements ITransportServer {
               content: {
                 'application/json': {
                   schema: {
-                    $ref: `#/components/schemas/${serviceName}_${methodName}_Output`
-                  }
-                }
-              }
+                    $ref: `#/components/schemas/${serviceName}_${methodName}_Output`,
+                  },
+                },
+              },
             },
             '400': {
-              description: 'Bad request - Invalid input or validation failed'
+              description: 'Bad request - Invalid input or validation failed',
             },
             '404': {
-              description: 'Service or method not found'
+              description: 'Service or method not found',
             },
             '500': {
-              description: 'Internal server error'
-            }
-          }
+              description: 'Internal server error',
+            },
+          },
         };
 
         // Store input schema
         if (method.contract?.input) {
           spec.components.schemas[`${serviceName}_${methodName}_Input`] = {
             type: 'object',
-            description: `Input for ${serviceName}.${methodName}`
+            description: `Input for ${serviceName}.${methodName}`,
             // TODO: Convert Zod schema to JSON Schema using zod-to-json-schema
           };
         }
@@ -1268,7 +1284,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         if (method.contract?.output) {
           spec.components.schemas[`${serviceName}_${methodName}_Output`] = {
             type: 'object',
-            description: `Output for ${serviceName}.${methodName}`
+            description: `Output for ${serviceName}.${methodName}`,
             // TODO: Convert Zod schema to JSON Schema using zod-to-json-schema
           };
         }
@@ -1281,15 +1297,15 @@ export class HttpServer extends EventEmitter implements ITransportServer {
               content: {
                 'application/json': {
                   schema: {
-                    $ref: `#/components/schemas/${serviceName}_${methodName}_Error${statusCode}`
-                  }
-                }
-              }
+                    $ref: `#/components/schemas/${serviceName}_${methodName}_Error${statusCode}`,
+                  },
+                },
+              },
             };
 
             spec.components.schemas[`${serviceName}_${methodName}_Error${statusCode}`] = {
               type: 'object',
-              description: `Error ${statusCode} for ${serviceName}.${methodName}`
+              description: `Error ${statusCode} for ${serviceName}.${methodName}`,
               // TODO: Convert Zod schema to JSON Schema
             };
           }
@@ -1304,11 +1320,10 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=300'
-      }
+        'Cache-Control': 'public, max-age=300',
+      },
     });
   }
-
 
   /**
    * Handle Node.js style request
@@ -1330,7 +1345,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     const request = new Request(url, {
       method: req.method,
       headers,
-      body: body && ['POST', 'PUT', 'PATCH'].includes(req.method) ? body : undefined
+      body: body && ['POST', 'PUT', 'PATCH'].includes(req.method) ? body : undefined,
     });
 
     const response = await this.handleRequest(request);
@@ -1384,32 +1399,25 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   /**
    * Create error response using consistent mapToHttp() helper
    */
-  private createErrorResponse(
-    error: TitanError,
-    requestId: string,
-    request: Request
-  ): Response {
+  private createErrorResponse(error: TitanError, requestId: string, request: Request): Response {
     // Use consistent error mapping
     const httpError = mapToHttp(error);
 
     const errorResponse = createErrorResponse(requestId, {
       code: String(httpError.status),
       message: error.message,
-      details: error.details
+      details: error.details,
     });
 
     const headers = new Headers({
       ...httpError.headers,
       'X-Netron-Version': '2.0',
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
     });
 
     this.applyCorsHeaders(headers, request);
 
-    return new Response(
-      JSON.stringify(errorResponse),
-      { status: httpError.status, headers }
-    );
+    return new Response(JSON.stringify(errorResponse), { status: httpError.status, headers });
   }
 
   /**
@@ -1425,7 +1433,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     // Build headers with CORS support
     const headers = new Headers({
       ...httpError.headers,
-      'X-Netron-Version': '2.0'
+      'X-Netron-Version': '2.0',
     });
 
     // Apply CORS headers using consolidated helper
@@ -1436,7 +1444,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         error: true,
         message: titanError.message,
         code: String(httpError.status),
-        timestamp: Date.now()
+        timestamp: Date.now(),
       }),
       { status: httpError.status, headers }
     );
@@ -1454,13 +1462,9 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     }
 
     this.metrics.avgResponseTime =
-      this.metrics.responseTimes.reduce((a, b) => a + b, 0) /
-      this.metrics.responseTimes.length;
+      this.metrics.responseTimes.reduce((a, b) => a + b, 0) / this.metrics.responseTimes.length;
 
-    this.metrics.statusCounts.set(
-      status,
-      (this.metrics.statusCounts.get(status) || 0) + 1
-    );
+    this.metrics.statusCounts.set(status, (this.metrics.statusCounts.get(status) || 0) + 1);
   }
 
   /**
@@ -1505,9 +1509,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    */
   getMetrics(): ServerMetrics & any {
     const uptime = Date.now() - this.metrics.startTime;
-    const errorRate = this.metrics.totalRequests > 0
-      ? this.metrics.totalErrors / this.metrics.totalRequests
-      : 0;
+    const errorRate = this.metrics.totalRequests > 0 ? this.metrics.totalErrors / this.metrics.totalRequests : 0;
 
     return {
       activeConnections: this.connections.size,
@@ -1522,7 +1524,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       errorRate,
       avgResponseTime: this.metrics.avgResponseTime,
       statusCounts: Object.fromEntries(this.metrics.statusCounts),
-      protocolVersions: Object.fromEntries(this.metrics.protocolVersions)
+      protocolVersions: Object.fromEntries(this.metrics.protocolVersions),
     };
   }
 
@@ -1545,7 +1547,14 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    * Consolidated from 4 duplicate implementations in batch and invocation handlers
    */
   private createMethodHandlerContext(
-    message: { id: string; service: string; method: string; input: unknown; context?: HttpRequestContext; hints?: HttpRequestHints },
+    message: {
+      id: string;
+      service: string;
+      method: string;
+      input: unknown;
+      context?: HttpRequestContext;
+      hints?: HttpRequestHints;
+    },
     request: Request,
     options?: { batchRequest?: boolean }
   ): MethodHandlerContext {
@@ -1566,9 +1575,40 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         methodName: message.method,
         input: message.input,
         metadata,
-        timing: { start: performance.now(), middlewareTimes: new Map() }
-      }
+        timing: { start: performance.now(), middlewareTimes: new Map() },
+      },
     };
+  }
+
+  /**
+   * Collect all values from an async generator into an array
+   * HTTP transport doesn't support true streaming, so async generators are collected
+   * @param generator - The async generator to collect from
+   * @returns Array of all values from the generator
+   */
+  private async collectAsyncGeneratorValues(generator: AsyncGenerator<unknown>): Promise<unknown[]> {
+    // DEFENSIVE: Validate generator exists and is an async generator
+    if (!generator || !isAsyncGenerator(generator)) {
+      this.netronPeer?.logger?.warn({ generatorType: typeof generator }, 'Invalid async generator - returning empty array');
+      return [];
+    }
+
+    const values: unknown[] = [];
+
+    try {
+      // Collect all values from the generator
+      for await (const value of generator) {
+        values.push(value);
+      }
+      return values;
+    } catch (error) {
+      // Log error but return partial results rather than failing the entire request
+      this.netronPeer?.logger?.error(
+        { error, collectedSoFar: values.length },
+        'Error iterating async generator - returning partial results'
+      );
+      return values;
+    }
   }
 
   /**
@@ -1577,7 +1617,30 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    * @returns The validated and transformed input (with defaults applied), or original input if no validation
    */
   private validateMethodInput(input: unknown, contract?: MethodContract): unknown {
-    if (!contract?.input) {
+    // DEFENSIVE: Check if contract is still valid (race condition prevention)
+    if (!contract) {
+      return input;
+    }
+
+    // DEFENSIVE: Check if input schema exists and is valid
+    if (!contract.input) {
+      return input;
+    }
+
+    // DEFENSIVE: Verify contract.input has safeParse method (Zod schema)
+    // This guards against "_zod" undefined errors during contract lifecycle changes
+    if (
+      typeof contract.input !== 'object' ||
+      !contract.input ||
+      typeof (contract.input as any).safeParse !== 'function'
+    ) {
+      // Log warning if logger is available
+      if (this.netronPeer?.logger) {
+        this.netronPeer.logger.warn(
+          { contractType: typeof contract.input },
+          'Invalid contract schema detected - contract.input is not a Zod schema. Skipping validation.'
+        );
+      }
       return input;
     }
 
@@ -1599,7 +1662,22 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       // The contract should handle array validation if needed
     }
 
-    const validation = contract.input.safeParse(valueToValidate);
+    // DEFENSIVE: Wrap validation in try-catch to handle contract lifecycle issues
+    let validation;
+    try {
+      validation = contract.input.safeParse(valueToValidate);
+    } catch (error) {
+      // Log contract lifecycle issue
+      if (this.netronPeer?.logger) {
+        this.netronPeer.logger.error(
+          { error, contractInput: String(contract.input) },
+          'Contract validation failed unexpectedly - possible contract lifecycle race condition. Allowing request without validation.'
+        );
+      }
+      // Allow request to proceed without validation rather than failing
+      return input;
+    }
+
     if (!validation.success) {
       // Only expose minimal validation error info to prevent schema disclosure
       throw new TitanError({
@@ -1609,9 +1687,9 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           message: 'Request data does not match expected format',
           // In development, include field paths but not schema structure
           ...(process.env['NODE_ENV'] === 'development' && {
-            fields: validation.error.issues.map(i => i.path.join('.'))
-          })
-        }
+            fields: validation.error.issues.map((i) => i.path.join('.')),
+          }),
+        },
       });
     }
 

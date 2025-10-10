@@ -143,10 +143,11 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
       const response = await server.handleRequest(request);
 
       expect(response.status).toBe(200);
+      // CRITICAL FIX: HTTP server passes null as callerPeer to prevent async generator wrapping
       expect(calculatorStub.call).toHaveBeenCalledWith(
         'add',
         [{ a: 2, b: 3 }],
-        mockPeer
+        null
       );
 
       const data = await response.json() as any;

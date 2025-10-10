@@ -13,21 +13,18 @@ import type { ITransportConnection, TransportOptions } from '../types.js';
 import type { ILogger } from '../../../modules/logger/logger.types.js';
 import { Definition } from '../../definition.js';
 import { TitanError, ErrorCode, NetronErrors, Errors } from '../../../errors/index.js';
-import type {
-  EventSubscriber,
-} from '../../types.js';
+import type { EventSubscriber } from '../../types.js';
 import {
   HttpRequestMessage,
   HttpResponseMessage,
   HttpRequestContext,
   HttpRequestHints,
   HttpResponseHints,
-  createRequestMessage
+  createRequestMessage,
 } from './types.js';
 import { HttpInterface } from './interface.js';
 import { HttpTransportClient } from './client.js';
 import { FluentInterface, HttpCacheManager, RetryManager, type QueryOptions } from './fluent-interface/index.js';
-
 
 /**
  * HttpRemotePeer - Optimized HTTP peer without packet protocol
@@ -64,10 +61,13 @@ export class HttpRemotePeer extends AbstractPeer {
   } = {};
 
   /** Request interceptors */
-  private requestInterceptors: Array<(req: HttpRequestMessage) => HttpRequestMessage | Promise<HttpRequestMessage>> = [];
+  private requestInterceptors: Array<(req: HttpRequestMessage) => HttpRequestMessage | Promise<HttpRequestMessage>> =
+    [];
 
   /** Response interceptors */
-  private responseInterceptors: Array<(res: HttpResponseMessage) => HttpResponseMessage | Promise<HttpResponseMessage>> = [];
+  private responseInterceptors: Array<
+    (res: HttpResponseMessage) => HttpResponseMessage | Promise<HttpResponseMessage>
+  > = [];
 
   /** Cache manager for HTTP responses */
   private cacheManager?: HttpCacheManager;
@@ -90,7 +90,7 @@ export class HttpRemotePeer extends AbstractPeer {
     // Set default options
     this.defaultOptions = {
       timeout: options?.requestTimeout || 30000,
-      headers: options?.headers || {}
+      headers: options?.headers || {},
     };
   }
 
@@ -107,8 +107,8 @@ export class HttpRemotePeer extends AbstractPeer {
       this.logger.debug('HTTP peer initialized in client mode - using auth-aware on-demand service discovery');
       this.logger.debug(
         'Services will be discovered on-demand via queryInterface(). ' +
-        'Use POST /netron/authenticate for user authentication. ' +
-        'Service definitions are resolved internally by the server during POST /netron/invoke calls.'
+          'Use POST /netron/authenticate for user authentication. ' +
+          'Service definitions are resolved internally by the server during POST /netron/invoke calls.'
       );
     }
   }
@@ -158,7 +158,7 @@ export class HttpRemotePeer extends AbstractPeer {
       args, // Pass all arguments as array
       {
         context: this.buildRequestContext(),
-        hints: this.buildRequestHints()
+        hints: this.buildRequestHints(),
       }
     );
 
@@ -273,9 +273,7 @@ export class HttpRemotePeer extends AbstractPeer {
     if (serviceName === pattern) return true;
     if (!pattern.includes('*')) return false;
 
-    const regexPattern = pattern
-      .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-      .replace(/\*/g, '.*');
+    const regexPattern = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
     const regex = new RegExp(`^${regexPattern}$`);
     return regex.test(serviceName);
   }
@@ -308,11 +306,7 @@ export class HttpRemotePeer extends AbstractPeer {
 
     this.logger.debug({ processedMessage }, '[HTTP Peer] After interceptors, sending HTTP request');
 
-    const response = await this.sendHttpRequest<HttpResponseMessage>(
-      'POST',
-      '/netron/invoke',
-      processedMessage
-    );
+    const response = await this.sendHttpRequest<HttpResponseMessage>('POST', '/netron/invoke', processedMessage);
 
     this.logger.debug({ response }, '[HTTP Peer] Received response');
 
@@ -329,33 +323,26 @@ export class HttpRemotePeer extends AbstractPeer {
   /**
    * Send HTTP request
    */
-  private async sendHttpRequest<T>(
-    method: string,
-    path: string,
-    body?: any
-  ): Promise<T> {
+  private async sendHttpRequest<T>(method: string, path: string, body?: any): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'Accept': 'application/json',
+      Accept: 'application/json',
       'X-Netron-Version': '2.0',
-      ...this.defaultOptions.headers
+      ...this.defaultOptions.headers,
     };
 
     this.logger.debug({ url, method, bodyKeys: body ? Object.keys(body) : [] }, '[HTTP Peer] Sending HTTP request');
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(
-      () => controller.abort(),
-      this.defaultOptions.timeout!
-    );
+    const timeoutId = setTimeout(() => controller.abort(), this.defaultOptions.timeout!);
 
     try {
       const response = await fetch(url, {
         method,
         headers,
         body: body ? JSON.stringify(body) : undefined,
-        signal: controller.signal
+        signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
@@ -363,24 +350,27 @@ export class HttpRemotePeer extends AbstractPeer {
       this.logger.debug({ status: response.status, ok: response.ok }, '[HTTP Peer] Got HTTP response');
 
       if (!response.ok) {
+        // CRITICAL FIX: Extract headers BEFORE consuming response body
+        // Race condition: response.json() can make headers undefined
+        const requestId = response.headers.get('X-Request-ID') || undefined;
+        const correlationId = response.headers.get('X-Correlation-ID') || undefined;
+        const traceId = response.headers.get('X-Trace-ID') || undefined;
+        const spanId = response.headers.get('X-Span-ID') || undefined;
+
         // Try to parse error response
         try {
           const errorData = await response.json();
           if (errorData.error) {
-            // Extract context headers from response
-            const requestId = response.headers.get('X-Request-ID') || undefined;
-            const correlationId = response.headers.get('X-Correlation-ID') || undefined;
-            const traceId = response.headers.get('X-Trace-ID') || undefined;
-            const spanId = response.headers.get('X-Span-ID') || undefined;
-
             throw new TitanError({
-              code: (typeof errorData.error.code === 'number' ? errorData.error.code : ErrorCode.INTERNAL_ERROR) as ErrorCode,
+              code: (typeof errorData.error.code === 'number'
+                ? errorData.error.code
+                : ErrorCode.INTERNAL_ERROR) as ErrorCode,
               message: errorData.error.message,
               details: errorData.error.details,
               requestId,
               correlationId,
               traceId,
-              spanId
+              spanId,
             });
           }
         } catch (parseError) {
@@ -393,7 +383,7 @@ export class HttpRemotePeer extends AbstractPeer {
 
         throw new TitanError({
           code: ErrorCode.INTERNAL_ERROR,
-          message: `HTTP ${response.status}: ${response.statusText}`
+          message: `HTTP ${response.status}: ${response.statusText}`,
         });
       }
 
@@ -404,7 +394,7 @@ export class HttpRemotePeer extends AbstractPeer {
       if (error.name === 'AbortError') {
         throw new TitanError({
           code: ErrorCode.REQUEST_TIMEOUT,
-          message: `Request timeout after ${this.defaultOptions.timeout}ms`
+          message: `Request timeout after ${this.defaultOptions.timeout}ms`,
         });
       }
 
@@ -444,16 +434,17 @@ export class HttpRemotePeer extends AbstractPeer {
     this.logger.debug({ service, method, cacheHints }, 'Received cache hints');
   }
 
-
   /**
    * Create error from response
    */
   private createErrorFromResponse(response: HttpResponseMessage): Error {
     if (response.error) {
       return new TitanError({
-        code: (typeof response.error.code === 'string' ? parseInt(response.error.code, 10) : response.error.code || ErrorCode.INTERNAL_ERROR) as ErrorCode,
+        code: (typeof response.error.code === 'string'
+          ? parseInt(response.error.code, 10)
+          : response.error.code || ErrorCode.INTERNAL_ERROR) as ErrorCode,
         message: response.error.message,
-        details: response.error.details
+        details: response.error.details,
       });
     }
 
@@ -518,7 +509,6 @@ export class HttpRemotePeer extends AbstractPeer {
     // No-op for HTTP - interfaces are stateless
   }
 
-
   /**
    * Query interface for HTTP service (unified RPC API)
    *
@@ -557,10 +547,7 @@ export class HttpRemotePeer extends AbstractPeer {
 
     // Create standard HttpInterface with just the service name
     // NO definition fetch - this is the key difference!
-    const httpInterface = new HttpInterface<TService>(
-      this,
-      qualifiedName
-    );
+    const httpInterface = new HttpInterface<TService>(this, qualifiedName);
 
     // Set peer reference for compatibility
     httpInterface.$peer = this as any;
@@ -726,8 +713,8 @@ export class HttpRemotePeer extends AbstractPeer {
   protected async queryInterfaceRemote(qualifiedName: string): Promise<Definition> {
     throw Errors.notImplemented(
       'HTTP transport does not fetch service definitions. ' +
-      'Services are resolved on-demand during method invocation. ' +
-      'Use queryInterface() to create a service proxy.'
+        'Services are resolved on-demand during method invocation. ' +
+        'Use queryInterface() to create a service proxy.'
     );
   }
 
@@ -740,7 +727,7 @@ export class HttpRemotePeer extends AbstractPeer {
   protected getDefinitionById(defId: string): Definition {
     throw Errors.notImplemented(
       'HTTP transport does not use definitions on the client side. ' +
-      'Service methods are invoked directly via HTTP requests without definition metadata.'
+        'Service methods are invoked directly via HTTP requests without definition metadata.'
     );
   }
 
@@ -753,7 +740,7 @@ export class HttpRemotePeer extends AbstractPeer {
   protected getDefinitionByServiceName(name: string): Definition {
     throw Errors.notImplemented(
       'HTTP transport does not use definitions on the client side. ' +
-      'Service methods are invoked directly via HTTP requests without definition metadata.'
+        'Service methods are invoked directly via HTTP requests without definition metadata.'
     );
   }
 
@@ -766,5 +753,4 @@ export class HttpRemotePeer extends AbstractPeer {
     // For HTTP transport, defId is already the service name
     return defId;
   }
-
 }

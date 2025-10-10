@@ -26,6 +26,9 @@ export class ServiceStub {
   /** Service definition containing metadata and interface specification */
   public definition: Definition;
 
+  /** Transport names this service is exposed on (server-side only) */
+  public transports?: string[];
+
   /**
    * Creates a new ServiceStub instance.
    *
@@ -43,6 +46,15 @@ export class ServiceStub {
       this.definition = metaOrDefinition;
     } else {
       this.definition = new Definition(Definition.nextId(), peer.id, metaOrDefinition);
+    }
+
+    // Extract transports from metadata (but don't include in definition)
+    const meta = isServiceDefinition(metaOrDefinition)
+      ? metaOrDefinition.meta
+      : metaOrDefinition;
+
+    if ((meta as any).transports) {
+      this.transports = (meta as any).transports;
     }
   }
 

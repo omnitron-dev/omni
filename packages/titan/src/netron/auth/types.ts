@@ -346,9 +346,6 @@ export interface MethodOptions {
   /** Read-only property (for properties only) */
   readonly?: boolean;
 
-  /** Transport filter - method only available on these transports */
-  transports?: string[];
-
   /** Authentication and authorization configuration */
   auth?: boolean | {
     /** Required roles (RBAC) */

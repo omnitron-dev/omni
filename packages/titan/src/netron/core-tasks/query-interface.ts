@@ -72,8 +72,8 @@ export async function query_interface(
       code: ErrorCode.NOT_FOUND,
       message: `Service '${serviceName}' not found`,
       details: {
-        serviceName,
-        availableServices: Array.from(servicesMap.keys()),
+        serviceName
+        // Removed availableServices - security issue
       },
     });
   }

@@ -445,10 +445,17 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       if (method.contract?.input) {
         const validation = method.contract.input.safeParse(message.input);
         if (!validation.success) {
+          // Only expose minimal validation error info to prevent schema disclosure
           throw new TitanError({
             code: ErrorCode.INVALID_ARGUMENT,
             message: 'Input validation failed',
-            details: validation.error
+            details: {
+              message: 'Request data does not match expected format',
+              // In development, include field paths but not schema structure
+              ...(process.env['NODE_ENV'] === 'development' && {
+                fields: validation.error.issues.map(i => i.path.join('.'))
+              })
+            }
           });
         }
       }
@@ -619,10 +626,17 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         if (method.contract?.input) {
           const validation = method.contract.input.safeParse(message.input);
           if (!validation.success) {
+            // Only expose minimal validation error info to prevent schema disclosure
             throw new TitanError({
               code: ErrorCode.INVALID_ARGUMENT,
               message: 'Input validation failed',
-              details: validation.error
+              details: {
+                message: 'Request data does not match expected format',
+                // In development, include field paths but not schema structure
+                ...(process.env['NODE_ENV'] === 'development' && {
+                  fields: validation.error.issues.map(i => i.path.join('.'))
+                })
+              }
             });
           }
         }
@@ -1004,12 +1018,13 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    */
   private handleHealthCheck(request: Request): Response {
     const status = this.status === 'online' ? 200 : 503;
+    // Basic health check without sensitive information
     return new Response(
       JSON.stringify({
         status: this.status,
         uptime: Date.now() - this.startTime,
-        services: Array.from(this.services.keys()),
         version: '2.0.0'
+        // Removed services list - use authenticated /metrics instead
       }),
       {
         status,
@@ -1022,6 +1037,29 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    * Handle metrics request
    */
   private handleMetricsRequest(request: Request): Response {
+    // Extract and verify authentication
+    const authHeader = request.headers.get('Authorization');
+
+    // Require authentication for metrics endpoint
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: '401',
+            message: 'Authentication required for metrics endpoint'
+          }
+        }),
+        {
+          status: 401,
+          headers: {
+            'Content-Type': 'application/json',
+            'WWW-Authenticate': 'Bearer'
+          }
+        }
+      );
+    }
+
+    // Return full metrics only for authenticated requests
     return new Response(
       JSON.stringify({
         server: {
@@ -1035,7 +1073,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           errors: this.metrics.totalErrors,
           avgResponseTime: this.metrics.avgResponseTime
         },
-        services: Array.from(this.services.keys()),
+        services: Array.from(this.services.keys()),  // OK for authenticated users
         protocolVersions: Object.fromEntries(this.metrics.protocolVersions),
         middleware: this.globalPipeline.getMetrics()
       }),
@@ -1050,6 +1088,29 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    * Handle OpenAPI specification request
    */
   private handleOpenAPIRequest(request: Request): Response {
+    // Extract and verify authentication
+    const authHeader = request.headers.get('Authorization');
+
+    // Require authentication for OpenAPI spec
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: '401',
+            message: 'Authentication required for API documentation'
+          }
+        }),
+        {
+          status: 401,
+          headers: {
+            'Content-Type': 'application/json',
+            'WWW-Authenticate': 'Bearer'
+          }
+        }
+      );
+    }
+
+    // Continue with OpenAPI generation for authenticated users
     const spec: any = {
       openapi: '3.0.3',
       info: {

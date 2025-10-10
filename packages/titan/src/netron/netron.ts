@@ -423,11 +423,11 @@ export class Netron extends EventEmitter implements INetron {
 
       // Register existing services with the transport server
       if (server && typeof (server as any).registerService === 'function') {
-        for (const [serviceName, stub] of this.services) {
+        for (const [, stub] of this.services) {
           const meta = stub.definition.meta;
 
           // Check if service should be exposed on this transport
-          if (meta.transports && !meta.transports.includes(name)) {
+          if (stub.transports && !stub.transports.includes(name)) {
             continue; // Skip this service for this transport
           }
 

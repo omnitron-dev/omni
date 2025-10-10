@@ -320,9 +320,13 @@ describe('HttpServer (Legacy Tests)', () => {
       await server.listen();
     });
 
-    it('should generate OpenAPI specification', async () => {
+    it('should generate OpenAPI specification with authentication', async () => {
+      // OpenAPI endpoint now requires authentication
       const response = await fetch(`http://localhost:${testPort}/openapi.json`, {
-        method: 'GET'
+        method: 'GET',
+        headers: {
+          'Authorization': 'Bearer test-token'
+        }
       });
 
       expect(response.status).toBe(200);
@@ -339,6 +343,18 @@ describe('HttpServer (Legacy Tests)', () => {
       // Check OpenAPI metadata
       expect(spec.paths['/rpc/UserService/getUser'].post.summary).toBe('Get user by ID');
       expect(spec.paths['/rpc/UserService/createUser'].post.summary).toBe('Create new user');
+    });
+
+    it('should require authentication for OpenAPI spec', async () => {
+      const response = await fetch(`http://localhost:${testPort}/openapi.json`, {
+        method: 'GET'
+      });
+
+      expect(response.status).toBe(401);
+
+      const result = await response.json();
+      expect(result.error).toBeDefined();
+      expect(result.error.message).toContain('Authentication required');
     });
   });
 
@@ -450,12 +466,17 @@ describe('HttpServer (Legacy Tests)', () => {
       expect(health.uptime).toBeGreaterThan(0);
     });
 
-    it('should provide metrics', async () => {
+    it('should provide metrics with authentication', async () => {
       // Make some requests first
       await fetch(`http://localhost:${testPort}/health`);
       await fetch(`http://localhost:${testPort}/health`);
 
-      const response = await fetch(`http://localhost:${testPort}/metrics`);
+      // Metrics endpoint now requires authentication
+      const response = await fetch(`http://localhost:${testPort}/metrics`, {
+        headers: {
+          'Authorization': 'Bearer test-token'
+        }
+      });
 
       expect(response.status).toBe(200);
 
@@ -465,6 +486,16 @@ describe('HttpServer (Legacy Tests)', () => {
       // Active requests includes the /metrics request itself
       expect(metrics.requests.active).toBeGreaterThanOrEqual(0);
       expect(metrics.requests.errors).toBe(0);
+    });
+
+    it('should require authentication for metrics', async () => {
+      const response = await fetch(`http://localhost:${testPort}/metrics`);
+
+      expect(response.status).toBe(401);
+
+      const result = await response.json();
+      expect(result.error).toBeDefined();
+      expect(result.error.message).toContain('Authentication required');
     });
   });
 

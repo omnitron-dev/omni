@@ -61,8 +61,14 @@ export interface ExtendedServiceMetadata extends ServiceMetadata {
   contract?: any;
 
   /**
+   * Transport names this service should be exposed on (for decorator → ServiceStub transfer)
+   * This field is extracted during ServiceStub construction and stored on the stub itself.
+   * It is NOT included in the ServiceMetadata that gets sent to clients.
+   */
+  transports?: string[];
+
+  /**
    * Transport instances configured for the service (internal use)
-   * This shadows the parent transports field which is string[]
    * @internal
    */
   _transports?: ITransport[];
@@ -352,15 +358,10 @@ export const Service = (options?: string | ServiceOptions) => (target: any) => {
       const paramTypes = Reflect.getMetadata('design:paramtypes', target.prototype, key) || [];
       const returnType = Reflect.getMetadata('design:returntype', target.prototype, key)?.name || 'void';
 
-      // Extract transport metadata if specified via @Method({ transports: [...] })
-      const methodTransports = Reflect.getMetadata('method:transports', target.prototype, key);
-
       // Store method metadata
       metadata.methods[key] = {
         type: returnType,
         arguments: paramTypes.map((type: any) => type?.name || 'unknown'),
-        // Include transports if specified, otherwise undefined (available on all transports)
-        ...(methodTransports && { transports: methodTransports })
       };
     }
   }
@@ -536,11 +537,6 @@ export const Method =
       // Store all method options for later retrieval
       if (options) {
         Reflect.defineMetadata(METADATA_KEYS.METHOD_OPTIONS, options, target, propertyKey);
-      }
-
-      // Store transport metadata if specified (for backward compatibility)
-      if (options?.transports && options.transports.length > 0) {
-        Reflect.defineMetadata('method:transports', options.transports, target, propertyKey);
       }
 
       // Store auth metadata

@@ -120,16 +120,6 @@ export interface MethodInfo {
    * Each object describes an argument's position and type.
    */
   arguments: ArgumentInfo[];
-
-  /**
-   * Optional array of transport names that this method is available on.
-   * If not specified or empty, the method is available on all transports.
-   *
-   * @example
-   * transports: ['ws', 'tcp'] // Method only available via WebSocket and TCP
-   * transports: undefined      // Method available on all transports (default)
-   */
-  transports?: string[];
 }
 
 /**
@@ -152,7 +142,7 @@ export interface PropertyInfo {
 
 /**
  * Interface representing metadata for a service.
- * This metadata describes the service's name, version, properties, methods, and transports.
+ * This metadata describes the service's name, version, properties, and methods.
  */
 export interface ServiceMetadata {
   /**
@@ -178,13 +168,6 @@ export interface ServiceMetadata {
    * Only public methods are included in this map.
    */
   methods: Record<string, MethodInfo>;
-
-  /**
-   * Transports this service should be exposed on.
-   * If not specified, service will be exposed on all registered transports.
-   * If specified, service will only be exposed on the listed transports.
-   */
-  transports?: string[];
 }
 
 /**

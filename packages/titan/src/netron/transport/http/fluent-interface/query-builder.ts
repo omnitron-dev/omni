@@ -5,7 +5,6 @@
  * with intelligent features like caching, retry, deduplication, and more.
  */
 
-import type { Definition } from '../../../definition.js';
 import { HttpTransportClient } from '../client.js';
 import { HttpCacheManager, type CacheOptions } from './cache-manager.js';
 import { RetryManager, type RetryOptions } from './retry-manager.js';
@@ -65,7 +64,7 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
 
   constructor(
     private transport: HttpTransportClient,
-    private definition: Definition,
+    private serviceName: string,
     private cacheManager?: HttpCacheManager,
     private retryManager?: RetryManager
   ) {
@@ -406,7 +405,7 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
     }
 
     return this.transport.invoke(
-      this.definition.meta.name,
+      this.serviceName,
       this.methodName as string,
       [this.methodInput],
       { context, hints }
@@ -421,7 +420,7 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
       return this.options.dedupeKey;
     }
 
-    return `${this.definition.meta.name}.${String(this.methodName)}:${JSON.stringify(this.methodInput)}`;
+    return `${this.serviceName}.${String(this.methodName)}:${JSON.stringify(this.methodInput)}`;
   }
 
   /**

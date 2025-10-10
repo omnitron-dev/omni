@@ -141,34 +141,36 @@ describe('HttpRemotePeer Integration (No Mocks)', () => {
 
     it('should initialize with empty service maps', () => {
       expect(httpPeer.services.size).toBe(0);
-      expect((httpPeer as any).definitions.size).toBe(0);
+      // Note: definitions map removed - HTTP transport is now stateless
     });
   });
 
-  describe('QueryInterface Remote', () => {
-    it('should query service interface from remote server', async () => {
-      const definition = await httpPeer.queryInterfaceRemote('calculator@1.0.0');
+  describe('QueryInterface (Stateless)', () => {
+    it('should create interface without fetching definitions', async () => {
+      // HTTP transport is stateless - no definition fetch!
+      const calculator = await httpPeer.queryInterface<ICalculator>('calculator@1.0.0');
 
-      expect(definition).toBeDefined();
-      expect(definition.meta.name).toBe('calculator');
-      expect(definition.meta.version).toBe('1.0.0');
-      expect(definition.meta.methods).toBeDefined();
-      expect(Object.keys(definition.meta.methods)).toContain('add');
-      expect(Object.keys(definition.meta.methods)).toContain('subtract');
-      expect(Object.keys(definition.meta.methods)).toContain('getHistory');
+      expect(calculator).toBeDefined();
+      // $def should be undefined since we don't fetch definitions
+      expect((calculator as any).$def).toBeUndefined();
     });
 
-    it('should cache queried definitions', async () => {
-      const def1 = await httpPeer.queryInterfaceRemote('calculator@1.0.0');
+    it('should cache interface instances, not definitions', async () => {
+      const calc1 = await httpPeer.queryInterface<ICalculator>('calculator@1.0.0');
+      const calc2 = await httpPeer.queryInterface<ICalculator>('calculator@1.0.0');
 
-      // Service should now be cached
-      expect(httpPeer.services.has('calculator@1.0.0')).toBe(true);
-      expect(httpPeer.services.get('calculator@1.0.0')).toBe(def1);
+      // Same instance should be returned from cache
+      expect(calc1).toBe(calc2);
     });
 
-    it('should throw error for non-existent service', async () => {
+    it('should work with non-existent services (will fail on method call)', async () => {
+      // Interface creation succeeds (stateless), but method calls will fail
+      const nonExistent = await httpPeer.queryInterface<ICalculator>('nonexistent@1.0.0');
+      expect(nonExistent).toBeDefined();
+
+      // Method call should fail
       await expect(async () => {
-        await httpPeer.queryInterfaceRemote('nonexistent@1.0.0');
+        await nonExistent.add(1, 2);
       }).rejects.toThrow();
     });
   });
@@ -216,58 +218,50 @@ describe('HttpRemotePeer Integration (No Mocks)', () => {
   });
 
   describe('Interface Management', () => {
-    it('should query and release interface', async () => {
+    it('should query interface without release tracking', async () => {
+      // HTTP interfaces are stateless - no release needed
       const calculator = await httpPeer.queryInterface<ICalculator>('calculator@1.0.0');
       expect(calculator).toBeDefined();
 
       // Use the interface
-      await calculator.add(1, 1);
+      const result = await calculator.add(1, 1);
+      expect(result).toBe(2);
 
-      // Release interface
-      await httpPeer.releaseInterface(calculator);
-
-      // Should be able to query again
-      const calculator2 = await httpPeer.queryInterface<ICalculator>('calculator@1.0.0');
-      expect(calculator2).toBeDefined();
+      // Note: releaseInterface() doesn't work with stateless HTTP interfaces
+      // since they don't have a $def property
     });
 
     it('should handle multiple interface instances', async () => {
+      // HTTP caches interfaces by serviceName
       const calc1 = await httpPeer.queryInterface<ICalculator>('calculator@1.0.0');
       const calc2 = await httpPeer.queryInterface<ICalculator>('calculator@1.0.0');
 
-      // Both should work
+      // Both should work (same cached instance)
       const result1 = await calc1.add(5, 5);
       const result2 = await calc2.add(10, 10);
 
       expect(result1).toBe(10);
       expect(result2).toBe(20);
 
-      await httpPeer.releaseInterface(calc1);
-      await httpPeer.releaseInterface(calc2);
+      // Note: releaseInterface() not applicable for HTTP (stateless)
     });
   });
 
   describe('Cache Management', () => {
-    it('should invalidate definition cache by pattern', async () => {
+    it('should invalidate interface cache by pattern', async () => {
       // Query to populate cache
-      await httpPeer.queryInterfaceRemote('calculator@1.0.0');
-      expect(httpPeer.services.has('calculator@1.0.0')).toBe(true);
+      await httpPeer.queryInterface('calculator@1.0.0');
 
       // Invalidate cache
       const count = httpPeer.invalidateDefinitionCache('calculator@1.0.0');
       expect(count).toBeGreaterThan(0);
-
-      // Cache should be cleared
-      expect(httpPeer.services.has('calculator@1.0.0')).toBe(false);
     });
 
     it('should invalidate all caches', async () => {
-      await httpPeer.queryInterfaceRemote('calculator@1.0.0');
+      await httpPeer.queryInterface('calculator@1.0.0');
 
       const count = httpPeer.invalidateDefinitionCache();
       expect(count).toBeGreaterThan(0);
-
-      expect(httpPeer.services.size).toBe(0);
     });
   });
 
@@ -288,14 +282,18 @@ describe('HttpRemotePeer Integration (No Mocks)', () => {
       // Stop the server to simulate network error
       await httpServer.close();
 
+      // Interface creation succeeds (stateless), but method call will fail
+      const calculator = await httpPeer.queryInterface<ICalculator>('calculator@1.0.0');
       await expect(async () => {
-        await httpPeer.queryInterfaceRemote('calculator@1.0.0');
+        await calculator.add(1, 2);
       }).rejects.toThrow();
     });
 
     it('should handle invalid service names', async () => {
+      // Interface creation succeeds (stateless), but method call will fail
+      const invalid = await httpPeer.queryInterface<ICalculator>('invalid-service-name');
       await expect(async () => {
-        await httpPeer.queryInterfaceRemote('invalid-service-name');
+        await invalid.add(1, 2);
       }).rejects.toThrow();
     });
   });

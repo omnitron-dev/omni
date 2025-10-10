@@ -28,14 +28,6 @@ import { HttpInterface } from './interface.js';
 import { HttpTransportClient } from './client.js';
 import { FluentInterface, HttpCacheManager, RetryManager, type QueryOptions } from './fluent-interface/index.js';
 
-/**
- * Definition cache entry with TTL support for HTTP peer
- */
-interface CacheEntry {
-  definition: Definition;
-  timestamp: number;
-  ttl: number;
-}
 
 /**
  * HttpRemotePeer - Optimized HTTP peer without packet protocol
@@ -56,14 +48,8 @@ export class HttpRemotePeer extends AbstractPeer {
   /** HTTP connection */
   private connection: ITransportConnection;
 
-  /** Service definitions cached from discovery */
+  /** Service definitions cached from discovery (deprecated - kept for compatibility) */
   public services = new Map<string, Definition>();
-
-  /** Definition cache with TTL and JWT scoping (key: userId:serviceName or serviceName) */
-  private definitions = new Map<string, CacheEntry>();
-
-  /** Definition cache by defId for method calls (key: defId) */
-  private definitionsById = new Map<string, Definition>();
 
   /** Event emitter for internal events */
   private events = new EventEmitter();
@@ -75,7 +61,6 @@ export class HttpRemotePeer extends AbstractPeer {
   private defaultOptions: {
     timeout?: number;
     headers?: Record<string, string>;
-    definitionCacheTtl?: number;
   } = {};
 
   /** Request interceptors */
@@ -105,8 +90,7 @@ export class HttpRemotePeer extends AbstractPeer {
     // Set default options
     this.defaultOptions = {
       timeout: options?.requestTimeout || 30000,
-      headers: options?.headers || {},
-      definitionCacheTtl: 300000 // 5 minutes default
+      headers: options?.headers || {}
     };
   }
 
@@ -122,9 +106,9 @@ export class HttpRemotePeer extends AbstractPeer {
       // Modern auth-aware on-demand service discovery
       this.logger.debug('HTTP peer initialized in client mode - using auth-aware on-demand service discovery');
       this.logger.debug(
-        'Services will be discovered on-demand via queryInterfaceRemote(). ' +
-        'Use POST /netron/authenticate for user authentication and ' +
-        'POST /netron/query-interface for auth-aware service discovery.'
+        'Services will be discovered on-demand via queryInterface(). ' +
+        'Use POST /netron/authenticate for user authentication. ' +
+        'Service definitions are resolved internally by the server during POST /netron/invoke calls.'
       );
     }
   }
@@ -161,11 +145,15 @@ export class HttpRemotePeer extends AbstractPeer {
 
   /**
    * Call a method on the remote peer
+   *
+   * IMPORTANT: For HTTP transport, defId is actually the serviceName since we don't use definitions
    */
   override async call(defId: string, method: string, args: any[]): Promise<any> {
-    const service = this.getServiceNameFromDefId(defId);
+    // For HTTP transport, defId is the serviceName (no definitions on client side)
+    const serviceName = defId;
+
     const message = createRequestMessage(
-      service,
+      serviceName,
       method,
       args, // Pass all arguments as array
       {
@@ -182,7 +170,7 @@ export class HttpRemotePeer extends AbstractPeer {
 
     // Handle cache hints from response
     if (response.hints?.cache) {
-      this.handleCacheHints(service, method, args[0], response.data, response.hints.cache);
+      this.handleCacheHints(serviceName, method, args[0], response.data, response.hints.cache);
     }
 
     return response.data;
@@ -229,32 +217,37 @@ export class HttpRemotePeer extends AbstractPeer {
   /**
    * Invalidate definition cache for services matching a pattern
    * @override
+   * NOTE: For HTTP transport, we don't cache definitions, so this is mostly a no-op
    */
   override invalidateDefinitionCache(pattern?: string): number {
     // Call parent implementation to invalidate definition cache
     const parentCount = super.invalidateDefinitionCache(pattern);
 
+    // For HTTP transport, we also need to clear the interface cache
+    // since interfaces are cached by service name
     if (!pattern) {
-      // Clear all services and definitions
-      const totalCount = this.services.size + this.definitions.size + this.definitionsById.size;
+      // Clear all services and interfaces
+      const totalCount = this.services.size + this.interfaces.size;
       this.services.clear();
-      this.definitions.clear();
-      this.definitionsById.clear();
+      this.interfaces.clear();
       return parentCount + totalCount;
     }
 
-    // Pattern matching - remove matching services and definitions
+    // Pattern matching - remove matching services and interfaces
     const servicesToDelete: string[] = [];
-    const definitionIdsToDelete: string[] = [];
+    const interfacesToDelete: string[] = [];
 
     // Find matching services
     for (const key of this.services.keys()) {
       if (this.matchServicePattern(key, pattern)) {
         servicesToDelete.push(key);
-        const def = this.services.get(key);
-        if (def) {
-          definitionIdsToDelete.push(def.id);
-        }
+      }
+    }
+
+    // Find matching interfaces
+    for (const key of this.interfaces.keys()) {
+      if (this.matchServicePattern(key, pattern)) {
+        interfacesToDelete.push(key);
       }
     }
 
@@ -263,27 +256,13 @@ export class HttpRemotePeer extends AbstractPeer {
       this.services.delete(key);
     }
 
-    // Delete matched definitions from JWT-scoped cache
-    // Need to iterate all keys and check if they end with the service pattern
-    const definitionKeysToDelete: string[] = [];
-    for (const cacheKey of this.definitions.keys()) {
-      // Cache keys are either "userId:serviceName" or "serviceName"
-      const serviceName = cacheKey.includes(':') ? cacheKey.split(':')[1] : cacheKey;
-      if (this.matchServicePattern(serviceName, pattern)) {
-        definitionKeysToDelete.push(cacheKey);
-      }
-    }
-    for (const key of definitionKeysToDelete) {
-      this.definitions.delete(key);
-    }
-
-    // Delete matched definitions from defId cache
-    for (const id of definitionIdsToDelete) {
-      this.definitionsById.delete(id);
+    // Delete matched interfaces
+    for (const key of interfacesToDelete) {
+      this.interfaces.delete(key);
     }
 
     // Return total count of invalidated items
-    return parentCount + servicesToDelete.length + definitionKeysToDelete.length + definitionIdsToDelete.length;
+    return parentCount + servicesToDelete.length + interfacesToDelete.length;
   }
 
   /**
@@ -465,18 +444,6 @@ export class HttpRemotePeer extends AbstractPeer {
     this.logger.debug({ service, method, cacheHints }, 'Received cache hints');
   }
 
-  /**
-   * Get service name from definition ID
-   */
-  private getServiceNameFromDefId(defId: string): string {
-    const definition = this.definitionsById.get(defId);
-    if (!definition) {
-      // Try to extract from defId
-      const parts = defId.split('-');
-      return parts[0] || 'unknown';
-    }
-    return definition.meta.name;
-  }
 
   /**
    * Create error from response
@@ -527,8 +494,6 @@ export class HttpRemotePeer extends AbstractPeer {
     // Clear caches
     this.interfaces.clear();
     this.services.clear();
-    this.definitions.clear();
-    this.definitionsById.clear();
 
     // Close the underlying connection
     if (this.connection && typeof this.connection.close === 'function') {
@@ -553,118 +518,12 @@ export class HttpRemotePeer extends AbstractPeer {
     // No-op for HTTP - interfaces are stateless
   }
 
-  /**
-   * Get definition by ID
-   */
-  protected getDefinitionById(defId: string): Definition {
-    const definition = this.definitionsById.get(defId);
-    if (!definition) {
-      throw Errors.notFound('Definition', defId);
-    }
-    return definition;
-  }
-
-  /**
-   * Get definition by service name
-   */
-  protected getDefinitionByServiceName(name: string): Definition {
-    const def = this.services.get(name);
-    if (!def) {
-      throw NetronErrors.serviceNotFound(name);
-    }
-    return def;
-  }
-
-  /**
-   * Queries the remote peer for a service definition via HTTP endpoint.
-   * This method will use the POST /netron/query-interface endpoint.
-   *
-   * Phase 1 Optimization: JWT-scoped caching with TTL-based expiration
-   * - Different users get separate cache entries (prevents authorization poisoning)
-   * - Cache entries expire after configured TTL (default 5 minutes)
-   * - Unauthenticated requests use shared cache
-   *
-   * @param {string} qualifiedName - Service name with version (name@version)
-   * @returns {Promise<Definition>} Resolves with the service definition
-   * @throws {TitanError} If the service is not found or access is denied
-   * @protected
-   */
-  protected async queryInterfaceRemote(qualifiedName: string): Promise<Definition> {
-    this.logger.debug({ serviceName: qualifiedName }, 'Querying remote interface via HTTP');
-
-    try {
-      // OPTIMIZATION 1: JWT-scoped cache key
-      const cacheKey = this.createCacheKey(qualifiedName);
-
-      // OPTIMIZATION 2: Check cache with TTL expiration
-      const cached = this.definitions.get(cacheKey);
-      if (cached && !this.isCacheExpired(cached)) {
-        this.logger.debug(
-          { serviceName: qualifiedName, cacheKey },
-          'Using cached definition (not expired)'
-        );
-        return cached.definition;
-      }
-
-      // Cache miss or expired - fetch from server
-      this.logger.debug(
-        { serviceName: qualifiedName, cacheKey, expired: cached ? true : false },
-        'Cache miss or expired, fetching from server'
-      );
-
-      // Make HTTP POST request to /netron/query-interface endpoint
-      const response = await this.sendHttpRequest<{ result: Definition }>(
-        'POST',
-        '/netron/query-interface',
-        { serviceName: qualifiedName }
-      );
-
-      const definition = response.result;
-
-      if (!definition) {
-        throw new TitanError({
-          code: ErrorCode.NOT_FOUND,
-          message: `Service '${qualifiedName}' not found on remote peer`
-        });
-      }
-
-      // OPTIMIZATION 3: Store with TTL metadata
-      this.definitions.set(cacheKey, {
-        definition,
-        timestamp: Date.now(),
-        ttl: this.defaultOptions.definitionCacheTtl || 300000
-      });
-
-      // Store in defId cache for method calls
-      this.definitionsById.set(definition.id, definition);
-
-      // Also store in services map for backward compatibility
-      const serviceKey = `${definition.meta.name}@${definition.meta.version}`;
-      this.services.set(serviceKey, definition);
-
-      this.logger.info(
-        {
-          serviceName: qualifiedName,
-          definitionId: definition.id,
-          methodCount: Object.keys(definition.meta.methods || {}).length,
-          cacheKey,
-          ttl: this.defaultOptions.definitionCacheTtl
-        },
-        'Remote interface queried successfully via HTTP',
-      );
-
-      return definition;
-    } catch (error: any) {
-      this.logger.error(
-        { error, serviceName: qualifiedName },
-        'Failed to query remote interface via HTTP'
-      );
-      throw error;
-    }
-  }
 
   /**
    * Query interface for HTTP service (unified RPC API)
+   *
+   * CRITICAL CHANGE: HTTP transport is stateless - we don't fetch definitions!
+   * Just create a Proxy with the serviceName that will send requests to the server.
    *
    * Overrides AbstractPeer.queryInterface() to return standard HttpInterface
    * for simple RPC functionality compatible with other transports.
@@ -680,7 +539,7 @@ export class HttpRemotePeer extends AbstractPeer {
    * // Unified API - same as other transports (WebSocket, TCP, Unix)
    * const userService = await peer.queryInterface<IUserService>('UserService@1.0.0');
    *
-   * // Simple RPC method calls
+   * // Simple RPC method calls - no definitions needed!
    * const user = await userService.getUser('user-123');
    * const users = await userService.listUsers({ page: 1, limit: 10 });
    * ```
@@ -688,36 +547,37 @@ export class HttpRemotePeer extends AbstractPeer {
    * @override
    */
   override async queryInterface<TService = any>(qualifiedName: string): Promise<TService> {
-    // Get or fetch service definition
-    const definition = await this.queryInterfaceRemote(qualifiedName);
-
     // Check if interface already exists in cache (for reference counting)
-    let iInfo = this.interfaces.get(definition.id);
+    let iInfo = this.interfaces.get(qualifiedName);
     if (iInfo !== undefined) {
       // Interface exists, increment refCount and return existing instance
       iInfo.refCount++;
       return iInfo.instance as TService;
     }
 
-    // Create standard HttpInterface (simple RPC)
-    // Pass peer directly to avoid recursive queryInterface calls
+    // Create standard HttpInterface with just the service name
+    // NO definition fetch - this is the key difference!
     const httpInterface = new HttpInterface<TService>(
-      this,  // Pass peer, not transport client
-      definition
+      this,
+      qualifiedName
     );
 
     // Set peer reference for compatibility
     httpInterface.$peer = this as any;
 
     // Store in interfaces cache for reference counting
+    // Use qualifiedName as the key since we don't have definition IDs
     iInfo = { instance: httpInterface as any, refCount: 1 };
-    this.interfaces.set(definition.id, iInfo);
+    this.interfaces.set(qualifiedName, iInfo);
 
     return httpInterface as any as TService;
   }
 
   /**
    * Query fluent interface for HTTP service (advanced HTTP API)
+   *
+   * CRITICAL CHANGE: HTTP transport is stateless - we don't fetch definitions!
+   * Just create a FluentInterface with the serviceName.
    *
    * Returns FluentInterface with advanced HTTP-specific features like caching,
    * retry logic, optimistic updates, request deduplication, etc.
@@ -732,22 +592,29 @@ export class HttpRemotePeer extends AbstractPeer {
    * ```typescript
    * const userService = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
    *
-   * // Advanced HTTP features
+   * // Advanced HTTP features - no definitions needed!
    * const user = await userService.cache(60000).retry(3).getUser('user-123');
    * const users = await userService.priority('high').timeout(5000).listUsers();
    * ```
    */
   async queryFluentInterface<TService = any>(qualifiedName: string): Promise<FluentInterface<TService>> {
-    // Get or fetch service definition
-    const definition = await this.queryInterfaceRemote(qualifiedName);
+    // Check if interface already exists in cache (for reference counting)
+    let iInfo = this.interfaces.get(qualifiedName);
+    if (iInfo !== undefined) {
+      // Interface exists, increment refCount and return existing instance
+      iInfo.refCount++;
+      // Cast through unknown since we're storing multiple interface types in the same map
+      return iInfo.instance as unknown as FluentInterface<TService>;
+    }
 
     // Get or create HTTP transport client
     const transport = this.getOrCreateHttpClient();
 
-    // Create FluentInterface with peer's managers and global options
+    // Create FluentInterface with just the service name
+    // NO definition fetch - this is the key difference!
     const fluentInterface = new FluentInterface<TService>(
       transport,
-      definition,
+      qualifiedName,
       this.cacheManager,
       this.retryManager,
       this.globalOptions
@@ -757,8 +624,9 @@ export class HttpRemotePeer extends AbstractPeer {
     fluentInterface.$peer = this;
 
     // Store in interfaces cache for reference counting
-    const iInfo = { instance: fluentInterface as any, refCount: 1 };
-    this.interfaces.set(definition.id, iInfo);
+    // Use qualifiedName as the key since we don't have definition IDs
+    iInfo = { instance: fluentInterface as any, refCount: 1 };
+    this.interfaces.set(qualifiedName, iInfo);
 
     return fluentInterface;
   }
@@ -850,50 +718,53 @@ export class HttpRemotePeer extends AbstractPeer {
   }
 
   /**
-   * Extract user ID from JWT token in Authorization header
-   * @private
-   * @returns User ID from token payload or null if unavailable
+   * Query interface remote - not used for HTTP transport
+   * HTTP transport doesn't fetch definitions from the server
+   * @protected
+   * @override
    */
-  private extractUserIdFromToken(): string | null {
-    if (!this.defaultOptions.headers?.['Authorization']) {
-      return null;
-    }
-
-    const authHeader = this.defaultOptions.headers['Authorization'];
-    if (!authHeader.startsWith('Bearer ')) {
-      return null;
-    }
-
-    const token = authHeader.substring(7);
-    try {
-      // Decode JWT payload (middle part between dots)
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      // Try common user ID fields
-      return payload.sub || payload.userId || payload.id || null;
-    } catch {
-      // Invalid token format
-      return null;
-    }
+  protected async queryInterfaceRemote(qualifiedName: string): Promise<Definition> {
+    throw Errors.notImplemented(
+      'HTTP transport does not fetch service definitions. ' +
+      'Services are resolved on-demand during method invocation. ' +
+      'Use queryInterface() to create a service proxy.'
+    );
   }
 
   /**
-   * Create cache key with JWT scoping to prevent authorization cache poisoning
-   * @private
-   * @param qualifiedName - Service qualified name
-   * @returns Cache key scoped by user ID if authenticated
+   * Get definition by ID - not used for HTTP transport
+   * HTTP transport doesn't use definitions on the client side
+   * @protected
+   * @override
    */
-  private createCacheKey(qualifiedName: string): string {
-    const userId = this.extractUserIdFromToken();
-    return userId ? `${userId}:${qualifiedName}` : qualifiedName;
+  protected getDefinitionById(defId: string): Definition {
+    throw Errors.notImplemented(
+      'HTTP transport does not use definitions on the client side. ' +
+      'Service methods are invoked directly via HTTP requests without definition metadata.'
+    );
   }
 
   /**
-   * Check if cache entry has expired based on TTL
-   * @private
-   * @param entry - Cache entry with timestamp and TTL
-   * @returns true if cache entry is expired
+   * Get definition by service name - not used for HTTP transport
+   * HTTP transport doesn't use definitions on the client side
+   * @protected
+   * @override
    */
-  private isCacheExpired(entry: CacheEntry): boolean {
-    return Date.now() - entry.timestamp > entry.ttl;
+  protected getDefinitionByServiceName(name: string): Definition {
+    throw Errors.notImplemented(
+      'HTTP transport does not use definitions on the client side. ' +
+      'Service methods are invoked directly via HTTP requests without definition metadata.'
+    );
   }
+
+  /**
+   * Helper method to extract service name from defId
+   * For HTTP transport, defId IS the service name (no definitions used)
+   * @private
+   */
+  private getServiceNameFromDefId(defId: string): string {
+    // For HTTP transport, defId is already the service name
+    return defId;
+  }
+
 }

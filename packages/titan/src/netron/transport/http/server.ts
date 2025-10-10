@@ -244,8 +244,38 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         metadata: meta.metadata
       };
 
-      // Register methods
-      for (const methodName of Object.keys(stub.definition.meta.methods || {})) {
+      // Register methods - get from the actual instance since decorators might not populate methods in metadata
+      const instance = stub.instance;
+      let methodNames: string[] = [];
+
+      // Safely get prototype methods
+      try {
+        const proto = Object.getPrototypeOf(instance);
+        if (proto && proto !== Object.prototype) {
+          methodNames = Object.getOwnPropertyNames(proto)
+            .filter(name =>
+              name !== 'constructor' &&
+              typeof (instance as any)[name] === 'function' &&
+              !name.startsWith('_') // Skip private methods
+            );
+        }
+      } catch (error) {
+        // If we can't get the prototype (e.g., for proxies), fallback to instance methods
+        if (instance && typeof instance === 'object') {
+          methodNames = Object.getOwnPropertyNames(instance)
+            .filter(name =>
+              typeof (instance as any)[name] === 'function' &&
+              !name.startsWith('_')
+            );
+        }
+      }
+
+      // Also check for methods explicitly listed in metadata
+      const metaMethods = Object.keys(stub.definition.meta.methods || {});
+      const allMethodNames = new Set([...methodNames, ...metaMethods]);
+
+      // Register all methods found
+      for (const methodName of allMethodNames) {
         // Get contract for this method if available
         let methodContract: MethodContract | undefined;
         const contractObj = meta.contract as {
@@ -275,7 +305,107 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         });
       }
 
+      // IMPORTANT: Store by qualified name (name@version) for stateless HTTP
+      // Client sends serviceName as "calculator@1.0.0", not just "calculator"
+      const qualifiedName = `${serviceName}@${version}`;
+      this.services.set(qualifiedName, descriptor);
+
+      // Also store by name only for backward compatibility
       this.services.set(serviceName, descriptor);
+    }
+  }
+
+  /**
+   * Register a single service dynamically
+   * Called by LocalPeer when a service is exposed
+   */
+  registerService(serviceName: string, definition: any, contract?: any): void {
+    if (!this.netronPeer) return;
+
+    const version = definition.meta.version || '1.0.0';
+    const meta = definition.meta as {
+      description?: string;
+      metadata?: Record<string, unknown>;
+      contract?: unknown;
+    };
+
+    // Create service descriptor
+    const descriptor: ServiceDescriptor = {
+      name: serviceName,
+      version,
+      methods: new Map(),
+      description: meta.description,
+      metadata: meta.metadata
+    };
+
+    // Get the service stub for this definition
+    const stub = this.netronPeer.stubs.get(definition.id);
+    if (!stub) {
+      throw new TitanError({
+        code: ErrorCode.INTERNAL_SERVER_ERROR,
+        message: `Service stub not found for ${serviceName}`
+      });
+    }
+
+    // Register methods - get from the actual instance since decorators might not populate methods in metadata
+    const instance = stub.instance;
+    const methodNames = Object.getOwnPropertyNames(Object.getPrototypeOf(instance))
+      .filter(name =>
+        name !== 'constructor' &&
+        typeof (instance as any)[name] === 'function' &&
+        !name.startsWith('_') // Skip private methods
+      );
+
+    // Also check for methods explicitly listed in metadata
+    const metaMethods = Object.keys(definition.meta.methods || {});
+    const allMethodNames = new Set([...methodNames, ...metaMethods]);
+
+    for (const methodName of allMethodNames) {
+      let methodContract: MethodContract | undefined;
+
+      // Use provided contract or extract from metadata
+      const contractObj = contract || meta.contract;
+
+      if (contractObj) {
+        // Check if it's a Contract class instance
+        if (contractObj.definition && contractObj.getMethod) {
+          methodContract = contractObj.getMethod(methodName);
+        } else if (contractObj[methodName]) {
+          // Direct contract definition
+          methodContract = contractObj[methodName] as MethodContract;
+        }
+      }
+
+      descriptor.methods.set(methodName, {
+        name: methodName,
+        handler: async (input: unknown, context: MethodHandlerContext) => {
+          // Input is already an array of arguments from HTTP peer
+          const args = Array.isArray(input) ? input : [input];
+          return stub.call(methodName, args, this.netronPeer!);
+        },
+        contract: methodContract
+      });
+    }
+
+    // Store by both qualified name and simple name
+    const qualifiedName = `${serviceName}@${version}`;
+    this.services.set(qualifiedName, descriptor);
+    this.services.set(serviceName, descriptor);
+  }
+
+  /**
+   * Unregister a service dynamically
+   * Called by LocalPeer when a service is unexposed
+   */
+  unregisterService(serviceName: string): void {
+    // Remove from services map (both qualified and simple names)
+    this.services.delete(serviceName);
+
+    // Also try to remove qualified name variants
+    for (const key of this.services.keys()) {
+      if (key.startsWith(`${serviceName}@`)) {
+        this.services.delete(key);
+      }
     }
   }
 
@@ -369,10 +499,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
       if (pathname === '/netron/batch' && request.method === 'POST') {
         return this.handleBatchRequest(request);
-      }
-
-      if (pathname === '/netron/query-interface' && request.method === 'POST') {
-        return this.handleQueryInterfaceRequest(request);
       }
 
       if (pathname === '/netron/authenticate' && request.method === 'POST') {
@@ -544,7 +670,10 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     try {
       message = await request.json();
     } catch (error) {
-      console.error('[HTTP Server] Failed to parse JSON:', error);
+      // Log error if logger is available
+      if (this.netronPeer?.logger) {
+        this.netronPeer.logger.error({ error }, 'Failed to parse JSON request body');
+      }
       const requestId = request.headers.get('X-Request-ID') || generateRequestId();
       return this.createErrorResponse(
         new TitanError({
@@ -558,7 +687,10 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     }
 
     if (!isHttpRequestMessage(message)) {
-      console.error('[HTTP Server] Invalid request format:', message);
+      // Log error if logger is available
+      if (this.netronPeer?.logger) {
+        this.netronPeer.logger.error({ message }, 'Invalid request format');
+      }
       const requestId = request.headers.get('X-Request-ID') || generateRequestId();
       return this.createErrorResponse(
         new TitanError({
@@ -878,131 +1010,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     });
   }
 
-  /**
-   * Handle query-interface request with authorization
-   */
-  private async handleQueryInterfaceRequest(request: Request): Promise<Response> {
-    const requestId = request.headers.get('X-Request-ID') || generateRequestId();
-
-    try {
-      // Parse request body
-      const body = await request.json();
-      const serviceName = body.serviceName || body.params?.[0];
-
-      if (!serviceName) {
-        return this.createErrorResponse(
-          new TitanError({
-            code: ErrorCode.BAD_REQUEST,
-            message: 'Missing serviceName parameter',
-            requestId
-          }),
-          requestId,
-          request
-        );
-      }
-
-      // Extract auth context from headers
-      const authHeader = request.headers.get('Authorization');
-      let authContext: any = undefined;
-
-      if (authHeader) {
-        // Parse Bearer token using consolidated utility
-        const token = extractBearerToken(authHeader);
-        if (token) {
-          // Create auth context from token
-          // In real implementation, this would validate the token
-          authContext = {
-            token: { type: 'bearer', value: token }
-          };
-        }
-      }
-
-      // Execute query_interface task using local peer
-      if (!this.netronPeer) {
-        return this.createErrorResponse(
-          new TitanError({
-            code: ErrorCode.INTERNAL_SERVER_ERROR,
-            message: 'Netron peer not initialized',
-            requestId
-          }),
-          requestId,
-          request
-        );
-      }
-
-      // Run query_interface task with auth context
-      // We need to create a mock RemotePeer to execute the task
-      // For now, let's directly call the local peer's getDefinitionByServiceName
-      try {
-        const definition = (this.netronPeer as any).getDefinitionByServiceName(serviceName);
-
-        // If we have authorization manager, filter the definition
-        const authzManager = (this.netronPeer.netron as any).authorizationManager;
-        let filteredDefinition = definition;
-
-        if (authzManager && authContext) {
-          // Check access
-          const canAccess = authzManager.canAccessService(serviceName, authContext);
-          if (!canAccess) {
-            return this.createErrorResponse(
-              new TitanError({
-                code: ErrorCode.FORBIDDEN,
-                message: `Access denied to service '${serviceName}'`,
-                requestId
-              }),
-              requestId,
-              request
-            );
-          }
-
-          // Filter definition
-          const filteredMeta = authzManager.filterDefinition(serviceName, definition.meta, authContext);
-          if (!filteredMeta) {
-            return this.createErrorResponse(
-              new TitanError({
-                code: ErrorCode.FORBIDDEN,
-                message: `No access to service methods`,
-                requestId
-              }),
-              requestId,
-              request
-            );
-          }
-
-          filteredDefinition = {
-            ...definition,
-            meta: filteredMeta
-          };
-        }
-
-        return new Response(JSON.stringify({
-          id: body.id || crypto.randomUUID(),
-          result: filteredDefinition,
-          timestamp: Date.now()
-        }), {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Netron-Version': '2.0'
-          }
-        });
-      } catch (error: any) {
-        return this.createErrorResponse(
-          new TitanError({
-            code: ErrorCode.NOT_FOUND,
-            message: `Service '${serviceName}' not found`,
-            requestId
-          }),
-          requestId,
-          request
-        );
-      }
-    } catch (error: any) {
-      const titanError = error instanceof TitanError ? error : toTitanError(error);
-      titanError.requestId = requestId;
-      return this.createErrorResponse(titanError, requestId, request);
-    }
-  }
 
   /**
    * Handle authenticate request
@@ -1062,8 +1069,19 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       });
     } catch (error: any) {
       const titanError = error instanceof TitanError ? error : toTitanError(error);
-      titanError.requestId = requestId;
-      return this.createErrorResponse(titanError, requestId, request);
+      // Create a new TitanError with requestId if it doesn't already have one
+      const errorWithRequestId = titanError.requestId
+        ? titanError
+        : new TitanError({
+            code: titanError.code,
+            message: titanError.message,
+            details: titanError.details,
+            requestId,
+            correlationId: titanError.correlationId,
+            traceId: titanError.traceId,
+            spanId: titanError.spanId
+          });
+      return this.createErrorResponse(errorWithRequestId, requestId, request);
     }
   }
 
@@ -1472,7 +1490,11 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    * Broadcast to all connections (not applicable for HTTP)
    */
   async broadcast(data: Buffer | ArrayBuffer): Promise<void> {
-    console.warn('Broadcast not supported in HTTP transport');
+    // Broadcast is not supported in HTTP transport - silently ignore
+    // HTTP is request-response based, not connection-oriented
+    if (this.netronPeer?.logger) {
+      this.netronPeer.logger.debug('Broadcast attempted on HTTP transport - ignored (not supported)');
+    }
   }
 
   /**
@@ -1555,7 +1577,23 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       return;
     }
 
-    const validation = contract.input.safeParse(input);
+    // For HTTP transport, input comes as an array of arguments
+    // Most methods take a single object parameter, so extract it
+    let valueToValidate = input;
+    if (Array.isArray(input)) {
+      // If it's a single-element array, validate the first element
+      // This handles the common case of methods with a single object parameter
+      if (input.length === 1) {
+        valueToValidate = input[0];
+      } else if (input.length === 0) {
+        // Empty array - let validation handle it (will fail if input is required)
+        valueToValidate = undefined;
+      }
+      // For multiple arguments, pass the array as-is
+      // The contract should handle array validation if needed
+    }
+
+    const validation = contract.input.safeParse(valueToValidate);
     if (!validation.success) {
       // Only expose minimal validation error info to prevent schema disclosure
       throw new TitanError({

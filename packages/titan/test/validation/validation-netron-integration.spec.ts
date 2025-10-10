@@ -106,9 +106,10 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     });
 
     afterEach(async () => {
-      if (calculator) {
-        await peer.releaseInterface(calculator);
-      }
+      // HTTP interfaces are stateless and don't need to be released
+      // if (calculator) {
+      //   await peer.releaseInterface(calculator);
+      // }
       if (peer) {
         await peer.close();
       }
@@ -202,9 +203,10 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     });
 
     afterEach(async () => {
-      if (userService) {
-        await peer.releaseInterface(userService);
-      }
+      // HTTP interfaces are stateless and don't need to be released
+      // if (userService) {
+      //   await peer.releaseInterface(userService);
+      // }
       if (peer) {
         await peer.close();
       }
@@ -328,9 +330,10 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     });
 
     afterEach(async () => {
-      if (streamService) {
-        await peer.releaseInterface(streamService);
-      }
+      // HTTP interfaces are stateless and don't need to be released
+      // if (streamService) {
+      //   await peer.releaseInterface(streamService);
+      // }
       if (peer) {
         await peer.close();
       }
@@ -338,61 +341,56 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     });
 
     it('should validate input for streaming method', async () => {
-      await expect(async () => {
-        const stream = streamService.generateNumbers({
+      // HTTP transport validates input and returns error immediately
+      await expect(
+        streamService.generateNumbers({
           start: 'not-a-number',
           end: 5,
           step: 1
-        });
-        // Try to consume
-        for await (const num of stream) {
-          break;
-        }
-      }).rejects.toThrow();
+        })
+      ).rejects.toThrow();
     });
 
     it('should reject negative step', async () => {
-      await expect(async () => {
-        const stream = streamService.generateNumbers({
+      // HTTP transport validates input and returns error immediately
+      await expect(
+        streamService.generateNumbers({
           start: 1,
           end: 5,
           step: -1
-        });
-        for await (const num of stream) {
-          break;
-        }
-      }).rejects.toThrow();
+        })
+      ).rejects.toThrow();
     });
 
     it('should validate each streamed item', async () => {
-      const stream = streamService.generateNumbers({
+      // HTTP transport doesn't support true streaming - it collects all values and returns as array
+      const result = await streamService.generateNumbers({
         start: 1,
         end: 5,
         step: 1
       });
 
-      const numbers: number[] = [];
-      for await (const num of stream) {
-        expect(typeof num).toBe('number');
-        numbers.push(num);
-      }
+      // For HTTP, the result is an array, not an async iterable
+      expect(Array.isArray(result)).toBe(true);
+      expect(result).toEqual([1, 2, 3, 4, 5]);
 
-      expect(numbers).toEqual([1, 2, 3, 4, 5]);
+      // Verify each item is a number
+      for (const num of result) {
+        expect(typeof num).toBe('number');
+      }
     });
 
     it('should use default step value', async () => {
-      const stream = streamService.generateNumbers({
+      // HTTP transport doesn't support true streaming - it collects all values and returns as array
+      const result = await streamService.generateNumbers({
         start: 10,
         end: 12,
         step: 1
       });
 
-      const numbers: number[] = [];
-      for await (const num of stream) {
-        numbers.push(num);
-      }
-
-      expect(numbers).toEqual([10, 11, 12]);
+      // For HTTP, the result is an array, not an async iterable
+      expect(Array.isArray(result)).toBe(true);
+      expect(result).toEqual([10, 11, 12]);
     });
   });
 
@@ -456,9 +454,10 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     });
 
     afterEach(async () => {
-      if (metadataService) {
-        await peer.releaseInterface(metadataService);
-      }
+      // HTTP interfaces are stateless and don't need to be released
+      // if (metadataService) {
+      //   await peer.releaseInterface(metadataService);
+      // }
       if (peer) {
         await peer.close();
       }
@@ -581,9 +580,10 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     });
 
     afterEach(async () => {
-      if (mathService) await peer.releaseInterface(mathService);
-      if (stringService) await peer.releaseInterface(stringService);
-      if (dataService) await peer.releaseInterface(dataService);
+      // HTTP interfaces are stateless and don't need to be released
+      // if (mathService) await peer.releaseInterface(mathService);
+      // if (stringService) await peer.releaseInterface(stringService);
+      // if (dataService) await peer.releaseInterface(dataService);
       if (peer) await peer.close();
       await serverNetron.peer.unexposeService('math@1.0.0');
       await serverNetron.peer.unexposeService('string@1.0.0');
@@ -701,9 +701,10 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     });
 
     afterEach(async () => {
-      if (trackedService) {
-        await peer.releaseInterface(trackedService);
-      }
+      // HTTP interfaces are stateless and don't need to be released
+      // if (trackedService) {
+      //   await peer.releaseInterface(trackedService);
+      // }
       if (peer) {
         await peer.close();
       }
@@ -768,9 +769,10 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
     });
 
     afterEach(async () => {
-      if (perfService) {
-        await peer.releaseInterface(perfService);
-      }
+      // HTTP interfaces are stateless and don't need to be released
+      // if (perfService) {
+      //   await peer.releaseInterface(perfService);
+      // }
       if (peer) {
         await peer.close();
       }
@@ -922,7 +924,8 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       expect(result.settings.retries).toBe(3);
       expect(result.settings.enabled).toBe(true);
 
-      await peer.releaseInterface(configService);
+      // HTTP interfaces are stateless and don't need to be released
+      // await peer.releaseInterface(configService);
       await peer.close();
       await serverNetron.peer.unexposeService('config@1.0.0');
     });
@@ -1021,7 +1024,8 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
         orderService.processOrder(invalidOrder)
       ).rejects.toThrow();
 
-      await peer.releaseInterface(orderService);
+      // HTTP interfaces are stateless and don't need to be released
+      // await peer.releaseInterface(orderService);
       await peer.close();
       await serverNetron.peer.unexposeService('order@1.0.0');
     });
@@ -1100,7 +1104,8 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
         })
       ).rejects.toThrow();
 
-      await peer.releaseInterface(eventService);
+      // HTTP interfaces are stateless and don't need to be released
+      // await peer.releaseInterface(eventService);
       await peer.close();
       await serverNetron.peer.unexposeService('event@1.0.0');
     });

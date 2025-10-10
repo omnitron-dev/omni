@@ -10,7 +10,6 @@ import {
   RetryManager
 } from '../../../../src/netron/transport/http/fluent-interface/index.js';
 import { HttpTransportClient } from '../../../../src/netron/transport/http/client.js';
-import type { Definition } from '../../../../src/netron/definition.js';
 
 interface ITestService {
   getUser(id: string): Promise<{ id: string; name: string }>;
@@ -20,24 +19,13 @@ interface ITestService {
 
 describe('ConfigurableProxy', () => {
   let transport: HttpTransportClient;
-  let definition: Definition;
+  let serviceName: string;
   let cacheManager: HttpCacheManager;
   let retryManager: RetryManager;
 
   beforeEach(() => {
     transport = new HttpTransportClient('http://localhost:3000');
-    definition = {
-      id: 'test-def-1',
-      meta: {
-        name: 'TestService@1.0.0',
-        version: '1.0.0',
-        methods: {
-          getUser: { name: 'getUser' },
-          getUsers: { name: 'getUsers' },
-          createUser: { name: 'createUser' }
-        }
-      }
-    } as Definition;
+    serviceName = 'TestService@1.0.0';
 
     cacheManager = new HttpCacheManager({ maxEntries: 100 });
     retryManager = new RetryManager();
@@ -47,7 +35,7 @@ describe('ConfigurableProxy', () => {
     it('should chain cache configuration', () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         retryManager
       );
@@ -59,7 +47,7 @@ describe('ConfigurableProxy', () => {
     it('should chain retry configuration', () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         retryManager
       );
@@ -71,7 +59,7 @@ describe('ConfigurableProxy', () => {
     it('should chain multiple configurations', () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         retryManager
       );
@@ -83,7 +71,7 @@ describe('ConfigurableProxy', () => {
     it('should chain all available configuration methods', () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         retryManager
       );
@@ -110,7 +98,7 @@ describe('ConfigurableProxy', () => {
     it('should accumulate cache option', () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         retryManager
       );
@@ -123,7 +111,7 @@ describe('ConfigurableProxy', () => {
     it('should accumulate retry option', () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         retryManager
       );
@@ -135,7 +123,7 @@ describe('ConfigurableProxy', () => {
     it('should accumulate multiple options', () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         retryManager
       );
@@ -151,7 +139,7 @@ describe('ConfigurableProxy', () => {
     it('should handle initial options', () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         retryManager,
         { cache: { maxAge: 30000 } }
@@ -165,7 +153,7 @@ describe('ConfigurableProxy', () => {
     it('should intercept method calls via Proxy', () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         retryManager
       ) as any;
@@ -183,7 +171,7 @@ describe('ConfigurableProxy', () => {
     it('should pass arguments to method call', async () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         retryManager
       ) as any;
@@ -203,7 +191,7 @@ describe('ConfigurableProxy', () => {
     it('should handle methods with multiple arguments', async () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         retryManager
       ) as any;
@@ -223,7 +211,7 @@ describe('ConfigurableProxy', () => {
     it('should handle methods with no arguments', async () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         retryManager
       ) as any;
@@ -240,7 +228,7 @@ describe('ConfigurableProxy', () => {
     it('should apply accumulated cache option to request', async () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         retryManager
       ) as any;
@@ -256,7 +244,7 @@ describe('ConfigurableProxy', () => {
     it('should apply accumulated retry option to request', async () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         retryManager
       ) as any;
@@ -272,7 +260,7 @@ describe('ConfigurableProxy', () => {
     it('should apply multiple accumulated options to request', async () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         retryManager
       ) as any;
@@ -290,7 +278,7 @@ describe('ConfigurableProxy', () => {
     it('should provide type-safe method access', () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         retryManager
       ) as any;
@@ -304,7 +292,7 @@ describe('ConfigurableProxy', () => {
     it('should return Promise for method calls', () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         retryManager
       ) as any;
@@ -320,7 +308,7 @@ describe('ConfigurableProxy', () => {
     it('should handle symbol properties gracefully', () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         retryManager
       ) as any;
@@ -332,7 +320,7 @@ describe('ConfigurableProxy', () => {
     it('should handle toString calls', () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         retryManager
       ) as any;
@@ -343,7 +331,7 @@ describe('ConfigurableProxy', () => {
     it('should create proxy without cache manager', () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         undefined,
         retryManager
       );
@@ -354,7 +342,7 @@ describe('ConfigurableProxy', () => {
     it('should create proxy without retry manager', () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         undefined
       );
@@ -367,7 +355,7 @@ describe('ConfigurableProxy', () => {
     it('should apply transform function', async () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         retryManager
       ) as any;
@@ -386,7 +374,7 @@ describe('ConfigurableProxy', () => {
     it('should apply validate function', async () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         retryManager
       ) as any;
@@ -402,7 +390,7 @@ describe('ConfigurableProxy', () => {
     it('should use fallback on validation failure', async () => {
       const proxy = new ConfigurableProxy<ITestService>(
         transport,
-        definition,
+        serviceName,
         cacheManager,
         retryManager
       ) as any;

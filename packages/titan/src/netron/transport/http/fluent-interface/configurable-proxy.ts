@@ -5,7 +5,6 @@
  * with all accumulated settings. Uses JavaScript Proxy for method interception.
  */
 
-import type { Definition } from '../../../definition.js';
 import { HttpTransportClient } from '../client.js';
 import { HttpCacheManager, type CacheOptions } from './cache-manager.js';
 import { RetryManager, type RetryOptions } from './retry-manager.js';
@@ -22,7 +21,7 @@ export class ConfigurableProxy<TService = any> {
 
   constructor(
     private transport: HttpTransportClient,
-    private definition: Definition,
+    private serviceName: string,
     private cacheManager?: HttpCacheManager,
     private retryManager?: RetryManager,
     initialOptions?: QueryOptions
@@ -48,7 +47,7 @@ export class ConfigurableProxy<TService = any> {
           // Create QueryBuilder with accumulated options
           const builder = new QueryBuilder<TService>(
             target.transport,
-            target.definition,
+            target.serviceName,
             target.cacheManager,
             target.retryManager
           );

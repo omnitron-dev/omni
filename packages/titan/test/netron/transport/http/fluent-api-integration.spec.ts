@@ -61,20 +61,7 @@ describe('Fluent API Integration', () => {
     peer.setCacheManager(cacheManager);
     peer.setRetryManager(retryManager);
 
-    // Mock queryInterfaceRemote to return definition
-    jest.spyOn(peer as any, 'queryInterfaceRemote').mockResolvedValue({
-      id: 'user-service-def',
-      meta: {
-        name: 'UserService@1.0.0',
-        version: '1.0.0',
-        methods: {
-          getUser: { name: 'getUser' },
-          getUsers: { name: 'getUsers' },
-          createUser: { name: 'createUser' },
-          updateUser: { name: 'updateUser' }
-        }
-      }
-    });
+    // No need to mock queryInterfaceRemote - stateless HTTP doesn't use definitions
   });
 
   afterEach(() => {
@@ -98,13 +85,7 @@ describe('Fluent API Integration', () => {
       expect(service).toBeInstanceOf(FluentInterface);
     });
 
-    it('should query remote interface', async () => {
-      const queryInterfaceSpy = jest.spyOn(peer as any, 'queryInterfaceRemote');
-
-      await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
-
-      expect(queryInterfaceSpy).toHaveBeenCalledWith('UserService@1.0.0');
-    });
+    // Note: queryInterfaceRemote test removed - stateless HTTP doesn't fetch definitions
   });
 
   describe('Natural Method Calls', () => {

@@ -112,8 +112,8 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
         this.emit('message', Buffer.from(JSON.stringify(response)), true);
       }
     } catch (error) {
-      // Not JSON or unknown format, ignore
-      console.warn('Received unknown data format:', error);
+      // Not JSON or unknown format, silently ignore
+      // This is normal for HTTP connections receiving non-JSON data
     }
   }
 

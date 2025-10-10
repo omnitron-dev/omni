@@ -392,7 +392,16 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       }
 
       // No matching route
-      return this.createErrorResponse(404, 'Not found', request);
+      const requestId = request.headers.get('X-Request-ID') || generateRequestId();
+      return this.createErrorResponse(
+        new TitanError({
+          code: ErrorCode.NOT_FOUND,
+          message: 'Not found',
+          requestId
+        }),
+        requestId,
+        request
+      );
     } catch (error: any) {
       this.metrics.totalErrors++;
       return this.handleError(error, request);
@@ -536,12 +545,30 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       message = await request.json();
     } catch (error) {
       console.error('[HTTP Server] Failed to parse JSON:', error);
-      return this.createErrorResponse(400, 'Invalid JSON', request);
+      const requestId = request.headers.get('X-Request-ID') || generateRequestId();
+      return this.createErrorResponse(
+        new TitanError({
+          code: ErrorCode.BAD_REQUEST,
+          message: 'Invalid JSON',
+          requestId
+        }),
+        requestId,
+        request
+      );
     }
 
     if (!isHttpRequestMessage(message)) {
       console.error('[HTTP Server] Invalid request format:', message);
-      return this.createErrorResponse(400, 'Invalid request format', request);
+      const requestId = request.headers.get('X-Request-ID') || generateRequestId();
+      return this.createErrorResponse(
+        new TitanError({
+          code: ErrorCode.BAD_REQUEST,
+          message: 'Invalid request format',
+          requestId
+        }),
+        requestId,
+        request
+      );
     }
 
     // OPTIMIZATION: Fast-path for simple requests
@@ -709,11 +736,29 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     try {
       batchRequest = await request.json();
     } catch (error) {
-      return this.createErrorResponse(400, 'Invalid JSON', request);
+      const requestId = request.headers.get('X-Request-ID') || generateRequestId();
+      return this.createErrorResponse(
+        new TitanError({
+          code: ErrorCode.BAD_REQUEST,
+          message: 'Invalid JSON',
+          requestId
+        }),
+        requestId,
+        request
+      );
     }
 
     if (!isHttpBatchRequest(batchRequest)) {
-      return this.createErrorResponse(400, 'Invalid batch request format', request);
+      const requestId = request.headers.get('X-Request-ID') || generateRequestId();
+      return this.createErrorResponse(
+        new TitanError({
+          code: ErrorCode.BAD_REQUEST,
+          message: 'Invalid batch request format',
+          requestId
+        }),
+        requestId,
+        request
+      );
     }
 
     const batchResponse: HttpBatchResponse = {
@@ -837,13 +882,23 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    * Handle query-interface request with authorization
    */
   private async handleQueryInterfaceRequest(request: Request): Promise<Response> {
+    const requestId = request.headers.get('X-Request-ID') || generateRequestId();
+
     try {
       // Parse request body
       const body = await request.json();
       const serviceName = body.serviceName || body.params?.[0];
 
       if (!serviceName) {
-        return this.createErrorResponse(400, 'Missing serviceName parameter', request);
+        return this.createErrorResponse(
+          new TitanError({
+            code: ErrorCode.BAD_REQUEST,
+            message: 'Missing serviceName parameter',
+            requestId
+          }),
+          requestId,
+          request
+        );
       }
 
       // Extract auth context from headers
@@ -864,7 +919,15 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
       // Execute query_interface task using local peer
       if (!this.netronPeer) {
-        return this.createErrorResponse(500, 'Netron peer not initialized', request);
+        return this.createErrorResponse(
+          new TitanError({
+            code: ErrorCode.INTERNAL_SERVER_ERROR,
+            message: 'Netron peer not initialized',
+            requestId
+          }),
+          requestId,
+          request
+        );
       }
 
       // Run query_interface task with auth context
@@ -881,13 +944,29 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           // Check access
           const canAccess = authzManager.canAccessService(serviceName, authContext);
           if (!canAccess) {
-            return this.createErrorResponse(403, `Access denied to service '${serviceName}'`, request);
+            return this.createErrorResponse(
+              new TitanError({
+                code: ErrorCode.FORBIDDEN,
+                message: `Access denied to service '${serviceName}'`,
+                requestId
+              }),
+              requestId,
+              request
+            );
           }
 
           // Filter definition
           const filteredMeta = authzManager.filterDefinition(serviceName, definition.meta, authContext);
           if (!filteredMeta) {
-            return this.createErrorResponse(403, `No access to service methods`, request);
+            return this.createErrorResponse(
+              new TitanError({
+                code: ErrorCode.FORBIDDEN,
+                message: `No access to service methods`,
+                requestId
+              }),
+              requestId,
+              request
+            );
           }
 
           filteredDefinition = {
@@ -908,10 +987,20 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           }
         });
       } catch (error: any) {
-        return this.createErrorResponse(404, `Service '${serviceName}' not found`, request);
+        return this.createErrorResponse(
+          new TitanError({
+            code: ErrorCode.NOT_FOUND,
+            message: `Service '${serviceName}' not found`,
+            requestId
+          }),
+          requestId,
+          request
+        );
       }
     } catch (error: any) {
-      return this.createErrorResponse(500, error.message, request);
+      const titanError = error instanceof TitanError ? error : toTitanError(error);
+      titanError.requestId = requestId;
+      return this.createErrorResponse(titanError, requestId, request);
     }
   }
 
@@ -919,19 +1008,37 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    * Handle authenticate request
    */
   private async handleAuthenticateRequest(request: Request): Promise<Response> {
+    const requestId = request.headers.get('X-Request-ID') || generateRequestId();
+
     try {
       // Parse request body
       const body = await request.json();
       const credentials = body.credentials || body.params?.[0];
 
       if (!credentials) {
-        return this.createErrorResponse(400, 'Missing credentials parameter', request);
+        return this.createErrorResponse(
+          new TitanError({
+            code: ErrorCode.BAD_REQUEST,
+            message: 'Missing credentials parameter',
+            requestId
+          }),
+          requestId,
+          request
+        );
       }
 
       // Get authentication manager
       const authManager = (this.netronPeer?.netron as any)?.authenticationManager;
       if (!authManager) {
-        return this.createErrorResponse(503, 'Authentication not configured', request);
+        return this.createErrorResponse(
+          new TitanError({
+            code: ErrorCode.SERVICE_UNAVAILABLE,
+            message: 'Authentication not configured',
+            requestId
+          }),
+          requestId,
+          request
+        );
       }
 
       // Perform authentication
@@ -954,7 +1061,9 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         }
       });
     } catch (error: any) {
-      return this.createErrorResponse(500, error.message, request);
+      const titanError = error instanceof TitanError ? error : toTitanError(error);
+      titanError.requestId = requestId;
+      return this.createErrorResponse(titanError, requestId, request);
     }
   }
 
@@ -1252,24 +1361,33 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   }
 
   /**
-   * Create error response
+   * Create error response using consistent mapToHttp() helper
    */
-  private createErrorResponse(status: number, message: string, request: Request): Response {
-    const headers = new Headers({
-      'Content-Type': 'application/json',
-      'X-Netron-Version': '2.0'
+  private createErrorResponse(
+    error: TitanError,
+    requestId: string,
+    request: Request
+  ): Response {
+    // Use consistent error mapping
+    const httpError = mapToHttp(error);
+
+    const errorResponse = createErrorResponse(requestId, {
+      code: String(httpError.status),
+      message: error.message,
+      details: error.details
     });
 
-    // Apply CORS headers using consolidated helper
+    const headers = new Headers({
+      ...httpError.headers,
+      'X-Netron-Version': '2.0',
+      'Content-Type': 'application/json'
+    });
+
     this.applyCorsHeaders(headers, request);
 
     return new Response(
-      JSON.stringify({
-        error: true,
-        message,
-        timestamp: Date.now()
-      }),
-      { status, headers }
+      JSON.stringify(errorResponse),
+      { status: httpError.status, headers }
     );
   }
 

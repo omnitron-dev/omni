@@ -420,8 +420,9 @@ describe('HttpServer (Legacy Tests)', () => {
       expect(response.status).toBe(400);
 
       const result = await response.json();
-      expect(result.error).toBe(true);
-      expect(result.message).toBe('Invalid JSON');
+      expect(result.error).toBeDefined();
+      expect(result.error.code).toMatch(/400|BAD_REQUEST/);
+      expect(result.error.message).toBe('Invalid JSON');
     });
 
     it('should handle service not found', async () => {

@@ -29,6 +29,15 @@ import { HttpTransportClient } from './client.js';
 import { FluentInterface, HttpCacheManager, RetryManager, type QueryOptions } from './fluent-interface/index.js';
 
 /**
+ * Definition cache entry with TTL support for HTTP peer
+ */
+interface CacheEntry {
+  definition: Definition;
+  timestamp: number;
+  ttl: number;
+}
+
+/**
  * HttpRemotePeer - Optimized HTTP peer without packet protocol
  *
  * Key improvements:
@@ -50,8 +59,11 @@ export class HttpRemotePeer extends AbstractPeer {
   /** Service definitions cached from discovery */
   public services = new Map<string, Definition>();
 
-  /** Definition cache */
-  private definitions = new Map<string, Definition>();
+  /** Definition cache with TTL and JWT scoping (key: userId:serviceName or serviceName) */
+  private definitions = new Map<string, CacheEntry>();
+
+  /** Definition cache by defId for method calls (key: defId) */
+  private definitionsById = new Map<string, Definition>();
 
   /** Event emitter for internal events */
   private events = new EventEmitter();
@@ -63,6 +75,7 @@ export class HttpRemotePeer extends AbstractPeer {
   private defaultOptions: {
     timeout?: number;
     headers?: Record<string, string>;
+    definitionCacheTtl?: number;
   } = {};
 
   /** Request interceptors */
@@ -92,7 +105,8 @@ export class HttpRemotePeer extends AbstractPeer {
     // Set default options
     this.defaultOptions = {
       timeout: options?.requestTimeout || 30000,
-      headers: options?.headers || {}
+      headers: options?.headers || {},
+      definitionCacheTtl: 300000 // 5 minutes default
     };
   }
 
@@ -222,15 +236,16 @@ export class HttpRemotePeer extends AbstractPeer {
 
     if (!pattern) {
       // Clear all services and definitions
-      const totalCount = this.services.size + this.definitions.size;
+      const totalCount = this.services.size + this.definitions.size + this.definitionsById.size;
       this.services.clear();
       this.definitions.clear();
+      this.definitionsById.clear();
       return parentCount + totalCount;
     }
 
     // Pattern matching - remove matching services and definitions
     const servicesToDelete: string[] = [];
-    const definitionsToDelete: string[] = [];
+    const definitionIdsToDelete: string[] = [];
 
     // Find matching services
     for (const key of this.services.keys()) {
@@ -238,7 +253,7 @@ export class HttpRemotePeer extends AbstractPeer {
         servicesToDelete.push(key);
         const def = this.services.get(key);
         if (def) {
-          definitionsToDelete.push(def.id);
+          definitionIdsToDelete.push(def.id);
         }
       }
     }
@@ -248,13 +263,27 @@ export class HttpRemotePeer extends AbstractPeer {
       this.services.delete(key);
     }
 
-    // Delete matched definitions
-    for (const id of definitionsToDelete) {
-      this.definitions.delete(id);
+    // Delete matched definitions from JWT-scoped cache
+    // Need to iterate all keys and check if they end with the service pattern
+    const definitionKeysToDelete: string[] = [];
+    for (const cacheKey of this.definitions.keys()) {
+      // Cache keys are either "userId:serviceName" or "serviceName"
+      const serviceName = cacheKey.includes(':') ? cacheKey.split(':')[1] : cacheKey;
+      if (this.matchServicePattern(serviceName, pattern)) {
+        definitionKeysToDelete.push(cacheKey);
+      }
+    }
+    for (const key of definitionKeysToDelete) {
+      this.definitions.delete(key);
+    }
+
+    // Delete matched definitions from defId cache
+    for (const id of definitionIdsToDelete) {
+      this.definitionsById.delete(id);
     }
 
     // Return total count of invalidated items
-    return parentCount + servicesToDelete.length + definitionsToDelete.length;
+    return parentCount + servicesToDelete.length + definitionKeysToDelete.length + definitionIdsToDelete.length;
   }
 
   /**
@@ -440,7 +469,7 @@ export class HttpRemotePeer extends AbstractPeer {
    * Get service name from definition ID
    */
   private getServiceNameFromDefId(defId: string): string {
-    const definition = this.definitions.get(defId);
+    const definition = this.definitionsById.get(defId);
     if (!definition) {
       // Try to extract from defId
       const parts = defId.split('-');
@@ -499,6 +528,7 @@ export class HttpRemotePeer extends AbstractPeer {
     this.interfaces.clear();
     this.services.clear();
     this.definitions.clear();
+    this.definitionsById.clear();
 
     // Close the underlying connection
     if (this.connection && typeof this.connection.close === 'function') {
@@ -527,11 +557,11 @@ export class HttpRemotePeer extends AbstractPeer {
    * Get definition by ID
    */
   protected getDefinitionById(defId: string): Definition {
-    const def = this.definitions.get(defId);
-    if (!def) {
+    const definition = this.definitionsById.get(defId);
+    if (!definition) {
       throw Errors.notFound('Definition', defId);
     }
-    return def;
+    return definition;
   }
 
   /**
@@ -549,6 +579,11 @@ export class HttpRemotePeer extends AbstractPeer {
    * Queries the remote peer for a service definition via HTTP endpoint.
    * This method will use the POST /netron/query-interface endpoint.
    *
+   * Phase 1 Optimization: JWT-scoped caching with TTL-based expiration
+   * - Different users get separate cache entries (prevents authorization poisoning)
+   * - Cache entries expire after configured TTL (default 5 minutes)
+   * - Unauthenticated requests use shared cache
+   *
    * @param {string} qualifiedName - Service name with version (name@version)
    * @returns {Promise<Definition>} Resolves with the service definition
    * @throws {TitanError} If the service is not found or access is denied
@@ -558,6 +593,25 @@ export class HttpRemotePeer extends AbstractPeer {
     this.logger.debug({ serviceName: qualifiedName }, 'Querying remote interface via HTTP');
 
     try {
+      // OPTIMIZATION 1: JWT-scoped cache key
+      const cacheKey = this.createCacheKey(qualifiedName);
+
+      // OPTIMIZATION 2: Check cache with TTL expiration
+      const cached = this.definitions.get(cacheKey);
+      if (cached && !this.isCacheExpired(cached)) {
+        this.logger.debug(
+          { serviceName: qualifiedName, cacheKey },
+          'Using cached definition (not expired)'
+        );
+        return cached.definition;
+      }
+
+      // Cache miss or expired - fetch from server
+      this.logger.debug(
+        { serviceName: qualifiedName, cacheKey, expired: cached ? true : false },
+        'Cache miss or expired, fetching from server'
+      );
+
       // Make HTTP POST request to /netron/query-interface endpoint
       const response = await this.sendHttpRequest<{ result: Definition }>(
         'POST',
@@ -574,8 +628,17 @@ export class HttpRemotePeer extends AbstractPeer {
         });
       }
 
-      // Store the definition in local maps for future reference
-      this.definitions.set(definition.id, definition);
+      // OPTIMIZATION 3: Store with TTL metadata
+      this.definitions.set(cacheKey, {
+        definition,
+        timestamp: Date.now(),
+        ttl: this.defaultOptions.definitionCacheTtl || 300000
+      });
+
+      // Store in defId cache for method calls
+      this.definitionsById.set(definition.id, definition);
+
+      // Also store in services map for backward compatibility
       const serviceKey = `${definition.meta.name}@${definition.meta.version}`;
       this.services.set(serviceKey, definition);
 
@@ -584,6 +647,8 @@ export class HttpRemotePeer extends AbstractPeer {
           serviceName: qualifiedName,
           definitionId: definition.id,
           methodCount: Object.keys(definition.meta.methods || {}).length,
+          cacheKey,
+          ttl: this.defaultOptions.definitionCacheTtl
         },
         'Remote interface queried successfully via HTTP',
       );
@@ -782,5 +847,53 @@ export class HttpRemotePeer extends AbstractPeer {
    */
   getGlobalOptions(): QueryOptions {
     return this.globalOptions;
+  }
+
+  /**
+   * Extract user ID from JWT token in Authorization header
+   * @private
+   * @returns User ID from token payload or null if unavailable
+   */
+  private extractUserIdFromToken(): string | null {
+    if (!this.defaultOptions.headers?.['Authorization']) {
+      return null;
+    }
+
+    const authHeader = this.defaultOptions.headers['Authorization'];
+    if (!authHeader.startsWith('Bearer ')) {
+      return null;
+    }
+
+    const token = authHeader.substring(7);
+    try {
+      // Decode JWT payload (middle part between dots)
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      // Try common user ID fields
+      return payload.sub || payload.userId || payload.id || null;
+    } catch {
+      // Invalid token format
+      return null;
+    }
+  }
+
+  /**
+   * Create cache key with JWT scoping to prevent authorization cache poisoning
+   * @private
+   * @param qualifiedName - Service qualified name
+   * @returns Cache key scoped by user ID if authenticated
+   */
+  private createCacheKey(qualifiedName: string): string {
+    const userId = this.extractUserIdFromToken();
+    return userId ? `${userId}:${qualifiedName}` : qualifiedName;
+  }
+
+  /**
+   * Check if cache entry has expired based on TTL
+   * @private
+   * @param entry - Cache entry with timestamp and TTL
+   * @returns true if cache entry is expired
+   */
+  private isCacheExpired(entry: CacheEntry): boolean {
+    return Date.now() - entry.timestamp > entry.ttl;
   }
 }

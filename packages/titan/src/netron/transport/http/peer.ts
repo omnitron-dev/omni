@@ -114,33 +114,25 @@ export class HttpRemotePeer extends AbstractPeer {
   }
 
   /**
-   * Set a property value on the remote peer
+   * Set a property value on the remote peer (not supported for HTTP transport)
    */
   override async set(defId: string, name: string, value: any): Promise<void> {
-    const service = this.getServiceNameFromDefId(defId);
-    const message = createRequestMessage(service, `__setProperty`, { name, value });
-
-    const response = await this.sendRequestMessage(message);
-
-    if (!response.success) {
-      throw this.createErrorFromResponse(response);
-    }
+    throw Errors.notImplemented(
+      'Property setters are not supported in HTTP transport. ' +
+      'HTTP transport is stateless and does not support remote property access. ' +
+      'Consider using a dedicated method to update server state instead.'
+    );
   }
 
   /**
-   * Get a property value from the remote peer
+   * Get a property value from the remote peer (not supported for HTTP transport)
    */
   override async get(defId: string, name: string): Promise<any> {
-    const service = this.getServiceNameFromDefId(defId);
-    const message = createRequestMessage(service, `__getProperty`, { name });
-
-    const response = await this.sendRequestMessage(message);
-
-    if (!response.success) {
-      throw this.createErrorFromResponse(response);
-    }
-
-    return response.data;
+    throw Errors.notImplemented(
+      'Property getters are not supported in HTTP transport. ' +
+      'HTTP transport is stateless and does not support remote property access. ' +
+      'Consider using a dedicated method to retrieve server state instead.'
+    );
   }
 
   /**
@@ -177,20 +169,25 @@ export class HttpRemotePeer extends AbstractPeer {
   }
 
   /**
-   * Subscribe to events (requires WebSocket upgrade)
+   * Subscribe to events (not supported for HTTP transport)
    */
   override async subscribe(eventName: string, handler: EventSubscriber): Promise<void> {
-    this.logger.warn({ eventName }, 'Event subscription requires WebSocket upgrade, falling back to polling');
-
-    // TODO: Implement WebSocket upgrade or SSE for real-time events
-    // For now, we can implement polling as a fallback
+    throw Errors.notImplemented(
+      'Event subscriptions are not supported in HTTP transport. ' +
+      'HTTP transport is request-response based and does not support real-time event streaming. ' +
+      'Consider using WebSocket transport for event subscriptions, or implement polling via regular method calls.'
+    );
   }
 
   /**
-   * Unsubscribe from events
+   * Unsubscribe from events (not supported for HTTP transport)
    */
   override async unsubscribe(eventName: string, handler: EventSubscriber): Promise<void> {
-    // No-op for now
+    throw Errors.notImplemented(
+      'Event unsubscription is not supported in HTTP transport. ' +
+      'HTTP transport is request-response based and does not support real-time event streaming. ' +
+      'Consider using WebSocket transport for event subscriptions.'
+    );
   }
 
   /**
@@ -204,7 +201,11 @@ export class HttpRemotePeer extends AbstractPeer {
    * Unexpose a service (not supported for HTTP client)
    */
   override async unexposeService(ctxId: string, releaseOriginated?: boolean): Promise<void> {
-    // No-op for HTTP client
+    throw Errors.notImplemented(
+      'Service unexposing is not supported from HTTP client. ' +
+      'HTTP transport clients are consumers only and cannot expose services to the server. ' +
+      'Services should be managed on the server side.'
+    );
   }
 
   /**

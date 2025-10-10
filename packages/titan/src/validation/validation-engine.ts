@@ -262,48 +262,187 @@ export class ValidationEngine {
    * Apply type coercion to schema
    */
   private applyCoercion<T>(schema: z.ZodSchema<T>): z.ZodSchema<T> {
-    // For basic types, wrap with coercion
-    if (schema instanceof z.ZodNumber) {
-      return z.coerce.number() as any;
-    }
-    if (schema instanceof z.ZodBoolean) {
-      return z.coerce.boolean() as any;
-    }
-    if (schema instanceof z.ZodDate) {
-      return z.coerce.date() as any;
+    return this.applyCoercionRecursive(schema) as z.ZodSchema<T>;
+  }
+
+  /**
+   * Recursively apply coercion to schema and all nested schemas
+   */
+  private applyCoercionRecursive(schema: any): any {
+    // Get the base type name - check both .type and ._def.typeName for compatibility
+    const typeName = schema.type || schema._def?.typeName;
+    const constructorName = schema.constructor?.name;
+
+    // Handle wrapper types (optional, nullable, default) by unwrapping and re-wrapping
+    if (typeName === 'optional' || constructorName === 'ZodOptional') {
+      const innerSchema = schema._def.innerType;
+      const coercedInner = this.applyCoercionRecursive(innerSchema);
+      return coercedInner.optional();
     }
 
-    // For objects, recursively apply coercion
-    if (schema instanceof z.ZodObject) {
-      const shape = (schema as any).shape;
-      const unknownKeys = (schema as any)._def.unknownKeys; // Get mode BEFORE creating new object
+    if (typeName === 'nullable' || constructorName === 'ZodNullable') {
+      const innerSchema = schema._def.innerType;
+      const coercedInner = this.applyCoercionRecursive(innerSchema);
+      return coercedInner.nullable();
+    }
+
+    if (typeName === 'default' || constructorName === 'ZodDefault') {
+      const innerSchema = schema._def.innerType;
+      const defaultValue = schema._def.defaultValue;
+      const coercedInner = this.applyCoercionRecursive(innerSchema);
+      return coercedInner.default(typeof defaultValue === 'function' ? defaultValue : () => defaultValue);
+    }
+
+    // Handle effects (refinements, transforms) - need to coerce the base type
+    if (typeName === 'ZodEffects' || constructorName === 'ZodEffects') {
+      const innerSchema = schema._def.schema;
+      const coercedInner = this.applyCoercionRecursive(innerSchema);
+
+      // We can't easily preserve effects, so we return the coerced inner schema
+      // This is a limitation - refinements will be lost
+      // TODO: Consider preserving effects by cloning the _def
+      return coercedInner;
+    }
+
+    // Handle basic coercible types with checks (min, max, int, positive, etc)
+    // For numbers with constraints, we need to preserve the checks
+    if (typeName === 'number' || constructorName === 'ZodNumber') {
+      // If there are no checks, just use simple coercion
+      const checks = schema._def?.checks || [];
+      if (checks.length === 0) {
+        return z.coerce.number();
+      }
+
+      // If there are checks, use preprocess to coerce then validate with original schema
+      // This preserves all validation logic including .positive(), .int(), etc.
+      // IMPORTANT: Preserve undefined for optional fields
+      return z.preprocess((val) => {
+        if (val === undefined) return undefined; // Preserve undefined for optional fields
+        if (typeof val === 'number') return val;
+        if (typeof val === 'string') {
+          // Empty string should fail
+          if (val.trim() === '') {
+            throw new Error('Cannot coerce empty string to number');
+          }
+          const parsed = Number(val);
+          if (Number.isNaN(parsed)) {
+            throw new Error(`Cannot coerce "${val}" to number`);
+          }
+          return parsed;
+        }
+        if (typeof val === 'boolean') return val ? 1 : 0;
+        if (val === null) {
+          throw new Error('Cannot coerce null to number');
+        }
+        return Number(val);
+      }, schema) as any;
+    }
+
+    if (typeName === 'boolean' || constructorName === 'ZodBoolean') {
+      // Zod's default coerce.boolean() has issues - it treats any non-empty string as true
+      // We need a custom transformation that properly handles 'false', '0', etc.
+      // IMPORTANT: Return undefined for undefined input to maintain optional semantics
+      return z.preprocess((val) => {
+        if (val === undefined) return undefined; // Preserve undefined for optional fields
+        if (typeof val === 'boolean') return val;
+        if (typeof val === 'string') {
+          const lower = val.toLowerCase().trim();
+          if (lower === 'false' || lower === '0' || lower === '') return false;
+          if (lower === 'true' || lower === '1') return true;
+          // For any other string, throw to fail validation
+          throw new Error(`Cannot coerce "${val}" to boolean`);
+        }
+        if (typeof val === 'number') return val !== 0;
+        return Boolean(val);
+      }, z.boolean()) as any;
+    }
+
+    if (typeName === 'date' || constructorName === 'ZodDate') {
+      let coerced = z.coerce.date();
+
+      // Preserve date checks
+      const checks = schema._def?.checks || [];
+      for (const check of checks) {
+        if (check.kind === 'min') {
+          coerced = coerced.min(check.value, check.message);
+        } else if (check.kind === 'max') {
+          coerced = coerced.max(check.value, check.message);
+        }
+      }
+
+      return coerced;
+    }
+
+    if (typeName === 'bigint' || constructorName === 'ZodBigInt') {
+      return z.coerce.bigint();
+    }
+
+    // Handle arrays - recursively coerce elements
+    if (typeName === 'array' || constructorName === 'ZodArray') {
+      const elementSchema = schema._def.type;
+      const coercedElement = this.applyCoercionRecursive(elementSchema);
+      return z.array(coercedElement);
+    }
+
+    // Handle objects - recursively coerce all fields
+    if (typeName === 'object' || constructorName === 'ZodObject') {
+      const shape = schema.shape || schema._def.shape();
+      // Determine mode from catchall field
+      const catchall = schema._def.catchall;
+      let mode: 'strip' | 'strict' | 'passthrough' | undefined;
+      if (catchall?.type === 'never') {
+        mode = 'strict';
+      } else if (catchall?.type === 'unknown') {
+        mode = 'passthrough';
+      } else {
+        mode = 'strip'; // Default
+      }
+
       const coercedShape: any = {};
 
       for (const key in shape) {
         const fieldSchema = shape[key];
-        if (fieldSchema instanceof z.ZodNumber) {
-          coercedShape[key] = z.coerce.number();
-        } else if (fieldSchema instanceof z.ZodBoolean) {
-          coercedShape[key] = z.coerce.boolean();
-        } else if (fieldSchema instanceof z.ZodDate) {
-          coercedShape[key] = z.coerce.date();
+        const coercedField = this.applyCoercionRecursive(fieldSchema);
+
+        // If the coerced field is an object and doesn't have a mode set,
+        // inherit the parent's mode
+        const fieldTypeName = coercedField?.type || coercedField?._def?.typeName;
+        const fieldConstructorName = coercedField?.constructor?.name;
+        if (fieldTypeName === 'object' || fieldConstructorName === 'ZodObject') {
+          const fieldCatchall = coercedField._def.catchall;
+          // Only apply parent mode if child doesn't have one (or is strip)
+          if (!fieldCatchall || fieldCatchall.type === undefined) {
+            if (mode === 'strip') {
+              coercedShape[key] = coercedField.strip();
+            } else if (mode === 'strict') {
+              coercedShape[key] = coercedField.strict();
+            } else if (mode === 'passthrough') {
+              coercedShape[key] = coercedField.passthrough();
+            } else {
+              coercedShape[key] = coercedField;
+            }
+          } else {
+            coercedShape[key] = coercedField;
+          }
         } else {
-          coercedShape[key] = fieldSchema;
+          coercedShape[key] = coercedField;
         }
       }
 
-      // Preserve the mode settings
+      // Create new object with coerced shape
       const baseObject = z.object(coercedShape);
-      if (unknownKeys === 'strip') {
-        return baseObject.strip() as any;
-      } else if (unknownKeys === 'strict') {
-        return baseObject.strict() as any;
-      } else if (unknownKeys === 'passthrough') {
-        return baseObject.passthrough() as any;
+
+      // Preserve the mode settings
+      if (mode === 'strict') {
+        return baseObject.strict();
+      } else if (mode === 'passthrough') {
+        return baseObject.passthrough();
+      } else {
+        return baseObject.strip();
       }
-      return baseObject as any;
     }
 
+    // For all other types, return as-is
     return schema;
   }
 

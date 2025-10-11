@@ -10,6 +10,8 @@
 import { defineComponent } from '../core/component/define.js';
 import { createContext, useContext } from '../core/component/context.js';
 import { signal, type WritableSignal } from '../core/reactivity/signal.js';
+import { createRef } from '../core/component/refs.js';
+import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 import { generateId } from './utils/index.js';
 
@@ -130,6 +132,11 @@ export const Checkbox = defineComponent<CheckboxProps>((props) => {
   const checkedSignal = props.checked || internalChecked;
 
   const disabled = () => !!props.disabled;
+  const required = () => !!props.required;
+
+  // Create refs
+  const buttonRef = createRef<HTMLButtonElement>();
+  const hiddenInputRef = createRef<HTMLInputElement>();
 
   const contextValue: CheckboxContextValue = {
     checked: () => checkedSignal(),
@@ -146,7 +153,12 @@ export const Checkbox = defineComponent<CheckboxProps>((props) => {
     const currentChecked = checkedSignal();
     const nextChecked = currentChecked === 'indeterminate' ? true : !currentChecked;
 
-    checkedSignal.set(nextChecked);
+    // Only update internal signal if uncontrolled
+    if (!props.checked) {
+      checkedSignal.set(nextChecked);
+    }
+
+    // Always call callback (for both controlled and uncontrolled)
     props.onCheckedChange?.(nextChecked);
   };
 
@@ -159,16 +171,46 @@ export const Checkbox = defineComponent<CheckboxProps>((props) => {
     }
   };
 
-  const getAriaChecked = () => {
-    const checked = checkedSignal();
-    if (checked === 'indeterminate') return 'mixed';
-    return checked ? 'true' : 'false';
+  // Set up ref callback for button
+  const buttonRefCallback = (element: HTMLButtonElement | null) => {
+    buttonRef.current = element || undefined;
+    if (!element) return;
+
+    // Set up effect to update DOM attributes when signals change
+    effect(() => {
+      const checked = checkedSignal();
+      const ariaChecked = checked === 'indeterminate' ? 'mixed' : checked ? 'true' : 'false';
+      const dataState = checked === 'indeterminate' ? 'indeterminate' : checked ? 'checked' : 'unchecked';
+
+      element.setAttribute('aria-checked', ariaChecked);
+      element.setAttribute('data-state', dataState);
+
+      if (required()) {
+        element.setAttribute('aria-required', 'true');
+      } else {
+        element.removeAttribute('aria-required');
+      }
+
+      if (disabled()) {
+        element.setAttribute('data-disabled', '');
+        element.setAttribute('disabled', '');
+      } else {
+        element.removeAttribute('data-disabled');
+        element.removeAttribute('disabled');
+      }
+    });
   };
 
-  const getDataState = () => {
-    const checked = checkedSignal();
-    if (checked === 'indeterminate') return 'indeterminate';
-    return checked ? 'checked' : 'unchecked';
+  // Set up ref callback for hidden input
+  const hiddenInputRefCallback = (element: HTMLInputElement | null) => {
+    hiddenInputRef.current = element || undefined;
+    if (!element) return;
+
+    // Set up effect to update hidden input checked state
+    effect(() => {
+      const checked = checkedSignal();
+      element.checked = checked === true;
+    });
   };
 
   return () =>
@@ -176,12 +218,13 @@ export const Checkbox = defineComponent<CheckboxProps>((props) => {
       value: contextValue,
       children: jsx('button', {
         ...props,
+        ref: buttonRefCallback,
         id: checkboxId,
         type: 'button',
         role: 'checkbox',
-        'aria-checked': getAriaChecked(),
-        'aria-required': props.required ? 'true' : undefined,
-        'data-state': getDataState(),
+        'aria-checked': checkedSignal() === 'indeterminate' ? 'mixed' : checkedSignal() ? 'true' : 'false',
+        'aria-required': required() ? 'true' : undefined,
+        'data-state': checkedSignal() === 'indeterminate' ? 'indeterminate' : checkedSignal() ? 'checked' : 'unchecked',
         'data-disabled': disabled() ? '' : undefined,
         disabled: disabled(),
         onClick: handleClick,
@@ -190,11 +233,12 @@ export const Checkbox = defineComponent<CheckboxProps>((props) => {
           // Hidden input for form integration
           props.name
             ? jsx('input', {
+                ref: hiddenInputRefCallback,
                 type: 'checkbox',
                 name: props.name,
                 value: props.value || 'on',
                 checked: checkedSignal() === true,
-                required: props.required,
+                required: required(),
                 disabled: disabled(),
                 'aria-hidden': 'true',
                 tabIndex: -1,
@@ -231,17 +275,71 @@ export const Checkbox = defineComponent<CheckboxProps>((props) => {
 export const CheckboxIndicator = defineComponent<CheckboxIndicatorProps>((props) => {
   const checkbox = useContext(CheckboxContext);
 
+  // Create ref for the indicator span
+  const indicatorRef = createRef<HTMLSpanElement>();
+
+  // Set up ref callback
+  const refCallback = (element: HTMLSpanElement | null) => {
+    indicatorRef.current = element || undefined;
+    if (!element) return;
+
+    // Find the parent checkbox button
+    let checkboxElement: HTMLElement | null = element.parentElement;
+    while (checkboxElement && checkboxElement.getAttribute('role') !== 'checkbox') {
+      checkboxElement = checkboxElement.parentElement;
+    }
+
+    if (!checkboxElement) {
+      // Parent not found yet, try again after microtask
+      queueMicrotask(() => refCallback(element));
+      return;
+    }
+
+    // Set up function to update indicator based on checkbox state
+    const updateFromCheckbox = () => {
+      if (!checkboxElement) return;
+
+      const ariaChecked = checkboxElement.getAttribute('aria-checked');
+      const checked = ariaChecked === 'true' ? true : ariaChecked === 'mixed' ? 'indeterminate' : false;
+      const shouldShow = checked === true || checked === 'indeterminate';
+
+      // Update data-state
+      const dataState = checked === 'indeterminate' ? 'indeterminate' : checked ? 'checked' : 'unchecked';
+      element.setAttribute('data-state', dataState);
+
+      // Control visibility
+      if (!props.forceMount) {
+        element.style.display = shouldShow ? '' : 'none';
+      }
+    };
+
+    // Set initial state
+    updateFromCheckbox();
+
+    // Watch for checkbox state changes
+    const observer = new MutationObserver(updateFromCheckbox);
+    observer.observe(checkboxElement, {
+      attributes: true,
+      attributeFilter: ['aria-checked'],
+    });
+  };
+
   return () => {
     const checked = checkbox.checked();
     const shouldRender = checked === true || checked === 'indeterminate';
 
-    if (!shouldRender && !props.forceMount) {
-      return null;
-    }
+    const dataState = checked === 'indeterminate' ? 'indeterminate' : checked ? 'checked' : 'unchecked';
 
+    // Always render the span, but control visibility with display style
+    // This ensures the element exists in the DOM and can be updated reactively
     return jsx('span', {
       ...props,
-      'data-state': checked === 'indeterminate' ? 'indeterminate' : checked ? 'checked' : 'unchecked',
+      ref: refCallback,
+      'data-state': dataState,
+      style: {
+        ...((props.style as any) || {}),
+        display: (shouldRender || props.forceMount) ? ((props.style as any)?.display || '') : 'none',
+      },
     });
   };
 });
@@ -250,5 +348,5 @@ export const CheckboxIndicator = defineComponent<CheckboxIndicatorProps>((props)
 // Export sub-components for convenience
 // ============================================================================
 
-// Note: Compound component pattern (Checkbox.Indicator)
-// is set up in the index.ts exports
+// Attach sub-component to Checkbox
+(Checkbox as any).Indicator = CheckboxIndicator;

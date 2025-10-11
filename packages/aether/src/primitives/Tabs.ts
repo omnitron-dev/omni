@@ -190,8 +190,7 @@ export interface TabsListProps {
 /**
  * Tabs list component - container for triggers
  */
-export const TabsList = defineComponent<TabsListProps>((props) => {
-  return () => {
+export const TabsList = defineComponent<TabsListProps>((props) => () => {
     // Access context in render so parent context is available
     const ctx = useContext(TabsContext);
     const { children, ...restProps } = props;
@@ -248,8 +247,7 @@ export const TabsList = defineComponent<TabsListProps>((props) => {
     });
 
     return list;
-  };
-});
+  });
 
 /**
  * Tabs trigger props
@@ -279,8 +277,7 @@ export interface TabsTriggerProps {
 /**
  * Tabs trigger component - tab button
  */
-export const TabsTrigger = defineComponent<TabsTriggerProps>((props) => {
-  return () => {
+export const TabsTrigger = defineComponent<TabsTriggerProps>((props) => () => {
     // Access context in render, not setup, so parent context is available
     const ctx = useContext(TabsContext);
     const { value, disabled, children, ...restProps } = props;
@@ -337,8 +334,7 @@ export const TabsTrigger = defineComponent<TabsTriggerProps>((props) => {
     });
 
     return button;
-  };
-});
+  });
 
 /**
  * Tabs content props
@@ -393,8 +389,7 @@ export interface TabsContentProps {
  * }
  * ```
  */
-export const TabsContent = defineComponent<TabsContentProps>((props) => {
-  return () => {
+export const TabsContent = defineComponent<TabsContentProps>((props) => () => {
     // Access context in render so parent context is available
     const ctx = useContext(TabsContext);
     const { value, forceMount, children, ...restProps } = props;
@@ -440,8 +435,7 @@ export const TabsContent = defineComponent<TabsContentProps>((props) => {
     });
 
     return panel;
-  };
-});
+  });
 
 // Attach sub-components to Tabs
 (Tabs as any).List = TabsList;

@@ -387,8 +387,7 @@ export interface AccordionTriggerProps {
 /**
  * Accordion trigger component - expand/collapse button
  */
-export const AccordionTrigger = defineComponent<AccordionTriggerProps>((props) => {
-  return () => {
+export const AccordionTrigger = defineComponent<AccordionTriggerProps>((props) => () => {
     // Access context in render
     const ctx = useContext(AccordionContext);
     const itemCtx = useContext(AccordionItemContext);
@@ -485,8 +484,7 @@ export const AccordionTrigger = defineComponent<AccordionTriggerProps>((props) =
     });
 
     return button;
-  };
-});
+  });
 
 /**
  * Accordion content props

@@ -124,9 +124,7 @@ const RangeSliderContext = createContext<RangeSliderContextValue>({
   getValueFromPercentage: (percentage) => globalRangeSliderContextSignal()?.getValueFromPercentage(percentage) ?? 0,
 }, 'RangeSlider');
 
-const useRangeSliderContext = (): RangeSliderContextValue => {
-  return useContext(RangeSliderContext);
-};
+const useRangeSliderContext = (): RangeSliderContextValue => useContext(RangeSliderContext);
 
 // ============================================================================
 // Helper Functions
@@ -223,8 +221,7 @@ export const RangeSlider = defineComponent<RangeSliderProps>((props) => {
 // RangeSlider Track
 // ============================================================================
 
-export const RangeSliderTrack = defineComponent<RangeSliderTrackProps>((props) => {
-  return () => {
+export const RangeSliderTrack = defineComponent<RangeSliderTrackProps>((props) => () => {
     // ✅ CORRECT: Access context in render phase
     const context = useRangeSliderContext();
     const { children, ...rest } = props;
@@ -236,15 +233,13 @@ export const RangeSliderTrack = defineComponent<RangeSliderTrackProps>((props) =
       ...rest,
       children,
     });
-  };
-});
+  });
 
 // ============================================================================
 // RangeSlider Range
 // ============================================================================
 
-export const RangeSliderRange = defineComponent<RangeSliderRangeProps>((props) => {
-  return () => {
+export const RangeSliderRange = defineComponent<RangeSliderRangeProps>((props) => () => {
     // ✅ CORRECT: Access context in render phase
     const context = useRangeSliderContext();
     const { children, ...rest } = props;
@@ -283,8 +278,7 @@ export const RangeSliderRange = defineComponent<RangeSliderRangeProps>((props) =
     });
 
     return div;
-  };
-});
+  });
 
 // ============================================================================
 // RangeSlider Thumb

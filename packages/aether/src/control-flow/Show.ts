@@ -69,8 +69,7 @@ function evaluateCondition(when: any | (() => any)): boolean {
  * </Show>
  * ```
  */
-export const Show = defineComponent<ShowProps>((props) => {
-  return () => {
+export const Show = defineComponent<ShowProps>((props) => () => {
     // Always create containers for both children and fallback
     const contentWrapper = jsx('div', {
       'data-show-content': '',
@@ -144,5 +143,4 @@ export const Show = defineComponent<ShowProps>((props) => {
     });
 
     return container;
-  };
-});
+  });

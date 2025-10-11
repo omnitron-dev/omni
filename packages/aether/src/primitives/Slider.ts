@@ -362,8 +362,7 @@ export const SliderTrack = defineComponent<{ children?: any; [key: string]: any 
 /**
  * Slider Range component (filled portion)
  */
-export const SliderRange = defineComponent<{ children?: any; [key: string]: any }>((props) => {
-  return () => {
+export const SliderRange = defineComponent<{ children?: any; [key: string]: any }>((props) => () => {
     // ✅ CORRECT: Access context in render phase
     const slider = useContext(SliderContext);
 
@@ -406,8 +405,7 @@ export const SliderRange = defineComponent<{ children?: any; [key: string]: any 
     });
 
     return div;
-  };
-});
+  });
 
 /**
  * Slider Thumb component

@@ -181,12 +181,10 @@ export interface DialogPortalProps {
  * Dialog portal component
  * Renders children into a different part of the DOM
  */
-export const DialogPortal = defineComponent<DialogPortalProps>((props) => {
-  return () => jsx(Portal, {
+export const DialogPortal = defineComponent<DialogPortalProps>((props) => () => jsx(Portal, {
     target: props.container,
     children: props.children,
-  });
-});
+  }));
 
 /**
  * Dialog overlay props

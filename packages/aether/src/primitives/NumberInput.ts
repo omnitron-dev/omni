@@ -163,10 +163,10 @@ const NumberInputContext = createContext<NumberInputContextValue>({
   },
 }, 'NumberInput');
 
-const useNumberInputContext = (): NumberInputContextValue => {
+const useNumberInputContext = (): NumberInputContextValue => 
   // Simply return the context - it delegates to global signal via getters
-  return useContext(NumberInputContext);
-};
+   useContext(NumberInputContext)
+;
 
 // ============================================================================
 // Helper Functions
@@ -321,8 +321,7 @@ export const NumberInput = defineComponent<NumberInputProps>((props) => {
 // NumberInput Field
 // ============================================================================
 
-export const NumberInputField = defineComponent<NumberInputFieldProps>((props) => {
-  return () => {
+export const NumberInputField = defineComponent<NumberInputFieldProps>((props) => () => {
     // Access context in render phase
     const context = useNumberInputContext();
 
@@ -426,15 +425,13 @@ export const NumberInputField = defineComponent<NumberInputFieldProps>((props) =
     });
 
     return input;
-  };
-});
+  });
 
 // ============================================================================
 // NumberInput Increment
 // ============================================================================
 
-export const NumberInputIncrement = defineComponent<NumberInputIncrementProps>((props) => {
-  return () => {
+export const NumberInputIncrement = defineComponent<NumberInputIncrementProps>((props) => () => {
     // Access context in render phase
     const context = useNumberInputContext();
 
@@ -461,15 +458,13 @@ export const NumberInputIncrement = defineComponent<NumberInputIncrementProps>((
     });
 
     return button;
-  };
-});
+  });
 
 // ============================================================================
 // NumberInput Decrement
 // ============================================================================
 
-export const NumberInputDecrement = defineComponent<NumberInputDecrementProps>((props) => {
-  return () => {
+export const NumberInputDecrement = defineComponent<NumberInputDecrementProps>((props) => () => {
     // Access context in render phase
     const context = useNumberInputContext();
 
@@ -496,8 +491,7 @@ export const NumberInputDecrement = defineComponent<NumberInputDecrementProps>((
     });
 
     return button;
-  };
-});
+  });
 
 // ============================================================================
 // Attach sub-components

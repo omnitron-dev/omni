@@ -16,6 +16,7 @@ import { defineComponent } from '../core/component/index.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
 import type { WritableSignal } from '../core/reactivity/types.js';
 import { signal } from '../core/reactivity/index.js';
+import { effect } from '../core/reactivity/effect.js';
 import { onMount } from '../core/component/lifecycle.js';
 import { jsx } from '../jsx-runtime.js';
 
@@ -109,7 +110,13 @@ const PinInputContext = createContext<PinInputContextValue>({
 }, 'PinInput');
 
 const usePinInputContext = (): PinInputContextValue => {
-  return useContext(PinInputContext);
+  const context = useContext(PinInputContext);
+
+  // TODO: Add proper error checking that doesn't break due to timing issues
+  // The error should be thrown when PinInput.Input is used outside PinInput,
+  // but the current check triggers false positives due to setup/render timing
+
+  return context;
 };
 
 // ============================================================================
@@ -125,6 +132,12 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
   const internalValue: WritableSignal<string[]> = signal<string[]>(
     Array(length).fill(''),
   );
+
+  // Working values for optimistic updates in controlled mode
+  const workingValues: WritableSignal<string[] | null> = signal<string[] | null>(null);
+
+  // Track last prop value to detect changes
+  let lastPropValue: string | undefined = undefined;
 
   // Input elements registry
   const inputs = new Map<number, HTMLInputElement>();
@@ -145,7 +158,21 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
   });
 
   // currentValues now directly reads from props each time
+  // In controlled mode, merges prop value with optimistic updates
   const currentValues = (): string[] => {
+    // Check if prop value changed - if so, clear working values (prop update wins)
+    if (props.value !== lastPropValue) {
+      lastPropValue = props.value;
+      workingValues.set(null);
+    }
+
+    // If we have pending changes (optimistic update), use them
+    const working = workingValues();
+    if (working !== null) {
+      return working;
+    }
+
+    // Otherwise use prop or internal value
     if (props.value !== undefined) {
       return parseValue(props.value);
     }
@@ -180,14 +207,22 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
     if (index < 0 || index >= length) return;
 
     const newChar = value.slice(-1); // Take last character
-    if (!newChar || !isValidChar(newChar)) return;
+
+    // Allow empty string for clearing, but validate non-empty values
+    if (newChar && !isValidChar(newChar)) return;
 
     const newValues = [...currentValues()];
     newValues[index] = newChar;
+
+    // In controlled mode, set as working values for optimistic update
+    if (props.value !== undefined) {
+      workingValues.set(newValues);
+    }
+
     setValues(newValues);
 
-    // Auto-advance to next input
-    if (index < length - 1) {
+    // Auto-advance to next input only if value is not empty
+    if (newChar && index < length - 1) {
       focusInput(index + 1);
     }
   };
@@ -286,21 +321,6 @@ export const PinInputInput = defineComponent<PinInputInputProps>((props) => {
   return () => {
     // Access context in render phase
     const context = usePinInputContext();
-    const values = context.values();
-    const value = values[index] ?? '';
-
-    // Register input on first render, unregister on cleanup
-    if (inputRef.current && !hasRegistered) {
-      hasRegistered = true;
-      context.registerInput(index, inputRef.current);
-
-      // Schedule cleanup
-      onMount(() => {
-        return () => {
-          context.unregisterInput(index);
-        };
-      });
-    }
 
     const handleInput = (e: Event) => {
       const target = e.target as HTMLInputElement;
@@ -308,8 +328,8 @@ export const PinInputInput = defineComponent<PinInputInputProps>((props) => {
 
       if (value) {
         context.setValue(index, value);
-        // Clear input to allow re-entry
-        target.value = '';
+        // Note: Don't clear the input here - the effect will update it to the stored value
+        // The browser handles replacing characters automatically due to maxLength=1
       }
     };
 
@@ -349,17 +369,18 @@ export const PinInputInput = defineComponent<PinInputInputProps>((props) => {
       target.select();
     };
 
-    return jsx('input', {
+    // Create input with initial values
+    const input = jsx('input', {
       ref: inputRef,
       type: context.mask ? 'password' : 'text',
       inputMode: context.type === 'numeric' ? 'numeric' : 'text',
       pattern: context.type === 'numeric' ? '[0-9]*' : undefined,
       placeholder: context.placeholder,
-      value,
+      value: context.values()[index] ?? '',
       disabled: context.disabled,
       'data-pin-input-field': '',
       'data-index': index,
-      'data-complete': value !== '' ? '' : undefined,
+      'data-complete': (context.values()[index] ?? '') !== '' ? '' : undefined,
       maxLength: 1,
       autoComplete: 'off',
       'aria-label': `PIN digit ${index + 1}`,
@@ -368,7 +389,61 @@ export const PinInputInput = defineComponent<PinInputInputProps>((props) => {
       onPaste: handlePaste,
       onFocus: handleFocus,
       ...rest,
+    }) as HTMLInputElement;
+
+    // Register input on first render, unregister on cleanup
+    if (inputRef.current && !hasRegistered) {
+      hasRegistered = true;
+      context.registerInput(index, inputRef.current);
+
+      // Schedule cleanup
+      onMount(() => () => {
+          context.unregisterInput(index);
+        });
+    }
+
+    // Set up reactive effect to update context-dependent attributes
+    // CRITICAL: This ensures attributes update when parent context changes
+    // Children are rendered before parent sets context, so effect handles updates
+    effect(() => {
+      // Update type (text vs password)
+      input.type = context.mask ? 'password' : 'text';
+
+      // Update inputMode
+      input.inputMode = context.type === 'numeric' ? 'numeric' : 'text';
+
+      // Update pattern attribute
+      if (context.type === 'numeric') {
+        input.setAttribute('pattern', '[0-9]*');
+      } else {
+        input.removeAttribute('pattern');
+      }
+
+      // Update placeholder
+      input.placeholder = context.placeholder;
+
+      // Update disabled state
+      input.disabled = context.disabled;
     });
+
+    // Separate effect for value updates - only update when context changes
+    // This handles defaultValue and controlled mode updates
+    effect(() => {
+      const values = context.values();
+      const value = values[index] ?? '';
+
+      // Update visual value
+      input.value = value;
+
+      // Update data-complete attribute
+      if (value !== '') {
+        input.setAttribute('data-complete', '');
+      } else {
+        input.removeAttribute('data-complete');
+      }
+    });
+
+    return input;
   };
 });
 

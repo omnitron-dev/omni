@@ -1,4 +1,5 @@
-import { SmartBuffer } from '@omnitron-dev/smartbuffer';
+import { SmartBuffer } from '@omnitron-dev/msgpack/smart-buffer';
+import { Buffer } from 'buffer';
 
 import { Packet } from './packet.js';
 import { serializer } from './serializer.js';
@@ -119,7 +120,9 @@ export const encodePacket = (packet: Packet): Uint8Array => {
  * const packet = decodePacket(receivedBuffer);
  */
 export const decodePacket = (buf: Uint8Array | ArrayBuffer): Packet => {
-  const buffer = SmartBuffer.wrap(buf);
+  // Convert to Buffer for SmartBuffer.wrap
+  const bufferInput = buf instanceof Uint8Array ? Buffer.from(buf) : buf;
+  const buffer = SmartBuffer.wrap(bufferInput);
 
   const pkt = new Packet(buffer.readUInt32BE());
   pkt.flags = buffer.readUInt8()!;

@@ -27,8 +27,7 @@ export default defineConfig({
   external: [
     '@omnitron-dev/common',
     '@omnitron-dev/eventemitter',
-    '@omnitron-dev/messagepack',
-    '@omnitron-dev/smartbuffer'
+    '@omnitron-dev/msgpack'
   ],
   // Ensure browser-compatible code
   esbuildOptions(options) {

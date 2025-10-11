@@ -108,8 +108,7 @@
   "dependencies": {
     "@omnitron-dev/common": "workspace:*",
     "@omnitron-dev/eventemitter": "workspace:*",
-    "@omnitron-dev/messagepack": "workspace:*",
-    "@omnitron-dev/smartbuffer": "workspace:*"
+    "@omnitron-dev/msgpack": "workspace:*"
   },
   "sideEffects": false
 }

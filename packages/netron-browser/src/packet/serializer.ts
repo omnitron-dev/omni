@@ -1,5 +1,5 @@
-import { SmartBuffer } from '@omnitron-dev/smartbuffer';
-import { Serializer, registerCommonTypesFor } from '@omnitron-dev/messagepack';
+import { SmartBuffer } from '@omnitron-dev/msgpack/smart-buffer';
+import { Serializer, registerCommonTypesFor } from '@omnitron-dev/msgpack';
 
 import { Reference } from '../core/reference.js';
 import { Definition } from '../core/definition.js';

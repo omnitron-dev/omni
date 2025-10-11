@@ -6,6 +6,7 @@ Components for modal and popup interactions with focus management and ARIA suppo
 
 - **[Dialog.md](./Dialog.md)** - Modal dialogs with backdrop and focus trapping
 - **[Popover.md](./Popover.md)** - Floating content containers with positioning
+- **[HoverCard.md](./HoverCard.md)** - Rich preview cards on hover with delays
 - **[DropdownMenu.md](./DropdownMenu.md)** - Contextual dropdown menus with keyboard navigation
 - **[AlertDialog.md](./AlertDialog.md)** - Critical action confirmations
 - **[Sheet.md](./Sheet.md)** - Side panels and drawers from screen edges

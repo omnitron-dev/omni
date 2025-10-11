@@ -263,15 +263,34 @@ export const Slider = defineComponent<SliderProps>((props) => {
     getPercentage,
   };
 
+  // Extract component-specific props to avoid spreading them onto DOM
+  const {
+    children,
+    value: _value,
+    defaultValue: _defaultValue,
+    onValueChange: _onValueChange,
+    onValueCommit: _onValueCommit,
+    min: _min,
+    max: _max,
+    step: _step,
+    minStepsBetweenThumbs: _minStepsBetweenThumbs,
+    orientation: _orientation,
+    disabled: _disabled,
+    inverted: _inverted,
+    id: _id,
+    ...restProps
+  } = props;
+
   return () =>
     jsx(SliderContext.Provider, {
       value: contextValue,
       children: jsx('div', {
-        ...props,
+        ...restProps,
         id: sliderId,
         role: 'group',
         'data-orientation': orientation(),
         'data-disabled': disabled() ? '' : undefined,
+        children,
       }),
     });
 });
@@ -461,9 +480,16 @@ export const SliderThumb = defineComponent<SliderThumbProps>((props) => {
     slider.setThumbValue(thumbIndex, value(), true);
   };
 
+  // Extract component-specific props to avoid spreading them onto DOM
+  const {
+    children,
+    index: _index,
+    ...restProps
+  } = props;
+
   return () =>
     jsx('div', {
-      ...props,
+      ...restProps,
       role: 'slider',
       'aria-valuemin': slider.min,
       'aria-valuemax': slider.max,
@@ -478,5 +504,11 @@ export const SliderThumb = defineComponent<SliderThumbProps>((props) => {
       onPointerDown: handlePointerDown,
       onPointerMove: handlePointerMove,
       onPointerUp: handlePointerUp,
+      children,
     });
 });
+
+// Export sub-components
+(Slider as any).Track = SliderTrack;
+(Slider as any).Range = SliderRange;
+(Slider as any).Thumb = SliderThumb;

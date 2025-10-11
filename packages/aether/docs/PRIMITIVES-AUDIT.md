@@ -1,6 +1,6 @@
 # AETHER PRIMITIVES - AUDIT REPORT
 
-**Last Updated:** October 11, 2025 (Session 9)
+**Last Updated:** October 11, 2025 (Session 10)
 **Specification:** 13-PRIMITIVES/README.md (modular structure, 18,479 lines across 95 files)
 **Implementation:** packages/aether/src/primitives/ (82 files, ~520 KB code)
 
@@ -15,38 +15,25 @@
 - ✅ **Exports:** 82/82 primitives (100%)
 - ✅ **Documentation:** 82/82 primitives (100%) 🎉
 - ⚠️ **Tests:** 15/82 primitives (18.3%)
-- ✅ **Passing Tests:** 1680/1796 (93.5%) - stable ✅ **Excellent!**
+- ✅ **Passing Tests:** 1774/1893 (93.7%) - improving ✅ **Excellent!**
 
-### Session 9 Progress - Quality & Documentation! 📚
+### Session 10 Progress - NumberInput Root Cause Fixed! 🔬
 
-**RangeSlider: PERFECT!** (65/66 → 66/66 tests, 100% pass rate)
-- Fixed decimal precision test (toBeCloseTo for floating-point)
-- **🎉 100% tests passing!**
-- Complete validation of Slider pattern
-
-**Tabs: FIXED!** (6/11 → 9/11 tests, 82% pass rate)
-- Applied display toggle pattern (visibility via effect())
-- Documented framework limitation (no component re-rendering)
-- Created comprehensive pattern guide
-- 2 remaining failures: keyboard navigation (happy-dom limitation)
-
-**Accordion: FULLY INVESTIGATED**
-- Confirmed: Fundamental JSX architectural limitation
-- Root cause: Eager child evaluation before parent setup
-- Created detailed analysis document
-- Recommended solution: Lazy children evaluation in JSX runtime
-
-**NumberInput: ATTEMPTED FIXES** (41/97 → 36/97 tests, 37%)
-- Applied component logic fixes (clamping, formatting)
-- Identified: Context Provider not working in test environment
-- Issue persists: Children receive default context instead of Provider's context
-- Requires deeper investigation of test infrastructure
+**NumberInput: MAJOR BREAKTHROUGH!** (36/97 → 94/97 tests, 96.9% pass rate)
+- **Root Cause Discovered:** Context timing issue - children evaluate before parent sets context
+- **Investigation:** Created test-timing.js to prove eager JSX evaluation order
+- **Fix Applied:** Two-part solution matching RangeSlider pattern:
+  1. **Getter Pattern:** Context defaults delegate to global signal via getters
+  2. **Effect Pattern:** Reactive DOM updates via `effect()` for attributes
+- **Test Progression:** 36/97 (37%) → 80/97 (82%) → 94/97 (96.9%)
+- **Remaining 3 Failures:** Framework limitation (controlled mode - components don't re-render)
+- **Status:** ✅ **Essentially Complete** - 96.9% pass rate achieved
 
 **Overall:**
-- Pass rate: 93.5% (stable, excellent)
-- Framework limitations: Documented with workarounds
-- TypeScript: All compilation errors fixed ✅
-- Created comprehensive documentation for patterns
+- Pass rate: 93.7% (up from 93.5%)
+- NumberInput +58 tests passing (+59.9 percentage points)
+- TypeScript: Clean compilation ✅
+- Pattern validated: Getter + Effect approach works consistently
 
 ### Previous Session 8 Summary
 
@@ -79,11 +66,11 @@
 
 ## 🚨 ACTIVE CRITICAL ISSUES
 
-### P1 - Context Timing & Quality (Status: Major Progress)
+### P1 - Context Timing & Quality (Status: Near Complete)
 
 1. ✅ **RangeSlider** (66/66, 100%) - PERFECT! Fully complete ✨
 2. ✅ **Tabs** (9/11, 82%) - FIXED! Display toggle pattern applied
-3. ⚠️ **NumberInput** (36/97, 37%) - Context Provider test infrastructure issue
+3. ✅ **NumberInput** (94/97, 96.9%) - FIXED! Getter + Effect pattern applied ✨
 4. ⚠️ **PinInput** (44/73, 60.3%) - Props reactivity limitation
 5. ❌ **Accordion** (1/11, 9%) - Documented architectural limitation (JSX eager evaluation)
 
@@ -105,6 +92,13 @@ export const SubComponent = defineComponent((props) => {
 ```
 
 **Pattern Validated:** RangeSlider (100%) and Slider (97.4%) prove the global signal pattern works perfectly
+
+**Key Learnings (Session 10):**
+1. **Context Timing Root Cause:** Children evaluate before parent sets context (eager JSX evaluation)
+2. **Getter Pattern Solution:** Context defaults must delegate to global signal via JavaScript getters
+3. **Effect Pattern Solution:** Use `effect()` to reactively update DOM attributes after initial render
+4. **Investigation Value:** Created test-timing.js to prove evaluation order and guide fix
+5. **Framework Limitation:** Controlled mode doesn't work (components don't re-render on signal changes)
 
 **Key Learnings (Session 9):**
 1. **Display Toggle Pattern:** Components must always render, toggle visibility via `effect()`
@@ -152,9 +146,9 @@ export const SubComponent = defineComponent((props) => {
 
 ### Partial Coverage (4 primitives)
 
-1. ✅ **Tabs: 9/11** (82%) **Session 9 Fixed!** ⬆️ +3 tests, framework pattern documented
-2. ⚠️ **PinInput: 44/73** (60.3%) - Props reactivity limitation
-3. ⚠️ **NumberInput: 36/97** (37%) - Test infrastructure issue
+1. ✅ **NumberInput: 94/97** (96.9%) **Session 10 BREAKTHROUGH!** ⬆️ +58 tests, getter + effect pattern applied
+2. ✅ **Tabs: 9/11** (82%) **Session 9 Fixed!** framework pattern documented
+3. ⚠️ **PinInput: 44/73** (60.3%) - Props reactivity limitation (next priority)
 4. ❌ **Accordion: 1/11** (9%) - Architectural limitation documented
 
 ### Without Tests (67 primitives, 81.7%)
@@ -211,18 +205,21 @@ export const SubComponent = defineComponent((props) => {
 
 2. ✅ **COMPLETED: Tabs** - 9/11 (82%) - Fixed with display toggle pattern
 
-3. **Investigate NumberInput test infrastructure** (2-3 hours)
-   - Context Provider not working in tests (receives default context)
-   - May need test utility improvements
-   - Or investigate renderComponent() implementation
-   - Priority: P1 - affects test reliability
+3. ✅ **COMPLETED: NumberInput** - 94/97 (96.9%) - Fixed with getter + effect pattern
 
-4. **Apply Tabs pattern to other primitives** (2-4 hours)
-   - Dialog, Popover, Sheet, Drawer likely have same issue
-   - Apply display toggle pattern + effect() for visibility
-   - Priority: P2 - prevents future issues
+4. **Apply NumberInput pattern to PinInput** (1-2 hours)
+   - Apply getter pattern to context defaults
+   - Apply effect pattern to reactive DOM updates
+   - Should improve from 44/73 (60.3%) to ~90%+
+   - Priority: P1 - validates pattern consistency
 
-**Expected Results:** All context primitives working correctly
+5. **Document remaining test failures** (1 hour)
+   - NumberInput: 3 controlled mode failures (framework limitation)
+   - Tabs: 2 keyboard navigation failures (happy-dom limitation)
+   - Create framework limitation reference guide
+   - Priority: P2 - prevents confusion
+
+**Expected Results:** PinInput fixed, all patterns documented
 
 ### Short Term (1-2 weeks) - P2
 
@@ -254,6 +251,14 @@ export const SubComponent = defineComponent((props) => {
 
 ## 🔑 KEY LEARNINGS
 
+**Session 10:**
+1. **Context Timing Root Cause:** Children are evaluated before parent sets context due to eager JSX evaluation
+2. **Getter Pattern is Critical:** Context defaults MUST delegate to global signal using JavaScript getters
+3. **Effect Pattern for Reactivity:** Use `effect()` to reactively update DOM attributes after initial render
+4. **Investigation Methodology:** Creating minimal reproduction tests (test-timing.js) proves root cause
+5. **Pattern Consistency:** Same getter + effect pattern works across all primitives (RangeSlider, NumberInput)
+6. **Controlled Mode Limitation:** Framework doesn't support component re-rendering on signal changes
+
 **Session 9:**
 1. **Display Toggle Pattern:** Always render elements, toggle visibility with `effect()` - never use conditional rendering
 2. **Floating-Point Precision:** Use `toBeCloseTo()` for decimal number comparisons in tests
@@ -270,7 +275,104 @@ export const SubComponent = defineComponent((props) => {
 
 ## 📚 REFERENCE
 
-### Critical Pattern - Context Access (From Slider Success)
+### Critical Pattern 1 - Context Defaults with Getter Pattern (Session 10)
+
+**❌ WRONG - Fixed default values:**
+```typescript
+const globalContextSignal = signal<ContextValue | null>(null);
+
+const MyContext = createContext<ContextValue>({
+  value: signal(0),           // ❌ Fixed signal, won't update
+  min: -Infinity,             // ❌ Fixed value
+  max: Infinity,              // ❌ Fixed value
+  disabled: false,            // ❌ Fixed value
+  someMethod: () => {},       // ❌ Won't access real context
+});
+```
+
+**✅ CORRECT - Getter pattern delegating to global signal:**
+```typescript
+const globalContextSignal = signal<ContextValue | null>(null);
+
+const MyContext = createContext<ContextValue>({
+  // Use computed() for reactive signals
+  value: computed(() => globalContextSignal()?.value() ?? 0),
+
+  // Use getters for primitive values
+  get min() {
+    return globalContextSignal()?.min ?? -Infinity;
+  },
+  get max() {
+    return globalContextSignal()?.max ?? Infinity;
+  },
+  get disabled() {
+    return globalContextSignal()?.disabled ?? false;
+  },
+
+  // Use arrow functions for methods
+  someMethod: () => globalContextSignal()?.someMethod(),
+}, 'MyContext');
+
+// In parent component setup - CRITICAL!
+const contextValue: ContextValue = { /* ... */ };
+globalContextSignal.set(contextValue); // Set IMMEDIATELY
+```
+
+**Why This Works:**
+1. Children evaluate before parent sets context
+2. Getters delegate to global signal, which IS set by parent
+3. When children access context properties, getters evaluate dynamically
+4. This creates a "late binding" that works with eager evaluation
+
+### Critical Pattern 2 - Reactive DOM Updates with Effect (Session 10)
+
+**❌ WRONG - Static initial values only:**
+```typescript
+export const SubComponent = defineComponent((props) => {
+  return () => {
+    const ctx = useContext(Context);
+
+    return jsx('input', {
+      value: ctx.value(),        // ❌ Only initial value, won't update
+      disabled: ctx.disabled,    // ❌ Only initial value
+      'aria-valuemin': ctx.min,  // ❌ Only initial value
+    });
+  };
+});
+```
+
+**✅ CORRECT - Effect for reactive updates:**
+```typescript
+export const SubComponent = defineComponent((props) => {
+  return () => {
+    const ctx = useContext(Context);
+
+    // Create element with initial values
+    const input = jsx('input', {
+      value: ctx.value(),
+      disabled: ctx.disabled,
+      'aria-valuemin': ctx.min,
+    }) as HTMLInputElement;
+
+    // Set up reactive effect to update when context changes
+    effect(() => {
+      input.value = String(ctx.value());
+      input.disabled = ctx.disabled;
+      input.setAttribute('aria-valuemin', String(ctx.min));
+    });
+
+    return input;
+  };
+});
+```
+
+**Why This Works:**
+1. JSX creates static DOM elements with initial values
+2. `effect()` creates reactive computation that reruns when signals change
+3. Effect directly updates DOM properties and attributes
+4. This is the ONLY way to get reactive updates in Aether (components don't re-render)
+
+### Critical Pattern 3 - Context Access in Render Phase (From Slider Success)
 
 **❌ WRONG - Access in setup phase:**
 ```typescript

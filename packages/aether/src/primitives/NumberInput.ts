@@ -17,6 +17,7 @@ import { defineComponent } from '../core/component/index.js';
 import { createContext, useContext } from '../core/component/context.js';
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
 import { signal, computed } from '../core/reactivity/index.js';
+import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 
 // ============================================================================
@@ -125,40 +126,46 @@ export function __resetNumberInputContext() {
 // Context
 // ============================================================================
 
-// Create a stable default value signal (used when no context is available)
-const defaultValueSignal = computed(() => 0);
-
-// Create context with default implementation that delegates to global signal
+// Create context with default implementation that delegates to global signal using getters
+// This pattern ensures children can access context even if they're evaluated before parent setup
+// EXACTLY matching RangeSlider pattern - all properties use getters that delegate to global signal
 const NumberInputContext = createContext<NumberInputContextValue>({
-  value: defaultValueSignal,
-  increment: () => {},
-  decrement: () => {},
-  setValue: () => {},
-  min: -Infinity,
-  max: Infinity,
-  step: 1,
-  disabled: false,
-  readonly: false,
-  canIncrement: () => false,
-  canDecrement: () => false,
-  formatValue: (value) => String(value),
-  parseValue: (_str) => 0,
-  inputRef: { current: null },
+  // Use computed() for reactive value that delegates to global signal
+  // Using same syntax as RangeSlider: ?.value() not ?.value?.()
+  value: computed(() => globalNumberInputContextSignal()?.value() ?? 0),
+  // Use arrow functions that delegate to global signal methods
+  increment: () => globalNumberInputContextSignal()?.increment(),
+  decrement: () => globalNumberInputContextSignal()?.decrement(),
+  setValue: (value) => globalNumberInputContextSignal()?.setValue(value),
+  // Use getters for all properties to delegate to global signal
+  get min() {
+    return globalNumberInputContextSignal()?.min ?? -Infinity;
+  },
+  get max() {
+    return globalNumberInputContextSignal()?.max ?? Infinity;
+  },
+  get step() {
+    return globalNumberInputContextSignal()?.step ?? 1;
+  },
+  get disabled() {
+    return globalNumberInputContextSignal()?.disabled ?? false;
+  },
+  get readonly() {
+    return globalNumberInputContextSignal()?.readonly ?? false;
+  },
+  canIncrement: () => globalNumberInputContextSignal()?.canIncrement() ?? false,
+  canDecrement: () => globalNumberInputContextSignal()?.canDecrement() ?? false,
+  formatValue: (value) =>
+    globalNumberInputContextSignal()?.formatValue(value) ?? String(value),
+  parseValue: (str) => globalNumberInputContextSignal()?.parseValue(str) ?? 0,
+  get inputRef() {
+    return globalNumberInputContextSignal()?.inputRef ?? { current: null };
+  },
 }, 'NumberInput');
 
 const useNumberInputContext = (): NumberInputContextValue => {
-  // Try to get context from Provider
-  const ctx = useContext(NumberInputContext);
-
-  // If we got the default context (check by comparing value signal), fall back to global signal
-  if (ctx.value === defaultValueSignal) {
-    const globalCtx = globalNumberInputContextSignal();
-    if (globalCtx) {
-      return globalCtx;
-    }
-  }
-
-  return ctx;
+  // Simply return the context - it delegates to global signal via getters
+  return useContext(NumberInputContext);
 };
 
 // ============================================================================
@@ -386,7 +393,8 @@ export const NumberInputField = defineComponent<NumberInputFieldProps>((props) =
 
     const { ...rest } = props;
 
-    return jsx('input', {
+    // Create input with initial values
+    const input = jsx('input', {
       ref: context.inputRef,
       type: 'text',
       inputMode: 'numeric',
@@ -402,7 +410,22 @@ export const NumberInputField = defineComponent<NumberInputFieldProps>((props) =
       onWheel: handleWheel,
       onBlur: handleBlur,
       ...rest,
+    }) as HTMLInputElement;
+
+    // Set up reactive effect to update all context-dependent attributes
+    // CRITICAL: This ensures attributes update when parent context changes
+    // Children are rendered before parent sets context, so effect handles updates
+    effect(() => {
+      const currentValue = context.value();
+      input.value = context.formatValue(currentValue);
+      input.disabled = context.disabled;
+      input.readOnly = context.readonly;
+      input.setAttribute('aria-valuemin', String(context.min));
+      input.setAttribute('aria-valuemax', String(context.max));
+      input.setAttribute('aria-valuenow', String(currentValue));
     });
+
+    return input;
   };
 });
 
@@ -421,7 +444,8 @@ export const NumberInputIncrement = defineComponent<NumberInputIncrementProps>((
 
     const { children = '▲', ...rest } = props;
 
-    return jsx('button', {
+    // Create button with initial state
+    const button = jsx('button', {
       type: 'button',
       'data-number-input-increment': '',
       onClick: handleClick,
@@ -429,7 +453,14 @@ export const NumberInputIncrement = defineComponent<NumberInputIncrementProps>((
       'aria-label': 'Increment',
       ...rest,
       children,
+    }) as HTMLButtonElement;
+
+    // Set up reactive effect to update disabled state
+    effect(() => {
+      button.disabled = context.disabled || context.readonly || !context.canIncrement();
     });
+
+    return button;
   };
 });
 
@@ -448,7 +479,8 @@ export const NumberInputDecrement = defineComponent<NumberInputDecrementProps>((
 
     const { children = '▼', ...rest } = props;
 
-    return jsx('button', {
+    // Create button with initial state
+    const button = jsx('button', {
       type: 'button',
       'data-number-input-decrement': '',
       onClick: handleClick,
@@ -456,7 +488,14 @@ export const NumberInputDecrement = defineComponent<NumberInputDecrementProps>((
       'aria-label': 'Decrement',
       ...rest,
       children,
+    }) as HTMLButtonElement;
+
+    // Set up reactive effect to update disabled state
+    effect(() => {
+      button.disabled = context.disabled || context.readonly || !context.canDecrement();
     });
+
+    return button;
   };
 });
 

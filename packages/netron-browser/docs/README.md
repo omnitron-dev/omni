@@ -217,7 +217,7 @@ See: [Testing Section](#testing)
 
 ### Related Packages
 - **[@omnitron-dev/titan](../../titan/README.md)** - Backend framework with Netron
-- **[@omnitron-dev/messagepack](../../messagepack/README.md)** - Serialization library
+- **[@omnitron-dev/msgpack](../../msgpack/README.md)** - Serialization library
 - **[@omnitron-dev/eventemitter](../../eventemitter/README.md)** - Event system
 - **[@omnitron-dev/smartbuffer](../../smartbuffer/README.md)** - Binary utilities
 

@@ -121,7 +121,7 @@ import type { NetronClientOptions } from '@omnitron-dev/netron-browser/types';
 ### Runtime Dependencies
 - `@omnitron-dev/common` (workspace:*)
 - `@omnitron-dev/eventemitter` (workspace:*)
-- `@omnitron-dev/messagepack` (workspace:*)
+- `@omnitron-dev/msgpack` (workspace:*)
 - `@omnitron-dev/smartbuffer` (workspace:*)
 
 ### Dev Dependencies

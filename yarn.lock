@@ -2418,8 +2418,7 @@ __metadata:
   dependencies:
     "@omnitron-dev/common": "workspace:*"
     "@omnitron-dev/eventemitter": "workspace:*"
-    "@omnitron-dev/messagepack": "workspace:*"
-    "@omnitron-dev/smartbuffer": "workspace:*"
+    "@omnitron-dev/msgpack": "workspace:*"
     "@omnitron-dev/titan": "workspace:*"
     "@playwright/test": "npm:^1.56.0"
     "@types/node": "npm:^24.7.0"

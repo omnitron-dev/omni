@@ -245,7 +245,7 @@ The package demonstrates complete protocol compatibility, robust error handling,
 - **Examples**: See test files for usage examples
 - **Related Packages**:
   - `@omnitron-dev/titan` - Backend framework
-  - `@omnitron-dev/messagepack` - Serialization
+  - `@omnitron-dev/msgpack` - Serialization
   - `@omnitron-dev/eventemitter` - Event system
 
 ---

@@ -377,7 +377,7 @@ MIT
 
 - `@omnitron-dev/titan` - Backend framework with integrated Netron RPC
 - `@omnitron-dev/aether` - Minimalist frontend framework with Netron integration
-- `@omnitron-dev/messagepack` - High-performance MessagePack serialization
+- `@omnitron-dev/msgpack` - High-performance MessagePack serialization
 - `@omnitron-dev/eventemitter` - Universal event emitter used internally
 
 ## Contributing

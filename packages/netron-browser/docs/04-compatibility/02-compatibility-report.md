@@ -185,7 +185,7 @@ TYPE_STREAM_CLOSE = 0x07 // ✅ Compatible
 
 #### Serialization
 - **Format**: MessagePack - ✅ Compatible
-- **Library**: `@omnitron-dev/messagepack` - ✅ Same library
+- **Library**: `@omnitron-dev/msgpack` - ✅ Same library
 - **Encoding**: Binary - ✅ Compatible
 - **Compression**: Optional - ✅ Compatible
 
@@ -696,7 +696,7 @@ It is suitable for production deployment in browser-based applications requiring
 
 ### Related Packages
 - `@omnitron-dev/titan` - Backend framework
-- `@omnitron-dev/messagepack` - Serialization library
+- `@omnitron-dev/msgpack` - Serialization library
 - `@omnitron-dev/eventemitter` - Event system
 - `@omnitron-dev/smartbuffer` - Binary utilities
 

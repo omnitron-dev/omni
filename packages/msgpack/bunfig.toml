@@ -1,4 +1,4 @@
-# Bun configuration for @omnitron-dev/messagepack
+# Bun configuration for @omnitron-dev/msgpack
 
 [test]
 # Use the same test patterns as Jest

@@ -290,7 +290,7 @@ packages/netron-browser/
 ✅ All dependencies are available in the monorepo:
 - @omnitron-dev/common
 - @omnitron-dev/eventemitter
-- @omnitron-dev/messagepack
+- @omnitron-dev/msgpack
 - @omnitron-dev/smartbuffer
 
 ### Potential Issues

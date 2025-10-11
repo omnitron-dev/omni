@@ -1,6 +1,6 @@
-# @omnitron-dev/messagepack
+# @omnitron-dev/msgpack
 
-[![npm version](https://img.shields.io/npm/v/@omnitron-dev/messagepack.svg)](https://www.npmjs.com/package/@omnitron-dev/messagepack)
+[![npm version](https://img.shields.io/npm/v/@omnitron-dev/msgpack.svg)](https://www.npmjs.com/package/@omnitron-dev/msgpack)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.3-blue)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org)
@@ -41,17 +41,17 @@ A high-performance MessagePack implementation for Node.js with TypeScript suppor
 ## Installation
 
 ```bash
-npm install @omnitron-dev/messagepack
+npm install @omnitron-dev/msgpack
 # or
-yarn add @omnitron-dev/messagepack
+yarn add @omnitron-dev/msgpack
 # or
-pnpm add @omnitron-dev/messagepack
+pnpm add @omnitron-dev/msgpack
 ```
 
 ## Quick Start
 
 ```typescript
-import { encode, decode } from '@omnitron-dev/messagepack';
+import { encode, decode } from '@omnitron-dev/msgpack';
 
 // Encode data
 const data = {
@@ -76,7 +76,7 @@ const decoded = decode(encoded);
 MessagePack efficiently encodes all basic JavaScript types:
 
 ```typescript
-import { encode, decode } from '@omnitron-dev/messagepack';
+import { encode, decode } from '@omnitron-dev/msgpack';
 
 // Numbers (integers and floats)
 const num1 = encode(42);           // Positive fixint
@@ -112,7 +112,7 @@ const bin2 = encode(new Uint8Array(1000));   // Bin16
 Built-in support for common JavaScript objects:
 
 ```typescript
-import { encode, decode } from '@omnitron-dev/messagepack';
+import { encode, decode } from '@omnitron-dev/msgpack';
 
 // Date objects
 const date = new Date('2024-01-01T00:00:00Z');
@@ -160,7 +160,7 @@ try {
 Register your own types for serialization:
 
 ```typescript
-import { Serializer } from '@omnitron-dev/messagepack';
+import { Serializer } from '@omnitron-dev/msgpack';
 
 // Define a custom class
 class User {
@@ -212,7 +212,7 @@ Handle large data streams efficiently:
 
 ```typescript
 import { SmartBuffer } from '@omnitron-dev/smartbuffer';
-import { serializer } from '@omnitron-dev/messagepack';
+import { serializer } from '@omnitron-dev/msgpack';
 
 // Streaming encoder
 class MessageStream {
@@ -352,7 +352,7 @@ Reserved type IDs for different purposes:
 Comprehensive error handling with stack traces:
 
 ```typescript
-import { encode, decode } from '@omnitron-dev/messagepack';
+import { encode, decode } from '@omnitron-dev/msgpack';
 
 // Serialize different error types
 const errors = {
@@ -380,7 +380,7 @@ console.log(decoded.custom.statusCode); // 400
 Handle nested and circular structures:
 
 ```typescript
-import { Serializer } from '@omnitron-dev/messagepack';
+import { Serializer } from '@omnitron-dev/msgpack';
 
 const serializer = new Serializer();
 
@@ -422,7 +422,7 @@ serializer.register(
 ### Performance Optimization
 
 ```typescript
-import { Serializer } from '@omnitron-dev/messagepack';
+import { Serializer } from '@omnitron-dev/msgpack';
 
 // Pre-allocate buffer for better performance
 const serializer = new Serializer(1024 * 1024); // 1MB initial capacity
@@ -458,7 +458,7 @@ class BatchEncoder {
 ### Custom Serializer Options
 
 ```typescript
-import { Serializer } from '@omnitron-dev/messagepack';
+import { Serializer } from '@omnitron-dev/msgpack';
 
 const serializer = new Serializer(
   65536 // Initial buffer capacity (64KB)
@@ -483,7 +483,7 @@ cacheSerializer.register(/* Cache-specific types */);
 Full TypeScript support with type inference:
 
 ```typescript
-import { encode, decode, Serializer } from '@omnitron-dev/messagepack';
+import { encode, decode, Serializer } from '@omnitron-dev/msgpack';
 
 // Type-safe encoding/decoding
 interface User {
@@ -633,7 +633,7 @@ function processData(data: MyClass) {
 ### 2. Error Handling
 
 ```typescript
-import { decode } from '@omnitron-dev/messagepack';
+import { decode } from '@omnitron-dev/msgpack';
 
 function safeDecodeDecoding(buffer: Buffer): any {
   try {
@@ -728,5 +728,5 @@ MIT © Omnitron
 ## Links
 
 - [GitHub Repository](https://github.com/omnitron-dev/omni/tree/main/packages/messagepack)
-- [npm Package](https://www.npmjs.com/package/@omnitron-dev/messagepack)
+- [npm Package](https://www.npmjs.com/package/@omnitron-dev/msgpack)
 - [MessagePack Specification](https://msgpack.org/)

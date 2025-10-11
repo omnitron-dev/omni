@@ -110,9 +110,7 @@ const ToggleGroupContext = createContext<ToggleGroupContextValue>(
   'ToggleGroup'
 );
 
-const useToggleGroupContext = (): ToggleGroupContextValue => {
-  return useContext(ToggleGroupContext);
-};
+const useToggleGroupContext = (): ToggleGroupContextValue => useContext(ToggleGroupContext);
 
 // ============================================================================
 // ToggleGroup Root

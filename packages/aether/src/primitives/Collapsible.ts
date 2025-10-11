@@ -127,7 +127,7 @@ export const Collapsible = defineComponent<CollapsibleProps>((props) => {
   const internalOpen = signal(props.defaultOpen || false);
   const isOpen =
     props.open !== undefined
-      ? () => (typeof props.open === 'function' ? props.open() : props.open!)
+      ? () => props.open!
       : internalOpen;
 
   const baseId = generateId('collapsible');

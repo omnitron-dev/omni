@@ -10,7 +10,6 @@
 import { defineComponent } from '../core/component/define.js';
 import { signal, type WritableSignal } from '../core/reactivity/signal.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
-import { createRef } from '../core/component/refs.js';
 import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 import { generateId } from './utils/index.js';

@@ -91,7 +91,6 @@ export const Show = defineComponent<ShowProps>((props) => () => {
 
     // Add content to wrappers
     if (props.children !== undefined) {
-      const initialCondition = evaluateCondition(props.when);
       const whenValue = typeof props.when === 'function' ? props.when() : props.when;
       const content = processChildren(whenValue);
 

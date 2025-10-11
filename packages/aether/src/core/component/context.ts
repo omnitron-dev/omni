@@ -5,7 +5,6 @@
  */
 
 import { getOwner } from '../reactivity/context.js';
-import { defineComponent } from './define.js';
 
 /**
  * Context object

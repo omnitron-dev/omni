@@ -245,8 +245,7 @@ export const Pagination = defineComponent<PaginationProps>((props) => {
  *
  * Renders page number buttons with ellipsis.
  */
-export const PaginationItems = defineComponent<PaginationItemsProps>((props) => {
-  return () => {
+export const PaginationItems = defineComponent<PaginationItemsProps>((props) => () => {
     // Get context at render time, after Provider is set up
     const ctx = useContext(PaginationContext);
 
@@ -323,8 +322,7 @@ export const PaginationItems = defineComponent<PaginationItemsProps>((props) => 
       'data-pagination-items': '',
       children: items,
     });
-  };
-});
+  });
 
 /**
  * Pagination Previous

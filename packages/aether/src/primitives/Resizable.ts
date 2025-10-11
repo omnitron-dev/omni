@@ -13,8 +13,6 @@ import { createContext, useContext, provideContext } from '../core/component/con
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
 import { signal, computed } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
-import { effect } from '../core/reactivity/effect.js';
-import { createRef } from '../core/component/refs.js';
 
 export type ResizableOrientation = 'horizontal' | 'vertical';
 

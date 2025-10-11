@@ -12,7 +12,7 @@
  */
 
 import { defineComponent } from '../core/component/index.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
 import { signal, computed } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
@@ -37,7 +37,7 @@ export interface TransferProps {
   /** Disabled */
   disabled?: boolean;
   /** Children */
-  children?: any;
+  children?: any | (() => any);
 }
 
 interface TransferContextValue {
@@ -119,11 +119,15 @@ export const Transfer = defineComponent<TransferProps>((props) => {
     toggleTargetSelection,
   };
 
-  return () =>
-    jsx(TransferContext.Provider, {
-      value: contextValue,
-      children: jsx('div', { 'data-transfer': '', children: props.children }),
-    });
+  // Provide context BEFORE return
+  provideContext(TransferContext, contextValue);
+
+  return () => {
+    // Support function children
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+
+    return jsx('div', { 'data-transfer': '', children });
+  };
 });
 
 export const TransferList = defineComponent<{ type: 'source' | 'target' }>((props) => {

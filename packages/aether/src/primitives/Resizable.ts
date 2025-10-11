@@ -9,7 +9,7 @@
  */
 
 import { defineComponent } from '../core/component/index.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
 import { signal, computed } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
@@ -21,7 +21,7 @@ export interface ResizableProps {
   onSizesChange?: (sizes: number[]) => void;
   defaultSizes?: number[];
   orientation?: ResizableOrientation;
-  children?: any;
+  children?: any | (() => any);
   [key: string]: any;
 }
 
@@ -69,15 +69,20 @@ export const Resizable = defineComponent<ResizableProps>((props) => {
     orientation,
   };
 
-  return () => jsx(ResizableContext.Provider, {
-    value: contextValue,
-    children: jsx('div', {
+  // Provide context BEFORE return
+  provideContext(ResizableContext, contextValue);
+
+  return () => {
+    // Support function children
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+
+    return jsx('div', {
       'data-resizable-container': '',
       'data-orientation': orientation,
       style: { display: 'flex', flexDirection: orientation === 'horizontal' ? 'row' : 'column', width: '100%', height: '100%' },
-      children: props.children,
-    }),
-  });
+      children,
+    });
+  };
 });
 
 let panelCounter = 0;

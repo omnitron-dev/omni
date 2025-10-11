@@ -117,7 +117,7 @@ export interface AccordionSingleProps {
   /**
    * Children
    */
-  children: any;
+  children: any | (() => any);
 
   /**
    * Additional props
@@ -163,7 +163,7 @@ export interface AccordionMultipleProps {
   /**
    * Children
    */
-  children: any;
+  children: any | (() => any);
 
   /**
    * Additional props
@@ -233,16 +233,16 @@ export const Accordion = defineComponent<AccordionProps>((props) => {
   provideContext(AccordionContext, contextValue);
 
   return () => {
-    const { children, type: _, value: __, defaultValue: ___, onValueChange: ____, collapsible: _____, disabled: ______, orientation: _______, ...restProps } = props;
+    const { children: childrenProp, type: _, value: __, defaultValue: ___, onValueChange: ____, collapsible: _____, disabled: ______, orientation: _______, ...restProps } = props;
+
+    // Support function children
+    const children = typeof childrenProp === 'function' ? childrenProp() : childrenProp;
 
     return jsx('div', {
       ...restProps,
       id: accordionId,
       'data-orientation': orientation(),
-      children: jsx(AccordionContext.Provider, {
-        value: contextValue,
-        children,
-      }),
+      children,
     });
   };
 });
@@ -264,7 +264,7 @@ export interface AccordionItemProps {
   /**
    * Children
    */
-  children: any;
+  children: any | (() => any);
 
   /**
    * Additional props
@@ -333,7 +333,10 @@ export const AccordionItem = defineComponent<AccordionItemProps>((props) => {
 
   return () => {
 
-    const { value, disabled, children, ...restProps } = props;
+    const { value, disabled, children: childrenProp, ...restProps } = props;
+
+    // Support function children
+    const children = typeof childrenProp === 'function' ? childrenProp() : childrenProp;
 
     // Compute initial isOpen state
     const currentValue = ctx.value();
@@ -348,10 +351,7 @@ export const AccordionItem = defineComponent<AccordionItemProps>((props) => {
       ...restProps,
       'data-state': initialIsOpen ? 'open' : 'closed',
       'data-disabled': itemDisabled() ? '' : undefined,
-      children: jsx(AccordionItemContext.Provider, {
-        value: itemContextValue,
-        children,
-      }),
+      children,
     }) as HTMLElement;
 
     // Set up effect to reactively update attributes when context value changes
@@ -376,7 +376,7 @@ export interface AccordionTriggerProps {
   /**
    * Children
    */
-  children: any;
+  children: any | (() => any);
 
   /**
    * Additional props
@@ -439,7 +439,10 @@ export const AccordionTrigger = defineComponent<AccordionTriggerProps>((props) =
       }
     };
 
-    const { children, ...restProps } = props;
+    const { children: childrenProp, ...restProps } = props;
+
+    // Support function children
+    const children = typeof childrenProp === 'function' ? childrenProp() : childrenProp;
 
     // Compute initial isOpen state directly from accordion context
     // (not from item context which might not be set up yet)
@@ -498,7 +501,7 @@ export interface AccordionContentProps {
   /**
    * Children
    */
-  children: any;
+  children: any | (() => any);
 
   /**
    * Additional props
@@ -513,7 +516,10 @@ export const AccordionContent = defineComponent<AccordionContentProps>((props) =
   const itemCtx = useContext(AccordionItemContext);
 
   return () => {
-    const { forceMount, children, ...restProps } = props;
+    const { forceMount, children: childrenProp, ...restProps } = props;
+
+    // Support function children
+    const children = typeof childrenProp === 'function' ? childrenProp() : childrenProp;
 
     // Don't render unless open or force mounted
     if (!itemCtx.isOpen() && !forceMount) {

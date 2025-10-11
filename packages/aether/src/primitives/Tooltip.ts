@@ -8,7 +8,7 @@
  */
 
 import { defineComponent } from '../core/component/define.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal } from '../core/reactivity/signal.js';
 import { onMount } from '../core/component/lifecycle.js';
 import { Portal } from '../control-flow/Portal.js';
@@ -46,7 +46,7 @@ export interface TooltipProps {
   /**
    * Children
    */
-  children: any;
+  children: any | (() => any);
 }
 
 export interface TooltipContentProps {
@@ -189,11 +189,13 @@ export const Tooltip = defineComponent<TooltipProps>((props) => {
     disabled: disabled(),
   };
 
-  return () =>
-    jsx(TooltipContext.Provider, {
-      value: contextValue,
-      children: props.children,
-    });
+  // Provide context before return
+  provideContext(TooltipContext, contextValue);
+
+  return () => {
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+    return children;
+  };
 });
 
 /**

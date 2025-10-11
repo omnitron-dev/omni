@@ -12,7 +12,7 @@
  */
 
 import { defineComponent } from '../core/component/index.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { jsx } from '../jsx-runtime.js';
 
 // ============================================================================
@@ -26,7 +26,7 @@ export interface TimelineProps {
   /** Orientation */
   orientation?: TimelineOrientation;
   /** Children */
-  children?: any;
+  children?: any | (() => any);
   /** Additional props */
   [key: string]: any;
 }
@@ -35,7 +35,7 @@ export interface TimelineItemProps {
   /** Item status */
   status?: TimelineItemStatus;
   /** Children */
-  children?: any;
+  children?: any | (() => any);
   /** Additional props */
   [key: string]: any;
 }
@@ -127,18 +127,19 @@ export const Timeline = defineComponent<TimelineProps>((props) => {
     orientation,
   };
 
-  return () => {
-    const { children, ...rest } = props;
+  // Provide context before return
+  provideContext(TimelineContext, contextValue);
 
-    return jsx(TimelineContext.Provider, {
-      value: contextValue,
-      children: jsx('div', {
-        'data-timeline': '',
-        'data-orientation': orientation,
-        role: 'list',
-        ...rest,
-        children,
-      }),
+  return () => {
+    const { children: childrenProp, ...rest } = props;
+    const children = typeof childrenProp === 'function' ? childrenProp() : childrenProp;
+
+    return jsx('div', {
+      'data-timeline': '',
+      'data-orientation': orientation,
+      role: 'list',
+      ...rest,
+      children,
     });
   };
 });
@@ -155,19 +156,20 @@ export const TimelineItem = defineComponent<TimelineItemProps>((props) => {
     status,
   };
 
-  return () => {
-    const { children, ...rest } = props;
+  // Provide context before return
+  provideContext(TimelineItemContext, contextValue);
 
-    return jsx(TimelineItemContext.Provider, {
-      value: contextValue,
-      children: jsx('div', {
-        'data-timeline-item': '',
-        'data-status': status,
-        'data-orientation': timeline.orientation,
-        role: 'listitem',
-        ...rest,
-        children,
-      }),
+  return () => {
+    const { children: childrenProp, ...rest } = props;
+    const children = typeof childrenProp === 'function' ? childrenProp() : childrenProp;
+
+    return jsx('div', {
+      'data-timeline-item': '',
+      'data-status': status,
+      'data-orientation': timeline.orientation,
+      role: 'listitem',
+      ...rest,
+      children,
     });
   };
 });

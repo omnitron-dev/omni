@@ -134,7 +134,7 @@ describe('Timeline', () => {
     it('should render as a div element', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({ children: 'Item' }),
+          children: () => TimelineItem({ children: 'Item' }),
         });
       const { container } = renderComponent(component);
 
@@ -145,7 +145,7 @@ describe('Timeline', () => {
     it('should have data-timeline-item attribute', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({}),
+          children: () => TimelineItem({}),
         });
       const { container } = renderComponent(component);
 
@@ -156,7 +156,7 @@ describe('Timeline', () => {
     it('should have role="listitem"', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({}),
+          children: () => TimelineItem({}),
         });
       const { container } = renderComponent(component);
 
@@ -167,7 +167,7 @@ describe('Timeline', () => {
     it('should render with children', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({ children: 'Timeline item content' }),
+          children: () => TimelineItem({ children: 'Timeline item content' }),
         });
       const { container } = renderComponent(component);
 
@@ -187,7 +187,7 @@ describe('Timeline', () => {
     it('should default to pending status', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({}),
+          children: () => TimelineItem({}),
         });
       const { container } = renderComponent(component);
 
@@ -198,7 +198,7 @@ describe('Timeline', () => {
     it('should support pending status', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({ status: 'pending' }),
+          children: () => TimelineItem({ status: 'pending' }),
         });
       const { container } = renderComponent(component);
 
@@ -209,7 +209,7 @@ describe('Timeline', () => {
     it('should support active status', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({ status: 'active' }),
+          children: () => TimelineItem({ status: 'active' }),
         });
       const { container } = renderComponent(component);
 
@@ -220,7 +220,7 @@ describe('Timeline', () => {
     it('should support completed status', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({ status: 'completed' }),
+          children: () => TimelineItem({ status: 'completed' }),
         });
       const { container } = renderComponent(component);
 
@@ -231,7 +231,7 @@ describe('Timeline', () => {
     it('should support error status', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({ status: 'error' }),
+          children: () => TimelineItem({ status: 'error' }),
         });
       const { container } = renderComponent(component);
 
@@ -245,7 +245,7 @@ describe('Timeline', () => {
       const component = () =>
         Timeline({
           orientation: 'vertical',
-          children: TimelineItem({}),
+          children: () => TimelineItem({}),
         });
       const { container } = renderComponent(component);
 
@@ -257,7 +257,7 @@ describe('Timeline', () => {
       const component = () =>
         Timeline({
           orientation: 'horizontal',
-          children: TimelineItem({}),
+          children: () => TimelineItem({}),
         });
       const { container } = renderComponent(component);
 
@@ -270,7 +270,7 @@ describe('Timeline', () => {
     it('should forward class attribute', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({ class: 'custom-item' }),
+          children: () => TimelineItem({ class: 'custom-item' }),
         });
       const { container } = renderComponent(component);
 
@@ -281,7 +281,7 @@ describe('Timeline', () => {
     it('should forward data attributes', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({ 'data-testid': 'item-test' }),
+          children: () => TimelineItem({ 'data-testid': 'item-test' }),
         });
       const { container } = renderComponent(component);
 
@@ -294,7 +294,7 @@ describe('Timeline', () => {
     it('should render as a div element', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({
+          children: () => TimelineItem({
             children: TimelineMarker({}),
           }),
         });
@@ -307,7 +307,7 @@ describe('Timeline', () => {
     it('should have data-timeline-marker attribute', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({
+          children: () => TimelineItem({
             children: TimelineMarker({}),
           }),
         });
@@ -320,7 +320,7 @@ describe('Timeline', () => {
     it('should have aria-hidden="true"', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({
+          children: () => TimelineItem({
             children: TimelineMarker({}),
           }),
         });
@@ -333,7 +333,7 @@ describe('Timeline', () => {
     it('should render default dot marker when no children', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({
+          children: () => TimelineItem({
             children: TimelineMarker({}),
           }),
         });
@@ -346,7 +346,7 @@ describe('Timeline', () => {
     it('should render custom children', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({
+          children: () => TimelineItem({
             children: TimelineMarker({ children: 'X' }),
           }),
         });
@@ -359,7 +359,7 @@ describe('Timeline', () => {
     it('should not render default dot when custom children provided', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({
+          children: () => TimelineItem({
             children: TimelineMarker({ children: 'Icon' }),
           }),
         });
@@ -381,7 +381,7 @@ describe('Timeline', () => {
     it('should inherit pending status from TimelineItem', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({
+          children: () => TimelineItem({
             status: 'pending',
             children: TimelineMarker({}),
           }),
@@ -395,7 +395,7 @@ describe('Timeline', () => {
     it('should inherit active status from TimelineItem', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({
+          children: () => TimelineItem({
             status: 'active',
             children: TimelineMarker({}),
           }),
@@ -409,7 +409,7 @@ describe('Timeline', () => {
     it('should inherit completed status from TimelineItem', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({
+          children: () => TimelineItem({
             status: 'completed',
             children: TimelineMarker({}),
           }),
@@ -423,7 +423,7 @@ describe('Timeline', () => {
     it('should inherit error status from TimelineItem', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({
+          children: () => TimelineItem({
             status: 'error',
             children: TimelineMarker({}),
           }),
@@ -439,7 +439,7 @@ describe('Timeline', () => {
     it('should render as a div element', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({
+          children: () => TimelineItem({
             children: TimelineConnector({}),
           }),
         });
@@ -452,7 +452,7 @@ describe('Timeline', () => {
     it('should have data-timeline-connector attribute', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({
+          children: () => TimelineItem({
             children: TimelineConnector({}),
           }),
         });
@@ -465,7 +465,7 @@ describe('Timeline', () => {
     it('should have aria-hidden="true"', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({
+          children: () => TimelineItem({
             children: TimelineConnector({}),
           }),
         });
@@ -487,7 +487,7 @@ describe('Timeline', () => {
     it('should inherit pending status from TimelineItem', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({
+          children: () => TimelineItem({
             status: 'pending',
             children: TimelineConnector({}),
           }),
@@ -501,7 +501,7 @@ describe('Timeline', () => {
     it('should inherit active status from TimelineItem', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({
+          children: () => TimelineItem({
             status: 'active',
             children: TimelineConnector({}),
           }),
@@ -515,7 +515,7 @@ describe('Timeline', () => {
     it('should inherit completed status from TimelineItem', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({
+          children: () => TimelineItem({
             status: 'completed',
             children: TimelineConnector({}),
           }),
@@ -529,7 +529,7 @@ describe('Timeline', () => {
     it('should inherit error status from TimelineItem', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({
+          children: () => TimelineItem({
             status: 'error',
             children: TimelineConnector({}),
           }),
@@ -813,7 +813,7 @@ describe('Timeline', () => {
     it('should handle timeline item with undefined children', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({ children: undefined }),
+          children: () => TimelineItem({ children: undefined }),
         });
       const { container } = renderComponent(component);
 
@@ -824,7 +824,7 @@ describe('Timeline', () => {
     it('should handle marker with empty string', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({
+          children: () => TimelineItem({
             children: TimelineMarker({ children: '' }),
           }),
         });
@@ -948,7 +948,7 @@ describe('Timeline', () => {
     it('should work with error states', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({
+          children: () => TimelineItem({
             status: 'error',
             children: [
               TimelineMarker({ children: '✗' }),
@@ -974,7 +974,7 @@ describe('Timeline', () => {
       const showTimestamp = false;
       const component = () =>
         Timeline({
-          children: TimelineItem({
+          children: () => TimelineItem({
             children: TimelineContent({
               children: [
                 TimelineTitle({ children: 'Event' }),
@@ -993,7 +993,7 @@ describe('Timeline', () => {
     it('should have proper semantic structure', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({}),
+          children: () => TimelineItem({}),
         });
       const { container } = renderComponent(component);
 
@@ -1007,8 +1007,8 @@ describe('Timeline', () => {
     it('should hide decorative elements from screen readers', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({
-            children: [TimelineMarker({}), TimelineConnector({})],
+          children: () => TimelineItem({
+            children: () => [TimelineMarker({}), TimelineConnector({})],
           }),
         });
       const { container } = renderComponent(component);
@@ -1066,7 +1066,7 @@ describe('Timeline', () => {
     it('should maintain proper nesting structure', () => {
       const component = () =>
         Timeline({
-          children: TimelineItem({
+          children: () => TimelineItem({
             children: [
               TimelineMarker({}),
               TimelineConnector({}),

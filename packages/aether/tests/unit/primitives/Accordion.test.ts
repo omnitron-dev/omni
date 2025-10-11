@@ -17,17 +17,15 @@ describe('Accordion', () => {
         Accordion({
           type: 'single',
           defaultValue: 'item1',
-          children: [
+          children: () => [
             AccordionItem({
-              value: 'item1',
-              children: [
+              value: 'item1', children: () => [
                 AccordionTrigger({ children: 'Item 1' }),
                 AccordionContent({ children: 'Content 1' }),
               ],
             }),
             AccordionItem({
-              value: 'item2',
-              children: [
+              value: 'item2', children: () => [
                 AccordionTrigger({ children: 'Item 2' }),
                 AccordionContent({ children: 'Content 2' }),
               ],
@@ -55,17 +53,15 @@ describe('Accordion', () => {
           type: 'single',
           defaultValue: 'item1',
           collapsible: true,
-          children: [
+          children: () => [
             AccordionItem({
-              value: 'item1',
-              children: [
+              value: 'item1', children: () => [
                 AccordionTrigger({ children: 'Item 1' }),
                 AccordionContent({ children: 'Content 1' }),
               ],
             }),
             AccordionItem({
-              value: 'item2',
-              children: [
+              value: 'item2', children: () => [
                 AccordionTrigger({ children: 'Item 2' }),
                 AccordionContent({ children: 'Content 2' }),
               ],
@@ -94,10 +90,9 @@ describe('Accordion', () => {
           type: 'single',
           defaultValue: 'item1',
           collapsible: true,
-          children: [
+          children: () => [
             AccordionItem({
-              value: 'item1',
-              children: [
+              value: 'item1', children: () => [
                 AccordionTrigger({ children: 'Item 1' }),
                 AccordionContent({ children: 'Content 1' }),
               ],
@@ -126,10 +121,9 @@ describe('Accordion', () => {
           type: 'single',
           defaultValue: 'item1',
           collapsible: false,
-          children: [
+          children: () => [
             AccordionItem({
-              value: 'item1',
-              children: [
+              value: 'item1', children: () => [
                 AccordionTrigger({ children: 'Item 1' }),
                 AccordionContent({ children: 'Content 1' }),
               ],
@@ -159,24 +153,21 @@ describe('Accordion', () => {
         Accordion({
           type: 'multiple',
           defaultValue: ['item1', 'item2'],
-          children: [
+          children: () => [
             AccordionItem({
-              value: 'item1',
-              children: [
+              value: 'item1', children: () => [
                 AccordionTrigger({ children: 'Item 1' }),
                 AccordionContent({ children: 'Content 1' }),
               ],
             }),
             AccordionItem({
-              value: 'item2',
-              children: [
+              value: 'item2', children: () => [
                 AccordionTrigger({ children: 'Item 2' }),
                 AccordionContent({ children: 'Content 2' }),
               ],
             }),
             AccordionItem({
-              value: 'item3',
-              children: [
+              value: 'item3', children: () => [
                 AccordionTrigger({ children: 'Item 3' }),
                 AccordionContent({ children: 'Content 3' }),
               ],
@@ -203,17 +194,15 @@ describe('Accordion', () => {
         Accordion({
           type: 'multiple',
           defaultValue: ['item1'],
-          children: [
+          children: () => [
             AccordionItem({
-              value: 'item1',
-              children: [
+              value: 'item1', children: () => [
                 AccordionTrigger({ children: 'Item 1' }),
                 AccordionContent({ children: 'Content 1' }),
               ],
             }),
             AccordionItem({
-              value: 'item2',
-              children: [
+              value: 'item2', children: () => [
                 AccordionTrigger({ children: 'Item 2' }),
                 AccordionContent({ children: 'Content 2' }),
               ],
@@ -244,17 +233,15 @@ describe('Accordion', () => {
         Accordion({
           type: 'multiple',
           value: openItems,
-          children: [
+          children: () => [
             AccordionItem({
-              value: 'item1',
-              children: [
+              value: 'item1', children: () => [
                 AccordionTrigger({ children: 'Item 1' }),
                 AccordionContent({ children: 'Content 1' }),
               ],
             }),
             AccordionItem({
-              value: 'item2',
-              children: [
+              value: 'item2', children: () => [
                 AccordionTrigger({ children: 'Item 2' }),
                 AccordionContent({ children: 'Content 2' }),
               ],
@@ -285,10 +272,9 @@ describe('Accordion', () => {
         Accordion({
           type: 'single',
           disabled: true,
-          children: [
+          children: () => [
             AccordionItem({
-              value: 'item1',
-              children: [
+              value: 'item1', children: () => [
                 AccordionTrigger({ children: 'Item 1' }),
                 AccordionContent({ children: 'Content 1' }),
               ],
@@ -306,19 +292,16 @@ describe('Accordion', () => {
     it('should disable individual items', () => {
       const component = () =>
         Accordion({
-          type: 'single',
-          children: [
+          type: 'single', children: () => [
             AccordionItem({
-              value: 'item1',
-              children: [
+              value: 'item1', children: () => [
                 AccordionTrigger({ children: 'Item 1' }),
                 AccordionContent({ children: 'Content 1' }),
               ],
             }),
             AccordionItem({
               value: 'item2',
-              disabled: true,
-              children: [
+              disabled: true, children: () => [
                 AccordionTrigger({ children: 'Item 2' }),
                 AccordionContent({ children: 'Content 2' }),
               ],
@@ -350,10 +333,9 @@ describe('Accordion', () => {
         Accordion({
           type: 'single',
           defaultValue: 'item1',
-          children: [
+          children: () => [
             AccordionItem({
-              value: 'item1',
-              children: [
+              value: 'item1', children: () => [
                 AccordionTrigger({ children: 'Item 1' }),
                 AccordionContent({ children: 'Content 1' }),
               ],
@@ -381,17 +363,16 @@ describe('Accordion', () => {
         Accordion({
           type: 'single',
           defaultValue: 'item1',
-          children: [
+          children: () => [
             AccordionItem({
-              value: 'item1',
-              children: [
+              value: 'item1', children: () => [
                 AccordionTrigger({ children: 'Item 1' }),
                 AccordionContent({ children: 'Content 1' }),
               ],
             }),
             AccordionItem({
               value: 'item2',
-              children: [
+              children: () => [
                 AccordionTrigger({ children: 'Item 2' }),
                 AccordionContent({ forceMount: true, children: 'Content 2' }),
               ],

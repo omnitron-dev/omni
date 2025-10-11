@@ -11,7 +11,7 @@
  */
 
 import { defineComponent } from '../core/component/index.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
 import { signal, computed, effect } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
@@ -37,8 +37,8 @@ export interface ToggleGroupProps {
   loop?: boolean;
   /** Whether selection is required (single mode only) */
   required?: boolean;
-  /** Children */
-  children?: any;
+  /** Children - can be array or function returning array */
+  children?: any | (() => any);
 }
 
 export interface ToggleGroupItemProps {
@@ -270,6 +270,9 @@ export const ToggleGroup = defineComponent<ToggleGroupProps>((props) => {
     navigateLast,
   };
 
+  // CRITICAL: Provide context in setup so children can access it immediately
+  provideContext(ToggleGroupContext, contextValue);
+
   const handleKeyDown = (e: KeyboardEvent) => {
     const isHorizontal = orientation === 'horizontal';
     const nextKey = isHorizontal ? 'ArrowRight' : 'ArrowDown';
@@ -290,19 +293,20 @@ export const ToggleGroup = defineComponent<ToggleGroupProps>((props) => {
     }
   };
 
-  return () =>
-    jsx(ToggleGroupContext.Provider, {
-      value: contextValue,
-      children: jsx('div', {
-        'data-toggle-group': '',
-        'data-orientation': orientation,
-        'data-disabled': disabled ? '' : undefined,
-        role: type === 'single' ? 'radiogroup' : 'group',
-        'aria-orientation': orientation,
-        onKeyDown: handleKeyDown,
-        children: props.children,
-      }),
+  return () => {
+    // Call children if it's a function (lazy evaluation for correct context)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+
+    return jsx('div', {
+      'data-toggle-group': '',
+      'data-orientation': orientation,
+      'data-disabled': disabled ? '' : undefined,
+      role: type === 'single' ? 'radiogroup' : 'group',
+      'aria-orientation': orientation,
+      onKeyDown: handleKeyDown,
+      children,
     });
+  };
 });
 
 // ============================================================================
@@ -310,6 +314,7 @@ export const ToggleGroup = defineComponent<ToggleGroupProps>((props) => {
 // ============================================================================
 
 export const ToggleGroupItem = defineComponent<ToggleGroupItemProps>((props) => {
+  // Get context in setup - now works because parent uses provideContext in setup
   const context = useToggleGroupContext();
   const itemDisabled = props.disabled ?? context.disabled;
 
@@ -324,22 +329,22 @@ export const ToggleGroupItem = defineComponent<ToggleGroupItemProps>((props) => 
   return () => {
     const { value, disabled, children, ...rest } = props;
 
-    // Check if selected initially
-    const isSelectedInitially = context.isSelected(value);
+    // Check if selected
+    const isSelected = context.isSelected(value);
 
-    // Create button element with initial values
+    // Create button element with current values
     const button = jsx('button', {
       ref: buttonRef,
       type: 'button',
       role: context.type === 'single' ? 'radio' : 'button',
-      'aria-checked': context.type === 'single' ? (isSelectedInitially ? 'true' : 'false') : undefined,
-      'aria-pressed': context.type === 'multiple' ? (isSelectedInitially ? 'true' : 'false') : undefined,
-      'data-state': isSelectedInitially ? 'on' : 'off',
+      'aria-checked': context.type === 'single' ? (isSelected ? 'true' : 'false') : undefined,
+      'aria-pressed': context.type === 'multiple' ? (isSelected ? 'true' : 'false') : undefined,
+      'data-state': isSelected ? 'on' : 'off',
       'data-value': value,
       'data-disabled': itemDisabled ? '' : undefined,
       disabled: itemDisabled,
       onClick: handleClick,
-      tabIndex: isSelectedInitially ? 0 : -1,
+      tabIndex: isSelected ? 0 : -1,
       ...rest,
       children,
     }) as HTMLButtonElement;
@@ -354,20 +359,20 @@ export const ToggleGroupItem = defineComponent<ToggleGroupItemProps>((props) => 
     // Reactive updates for selection state
     effect(() => {
       // Call isSelected directly in effect for proper signal tracking
-      const isSelected = context.isSelected(value);
+      const isSelectedInEffect = context.isSelected(value);
 
       // Update ARIA attributes
       if (context.type === 'single') {
-        button.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+        button.setAttribute('aria-checked', isSelectedInEffect ? 'true' : 'false');
       } else {
-        button.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+        button.setAttribute('aria-pressed', isSelectedInEffect ? 'true' : 'false');
       }
 
       // Update data-state
-      button.setAttribute('data-state', isSelected ? 'on' : 'off');
+      button.setAttribute('data-state', isSelectedInEffect ? 'on' : 'off');
 
       // Update tabIndex for roving tabindex pattern
-      button.tabIndex = isSelected ? 0 : -1;
+      button.tabIndex = isSelectedInEffect ? 0 : -1;
     });
 
     return button;

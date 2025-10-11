@@ -6,7 +6,7 @@
  */
 
 import { defineComponent } from '../core/component/define.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal } from '../core/reactivity/signal.js';
 import { jsx } from '../jsx-runtime.js';
 import { generateId } from './utils/index.js';
@@ -39,7 +39,7 @@ export interface CollapsibleProps {
   /**
    * Children
    */
-  children: any;
+  children: any | (() => any);
 
   /**
    * Additional props
@@ -121,7 +121,10 @@ export const CollapsibleContext = createContext<CollapsibleContextValue>(
  */
 export const Collapsible = defineComponent<CollapsibleProps>((props) => {
   const internalOpen = signal(props.defaultOpen || false);
-  const isOpen = props.open !== undefined ? () => props.open! : internalOpen;
+  const isOpen =
+    props.open !== undefined
+      ? () => (typeof props.open === 'function' ? props.open() : props.open!)
+      : internalOpen;
 
   const baseId = generateId('collapsible');
   const triggerId = `${baseId}-trigger`;
@@ -143,16 +146,20 @@ export const Collapsible = defineComponent<CollapsibleProps>((props) => {
     contentId,
   };
 
-  return () =>
-    jsx(CollapsibleContext.Provider, {
-      value: contextValue,
-      children: jsx('div', {
-        ...props,
-        'data-collapsible': '',
-        'data-state': isOpen() ? 'open' : 'closed',
-        'data-disabled': props.disabled ? '' : undefined,
-      }),
+  // Provide context for children
+  provideContext(CollapsibleContext, contextValue);
+
+  return () => {
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+
+    return jsx('div', {
+      ...props,
+      'data-collapsible': '',
+      'data-state': isOpen() ? 'open' : 'closed',
+      'data-disabled': props.disabled ? '' : undefined,
+      children,
     });
+  };
 });
 
 /**

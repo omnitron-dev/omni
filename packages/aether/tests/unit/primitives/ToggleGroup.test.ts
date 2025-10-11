@@ -16,7 +16,7 @@ describe('ToggleGroup', () => {
       const component = () =>
         ToggleGroup({
           type: 'single',
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
           ],
@@ -37,7 +37,7 @@ describe('ToggleGroup', () => {
         ToggleGroup({
           type: 'single',
           defaultValue: 'bold',
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
           ],
@@ -56,7 +56,7 @@ describe('ToggleGroup', () => {
       const component = () =>
         ToggleGroup({
           type: 'single',
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
           ],
@@ -90,7 +90,7 @@ describe('ToggleGroup', () => {
           type: 'single',
           defaultValue: 'bold',
           required: false,
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
           ],
@@ -118,7 +118,7 @@ describe('ToggleGroup', () => {
           type: 'single',
           defaultValue: 'bold',
           required: true,
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
           ],
@@ -147,7 +147,7 @@ describe('ToggleGroup', () => {
         ToggleGroup({
           type: 'single',
           onValueChange,
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
           ],
@@ -177,7 +177,7 @@ describe('ToggleGroup', () => {
         ToggleGroup({
           type: 'single',
           value,
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
           ],
@@ -205,7 +205,8 @@ describe('ToggleGroup', () => {
       const component = () =>
         ToggleGroup({
           type: 'multiple',
-          children: [
+          // Use function children for lazy evaluation
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
           ],
@@ -218,7 +219,7 @@ describe('ToggleGroup', () => {
       expect(group.getAttribute('role')).toBe('group');
 
       const items = container.querySelectorAll('button[role="button"]');
-      
+
       console.log('=== DEBUG ===');
       console.log('DOM:', container.innerHTML.substring(0, 500));
       console.log('All buttons:', container.querySelectorAll('button').length);
@@ -231,7 +232,7 @@ describe('ToggleGroup', () => {
         ToggleGroup({
           type: 'multiple',
           defaultValue: ['bold', 'italic'],
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
             ToggleGroupItem({ value: 'underline', children: 'Underline' }),
@@ -253,7 +254,7 @@ describe('ToggleGroup', () => {
       const component = () =>
         ToggleGroup({
           type: 'multiple',
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
             ToggleGroupItem({ value: 'underline', children: 'Underline' }),
@@ -285,7 +286,7 @@ describe('ToggleGroup', () => {
         ToggleGroup({
           type: 'multiple',
           defaultValue: ['bold', 'italic'],
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
           ],
@@ -319,7 +320,7 @@ describe('ToggleGroup', () => {
         ToggleGroup({
           type: 'multiple',
           onValueChange,
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
           ],
@@ -349,7 +350,7 @@ describe('ToggleGroup', () => {
         ToggleGroup({
           type: 'multiple',
           value,
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
           ],
@@ -377,7 +378,7 @@ describe('ToggleGroup', () => {
       const component = () =>
         ToggleGroup({
           type: 'single',
-          children: [ToggleGroupItem({ value: 'bold', children: 'Bold' })],
+          children: () => [ToggleGroupItem({ value: 'bold', children: 'Bold' })],
         });
 
       const { container } = renderComponent(component);
@@ -392,7 +393,7 @@ describe('ToggleGroup', () => {
         ToggleGroup({
           type: 'single',
           orientation: 'vertical',
-          children: [ToggleGroupItem({ value: 'bold', children: 'Bold' })],
+          children: () => [ToggleGroupItem({ value: 'bold', children: 'Bold' })],
         });
 
       const { container } = renderComponent(component);
@@ -409,7 +410,7 @@ describe('ToggleGroup', () => {
         ToggleGroup({
           type: 'single',
           orientation: 'horizontal',
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
             ToggleGroupItem({ value: 'underline', children: 'Underline' }),
@@ -446,7 +447,7 @@ describe('ToggleGroup', () => {
         ToggleGroup({
           type: 'single',
           orientation: 'vertical',
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
             ToggleGroupItem({ value: 'underline', children: 'Underline' }),
@@ -483,7 +484,7 @@ describe('ToggleGroup', () => {
         ToggleGroup({
           type: 'single',
           loop: true,
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
           ],
@@ -517,7 +518,7 @@ describe('ToggleGroup', () => {
         ToggleGroup({
           type: 'single',
           loop: false,
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
           ],
@@ -544,7 +545,7 @@ describe('ToggleGroup', () => {
       const component = () =>
         ToggleGroup({
           type: 'single',
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
             ToggleGroupItem({ value: 'underline', children: 'Underline' }),
@@ -571,7 +572,7 @@ describe('ToggleGroup', () => {
       const component = () =>
         ToggleGroup({
           type: 'single',
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
             ToggleGroupItem({ value: 'underline', children: 'Underline' }),
@@ -598,7 +599,7 @@ describe('ToggleGroup', () => {
       const component = () =>
         ToggleGroup({
           type: 'single',
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', disabled: true, children: 'Italic' }),
             ToggleGroupItem({ value: 'underline', children: 'Underline' }),
@@ -629,7 +630,7 @@ describe('ToggleGroup', () => {
         ToggleGroup({
           type: 'single',
           disabled: true,
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
           ],
@@ -651,7 +652,7 @@ describe('ToggleGroup', () => {
       const component = () =>
         ToggleGroup({
           type: 'single',
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', disabled: true, children: 'Italic' }),
           ],
@@ -670,7 +671,7 @@ describe('ToggleGroup', () => {
       const component = () =>
         ToggleGroup({
           type: 'single',
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', disabled: true, children: 'Italic' }),
           ],
@@ -693,7 +694,7 @@ describe('ToggleGroup', () => {
       const component = () =>
         ToggleGroup({
           type: 'single',
-          children: [ToggleGroupItem({ value: 'bold', children: 'Bold' })],
+          children: () => [ToggleGroupItem({ value: 'bold', children: 'Bold' })],
         });
 
       const { container } = renderComponent(component);
@@ -710,7 +711,7 @@ describe('ToggleGroup', () => {
       const component = () =>
         ToggleGroup({
           type: 'multiple',
-          children: [ToggleGroupItem({ value: 'bold', children: 'Bold' })],
+          children: () => [ToggleGroupItem({ value: 'bold', children: 'Bold' })],
         });
 
       const { container } = renderComponent(component);
@@ -728,7 +729,7 @@ describe('ToggleGroup', () => {
         ToggleGroup({
           type: 'single',
           orientation: 'vertical',
-          children: [ToggleGroupItem({ value: 'bold', children: 'Bold' })],
+          children: () => [ToggleGroupItem({ value: 'bold', children: 'Bold' })],
         });
 
       const { container } = renderComponent(component);
@@ -742,7 +743,7 @@ describe('ToggleGroup', () => {
         ToggleGroup({
           type: 'single',
           defaultValue: 'italic',
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
             ToggleGroupItem({ value: 'underline', children: 'Underline' }),
@@ -769,7 +770,7 @@ describe('ToggleGroup', () => {
           type: 'single',
           class: 'custom-group',
           'data-testid': 'toggle-group',
-          children: [ToggleGroupItem({ value: 'bold', children: 'Bold' })],
+          children: () => [ToggleGroupItem({ value: 'bold', children: 'Bold' })],
         });
 
       const { container } = renderComponent(component);
@@ -783,7 +784,7 @@ describe('ToggleGroup', () => {
       const component = () =>
         ToggleGroup({
           type: 'single',
-          children: [
+          children: () => [
             ToggleGroupItem({
               value: 'bold',
               class: 'custom-item',
@@ -806,7 +807,7 @@ describe('ToggleGroup', () => {
       const component = () =>
         ToggleGroup({
           type: 'single',
-          children: [],
+          children: () => [],
         });
 
       const { container } = renderComponent(component);
@@ -822,7 +823,7 @@ describe('ToggleGroup', () => {
       const component = () =>
         ToggleGroup({
           type: 'multiple',
-          children: [ToggleGroupItem({ value: 'bold', children: 'Bold' })],
+          children: () => [ToggleGroupItem({ value: 'bold', children: 'Bold' })],
         });
 
       const { container } = renderComponent(component);
@@ -847,7 +848,7 @@ describe('ToggleGroup', () => {
           type: 'single',
           value,
           defaultValue: 'bold', // Should be ignored
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
           ],
@@ -867,7 +868,7 @@ describe('ToggleGroup', () => {
         ToggleGroup({
           type: 'single',
           defaultValue: 'nonexistent',
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
           ],
@@ -887,7 +888,7 @@ describe('ToggleGroup', () => {
         ToggleGroup({
           type: 'multiple',
           defaultValue: ['bold', 'italic'],
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
           ],
@@ -905,7 +906,7 @@ describe('ToggleGroup', () => {
       const component = () =>
         ToggleGroup({
           type: 'single',
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', disabled: true, children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', disabled: true, children: 'Italic' }),
           ],
@@ -929,7 +930,7 @@ describe('ToggleGroup', () => {
         ToggleGroup({
           type: 'single',
           value,
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
             ToggleGroupItem({ value: 'underline', children: 'Underline' }),
@@ -961,7 +962,7 @@ describe('ToggleGroup', () => {
         ToggleGroup({
           type: 'multiple',
           value,
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
             ToggleGroupItem({ value: 'underline', children: 'Underline' }),
@@ -1000,7 +1001,7 @@ describe('ToggleGroup', () => {
             onValueChange(newValue);
             value.set(newValue as string);
           },
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
           ],
@@ -1024,7 +1025,7 @@ describe('ToggleGroup', () => {
       const component = () =>
         ToggleGroup({
           type: 'single',
-          children: [
+          children: () => [
             ToggleGroupItem({ value: 'bold', children: 'Bold' }),
             ToggleGroupItem({ value: 'italic', children: 'Italic' }),
             showThird() ? ToggleGroupItem({ value: 'underline', children: 'Underline' }) : null,

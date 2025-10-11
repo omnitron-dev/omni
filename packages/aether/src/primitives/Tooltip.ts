@@ -8,7 +8,7 @@
  */
 
 import { defineComponent } from '../core/component/define.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal } from '../core/reactivity/signal.js';
 import { onMount } from '../core/component/lifecycle.js';
 import { Portal } from '../control-flow/Portal.js';
@@ -189,10 +189,15 @@ export const Tooltip = defineComponent<TooltipProps>((props) => {
     disabled: disabled(),
   };
 
+  // Provide context in setup phase (Pattern 4)
+  provideContext(TooltipContext, contextValue);
+
   return () => {
+    // Evaluate function children in render phase
     const children = typeof props.children === 'function' ? props.children() : props.children;
-    return jsx(TooltipContext.Provider, {
-      value: contextValue,
+
+    return jsx('div', {
+      'data-tooltip': '',
       children,
     });
   };
@@ -293,9 +298,7 @@ export const TooltipContent = defineComponent<TooltipContentProps>((props) => {
 
   onMount(() => {
     triggerElement = document.getElementById(ctx.triggerId);
-    if (ctx.isOpen()) {
-      updatePosition();
-    }
+    // updatePosition will be called by refCallback when content is rendered
   });
 
   const handlePointerEnter = () => {
@@ -308,7 +311,7 @@ export const TooltipContent = defineComponent<TooltipContentProps>((props) => {
 
   const refCallback = (el: HTMLElement | null) => {
     contentRef = el;
-    if (el && ctx.isOpen()) {
+    if (el) {
       updatePosition();
     }
   };
@@ -316,25 +319,26 @@ export const TooltipContent = defineComponent<TooltipContentProps>((props) => {
   return () => {
     const { children, side, align, sideOffset, alignOffset, avoidCollisions, collisionPadding, forceMount, ...restProps } = props;
 
-    // Conditional rendering like Dialog
+    // Conditional rendering
     if (!ctx.isOpen() && !forceMount) {
       return null;
     }
 
-    return jsx(Portal, {
-      children: jsx('div', {
-        ...restProps,
-        ref: refCallback as any,
-        id: ctx.contentId,
-        role: 'tooltip',
-        'data-state': ctx.isOpen() ? 'open' : 'closed',
-        style: {
-          ...restProps.style,
-        },
-        onPointerEnter: handlePointerEnter,
-        onPointerLeave: handlePointerLeave,
-        children,
-      }),
+    // Render without Portal to avoid timing issues
+    return jsx('div', {
+      ...restProps,
+      ref: refCallback as any,
+      id: ctx.contentId,
+      role: 'tooltip',
+      'data-state': ctx.isOpen() ? 'open' : 'closed',
+      style: {
+        position: 'absolute',
+        zIndex: 9999,
+        ...restProps.style,
+      },
+      onPointerEnter: handlePointerEnter,
+      onPointerLeave: handlePointerLeave,
+      children,
     });
   };
 });

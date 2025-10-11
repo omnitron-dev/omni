@@ -108,7 +108,11 @@ function createComponentElement(
 
   // Assign ref if provided
   if (ref && result instanceof Node) {
-    ref.current = result;
+    if (typeof ref === 'function') {
+      ref(result);
+    } else {
+      ref.current = result;
+    }
   }
 
   return result;
@@ -162,7 +166,11 @@ function applyProps(
 
   // Assign ref if provided
   if (ref) {
-    ref.current = element;
+    if (typeof ref === 'function') {
+      ref(element);
+    } else {
+      ref.current = element;
+    }
   }
 }
 

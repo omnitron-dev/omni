@@ -4805,6 +4805,788 @@ Behavior:
 
 ---
 
+### Input
+
+A headless input component for text input fields with validation states and ARIA support.
+
+#### Features
+
+- Multiple input types (text, email, password, number, tel, url, search, date, time, datetime-local)
+- Validation states (invalid)
+- Disabled and read-only states
+- Full ARIA support
+- Controlled and uncontrolled modes
+- Event handlers (onChange, onInput, onBlur, onFocus)
+- Accessible by default
+
+#### Basic Usage
+
+```typescript
+import { defineComponent, signal } from 'aether';
+import { Input } from 'aether/primitives';
+
+// Simple text input
+export const BasicInput = defineComponent(() => {
+  const value = signal('');
+
+  return () => (
+    <Input
+      type="text"
+      placeholder="Enter your name"
+      onChange={(newValue) => value.set(newValue)}
+      class="input"
+    />
+  );
+});
+
+// Controlled input
+export const ControlledInput = defineComponent(() => {
+  const email = signal('');
+
+  return () => (
+    <div class="field">
+      <label for="email-input">Email</label>
+      <Input
+        id="email-input"
+        type="email"
+        value={email()}
+        onChange={(newValue) => email.set(newValue)}
+        placeholder="you@example.com"
+        required
+        class="input"
+      />
+      <p>Current value: {email()}</p>
+    </div>
+  );
+});
+
+// Uncontrolled input with default value
+export const UncontrolledInput = defineComponent(() => {
+  return () => (
+    <Input
+      type="text"
+      defaultValue="Initial value"
+      placeholder="Enter text"
+      class="input"
+    />
+  );
+});
+```
+
+#### With Validation State
+
+```typescript
+import { defineComponent, signal, computed } from 'aether';
+import { Input } from 'aether/primitives';
+
+export const ValidatedEmailInput = defineComponent(() => {
+  const email = signal('');
+  const touched = signal(false);
+
+  // Validate email format
+  const isInvalid = computed(() => {
+    return touched() && email() && !email().includes('@');
+  });
+
+  const handleBlur = () => {
+    touched.set(true);
+  };
+
+  return () => (
+    <div class="field">
+      <label for="email">Email Address</label>
+      <Input
+        id="email"
+        type="email"
+        value={email()}
+        onChange={(newValue) => email.set(newValue)}
+        onBlur={handleBlur}
+        invalid={isInvalid()}
+        placeholder="you@example.com"
+        class={`input ${isInvalid() ? 'input-error' : ''}`}
+        aria-describedby={isInvalid() ? 'email-error' : undefined}
+      />
+      {isInvalid() && (
+        <span id="email-error" class="error-message" role="alert">
+          Please enter a valid email address
+        </span>
+      )}
+    </div>
+  );
+});
+```
+
+#### Different Input Types
+
+```typescript
+import { defineComponent, signal } from 'aether';
+import { Input } from 'aether/primitives';
+
+export const InputTypes = defineComponent(() => {
+  const text = signal('');
+  const email = signal('');
+  const password = signal('');
+  const number = signal(0);
+  const date = signal('');
+  const tel = signal('');
+  const url = signal('');
+
+  return () => (
+    <div class="form">
+      <div class="field">
+        <label>Text</label>
+        <Input
+          type="text"
+          value={text()}
+          onChange={text.set}
+          placeholder="Enter text"
+        />
+      </div>
+
+      <div class="field">
+        <label>Email</label>
+        <Input
+          type="email"
+          value={email()}
+          onChange={email.set}
+          placeholder="you@example.com"
+          autoComplete="email"
+        />
+      </div>
+
+      <div class="field">
+        <label>Password</label>
+        <Input
+          type="password"
+          value={password()}
+          onChange={password.set}
+          placeholder="Enter password"
+          autoComplete="current-password"
+        />
+      </div>
+
+      <div class="field">
+        <label>Number</label>
+        <Input
+          type="number"
+          value={number()}
+          onChange={(v) => number.set(Number(v))}
+          placeholder="Enter number"
+        />
+      </div>
+
+      <div class="field">
+        <label>Date</label>
+        <Input
+          type="date"
+          value={date()}
+          onChange={date.set}
+        />
+      </div>
+
+      <div class="field">
+        <label>Phone</label>
+        <Input
+          type="tel"
+          value={tel()}
+          onChange={tel.set}
+          placeholder="+1 (555) 000-0000"
+          autoComplete="tel"
+        />
+      </div>
+
+      <div class="field">
+        <label>URL</label>
+        <Input
+          type="url"
+          value={url()}
+          onChange={url.set}
+          placeholder="https://example.com"
+        />
+      </div>
+    </div>
+  );
+});
+```
+
+#### Integration with Form Primitives
+
+```typescript
+import { defineComponent, signal } from 'aether';
+import { FormField, FormLabel, FormControl, FormMessage } from 'aether/primitives';
+import { Input } from 'aether/primitives';
+
+export const FormIntegration = defineComponent(() => {
+  const username = signal('');
+  const error = signal<string | null>(null);
+
+  const handleChange = (value: string) => {
+    username.set(value);
+
+    // Validate username
+    if (value.length < 3) {
+      error.set('Username must be at least 3 characters');
+    } else if (!/^[a-zA-Z0-9_]+$/.test(value)) {
+      error.set('Username can only contain letters, numbers, and underscores');
+    } else {
+      error.set(null);
+    }
+  };
+
+  return () => (
+    <FormField name="username">
+      <FormLabel>Username</FormLabel>
+      <FormControl>
+        <Input
+          type="text"
+          value={username()}
+          onChange={handleChange}
+          invalid={!!error()}
+          placeholder="Enter username"
+          class="input"
+        />
+      </FormControl>
+      {error() && (
+        <FormMessage>{error()}</FormMessage>
+      )}
+    </FormField>
+  );
+});
+```
+
+#### Styling Example
+
+```css
+/* Basic input styling */
+[data-input] {
+  width: 100%;
+  padding: var(--spacing-2) var(--spacing-3);
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  background: var(--color-background-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  outline: none;
+  transition: all var(--transition-fast);
+}
+
+/* Hover state */
+[data-input]:hover:not([data-disabled]) {
+  border-color: var(--color-border-hover);
+}
+
+/* Focus state */
+[data-input]:focus {
+  border-color: var(--color-primary-500);
+  box-shadow: 0 0 0 3px var(--color-primary-100);
+}
+
+/* Invalid state */
+[data-input][data-invalid] {
+  border-color: var(--color-error);
+}
+
+[data-input][data-invalid]:focus {
+  box-shadow: 0 0 0 3px var(--color-error-light);
+}
+
+/* Disabled state */
+[data-input][data-disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--color-background-secondary);
+}
+
+/* Read-only state */
+[data-input][data-readonly] {
+  background: var(--color-background-secondary);
+  cursor: default;
+}
+
+/* Placeholder */
+[data-input]::placeholder {
+  color: var(--color-text-tertiary);
+  opacity: 1;
+}
+```
+
+#### API Reference
+
+**`<Input>`** - Input component
+
+Props:
+- `type?: 'text' | 'email' | 'password' | 'number' | 'tel' | 'url' | 'search' | 'date' | 'time' | 'datetime-local'` - Input type (default: 'text')
+- `value?: string | number` - Controlled value
+- `defaultValue?: string | number` - Default value for uncontrolled mode
+- `placeholder?: string` - Placeholder text
+- `disabled?: boolean` - Disabled state
+- `readOnly?: boolean` - Read-only state
+- `required?: boolean` - Required field
+- `invalid?: boolean` - Invalid state for validation errors
+- `name?: string` - Input name
+- `id?: string` - Input ID
+- `autoComplete?: string` - Autocomplete attribute
+- `aria-label?: string` - ARIA label
+- `aria-labelledby?: string` - ARIA labelledby
+- `aria-describedby?: string` - ARIA describedby
+- `aria-invalid?: boolean` - ARIA invalid (auto-set based on invalid prop)
+- `onChange?: (value: string) => void` - Change handler
+- `onInput?: (value: string) => void` - Input handler
+- `onBlur?: (event: FocusEvent) => void` - Blur handler
+- `onFocus?: (event: FocusEvent) => void` - Focus handler
+- `...HTMLInputAttributes` - Additional HTML input attributes
+
+Data attributes:
+- `data-input` - Always present
+- `data-disabled` - Present when disabled
+- `data-readonly` - Present when read-only
+- `data-invalid` - Present when invalid
+
+#### Accessibility Notes
+
+- Always provide a label using `<label>`, `aria-label`, or `aria-labelledby`
+- Use `aria-describedby` to associate error messages or help text
+- Set `aria-invalid="true"` when validation fails (automatically handled)
+- Use appropriate `type` attribute for better mobile keyboard layouts
+- Use `autoComplete` attribute for better user experience
+- Ensure sufficient color contrast for text and borders
+- Minimum touch target size of 44x44px for mobile devices
+
+#### Best Practices
+
+1. **Always provide labels**: Use semantic `<label>` elements with `for` attribute
+2. **Use appropriate input types**: Choose the right type for better UX (email, tel, url, etc.)
+3. **Validate on blur**: Only show errors after user leaves the field
+4. **Clear error messages**: Provide actionable feedback
+5. **Autocomplete**: Use autocomplete attributes for common fields
+6. **Disabled vs Read-only**: Use disabled when field can't be changed, read-only when it can be copied
+7. **Placeholder vs Label**: Never use placeholder as a replacement for label
+8. **Password fields**: Always use type="password" and appropriate autocomplete
+
+---
+
+### Textarea
+
+A headless textarea component for multi-line text input with auto-resize support and validation states.
+
+#### Features
+
+- Multi-line text input
+- Auto-resize to fit content
+- Min/max rows constraints
+- Validation states (invalid)
+- Disabled and read-only states
+- Full ARIA support
+- Controlled and uncontrolled modes
+- Character count support
+- Event handlers (onChange, onInput, onBlur, onFocus)
+
+#### Basic Usage
+
+```typescript
+import { defineComponent, signal } from 'aether';
+import { Textarea } from 'aether/primitives';
+
+// Simple textarea
+export const BasicTextarea = defineComponent(() => {
+  const comment = signal('');
+
+  return () => (
+    <Textarea
+      placeholder="Enter your comment"
+      onChange={(newValue) => comment.set(newValue)}
+      class="textarea"
+    />
+  );
+});
+
+// Controlled textarea
+export const ControlledTextarea = defineComponent(() => {
+  const message = signal('');
+
+  return () => (
+    <div class="field">
+      <label for="message">Message</label>
+      <Textarea
+        id="message"
+        value={message()}
+        onChange={(newValue) => message.set(newValue)}
+        placeholder="Enter your message"
+        rows={4}
+        class="textarea"
+      />
+      <p>Character count: {message().length}</p>
+    </div>
+  );
+});
+
+// Uncontrolled textarea
+export const UncontrolledTextarea = defineComponent(() => {
+  return () => (
+    <Textarea
+      defaultValue="Initial text content"
+      placeholder="Enter text"
+      rows={5}
+      class="textarea"
+    />
+  );
+});
+```
+
+#### Auto-resize Textarea
+
+```typescript
+import { defineComponent, signal } from 'aether';
+import { Textarea } from 'aether/primitives';
+
+// Auto-resize based on content
+export const AutoResizeTextarea = defineComponent(() => {
+  const content = signal('');
+
+  return () => (
+    <div class="field">
+      <label for="auto-resize">Auto-resize Textarea</label>
+      <Textarea
+        id="auto-resize"
+        value={content()}
+        onChange={(newValue) => content.set(newValue)}
+        placeholder="Type something... The textarea will grow as you type"
+        autoResize
+        minRows={3}
+        maxRows={10}
+        class="textarea"
+      />
+    </div>
+  );
+});
+
+// Auto-resize with constraints
+export const ConstrainedAutoResize = defineComponent(() => {
+  const bio = signal('');
+
+  return () => (
+    <div class="field">
+      <label for="bio">Bio (max 500 characters)</label>
+      <Textarea
+        id="bio"
+        value={bio()}
+        onChange={(newValue) => {
+          if (newValue.length <= 500) {
+            bio.set(newValue);
+          }
+        }}
+        placeholder="Tell us about yourself..."
+        autoResize
+        minRows={4}
+        maxRows={8}
+        maxLength={500}
+        class="textarea"
+      />
+      <p class="helper-text">
+        {bio().length} / 500 characters
+      </p>
+    </div>
+  );
+});
+```
+
+#### With Character Count
+
+```typescript
+import { defineComponent, signal, computed } from 'aether';
+import { Textarea } from 'aether/primitives';
+
+export const TextareaWithCharCount = defineComponent(() => {
+  const description = signal('');
+  const maxLength = 200;
+
+  const remaining = computed(() => maxLength - description().length);
+  const isNearLimit = computed(() => remaining() < 20);
+  const isAtLimit = computed(() => remaining() <= 0);
+
+  return () => (
+    <div class="field">
+      <label for="description">Description</label>
+      <Textarea
+        id="description"
+        value={description()}
+        onChange={(newValue) => {
+          if (newValue.length <= maxLength) {
+            description.set(newValue);
+          }
+        }}
+        placeholder="Enter description"
+        maxLength={maxLength}
+        rows={4}
+        class="textarea"
+      />
+      <p class={`char-count ${isNearLimit() ? 'warning' : ''} ${isAtLimit() ? 'error' : ''}`}>
+        {remaining()} characters remaining
+      </p>
+    </div>
+  );
+});
+```
+
+#### With Validation State
+
+```typescript
+import { defineComponent, signal, computed } from 'aether';
+import { Textarea } from 'aether/primitives';
+
+export const ValidatedTextarea = defineComponent(() => {
+  const feedback = signal('');
+  const touched = signal(false);
+
+  const minLength = 10;
+  const isInvalid = computed(() => {
+    return touched() && feedback().length > 0 && feedback().length < minLength;
+  });
+
+  const errorMessage = computed(() => {
+    if (isInvalid()) {
+      return `Feedback must be at least ${minLength} characters (currently ${feedback().length})`;
+    }
+    return null;
+  });
+
+  const handleBlur = () => {
+    touched.set(true);
+  };
+
+  return () => (
+    <div class="field">
+      <label for="feedback">Feedback</label>
+      <Textarea
+        id="feedback"
+        value={feedback()}
+        onChange={(newValue) => feedback.set(newValue)}
+        onBlur={handleBlur}
+        invalid={isInvalid()}
+        placeholder="Please provide your feedback"
+        autoResize
+        minRows={3}
+        maxRows={8}
+        class={`textarea ${isInvalid() ? 'textarea-error' : ''}`}
+        aria-describedby={isInvalid() ? 'feedback-error' : undefined}
+      />
+      {isInvalid() && (
+        <span id="feedback-error" class="error-message" role="alert">
+          {errorMessage()}
+        </span>
+      )}
+    </div>
+  );
+});
+```
+
+#### Integration with Form Primitives
+
+```typescript
+import { defineComponent, signal } from 'aether';
+import { FormField, FormLabel, FormControl, FormMessage, FormDescription } from 'aether/primitives';
+import { Textarea } from 'aether/primitives';
+
+export const TextareaFormIntegration = defineComponent(() => {
+  const review = signal('');
+  const error = signal<string | null>(null);
+
+  const handleChange = (value: string) => {
+    review.set(value);
+
+    // Validate review
+    if (value.length < 20) {
+      error.set('Review must be at least 20 characters');
+    } else if (value.length > 500) {
+      error.set('Review must not exceed 500 characters');
+    } else {
+      error.set(null);
+    }
+  };
+
+  return () => (
+    <FormField name="review">
+      <FormLabel>Product Review</FormLabel>
+      <FormDescription>
+        Share your experience with this product (20-500 characters)
+      </FormDescription>
+      <FormControl>
+        <Textarea
+          value={review()}
+          onChange={handleChange}
+          invalid={!!error()}
+          placeholder="Write your review here..."
+          autoResize
+          minRows={4}
+          maxRows={10}
+          maxLength={500}
+          class="textarea"
+        />
+      </FormControl>
+      {error() && (
+        <FormMessage>{error()}</FormMessage>
+      )}
+      <p class="helper-text">
+        {review().length} / 500 characters
+      </p>
+    </FormField>
+  );
+});
+```
+
+#### Styling Example
+
+```css
+/* Basic textarea styling */
+[data-textarea] {
+  width: 100%;
+  padding: var(--spacing-2) var(--spacing-3);
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  background: var(--color-background-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  outline: none;
+  transition: all var(--transition-fast);
+  resize: vertical; /* Allow vertical resize by default */
+}
+
+/* Auto-resize textarea (disable manual resize) */
+[data-textarea][data-autoresize] {
+  resize: none;
+  overflow: hidden;
+}
+
+/* Hover state */
+[data-textarea]:hover:not([data-disabled]) {
+  border-color: var(--color-border-hover);
+}
+
+/* Focus state */
+[data-textarea]:focus {
+  border-color: var(--color-primary-500);
+  box-shadow: 0 0 0 3px var(--color-primary-100);
+}
+
+/* Invalid state */
+[data-textarea][data-invalid] {
+  border-color: var(--color-error);
+}
+
+[data-textarea][data-invalid]:focus {
+  box-shadow: 0 0 0 3px var(--color-error-light);
+}
+
+/* Disabled state */
+[data-textarea][data-disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--color-background-secondary);
+  resize: none;
+}
+
+/* Read-only state */
+[data-textarea][data-readonly] {
+  background: var(--color-background-secondary);
+  cursor: default;
+  resize: none;
+}
+
+/* Placeholder */
+[data-textarea]::placeholder {
+  color: var(--color-text-tertiary);
+  opacity: 1;
+}
+
+/* Character count helpers */
+.char-count {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  text-align: right;
+  margin-top: var(--spacing-1);
+}
+
+.char-count.warning {
+  color: var(--color-warning);
+}
+
+.char-count.error {
+  color: var(--color-error);
+  font-weight: var(--font-weight-medium);
+}
+
+.helper-text {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+  margin-top: var(--spacing-1);
+}
+```
+
+#### API Reference
+
+**`<Textarea>`** - Textarea component
+
+Props:
+- `value?: string` - Controlled value
+- `defaultValue?: string` - Default value for uncontrolled mode
+- `placeholder?: string` - Placeholder text
+- `disabled?: boolean` - Disabled state
+- `readOnly?: boolean` - Read-only state
+- `required?: boolean` - Required field
+- `invalid?: boolean` - Invalid state for validation errors
+- `autoResize?: boolean` - Auto-resize to fit content (default: false)
+- `minRows?: number` - Minimum rows for auto-resize (default: 1)
+- `maxRows?: number` - Maximum rows for auto-resize (default: Infinity)
+- `rows?: number` - Fixed number of rows (ignored if autoResize is true)
+- `cols?: number` - Number of columns
+- `name?: string` - Textarea name
+- `id?: string` - Textarea ID
+- `maxLength?: number` - Maximum character length
+- `aria-label?: string` - ARIA label
+- `aria-labelledby?: string` - ARIA labelledby
+- `aria-describedby?: string` - ARIA describedby
+- `onChange?: (value: string) => void` - Change handler
+- `onInput?: (value: string) => void` - Input handler
+- `onBlur?: (event: FocusEvent) => void` - Blur handler
+- `onFocus?: (event: FocusEvent) => void` - Focus handler
+- `...HTMLTextAreaAttributes` - Additional HTML textarea attributes
+
+Data attributes:
+- `data-textarea` - Always present
+- `data-disabled` - Present when disabled
+- `data-readonly` - Present when read-only
+- `data-invalid` - Present when invalid
+- `data-autoresize` - Present when auto-resize is enabled
+
+#### Accessibility Notes
+
+- Always provide a label using `<label>`, `aria-label`, or `aria-labelledby`
+- Use `aria-describedby` to associate helper text or error messages
+- Set `aria-invalid="true"` when validation fails (automatically handled)
+- When using character limits, announce remaining characters to screen readers
+- Ensure sufficient color contrast for text and borders
+- Minimum touch target size of 44x44px for the overall field
+- Consider adding "required" attribute for required fields
+
+#### Best Practices
+
+1. **Always provide labels**: Use semantic `<label>` elements with `for` attribute
+2. **Show character limits**: If there's a maxLength, show character count
+3. **Auto-resize for better UX**: Use autoResize with min/max constraints for dynamic content
+4. **Validate on blur**: Only show errors after user leaves the field
+5. **Clear error messages**: Provide actionable feedback
+6. **Set appropriate min/max rows**: Balance between initial size and maximum height
+7. **Placeholder vs Label**: Never use placeholder as a replacement for label
+8. **Consider line height**: Ensure adequate line height (1.5 recommended) for readability
+9. **Fixed height for forms**: Use fixed rows for consistent form layouts
+10. **Resize handle**: Allow vertical resize unless using autoResize
+
+---
+
 ### Avatar
 
 User avatar display with image loading states and fallback support.
@@ -9070,6 +9852,1589 @@ const Example240 = defineComponent(() => {
 
 ---
 
+### Flex
+
+A flexible layout container that provides flexbox functionality with convenient props.
+
+#### Features
+
+- Flexbox layout with shorthand props
+- Direction control (row, column, reverse variants)
+- Flexible alignment (justify, align, alignContent)
+- Gap/spacing support with row and column gaps
+- Wrapping control
+- Flex grow, shrink, and basis support
+- Inline flex option
+- Responsive values support
+- Auto pixel conversion for numeric values
+
+#### Basic Usage
+
+```typescript
+import { defineComponent } from 'aether';
+import { Flex } from 'aether/primitives';
+
+const Example241 = defineComponent(() => {
+  return () => (
+    <Flex gap={16}>
+      <div>Item 1</div>
+      <div>Item 2</div>
+      <div>Item 3</div>
+    </Flex>
+  );
+});
+```
+
+#### Alignment Examples
+
+```typescript
+// Centered column layout
+const Example242 = defineComponent(() => {
+  return () => (
+    <Flex direction="column" align="center" justify="center">
+      <h1>Centered Content</h1>
+      <p>Both horizontally and vertically centered</p>
+    </Flex>
+  );
+});
+
+// Space between with wrapping
+const Example243 = defineComponent(() => {
+  return () => (
+    <Flex justify="space-between" wrap="wrap" gap="1rem">
+      <div>Item 1</div>
+      <div>Item 2</div>
+      <div>Item 3</div>
+      <div>Item 4</div>
+    </Flex>
+  );
+});
+
+// Reverse direction
+const Example244 = defineComponent(() => {
+  return () => (
+    <Flex direction="row-reverse" gap={8}>
+      <button>Cancel</button>
+      <button>Submit</button>
+    </Flex>
+  );
+});
+```
+
+#### Advanced Usage
+
+```typescript
+// Complex flex layout with custom flex values
+const Example245 = defineComponent(() => {
+  return () => (
+    <Flex gap={16}>
+      <div style={{ flex: '0 0 200px' }}>
+        Sidebar (fixed width)
+      </div>
+      <Flex direction="column" grow={1} gap={12}>
+        <div>Main content area (grows to fill space)</div>
+        <div>More content</div>
+      </Flex>
+      <div style={{ flex: '0 0 250px' }}>
+        Right panel (fixed width)
+      </div>
+    </Flex>
+  );
+});
+
+// Responsive flex layout with separate row/column gaps
+const Example246 = defineComponent(() => {
+  return () => (
+    <Flex
+      direction="column"
+      rowGap={24}
+      columnGap={16}
+      wrap="wrap"
+      style={{ maxHeight: '600px' }}
+    >
+      <div>Item 1</div>
+      <div>Item 2</div>
+      <div>Item 3</div>
+      <div>Item 4</div>
+    </Flex>
+  );
+});
+
+// Inline flex for inline layouts
+const Example247 = defineComponent(() => {
+  return () => (
+    <div>
+      Some text followed by
+      <Flex inline gap={8} align="center">
+        <span>inline</span>
+        <span>flex</span>
+        <span>items</span>
+      </Flex>
+      and more text
+    </div>
+  );
+});
+```
+
+#### Styling Example
+
+```css
+/* Flex container with custom styling */
+.flex-container {
+  background: var(--color-background-secondary);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-4);
+}
+
+/* Flex items */
+.flex-item {
+  background: var(--color-background-primary);
+  padding: var(--spacing-3);
+  border-radius: var(--radius-sm);
+  transition: transform var(--transition-fast);
+}
+
+.flex-item:hover {
+  transform: translateY(-2px);
+}
+
+/* Responsive flex layout */
+@media (max-width: 768px) {
+  .responsive-flex {
+    flex-direction: column;
+  }
+}
+```
+
+#### API Reference
+
+**`<Flex>`** - Flex container component
+
+Props:
+- `as?: string` - Element to render as (default: 'div')
+- `direction?: 'row' | 'row-reverse' | 'column' | 'column-reverse'` - Flex direction (default: 'row')
+- `justify?: 'flex-start' | 'flex-end' | 'center' | 'space-between' | 'space-around' | 'space-evenly'` - Justify content on main axis
+- `align?: 'flex-start' | 'flex-end' | 'center' | 'baseline' | 'stretch'` - Align items on cross axis
+- `alignContent?: 'flex-start' | 'flex-end' | 'center' | 'space-between' | 'space-around' | 'stretch'` - Align content when wrapping
+- `wrap?: 'nowrap' | 'wrap' | 'wrap-reverse'` - Flex wrap behavior
+- `gap?: number | string` - Gap between items (number converts to pixels)
+- `rowGap?: number | string` - Gap between rows (number converts to pixels)
+- `columnGap?: number | string` - Gap between columns (number converts to pixels)
+- `grow?: number` - Flex grow factor
+- `shrink?: number` - Flex shrink factor
+- `basis?: number | string` - Flex basis (number converts to pixels)
+- `inline?: boolean` - Use inline-flex display (default: false)
+- `children?: any` - Child elements
+- `class?: string` - Additional CSS class
+- `style?: Record<string, any>` - Inline styles (merged with flex styles)
+
+#### Accessibility Notes
+
+- Use semantic HTML elements with the `as` prop when appropriate (e.g., `as="nav"`, `as="header"`)
+- Ensure proper heading hierarchy within flex layouts
+- Consider using landmark roles for major layout sections
+- Flex direction changes can affect screen reader order - ensure logical reading order
+- Avoid using flex for data tables - use proper table markup instead
+
+#### Best Practices
+
+1. **Use shorthand props**: Flex provides convenient shorthand props for common flexbox patterns
+2. **Numeric values auto-convert to pixels**: `gap={16}` becomes `gap: 16px`
+3. **Combine with Grid for complex layouts**: Use Flex for 1D layouts, Grid for 2D layouts
+4. **Responsive design**: Control direction and wrapping for mobile-first layouts
+5. **Performance**: Flex is lightweight with minimal runtime overhead
+
+---
+
+### Grid
+
+A layout container that provides CSS Grid functionality with convenient props.
+
+#### Features
+
+- CSS Grid layout with shorthand props
+- Template columns, rows, and areas support
+- Auto-flow control (row, column, dense)
+- Auto-columns and auto-rows for implicit grids
+- Gap/spacing support with row and column gaps
+- Flexible alignment (justify/align items and content)
+- Inline grid option
+- GridItem sub-component for precise placement
+- Responsive grid templates
+- Named grid areas support
+
+#### Basic Usage
+
+```typescript
+import { defineComponent } from 'aether';
+import { Grid } from 'aether/primitives';
+
+// Basic 3-column grid
+const Example248 = defineComponent(() => {
+  return () => (
+    <Grid templateColumns="repeat(3, 1fr)" gap={16}>
+      <div>Item 1</div>
+      <div>Item 2</div>
+      <div>Item 3</div>
+      <div>Item 4</div>
+      <div>Item 5</div>
+      <div>Item 6</div>
+    </Grid>
+  );
+});
+```
+
+#### Responsive Grid Examples
+
+```typescript
+// Responsive grid with auto-fit
+const Example249 = defineComponent(() => {
+  return () => (
+    <Grid templateColumns="repeat(auto-fit, minmax(200px, 1fr))" gap="1rem">
+      <div class="card">Card 1</div>
+      <div class="card">Card 2</div>
+      <div class="card">Card 3</div>
+      <div class="card">Card 4</div>
+    </Grid>
+  );
+});
+
+// Grid with auto-flow
+const Example250 = defineComponent(() => {
+  return () => (
+    <Grid
+      templateColumns="repeat(3, 1fr)"
+      autoFlow="dense"
+      gap={16}
+    >
+      <div style={{ gridColumn: 'span 2' }}>Wide item</div>
+      <div>Item</div>
+      <div>Item</div>
+      <div style={{ gridColumn: 'span 2' }}>Another wide item</div>
+    </Grid>
+  );
+});
+```
+
+#### Named Grid Areas
+
+```typescript
+// Dashboard layout with named areas
+const Example251 = defineComponent(() => {
+  return () => (
+    <Grid
+      templateAreas={`
+        "header header header"
+        "sidebar main main"
+        "sidebar footer footer"
+      `}
+      templateColumns="200px 1fr 1fr"
+      templateRows="auto 1fr auto"
+      gap={16}
+      style={{ minHeight: '100vh' }}
+    >
+      <div style={{ gridArea: 'header' }} class="header">
+        Header
+      </div>
+      <div style={{ gridArea: 'sidebar' }} class="sidebar">
+        Sidebar
+      </div>
+      <div style={{ gridArea: 'main' }} class="main">
+        Main Content
+      </div>
+      <div style={{ gridArea: 'footer' }} class="footer">
+        Footer
+      </div>
+    </Grid>
+  );
+});
+```
+
+#### GridItem Usage
+
+```typescript
+import { defineComponent } from 'aether';
+import { Grid, GridItem } from 'aether/primitives';
+
+// Precise grid placement with GridItem
+const Example252 = defineComponent(() => {
+  return () => (
+    <Grid templateColumns="repeat(4, 1fr)" templateRows="repeat(3, 100px)" gap={16}>
+      <GridItem column="1 / 3" row="1 / 2">
+        Spans 2 columns, 1 row
+      </GridItem>
+      <GridItem column="3 / 5" row="1 / 3">
+        Spans 2 columns, 2 rows
+      </GridItem>
+      <GridItem column="1 / 2" row="2 / 4">
+        Spans 1 column, 2 rows
+      </GridItem>
+      <GridItem column="span 2" row="3">
+        Spans 2 columns using span notation
+      </GridItem>
+    </Grid>
+  );
+});
+
+// GridItem with named area
+const Example253 = defineComponent(() => {
+  return () => (
+    <Grid
+      templateAreas={`
+        "header header"
+        "sidebar main"
+        "footer footer"
+      `}
+      templateColumns="200px 1fr"
+      gap={16}
+    >
+      <GridItem area="header">Header</GridItem>
+      <GridItem area="sidebar">Sidebar</GridItem>
+      <GridItem area="main">Main</GridItem>
+      <GridItem area="footer">Footer</GridItem>
+    </Grid>
+  );
+});
+```
+
+#### Advanced Usage
+
+```typescript
+// Complex grid with alignment
+const Example254 = defineComponent(() => {
+  return () => (
+    <Grid
+      templateColumns="repeat(auto-fill, minmax(150px, 1fr))"
+      autoRows="100px"
+      gap={20}
+      justifyItems="center"
+      alignItems="center"
+      justifyContent="space-evenly"
+    >
+      <div>Centered item 1</div>
+      <div>Centered item 2</div>
+      <div>Centered item 3</div>
+      <div>Centered item 4</div>
+    </Grid>
+  );
+});
+
+// Magazine-style layout
+const Example255 = defineComponent(() => {
+  return () => (
+    <Grid
+      templateColumns="repeat(6, 1fr)"
+      templateRows="repeat(4, 150px)"
+      gap={12}
+    >
+      <GridItem column="1 / 4" row="1 / 3">
+        <article class="featured-article">Featured Article</article>
+      </GridItem>
+      <GridItem column="4 / 7" row="1 / 2">
+        <article class="secondary-article">Secondary</article>
+      </GridItem>
+      <GridItem column="4 / 7" row="2 / 3">
+        <article class="secondary-article">Secondary</article>
+      </GridItem>
+      <GridItem column="1 / 3" row="3 / 5">
+        <article class="small-article">Small</article>
+      </GridItem>
+      <GridItem column="3 / 5" row="3 / 5">
+        <article class="small-article">Small</article>
+      </GridItem>
+      <GridItem column="5 / 7" row="3 / 5">
+        <article class="small-article">Small</article>
+      </GridItem>
+    </Grid>
+  );
+});
+```
+
+#### Styling Example
+
+```css
+/* Grid container */
+.grid-container {
+  background: var(--color-background-secondary);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-4);
+}
+
+/* Grid items */
+.grid-item {
+  background: var(--color-background-primary);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-4);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Responsive grid */
+@media (max-width: 768px) {
+  .responsive-grid {
+    grid-template-columns: 1fr !important;
+    grid-template-areas:
+      "header"
+      "main"
+      "sidebar"
+      "footer" !important;
+  }
+}
+
+/* Grid gap responsive */
+@media (max-width: 640px) {
+  .grid-container {
+    gap: 8px;
+  }
+}
+```
+
+#### API Reference
+
+**`<Grid>`** - Grid container component
+
+Props:
+- `as?: string` - Element to render as (default: 'div')
+- `templateColumns?: string` - Grid template columns (e.g., "1fr 2fr", "repeat(3, 1fr)")
+- `templateRows?: string` - Grid template rows
+- `templateAreas?: string` - Grid template areas (multiline string with area names)
+- `autoFlow?: 'row' | 'column' | 'dense' | 'row dense' | 'column dense'` - Grid auto-flow behavior
+- `autoColumns?: string` - Grid auto-columns size for implicit columns
+- `autoRows?: string` - Grid auto-rows size for implicit rows
+- `gap?: number | string` - Gap between items (number converts to pixels)
+- `rowGap?: number | string` - Gap between rows (number converts to pixels)
+- `columnGap?: number | string` - Gap between columns (number converts to pixels)
+- `justifyItems?: 'start' | 'end' | 'center' | 'stretch'` - Horizontal alignment within grid cell
+- `alignItems?: 'start' | 'end' | 'center' | 'stretch' | 'baseline'` - Vertical alignment within grid cell
+- `justifyContent?: 'start' | 'end' | 'center' | 'stretch' | 'space-around' | 'space-between' | 'space-evenly'` - Grid track alignment horizontal
+- `alignContent?: 'start' | 'end' | 'center' | 'stretch' | 'space-around' | 'space-between' | 'space-evenly'` - Grid track alignment vertical
+- `inline?: boolean` - Use inline-grid display (default: false)
+- `children?: any` - Child elements
+- `class?: string` - Additional CSS class
+- `style?: Record<string, any>` - Inline styles (merged with grid styles)
+
+**`<GridItem>`** - Grid item component for precise placement
+
+Props:
+- `as?: string` - Element to render as (default: 'div')
+- `column?: string` - Grid column start/end (e.g., "1 / 3", "span 2")
+- `columnStart?: number | string` - Grid column start line
+- `columnEnd?: number | string` - Grid column end line
+- `row?: string` - Grid row start/end (e.g., "1 / 3", "span 2")
+- `rowStart?: number | string` - Grid row start line
+- `rowEnd?: number | string` - Grid row end line
+- `area?: string` - Grid area name (must match parent's templateAreas)
+- `children?: any` - Child elements
+- `class?: string` - Additional CSS class
+- `style?: Record<string, any>` - Inline styles (merged with grid item styles)
+
+#### Accessibility Notes
+
+- Use semantic HTML elements with the `as` prop when appropriate (e.g., `as="main"`, `as="aside"`)
+- Grid source order should match visual order for screen readers when possible
+- Use proper heading hierarchy within grid layouts
+- Consider providing skip links for complex grid layouts
+- Grid areas should have semantic meaning
+- Test with keyboard navigation to ensure logical tab order
+
+#### Best Practices
+
+1. **Use Grid for 2D layouts**: Grid excels at two-dimensional layouts (rows AND columns)
+2. **Combine auto-fit/auto-fill with minmax**: Creates responsive grids without media queries
+3. **Named areas for clarity**: Use grid areas for complex layouts to improve readability
+4. **GridItem for precise control**: Use GridItem component when you need explicit placement
+5. **Performance**: Grid is highly optimized by browsers and has minimal overhead
+6. **Mobile-first**: Design for mobile grid first, then enhance for larger screens
+7. **Gap over margin**: Use gap property instead of margins for consistent spacing
+
+---
+
+### Stack
+
+A layout component for stacking elements vertically or horizontally with consistent spacing.
+
+#### Features
+
+- Vertical and horizontal stacking
+- Consistent spacing between items
+- Alignment control on cross axis
+- Justification control on main axis
+- Wrapping support
+- Divider support (automatic placement between items)
+- VStack and HStack convenience wrappers
+- Responsive spacing
+- Auto pixel conversion for numeric values
+
+#### Basic Usage
+
+```typescript
+import { defineComponent } from 'aether';
+import { Stack } from 'aether/primitives';
+
+// Vertical stack (default)
+const Example256 = defineComponent(() => {
+  return () => (
+    <Stack spacing={16}>
+      <div>Item 1</div>
+      <div>Item 2</div>
+      <div>Item 3</div>
+    </Stack>
+  );
+});
+
+// Horizontal stack
+const Example257 = defineComponent(() => {
+  return () => (
+    <Stack direction="horizontal" spacing={24}>
+      <button>Button 1</button>
+      <button>Button 2</button>
+      <button>Button 3</button>
+    </Stack>
+  );
+});
+```
+
+#### VStack and HStack
+
+```typescript
+import { defineComponent } from 'aether';
+import { VStack, HStack } from 'aether/primitives';
+
+// VStack - Vertical stack shorthand
+const Example258 = defineComponent(() => {
+  return () => (
+    <VStack spacing={16} align="center">
+      <h1>Title</h1>
+      <p>Subtitle</p>
+      <button>Action</button>
+    </VStack>
+  );
+});
+
+// HStack - Horizontal stack shorthand
+const Example259 = defineComponent(() => {
+  return () => (
+    <HStack spacing={8} align="center">
+      <img src="/avatar.jpg" alt="Avatar" />
+      <div>
+        <h3>John Doe</h3>
+        <p>Software Engineer</p>
+      </div>
+    </HStack>
+  );
+});
+```
+
+#### Alignment Examples
+
+```typescript
+// Centered vertical stack
+const Example260 = defineComponent(() => {
+  return () => (
+    <VStack spacing={20} align="center" justify="center" style={{ minHeight: '400px' }}>
+      <h1>Welcome</h1>
+      <p>Get started by creating your account</p>
+      <button>Sign Up</button>
+    </VStack>
+  );
+});
+
+// Horizontal stack with space-between
+const Example261 = defineComponent(() => {
+  return () => (
+    <HStack spacing={16} justify="space-between" align="center">
+      <div>Logo</div>
+      <nav>Navigation</nav>
+      <button>Login</button>
+    </HStack>
+  );
+});
+
+// Stack with end alignment
+const Example262 = defineComponent(() => {
+  return () => (
+    <VStack spacing={12} align="end">
+      <p>Amount:</p>
+      <p class="price">$99.99</p>
+      <p class="tax">Tax: $10.00</p>
+      <p class="total">Total: $109.99</p>
+    </VStack>
+  );
+});
+```
+
+#### Stack with Divider
+
+```typescript
+import { defineComponent } from 'aether';
+import { VStack, HStack } from 'aether/primitives';
+
+// Vertical stack with dividers
+const Example263 = defineComponent(() => {
+  return () => (
+    <VStack
+      spacing={16}
+      divider={<hr style={{ width: '100%', border: 'none', borderTop: '1px solid #e5e7eb' }} />}
+    >
+      <div>Section 1</div>
+      <div>Section 2</div>
+      <div>Section 3</div>
+    </VStack>
+  );
+});
+
+// Horizontal stack with dividers
+const Example264 = defineComponent(() => {
+  return () => (
+    <HStack
+      spacing={12}
+      align="center"
+      divider={<span style={{ color: '#ccc' }}>|</span>}
+    >
+      <a href="/home">Home</a>
+      <a href="/about">About</a>
+      <a href="/contact">Contact</a>
+    </HStack>
+  );
+});
+```
+
+#### Advanced Usage
+
+```typescript
+// Responsive stack with wrapping
+const Example265 = defineComponent(() => {
+  return () => (
+    <HStack spacing={16} wrap align="center">
+      <div class="chip">Tag 1</div>
+      <div class="chip">Tag 2</div>
+      <div class="chip">Tag 3</div>
+      <div class="chip">Tag 4</div>
+      <div class="chip">Tag 5</div>
+    </HStack>
+  );
+});
+
+// Card with vertical stack
+const Example266 = defineComponent(() => {
+  return () => (
+    <div class="card">
+      <VStack spacing={12}>
+        <h3>Card Title</h3>
+        <p>Card description text goes here</p>
+        <HStack spacing={8} justify="end">
+          <button>Cancel</button>
+          <button class="primary">Confirm</button>
+        </HStack>
+      </VStack>
+    </div>
+  );
+});
+
+// Form layout with stacks
+const Example267 = defineComponent(() => {
+  return () => (
+    <form>
+      <VStack spacing={20}>
+        <VStack spacing={8}>
+          <label for="name">Name</label>
+          <input id="name" type="text" />
+        </VStack>
+
+        <VStack spacing={8}>
+          <label for="email">Email</label>
+          <input id="email" type="email" />
+        </VStack>
+
+        <HStack spacing={12} justify="end">
+          <button type="button">Cancel</button>
+          <button type="submit">Submit</button>
+        </HStack>
+      </VStack>
+    </form>
+  );
+});
+```
+
+#### Styling Example
+
+```css
+/* Stack container */
+.stack-container {
+  background: var(--color-background-secondary);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-4);
+}
+
+/* Stack items */
+.stack-item {
+  padding: var(--spacing-3);
+  background: var(--color-background-primary);
+  border-radius: var(--radius-sm);
+}
+
+/* Responsive spacing */
+@media (max-width: 768px) {
+  .responsive-stack {
+    gap: 8px !important;
+  }
+}
+
+/* Divider styling */
+.stack-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--color-border);
+  margin: 0;
+}
+```
+
+#### API Reference
+
+**`<Stack>`** - Stack container component
+
+Props:
+- `direction?: 'vertical' | 'horizontal'` - Stack direction (default: 'vertical')
+- `spacing?: number | string` - Spacing between items (number converts to pixels, default: 0)
+- `align?: 'start' | 'center' | 'end' | 'stretch' | 'baseline'` - Alignment on cross axis
+- `justify?: 'start' | 'center' | 'end' | 'space-between' | 'space-around' | 'space-evenly'` - Justification on main axis
+- `wrap?: boolean` - Allow items to wrap (default: false)
+- `divider?: any` - Element to place between stack items (automatically positioned)
+- `children?: any` - Child elements
+- `class?: string` - Additional CSS class
+- `style?: Record<string, any>` - Inline styles (merged with stack styles)
+
+**`<VStack>`** - Vertical stack convenience wrapper
+
+Props: Same as Stack, except `direction` is always 'vertical'
+
+**`<HStack>`** - Horizontal stack convenience wrapper
+
+Props: Same as Stack, except `direction` is always 'horizontal'
+
+#### Accessibility Notes
+
+- Stack uses flexbox internally with `display: flex`
+- Use semantic HTML elements when appropriate (e.g., `<nav>`, `<article>`)
+- Ensure proper heading hierarchy within stacks
+- Dividers should have appropriate aria attributes if they convey semantic meaning
+- Consider using `<hr>` for dividers in vertical stacks for semantic separation
+- Stack order matches visual order for screen readers
+- Keyboard navigation follows natural tab order
+
+#### Best Practices
+
+1. **Use VStack and HStack for clarity**: More explicit than Stack with direction prop
+2. **Numeric spacing auto-converts**: `spacing={16}` becomes `gap: 16px`
+3. **Dividers are automatic**: No need to manually add dividers between items
+4. **Prefer Stack over Flex for simple layouts**: Stack is more semantic for 1D item lists
+5. **Combine with other layouts**: Use Stack inside Grid or Flex for complex layouts
+6. **Responsive design**: Adjust spacing for different screen sizes
+7. **Performance**: Stack is lightweight wrapper around flexbox
+8. **Wrapping for responsive tags**: Use `wrap` for tag lists, chips, or badges
+
+---
+
+### Box
+
+The foundational layout component that all other layout components build upon. Box is a polymorphic component that can render as any HTML element.
+
+#### Features
+
+- Polymorphic component (can render as any HTML element)
+- Base for all layout primitives
+- Minimal runtime overhead
+- Simple prop forwarding
+- Support for custom styling via class and style props
+- Semantic HTML element support
+- Clean and predictable API
+- TypeScript-friendly with proper type inference
+
+#### Basic Usage
+
+```typescript
+import { defineComponent } from 'aether';
+import { Box } from 'aether/primitives';
+
+// Default div
+const Example268 = defineComponent(() => {
+  return () => (
+    <Box>
+      This is a basic box (renders as div)
+    </Box>
+  );
+});
+
+// Semantic HTML elements
+const Example269 = defineComponent(() => {
+  return () => (
+    <>
+      <Box as="section" class="page-section">
+        <Box as="header">
+          <h1>Section Title</h1>
+        </Box>
+        <Box as="article">
+          <p>Article content...</p>
+        </Box>
+        <Box as="footer">
+          <p>Footer content</p>
+        </Box>
+      </Box>
+    </>
+  );
+});
+```
+
+#### Styling Examples
+
+```typescript
+// Box with custom styling
+const Example270 = defineComponent(() => {
+  return () => (
+    <Box
+      class="card"
+      style={{
+        padding: '24px',
+        background: '#ffffff',
+        borderRadius: '8px',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+      }}
+    >
+      <h3>Card Title</h3>
+      <p>Card content goes here</p>
+    </Box>
+  );
+});
+
+// Colored backgrounds
+const Example271 = defineComponent(() => {
+  return () => (
+    <Box
+      style={{
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        padding: '48px',
+        color: 'white',
+        borderRadius: '12px'
+      }}
+    >
+      <h2>Gradient Background</h2>
+      <p>Beautiful gradient box</p>
+    </Box>
+  );
+});
+
+// Box as navigation
+const Example272 = defineComponent(() => {
+  return () => (
+    <Box as="nav" class="main-nav" style={{ display: 'flex', gap: '16px' }}>
+      <a href="/">Home</a>
+      <a href="/about">About</a>
+      <a href="/contact">Contact</a>
+    </Box>
+  );
+});
+```
+
+#### Spacing Utilities
+
+```typescript
+// Box with padding and margin
+const Example273 = defineComponent(() => {
+  return () => (
+    <Box
+      style={{
+        padding: '16px 24px',
+        margin: '0 auto',
+        maxWidth: '800px'
+      }}
+    >
+      Content with spacing
+    </Box>
+  );
+});
+
+// Responsive spacing
+const Example274 = defineComponent(() => {
+  return () => (
+    <Box
+      class="responsive-box"
+      style={{
+        padding: '16px'
+      }}
+    >
+      <p>Responsive content</p>
+    </Box>
+  );
+});
+```
+
+#### Advanced Usage
+
+```typescript
+// Box as button (although Button primitive is preferred)
+const Example275 = defineComponent(() => {
+  const handleClick = () => {
+    console.log('Box clicked');
+  };
+
+  return () => (
+    <Box
+      as="button"
+      type="button"
+      onClick={handleClick}
+      style={{
+        padding: '12px 24px',
+        border: 'none',
+        borderRadius: '4px',
+        background: '#3b82f6',
+        color: 'white',
+        cursor: 'pointer'
+      }}
+    >
+      Click Me
+    </Box>
+  );
+});
+
+// Box with data attributes
+const Example276 = defineComponent(() => {
+  return () => (
+    <Box
+      as="article"
+      data-testid="article-box"
+      data-category="news"
+      role="article"
+      aria-label="News Article"
+    >
+      <h2>Article Title</h2>
+      <p>Article content...</p>
+    </Box>
+  );
+});
+
+// Conditional styling
+const Example277 = defineComponent(() => {
+  const isActive = signal(false);
+
+  return () => (
+    <Box
+      class={isActive() ? 'box box--active' : 'box'}
+      style={{
+        padding: '16px',
+        background: isActive() ? '#e0f2fe' : '#f3f4f6',
+        border: `2px solid ${isActive() ? '#0ea5e9' : '#d1d5db'}`,
+        transition: 'all 0.2s'
+      }}
+      onClick={() => isActive(!isActive())}
+    >
+      Click to toggle active state
+    </Box>
+  );
+});
+```
+
+#### Composition with Other Primitives
+
+```typescript
+// Box as container for Flex layout
+const Example278 = defineComponent(() => {
+  return () => (
+    <Box class="page-header" style={{ background: '#1e293b', color: 'white' }}>
+      <Flex justify="space-between" align="center" style={{ padding: '16px 24px' }}>
+        <Box as="h1" style={{ margin: 0 }}>My App</Box>
+        <Box as="nav">
+          <HStack spacing={16}>
+            <a href="/home">Home</a>
+            <a href="/about">About</a>
+          </HStack>
+        </Box>
+      </Flex>
+    </Box>
+  );
+});
+
+// Box with Grid inside
+const Example279 = defineComponent(() => {
+  return () => (
+    <Box class="dashboard" style={{ padding: '24px', background: '#f9fafb' }}>
+      <Grid templateColumns="repeat(auto-fit, minmax(250px, 1fr))" gap={24}>
+        <Box class="stat-card" style={{ padding: '20px', background: 'white', borderRadius: '8px' }}>
+          <h3>Total Users</h3>
+          <p class="stat-value">1,234</p>
+        </Box>
+        <Box class="stat-card" style={{ padding: '20px', background: 'white', borderRadius: '8px' }}>
+          <h3>Revenue</h3>
+          <p class="stat-value">$45,678</p>
+        </Box>
+        <Box class="stat-card" style={{ padding: '20px', background: 'white', borderRadius: '8px' }}>
+          <h3>Growth</h3>
+          <p class="stat-value">+23%</p>
+        </Box>
+      </Grid>
+    </Box>
+  );
+});
+```
+
+#### Styling Example
+
+```css
+/* Basic box styles */
+.box {
+  display: block;
+}
+
+/* Card-like box */
+.card {
+  background: var(--color-background-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-4);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition-fast);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+/* Box with responsive padding */
+.responsive-box {
+  padding: var(--spacing-3);
+}
+
+@media (min-width: 768px) {
+  .responsive-box {
+    padding: var(--spacing-6);
+  }
+}
+
+/* Box states */
+.box--active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+
+/* Box as section */
+.page-section {
+  margin-bottom: var(--spacing-8);
+}
+
+.page-section:last-child {
+  margin-bottom: 0;
+}
+```
+
+#### API Reference
+
+**`<Box>`** - Foundational layout component
+
+Props:
+- `as?: string` - Element to render as (default: 'div')
+- `children?: any` - Child elements
+- `class?: string` - CSS class name
+- `style?: Record<string, any>` - Inline styles
+- `[key: string]: any` - All other props are forwarded to the rendered element
+
+#### Accessibility Notes
+
+- Use semantic HTML elements via the `as` prop whenever possible
+- Box with `as="button"` should have proper button attributes (type, aria-label, etc.)
+- Box with `as="nav"` should contain navigation links
+- Box with `as="article"` should contain article content with proper heading structure
+- Interactive boxes need proper keyboard support and focus indicators
+- Ensure proper heading hierarchy when using Box as semantic elements
+
+#### Best Practices
+
+1. **Use semantic HTML**: Prefer `<Box as="section">` over `<Box>` for major sections
+2. **Keep it simple**: Box is meant to be lightweight - use it for basic container needs
+3. **Prefer specific primitives**: Use Flex, Grid, Stack for layout instead of styling Box with flexbox/grid
+4. **Type forwarding**: Box forwards all props to the underlying element
+5. **Composition over configuration**: Build complex components from simple Box primitives
+6. **CSS over inline styles**: Use classes for reusable styles, inline styles for dynamic values
+7. **Accessibility first**: Always use appropriate semantic elements via the `as` prop
+8. **Performance**: Box has near-zero runtime overhead
+
+---
+
+### Container
+
+A responsive content width container that centers content and constrains maximum width for better readability and layout consistency.
+
+#### Features
+
+- Responsive max-width constraints based on size variants
+- Automatic content centering with margins
+- Configurable horizontal and vertical padding
+- Size variants: xs, sm, md, lg, xl, 2xl, full
+- Fluid mode for full-width layouts
+- Pixel or string-based padding values
+- Centered content by default
+- Perfect for page layouts and content sections
+
+#### Basic Usage
+
+```typescript
+import { defineComponent } from 'aether';
+import { Container } from 'aether/primitives';
+
+// Default container (lg size, centered)
+const Example280 = defineComponent(() => {
+  return () => (
+    <Container>
+      <h1>Page Title</h1>
+      <p>This content is centered and has a max-width of 1024px (lg)</p>
+    </Container>
+  );
+});
+
+// Small container for focused content
+const Example281 = defineComponent(() => {
+  return () => (
+    <Container size="sm">
+      <article>
+        <h2>Blog Post Title</h2>
+        <p>Narrow column for better readability (max-width: 640px)</p>
+      </article>
+    </Container>
+  );
+});
+
+// Extra large container for wide layouts
+const Example282 = defineComponent(() => {
+  return () => (
+    <Container size="2xl">
+      <h1>Dashboard</h1>
+      <p>Wide container for dashboard layouts (max-width: 1536px)</p>
+    </Container>
+  );
+});
+```
+
+#### Size Variants
+
+```typescript
+// All size variants
+const Example283 = defineComponent(() => {
+  return () => (
+    <>
+      <Container size="xs">
+        XS Container (480px) - Very narrow
+      </Container>
+
+      <Container size="sm">
+        SM Container (640px) - Blog posts, articles
+      </Container>
+
+      <Container size="md">
+        MD Container (768px) - Forms, narrow content
+      </Container>
+
+      <Container size="lg">
+        LG Container (1024px) - Default, general content
+      </Container>
+
+      <Container size="xl">
+        XL Container (1280px) - Wide content areas
+      </Container>
+
+      <Container size="2xl">
+        2XL Container (1536px) - Dashboards, data tables
+      </Container>
+
+      <Container size="full">
+        Full Container (100%) - Full width, respects padding
+      </Container>
+    </>
+  );
+});
+```
+
+#### Padding Control
+
+```typescript
+// Container with custom padding
+const Example284 = defineComponent(() => {
+  return () => (
+    <Container size="lg" px={32} py={48}>
+      <h1>Custom Padded Container</h1>
+      <p>32px horizontal padding, 48px vertical padding</p>
+    </Container>
+  );
+});
+
+// Container with string-based padding
+const Example285 = defineComponent(() => {
+  return () => (
+    <Container size="md" px="2rem" py="4rem">
+      <h2>String Padding</h2>
+      <p>Using rem units for responsive padding</p>
+    </Container>
+  );
+});
+
+// Container with no vertical padding (default)
+const Example286 = defineComponent(() => {
+  return () => (
+    <Container size="lg" px={24}>
+      <p>Only horizontal padding, no vertical padding</p>
+    </Container>
+  );
+});
+```
+
+#### Fluid Container
+
+```typescript
+// Fluid container (full width)
+const Example287 = defineComponent(() => {
+  return () => (
+    <Container fluid px={24}>
+      <h1>Full Width Container</h1>
+      <p>This container spans the full width with padding</p>
+    </Container>
+  );
+});
+
+// Conditional fluid mode
+const Example288 = defineComponent(() => {
+  const isWide = signal(false);
+
+  return () => (
+    <Container fluid={isWide()} size="lg" px={24}>
+      <button onClick={() => isWide(!isWide())}>
+        Toggle: {isWide() ? 'Full Width' : 'Constrained'}
+      </button>
+      <p>Container adapts to fluid mode</p>
+    </Container>
+  );
+});
+```
+
+#### Page Layouts
+
+```typescript
+// Typical page layout
+const Example289 = defineComponent(() => {
+  return () => (
+    <>
+      {/* Full-width header */}
+      <Box as="header" style={{ background: '#1e293b', color: 'white' }}>
+        <Container size="xl" px={24} py={16}>
+          <Flex justify="space-between" align="center">
+            <h1>My Website</h1>
+            <nav>
+              <HStack spacing={16}>
+                <a href="/">Home</a>
+                <a href="/about">About</a>
+                <a href="/contact">Contact</a>
+              </HStack>
+            </nav>
+          </Flex>
+        </Container>
+      </Box>
+
+      {/* Main content */}
+      <Box as="main">
+        <Container size="lg" px={24} py={48}>
+          <h2>Page Content</h2>
+          <p>Main content area with comfortable max-width</p>
+        </Container>
+      </Box>
+
+      {/* Full-width footer */}
+      <Box as="footer" style={{ background: '#f3f4f6', marginTop: '64px' }}>
+        <Container size="xl" px={24} py={32}>
+          <p>© 2025 My Website. All rights reserved.</p>
+        </Container>
+      </Box>
+    </>
+  );
+});
+```
+
+#### Landing Page Sections
+
+```typescript
+// Hero section with large container
+const Example290 = defineComponent(() => {
+  return () => (
+    <Box as="section" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+      <Container size="xl" px={24} py={96}>
+        <VStack spacing={24} align="center">
+          <h1 style={{ fontSize: '48px', fontWeight: 'bold' }}>Welcome to Our Product</h1>
+          <p style={{ fontSize: '20px', maxWidth: '600px', textAlign: 'center' }}>
+            The best solution for your business needs. Get started today.
+          </p>
+          <HStack spacing={16}>
+            <button class="btn-primary">Get Started</button>
+            <button class="btn-secondary">Learn More</button>
+          </HStack>
+        </VStack>
+      </Container>
+    </Box>
+  );
+});
+
+// Features section with medium container
+const Example291 = defineComponent(() => {
+  return () => (
+    <Box as="section" style={{ padding: '80px 0' }}>
+      <Container size="lg" px={24}>
+        <VStack spacing={48} align="center">
+          <h2 style={{ fontSize: '36px', textAlign: 'center' }}>Features</h2>
+          <Grid templateColumns="repeat(auto-fit, minmax(250px, 1fr))" gap={32}>
+            <VStack spacing={12}>
+              <h3>Feature 1</h3>
+              <p>Description of feature 1</p>
+            </VStack>
+            <VStack spacing={12}>
+              <h3>Feature 2</h3>
+              <p>Description of feature 2</p>
+            </VStack>
+            <VStack spacing={12}>
+              <h3>Feature 3</h3>
+              <p>Description of feature 3</p>
+            </VStack>
+          </Grid>
+        </VStack>
+      </Container>
+    </Box>
+  );
+});
+
+// Testimonials section with small container for narrow text
+const Example292 = defineComponent(() => {
+  return () => (
+    <Box as="section" style={{ background: '#f9fafb', padding: '80px 0' }}>
+      <Container size="sm" px={24}>
+        <VStack spacing={32} align="center">
+          <h2 style={{ fontSize: '36px' }}>What Our Customers Say</h2>
+          <VStack spacing={24}>
+            <Box class="testimonial-card">
+              <p class="quote">"This product changed our business!"</p>
+              <p class="author">- John Doe, CEO</p>
+            </Box>
+            <Box class="testimonial-card">
+              <p class="quote">"Best decision we ever made."</p>
+              <p class="author">- Jane Smith, CTO</p>
+            </Box>
+          </VStack>
+        </VStack>
+      </Container>
+    </Box>
+  );
+});
+```
+
+#### Dashboard Layouts
+
+```typescript
+// Dashboard with wide container
+const Example293 = defineComponent(() => {
+  return () => (
+    <Container size="2xl" px={24} py={24}>
+      <VStack spacing={32}>
+        {/* Dashboard header */}
+        <Flex justify="space-between" align="center">
+          <h1>Analytics Dashboard</h1>
+          <HStack spacing={12}>
+            <button>Export</button>
+            <button>Settings</button>
+          </HStack>
+        </Flex>
+
+        {/* Stats grid */}
+        <Grid templateColumns="repeat(auto-fit, minmax(250px, 1fr))" gap={24}>
+          <Box class="stat-card">
+            <h3>Total Revenue</h3>
+            <p class="stat-value">$123,456</p>
+          </Box>
+          <Box class="stat-card">
+            <h3>Active Users</h3>
+            <p class="stat-value">45,678</p>
+          </Box>
+          <Box class="stat-card">
+            <h3>Conversion Rate</h3>
+            <p class="stat-value">3.45%</p>
+          </Box>
+          <Box class="stat-card">
+            <h3>Growth</h3>
+            <p class="stat-value">+23%</p>
+          </Box>
+        </Grid>
+
+        {/* Charts section */}
+        <Grid templateColumns="2fr 1fr" gap={24}>
+          <Box class="chart-card">
+            <h3>Revenue Over Time</h3>
+            {/* Chart component */}
+          </Box>
+          <Box class="chart-card">
+            <h3>Top Products</h3>
+            {/* List component */}
+          </Box>
+        </Grid>
+      </VStack>
+    </Container>
+  );
+});
+```
+
+#### Form Layouts
+
+```typescript
+// Form with medium container for better readability
+const Example294 = defineComponent(() => {
+  return () => (
+    <Container size="md" px={24} py={48}>
+      <VStack spacing={32}>
+        <Box>
+          <h1>Create Account</h1>
+          <p>Fill in your details to get started</p>
+        </Box>
+
+        <Box as="form">
+          <VStack spacing={20}>
+            <VStack spacing={8}>
+              <label for="name">Full Name</label>
+              <input id="name" type="text" class="form-input" />
+            </VStack>
+
+            <VStack spacing={8}>
+              <label for="email">Email Address</label>
+              <input id="email" type="email" class="form-input" />
+            </VStack>
+
+            <VStack spacing={8}>
+              <label for="password">Password</label>
+              <input id="password" type="password" class="form-input" />
+            </VStack>
+
+            <HStack spacing={12} justify="end">
+              <button type="button" class="btn-secondary">Cancel</button>
+              <button type="submit" class="btn-primary">Create Account</button>
+            </HStack>
+          </VStack>
+        </Box>
+      </VStack>
+    </Container>
+  );
+});
+```
+
+#### Styling Example
+
+```css
+/* Container base styles are applied via inline styles */
+/* You typically style the content inside containers */
+
+/* Page sections with containers */
+.page-section {
+  padding: 64px 0;
+}
+
+.page-section:nth-child(even) {
+  background: var(--color-background-secondary);
+}
+
+/* Cards inside containers */
+.stat-card,
+.chart-card {
+  background: var(--color-background-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-6);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Testimonial styling */
+.testimonial-card {
+  background: white;
+  padding: var(--spacing-6);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.quote {
+  font-size: 18px;
+  font-style: italic;
+  margin-bottom: var(--spacing-4);
+}
+
+.author {
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+/* Form inputs inside containers */
+.form-input {
+  width: 100%;
+  padding: var(--spacing-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 16px;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+/* Responsive container adjustments */
+@media (max-width: 768px) {
+  .page-section {
+    padding: 48px 0;
+  }
+}
+```
+
+#### API Reference
+
+**`<Container>`** - Responsive content width container
+
+Props:
+- `size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full'` - Container max-width size (default: 'lg')
+  - xs: 480px
+  - sm: 640px
+  - md: 768px
+  - lg: 1024px
+  - xl: 1280px
+  - 2xl: 1536px
+  - full: 100%
+- `centerContent?: boolean` - Center the container with auto margins (default: true)
+- `fluid?: boolean` - Disable max-width constraint for full width (default: false)
+- `px?: number | string` - Horizontal padding (left and right). Numbers convert to pixels (default: 16px)
+- `py?: number | string` - Vertical padding (top and bottom). Numbers convert to pixels (default: none)
+- `children?: any` - Child elements
+- `class?: string` - Additional CSS class
+- `style?: Record<string, any>` - Inline styles (merged with container styles)
+
+#### Accessibility Notes
+
+- Container is purely presentational and doesn't affect accessibility
+- Use semantic HTML elements inside containers (e.g., `<header>`, `<main>`, `<section>`)
+- Ensure proper heading hierarchy within containers
+- Container max-width improves readability for body text (optimal line length)
+- Centered content is easier to scan and read
+- Consider responsive font sizes in conjunction with container sizes
+
+#### Best Practices
+
+1. **Choose appropriate sizes**: Use sm/md for text-heavy content (blogs, articles), lg for general pages, xl/2xl for dashboards
+2. **Consistent padding**: Use the same horizontal padding across containers for visual consistency
+3. **Nested containers**: Avoid nesting containers - use Box or other layout primitives inside
+4. **Full-width sections**: Use fluid containers or Box with Container inside for full-width colored sections
+5. **Responsive design**: Container sizes adapt to viewport, but consider mobile-specific adjustments
+6. **Readability**: For text content, keep line length between 45-75 characters (sm or md sizes)
+7. **Dashboard layouts**: Use xl or 2xl sizes for data-heavy interfaces to maximize screen usage
+8. **Forms**: Use sm or md sizes for better form readability and user focus
+9. **Hero sections**: Use xl or 2xl for landing page hero sections with prominent CTAs
+10. **Performance**: Container has minimal runtime overhead with simple style calculations
+
+---
+
 ## Composition Patterns
 
 ### Building Complex UIs from Primitives
@@ -9232,6 +11597,498 @@ const Example279 = defineComponent(() => {
   );
 });
 ```
+
+### Layout Composition Patterns
+
+Layout primitives (Box, Flex, Grid, Stack, Container) are designed to be composed together for powerful, maintainable layouts.
+
+#### Pattern 1: Container + Grid (Dashboard Layout)
+
+```typescript
+import { defineComponent } from 'aether';
+import { Container, Grid, Box, VStack, HStack } from 'aether/primitives';
+
+const Example295 = defineComponent(() => {
+  return () => (
+    <Container size="2xl" px={24} py={24}>
+      <VStack spacing={32}>
+        {/* Dashboard header with actions */}
+        <HStack justify="space-between" align="center">
+          <h1>Analytics Dashboard</h1>
+          <HStack spacing={12}>
+            <button class="btn-secondary">Export</button>
+            <button class="btn-primary">Settings</button>
+          </HStack>
+        </HStack>
+
+        {/* Stats grid - responsive 4 columns */}
+        <Grid templateColumns="repeat(auto-fit, minmax(250px, 1fr))" gap={24}>
+          <Box class="stat-card">
+            <VStack spacing={8}>
+              <span class="stat-label">Revenue</span>
+              <span class="stat-value">$123,456</span>
+              <span class="stat-change positive">+12.5%</span>
+            </VStack>
+          </Box>
+          <Box class="stat-card">
+            <VStack spacing={8}>
+              <span class="stat-label">Users</span>
+              <span class="stat-value">45,678</span>
+              <span class="stat-change positive">+8.2%</span>
+            </VStack>
+          </Box>
+          <Box class="stat-card">
+            <VStack spacing={8}>
+              <span class="stat-label">Orders</span>
+              <span class="stat-value">1,234</span>
+              <span class="stat-change negative">-3.1%</span>
+            </VStack>
+          </Box>
+          <Box class="stat-card">
+            <VStack spacing={8}>
+              <span class="stat-label">Conversion</span>
+              <span class="stat-value">3.45%</span>
+              <span class="stat-change positive">+0.5%</span>
+            </VStack>
+          </Box>
+        </Grid>
+
+        {/* Charts section - 2:1 ratio */}
+        <Grid templateColumns="2fr 1fr" gap={24}>
+          <Box class="chart-card">
+            <VStack spacing={16}>
+              <h3>Revenue Over Time</h3>
+              {/* Chart component */}
+              <Box style={{ height: '300px', background: '#f5f5f5' }}>
+                Chart Area
+              </Box>
+            </VStack>
+          </Box>
+          <Box class="chart-card">
+            <VStack spacing={16}>
+              <h3>Top Products</h3>
+              <VStack spacing={12}>
+                <HStack justify="space-between">
+                  <span>Product A</span>
+                  <span class="value">$12,345</span>
+                </HStack>
+                <HStack justify="space-between">
+                  <span>Product B</span>
+                  <span class="value">$9,876</span>
+                </HStack>
+                <HStack justify="space-between">
+                  <span>Product C</span>
+                  <span class="value">$7,654</span>
+                </HStack>
+              </VStack>
+            </VStack>
+          </Box>
+        </Grid>
+      </VStack>
+    </Container>
+  );
+});
+```
+
+#### Pattern 2: Box + Container (Full-Width Sections)
+
+```typescript
+import { defineComponent } from 'aether';
+import { Container, Box, VStack, HStack, Grid } from 'aether/primitives';
+
+const Example296 = defineComponent(() => {
+  return () => (
+    <>
+      {/* Hero section - full-width colored background */}
+      <Box as="section" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+        <Container size="xl" px={24} py={96}>
+          <VStack spacing={32} align="center">
+            <h1 style={{ fontSize: '56px', fontWeight: 'bold', textAlign: 'center' }}>
+              Build Amazing Products
+            </h1>
+            <p style={{ fontSize: '20px', textAlign: 'center', maxWidth: '600px' }}>
+              The complete solution for modern web applications.
+              Fast, scalable, and developer-friendly.
+            </p>
+            <HStack spacing={16}>
+              <button class="btn-primary-inverse">Get Started</button>
+              <button class="btn-secondary-inverse">View Demo</button>
+            </HStack>
+          </VStack>
+        </Container>
+      </Box>
+
+      {/* Features section - white background */}
+      <Box as="section" style={{ background: '#ffffff', padding: '80px 0' }}>
+        <Container size="lg" px={24}>
+          <VStack spacing={48}>
+            <h2 style={{ fontSize: '42px', textAlign: 'center' }}>Features</h2>
+            <Grid templateColumns="repeat(auto-fit, minmax(300px, 1fr))" gap={40}>
+              <VStack spacing={16} align="center">
+                <Box class="feature-icon">🚀</Box>
+                <h3>Lightning Fast</h3>
+                <p style={{ textAlign: 'center' }}>
+                  Optimized performance for the best user experience
+                </p>
+              </VStack>
+              <VStack spacing={16} align="center">
+                <Box class="feature-icon">🔒</Box>
+                <h3>Secure by Default</h3>
+                <p style={{ textAlign: 'center' }}>
+                  Enterprise-grade security built into every layer
+                </p>
+              </VStack>
+              <VStack spacing={16} align="center">
+                <Box class="feature-icon">📱</Box>
+                <h3>Fully Responsive</h3>
+                <p style={{ textAlign: 'center' }}>
+                  Perfect experience on any device or screen size
+                </p>
+              </VStack>
+            </Grid>
+          </VStack>
+        </Container>
+      </Box>
+
+      {/* CTA section - colored background */}
+      <Box as="section" style={{ background: '#1e293b', color: 'white', padding: '80px 0' }}>
+        <Container size="md" px={24}>
+          <VStack spacing={24} align="center">
+            <h2 style={{ fontSize: '36px', textAlign: 'center' }}>
+              Ready to Get Started?
+            </h2>
+            <p style={{ fontSize: '18px', textAlign: 'center' }}>
+              Join thousands of developers building with our platform
+            </p>
+            <button class="btn-primary-large">Start Free Trial</button>
+          </VStack>
+        </Container>
+      </Box>
+    </>
+  );
+});
+```
+
+#### Pattern 3: Grid + Stack (Card Grid Layout)
+
+```typescript
+import { defineComponent } from 'aether';
+import { Container, Grid, Box, VStack, HStack } from 'aether/primitives';
+
+const Example297 = defineComponent(() => {
+  const products = signal([
+    { id: 1, name: 'Product A', price: 99.99, image: '/a.jpg' },
+    { id: 2, name: 'Product B', price: 149.99, image: '/b.jpg' },
+    { id: 3, name: 'Product C', price: 79.99, image: '/c.jpg' },
+    { id: 4, name: 'Product D', price: 199.99, image: '/d.jpg' },
+  ]);
+
+  return () => (
+    <Container size="xl" px={24} py={48}>
+      <VStack spacing={32}>
+        <h1>Our Products</h1>
+
+        {/* Responsive product grid */}
+        <Grid
+          templateColumns="repeat(auto-fill, minmax(280px, 1fr))"
+          gap={24}
+        >
+          {products().map(product => (
+            <Box class="product-card" key={product.id}>
+              <VStack spacing={16}>
+                {/* Product image */}
+                <Box
+                  style={{
+                    width: '100%',
+                    height: '200px',
+                    background: '#f0f0f0',
+                    borderRadius: '8px'
+                  }}
+                >
+                  <img src={product.image} alt={product.name} />
+                </Box>
+
+                {/* Product info */}
+                <VStack spacing={8}>
+                  <h3>{product.name}</h3>
+                  <p class="price">${product.price}</p>
+                </VStack>
+
+                {/* Actions */}
+                <HStack spacing={12} style={{ width: '100%' }}>
+                  <button class="btn-secondary" style={{ flex: 1 }}>
+                    Details
+                  </button>
+                  <button class="btn-primary" style={{ flex: 1 }}>
+                    Add to Cart
+                  </button>
+                </HStack>
+              </VStack>
+            </Box>
+          ))}
+        </Grid>
+      </VStack>
+    </Container>
+  );
+});
+```
+
+#### Pattern 4: Flex + Stack (Sidebar Layout)
+
+```typescript
+import { defineComponent } from 'aether';
+import { Flex, Box, VStack, HStack } from 'aether/primitives';
+
+const Example298 = defineComponent(() => {
+  return () => (
+    <Flex style={{ minHeight: '100vh' }}>
+      {/* Sidebar - fixed width */}
+      <Box
+        as="aside"
+        style={{
+          width: '250px',
+          background: '#1e293b',
+          color: 'white',
+          padding: '24px'
+        }}
+      >
+        <VStack spacing={24} align="stretch">
+          <h2>Dashboard</h2>
+          <VStack spacing={8} align="stretch">
+            <a href="/home" class="nav-link active">Home</a>
+            <a href="/analytics" class="nav-link">Analytics</a>
+            <a href="/users" class="nav-link">Users</a>
+            <a href="/settings" class="nav-link">Settings</a>
+          </VStack>
+        </VStack>
+      </Box>
+
+      {/* Main content - grows to fill space */}
+      <Box as="main" grow={1} style={{ background: '#f9fafb' }}>
+        <VStack spacing={0} style={{ height: '100%' }}>
+          {/* Header - fixed height */}
+          <Box
+            as="header"
+            style={{
+              background: 'white',
+              borderBottom: '1px solid #e5e7eb',
+              padding: '16px 24px'
+            }}
+          >
+            <HStack justify="space-between" align="center">
+              <h1>Page Title</h1>
+              <HStack spacing={12}>
+                <button class="btn-icon">🔔</button>
+                <button class="btn-icon">👤</button>
+              </HStack>
+            </HStack>
+          </Box>
+
+          {/* Content - scrollable */}
+          <Box grow={1} style={{ padding: '24px', overflowY: 'auto' }}>
+            <VStack spacing={24}>
+              <p>Main content area that grows to fill available space</p>
+              {/* Page content */}
+            </VStack>
+          </Box>
+        </VStack>
+      </Box>
+    </Flex>
+  );
+});
+```
+
+#### Pattern 5: Nested Stacks (Form Layout)
+
+```typescript
+import { defineComponent } from 'aether';
+import { Container, VStack, HStack, Box } from 'aether/primitives';
+
+const Example299 = defineComponent(() => {
+  return () => (
+    <Container size="md" px={24} py={48}>
+      <VStack spacing={32}>
+        {/* Form header */}
+        <Box>
+          <h1>Contact Us</h1>
+          <p>Fill out the form below and we'll get back to you</p>
+        </Box>
+
+        {/* Form */}
+        <Box as="form">
+          <VStack spacing={24}>
+            {/* Name fields - horizontal on desktop */}
+            <HStack spacing={16} wrap>
+              <VStack spacing={8} grow={1} style={{ minWidth: '200px' }}>
+                <label for="firstName">First Name</label>
+                <input id="firstName" type="text" class="form-input" />
+              </VStack>
+              <VStack spacing={8} grow={1} style={{ minWidth: '200px' }}>
+                <label for="lastName">Last Name</label>
+                <input id="lastName" type="text" class="form-input" />
+              </VStack>
+            </HStack>
+
+            {/* Email - full width */}
+            <VStack spacing={8}>
+              <label for="email">Email Address</label>
+              <input id="email" type="email" class="form-input" />
+            </VStack>
+
+            {/* Subject - full width */}
+            <VStack spacing={8}>
+              <label for="subject">Subject</label>
+              <input id="subject" type="text" class="form-input" />
+            </VStack>
+
+            {/* Message - full width */}
+            <VStack spacing={8}>
+              <label for="message">Message</label>
+              <textarea
+                id="message"
+                class="form-input"
+                rows={6}
+              />
+            </VStack>
+
+            {/* Form actions */}
+            <HStack spacing={12} justify="end">
+              <button type="button" class="btn-secondary">
+                Cancel
+              </button>
+              <button type="submit" class="btn-primary">
+                Send Message
+              </button>
+            </HStack>
+          </VStack>
+        </Box>
+      </VStack>
+    </Container>
+  );
+});
+```
+
+#### Pattern 6: Grid with Named Areas (Complex Layout)
+
+```typescript
+import { defineComponent } from 'aether';
+import { Grid, Box, VStack, HStack } from 'aether/primitives';
+
+const Example300 = defineComponent(() => {
+  return () => (
+    <Grid
+      templateAreas={`
+        "header header header"
+        "sidebar main aside"
+        "footer footer footer"
+      `}
+      templateColumns="250px 1fr 300px"
+      templateRows="auto 1fr auto"
+      gap={0}
+      style={{ minHeight: '100vh' }}
+    >
+      {/* Header */}
+      <Box
+        style={{ gridArea: 'header' }}
+        class="site-header"
+      >
+        <HStack
+          justify="space-between"
+          align="center"
+          style={{ padding: '16px 24px' }}
+        >
+          <h1>My App</h1>
+          <nav>
+            <HStack spacing={16}>
+              <a href="/">Home</a>
+              <a href="/about">About</a>
+              <a href="/contact">Contact</a>
+            </HStack>
+          </nav>
+        </HStack>
+      </Box>
+
+      {/* Left Sidebar */}
+      <Box
+        style={{ gridArea: 'sidebar' }}
+        class="sidebar-left"
+      >
+        <VStack spacing={16} style={{ padding: '24px' }}>
+          <h3>Categories</h3>
+          <VStack spacing={8} align="stretch">
+            <a href="/tech" class="category-link">Technology</a>
+            <a href="/design" class="category-link">Design</a>
+            <a href="/business" class="category-link">Business</a>
+          </VStack>
+        </VStack>
+      </Box>
+
+      {/* Main Content */}
+      <Box
+        style={{ gridArea: 'main' }}
+        class="main-content"
+      >
+        <VStack spacing={24} style={{ padding: '24px' }}>
+          <h2>Main Content</h2>
+          <p>This is the primary content area</p>
+        </VStack>
+      </Box>
+
+      {/* Right Aside */}
+      <Box
+        style={{ gridArea: 'aside' }}
+        class="sidebar-right"
+      >
+        <VStack spacing={16} style={{ padding: '24px' }}>
+          <h3>Recent Posts</h3>
+          <VStack spacing={12}>
+            <Box class="widget-item">
+              <p>Post title 1</p>
+            </Box>
+            <Box class="widget-item">
+              <p>Post title 2</p>
+            </Box>
+          </VStack>
+        </VStack>
+      </Box>
+
+      {/* Footer */}
+      <Box
+        style={{ gridArea: 'footer' }}
+        class="site-footer"
+      >
+        <VStack
+          spacing={16}
+          align="center"
+          style={{ padding: '32px 24px' }}
+        >
+          <p>© 2025 My App. All rights reserved.</p>
+          <HStack spacing={16}>
+            <a href="/privacy">Privacy</a>
+            <a href="/terms">Terms</a>
+            <a href="/contact">Contact</a>
+          </HStack>
+        </VStack>
+      </Box>
+    </Grid>
+  );
+});
+```
+
+#### Key Layout Composition Principles
+
+1. **Container for Content Width**: Always use Container to constrain content width and center it
+2. **Box for Semantic Structure**: Use Box with `as` prop for semantic HTML elements
+3. **Grid for 2D Layouts**: Use Grid when you need both rows and columns (dashboards, image galleries)
+4. **Flex for 1D Layouts**: Use Flex for navigation bars, toolbars, or any single-axis layout
+5. **Stack for Vertical/Horizontal Lists**: Use VStack/HStack for simple lists with consistent spacing
+6. **Nesting is Powerful**: Compose primitives deeply - Grid > Container > VStack > HStack
+7. **Responsive by Design**: Use auto-fit/auto-fill for grids, wrap for flex, and container sizes
+8. **Full-Width Sections**: Box (colored) > Container (constrained) for landing pages
+9. **Sidebar Layouts**: Flex with fixed-width sidebar and growing main content
+10. **Form Layouts**: Container (md/sm) > VStack for vertical flow > HStack for field groups
+
+---
 
 ### Primitive Composition Rules
 

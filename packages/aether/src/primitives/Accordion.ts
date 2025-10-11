@@ -9,8 +9,8 @@
 
 import { defineComponent } from '../core/component/define.js';
 import { signal, type WritableSignal } from '../core/reactivity/signal.js';
-import { computed } from '../core/reactivity/computed.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
+import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 import { generateId } from './utils/index.js';
 
@@ -27,21 +27,26 @@ export interface AccordionContextValue {
   accordionId: string;
 }
 
-// Create context with default implementation
-const noop = () => {};
-const noopGetter = () => undefined as string | string[] | undefined;
-const typeGetter = () => 'single' as const;
-const booleanGetter = () => false;
-const orientationGetter = () => 'vertical' as const;
+// Global reactive context signal that will be updated during Accordion setup
+// This allows children to access the context even if they're evaluated before the parent
+// Using a SIGNAL makes the context reactive, so effects will rerun when it updates
+const globalAccordionContextSignal = signal<AccordionContextValue | null>(null);
+
+// Create context with default implementation that delegates to global signal
+const noopGetter = () => globalAccordionContextSignal()?.value() ?? undefined;
+const typeGetter = () => globalAccordionContextSignal()?.type() ?? 'single' as const;
+const booleanGetter = () => globalAccordionContextSignal()?.collapsible() ?? false;
+const disabledGetter = () => globalAccordionContextSignal()?.disabled() ?? false;
+const orientationGetter = () => globalAccordionContextSignal()?.orientation() ?? 'vertical' as const;
 
 export const AccordionContext = createContext<AccordionContextValue>({
   type: typeGetter,
   value: noopGetter,
-  setValue: noop,
+  setValue: (value) => globalAccordionContextSignal()?.setValue(value),
   collapsible: booleanGetter,
-  disabled: booleanGetter,
+  disabled: disabledGetter,
   orientation: orientationGetter,
-  accordionId: '',
+  accordionId: globalAccordionContextSignal()?.accordionId ?? '',
 }, 'Accordion');
 
 /**
@@ -56,13 +61,16 @@ export interface AccordionItemContextValue {
   contentId: string;
 }
 
+// Global reactive signal for item context (same pattern as accordion context)
+const globalAccordionItemContextSignal = signal<AccordionItemContextValue | null>(null);
+
 export const AccordionItemContext = createContext<AccordionItemContextValue>({
-  value: '',
-  isOpen: () => false,
-  toggle: noop,
-  disabled: booleanGetter,
-  triggerId: '',
-  contentId: '',
+  value: globalAccordionItemContextSignal()?.value ?? '',
+  isOpen: () => globalAccordionItemContextSignal()?.isOpen() ?? false,
+  toggle: () => globalAccordionItemContextSignal()?.toggle(),
+  disabled: () => globalAccordionItemContextSignal()?.disabled() ?? false,
+  triggerId: globalAccordionItemContextSignal()?.triggerId ?? '',
+  contentId: globalAccordionItemContextSignal()?.contentId ?? '',
 }, 'AccordionItem');
 
 /**
@@ -183,14 +191,15 @@ export type AccordionProps = AccordionSingleProps | AccordionMultipleProps;
  * ```
  */
 export const Accordion = defineComponent<AccordionProps>((props) => {
+  // CRITICAL: Create valueSignal FIRST, before accessing children
+  const defaultValForSignal = props.type === 'single'
+    ? (props as AccordionSingleProps).defaultValue
+    : (props as AccordionMultipleProps).defaultValue ?? [];
+
+  const valueSignal = props.value || signal<string | string[] | undefined>(defaultValForSignal);
+
+
   const type = signal(props.type);
-
-  // Handle both single and multiple type values
-  const internalValue = signal<string | string[] | undefined>(
-    props.type === 'single' ? (props as AccordionSingleProps).defaultValue : (props as AccordionMultipleProps).defaultValue
-  );
-  const valueSignal = props.value || internalValue;
-
   const collapsible = signal((props as AccordionSingleProps).collapsible ?? false);
   const disabled = signal(props.disabled ?? false);
   const orientation = signal(props.orientation || 'vertical');
@@ -215,6 +224,13 @@ export const Accordion = defineComponent<AccordionProps>((props) => {
     orientation: () => orientation(),
     accordionId,
   };
+
+  // CRITICAL FIX: Set global context signal so children can access it
+  // Using a signal makes this reactive - effects will rerun when it updates!
+  globalAccordionContextSignal.set(contextValue);
+
+  // Also provide context via the standard API
+  provideContext(AccordionContext, contextValue);
 
   return () => {
     const { children, type: _, value: __, defaultValue: ___, onValueChange: ____, collapsible: _____, disabled: ______, orientation: _______, ...restProps } = props;
@@ -260,20 +276,13 @@ export interface AccordionItemProps {
  * Accordion item component
  */
 export const AccordionItem = defineComponent<AccordionItemProps>((props) => {
+
+  // Access context during setup to prepare item context
   const ctx = useContext(AccordionContext);
 
-  const itemDisabled = computed(() => ctx.disabled() || props.disabled === true);
-
-  const isOpen = computed(() => {
-    const value = ctx.value();
-    const type = ctx.type();
-
-    if (type === 'single') {
-      return value === props.value;
-    } else {
-      return Array.isArray(value) && value.includes(props.value);
-    }
-  });
+  // Create item context value during setup so it can be provided early
+  const itemValue = props.value;
+  const itemDisabled = () => ctx.disabled() || props.disabled === true;
 
   const toggle = () => {
     if (itemDisabled()) return;
@@ -282,54 +291,81 @@ export const AccordionItem = defineComponent<AccordionItemProps>((props) => {
     const type = ctx.type();
 
     if (type === 'single') {
-      // For single type
-      if (currentValue === props.value) {
-        // Trying to close the open item
+      if (currentValue === itemValue) {
         if (ctx.collapsible()) {
           ctx.setValue(undefined as any);
         }
       } else {
-        ctx.setValue(props.value);
+        ctx.setValue(itemValue);
       }
     } else {
-      // For multiple type
       const currentArray = Array.isArray(currentValue) ? currentValue : [];
-      if (currentArray.includes(props.value)) {
-        // Remove from array
-        ctx.setValue(currentArray.filter(v => v !== props.value));
+      if (currentArray.includes(itemValue)) {
+        ctx.setValue(currentArray.filter(v => v !== itemValue));
       } else {
-        // Add to array
-        ctx.setValue([...currentArray, props.value]);
+        ctx.setValue([...currentArray, itemValue]);
       }
     }
   };
 
-  // Generate stable IDs
-  const baseId = `${ctx.accordionId}-item-${props.value}`;
+  // Generate stable IDs during setup
+  const baseId = `${ctx.accordionId}-item-${itemValue}`;
   const triggerId = `${baseId}-trigger`;
   const contentId = `${baseId}-content`;
 
   const itemContextValue: AccordionItemContextValue = {
-    value: props.value,
-    isOpen,
+    value: itemValue,
+    isOpen: () => {
+      const currentValue = ctx.value();
+      const type = ctx.type();
+      return type === 'single'
+        ? currentValue === itemValue
+        : Array.isArray(currentValue) && currentValue.includes(itemValue);
+    },
     toggle,
     disabled: itemDisabled,
     triggerId,
     contentId,
   };
 
+  // Provide item context during setup so children can access it
+  provideContext(AccordionItemContext, itemContextValue);
+
   return () => {
+
     const { value, disabled, children, ...restProps } = props;
 
-    return jsx('div', {
+    // Compute initial isOpen state
+    const currentValue = ctx.value();
+    const type = ctx.type();
+    const initialIsOpen = type === 'single'
+      ? currentValue === itemValue
+      : Array.isArray(currentValue) && currentValue.includes(itemValue);
+
+
+    // Create the div element
+    const div = jsx('div', {
       ...restProps,
-      'data-state': isOpen() ? 'open' : 'closed',
+      'data-state': initialIsOpen ? 'open' : 'closed',
       'data-disabled': itemDisabled() ? '' : undefined,
       children: jsx(AccordionItemContext.Provider, {
         value: itemContextValue,
         children,
       }),
+    }) as HTMLElement;
+
+    // Set up effect to reactively update attributes when context value changes
+    effect(() => {
+      const currentValue = ctx.value();
+      const type = ctx.type();
+      const isOpen = type === 'single'
+        ? currentValue === itemValue
+        : Array.isArray(currentValue) && currentValue.includes(itemValue);
+
+      div.setAttribute('data-state', isOpen ? 'open' : 'closed');
     });
+
+    return div;
   };
 });
 
@@ -352,73 +388,103 @@ export interface AccordionTriggerProps {
  * Accordion trigger component - expand/collapse button
  */
 export const AccordionTrigger = defineComponent<AccordionTriggerProps>((props) => {
-  const ctx = useContext(AccordionContext);
-  const itemCtx = useContext(AccordionItemContext);
-
-  const handleClick = () => {
-    itemCtx.toggle();
-  };
-
-  const handleKeyDown = (event: KeyboardEvent) => {
-    const orientation = ctx.orientation();
-
-    // Handle arrow keys for navigation
-    if (
-      (orientation === 'vertical' && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) ||
-      (orientation === 'horizontal' && (event.key === 'ArrowRight' || event.key === 'ArrowLeft'))
-    ) {
-      event.preventDefault();
-
-      // Find all triggers
-      const accordion = document.getElementById(ctx.accordionId);
-      const triggers = accordion?.querySelectorAll('[role="button"][aria-expanded]');
-      if (!triggers) return;
-
-      const triggerArray = Array.from(triggers) as HTMLElement[];
-      const currentIndex = triggerArray.findIndex(el => el === event.target);
-      if (currentIndex === -1) return;
-
-      let nextIndex = currentIndex;
-      const isNext = event.key === 'ArrowDown' || event.key === 'ArrowRight';
-
-      if (isNext) {
-        nextIndex = (currentIndex + 1) % triggerArray.length;
-      } else {
-        nextIndex = (currentIndex - 1 + triggerArray.length) % triggerArray.length;
-      }
-
-      triggerArray[nextIndex]?.focus();
-    } else if (event.key === 'Home') {
-      event.preventDefault();
-      const accordion = document.getElementById(ctx.accordionId);
-      const firstTrigger = accordion?.querySelector('[role="button"][aria-expanded]') as HTMLElement;
-      firstTrigger?.focus();
-    } else if (event.key === 'End') {
-      event.preventDefault();
-      const accordion = document.getElementById(ctx.accordionId);
-      const triggers = accordion?.querySelectorAll('[role="button"][aria-expanded]');
-      const lastTrigger = triggers?.[triggers.length - 1] as HTMLElement;
-      lastTrigger?.focus();
-    }
-  };
-
   return () => {
+    // Access context in render
+    const ctx = useContext(AccordionContext);
+    const itemCtx = useContext(AccordionItemContext);
+
+    const handleClick = () => {
+      itemCtx.toggle();
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const orientation = ctx.orientation();
+
+      // Handle arrow keys for navigation
+      if (
+        (orientation === 'vertical' && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) ||
+        (orientation === 'horizontal' && (event.key === 'ArrowRight' || event.key === 'ArrowLeft'))
+      ) {
+        event.preventDefault();
+
+        // Find all triggers
+        const accordion = document.getElementById(ctx.accordionId);
+        const triggers = accordion?.querySelectorAll('[role="button"][aria-expanded]');
+        if (!triggers) return;
+
+        const triggerArray = Array.from(triggers) as HTMLElement[];
+        const currentIndex = triggerArray.findIndex(el => el === event.target);
+        if (currentIndex === -1) return;
+
+        let nextIndex = currentIndex;
+        const isNext = event.key === 'ArrowDown' || event.key === 'ArrowRight';
+
+        if (isNext) {
+          nextIndex = (currentIndex + 1) % triggerArray.length;
+        } else {
+          nextIndex = (currentIndex - 1 + triggerArray.length) % triggerArray.length;
+        }
+
+        triggerArray[nextIndex]?.focus();
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        const accordion = document.getElementById(ctx.accordionId);
+        const firstTrigger = accordion?.querySelector('[role="button"][aria-expanded]') as HTMLElement;
+        firstTrigger?.focus();
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        const accordion = document.getElementById(ctx.accordionId);
+        const triggers = accordion?.querySelectorAll('[role="button"][aria-expanded]');
+        const lastTrigger = triggers?.[triggers.length - 1] as HTMLElement;
+        lastTrigger?.focus();
+      }
+    };
+
     const { children, ...restProps } = props;
 
-    return jsx('button', {
+    // Compute initial isOpen state directly from accordion context
+    // (not from item context which might not be set up yet)
+    const accordionValue = ctx.value();
+    const type = ctx.type();
+    const itemValue = itemCtx.value || props.value;  // Fallback to props if itemCtx not set
+    const initialIsOpen = type === 'single'
+      ? accordionValue === itemValue
+      : Array.isArray(accordionValue) && accordionValue.includes(itemValue);
+
+    // Create button element
+    const button = jsx('button', {
       ...restProps,
       id: itemCtx.triggerId,
       type: 'button',
       role: 'button',
-      'aria-expanded': itemCtx.isOpen(),
+      'aria-expanded': String(initialIsOpen),
       'aria-controls': itemCtx.contentId,
-      'data-state': itemCtx.isOpen() ? 'open' : 'closed',
+      'data-state': initialIsOpen ? 'open' : 'closed',
       'data-disabled': itemCtx.disabled() ? '' : undefined,
       disabled: itemCtx.disabled(),
       onClick: handleClick,
       onKeyDown: handleKeyDown,
       children,
+    }) as HTMLElement;
+
+    // Set up effect to reactively update attributes
+    // IMPORTANT: We need to directly access context value to ensure reactivity
+    effect(() => {
+      // Read directly from accordion context to track dependency
+      const accordionValue = ctx.value();
+      const type = ctx.type();
+      const itemValue = itemCtx.value;
+
+      // Compute isOpen based on current accordion value
+      const isOpen = type === 'single'
+        ? accordionValue === itemValue
+        : Array.isArray(accordionValue) && accordionValue.includes(itemValue);
+
+      button.setAttribute('aria-expanded', String(isOpen));
+      button.setAttribute('data-state', isOpen ? 'open' : 'closed');
     });
+
+    return button;
   };
 });
 

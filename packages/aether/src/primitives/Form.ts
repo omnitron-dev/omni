@@ -32,6 +32,11 @@ export interface FormLabelProps {
 }
 
 export interface FormControlProps {
+  /**
+   * Merge props into child element instead of wrapping
+   * @default false
+   */
+  asChild?: boolean;
   children?: any;
 }
 
@@ -161,34 +166,68 @@ export const FormLabel = defineComponent<FormLabelProps>((props) => {
  *   <input type="text" value={value()} onInput={handleInput} />
  * </FormControl>
  * ```
+ *
+ * @example With asChild
+ * ```tsx
+ * <FormControl asChild>
+ *   <Select bind:value={form.values.country}>
+ *     <Select.Trigger>
+ *       <Select.Value placeholder="Select..." />
+ *     </Select.Trigger>
+ *   </Select>
+ * </FormControl>
+ * ```
  */
 export const FormControl = defineComponent<FormControlProps>((props) => {
   const field = useFormField();
 
   return () => {
-    const child = props.children;
+    const { asChild = false, children } = props;
 
-    // Clone child with accessibility attributes
-    if (child && typeof child === 'object' && 'type' in child) {
+    // Build accessibility attributes
+    const accessibilityProps = {
+      id: field.controlId,
+      name: field.name,
+      'aria-labelledby': field.labelId,
+      'aria-describedby': field.hasError()
+        ? field.messageId
+        : field.descriptionId,
+      'aria-invalid': field.hasError() ? 'true' : undefined,
+      'aria-required': field.isRequired() ? 'true' : undefined,
+      'aria-disabled': field.isDisabled() ? 'true' : undefined,
+    };
+
+    // If asChild, merge props into child element
+    if (asChild) {
+      // Clone child with accessibility attributes
+      if (children && typeof children === 'object' && 'type' in children) {
+        const enhancedChild = {
+          ...children,
+          props: {
+            ...(children.props || {}),
+            ...accessibilityProps,
+          },
+        };
+        return enhancedChild;
+      }
+
+      // If asChild is true but no valid child, throw error
+      throw new Error('FormControl with asChild requires exactly one child element');
+    }
+
+    // Default behavior: wrap child with accessibility attributes
+    if (children && typeof children === 'object' && 'type' in children) {
       const enhancedChild = {
-        ...child,
+        ...children,
         props: {
-          ...(child.props || {}),
-          id: field.controlId,
-          name: field.name,
-          'aria-labelledby': field.labelId,
-          'aria-describedby': field.hasError()
-            ? field.messageId
-            : field.descriptionId,
-          'aria-invalid': field.hasError() ? 'true' : undefined,
-          'aria-required': field.isRequired() ? 'true' : undefined,
-          'aria-disabled': field.isDisabled() ? 'true' : undefined,
+          ...(children.props || {}),
+          ...accessibilityProps,
         },
       };
       return enhancedChild;
     }
 
-    return child;
+    return children;
   };
 });
 

@@ -14,7 +14,7 @@ export { onMount, onError } from './lifecycle.js';
 export { mergeProps, splitProps, reactiveProps } from './props.js';
 
 // Context API
-export { createContext, useContext, type Context } from './context.js';
+export { createContext, useContext, provideContext, type Context } from './context.js';
 
 // Refs
 export {

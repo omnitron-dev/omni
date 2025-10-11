@@ -15,7 +15,6 @@ export default defineConfig({
     'primitives/index': 'src/primitives/index.ts',
     'server/index': 'src/server/index.ts',
     'netron/index': 'src/netron/index.ts',
-    'netron-reexport': 'src/netron-reexport.ts',
   },
   format: ['esm'],
   dts: true,

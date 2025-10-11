@@ -10,6 +10,8 @@
 export {
   Dialog,
   DialogTrigger,
+  DialogPortal,
+  DialogOverlay,
   DialogContent,
   DialogTitle,
   DialogDescription,
@@ -18,6 +20,8 @@ export {
   type DialogProps,
   type DialogContextValue,
   type DialogTriggerProps,
+  type DialogPortalProps,
+  type DialogOverlayProps,
   type DialogContentProps,
 } from './Dialog.js';
 
@@ -27,6 +31,7 @@ export {
   PopoverTrigger,
   PopoverContent,
   PopoverArrow,
+  PopoverAnchor,
   PopoverClose,
   PopoverContext,
   type PopoverProps,
@@ -34,6 +39,7 @@ export {
   type PopoverTriggerProps,
   type PopoverContentProps,
   type PopoverArrowProps,
+  type PopoverAnchorProps,
   type PopoverCloseProps,
 } from './Popover.js';
 

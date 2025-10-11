@@ -6,6 +6,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   Dialog,
   DialogTrigger,
+  DialogPortal,
+  DialogOverlay,
   DialogContent,
   DialogTitle,
   DialogDescription,
@@ -61,6 +63,14 @@ describe('Dialog Primitive', () => {
       expect(DialogTrigger).toBeTypeOf('function');
     });
 
+    it('should export DialogPortal component', () => {
+      expect(DialogPortal).toBeTypeOf('function');
+    });
+
+    it('should export DialogOverlay component', () => {
+      expect(DialogOverlay).toBeTypeOf('function');
+    });
+
     it('should export DialogContent component', () => {
       expect(DialogContent).toBeTypeOf('function');
     });
@@ -81,6 +91,14 @@ describe('Dialog Primitive', () => {
   describe('Sub-component Attachment', () => {
     it('should attach Trigger as Dialog.Trigger', () => {
       expect((Dialog as any).Trigger).toBe(DialogTrigger);
+    });
+
+    it('should attach Portal as Dialog.Portal', () => {
+      expect((Dialog as any).Portal).toBe(DialogPortal);
+    });
+
+    it('should attach Overlay as Dialog.Overlay', () => {
+      expect((Dialog as any).Overlay).toBe(DialogOverlay);
     });
 
     it('should attach Content as Dialog.Content', () => {
@@ -293,6 +311,189 @@ describe('Dialog Primitive', () => {
       const Trigger1 = (Dialog as any).Trigger;
       const Trigger2 = (Dialog as any).Trigger;
       expect(Trigger1).toBe(Trigger2);
+    });
+  });
+
+  describe('DialogPortal', () => {
+    it('should create portal with children', () => {
+      expect(() => {
+        dispose = createRoot(() => {
+          DialogPortal({
+            children: DialogContent({ children: 'Content' }),
+          });
+        });
+      }).not.toThrow();
+    });
+
+    it('should accept container prop', () => {
+      const customContainer = document.createElement('div');
+      document.body.appendChild(customContainer);
+
+      expect(() => {
+        dispose = createRoot(() => {
+          DialogPortal({
+            container: customContainer,
+            children: DialogContent({ children: 'Content' }),
+          });
+        });
+      }).not.toThrow();
+
+      document.body.removeChild(customContainer);
+    });
+
+    it('should work with nested components', () => {
+      expect(() => {
+        dispose = createRoot(() => {
+          DialogPortal({
+            children: [
+              DialogOverlay({}),
+              DialogContent({
+                children: [DialogTitle({ children: 'Title' })],
+              }),
+            ],
+          });
+        });
+      }).not.toThrow();
+    });
+  });
+
+  describe('DialogOverlay', () => {
+    it('should create overlay', () => {
+      expect(() => {
+        dispose = createRoot(() => {
+          DialogOverlay({});
+        });
+      }).not.toThrow();
+    });
+
+    it('should accept children', () => {
+      expect(() => {
+        dispose = createRoot(() => {
+          DialogOverlay({
+            children: 'Overlay content',
+          });
+        });
+      }).not.toThrow();
+    });
+
+    it('should accept additional props', () => {
+      expect(() => {
+        dispose = createRoot(() => {
+          DialogOverlay({
+            className: 'custom-overlay',
+            'data-test': 'overlay',
+          });
+        });
+      }).not.toThrow();
+    });
+
+    it('should accept data attributes', () => {
+      expect(() => {
+        dispose = createRoot(() => {
+          Dialog({
+            defaultOpen: true,
+            children: DialogPortal({
+              children: DialogOverlay({
+                'data-test': 'overlay',
+                id: 'test-overlay',
+              }),
+            }),
+          });
+        });
+      }).not.toThrow();
+    });
+
+    it('should work with style prop', () => {
+      expect(() => {
+        dispose = createRoot(() => {
+          Dialog({
+            defaultOpen: true,
+            children: DialogPortal({
+              children: DialogOverlay({
+                style: { backgroundColor: 'rgba(0,0,0,0.5)' },
+              }),
+            }),
+          });
+        });
+      }).not.toThrow();
+    });
+
+    it('should respect open state', () => {
+      expect(() => {
+        dispose = createRoot(() => {
+          // Closed dialog - overlay should not render
+          Dialog({
+            defaultOpen: false,
+            children: DialogPortal({
+              children: DialogOverlay({}),
+            }),
+          });
+        });
+      }).not.toThrow();
+    });
+  });
+
+  describe('Composition with Portal and Overlay', () => {
+    it('should allow full composition', () => {
+      expect(() => {
+        dispose = createRoot(() => {
+          Dialog({
+            defaultOpen: true,
+            children: DialogPortal({
+              children: [
+                DialogOverlay({}),
+                DialogContent({
+                  children: [
+                    DialogTitle({ children: 'Title' }),
+                    DialogDescription({ children: 'Description' }),
+                    DialogClose({ children: 'Close' }),
+                  ],
+                }),
+              ],
+            }),
+          });
+        });
+      }).not.toThrow();
+    });
+
+    it('should work with custom container', () => {
+      const customContainer = document.createElement('div');
+      customContainer.id = 'custom-portal-target';
+      document.body.appendChild(customContainer);
+
+      expect(() => {
+        dispose = createRoot(() => {
+          Dialog({
+            defaultOpen: true,
+            children: DialogPortal({
+              container: customContainer,
+              children: [
+                DialogOverlay({}),
+                DialogContent({ children: 'Content' }),
+              ],
+            }),
+          });
+        });
+      }).not.toThrow();
+
+      document.body.removeChild(customContainer);
+    });
+
+    it('should handle nested overlay and content', () => {
+      expect(() => {
+        dispose = createRoot(() => {
+          Dialog({
+            defaultOpen: true,
+            children: DialogPortal({
+              children: DialogOverlay({
+                children: DialogContent({
+                  children: DialogTitle({ children: 'Nested' }),
+                }),
+              }),
+            }),
+          });
+        });
+      }).not.toThrow();
     });
   });
 });

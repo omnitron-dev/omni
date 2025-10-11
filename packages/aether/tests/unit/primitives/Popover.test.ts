@@ -10,6 +10,7 @@ import {
   PopoverTrigger,
   PopoverContent,
   PopoverArrow,
+  PopoverAnchor,
   PopoverClose,
   PopoverContext,
 } from '../../../src/primitives/Popover.js';
@@ -68,6 +69,10 @@ describe('Popover Primitive', () => {
     it('should export PopoverClose component', () => {
       expect(PopoverClose).toBeTypeOf('function');
     });
+
+    it('should export PopoverAnchor component', () => {
+      expect(PopoverAnchor).toBeTypeOf('function');
+    });
   });
 
   describe('Sub-component Attachment', () => {
@@ -85,6 +90,10 @@ describe('Popover Primitive', () => {
 
     it('should attach Close as Popover.Close', () => {
       expect((Popover as any).Close).toBe(PopoverClose);
+    });
+
+    it('should attach Anchor as Popover.Anchor', () => {
+      expect((Popover as any).Anchor).toBe(PopoverAnchor);
     });
   });
 
@@ -209,6 +218,42 @@ describe('Popover Primitive', () => {
     });
   });
 
+  describe('PopoverAnchor Structure', () => {
+    it('should create anchor with children', () => {
+      dispose = createRoot(() => {
+        const anchor = PopoverAnchor({ children: 'Anchor' });
+        expect(anchor).toBeTruthy();
+      });
+    });
+
+    it('should accept children prop', () => {
+      dispose = createRoot(() => {
+        const anchor = PopoverAnchor({
+          children: 'Anchor element',
+        });
+        expect(anchor).toBeTruthy();
+      });
+    });
+
+    it('should accept additional props', () => {
+      dispose = createRoot(() => {
+        const anchor = PopoverAnchor({
+          children: 'Anchor',
+          className: 'custom-anchor',
+          'data-test': 'anchor',
+        });
+        expect(anchor).toBeTruthy();
+      });
+    });
+
+    it('should work without children', () => {
+      dispose = createRoot(() => {
+        const anchor = PopoverAnchor({});
+        expect(anchor).toBeTruthy();
+      });
+    });
+  });
+
   describe('PopoverClose Structure', () => {
     it('should create close button with children', () => {
       dispose = createRoot(() => {
@@ -224,6 +269,29 @@ describe('Popover Primitive', () => {
         const popover = Popover({
           children: [
             PopoverTrigger({ children: 'Open' }),
+            PopoverContent({
+              children: [
+                'Popover content',
+                PopoverArrow({}),
+                PopoverClose({ children: 'Close' }),
+              ],
+            }),
+          ],
+        });
+
+        expect(popover).toBeTruthy();
+      });
+    });
+
+    it('should allow composing with Anchor component', () => {
+      dispose = createRoot(() => {
+        const popover = Popover({
+          children: [
+            PopoverTrigger({ children: 'Open' }),
+            PopoverAnchor({
+              children: 'Position relative to this',
+              className: 'anchor',
+            }),
             PopoverContent({
               children: [
                 'Popover content',

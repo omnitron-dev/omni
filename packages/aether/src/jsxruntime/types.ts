@@ -25,7 +25,7 @@ export type JSXChild = JSXElement | any[];
 export interface JSXProps {
   children?: JSXChild;
   key?: string | number;
-  ref?: { current: any };
+  ref?: { current: any } | ((element: any) => void);
   [key: string]: any;
 }
 

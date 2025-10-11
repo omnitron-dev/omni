@@ -215,7 +215,7 @@ describe('Switch', () => {
   });
 
   describe('Switch.Thumb', () => {
-    it('should render thumb with correct data attributes', () => {
+    it('should render thumb with correct data attributes', async () => {
       const component = () =>
         Switch({
           defaultChecked: true,
@@ -226,10 +226,14 @@ describe('Switch', () => {
 
       const thumb = container.querySelector('.custom-thumb') as HTMLElement;
       expect(thumb).toBeTruthy();
+
+      // Wait for microtask to complete
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
       expect(thumb.getAttribute('data-state')).toBe('checked');
     });
 
-    it('should update thumb state when switch toggles', () => {
+    it('should update thumb state when switch toggles', async () => {
       const component = () =>
         Switch({
           defaultChecked: false,
@@ -241,17 +245,23 @@ describe('Switch', () => {
       const switchEl = container.querySelector('[role="switch"]') as HTMLElement;
       const thumb = container.querySelector('.thumb') as HTMLElement;
 
+      // Wait for microtask to complete
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
       // Initially unchecked
       expect(thumb.getAttribute('data-state')).toBe('unchecked');
 
       // Toggle
       switchEl.click();
 
+      // Wait for update
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
       // Should be checked
       expect(thumb.getAttribute('data-state')).toBe('checked');
     });
 
-    it('should show disabled state on thumb', () => {
+    it('should show disabled state on thumb', async () => {
       const component = () =>
         Switch({
           defaultChecked: false,
@@ -262,6 +272,10 @@ describe('Switch', () => {
       const { container } = renderComponent(component);
 
       const thumb = container.querySelector('.thumb') as HTMLElement;
+
+      // Wait for microtask to complete
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
       expect(thumb.getAttribute('data-disabled')).toBe('');
     });
   });

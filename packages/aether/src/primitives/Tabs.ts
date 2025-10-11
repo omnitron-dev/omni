@@ -9,8 +9,8 @@
 
 import { defineComponent } from '../core/component/define.js';
 import { signal, type WritableSignal } from '../core/reactivity/signal.js';
-import { computed } from '../core/reactivity/computed.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
+import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 import { generateId } from './utils/index.js';
 
@@ -28,11 +28,16 @@ export interface TabsContextValue {
   getContentId: (value: string) => string;
 }
 
-// Create context with default implementation
+// Create context with a signal default that will be updated
+// This allows children to access the context even if they're evaluated before the parent
+const globalTabsContextSignal = signal<TabsContextValue | null>(null);
+
 const noop = () => {};
-const noopGetter = () => undefined as string | undefined;
-const orientationGetter = () => 'horizontal' as const;
-const activationGetter = () => 'automatic' as const;
+const noopGetter = () => globalTabsContextSignal()?.value() ?? undefined;
+const orientationGetter = () => globalTabsContextSignal()?.orientation() ?? 'horizontal' as const;
+const activationGetter = () => globalTabsContextSignal()?.activationMode() ?? 'automatic' as const;
+const getTriggerId = (value: string) => globalTabsContextSignal()?.getTriggerId(value) ?? value;
+const getContentId = (value: string) => globalTabsContextSignal()?.getContentId(value) ?? value;
 
 export const TabsContext = createContext<TabsContextValue>({
   value: noopGetter,
@@ -41,8 +46,8 @@ export const TabsContext = createContext<TabsContextValue>({
   activationMode: activationGetter,
   tabsId: '',
   listId: '',
-  getTriggerId: (value: string) => value,
-  getContentId: (value: string) => value,
+  getTriggerId,
+  getContentId,
 }, 'Tabs');
 
 /**
@@ -103,8 +108,8 @@ export interface TabsProps {
  * ```
  */
 export const Tabs = defineComponent<TabsProps>((props) => {
-  const internalValue = signal<string | undefined>(props.defaultValue);
-  const valueSignal = props.value || internalValue;
+  // Match Accordion's pattern - create valueSignal directly or use provided one
+  const valueSignal = props.value || signal<string | undefined>(props.defaultValue);
 
   const orientation = signal(props.orientation || 'horizontal');
   const activationMode = signal(props.activationMode || 'automatic');
@@ -131,6 +136,13 @@ export const Tabs = defineComponent<TabsProps>((props) => {
     getTriggerId,
     getContentId,
   };
+
+  // CRITICAL FIX: Set global context signal so children can access it even if evaluated before parent
+  globalTabsContextSignal.set(contextValue);
+
+  // CRITICAL FIX: Manually set up context in setup phase so children can access it
+  // This is necessary because Context.Provider is called during render, which is too late
+  provideContext(TabsContext, contextValue);
 
   return () => {
     const { children, value: _, defaultValue: __, onValueChange: ___, orientation: ____, activationMode: _____, ...restProps } = props;
@@ -166,56 +178,63 @@ export interface TabsListProps {
  * Tabs list component - container for triggers
  */
 export const TabsList = defineComponent<TabsListProps>((props) => {
-  const ctx = useContext(TabsContext);
-
-  // Handle keyboard navigation
-  const handleKeyDown = (event: KeyboardEvent) => {
-    const orientation = ctx.orientation();
-    const isHorizontal = orientation === 'horizontal';
-    const isVertical = orientation === 'vertical';
-
-    // Get all trigger buttons from the current target (the tablist)
-    const listElement = event.currentTarget as HTMLElement;
-    const triggers = listElement.querySelectorAll('[role="tab"]:not([disabled])');
-    if (!triggers || triggers.length === 0) return;
-
-    const triggerArray = Array.from(triggers) as HTMLElement[];
-    const currentIndex = triggerArray.findIndex(el => el === event.target);
-    if (currentIndex === -1) return;
-
-    let nextIndex = currentIndex;
-
-    // Navigate based on orientation
-    if ((isHorizontal && event.key === 'ArrowRight') || (isVertical && event.key === 'ArrowDown')) {
-      event.preventDefault();
-      nextIndex = (currentIndex + 1) % triggerArray.length;
-    } else if ((isHorizontal && event.key === 'ArrowLeft') || (isVertical && event.key === 'ArrowUp')) {
-      event.preventDefault();
-      nextIndex = (currentIndex - 1 + triggerArray.length) % triggerArray.length;
-    } else if (event.key === 'Home') {
-      event.preventDefault();
-      nextIndex = 0;
-    } else if (event.key === 'End') {
-      event.preventDefault();
-      nextIndex = triggerArray.length - 1;
-    }
-
-    if (nextIndex !== currentIndex) {
-      triggerArray[nextIndex]?.focus();
-    }
-  };
-
   return () => {
+    // Access context in render so parent context is available
+    const ctx = useContext(TabsContext);
     const { children, ...restProps } = props;
 
-    return jsx('div', {
+    // Handle keyboard navigation
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const orientation = ctx.orientation();
+      const isHorizontal = orientation === 'horizontal';
+      const isVertical = orientation === 'vertical';
+
+      // Get all trigger buttons from the current target (the tablist)
+      const listElement = event.currentTarget as HTMLElement;
+      const triggers = listElement.querySelectorAll('[role="tab"]:not([disabled])');
+      if (!triggers || triggers.length === 0) return;
+
+      const triggerArray = Array.from(triggers) as HTMLElement[];
+      const currentIndex = triggerArray.findIndex(el => el === event.target);
+      if (currentIndex === -1) return;
+
+      let nextIndex = currentIndex;
+
+      // Navigate based on orientation
+      if ((isHorizontal && event.key === 'ArrowRight') || (isVertical && event.key === 'ArrowDown')) {
+        event.preventDefault();
+        nextIndex = (currentIndex + 1) % triggerArray.length;
+      } else if ((isHorizontal && event.key === 'ArrowLeft') || (isVertical && event.key === 'ArrowUp')) {
+        event.preventDefault();
+        nextIndex = (currentIndex - 1 + triggerArray.length) % triggerArray.length;
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        nextIndex = 0;
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        nextIndex = triggerArray.length - 1;
+      }
+
+      if (nextIndex !== currentIndex) {
+        triggerArray[nextIndex]?.focus();
+      }
+    };
+
+    const list = jsx('div', {
       ...restProps,
       id: ctx.listId,
       role: 'tablist',
       'aria-orientation': ctx.orientation(),
       onKeyDown: handleKeyDown,
       children,
+    }) as HTMLElement;
+
+    // Set up effect to update orientation reactively
+    effect(() => {
+      list.setAttribute('aria-orientation', ctx.orientation());
     });
+
+    return list;
   };
 });
 
@@ -248,50 +267,61 @@ export interface TabsTriggerProps {
  * Tabs trigger component - tab button
  */
 export const TabsTrigger = defineComponent<TabsTriggerProps>((props) => {
-  const ctx = useContext(TabsContext);
-
-  const isSelected = computed(() => ctx.value() === props.value);
-
-  const handleClick = () => {
-    if (!props.disabled) {
-      ctx.setValue(props.value);
-    }
-  };
-
-  const handleFocus = () => {
-    // Automatic activation on focus
-    if (!props.disabled && ctx.activationMode() === 'automatic') {
-      ctx.setValue(props.value);
-    }
-  };
-
-  const handleKeyDown = (event: KeyboardEvent) => {
-    // Manual activation requires Enter or Space
-    if (ctx.activationMode() === 'manual' && (event.key === 'Enter' || event.key === ' ')) {
-      event.preventDefault();
-      handleClick();
-    }
-  };
-
   return () => {
+    // Access context in render, not setup, so parent context is available
+    const ctx = useContext(TabsContext);
     const { value, disabled, children, ...restProps } = props;
 
-    return jsx('button', {
+    // Compute isSelected directly in render
+    const isSelected = ctx.value() === value;
+
+    const handleClick = () => {
+      if (!disabled) {
+        ctx.setValue(value);
+      }
+    };
+
+    const handleFocus = () => {
+      // Automatic activation on focus
+      if (!disabled && ctx.activationMode() === 'automatic') {
+        ctx.setValue(value);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Manual activation requires Enter or Space
+      if (ctx.activationMode() === 'manual' && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault();
+        handleClick();
+      }
+    };
+
+    const button = jsx('button', {
       ...restProps,
       id: ctx.getTriggerId(value),
       type: 'button',
       role: 'tab',
-      'aria-selected': isSelected(),
+      'aria-selected': String(isSelected),
       'aria-controls': ctx.getContentId(value),
-      'data-state': isSelected() ? 'active' : 'inactive',
+      'data-state': isSelected ? 'active' : 'inactive',
       'data-disabled': disabled ? '' : undefined,
       disabled,
-      tabIndex: isSelected() ? 0 : -1,
+      tabIndex: isSelected ? 0 : -1,
       onClick: handleClick,
       onFocus: handleFocus,
       onKeyDown: handleKeyDown,
       children,
+    }) as HTMLElement;
+
+    // Set up effect to update attributes reactively when context value changes
+    effect(() => {
+      const selected = ctx.value() === value;
+      button.setAttribute('aria-selected', String(selected));
+      button.setAttribute('data-state', selected ? 'active' : 'inactive');
+      button.setAttribute('tabindex', selected ? '0' : '-1');
     });
+
+    return button;
   };
 });
 
@@ -324,28 +354,57 @@ export interface TabsContentProps {
  * Tabs content component - tab panel
  */
 export const TabsContent = defineComponent<TabsContentProps>((props) => {
-  const ctx = useContext(TabsContext);
-
-  const isSelected = computed(() => ctx.value() === props.value);
-
   return () => {
+    // Access context in render so parent context is available
+    const ctx = useContext(TabsContext);
     const { value, forceMount, children, ...restProps } = props;
 
-    // Don't render unless selected or force mounted
-    if (!isSelected() && !forceMount) {
-      return null;
-    }
+    // Check if initially selected
+    const initialSelected = ctx.value() === value;
 
-    return jsx('div', {
+    // Always create the element, but manage display via effect
+    const content = jsx('div', {
       ...restProps,
       id: ctx.getContentId(value),
       role: 'tabpanel',
       'aria-labelledby': ctx.getTriggerId(value),
-      'data-state': isSelected() ? 'active' : 'inactive',
+      'data-state': initialSelected ? 'active' : 'inactive',
       tabIndex: 0,
-      hidden: !isSelected() ? true : undefined,
+      hidden: !initialSelected ? true : undefined,
       children,
+    }) as HTMLElement;
+
+    // Set up effect to manage visibility reactively
+    // This will hide/show based on selection and forceMount
+    effect(() => {
+      const selected = ctx.value() === value;
+      content.setAttribute('data-state', selected ? 'active' : 'inactive');
+
+      if (forceMount) {
+        // Force mounted - always in DOM, toggle hidden attribute
+        if (selected) {
+          content.removeAttribute('hidden');
+        } else {
+          content.setAttribute('hidden', 'true');
+        }
+      } else {
+        // Not force mounted - remove from DOM when not selected
+        if (selected) {
+          content.removeAttribute('hidden');
+          // Make sure it's in the DOM
+          if (!content.parentElement) {
+            // Already in DOM from initial render
+          }
+          content.style.display = '';
+        } else {
+          // Hide by removing from display
+          content.style.display = 'none';
+          content.setAttribute('hidden', 'true');
+        }
+      }
     });
+
+    return content;
   };
 });
 

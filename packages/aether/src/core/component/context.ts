@@ -128,3 +128,29 @@ export function useContext<T>(context: Context<T>): T {
   // Return default value if not found
   return context.defaultValue;
 }
+
+/**
+ * Manually provide context value in current owner
+ *
+ * This is a low-level API for cases where Context.Provider can't be used
+ * because it's called too late (during render instead of setup).
+ *
+ * @param context - Context to provide
+ * @param value - Context value
+ *
+ * @internal
+ */
+export function provideContext<T>(context: Context<T>, value: T): void {
+  const owner = getOwner();
+  if (!owner) {
+    throw new Error('provideContext can only be called inside component setup');
+  }
+
+  // Store context value for this owner
+  let ownerContexts = contextStorage.get(owner);
+  if (!ownerContexts) {
+    ownerContexts = new Map();
+    contextStorage.set(owner, ownerContexts);
+  }
+  ownerContexts.set(context.id, value);
+}

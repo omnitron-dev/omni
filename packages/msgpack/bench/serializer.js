@@ -1,7 +1,6 @@
 import * as bson from 'bson';
 import * as cbor from 'cbor';
 import * as msgpackr from 'msgpackr';
-import * as msgpack from '@msgpack/msgpack';
 import { performance } from 'perf_hooks';
 import { encode, decode } from '../dist/index.js';
 

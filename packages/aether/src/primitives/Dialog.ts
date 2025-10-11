@@ -162,6 +162,86 @@ export const DialogTrigger = defineComponent<DialogTriggerProps>((props) => {
 });
 
 /**
+ * Dialog portal props
+ */
+export interface DialogPortalProps {
+  /**
+   * Target container to render into
+   * @default document.body
+   */
+  container?: HTMLElement;
+
+  /**
+   * Children
+   */
+  children: any;
+}
+
+/**
+ * Dialog portal component
+ * Renders children into a different part of the DOM
+ */
+export const DialogPortal = defineComponent<DialogPortalProps>((props) => {
+  return () => jsx(Portal, {
+    target: props.container,
+    children: props.children,
+  });
+});
+
+/**
+ * Dialog overlay props
+ */
+export interface DialogOverlayProps {
+  /**
+   * Children
+   */
+  children?: any;
+
+  /**
+   * Additional props
+   */
+  [key: string]: any;
+}
+
+/**
+ * Dialog overlay component
+ * Renders a backdrop/overlay behind the dialog
+ */
+export const DialogOverlay = defineComponent<DialogOverlayProps>((props) => {
+  const ctx = useContext(DialogContext);
+
+  // Handle click on overlay to close dialog
+  const handleClick = (event: MouseEvent) => {
+    // Only close if clicking directly on overlay (not on content inside)
+    if (event.target === event.currentTarget) {
+      ctx.close();
+    }
+  };
+
+  return () => {
+    if (!ctx.isOpen()) {
+      return null;
+    }
+
+    const { children, ...restProps } = props;
+
+    return jsx('div', {
+      ...restProps,
+      'data-dialog-overlay': '',
+      'data-state': ctx.isOpen() ? 'open' : 'closed',
+      onClick: handleClick,
+      style: {
+        position: 'fixed',
+        inset: '0',
+        zIndex: 50,
+        ...restProps.style,
+      },
+      children,
+    });
+  };
+});
+
+/**
  * Dialog content props
  */
 export interface DialogContentProps {
@@ -224,18 +304,17 @@ export const DialogContent = defineComponent<DialogContentProps>((props) => {
 
     const { children, ...restProps } = props;
 
-    return jsx(Portal, {
-      children: jsx('div', {
-        ...restProps,
-        id: ctx.contentId,
-        role: 'dialog',
-        'aria-modal': 'true',
-        'aria-labelledby': ctx.titleId,
-        'aria-describedby': ctx.descriptionId,
-        tabIndex: -1,
-        onKeyDown: handleKeyDown,
-        children,
-      }),
+    return jsx('div', {
+      ...restProps,
+      id: ctx.contentId,
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-labelledby': ctx.titleId,
+      'aria-describedby': ctx.descriptionId,
+      'data-state': ctx.isOpen() ? 'open' : 'closed',
+      tabIndex: -1,
+      onKeyDown: handleKeyDown,
+      children,
     });
   };
 });
@@ -294,6 +373,8 @@ export const DialogClose = defineComponent<{ children: any; [key: string]: any }
 
 // Attach sub-components to Dialog
 (Dialog as any).Trigger = DialogTrigger;
+(Dialog as any).Portal = DialogPortal;
+(Dialog as any).Overlay = DialogOverlay;
 (Dialog as any).Content = DialogContent;
 (Dialog as any).Title = DialogTitle;
 (Dialog as any).Description = DialogDescription;

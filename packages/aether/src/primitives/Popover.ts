@@ -424,6 +424,51 @@ export const PopoverArrow = defineComponent<PopoverArrowProps>((props) => {
 });
 
 /**
+ * Popover anchor props
+ */
+export interface PopoverAnchorProps {
+  /**
+   * Children
+   */
+  children?: any;
+
+  /**
+   * Additional props
+   */
+  [key: string]: any;
+}
+
+/**
+ * Popover anchor - provides a reference element for positioning
+ */
+export const PopoverAnchor = defineComponent<PopoverAnchorProps>((props) => {
+  const ctx = useContext(PopoverContext);
+
+  return () => {
+    const { children, ...restProps } = props;
+
+    return jsx('div', {
+      ...restProps,
+      'data-popover-anchor': '',
+      ref: (el: HTMLElement | null) => {
+        if (el) {
+          ctx.setAnchorElement(el);
+        }
+        // Handle user-provided ref
+        if (restProps.ref) {
+          if (typeof restProps.ref === 'function') {
+            restProps.ref(el);
+          } else {
+            restProps.ref.current = el;
+          }
+        }
+      },
+      children,
+    });
+  };
+});
+
+/**
  * Popover close button
  */
 export interface PopoverCloseProps {
@@ -455,4 +500,5 @@ export const PopoverClose = defineComponent<PopoverCloseProps>((props) => {
 (Popover as any).Trigger = PopoverTrigger;
 (Popover as any).Content = PopoverContent;
 (Popover as any).Arrow = PopoverArrow;
+(Popover as any).Anchor = PopoverAnchor;
 (Popover as any).Close = PopoverClose;

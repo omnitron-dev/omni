@@ -7,7 +7,9 @@
 
 import { defineComponent } from '../core/component/define.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
+import type { Signal } from '../core/reactivity/types.js';
 import { signal } from '../core/reactivity/signal.js';
+import { computed } from '../core/reactivity/computed.js';
 import { effect } from '../core/reactivity/effect.js';
 import { createRef } from '../core/component/refs.js';
 import { jsx } from '../jsx-runtime.js';
@@ -83,7 +85,7 @@ export interface CollapsibleContentProps {
 // ============================================================================
 
 export interface CollapsibleContextValue {
-  isOpen: () => boolean;
+  isOpen: Signal<boolean>;
   toggle: () => void;
   disabled: () => boolean;
   triggerId: string;
@@ -95,7 +97,7 @@ const noopBool = () => false;
 
 export const CollapsibleContext = createContext<CollapsibleContextValue>(
   {
-    isOpen: noopBool,
+    isOpen: computed(noopBool),
     toggle: noop,
     disabled: noopBool,
     triggerId: '',
@@ -141,7 +143,7 @@ export const Collapsible = defineComponent<CollapsibleProps>((props) => {
   };
 
   const contextValue: CollapsibleContextValue = {
-    isOpen: () => isOpen(),
+    isOpen: computed(() => isOpen()),
     toggle,
     disabled: () => props.disabled || false,
     triggerId,
@@ -234,52 +236,44 @@ export const CollapsibleTrigger = defineComponent<CollapsibleTriggerProps>((prop
 
 /**
  * Collapsible Content component
+ *
+ * IMPORTANT: Follows Aether's reactivity pattern - element is always rendered,
+ * visibility is controlled through effect() to enable reactive updates.
  */
-export const CollapsibleContent = defineComponent<CollapsibleContentProps>((props) => {
+export const CollapsibleContent = defineComponent<CollapsibleContentProps>((props) => () => {
   const ctx = useContext(CollapsibleContext);
 
-  // Create ref to content element and set up reactive updates
-  const contentRef = createRef<HTMLDivElement>();
+  // Compute initial state
+  const isOpen = ctx.isOpen();
 
-  const refCallback = (element: HTMLDivElement | null) => {
-    contentRef.current = element || undefined;
-    if (!element) return;
+  // Always create the element (Aether framework doesn't support conditional rendering)
+  const content = jsx('div', {
+    ...props,
+    id: ctx.contentId,
+    'data-collapsible-content': '',
+    'data-state': isOpen ? 'open' : 'closed',
+    hidden: !isOpen,
+    style: {
+      ...props.style,
+      display: !isOpen ? 'none' : undefined,
+    },
+  }) as HTMLElement;
 
-    // Set up effect to update DOM attributes when signals change
-    effect(() => {
-      const open = ctx.isOpen();
-      element.setAttribute('data-state', open ? 'open' : 'closed');
-
-      // Update visibility based on open state and forceMount
-      if (!props.forceMount && !open) {
-        element.style.display = 'none';
-        element.hidden = true;
-      } else if (props.forceMount && !open) {
-        // ForceMount keeps element in DOM but hidden
-        element.hidden = true;
-      } else {
-        element.style.display = '';
-        element.hidden = false;
-      }
-    });
-  };
-
-  return () => {
+  // Set up effect to update visibility reactively when isOpen changes
+  effect(() => {
     const open = ctx.isOpen();
+    content.setAttribute('data-state', open ? 'open' : 'closed');
 
-    // Always render the element - visibility is controlled via effects
-    // This ensures the element exists for effects to update
-    return jsx('div', {
-      ...props,
-      ref: refCallback,
-      id: ctx.contentId,
-      'data-collapsible-content': '',
-      'data-state': open ? 'open' : 'closed',
-      hidden: !open,
-      style: {
-        ...props.style,
-        display: !open && !props.forceMount ? 'none' : undefined,
-      },
-    });
-  };
+    // Toggle visibility - forceMount prop affects how this behaves
+    // (forceMount was already applied in initial props, this just updates reactively)
+    if (open) {
+      content.style.display = '';
+      content.hidden = false;
+    } else {
+      content.style.display = 'none';
+      content.hidden = true;
+    }
+  });
+
+  return content;
 });

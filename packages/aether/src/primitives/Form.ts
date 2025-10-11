@@ -8,7 +8,7 @@
  */
 
 import { defineComponent } from '../core/component/define.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal, type WritableSignal } from '../core/reactivity/signal.js';
 import { jsx } from '../jsx-runtime.js';
 import { generateId } from './utils/index.js';
@@ -121,14 +121,14 @@ export const FormField = defineComponent<FormFieldProps>((props) => {
     isDisabled: signal(false),
   };
 
+  // Provide context during setup
+  provideContext(FormFieldContext, contextValue);
+
   return () =>
-    jsx(FormFieldContext.Provider, {
-      value: contextValue,
-      children: jsx('div', {
-        'data-field': props.name,
-        'data-field-id': fieldId,
-        children: props.children,
-      }),
+    jsx('div', {
+      'data-field': props.name,
+      'data-field-id': fieldId,
+      children: props.children,
     });
 });
 

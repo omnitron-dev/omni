@@ -12,9 +12,10 @@
  */
 
 import { defineComponent } from '../core/component/index.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
 import { signal, computed } from '../core/reactivity/index.js';
+import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 
 // ============================================================================
@@ -47,7 +48,7 @@ export interface EditableProps {
   /** Called when edit is cancelled */
   onCancel?: () => void;
   /** Children */
-  children?: any;
+  children?: any | (() => any);
 }
 
 export interface EditablePreviewProps {
@@ -98,6 +99,8 @@ interface EditableContextValue {
   placeholder: string;
   /** Select on focus */
   selectOnFocus: boolean;
+  /** Submit on blur */
+  submitOnBlur: boolean;
   /** Input value (temp during edit) */
   inputValue: Signal<string>;
   /** Set input value */
@@ -110,14 +113,24 @@ interface EditableContextValue {
 // Context
 // ============================================================================
 
-const EditableContext = createContext<EditableContextValue | null>(null);
+// Global reactive context signal that will be updated during Editable setup
+// This allows children to access the context even if they're evaluated before the parent
+// Using a SIGNAL makes the context reactive, so effects will rerun when it updates
+const globalEditableContextSignal = signal<EditableContextValue | null>(null);
+
+// Create context with default implementation that delegates to global signal
+const EditableContext = createContext<EditableContextValue | null>(null, 'Editable');
 
 const useEditableContext = (): EditableContextValue => {
   const context = useContext(EditableContext);
-  if (!context) {
+  if (context) return context;
+
+  // Fallback to global signal
+  const globalContext = globalEditableContextSignal();
+  if (!globalContext) {
     throw new Error('Editable components must be used within an Editable');
   }
-  return context;
+  return globalContext;
 };
 
 // ============================================================================
@@ -127,6 +140,7 @@ const useEditableContext = (): EditableContextValue => {
 export const Editable = defineComponent<EditableProps>((props) => {
   const disabled = props.disabled ?? false;
   const selectOnFocus = props.selectOnFocus ?? true;
+  const submitOnBlur = props.submitOnBlur ?? true;
   const placeholder = props.placeholder ?? 'Enter text...';
 
   // State
@@ -206,21 +220,30 @@ export const Editable = defineComponent<EditableProps>((props) => {
     disabled,
     placeholder,
     selectOnFocus,
+    submitOnBlur,
     inputValue: computed(() => inputValue()),
     setInputValue,
     inputRef,
   };
 
-  return () =>
-    jsx(EditableContext.Provider, {
-      value: contextValue,
-      children: jsx('div', {
-        'data-editable': '',
-        'data-disabled': disabled ? '' : undefined,
-        'data-editing': isEditing() ? '' : undefined,
-        children: props.children,
-      }),
+  // CRITICAL FIX: Set global context signal so children can access it
+  // Using a signal makes this reactive - effects will rerun when it updates!
+  globalEditableContextSignal.set(contextValue);
+
+  // Also provide context via the standard API
+  provideContext(EditableContext, contextValue);
+
+  return () => {
+    // Support function children
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+
+    return jsx('div', {
+      'data-editable': '',
+      'data-disabled': disabled ? '' : undefined,
+      'data-editing': isEditing() ? '' : undefined,
+      children,
     });
+  };
 });
 
 // ============================================================================
@@ -236,18 +259,42 @@ export const EditablePreview = defineComponent<EditablePreviewProps>((props) => 
     }
   };
 
-  return () => {
-    if (context.isEditing()) return null;
+  // Create ref callback for reactive updates
+  const refCallback = (element: HTMLElement | null) => {
+    if (!element) return;
 
+    // Set up effect to reactively update visibility and content when state changes
+    effect(() => {
+      const isEditing = context.isEditing();
+      const value = context.value();
+
+      // Update visibility
+      if (isEditing) {
+        element.style.display = 'none';
+      } else {
+        element.style.display = '';
+      }
+
+      // Update text content if no children provided
+      if (!props.children) {
+        element.textContent = value || context.placeholder;
+      }
+    });
+  };
+
+  return () => {
     const { children, ...rest } = props;
     const value = context.value();
+    const isEditing = context.isEditing();
 
     return jsx('div', {
+      ref: refCallback,
       'data-editable-preview': '',
       onClick: handleClick,
       tabIndex: context.disabled ? -1 : 0,
       role: 'button',
       'aria-label': 'Click to edit',
+      style: isEditing ? 'display: none;' : undefined,
       ...rest,
       children: children ?? (value || context.placeholder),
     });
@@ -277,26 +324,49 @@ export const EditableInput = defineComponent<EditableInputProps>((props) => {
   };
 
   const handleBlur = () => {
-    const parentProps = (context as any).props;
-    const submitOnBlur = parentProps?.submitOnBlur ?? true;
-
-    if (submitOnBlur) {
+    if (context.submitOnBlur) {
       context.submit();
     }
   };
 
-  return () => {
-    if (!context.isEditing()) return null;
+  // Create ref callback for reactive updates
+  const refCallback = (element: HTMLInputElement | null) => {
+    if (!element) return;
 
+    // Store ref for focus management
+    context.inputRef.current = element;
+
+    // Set up effect to reactively update visibility AND value when state changes
+    effect(() => {
+      const isEditing = context.isEditing();
+      const inputValue = context.inputValue();
+
+      // Update visibility
+      if (!isEditing) {
+        element.style.display = 'none';
+      } else {
+        element.style.display = '';
+      }
+
+      // Update value property reactively
+      if (element.value !== inputValue) {
+        element.value = inputValue;
+      }
+    });
+  };
+
+  return () => {
     const { ...rest } = props;
+    const isEditing = context.isEditing();
 
     return jsx('input', {
-      ref: context.inputRef,
+      ref: refCallback,
       type: 'text',
       'data-editable-input': '',
       value: context.inputValue(),
       placeholder: context.placeholder,
       disabled: context.disabled,
+      style: !isEditing ? 'display: none;' : undefined,
       onInput: handleInput,
       onKeyDown: handleKeyDown,
       onBlur: handleBlur,
@@ -312,13 +382,30 @@ export const EditableInput = defineComponent<EditableInputProps>((props) => {
 export const EditableControls = defineComponent<EditableControlsProps>((props) => {
   const context = useEditableContext();
 
-  return () => {
-    if (!context.isEditing()) return null;
+  // Create ref callback for reactive updates
+  const refCallback = (element: HTMLElement | null) => {
+    if (!element) return;
 
+    // Set up effect to reactively update visibility when editing state changes
+    effect(() => {
+      const isEditing = context.isEditing();
+
+      if (!isEditing) {
+        element.style.display = 'none';
+      } else {
+        element.style.display = '';
+      }
+    });
+  };
+
+  return () => {
     const { children } = props;
+    const isEditing = context.isEditing();
 
     return jsx('div', {
+      ref: refCallback,
       'data-editable-controls': '',
+      style: !isEditing ? 'display: none;' : undefined,
       children,
     });
   };

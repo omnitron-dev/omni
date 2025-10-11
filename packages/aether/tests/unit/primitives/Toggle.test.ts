@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { signal } from '../../../src/core/reactivity/signal.js';
 import { Toggle } from '../../../src/primitives/Toggle.js';
+import { jsx } from '../../../src/jsx-runtime.js';
 import { renderComponent, createSpy } from '../../helpers/test-utils.js';
 
 describe('Toggle', () => {
@@ -527,6 +528,7 @@ describe('Toggle', () => {
       const component = () =>
         Toggle({
           pressed: notificationsEnabled,
+          onPressedChange: (pressed) => notificationsEnabled.set(pressed),
           'aria-label': 'Enable notifications',
           children: 'Notifications',
         });
@@ -545,10 +547,23 @@ describe('Toggle', () => {
       const isBold = signal(false);
       const isItalic = signal(false);
 
-      const component = () => [
-        Toggle({ pressed: isBold, 'aria-label': 'Bold', children: 'B' }),
-        Toggle({ pressed: isItalic, 'aria-label': 'Italic', children: 'I' }),
-      ];
+      const component = () =>
+        jsx('div', {
+          children: [
+            Toggle({
+              pressed: isBold,
+              onPressedChange: (pressed) => isBold.set(pressed),
+              'aria-label': 'Bold',
+              children: 'B',
+            }),
+            Toggle({
+              pressed: isItalic,
+              onPressedChange: (pressed) => isItalic.set(pressed),
+              'aria-label': 'Italic',
+              children: 'I',
+            }),
+          ],
+        });
 
       const { container } = renderComponent(component);
 

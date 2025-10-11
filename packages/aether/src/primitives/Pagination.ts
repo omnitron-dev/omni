@@ -19,7 +19,7 @@
 
 import { jsx } from '../jsx-runtime.js';
 import { defineComponent } from '../core/component/index.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { effect } from '../core/reactivity/effect.js';
 import { createRef } from '../core/component/refs.js';
 
@@ -208,6 +208,9 @@ export const Pagination = defineComponent<PaginationProps>((props) => {
     getPageNumbers,
   };
 
+  // Provide context before return
+  provideContext(PaginationContext, contextValue);
+
   // Create ref to nav element and set up reactive updates
   const navRef = createRef<HTMLElement>();
 
@@ -225,17 +228,14 @@ export const Pagination = defineComponent<PaginationProps>((props) => {
     const { children, onPageChange, ...restProps } = props;
     const resolvedChildren = typeof children === 'function' ? children() : children;
 
-    return jsx(PaginationContext.Provider, {
-      value: contextValue,
-      children: jsx('nav', {
-        ...restProps,
-        ref: refCallback,
-        'data-pagination': '',
-        'data-current-page': String(currentPage()),
-        'aria-label': 'Pagination',
-        role: 'navigation',
-        children: resolvedChildren,
-      }),
+    return jsx('nav', {
+      ...restProps,
+      ref: refCallback,
+      'data-pagination': '',
+      'data-current-page': String(currentPage()),
+      'aria-label': 'Pagination',
+      role: 'navigation',
+      children: resolvedChildren,
     });
   };
 });
@@ -246,70 +246,82 @@ export const Pagination = defineComponent<PaginationProps>((props) => {
  * Renders page number buttons with ellipsis.
  */
 export const PaginationItems = defineComponent<PaginationItemsProps>((props) => {
-  // Defer context access to render time to ensure Provider is available
-  let ctx: PaginationContextValue;
-
-  const defaultRenderItem = (page: number, isCurrent: boolean) => {
-    // Create a reactive button for each page
-    const buttonRef = createRef<HTMLButtonElement>();
-
-    const buttonRefCallback = (element: HTMLButtonElement | null) => {
-      buttonRef.current = element || undefined;
-      if (!element) return;
-
-      // Set up effect to update button attributes when current page changes
-      effect(() => {
-        const isCurrentPage = ctx.currentPage() === page;
-        element.setAttribute('data-state', isCurrentPage ? 'active' : 'inactive');
-        if (isCurrentPage) {
-          element.setAttribute('data-current', '');
-          element.setAttribute('aria-current', 'page');
-          element.disabled = true;
-        } else {
-          element.removeAttribute('data-current');
-          element.removeAttribute('aria-current');
-          element.disabled = false;
-        }
-      });
-    };
-
-    return jsx('button', {
-      ref: buttonRefCallback,
-      'data-pagination-item': '',
-      'data-current': isCurrent ? '' : undefined,
-      'data-state': isCurrent ? 'active' : 'inactive',
-      'aria-current': isCurrent ? 'page' : undefined,
-      'aria-label': `Page ${page}`,
-      onClick: () => ctx.goToPage(page),
-      disabled: isCurrent,
-      children: page,
-    });
-  };
-
-  const defaultRenderEllipsis = () => jsx('span', {
-      'data-pagination-ellipsis': '',
-      'aria-hidden': 'true',
-      children: '...',
-    });
-
   return () => {
     // Get context at render time, after Provider is set up
-    ctx = useContext(PaginationContext);
+    const ctx = useContext(PaginationContext);
 
-    const { renderItem = defaultRenderItem, renderEllipsis = defaultRenderEllipsis, ...restProps } = props;
     const pageNumbers = ctx.getPageNumbers();
     const currentPage = ctx.currentPage();
+
+    const renderItem = props.renderItem;
+    const renderEllipsis = props.renderEllipsis;
+
+    const items: any[] = [];
+
+    for (const page of pageNumbers) {
+      if (page === 'ellipsis') {
+        if (renderEllipsis) {
+          items.push(renderEllipsis());
+        } else {
+          items.push(
+            jsx('span', {
+              'data-pagination-ellipsis': '',
+              'aria-hidden': 'true',
+              children: '...',
+            })
+          );
+        }
+      } else {
+        const isCurrent = page === currentPage;
+
+        if (renderItem) {
+          items.push(renderItem(page, isCurrent));
+        } else {
+          const buttonRef = createRef<HTMLButtonElement>();
+
+          const buttonRefCallback = (element: HTMLButtonElement | null) => {
+            buttonRef.current = element || undefined;
+            if (!element) return;
+
+            // Set up effect to update button attributes when current page changes
+            effect(() => {
+              const isCurrentPage = ctx.currentPage() === page;
+              element.setAttribute('data-state', isCurrentPage ? 'active' : 'inactive');
+              if (isCurrentPage) {
+                element.setAttribute('data-current', '');
+                element.setAttribute('aria-current', 'page');
+                element.disabled = true;
+              } else {
+                element.removeAttribute('data-current');
+                element.removeAttribute('aria-current');
+                element.disabled = false;
+              }
+            });
+          };
+
+          items.push(
+            jsx('button', {
+              ref: buttonRefCallback,
+              'data-pagination-item': '',
+              'data-current': isCurrent ? '' : undefined,
+              'data-state': isCurrent ? 'active' : 'inactive',
+              'aria-current': isCurrent ? 'page' : undefined,
+              'aria-label': `Page ${page}`,
+              onClick: () => ctx.goToPage(page),
+              disabled: isCurrent,
+              children: page,
+            })
+          );
+        }
+      }
+    }
+
+    const { ...restProps } = props;
 
     return jsx('div', {
       ...restProps,
       'data-pagination-items': '',
-      children: pageNumbers.map((page) => {
-        if (page === 'ellipsis') {
-          return renderEllipsis();
-        }
-        const isCurrent = page === currentPage;
-        return renderItem(page, isCurrent);
-      }),
+      children: items,
     });
   };
 });
@@ -320,15 +332,12 @@ export const PaginationItems = defineComponent<PaginationItemsProps>((props) => 
  * Previous page button.
  */
 export const PaginationPrevious = defineComponent<PaginationPreviousProps>((props) => {
-  // Defer context access to render time
-  let ctx: PaginationContextValue;
-
   // Create ref to button element and set up reactive updates
   const buttonRef = createRef<HTMLButtonElement>();
 
   return () => {
     // Get context at render time
-    ctx = useContext(PaginationContext);
+    const ctx = useContext(PaginationContext);
 
     const handleClick = () => {
       ctx.goToPage(ctx.currentPage() - 1);
@@ -372,15 +381,12 @@ export const PaginationPrevious = defineComponent<PaginationPreviousProps>((prop
  * Next page button.
  */
 export const PaginationNext = defineComponent<PaginationNextProps>((props) => {
-  // Defer context access to render time
-  let ctx: PaginationContextValue;
-
   // Create ref to button element and set up reactive updates
   const buttonRef = createRef<HTMLButtonElement>();
 
   return () => {
     // Get context at render time
-    ctx = useContext(PaginationContext);
+    const ctx = useContext(PaginationContext);
 
     const handleClick = () => {
       ctx.goToPage(ctx.currentPage() + 1);

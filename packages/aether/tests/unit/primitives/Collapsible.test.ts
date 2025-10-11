@@ -63,9 +63,11 @@ describe('Collapsible', () => {
       expect(trigger).toBeTruthy();
       expect(trigger?.textContent).toBe('Toggle');
 
-      // Content should be hidden initially
-      const content = container.querySelector('[data-collapsible-content]');
-      expect(content).toBeNull(); // Not mounted when closed
+      // Content should be in DOM but hidden (Aether reactivity pattern)
+      const content = container.querySelector('[data-collapsible-content]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.hidden).toBe(true);
+      expect(content.style.display).toBe('none');
     });
 
     it('should toggle open state on trigger click', async () => {
@@ -136,9 +138,12 @@ describe('Collapsible', () => {
 
       const { container } = renderComponent(component);
 
-      // Content should not be in DOM when closed
-      const content = container.querySelector('[data-collapsible-content]');
-      expect(content).toBeNull();
+      // Content should be in DOM but hidden (Aether reactivity pattern)
+      const content = container.querySelector('[data-collapsible-content]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.hidden).toBe(true);
+      expect(content.style.display).toBe('none');
+      expect(content.getAttribute('data-state')).toBe('closed');
     });
   });
 
@@ -367,9 +372,12 @@ describe('Collapsible', () => {
 
       const { container } = renderComponent(component);
 
-      // Content should not be mounted
-      const content = container.querySelector('[data-collapsible-content]');
-      expect(content).toBeNull();
+      // Content should be in DOM but hidden (Aether always renders elements)
+      const content = container.querySelector('[data-collapsible-content]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('none');
+      expect(content.hidden).toBe(true);
+      expect(content.getAttribute('data-state')).toBe('closed');
     });
   });
 

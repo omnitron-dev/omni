@@ -5,6 +5,7 @@
 import { defineComponent, onCleanup } from '../core/component/index.js';
 import type { WritableSignal } from '../core/reactivity/types.js';
 import { signal } from '../core/reactivity/index.js';
+import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 
 export interface AffixProps {
@@ -20,10 +21,10 @@ export const Affix = defineComponent<AffixProps>((props) => {
   const offsetTop = props.offsetTop;
   const offsetBottom = props.offsetBottom;
   const affixed: WritableSignal<boolean> = signal(false);
-  const affixRef: { current: HTMLDivElement | null } = { current: null };
+  let affixRef: HTMLDivElement | null = null;
 
   const handleScroll = () => {
-    const el = affixRef.current;
+    const el = affixRef;
     if (!el) return;
 
     const rect = el.getBoundingClientRect();
@@ -39,5 +40,35 @@ export const Affix = defineComponent<AffixProps>((props) => {
   target.addEventListener('scroll', handleScroll);
   onCleanup(() => target.removeEventListener('scroll', handleScroll));
 
-  return () => jsx('div', { ref: affixRef, 'data-affix': '', 'data-affixed': affixed() ? '' : undefined, style: { position: affixed() ? 'fixed' : 'static', top: offsetTop, bottom: offsetBottom }, children: props.children });
+  return () => {
+    const refCallback = (el: HTMLDivElement | null) => {
+      if (!el) return;
+      affixRef = el;
+
+      // Set up reactive effect for attributes and styles
+      effect(() => {
+        const isAffixed = affixed();
+        if (isAffixed) {
+          el.setAttribute('data-affixed', '');
+          el.style.position = 'fixed';
+        } else {
+          el.removeAttribute('data-affixed');
+          el.style.position = 'static';
+        }
+
+        if (offsetTop !== undefined) {
+          el.style.top = `${offsetTop}px`;
+        }
+        if (offsetBottom !== undefined) {
+          el.style.bottom = `${offsetBottom}px`;
+        }
+      });
+    };
+
+    return jsx('div', {
+      ref: refCallback,
+      'data-affix': '',
+      children: props.children,
+    });
+  };
 });

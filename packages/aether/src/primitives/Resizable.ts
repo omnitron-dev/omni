@@ -13,6 +13,8 @@ import { createContext, useContext, provideContext } from '../core/component/con
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
 import { signal, computed } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
+import { effect } from '../core/reactivity/effect.js';
+import { createRef } from '../core/component/refs.js';
 
 export type ResizableOrientation = 'horizontal' | 'vertical';
 
@@ -47,9 +49,8 @@ interface ResizableContextValue {
 
 const ResizableContext = createContext<ResizableContextValue | null>(null);
 
-const useResizableContext = (): ResizableContextValue => {
+const useResizableContext = (): ResizableContextValue | null => {
   const context = useContext(ResizableContext);
-  if (!context) throw new Error('Resizable components must be used within Resizable');
   return context;
 };
 
@@ -76,7 +77,11 @@ export const Resizable = defineComponent<ResizableProps>((props) => {
     // Support function children
     const children = typeof props.children === 'function' ? props.children() : props.children;
 
+    // Extract known props and spread the rest
+    const { orientation: _, sizes, onSizesChange, defaultSizes, children: __, ...restProps } = props;
+
     return jsx('div', {
+      ...restProps,
       'data-resizable-container': '',
       'data-orientation': orientation,
       style: { display: 'flex', flexDirection: orientation === 'horizontal' ? 'row' : 'column', width: '100%', height: '100%' },
@@ -93,28 +98,44 @@ export const ResizablePanel = defineComponent<ResizablePanelProps>((props) => {
   const index = panelCounter - 1;
 
   return () => {
-    const size = context.sizes()[index] ?? 50;
-    const style = context.orientation === 'horizontal' ? { width: `${size}%`, height: '100%' } : { height: `${size}%`, width: '100%' };
+    const size = context ? context.sizes()[index] ?? 50 : 50;
+    const orientation = context?.orientation ?? 'horizontal';
+    const style = orientation === 'horizontal' ? { width: `${size}%`, height: '100%' } : { height: `${size}%`, width: '100%' };
 
-    return jsx('div', { 'data-resizable-panel': '', 'data-panel-id': panelId, style: { ...style, overflow: 'auto' }, children: props.children });
+    const { id, minSize, maxSize, children, ...restProps } = props;
+
+    return jsx('div', {
+      ...restProps,
+      'data-resizable-panel': '',
+      'data-panel-id': panelId,
+      style: { ...style, overflow: 'auto' },
+      children,
+    });
   };
 });
 
 export const ResizableHandle = defineComponent<ResizableHandleProps>((props) => {
   const context = useResizableContext();
-  const disabled = props.disabled ?? false;
+  const disabled = () => props.disabled ?? false;
 
-  return () => jsx('div', {
-    'data-resizable-handle': '',
-    'data-orientation': context.orientation,
-    'data-disabled': disabled ? '' : undefined,
-    role: 'separator',
-    'aria-orientation': context.orientation,
-    'aria-disabled': disabled,
-    tabIndex: disabled ? -1 : 0,
-    style: { cursor: context.orientation === 'horizontal' ? 'col-resize' : 'row-resize', touchAction: 'none', userSelect: 'none' },
-    children: props.children,
-  });
+  return () => {
+    const isDisabled = disabled();
+    const orientation = context?.orientation ?? 'horizontal';
+    const { disabled: _, children, ...restProps } = props;
+
+    return jsx('div', {
+      ...restProps,
+      'data-resizable-handle': '',
+      'data-orientation': orientation,
+      'data-disabled': isDisabled ? '' : undefined,
+      role: 'separator',
+      'aria-orientation': orientation,
+      'aria-disabled': isDisabled ? 'true' : 'false',
+      tabIndex: isDisabled ? -1 : 0,
+      style: { cursor: orientation === 'horizontal' ? 'col-resize' : 'row-resize', touchAction: 'none', userSelect: 'none' },
+      children,
+    });
+  };
 });
 
 (Resizable as any).Panel = ResizablePanel;

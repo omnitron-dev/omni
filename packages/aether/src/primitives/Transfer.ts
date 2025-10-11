@@ -15,6 +15,7 @@ import { defineComponent } from '../core/component/index.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
 import { signal, computed } from '../core/reactivity/index.js';
+import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 
 export interface TransferItem {
@@ -51,12 +52,23 @@ interface TransferContextValue {
   toggleTargetSelection: (key: string) => void;
 }
 
-const TransferContext = createContext<TransferContextValue | null>(null);
+// Global reactive context signal that will be updated during Transfer setup
+// This allows children to access the context even if they're evaluated before the parent
+// Using a SIGNAL makes the context reactive, so effects will rerun when it updates
+const globalTransferContextSignal = signal<TransferContextValue | null>(null);
+
+const TransferContext = createContext<TransferContextValue | null>(null, 'Transfer');
 
 const useTransferContext = (): TransferContextValue => {
   const context = useContext(TransferContext);
-  if (!context) throw new Error('Transfer components must be used within Transfer');
-  return context;
+  if (context) return context;
+
+  // Fallback to global signal
+  const globalContext = globalTransferContextSignal();
+  if (!globalContext) {
+    throw new Error('Transfer components must be used within Transfer');
+  }
+  return globalContext;
 };
 
 export const Transfer = defineComponent<TransferProps>((props) => {
@@ -119,7 +131,11 @@ export const Transfer = defineComponent<TransferProps>((props) => {
     toggleTargetSelection,
   };
 
-  // Provide context BEFORE return
+  // CRITICAL FIX: Set global context signal so children can access it
+  // Using a signal makes this reactive - effects will rerun when it updates!
+  globalTransferContextSignal.set(contextValue);
+
+  // Also provide context via the standard API
   provideContext(TransferContext, contextValue);
 
   return () => {
@@ -130,30 +146,77 @@ export const Transfer = defineComponent<TransferProps>((props) => {
   };
 });
 
-export const TransferList = defineComponent<{ type: 'source' | 'target' }>((props) => {
+export const TransferList = defineComponent<{ type: 'source' | 'target'; children?: any | (() => any) }>((props) => {
   const context = useTransferContext();
-  const items = props.type === 'source' ? context.sourceItems() : context.targetItems();
-  const selected =
-    props.type === 'source' ? context.selectedSource() : context.selectedTarget();
 
-  return () =>
-    jsx('div', {
+  return () => {
+    // Get items and selected reactively in render function
+    const items = props.type === 'source' ? context.sourceItems() : context.targetItems();
+    const selected = props.type === 'source' ? context.selectedSource() : context.selectedTarget();
+
+    return jsx('div', {
       'data-transfer-list': '',
       'data-type': props.type,
       children: items.map((item) =>
-        jsx('div', {
-          'data-transfer-item': '',
-          'data-selected': selected.includes(item.key) ? '' : undefined,
-          onClick: () => {
+        TransferItem({
+          item,
+          type: props.type,
+          selected: selected.includes(item.key),
+          onToggle: () => {
             if (props.type === 'source') {
               context.toggleSourceSelection(item.key);
             } else {
               context.toggleTargetSelection(item.key);
             }
           },
-          children: item.title,
         }),
       ),
+    });
+  };
+});
+
+// Helper component for individual transfer items
+const TransferItem = defineComponent<{
+  item: TransferItem;
+  type: 'source' | 'target';
+  selected: boolean;
+  onToggle: () => void;
+}>((props) => {
+  const context = useTransferContext();
+
+  // Create ref callback for reactive updates
+  const refCallback = (element: HTMLElement | null) => {
+    if (!element) return;
+
+    // Set up effect to reactively update attributes when selection changes
+    effect(() => {
+      const selected =
+        props.type === 'source'
+          ? context.selectedSource().includes(props.item.key)
+          : context.selectedTarget().includes(props.item.key);
+
+      if (selected) {
+        element.setAttribute('data-selected', '');
+      } else {
+        element.removeAttribute('data-selected');
+      }
+
+      if (props.item.disabled) {
+        element.setAttribute('data-disabled', '');
+      } else {
+        element.removeAttribute('data-disabled');
+      }
+    });
+  };
+
+  return () =>
+    jsx('div', {
+      ref: refCallback,
+      'data-transfer-item': '',
+      'data-selected': props.selected ? '' : undefined,
+      'data-disabled': props.item.disabled ? '' : undefined,
+      onClick: props.onToggle,
+      children: props.item.title,
     });
 });
 

@@ -9,6 +9,8 @@
 
 import { defineComponent } from '../core/component/define.js';
 import { signal, type WritableSignal } from '../core/reactivity/signal.js';
+import { effect } from '../core/reactivity/effect.js';
+import { createRef } from '../core/component/refs.js';
 import { jsx } from '../jsx-runtime.js';
 import { generateId } from './utils/index.js';
 
@@ -86,7 +88,12 @@ export const Toggle = defineComponent<ToggleProps>((props) => {
     }
 
     const nextPressed = !pressedSignal();
-    pressedSignal.set(nextPressed);
+
+    // Only update internal signal (not controlled signal)
+    if (!props.pressed) {
+      internalPressed.set(nextPressed);
+    }
+
     props.onPressedChange?.(nextPressed);
   };
 
@@ -100,9 +107,34 @@ export const Toggle = defineComponent<ToggleProps>((props) => {
     }
   };
 
+  // Create ref and set up reactive updates
+  const buttonRef = createRef<HTMLButtonElement>();
+
+  const refCallback = (element: HTMLButtonElement | null) => {
+    buttonRef.current = element || undefined;
+    if (!element) return;
+
+    // Set up effect to update DOM attributes when signals change
+    effect(() => {
+      element.setAttribute('aria-pressed', pressedSignal() ? 'true' : 'false');
+      element.setAttribute('data-state', pressedSignal() ? 'on' : 'off');
+
+      if (disabled()) {
+        element.setAttribute('data-disabled', '');
+        element.setAttribute('disabled', '');
+        element.disabled = true;
+      } else {
+        element.removeAttribute('data-disabled');
+        element.removeAttribute('disabled');
+        element.disabled = false;
+      }
+    });
+  };
+
   return () =>
     jsx('button', {
       ...props,
+      ref: refCallback,
       id: toggleId,
       type: 'button',
       role: 'button',

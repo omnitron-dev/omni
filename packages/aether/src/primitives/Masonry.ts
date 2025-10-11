@@ -60,5 +60,15 @@ export const Masonry = defineComponent<MasonryProps>((props) => {
     onCleanup(() => window.removeEventListener('resize', layout));
   }
 
-  return () => jsx('div', { ref: containerRef, 'data-masonry': '', style: { position: 'relative' }, children: props.children });
+  return () => {
+    const { columns, gap, children, style, ...restProps } = props;
+
+    return jsx('div', {
+      ...restProps,
+      ref: containerRef,
+      'data-masonry': '',
+      style: { position: 'relative', ...style },
+      children,
+    });
+  };
 });

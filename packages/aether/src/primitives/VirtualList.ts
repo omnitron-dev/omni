@@ -12,11 +12,12 @@
  * - ARIA support for accessibility
  */
 
-import { defineComponent } from '../core/component/index.js';
+import { defineComponent, onMount } from '../core/component/index.js';
 import { createContext } from '../core/component/context.js';
 import type { WritableSignal } from '../core/reactivity/types.js';
 import { signal } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
+import { effect } from '../core/reactivity/effect.js';
 
 // ============================================================================
 // Types
@@ -130,7 +131,21 @@ export const VirtualList = defineComponent<VirtualListProps>((props) => {
 
   const getVisibleRange = (): [number, number] => {
     const container = scrollContainerRef.current;
-    if (!container) return [0, 0];
+    if (!container) {
+      // On first render, calculate a reasonable initial range
+      const defaultHeight = typeof props.height === 'number' ? props.height : 300;
+      const defaultWidth = typeof props.width === 'number' ? props.width : 300;
+      const viewportSize = direction === 'vertical' ? defaultHeight : defaultWidth;
+
+      if (isFixedSize) {
+        const itemSize = props.itemSize as number;
+        const visibleCount = Math.ceil(viewportSize / itemSize);
+        return [0, Math.min(props.count, visibleCount + overscan)];
+      }
+
+      // For dynamic sizes, render first few items
+      return [0, Math.min(props.count, 10)];
+    }
 
     const currentScroll = scrollOffset();
     const viewportSize =
@@ -205,8 +220,14 @@ export const VirtualList = defineComponent<VirtualListProps>((props) => {
     direction,
   };
 
+  // Use a signal to trigger re-renders when needed
+  const forceUpdate = signal(0);
+
   return () => {
-    const { children, count, height, width, ...rest } = props;
+    // Force re-render by reading the signal
+    forceUpdate();
+
+    const { children, count, height, width, onScroll, itemSize, direction: _, overscan: __, scrollToIndex, scrollBehavior, ...rest } = props;
 
     const [startIndex, endIndex] = getVisibleRange();
     const totalSize = getTotalSize();
@@ -264,10 +285,21 @@ export const VirtualList = defineComponent<VirtualListProps>((props) => {
       );
     }
 
+    const refCallback = (el: HTMLDivElement | null) => {
+      scrollContainerRef.current = el;
+      if (!el) return;
+
+      // Set up reactive effect to update visible items when scrollOffset changes
+      effect(() => {
+        scrollOffset(); // Track scrollOffset changes
+        forceUpdate.set(forceUpdate() + 1); // Trigger re-render
+      });
+    };
+
     return jsx(VirtualListContext.Provider, {
       value: contextValue,
       children: jsx('div', {
-        ref: scrollContainerRef,
+        ref: refCallback,
         'data-virtual-list': '',
         'data-direction': direction,
         style: containerStyle,

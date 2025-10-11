@@ -203,16 +203,26 @@ export const ToggleGroup = defineComponent<ToggleGroupProps>((props) => {
     const currentIndex = itemOrder.indexOf(focusedValue as string);
     if (currentIndex === -1) return;
 
+    // Keep looking for next non-disabled item
     let nextIndex = currentIndex + 1;
-    if (nextIndex >= itemOrder.length) {
-      if (loop) nextIndex = 0;
-      else return;
-    }
+    let attempts = 0;
+    const maxAttempts = itemOrder.length;
 
-    const nextValue = itemOrder[nextIndex];
-    const nextElement = items.get(nextValue as string);
-    if (nextElement && !(nextElement as HTMLButtonElement).disabled) {
-      nextElement.focus();
+    while (attempts < maxAttempts) {
+      if (nextIndex >= itemOrder.length) {
+        if (loop) nextIndex = 0;
+        else return;
+      }
+
+      const nextValue = itemOrder[nextIndex];
+      const nextElement = items.get(nextValue as string);
+      if (nextElement && !(nextElement as HTMLButtonElement).disabled) {
+        nextElement.focus();
+        return;
+      }
+
+      nextIndex++;
+      attempts++;
     }
   };
 
@@ -223,16 +233,26 @@ export const ToggleGroup = defineComponent<ToggleGroupProps>((props) => {
     const currentIndex = itemOrder.indexOf(focusedValue as string);
     if (currentIndex === -1) return;
 
+    // Keep looking for previous non-disabled item
     let prevIndex = currentIndex - 1;
-    if (prevIndex < 0) {
-      if (loop) prevIndex = itemOrder.length - 1;
-      else return;
-    }
+    let attempts = 0;
+    const maxAttempts = itemOrder.length;
 
-    const prevValue = itemOrder[prevIndex];
-    const prevElement = items.get(prevValue as string);
-    if (prevElement && !(prevElement as HTMLButtonElement).disabled) {
-      prevElement.focus();
+    while (attempts < maxAttempts) {
+      if (prevIndex < 0) {
+        if (loop) prevIndex = itemOrder.length - 1;
+        else return;
+      }
+
+      const prevValue = itemOrder[prevIndex];
+      const prevElement = items.get(prevValue as string);
+      if (prevElement && !(prevElement as HTMLButtonElement).disabled) {
+        prevElement.focus();
+        return;
+      }
+
+      prevIndex--;
+      attempts++;
     }
   };
 
@@ -297,6 +317,20 @@ export const ToggleGroup = defineComponent<ToggleGroupProps>((props) => {
     // Call children if it's a function (lazy evaluation for correct context)
     const children = typeof props.children === 'function' ? props.children() : props.children;
 
+    // Extract known props to avoid spreading them
+    const {
+      value: _value,
+      onValueChange: _onValueChange,
+      defaultValue: _defaultValue,
+      type: _type,
+      orientation: _orientation,
+      disabled: _disabled,
+      loop: _loop,
+      required: _required,
+      children: _children,
+      ...rest
+    } = props;
+
     return jsx('div', {
       'data-toggle-group': '',
       'data-orientation': orientation,
@@ -304,6 +338,7 @@ export const ToggleGroup = defineComponent<ToggleGroupProps>((props) => {
       role: type === 'single' ? 'radiogroup' : 'group',
       'aria-orientation': orientation,
       onKeyDown: handleKeyDown,
+      ...rest, // Forward custom props like class, data-testid, etc.
       children,
     });
   };

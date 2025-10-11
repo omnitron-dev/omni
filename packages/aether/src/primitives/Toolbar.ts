@@ -135,6 +135,7 @@ export interface ToolbarToggleItemProps {
 export const Toolbar = defineComponent<ToolbarProps>((props) => {
   const handleKeyDown = (e: KeyboardEvent) => {
     const orientation = props.orientation || 'horizontal';
+    const loop = props.loop ?? true; // Default to true
     const isHorizontal = orientation === 'horizontal';
 
     const nextKey = isHorizontal ? 'ArrowRight' : 'ArrowDown';
@@ -163,13 +164,13 @@ export const Toolbar = defineComponent<ToolbarProps>((props) => {
       nextIndex = items.length - 1;
     } else if (e.key === nextKey) {
       nextIndex = currentIndex + 1;
-      if (props.loop && nextIndex >= items.length) {
+      if (loop && nextIndex >= items.length) {
         nextIndex = 0;
       }
     } else {
       // prevKey
       nextIndex = currentIndex - 1;
-      if (props.loop && nextIndex < 0) {
+      if (loop && nextIndex < 0) {
         nextIndex = items.length - 1;
       }
     }

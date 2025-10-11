@@ -164,7 +164,10 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 function roundToStep(value: number, step: number): number {
-  return Math.round(value / step) * step;
+  const rounded = Math.round(value / step) * step;
+  // Fix floating point precision issues by rounding to step's decimal places
+  const decimals = (step.toString().split('.')[1] || '').length;
+  return Number(rounded.toFixed(decimals));
 }
 
 function getClosestValueIndex(values: number[], targetValue: number): number {
@@ -435,38 +438,49 @@ export const SliderThumb = defineComponent<SliderThumbProps>((props) => {
 
       const currentValue = getValue();
       let newValue = currentValue;
+      let shouldCommit = false;
 
       switch (e.key) {
         case 'ArrowRight':
         case 'ArrowUp':
           e.preventDefault();
           newValue = currentValue + slider.step;
+          shouldCommit = true; // Keyboard nav commits immediately
           break;
         case 'ArrowLeft':
         case 'ArrowDown':
           e.preventDefault();
           newValue = currentValue - slider.step;
+          shouldCommit = true; // Keyboard nav commits immediately
           break;
         case 'PageUp':
           e.preventDefault();
           newValue = currentValue + slider.step * 10;
+          shouldCommit = true; // Keyboard nav commits immediately
           break;
         case 'PageDown':
           e.preventDefault();
           newValue = currentValue - slider.step * 10;
+          shouldCommit = true; // Keyboard nav commits immediately
           break;
         case 'Home':
           e.preventDefault();
           newValue = slider.min;
+          shouldCommit = true; // Keyboard nav commits immediately
           break;
         case 'End':
           e.preventDefault();
           newValue = slider.max;
+          shouldCommit = true; // Keyboard nav commits immediately
           break;
       }
 
       if (newValue !== currentValue) {
-        slider.setThumbValue(thumbIndex, newValue, true);
+        // First call onValueChange, then commit
+        slider.setThumbValue(thumbIndex, newValue, false);
+        if (shouldCommit) {
+          slider.setThumbValue(thumbIndex, newValue, true);
+        }
       }
     };
 

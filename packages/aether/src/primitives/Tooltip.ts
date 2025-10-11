@@ -10,6 +10,7 @@
 import { defineComponent } from '../core/component/define.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal } from '../core/reactivity/signal.js';
+import { effect } from '../core/reactivity/effect.js';
 import { onMount } from '../core/component/lifecycle.js';
 import { Portal } from '../control-flow/Portal.js';
 import { jsx } from '../jsx-runtime.js';
@@ -189,12 +190,12 @@ export const Tooltip = defineComponent<TooltipProps>((props) => {
     disabled: disabled(),
   };
 
-  // Provide context before return
-  provideContext(TooltipContext, contextValue);
-
   return () => {
     const children = typeof props.children === 'function' ? props.children() : props.children;
-    return children;
+    return jsx(TooltipContext.Provider, {
+      value: contextValue,
+      children,
+    });
   };
 });
 
@@ -271,25 +272,30 @@ export const TooltipContent = defineComponent<TooltipContentProps>((props) => {
   let contentRef: HTMLElement | null = null;
   let triggerElement: HTMLElement | null = null;
 
+  const updatePosition = () => {
+    if (!contentRef || !triggerElement) return;
+
+    const side = props.side || 'top';
+    const align = props.align || 'center';
+    const sideOffset = props.sideOffset ?? 4;
+    const alignOffset = props.alignOffset ?? 0;
+
+    const position = calculatePosition(triggerElement, contentRef, {
+      side,
+      align,
+      sideOffset,
+      alignOffset,
+      avoidCollisions: props.avoidCollisions !== false,
+      collisionPadding: props.collisionPadding ?? 8,
+    });
+
+    applyPosition(contentRef, position);
+  };
+
   onMount(() => {
     triggerElement = document.getElementById(ctx.triggerId);
-
-    if (contentRef && triggerElement && ctx.isOpen()) {
-      const side = props.side || 'top';
-      const align = props.align || 'center';
-      const sideOffset = props.sideOffset ?? 4;
-      const alignOffset = props.alignOffset ?? 0;
-
-      const position = calculatePosition(triggerElement, contentRef, {
-        side,
-        align,
-        sideOffset,
-        alignOffset,
-        avoidCollisions: props.avoidCollisions !== false,
-        collisionPadding: props.collisionPadding ?? 8,
-      });
-
-      applyPosition(contentRef, position);
+    if (ctx.isOpen()) {
+      updatePosition();
     }
   });
 
@@ -301,20 +307,40 @@ export const TooltipContent = defineComponent<TooltipContentProps>((props) => {
     ctx.close();
   };
 
+  const refCallback = (el: HTMLElement | null) => {
+    contentRef = el;
+    if (!el) return;
+
+    // Set up effect to update visibility and position when isOpen changes
+    effect(() => {
+      const isOpen = ctx.isOpen();
+      el.style.display = isOpen || props.forceMount ? '' : 'none';
+      el.setAttribute('data-state', isOpen ? 'open' : 'closed');
+      if (isOpen) {
+        // Update position when opening
+        triggerElement = document.getElementById(ctx.triggerId);
+        updatePosition();
+      }
+    });
+  };
+
   return () => {
-    if (!ctx.isOpen() && !props.forceMount) {
-      return null;
-    }
+    const { children, side, align, sideOffset, alignOffset, avoidCollisions, collisionPadding, forceMount, ...restProps } = props;
 
     return jsx(Portal, {
       children: jsx('div', {
-        ...props,
-        ref: ((el: HTMLElement) => (contentRef = el)) as any,
+        ...restProps,
+        ref: refCallback as any,
         id: ctx.contentId,
         role: 'tooltip',
         'data-state': ctx.isOpen() ? 'open' : 'closed',
+        style: {
+          display: ctx.isOpen() || props.forceMount ? '' : 'none',
+          ...restProps.style,
+        },
         onPointerEnter: handlePointerEnter,
         onPointerLeave: handlePointerLeave,
+        children,
       }),
     });
   };

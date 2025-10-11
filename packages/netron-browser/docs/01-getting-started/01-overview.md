@@ -12,20 +12,6 @@ Browser-optimized Netron RPC client for seamless backend communication.
 - **Connection Metrics**: Monitor connection health and performance
 - **Service Proxies**: Create type-safe service proxies for clean API usage
 
-## 📚 Documentation
-
-Complete documentation is available in the [`docs/`](./docs/) directory:
-
-- **[Getting Started](./docs/01-getting-started/)** - Overview, setup, and quick start guide
-- **[Architecture](./docs/02-architecture/)** - Component structure, transports, and design
-- **[Features](./docs/03-features/)** - Authentication, caching, middleware, and more
-- **[Compatibility](./docs/04-compatibility/)** - Full compatibility report with Titan
-- **[Testing](./docs/05-testing/)** - Test infrastructure and guide
-
-For a quick overview, see:
-- **[Compatibility Summary](./docs/04-compatibility/01-compatibility-summary.md)** - Production readiness assessment
-- **[Feature Matrix](./docs/03-features/03-feature-matrix.md)** - Feature comparison with Titan
-
 ## Installation
 
 ```bash

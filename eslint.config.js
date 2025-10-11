@@ -112,7 +112,7 @@ const customConfig = {
 // ----------------------------------------------------------------------
 
 module.exports = [
-  // Игнорировать все эти директории и файлы
+  // Ignore all these directories and files
   {
     ignores: [
       '**/dist/**',
@@ -126,16 +126,16 @@ module.exports = [
       '**/*.config.ts',
       '**/jest.setup.ts',
       '**/jest.setup.global.ts',
-      'packages/rotif/**', // Временно игнорируем rotif так как он перемещен
+      'packages/rotif/**', // Temporarily ignore rotif as it has been moved
       'scripts/**',
       'experiments/**',
-      '**/examples/**', // Игнорируем примеры
-      '**/test/**/fixtures/**', // Игнорируем test fixtures
-      '**/test/**/helpers/**', // Игнорируем test helpers
-      '**/e2e/**' // Игнорируем e2e тесты
+      '**/examples/**', // Ignore examples
+      '**/test/**/fixtures/**', // Ignore test fixtures
+      '**/test/**/helpers/**', // Ignore test helpers
+      '**/e2e/**' // Ignore e2e tests
     ]
   },
-  // Базовая конфигурация
+  // Base configuration
   {
     files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
     languageOptions: {
@@ -147,29 +147,29 @@ module.exports = [
       globals: { ...globals.browser, ...globals.node },
     },
   },
-  // Рекомендованные правила JavaScript
+  // Recommended JavaScript rules
   {
     files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
     ...eslintJs.configs.recommended,
   },
-  // Рекомендованные правила TypeScript
+  // Recommended TypeScript rules
   ...eslintTs.configs.recommended.map(config => ({
     ...config,
     files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}']
   })),
-  // Наша кастомная конфигурация (должна быть последней, чтобы переопределить предыдущие правила)
+  // Our custom configuration (should be last to override previous rules)
   {
     files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
     ...customConfig,
   },
-  // Специальная конфигурация для packages/titan с алиасом @nexus
+  // Special configuration for packages/titan with @nexus alias
   {
     files: ['packages/titan/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
     rules: {
       // import/no-unresolved disabled due to ESLint 9 compatibility issues
     }
   },
-  // Конфигурация для тестовых файлов
+  // Configuration for test files
   {
     files: ['packages/*/test/**/*.{js,mjs,cjs,ts,jsx,tsx,spec.ts}', 'packages/*/__tests__/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
     languageOptions: {

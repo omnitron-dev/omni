@@ -28,8 +28,8 @@ export interface RangeValue {
 }
 
 export interface RangeSliderProps {
-  /** Controlled value [min, max] */
-  value?: RangeValue;
+  /** Controlled value (signal) */
+  value?: WritableSignal<RangeValue>;
   /** Value change callback */
   onValueChange?: (value: RangeValue) => void;
   /** Default value (uncontrolled) */
@@ -144,27 +144,18 @@ export const RangeSlider = defineComponent<RangeSliderProps>((props) => {
   const disabled = props.disabled ?? false;
   const minDistance = props.minDistance ?? 0;
 
-  // State
-  const internalValue: WritableSignal<RangeValue> = signal<RangeValue>(
+  // State - use controlled signal if provided, otherwise create internal one
+  const valueSignal: WritableSignal<RangeValue> = props.value || signal<RangeValue>(
     props.defaultValue ?? { min, max },
   );
 
-  const currentValue = (): RangeValue => {
-    if (props.value !== undefined) {
-      return props.value;
-    }
-    return internalValue();
-  };
-
   const setValue = (newValue: RangeValue) => {
-    if (props.value === undefined) {
-      internalValue.set(newValue);
-    }
+    valueSignal.set(newValue);
     props.onValueChange?.(newValue);
   };
 
   const setMinValue = (value: number) => {
-    const current = currentValue();
+    const current = valueSignal();
     const clampedValue = clamp(
       roundToStep(value, step),
       min,
@@ -174,7 +165,7 @@ export const RangeSlider = defineComponent<RangeSliderProps>((props) => {
   };
 
   const setMaxValue = (value: number) => {
-    const current = currentValue();
+    const current = valueSignal();
     const clampedValue = clamp(
       roundToStep(value, step),
       current.min + minDistance,
@@ -188,7 +179,7 @@ export const RangeSlider = defineComponent<RangeSliderProps>((props) => {
   const getValueFromPercentage = (percentage: number): number => (percentage / 100) * (max - min) + min;
 
   const contextValue: RangeSliderContextValue = {
-    value: computed(() => currentValue()),
+    value: valueSignal as Signal<RangeValue>,
     min,
     max,
     step,

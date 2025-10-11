@@ -28,24 +28,37 @@ export interface TabsContextValue {
   getContentId: (value: string) => string;
 }
 
-// Create context with a signal default that will be updated
-// This allows children to access the context even if they're evaluated before the parent
-const globalTabsContextSignal = signal<TabsContextValue | null>(null);
+// Create a default context value that can be used before parent is set up
+const defaultValueSignal = signal<string | undefined>(undefined);
 
-const noop = () => {};
-const noopGetter = () => globalTabsContextSignal()?.value() ?? undefined;
-const orientationGetter = () => globalTabsContextSignal()?.orientation() ?? 'horizontal' as const;
-const activationGetter = () => globalTabsContextSignal()?.activationMode() ?? 'automatic' as const;
-const getTriggerId = (value: string) => globalTabsContextSignal()?.getTriggerId(value) ?? value;
-const getContentId = (value: string) => globalTabsContextSignal()?.getContentId(value) ?? value;
+const defaultContextValue: TabsContextValue = {
+  value: () => defaultValueSignal(),
+  setValue: (value: string) => defaultValueSignal.set(value),
+  orientation: () => 'horizontal' as const,
+  activationMode: () => 'automatic' as const,
+  tabsId: '',
+  listId: '',
+  getTriggerId: (value: string) => value,
+  getContentId: (value: string) => value,
+};
+
+// Create context with a signal that delegates to global or default
+// This allows children to access the context even if they're evaluated before the parent
+const globalTabsContextSignal = signal<TabsContextValue>(defaultContextValue);
+
+const noopGetter = () => globalTabsContextSignal().value();
+const orientationGetter = () => globalTabsContextSignal().orientation();
+const activationGetter = () => globalTabsContextSignal().activationMode();
+const getTriggerId = (value: string) => globalTabsContextSignal().getTriggerId(value);
+const getContentId = (value: string) => globalTabsContextSignal().getContentId(value);
 
 export const TabsContext = createContext<TabsContextValue>({
   value: noopGetter,
-  setValue: noop,
+  setValue: (value: string) => globalTabsContextSignal().setValue(value),
   orientation: orientationGetter,
   activationMode: activationGetter,
-  tabsId: '',
-  listId: '',
+  get tabsId() { return globalTabsContextSignal().tabsId; },
+  get listId() { return globalTabsContextSignal().listId; },
   getTriggerId,
   getContentId,
 }, 'Tabs');
@@ -276,8 +289,10 @@ export const TabsTrigger = defineComponent<TabsTriggerProps>((props) => {
     const isSelected = ctx.value() === value;
 
     const handleClick = () => {
+      console.log('TabsTrigger clicked:', { value, disabled, currentValue: ctx.value() });
       if (!disabled) {
         ctx.setValue(value);
+        console.log('TabsTrigger setValue called, new value:', ctx.value());
       }
     };
 
@@ -359,52 +374,24 @@ export const TabsContent = defineComponent<TabsContentProps>((props) => {
     const ctx = useContext(TabsContext);
     const { value, forceMount, children, ...restProps } = props;
 
-    // Check if initially selected
-    const initialSelected = ctx.value() === value;
+    // Check if selected
+    const isSelected = ctx.value() === value;
 
-    // Always create the element, but manage display via effect
-    const content = jsx('div', {
+    // Don't render unless selected or force mounted (matches test expectations)
+    if (!isSelected && !forceMount) {
+      return null;
+    }
+
+    return jsx('div', {
       ...restProps,
       id: ctx.getContentId(value),
       role: 'tabpanel',
       'aria-labelledby': ctx.getTriggerId(value),
-      'data-state': initialSelected ? 'active' : 'inactive',
+      'data-state': isSelected ? 'active' : 'inactive',
       tabIndex: 0,
-      hidden: !initialSelected ? true : undefined,
+      hidden: !isSelected && forceMount ? true : undefined,
       children,
-    }) as HTMLElement;
-
-    // Set up effect to manage visibility reactively
-    // This will hide/show based on selection and forceMount
-    effect(() => {
-      const selected = ctx.value() === value;
-      content.setAttribute('data-state', selected ? 'active' : 'inactive');
-
-      if (forceMount) {
-        // Force mounted - always in DOM, toggle hidden attribute
-        if (selected) {
-          content.removeAttribute('hidden');
-        } else {
-          content.setAttribute('hidden', 'true');
-        }
-      } else {
-        // Not force mounted - remove from DOM when not selected
-        if (selected) {
-          content.removeAttribute('hidden');
-          // Make sure it's in the DOM
-          if (!content.parentElement) {
-            // Already in DOM from initial render
-          }
-          content.style.display = '';
-        } else {
-          // Hide by removing from display
-          content.style.display = 'none';
-          content.setAttribute('hidden', 'true');
-        }
-      }
     });
-
-    return content;
   };
 });
 

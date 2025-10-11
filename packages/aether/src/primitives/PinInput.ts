@@ -13,7 +13,7 @@
  */
 
 import { defineComponent } from '../core/component/index.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
 import { signal, computed } from '../core/reactivity/index.js';
 import { onMount } from '../core/component/lifecycle.js';
@@ -86,14 +86,27 @@ interface PinInputContextValue {
 // Context
 // ============================================================================
 
-const PinInputContext = createContext<PinInputContextValue | null>(null);
+// Global reactive context signal that will be updated during PinInput setup
+// This allows children to access the context even if they're evaluated before the parent
+// Using a SIGNAL makes the context reactive, so effects will rerun when it updates
+const globalPinInputContextSignal = signal<PinInputContextValue | null>(null);
+
+// Create context with default implementation that delegates to global signal
+const PinInputContext = createContext<PinInputContextValue | null>(
+  null,
+  'PinInput'
+);
 
 const usePinInputContext = (): PinInputContextValue => {
   const context = useContext(PinInputContext);
-  if (!context) {
+  // Fall back to global signal if context not available
+  const globalContext = globalPinInputContextSignal();
+  const finalContext = context || globalContext;
+
+  if (!finalContext) {
     throw new Error('PinInput.Input must be used within a PinInput');
   }
-  return context;
+  return finalContext;
 };
 
 // ============================================================================
@@ -235,6 +248,13 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
     handlePaste,
   };
 
+  // Set global context signal so children can access it
+  // Using a signal makes this reactive - effects will rerun when it updates!
+  globalPinInputContextSignal.set(contextValue);
+
+  // Also provide context via the standard API
+  provideContext(PinInputContext, contextValue);
+
   return () =>
     jsx(PinInputContext.Provider, {
       value: contextValue,
@@ -253,66 +273,67 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
 // ============================================================================
 
 export const PinInputInput = defineComponent<PinInputInputProps>((props) => {
-  const context = usePinInputContext();
   const inputRef: { current: HTMLInputElement | null } = { current: null };
 
-  const handleInput = (e: Event) => {
-    const target = e.target as HTMLInputElement;
-    const value = target.value;
-
-    if (value) {
-      context.setValue(props.index, value);
-      // Clear input to allow re-entry
-      target.value = '';
-    }
-  };
-
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Backspace') {
-      e.preventDefault();
-      const values = context.values();
-
-      if (values[props.index]) {
-        // Clear current value
-        const newValues = [...values];
-        newValues[props.index] = '';
-        context.setValue(props.index, '');
-      } else if (props.index > 0) {
-        // Move to previous and clear
-        context.focusInput(props.index - 1);
-        const newValues = [...values];
-        newValues[props.index - 1] = '';
-        context.setValue(props.index - 1, '');
-      }
-    } else if (e.key === 'ArrowLeft' && props.index > 0) {
-      e.preventDefault();
-      context.focusInput(props.index - 1);
-    } else if (e.key === 'ArrowRight' && props.index < context.length - 1) {
-      e.preventDefault();
-      context.focusInput(props.index + 1);
-    } else if (e.key === 'Delete') {
-      e.preventDefault();
-      const newValues = [...context.values()];
-      newValues[props.index] = '';
-      context.setValue(props.index, '');
-    }
-  };
-
-  const handlePaste = (e: ClipboardEvent) => {
-    e.preventDefault();
-    const pastedValue = e.clipboardData?.getData('text') ?? '';
-    context.handlePaste(props.index, pastedValue);
-  };
-
-  const handleFocus = (e: FocusEvent) => {
-    const target = e.target as HTMLInputElement;
-    target.select();
-  };
-
   return () => {
+    // Access context in render phase
+    const context = usePinInputContext();
     const { index, ...rest } = props;
     const values = context.values();
     const value = values[index] ?? '';
+
+    const handleInput = (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      const value = target.value;
+
+      if (value) {
+        context.setValue(props.index, value);
+        // Clear input to allow re-entry
+        target.value = '';
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Backspace') {
+        e.preventDefault();
+        const values = context.values();
+
+        if (values[props.index]) {
+          // Clear current value
+          const newValues = [...values];
+          newValues[props.index] = '';
+          context.setValue(props.index, '');
+        } else if (props.index > 0) {
+          // Move to previous and clear
+          context.focusInput(props.index - 1);
+          const newValues = [...values];
+          newValues[props.index - 1] = '';
+          context.setValue(props.index - 1, '');
+        }
+      } else if (e.key === 'ArrowLeft' && props.index > 0) {
+        e.preventDefault();
+        context.focusInput(props.index - 1);
+      } else if (e.key === 'ArrowRight' && props.index < context.length - 1) {
+        e.preventDefault();
+        context.focusInput(props.index + 1);
+      } else if (e.key === 'Delete') {
+        e.preventDefault();
+        const newValues = [...context.values()];
+        newValues[props.index] = '';
+        context.setValue(props.index, '');
+      }
+    };
+
+    const handlePaste = (e: ClipboardEvent) => {
+      e.preventDefault();
+      const pastedValue = e.clipboardData?.getData('text') ?? '';
+      context.handlePaste(props.index, pastedValue);
+    };
+
+    const handleFocus = (e: FocusEvent) => {
+      const target = e.target as HTMLInputElement;
+      target.select();
+    };
 
     // Register/unregister on mount/unmount
     if (inputRef.current) {

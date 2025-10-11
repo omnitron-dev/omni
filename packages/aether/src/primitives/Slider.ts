@@ -11,6 +11,7 @@ import { defineComponent } from '../core/component/define.js';
 import { createContext, useContext } from '../core/component/context.js';
 import { signal, type WritableSignal } from '../core/reactivity/signal.js';
 import { computed } from '../core/reactivity/computed.js';
+import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 import { generateId } from './utils/index.js';
 
@@ -132,23 +133,29 @@ export interface SliderContextValue {
   getPercentage: (value: number) => number;
 }
 
+// Global reactive context signal that will be updated during Slider setup
+// This allows children to access the context even if they're evaluated before the parent
+// Using a SIGNAL makes the context reactive, so effects will rerun when it updates
+const globalSliderContextSignal = signal<SliderContextValue | null>(null);
+
+// Create context with default implementation that delegates to global signal
 const noop = () => {};
-const noopGetter = () => 0;
+const noopGetter = () => globalSliderContextSignal()?.getThumbValue(0) ?? 0;
 
 export const SliderContext = createContext<SliderContextValue>({
-  value: noopGetter,
-  setValue: noop,
-  min: 0,
-  max: 100,
-  step: 1,
-  orientation: 'horizontal',
-  disabled: false,
-  inverted: false,
-  sliderId: '',
-  thumbCount: 1,
-  getThumbValue: noopGetter,
-  setThumbValue: noop,
-  getPercentage: noopGetter,
+  value: () => globalSliderContextSignal()?.value() ?? 0,
+  setValue: (value, commit) => globalSliderContextSignal()?.setValue(value, commit),
+  get min() { return globalSliderContextSignal()?.min ?? 0; },
+  get max() { return globalSliderContextSignal()?.max ?? 100; },
+  get step() { return globalSliderContextSignal()?.step ?? 1; },
+  get orientation() { return globalSliderContextSignal()?.orientation ?? 'horizontal'; },
+  get disabled() { return globalSliderContextSignal()?.disabled ?? false; },
+  get inverted() { return globalSliderContextSignal()?.inverted ?? false; },
+  get sliderId() { return globalSliderContextSignal()?.sliderId ?? ''; },
+  get thumbCount() { return globalSliderContextSignal()?.thumbCount ?? 1; },
+  getThumbValue: (index) => globalSliderContextSignal()?.getThumbValue(index) ?? 0,
+  setThumbValue: (index, value, commit) => globalSliderContextSignal()?.setThumbValue(index, value, commit),
+  getPercentage: (value) => globalSliderContextSignal()?.getPercentage(value) ?? 0,
 }, 'Slider');
 
 // ============================================================================
@@ -203,8 +210,15 @@ export const Slider = defineComponent<SliderProps>((props) => {
   const disabled = () => !!props.disabled;
   const inverted = () => !!props.inverted;
 
-  // Initialize value
-  const defaultValue = props.defaultValue ?? min();
+  // Initialize value with clamping and rounding
+  const rawDefaultValue = props.defaultValue ?? min();
+  const clampAndRound = (val: number | number[]): number | number[] => {
+    if (Array.isArray(val)) {
+      return val.map(v => clamp(roundToStep(v, step()), min(), max()));
+    }
+    return clamp(roundToStep(val, step()), min(), max());
+  };
+  const defaultValue = clampAndRound(rawDefaultValue);
   const internalValue = signal<number | number[]>(defaultValue);
   const valueSignal = props.value || internalValue;
 
@@ -250,18 +264,22 @@ export const Slider = defineComponent<SliderProps>((props) => {
   const contextValue: SliderContextValue = {
     value: () => valueSignal(),
     setValue,
-    min: min(),
-    max: max(),
-    step: step(),
-    orientation: orientation(),
-    disabled: disabled(),
-    inverted: inverted(),
+    get min() { return min(); },
+    get max() { return max(); },
+    get step() { return step(); },
+    get orientation() { return orientation(); },
+    get disabled() { return disabled(); },
+    get inverted() { return inverted(); },
     sliderId,
-    thumbCount: thumbCount(),
+    get thumbCount() { return thumbCount(); },
     getThumbValue,
     setThumbValue,
     getPercentage,
   };
+
+  // CRITICAL FIX: Set global context signal so children can access it
+  // Using a signal makes this reactive - effects will rerun when it updates!
+  globalSliderContextSignal.set(contextValue);
 
   // Extract component-specific props to avoid spreading them onto DOM
   const {
@@ -299,213 +317,261 @@ export const Slider = defineComponent<SliderProps>((props) => {
  * Slider Track component
  */
 export const SliderTrack = defineComponent<{ children?: any; [key: string]: any }>((props) => {
-  const slider = useContext(SliderContext);
   let trackRef: HTMLElement | null = null;
 
-  const handleClick = (e: MouseEvent) => {
-    if (slider.disabled || !trackRef) return;
+  return () => {
+    // ✅ CORRECT: Access context in render phase
+    const slider = useContext(SliderContext);
 
-    const rect = trackRef.getBoundingClientRect();
-    const isHorizontal = slider.orientation === 'horizontal';
+    const handleClick = (e: MouseEvent) => {
+      if (slider.disabled || !trackRef) return;
 
-    let percentage: number;
-    if (isHorizontal) {
-      percentage = ((e.clientX - rect.left) / rect.width) * 100;
-    } else {
-      percentage = ((rect.bottom - e.clientY) / rect.height) * 100;
-    }
+      const rect = trackRef.getBoundingClientRect();
+      const isHorizontal = slider.orientation === 'horizontal';
 
-    if (slider.inverted) {
-      percentage = 100 - percentage;
-    }
+      let percentage: number;
+      if (isHorizontal) {
+        percentage = ((e.clientX - rect.left) / rect.width) * 100;
+      } else {
+        percentage = ((rect.bottom - e.clientY) / rect.height) * 100;
+      }
 
-    const newValue = slider.min + (percentage / 100) * (slider.max - slider.min);
+      if (slider.inverted) {
+        percentage = 100 - percentage;
+      }
 
-    // For single thumb, just set the value
-    if (slider.thumbCount === 1) {
-      slider.setThumbValue(0, newValue, true);
-    } else {
-      // For multiple thumbs, find closest thumb
-      const values = Array.isArray(slider.value()) ? slider.value() as number[] : [slider.value() as number];
-      const closestIndex = getClosestValueIndex(values, newValue);
-      slider.setThumbValue(closestIndex, newValue, true);
-    }
-  };
+      const newValue = slider.min + (percentage / 100) * (slider.max - slider.min);
 
-  return () =>
-    jsx('div', {
+      // For single thumb, just set the value
+      if (slider.thumbCount === 1) {
+        slider.setThumbValue(0, newValue, true);
+      } else {
+        // For multiple thumbs, find closest thumb
+        const values = Array.isArray(slider.value()) ? slider.value() as number[] : [slider.value() as number];
+        const closestIndex = getClosestValueIndex(values, newValue);
+        slider.setThumbValue(closestIndex, newValue, true);
+      }
+    };
+
+    return jsx('div', {
       ...props,
       ref: ((el: HTMLElement) => (trackRef = el)) as any,
       'data-slider-track': '',
       onClick: handleClick,
     });
+  };
 });
 
 /**
  * Slider Range component (filled portion)
  */
 export const SliderRange = defineComponent<{ children?: any; [key: string]: any }>((props) => {
-  const slider = useContext(SliderContext);
+  return () => {
+    // ✅ CORRECT: Access context in render phase
+    const slider = useContext(SliderContext);
 
-  const style = computed(() => {
-    const values = Array.isArray(slider.value()) ? slider.value() as number[] : [slider.value() as number];
-    const isHorizontal = slider.orientation === 'horizontal';
+    // Calculate initial style
+    const calculateStyle = () => {
+      const values = Array.isArray(slider.value()) ? slider.value() as number[] : [slider.value() as number];
+      const isHorizontal = slider.orientation === 'horizontal';
 
-    if (values.length === 1) {
-      // Single value: from min to value
-      const percentage = slider.getPercentage(values[0]!);
-      return isHorizontal
-        ? { left: '0%', width: `${percentage}%` }
-        : { bottom: '0%', height: `${percentage}%` };
-    } else {
-      // Range: from min value to max value
-      const minVal = Math.min(...values);
-      const maxVal = Math.max(...values);
-      const startPercentage = slider.getPercentage(minVal);
-      const endPercentage = slider.getPercentage(maxVal);
+      if (values.length === 1) {
+        // Single value: from min to value
+        const percentage = slider.getPercentage(values[0]!);
+        return isHorizontal
+          ? { left: '0%', width: `${percentage}%` }
+          : { bottom: '0%', height: `${percentage}%` };
+      } else {
+        // Range: from min value to max value
+        const minVal = Math.min(...values);
+        const maxVal = Math.max(...values);
+        const startPercentage = slider.getPercentage(minVal);
+        const endPercentage = slider.getPercentage(maxVal);
 
-      return isHorizontal
-        ? { left: `${startPercentage}%`, width: `${endPercentage - startPercentage}%` }
-        : { bottom: `${startPercentage}%`, height: `${endPercentage - startPercentage}%` };
-    }
-  });
+        return isHorizontal
+          ? { left: `${startPercentage}%`, width: `${endPercentage - startPercentage}%` }
+          : { bottom: `${startPercentage}%`, height: `${endPercentage - startPercentage}%` };
+      }
+    };
 
-  return () =>
-    jsx('div', {
+    const initialStyle = calculateStyle();
+
+    const div = jsx('div', {
       ...props,
       'data-slider-range': '',
-      style: style(),
+      style: initialStyle,
+    }) as HTMLElement;
+
+    // Set up reactive effect to update style
+    effect(() => {
+      const newStyle = calculateStyle();
+      Object.assign(div.style, newStyle);
     });
+
+    return div;
+  };
 });
 
 /**
  * Slider Thumb component
  */
 export const SliderThumb = defineComponent<SliderThumbProps>((props) => {
-  const slider = useContext(SliderContext);
   const thumbIndex = props.index ?? 0;
-
   let isDragging = false;
 
-  const value = computed(() => slider.getThumbValue(thumbIndex));
+  return () => {
+    // ✅ CORRECT: Access context in render phase
+    const slider = useContext(SliderContext);
 
-  const style = computed(() => {
-    const percentage = slider.getPercentage(value());
-    const isHorizontal = slider.orientation === 'horizontal';
+    const getValue = () => slider.getThumbValue(thumbIndex);
 
-    return isHorizontal
-      ? { left: `${percentage}%` }
-      : { bottom: `${percentage}%` };
-  });
+    const calculateStyle = () => {
+      const currentValue = getValue();
+      const percentage = slider.getPercentage(currentValue);
+      const isHorizontal = slider.orientation === 'horizontal';
 
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (slider.disabled) return;
+      return isHorizontal
+        ? { left: `${percentage}%` }
+        : { bottom: `${percentage}%` };
+    };
 
-    const currentValue = value();
-    let newValue = currentValue;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (slider.disabled) return;
 
-    switch (e.key) {
-      case 'ArrowRight':
-      case 'ArrowUp':
-        e.preventDefault();
-        newValue = currentValue + slider.step;
-        break;
-      case 'ArrowLeft':
-      case 'ArrowDown':
-        e.preventDefault();
-        newValue = currentValue - slider.step;
-        break;
-      case 'PageUp':
-        e.preventDefault();
-        newValue = currentValue + slider.step * 10;
-        break;
-      case 'PageDown':
-        e.preventDefault();
-        newValue = currentValue - slider.step * 10;
-        break;
-      case 'Home':
-        e.preventDefault();
-        newValue = slider.min;
-        break;
-      case 'End':
-        e.preventDefault();
-        newValue = slider.max;
-        break;
-    }
+      const currentValue = getValue();
+      let newValue = currentValue;
 
-    if (newValue !== currentValue) {
-      slider.setThumbValue(thumbIndex, newValue, true);
-    }
-  };
+      switch (e.key) {
+        case 'ArrowRight':
+        case 'ArrowUp':
+          e.preventDefault();
+          newValue = currentValue + slider.step;
+          break;
+        case 'ArrowLeft':
+        case 'ArrowDown':
+          e.preventDefault();
+          newValue = currentValue - slider.step;
+          break;
+        case 'PageUp':
+          e.preventDefault();
+          newValue = currentValue + slider.step * 10;
+          break;
+        case 'PageDown':
+          e.preventDefault();
+          newValue = currentValue - slider.step * 10;
+          break;
+        case 'Home':
+          e.preventDefault();
+          newValue = slider.min;
+          break;
+        case 'End':
+          e.preventDefault();
+          newValue = slider.max;
+          break;
+      }
 
-  const handlePointerDown = (e: PointerEvent) => {
-    if (slider.disabled) return;
+      if (newValue !== currentValue) {
+        slider.setThumbValue(thumbIndex, newValue, true);
+      }
+    };
 
-    isDragging = true;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  };
+    const handlePointerDown = (e: PointerEvent) => {
+      if (slider.disabled) return;
 
-  const handlePointerMove = (e: PointerEvent) => {
-    if (!isDragging || slider.disabled) return;
+      isDragging = true;
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    };
 
-    const target = e.currentTarget as HTMLElement;
-    const parent = target.parentElement;
-    if (!parent) return;
+    const handlePointerMove = (e: PointerEvent) => {
+      if (!isDragging || slider.disabled) return;
 
-    const rect = parent.getBoundingClientRect();
-    const isHorizontal = slider.orientation === 'horizontal';
+      const target = e.currentTarget as HTMLElement;
+      const parent = target.parentElement;
+      if (!parent) return;
 
-    let percentage: number;
-    if (isHorizontal) {
-      percentage = ((e.clientX - rect.left) / rect.width) * 100;
-    } else {
-      percentage = ((rect.bottom - e.clientY) / rect.height) * 100;
-    }
+      const rect = parent.getBoundingClientRect();
+      const isHorizontal = slider.orientation === 'horizontal';
 
-    if (slider.inverted) {
-      percentage = 100 - percentage;
-    }
+      let percentage: number;
+      if (isHorizontal) {
+        percentage = ((e.clientX - rect.left) / rect.width) * 100;
+      } else {
+        percentage = ((rect.bottom - e.clientY) / rect.height) * 100;
+      }
 
-    const newValue = slider.min + (percentage / 100) * (slider.max - slider.min);
-    slider.setThumbValue(thumbIndex, newValue, false);
-  };
+      if (slider.inverted) {
+        percentage = 100 - percentage;
+      }
 
-  const handlePointerUp = (e: PointerEvent) => {
-    if (!isDragging) return;
+      const newValue = slider.min + (percentage / 100) * (slider.max - slider.min);
+      slider.setThumbValue(thumbIndex, newValue, false);
+    };
 
-    isDragging = false;
-    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    const handlePointerUp = (e: PointerEvent) => {
+      if (!isDragging) return;
 
-    // Commit the final value
-    slider.setThumbValue(thumbIndex, value(), true);
-  };
+      isDragging = false;
+      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
 
-  // Extract component-specific props to avoid spreading them onto DOM
-  const {
-    children,
-    index: _index,
-    ...restProps
-  } = props;
+      // Commit the final value
+      slider.setThumbValue(thumbIndex, getValue(), true);
+    };
 
-  return () =>
-    jsx('div', {
+    // Extract component-specific props to avoid spreading them onto DOM
+    const {
+      children,
+      index: _index,
+      ...restProps
+    } = props;
+
+    const initialValue = getValue();
+    const initialStyle = calculateStyle();
+
+    const div = jsx('div', {
       ...restProps,
       role: 'slider',
       'aria-valuemin': slider.min,
       'aria-valuemax': slider.max,
-      'aria-valuenow': value(),
+      'aria-valuenow': initialValue,
       'aria-orientation': slider.orientation,
       'aria-disabled': slider.disabled ? 'true' : undefined,
       'data-slider-thumb': '',
       'data-disabled': slider.disabled ? '' : undefined,
       tabIndex: slider.disabled ? -1 : 0,
-      style: style(),
+      style: initialStyle,
       onKeyDown: handleKeyDown,
       onPointerDown: handlePointerDown,
       onPointerMove: handlePointerMove,
       onPointerUp: handlePointerUp,
       children,
+    }) as HTMLElement;
+
+    // Set up reactive effect to update ALL context-dependent attributes and style
+    effect(() => {
+      const currentValue = getValue();
+      const newStyle = calculateStyle();
+
+      // Update reactive attributes
+      div.setAttribute('aria-valuemin', String(slider.min));
+      div.setAttribute('aria-valuemax', String(slider.max));
+      div.setAttribute('aria-valuenow', String(currentValue));
+      div.setAttribute('aria-orientation', slider.orientation);
+
+      if (slider.disabled) {
+        div.setAttribute('aria-disabled', 'true');
+        div.setAttribute('data-disabled', '');
+        div.setAttribute('tabindex', '-1');
+      } else {
+        div.removeAttribute('aria-disabled');
+        div.removeAttribute('data-disabled');
+        div.setAttribute('tabindex', '0');
+      }
+
+      Object.assign(div.style, newStyle);
     });
+
+    return div;
+  };
 });
 
 // Export sub-components

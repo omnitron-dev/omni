@@ -137,7 +137,7 @@ describe('RangeSlider', () => {
 
       const component = () =>
         RangeSlider({
-          value: value(),
+          value: value,
           children: [
             RangeSliderThumb({ position: 'min' }),
             RangeSliderThumb({ position: 'max' }),
@@ -444,7 +444,7 @@ describe('RangeSlider', () => {
 
       const component = () =>
         RangeSlider({
-          value: value(),
+          value: value,
           children: RangeSliderTrack({
             children: RangeSliderRange({ class: 'range' }),
           }),
@@ -897,7 +897,7 @@ describe('RangeSlider', () => {
 
       const component = () =>
         RangeSlider({
-          value: value(),
+          value: value,
           children: [
             RangeSliderThumb({ position: 'min', class: 'thumb-min' }),
             RangeSliderThumb({ position: 'max', class: 'thumb-max' }),
@@ -996,7 +996,7 @@ describe('RangeSlider', () => {
 
       const component = () =>
         RangeSlider({
-          value: value(),
+          value: value,
           children: [
             RangeSliderThumb({ position: 'min' }),
             RangeSliderThumb({ position: 'max' }),

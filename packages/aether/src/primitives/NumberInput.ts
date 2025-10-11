@@ -14,7 +14,7 @@
  */
 
 import { defineComponent } from '../core/component/index.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
 import { signal, computed } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
@@ -222,6 +222,9 @@ export const NumberInput = defineComponent<NumberInputProps>((props) => {
     inputRef,
   };
 
+  // Provide context during setup so children can access it in render phase
+  provideContext(NumberInputContext, contextValue);
+
   return () =>
     jsx(NumberInputContext.Provider, {
       value: contextValue,
@@ -240,74 +243,75 @@ export const NumberInput = defineComponent<NumberInputProps>((props) => {
 // ============================================================================
 
 export const NumberInputField = defineComponent<NumberInputFieldProps>((props) => {
-  const context = useNumberInputContext();
-
-  const handleInput = (e: Event) => {
-    const target = e.target as HTMLInputElement;
-    const value = context.parseValue(target.value);
-    context.setValue(value);
-  };
-
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (context.disabled || context.readonly) return;
-
-    switch (e.key) {
-      case 'ArrowUp':
-        e.preventDefault();
-        context.increment();
-        break;
-      case 'ArrowDown':
-        e.preventDefault();
-        context.decrement();
-        break;
-      case 'PageUp':
-        e.preventDefault();
-        context.setValue(context.value() + context.step * 10);
-        break;
-      case 'PageDown':
-        e.preventDefault();
-        context.setValue(context.value() - context.step * 10);
-        break;
-      case 'Home':
-        e.preventDefault();
-        context.setValue(context.min);
-        break;
-      case 'End':
-        e.preventDefault();
-        context.setValue(context.max);
-        break;
-    }
-  };
-
-  const handleWheel = (e: WheelEvent) => {
-    const parentProps = (context as any).props;
-    const allowMouseWheel = parentProps?.allowMouseWheel ?? false;
-
-    if (!allowMouseWheel || context.disabled || context.readonly) return;
-
-    e.preventDefault();
-    if (e.deltaY < 0) {
-      context.increment();
-    } else {
-      context.decrement();
-    }
-  };
-
-  const handleBlur = () => {
-    const parentProps = (context as any).props;
-    const clampValueOnBlur = parentProps?.clampValueOnBlur ?? true;
-
-    if (clampValueOnBlur) {
-      const value = context.value();
-      if (value < context.min) {
-        context.setValue(context.min);
-      } else if (value > context.max) {
-        context.setValue(context.max);
-      }
-    }
-  };
-
   return () => {
+    // Access context in render phase
+    const context = useNumberInputContext();
+
+    const handleInput = (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      const value = context.parseValue(target.value);
+      context.setValue(value);
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (context.disabled || context.readonly) return;
+
+      switch (e.key) {
+        case 'ArrowUp':
+          e.preventDefault();
+          context.increment();
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          context.decrement();
+          break;
+        case 'PageUp':
+          e.preventDefault();
+          context.setValue(context.value() + context.step * 10);
+          break;
+        case 'PageDown':
+          e.preventDefault();
+          context.setValue(context.value() - context.step * 10);
+          break;
+        case 'Home':
+          e.preventDefault();
+          context.setValue(context.min);
+          break;
+        case 'End':
+          e.preventDefault();
+          context.setValue(context.max);
+          break;
+      }
+    };
+
+    const handleWheel = (e: WheelEvent) => {
+      const parentProps = (context as any).props;
+      const allowMouseWheel = parentProps?.allowMouseWheel ?? false;
+
+      if (!allowMouseWheel || context.disabled || context.readonly) return;
+
+      e.preventDefault();
+      if (e.deltaY < 0) {
+        context.increment();
+      } else {
+        context.decrement();
+      }
+    };
+
+    const handleBlur = () => {
+      const parentProps = (context as any).props;
+      const clampValueOnBlur = parentProps?.clampValueOnBlur ?? true;
+
+      if (clampValueOnBlur) {
+        const value = context.value();
+        if (value < context.min) {
+          context.setValue(context.min);
+        } else if (value > context.max) {
+          context.setValue(context.max);
+        }
+      }
+    };
+
     const { ...rest } = props;
 
     return jsx('input', {
@@ -335,13 +339,14 @@ export const NumberInputField = defineComponent<NumberInputFieldProps>((props) =
 // ============================================================================
 
 export const NumberInputIncrement = defineComponent<NumberInputIncrementProps>((props) => {
-  const context = useNumberInputContext();
-
-  const handleClick = () => {
-    context.increment();
-  };
-
   return () => {
+    // Access context in render phase
+    const context = useNumberInputContext();
+
+    const handleClick = () => {
+      context.increment();
+    };
+
     const { children = '▲', ...rest } = props;
 
     return jsx('button', {
@@ -361,13 +366,14 @@ export const NumberInputIncrement = defineComponent<NumberInputIncrementProps>((
 // ============================================================================
 
 export const NumberInputDecrement = defineComponent<NumberInputDecrementProps>((props) => {
-  const context = useNumberInputContext();
-
-  const handleClick = () => {
-    context.decrement();
-  };
-
   return () => {
+    // Access context in render phase
+    const context = useNumberInputContext();
+
+    const handleClick = () => {
+      context.decrement();
+    };
+
     const { children = '▼', ...rest } = props;
 
     return jsx('button', {

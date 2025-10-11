@@ -68,20 +68,13 @@ Collision-resistant unique identifiers generator.
 
 ### Data Processing
 
-#### [@omnitron-dev/smartbuffer](packages/smartbuffer)
-Enhanced binary data manipulation based on ByteBuffer.js.
-- Efficient buffer operations
-- Support for various data types (int8-64, float, double, varint)
-- Big-endian and little-endian support
-- String encoding/decoding utilities
-- ✅ Node.js & Bun compatible
-
-#### [@omnitron-dev/messagepack](packages/messagepack)
+#### [@omnitron-dev/msgpack](packages/msgpack)
 High-performance MessagePack serialization with TypeScript support.
 - Full MessagePack specification support
 - Custom type extensions
 - Efficient binary serialization
 - Stream processing capabilities
+- Browser-compatible with polyfills
 - ✅ Node.js & Bun compatible
 
 ### Messaging & Notifications
@@ -182,9 +175,8 @@ omni/
 │   ├── common/               # Shared utilities
 │   ├── cuid/                 # Unique ID generation
 │   ├── eventemitter/         # Event emitter
-│   ├── messagepack/          # MessagePack serialization
+│   ├── msgpack/              # MessagePack serialization
 │   ├── rotif/                # Redis messaging system
-│   ├── smartbuffer/          # Binary data handling
 │   ├── testing/              # Testing utilities
 │   ├── titan/                # Enterprise framework
 │   │   ├── src/
@@ -223,8 +215,7 @@ Each package contains detailed documentation:
 - [Titan Framework Guide](packages/titan/README.md)
 - [Common Utilities Guide](packages/common/README.md)
 - [Event Emitter Guide](packages/eventemitter/README.md)
-- [SmartBuffer Guide](packages/smartbuffer/README.md)
-- [MessagePack Guide](packages/messagepack/README.md)
+- [MessagePack Guide](packages/msgpack/README.md)
 - [Rotif Messaging Guide](packages/rotif/README.md)
 - [CUID Generator Guide](packages/cuid/README.md)
 - [Testing Utilities Guide](packages/testing/README.md)
@@ -279,7 +270,7 @@ class CalculatorService {
 ### Efficient Data Serialization
 
 ```typescript
-import { encode, decode } from '@omnitron-dev/messagepack';
+import { encode, decode } from '@omnitron-dev/msgpack';
 
 const data = { user: 'John', scores: [1, 2, 3] };
 const encoded = encode(data); // Buffer
@@ -366,9 +357,8 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 | @omnitron-dev/common | ✅ | ✅ | 🚧 | 0.1.0 |
 | @omnitron-dev/cuid | ✅ | ✅ | 🚧 | 0.1.0 |
 | @omnitron-dev/eventemitter | ✅ | ✅ | 🚧 | 0.1.0 |
-| @omnitron-dev/messagepack | ✅ | ✅ | 🚧 | 0.1.0 |
+| @omnitron-dev/msgpack | ✅ | ✅ | 🚧 | 0.1.0 |
 | @omnitron-dev/rotif | ✅ | ✅ | ❌ | 0.1.0 |
-| @omnitron-dev/smartbuffer | ✅ | ✅ | 🚧 | 0.1.0 |
 | @omnitron-dev/testing | ✅ | ✅ | ❌ | 0.1.0 |
 | @omnitron-dev/titan | ✅ | ✅ | 🚧 | 0.1.0 |
 | @omnitron-dev/titan-module-template | ✅ | ✅ | ❌ | 0.1.0 |

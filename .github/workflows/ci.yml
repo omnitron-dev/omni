@@ -119,7 +119,7 @@ jobs:
           yarn workspace @omnitron-dev/common test
           yarn workspace @omnitron-dev/eventemitter test
           yarn workspace @omnitron-dev/smartbuffer test
-          yarn workspace @omnitron-dev/messagepack test
+          yarn workspace @omnitron-dev/msgpack test
         env:
           NODE_OPTIONS: --max-old-space-size=4096
 

@@ -74,16 +74,6 @@ jobs:
         continue-on-error: true
         id: test-eventemitter
 
-      - name: Test @omnitron-dev/smartbuffer
-        run: yarn workspace @omnitron-dev/smartbuffer test
-        continue-on-error: true
-        id: test-smartbuffer
-
-      - name: Test @omnitron-dev/messagepack
-        run: yarn workspace @omnitron-dev/messagepack test
-        continue-on-error: true
-        id: test-messagepack
-
       - name: Generate test summary
         if: always()
         run: |
@@ -103,18 +93,6 @@ jobs:
           else
             echo "| @omnitron-dev/eventemitter | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
           fi
-          
-          if [ "${{ steps.test-smartbuffer.outcome }}" == "success" ]; then
-            echo "| @omnitron-dev/smartbuffer | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| @omnitron-dev/smartbuffer | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          if [ "${{ steps.test-messagepack.outcome }}" == "success" ]; then
-            echo "| @omnitron-dev/messagepack | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| @omnitron-dev/messagepack | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
-          fi
 
       - name: Check overall status
         if: always()
@@ -126,14 +104,6 @@ jobs:
           fi
           if [ "${{ steps.test-eventemitter.outcome }}" != "success" ]; then
             echo "❌ @omnitron-dev/eventemitter tests failed"
-            failed=1
-          fi
-          if [ "${{ steps.test-smartbuffer.outcome }}" != "success" ]; then
-            echo "❌ @omnitron-dev/smartbuffer tests failed"
-            failed=1
-          fi
-          if [ "${{ steps.test-messagepack.outcome }}" != "success" ]; then
-            echo "❌ @omnitron-dev/messagepack tests failed"
             failed=1
           fi
           
@@ -151,6 +121,4 @@ jobs:
           path: |
             packages/common/coverage
             packages/eventemitter/coverage
-            packages/smartbuffer/coverage
-            packages/messagepack/coverage
           retention-days: 7

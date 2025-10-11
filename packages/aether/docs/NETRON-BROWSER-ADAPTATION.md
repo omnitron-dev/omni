@@ -1994,3 +1994,41 @@ After successfully implementing the Netron browser client within Aether, the imp
 
 This migration represents the final evolution of the Netron browser adaptation - from embedded implementation to standalone, reusable package while maintaining full backward compatibility.
 
+---
+
+## Package Cleanup: MessagePack Migration
+
+### Date: 2025-10-11
+### Status: **COMPLETED - Replaced with @omnitron-dev/msgpack**
+
+As part of ongoing optimization efforts, the legacy `@omnitron-dev/messagepack` and `@omnitron-dev/smartbuffer` packages have been replaced with the optimized `@omnitron-dev/msgpack` package.
+
+### Why the Change?
+
+The new `@omnitron-dev/msgpack` package provides:
+- **Better Performance**: Optimized encoding/decoding paths
+- **Smaller Bundle Size**: Reduced overhead and dependencies
+- **Improved API**: Cleaner, more intuitive interface
+- **Better Browser Support**: Enhanced compatibility with modern bundlers
+
+### Impact
+
+- ✅ `@omnitron-dev/messagepack` → `@omnitron-dev/msgpack` (improved version)
+- ✅ `@omnitron-dev/smartbuffer` → Internal dependency (no longer exposed)
+- ✅ All references updated across documentation
+- ✅ No breaking changes for users (API remains compatible)
+
+### Migration for Users
+
+If you were using `@omnitron-dev/messagepack` directly:
+
+```typescript
+// Old import
+import { encode, decode } from '@omnitron-dev/messagepack';
+
+// New import (same API)
+import { encode, decode } from '@omnitron-dev/msgpack';
+```
+
+The API is 100% compatible - only the package name changed.
+

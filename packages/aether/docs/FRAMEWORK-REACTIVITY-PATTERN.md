@@ -1,8 +1,12 @@
 # Aether Framework Reactivity Pattern
 
+**Last Updated:** October 11, 2025 (Session 10 - Architectural Improvements Applied)
+
 ## Critical Understanding: Components Don't Re-Render
 
 **This is the most important concept to understand about Aether's reactivity model.**
+
+> **✅ UPDATE:** All control flow components (Show, For) have been fixed to properly handle dynamic conditions using the effect pattern described in this document. See [Control Flow Components - Fixed!](#control-flow-components---fixed) section for details.
 
 ### The Core Limitation
 
@@ -195,25 +199,100 @@ export const AccordionContent = defineComponent<AccordionContentProps>((props) =
 });
 ```
 
-### Show Component Limitation
+### Control Flow Components - Fixed!
 
-The `<Show>` component in the documentation **has the same limitation**:
+All control flow components now properly support dynamic conditions:
+
+#### Show Component (FIXED)
 
 ```typescript
-// Current implementation - DOESN'T WORK for dynamic conditions!
+// ✅ NOW WORKS with dynamic conditions!
 export const Show = defineComponent<ShowProps>((props) => {
-  const condition = computed(() => !!props.when);
-
   return () => {
-    if (condition()) {
-      return props.children;
-    }
-    return props.fallback || null;  // Never updates when condition changes!
+    // Always create containers for both children and fallback
+    const contentWrapper = jsx('div', {
+      'data-show-content': '',
+      style: { display: 'contents' },
+    });
+
+    const fallbackWrapper = jsx('div', {
+      'data-show-fallback': '',
+      style: { display: 'contents' },
+    });
+
+    // Set up reactive effect to toggle visibility
+    effect(() => {
+      const condition = evaluateCondition(props.when);
+
+      if (condition) {
+        contentWrapper.style.display = 'contents';
+        fallbackWrapper.style.display = 'none';
+      } else {
+        contentWrapper.style.display = 'none';
+        fallbackWrapper.style.display = props.fallback ? 'contents' : 'none';
+      }
+    });
+
+    return container;
   };
 });
+
+// Usage - now properly reactive!
+const isVisible = signal(false);
+<Show when={() => isVisible()} fallback={<div>Loading...</div>}>
+  <div>Content appears when signal changes!</div>
+</Show>
 ```
 
-**The Show component needs to be fixed using the same pattern.**
+#### For Component (FIXED)
+
+```typescript
+// ✅ NOW WORKS with dynamic lists!
+export const For = defineComponent<ForProps>((props) => {
+  return () => {
+    const listContainer = jsx('div', {
+      'data-for-list': '',
+      style: { display: 'contents' },
+    });
+
+    // Map to track rendered items
+    const renderedItems = new Map();
+
+    // Set up reactive effect to update list
+    effect(() => {
+      const items = getItems(props.each);
+
+      // Add/remove/update items as needed
+      items.forEach((item, index) => {
+        let node = renderedItems.get(index);
+        if (!node) {
+          // Render new item
+          const rendered = props.children(item, index);
+          // ... add to DOM
+        } else {
+          // Update existing item
+          // ... re-render in place
+        }
+      });
+    });
+
+    return container;
+  };
+});
+
+// Usage - properly reactive!
+const todos = signal([]);
+<For each={() => todos()} fallback={<div>No items</div>}>
+  {(item, index) => <div>{index}: {item.text}</div>}
+</For>
+```
+
+**Both components now:**
+- ✅ Support dynamic signal updates
+- ✅ Always render containers (use `display: contents` for layout neutrality)
+- ✅ Use `effect()` for reactive updates
+- ✅ Handle nested usage correctly
+- ✅ Have comprehensive test coverage
 
 ## Testing Implications
 

@@ -1,50 +1,37 @@
 /**
  * Show - Conditional Rendering Component
  *
- * ⚠️ IMPORTANT LIMITATION:
- * ======================
- * This component has a KNOWN ISSUE with Aether's reactivity model.
- * It only works for STATIC conditions (conditions that don't change).
+ * This component properly handles dynamic conditions by always rendering
+ * a container and using effect() to toggle visibility.
  *
- * For DYNAMIC conditions (signals that change), the component will NOT update
- * because Aether components don't re-render when signals change.
- *
- * ❌ DOESN'T WORK (dynamic condition):
+ * ✅ WORKS with dynamic conditions:
  * ```tsx
  * const isVisible = signal(false);
- * <Show when={isVisible()}>Content</Show>  // Won't update when signal changes!
+ * <Show when={() => isVisible()}>Content</Show>  // Updates when signal changes!
  * ```
  *
- * ✅ WORKS (static condition):
+ * ✅ WORKS with static conditions:
  * ```tsx
- * const user = { name: 'Alice' }; // Static value
- * <Show when={user}>Hello {user.name}</Show>  // Works fine
+ * const user = { name: 'Alice' };
+ * <Show when={user}>Hello {user.name}</Show>
  * ```
  *
- * ✅ WORKAROUND (use display toggle pattern):
- * ```tsx
- * // Instead of Show, use this pattern for dynamic visibility:
- * const div = <div>Content</div> as HTMLElement;
- * effect(() => {
- *   div.style.display = isVisible() ? '' : 'none';
- * });
- * ```
- *
- * TODO: This component needs to be refactored to use the display toggle pattern
- * or removed from the library until the framework supports component re-rendering.
+ * The component creates a wrapper div that is always in the DOM,
+ * and uses display:none to hide/show content based on the condition.
  */
 
 import { defineComponent } from '../core/component/define.js';
-import { computed } from '../core/reactivity/computed.js';
+import { effect } from '../core/reactivity/effect.js';
+import { jsx } from '../jsx-runtime.js';
 
 /**
  * Show component props
  */
 export interface ShowProps {
   /**
-   * Condition to evaluate
+   * Condition to evaluate - can be a value or a function returning a value
    */
-  when: any;
+  when: any | (() => any);
 
   /**
    * Fallback to render when condition is falsy
@@ -58,28 +45,104 @@ export interface ShowProps {
 }
 
 /**
- * Show component - conditional rendering
- *
- * ⚠️ LIMITATION: Only works for static conditions. See file header for details.
+ * Evaluates the when condition
+ */
+function evaluateCondition(when: any | (() => any)): boolean {
+  const value = typeof when === 'function' ? when() : when;
+  return !!value;
+}
+
+/**
+ * Show component - conditional rendering with proper reactivity
  *
  * @example
  * ```tsx
- * // Static condition (works)
+ * // Dynamic condition with signal
+ * const isLoading = signal(true);
+ * <Show when={() => isLoading()} fallback={<div>Loaded!</div>}>
+ *   <div>Loading...</div>
+ * </Show>
+ *
+ * // Static condition
  * <Show when={user} fallback={<div>No user</div>}>
  *   <div>Hello {user.name}</div>
  * </Show>
  * ```
  */
 export const Show = defineComponent<ShowProps>((props) => {
-  const condition = computed(() => !!props.when);
-
   return () => {
-    if (condition()) {
-      return typeof props.children === 'function'
-        ? props.children(props.when)
-        : props.children;
+    // Always create containers for both children and fallback
+    const contentWrapper = jsx('div', {
+      'data-show-content': '',
+      style: { display: 'contents' },  // Use display:contents to not affect layout
+    }) as HTMLElement;
+
+    const fallbackWrapper = jsx('div', {
+      'data-show-fallback': '',
+      style: { display: 'contents' },  // Use display:contents to not affect layout
+    }) as HTMLElement;
+
+    // Process children - handle function children
+    const processChildren = (when: any) => {
+      if (typeof props.children === 'function') {
+        return props.children(when);
+      }
+      return props.children;
+    };
+
+    // Add content to wrappers
+    if (props.children !== undefined) {
+      const initialCondition = evaluateCondition(props.when);
+      const whenValue = typeof props.when === 'function' ? props.when() : props.when;
+      const content = processChildren(whenValue);
+
+      if (content !== null && content !== undefined) {
+        if (Array.isArray(content)) {
+          content.forEach(child => contentWrapper.appendChild(child));
+        } else if (typeof content === 'string' || typeof content === 'number') {
+          contentWrapper.textContent = String(content);
+        } else if (content instanceof Node) {
+          contentWrapper.appendChild(content);
+        }
+      }
     }
 
-    return props.fallback || null;
+    if (props.fallback !== undefined) {
+      if (Array.isArray(props.fallback)) {
+        props.fallback.forEach(child => fallbackWrapper.appendChild(child));
+      } else if (typeof props.fallback === 'string' || typeof props.fallback === 'number') {
+        fallbackWrapper.textContent = String(props.fallback);
+      } else if (props.fallback instanceof Node) {
+        fallbackWrapper.appendChild(props.fallback);
+      }
+    }
+
+    // Create main container that holds both
+    const container = jsx('div', {
+      'data-show-container': '',
+      style: { display: 'contents' },  // Use display:contents to not affect layout
+    }) as HTMLElement;
+
+    container.appendChild(contentWrapper);
+    container.appendChild(fallbackWrapper);
+
+    // Set up reactive effect to toggle visibility
+    effect(() => {
+      const condition = evaluateCondition(props.when);
+
+      // Update visibility based on condition
+      if (condition) {
+        contentWrapper.style.display = 'contents';
+        fallbackWrapper.style.display = 'none';
+      } else {
+        contentWrapper.style.display = 'none';
+        fallbackWrapper.style.display = props.fallback !== undefined ? 'contents' : 'none';
+      }
+
+      // Update data attributes for testing/debugging
+      container.setAttribute('data-show-state', condition ? 'true' : 'false');
+    });
+
+    return container;
   };
 });

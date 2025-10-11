@@ -105,17 +105,41 @@ interface NumberInputContextValue {
 }
 
 // ============================================================================
+// Global Signal Context
+// ============================================================================
+
+// Global reactive context signal that will be updated during NumberInput setup
+// This allows children to access the context even if they're evaluated before the parent
+// Using a SIGNAL makes the context reactive, so effects will rerun when it updates
+const globalNumberInputContextSignal = signal<NumberInputContextValue | null>(null);
+
+// ============================================================================
 // Context
 // ============================================================================
 
-const NumberInputContext = createContext<NumberInputContextValue | null>(null);
+// Create context with default implementation that delegates to global signal
+const NumberInputContext = createContext<NumberInputContextValue>({
+  get value() {
+    const ctx = globalNumberInputContextSignal();
+    return ctx ? ctx.value : computed(() => 0);
+  },
+  increment: () => globalNumberInputContextSignal()?.increment(),
+  decrement: () => globalNumberInputContextSignal()?.decrement(),
+  setValue: (value) => globalNumberInputContextSignal()?.setValue(value),
+  get min() { return globalNumberInputContextSignal()?.min ?? -Infinity; },
+  get max() { return globalNumberInputContextSignal()?.max ?? Infinity; },
+  get step() { return globalNumberInputContextSignal()?.step ?? 1; },
+  get disabled() { return globalNumberInputContextSignal()?.disabled ?? false; },
+  get readonly() { return globalNumberInputContextSignal()?.readonly ?? false; },
+  canIncrement: () => globalNumberInputContextSignal()?.canIncrement() ?? false,
+  canDecrement: () => globalNumberInputContextSignal()?.canDecrement() ?? false,
+  formatValue: (value) => globalNumberInputContextSignal()?.formatValue(value) ?? String(value),
+  parseValue: (str) => globalNumberInputContextSignal()?.parseValue(str) ?? 0,
+  inputRef: { current: null },
+}, 'NumberInput');
 
 const useNumberInputContext = (): NumberInputContextValue => {
-  const context = useContext(NumberInputContext);
-  if (!context) {
-    throw new Error('NumberInput components must be used within a NumberInput');
-  }
-  return context;
+  return useContext(NumberInputContext);
 };
 
 // ============================================================================
@@ -224,6 +248,10 @@ export const NumberInput = defineComponent<NumberInputProps>((props) => {
 
   // Provide context during setup so children can access it in render phase
   provideContext(NumberInputContext, contextValue);
+
+  // CRITICAL FIX: Set global context signal so children can access it
+  // This ensures context is available even if children are evaluated before parent completes setup
+  globalNumberInputContextSignal.set(contextValue);
 
   return () =>
     jsx(NumberInputContext.Provider, {

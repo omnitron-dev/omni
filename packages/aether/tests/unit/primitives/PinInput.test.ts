@@ -3,12 +3,18 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { signal } from '../../../src/core/reactivity/signal.js';
-import { PinInput, PinInputInput } from '../../../src/primitives/PinInput.js';
+import {
+  PinInput,
+  PinInputInput,
+  __resetGlobalContext__,
+} from '../../../src/primitives/PinInput.js';
 import { renderComponent, nextTick, createSpy } from '../../helpers/test-utils.js';
 
 describe('PinInput', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
+    // Reset global signal between tests to ensure isolation
+    __resetGlobalContext__.set(null);
   });
 
   describe('Basic Rendering', () => {

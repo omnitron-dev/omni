@@ -14,8 +14,8 @@
 
 import { defineComponent } from '../core/component/index.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
-import type { Signal, WritableSignal } from '../core/reactivity/types.js';
-import { signal, computed } from '../core/reactivity/index.js';
+import type { WritableSignal } from '../core/reactivity/types.js';
+import { signal } from '../core/reactivity/index.js';
 import { onMount } from '../core/component/lifecycle.js';
 import { jsx } from '../jsx-runtime.js';
 
@@ -59,17 +59,17 @@ export interface PinInputInputProps {
 
 interface PinInputContextValue {
   /** Current value array */
-  values: Signal<string[]>;
+  values: () => string[];
   /** Length of PIN */
   length: number;
   /** Input type */
-  type: 'numeric' | 'alphanumeric' | 'all';
+  readonly type: 'numeric' | 'alphanumeric' | 'all';
   /** Mask state */
-  mask: boolean;
+  readonly mask: boolean;
   /** Placeholder */
-  placeholder: string;
+  readonly placeholder: string;
   /** Disabled state */
-  disabled: boolean;
+  readonly disabled: boolean;
   /** Set value at index */
   setValue: (index: number, value: string) => void;
   /** Focus input at index */
@@ -92,21 +92,24 @@ interface PinInputContextValue {
 const globalPinInputContextSignal = signal<PinInputContextValue | null>(null);
 
 // Create context with default implementation that delegates to global signal
-const PinInputContext = createContext<PinInputContextValue | null>(
-  null,
-  'PinInput'
-);
+const emptyArray: string[] = [];
+
+const PinInputContext = createContext<PinInputContextValue>({
+  values: () => globalPinInputContextSignal()?.values?.() ?? emptyArray,
+  get length() { return globalPinInputContextSignal()?.length ?? 6; },
+  get type() { return globalPinInputContextSignal()?.type ?? 'numeric'; },
+  get mask() { return globalPinInputContextSignal()?.mask ?? false; },
+  get placeholder() { return globalPinInputContextSignal()?.placeholder ?? '○'; },
+  get disabled() { return globalPinInputContextSignal()?.disabled ?? false; },
+  setValue: (index, value) => globalPinInputContextSignal()?.setValue(index, value),
+  focusInput: (index) => globalPinInputContextSignal()?.focusInput(index),
+  registerInput: (index, element) => globalPinInputContextSignal()?.registerInput(index, element),
+  unregisterInput: (index) => globalPinInputContextSignal()?.unregisterInput(index),
+  handlePaste: (index, value) => globalPinInputContextSignal()?.handlePaste(index, value),
+}, 'PinInput');
 
 const usePinInputContext = (): PinInputContextValue => {
-  const context = useContext(PinInputContext);
-  // Fall back to global signal if context not available
-  const globalContext = globalPinInputContextSignal();
-  const finalContext = context || globalContext;
-
-  if (!finalContext) {
-    throw new Error('PinInput.Input must be used within a PinInput');
-  }
-  return finalContext;
+  return useContext(PinInputContext);
 };
 
 // ============================================================================
@@ -114,11 +117,8 @@ const usePinInputContext = (): PinInputContextValue => {
 // ============================================================================
 
 export const PinInput = defineComponent<PinInputProps>((props) => {
+  // Make all props reactive signals
   const length = props.length ?? 6;
-  const type = props.type ?? 'numeric';
-  const mask = props.mask ?? false;
-  const placeholder = props.placeholder ?? '○';
-  const disabled = props.disabled ?? false;
   const autoFocus = props.autoFocus ?? false;
 
   // State
@@ -144,6 +144,7 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
     }
   });
 
+  // currentValues now directly reads from props each time
   const currentValues = (): string[] => {
     if (props.value !== undefined) {
       return parseValue(props.value);
@@ -166,6 +167,7 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
   };
 
   const isValidChar = (char: string): boolean => {
+    const type = props.type ?? 'numeric';
     if (type === 'numeric') {
       return /^[0-9]$/.test(char);
     } else if (type === 'alphanumeric') {
@@ -234,13 +236,15 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
     }
   };
 
+  // Create context value ONCE in setup phase
   const contextValue: PinInputContextValue = {
-    values: computed(() => currentValues()),
+    // values function reads props directly each time it's called
+    values: () => currentValues(),
     length,
-    type,
-    mask,
-    placeholder,
-    disabled,
+    get type() { return props.type ?? 'numeric'; },
+    get mask() { return props.mask ?? false; },
+    get placeholder() { return props.placeholder ?? '○'; },
+    get disabled() { return props.disabled ?? false; },
     setValue,
     focusInput,
     registerInput,
@@ -249,14 +253,15 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
   };
 
   // Set global context signal so children can access it
-  // Using a signal makes this reactive - effects will rerun when it updates!
   globalPinInputContextSignal.set(contextValue);
 
-  // Also provide context via the standard API
+  // Provide context via the standard API
   provideContext(PinInputContext, contextValue);
 
-  return () =>
-    jsx(PinInputContext.Provider, {
+  return () => {
+    const disabled = props.disabled ?? false;
+
+    return jsx(PinInputContext.Provider, {
       value: contextValue,
       children: jsx('div', {
         'data-pin-input': '',
@@ -266,6 +271,7 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
         children: props.children,
       }),
     });
+  };
 });
 
 // ============================================================================
@@ -274,20 +280,34 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
 
 export const PinInputInput = defineComponent<PinInputInputProps>((props) => {
   const inputRef: { current: HTMLInputElement | null } = { current: null };
+  const { index, ...rest } = props;
+  let hasRegistered = false;
 
   return () => {
     // Access context in render phase
     const context = usePinInputContext();
-    const { index, ...rest } = props;
     const values = context.values();
     const value = values[index] ?? '';
+
+    // Register input on first render, unregister on cleanup
+    if (inputRef.current && !hasRegistered) {
+      hasRegistered = true;
+      context.registerInput(index, inputRef.current);
+
+      // Schedule cleanup
+      onMount(() => {
+        return () => {
+          context.unregisterInput(index);
+        };
+      });
+    }
 
     const handleInput = (e: Event) => {
       const target = e.target as HTMLInputElement;
       const value = target.value;
 
       if (value) {
-        context.setValue(props.index, value);
+        context.setValue(index, value);
         // Clear input to allow re-entry
         target.value = '';
       }
@@ -298,49 +318,36 @@ export const PinInputInput = defineComponent<PinInputInputProps>((props) => {
         e.preventDefault();
         const values = context.values();
 
-        if (values[props.index]) {
+        if (values[index]) {
           // Clear current value
-          const newValues = [...values];
-          newValues[props.index] = '';
-          context.setValue(props.index, '');
-        } else if (props.index > 0) {
+          context.setValue(index, '');
+        } else if (index > 0) {
           // Move to previous and clear
-          context.focusInput(props.index - 1);
-          const newValues = [...values];
-          newValues[props.index - 1] = '';
-          context.setValue(props.index - 1, '');
+          context.focusInput(index - 1);
+          context.setValue(index - 1, '');
         }
-      } else if (e.key === 'ArrowLeft' && props.index > 0) {
+      } else if (e.key === 'ArrowLeft' && index > 0) {
         e.preventDefault();
-        context.focusInput(props.index - 1);
-      } else if (e.key === 'ArrowRight' && props.index < context.length - 1) {
+        context.focusInput(index - 1);
+      } else if (e.key === 'ArrowRight' && index < context.length - 1) {
         e.preventDefault();
-        context.focusInput(props.index + 1);
+        context.focusInput(index + 1);
       } else if (e.key === 'Delete') {
         e.preventDefault();
-        const newValues = [...context.values()];
-        newValues[props.index] = '';
-        context.setValue(props.index, '');
+        context.setValue(index, '');
       }
     };
 
     const handlePaste = (e: ClipboardEvent) => {
       e.preventDefault();
       const pastedValue = e.clipboardData?.getData('text') ?? '';
-      context.handlePaste(props.index, pastedValue);
+      context.handlePaste(index, pastedValue);
     };
 
     const handleFocus = (e: FocusEvent) => {
       const target = e.target as HTMLInputElement;
       target.select();
     };
-
-    // Register/unregister on mount/unmount
-    if (inputRef.current) {
-      context.registerInput(index, inputRef.current);
-    } else {
-      context.unregisterInput(index);
-    }
 
     return jsx('input', {
       ref: inputRef,
@@ -372,7 +379,10 @@ export const PinInputInput = defineComponent<PinInputInputProps>((props) => {
 (PinInput as any).Input = PinInputInput;
 
 // ============================================================================
-// Export types
+// Export types and test utilities
 // ============================================================================
 
 export type { PinInputContextValue };
+
+// Export for test cleanup
+export { globalPinInputContextSignal as __resetGlobalContext__ };

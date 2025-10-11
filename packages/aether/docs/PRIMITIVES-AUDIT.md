@@ -50,11 +50,16 @@
    - **Estimated:** 2-3 hours for 46 tests
    - Context and reactivity fully working ✅
 
-2. **Tooltip: 13/59 (22%)** - 46 failing tests
-   - **Issue:** Portal + conditional rendering incompatible with Pattern 4
-   - **Fix:** Use Dialog pattern (Context.Provider), remove function children from tests
-   - **Estimated:** 2-3 hours
-   - Requires architectural investigation ⚠️
+2. **Tooltip: 21/59 (35.6%)** - 38 failing tests ⬆️ +8 from investigation
+   - **Issue:** ALL failing tests timeout at `await nextTick()` after signal changes
+   - **Root Cause:** Fundamental reactivity system issue with conditional rendering + positioning
+   - **Investigation:** Tried Pattern 4, Portal removal, refCallback fixes - partial success
+   - **Status:** Deferred - requires deeper architectural investigation ⚠️
+   - **Findings:**
+     * Context.Provider incompatible with Pattern 4 (children evaluated before context setup)
+     * Portal creates async operations preventing nextTick() completion
+     * Conditional rendering + reactivity causes nextTick() hangs
+     * refCallback positioning creates timing issues
 
 3. **Editable: 33/64 (51.6%)** - 31 failing tests
    - **Issue:** Tests expect null instead of display:none

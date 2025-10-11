@@ -13,7 +13,7 @@
 import { defineComponent } from '../core/component/index.js';
 import { createContext, useContext } from '../core/component/context.js';
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
-import { signal, computed } from '../core/reactivity/index.js';
+import { signal, computed, effect } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
 
 // ============================================================================
@@ -85,14 +85,34 @@ interface ToggleGroupContextValue {
 // Context
 // ============================================================================
 
-const ToggleGroupContext = createContext<ToggleGroupContextValue | null>(null);
+// Global context signal for late binding (Pattern 1 from audit)
+const globalContextSignal = signal<ToggleGroupContextValue | null>(null);
+
+const noop = () => {};
+
+const defaultContextValue: ToggleGroupContextValue = {
+  value: computed(() => globalContextSignal()?.value() ?? ''),
+  get type() { return globalContextSignal()?.type ?? 'single'; },
+  get orientation() { return globalContextSignal()?.orientation ?? 'horizontal'; },
+  get disabled() { return globalContextSignal()?.disabled ?? false; },
+  get required() { return globalContextSignal()?.required ?? false; },
+  isSelected: (value) => globalContextSignal()?.isSelected(value) ?? false,
+  toggleValue: (value) => globalContextSignal()?.toggleValue(value),
+  registerItem: (value, element) => globalContextSignal()?.registerItem(value, element),
+  unregisterItem: (value) => globalContextSignal()?.unregisterItem(value),
+  navigateNext: () => globalContextSignal()?.navigateNext(),
+  navigatePrevious: () => globalContextSignal()?.navigatePrevious(),
+  navigateFirst: () => globalContextSignal()?.navigateFirst(),
+  navigateLast: () => globalContextSignal()?.navigateLast(),
+};
+
+const ToggleGroupContext = createContext<ToggleGroupContextValue>(
+  defaultContextValue,
+  'ToggleGroup'
+);
 
 const useToggleGroupContext = (): ToggleGroupContextValue => {
-  const context = useContext(ToggleGroupContext);
-  if (!context) {
-    throw new Error('ToggleGroup components must be used within a ToggleGroup');
-  }
-  return context;
+  return useContext(ToggleGroupContext);
 };
 
 // ============================================================================
@@ -117,7 +137,8 @@ export const ToggleGroup = defineComponent<ToggleGroupProps>((props) => {
 
   const currentValue = (): string | string[] => {
     if (props.value !== undefined) {
-      return props.value;
+      // Handle signal props - if value is a function (signal), call it
+      return typeof props.value === 'function' ? (props.value as any)() : props.value;
     }
     return internalValue();
   };
@@ -250,6 +271,9 @@ export const ToggleGroup = defineComponent<ToggleGroupProps>((props) => {
     navigateLast,
   };
 
+  // Set global context immediately for late binding (Pattern 1)
+  globalContextSignal.set(contextValue);
+
   const handleKeyDown = (e: KeyboardEvent) => {
     const isHorizontal = orientation === 'horizontal';
     const nextKey = isHorizontal ? 'ArrowRight' : 'ArrowDown';
@@ -301,10 +325,28 @@ export const ToggleGroupItem = defineComponent<ToggleGroupItemProps>((props) => 
     }
   };
 
-  const selected = computed(() => context.isSelected(props.value));
-
   return () => {
     const { value, disabled, children, ...rest } = props;
+
+    // Check if selected initially
+    const isSelectedInitially = context.isSelected(value);
+
+    // Create button element with initial values
+    const button = jsx('button', {
+      ref: buttonRef,
+      type: 'button',
+      role: context.type === 'single' ? 'radio' : 'button',
+      'aria-checked': context.type === 'single' ? (isSelectedInitially ? 'true' : 'false') : undefined,
+      'aria-pressed': context.type === 'multiple' ? (isSelectedInitially ? 'true' : 'false') : undefined,
+      'data-state': isSelectedInitially ? 'on' : 'off',
+      'data-value': value,
+      'data-disabled': itemDisabled ? '' : undefined,
+      disabled: itemDisabled,
+      onClick: handleClick,
+      tabIndex: isSelectedInitially ? 0 : -1,
+      ...rest,
+      children,
+    }) as HTMLButtonElement;
 
     // Register/unregister on mount/unmount
     if (buttonRef.current) {
@@ -313,21 +355,26 @@ export const ToggleGroupItem = defineComponent<ToggleGroupItemProps>((props) => 
       context.unregisterItem(value);
     }
 
-    return jsx('button', {
-      ref: buttonRef,
-      type: 'button',
-      role: context.type === 'single' ? 'radio' : 'button',
-      'aria-checked': context.type === 'single' ? selected() : undefined,
-      'aria-pressed': context.type === 'multiple' ? selected() : undefined,
-      'data-state': selected() ? 'on' : 'off',
-      'data-value': value,
-      'data-disabled': itemDisabled ? '' : undefined,
-      disabled: itemDisabled,
-      onClick: handleClick,
-      tabIndex: selected() ? 0 : -1,
-      ...rest,
-      children,
+    // Reactive updates for selection state
+    effect(() => {
+      // Call isSelected directly in effect for proper signal tracking
+      const isSelected = context.isSelected(value);
+
+      // Update ARIA attributes
+      if (context.type === 'single') {
+        button.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+      } else {
+        button.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+      }
+
+      // Update data-state
+      button.setAttribute('data-state', isSelected ? 'on' : 'off');
+
+      // Update tabIndex for roving tabindex pattern
+      button.tabIndex = isSelected ? 0 : -1;
     });
+
+    return button;
   };
 });
 

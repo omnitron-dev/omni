@@ -88,16 +88,18 @@ export interface CollapsibleContextValue {
   contentId: string;
 }
 
+// Global context signal for late binding (Pattern 1)
+const globalContextSignal = signal<CollapsibleContextValue | null>(null);
+
 const noop = () => {};
-const noopGetter = () => false;
 
 export const CollapsibleContext = createContext<CollapsibleContextValue>(
   {
-    isOpen: noopGetter,
-    toggle: noop,
-    disabled: noopGetter,
-    triggerId: '',
-    contentId: '',
+    isOpen: () => globalContextSignal()?.isOpen() ?? false,
+    toggle: () => globalContextSignal()?.toggle(),
+    disabled: () => globalContextSignal()?.disabled() ?? false,
+    get triggerId() { return globalContextSignal()?.triggerId ?? ''; },
+    get contentId() { return globalContextSignal()?.contentId ?? ''; },
   },
   'Collapsible'
 );
@@ -143,6 +145,9 @@ export const Collapsible = defineComponent<CollapsibleProps>((props) => {
     contentId,
   };
 
+  // Set global context immediately for late binding (Pattern 1)
+  globalContextSignal.set(contextValue);
+
   return () =>
     jsx(CollapsibleContext.Provider, {
       value: contextValue,
@@ -172,7 +177,7 @@ export const CollapsibleTrigger = defineComponent<CollapsibleTriggerProps>((prop
       ...props,
       id: ctx.triggerId,
       type: 'button',
-      'aria-expanded': ctx.isOpen(),
+      'aria-expanded': ctx.isOpen() ? 'true' : 'false',
       'aria-controls': ctx.contentId,
       'data-state': ctx.isOpen() ? 'open' : 'closed',
       disabled: ctx.disabled(),

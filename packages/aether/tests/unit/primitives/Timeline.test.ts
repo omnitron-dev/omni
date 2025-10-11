@@ -295,7 +295,7 @@ describe('Timeline', () => {
       const component = () =>
         Timeline({
           children: () => TimelineItem({
-            children: TimelineMarker({}),
+            children: () => TimelineMarker({}),
           }),
         });
       const { container } = renderComponent(component);
@@ -308,7 +308,7 @@ describe('Timeline', () => {
       const component = () =>
         Timeline({
           children: () => TimelineItem({
-            children: TimelineMarker({}),
+            children: () => TimelineMarker({}),
           }),
         });
       const { container } = renderComponent(component);
@@ -321,7 +321,7 @@ describe('Timeline', () => {
       const component = () =>
         Timeline({
           children: () => TimelineItem({
-            children: TimelineMarker({}),
+            children: () => TimelineMarker({}),
           }),
         });
       const { container } = renderComponent(component);
@@ -334,7 +334,7 @@ describe('Timeline', () => {
       const component = () =>
         Timeline({
           children: () => TimelineItem({
-            children: TimelineMarker({}),
+            children: () => TimelineMarker({}),
           }),
         });
       const { container } = renderComponent(component);
@@ -347,7 +347,7 @@ describe('Timeline', () => {
       const component = () =>
         Timeline({
           children: () => TimelineItem({
-            children: TimelineMarker({ children: 'X' }),
+            children: () => TimelineMarker({ children: 'X' }),
           }),
         });
       const { container } = renderComponent(component);
@@ -360,7 +360,7 @@ describe('Timeline', () => {
       const component = () =>
         Timeline({
           children: () => TimelineItem({
-            children: TimelineMarker({ children: 'Icon' }),
+            children: () => TimelineMarker({ children: 'Icon' }),
           }),
         });
       const { container } = renderComponent(component);
@@ -383,7 +383,7 @@ describe('Timeline', () => {
         Timeline({
           children: () => TimelineItem({
             status: 'pending',
-            children: TimelineMarker({}),
+            children: () => TimelineMarker({}),
           }),
         });
       const { container } = renderComponent(component);
@@ -397,7 +397,7 @@ describe('Timeline', () => {
         Timeline({
           children: () => TimelineItem({
             status: 'active',
-            children: TimelineMarker({}),
+            children: () => TimelineMarker({}),
           }),
         });
       const { container } = renderComponent(component);
@@ -411,7 +411,7 @@ describe('Timeline', () => {
         Timeline({
           children: () => TimelineItem({
             status: 'completed',
-            children: TimelineMarker({}),
+            children: () => TimelineMarker({}),
           }),
         });
       const { container } = renderComponent(component);
@@ -425,7 +425,7 @@ describe('Timeline', () => {
         Timeline({
           children: () => TimelineItem({
             status: 'error',
-            children: TimelineMarker({}),
+            children: () => TimelineMarker({}),
           }),
         });
       const { container } = renderComponent(component);
@@ -440,7 +440,7 @@ describe('Timeline', () => {
       const component = () =>
         Timeline({
           children: () => TimelineItem({
-            children: TimelineConnector({}),
+            children: () => TimelineConnector({}),
           }),
         });
       const { container } = renderComponent(component);
@@ -453,7 +453,7 @@ describe('Timeline', () => {
       const component = () =>
         Timeline({
           children: () => TimelineItem({
-            children: TimelineConnector({}),
+            children: () => TimelineConnector({}),
           }),
         });
       const { container } = renderComponent(component);
@@ -466,7 +466,7 @@ describe('Timeline', () => {
       const component = () =>
         Timeline({
           children: () => TimelineItem({
-            children: TimelineConnector({}),
+            children: () => TimelineConnector({}),
           }),
         });
       const { container } = renderComponent(component);
@@ -489,7 +489,7 @@ describe('Timeline', () => {
         Timeline({
           children: () => TimelineItem({
             status: 'pending',
-            children: TimelineConnector({}),
+            children: () => TimelineConnector({}),
           }),
         });
       const { container } = renderComponent(component);
@@ -503,7 +503,7 @@ describe('Timeline', () => {
         Timeline({
           children: () => TimelineItem({
             status: 'active',
-            children: TimelineConnector({}),
+            children: () => TimelineConnector({}),
           }),
         });
       const { container } = renderComponent(component);
@@ -517,7 +517,7 @@ describe('Timeline', () => {
         Timeline({
           children: () => TimelineItem({
             status: 'completed',
-            children: TimelineConnector({}),
+            children: () => TimelineConnector({}),
           }),
         });
       const { container } = renderComponent(component);
@@ -531,7 +531,7 @@ describe('Timeline', () => {
         Timeline({
           children: () => TimelineItem({
             status: 'error',
-            children: TimelineConnector({}),
+            children: () => TimelineConnector({}),
           }),
         });
       const { container } = renderComponent(component);
@@ -726,14 +726,14 @@ describe('Timeline', () => {
     it('should render a complete timeline with all parts', () => {
       const component = () =>
         Timeline({
-          children: [
+          children: () => [
             TimelineItem({
               status: 'completed',
-              children: [
+              children: () => [
                 TimelineMarker({}),
                 TimelineConnector({}),
                 TimelineContent({
-                  children: [
+                  children: () => [
                     TimelineTitle({ children: 'Event 1' }),
                     TimelineDescription({ children: 'First event' }),
                     TimelineTimestamp({ children: '1 hour ago' }),
@@ -758,10 +758,10 @@ describe('Timeline', () => {
     it('should render multiple timeline items', () => {
       const component = () =>
         Timeline({
-          children: [
-            TimelineItem({ status: 'completed', children: TimelineMarker({}) }),
-            TimelineItem({ status: 'active', children: TimelineMarker({}) }),
-            TimelineItem({ status: 'pending', children: TimelineMarker({}) }),
+          children: () => [
+            TimelineItem({ status: 'completed', children: () => TimelineMarker({}) }),
+            TimelineItem({ status: 'active', children: () => TimelineMarker({}) }),
+            TimelineItem({ status: 'pending', children: () => TimelineMarker({}) }),
           ],
         });
       const { container } = renderComponent(component);
@@ -776,12 +776,12 @@ describe('Timeline', () => {
     it('should render timeline with custom markers', () => {
       const component = () =>
         Timeline({
-          children: [
+          children: () => [
             TimelineItem({
-              children: TimelineMarker({ children: '✓' }),
+              children: () => TimelineMarker({ children: '✓' }),
             }),
             TimelineItem({
-              children: TimelineMarker({ children: '✗' }),
+              children: () => TimelineMarker({ children: '✗' }),
             }),
           ],
         });
@@ -825,7 +825,7 @@ describe('Timeline', () => {
       const component = () =>
         Timeline({
           children: () => TimelineItem({
-            children: TimelineMarker({ children: '' }),
+            children: () => TimelineMarker({ children: '' }),
           }),
         });
       const { container } = renderComponent(component);
@@ -873,13 +873,13 @@ describe('Timeline', () => {
     it('should work as activity feed', () => {
       const component = () =>
         Timeline({
-          children: [
+          children: () => [
             TimelineItem({
               status: 'completed',
-              children: [
+              children: () => [
                 TimelineMarker({}),
                 TimelineContent({
-                  children: [
+                  children: () => [
                     TimelineTitle({ children: 'User logged in' }),
                     TimelineTimestamp({ children: '5 minutes ago' }),
                   ],
@@ -888,10 +888,10 @@ describe('Timeline', () => {
             }),
             TimelineItem({
               status: 'completed',
-              children: [
+              children: () => [
                 TimelineMarker({}),
                 TimelineContent({
-                  children: [
+                  children: () => [
                     TimelineTitle({ children: 'Profile updated' }),
                     TimelineTimestamp({ children: '10 minutes ago' }),
                   ],
@@ -912,24 +912,24 @@ describe('Timeline', () => {
       const component = () =>
         Timeline({
           orientation: 'horizontal',
-          children: [
+          children: () => [
             TimelineItem({
               status: 'completed',
-              children: [
+              children: () => [
                 TimelineMarker({ children: '1' }),
                 TimelineContent({ children: 'Step 1' }),
               ],
             }),
             TimelineItem({
               status: 'active',
-              children: [
+              children: () => [
                 TimelineMarker({ children: '2' }),
                 TimelineContent({ children: 'Step 2' }),
               ],
             }),
             TimelineItem({
               status: 'pending',
-              children: [
+              children: () => [
                 TimelineMarker({ children: '3' }),
                 TimelineContent({ children: 'Step 3' }),
               ],
@@ -950,10 +950,10 @@ describe('Timeline', () => {
         Timeline({
           children: () => TimelineItem({
             status: 'error',
-            children: [
+            children: () => [
               TimelineMarker({ children: '✗' }),
               TimelineContent({
-                children: [
+                children: () => [
                   TimelineTitle({ children: 'Deployment failed' }),
                   TimelineDescription({ children: 'Error: timeout exceeded' }),
                 ],
@@ -976,7 +976,7 @@ describe('Timeline', () => {
         Timeline({
           children: () => TimelineItem({
             children: TimelineContent({
-              children: [
+              children: () => [
                 TimelineTitle({ children: 'Event' }),
                 showTimestamp ? TimelineTimestamp({ children: 'Now' }) : null,
               ],
@@ -1049,7 +1049,7 @@ describe('Timeline', () => {
     it('should work with mixed status items', () => {
       const component = () =>
         Timeline({
-          children: [
+          children: () => [
             TimelineItem({ status: 'completed' }),
             TimelineItem({ status: 'completed' }),
             TimelineItem({ status: 'active' }),
@@ -1067,11 +1067,11 @@ describe('Timeline', () => {
       const component = () =>
         Timeline({
           children: () => TimelineItem({
-            children: [
+            children: () => [
               TimelineMarker({}),
               TimelineConnector({}),
               TimelineContent({
-                children: [
+                children: () => [
                   TimelineTitle({ children: 'Title' }),
                   TimelineDescription({ children: 'Description' }),
                   TimelineTimestamp({ children: 'Time' }),

@@ -21,7 +21,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 1,
           totalPages: 5,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -34,7 +34,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 1,
           totalPages: 5,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -48,7 +48,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 1,
           totalPages: 5,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -61,7 +61,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 1,
           totalPages: 5,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -74,7 +74,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 1,
           totalPages: 5,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -86,7 +86,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 3,
           totalPages: 5,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -99,7 +99,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 1,
           totalPages: 10,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -112,7 +112,7 @@ describe('Pagination', () => {
           currentPage: 5,
           totalPages: 10,
           siblingCount: 2,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -125,7 +125,7 @@ describe('Pagination', () => {
           currentPage: 5,
           totalPages: 20,
           showFirstLast: false,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -139,7 +139,7 @@ describe('Pagination', () => {
           currentPage: 1,
           totalPages: 5,
           onPageChange,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -159,7 +159,7 @@ describe('Pagination', () => {
           currentPage: 1,
           totalPages: 5,
           'data-testid': 'pagination-nav',
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -173,7 +173,7 @@ describe('Pagination', () => {
           currentPage: 1,
           totalPages: 5,
           class: 'custom-pagination',
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -188,7 +188,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 1,
           totalPages: 5,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -201,7 +201,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 1,
           totalPages: 5,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -214,7 +214,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 1,
           totalPages: 5,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -227,7 +227,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 3,
           totalPages: 5,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -241,7 +241,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 2,
           totalPages: 5,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -255,7 +255,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 2,
           totalPages: 5,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -268,7 +268,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 1,
           totalPages: 5,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -284,7 +284,7 @@ describe('Pagination', () => {
           currentPage: 5,
           totalPages: 20,
           siblingCount: 1,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -298,7 +298,7 @@ describe('Pagination', () => {
           currentPage: 5,
           totalPages: 20,
           siblingCount: 1,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -312,7 +312,7 @@ describe('Pagination', () => {
           currentPage: 5,
           totalPages: 20,
           siblingCount: 1,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -325,7 +325,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 1,
           totalPages: 5,
-          children: PaginationItems({
+          children: () => PaginationItems({
             'data-testid': 'pagination-items',
           }),
         });
@@ -340,7 +340,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 1,
           totalPages: 5,
-          children: PaginationItems({
+          children: () => PaginationItems({
             class: 'custom-items',
           }),
         });
@@ -364,7 +364,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 1,
           totalPages: 5,
-          children: PaginationItems({ renderItem }),
+          children: () => PaginationItems({ renderItem }),
         });
 
       const { container } = renderComponent(component);
@@ -384,7 +384,7 @@ describe('Pagination', () => {
           currentPage: 5,
           totalPages: 20,
           siblingCount: 1,
-          children: PaginationItems({ renderEllipsis }),
+          children: () => PaginationItems({ renderEllipsis }),
         });
 
       const { container } = renderComponent(component);
@@ -400,7 +400,7 @@ describe('Pagination', () => {
           currentPage: 3,
           totalPages: 7,
           siblingCount: 1,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -414,7 +414,7 @@ describe('Pagination', () => {
           currentPage: 2,
           totalPages: 20,
           siblingCount: 1,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -428,7 +428,7 @@ describe('Pagination', () => {
           currentPage: 19,
           totalPages: 20,
           siblingCount: 1,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -442,7 +442,7 @@ describe('Pagination', () => {
           currentPage: 10,
           totalPages: 20,
           siblingCount: 1,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -457,7 +457,7 @@ describe('Pagination', () => {
           totalPages: 20,
           siblingCount: 1,
           showFirstLast: true,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -476,7 +476,7 @@ describe('Pagination', () => {
           totalPages: 20,
           siblingCount: 1,
           showFirstLast: false,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -490,7 +490,7 @@ describe('Pagination', () => {
           totalPages: 20,
           siblingCount: 2,
           showFirstLast: false,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -505,7 +505,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 2,
           totalPages: 5,
-          children: PaginationPrevious({}),
+          children: () => PaginationPrevious({}),
         });
 
       const { container } = renderComponent(component);
@@ -518,7 +518,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 2,
           totalPages: 5,
-          children: PaginationPrevious({}),
+          children: () => PaginationPrevious({}),
         });
 
       const { container } = renderComponent(component);
@@ -531,7 +531,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 2,
           totalPages: 5,
-          children: PaginationPrevious({ children: '← Prev' }),
+          children: () => PaginationPrevious({ children: '← Prev' }),
         });
 
       const { container } = renderComponent(component);
@@ -544,7 +544,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 2,
           totalPages: 5,
-          children: PaginationPrevious({}),
+          children: () => PaginationPrevious({}),
         });
 
       const { container } = renderComponent(component);
@@ -557,7 +557,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 1,
           totalPages: 5,
-          children: PaginationPrevious({}),
+          children: () => PaginationPrevious({}),
         });
 
       const { container } = renderComponent(component);
@@ -570,7 +570,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 3,
           totalPages: 5,
-          children: PaginationPrevious({}),
+          children: () => PaginationPrevious({}),
         });
 
       const { container } = renderComponent(component);
@@ -585,7 +585,7 @@ describe('Pagination', () => {
           currentPage: 3,
           totalPages: 5,
           onPageChange,
-          children: PaginationPrevious({}),
+          children: () => PaginationPrevious({}),
         });
 
       const { container } = renderComponent(component);
@@ -603,7 +603,7 @@ describe('Pagination', () => {
           currentPage: 1,
           totalPages: 5,
           onPageChange,
-          children: PaginationPrevious({}),
+          children: () => PaginationPrevious({}),
         });
 
       const { container } = renderComponent(component);
@@ -618,7 +618,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 2,
           totalPages: 5,
-          children: PaginationPrevious({
+          children: () => PaginationPrevious({
             'data-testid': 'prev-button',
           }),
         });
@@ -633,7 +633,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 2,
           totalPages: 5,
-          children: PaginationPrevious({
+          children: () => PaginationPrevious({
             class: 'custom-prev',
           }),
         });
@@ -650,7 +650,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 2,
           totalPages: 5,
-          children: PaginationNext({}),
+          children: () => PaginationNext({}),
         });
 
       const { container } = renderComponent(component);
@@ -663,7 +663,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 2,
           totalPages: 5,
-          children: PaginationNext({}),
+          children: () => PaginationNext({}),
         });
 
       const { container } = renderComponent(component);
@@ -676,7 +676,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 2,
           totalPages: 5,
-          children: PaginationNext({ children: 'Next →' }),
+          children: () => PaginationNext({ children: 'Next →' }),
         });
 
       const { container } = renderComponent(component);
@@ -689,7 +689,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 2,
           totalPages: 5,
-          children: PaginationNext({}),
+          children: () => PaginationNext({}),
         });
 
       const { container } = renderComponent(component);
@@ -702,7 +702,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 5,
           totalPages: 5,
-          children: PaginationNext({}),
+          children: () => PaginationNext({}),
         });
 
       const { container } = renderComponent(component);
@@ -715,7 +715,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 3,
           totalPages: 5,
-          children: PaginationNext({}),
+          children: () => PaginationNext({}),
         });
 
       const { container } = renderComponent(component);
@@ -730,7 +730,7 @@ describe('Pagination', () => {
           currentPage: 3,
           totalPages: 5,
           onPageChange,
-          children: PaginationNext({}),
+          children: () => PaginationNext({}),
         });
 
       const { container } = renderComponent(component);
@@ -748,7 +748,7 @@ describe('Pagination', () => {
           currentPage: 5,
           totalPages: 5,
           onPageChange,
-          children: PaginationNext({}),
+          children: () => PaginationNext({}),
         });
 
       const { container } = renderComponent(component);
@@ -763,7 +763,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 2,
           totalPages: 5,
-          children: PaginationNext({
+          children: () => PaginationNext({
             'data-testid': 'next-button',
           }),
         });
@@ -778,7 +778,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 2,
           totalPages: 5,
-          children: PaginationNext({
+          children: () => PaginationNext({
             class: 'custom-next',
           }),
         });
@@ -795,7 +795,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 3,
           totalPages: 10,
-          children: [
+          children: () => [
             PaginationPrevious({}),
             PaginationItems({}),
             PaginationNext({}),
@@ -816,7 +816,7 @@ describe('Pagination', () => {
           currentPage: 3,
           totalPages: 5,
           onPageChange,
-          children: [
+          children: () => [
             PaginationPrevious({}),
             PaginationItems({}),
             PaginationNext({}),
@@ -840,7 +840,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 1,
           totalPages: 1,
-          children: [
+          children: () => [
             PaginationPrevious({}),
             PaginationItems({}),
             PaginationNext({}),
@@ -863,7 +863,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 1,
           totalPages: 1,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -877,7 +877,7 @@ describe('Pagination', () => {
           currentPage: 50,
           totalPages: 100,
           siblingCount: 1,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -891,7 +891,7 @@ describe('Pagination', () => {
           currentPage: 1,
           totalPages: 5,
           onPageChange,
-          children: PaginationPrevious({}),
+          children: () => PaginationPrevious({}),
         });
 
       const { container } = renderComponent(component);
@@ -908,7 +908,7 @@ describe('Pagination', () => {
           currentPage: 5,
           totalPages: 5,
           onPageChange,
-          children: PaginationNext({}),
+          children: () => PaginationNext({}),
         });
 
       const { container } = renderComponent(component);
@@ -925,7 +925,7 @@ describe('Pagination', () => {
           currentPage: 3,
           totalPages: 5,
           onPageChange,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -941,7 +941,7 @@ describe('Pagination', () => {
           currentPage: 5,
           totalPages: 10,
           siblingCount: 0,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -954,7 +954,7 @@ describe('Pagination', () => {
           currentPage: 5,
           totalPages: 10,
           siblingCount: 10,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -967,7 +967,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 10,
           totalPages: 5,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -979,7 +979,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: -1,
           totalPages: 5,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -991,7 +991,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 1,
           totalPages: 0,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -1005,7 +1005,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 2,
           totalPages: 5,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -1019,7 +1019,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 3,
           totalPages: 5,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -1033,7 +1033,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 2,
           totalPages: 5,
-          children: [
+          children: () => [
             PaginationPrevious({}),
             PaginationItems({}),
             PaginationNext({}),
@@ -1054,7 +1054,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage: 1,
           totalPages: 5,
-          children: [
+          children: () => [
             PaginationPrevious({}),
             PaginationItems({}),
             PaginationNext({}),
@@ -1075,7 +1075,7 @@ describe('Pagination', () => {
           currentPage: 10,
           totalPages: 20,
           siblingCount: 1,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -1094,7 +1094,7 @@ describe('Pagination', () => {
           totalPages: 5,
           class: 'pagination-container',
           style: { display: 'flex', gap: '8px' },
-          children: [
+          children: () => [
             PaginationPrevious({ class: 'btn-prev' }),
             PaginationItems({ class: 'btn-group' }),
             PaginationNext({ class: 'btn-next' }),
@@ -1121,7 +1121,7 @@ describe('Pagination', () => {
           Pagination({
             currentPage: 1,
             totalPages: 10,
-            children: [
+            children: () => [
               PaginationPrevious({}),
               PaginationItems({}),
               PaginationNext({}),
@@ -1150,7 +1150,7 @@ describe('Pagination', () => {
           currentPage: 5,
           totalPages: 10,
           onPageChange,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -1172,7 +1172,7 @@ describe('Pagination', () => {
           totalPages: 100,
           siblingCount: 2,
           onPageChange,
-          children: [
+          children: () => [
             PaginationPrevious({}),
             PaginationItems({}),
             PaginationNext({}),
@@ -1196,7 +1196,7 @@ describe('Pagination', () => {
           currentPage: 50,
           totalPages: 1000,
           siblingCount: 2,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);
@@ -1212,7 +1212,7 @@ describe('Pagination', () => {
         Pagination({
           currentPage,
           totalPages: 10,
-          children: PaginationItems({}),
+          children: () => PaginationItems({}),
         });
 
       const { container } = renderComponent(component);

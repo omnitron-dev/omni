@@ -95,8 +95,8 @@ describe('Stepper Primitive', () => {
     it('should create Stepper with required props', () => {
       const component = () =>
         Stepper({
-          children: StepperList({
-            children: StepperItem({ value: 0, children: 'Step 1' }),
+          children: () => StepperList({
+            children: () => StepperItem({ value: 0, children: 'Step 1' }),
           }),
         });
       const { container } = renderComponent(component);
@@ -107,7 +107,7 @@ describe('Stepper Primitive', () => {
       const component = () =>
         Stepper({
           value: 1,
-          children: StepperList({}),
+          children: () => StepperList({}),
         });
       const { container } = renderComponent(component);
       expect(container).toBeTruthy();
@@ -117,7 +117,7 @@ describe('Stepper Primitive', () => {
       const component = () =>
         Stepper({
           onValueChange: () => {},
-          children: StepperList({}),
+          children: () => StepperList({}),
         });
       const { container } = renderComponent(component);
       expect(container).toBeTruthy();
@@ -127,7 +127,7 @@ describe('Stepper Primitive', () => {
       const component = () =>
         Stepper({
           defaultValue: 2,
-          children: StepperList({}),
+          children: () => StepperList({}),
         });
       const { container } = renderComponent(component);
       expect(container).toBeTruthy();
@@ -137,7 +137,7 @@ describe('Stepper Primitive', () => {
       const component = () =>
         Stepper({
           orientation: 'vertical',
-          children: StepperList({}),
+          children: () => StepperList({}),
         });
       const { container } = renderComponent(component);
       expect(container).toBeTruthy();
@@ -147,7 +147,7 @@ describe('Stepper Primitive', () => {
       const component = () =>
         Stepper({
           linear: true,
-          children: StepperList({}),
+          children: () => StepperList({}),
         });
       const { container } = renderComponent(component);
       expect(container).toBeTruthy();
@@ -160,7 +160,7 @@ describe('Stepper Primitive', () => {
           onValueChange: () => {},
           orientation: 'horizontal',
           linear: true,
-          children: StepperList({}),
+          children: () => StepperList({}),
         });
       const { container } = renderComponent(component);
       expect(container).toBeTruthy();
@@ -171,8 +171,8 @@ describe('Stepper Primitive', () => {
     it('should create list with children', () => {
       const component = () =>
         Stepper({
-          children: StepperList({
-            children: StepperItem({ value: 0, children: 'Step' }),
+          children: () => StepperList({
+            children: () => StepperItem({ value: 0, children: 'Step' }),
           }),
         });
       const { container } = renderComponent(component);
@@ -182,10 +182,10 @@ describe('Stepper Primitive', () => {
     it('should accept additional props', () => {
       const component = () =>
         Stepper({
-          children: StepperList({
+          children: () => StepperList({
             className: 'custom-list',
             'data-test': 'list',
-            children: StepperItem({ value: 0, children: 'Step' }),
+            children: () => StepperItem({ value: 0, children: 'Step' }),
           }),
         });
       const { container } = renderComponent(component);
@@ -198,8 +198,8 @@ describe('Stepper Primitive', () => {
       expect(() => {
         dispose = createRoot(() => {
           Stepper({
-            children: StepperList({
-              children: StepperItem({ value: 0, children: 'Step' }),
+            children: () => StepperList({
+              children: () => StepperItem({ value: 0, children: 'Step' }),
             }),
           });
         });
@@ -210,8 +210,8 @@ describe('Stepper Primitive', () => {
       expect(() => {
         dispose = createRoot(() => {
           Stepper({
-            children: StepperList({
-              children: StepperItem({
+            children: () => StepperList({
+              children: () => StepperItem({
                 value: 0,
                 completed: true,
                 children: 'Step',
@@ -226,8 +226,8 @@ describe('Stepper Primitive', () => {
       expect(() => {
         dispose = createRoot(() => {
           Stepper({
-            children: StepperList({
-              children: StepperItem({
+            children: () => StepperList({
+              children: () => StepperItem({
                 value: 0,
                 disabled: true,
                 children: 'Step',
@@ -242,8 +242,8 @@ describe('Stepper Primitive', () => {
       expect(() => {
         dispose = createRoot(() => {
           Stepper({
-            children: StepperList({
-              children: StepperItem({
+            children: () => StepperList({
+              children: () => StepperItem({
                 value: 0,
                 completed: true,
                 disabled: false,
@@ -262,10 +262,10 @@ describe('Stepper Primitive', () => {
       expect(() => {
         dispose = createRoot(() => {
           Stepper({
-            children: StepperList({
-              children: StepperItem({
+            children: () => StepperList({
+              children: () => StepperItem({
                 value: 0,
-                children: StepperTrigger({ children: 'Step 1' }),
+                children: () => StepperTrigger({ children: 'Step 1' }),
               }),
             }),
           });
@@ -277,10 +277,10 @@ describe('Stepper Primitive', () => {
       expect(() => {
         dispose = createRoot(() => {
           Stepper({
-            children: StepperList({
-              children: StepperItem({
+            children: () => StepperList({
+              children: () => StepperItem({
                 value: 0,
-                children: StepperTrigger({
+                children: () => StepperTrigger({
                   children: 'Step',
                   className: 'trigger',
                 }),
@@ -368,12 +368,12 @@ describe('Stepper Primitive', () => {
       expect(() => {
         dispose = createRoot(() => {
           Stepper({
-            children: [
+            children: () => [
               StepperList({
-                children: [
+                children: () => [
                   StepperItem({
                     value: 0,
-                    children: [
+                    children: () => [
                       StepperTrigger({ children: 'Step 1' }),
                       StepperDescription({ children: 'First step' }),
                     ],
@@ -381,7 +381,7 @@ describe('Stepper Primitive', () => {
                   StepperSeparator({}),
                   StepperItem({
                     value: 1,
-                    children: [
+                    children: () => [
                       StepperTrigger({ children: 'Step 2' }),
                       StepperDescription({ children: 'Second step' }),
                     ],
@@ -402,7 +402,7 @@ describe('Stepper Primitive', () => {
       dispose = createRoot(() => {
         Stepper({
           defaultValue: 2,
-          children: [
+          children: () => [
             StepperContent({ value: 0, children: 'Content 0' }),
             StepperContent({ value: 1, children: 'Content 1' }),
             StepperContent({ value: 2, children: 'Content 2' }),
@@ -417,7 +417,7 @@ describe('Stepper Primitive', () => {
     it('should default to step 0 if no defaultValue', () => {
       dispose = createRoot(() => {
         Stepper({
-          children: [
+          children: () => [
             StepperContent({ value: 0, children: 'Content 0' }),
             StepperContent({ value: 1, children: 'Content 1' }),
           ],
@@ -436,7 +436,7 @@ describe('Stepper Primitive', () => {
       dispose = createRoot(() => {
         Stepper({
           value: step(),
-          children: [
+          children: () => [
             StepperContent({ value: 0, children: 'Content 0' }),
             StepperContent({ value: 1, children: 'Content 1' }),
           ],
@@ -454,15 +454,15 @@ describe('Stepper Primitive', () => {
         Stepper({
           value: 0,
           onValueChange: onChange,
-          children: StepperList({
-            children: [
+          children: () => StepperList({
+            children: () => [
               StepperItem({
                 value: 0,
-                children: StepperTrigger({ children: 'Step 1' }),
+                children: () => StepperTrigger({ children: 'Step 1' }),
               }),
               StepperItem({
                 value: 1,
-                children: StepperTrigger({ children: 'Step 2' }),
+                children: () => StepperTrigger({ children: 'Step 2' }),
               }),
             ],
           }),
@@ -485,15 +485,15 @@ describe('Stepper Primitive', () => {
           value: step(),
           onValueChange: (v) => step.set(v),
           linear: false,
-          children: StepperList({
-            children: [
+          children: () => StepperList({
+            children: () => [
               StepperItem({
                 value: 0,
-                children: StepperTrigger({ children: 'Step 1' }),
+                children: () => StepperTrigger({ children: 'Step 1' }),
               }),
               StepperItem({
                 value: 2,
-                children: StepperTrigger({ children: 'Step 3' }),
+                children: () => StepperTrigger({ children: 'Step 3' }),
               }),
             ],
           }),
@@ -514,15 +514,15 @@ describe('Stepper Primitive', () => {
           value: step(),
           onValueChange: (v) => step.set(v),
           linear: false,
-          children: StepperList({
-            children: [
+          children: () => StepperList({
+            children: () => [
               StepperItem({
                 value: 0,
-                children: StepperTrigger({ children: 'Step 1' }),
+                children: () => StepperTrigger({ children: 'Step 1' }),
               }),
               StepperItem({
                 value: 2,
-                children: StepperTrigger({ children: 'Step 3' }),
+                children: () => StepperTrigger({ children: 'Step 3' }),
               }),
             ],
           }),
@@ -543,15 +543,15 @@ describe('Stepper Primitive', () => {
           value: step(),
           onValueChange: (v) => step.set(v),
           linear: false,
-          children: StepperList({
-            children: [
+          children: () => StepperList({
+            children: () => [
               StepperItem({
                 value: 0,
-                children: StepperTrigger({ children: 'Step 1' }),
+                children: () => StepperTrigger({ children: 'Step 1' }),
               }),
               StepperItem({
                 value: 3,
-                children: StepperTrigger({ children: 'Step 4' }),
+                children: () => StepperTrigger({ children: 'Step 4' }),
               }),
             ],
           }),
@@ -574,15 +574,15 @@ describe('Stepper Primitive', () => {
           value: step(),
           onValueChange: (v) => step.set(v),
           linear: true,
-          children: StepperList({
-            children: [
+          children: () => StepperList({
+            children: () => [
               StepperItem({
                 value: 0,
-                children: StepperTrigger({ children: 'Step 1' }),
+                children: () => StepperTrigger({ children: 'Step 1' }),
               }),
               StepperItem({
                 value: 1,
-                children: StepperTrigger({ children: 'Step 2' }),
+                children: () => StepperTrigger({ children: 'Step 2' }),
               }),
             ],
           }),
@@ -603,15 +603,15 @@ describe('Stepper Primitive', () => {
           value: step(),
           onValueChange: (v) => step.set(v),
           linear: true,
-          children: StepperList({
-            children: [
+          children: () => StepperList({
+            children: () => [
               StepperItem({
                 value: 0,
-                children: StepperTrigger({ children: 'Step 1' }),
+                children: () => StepperTrigger({ children: 'Step 1' }),
               }),
               StepperItem({
                 value: 1,
-                children: StepperTrigger({ children: 'Step 2' }),
+                children: () => StepperTrigger({ children: 'Step 2' }),
               }),
             ],
           }),
@@ -632,15 +632,15 @@ describe('Stepper Primitive', () => {
           value: step(),
           onValueChange: (v) => step.set(v),
           linear: true,
-          children: StepperList({
-            children: [
+          children: () => StepperList({
+            children: () => [
               StepperItem({
                 value: 0,
-                children: StepperTrigger({ children: 'Step 1' }),
+                children: () => StepperTrigger({ children: 'Step 1' }),
               }),
               StepperItem({
                 value: 2,
-                children: StepperTrigger({ children: 'Step 3' }),
+                children: () => StepperTrigger({ children: 'Step 3' }),
               }),
             ],
           }),
@@ -664,16 +664,16 @@ describe('Stepper Primitive', () => {
           value: step(),
           onValueChange: (v) => step.set(v),
           linear: true,
-          children: StepperList({
-            children: [
+          children: () => StepperList({
+            children: () => [
               StepperItem({
                 value: 0,
                 completed: true,
-                children: StepperTrigger({ children: 'Step 1' }),
+                children: () => StepperTrigger({ children: 'Step 1' }),
               }),
               StepperItem({
                 value: 2,
-                children: StepperTrigger({ children: 'Step 3' }),
+                children: () => StepperTrigger({ children: 'Step 3' }),
               }),
             ],
           }),
@@ -700,16 +700,16 @@ describe('Stepper Primitive', () => {
         Stepper({
           value: step(),
           onValueChange: (v) => step.set(v),
-          children: StepperList({
-            children: [
+          children: () => StepperList({
+            children: () => [
               StepperItem({
                 value: 0,
-                children: StepperTrigger({ children: 'Step 1' }),
+                children: () => StepperTrigger({ children: 'Step 1' }),
               }),
               StepperItem({
                 value: 1,
                 disabled: true,
-                children: StepperTrigger({ children: 'Step 2' }),
+                children: () => StepperTrigger({ children: 'Step 2' }),
               }),
             ],
           }),
@@ -725,11 +725,11 @@ describe('Stepper Primitive', () => {
     it('should render disabled attribute on trigger', () => {
       dispose = createRoot(() => {
         Stepper({
-          children: StepperList({
-            children: StepperItem({
+          children: () => StepperList({
+            children: () => StepperItem({
               value: 0,
               disabled: true,
-              children: StepperTrigger({ children: 'Step' }),
+              children: () => StepperTrigger({ children: 'Step' }),
             }),
           }),
         });
@@ -744,7 +744,7 @@ describe('Stepper Primitive', () => {
     it('should default to horizontal', () => {
       dispose = createRoot(() => {
         Stepper({
-          children: StepperList({}),
+          children: () => StepperList({}),
         });
       });
 
@@ -756,7 +756,7 @@ describe('Stepper Primitive', () => {
       dispose = createRoot(() => {
         Stepper({
           orientation: 'horizontal',
-          children: StepperList({}),
+          children: () => StepperList({}),
         });
       });
 
@@ -768,7 +768,7 @@ describe('Stepper Primitive', () => {
       dispose = createRoot(() => {
         Stepper({
           orientation: 'vertical',
-          children: StepperList({}),
+          children: () => StepperList({}),
         });
       });
 
@@ -780,8 +780,8 @@ describe('Stepper Primitive', () => {
       dispose = createRoot(() => {
         Stepper({
           orientation: 'vertical',
-          children: StepperList({
-            children: StepperItem({ value: 0, children: 'Step' }),
+          children: () => StepperList({
+            children: () => StepperItem({ value: 0, children: 'Step' }),
           }),
         });
       });
@@ -796,7 +796,7 @@ describe('Stepper Primitive', () => {
       dispose = createRoot(() => {
         Stepper({
           value: 0,
-          children: [
+          children: () => [
             StepperContent({ value: 0, children: 'Content 0' }),
             StepperContent({ value: 1, children: 'Content 1' }),
           ],
@@ -816,7 +816,7 @@ describe('Stepper Primitive', () => {
       dispose = createRoot(() => {
         Stepper({
           value: step(),
-          children: [
+          children: () => [
             StepperContent({ value: 0, children: 'Content 0' }),
             StepperContent({ value: 1, children: 'Content 1' }),
           ],
@@ -863,7 +863,7 @@ describe('Stepper Primitive', () => {
     it('should have aria-label on list', () => {
       dispose = createRoot(() => {
         Stepper({
-          children: StepperList({}),
+          children: () => StepperList({}),
         });
       });
 
@@ -874,7 +874,7 @@ describe('Stepper Primitive', () => {
     it('should render as ol element', () => {
       dispose = createRoot(() => {
         Stepper({
-          children: StepperList({}),
+          children: () => StepperList({}),
         });
       });
 
@@ -885,7 +885,7 @@ describe('Stepper Primitive', () => {
     it('should have data-stepper-list attribute', () => {
       dispose = createRoot(() => {
         Stepper({
-          children: StepperList({}),
+          children: () => StepperList({}),
         });
       });
 
@@ -898,8 +898,8 @@ describe('Stepper Primitive', () => {
     it('should render as li element', () => {
       dispose = createRoot(() => {
         Stepper({
-          children: StepperList({
-            children: StepperItem({ value: 0, children: 'Step' }),
+          children: () => StepperList({
+            children: () => StepperItem({ value: 0, children: 'Step' }),
           }),
         });
       });
@@ -911,8 +911,8 @@ describe('Stepper Primitive', () => {
     it('should have data-value attribute', () => {
       dispose = createRoot(() => {
         Stepper({
-          children: StepperList({
-            children: StepperItem({ value: 5, children: 'Step' }),
+          children: () => StepperList({
+            children: () => StepperItem({ value: 5, children: 'Step' }),
           }),
         });
       });
@@ -925,8 +925,8 @@ describe('Stepper Primitive', () => {
       dispose = createRoot(() => {
         Stepper({
           value: 0,
-          children: StepperList({
-            children: StepperItem({ value: 0, children: 'Step' }),
+          children: () => StepperList({
+            children: () => StepperItem({ value: 0, children: 'Step' }),
           }),
         });
       });
@@ -938,8 +938,8 @@ describe('Stepper Primitive', () => {
     it('should have data-completed when completed', () => {
       dispose = createRoot(() => {
         Stepper({
-          children: StepperList({
-            children: StepperItem({
+          children: () => StepperList({
+            children: () => StepperItem({
               value: 0,
               completed: true,
               children: 'Step',
@@ -955,8 +955,8 @@ describe('Stepper Primitive', () => {
     it('should have data-disabled when disabled', () => {
       dispose = createRoot(() => {
         Stepper({
-          children: StepperList({
-            children: StepperItem({
+          children: () => StepperList({
+            children: () => StepperItem({
               value: 0,
               disabled: true,
               children: 'Step',
@@ -973,8 +973,8 @@ describe('Stepper Primitive', () => {
       dispose = createRoot(() => {
         Stepper({
           value: 0,
-          children: StepperList({
-            children: StepperItem({ value: 0, children: 'Step' }),
+          children: () => StepperList({
+            children: () => StepperItem({ value: 0, children: 'Step' }),
           }),
         });
       });
@@ -988,10 +988,10 @@ describe('Stepper Primitive', () => {
     it('should render as button element', () => {
       dispose = createRoot(() => {
         Stepper({
-          children: StepperList({
-            children: StepperItem({
+          children: () => StepperList({
+            children: () => StepperItem({
               value: 0,
-              children: StepperTrigger({ children: 'Step' }),
+              children: () => StepperTrigger({ children: 'Step' }),
             }),
           }),
         });
@@ -1004,10 +1004,10 @@ describe('Stepper Primitive', () => {
     it('should have type button', () => {
       dispose = createRoot(() => {
         Stepper({
-          children: StepperList({
-            children: StepperItem({
+          children: () => StepperList({
+            children: () => StepperItem({
               value: 0,
-              children: StepperTrigger({ children: 'Step' }),
+              children: () => StepperTrigger({ children: 'Step' }),
             }),
           }),
         });
@@ -1021,10 +1021,10 @@ describe('Stepper Primitive', () => {
       dispose = createRoot(() => {
         Stepper({
           value: 0,
-          children: StepperList({
-            children: StepperItem({
+          children: () => StepperList({
+            children: () => StepperItem({
               value: 0,
-              children: StepperTrigger({ children: 'Step' }),
+              children: () => StepperTrigger({ children: 'Step' }),
             }),
           }),
         });
@@ -1038,11 +1038,11 @@ describe('Stepper Primitive', () => {
       dispose = createRoot(() => {
         Stepper({
           value: 1,
-          children: StepperList({
-            children: StepperItem({
+          children: () => StepperList({
+            children: () => StepperItem({
               value: 0,
               completed: true,
-              children: StepperTrigger({ children: 'Step' }),
+              children: () => StepperTrigger({ children: 'Step' }),
             }),
           }),
         });
@@ -1056,10 +1056,10 @@ describe('Stepper Primitive', () => {
       dispose = createRoot(() => {
         Stepper({
           value: 0,
-          children: StepperList({
-            children: StepperItem({
+          children: () => StepperList({
+            children: () => StepperItem({
               value: 1,
-              children: StepperTrigger({ children: 'Step' }),
+              children: () => StepperTrigger({ children: 'Step' }),
             }),
           }),
         });
@@ -1132,10 +1132,10 @@ describe('Stepper Primitive', () => {
     it('should render description text', () => {
       dispose = createRoot(() => {
         Stepper({
-          children: StepperList({
-            children: StepperItem({
+          children: () => StepperList({
+            children: () => StepperItem({
               value: 0,
-              children: StepperDescription({ children: 'Step details' }),
+              children: () => StepperDescription({ children: 'Step details' }),
             }),
           }),
         });
@@ -1161,10 +1161,10 @@ describe('Stepper Primitive', () => {
 
       dispose = createRoot(() => {
         Stepper({
-          children: StepperList({
-            children: StepperItem({
+          children: () => StepperList({
+            children: () => StepperItem({
               value: 0,
-              children: StepperTrigger({
+              children: () => StepperTrigger({
                 children: 'Step',
                 onClick,
               }),
@@ -1186,15 +1186,15 @@ describe('Stepper Primitive', () => {
         Stepper({
           value: 0,
           onValueChange: onChange,
-          children: StepperList({
-            children: [
+          children: () => StepperList({
+            children: () => [
               StepperItem({
                 value: 0,
-                children: StepperTrigger({ children: 'Step 1' }),
+                children: () => StepperTrigger({ children: 'Step 1' }),
               }),
               StepperItem({
                 value: 1,
-                children: StepperTrigger({ children: 'Step 2' }),
+                children: () => StepperTrigger({ children: 'Step 2' }),
               }),
             ],
           }),
@@ -1213,19 +1213,19 @@ describe('Stepper Primitive', () => {
     it('should support 3 steps', () => {
       dispose = createRoot(() => {
         Stepper({
-          children: StepperList({
-            children: [
+          children: () => StepperList({
+            children: () => [
               StepperItem({
                 value: 0,
-                children: StepperTrigger({ children: 'Step 1' }),
+                children: () => StepperTrigger({ children: 'Step 1' }),
               }),
               StepperItem({
                 value: 1,
-                children: StepperTrigger({ children: 'Step 2' }),
+                children: () => StepperTrigger({ children: 'Step 2' }),
               }),
               StepperItem({
                 value: 2,
-                children: StepperTrigger({ children: 'Step 3' }),
+                children: () => StepperTrigger({ children: 'Step 3' }),
               }),
             ],
           }),
@@ -1239,27 +1239,27 @@ describe('Stepper Primitive', () => {
     it('should support 5 steps', () => {
       dispose = createRoot(() => {
         Stepper({
-          children: StepperList({
-            children: [
+          children: () => StepperList({
+            children: () => [
               StepperItem({
                 value: 0,
-                children: StepperTrigger({ children: 'Step 1' }),
+                children: () => StepperTrigger({ children: 'Step 1' }),
               }),
               StepperItem({
                 value: 1,
-                children: StepperTrigger({ children: 'Step 2' }),
+                children: () => StepperTrigger({ children: 'Step 2' }),
               }),
               StepperItem({
                 value: 2,
-                children: StepperTrigger({ children: 'Step 3' }),
+                children: () => StepperTrigger({ children: 'Step 3' }),
               }),
               StepperItem({
                 value: 3,
-                children: StepperTrigger({ children: 'Step 4' }),
+                children: () => StepperTrigger({ children: 'Step 4' }),
               }),
               StepperItem({
                 value: 4,
-                children: StepperTrigger({ children: 'Step 5' }),
+                children: () => StepperTrigger({ children: 'Step 5' }),
               }),
             ],
           }),
@@ -1277,20 +1277,20 @@ describe('Stepper Primitive', () => {
         Stepper({
           value: step(),
           onValueChange: (v) => step.set(v),
-          children: [
+          children: () => [
             StepperList({
-              children: [
+              children: () => [
                 StepperItem({
                   value: 0,
-                  children: StepperTrigger({ children: 'Step 1' }),
+                  children: () => StepperTrigger({ children: 'Step 1' }),
                 }),
                 StepperItem({
                   value: 1,
-                  children: StepperTrigger({ children: 'Step 2' }),
+                  children: () => StepperTrigger({ children: 'Step 2' }),
                 }),
                 StepperItem({
                   value: 2,
-                  children: StepperTrigger({ children: 'Step 3' }),
+                  children: () => StepperTrigger({ children: 'Step 3' }),
                 }),
               ],
             }),

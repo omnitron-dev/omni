@@ -86,8 +86,8 @@ interface TimelineContextValue {
 }
 
 interface TimelineItemContextValue {
-  /** Item status */
-  status: TimelineItemStatus;
+  /** Item status - reactive getter */
+  status: () => TimelineItemStatus;
 }
 
 // ============================================================================
@@ -150,10 +150,9 @@ export const Timeline = defineComponent<TimelineProps>((props) => {
 
 export const TimelineItem = defineComponent<TimelineItemProps>((props) => {
   const timeline = useTimelineContext();
-  const status = props.status ?? 'pending';
 
   const contextValue: TimelineItemContextValue = {
-    status,
+    status: () => props.status ?? 'pending',
   };
 
   // Provide context before return
@@ -162,6 +161,9 @@ export const TimelineItem = defineComponent<TimelineItemProps>((props) => {
   return () => {
     const { children: childrenProp, ...rest } = props;
     const children = typeof childrenProp === 'function' ? childrenProp() : childrenProp;
+
+    // Evaluate reactive status in render function
+    const status = contextValue.status();
 
     return jsx('div', {
       'data-timeline-item': '',
@@ -184,9 +186,12 @@ export const TimelineMarker = defineComponent<TimelineMarkerProps>((props) => {
   return () => {
     const { children, ...rest } = props;
 
+    // Evaluate reactive status in render function
+    const status = item.status();
+
     return jsx('div', {
       'data-timeline-marker': '',
-      'data-status': item.status,
+      'data-status': status,
       'aria-hidden': 'true',
       ...rest,
       children: children ?? jsx('div', { 'data-timeline-marker-dot': '' }),
@@ -204,9 +209,12 @@ export const TimelineConnector = defineComponent<TimelineConnectorProps>((props)
   return () => {
     const { ...rest } = props;
 
+    // Evaluate reactive status in render function
+    const status = item.status();
+
     return jsx('div', {
       'data-timeline-connector': '',
-      'data-status': item.status,
+      'data-status': status,
       'aria-hidden': 'true',
       ...rest,
     });
@@ -218,7 +226,10 @@ export const TimelineConnector = defineComponent<TimelineConnectorProps>((props)
 // ============================================================================
 
 export const TimelineContent = defineComponent<TimelineContentProps>((props) => () => {
-    const { children, ...rest } = props;
+    const { children: childrenProp, ...rest } = props;
+
+    // Evaluate function children
+    const children = typeof childrenProp === 'function' ? childrenProp() : childrenProp;
 
     return jsx('div', {
       'data-timeline-content': '',

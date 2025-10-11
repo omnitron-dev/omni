@@ -38,7 +38,7 @@ describe('Tooltip', () => {
     it('should render trigger button', () => {
       const component = () =>
         Tooltip({
-          children: TooltipTrigger({ children: 'Trigger' }),
+          children: () => TooltipTrigger({ children: 'Trigger' }),
         });
 
       const { container } = renderComponent(component);
@@ -50,7 +50,7 @@ describe('Tooltip', () => {
     it('should render with default delay duration', () => {
       const component = () =>
         Tooltip({
-          children: TooltipTrigger({ children: 'Trigger' }),
+          children: () => TooltipTrigger({ children: 'Trigger' }),
         });
 
       const { container } = renderComponent(component);
@@ -62,7 +62,7 @@ describe('Tooltip', () => {
       const component = () =>
         Tooltip({
           delayDuration: 500,
-          children: TooltipTrigger({ children: 'Trigger' }),
+          children: () => TooltipTrigger({ children: 'Trigger' }),
         });
 
       const { container } = renderComponent(component);
@@ -74,7 +74,7 @@ describe('Tooltip', () => {
       const component = () =>
         Tooltip({
           closeDelay: 200,
-          children: TooltipTrigger({ children: 'Trigger' }),
+          children: () => TooltipTrigger({ children: 'Trigger' }),
         });
 
       const { container } = renderComponent(component);
@@ -86,7 +86,7 @@ describe('Tooltip', () => {
       const component = () =>
         Tooltip({
           disabled: true,
-          children: TooltipTrigger({ children: 'Trigger' }),
+          children: () => TooltipTrigger({ children: 'Trigger' }),
         });
 
       const { container } = renderComponent(component);
@@ -99,7 +99,7 @@ describe('Tooltip', () => {
     it('should render as button element', () => {
       const component = () =>
         Tooltip({
-          children: TooltipTrigger({ children: 'Hover me' }),
+          children: () => TooltipTrigger({ children: 'Hover me' }),
         });
 
       const { container } = renderComponent(component);
@@ -111,7 +111,7 @@ describe('Tooltip', () => {
     it('should have type="button"', () => {
       const component = () =>
         Tooltip({
-          children: TooltipTrigger({ children: 'Trigger' }),
+          children: () => TooltipTrigger({ children: 'Trigger' }),
         });
 
       const { container } = renderComponent(component);
@@ -122,7 +122,7 @@ describe('Tooltip', () => {
     it('should have unique id', () => {
       const component = () =>
         Tooltip({
-          children: TooltipTrigger({ children: 'Trigger' }),
+          children: () => TooltipTrigger({ children: 'Trigger' }),
         });
 
       const { container } = renderComponent(component);
@@ -134,7 +134,7 @@ describe('Tooltip', () => {
     it('should have data-state="closed" initially', () => {
       const component = () =>
         Tooltip({
-          children: TooltipTrigger({ children: 'Trigger' }),
+          children: () => TooltipTrigger({ children: 'Trigger' }),
         });
 
       const { container } = renderComponent(component);
@@ -145,7 +145,7 @@ describe('Tooltip', () => {
     it('should render text children', () => {
       const component = () =>
         Tooltip({
-          children: TooltipTrigger({ children: 'Click me' }),
+          children: () => TooltipTrigger({ children: 'Click me' }),
         });
 
       const { container } = renderComponent(component);
@@ -156,7 +156,7 @@ describe('Tooltip', () => {
     it('should forward custom props', () => {
       const component = () =>
         Tooltip({
-          children: TooltipTrigger({
+          children: () => TooltipTrigger({
             children: 'Trigger',
             'data-testid': 'custom-trigger',
           }),
@@ -170,7 +170,7 @@ describe('Tooltip', () => {
     it('should apply custom class names', () => {
       const component = () =>
         Tooltip({
-          children: TooltipTrigger({
+          children: () => TooltipTrigger({
             children: 'Trigger',
             class: 'custom-trigger',
           }),
@@ -338,7 +338,7 @@ describe('Tooltip', () => {
     it('should not have aria-describedby when closed', () => {
       const component = () =>
         Tooltip({
-          children: TooltipTrigger({ children: 'Trigger' }),
+          children: () => TooltipTrigger({ children: 'Trigger' }),
         });
 
       const { container } = renderComponent(component);

@@ -199,7 +199,10 @@ export const Stepper = defineComponent<StepperProps>((props) => {
   provideContext(StepperContext, contextValue);
 
   return () => {
-    const { children, orientation = 'horizontal' } = props;
+    const { children: childrenProp, orientation = 'horizontal' } = props;
+
+    // Evaluate function children
+    const children = typeof childrenProp === 'function' ? childrenProp() : childrenProp;
 
     // Return children directly - context already provided via provideContext
     return jsx('div', {
@@ -217,7 +220,10 @@ export const Stepper = defineComponent<StepperProps>((props) => {
  */
 export const StepperList = defineComponent<StepperListProps>((props) => () => {
   const context = useStepperContext();
-  const { children, ...restProps } = props;
+  const { children: childrenProp, ...restProps } = props;
+
+  // Evaluate function children
+  const children = typeof childrenProp === 'function' ? childrenProp() : childrenProp;
 
   return jsx('ol', {
     ...restProps,
@@ -256,7 +262,10 @@ export const StepperItem = defineComponent<StepperItemProps>((props) => {
   provideContext(StepperItemContext, itemContextValue);
 
   return () => {
-    const { children, value } = props;
+    const { children: childrenProp, value } = props;
+
+    // Evaluate function children
+    const children = typeof childrenProp === 'function' ? childrenProp() : childrenProp;
 
     // Evaluate reactive values in render function
     const isActive = itemContextValue.isActive();

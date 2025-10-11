@@ -9,7 +9,7 @@
  */
 
 import { defineComponent } from '../core/component/define.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal } from '../core/reactivity/signal.js';
 import { onMount } from '../core/component/lifecycle.js';
 import { Portal } from '../control-flow/Portal.js';
@@ -124,10 +124,13 @@ export interface HoverCardContextValue {
   close: () => void;
   triggerId: string;
   contentId: string;
+  openDelay: () => number;
+  closeDelay: () => number;
 }
 
 const noop = () => {};
 const noopGetter = () => false;
+const defaultDelay = () => 0;
 
 export const HoverCardContext = createContext<HoverCardContextValue>(
   {
@@ -136,6 +139,8 @@ export const HoverCardContext = createContext<HoverCardContextValue>(
     close: noop,
     triggerId: '',
     contentId: '',
+    openDelay: defaultDelay,
+    closeDelay: defaultDelay,
   },
   'HoverCard'
 );
@@ -179,13 +184,18 @@ export const HoverCard = defineComponent<HoverCardProps>((props) => {
     },
     triggerId,
     contentId,
+    openDelay: () => props.openDelay ?? 700,
+    closeDelay: () => props.closeDelay ?? 300,
   };
+
+  // Provide context in setup phase
+  provideContext(HoverCardContext, contextValue);
 
   return () => {
     const resolvedChildren = typeof props.children === 'function' ? props.children() : props.children;
 
-    return jsx(HoverCardContext.Provider, {
-      value: contextValue,
+    return jsx('div', {
+      'data-hover-card': '',
       children: resolvedChildren,
     });
   };
@@ -201,9 +211,6 @@ export const HoverCardTrigger = defineComponent<{ children: any; [key: string]: 
 
     let openTimeoutId: ReturnType<typeof setTimeout> | null = null;
     let closeTimeoutId: ReturnType<typeof setTimeout> | null = null;
-
-    const openDelay = 700; // default delay
-    const closeDelay = 300;
 
     onMount(() => () => {
         if (openTimeoutId) clearTimeout(openTimeoutId);
@@ -225,7 +232,7 @@ export const HoverCardTrigger = defineComponent<{ children: any; [key: string]: 
 
         openTimeoutId = setTimeout(() => {
           ctx.open();
-        }, openDelay);
+        }, ctx.openDelay());
       };
 
       const handlePointerLeave = () => {
@@ -236,7 +243,7 @@ export const HoverCardTrigger = defineComponent<{ children: any; [key: string]: 
 
         closeTimeoutId = setTimeout(() => {
           ctx.close();
-        }, closeDelay);
+        }, ctx.closeDelay());
       };
 
       const handleFocus = () => {
@@ -329,34 +336,28 @@ export const HoverCardContent = defineComponent<HoverCardContentProps>((props) =
       effect(() => {
         const isOpen = ctx.isOpen();
         el.setAttribute('data-state', isOpen ? 'open' : 'closed');
-
-        if (isOpen) {
-          el.style.display = '';
-          el.hidden = false;
-        } else {
-          el.style.display = 'none';
-          el.hidden = true;
-        }
       });
     };
 
-    // Always render the content, control visibility via effects
+    // Create the content div
+    const contentDiv = jsx('div', {
+      ...props,
+      ref: refCallback,
+      id: ctx.contentId,
+      role: 'dialog',
+      'aria-labelledby': ctx.triggerId,
+      'data-state': ctx.isOpen() ? 'open' : 'closed',
+      onPointerEnter: handlePointerEnter,
+      onPointerLeave: handlePointerLeave,
+    });
+
+    // Only render portal when open
+    if (!ctx.isOpen()) {
+      return null;
+    }
+
     return jsx(Portal, {
-      children: jsx('div', {
-        ...props,
-        ref: refCallback,
-        id: ctx.contentId,
-        role: 'dialog',
-        'aria-labelledby': ctx.triggerId,
-        'data-state': ctx.isOpen() ? 'open' : 'closed',
-        hidden: !ctx.isOpen(),
-        style: {
-          ...props.style,
-          display: !ctx.isOpen() ? 'none' : undefined,
-        },
-        onPointerEnter: handlePointerEnter,
-        onPointerLeave: handlePointerLeave,
-      }),
+      children: contentDiv,
     });
   };
 });

@@ -10,7 +10,6 @@
 import { defineComponent } from '../core/component/define.js';
 import { createContext, useContext } from '../core/component/context.js';
 import { signal } from '../core/reactivity/signal.js';
-import { effect } from '../core/reactivity/effect.js';
 import { onMount } from '../core/component/lifecycle.js';
 import { Portal } from '../control-flow/Portal.js';
 import { jsx } from '../jsx-runtime.js';
@@ -309,23 +308,18 @@ export const TooltipContent = defineComponent<TooltipContentProps>((props) => {
 
   const refCallback = (el: HTMLElement | null) => {
     contentRef = el;
-    if (!el) return;
-
-    // Set up effect to update visibility and position when isOpen changes
-    effect(() => {
-      const isOpen = ctx.isOpen();
-      el.style.display = isOpen || props.forceMount ? '' : 'none';
-      el.setAttribute('data-state', isOpen ? 'open' : 'closed');
-      if (isOpen) {
-        // Update position when opening
-        triggerElement = document.getElementById(ctx.triggerId);
-        updatePosition();
-      }
-    });
+    if (el && ctx.isOpen()) {
+      updatePosition();
+    }
   };
 
   return () => {
     const { children, side, align, sideOffset, alignOffset, avoidCollisions, collisionPadding, forceMount, ...restProps } = props;
+
+    // Conditional rendering like Dialog
+    if (!ctx.isOpen() && !forceMount) {
+      return null;
+    }
 
     return jsx(Portal, {
       children: jsx('div', {
@@ -335,7 +329,6 @@ export const TooltipContent = defineComponent<TooltipContentProps>((props) => {
         role: 'tooltip',
         'data-state': ctx.isOpen() ? 'open' : 'closed',
         style: {
-          display: ctx.isOpen() || props.forceMount ? '' : 'none',
           ...restProps.style,
         },
         onPointerEnter: handlePointerEnter,

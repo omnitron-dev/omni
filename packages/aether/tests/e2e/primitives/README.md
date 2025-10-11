@@ -336,7 +336,7 @@ npx playwright show-trace trace.zip
 
 - [Playwright Documentation](https://playwright.dev)
 - [WAI-ARIA Authoring Practices](https://www.w3.org/WAI/ARIA/apg/)
-- [Aether Primitives Spec](../../../docs/13-PRIMITIVES.md)
+- [Aether Primitives Spec](../../../docs/13-PRIMITIVES/README.md)
 - [Accessibility Guidelines](../../../docs/26-ACCESSIBILITY.md)
 
 ## Contributing

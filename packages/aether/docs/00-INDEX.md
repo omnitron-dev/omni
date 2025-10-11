@@ -138,7 +138,7 @@
 
 ### Part VII: UI Primitives
 
-13. [13-PRIMITIVES.md](./13-PRIMITIVES.md) — Headless UI Primitives (shadcn-like)
+13. [13-PRIMITIVES/README.md](./13-PRIMITIVES/README.md) — Headless UI Primitives (shadcn-like)
     - Headless component philosophy
     - Accessibility built-in by default
     - List of primitives:

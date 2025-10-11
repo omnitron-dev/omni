@@ -867,4 +867,4 @@ The Aether theming system provides:
 - ✅ **SSR** — Server-side rendering with themes
 - ✅ **Accessibility** — System preference support
 
-Next section: [13-PRIMITIVES.md](./13-PRIMITIVES.md)
+Next section: [13-PRIMITIVES/README.md](./13-PRIMITIVES/README.md)

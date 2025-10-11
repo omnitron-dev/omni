@@ -153,7 +153,7 @@ Forms have **built-in accessibility**:
 
 ## Integration with Primitives
 
-`createForm` works seamlessly with **Form Primitives** from `nexus/primitives` (see **13-PRIMITIVES.md**). Primitives handle composition and accessibility, while `createForm` handles state and validation.
+`createForm` works seamlessly with **Form Primitives** from `nexus/primitives` (see **[13-PRIMITIVES/README.md](./13-PRIMITIVES/README.md)**). Primitives handle composition and accessibility, while `createForm` handles state and validation.
 
 ### Why Use Primitives?
 

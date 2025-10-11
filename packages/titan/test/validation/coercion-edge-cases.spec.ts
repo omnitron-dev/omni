@@ -17,7 +17,6 @@
 
 import { z } from 'zod';
 import { ValidationEngine } from '../../src/validation/validation-engine.js';
-import { ValidationError } from '../../src/errors/validation.js';
 
 // Helper for tests
 function fail(message: string): never {

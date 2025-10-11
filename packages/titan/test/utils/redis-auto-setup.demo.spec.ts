@@ -7,7 +7,7 @@
  * NO manual Redis setup required!
  */
 
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import { setupRedisContainer, setupSharedRedisContainer, setupRedisForTests } from './redis-auto-setup.js';
 
 describe('Redis Auto-Setup Demo', () => {

@@ -10,6 +10,7 @@
 import { defineComponent } from '../core/component/define.js';
 import { signal, type WritableSignal } from '../core/reactivity/signal.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
+import { createRef } from '../core/component/refs.js';
 import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 import { generateId } from './utils/index.js';
@@ -331,6 +332,28 @@ export const AccordionItem = defineComponent<AccordionItemProps>((props) => {
   // Provide item context during setup so children can access it
   provideContext(AccordionItemContext, itemContextValue);
 
+  // Create ref callback for reactive updates
+  const refCallback = (element: HTMLElement | null) => {
+    if (!element) return;
+
+    // Set up effect to reactively update attributes when context value changes
+    effect(() => {
+      const currentValue = ctx.value();
+      const type = ctx.type();
+      const isOpen = type === 'single'
+        ? currentValue === itemValue
+        : Array.isArray(currentValue) && currentValue.includes(itemValue);
+
+      element.setAttribute('data-state', isOpen ? 'open' : 'closed');
+
+      if (itemDisabled()) {
+        element.setAttribute('data-disabled', '');
+      } else {
+        element.removeAttribute('data-disabled');
+      }
+    });
+  };
+
   return () => {
 
     const { value, disabled, children: childrenProp, ...restProps } = props;
@@ -345,27 +368,14 @@ export const AccordionItem = defineComponent<AccordionItemProps>((props) => {
       ? currentValue === itemValue
       : Array.isArray(currentValue) && currentValue.includes(itemValue);
 
-
-    // Create the div element
-    const div = jsx('div', {
+    // Create the div element with ref callback for reactivity
+    return jsx('div', {
       ...restProps,
+      ref: refCallback,
       'data-state': initialIsOpen ? 'open' : 'closed',
       'data-disabled': itemDisabled() ? '' : undefined,
       children,
-    }) as HTMLElement;
-
-    // Set up effect to reactively update attributes when context value changes
-    effect(() => {
-      const currentValue = ctx.value();
-      const type = ctx.type();
-      const isOpen = type === 'single'
-        ? currentValue === itemValue
-        : Array.isArray(currentValue) && currentValue.includes(itemValue);
-
-      div.setAttribute('data-state', isOpen ? 'open' : 'closed');
     });
-
-    return div;
   };
 });
 
@@ -387,87 +397,61 @@ export interface AccordionTriggerProps {
 /**
  * Accordion trigger component - expand/collapse button
  */
-export const AccordionTrigger = defineComponent<AccordionTriggerProps>((props) => () => {
-    // Access context in render
-    const ctx = useContext(AccordionContext);
-    const itemCtx = useContext(AccordionItemContext);
+export const AccordionTrigger = defineComponent<AccordionTriggerProps>((props) => {
+  // Access context during setup
+  const ctx = useContext(AccordionContext);
+  const itemCtx = useContext(AccordionItemContext);
 
-    const handleClick = () => {
-      itemCtx.toggle();
-    };
+  const handleClick = () => {
+    itemCtx.toggle();
+  };
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const orientation = ctx.orientation();
+  const handleKeyDown = (event: KeyboardEvent) => {
+    const orientation = ctx.orientation();
 
-      // Handle arrow keys for navigation
-      if (
-        (orientation === 'vertical' && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) ||
-        (orientation === 'horizontal' && (event.key === 'ArrowRight' || event.key === 'ArrowLeft'))
-      ) {
-        event.preventDefault();
+    // Handle arrow keys for navigation
+    if (
+      (orientation === 'vertical' && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) ||
+      (orientation === 'horizontal' && (event.key === 'ArrowRight' || event.key === 'ArrowLeft'))
+    ) {
+      event.preventDefault();
 
-        // Find all triggers
-        const accordion = document.getElementById(ctx.accordionId);
-        const triggers = accordion?.querySelectorAll('[role="button"][aria-expanded]');
-        if (!triggers) return;
+      // Find all triggers
+      const accordion = document.getElementById(ctx.accordionId);
+      const triggers = accordion?.querySelectorAll('[role="button"][aria-expanded]');
+      if (!triggers) return;
 
-        const triggerArray = Array.from(triggers) as HTMLElement[];
-        const currentIndex = triggerArray.findIndex(el => el === event.target);
-        if (currentIndex === -1) return;
+      const triggerArray = Array.from(triggers) as HTMLElement[];
+      const currentIndex = triggerArray.findIndex(el => el === event.target);
+      if (currentIndex === -1) return;
 
-        let nextIndex = currentIndex;
-        const isNext = event.key === 'ArrowDown' || event.key === 'ArrowRight';
+      let nextIndex = currentIndex;
+      const isNext = event.key === 'ArrowDown' || event.key === 'ArrowRight';
 
-        if (isNext) {
-          nextIndex = (currentIndex + 1) % triggerArray.length;
-        } else {
-          nextIndex = (currentIndex - 1 + triggerArray.length) % triggerArray.length;
-        }
-
-        triggerArray[nextIndex]?.focus();
-      } else if (event.key === 'Home') {
-        event.preventDefault();
-        const accordion = document.getElementById(ctx.accordionId);
-        const firstTrigger = accordion?.querySelector('[role="button"][aria-expanded]') as HTMLElement;
-        firstTrigger?.focus();
-      } else if (event.key === 'End') {
-        event.preventDefault();
-        const accordion = document.getElementById(ctx.accordionId);
-        const triggers = accordion?.querySelectorAll('[role="button"][aria-expanded]');
-        const lastTrigger = triggers?.[triggers.length - 1] as HTMLElement;
-        lastTrigger?.focus();
+      if (isNext) {
+        nextIndex = (currentIndex + 1) % triggerArray.length;
+      } else {
+        nextIndex = (currentIndex - 1 + triggerArray.length) % triggerArray.length;
       }
-    };
 
-    const { children: childrenProp, ...restProps } = props;
+      triggerArray[nextIndex]?.focus();
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      const accordion = document.getElementById(ctx.accordionId);
+      const firstTrigger = accordion?.querySelector('[role="button"][aria-expanded]') as HTMLElement;
+      firstTrigger?.focus();
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      const accordion = document.getElementById(ctx.accordionId);
+      const triggers = accordion?.querySelectorAll('[role="button"][aria-expanded]');
+      const lastTrigger = triggers?.[triggers.length - 1] as HTMLElement;
+      lastTrigger?.focus();
+    }
+  };
 
-    // Support function children
-    const children = typeof childrenProp === 'function' ? childrenProp() : childrenProp;
-
-    // Compute initial isOpen state directly from accordion context
-    // (not from item context which might not be set up yet)
-    const accordionValue = ctx.value();
-    const type = ctx.type();
-    const itemValue = itemCtx.value || props.value;  // Fallback to props if itemCtx not set
-    const initialIsOpen = type === 'single'
-      ? accordionValue === itemValue
-      : Array.isArray(accordionValue) && accordionValue.includes(itemValue);
-
-    // Create button element
-    const button = jsx('button', {
-      ...restProps,
-      id: itemCtx.triggerId,
-      type: 'button',
-      role: 'button',
-      'aria-expanded': String(initialIsOpen),
-      'aria-controls': itemCtx.contentId,
-      'data-state': initialIsOpen ? 'open' : 'closed',
-      'data-disabled': itemCtx.disabled() ? '' : undefined,
-      disabled: itemCtx.disabled(),
-      onClick: handleClick,
-      onKeyDown: handleKeyDown,
-      children,
-    }) as HTMLElement;
+  // Create ref callback for reactive updates
+  const refCallback = (element: HTMLButtonElement | null) => {
+    if (!element) return;
 
     // Set up effect to reactively update attributes
     // IMPORTANT: We need to directly access context value to ensure reactivity
@@ -482,12 +466,51 @@ export const AccordionTrigger = defineComponent<AccordionTriggerProps>((props) =
         ? accordionValue === itemValue
         : Array.isArray(accordionValue) && accordionValue.includes(itemValue);
 
-      button.setAttribute('aria-expanded', String(isOpen));
-      button.setAttribute('data-state', isOpen ? 'open' : 'closed');
-    });
+      element.setAttribute('aria-expanded', String(isOpen));
+      element.setAttribute('data-state', isOpen ? 'open' : 'closed');
 
-    return button;
-  });
+      if (itemCtx.disabled()) {
+        element.setAttribute('data-disabled', '');
+        element.setAttribute('disabled', '');
+      } else {
+        element.removeAttribute('data-disabled');
+        element.removeAttribute('disabled');
+      }
+    });
+  };
+
+  return () => {
+    const { children: childrenProp, ...restProps } = props;
+
+    // Support function children
+    const children = typeof childrenProp === 'function' ? childrenProp() : childrenProp;
+
+    // Compute initial isOpen state directly from accordion context
+    const accordionValue = ctx.value();
+    const type = ctx.type();
+    const itemValue = itemCtx.value || props.value;  // Fallback to props if itemCtx not set
+    const initialIsOpen = type === 'single'
+      ? accordionValue === itemValue
+      : Array.isArray(accordionValue) && accordionValue.includes(itemValue);
+
+    // Create button element with ref callback for reactivity
+    return jsx('button', {
+      ...restProps,
+      ref: refCallback,
+      id: itemCtx.triggerId,
+      type: 'button',
+      role: 'button',
+      'aria-expanded': String(initialIsOpen),
+      'aria-controls': itemCtx.contentId,
+      'data-state': initialIsOpen ? 'open' : 'closed',
+      'data-disabled': itemCtx.disabled() ? '' : undefined,
+      disabled: itemCtx.disabled(),
+      onClick: handleClick,
+      onKeyDown: handleKeyDown,
+      children,
+    });
+  };
+});
 
 /**
  * Accordion content props
@@ -511,9 +534,45 @@ export interface AccordionContentProps {
 
 /**
  * Accordion content component - expandable content
+ *
+ * IMPORTANT: Aether framework does NOT support conditional rendering (return null).
+ * Instead, we always create the element and use display:none to hide it.
  */
 export const AccordionContent = defineComponent<AccordionContentProps>((props) => {
   const itemCtx = useContext(AccordionItemContext);
+
+  // Create ref callback for reactive updates
+  const refCallback = (element: HTMLElement | null) => {
+    if (!element) return;
+
+    // Set up effect to reactively update attributes and visibility when state changes
+    effect(() => {
+      const isOpen = itemCtx.isOpen();
+
+      element.setAttribute('data-state', isOpen ? 'open' : 'closed');
+
+      // Handle visibility based on forceMount
+      if (props.forceMount) {
+        // Keep in DOM but toggle visibility
+        if (isOpen) {
+          element.removeAttribute('hidden');
+          element.style.display = '';
+        } else {
+          element.setAttribute('hidden', '');
+          element.style.display = 'none';
+        }
+      } else {
+        // Always keep in DOM for reactivity, toggle visibility
+        if (isOpen) {
+          element.removeAttribute('hidden');
+          element.style.display = '';
+        } else {
+          element.setAttribute('hidden', '');
+          element.style.display = 'none';
+        }
+      }
+    });
+  };
 
   return () => {
     const { forceMount, children: childrenProp, ...restProps } = props;
@@ -521,18 +580,19 @@ export const AccordionContent = defineComponent<AccordionContentProps>((props) =
     // Support function children
     const children = typeof childrenProp === 'function' ? childrenProp() : childrenProp;
 
-    // Don't render unless open or force mounted
-    if (!itemCtx.isOpen() && !forceMount) {
-      return null;
-    }
+    // Compute initial state
+    const isOpen = itemCtx.isOpen();
 
+    // Always create the element (framework doesn't support conditional rendering)
     return jsx('div', {
       ...restProps,
+      ref: refCallback,
       id: itemCtx.contentId,
       role: 'region',
       'aria-labelledby': itemCtx.triggerId,
-      'data-state': itemCtx.isOpen() ? 'open' : 'closed',
-      hidden: !itemCtx.isOpen() ? true : undefined,
+      'data-state': isOpen ? 'open' : 'closed',
+      hidden: !isOpen ? true : undefined,
+      style: isOpen ? undefined : 'display: none;',
       children,
     });
   };

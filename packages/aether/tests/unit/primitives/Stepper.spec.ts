@@ -1,7 +1,7 @@
 /**
  * @vitest-environment happy-dom
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   Stepper,
   StepperList,
@@ -12,11 +12,27 @@ import {
   StepperSeparator,
 } from '../../../src/primitives/Stepper.js';
 import { signal } from '../../../src/core/reactivity/signal.js';
+import { createRoot } from '../../../src/core/reactivity/batch.js';
 import { renderComponent } from '../../helpers/test-utils.js';
 
 describe('Stepper Primitive', () => {
+  let container: HTMLDivElement;
+  let dispose: (() => void) | undefined;
+
   beforeEach(() => {
-    document.body.innerHTML = '';
+    container = document.createElement('div');
+    container.id = 'test-container';
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    if (dispose) {
+      dispose();
+      dispose = undefined;
+    }
+    if (container && container.parentNode) {
+      document.body.removeChild(container);
+    }
   });
 
   describe('Component Exports', () => {

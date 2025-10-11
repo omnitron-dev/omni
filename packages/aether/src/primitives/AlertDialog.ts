@@ -322,3 +322,14 @@ export const AlertDialogCancel = defineComponent<{ children: any; [key: string]:
       });
   }
 );
+
+// ============================================================================
+// Sub-component Attachment
+// ============================================================================
+
+(AlertDialog as any).Trigger = AlertDialogTrigger;
+(AlertDialog as any).Content = AlertDialogContent;
+(AlertDialog as any).Title = AlertDialogTitle;
+(AlertDialog as any).Description = AlertDialogDescription;
+(AlertDialog as any).Action = AlertDialogAction;
+(AlertDialog as any).Cancel = AlertDialogCancel;

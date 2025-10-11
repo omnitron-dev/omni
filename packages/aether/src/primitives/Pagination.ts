@@ -20,6 +20,8 @@
 import { jsx } from '../jsx-runtime.js';
 import { defineComponent } from '../core/component/index.js';
 import { createContext, useContext } from '../core/component/context.js';
+import { effect } from '../core/reactivity/effect.js';
+import { createRef } from '../core/component/refs.js';
 
 export interface PaginationProps {
   /**
@@ -206,17 +208,33 @@ export const Pagination = defineComponent<PaginationProps>((props) => {
     getPageNumbers,
   };
 
+  // Create ref to nav element and set up reactive updates
+  const navRef = createRef<HTMLElement>();
+
+  const refCallback = (element: HTMLElement | null) => {
+    navRef.current = element || undefined;
+    if (!element) return;
+
+    // Set up effect to update DOM attributes when signals change
+    effect(() => {
+      element.setAttribute('data-current-page', String(currentPage()));
+    });
+  };
+
   return () => {
     const { children, onPageChange, ...restProps } = props;
+    const resolvedChildren = typeof children === 'function' ? children() : children;
 
     return jsx(PaginationContext.Provider, {
       value: contextValue,
       children: jsx('nav', {
         ...restProps,
+        ref: refCallback,
         'data-pagination': '',
+        'data-current-page': String(currentPage()),
         'aria-label': 'Pagination',
         role: 'navigation',
-        children,
+        children: resolvedChildren,
       }),
     });
   };
@@ -228,17 +246,45 @@ export const Pagination = defineComponent<PaginationProps>((props) => {
  * Renders page number buttons with ellipsis.
  */
 export const PaginationItems = defineComponent<PaginationItemsProps>((props) => {
-  const ctx = useContext(PaginationContext);
+  // Defer context access to render time to ensure Provider is available
+  let ctx: PaginationContextValue;
 
-  const defaultRenderItem = (page: number, isCurrent: boolean) => jsx('button', {
+  const defaultRenderItem = (page: number, isCurrent: boolean) => {
+    // Create a reactive button for each page
+    const buttonRef = createRef<HTMLButtonElement>();
+
+    const buttonRefCallback = (element: HTMLButtonElement | null) => {
+      buttonRef.current = element || undefined;
+      if (!element) return;
+
+      // Set up effect to update button attributes when current page changes
+      effect(() => {
+        const isCurrentPage = ctx.currentPage() === page;
+        element.setAttribute('data-state', isCurrentPage ? 'active' : 'inactive');
+        if (isCurrentPage) {
+          element.setAttribute('data-current', '');
+          element.setAttribute('aria-current', 'page');
+          element.disabled = true;
+        } else {
+          element.removeAttribute('data-current');
+          element.removeAttribute('aria-current');
+          element.disabled = false;
+        }
+      });
+    };
+
+    return jsx('button', {
+      ref: buttonRefCallback,
       'data-pagination-item': '',
       'data-current': isCurrent ? '' : undefined,
+      'data-state': isCurrent ? 'active' : 'inactive',
       'aria-current': isCurrent ? 'page' : undefined,
       'aria-label': `Page ${page}`,
       onClick: () => ctx.goToPage(page),
       disabled: isCurrent,
       children: page,
     });
+  };
 
   const defaultRenderEllipsis = () => jsx('span', {
       'data-pagination-ellipsis': '',
@@ -247,6 +293,9 @@ export const PaginationItems = defineComponent<PaginationItemsProps>((props) => 
     });
 
   return () => {
+    // Get context at render time, after Provider is set up
+    ctx = useContext(PaginationContext);
+
     const { renderItem = defaultRenderItem, renderEllipsis = defaultRenderEllipsis, ...restProps } = props;
     const pageNumbers = ctx.getPageNumbers();
     const currentPage = ctx.currentPage();
@@ -258,7 +307,8 @@ export const PaginationItems = defineComponent<PaginationItemsProps>((props) => 
         if (page === 'ellipsis') {
           return renderEllipsis();
         }
-        return renderItem(page, page === currentPage);
+        const isCurrent = page === currentPage;
+        return renderItem(page, isCurrent);
       }),
     });
   };
@@ -270,18 +320,43 @@ export const PaginationItems = defineComponent<PaginationItemsProps>((props) => 
  * Previous page button.
  */
 export const PaginationPrevious = defineComponent<PaginationPreviousProps>((props) => {
-  const ctx = useContext(PaginationContext);
+  // Defer context access to render time
+  let ctx: PaginationContextValue;
 
-  const handleClick = () => {
-    ctx.goToPage(ctx.currentPage() - 1);
-  };
+  // Create ref to button element and set up reactive updates
+  const buttonRef = createRef<HTMLButtonElement>();
 
   return () => {
+    // Get context at render time
+    ctx = useContext(PaginationContext);
+
+    const handleClick = () => {
+      ctx.goToPage(ctx.currentPage() - 1);
+    };
+
+    const refCallback = (element: HTMLButtonElement | null) => {
+      buttonRef.current = element || undefined;
+      if (!element) return;
+
+      // Set up effect to update disabled state when current page changes
+      effect(() => {
+        const canGoPrevious = ctx.canGoToPrevious();
+        if (canGoPrevious) {
+          element.removeAttribute('disabled');
+          element.disabled = false;
+        } else {
+          element.setAttribute('disabled', '');
+          element.disabled = true;
+        }
+      });
+    };
+
     const { children = 'Previous', ...restProps } = props;
     const canGoPrevious = ctx.canGoToPrevious();
 
     return jsx('button', {
       ...restProps,
+      ref: refCallback,
       'data-pagination-previous': '',
       'aria-label': 'Go to previous page',
       onClick: handleClick,
@@ -297,18 +372,43 @@ export const PaginationPrevious = defineComponent<PaginationPreviousProps>((prop
  * Next page button.
  */
 export const PaginationNext = defineComponent<PaginationNextProps>((props) => {
-  const ctx = useContext(PaginationContext);
+  // Defer context access to render time
+  let ctx: PaginationContextValue;
 
-  const handleClick = () => {
-    ctx.goToPage(ctx.currentPage() + 1);
-  };
+  // Create ref to button element and set up reactive updates
+  const buttonRef = createRef<HTMLButtonElement>();
 
   return () => {
+    // Get context at render time
+    ctx = useContext(PaginationContext);
+
+    const handleClick = () => {
+      ctx.goToPage(ctx.currentPage() + 1);
+    };
+
+    const refCallback = (element: HTMLButtonElement | null) => {
+      buttonRef.current = element || undefined;
+      if (!element) return;
+
+      // Set up effect to update disabled state when current page changes
+      effect(() => {
+        const canGoNext = ctx.canGoToNext();
+        if (canGoNext) {
+          element.removeAttribute('disabled');
+          element.disabled = false;
+        } else {
+          element.setAttribute('disabled', '');
+          element.disabled = true;
+        }
+      });
+    };
+
     const { children = 'Next', ...restProps } = props;
     const canGoNext = ctx.canGoToNext();
 
     return jsx('button', {
       ...restProps,
+      ref: refCallback,
       'data-pagination-next': '',
       'aria-label': 'Go to next page',
       onClick: handleClick,

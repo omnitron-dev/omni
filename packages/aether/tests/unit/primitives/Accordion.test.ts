@@ -80,8 +80,10 @@ describe('Accordion', () => {
       expect(triggers[1]?.getAttribute('aria-expanded')).toBe('true');
       expect(triggers[0]?.getAttribute('aria-expanded')).toBe('false');
 
-      const content = container.querySelector('[role="region"]');
-      expect(content?.textContent).toBe('Content 2');
+      // Find visible content (not hidden)
+      const contents = container.querySelectorAll('[role="region"]') as NodeListOf<HTMLElement>;
+      const visibleContent = Array.from(contents).find(el => !el.hasAttribute('hidden') && el.style.display !== 'none');
+      expect(visibleContent?.textContent).toBe('Content 2');
     });
 
     it('should support collapsible mode', () => {
@@ -110,9 +112,11 @@ describe('Accordion', () => {
       // Item should be closed
       expect(trigger.getAttribute('aria-expanded')).toBe('false');
 
-      // No content should be visible
-      const content = container.querySelector('[role="region"]');
-      expect(content).toBeNull();
+      // Content should be hidden (in DOM but not visible)
+      const content = container.querySelector('[role="region"]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.hasAttribute('hidden')).toBe(true);
+      expect(content.style.display).toBe('none');
     });
 
     it('should not collapse when collapsible is false', () => {
@@ -184,9 +188,10 @@ describe('Accordion', () => {
       expect(triggers[1]?.getAttribute('aria-expanded')).toBe('true');
       expect(triggers[2]?.getAttribute('aria-expanded')).toBe('false');
 
-      // Both contents should be visible
-      const contents = container.querySelectorAll('[role="region"]');
-      expect(contents.length).toBe(2);
+      // Two contents should be visible (not hidden)
+      const allContents = container.querySelectorAll('[role="region"]') as NodeListOf<HTMLElement>;
+      const visibleContents = Array.from(allContents).filter(el => !el.hasAttribute('hidden') && el.style.display !== 'none');
+      expect(visibleContents.length).toBe(2);
     });
 
     it('should toggle items independently in multiple mode', () => {
@@ -221,9 +226,10 @@ describe('Accordion', () => {
       expect(triggers[0]?.getAttribute('aria-expanded')).toBe('true');
       expect(triggers[1]?.getAttribute('aria-expanded')).toBe('true');
 
-      // Both contents should be visible
-      const contents = container.querySelectorAll('[role="region"]');
-      expect(contents.length).toBe(2);
+      // Both contents should be visible (not hidden)
+      const allContents = container.querySelectorAll('[role="region"]') as NodeListOf<HTMLElement>;
+      const visibleContents = Array.from(allContents).filter(el => !el.hasAttribute('hidden') && el.style.display !== 'none');
+      expect(visibleContents.length).toBe(2);
     });
 
     it('should support controlled value in multiple mode', () => {
@@ -251,18 +257,20 @@ describe('Accordion', () => {
 
       const { container } = renderComponent(component);
 
-      // Initially only item1 is open
-      let contents = container.querySelectorAll('[role="region"]');
-      expect(contents.length).toBe(1);
-      expect(contents[0]?.textContent).toBe('Content 1');
+      // Initially only item1 is open (visible)
+      let allContents = container.querySelectorAll('[role="region"]') as NodeListOf<HTMLElement>;
+      let visibleContents = Array.from(allContents).filter(el => !el.hasAttribute('hidden') && el.style.display !== 'none');
+      expect(visibleContents.length).toBe(1);
+      expect(visibleContents[0]?.textContent).toBe('Content 1');
 
       // Change controlled value
       openItems.set(['item2']);
 
-      // Now only item2 should be open
-      contents = container.querySelectorAll('[role="region"]');
-      expect(contents.length).toBe(1);
-      expect(contents[0]?.textContent).toBe('Content 2');
+      // Now only item2 should be open (visible)
+      allContents = container.querySelectorAll('[role="region"]') as NodeListOf<HTMLElement>;
+      visibleContents = Array.from(allContents).filter(el => !el.hasAttribute('hidden') && el.style.display !== 'none');
+      expect(visibleContents.length).toBe(1);
+      expect(visibleContents[0]?.textContent).toBe('Content 2');
     });
   });
 

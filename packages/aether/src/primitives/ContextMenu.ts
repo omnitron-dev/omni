@@ -259,3 +259,13 @@ export const ContextMenuLabel = defineComponent<{ children?: any; [key: string]:
         'data-context-menu-label': '',
       })
 );
+
+// ============================================================================
+// Sub-component Attachment
+// ============================================================================
+
+(ContextMenu as any).Trigger = ContextMenuTrigger;
+(ContextMenu as any).Content = ContextMenuContent;
+(ContextMenu as any).Item = ContextMenuItem;
+(ContextMenu as any).Separator = ContextMenuSeparator;
+(ContextMenu as any).Label = ContextMenuLabel;

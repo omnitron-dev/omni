@@ -14,6 +14,8 @@ import { signal } from '../core/reactivity/signal.js';
 import { onMount } from '../core/component/lifecycle.js';
 import { Portal } from '../control-flow/Portal.js';
 import { jsx } from '../jsx-runtime.js';
+import { effect } from '../core/reactivity/effect.js';
+import { createRef } from '../core/component/refs.js';
 import {
   generateId,
   calculatePosition,
@@ -179,11 +181,14 @@ export const HoverCard = defineComponent<HoverCardProps>((props) => {
     contentId,
   };
 
-  return () =>
-    jsx(HoverCardContext.Provider, {
+  return () => {
+    const resolvedChildren = typeof props.children === 'function' ? props.children() : props.children;
+
+    return jsx(HoverCardContext.Provider, {
       value: contextValue,
-      children: props.children,
+      children: resolvedChildren,
     });
+  };
 });
 
 /**
@@ -191,60 +196,82 @@ export const HoverCard = defineComponent<HoverCardProps>((props) => {
  */
 export const HoverCardTrigger = defineComponent<{ children: any; [key: string]: any }>(
   (props) => {
-    const ctx = useContext(HoverCardContext);
+    // Defer context access to render time
+    let ctx: HoverCardContextValue;
+
     let openTimeoutId: ReturnType<typeof setTimeout> | null = null;
     let closeTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
     const openDelay = 700; // default delay
     const closeDelay = 300;
 
-    const handlePointerEnter = () => {
-      if (closeTimeoutId) {
-        clearTimeout(closeTimeoutId);
-        closeTimeoutId = null;
-      }
-
-      openTimeoutId = setTimeout(() => {
-        ctx.open();
-      }, openDelay);
-    };
-
-    const handlePointerLeave = () => {
-      if (openTimeoutId) {
-        clearTimeout(openTimeoutId);
-        openTimeoutId = null;
-      }
-
-      closeTimeoutId = setTimeout(() => {
-        ctx.close();
-      }, closeDelay);
-    };
-
-    const handleFocus = () => {
-      ctx.open();
-    };
-
-    const handleBlur = () => {
-      ctx.close();
-    };
-
     onMount(() => () => {
         if (openTimeoutId) clearTimeout(openTimeoutId);
         if (closeTimeoutId) clearTimeout(closeTimeoutId);
       });
 
-    return () =>
-      jsx('a', {
+    // Create ref for reactive updates
+    const triggerRef = createRef<HTMLAnchorElement>();
+
+    return () => {
+      // Get context at render time
+      ctx = useContext(HoverCardContext);
+
+      const handlePointerEnter = () => {
+        if (closeTimeoutId) {
+          clearTimeout(closeTimeoutId);
+          closeTimeoutId = null;
+        }
+
+        openTimeoutId = setTimeout(() => {
+          ctx.open();
+        }, openDelay);
+      };
+
+      const handlePointerLeave = () => {
+        if (openTimeoutId) {
+          clearTimeout(openTimeoutId);
+          openTimeoutId = null;
+        }
+
+        closeTimeoutId = setTimeout(() => {
+          ctx.close();
+        }, closeDelay);
+      };
+
+      const handleFocus = () => {
+        ctx.open();
+      };
+
+      const handleBlur = () => {
+        ctx.close();
+      };
+
+      const refCallback = (element: HTMLAnchorElement | null) => {
+        triggerRef.current = element || undefined;
+        if (!element) return;
+
+        // Set up effect to update attributes when isOpen changes
+        effect(() => {
+          const isOpen = ctx.isOpen();
+          element.setAttribute('data-state', isOpen ? 'open' : 'closed');
+          element.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        });
+      };
+
+      return jsx('a', {
         ...props,
+        ref: refCallback,
         id: ctx.triggerId,
         'data-state': ctx.isOpen() ? 'open' : 'closed',
-        'aria-expanded': ctx.isOpen(),
+        'aria-expanded': ctx.isOpen() ? 'true' : 'false',
         'aria-haspopup': 'dialog',
         onPointerEnter: handlePointerEnter,
         onPointerLeave: handlePointerLeave,
         onFocus: handleFocus,
         onBlur: handleBlur,
       });
+    };
   }
 );
 
@@ -252,11 +279,15 @@ export const HoverCardTrigger = defineComponent<{ children: any; [key: string]: 
  * HoverCard Content component
  */
 export const HoverCardContent = defineComponent<HoverCardContentProps>((props) => {
-  const ctx = useContext(HoverCardContext);
+  // Defer context access to render time
+  let ctx: HoverCardContextValue;
+
   let contentRef: HTMLElement | null = null;
   let triggerElement: HTMLElement | null = null;
 
   onMount(() => {
+    if (!ctx) return; // Context not available yet
+
     triggerElement = document.getElementById(ctx.triggerId);
 
     if (contentRef && triggerElement && ctx.isOpen()) {
@@ -278,27 +309,51 @@ export const HoverCardContent = defineComponent<HoverCardContentProps>((props) =
     }
   });
 
-  const handlePointerEnter = () => {
-    // Keep hover card open when hovering over it
-  };
-
-  const handlePointerLeave = () => {
-    ctx.close();
-  };
-
   return () => {
-    if (!ctx.isOpen()) {
-      return null;
-    }
+    // Get context at render time
+    ctx = useContext(HoverCardContext);
 
+    const handlePointerEnter = () => {
+      // Keep hover card open when hovering over it
+    };
+
+    const handlePointerLeave = () => {
+      ctx.close();
+    };
+
+    const refCallback = (el: HTMLElement | null) => {
+      contentRef = el;
+      if (!el) return;
+
+      // Set up effect to update visibility when isOpen changes
+      effect(() => {
+        const isOpen = ctx.isOpen();
+        el.setAttribute('data-state', isOpen ? 'open' : 'closed');
+
+        if (isOpen) {
+          el.style.display = '';
+          el.hidden = false;
+        } else {
+          el.style.display = 'none';
+          el.hidden = true;
+        }
+      });
+    };
+
+    // Always render the content, control visibility via effects
     return jsx(Portal, {
       children: jsx('div', {
         ...props,
-        ref: ((el: HTMLElement) => (contentRef = el)) as any,
+        ref: refCallback,
         id: ctx.contentId,
         role: 'dialog',
         'aria-labelledby': ctx.triggerId,
         'data-state': ctx.isOpen() ? 'open' : 'closed',
+        hidden: !ctx.isOpen(),
+        style: {
+          ...props.style,
+          display: !ctx.isOpen() ? 'none' : undefined,
+        },
         onPointerEnter: handlePointerEnter,
         onPointerLeave: handlePointerLeave,
       }),

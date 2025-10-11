@@ -8,6 +8,8 @@
 import { defineComponent } from '../core/component/define.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal } from '../core/reactivity/signal.js';
+import { effect } from '../core/reactivity/effect.js';
+import { createRef } from '../core/component/refs.js';
 import { jsx } from '../jsx-runtime.js';
 import { generateId } from './utils/index.js';
 
@@ -149,11 +151,31 @@ export const Collapsible = defineComponent<CollapsibleProps>((props) => {
   // Provide context for children
   provideContext(CollapsibleContext, contextValue);
 
+  // Create ref to root element and set up reactive updates
+  const rootRef = createRef<HTMLDivElement>();
+
+  const refCallback = (element: HTMLDivElement | null) => {
+    rootRef.current = element || undefined;
+    if (!element) return;
+
+    // Set up effect to update DOM attributes when signals change
+    effect(() => {
+      element.setAttribute('data-state', isOpen() ? 'open' : 'closed');
+
+      if (props.disabled) {
+        element.setAttribute('data-disabled', '');
+      } else {
+        element.removeAttribute('data-disabled');
+      }
+    });
+  };
+
   return () => {
     const children = typeof props.children === 'function' ? props.children() : props.children;
 
     return jsx('div', {
       ...props,
+      ref: refCallback,
       'data-collapsible': '',
       'data-state': isOpen() ? 'open' : 'closed',
       'data-disabled': props.disabled ? '' : undefined,
@@ -174,9 +196,32 @@ export const CollapsibleTrigger = defineComponent<CollapsibleTriggerProps>((prop
     }
   };
 
+  // Create ref to button element and set up reactive updates
+  const buttonRef = createRef<HTMLButtonElement>();
+
+  const refCallback = (element: HTMLButtonElement | null) => {
+    buttonRef.current = element || undefined;
+    if (!element) return;
+
+    // Set up effect to update DOM attributes when signals change
+    effect(() => {
+      element.setAttribute('aria-expanded', ctx.isOpen() ? 'true' : 'false');
+      element.setAttribute('data-state', ctx.isOpen() ? 'open' : 'closed');
+
+      if (ctx.disabled()) {
+        element.setAttribute('disabled', '');
+        element.disabled = true;
+      } else {
+        element.removeAttribute('disabled');
+        element.disabled = false;
+      }
+    });
+  };
+
   return () =>
     jsx('button', {
       ...props,
+      ref: refCallback,
       id: ctx.triggerId,
       type: 'button',
       'aria-expanded': ctx.isOpen() ? 'true' : 'false',
@@ -193,15 +238,40 @@ export const CollapsibleTrigger = defineComponent<CollapsibleTriggerProps>((prop
 export const CollapsibleContent = defineComponent<CollapsibleContentProps>((props) => {
   const ctx = useContext(CollapsibleContext);
 
+  // Create ref to content element and set up reactive updates
+  const contentRef = createRef<HTMLDivElement>();
+
+  const refCallback = (element: HTMLDivElement | null) => {
+    contentRef.current = element || undefined;
+    if (!element) return;
+
+    // Set up effect to update DOM attributes when signals change
+    effect(() => {
+      const open = ctx.isOpen();
+      element.setAttribute('data-state', open ? 'open' : 'closed');
+
+      // Update visibility based on open state and forceMount
+      if (!props.forceMount && !open) {
+        element.style.display = 'none';
+        element.hidden = true;
+      } else if (props.forceMount && !open) {
+        // ForceMount keeps element in DOM but hidden
+        element.hidden = true;
+      } else {
+        element.style.display = '';
+        element.hidden = false;
+      }
+    });
+  };
+
   return () => {
     const open = ctx.isOpen();
 
-    if (!open && !props.forceMount) {
-      return null;
-    }
-
+    // Always render the element - visibility is controlled via effects
+    // This ensures the element exists for effects to update
     return jsx('div', {
       ...props,
+      ref: refCallback,
       id: ctx.contentId,
       'data-collapsible-content': '',
       'data-state': open ? 'open' : 'closed',

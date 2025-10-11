@@ -286,38 +286,70 @@ export class WebSocketPeer extends AbstractPeer {
   }
 
   /**
-   * Query interface from remote peer
+   * Query interface from remote peer (auth-aware)
+   *
+   * This method now uses the enhanced query-interface core-task which supports:
+   * - Authorization-aware service discovery
+   * - Filtered method lists based on permissions
+   * - Wildcard version resolution (e.g., 'user' → 'user@1.0.0')
+   * - Latest version selection
+   *
+   * The server will return filtered definitions based on the authenticated user's
+   * permissions, hiding methods the user doesn't have access to.
    */
   protected override async queryInterfaceRemote(qualifiedName: string): Promise<Definition> {
     const packet = new Packet(Packet.nextId());
     packet.setImpulse(1); // Request
     packet.setType(TYPE_TASK);
-    packet.data = { task: 'queryInterface', qualifiedName };
+    packet.data = {
+      task: 'query_interface',
+      serviceName: qualifiedName,
+    };
 
     const result = await this.sendRequest(packet);
 
-    if (!result || !result.definition) {
+    // Handle both old and new response formats for backward compatibility
+    const definition = result.definition || result;
+
+    if (!definition) {
       throw NetronErrors.serviceNotFound(qualifiedName);
     }
 
+    // Extract resolved name if provided (useful for wildcard queries)
+    const resolvedName = result.resolvedName || qualifiedName;
+
+    // Check if definition was filtered by server
+    const isFiltered = result.filtered === true;
+
+    if (isFiltered) {
+      this.logger.debug(
+        `Received filtered definition for '${resolvedName}' based on user permissions`
+      );
+    }
+
     // Create Definition from result
-    const definition = new Definition(
-      result.definition.id,
-      result.definition.peerId || this.id,
-      result.definition.meta || {
-        name: result.definition.name || qualifiedName,
-        version: result.definition.version || '1.0.0',
-        methods: result.definition.methods || [],
-        properties: result.definition.properties || [],
-        events: result.definition.events || [],
+    const def = new Definition(
+      definition.id,
+      definition.peerId || this.id,
+      definition.meta || {
+        name: definition.name || qualifiedName,
+        version: definition.version || '1.0.0',
+        methods: definition.methods || {},
+        properties: definition.properties || {},
       }
     );
 
-    // Cache the definition
-    this.services.set(qualifiedName, definition);
+    // Cache the definition using both original and resolved names
+    this.services.set(qualifiedName, def);
     this.serviceNames.add(qualifiedName);
 
-    return definition;
+    if (resolvedName !== qualifiedName) {
+      this.services.set(resolvedName, def);
+      this.serviceNames.add(resolvedName);
+      this.logger.debug(`Resolved '${qualifiedName}' to '${resolvedName}'`);
+    }
+
+    return def;
   }
 
   /**
@@ -406,5 +438,66 @@ export class WebSocketPeer extends AbstractPeer {
    */
   async reconnect(): Promise<void> {
     await this.connection.reconnect();
+  }
+
+  /**
+   * Invalidate cache entries matching a pattern
+   *
+   * For WebSocket transport, this invalidates the service definition cache.
+   * Can also send a cache invalidation request to the server.
+   *
+   * @param pattern - Service name pattern (supports * wildcard). If not provided, clears all cache.
+   * @param serverSide - If true, also requests server-side cache invalidation
+   * @returns Number of cache entries invalidated locally
+   *
+   * @example
+   * // Clear all local cache
+   * const count = await peer.invalidateCache();
+   *
+   * @example
+   * // Clear specific service locally
+   * const count = await peer.invalidateCache('UserService@1.0.0');
+   *
+   * @example
+   * // Clear all services starting with "User" on both client and server
+   * const count = await peer.invalidateCache('User*', true);
+   */
+  async invalidateCache(pattern?: string, serverSide: boolean = false): Promise<number> {
+    let localCount = 0;
+
+    // Invalidate local service definition cache
+    localCount = this.invalidateDefinitionCache(pattern);
+
+    this.logger.info(
+      `Invalidated ${localCount} service definition cache entries` +
+        (pattern ? ` matching pattern: ${pattern}` : '')
+    );
+
+    // Request server-side invalidation if requested
+    if (serverSide && this.connection.isConnected) {
+      try {
+        const packet = new Packet(Packet.nextId());
+        packet.setImpulse(1); // Request
+        packet.setType(TYPE_TASK);
+        packet.data = {
+          task: 'invalidate_cache',
+          pattern
+        };
+
+        const response = await this.sendRequest(packet);
+
+        if (response && typeof response.count === 'number') {
+          this.logger.info(
+            `Server invalidated ${response.count} cache entries` +
+              (pattern ? ` matching pattern: ${pattern}` : '')
+          );
+        }
+      } catch (error) {
+        this.logger.warn('Failed to invalidate server-side cache:', error);
+        // Don't throw - local invalidation succeeded
+      }
+    }
+
+    return localCount;
   }
 }

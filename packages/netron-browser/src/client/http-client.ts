@@ -12,7 +12,16 @@ import type {
   ConnectionMetrics,
   ConnectionState,
 } from '../types/index.js';
+import type { AuthenticationClient } from '../auth/client.js';
 import { createRequestMessage, normalizeUrl } from '../utils/index.js';
+import {
+  MiddlewarePipeline,
+  MiddlewareStage,
+  type ClientMiddlewareContext,
+  type IMiddlewareManager,
+  type MiddlewareFunction,
+  type MiddlewareConfig,
+} from '../middleware/index.js';
 // Errors are handled inline in this implementation
 
 /**
@@ -46,6 +55,16 @@ export interface HttpClientOptions {
    * @default 3
    */
   maxRetries?: number;
+
+  /**
+   * Authentication client for automatic token attachment
+   */
+  auth?: AuthenticationClient;
+
+  /**
+   * Middleware pipeline (optional, will create default if not provided)
+   */
+  middleware?: IMiddlewareManager;
 }
 
 /**
@@ -57,7 +76,9 @@ export class HttpClient {
   private headers: Record<string, string>;
   private retry: boolean;
   private maxRetries: number;
+  private auth?: AuthenticationClient;
   private state: ConnectionState = 'disconnected' as ConnectionState;
+  private middleware: IMiddlewareManager;
   private metrics = {
     requestsSent: 0,
     responsesReceived: 0,
@@ -71,6 +92,8 @@ export class HttpClient {
     this.headers = options.headers ?? {};
     this.retry = options.retry ?? false;
     this.maxRetries = options.maxRetries ?? 3;
+    this.auth = options.auth;
+    this.middleware = options.middleware || new MiddlewarePipeline();
   }
 
   /**
@@ -94,14 +117,80 @@ export class HttpClient {
       hints?: RequestHints;
     }
   ): Promise<any> {
-    const message = createRequestMessage(service, method, args, options);
-    const response = await this.sendRequest(message);
+    // Create middleware context
+    const ctx: ClientMiddlewareContext = {
+      service,
+      method,
+      args,
+      request: {
+        headers: { ...this.headers },
+        timeout: options?.hints?.timeout || this.timeout,
+        metadata: options?.context as any,
+      },
+      timing: {
+        start: performance.now(),
+        middlewareTimes: new Map(),
+      },
+      metadata: new Map(),
+      transport: 'http' as const,
+    };
 
-    if (!response.success) {
-      throw new Error(response.error?.message || 'Method invocation failed');
+    try {
+      // Execute pre-request middleware
+      await this.middleware.execute(ctx, MiddlewareStage.PRE_REQUEST);
+
+      // Check if middleware wants to skip remaining
+      if (ctx.skipRemaining) {
+        return ctx.response?.data;
+      }
+
+      // Create request message with middleware-modified data
+      const message = createRequestMessage(
+        service,
+        method,
+        args,
+        {
+          context: ctx.request?.metadata as any,
+          hints: {
+            ...options?.hints,
+            timeout: ctx.request?.timeout,
+          },
+        }
+      );
+
+      // Send request
+      const response = await this.sendRequest(message, 0, ctx.request?.headers);
+
+      if (!response.success) {
+        const error = new Error(response.error?.message || 'Method invocation failed');
+        (error as any).code = response.error?.code;
+        throw error;
+      }
+
+      // Store response in context
+      ctx.response = {
+        data: response.data,
+        headers: {},
+        metadata: {},
+      };
+
+      // Execute post-response middleware
+      await this.middleware.execute(ctx, MiddlewareStage.POST_RESPONSE);
+
+      return ctx.response.data;
+    } catch (error: any) {
+      // Store error in context
+      ctx.error = error;
+
+      // Execute error middleware
+      try {
+        await this.middleware.execute(ctx, MiddlewareStage.ERROR);
+      } catch {
+        // Ignore middleware errors during error handling
+      }
+
+      throw error;
     }
-
-    return response.data;
   }
 
   /**
@@ -109,7 +198,8 @@ export class HttpClient {
    */
   private async sendRequest(
     message: HttpRequestMessage,
-    retryCount = 0
+    retryCount = 0,
+    customHeaders?: Record<string, string>
   ): Promise<HttpResponseMessage> {
     const url = `${this.baseUrl}/netron/invoke`;
     const timeout = message.hints?.timeout || this.timeout;
@@ -121,14 +211,23 @@ export class HttpClient {
     try {
       this.metrics.requestsSent++;
 
+      // Build headers with auth if available
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Netron-Version': '2.0',
+        ...this.headers,
+        ...customHeaders, // Middleware can override headers
+      };
+
+      // Add auth headers if client is authenticated (unless overridden by middleware)
+      if (this.auth && this.auth.isAuthenticated() && !customHeaders?.['Authorization']) {
+        Object.assign(headers, this.auth.getAuthHeaders());
+      }
+
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          'X-Netron-Version': '2.0',
-          ...this.headers,
-        },
+        headers,
         body: JSON.stringify(message),
         signal: controller.signal,
       });
@@ -169,7 +268,7 @@ export class HttpClient {
       if (this.retry && retryCount < this.maxRetries) {
         const delay = Math.pow(2, retryCount) * 1000;
         await new Promise((resolve) => setTimeout(resolve, delay));
-        return this.sendRequest(message, retryCount + 1);
+        return this.sendRequest(message, retryCount + 1, customHeaders);
       }
 
       if (error.name === 'AbortError') {
@@ -232,5 +331,24 @@ export class HttpClient {
       errors: this.metrics.errors,
       avgLatency,
     };
+  }
+
+  /**
+   * Get middleware manager
+   */
+  getMiddleware(): IMiddlewareManager {
+    return this.middleware;
+  }
+
+  /**
+   * Use middleware
+   */
+  use(
+    middleware: MiddlewareFunction,
+    config?: Partial<MiddlewareConfig>,
+    stage?: MiddlewareStage
+  ): this {
+    this.middleware.use(middleware, config, stage);
+    return this;
   }
 }

@@ -122,6 +122,11 @@ export interface RequestContext {
   requestId?: string;
 
   /**
+   * Request headers
+   */
+  headers?: Record<string, string>;
+
+  /**
    * Custom metadata
    */
   metadata?: Record<string, any>;

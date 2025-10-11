@@ -11,8 +11,17 @@ import type {
   RequestContext,
   RequestHints,
 } from '../types/index.js';
+import type { AuthenticationClient } from '../auth/client.js';
 import { generateRequestId, calculateBackoff, httpToWsUrl } from '../utils/index.js';
 import { ConnectionError, TimeoutError } from '../errors/index.js';
+import {
+  MiddlewarePipeline,
+  MiddlewareStage,
+  type ClientMiddlewareContext,
+  type IMiddlewareManager,
+  type MiddlewareFunction,
+  type MiddlewareConfig,
+} from '../middleware/index.js';
 
 /**
  * WebSocket client options
@@ -51,6 +60,16 @@ export interface WebSocketClientOptions {
    * @default Infinity
    */
   maxReconnectAttempts?: number;
+
+  /**
+   * Authentication client for automatic token attachment
+   */
+  auth?: AuthenticationClient;
+
+  /**
+   * Middleware pipeline (optional, will create default if not provided)
+   */
+  middleware?: IMiddlewareManager;
 }
 
 /**
@@ -76,6 +95,8 @@ export class WebSocketClient extends EventEmitter {
   private reconnectAttempts = 0;
   private reconnectTimeout?: number;
   private isManualDisconnect = false;
+  private auth?: AuthenticationClient;
+  private middleware: IMiddlewareManager;
   private state: ConnectionState = 'disconnected' as ConnectionState;
   private pendingRequests = new Map<string, PendingRequest>();
   private connectedAt?: number;
@@ -100,6 +121,8 @@ export class WebSocketClient extends EventEmitter {
     this.reconnectEnabled = options.reconnect ?? true;
     this.reconnectInterval = options.reconnectInterval ?? 1000;
     this.maxReconnectAttempts = options.maxReconnectAttempts ?? Infinity;
+    this.auth = options.auth;
+    this.middleware = options.middleware || new MiddlewarePipeline();
   }
 
   /**
@@ -221,39 +244,112 @@ export class WebSocketClient extends EventEmitter {
       throw new ConnectionError('WebSocket is not connected');
     }
 
-    const id = generateRequestId();
-    const timeout = options?.hints?.timeout || this.timeout;
-
-    // Create request packet
-    const packet = {
-      type: 1, // REQUEST
-      id,
-      payload: {
-        service,
-        method,
-        args,
-        context: options?.context,
+    // Create middleware context
+    const ctx: ClientMiddlewareContext = {
+      service,
+      method,
+      args,
+      request: {
+        headers: {},
+        timeout: options?.hints?.timeout || this.timeout,
+        metadata: options?.context as any,
       },
+      timing: {
+        start: performance.now(),
+        middlewareTimes: new Map(),
+      },
+      metadata: new Map(),
+      transport: 'websocket' as const,
     };
 
-    // Send packet
-    this.sendPacket(packet);
-    this.metrics.requestsSent++;
+    try {
+      // Execute pre-request middleware
+      await this.middleware.execute(ctx, MiddlewareStage.PRE_REQUEST);
 
-    // Wait for response
-    return new Promise((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        this.pendingRequests.delete(id);
-        this.metrics.errors++;
-        reject(new TimeoutError(`Request timeout after ${timeout}ms`));
-      }, timeout) as unknown as number;
+      // Check if middleware wants to skip remaining
+      if (ctx.skipRemaining) {
+        return ctx.response?.data;
+      }
 
-      this.pendingRequests.set(id, {
-        resolve,
-        reject,
-        timeout: timeoutId,
+      const id = generateRequestId();
+      const timeout = ctx.request?.timeout || this.timeout;
+
+      // Build context with auth headers if available
+      const context: RequestContext = {
+        ...ctx.request?.metadata,
+      };
+
+      // Add middleware headers
+      if (ctx.request?.headers) {
+        context.headers = {
+          ...context.headers,
+          ...ctx.request.headers,
+        };
+      }
+
+      // Add auth headers if client is authenticated (unless overridden by middleware)
+      if (this.auth && this.auth.isAuthenticated() && !ctx.request?.headers?.['Authorization']) {
+        context.headers = {
+          ...context.headers,
+          ...this.auth.getAuthHeaders(),
+        };
+      }
+
+      // Create request packet
+      const packet = {
+        type: 1, // REQUEST
+        id,
+        payload: {
+          service,
+          method,
+          args,
+          context,
+        },
+      };
+
+      // Send packet
+      this.sendPacket(packet);
+      this.metrics.requestsSent++;
+
+      // Wait for response
+      const data = await new Promise((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          this.pendingRequests.delete(id);
+          this.metrics.errors++;
+          reject(new TimeoutError(`Request timeout after ${timeout}ms`));
+        }, timeout) as unknown as number;
+
+        this.pendingRequests.set(id, {
+          resolve,
+          reject,
+          timeout: timeoutId,
+        });
       });
-    });
+
+      // Store response in context
+      ctx.response = {
+        data,
+        headers: {},
+        metadata: {},
+      };
+
+      // Execute post-response middleware
+      await this.middleware.execute(ctx, MiddlewareStage.POST_RESPONSE);
+
+      return ctx.response.data;
+    } catch (error: any) {
+      // Store error in context
+      ctx.error = error;
+
+      // Execute error middleware
+      try {
+        await this.middleware.execute(ctx, MiddlewareStage.ERROR);
+      } catch {
+        // Ignore middleware errors during error handling
+      }
+
+      throw error;
+    }
   }
 
   /**
@@ -352,5 +448,24 @@ export class WebSocketClient extends EventEmitter {
       errors: this.metrics.errors,
       avgLatency,
     };
+  }
+
+  /**
+   * Get middleware manager
+   */
+  getMiddleware(): IMiddlewareManager {
+    return this.middleware;
+  }
+
+  /**
+   * Use middleware
+   */
+  use(
+    middleware: MiddlewareFunction,
+    config?: Partial<MiddlewareConfig>,
+    stage?: MiddlewareStage
+  ): this {
+    this.middleware.use(middleware, config, stage);
+    return this;
   }
 }

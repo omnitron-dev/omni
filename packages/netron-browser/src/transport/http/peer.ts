@@ -679,6 +679,100 @@ export class HttpRemotePeer extends AbstractPeer {
   }
 
   /**
+   * Invalidate cache entries matching a pattern
+   *
+   * Supports both service definition cache and HTTP response cache invalidation.
+   * Pattern matching with wildcards for flexible cache management.
+   *
+   * @param pattern - Service name pattern (supports * wildcard). If not provided, clears all cache.
+   * @param cacheType - Type of cache to invalidate ('service', 'http', 'all')
+   * @returns Number of cache entries invalidated
+   *
+   * @example
+   * // Clear all cache
+   * const count = await peer.invalidateCache();
+   *
+   * @example
+   * // Clear specific service
+   * const count = await peer.invalidateCache('UserService@1.0.0');
+   *
+   * @example
+   * // Clear all services starting with "User"
+   * const count = await peer.invalidateCache('User*');
+   *
+   * @example
+   * // Clear only HTTP cache
+   * const count = await peer.invalidateCache(undefined, 'http');
+   */
+  async invalidateCache(
+    pattern?: string,
+    cacheType: 'service' | 'http' | 'all' = 'all'
+  ): Promise<number> {
+    let totalCount = 0;
+
+    // Invalidate service definition cache
+    if (cacheType === 'service' || cacheType === 'all') {
+      const serviceCount = this.invalidateDefinitionCache(pattern);
+      totalCount += serviceCount;
+
+      this.logger.info(
+        `Invalidated ${serviceCount} service definition cache entries` +
+          (pattern ? ` matching pattern: ${pattern}` : '')
+      );
+    }
+
+    // Invalidate HTTP response cache
+    if ((cacheType === 'http' || cacheType === 'all') && this.cacheManager) {
+      const httpCount = this.invalidateHttpCache(pattern);
+      totalCount += httpCount;
+
+      this.logger.info(
+        `Invalidated ${httpCount} HTTP response cache entries` +
+          (pattern ? ` matching pattern: ${pattern}` : '')
+      );
+    }
+
+    return totalCount;
+  }
+
+  /**
+   * Invalidate HTTP response cache
+   *
+   * @param pattern - Cache key pattern (supports * wildcard)
+   * @returns Number of entries invalidated
+   * @private
+   */
+  private invalidateHttpCache(pattern?: string): number {
+    if (!this.cacheManager) {
+      return 0;
+    }
+
+    const stats = this.cacheManager.getStats();
+    const beforeCount = stats.entries;
+
+    if (!pattern) {
+      // Clear all HTTP cache
+      this.cacheManager.clear();
+      return beforeCount;
+    }
+
+    // Pattern-based invalidation
+    if (pattern.includes('*')) {
+      // Convert wildcard pattern to regex
+      const regexPattern = pattern
+        .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*/g, '.*');
+      this.cacheManager.invalidate(new RegExp(`^${regexPattern}$`));
+    } else {
+      // Exact match
+      this.cacheManager.invalidate(pattern);
+    }
+
+    const afterStats = this.cacheManager.getStats();
+    return beforeCount - afterStats.entries;
+  }
+
+  /**
    * Query interface remote - not used for HTTP transport
    * HTTP transport doesn't fetch definitions from the server
    * @protected

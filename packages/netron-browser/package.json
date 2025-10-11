@@ -39,6 +39,10 @@
       "types": "./dist/packet/index.d.ts",
       "import": "./dist/packet/index.js"
     },
+    "./middleware": {
+      "types": "./dist/middleware/index.d.ts",
+      "import": "./dist/middleware/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

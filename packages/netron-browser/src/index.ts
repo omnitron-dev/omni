@@ -107,3 +107,87 @@ export { NETRON_VERSION } from './types/index.js';
 // Utilities
 export { uuid } from './utils/uuid.js';
 export { Uid } from './utils/uid.js';
+
+// Authentication exports
+export {
+  AuthenticationClient,
+  LocalTokenStorage,
+  SessionTokenStorage,
+  MemoryTokenStorage,
+} from './auth/index.js';
+
+export type {
+  AuthCredentials,
+  AuthContext,
+  AuthResult,
+  TokenStorage,
+  AuthOptions,
+  AuthState,
+  AuthEventType,
+  AuthEventHandler,
+} from './auth/index.js';
+
+// Core tasks
+export {
+  CORE_TASK_AUTHENTICATE,
+  createAuthenticateRequest,
+  isAuthenticateResponse,
+  CORE_TASK_INVALIDATE_CACHE,
+  createInvalidateCacheRequest,
+  isInvalidateCacheResponse,
+  matchesPattern,
+  CORE_TASK_QUERY_INTERFACE,
+  createQueryInterfaceRequest,
+  isQueryInterfaceResponse,
+  resolveServiceName,
+  isFilteredDefinition,
+} from './core-tasks/index.js';
+
+export type {
+  AuthenticateRequest,
+  AuthenticateResponse,
+  InvalidateCacheRequest,
+  InvalidateCacheResponse,
+  QueryInterfaceRequest,
+  QueryInterfaceResponse,
+} from './core-tasks/index.js';
+
+// Middleware exports
+export {
+  MiddlewarePipeline,
+  MiddlewareStage,
+  createAuthMiddleware,
+  createLoggingMiddleware,
+  createTimingMiddleware,
+  createErrorTransformMiddleware,
+  SimpleTokenProvider,
+  StorageTokenProvider,
+  InMemoryMetricsCollector,
+  ConsoleLogger,
+  defaultErrorTransformer,
+  CommonErrorMessages,
+  isRetryableError,
+  isClientError,
+  isServerError,
+} from './middleware/index.js';
+
+export type {
+  MiddlewareFunction,
+  ClientMiddlewareContext,
+  MiddlewareConfig,
+  MiddlewareRegistration,
+  MiddlewareMetrics,
+  IMiddlewareManager,
+  TokenProvider,
+  AuthMiddlewareOptions,
+  Logger,
+  LogLevel,
+  LoggingMiddlewareOptions,
+  MetricsCollector,
+  PerformanceMetrics,
+  TimingMiddlewareOptions,
+  ErrorTransformMiddlewareOptions,
+  NormalizedError,
+  ErrorTransformer,
+  ErrorHandler,
+} from './middleware/index.js';

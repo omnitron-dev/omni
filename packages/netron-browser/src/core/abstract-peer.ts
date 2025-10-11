@@ -4,6 +4,7 @@
  */
 
 import type { IPeer, EventSubscriber } from './types.js';
+import type { AuthContext } from '../auth/types.js';
 import { Interface } from './interface.js';
 import { Definition } from './definition.js';
 import { Errors, NetronErrors } from '../errors/index.js';
@@ -48,6 +49,12 @@ export abstract class AbstractPeer implements IPeer {
    * The cache can be manually invalidated using invalidateDefinitionCache().
    */
   protected definitionCache = new Map<string, Definition>();
+
+  /**
+   * Authentication context for this peer.
+   * Contains user identity and authorization data after successful authentication.
+   */
+  protected authContext?: AuthContext;
 
   /**
    * Constructs a new AbstractPeer instance.
@@ -441,6 +448,40 @@ export abstract class AbstractPeer implements IPeer {
 
     const regex = new RegExp(`^${regexPattern}$`);
     return regex.test(serviceName);
+  }
+
+  /**
+   * Get the current authentication context
+   *
+   * @returns {AuthContext | undefined} The authentication context if authenticated
+   */
+  getAuthContext(): AuthContext | undefined {
+    return this.authContext;
+  }
+
+  /**
+   * Set the authentication context
+   *
+   * @param {AuthContext} context - The authentication context to set
+   */
+  setAuthContext(context: AuthContext): void {
+    this.authContext = context;
+  }
+
+  /**
+   * Clear the authentication context
+   */
+  clearAuthContext(): void {
+    this.authContext = undefined;
+  }
+
+  /**
+   * Check if the peer is authenticated
+   *
+   * @returns {boolean} True if the peer has an authentication context
+   */
+  isAuthenticated(): boolean {
+    return !!this.authContext;
   }
 }
 

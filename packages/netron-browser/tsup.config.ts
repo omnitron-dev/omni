@@ -10,6 +10,7 @@ export default defineConfig({
     'errors/index': 'src/errors/index.ts',
     'utils/index': 'src/utils/index.ts',
     'packet/index': 'src/packet/index.ts',
+    'middleware/index': 'src/middleware/index.ts',
   },
   format: ['esm'],
   dts: true,

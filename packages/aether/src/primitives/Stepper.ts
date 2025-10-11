@@ -26,7 +26,7 @@
  */
 
 import { defineComponent } from '../core/component/index.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal, computed, type WritableSignal, type Signal } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
 
@@ -102,9 +102,9 @@ interface StepperContextValue {
 
 interface StepperItemContextValue {
   value: number;
-  isActive: boolean;
-  isCompleted: boolean;
-  isDisabled: boolean;
+  isActive: () => boolean;
+  isCompleted: () => boolean;
+  isDisabled: () => boolean;
   goToStep: () => void;
 }
 
@@ -195,17 +195,18 @@ export const Stepper = defineComponent<StepperProps>((props) => {
     registerStep,
   };
 
+  // CRITICAL: Provide context in setup phase
+  provideContext(StepperContext, contextValue);
+
   return () => {
     const { children, orientation = 'horizontal' } = props;
 
-    return jsx(StepperContext.Provider, {
-      value: contextValue,
-      children: jsx('div', {
-        'data-stepper': '',
-        'data-orientation': orientation,
-        'aria-label': 'Progress',
-        children,
-      }),
+    // Return children directly - context already provided via provideContext
+    return jsx('div', {
+      'data-stepper': '',
+      'data-orientation': orientation,
+      'aria-label': 'Progress',
+      children,
     });
   };
 });
@@ -245,26 +246,32 @@ export const StepperItem = defineComponent<StepperItemProps>((props) => {
 
   const itemContextValue: StepperItemContextValue = {
     value: props.value,
-    isActive: context.isStepActive(props.value),
-    isCompleted: props.completed ?? context.isStepCompleted(props.value),
-    isDisabled: props.disabled ?? false,
+    isActive: () => context.isStepActive(props.value),
+    isCompleted: () => props.completed ?? context.isStepCompleted(props.value),
+    isDisabled: () => props.disabled ?? false,
     goToStep,
   };
+
+  // CRITICAL: Provide item context in setup phase
+  provideContext(StepperItemContext, itemContextValue);
 
   return () => {
     const { children, value } = props;
 
-    return jsx(StepperItemContext.Provider, {
-      value: itemContextValue,
-      children: jsx('li', {
-        'data-stepper-item': '',
-        'data-value': value,
-        'data-active': itemContextValue.isActive ? '' : undefined,
-        'data-completed': itemContextValue.isCompleted ? '' : undefined,
-        'data-disabled': itemContextValue.isDisabled ? '' : undefined,
-        'aria-current': itemContextValue.isActive ? 'step' : undefined,
-        children,
-      }),
+    // Evaluate reactive values in render function
+    const isActive = itemContextValue.isActive();
+    const isCompleted = itemContextValue.isCompleted();
+    const isDisabled = itemContextValue.isDisabled();
+
+    // Return children directly - context already provided via provideContext
+    return jsx('li', {
+      'data-stepper-item': '',
+      'data-value': value,
+      'data-active': isActive ? '' : undefined,
+      'data-completed': isCompleted ? '' : undefined,
+      'data-disabled': isDisabled ? '' : undefined,
+      'aria-current': isActive ? 'step' : undefined,
+      children,
     });
   };
 });
@@ -284,12 +291,17 @@ export const StepperTrigger = defineComponent<StepperTriggerProps>((props) => {
   return () => {
     const { children, ...restProps } = props;
 
+    // Evaluate reactive context values
+    const isActive = itemContext.isActive();
+    const isCompleted = itemContext.isCompleted();
+    const isDisabled = itemContext.isDisabled();
+
     return jsx('button', {
       ...restProps,
       type: 'button',
       'data-stepper-trigger': '',
-      'data-state': itemContext.isActive ? 'active' : itemContext.isCompleted ? 'completed' : 'inactive',
-      disabled: itemContext.isDisabled,
+      'data-state': isActive ? 'active' : isCompleted ? 'completed' : 'inactive',
+      disabled: isDisabled,
       onClick: handleClick,
       children,
     });

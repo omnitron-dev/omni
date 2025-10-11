@@ -8,7 +8,7 @@
  */
 
 import { defineComponent } from '../core/component/define.js';
-import { createContext, useContext, provideContext } from '../core/component/context.js';
+import { createContext, useContext } from '../core/component/context.js';
 import { signal } from '../core/reactivity/signal.js';
 import { effect } from '../core/reactivity/effect.js';
 import { onMount } from '../core/component/lifecycle.js';

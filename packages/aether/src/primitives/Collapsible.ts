@@ -88,18 +88,16 @@ export interface CollapsibleContextValue {
   contentId: string;
 }
 
-// Global context signal for late binding (Pattern 1)
-const globalContextSignal = signal<CollapsibleContextValue | null>(null);
-
 const noop = () => {};
+const noopBool = () => false;
 
 export const CollapsibleContext = createContext<CollapsibleContextValue>(
   {
-    isOpen: () => globalContextSignal()?.isOpen() ?? false,
-    toggle: () => globalContextSignal()?.toggle(),
-    disabled: () => globalContextSignal()?.disabled() ?? false,
-    get triggerId() { return globalContextSignal()?.triggerId ?? ''; },
-    get contentId() { return globalContextSignal()?.contentId ?? ''; },
+    isOpen: noopBool,
+    toggle: noop,
+    disabled: noopBool,
+    triggerId: '',
+    contentId: '',
   },
   'Collapsible'
 );
@@ -144,9 +142,6 @@ export const Collapsible = defineComponent<CollapsibleProps>((props) => {
     triggerId,
     contentId,
   };
-
-  // Set global context immediately for late binding (Pattern 1)
-  globalContextSignal.set(contextValue);
 
   return () =>
     jsx(CollapsibleContext.Provider, {

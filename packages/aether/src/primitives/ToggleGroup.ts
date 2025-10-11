@@ -85,25 +85,24 @@ interface ToggleGroupContextValue {
 // Context
 // ============================================================================
 
-// Global context signal for late binding (Pattern 1 from audit)
-const globalContextSignal = signal<ToggleGroupContextValue | null>(null);
-
 const noop = () => {};
+const noopBool = () => false;
+const noopSignal = computed(() => '');
 
 const defaultContextValue: ToggleGroupContextValue = {
-  value: computed(() => globalContextSignal()?.value() ?? ''),
-  get type() { return globalContextSignal()?.type ?? 'single'; },
-  get orientation() { return globalContextSignal()?.orientation ?? 'horizontal'; },
-  get disabled() { return globalContextSignal()?.disabled ?? false; },
-  get required() { return globalContextSignal()?.required ?? false; },
-  isSelected: (value) => globalContextSignal()?.isSelected(value) ?? false,
-  toggleValue: (value) => globalContextSignal()?.toggleValue(value),
-  registerItem: (value, element) => globalContextSignal()?.registerItem(value, element),
-  unregisterItem: (value) => globalContextSignal()?.unregisterItem(value),
-  navigateNext: () => globalContextSignal()?.navigateNext(),
-  navigatePrevious: () => globalContextSignal()?.navigatePrevious(),
-  navigateFirst: () => globalContextSignal()?.navigateFirst(),
-  navigateLast: () => globalContextSignal()?.navigateLast(),
+  value: noopSignal,
+  type: 'single',
+  orientation: 'horizontal',
+  disabled: false,
+  required: false,
+  isSelected: noopBool,
+  toggleValue: noop,
+  registerItem: noop,
+  unregisterItem: noop,
+  navigateNext: noop,
+  navigatePrevious: noop,
+  navigateFirst: noop,
+  navigateLast: noop,
 };
 
 const ToggleGroupContext = createContext<ToggleGroupContextValue>(
@@ -270,9 +269,6 @@ export const ToggleGroup = defineComponent<ToggleGroupProps>((props) => {
     navigateFirst,
     navigateLast,
   };
-
-  // Set global context immediately for late binding (Pattern 1)
-  globalContextSignal.set(contextValue);
 
   const handleKeyDown = (e: KeyboardEvent) => {
     const isHorizontal = orientation === 'horizontal';

@@ -218,6 +218,11 @@ describe('ToggleGroup', () => {
       expect(group.getAttribute('role')).toBe('group');
 
       const items = container.querySelectorAll('button[role="button"]');
+      
+      console.log('=== DEBUG ===');
+      console.log('DOM:', container.innerHTML.substring(0, 500));
+      console.log('All buttons:', container.querySelectorAll('button').length);
+      console.log('Items with role=button:', items.length);
       expect(items.length).toBe(2);
     });
 

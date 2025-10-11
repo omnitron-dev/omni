@@ -11,6 +11,7 @@ Utility components for common UI patterns and interactions.
 - **[Kbd.md](./Kbd.md)** - Keyboard input and shortcut display
 - **[Toolbar.md](./Toolbar.md)** - Container for grouping buttons and controls with keyboard navigation
 - **[VisuallyHidden.md](./VisuallyHidden.md)** - Hide content visually while keeping it accessible to screen readers
+- **[Transfer.md](./Transfer.md)** - Transfer items between two lists (dual list box pattern)
 
 ## Common Features
 

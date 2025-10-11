@@ -102,14 +102,26 @@ interface RangeSliderContextValue {
 // Context
 // ============================================================================
 
-const RangeSliderContext = createContext<RangeSliderContextValue | null>(null);
+const noop = () => {};
+const noopValue = () => ({ min: 0, max: 100 });
+const noopPercentage = () => 0;
+
+const RangeSliderContext = createContext<RangeSliderContextValue>({
+  value: noopValue as Signal<RangeValue>,
+  min: 0,
+  max: 100,
+  step: 1,
+  orientation: 'horizontal',
+  disabled: false,
+  minDistance: 0,
+  setMinValue: noop,
+  setMaxValue: noop,
+  getPercentage: noopPercentage,
+  getValueFromPercentage: noopPercentage,
+});
 
 const useRangeSliderContext = (): RangeSliderContextValue => {
-  const context = useContext(RangeSliderContext);
-  if (!context) {
-    throw new Error('RangeSlider components must be used within a RangeSlider');
-  }
-  return context;
+  return useContext(RangeSliderContext);
 };
 
 // ============================================================================

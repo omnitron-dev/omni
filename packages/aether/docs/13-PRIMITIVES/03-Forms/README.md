@@ -18,8 +18,8 @@ Form controls and data entry components with validation and accessibility suppor
 - **[RadioGroup.md](./RadioGroup.md)** - Mutually exclusive options
 - **[CheckboxGroup.md](./CheckboxGroup.md)** - Multiple checkboxes with group control
 - **[ToggleGroup.md](./ToggleGroup.md)** - Toggle button groups (single/multiple)
-- **[Switch.md](./Switch.md)** - Boolean toggle switch
-- **[Toggle.md](./Toggle.md)** - Simple toggle button
+- **[Switch.md](./Switch.md)** - Boolean toggle switch (settings/preferences)
+- **[Toggle.md](./Toggle.md)** - Two-state button (formatting/toolbar/filters)
 
 ## Range & Sliders
 

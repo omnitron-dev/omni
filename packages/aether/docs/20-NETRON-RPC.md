@@ -1,5 +1,7 @@
 # 20. Netron RPC
 
+> **Note**: Aether uses the external `@omnitron-dev/netron-browser` package for browser-based RPC communication. See [NETRON-MIGRATION-NOTICE.md](./NETRON-MIGRATION-NOTICE.md) for details on this architectural decision.
+
 ## Table of Contents
 
 - [Overview](#overview)
@@ -588,7 +590,7 @@ For comprehensive information on using Netron RPC within state management stores
 
 ```typescript
 import { Injectable, signal } from 'aether';
-import { NetronClient } from 'aether/netron';
+import { NetronClient } from 'aether/netron'; // Re-exported from @omnitron-dev/netron-browser
 
 interface IUserService {
   getUsers(): Promise<User[]>;
@@ -628,10 +630,11 @@ export class UserStore {
 
 **Key Points:**
 
-1. **Explicit Control** - Developer manages state updates
-2. **Type Safety** - TypeScript interfaces for services
-3. **Fluent API** - Direct method calls via `queryInterface()`
-4. **Real-Time** - WebSocket subscriptions for live updates
+1. **External Package** - Uses `@omnitron-dev/netron-browser` (re-exported by Aether)
+2. **Explicit Control** - Developer manages state updates
+3. **Type Safety** - TypeScript interfaces for services
+4. **Fluent API** - Direct method calls via `queryInterface()`
+5. **Real-Time** - WebSocket subscriptions for live updates
 
 See [10-STATE-MANAGEMENT.md](./10-STATE-MANAGEMENT.md) for complete patterns including:
 - Optimistic updates
@@ -639,6 +642,22 @@ See [10-STATE-MANAGEMENT.md](./10-STATE-MANAGEMENT.md) for complete patterns inc
 - Error handling
 - Async data with `resource()`
 - Best practices
+
+### Package Information
+
+Aether re-exports the Netron browser client from `@omnitron-dev/netron-browser` for convenience. You can:
+
+1. **Use Aether's re-export** (recommended for Aether apps):
+   ```typescript
+   import { NetronClient } from '@omnitron-dev/aether/netron';
+   ```
+
+2. **Import directly** (for standalone usage or other frameworks):
+   ```typescript
+   import { NetronClient } from '@omnitron-dev/netron-browser';
+   ```
+
+Both methods provide the same API and functionality. See [NETRON-CLIENT-GUIDE.md](./NETRON-CLIENT-GUIDE.md) for complete documentation.
 
 
 ## Streaming

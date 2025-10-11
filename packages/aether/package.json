@@ -116,8 +116,7 @@
   },
   "dependencies": {
     "@omnitron-dev/common": "workspace:*",
-    "@omnitron-dev/messagepack": "workspace:*",
-    "@omnitron-dev/smartbuffer": "workspace:*",
+    "@omnitron-dev/netron-browser": "workspace:*",
     "events": "^3.3.0",
     "semver": "^7.7.2"
   }

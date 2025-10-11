@@ -15,6 +15,7 @@ export default defineConfig({
     'primitives/index': 'src/primitives/index.ts',
     'server/index': 'src/server/index.ts',
     'netron/index': 'src/netron/index.ts',
+    'netron-reexport': 'src/netron-reexport.ts',
   },
   format: ['esm'],
   dts: true,
@@ -26,4 +27,5 @@ export default defineConfig({
   target: 'es2022',
   outDir: 'dist',
   tsconfig: './tsconfig.json',
+  external: ['@omnitron-dev/netron-browser'],
 });

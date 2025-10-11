@@ -1,8 +1,22 @@
 # Netron Browser Client Guide
 
 > **Complete guide to using Netron RPC client in browser applications**
-> **Version**: 2.0.0
-> **Date**: 2025-10-07
+> **Version**: 2.1.0
+> **Date**: 2025-10-11
+> **Status**: Using external `@omnitron-dev/netron-browser` package
+
+---
+
+## Migration Notice
+
+**Important**: As of October 2025, Aether now uses the external `@omnitron-dev/netron-browser` package instead of an embedded implementation. This provides:
+
+- **Better separation of concerns**: Netron browser client is independently maintained
+- **Shared across projects**: Can be used in any JavaScript/TypeScript project, not just Aether
+- **Focused development**: Browser-specific features and optimizations
+- **Cleaner dependencies**: Aether only imports what it needs
+
+The API remains identical, and the migration is transparent to end users. For migration details, see [NETRON-MIGRATION-NOTICE.md](./NETRON-MIGRATION-NOTICE.md).
 
 ---
 
@@ -59,6 +73,7 @@ Netron Browser Client is a high-performance RPC client for web applications that
 ### Via Package Manager
 
 ```bash
+# Install Aether (includes netron-browser as dependency)
 # Using Yarn
 yarn add @omnitron-dev/aether
 
@@ -67,9 +82,14 @@ npm install @omnitron-dev/aether
 
 # Using pnpm
 pnpm add @omnitron-dev/aether
+
+# Or install netron-browser directly for standalone use
+yarn add @omnitron-dev/netron-browser
 ```
 
 ### Import
+
+Aether re-exports the Netron browser client for convenience:
 
 ```typescript
 // WebSocket Client
@@ -81,6 +101,15 @@ import { HttpNetronClient } from '@omnitron-dev/aether/netron';
 // Logger
 import { BrowserLogger } from '@omnitron-dev/aether/netron';
 ```
+
+Or import directly from the standalone package:
+
+```typescript
+// Direct import from netron-browser
+import { NetronClient, HttpNetronClient, BrowserLogger } from '@omnitron-dev/netron-browser';
+```
+
+**Note**: Both import methods work identically. Use Aether's re-exports when building Aether apps, or import directly when using Netron in other projects.
 
 ---
 

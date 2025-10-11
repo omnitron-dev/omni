@@ -36,6 +36,10 @@
       "types": "./dist/netron/transport/http/index.d.ts",
       "default": "./dist/netron/transport/http/index.js"
     },
+    "./netron/transport/websocket": {
+      "types": "./dist/netron/transport/websocket-transport.d.ts",
+      "default": "./dist/netron/transport/websocket-transport.js"
+    },
     "./nexus": {
       "types": "./dist/nexus/index.d.ts",
       "default": "./dist/nexus/index.js"

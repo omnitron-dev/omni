@@ -367,6 +367,31 @@ export interface TabsContentProps {
 
 /**
  * Tabs content component - tab panel
+ *
+ * IMPORTANT PATTERN: Aether Framework Reactivity
+ * ===============================================
+ * Components in Aether do NOT re-render when signals change. The render function
+ * runs ONCE per component instance. Reactivity is achieved through effect() blocks
+ * that update existing DOM nodes.
+ *
+ * ❌ WRONG (doesn't work):
+ * ```typescript
+ * return () => {
+ *   if (!isSelected()) return null;  // Never re-renders when isSelected changes!
+ *   return <div>Content</div>;
+ * }
+ * ```
+ *
+ * ✅ CORRECT (works):
+ * ```typescript
+ * return () => {
+ *   const div = <div>Content</div>;  // Always create element
+ *   effect(() => {
+ *     div.style.display = isSelected() ? '' : 'none';  // Effect updates visibility
+ *   });
+ *   return div;
+ * }
+ * ```
  */
 export const TabsContent = defineComponent<TabsContentProps>((props) => {
   return () => {
@@ -374,24 +399,47 @@ export const TabsContent = defineComponent<TabsContentProps>((props) => {
     const ctx = useContext(TabsContext);
     const { value, forceMount, children, ...restProps } = props;
 
-    // Check if selected
+    // Compute initial state
     const isSelected = ctx.value() === value;
 
-    // Don't render unless selected or force mounted (matches test expectations)
-    if (!isSelected && !forceMount) {
-      return null;
-    }
-
-    return jsx('div', {
+    // Always create the element (framework doesn't support conditional rendering)
+    const panel = jsx('div', {
       ...restProps,
       id: ctx.getContentId(value),
       role: 'tabpanel',
       'aria-labelledby': ctx.getTriggerId(value),
       'data-state': isSelected ? 'active' : 'inactive',
       tabIndex: 0,
-      hidden: !isSelected && forceMount ? true : undefined,
+      style: forceMount
+        ? (isSelected ? undefined : 'display: none;')
+        : (isSelected ? undefined : 'display: none;'),
       children,
+    }) as HTMLElement;
+
+    // Set up effect to update visibility reactively when context value changes
+    effect(() => {
+      const selected = ctx.value() === value;
+      panel.setAttribute('data-state', selected ? 'active' : 'inactive');
+
+      // Handle visibility based on forceMount
+      if (forceMount) {
+        // Keep in DOM but toggle visibility
+        if (selected) {
+          panel.style.display = '';
+        } else {
+          panel.style.display = 'none';
+        }
+      } else {
+        // Toggle visibility - always keep in DOM for reactivity
+        if (selected) {
+          panel.style.display = '';
+        } else {
+          panel.style.display = 'none';
+        }
+      }
     });
+
+    return panel;
   };
 });
 

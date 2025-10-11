@@ -15,7 +15,8 @@
 import { defineComponent } from '../core/component/index.js';
 import { createContext, useContext } from '../core/component/context.js';
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
-import { signal, computed } from '../core/reactivity/index.js';
+import { signal } from '../core/reactivity/signal.js';
+import { computed } from '../core/reactivity/computed.js';
 import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 
@@ -109,11 +110,8 @@ interface RangeSliderContextValue {
 const globalRangeSliderContextSignal = signal<RangeSliderContextValue | null>(null);
 
 // Create context with default implementation that delegates to global signal
-const noop = () => {};
-const noopValue = () => globalRangeSliderContextSignal()?.value() ?? { min: 0, max: 100 };
-
 const RangeSliderContext = createContext<RangeSliderContextValue>({
-  value: () => globalRangeSliderContextSignal()?.value() ?? { min: 0, max: 100 },
+  value: computed(() => globalRangeSliderContextSignal()?.value() ?? { min: 0, max: 100 }),
   get min() { return globalRangeSliderContextSignal()?.min ?? 0; },
   get max() { return globalRangeSliderContextSignal()?.max ?? 100; },
   get step() { return globalRangeSliderContextSignal()?.step ?? 1; },

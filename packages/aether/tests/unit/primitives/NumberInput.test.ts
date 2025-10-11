@@ -1,20 +1,43 @@
 /**
  * @vitest-environment happy-dom
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { signal } from '../../../src/core/reactivity/signal.js';
 import {
   NumberInput,
   NumberInputField,
   NumberInputIncrement,
   NumberInputDecrement,
+  __resetNumberInputContext,
 } from '../../../src/primitives/NumberInput.js';
 import { renderComponent, createSpy } from '../../helpers/test-utils.js';
 
 describe('NumberInput', () => {
-  beforeEach(() => {
-    document.body.innerHTML = '';
+  // Track cleanup functions to dispose reactive roots
+  const cleanups: Array<() => void> = [];
+
+  afterEach(() => {
+    // Clean up all components after each test
+    while (cleanups.length > 0) {
+      const cleanup = cleanups.pop();
+      cleanup?.();
+    }
   });
+
+  beforeEach(() => {
+    // Clear DOM
+    document.body.innerHTML = '';
+
+    // Reset global context
+    __resetNumberInputContext();
+  });
+
+  // Wrap renderComponent to automatically track cleanups
+  const render = (component: () => any) => {
+    const result = renderComponent(component);
+    cleanups.push(result.cleanup);
+    return result;
+  };
 
   describe('Basic Rendering', () => {
     it('should render root container with children', () => {
@@ -27,7 +50,7 @@ describe('NumberInput', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const root = container.querySelector('[data-number-input]');
       expect(root).toBeTruthy();
@@ -40,7 +63,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]');
       expect(input).toBeTruthy();
@@ -53,7 +76,7 @@ describe('NumberInput', () => {
           children: NumberInputIncrement({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-increment]');
       expect(button).toBeTruthy();
@@ -67,7 +90,7 @@ describe('NumberInput', () => {
           children: NumberInputDecrement({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-decrement]');
       expect(button).toBeTruthy();
@@ -85,7 +108,7 @@ describe('NumberInput', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       expect(container.querySelector('[data-number-input-field]')).toBeTruthy();
       expect(container.querySelector('[data-number-input-increment]')).toBeTruthy();
@@ -98,7 +121,7 @@ describe('NumberInput', () => {
           children: NumberInputIncrement({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-increment]');
       expect(button?.textContent).toBe('▲');
@@ -110,7 +133,7 @@ describe('NumberInput', () => {
           children: NumberInputDecrement({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-decrement]');
       expect(button?.textContent).toBe('▼');
@@ -122,7 +145,7 @@ describe('NumberInput', () => {
           children: NumberInputIncrement({ children: '+' }),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-increment]');
       expect(button?.textContent).toBe('+');
@@ -134,7 +157,7 @@ describe('NumberInput', () => {
           children: NumberInputDecrement({ children: '-' }),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-decrement]');
       expect(button?.textContent).toBe('-');
@@ -148,7 +171,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.value).toBe('0');
@@ -161,7 +184,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.value).toBe('50');
@@ -174,7 +197,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.value).toBe('-25');
@@ -188,7 +211,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.value).toBe('3.14');
@@ -203,7 +226,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.value).toBe('75');
@@ -218,7 +241,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.value).toBe('30');
@@ -240,7 +263,7 @@ describe('NumberInput', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-increment]') as HTMLButtonElement;
       button.click();
@@ -263,7 +286,7 @@ describe('NumberInput', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-increment]') as HTMLButtonElement;
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
@@ -282,7 +305,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.getAttribute('aria-valuemin')).toBe('-Infinity');
@@ -297,7 +320,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.getAttribute('aria-valuemin')).toBe('10');
@@ -311,7 +334,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.getAttribute('aria-valuemax')).toBe('100');
@@ -326,7 +349,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.value).toBe('10');
@@ -341,7 +364,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.value).toBe('100');
@@ -356,7 +379,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
 
@@ -380,7 +403,7 @@ describe('NumberInput', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-increment]') as HTMLButtonElement;
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
@@ -400,7 +423,7 @@ describe('NumberInput', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-increment]') as HTMLButtonElement;
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
@@ -420,7 +443,7 @@ describe('NumberInput', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-decrement]') as HTMLButtonElement;
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
@@ -441,7 +464,7 @@ describe('NumberInput', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-increment]') as HTMLButtonElement;
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
@@ -459,7 +482,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.value).toBe('5');
@@ -473,7 +496,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.value).toBe('5.00');
@@ -487,7 +510,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.value).toBe('3.14');
@@ -505,7 +528,7 @@ describe('NumberInput', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-increment]') as HTMLButtonElement;
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
@@ -526,7 +549,7 @@ describe('NumberInput', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-increment]') as HTMLButtonElement;
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
@@ -543,7 +566,7 @@ describe('NumberInput', () => {
           children: NumberInputIncrement({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-increment]') as HTMLButtonElement;
       expect(button.disabled).toBe(true);
@@ -557,7 +580,7 @@ describe('NumberInput', () => {
           children: NumberInputIncrement({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-increment]') as HTMLButtonElement;
       expect(button.disabled).toBe(false);
@@ -575,7 +598,7 @@ describe('NumberInput', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-increment]') as HTMLButtonElement;
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
@@ -591,7 +614,7 @@ describe('NumberInput', () => {
           children: NumberInputIncrement({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-increment]') as HTMLButtonElement;
       expect(button.getAttribute('aria-label')).toBe('Increment');
@@ -609,7 +632,7 @@ describe('NumberInput', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-decrement]') as HTMLButtonElement;
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
@@ -626,7 +649,7 @@ describe('NumberInput', () => {
           children: NumberInputDecrement({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-decrement]') as HTMLButtonElement;
       expect(button.disabled).toBe(true);
@@ -640,7 +663,7 @@ describe('NumberInput', () => {
           children: NumberInputDecrement({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-decrement]') as HTMLButtonElement;
       expect(button.disabled).toBe(false);
@@ -658,7 +681,7 @@ describe('NumberInput', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-decrement]') as HTMLButtonElement;
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
@@ -674,7 +697,7 @@ describe('NumberInput', () => {
           children: NumberInputDecrement({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-decrement]') as HTMLButtonElement;
       expect(button.getAttribute('aria-label')).toBe('Decrement');
@@ -689,7 +712,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const root = container.querySelector('[data-number-input]');
       expect(root?.hasAttribute('data-disabled')).toBe(true);
@@ -702,7 +725,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.disabled).toBe(true);
@@ -715,7 +738,7 @@ describe('NumberInput', () => {
           children: NumberInputIncrement({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-increment]') as HTMLButtonElement;
       expect(button.disabled).toBe(true);
@@ -728,7 +751,7 @@ describe('NumberInput', () => {
           children: NumberInputDecrement({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-decrement]') as HTMLButtonElement;
       expect(button.disabled).toBe(true);
@@ -745,7 +768,7 @@ describe('NumberInput', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-increment]') as HTMLButtonElement;
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
@@ -765,7 +788,7 @@ describe('NumberInput', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-decrement]') as HTMLButtonElement;
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
@@ -783,7 +806,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const root = container.querySelector('[data-number-input]');
       expect(root?.hasAttribute('data-readonly')).toBe(true);
@@ -796,7 +819,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.readOnly).toBe(true);
@@ -809,7 +832,7 @@ describe('NumberInput', () => {
           children: NumberInputIncrement({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-increment]') as HTMLButtonElement;
       expect(button.disabled).toBe(true);
@@ -822,7 +845,7 @@ describe('NumberInput', () => {
           children: NumberInputDecrement({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-decrement]') as HTMLButtonElement;
       expect(button.disabled).toBe(true);
@@ -839,7 +862,7 @@ describe('NumberInput', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-increment]') as HTMLButtonElement;
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
@@ -859,7 +882,7 @@ describe('NumberInput', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-decrement]') as HTMLButtonElement;
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
@@ -877,7 +900,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
 
@@ -894,7 +917,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
 
@@ -912,7 +935,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
 
@@ -930,7 +953,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
 
@@ -949,7 +972,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
 
@@ -968,7 +991,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
 
@@ -985,7 +1008,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
 
@@ -1004,7 +1027,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
 
@@ -1022,7 +1045,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
 
@@ -1040,7 +1063,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
 
@@ -1058,7 +1081,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
 
@@ -1077,7 +1100,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
 
@@ -1097,7 +1120,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
 
@@ -1114,7 +1137,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
 
@@ -1132,7 +1155,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
 
@@ -1152,7 +1175,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
 
@@ -1172,7 +1195,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.value).toBe('42');
@@ -1187,7 +1210,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.value).toBe('$99.99');
@@ -1202,7 +1225,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.value).toBe('75%');
@@ -1220,7 +1243,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
 
@@ -1241,7 +1264,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
 
@@ -1259,7 +1282,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const root = container.querySelector('[data-number-input]');
       expect(root?.getAttribute('role')).toBe('group');
@@ -1271,7 +1294,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]');
       expect(input?.getAttribute('inputMode')).toBe('numeric');
@@ -1284,7 +1307,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]');
       expect(input?.getAttribute('aria-valuemin')).toBe('0');
@@ -1297,7 +1320,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]');
       expect(input?.getAttribute('aria-valuemax')).toBe('100');
@@ -1310,7 +1333,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]');
       expect(input?.getAttribute('aria-valuenow')).toBe('42');
@@ -1325,7 +1348,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]');
       expect(input?.getAttribute('aria-valuenow')).toBe('30');
@@ -1340,7 +1363,7 @@ describe('NumberInput', () => {
           children: NumberInputIncrement({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-increment]');
       expect(button?.getAttribute('aria-label')).toBe('Increment');
@@ -1352,7 +1375,7 @@ describe('NumberInput', () => {
           children: NumberInputDecrement({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-decrement]');
       expect(button?.getAttribute('aria-label')).toBe('Decrement');
@@ -1367,7 +1390,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.value).toBe('999999999');
@@ -1381,7 +1404,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.value).toBe('0.0001');
@@ -1394,7 +1417,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.value).toBe('0');
@@ -1407,7 +1430,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.value).toBe('0');
@@ -1420,7 +1443,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.value).toBe('-100');
@@ -1439,7 +1462,7 @@ describe('NumberInput', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       const incrementBtn = container.querySelector('[data-number-input-increment]') as HTMLButtonElement;
@@ -1459,7 +1482,7 @@ describe('NumberInput', () => {
           children: NumberInputField({}),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.value).toBe('-50');
@@ -1479,7 +1502,7 @@ describe('NumberInput', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-increment]') as HTMLButtonElement;
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
@@ -1502,7 +1525,7 @@ describe('NumberInput', () => {
           }),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLElement;
       expect(input.getAttribute('data-testid')).toBe('custom-input');
@@ -1518,7 +1541,7 @@ describe('NumberInput', () => {
           }),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-increment]') as HTMLElement;
       expect(button.getAttribute('data-testid')).toBe('inc-button');
@@ -1534,7 +1557,7 @@ describe('NumberInput', () => {
           }),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const button = container.querySelector('[data-number-input-decrement]') as HTMLElement;
       expect(button.getAttribute('data-testid')).toBe('dec-button');
@@ -1557,7 +1580,7 @@ describe('NumberInput', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       const incBtn = container.querySelector('[data-number-input-increment]') as HTMLButtonElement;
@@ -1587,7 +1610,7 @@ describe('NumberInput', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.value).toBe('$19.99');
@@ -1608,7 +1631,7 @@ describe('NumberInput', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.value).toBe('50%');
@@ -1621,7 +1644,7 @@ describe('NumberInput', () => {
           children: NumberInputField({ name: 'quantity' }),
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input.name).toBe('quantity');

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Accordion Debug</title>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module">
+    // Minimal reproduction of the issue
+    const contextStorage = new WeakMap();
+    let currentOwner = null;
+    
+    class Owner {
+      constructor(parent = null) {
+        this.parent = parent;
+        this.id = Math.random().toString(36).substr(2, 9);
+      }
+    }
+    
+    function createContext(defaultValue, name) {
+      const id = Symbol(name || 'context');
+      
+      return {
+        id,
+        defaultValue,
+        provide(value) {
+          if (!currentOwner) throw new Error('No owner');
+          let ownerContexts = contextStorage.get(currentOwner);
+          if (!ownerContexts) {
+            ownerContexts = new Map();
+            contextStorage.set(currentOwner, ownerContexts);
+          }
+          ownerContexts.set(id, value);
+          console.log(`[${name}] Provided to owner ${currentOwner.id}:`, value);
+        },
+        use() {
+          if (!currentOwner) throw new Error('No owner');
+          
+          let current = currentOwner;
+          while (current) {
+            const contexts = contextStorage.get(current);
+            if (contexts?.has(id)) {
+              const value = contexts.get(id);
+              console.log(`[${name}] Found in owner ${current.id}:`, value);
+              return value;
+            }
+            current = current.parent;
+          }
+          
+          console.log(`[${name}] Not found, using default:`, defaultValue);
+          return defaultValue;
+        }
+      };
+    }
+    
+    // Simulate the Accordion structure
+    const AccordionContext = createContext({ value: 'accordion-default' }, 'Accordion');
+    const ItemContext = createContext({ value: 'item-default' }, 'Item');
+    
+    // Accordion setup
+    console.log('\n=== Accordion Setup ===');
+    const accordionOwner = new Owner();
+    currentOwner = accordionOwner;
+    AccordionContext.provide({ value: 'item1' });
+    
+    // Item 1 setup
+    console.log('\n=== Item 1 Setup ===');
+    const item1Owner = new Owner(accordionOwner);
+    currentOwner = item1Owner;
+    const accordionCtx1 = AccordionContext.use();
+    ItemContext.provide({ value: 'item1', accordionValue: accordionCtx1.value });
+    
+    // Item 2 setup
+    console.log('\n=== Item 2 Setup ===');
+    const item2Owner = new Owner(accordionOwner);
+    currentOwner = item2Owner;
+    const accordionCtx2 = AccordionContext.use();
+    ItemContext.provide({ value: 'item2', accordionValue: accordionCtx2.value });
+    
+    // Trigger 1 tries to access context
+    console.log('\n=== Trigger 1 Access (Item 1 Owner) ===');
+    currentOwner = item1Owner;
+    const itemCtx1 = ItemContext.use();
+    console.log('Trigger 1 sees:', itemCtx1);
+    
+    // Trigger 2 tries to access context
+    console.log('\n=== Trigger 2 Access (Item 2 Owner) ===');
+    currentOwner = item2Owner;
+    const itemCtx2 = ItemContext.use();
+    console.log('Trigger 2 sees:', itemCtx2);
+    
+    document.getElementById('root').innerHTML = '<pre>See console for debug output</pre>';
+  </script>
+</body>
+</html>

@@ -1149,13 +1149,14 @@ describe('RangeSlider', () => {
       const thumbMin = container.querySelector('.thumb-min') as HTMLElement;
       const thumbMax = container.querySelector('.thumb-max') as HTMLElement;
 
-      expect(thumbMin?.getAttribute('aria-valuenow')).toBe('0.3');
-      expect(thumbMax?.getAttribute('aria-valuenow')).toBe('0.7');
+      // Use numerical comparison with tolerance for floating-point precision
+      expect(Number(thumbMin?.getAttribute('aria-valuenow'))).toBeCloseTo(0.3, 10);
+      expect(Number(thumbMax?.getAttribute('aria-valuenow'))).toBeCloseTo(0.7, 10);
 
       const event = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true });
       thumbMin.dispatchEvent(event);
 
-      expect(thumbMin?.getAttribute('aria-valuenow')).toBe('0.4');
+      expect(Number(thumbMin?.getAttribute('aria-valuenow'))).toBeCloseTo(0.4, 10);
     });
 
     it('should handle very small step values', () => {

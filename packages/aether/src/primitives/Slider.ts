@@ -139,9 +139,6 @@ export interface SliderContextValue {
 const globalSliderContextSignal = signal<SliderContextValue | null>(null);
 
 // Create context with default implementation that delegates to global signal
-const noop = () => {};
-const noopGetter = () => globalSliderContextSignal()?.getThumbValue(0) ?? 0;
-
 export const SliderContext = createContext<SliderContextValue>({
   value: () => globalSliderContextSignal()?.value() ?? 0,
   setValue: (value, commit) => globalSliderContextSignal()?.setValue(value, commit),

@@ -14,7 +14,7 @@
  */
 
 import { defineComponent } from '../core/component/index.js';
-import { createContext, useContext, provideContext } from '../core/component/context.js';
+import { createContext, useContext } from '../core/component/context.js';
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
 import { signal, computed } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
@@ -113,33 +113,52 @@ interface NumberInputContextValue {
 // Using a SIGNAL makes the context reactive, so effects will rerun when it updates
 const globalNumberInputContextSignal = signal<NumberInputContextValue | null>(null);
 
+/**
+ * Reset the global NumberInput context signal (for testing)
+ * @internal
+ */
+export function __resetNumberInputContext() {
+  globalNumberInputContextSignal.set(null);
+}
+
 // ============================================================================
 // Context
 // ============================================================================
 
+// Create a stable default value signal (used when no context is available)
+const defaultValueSignal = computed(() => 0);
+
 // Create context with default implementation that delegates to global signal
 const NumberInputContext = createContext<NumberInputContextValue>({
-  get value() {
-    const ctx = globalNumberInputContextSignal();
-    return ctx ? ctx.value : computed(() => 0);
-  },
-  increment: () => globalNumberInputContextSignal()?.increment(),
-  decrement: () => globalNumberInputContextSignal()?.decrement(),
-  setValue: (value) => globalNumberInputContextSignal()?.setValue(value),
-  get min() { return globalNumberInputContextSignal()?.min ?? -Infinity; },
-  get max() { return globalNumberInputContextSignal()?.max ?? Infinity; },
-  get step() { return globalNumberInputContextSignal()?.step ?? 1; },
-  get disabled() { return globalNumberInputContextSignal()?.disabled ?? false; },
-  get readonly() { return globalNumberInputContextSignal()?.readonly ?? false; },
-  canIncrement: () => globalNumberInputContextSignal()?.canIncrement() ?? false,
-  canDecrement: () => globalNumberInputContextSignal()?.canDecrement() ?? false,
-  formatValue: (value) => globalNumberInputContextSignal()?.formatValue(value) ?? String(value),
-  parseValue: (str) => globalNumberInputContextSignal()?.parseValue(str) ?? 0,
+  value: defaultValueSignal,
+  increment: () => {},
+  decrement: () => {},
+  setValue: () => {},
+  min: -Infinity,
+  max: Infinity,
+  step: 1,
+  disabled: false,
+  readonly: false,
+  canIncrement: () => false,
+  canDecrement: () => false,
+  formatValue: (value) => String(value),
+  parseValue: (_str) => 0,
   inputRef: { current: null },
 }, 'NumberInput');
 
 const useNumberInputContext = (): NumberInputContextValue => {
-  return useContext(NumberInputContext);
+  // Try to get context from Provider
+  const ctx = useContext(NumberInputContext);
+
+  // If we got the default context (check by comparing value signal), fall back to global signal
+  if (ctx.value === defaultValueSignal) {
+    const globalCtx = globalNumberInputContextSignal();
+    if (globalCtx) {
+      return globalCtx;
+    }
+  }
+
+  return ctx;
 };
 
 // ============================================================================
@@ -167,9 +186,19 @@ export const NumberInput = defineComponent<NumberInputProps>((props) => {
   const keepWithinRange = props.keepWithinRange ?? true;
   const format = props.format ?? 'decimal';
 
+  // Calculate initial value with proper clamping and precision
+  const calculateInitialValue = (): number => {
+    let value = props.defaultValue ?? 0;
+    value = roundToPrecision(value, precision);
+    if (keepWithinRange) {
+      value = clamp(value, min, max);
+    }
+    return value;
+  };
+
   // State
   const internalValue: WritableSignal<number> = signal<number>(
-    props.defaultValue ?? 0,
+    calculateInitialValue(),
   );
 
   const inputRef: { current: HTMLInputElement | null } = { current: null };
@@ -197,28 +226,45 @@ export const NumberInput = defineComponent<NumberInputProps>((props) => {
   const increment = () => {
     if (disabled || readonly) return;
     const current = currentValue();
-    setValue(current + step);
+    const newValue = current + step;
+    // Clamp to max if we would exceed it
+    setValue(newValue > max ? max : newValue);
   };
 
   const decrement = () => {
     if (disabled || readonly) return;
     const current = currentValue();
-    setValue(current - step);
+    const newValue = current - step;
+    // Clamp to min if we would go below it
+    setValue(newValue < min ? min : newValue);
   };
 
-  const canIncrement = (): boolean => !disabled && !readonly && currentValue() + step <= max;
+  const canIncrement = (): boolean => {
+    if (disabled || readonly) return false;
+    const current = currentValue();
+    // Can increment if current value is strictly less than max
+    return current < max;
+  };
 
-  const canDecrement = (): boolean => !disabled && !readonly && currentValue() - step >= min;
+  const canDecrement = (): boolean => {
+    if (disabled || readonly) return false;
+    const current = currentValue();
+    // Can decrement if current value is strictly greater than min
+    return current > min;
+  };
 
   const formatValue = (value: number): string => {
+    // Format the number based on precision
+    const formattedNumber = precision === 0 ? String(Math.round(value)) : value.toFixed(precision);
+
     switch (format) {
       case 'currency':
-        return `$${value.toFixed(precision)}`;
+        return `$${formattedNumber}`;
       case 'percentage':
-        return `${value.toFixed(precision)}%`;
+        return `${formattedNumber}%`;
       case 'decimal':
       default:
-        return value.toFixed(precision);
+        return formattedNumber;
     }
   };
 
@@ -246,13 +292,11 @@ export const NumberInput = defineComponent<NumberInputProps>((props) => {
     inputRef,
   };
 
-  // Provide context during setup so children can access it in render phase
-  provideContext(NumberInputContext, contextValue);
-
-  // CRITICAL FIX: Set global context signal so children can access it
-  // This ensures context is available even if children are evaluated before parent completes setup
+  // CRITICAL FIX: Set global context signal IMMEDIATELY so children can access it
+  // This ensures context is available even if children are evaluated before parent renders
   globalNumberInputContextSignal.set(contextValue);
 
+  // Provide context via Provider during render
   return () =>
     jsx(NumberInputContext.Provider, {
       value: contextValue,

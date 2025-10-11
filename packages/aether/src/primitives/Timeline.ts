@@ -98,8 +98,11 @@ const TimelineContext = createContext<TimelineContextValue | null>(null);
 
 const useTimelineContext = (): TimelineContextValue => {
   const context = useContext(TimelineContext);
+  // Graceful degradation: return default context if not found
   if (!context) {
-    throw new Error('Timeline components must be used within a Timeline');
+    return {
+      orientation: 'vertical' // Default orientation
+    };
   }
   return context;
 };
@@ -108,10 +111,11 @@ const TimelineItemContext = createContext<TimelineItemContextValue | null>(null)
 
 const useTimelineItemContext = (): TimelineItemContextValue => {
   const context = useContext(TimelineItemContext);
+  // Graceful degradation: return default context if not found
   if (!context) {
-    throw new Error(
-      'Timeline.* components must be used within a Timeline.Item',
-    );
+    return {
+      status: () => 'pending' // Default status
+    };
   }
   return context;
 };

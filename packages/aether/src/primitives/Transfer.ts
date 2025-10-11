@@ -149,16 +149,20 @@ export const Transfer = defineComponent<TransferProps>((props) => {
 export const TransferList = defineComponent<{ type: 'source' | 'target'; children?: any | (() => any) }>((props) => {
   const context = useTransferContext();
 
-  return () => {
-    // Get items and selected reactively in render function
-    const items = props.type === 'source' ? context.sourceItems() : context.targetItems();
-    const selected = props.type === 'source' ? context.selectedSource() : context.selectedTarget();
+  const refCallback = (element: HTMLElement | null) => {
+    if (!element) return;
 
-    return jsx('div', {
-      'data-transfer-list': '',
-      'data-type': props.type,
-      children: items.map((item) =>
-        TransferItem({
+    // Set up effect to reactively update children when items change
+    effect(() => {
+      const items = props.type === 'source' ? context.sourceItems() : context.targetItems();
+      const selected = props.type === 'source' ? context.selectedSource() : context.selectedTarget();
+
+      // Clear existing children
+      element.innerHTML = '';
+
+      // Append new children
+      items.forEach((item) => {
+        const itemRender = TransferItem({
           item,
           type: props.type,
           selected: selected.includes(item.key),
@@ -169,8 +173,23 @@ export const TransferList = defineComponent<{ type: 'source' | 'target'; childre
               context.toggleTargetSelection(item.key);
             }
           },
-        }),
-      ),
+        });
+
+        // Call the render function to get the DOM node
+        const itemElement = typeof itemRender === 'function' ? itemRender() : itemRender;
+
+        if (itemElement instanceof Node) {
+          element.appendChild(itemElement);
+        }
+      });
+    });
+  };
+
+  return () => {
+    return jsx('div', {
+      ref: refCallback,
+      'data-transfer-list': '',
+      'data-type': props.type,
     });
   };
 });
@@ -223,18 +242,34 @@ const TransferItem = defineComponent<{
 export const TransferControls = defineComponent<any>(() => {
   const context = useTransferContext();
 
+  const refCallback = (element: HTMLElement | null) => {
+    if (!element) return;
+
+    // Set up effect to reactively update button disabled state
+    effect(() => {
+      const toTargetButton = element.querySelector('button:first-child') as HTMLButtonElement;
+      const toSourceButton = element.querySelector('button:last-child') as HTMLButtonElement;
+
+      if (toTargetButton) {
+        toTargetButton.disabled = context.selectedSource().length === 0;
+      }
+      if (toSourceButton) {
+        toSourceButton.disabled = context.selectedTarget().length === 0;
+      }
+    });
+  };
+
   return () =>
     jsx('div', {
+      ref: refCallback,
       'data-transfer-controls': '',
       children: [
         jsx('button', {
           onClick: () => context.transferToTarget(),
-          disabled: context.selectedSource().length === 0,
           children: '→',
         }),
         jsx('button', {
           onClick: () => context.transferToSource(),
-          disabled: context.selectedTarget().length === 0,
           children: '←',
         }),
       ],

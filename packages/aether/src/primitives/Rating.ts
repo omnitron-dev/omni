@@ -19,8 +19,9 @@
  */
 
 import { defineComponent } from '../core/component/index.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal, computed, type WritableSignal, type Signal } from '../core/reactivity/index.js';
+import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 
 // ============================================================================
@@ -135,6 +136,9 @@ export const Rating = defineComponent<RatingProps>((props) => {
     isHalfFilled,
   };
 
+  // SETUP PHASE: Provide context
+  provideContext(RatingContext, contextValue);
+
   const handleMouseLeave = () => {
     setHoverValue(0);
   };
@@ -161,38 +165,58 @@ export const Rating = defineComponent<RatingProps>((props) => {
     }
   };
 
-  return () => {
-    const { children, max = 5 } = props;
+  // Set up ref callback for reactive attribute updates
+  const refCallback = (element: HTMLDivElement | null) => {
+    if (!element) return;
 
-    // Generate items if children is a function
-    let content = children;
-    if (typeof children === 'function') {
-      const items = [];
-      for (let i = 1; i <= max; i++) {
-        const filled = isFilled(i);
-        items.push(children(i, filled));
+    // Set up effect to update ARIA attributes when value changes
+    effect(() => {
+      element.setAttribute('aria-valuenow', String(currentValue()));
+    });
+  };
+
+  return () => {
+    const { max = 5 } = props;
+
+    // RENDER PHASE: Evaluate function children
+    let content;
+
+    if (typeof props.children === 'function') {
+      // Check if it's a generator function (takes index/filled) or simple wrapper
+      const firstArg = props.children.length;
+
+      if (firstArg === 0) {
+        // Simple wrapper function like () => RatingItem(...)
+        content = props.children();
+      } else {
+        // Generator function like (index, filled) => RatingItem(...)
+        const items = [];
+        for (let i = 1; i <= max; i++) {
+          const filled = isFilled(i);
+          items.push(props.children(i, filled));
+        }
+        content = items;
       }
-      content = items;
+    } else {
+      content = props.children;
     }
 
-    return jsx(RatingContext.Provider, {
-      value: contextValue,
-      children: jsx('div', {
-        'data-rating': '',
-        'data-readonly': props.readOnly ? '' : undefined,
-        'data-disabled': props.disabled ? '' : undefined,
-        role: 'slider',
-        'aria-label': 'Rating',
-        'aria-valuenow': currentValue(),
-        'aria-valuemin': 0,
-        'aria-valuemax': max,
-        'aria-readonly': props.readOnly ? 'true' : undefined,
-        'aria-disabled': props.disabled ? 'true' : undefined,
-        tabIndex: props.readOnly || props.disabled ? undefined : 0,
-        onMouseLeave: handleMouseLeave,
-        onKeyDown: handleKeyDown,
-        children: content,
-      }),
+    return jsx('div', {
+      ref: refCallback,
+      'data-rating': '',
+      'data-readonly': props.readOnly ? '' : undefined,
+      'data-disabled': props.disabled ? '' : undefined,
+      role: 'slider',
+      'aria-label': 'Rating',
+      'aria-valuenow': currentValue(),
+      'aria-valuemin': 0,
+      'aria-valuemax': max,
+      'aria-readonly': props.readOnly ? 'true' : undefined,
+      'aria-disabled': props.disabled ? 'true' : undefined,
+      tabIndex: props.readOnly || props.disabled ? undefined : 0,
+      onMouseLeave: handleMouseLeave,
+      onKeyDown: handleKeyDown,
+      children: content,
     });
   };
 });

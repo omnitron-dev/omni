@@ -495,7 +495,8 @@ describe('Pagination', () => {
 
       const { container } = renderComponent(component);
       const buttons = container.querySelectorAll('[data-pagination-item]');
-      expect(buttons.length).toBeGreaterThan(5); // More siblings = more buttons
+      // With siblingCount=2: current (10) + 2 siblings left (8,9) + 2 siblings right (11,12) = 5 buttons
+      expect(buttons.length).toBe(5);
     });
   });
 

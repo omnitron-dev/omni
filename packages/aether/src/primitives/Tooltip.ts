@@ -190,16 +190,10 @@ export const Tooltip = defineComponent<TooltipProps>((props) => {
     disabled: disabled(),
   };
 
-  // CRITICAL: Provide context in setup phase
-  provideContext(TooltipContext, contextValue);
-
   return () => {
-    // Evaluate function children in render phase (after setup)
     const children = typeof props.children === 'function' ? props.children() : props.children;
-
-    // Return children directly - context already provided via provideContext
-    return jsx('div', {
-      'data-tooltip': '',
+    return jsx(TooltipContext.Provider, {
+      value: contextValue,
       children,
     });
   };
@@ -255,26 +249,9 @@ export const TooltipTrigger = defineComponent<{ children: any;[key: string]: any
       if (closeTimeoutId) clearTimeout(closeTimeoutId);
     });
 
-    const refCallback = (element: HTMLButtonElement | null) => {
-      if (!element) return;
-
-      // Set up effect to update DOM attributes when signals change
-      effect(() => {
-        const isOpen = ctx.isOpen();
-        element.setAttribute('data-state', isOpen ? 'open' : 'closed');
-
-        if (isOpen) {
-          element.setAttribute('aria-describedby', ctx.contentId);
-        } else {
-          element.removeAttribute('aria-describedby');
-        }
-      });
-    };
-
     return () =>
       jsx('button', {
         ...props,
-        ref: refCallback,
         id: ctx.triggerId,
         type: 'button',
         'aria-describedby': ctx.isOpen() ? ctx.contentId : undefined,

@@ -22,7 +22,7 @@
  */
 
 import { defineComponent } from '../core/component/index.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal, computed, type WritableSignal, type Signal } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
 
@@ -187,19 +187,22 @@ export const Carousel = defineComponent<CarouselProps>((props) => {
     unregisterSlide,
   };
 
+  // Provide context during setup phase (Pattern 17)
+  provideContext(CarouselContext, contextValue);
+
   return () => {
     const { children, orientation = 'horizontal' } = props;
 
-    return jsx(CarouselContext.Provider, {
-      value: contextValue,
-      children: jsx('div', {
-        'data-carousel': '',
-        'data-orientation': orientation,
-        role: 'region',
-        'aria-roledescription': 'carousel',
-        'aria-label': 'Carousel',
-        children,
-      }),
+    // Evaluate function children during render (Pattern 17)
+    const evaluatedChildren = typeof children === 'function' ? children() : children;
+
+    return jsx('div', {
+      'data-carousel': '',
+      'data-orientation': orientation,
+      role: 'region',
+      'aria-roledescription': 'carousel',
+      'aria-label': 'Carousel',
+      children: evaluatedChildren,
     });
   };
 });

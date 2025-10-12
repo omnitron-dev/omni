@@ -21,7 +21,7 @@
  */
 
 import { defineComponent } from '../core/component/index.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal, computed, type WritableSignal, type Signal } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
 
@@ -161,17 +161,19 @@ export const NavigationMenu = defineComponent<NavigationMenuProps>((props) => {
     isActive,
   };
 
-  return () => {
-    const { children, orientation = 'horizontal' } = props;
+  // Provide context during setup phase (Pattern 17)
+  provideContext(NavigationMenuContext, contextValue);
 
-    return jsx(NavigationMenuContext.Provider, {
-      value: contextValue,
-      children: jsx('nav', {
-        'data-navigation-menu': '',
-        'data-orientation': orientation,
-        'aria-label': 'Main navigation',
-        children,
-      }),
+  return () => {
+    // Evaluate function children during render (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+    const orientation = props.orientation ?? 'horizontal';
+
+    return jsx('nav', {
+      'data-navigation-menu': '',
+      'data-orientation': orientation,
+      'aria-label': 'Main navigation',
+      children,
     });
   };
 });
@@ -210,16 +212,17 @@ export const NavigationMenuItem = defineComponent<NavigationMenuItemProps>((prop
     trigger,
   };
 
-  return () => {
-    const { children } = props;
+  // Provide context during setup phase (Pattern 17)
+  provideContext(NavigationMenuItemContext, itemContextValue);
 
-    return jsx(NavigationMenuItemContext.Provider, {
-      value: itemContextValue,
-      children: jsx('li', {
-        'data-navigation-menu-item': '',
-        'data-active': itemContextValue.isActive ? '' : undefined,
-        children,
-      }),
+  return () => {
+    // Evaluate function children during render (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+
+    return jsx('li', {
+      'data-navigation-menu-item': '',
+      'data-active': itemContextValue.isActive ? '' : undefined,
+      children,
     });
   };
 });

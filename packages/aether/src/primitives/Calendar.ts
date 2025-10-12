@@ -27,7 +27,7 @@
  */
 
 import { defineComponent } from '../core/component/index.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal, computed, type WritableSignal, type Signal } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
 
@@ -344,20 +344,23 @@ export const Calendar = defineComponent<CalendarProps>((props) => {
     isToday,
   };
 
+  // Provide context during setup phase (Pattern 17)
+  provideContext(CalendarContext, contextValue);
+
   return () => {
     const { children, class: className, ...restProps } = props;
 
-    return jsx(CalendarContext.Provider, {
-      value: contextValue,
-      children: jsx('div', {
-        ...restProps,
-        class: className,
-        'data-calendar': '',
-        'data-disabled': props.disabled ? '' : undefined,
-        role: 'application',
-        'aria-label': 'Calendar',
-        children,
-      }),
+    // Evaluate function children during render (Pattern 17)
+    const evaluatedChildren = typeof children === 'function' ? children() : children;
+
+    return jsx('div', {
+      ...restProps,
+      class: className,
+      'data-calendar': '',
+      'data-disabled': props.disabled ? '' : undefined,
+      role: 'application',
+      'aria-label': 'Calendar',
+      children: evaluatedChildren,
     });
   };
 });

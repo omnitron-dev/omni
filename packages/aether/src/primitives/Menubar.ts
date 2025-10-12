@@ -22,7 +22,7 @@
 import { jsx } from '../jsx-runtime.js';
 import { defineComponent } from '../core/component/index.js';
 import { signal, type WritableSignal } from '../core/reactivity/index.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { Portal } from '../control-flow/Portal.js';
 import { generateId, calculatePosition, applyPosition, type Side, type Align } from './utils/index.js';
 
@@ -147,17 +147,18 @@ export const Menubar = defineComponent<MenubarProps>((props) => {
     setOpenMenuId: (id) => openMenuId.set(id),
   };
 
-  return () => {
-    const { children, ...restProps } = props;
+  // Provide context during setup phase (Pattern 17)
+  provideContext(MenubarContext, contextValue);
 
-    return jsx(MenubarContext.Provider, {
-      value: contextValue,
-      children: jsx('div', {
-        ...restProps,
-        'data-menubar': '',
-        role: 'menubar',
-        children,
-      }),
+  return () => {
+    // Evaluate function children during render (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+
+    return jsx('div', {
+      ...props,
+      'data-menubar': '',
+      role: 'menubar',
+      children,
     });
   };
 });
@@ -203,17 +204,18 @@ export const MenubarMenu = defineComponent<MenubarMenuProps>((props) => {
     contentId,
   };
 
-  return () => {
-    const { children, ...restProps } = props;
+  // Provide context during setup phase (Pattern 17)
+  provideContext(MenubarMenuContext, menuContextValue);
 
-    return jsx(MenubarMenuContext.Provider, {
-      value: menuContextValue,
-      children: jsx('div', {
-        ...restProps,
-        'data-menubar-menu': '',
-        'data-state': isOpen() ? 'open' : 'closed',
-        children,
-      }),
+  return () => {
+    // Evaluate function children during render (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+
+    return jsx('div', {
+      ...props,
+      'data-menubar-menu': '',
+      'data-state': isOpen() ? 'open' : 'closed',
+      children,
     });
   };
 });

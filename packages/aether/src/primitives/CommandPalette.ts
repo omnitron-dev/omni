@@ -30,7 +30,7 @@
  */
 
 import { defineComponent } from '../core/component/index.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal, computed, type WritableSignal, type Signal } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
 import { Dialog } from './Dialog.js';
@@ -199,16 +199,17 @@ export const CommandPalette = defineComponent<CommandPaletteProps>((props) => {
     unregisterItem,
   };
 
-  return () => {
-    const { children } = props;
+  // Provide context during setup phase (Pattern 17)
+  provideContext(CommandPaletteContext, contextValue);
 
-    return jsx(CommandPaletteContext.Provider, {
-      value: contextValue,
-      children: jsx(Dialog, {
-        open: currentOpen(),
-        onOpenChange: setOpen,
-        children,
-      }),
+  return () => {
+    // Evaluate function children during render (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+
+    return jsx(Dialog, {
+      open: currentOpen(),
+      onOpenChange: setOpen,
+      children,
     });
   };
 });

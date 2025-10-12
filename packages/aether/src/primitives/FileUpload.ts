@@ -15,7 +15,7 @@
  */
 
 import { defineComponent, onCleanup } from '../core/component/index.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
 import { signal, computed } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
@@ -104,7 +104,7 @@ interface FileUploadContextValue {
   /** Disabled state */
   disabled: boolean;
   /** Drag state */
-  isDragging: Signal<boolean>;
+  isDragging: WritableSignal<boolean>;
   /** Add files */
   addFiles: (files: File[]) => void;
   /** Remove file */
@@ -319,7 +319,7 @@ export const FileUpload = defineComponent<FileUploadProps>((props) => {
     maxSize: props.maxSize,
     maxFiles: props.maxFiles,
     disabled,
-    isDragging: computed(() => isDragging()),
+    isDragging,
     addFiles,
     removeFile,
     clearFiles,
@@ -327,15 +327,19 @@ export const FileUpload = defineComponent<FileUploadProps>((props) => {
     inputRef,
   };
 
-  return () =>
-    jsx(FileUploadContext.Provider, {
-      value: contextValue,
-      children: jsx('div', {
-        'data-file-upload': '',
-        'data-disabled': disabled ? '' : undefined,
-        children: props.children,
-      }),
+  // Provide context during setup phase (Pattern 17)
+  provideContext(FileUploadContext, contextValue);
+
+  return () => {
+    // Evaluate function children during render (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+
+    return jsx('div', {
+      'data-file-upload': '',
+      'data-disabled': disabled ? '' : undefined,
+      children,
     });
+  };
 });
 
 // ============================================================================
@@ -374,7 +378,7 @@ export const FileUploadDropzone = defineComponent<FileUploadDropzoneProps>((prop
     e.preventDefault();
     e.stopPropagation();
     if (!context.disabled) {
-      (context.isDragging as WritableSignal<boolean>).set(true);
+      context.isDragging.set(true);
     }
   };
 
@@ -382,7 +386,7 @@ export const FileUploadDropzone = defineComponent<FileUploadDropzoneProps>((prop
     e.preventDefault();
     e.stopPropagation();
     if (!context.disabled) {
-      (context.isDragging as WritableSignal<boolean>).set(false);
+      context.isDragging.set(false);
     }
   };
 
@@ -396,18 +400,24 @@ export const FileUploadDropzone = defineComponent<FileUploadDropzoneProps>((prop
     e.stopPropagation();
 
     if (!context.disabled) {
-      (context.isDragging as WritableSignal<boolean>).set(false);
+      context.isDragging.set(false);
 
       const files = Array.from(e.dataTransfer?.files ?? []);
       context.addFiles(files);
     }
   };
 
-  const handleClick = () => {
+  const handleClick = (e: MouseEvent) => {
+    // Only trigger if clicking the dropzone itself, not the input
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'INPUT') {
+      return;
+    }
     context.openFileBrowser();
   };
 
   const handleInputChange = (e: Event) => {
+    e.stopPropagation();
     const target = e.target as HTMLInputElement;
     const files = Array.from(target.files ?? []);
     context.addFiles(files);

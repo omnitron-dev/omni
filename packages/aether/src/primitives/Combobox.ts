@@ -28,7 +28,7 @@
  */
 
 import { defineComponent } from '../core/component/index.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal, computed, type WritableSignal, type Signal } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
 import { Portal } from '../control-flow/Portal.js';
@@ -225,19 +225,21 @@ export const Combobox = defineComponent<ComboboxProps>((props) => {
     unregisterItem,
   };
 
-  return () => {
-    const { children, class: className, ...restProps } = props;
+  // Provide context during setup phase (Pattern 17)
+  provideContext(ComboboxContext, contextValue);
 
-    return jsx(ComboboxContext.Provider, {
-      value: contextValue,
-      children: jsx('div', {
-        ...restProps,
-        class: className,
-        'data-combobox': '',
-        'data-state': currentOpen() ? 'open' : 'closed',
-        'data-disabled': props.disabled ? '' : undefined,
-        children,
-      }),
+  return () => {
+    // Evaluate function children during render (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+    const { class: className, ...restProps } = props;
+
+    return jsx('div', {
+      ...restProps,
+      class: className,
+      'data-combobox': '',
+      'data-state': currentOpen() ? 'open' : 'closed',
+      'data-disabled': props.disabled ? '' : undefined,
+      children,
     });
   };
 });

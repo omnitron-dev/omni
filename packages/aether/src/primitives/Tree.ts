@@ -23,7 +23,7 @@
  */
 
 import { defineComponent } from '../core/component/index.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal, computed, type WritableSignal, type Signal } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
 
@@ -166,17 +166,18 @@ export const Tree = defineComponent<TreeProps>((props) => {
     setSelected,
   };
 
-  return () => {
-    const { children } = props;
+  // Provide context during setup phase (Pattern 17)
+  provideContext(TreeContext, contextValue);
 
-    return jsx(TreeContext.Provider, {
-      value: contextValue,
-      children: jsx('div', {
-        'data-tree': '',
-        role: 'tree',
-        'aria-label': 'Tree view',
-        children,
-      }),
+  return () => {
+    // Evaluate function children during render (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+
+    return jsx('div', {
+      'data-tree': '',
+      role: 'tree',
+      'aria-label': 'Tree view',
+      children,
     });
   };
 });
@@ -208,23 +209,25 @@ export const TreeItem = defineComponent<TreeItemProps>((props) => {
     select,
   };
 
-  return () => {
-    const { children, value, disabled } = props;
+  // Provide context during setup phase (Pattern 17)
+  provideContext(TreeItemContext, itemContextValue);
 
-    return jsx(TreeItemContext.Provider, {
-      value: itemContextValue,
-      children: jsx('div', {
-        'data-tree-item': '',
-        'data-value': value,
-        'data-expanded': itemContextValue.isExpanded ? '' : undefined,
-        'data-selected': itemContextValue.isSelected ? '' : undefined,
-        'data-disabled': disabled ? '' : undefined,
-        role: 'treeitem',
-        'aria-expanded': itemContextValue.isExpanded ? 'true' : 'false',
-        'aria-selected': itemContextValue.isSelected ? 'true' : 'false',
-        'aria-disabled': disabled ? 'true' : undefined,
-        children,
-      }),
+  return () => {
+    // Evaluate function children during render (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+    const { value, disabled } = props;
+
+    return jsx('div', {
+      'data-tree-item': '',
+      'data-value': value,
+      'data-expanded': itemContextValue.isExpanded ? '' : undefined,
+      'data-selected': itemContextValue.isSelected ? '' : undefined,
+      'data-disabled': disabled ? '' : undefined,
+      role: 'treeitem',
+      'aria-expanded': itemContextValue.isExpanded ? 'true' : 'false',
+      'aria-selected': itemContextValue.isSelected ? 'true' : 'false',
+      'aria-disabled': disabled ? 'true' : undefined,
+      children,
     });
   };
 });

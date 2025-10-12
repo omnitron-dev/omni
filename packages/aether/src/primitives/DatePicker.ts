@@ -36,7 +36,7 @@
  */
 
 import { defineComponent } from '../core/component/index.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal, computed, type WritableSignal, type Signal } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
 import { Popover } from './Popover.js';
@@ -54,6 +54,8 @@ export interface DatePickerProps {
   onValueChange?: (date: Date | null) => void;
   /** Default value (uncontrolled) */
   defaultValue?: Date | null;
+  /** Default open state */
+  defaultOpen?: boolean;
   /** Default month to display */
   defaultMonth?: Date;
   /** Minimum selectable date */
@@ -137,7 +139,7 @@ export const DatePicker = defineComponent<DatePickerProps>((props) => {
   const internalValue: WritableSignal<Date | null> = signal(
     props.value ?? props.defaultValue ?? null,
   );
-  const internalOpen: WritableSignal<boolean> = signal(false);
+  const internalOpen: WritableSignal<boolean> = signal(props.defaultOpen ?? false);
 
   const isControlled = () => props.value !== undefined;
   const currentValue = () => (isControlled() ? props.value ?? null : internalValue());
@@ -170,16 +172,17 @@ export const DatePicker = defineComponent<DatePickerProps>((props) => {
     setOpen,
   };
 
-  return () => {
-    const { children } = props;
+  // Provide context during setup phase (Pattern 17)
+  provideContext(DatePickerContext, contextValue);
 
-    return jsx(DatePickerContext.Provider, {
-      value: contextValue,
-      children: jsx(Popover, {
-        open: internalOpen(),
-        onOpenChange: setOpen,
-        children,
-      }),
+  return () => {
+    // Evaluate function children during render (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+
+    return jsx(Popover, {
+      open: internalOpen(),
+      onOpenChange: setOpen,
+      children,
     });
   };
 });

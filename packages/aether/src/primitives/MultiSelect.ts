@@ -13,7 +13,7 @@
  */
 
 import { defineComponent } from '../core/component/index.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
 import { signal, computed } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
@@ -250,15 +250,19 @@ export const MultiSelect = defineComponent<MultiSelectProps>((props) => {
     unregisterItem,
   };
 
-  return () =>
-    jsx(MultiSelectContext.Provider, {
-      value: contextValue,
-      children: jsx('div', {
-        'data-multi-select': '',
-        'data-disabled': disabled ? '' : undefined,
-        children: props.children,
-      }),
+  // Provide context during setup phase (Pattern 17)
+  provideContext(MultiSelectContext, contextValue);
+
+  return () => {
+    // Evaluate function children during render (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+
+    return jsx('div', {
+      'data-multi-select': '',
+      'data-disabled': disabled ? '' : undefined,
+      children,
     });
+  };
 });
 
 // ============================================================================

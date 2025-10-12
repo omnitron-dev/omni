@@ -212,15 +212,21 @@ export const CommandPalette = defineComponent<CommandPaletteProps>((props) => {
   provideContext(CommandPaletteContext, contextValue);
 
   return () => {
-    // Evaluate function children during render (Pattern 17)
-    const children = typeof props.children === 'function' ? props.children() : props.children;
+    // Pattern 19: Pass signal for reactive control, boolean for static control
+    // Dialog accepts both WritableSignal<boolean> and boolean
+    const openProp =
+      typeof props.open === 'boolean'
+        ? props.open // Pass boolean as-is for static control
+        : isSignal(props.open)
+          ? props.open // Pass signal for reactive control
+          : openSignal; // Use internal signal for uncontrolled mode
 
-    // Pattern 19: Track signal in render to trigger re-renders
-    // Call currentOpen() inside the jsx to ensure reactivity tracking
+    // Pattern 17: Pass children as-is to Dialog, let Dialog evaluate them
+    // This ensures Dialog's context is provided BEFORE children are created
     return jsx(Dialog, {
-      open: currentOpen(), // Pass boolean value, tracking happens here
+      open: openProp,
       onOpenChange: setOpen,
-      children,
+      children: props.children, // Pass unevaluated - Dialog will evaluate after providing context
     });
   };
 });

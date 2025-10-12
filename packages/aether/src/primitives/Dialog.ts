@@ -8,7 +8,7 @@
  */
 
 import { defineComponent } from '../core/component/define.js';
-import { signal } from '../core/reactivity/signal.js';
+import { signal, computed, type WritableSignal } from '../core/reactivity/index.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { onMount } from '../core/component/lifecycle.js';
 import { effect } from '../core/reactivity/effect.js';
@@ -53,9 +53,9 @@ export const DialogContext = createContext<DialogContextValue>(
  */
 export interface DialogProps {
   /**
-   * Controlled open state
+   * Controlled open state (supports WritableSignal for reactive updates - Pattern 19)
    */
-  open?: boolean;
+  open?: WritableSignal<boolean> | boolean;
 
   /**
    * Initial open state (uncontrolled)
@@ -95,16 +95,25 @@ export interface DialogProps {
  * ```
  */
 export const Dialog = defineComponent<DialogProps>((props) => {
-  const internalOpen = signal(props.defaultOpen || false);
-  const effectiveOpen = signal(props.open ?? props.defaultOpen ?? false);
+  // Pattern 19: Support both signal and value-based control (like Tree)
+  const isSignal = (val: any): val is WritableSignal<boolean> => typeof val === 'function' && 'set' in val;
+  const openSignal = isSignal(props.open) ? props.open : signal<boolean>(props.defaultOpen ?? false);
 
-  // Check if controlled
-  const isControlled = () => props.open !== undefined;
+  // Current open state - supports both static boolean and signal
+  const currentOpen = () => {
+    if (typeof props.open === 'boolean') {
+      return props.open;
+    }
+    return openSignal();
+  };
+
+  // Computed that tracks the signal reactively
+  const effectiveOpen = computed(() => currentOpen());
 
   const setOpen = (value: boolean) => {
-    if (!isControlled()) {
-      internalOpen.set(value);
-      effectiveOpen.set(value);
+    // Update internal signal if not using plain boolean control
+    if (typeof props.open !== 'boolean') {
+      openSignal.set(value);
     }
     props.onOpenChange?.(value);
   };
@@ -132,13 +141,8 @@ export const Dialog = defineComponent<DialogProps>((props) => {
   provideContext(DialogContext, contextValue);
 
   return () => {
-    // Sync controlled prop to internal signal BEFORE rendering children
-    // This ensures child effects see the correct value
-    if (isControlled()) {
-      effectiveOpen.set(props.open ?? false);
-    }
-
     // Evaluate function children during render (Pattern 17)
+    // No need to sync props - computed() handles reactivity tracking
     const children = typeof props.children === 'function' ? props.children() : props.children;
     return jsx('div', {
       'data-dialog-root': '',

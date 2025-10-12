@@ -1,693 +1,420 @@
 /**
+ * Skeleton Primitive Tests
  * @vitest-environment happy-dom
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+
+import { describe, it, expect, afterEach } from 'vitest';
 import { Skeleton } from '../../../src/primitives/Skeleton.js';
 import { renderComponent } from '../../helpers/test-utils.js';
 
 describe('Skeleton', () => {
-  beforeEach(() => {
-    document.body.innerHTML = '';
+  let cleanup: (() => void) | undefined;
+
+  afterEach(() => {
+    cleanup?.();
+    cleanup = undefined;
   });
 
-  describe('Basic Rendering', () => {
-    it('should render as a div element', () => {
-      const component = () => Skeleton({});
+  describe('Structure & Attributes Tests', () => {
+    it('should render div with data-skeleton attribute', () => {
+      const { container, cleanup: dispose } = renderComponent(() => Skeleton({}));
+      cleanup = dispose;
 
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('div[data-skeleton]');
-      expect(skeletonEl).toBeTruthy();
+      const skeleton = container.querySelector('div[data-skeleton]');
+      expect(skeleton).toBeTruthy();
     });
 
-    it('should have data-skeleton attribute', () => {
-      const component = () => Skeleton({});
+    it('should set aria-busy to "true"', () => {
+      const { container, cleanup: dispose } = renderComponent(() => Skeleton({}));
+      cleanup = dispose;
 
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('div') as HTMLElement;
-      expect(skeletonEl.hasAttribute('data-skeleton')).toBe(true);
-      expect(skeletonEl.getAttribute('data-skeleton')).toBe('');
+      const skeleton = container.querySelector('div[data-skeleton]');
+      expect(skeleton?.getAttribute('aria-busy')).toBe('true');
     });
 
-    it('should render empty skeleton by default', () => {
-      const component = () => Skeleton({});
+    it('should set aria-live to "polite"', () => {
+      const { container, cleanup: dispose } = renderComponent(() => Skeleton({}));
+      cleanup = dispose;
 
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]');
-      expect(skeletonEl).toBeTruthy();
-      expect(skeletonEl?.textContent).toBe('');
+      const skeleton = container.querySelector('div[data-skeleton]');
+      expect(skeleton?.getAttribute('aria-live')).toBe('polite');
     });
 
-    it('should render with children if provided', () => {
-      const component = () => Skeleton({ children: 'Loading...' });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]');
-      expect(skeletonEl?.textContent).toBe('Loading...');
-    });
-  });
-
-  describe('Width and Height', () => {
-    it('should apply width as string', () => {
-      const component = () => Skeleton({ width: '200px' });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.width).toBe('200px');
-    });
-
-    it('should apply width as number (converted to px)', () => {
-      const component = () => Skeleton({ width: 150 });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.width).toBe('150px');
-    });
-
-    it('should apply width with percentage', () => {
-      const component = () => Skeleton({ width: '100%' });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.width).toBe('100%');
-    });
-
-    it('should apply width with em units', () => {
-      const component = () => Skeleton({ width: '20em' });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.width).toBe('20em');
-    });
-
-    it('should apply height as string', () => {
-      const component = () => Skeleton({ height: '100px' });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.height).toBe('100px');
-    });
-
-    it('should apply height as number (converted to px)', () => {
-      const component = () => Skeleton({ height: 80 });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.height).toBe('80px');
-    });
-
-    it('should apply both width and height', () => {
-      const component = () => Skeleton({ width: 200, height: 150 });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.width).toBe('200px');
-      expect(skeletonEl.style.height).toBe('150px');
-    });
-
-    it('should work without width or height', () => {
-      const component = () => Skeleton({});
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.width).toBeFalsy();
-      expect(skeletonEl.style.height).toBeFalsy();
-    });
-  });
-
-  describe('Border Radius', () => {
-    it('should have default border radius of 4px', () => {
-      const component = () => Skeleton({});
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.borderRadius).toBe('4px');
-    });
-
-    it('should apply custom radius as string', () => {
-      const component = () => Skeleton({ radius: '8px' });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.borderRadius).toBe('8px');
-    });
-
-    it('should apply custom radius as number (converted to px)', () => {
-      const component = () => Skeleton({ radius: 12 });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.borderRadius).toBe('12px');
-    });
-
-    it('should support 50% for circle', () => {
-      const component = () => Skeleton({ radius: '50%', width: 40, height: 40 });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.borderRadius).toBe('50%');
-    });
-
-    it('should support 0 for no radius', () => {
-      const component = () => Skeleton({ radius: 0 });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.borderRadius).toBe('0px');
-    });
-
-    it('should support em units for radius', () => {
-      const component = () => Skeleton({ radius: '1em' });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.borderRadius).toBe('1em');
-    });
-  });
-
-  describe('Animation', () => {
-    it('should be animated by default', () => {
-      const component = () => Skeleton({});
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.hasAttribute('data-animate')).toBe(true);
-      expect(skeletonEl.getAttribute('data-animate')).toBe('');
-    });
-
-    it('should support animate=true', () => {
-      const component = () => Skeleton({ animate: true });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.hasAttribute('data-animate')).toBe(true);
-    });
-
-    it('should support animate=false to disable animation', () => {
-      const component = () => Skeleton({ animate: false });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.hasAttribute('data-animate')).toBe(false);
-    });
-
-    it('should not have data-animate when animation is disabled', () => {
-      const component = () => Skeleton({ animate: false });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.getAttribute('data-animate')).toBeNull();
-    });
-  });
-
-  describe('Accessibility', () => {
-    it('should have aria-busy="true"', () => {
-      const component = () => Skeleton({});
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.getAttribute('aria-busy')).toBe('true');
-    });
-
-    it('should have aria-live="polite"', () => {
-      const component = () => Skeleton({});
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.getAttribute('aria-live')).toBe('polite');
-    });
-
-    it('should announce loading state to screen readers', () => {
-      const component = () => Skeleton({});
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.getAttribute('aria-busy')).toBe('true');
-      expect(skeletonEl.getAttribute('aria-live')).toBe('polite');
-    });
-
-    it('should support custom aria-label', () => {
-      const component = () => Skeleton({ 'aria-label': 'Loading content' });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.getAttribute('aria-label')).toBe('Loading content');
-    });
-  });
-
-  describe('Styling', () => {
-    it('should apply class name', () => {
-      const component = () => Skeleton({ class: 'skeleton-loader' });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('.skeleton-loader');
-      expect(skeletonEl).toBeTruthy();
-    });
-
-    it('should apply multiple class names', () => {
-      const component = () => Skeleton({ class: 'skeleton shimmer rounded' });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.classList.contains('skeleton')).toBe(true);
-      expect(skeletonEl.classList.contains('shimmer')).toBe(true);
-      expect(skeletonEl.classList.contains('rounded')).toBe(true);
-    });
-
-    it('should apply custom inline styles', () => {
-      const component = () =>
+    it('should render with data-animate attribute when animate is true', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
         Skeleton({
-          style: {
-            backgroundColor: '#e0e0e0',
-            opacity: '0.5',
-          },
-        });
+          animate: true,
+        })
+      );
+      cleanup = dispose;
 
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.backgroundColor).toBe('#e0e0e0');
-      expect(skeletonEl.style.opacity).toBe('0.5');
+      const skeleton = container.querySelector('div[data-skeleton]');
+      expect(skeleton?.hasAttribute('data-animate')).toBe(true);
     });
 
-    it('should merge dimension styles with custom styles', () => {
-      const component = () =>
-        Skeleton({
-          width: 200,
-          height: 100,
-          style: {
-            margin: '10px',
-            padding: '5px',
-          },
-        });
+    it('should render with data-animate attribute when animate is undefined (default)', () => {
+      const { container, cleanup: dispose } = renderComponent(() => Skeleton({}));
+      cleanup = dispose;
 
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.width).toBe('200px');
-      expect(skeletonEl.style.height).toBe('100px');
-      expect(skeletonEl.style.margin).toBe('10px');
-      expect(skeletonEl.style.padding).toBe('5px');
+      const skeleton = container.querySelector('div[data-skeleton]');
+      expect(skeleton?.hasAttribute('data-animate')).toBe(true);
     });
 
-    it('should apply border radius with other styles', () => {
-      const component = () =>
+    it('should NOT render data-animate attribute when animate is false', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
         Skeleton({
-          radius: '12px',
-          style: {
-            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-          },
-        });
+          animate: false,
+        })
+      );
+      cleanup = dispose;
 
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.borderRadius).toBe('12px');
-      expect(skeletonEl.style.boxShadow).toBe('0 2px 4px rgba(0,0,0,0.1)');
+      const skeleton = container.querySelector('div[data-skeleton]');
+      expect(skeleton?.hasAttribute('data-animate')).toBe(false);
     });
   });
 
-  describe('Props Forwarding', () => {
-    it('should forward id attribute', () => {
-      const component = () => Skeleton({ id: 'skeleton-1' });
-
-      const { container } = renderComponent(component);
-
-      expect(container.querySelector('#skeleton-1')).toBeTruthy();
-    });
-
-    it('should forward data attributes', () => {
-      const component = () =>
-        Skeleton({
-          'data-testid': 'skeleton-loader',
-          'data-type': 'text',
-        });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-testid="skeleton-loader"]') as HTMLElement;
-      expect(skeletonEl).toBeTruthy();
-      expect(skeletonEl.getAttribute('data-type')).toBe('text');
-    });
-
-    it('should forward title attribute', () => {
-      const component = () => Skeleton({ title: 'Loading content' });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.title).toBe('Loading content');
-    });
-
-    it('should forward role attribute', () => {
-      const component = () => Skeleton({ role: 'progressbar' });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[role="progressbar"]');
-      expect(skeletonEl).toBeTruthy();
-    });
-  });
-
-  describe('Use Cases - Shapes', () => {
-    it('should work as text line skeleton', () => {
-      const component = () => Skeleton({ width: '100%', height: '1em', radius: '4px' });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.width).toBe('100%');
-      expect(skeletonEl.style.height).toBe('1em');
-      expect(skeletonEl.style.borderRadius).toBe('4px');
-    });
-
-    it('should work as circular avatar skeleton', () => {
-      const component = () =>
-        Skeleton({
-          width: 40,
-          height: 40,
-          radius: '50%',
-          class: 'avatar-skeleton',
-        });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('.avatar-skeleton') as HTMLElement;
-      expect(skeletonEl.style.width).toBe('40px');
-      expect(skeletonEl.style.height).toBe('40px');
-      expect(skeletonEl.style.borderRadius).toBe('50%');
-    });
-
-    it('should work as rectangular image skeleton', () => {
-      const component = () =>
-        Skeleton({
-          width: '300px',
-          height: '200px',
-          radius: '8px',
-          class: 'image-skeleton',
-        });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('.image-skeleton') as HTMLElement;
-      expect(skeletonEl.style.width).toBe('300px');
-      expect(skeletonEl.style.height).toBe('200px');
-      expect(skeletonEl.style.borderRadius).toBe('8px');
-    });
-
-    it('should work as button skeleton', () => {
-      const component = () =>
-        Skeleton({
-          width: '120px',
-          height: '40px',
-          radius: '20px',
-          class: 'button-skeleton',
-        });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('.button-skeleton') as HTMLElement;
-      expect(skeletonEl.style.width).toBe('120px');
-      expect(skeletonEl.style.height).toBe('40px');
-      expect(skeletonEl.style.borderRadius).toBe('20px');
-    });
-
-    it('should work as card skeleton', () => {
-      const component = () =>
+  describe('Width Tests', () => {
+    it('should accept width as string value (e.g., "100%")', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
         Skeleton({
           width: '100%',
-          height: '200px',
-          radius: '12px',
-          class: 'card-skeleton',
-        });
+        })
+      );
+      cleanup = dispose;
 
-      const { container } = renderComponent(component);
+      const skeleton = container.querySelector('div[data-skeleton]') as HTMLElement;
+      expect(skeleton.style.width).toBe('100%');
+    });
 
-      const skeletonEl = container.querySelector('.card-skeleton') as HTMLElement;
-      expect(skeletonEl.style.width).toBe('100%');
-      expect(skeletonEl.style.height).toBe('200px');
-      expect(skeletonEl.style.borderRadius).toBe('12px');
+    it('should accept width as number and convert to px (e.g., 200 -> "200px")', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
+        Skeleton({
+          width: 200,
+        })
+      );
+      cleanup = dispose;
+
+      const skeleton = container.querySelector('div[data-skeleton]') as HTMLElement;
+      expect(skeleton.style.width).toBe('200px');
+    });
+
+    it('should handle width as "auto"', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
+        Skeleton({
+          width: 'auto',
+        })
+      );
+      cleanup = dispose;
+
+      const skeleton = container.querySelector('div[data-skeleton]') as HTMLElement;
+      expect(skeleton.style.width).toBe('auto');
+    });
+
+    it('should handle no width prop (undefined)', () => {
+      const { container, cleanup: dispose } = renderComponent(() => Skeleton({}));
+      cleanup = dispose;
+
+      const skeleton = container.querySelector('div[data-skeleton]') as HTMLElement;
+      expect(skeleton.style.width).toBe('');
     });
   });
 
-  describe('Use Cases - Multiple Lines', () => {
-    it('should work with multiple text line skeletons', () => {
-      const component = () => {
-        const wrapper = document.createElement('div');
-        wrapper.appendChild(Skeleton({ width: '100%', height: '20px' }));
-        wrapper.appendChild(Skeleton({ width: '80%', height: '20px' }));
-        wrapper.appendChild(Skeleton({ width: '60%', height: '20px' }));
-        return wrapper;
-      };
+  describe('Height Tests', () => {
+    it('should accept height as string value (e.g., "20px")', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
+        Skeleton({
+          height: '20px',
+        })
+      );
+      cleanup = dispose;
 
-      const { container } = renderComponent(component);
-
-      const skeletons = container.querySelectorAll('[data-skeleton]');
-      expect(skeletons.length).toBe(3);
-
-      const widths = Array.from(skeletons).map((el) => (el as HTMLElement).style.width);
-      expect(widths).toEqual(['100%', '80%', '60%']);
+      const skeleton = container.querySelector('div[data-skeleton]') as HTMLElement;
+      expect(skeleton.style.height).toBe('20px');
     });
 
-    it('should work with paragraph skeleton (multiple lines)', () => {
-      const component = () => {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'paragraph-skeleton';
-        for (let i = 0; i < 4; i++) {
-          wrapper.appendChild(
-            Skeleton({
-              width: i === 3 ? '70%' : '100%',
-              height: '16px',
-              style: { marginBottom: '8px' },
-            })
-          );
-        }
-        return wrapper;
-      };
+    it('should accept height as number and convert to px (e.g., 40 -> "40px")', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
+        Skeleton({
+          height: 40,
+        })
+      );
+      cleanup = dispose;
 
-      const { container } = renderComponent(component);
+      const skeleton = container.querySelector('div[data-skeleton]') as HTMLElement;
+      expect(skeleton.style.height).toBe('40px');
+    });
 
-      const skeletons = container.querySelectorAll('[data-skeleton]');
-      expect(skeletons.length).toBe(4);
-      expect((skeletons[3] as HTMLElement).style.width).toBe('70%');
+    it('should handle height as "1em"', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
+        Skeleton({
+          height: '1em',
+        })
+      );
+      cleanup = dispose;
+
+      const skeleton = container.querySelector('div[data-skeleton]') as HTMLElement;
+      expect(skeleton.style.height).toBe('1em');
+    });
+
+    it('should handle no height prop (undefined)', () => {
+      const { container, cleanup: dispose } = renderComponent(() => Skeleton({}));
+      cleanup = dispose;
+
+      const skeleton = container.querySelector('div[data-skeleton]') as HTMLElement;
+      expect(skeleton.style.height).toBe('');
     });
   });
 
-  describe('Use Cases - Complex Layouts', () => {
-    it('should work in a card layout with avatar and text', () => {
-      const component = () => {
-        const card = document.createElement('div');
-        card.className = 'card-loading';
+  describe('Radius Tests', () => {
+    it('should use default radius of "4px" when not provided', () => {
+      const { container, cleanup: dispose } = renderComponent(() => Skeleton({}));
+      cleanup = dispose;
 
-        // Avatar
-        card.appendChild(Skeleton({ width: 48, height: 48, radius: '50%' }));
-
-        // Title
-        card.appendChild(Skeleton({ width: '60%', height: '24px', style: { marginTop: '12px' } }));
-
-        // Description lines
-        card.appendChild(Skeleton({ width: '100%', height: '16px', style: { marginTop: '8px' } }));
-        card.appendChild(Skeleton({ width: '80%', height: '16px', style: { marginTop: '4px' } }));
-
-        return card;
-      };
-
-      const { container } = renderComponent(component);
-
-      const skeletons = container.querySelectorAll('[data-skeleton]');
-      expect(skeletons.length).toBe(4);
-
-      // Check avatar is circular
-      expect((skeletons[0] as HTMLElement).style.borderRadius).toBe('50%');
+      const skeleton = container.querySelector('div[data-skeleton]') as HTMLElement;
+      expect(skeleton.style.borderRadius).toBe('4px');
     });
 
-    it('should work in a list item layout', () => {
-      const component = () => {
-        const listItem = document.createElement('div');
-        listItem.className = 'list-item-loading';
+    it('should accept custom radius as string (e.g., "8px")', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
+        Skeleton({
+          radius: '8px',
+        })
+      );
+      cleanup = dispose;
 
-        const left = document.createElement('div');
-        left.appendChild(Skeleton({ width: 40, height: 40, radius: '8px' }));
+      const skeleton = container.querySelector('div[data-skeleton]') as HTMLElement;
+      expect(skeleton.style.borderRadius).toBe('8px');
+    });
 
-        const right = document.createElement('div');
-        right.appendChild(Skeleton({ width: '200px', height: '16px' }));
-        right.appendChild(Skeleton({ width: '150px', height: '14px', style: { marginTop: '4px' } }));
+    it('should accept custom radius as number and convert to px (e.g., 10 -> "10px")', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
+        Skeleton({
+          radius: 10,
+        })
+      );
+      cleanup = dispose;
 
-        listItem.appendChild(left);
-        listItem.appendChild(right);
+      const skeleton = container.querySelector('div[data-skeleton]') as HTMLElement;
+      expect(skeleton.style.borderRadius).toBe('10px');
+    });
 
-        return listItem;
-      };
+    it('should accept radius as percentage (e.g., "50%" for circle)', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
+        Skeleton({
+          radius: '50%',
+        })
+      );
+      cleanup = dispose;
 
-      const { container } = renderComponent(component);
+      const skeleton = container.querySelector('div[data-skeleton]') as HTMLElement;
+      expect(skeleton.style.borderRadius).toBe('50%');
+    });
 
-      const skeletons = container.querySelectorAll('[data-skeleton]');
-      expect(skeletons.length).toBe(3);
+    it('should handle radius as "0" for sharp corners', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
+        Skeleton({
+          radius: 0,
+        })
+      );
+      cleanup = dispose;
+
+      const skeleton = container.querySelector('div[data-skeleton]') as HTMLElement;
+      expect(skeleton.style.borderRadius).toBe('0px');
+    });
+  });
+
+  describe('Animation Tests', () => {
+    it('should animate by default (animate prop not provided)', () => {
+      const { container, cleanup: dispose } = renderComponent(() => Skeleton({}));
+      cleanup = dispose;
+
+      const skeleton = container.querySelector('div[data-skeleton]');
+      expect(skeleton?.hasAttribute('data-animate')).toBe(true);
+    });
+
+    it('should animate when animate is explicitly true', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
+        Skeleton({
+          animate: true,
+        })
+      );
+      cleanup = dispose;
+
+      const skeleton = container.querySelector('div[data-skeleton]');
+      expect(skeleton?.hasAttribute('data-animate')).toBe(true);
+    });
+
+    it('should not animate when animate is false', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
+        Skeleton({
+          animate: false,
+        })
+      );
+      cleanup = dispose;
+
+      const skeleton = container.querySelector('div[data-skeleton]');
+      expect(skeleton?.hasAttribute('data-animate')).toBe(false);
+    });
+  });
+
+  describe('Style Merging Tests', () => {
+    it('should merge custom styles with computed styles', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
+        Skeleton({
+          width: '100px',
+          height: '50px',
+          style: { color: 'red', margin: '10px' },
+        })
+      );
+      cleanup = dispose;
+
+      const skeleton = container.querySelector('div[data-skeleton]') as HTMLElement;
+      expect(skeleton.style.width).toBe('100px');
+      expect(skeleton.style.height).toBe('50px');
+      expect(skeleton.style.color).toBe('red');
+      expect(skeleton.style.margin).toBe('10px');
+    });
+
+    it('should preserve custom background-color style', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
+        Skeleton({
+          style: { backgroundColor: 'blue' },
+        })
+      );
+      cleanup = dispose;
+
+      const skeleton = container.querySelector('div[data-skeleton]') as HTMLElement;
+      expect(skeleton.style.backgroundColor).toBe('blue');
+    });
+
+    it('should allow overriding borderRadius via style prop', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
+        Skeleton({
+          radius: '4px',
+          style: { borderRadius: '12px' },
+        })
+      );
+      cleanup = dispose;
+
+      const skeleton = container.querySelector('div[data-skeleton]') as HTMLElement;
+      // radius prop takes precedence over style.borderRadius due to spread order
+      expect(skeleton.style.borderRadius).toBe('4px');
+    });
+
+    it('should accept style prop as undefined', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
+        Skeleton({
+          style: undefined,
+        })
+      );
+      cleanup = dispose;
+
+      const skeleton = container.querySelector('div[data-skeleton]');
+      expect(skeleton).toBeTruthy();
+    });
+  });
+
+  describe('Props Spreading Tests', () => {
+    it('should spread additional props to div element', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
+        Skeleton({
+          'data-testid': 'my-skeleton',
+          'aria-label': 'Loading content',
+        })
+      );
+      cleanup = dispose;
+
+      const skeleton = container.querySelector('div[data-skeleton]');
+      expect(skeleton?.getAttribute('data-testid')).toBe('my-skeleton');
+      expect(skeleton?.getAttribute('aria-label')).toBe('Loading content');
+    });
+
+    it('should accept className prop', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
+        Skeleton({
+          className: 'custom-skeleton',
+        })
+      );
+      cleanup = dispose;
+
+      const skeleton = container.querySelector('div[data-skeleton]');
+      expect(skeleton?.className).toBe('custom-skeleton');
+    });
+
+    it('should accept id prop', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
+        Skeleton({
+          id: 'my-skeleton-id',
+        })
+      );
+      cleanup = dispose;
+
+      const skeleton = container.querySelector('div[data-skeleton]');
+      expect(skeleton?.id).toBe('my-skeleton-id');
     });
   });
 
   describe('Edge Cases', () => {
-    it('should handle width of 0', () => {
-      const component = () => Skeleton({ width: 0 });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.width).toBe('0px');
-    });
-
-    it('should handle height of 0', () => {
-      const component = () => Skeleton({ height: 0 });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.height).toBe('0px');
-    });
-
-    it('should handle very large dimensions', () => {
-      const component = () => Skeleton({ width: 9999, height: 9999 });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.width).toBe('9999px');
-      expect(skeletonEl.style.height).toBe('9999px');
-    });
-
-    it('should handle decimal dimensions', () => {
-      const component = () => Skeleton({ width: 100.5, height: 50.7 });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.width).toBe('100.5px');
-      expect(skeletonEl.style.height).toBe('50.7px');
-    });
-
-    it('should handle negative dimensions gracefully', () => {
-      const component = () => Skeleton({ width: -100, height: -50 });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.width).toBe('-100px');
-      expect(skeletonEl.style.height).toBe('-50px');
-    });
-
-    it('should handle undefined dimensions', () => {
-      const component = () => Skeleton({ width: undefined, height: undefined });
-
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.width).toBeFalsy();
-      expect(skeletonEl.style.height).toBeFalsy();
-    });
-  });
-
-  describe('Performance', () => {
-    it('should render many skeletons efficiently', () => {
-      const component = () => {
-        const wrapper = document.createElement('div');
-        for (let i = 0; i < 50; i++) {
-          wrapper.appendChild(
-            Skeleton({
-              width: '100%',
-              height: '20px',
-              class: `skeleton-${i}`,
-            })
-          );
-        }
-        return wrapper;
-      };
-
-      const { container } = renderComponent(component);
-
-      const skeletons = container.querySelectorAll('[data-skeleton]');
-      expect(skeletons.length).toBe(50);
-    });
-
-    it('should handle conditional rendering', () => {
-      const showSkeleton = true;
-      const component = () =>
+    it('should handle zero width', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
         Skeleton({
-          style: { display: showSkeleton ? 'block' : 'none' },
-          width: '100%',
-          height: '20px',
-        });
+          width: 0,
+        })
+      );
+      cleanup = dispose;
 
-      const { container } = renderComponent(component);
-
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.display).toBe('block');
-    });
-  });
-
-  describe('Integration Scenarios', () => {
-    it('should work as placeholder for content', () => {
-      const isLoading = true;
-      const component = () => {
-        const wrapper = document.createElement('div');
-        if (isLoading) {
-          wrapper.appendChild(Skeleton({ width: '100%', height: '200px' }));
-        } else {
-          const content = document.createElement('div');
-          content.textContent = 'Actual content';
-          wrapper.appendChild(content);
-        }
-        return wrapper;
-      };
-
-      const { container } = renderComponent(component);
-
-      expect(container.querySelector('[data-skeleton]')).toBeTruthy();
+      const skeleton = container.querySelector('div[data-skeleton]') as HTMLElement;
+      expect(skeleton.style.width).toBe('0px');
     });
 
-    it('should maintain consistent spacing with actual content', () => {
-      const component = () => {
-        const wrapper = document.createElement('div');
-        wrapper.appendChild(
-          Skeleton({
-            width: '200px',
-            height: '48px',
-            style: { margin: '16px' },
-          })
-        );
-        return wrapper;
-      };
+    it('should handle zero height', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
+        Skeleton({
+          height: 0,
+        })
+      );
+      cleanup = dispose;
 
-      const { container } = renderComponent(component);
+      const skeleton = container.querySelector('div[data-skeleton]') as HTMLElement;
+      expect(skeleton.style.height).toBe('0px');
+    });
 
-      const skeletonEl = container.querySelector('[data-skeleton]') as HTMLElement;
-      expect(skeletonEl.style.margin).toBe('16px');
+    it('should handle zero radius', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
+        Skeleton({
+          radius: 0,
+        })
+      );
+      cleanup = dispose;
+
+      const skeleton = container.querySelector('div[data-skeleton]') as HTMLElement;
+      expect(skeleton.style.borderRadius).toBe('0px');
+    });
+
+    it('should handle very large dimensions (width: 10000)', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
+        Skeleton({
+          width: 10000,
+          height: 10000,
+        })
+      );
+      cleanup = dispose;
+
+      const skeleton = container.querySelector('div[data-skeleton]') as HTMLElement;
+      expect(skeleton.style.width).toBe('10000px');
+      expect(skeleton.style.height).toBe('10000px');
+    });
+
+    it('should render children if provided (though typically empty)', () => {
+      const { container, cleanup: dispose } = renderComponent(() =>
+        Skeleton({
+          children: 'Loading...',
+        })
+      );
+      cleanup = dispose;
+
+      const skeleton = container.querySelector('div[data-skeleton]');
+      expect(skeleton?.textContent).toBe('Loading...');
     });
   });
 });

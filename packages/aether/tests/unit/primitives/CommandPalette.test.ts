@@ -14,7 +14,7 @@ import {
   CommandPaletteShortcut,
   CommandPaletteEmpty,
 } from '../../../src/primitives/CommandPalette.js';
-import { renderComponent } from '../../helpers/test-utils.js';
+import { renderComponent, nextTick } from '../../helpers/test-utils.js';
 
 // Track active element globally for focus mocking
 let _activeElement: Element | null = null;
@@ -737,8 +737,10 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const shortcut = container.querySelector('[data-command-palette-shortcut]');
-      expect(shortcut).toBeFalsy();
+      // With Pattern 18, shortcut exists but is hidden
+      const shortcut = container.querySelector('[data-command-palette-shortcut]') as HTMLElement;
+      expect(shortcut).toBeTruthy();
+      expect(shortcut.style.display).toBe('none');
     });
   });
 
@@ -769,7 +771,7 @@ describe('CommandPalette', () => {
   });
 
   describe('Controlled mode', () => {
-    it('should support controlled open state', () => {
+    it('should support controlled open state', async () => {
       const open = signal(false);
       const component = () =>
         CommandPalette({
@@ -784,21 +786,31 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      // Initially closed
-      let input = container.querySelector('[data-command-palette-input]');
-      expect(input).toBeFalsy();
+      // Initially closed - with Pattern 18, content exists but is hidden
+      let content = container.querySelector('[data-dialog-content]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('none');
 
       // Open
       open.set(true);
+      await nextTick();
 
-      input = container.querySelector('[data-command-palette-input]');
+      // Re-query to get the possibly re-created element
+      content = container.querySelector('[data-dialog-content]') as HTMLElement;
+      expect(content).toBeTruthy();
+      // The content should now be visible
+      expect(content.style.display).toBe('block');
+      const input = container.querySelector('[data-command-palette-input]');
       expect(input).toBeTruthy();
 
       // Close
       open.set(false);
+      await nextTick();
 
-      input = container.querySelector('[data-command-palette-input]');
-      expect(input).toBeFalsy();
+      // Re-query again
+      content = container.querySelector('[data-dialog-content]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('none');
     });
   });
 

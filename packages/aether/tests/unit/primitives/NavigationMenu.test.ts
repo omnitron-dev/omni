@@ -328,8 +328,11 @@ describe('NavigationMenu', () => {
 
       const { container } = renderComponent(component);
 
-      const content = container.querySelector('[data-navigation-menu-content]');
-      expect(content).toBeFalsy();
+      const content = container.querySelector('[data-navigation-menu-content]') as HTMLElement;
+      // With Pattern 18, content exists but is hidden
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('none');
+      expect(content.getAttribute('data-state')).toBe('closed');
     });
 
     it('should render when active', () => {
@@ -608,13 +611,18 @@ describe('NavigationMenu', () => {
 
       // Open
       trigger.click();
-      let content = container.querySelector('[data-navigation-menu-content]');
+      let content = container.querySelector('[data-navigation-menu-content]') as HTMLElement;
       expect(content).toBeTruthy();
+      expect(content.style.display).toBe('block');
+      expect(content.getAttribute('data-state')).toBe('open');
 
       // Close
       trigger.click();
-      content = container.querySelector('[data-navigation-menu-content]');
-      expect(content).toBeFalsy();
+      content = container.querySelector('[data-navigation-menu-content]') as HTMLElement;
+      // With Pattern 18, content exists but is hidden
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('none');
+      expect(content.getAttribute('data-state')).toBe('closed');
     });
 
     it('should close first item when second is activated', () => {

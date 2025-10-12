@@ -22,6 +22,7 @@
 import { jsx } from '../jsx-runtime.js';
 import { defineComponent } from '../core/component/index.js';
 import { signal, type WritableSignal } from '../core/reactivity/index.js';
+import { effect } from '../core/reactivity/effect.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { Portal } from '../control-flow/Portal.js';
 import { generateId, calculatePosition, applyPosition, type Side, type Align } from './utils/index.js';
@@ -211,12 +212,18 @@ export const MenubarMenu = defineComponent<MenubarMenuProps>((props) => {
     // Evaluate function children during render (Pattern 17)
     const children = typeof props.children === 'function' ? props.children() : props.children;
 
-    return jsx('div', {
+    const menu = jsx('div', {
       ...props,
       'data-menubar-menu': '',
-      'data-state': isOpen() ? 'open' : 'closed',
       children,
+    }) as HTMLElement;
+
+    // Reactively update data-state (Pattern 18)
+    effect(() => {
+      menu.setAttribute('data-state', isOpen() ? 'open' : 'closed');
     });
+
+    return menu;
   };
 });
 
@@ -226,35 +233,44 @@ export const MenubarMenu = defineComponent<MenubarMenuProps>((props) => {
 export const MenubarTrigger = defineComponent<MenubarTriggerProps>((props) => {
   const ctx = useContext(MenubarMenuContext);
 
-  const handleClick = () => {
-    ctx.toggle();
-  };
-
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      ctx.toggle();
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      ctx.open();
-    }
-  };
-
   return () => {
     const { children, ...restProps } = props;
+    // Evaluate function children during render (Pattern 17)
+    const evaluatedChildren = typeof children === 'function' ? children() : children;
 
-    return jsx('button', {
+    const handleClick = () => {
+      ctx.toggle();
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        ctx.toggle();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        ctx.open();
+      }
+    };
+
+    const trigger = jsx('button', {
       ...restProps,
       id: ctx.triggerId,
       'data-menubar-trigger': '',
-      'data-state': ctx.isOpen() ? 'open' : 'closed',
       'aria-haspopup': 'menu',
-      'aria-expanded': ctx.isOpen(),
       'aria-controls': ctx.contentId,
       onClick: handleClick,
       onKeyDown: handleKeyDown,
-      children,
+      children: evaluatedChildren,
+    }) as HTMLButtonElement;
+
+    // Reactively update state attributes (Pattern 18)
+    effect(() => {
+      const open = ctx.isOpen();
+      trigger.setAttribute('data-state', open ? 'open' : 'closed');
+      trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
     });
+
+    return trigger;
   };
 });
 
@@ -322,22 +338,35 @@ export const MenubarContent = defineComponent<MenubarContentProps>((props) => {
   };
 
   return () => {
-    if (!ctx.isOpen()) return null;
-
     const { side, align, sideOffset, alignOffset, children, ...restProps } = props;
+    // Evaluate function children during render (Pattern 17)
+    const evaluatedChildren = typeof children === 'function' ? children() : children;
+
+    const content = jsx('div', {
+      ...restProps,
+      ref: handleRef as any,
+      id: ctx.contentId,
+      'data-menubar-content': '',
+      role: 'menu',
+      'aria-labelledby': ctx.triggerId,
+      tabIndex: -1,
+      style: {
+        display: ctx.isOpen() ? 'block' : 'none',
+        ...restProps.style,
+      },
+      children: evaluatedChildren,
+    }) as HTMLElement;
+
+    // Reactively toggle visibility and state (Pattern 18)
+    effect(() => {
+      const open = ctx.isOpen();
+      content.style.display = open ? 'block' : 'none';
+      content.setAttribute('data-state', open ? 'open' : 'closed');
+      content.setAttribute('aria-hidden', open ? 'false' : 'true');
+    });
 
     return jsx(Portal, {
-      children: jsx('div', {
-        ...restProps,
-        ref: handleRef as any,
-        id: ctx.contentId,
-        'data-menubar-content': '',
-        'data-state': 'open',
-        role: 'menu',
-        'aria-labelledby': ctx.triggerId,
-        tabIndex: -1,
-        children,
-      }),
+      children: content,
     });
   };
 });
@@ -348,23 +377,25 @@ export const MenubarContent = defineComponent<MenubarContentProps>((props) => {
 export const MenubarItem = defineComponent<MenubarItemProps>((props) => {
   const ctx = useContext(MenubarMenuContext);
 
-  const handleClick = () => {
-    if (props.disabled) return;
-    props.onSelect?.();
-    ctx.close();
-  };
-
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (props.disabled) return;
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      props.onSelect?.();
-      ctx.close();
-    }
-  };
-
   return () => {
     const { disabled, onSelect, children, ...restProps } = props;
+    // Evaluate function children during render (Pattern 17)
+    const evaluatedChildren = typeof children === 'function' ? children() : children;
+
+    const handleClick = () => {
+      if (disabled) return;
+      onSelect?.();
+      ctx.close();
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (disabled) return;
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        onSelect?.();
+        ctx.close();
+      }
+    };
 
     return jsx('div', {
       ...restProps,
@@ -375,7 +406,7 @@ export const MenubarItem = defineComponent<MenubarItemProps>((props) => {
       'aria-disabled': disabled ? 'true' : undefined,
       onClick: handleClick,
       onKeyDown: handleKeyDown,
-      children,
+      children: evaluatedChildren,
     });
   };
 });
@@ -395,11 +426,13 @@ export const MenubarSeparator = defineComponent<MenubarSeparatorProps>((props) =
  */
 export const MenubarLabel = defineComponent<MenubarLabelProps>((props) => () => {
     const { children, ...restProps } = props;
+    // Evaluate function children during render (Pattern 17)
+    const evaluatedChildren = typeof children === 'function' ? children() : children;
 
     return jsx('div', {
       ...restProps,
       'data-menubar-label': '',
-      children,
+      children: evaluatedChildren,
     });
   });
 
@@ -408,12 +441,14 @@ export const MenubarLabel = defineComponent<MenubarLabelProps>((props) => () => 
  */
 export const MenubarShortcut = defineComponent<MenubarShortcutProps>((props) => () => {
     const { children, ...restProps } = props;
+    // Evaluate function children during render (Pattern 17)
+    const evaluatedChildren = typeof children === 'function' ? children() : children;
 
     return jsx('span', {
       ...restProps,
       'data-menubar-shortcut': '',
       'aria-hidden': 'true',
-      children,
+      children: evaluatedChildren,
     });
   });
 

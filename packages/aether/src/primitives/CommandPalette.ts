@@ -297,11 +297,14 @@ export const CommandPaletteInput = defineComponent<CommandPaletteInputProps>((pr
 export const CommandPaletteList = defineComponent<CommandPaletteListProps>((props) => () => {
   const { children, ...restProps } = props;
 
+  // Evaluate function children (Pattern 17)
+  const evaluatedChildren = typeof children === 'function' ? children() : children;
+
   return jsx('div', {
     ...restProps,
     role: 'listbox',
     'data-command-palette-list': '',
-    children,
+    children: evaluatedChildren,
   });
 });
 
@@ -311,6 +314,9 @@ export const CommandPaletteList = defineComponent<CommandPaletteListProps>((prop
  */
 export const CommandPaletteGroup = defineComponent<CommandPaletteGroupProps>((props) => () => {
   const { children, heading, ...restProps } = props;
+
+  // Evaluate function children (Pattern 17)
+  const evaluatedChildren = typeof children === 'function' ? children() : children;
 
   return jsx('div', {
     ...restProps,
@@ -323,7 +329,7 @@ export const CommandPaletteGroup = defineComponent<CommandPaletteGroupProps>((pr
             children: heading,
           })
         : null,
-      children,
+      evaluatedChildren,
     ],
   });
 });
@@ -368,6 +374,9 @@ export const CommandPaletteItem = defineComponent<CommandPaletteItemProps>((prop
   return () => {
     const { children, value, onSelect, disabled, keywords, ...restProps } = props;
 
+    // Evaluate function children (Pattern 17)
+    const evaluatedChildren = typeof children === 'function' ? children() : children;
+
     const item = jsx('div', {
       ...restProps,
       ref: handleRef as any,
@@ -375,7 +384,7 @@ export const CommandPaletteItem = defineComponent<CommandPaletteItemProps>((prop
       'data-command-palette-item': '',
       onClick: handleClick,
       onMouseEnter: handleMouseEnter,
-      children,
+      children: evaluatedChildren,
     }) as HTMLElement;
 
     // Reactively update highlighted state (Pattern 18)

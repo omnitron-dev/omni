@@ -23,6 +23,7 @@
 import { defineComponent } from '../core/component/index.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal, computed, type WritableSignal, type Signal } from '../core/reactivity/index.js';
+import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 
 // ============================================================================
@@ -94,7 +95,7 @@ interface NavigationMenuContextValue {
 
 interface NavigationMenuItemContextValue {
   value: string;
-  isActive: boolean;
+  isActive: Signal<boolean>;
   trigger: () => void;
 }
 
@@ -181,16 +182,21 @@ export const NavigationMenu = defineComponent<NavigationMenuProps>((props) => {
 /**
  * Navigation Menu List
  */
-export const NavigationMenuList = defineComponent<NavigationMenuListProps>((props) => () => {
+export const NavigationMenuList = defineComponent<NavigationMenuListProps>((props) => {
   const context = useNavigationMenuContext();
-  const { children, ...restProps } = props;
 
-  return jsx('ul', {
-    ...restProps,
-    'data-navigation-menu-list': '',
-    'data-orientation': context.orientation,
-    children,
-  });
+  return () => {
+    // Evaluate function children during render (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+    const { children: _children, ...restProps } = props;
+
+    return jsx('ul', {
+      ...restProps,
+      'data-navigation-menu-list': '',
+      'data-orientation': context.orientation,
+      children,
+    });
+  };
 });
 
 /**
@@ -206,9 +212,12 @@ export const NavigationMenuItem = defineComponent<NavigationMenuItemProps>((prop
     context.setValue(currentValue === value ? '' : value);
   };
 
+  // Create a computed signal for isActive
+  const isActive = computed(() => context.isActive(value));
+
   const itemContextValue: NavigationMenuItemContextValue = {
     value,
-    isActive: context.isActive(value),
+    isActive,
     trigger,
   };
 
@@ -219,11 +228,22 @@ export const NavigationMenuItem = defineComponent<NavigationMenuItemProps>((prop
     // Evaluate function children during render (Pattern 17)
     const children = typeof props.children === 'function' ? props.children() : props.children;
 
-    return jsx('li', {
+    const item = jsx('li', {
       'data-navigation-menu-item': '',
-      'data-active': itemContextValue.isActive ? '' : undefined,
       children,
+    }) as HTMLElement;
+
+    // Reactively update data-active attribute (Pattern 18)
+    effect(() => {
+      const active = isActive();
+      if (active) {
+        item.setAttribute('data-active', '');
+      } else {
+        item.removeAttribute('data-active');
+      }
     });
+
+    return item;
   };
 });
 
@@ -249,61 +269,83 @@ export const NavigationMenuTrigger = defineComponent<NavigationMenuTriggerProps>
   return () => {
     const { children, ...restProps } = props;
 
-    return jsx('button', {
+    const trigger = jsx('button', {
       ...restProps,
       type: 'button',
       'data-navigation-menu-trigger': '',
-      'data-state': itemContext.isActive ? 'open' : 'closed',
-      'aria-expanded': itemContext.isActive,
       onClick: handleClick,
       onKeyDown: handleKeyDown,
       children,
+    }) as HTMLButtonElement;
+
+    // Reactively update state attributes (Pattern 18)
+    effect(() => {
+      const active = itemContext.isActive();
+      trigger.setAttribute('data-state', active ? 'open' : 'closed');
+      trigger.setAttribute('aria-expanded', String(active));
     });
+
+    return trigger;
   };
 });
 
 /**
  * Navigation Menu Content
  */
-export const NavigationMenuContent = defineComponent<NavigationMenuContentProps>((props) => () => {
+export const NavigationMenuContent = defineComponent<NavigationMenuContentProps>((props) => {
   const itemContext = useNavigationMenuItemContext();
-  const { children, portal = false, ...restProps } = props;
 
-  if (!itemContext.isActive) {
-    return null;
-  }
+  return () => {
+    // Evaluate function children during render (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+    const { children: _children, portal = false, ...restProps } = props;
 
-  return jsx('div', {
-    ...restProps,
-    'data-navigation-menu-content': '',
-    'data-state': 'open',
-    children,
-  });
+    const content = jsx('div', {
+      ...restProps,
+      'data-navigation-menu-content': '',
+      children,
+    }) as HTMLElement;
+
+    // Reactively toggle visibility and state (Pattern 18)
+    effect(() => {
+      const active = itemContext.isActive();
+      content.style.display = active ? 'block' : 'none';
+      content.setAttribute('data-state', active ? 'open' : 'closed');
+    });
+
+    return content;
+  };
 });
 
 /**
  * Navigation Menu Link
  */
-export const NavigationMenuLink = defineComponent<NavigationMenuLinkProps>((props) => () => {
-  const { children, href, active, ...restProps } = props;
+export const NavigationMenuLink = defineComponent<NavigationMenuLinkProps>((props) => {
+  return () => {
+    // Evaluate function children during render (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+    const { children: _children, href, active, ...restProps } = props;
 
-  return jsx('a', {
-    ...restProps,
-    href,
-    'data-navigation-menu-link': '',
-    'data-active': active ? '' : undefined,
-    'aria-current': active ? 'page' : undefined,
-    children,
-  });
+    return jsx('a', {
+      ...restProps,
+      href,
+      'data-navigation-menu-link': '',
+      'data-active': active ? '' : undefined,
+      'aria-current': active ? 'page' : undefined,
+      children,
+    });
+  };
 });
 
 /**
  * Navigation Menu Indicator
  * Visual indicator showing which item is active
  */
-export const NavigationMenuIndicator = defineComponent<NavigationMenuIndicatorProps>(
-  (props) => () => {
-    const { children, ...restProps } = props;
+export const NavigationMenuIndicator = defineComponent<NavigationMenuIndicatorProps>((props) => {
+  return () => {
+    // Evaluate function children during render (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+    const { children: _children, ...restProps } = props;
 
     return jsx('div', {
       ...restProps,
@@ -311,21 +353,25 @@ export const NavigationMenuIndicator = defineComponent<NavigationMenuIndicatorPr
       'aria-hidden': 'true',
       children,
     });
-  },
-);
+  };
+});
 
 /**
  * Navigation Menu Viewport
  * Container for content positioning
  */
-export const NavigationMenuViewport = defineComponent<NavigationMenuViewportProps>((props) => () => {
-  const { children, ...restProps } = props;
+export const NavigationMenuViewport = defineComponent<NavigationMenuViewportProps>((props) => {
+  return () => {
+    // Evaluate function children during render (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+    const { children: _children, ...restProps } = props;
 
-  return jsx('div', {
-    ...restProps,
-    'data-navigation-menu-viewport': '',
-    children,
-  });
+    return jsx('div', {
+      ...restProps,
+      'data-navigation-menu-viewport': '',
+      children,
+    });
+  };
 });
 
 // ============================================================================

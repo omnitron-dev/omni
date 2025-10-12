@@ -101,8 +101,10 @@ describe('Menubar', () => {
 
       const { container } = renderComponent(component);
 
-      const content = container.querySelector('[data-menubar-content]');
-      expect(content).toBeFalsy();
+      // With Pattern 18, content exists but is hidden
+      const content = container.querySelector('[data-menubar-content]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('none');
     });
   });
 

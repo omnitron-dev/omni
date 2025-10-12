@@ -229,7 +229,7 @@ describe('Mentions', () => {
       const component = () =>
         Mentions({
           mentions: mockMentions,
-          value: value(),
+          value,  // Pass signal directly, not value()
           onValueChange: (v) => value.set(v),
           children: () => MentionsInput({}),
         });

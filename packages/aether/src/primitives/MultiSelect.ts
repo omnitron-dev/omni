@@ -237,7 +237,7 @@ export const MultiSelect = defineComponent<MultiSelectProps>((props) => {
     disabled,
     isOpen: computed(() => isOpen()),
     setOpen,
-    searchQuery: computed(() => searchQuery()),
+    searchQuery: searchQuery as Signal<string>, // Use writable signal directly
     setSearchQuery,
     searchable,
     maxSelections,
@@ -393,14 +393,24 @@ export const MultiSelectSearch = defineComponent<MultiSelectSearchProps>((props)
 
     const { placeholder = 'Search...', ...rest } = props;
 
-    return jsx('input', {
+    // Create uncontrolled input
+    const input = jsx('input', {
       type: 'text',
       'data-multi-select-search': '',
       placeholder,
-      value: context.searchQuery(),
       onInput: handleInput,
       ...rest,
+    }) as HTMLInputElement;
+
+    // Sync input value with searchQuery signal (Pattern 18)
+    effect(() => {
+      const query = context.searchQuery();
+      if (input.value !== query) {
+        input.value = query;
+      }
     });
+
+    return input;
   };
 });
 
@@ -468,7 +478,8 @@ export const MultiSelectItem = defineComponent<MultiSelectItemProps>((props) => 
         item.setAttribute('aria-hidden', 'false');
       } else {
         // Has search query - filter based on match
-        const text = (props.children?.toString() || props.value).toLowerCase();
+        // Use item's textContent for reliable text matching
+        const text = (item.textContent || props.value).toLowerCase();
         const matches = text.includes(query);
         item.style.display = matches ? 'block' : 'none';
         item.setAttribute('aria-hidden', matches ? 'false' : 'true');

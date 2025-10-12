@@ -793,6 +793,7 @@ describe('Carousel', () => {
       const onClick = vi.fn();
       const { container, cleanup: dispose } = renderComponent(() =>
         Carousel({
+          defaultValue: 1, // Start at index 1 so Previous button is enabled
           children: () => [
             CarouselViewport({
               children: () => [CarouselSlide({}), CarouselSlide({})],

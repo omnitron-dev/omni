@@ -30,6 +30,7 @@
 import { defineComponent } from '../core/component/index.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal, computed, type WritableSignal, type Signal } from '../core/reactivity/index.js';
+import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 import { Portal } from '../control-flow/Portal.js';
 
@@ -449,23 +450,34 @@ export const ComboboxItem = defineComponent<ComboboxItemProps>((props) => {
 
     const { children, value, disabled, ...restProps } = props;
     const isSelected = context.value() === value;
-    const items = context.itemValues();
-    const index = items.indexOf(value);
-    const isHighlighted = context.highlightedIndex() === index;
 
-    return jsx('div', {
+    const item = jsx('div', {
       ...restProps,
       role: 'option',
       'aria-selected': isSelected,
       'aria-disabled': disabled ? 'true' : undefined,
       'data-combobox-item': '',
       'data-state': isSelected ? 'checked' : 'unchecked',
-      'data-highlighted': isHighlighted ? '' : undefined,
       'data-disabled': disabled ? '' : undefined,
       onClick: handleClick,
       onMouseEnter: handleMouseEnter,
       children,
+    }) as HTMLElement;
+
+    // Reactively update highlighted state (Pattern 18)
+    effect(() => {
+      const items = context.itemValues();
+      const index = items.indexOf(value);
+      const isHighlighted = context.highlightedIndex() === index;
+
+      if (isHighlighted) {
+        item.setAttribute('data-highlighted', '');
+      } else {
+        item.removeAttribute('data-highlighted');
+      }
     });
+
+    return item;
   };
 });
 

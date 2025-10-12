@@ -97,6 +97,8 @@ interface TagsInputContextValue {
   setInputValue: (value: string) => void;
   /** Input ref */
   inputRef: { current: HTMLInputElement | null };
+  /** Delimiter */
+  delimiter: string | string[];
 }
 
 // ============================================================================
@@ -214,6 +216,7 @@ export const TagsInput = defineComponent<TagsInputProps>((props) => {
     inputValue: computed(() => inputValue()),
     setInputValue,
     inputRef,
+    delimiter: props.delimiter ?? ',',
   };
 
   // Provide context during setup phase (Pattern 17)
@@ -241,8 +244,7 @@ export const TagsInputField = defineComponent<TagsInputFieldProps>((props) => {
   const context = useTagsInputContext();
 
   const getDelimiters = (): string[] => {
-    const parentProps = (context as any).props;
-    const delimiter = parentProps?.delimiter || ['Enter', ','];
+    const delimiter = context.delimiter;
     return Array.isArray(delimiter) ? delimiter : [delimiter];
   };
 

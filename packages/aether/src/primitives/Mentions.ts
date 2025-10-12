@@ -15,6 +15,7 @@ import { defineComponent } from '../core/component/index.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
 import { signal, computed } from '../core/reactivity/index.js';
+import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 
 // ============================================================================
@@ -28,8 +29,8 @@ export interface Mention {
 }
 
 export interface MentionsProps {
-  /** Input value (controlled) */
-  value?: string;
+  /** Input value (controlled) - signal for reactivity */
+  value?: WritableSignal<string>;
   /** Value change callback */
   onValueChange?: (value: string) => void;
   /** Default value (uncontrolled) */
@@ -101,15 +102,15 @@ export const Mentions = defineComponent<MentionsProps>((props) => {
   const trigger = props.trigger ?? '@';
   const disabled = props.disabled ?? false;
 
-  const internalValue: WritableSignal<string> = signal(props.defaultValue ?? '');
+  // Use provided signal or create internal one (like Select pattern)
+  const value: WritableSignal<string> = props.value ?? signal(props.defaultValue ?? '');
   const isOpen: WritableSignal<boolean> = signal(false);
   const searchQuery: WritableSignal<string> = signal('');
   const selectedIndex: WritableSignal<number> = signal(0);
   const cursorPosition: WritableSignal<number> = signal(0);
 
-  const currentValue = (): string => props.value ?? internalValue();
   const setValue = (newValue: string) => {
-    if (!props.value) internalValue.set(newValue);
+    value.set(newValue);
     props.onValueChange?.(newValue);
   };
 
@@ -119,17 +120,17 @@ export const Mentions = defineComponent<MentionsProps>((props) => {
   });
 
   const selectMention = (mention: Mention) => {
-    const value = currentValue();
+    const currentValue = value();
     const cursorPos = cursorPosition();
 
     // Find trigger position
-    const beforeCursor = value.substring(0, cursorPos);
+    const beforeCursor = currentValue.substring(0, cursorPos);
     const triggerIndex = beforeCursor.lastIndexOf(trigger);
 
     if (triggerIndex === -1) return;
 
-    const before = value.substring(0, triggerIndex);
-    const after = value.substring(cursorPos);
+    const before = currentValue.substring(0, triggerIndex);
+    const after = currentValue.substring(cursorPos);
     const mentionText = `${trigger}${mention.display} `;
 
     setValue(before + mentionText + after);
@@ -150,11 +151,11 @@ export const Mentions = defineComponent<MentionsProps>((props) => {
   };
 
   const contextValue: MentionsContextValue = {
-    value: computed(() => currentValue()),
+    value: value as Signal<string>,
     setValue,
-    isOpen: computed(() => isOpen()),
+    isOpen: isOpen as Signal<boolean>,
     filtered,
-    selectedIndex: computed(() => selectedIndex()),
+    selectedIndex: selectedIndex as Signal<number>,
     selectMention,
     navigate,
     trigger,
@@ -187,14 +188,21 @@ export const MentionsInput = defineComponent<any>((props) => {
     context.setValue(target.value);
   };
 
-  return () =>
-    jsx('textarea', {
+  return () => {
+    const textarea = jsx('textarea', {
       'data-mentions-input': '',
-      value: context.value(),
       onInput: handleInput,
       placeholder: props.placeholder,
       ...props,
+    }) as HTMLTextAreaElement;
+
+    // Sync textarea value with signal (Pattern 18)
+    effect(() => {
+      textarea.value = context.value();
     });
+
+    return textarea;
+  };
 });
 
 // ============================================================================

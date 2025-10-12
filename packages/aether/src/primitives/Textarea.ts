@@ -163,7 +163,14 @@ export const Textarea = defineComponent<TextareaProps>((props) => {
 
     // Get line height
     const computedStyle = window.getComputedStyle(element);
-    const lineHeight = parseFloat(computedStyle.lineHeight);
+    let lineHeight = parseFloat(computedStyle.lineHeight);
+
+    // Fallback for environments where lineHeight is not computed (e.g., happy-dom)
+    // Use fontSize as baseline, or default to 20px
+    if (isNaN(lineHeight)) {
+      const fontSize = parseFloat(computedStyle.fontSize);
+      lineHeight = isNaN(fontSize) ? 20 : fontSize * 1.2; // 1.2 is typical line-height multiplier
+    }
 
     // Calculate height based on content
     let height = element.scrollHeight;
@@ -202,10 +209,9 @@ export const Textarea = defineComponent<TextareaProps>((props) => {
   const handleRef = (element: HTMLTextAreaElement | null) => {
     textareaRef.set(element);
 
-    // Initial resize
+    // Initial resize - call immediately for testing environments
     if (element && props.autoResize) {
-      // Use setTimeout to ensure the element is fully rendered
-      setTimeout(() => adjustHeight(element), 0);
+      adjustHeight(element);
     }
   };
 

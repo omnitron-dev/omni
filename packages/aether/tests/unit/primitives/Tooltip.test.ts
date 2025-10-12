@@ -237,6 +237,7 @@ describe('Tooltip', () => {
 
       // Hide tooltip
       trigger.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true }));
+      vi.advanceTimersByTime(0); // closeDelay = 0, but still uses setTimeout
       await nextTick();
       expect(content.style.display).toBe('none');
     });

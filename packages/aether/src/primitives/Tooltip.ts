@@ -209,54 +209,77 @@ export const Tooltip = defineComponent<TooltipProps>((props) => {
  */
 export const TooltipTrigger = defineComponent<{ children: any;[key: string]: any }>(
   (props) => {
-    const ctx = useContext(TooltipContext);
+    // Defer context access to render time (like HoverCard)
+    let ctx: TooltipContextValue;
     let openTimeoutId: ReturnType<typeof setTimeout> | null = null;
     let closeTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
     const delayDuration = 700; // default delay
     const closeDelay = 0;
 
-    const handlePointerEnter = () => {
-      if (ctx.disabled) return;
-
-      if (closeTimeoutId) {
-        clearTimeout(closeTimeoutId);
-        closeTimeoutId = null;
-      }
-
-      openTimeoutId = setTimeout(() => {
-        ctx.open();
-      }, delayDuration);
-    };
-
-    const handlePointerLeave = () => {
-      if (openTimeoutId) {
-        clearTimeout(openTimeoutId);
-        openTimeoutId = null;
-      }
-
-      closeTimeoutId = setTimeout(() => {
-        ctx.close();
-      }, closeDelay);
-    };
-
-    const handleFocus = () => {
-      if (ctx.disabled) return;
-      ctx.open();
-    };
-
-    const handleBlur = () => {
-      ctx.close();
-    };
-
     onMount(() => () => {
       if (openTimeoutId) clearTimeout(openTimeoutId);
       if (closeTimeoutId) clearTimeout(closeTimeoutId);
     });
 
-    return () =>
-      jsx('button', {
+    return () => {
+      // Get context at render time
+      ctx = useContext(TooltipContext);
+
+      const handlePointerEnter = () => {
+        if (ctx.disabled) return;
+
+        if (closeTimeoutId) {
+          clearTimeout(closeTimeoutId);
+          closeTimeoutId = null;
+        }
+
+        openTimeoutId = setTimeout(() => {
+          ctx.open();
+        }, delayDuration);
+      };
+
+      const handlePointerLeave = () => {
+        if (openTimeoutId) {
+          clearTimeout(openTimeoutId);
+          openTimeoutId = null;
+        }
+
+        closeTimeoutId = setTimeout(() => {
+          ctx.close();
+        }, closeDelay);
+      };
+
+      const handleFocus = () => {
+        if (ctx.disabled) return;
+        ctx.open();
+      };
+
+      const handleBlur = () => {
+        ctx.close();
+      };
+
+      // Create refCallback to set up effect for reactive attributes
+      const refCallback = (element: HTMLButtonElement | null) => {
+        if (!element) return;
+
+        // Set up effect to update attributes when isOpen changes
+        effect(() => {
+          const isOpen = ctx.isOpen();
+          element.setAttribute('data-state', isOpen ? 'open' : 'closed');
+
+          // Remove aria-describedby when closed, set it when open
+          if (isOpen) {
+            element.setAttribute('aria-describedby', ctx.contentId);
+          } else {
+            element.removeAttribute('aria-describedby');
+          }
+        });
+      };
+
+      return jsx('button', {
         ...props,
+        ref: refCallback,
         id: ctx.triggerId,
         type: 'button',
         'aria-describedby': ctx.isOpen() ? ctx.contentId : undefined,
@@ -266,6 +289,7 @@ export const TooltipTrigger = defineComponent<{ children: any;[key: string]: any
         onFocus: handleFocus,
         onBlur: handleBlur,
       });
+    };
   }
 );
 
@@ -328,6 +352,11 @@ export const TooltipContent = defineComponent<TooltipContentProps>((props) => {
       });
     };
 
+    // Evaluate function children if needed
+    const resolvedChildren = typeof props.children === 'function'
+      ? props.children()
+      : props.children;
+
     // Create the content div
     const contentDiv = jsx('div', {
       ...props,
@@ -343,6 +372,7 @@ export const TooltipContent = defineComponent<TooltipContentProps>((props) => {
       },
       onPointerEnter: handlePointerEnter,
       onPointerLeave: handlePointerLeave,
+      children: resolvedChildren,
     });
 
     // Always render portal, control visibility via display:none
@@ -356,10 +386,13 @@ export const TooltipContent = defineComponent<TooltipContentProps>((props) => {
  * Tooltip Arrow component
  */
 export const TooltipArrow = defineComponent<TooltipArrowProps>((props) => {
-  const ctx = useContext(TooltipContext);
+  // Defer context access to render time (like HoverCard)
+  let ctx: TooltipContextValue;
   let arrowRef: HTMLElement | null = null;
 
   onMount(() => {
+    if (!ctx) return; // Context not available yet
+
     const contentElement = document.getElementById(ctx.contentId);
     const triggerElement = document.getElementById(ctx.triggerId);
 
@@ -370,10 +403,14 @@ export const TooltipArrow = defineComponent<TooltipArrowProps>((props) => {
     }
   });
 
-  return () =>
-    jsx('div', {
+  return () => {
+    // Get context at render time
+    ctx = useContext(TooltipContext);
+
+    return jsx('div', {
       ...props,
       ref: ((el: HTMLElement) => (arrowRef = el)) as any,
       'data-tooltip-arrow': '',
     });
+  };
 });

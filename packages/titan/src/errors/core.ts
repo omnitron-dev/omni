@@ -8,7 +8,7 @@ import {
   getErrorCategory,
   getErrorName,
   getDefaultMessage,
-  isRetryableError
+  isRetryableError,
 } from './codes.js';
 
 /**
@@ -86,7 +86,7 @@ export class TitanError extends Error {
     totalErrors: 0,
     byCode: {},
     byCategory: {},
-    lastReset: Date.now()
+    lastReset: Date.now(),
   };
 
   // Error instance cache for common errors
@@ -194,7 +194,7 @@ export class TitanError extends Error {
       .map(([code, count]) => ({
         code: parseInt(code),
         name: getErrorName(parseInt(code)),
-        count
+        count,
       }));
 
     return {
@@ -203,7 +203,7 @@ export class TitanError extends Error {
       topErrors,
       byCategory: { ...this.stats.byCategory },
       window: options.window,
-      elapsed
+      elapsed,
     };
   }
 
@@ -215,7 +215,7 @@ export class TitanError extends Error {
       totalErrors: 0,
       byCode: {},
       byCategory: {},
-      lastReset: Date.now()
+      lastReset: Date.now(),
     };
   }
 
@@ -247,7 +247,7 @@ export class TitanError extends Error {
       return {
         shouldRetry: true,
         delay: retryAfter * 1000,
-        maxAttempts: 3
+        maxAttempts: 3,
       };
     }
 
@@ -256,7 +256,7 @@ export class TitanError extends Error {
       shouldRetry: true,
       delay: 1000, // Start with 1 second
       maxAttempts: 3,
-      backoffFactor: 2
+      backoffFactor: 2,
     };
   }
 
@@ -275,7 +275,7 @@ export class TitanError extends Error {
       requestId: this.requestId,
       correlationId: this.correlationId,
       spanId: this.spanId,
-      traceId: this.traceId
+      traceId: this.traceId,
     };
   }
 
@@ -291,7 +291,7 @@ export class TitanError extends Error {
       requestId: this.requestId,
       correlationId: this.correlationId,
       spanId: this.spanId,
-      traceId: this.traceId
+      traceId: this.traceId,
     });
   }
 
@@ -307,7 +307,7 @@ export class TitanError extends Error {
       requestId: this.requestId,
       correlationId: this.correlationId,
       spanId: this.spanId,
-      traceId: this.traceId
+      traceId: this.traceId,
     });
   }
 }
@@ -325,7 +325,7 @@ export class AggregateError extends TitanError {
     // Deduplicate if requested
     if (options?.deduplicate) {
       const seen = new Set<string>();
-      processedErrors = errors.filter(error => {
+      processedErrors = errors.filter((error) => {
         const key = `${error.code}-${error.message}`;
         if (seen.has(key)) return false;
         seen.add(key);
@@ -339,9 +339,9 @@ export class AggregateError extends TitanError {
       code: ErrorCode.MULTIPLE_ERRORS,
       message: summary,
       details: {
-        errors: processedErrors.map(e => e.toJSON()),
-        count: processedErrors.length
-      }
+        errors: processedErrors.map((e) => e.toJSON()),
+        count: processedErrors.length,
+      },
     });
 
     this.name = 'AggregateError';
@@ -424,12 +424,12 @@ export function ensureError(value: unknown): TitanError {
     return new TitanError({
       code: ErrorCode.INTERNAL_ERROR,
       message: value.message,
-      cause: value
+      cause: value,
     });
   }
 
   return new TitanError({
     code: ErrorCode.UNKNOWN_ERROR,
-    message: String(value)
+    message: String(value),
   });
 }

@@ -22,11 +22,11 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
           version: '1.0.0',
           methods: {
             add: { name: 'add' },
-            subtract: { name: 'subtract' }
-          }
-        }
+            subtract: { name: 'subtract' },
+          },
+        },
       },
-      call: jest.fn()
+      call: jest.fn(),
     };
 
     const userStub = {
@@ -36,23 +36,23 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
           version: '1.0.0',
           methods: {
             getUser: { name: 'getUser' },
-            createUser: { name: 'createUser' }
-          }
-        }
+            createUser: { name: 'createUser' },
+          },
+        },
       },
-      call: jest.fn()
+      call: jest.fn(),
     };
 
     mockPeer = {
       stubs: new Map([
         ['stub-1', calculatorStub],
-        ['stub-2', userStub]
-      ])
+        ['stub-2', userStub],
+      ]),
     };
 
     server = new HttpServer({
       port: testPort,
-      host: 'localhost'
+      host: 'localhost',
     });
 
     // Inject mock peer
@@ -128,7 +128,7 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Netron-Version': '2.0'
+          'X-Netron-Version': '2.0',
         },
         body: JSON.stringify({
           id: 'test-req-1',
@@ -136,21 +136,17 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
           timestamp: Date.now(),
           service: 'Calculator@1.0.0',
           method: 'add',
-          input: { a: 2, b: 3 }
-        })
+          input: { a: 2, b: 3 },
+        }),
       });
 
       const response = await server.handleRequest(request);
 
       expect(response.status).toBe(200);
       // CRITICAL FIX: HTTP server passes null as callerPeer to prevent async generator wrapping
-      expect(calculatorStub.call).toHaveBeenCalledWith(
-        'add',
-        [{ a: 2, b: 3 }],
-        null
-      );
+      expect(calculatorStub.call).toHaveBeenCalledWith('add', [{ a: 2, b: 3 }], null);
 
-      const data = await response.json() as any;
+      const data = (await response.json()) as any;
       expect(data.success).toBe(true);
       expect(data.data).toBe(5);
       expect(data.id).toBe('test-req-1');
@@ -160,7 +156,7 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
       const request = new Request('http://localhost:3456/netron/invoke', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           id: 'test-req-2',
@@ -168,14 +164,14 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
           timestamp: Date.now(),
           service: 'NonExistent@1.0.0',
           method: 'test',
-          input: {}
-        })
+          input: {},
+        }),
       });
 
       const response = await server.handleRequest(request);
 
       expect(response.status).toBe(404);
-      const data = await response.json() as any;
+      const data = (await response.json()) as any;
       expect(data.success).toBe(false);
       expect(data.error.code).toBe('404'); // ErrorCode.NOT_FOUND as string
     });
@@ -184,7 +180,7 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
       const request = new Request('http://localhost:3456/netron/invoke', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           id: 'test-req-3',
@@ -192,14 +188,14 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
           timestamp: Date.now(),
           service: 'Calculator@1.0.0',
           method: 'nonExistentMethod',
-          input: {}
-        })
+          input: {},
+        }),
       });
 
       const response = await server.handleRequest(request);
 
       expect(response.status).toBe(404);
-      const data = await response.json() as any;
+      const data = (await response.json()) as any;
       expect(data.success).toBe(false);
       expect(data.error.code).toBe('404'); // ErrorCode.NOT_FOUND as string
     });
@@ -211,7 +207,7 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
       const request = new Request('http://localhost:3456/netron/invoke', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           id: 'test-req-4',
@@ -219,14 +215,14 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
           timestamp: Date.now(),
           service: 'Calculator@1.0.0',
           method: 'add',
-          input: {}
-        })
+          input: {},
+        }),
       });
 
       const response = await server.handleRequest(request);
 
       expect(response.status).toBe(500);
-      const data = await response.json() as any;
+      const data = (await response.json()) as any;
       expect(data.success).toBe(false);
       expect(data.error).toBeDefined();
     });
@@ -235,14 +231,12 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
   describe('Batch Endpoint', () => {
     it('should handle /netron/batch POST requests', async () => {
       const calculatorStub = mockPeer.stubs.get('stub-1');
-      calculatorStub.call
-        .mockResolvedValueOnce(5)
-        .mockResolvedValueOnce(10);
+      calculatorStub.call.mockResolvedValueOnce(5).mockResolvedValueOnce(10);
 
       const request = new Request('http://localhost:3456/netron/batch', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           id: 'batch-test-1',
@@ -255,7 +249,7 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
               timestamp: Date.now(),
               service: 'Calculator@1.0.0',
               method: 'add',
-              input: { a: 2, b: 3 }
+              input: { a: 2, b: 3 },
             },
             {
               id: 'batch-2',
@@ -263,16 +257,16 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
               timestamp: Date.now(),
               service: 'Calculator@1.0.0',
               method: 'add',
-              input: { a: 4, b: 6 }
-            }
-          ]
-        })
+              input: { a: 4, b: 6 },
+            },
+          ],
+        }),
       });
 
       const response = await server.handleRequest(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json() as any;
+      const data = (await response.json()) as any;
       expect(data.responses).toHaveLength(2);
       expect(data.responses[0].success).toBe(true);
       expect(data.responses[0].data).toBe(5);
@@ -282,14 +276,12 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
 
     it('should handle partial batch failures', async () => {
       const calculatorStub = mockPeer.stubs.get('stub-1');
-      calculatorStub.call
-        .mockResolvedValueOnce(5)
-        .mockRejectedValueOnce(new Error('Error'));
+      calculatorStub.call.mockResolvedValueOnce(5).mockRejectedValueOnce(new Error('Error'));
 
       const request = new Request('http://localhost:3456/netron/batch', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           id: 'batch-test-2',
@@ -302,7 +294,7 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
               timestamp: Date.now(),
               service: 'Calculator@1.0.0',
               method: 'add',
-              input: { a: 2, b: 3 }
+              input: { a: 2, b: 3 },
             },
             {
               id: 'batch-2',
@@ -310,16 +302,16 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
               timestamp: Date.now(),
               service: 'Calculator@1.0.0',
               method: 'add',
-              input: { a: 4, b: 6 }
-            }
-          ]
-        })
+              input: { a: 4, b: 6 },
+            },
+          ],
+        }),
       });
 
       const response = await server.handleRequest(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json() as any;
+      const data = (await response.json()) as any;
       expect(data.responses).toHaveLength(2);
       expect(data.responses[0].success).toBe(true);
       expect(data.responses[1].success).toBe(false);
@@ -329,14 +321,14 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
   describe('Health Check Endpoint', () => {
     it('should handle /health GET requests (server offline)', async () => {
       const request = new Request('http://localhost:3456/health', {
-        method: 'GET'
+        method: 'GET',
       });
 
       const response = await server.handleRequest(request);
 
       // Server is not started, so status should be 503
       expect(response.status).toBe(503);
-      const data = await response.json() as any;
+      const data = (await response.json()) as any;
       expect(data.status).toBeDefined();
       expect(data.uptime).toBeGreaterThanOrEqual(0);
       expect(data.version).toBe('2.0.0');
@@ -347,13 +339,13 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
       (server as any).status = 'online';
 
       const request = new Request('http://localhost:3456/health', {
-        method: 'GET'
+        method: 'GET',
       });
 
       const response = await server.handleRequest(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json() as any;
+      const data = (await response.json()) as any;
       expect(data.status).toBe('online');
       expect(data.uptime).toBeGreaterThanOrEqual(0);
     });
@@ -364,9 +356,9 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
       const request = new Request('http://localhost:3456/netron/invoke', {
         method: 'OPTIONS',
         headers: {
-          'Origin': 'http://example.com',
-          'Access-Control-Request-Method': 'POST'
-        }
+          Origin: 'http://example.com',
+          'Access-Control-Request-Method': 'POST',
+        },
       });
 
       const response = await server.handleRequest(request);
@@ -378,7 +370,7 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
   describe('Error Handling', () => {
     it('should return 404 for unknown endpoints', async () => {
       const request = new Request('http://localhost:3456/unknown', {
-        method: 'GET'
+        method: 'GET',
       });
 
       const response = await server.handleRequest(request);
@@ -390,9 +382,9 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
       const request = new Request('http://localhost:3456/netron/invoke', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: 'invalid json{'
+        body: 'invalid json{',
       });
 
       const response = await server.handleRequest(request);
@@ -404,7 +396,7 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
   describe('Metrics', () => {
     it('should track request metrics', async () => {
       const request = new Request('http://localhost:3456/netron/discovery', {
-        method: 'GET'
+        method: 'GET',
       });
 
       await server.handleRequest(request);
@@ -417,8 +409,8 @@ describe('HttpServer (v2.0 Native Protocol)', () => {
       const request = new Request('http://localhost:3456/netron/discovery', {
         method: 'GET',
         headers: {
-          'X-Netron-Version': '2.0'
-        }
+          'X-Netron-Version': '2.0',
+        },
       });
 
       await server.handleRequest(request);

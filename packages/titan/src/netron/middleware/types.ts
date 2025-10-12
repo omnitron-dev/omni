@@ -75,7 +75,7 @@ export enum MiddlewareStage {
   /** After packet processing */
   POST_PROCESS = 'post-process',
   /** Error handling */
-  ERROR = 'error'
+  ERROR = 'error',
 }
 
 /**
@@ -112,7 +112,12 @@ export interface IMiddlewareManager {
   useForService(serviceName: string, middleware: MiddlewareFunction, config?: Partial<MiddlewareConfig>): void;
 
   /** Register method-specific middleware */
-  useForMethod(serviceName: string, methodName: string, middleware: MiddlewareFunction, config?: Partial<MiddlewareConfig>): void;
+  useForMethod(
+    serviceName: string,
+    methodName: string,
+    middleware: MiddlewareFunction,
+    config?: Partial<MiddlewareConfig>
+  ): void;
 
   /** Execute middleware pipeline */
   execute(ctx: NetronMiddlewareContext, stage: MiddlewareStage): Promise<void>;
@@ -137,9 +142,12 @@ export interface MiddlewareMetrics {
   /** Skip count */
   skips: number;
   /** Per-middleware metrics */
-  byMiddleware: Map<string, {
-    executions: number;
-    avgTime: number;
-    errors: number;
-  }>;
+  byMiddleware: Map<
+    string,
+    {
+      executions: number;
+      avgTime: number;
+      errors: number;
+    }
+  >;
 }

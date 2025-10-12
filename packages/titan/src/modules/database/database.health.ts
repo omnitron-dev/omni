@@ -28,12 +28,15 @@ import type {
 @Injectable()
 export class DatabaseHealthIndicator {
   private logger: any;
-  private queryPerformanceMetrics: Map<string, {
-    count: number;
-    totalTime: number;
-    slowQueries: number;
-    errors: number;
-  }> = new Map();
+  private queryPerformanceMetrics: Map<
+    string,
+    {
+      count: number;
+      totalTime: number;
+      slowQueries: number;
+      errors: number;
+    }
+  > = new Map();
 
   constructor(
     @Inject(DATABASE_MANAGER) private manager: DatabaseManager,
@@ -64,11 +67,7 @@ export class DatabaseHealthIndicator {
   /**
    * Record query performance metrics
    */
-  private recordQueryMetrics(event: {
-    connection: string;
-    duration: number;
-    error?: any;
-  }): void {
+  private recordQueryMetrics(event: { connection: string; duration: number; error?: any }): void {
     const metrics = this.queryPerformanceMetrics.get(event.connection) || {
       count: 0,
       totalTime: 0,
@@ -79,7 +78,8 @@ export class DatabaseHealthIndicator {
     metrics.count++;
     metrics.totalTime += event.duration;
 
-    if (event.duration > 1000) { // Queries slower than 1 second
+    if (event.duration > 1000) {
+      // Queries slower than 1 second
       metrics.slowQueries++;
     }
 
@@ -109,13 +109,12 @@ export class DatabaseHealthIndicator {
     const transactionStats = this.getTransactionStatistics();
 
     // Determine overall status
-    const statuses = Object.values(connections).map(c => c.status);
-    const hasError = statuses.some(s => s === 'error' || s === 'disconnected');
-    const allHealthy = statuses.every(s => s === 'connected');
+    const statuses = Object.values(connections).map((c) => c.status);
+    const hasError = statuses.some((s) => s === 'error' || s === 'disconnected');
+    const allHealthy = statuses.every((s) => s === 'connected');
     const migrationPending = migrationStatus.pendingCount > 0;
 
-    const status = hasError ? 'unhealthy' :
-      (allHealthy && !migrationPending) ? 'healthy' : 'degraded';
+    const status = hasError ? 'unhealthy' : allHealthy && !migrationPending ? 'healthy' : 'degraded';
 
     // Get enhanced metrics
     const metrics = this.getEnhancedMetrics();
@@ -152,9 +151,7 @@ export class DatabaseHealthIndicator {
       // Execute health check query with timeout
       await Promise.race([
         sql`SELECT 1`.execute(db),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(Errors.timeout('database health check', timeout)), timeout)
-        ),
+        new Promise((_, reject) => setTimeout(() => reject(Errors.timeout('database health check', timeout)), timeout)),
       ]);
 
       const latency = Date.now() - startTime;
@@ -172,10 +169,7 @@ export class DatabaseHealthIndicator {
     } catch (error) {
       const latency = Date.now() - startTime;
 
-      this.logger.warn(
-        { name, error, latency },
-        'Database health check failed'
-      );
+      this.logger.warn({ name, error, latency }, 'Database health check failed');
 
       return {
         name,
@@ -189,9 +183,7 @@ export class DatabaseHealthIndicator {
   /**
    * Get pool statistics
    */
-  private async getPoolStatistics(
-    pool: any
-  ): Promise<ConnectionHealthStatus['pool'] | undefined> {
+  private async getPoolStatistics(pool: any): Promise<ConnectionHealthStatus['pool'] | undefined> {
     if (!pool) {
       return undefined;
     }

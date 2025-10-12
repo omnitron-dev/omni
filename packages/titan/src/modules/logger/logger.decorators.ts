@@ -26,7 +26,7 @@ function getLoggerInstance(name: string): any {
     fatal: (...args: any[]) => console.error(`[${name}] [FATAL]`, ...args),
     child: (bindings: object) => getLoggerInstance(`${name}:${JSON.stringify(bindings)}`),
     time: (label?: string) => () => console.timeEnd(label || 'timer'),
-    isLevelEnabled: () => true
+    isLevelEnabled: () => true,
   };
 }
 
@@ -53,7 +53,7 @@ export const Logger = createDecorator<string>()
     Reflect.defineMetadata('logger', true, context.target, context.propertyKey!);
     return {
       logger: true,
-      name: context.options || context.target.constructor.name
+      name: context.options || context.target.constructor.name,
     };
   })
   .withHooks({
@@ -73,9 +73,9 @@ export const Logger = createDecorator<string>()
           this[privateKey] = value;
         },
         enumerable: true,
-        configurable: true
+        configurable: true,
       });
-    }
+    },
   })
   .build();
 
@@ -105,7 +105,7 @@ export const Log = createMethodInterceptor<{
 
   const logData: any = {
     method: methodName,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   };
 
   if (context.options?.includeArgs) {
@@ -164,13 +164,12 @@ export const Monitor = createMethodInterceptor<{
     return originalMethod(...args);
   }
 
-  const metricName = context.options?.name ||
-    `${context.target.constructor.name}.${String(context.propertyKey)}`;
+  const metricName = context.options?.name || `${context.target.constructor.name}.${String(context.propertyKey)}`;
   const start = performance.now();
 
   const metadata: any = {
     method: metricName,
-    timestamp: Date.now()
+    timestamp: Date.now(),
   };
 
   if (context.options?.includeArgs) {
@@ -191,7 +190,7 @@ export const Monitor = createMethodInterceptor<{
     // Log metrics (could be replaced with actual metrics collection)
     console.debug(`[Metrics] ${metricName}`, {
       duration: `${duration.toFixed(2)}ms`,
-      success: true
+      success: true,
     });
 
     return result;
@@ -205,7 +204,7 @@ export const Monitor = createMethodInterceptor<{
     console.error(`[Metrics] ${metricName}`, {
       duration: `${duration.toFixed(2)}ms`,
       success: false,
-      error: (error as Error).name
+      error: (error as Error).name,
     });
 
     throw error;

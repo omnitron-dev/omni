@@ -48,7 +48,7 @@ describe('TitanError Serialization Across Transports', () => {
       const error = new TitanError({
         code: ErrorCode.BAD_REQUEST,
         message: 'Invalid input',
-        details: { field: 'email', value: 'invalid@' }
+        details: { field: 'email', value: 'invalid@' },
       });
 
       const packet = new Packet(1);
@@ -73,7 +73,7 @@ describe('TitanError Serialization Across Transports', () => {
         requestId: 'req-456',
         correlationId: 'corr-789',
         traceId: 'trace-abc',
-        spanId: 'span-def'
+        spanId: 'span-def',
       });
 
       const packet = new Packet(2);
@@ -97,13 +97,13 @@ describe('TitanError Serialization Across Transports', () => {
     it('should serialize TitanError with cause chain (TitanError)', () => {
       const rootCause = new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
-        message: 'Database connection failed'
+        message: 'Database connection failed',
       });
 
       const error = new TitanError({
         code: ErrorCode.SERVICE_UNAVAILABLE,
         message: 'Service temporarily unavailable',
-        cause: rootCause
+        cause: rootCause,
       });
 
       const packet = new Packet(3);
@@ -127,7 +127,7 @@ describe('TitanError Serialization Across Transports', () => {
       const error = new TitanError({
         code: ErrorCode.GATEWAY_TIMEOUT,
         message: 'Request timed out',
-        cause: rootCause
+        cause: rootCause,
       });
 
       const packet = new Packet(4);
@@ -149,12 +149,12 @@ describe('TitanError Serialization Across Transports', () => {
       const level2 = new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
         message: 'Level 2 error',
-        cause: level3
+        cause: level3,
       });
       const level1 = new TitanError({
         code: ErrorCode.SERVICE_UNAVAILABLE,
         message: 'Level 1 error',
-        cause: level2
+        cause: level2,
       });
 
       const packet = new Packet(5);
@@ -175,7 +175,7 @@ describe('TitanError Serialization Across Transports', () => {
     it('should preserve stack traces', () => {
       const error = new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
-        message: 'Test error with stack'
+        message: 'Test error with stack',
       });
 
       const packet = new Packet(6);
@@ -195,7 +195,7 @@ describe('TitanError Serialization Across Transports', () => {
         constructor(message: string) {
           super({
             code: ErrorCode.BAD_REQUEST,
-            message
+            message,
           });
           this.name = 'CustomTitanError';
         }
@@ -233,14 +233,18 @@ describe('TitanError Serialization Across Transports', () => {
 
     afterEach(async () => {
       // Close all clients first
-      const closePromises = Array.from(wsServer.clients).map(client => new Promise<void>((resolve) => {
-          if (client.readyState === 1) { // OPEN
-            client.once('close', () => resolve());
-            client.close();
-          } else {
-            resolve();
-          }
-        }));
+      const closePromises = Array.from(wsServer.clients).map(
+        (client) =>
+          new Promise<void>((resolve) => {
+            if (client.readyState === 1) {
+              // OPEN
+              client.once('close', () => resolve());
+              client.close();
+            } else {
+              resolve();
+            }
+          })
+      );
 
       await Promise.all(closePromises);
 
@@ -251,14 +255,14 @@ describe('TitanError Serialization Across Transports', () => {
 
       // Close HTTP server
       await promisify(httpServer.close).bind(httpServer)();
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it.skip('should transmit TitanError through WebSocket', async () => {
       const error = new TitanError({
         code: ErrorCode.FORBIDDEN,
         message: 'Access denied',
-        details: { resource: 'user-data', action: 'read' }
+        details: { resource: 'user-data', action: 'read' },
       });
 
       const packetReceivedPromise = new Promise<TitanError>((resolve, reject) => {
@@ -278,7 +282,7 @@ describe('TitanError Serialization Across Transports', () => {
       const client = await transport.connect(`ws://127.0.0.1:${testPort}`);
 
       // Wait a bit to ensure connection is fully established
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const packet = new Packet(100);
       packet.setError(1);
@@ -316,14 +320,14 @@ describe('TitanError Serialization Across Transports', () => {
 
     afterEach(async () => {
       await server?.close();
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it.skip('should transmit TitanError through TCP', async () => {
       const error = new TitanError({
         code: ErrorCode.CONFLICT,
         message: 'Resource conflict',
-        details: { conflictingId: 'res-123' }
+        details: { conflictingId: 'res-123' },
       });
 
       const serverConnPromise = waitForEvent(server, 'connection');
@@ -357,13 +361,13 @@ describe('TitanError Serialization Across Transports', () => {
     it.skip('should transmit TitanError with cause chain through TCP', async () => {
       const rootCause = new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
-        message: 'Database error'
+        message: 'Database error',
       });
 
       const error = new TitanError({
         code: ErrorCode.SERVICE_UNAVAILABLE,
         message: 'Service unavailable',
-        cause: rootCause
+        cause: rootCause,
       });
 
       const serverConnPromise = waitForEvent(server, 'connection');
@@ -411,14 +415,14 @@ describe('TitanError Serialization Across Transports', () => {
     afterEach(async () => {
       await server?.close();
       await cleanupSocketFile(socketPath);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it.skip('should transmit TitanError through Unix socket', async () => {
       const error = new TitanError({
         code: ErrorCode.TOO_MANY_REQUESTS,
         message: 'Rate limit exceeded',
-        details: { limit: 100, window: '1h' }
+        details: { limit: 100, window: '1h' },
       });
 
       const serverConnPromise = waitForEvent(server, 'connection');
@@ -457,7 +461,7 @@ describe('TitanError Serialization Across Transports', () => {
         requestId: 'req-unix-123',
         correlationId: 'corr-unix-456',
         traceId: 'trace-unix-789',
-        spanId: 'span-unix-abc'
+        spanId: 'span-unix-abc',
       });
 
       const serverConnPromise = waitForEvent(server, 'connection');
@@ -496,7 +500,7 @@ describe('TitanError Serialization Across Transports', () => {
         code: ErrorCode.INTERNAL_ERROR,
         message: 'Consistency test',
         details: { test: 'value' },
-        requestId: 'req-123'
+        requestId: 'req-123',
       });
 
       const packet1 = new Packet(1);
@@ -537,7 +541,7 @@ describe('TitanError Serialization Across Transports', () => {
         code: ErrorCode.BAD_REQUEST,
         message: 'Test error',
         details: null as any,
-        context: undefined
+        context: undefined,
       });
 
       const packet = new Packet(1);
@@ -555,13 +559,13 @@ describe('TitanError Serialization Across Transports', () => {
 
     it('should handle TitanError with large details object', () => {
       const largeDetails = {
-        data: new Array(1000).fill(0).map((_, i) => ({ index: i, value: `value-${i}` }))
+        data: new Array(1000).fill(0).map((_, i) => ({ index: i, value: `value-${i}` })),
       };
 
       const error = new TitanError({
         code: ErrorCode.UNPROCESSABLE_ENTITY,
         message: 'Large payload',
-        details: largeDetails
+        details: largeDetails,
       });
 
       const packet = new Packet(1);
@@ -579,7 +583,7 @@ describe('TitanError Serialization Across Transports', () => {
     it('should handle TitanError with special characters in message', () => {
       const error = new TitanError({
         code: ErrorCode.BAD_REQUEST,
-        message: 'Error with 中文, emoji 🎉, and symbols ©®™'
+        message: 'Error with 中文, emoji 🎉, and symbols ©®™',
       });
 
       const packet = new Packet(1);

@@ -127,8 +127,10 @@ export const Collapsible = defineComponent<CollapsibleProps>((props) => {
   // Initialize internal state with controlled value if provided, otherwise use defaultOpen
   const initialValue =
     props.open !== undefined
-      ? (typeof props.open === 'function' ? (props.open as any)() : props.open)
-      : (props.defaultOpen || false);
+      ? typeof props.open === 'function'
+        ? (props.open as any)()
+        : props.open
+      : props.defaultOpen || false;
 
   const internalOpen = signal(initialValue);
 

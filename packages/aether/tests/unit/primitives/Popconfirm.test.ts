@@ -5,11 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import {
-  Popconfirm,
-  PopconfirmTrigger,
-  PopconfirmContent,
-} from '../../../src/primitives/Popconfirm.js';
+import { Popconfirm, PopconfirmTrigger, PopconfirmContent } from '../../../src/primitives/Popconfirm.js';
 import { createRoot } from '../../../src/core/reactivity/batch.js';
 
 describe('Popconfirm Primitive', () => {
@@ -146,10 +142,7 @@ describe('Popconfirm Primitive', () => {
         dispose = createRoot(() => {
           Popconfirm({
             title: 'Confirm',
-            children: [
-              PopconfirmTrigger({ children: 'Open' }),
-              PopconfirmContent({ children: 'Content' }),
-            ],
+            children: [PopconfirmTrigger({ children: 'Open' }), PopconfirmContent({ children: 'Content' })],
           });
         });
       }).not.toThrow();
@@ -204,10 +197,7 @@ describe('Popconfirm Primitive', () => {
         dispose = createRoot(() => {
           Popconfirm({
             title: 'Confirm',
-            children: [
-              PopconfirmTrigger({ children: 'Open' }),
-              PopconfirmContent({ children: 'Content' }),
-            ],
+            children: [PopconfirmTrigger({ children: 'Open' }), PopconfirmContent({ children: 'Content' })],
           });
         });
       }).not.toThrow();
@@ -235,10 +225,7 @@ describe('Popconfirm Primitive', () => {
         dispose = createRoot(() => {
           Popconfirm({
             title: 'Confirm',
-            children: [
-              PopconfirmTrigger({ children: 'Open' }),
-              PopconfirmContent({ children: 'Content' }),
-            ],
+            children: [PopconfirmTrigger({ children: 'Open' }), PopconfirmContent({ children: 'Content' })],
           });
         });
       }).not.toThrow();
@@ -255,10 +242,7 @@ describe('Popconfirm Primitive', () => {
           onCancel: () => {},
           okText: 'Delete',
           cancelText: 'Cancel',
-          children: [
-            PopconfirmTrigger({ children: 'Delete' }),
-            PopconfirmContent({ children: 'Custom content' }),
-          ],
+          children: [PopconfirmTrigger({ children: 'Delete' }), PopconfirmContent({ children: 'Custom content' })],
         });
 
         expect(popconfirm).toBeTruthy();
@@ -363,10 +347,7 @@ describe('Popconfirm Primitive', () => {
         dispose = createRoot(() => {
           Popconfirm({
             title: 'Confirm',
-            children: [
-              PopconfirmTrigger({ children: 'Open' }),
-              PopconfirmContent({ children: 'Content' }),
-            ],
+            children: [PopconfirmTrigger({ children: 'Open' }), PopconfirmContent({ children: 'Content' })],
           });
         });
       }).not.toThrow();
@@ -513,10 +494,7 @@ describe('Popconfirm Primitive', () => {
         dispose = createRoot(() => {
           Popconfirm({
             title: 'Confirm',
-            children: [
-              PopconfirmTrigger({ children: 'Trigger 1' }),
-              PopconfirmTrigger({ children: 'Trigger 2' }),
-            ],
+            children: [PopconfirmTrigger({ children: 'Trigger 1' }), PopconfirmTrigger({ children: 'Trigger 2' })],
           });
         });
       }).not.toThrow();
@@ -587,10 +565,7 @@ describe('Popconfirm Primitive', () => {
         dispose = createRoot(() => {
           Popconfirm({
             title: 'Confirm',
-            children: [
-              PopconfirmTrigger({ children: 'Open' }),
-              PopconfirmContent({ children: 'Content' }),
-            ],
+            children: [PopconfirmTrigger({ children: 'Open' }), PopconfirmContent({ children: 'Content' })],
           });
         });
       }).not.toThrow();

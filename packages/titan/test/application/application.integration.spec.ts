@@ -11,12 +11,7 @@ import { describe, it, expect, afterEach, jest } from '@jest/globals';
 
 import { Application, createApp } from '../../src/application.js';
 import { createToken } from '../../src/nexus/index.js';
-import {
-  ApplicationState,
-  ApplicationEvent,
-  IModule,
-  ShutdownPriority
-} from '../../src/types.js';
+import { ApplicationState, ApplicationEvent, IModule, ShutdownPriority } from '../../src/types.js';
 import {
   createWebApplication,
   createMicroserviceApplication,
@@ -24,7 +19,7 @@ import {
   createApiGatewayApplication,
   createFullStackApplication,
   createTestApplication,
-  ApplicationType
+  ApplicationType,
 } from '../fixtures/test-applications.js';
 import {
   DatabaseModule,
@@ -33,7 +28,7 @@ import {
   MessageQueueModule,
   FailingModule,
   SlowModule,
-  SimpleModule
+  SimpleModule,
 } from '../fixtures/test-modules.js';
 import { Module } from '../../src/decorators/index.js';
 
@@ -114,7 +109,7 @@ describe('Application Integration', () => {
       await queueModule.send('priority-tasks', { id: 3, type: 'urgent' });
 
       // Wait for processing
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
       const health = await app.health();
       expect(health.modules.queue.details.totalMessages).toBeGreaterThanOrEqual(0);
@@ -169,7 +164,7 @@ describe('Application Integration', () => {
         ApplicationType.Web,
         ApplicationType.Microservice,
         ApplicationType.TaskProcessor,
-        ApplicationType.Minimal
+        ApplicationType.Minimal,
       ];
 
       for (const type of types) {
@@ -243,7 +238,7 @@ describe('Application Integration', () => {
       let asyncCompleted = false;
 
       app.onStart(async () => {
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
         asyncCompleted = true;
       });
 
@@ -257,9 +252,13 @@ describe('Application Integration', () => {
     it('should timeout lifecycle hooks', async () => {
       app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
 
-      app.onStart(async () => {
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }, 0, 100); // 100ms timeout
+      app.onStart(
+        async () => {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        },
+        0,
+        100
+      ); // 100ms timeout
 
       await expect(app.start()).rejects.toThrow('timed out');
     });
@@ -342,12 +341,9 @@ describe('Application Integration', () => {
       app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
       const executed: string[] = [];
 
-      const taskId = app.registerShutdownTask(
-        'removable-task',
-        async () => {
-          executed.push('should-not-execute');
-        }
-      );
+      const taskId = app.registerShutdownTask('removable-task', async () => {
+        executed.push('should-not-execute');
+      });
 
       app.unregisterShutdownTask(taskId);
 
@@ -447,8 +443,8 @@ describe('Application Integration', () => {
         {
           name: 'global-task',
           handler: globalHandler,
-          priority: ShutdownPriority.Normal
-        }
+          priority: ShutdownPriority.Normal,
+        },
       ];
 
       app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
@@ -488,7 +484,7 @@ describe('Application Integration', () => {
           if (attempts < 2) {
             throw new Error('Transient failure');
           }
-        }
+        },
       };
 
       app.use(transientModule);
@@ -523,8 +519,8 @@ describe('Application Integration', () => {
       @Module({
         providers: [
           { provide: API_KEY, useValue: 'secret-key' },
-          { provide: API_URL, useValue: 'https://api.example.com' }
-        ]
+          { provide: API_URL, useValue: 'https://api.example.com' },
+        ],
       })
       class ApiModule extends SimpleModule {
         override readonly name = 'api';
@@ -551,7 +547,7 @@ describe('Application Integration', () => {
       }
 
       @Module({
-        providers: [ServiceWithCleanup]
+        providers: [ServiceWithCleanup],
       })
       class CleanupModule extends SimpleModule {
         override readonly name = 'cleanup-module';
@@ -582,7 +578,7 @@ describe('Application Integration', () => {
         version: '1.0.0',
         install(app: Application) {
           app.configure({ plugin: { installed: true } });
-        }
+        },
       };
 
       // Install plugin
@@ -619,7 +615,7 @@ describe('Application Integration', () => {
       module.use((data: any) => ({ ...data, step1: true }));
       module.use((data: any) => ({ ...data, step2: true }));
       module.use(async (data: any) => {
-        await new Promise(r => setTimeout(r, 10));
+        await new Promise((r) => setTimeout(r, 10));
         return { ...data, step3: true };
       });
 
@@ -629,7 +625,7 @@ describe('Application Integration', () => {
         initial: true,
         step1: true,
         step2: true,
-        step3: true
+        step3: true,
       });
     });
 
@@ -687,7 +683,7 @@ describe('Application Integration', () => {
           name: `module-${i}`,
           version: '1.0.0',
           onStart: jest.fn(),
-          onStop: jest.fn()
+          onStop: jest.fn(),
         };
         app.use(module);
       }

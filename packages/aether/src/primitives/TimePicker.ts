@@ -142,7 +142,7 @@ export const TimePicker = defineComponent<TimePickerProps>((props) => {
 
   // State
   const internalValue: WritableSignal<TimeValue> = signal<TimeValue>(
-    props.defaultValue ?? { hours: 0, minutes: 0, seconds: 0 },
+    props.defaultValue ?? { hours: 0, minutes: 0, seconds: 0 }
   );
 
   const currentValue = (): TimeValue => {
@@ -197,7 +197,7 @@ export const TimePicker = defineComponent<TimePickerProps>((props) => {
     return hours;
   };
 
-  const getPeriod = (): 'AM' | 'PM' => currentValue().hours < 12 ? 'AM' : 'PM';
+  const getPeriod = (): 'AM' | 'PM' => (currentValue().hours < 12 ? 'AM' : 'PM');
 
   const contextValue: TimePickerContextValue = {
     value: computed(() => currentValue()),
@@ -249,7 +249,9 @@ export const TimePickerTrigger = defineComponent<TimePickerTriggerProps>((props)
       'aria-label': 'Select time',
       disabled: context.disabled,
       ...rest,
-      children: children ?? `${String(displayHours).padStart(2, '0')}:${String(time.minutes).padStart(2, '0')}${context.showSeconds ? `:${String(time.seconds ?? 0).padStart(2, '0')}` : ''} ${period}`,
+      children:
+        children ??
+        `${String(displayHours).padStart(2, '0')}:${String(time.minutes).padStart(2, '0')}${context.showSeconds ? `:${String(time.seconds ?? 0).padStart(2, '0')}` : ''} ${period}`,
     });
   };
 });
@@ -259,16 +261,16 @@ export const TimePickerTrigger = defineComponent<TimePickerTriggerProps>((props)
 // ============================================================================
 
 export const TimePickerContent = defineComponent<TimePickerContentProps>((props) => () => {
-    const { children, ...rest } = props;
+  const { children, ...rest } = props;
 
-    return jsx('div', {
-      'data-time-picker-content': '',
-      role: 'dialog',
-      'aria-label': 'Time picker',
-      ...rest,
-      children,
-    });
+  return jsx('div', {
+    'data-time-picker-content': '',
+    role: 'dialog',
+    'aria-label': 'Time picker',
+    ...rest,
+    children,
   });
+});
 
 // ============================================================================
 // TimePicker Column
@@ -324,7 +326,7 @@ export const TimePickerColumn = defineComponent<TimePickerColumnProps>((props) =
           key: item.value,
           value: item.value,
           children: item.label,
-        }),
+        })
       ),
     });
   };
@@ -372,11 +374,7 @@ export const TimePickerItem = defineComponent<TimePickerItemProps>((props) => {
     }
 
     // This is simplified - in real usage, parent would indicate which field
-    return (
-      value === current.hours ||
-      value === current.minutes ||
-      value === current.seconds
-    );
+    return value === current.hours || value === current.minutes || value === current.seconds;
   });
 
   return () => {

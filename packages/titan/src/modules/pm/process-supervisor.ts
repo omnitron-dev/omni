@@ -6,12 +6,7 @@
 
 import { Errors } from '../../errors/index.js';
 import type { ILogger } from '../logger/logger.types.js';
-import type {
-  ISupervisorOptions,
-  ISupervisorChild,
-  IProcessManager,
-  IProcessInfo
-} from './types.js';
+import type { ISupervisorOptions, ISupervisorChild, IProcessManager, IProcessInfo } from './types.js';
 import { SupervisionStrategy, RestartDecision } from './types.js';
 
 import { SUPERVISOR_METADATA_KEY } from './decorators.js';
@@ -177,11 +172,7 @@ export class ProcessSupervisor {
   /**
    * Handle child process crash
    */
-  private async handleChildCrash(
-    name: string,
-    childDef: ISupervisorChild,
-    error: Error
-  ): Promise<void> {
+  private async handleChildCrash(name: string, childDef: ISupervisorChild, error: Error): Promise<void> {
     this.logger.error({ error, child: name }, 'Child process crashed');
 
     // Check restart policy
@@ -210,11 +201,7 @@ export class ProcessSupervisor {
   /**
    * Get restart decision based on strategy
    */
-  private async getRestartDecision(
-    name: string,
-    childDef: ISupervisorChild,
-    error: Error
-  ): Promise<RestartDecision> {
+  private async getRestartDecision(name: string, childDef: ISupervisorChild, error: Error): Promise<RestartDecision> {
     // Check restart count
     const restartCount = this.restartCounts.get(name) || 0;
     const maxRestarts = this.options.maxRestarts || 3;
@@ -223,22 +210,17 @@ export class ProcessSupervisor {
     // Check if we've exceeded max restarts
     if (restartCount >= maxRestarts) {
       const timestamps = this.restartTimestamps.get(name) || [];
-      const recentRestarts = timestamps.filter(t => Date.now() - t < window);
+      const recentRestarts = timestamps.filter((t) => Date.now() - t < window);
 
       if (recentRestarts.length >= maxRestarts) {
-        return childDef.critical
-          ? RestartDecision.ESCALATE
-          : RestartDecision.IGNORE;
+        return childDef.critical ? RestartDecision.ESCALATE : RestartDecision.IGNORE;
       }
     }
 
     // Check if supervisor has custom restart logic
     const supervisor = new this.SupervisorClass();
     if (typeof supervisor.onChildCrash === 'function') {
-      return await supervisor.onChildCrash(
-        { ...childDef, name },
-        error
-      );
+      return await supervisor.onChildCrash({ ...childDef, name }, error);
     }
 
     return RestartDecision.RESTART;
@@ -325,15 +307,8 @@ export class ProcessSupervisor {
   /**
    * Escalate failure to parent supervisor or system
    */
-  private async escalateFailure(
-    name: string,
-    childDef: ISupervisorChild,
-    error: Error
-  ): Promise<void> {
-    this.logger.error(
-      { child: name, error },
-      'Child failure escalated'
-    );
+  private async escalateFailure(name: string, childDef: ISupervisorChild, error: Error): Promise<void> {
+    this.logger.error({ child: name, error }, 'Child failure escalated');
 
     // In a real implementation, this would notify parent supervisor
     // or trigger system-wide error handling

@@ -42,10 +42,8 @@ class CreateUsersTable implements IMigration {
       .addColumn('email', 'varchar(255)', (col) => col.notNull().unique())
       .addColumn('username', 'varchar(255)', (col) => col.notNull().unique())
       .addColumn('full_name', 'varchar(255)', (col) => col.notNull())
-      .addColumn('created_at', 'timestamp', (col) =>
-        col.defaultTo(sql`CURRENT_TIMESTAMP`).notNull())
-      .addColumn('updated_at', 'timestamp', (col) =>
-        col.defaultTo(sql`CURRENT_TIMESTAMP`).notNull())
+      .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`).notNull())
+      .addColumn('updated_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`).notNull())
       .execute();
   }
 
@@ -68,19 +66,13 @@ class CreatePostsTable implements IMigration {
       .addColumn('title', 'varchar(255)', (col) => col.notNull())
       .addColumn('content', 'text')
       .addColumn('status', 'varchar(20)', (col) => col.defaultTo('draft'))
-      .addColumn('created_at', 'timestamp', (col) =>
-        col.defaultTo(sql`CURRENT_TIMESTAMP`).notNull())
-      .addColumn('updated_at', 'timestamp', (col) =>
-        col.defaultTo(sql`CURRENT_TIMESTAMP`).notNull())
+      .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`).notNull())
+      .addColumn('updated_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`).notNull())
       .addForeignKeyConstraint('fk_posts_user', ['user_id'], 'users', ['id'])
       .execute();
 
     // Create index
-    await db.schema
-      .createIndex('idx_posts_user_id')
-      .on('posts')
-      .column('user_id')
-      .execute();
+    await db.schema.createIndex('idx_posts_user_id').on('posts').column('user_id').execute();
   }
 
   async down(db: Kysely<any>): Promise<void> {
@@ -105,12 +97,7 @@ class AddUserProfileFields implements IMigration {
   }
 
   async down(db: Kysely<any>): Promise<void> {
-    await db.schema
-      .alterTable('users')
-      .dropColumn('bio')
-      .dropColumn('avatar_url')
-      .dropColumn('is_active')
-      .execute();
+    await db.schema.alterTable('users').dropColumn('bio').dropColumn('avatar_url').dropColumn('is_active').execute();
   }
 }
 
@@ -127,18 +114,13 @@ class CreateCommentsTable implements IMigration {
       .addColumn('post_id', 'integer', (col) => col.notNull())
       .addColumn('user_id', 'integer', (col) => col.notNull())
       .addColumn('content', 'text', (col) => col.notNull())
-      .addColumn('created_at', 'timestamp', (col) =>
-        col.defaultTo(sql`CURRENT_TIMESTAMP`).notNull())
+      .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`).notNull())
       .addForeignKeyConstraint('fk_comments_post', ['post_id'], 'posts', ['id'])
       .addForeignKeyConstraint('fk_comments_user', ['user_id'], 'users', ['id'])
       .execute();
 
     // Create composite index
-    await db.schema
-      .createIndex('idx_comments_post_user')
-      .on('comments')
-      .columns(['post_id', 'user_id'])
-      .execute();
+    await db.schema.createIndex('idx_comments_post_user').on('comments').columns(['post_id', 'user_id']).execute();
   }
 
   async down(db: Kysely<any>): Promise<void> {
@@ -214,7 +196,11 @@ class MigrationTestService {
 
   async checkTableExists(tableName: string): Promise<boolean> {
     try {
-      await this.db.selectFrom(tableName).select('*' as any).limit(1).execute();
+      await this.db
+        .selectFrom(tableName)
+        .select('*' as any)
+        .limit(1)
+        .execute();
       return true;
     } catch {
       return false;
@@ -247,7 +233,7 @@ describe('Comprehensive Migration Tests', () => {
               ],
               autoRun: false,
             },
-          })
+          }),
         ],
         providers: [MigrationTestService],
       })
@@ -357,10 +343,10 @@ describe('Comprehensive Migration Tests', () => {
         const result = await migrationService.runMigrations();
 
         // Check order - users table should be created before posts
-        const migrationOrder = result.migrations.map(m => m.name);
-        const usersIndex = migrationOrder.findIndex(m => m.includes('CreateUsersTable'));
-        const postsIndex = migrationOrder.findIndex(m => m.includes('CreatePostsTable'));
-        const commentsIndex = migrationOrder.findIndex(m => m.includes('CreateCommentsTable'));
+        const migrationOrder = result.migrations.map((m) => m.name);
+        const usersIndex = migrationOrder.findIndex((m) => m.includes('CreateUsersTable'));
+        const postsIndex = migrationOrder.findIndex((m) => m.includes('CreatePostsTable'));
+        const commentsIndex = migrationOrder.findIndex((m) => m.includes('CreateCommentsTable'));
 
         expect(usersIndex).toBeLessThan(postsIndex);
         expect(postsIndex).toBeLessThan(commentsIndex);
@@ -371,10 +357,10 @@ describe('Comprehensive Migration Tests', () => {
 
         // Both AddUserProfileFields and CreatePostsTable depend on CreateUsersTable
         // They should both run after CreateUsersTable but can run in any order relative to each other
-        const migrationOrder = result.migrations.map(m => m.name);
-        const usersIndex = migrationOrder.findIndex(m => m.includes('CreateUsersTable'));
-        const profileIndex = migrationOrder.findIndex(m => m.includes('AddUserProfileFields'));
-        const postsIndex = migrationOrder.findIndex(m => m.includes('CreatePostsTable'));
+        const migrationOrder = result.migrations.map((m) => m.name);
+        const usersIndex = migrationOrder.findIndex((m) => m.includes('CreateUsersTable'));
+        const profileIndex = migrationOrder.findIndex((m) => m.includes('AddUserProfileFields'));
+        const postsIndex = migrationOrder.findIndex((m) => m.includes('CreatePostsTable'));
 
         expect(usersIndex).toBeLessThan(profileIndex);
         expect(usersIndex).toBeLessThan(postsIndex);
@@ -429,7 +415,7 @@ describe('Comprehensive Migration Tests', () => {
                 providers: [FailingMigration],
                 autoRun: false,
               },
-            })
+            }),
           ],
           providers: [MigrationTestService],
         })
@@ -477,7 +463,7 @@ describe('Comprehensive Migration Tests', () => {
                 providers: [FailingRollback],
                 autoRun: false,
               },
-            })
+            }),
           ],
           providers: [MigrationTestService],
         })
@@ -585,7 +571,7 @@ describe('Comprehensive Migration Tests', () => {
               directory: migrationsDir,
               autoRun: false,
             },
-          })
+          }),
         ],
         providers: [MigrationTestService],
       })
@@ -651,7 +637,7 @@ describe('Comprehensive Migration Tests', () => {
               ],
               autoRun: false,
             },
-          })
+          }),
         ],
         providers: [MigrationTestService],
       })
@@ -678,10 +664,7 @@ describe('Comprehensive Migration Tests', () => {
       const db = app.get<Kysely<any>>(Symbol.for('DATABASE_CONNECTION'));
 
       // Test JSONB column
-      await db.schema
-        .alterTable('users')
-        .addColumn('settings', 'jsonb')
-        .execute();
+      await db.schema.alterTable('users').addColumn('settings', 'jsonb').execute();
 
       // Test array column
       await db.schema
@@ -700,11 +683,7 @@ describe('Comprehensive Migration Tests', () => {
         })
         .execute();
 
-      const user = await db
-        .selectFrom('users')
-        .selectAll()
-        .where('email', '=', 'test@example.com')
-        .executeTakeFirst();
+      const user = await db.selectFrom('users').selectAll().where('email', '=', 'test@example.com').executeTakeFirst();
 
       expect(user).toBeDefined();
     });
@@ -723,8 +702,7 @@ describe('Comprehensive Migration Tests', () => {
             .addColumn('id', 'serial', (col) => col.primaryKey())
             .addColumn('event_type', 'varchar(100)')
             .addColumn('payload', 'jsonb')
-            .addColumn('created_at', 'timestamp', (col) =>
-              col.defaultTo(sql`CURRENT_TIMESTAMP`))
+            .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
             .execute();
         }
 

@@ -21,7 +21,7 @@ describe('Computed', () => {
 
   describe('Basic functionality', () => {
     it('should derive value from signals', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const a = signal(2);
         const b = signal(3);
@@ -38,7 +38,7 @@ describe('Computed', () => {
     });
 
     it('should cache computed values', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const s = signal(10);
         const fn = vi.fn(() => s() * 2);
@@ -65,7 +65,7 @@ describe('Computed', () => {
     });
 
     it('should handle nested computeds', () => {
-      createRoot(disposeRoot => {
+      createRoot((disposeRoot) => {
         dispose = disposeRoot;
         const a = signal(1);
         const b = computed(() => a() * 2);
@@ -89,7 +89,7 @@ describe('Computed', () => {
     });
 
     it('should handle deeply nested computeds', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const base = signal(1);
         const level1 = computed(() => base() * 2);
@@ -109,7 +109,7 @@ describe('Computed', () => {
     });
 
     it('should handle complex dependency graphs', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const a = signal(1);
         const b = signal(2);
@@ -135,8 +135,8 @@ describe('Computed', () => {
     });
 
     it('should peek without tracking dependencies', async () => {
-      await new Promise<void>(resolve => {
-        createRoot(d => {
+      await new Promise<void>((resolve) => {
+        createRoot((d) => {
           dispose = d;
           const s = signal(10);
           const c = computed(() => s() * 2);
@@ -169,7 +169,7 @@ describe('Computed', () => {
 
   describe('Memoization and performance', () => {
     it('should only recompute when dependencies change', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const a = signal(1);
         const b = signal(2);
@@ -199,7 +199,7 @@ describe('Computed', () => {
     });
 
     it('should handle expensive computations efficiently', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const input = signal(1000);
 
@@ -235,13 +235,13 @@ describe('Computed', () => {
 
   describe('Custom equality', () => {
     it('should use custom equals function', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const s = signal({ x: 1, y: 2 });
 
         const computeFn = vi.fn(() => ({ sum: s().x + s().y }));
         const c = computed(computeFn, {
-          equals: (a, b) => a.sum === b.sum
+          equals: (a, b) => a.sum === b.sum,
         });
 
         // Initial computation
@@ -272,7 +272,7 @@ describe('Computed', () => {
     });
 
     it('should handle NaN correctly with default equals', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const s = signal(0);
         const c = computed(() => s() / s());
@@ -297,7 +297,7 @@ describe('Computed', () => {
 
   describe('Error handling', () => {
     it('should handle errors in computation', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const s = signal(0);
         const c = computed(() => {
@@ -322,10 +322,10 @@ describe('Computed', () => {
     });
 
     it('should detect circular dependencies', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
-        const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
-        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+        const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
         let c1: any;
         let c2: any;
@@ -338,11 +338,11 @@ describe('Computed', () => {
         expect(() => c1()).toThrow();
 
         // Or check if it logged a warning/error
-        const hasWarning = consoleWarnSpy.mock.calls.some(call =>
-          call.some(arg => String(arg).includes('Circular') || String(arg).includes('circular'))
+        const hasWarning = consoleWarnSpy.mock.calls.some((call) =>
+          call.some((arg) => String(arg).includes('Circular') || String(arg).includes('circular'))
         );
-        const hasError = consoleErrorSpy.mock.calls.some(call =>
-          call.some(arg => String(arg).includes('Circular') || String(arg).includes('circular'))
+        const hasError = consoleErrorSpy.mock.calls.some((call) =>
+          call.some((arg) => String(arg).includes('Circular') || String(arg).includes('circular'))
         );
 
         // At least one should be true
@@ -355,7 +355,7 @@ describe('Computed', () => {
 
   describe('Subscriptions', () => {
     it('should notify subscribers when value changes', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const s = signal(10);
         const c = computed(() => s() * 2);
@@ -387,7 +387,7 @@ describe('Computed', () => {
     });
 
     it('should handle multiple subscribers', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const s = signal(1);
         const c = computed(() => s() * 10);
@@ -424,8 +424,8 @@ describe('Computed', () => {
 
   describe('Integration with effects', () => {
     it('should trigger effects when computed changes', async () => {
-      await new Promise<void>(resolve => {
-        createRoot(d => {
+      await new Promise<void>((resolve) => {
+        createRoot((d) => {
           dispose = d;
           const s = signal(10);
           const doubled = computed(() => s() * 2);
@@ -451,8 +451,8 @@ describe('Computed', () => {
     });
 
     it('should handle computed chains in effects', async () => {
-      await new Promise<void>(resolve => {
-        createRoot(d => {
+      await new Promise<void>((resolve) => {
+        createRoot((d) => {
           dispose = d;
           const a = signal(1);
           const b = computed(() => a() * 2);
@@ -484,7 +484,7 @@ describe('Computed', () => {
 
   describe('Batching', () => {
     it('should batch updates in computed chains', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const a = signal(1);
         const b = signal(2);
@@ -507,8 +507,8 @@ describe('Computed', () => {
     });
 
     it('should handle nested batches with computeds', async () => {
-      await new Promise<void>(resolve => {
-        createRoot(d => {
+      await new Promise<void>((resolve) => {
+        createRoot((d) => {
           dispose = d;
           const a = signal(0);
           const b = signal(0);
@@ -547,7 +547,7 @@ describe('Computed', () => {
 
   describe('Memory management', () => {
     it('should clean up dependencies when disposed', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const s = signal(10);
         const c = computed(() => s() * 2);
@@ -579,7 +579,7 @@ describe('Computed', () => {
     it('should handle disposal in complex dependency graphs', () => {
       let outerDispose: (() => void) | undefined;
 
-      createRoot(d => {
+      createRoot((d) => {
         outerDispose = d;
         const a = signal(1);
         const b = signal(2);
@@ -611,7 +611,7 @@ describe('Computed', () => {
 
   describe('Edge cases', () => {
     it('should handle undefined and null values', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const s = signal<number | null | undefined>(undefined);
         const c = computed(() => {
@@ -635,7 +635,7 @@ describe('Computed', () => {
     });
 
     it('should handle computed returning functions', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const multiplier = signal(2);
         const createMultiplier = computed(() => {
@@ -656,7 +656,7 @@ describe('Computed', () => {
     });
 
     it('should handle computed with side effects', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const s = signal(0);
         let sideEffectCount = 0;
@@ -681,13 +681,13 @@ describe('Computed', () => {
     });
 
     it('should handle rapid updates', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const s = signal(0);
         const c = computed(() => s() * 2);
         const results: number[] = [];
 
-        c.subscribe(v => results.push(v));
+        c.subscribe((v) => results.push(v));
 
         // Rapid updates
         for (let i = 1; i <= 100; i++) {

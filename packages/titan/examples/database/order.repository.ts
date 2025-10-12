@@ -69,10 +69,14 @@ export const OrderItemSchema = z.object({
 
 export const CreateOrderSchema = z.object({
   customerId: z.number(),
-  items: z.array(z.object({
-    productId: z.number(),
-    quantity: z.number().int().positive(),
-  })).min(1),
+  items: z
+    .array(
+      z.object({
+        productId: z.number(),
+        quantity: z.number().int().positive(),
+      })
+    )
+    .min(1),
   notes: z.string().optional(),
   shippingAddress: z.object({
     street: z.string(),
@@ -81,25 +85,29 @@ export const CreateOrderSchema = z.object({
     postalCode: z.string(),
     country: z.string(),
   }),
-  billingAddress: z.object({
-    street: z.string(),
-    city: z.string(),
-    state: z.string(),
-    postalCode: z.string(),
-    country: z.string(),
-  }).optional(),
+  billingAddress: z
+    .object({
+      street: z.string(),
+      city: z.string(),
+      state: z.string(),
+      postalCode: z.string(),
+      country: z.string(),
+    })
+    .optional(),
 });
 
 export const UpdateOrderSchema = z.object({
   status: z.nativeEnum(OrderStatus).optional(),
   notes: z.string().optional(),
-  shippingAddress: z.object({
-    street: z.string(),
-    city: z.string(),
-    state: z.string(),
-    postalCode: z.string(),
-    country: z.string(),
-  }).optional(),
+  shippingAddress: z
+    .object({
+      street: z.string(),
+      city: z.string(),
+      state: z.string(),
+      postalCode: z.string(),
+      country: z.string(),
+    })
+    .optional(),
 });
 
 // Types
@@ -180,13 +188,7 @@ interface Database {
   updateSchema: UpdateOrderSchema,
 })
 @Timestamps({ createdAt: 'created_at', updatedAt: 'updated_at' })
-export class OrderRepository extends BaseRepository<
-  Database,
-  'orders',
-  Order,
-  CreateOrderInput,
-  UpdateOrderInput
-> {
+export class OrderRepository extends BaseRepository<Database, 'orders', Order, CreateOrderInput, UpdateOrderInput> {
   /**
    * Map database row to entity
    */
@@ -231,11 +233,15 @@ export class OrderRepository extends BaseRepository<
       // Get product details and calculate totals
       const products = await trx
         .selectFrom('products')
-        .where('id', 'in', input.items.map(i => i.productId))
+        .where(
+          'id',
+          'in',
+          input.items.map((i) => i.productId)
+        )
         .selectAll()
         .execute();
 
-      const productMap = new Map(products.map(p => [p.id, p]));
+      const productMap = new Map(products.map((p) => [p.id, p]));
 
       // Calculate order totals
       let subtotal = 0;
@@ -297,7 +303,7 @@ export class OrderRepository extends BaseRepository<
       // Create order items
       const items = await trx
         .insertInto('order_items')
-        .values(orderItems.map(item => ({ ...item, order_id: order.id })))
+        .values(orderItems.map((item) => ({ ...item, order_id: order.id })))
         .returningAll()
         .execute();
 
@@ -312,7 +318,7 @@ export class OrderRepository extends BaseRepository<
 
       return {
         ...this.mapRow(order),
-        items: items.map(item => ({
+        items: items.map((item) => ({
           id: item.id,
           orderId: item.order_id,
           productId: item.product_id,
@@ -333,15 +339,11 @@ export class OrderRepository extends BaseRepository<
     const order = await this.findById(orderId);
     if (!order) return null;
 
-    const items = await this.qb
-      .selectFrom('order_items')
-      .where('order_id', '=', orderId)
-      .selectAll()
-      .execute();
+    const items = await this.qb.selectFrom('order_items').where('order_id', '=', orderId).selectAll().execute();
 
     return {
       ...order,
-      items: items.map(item => ({
+      items: items.map((item) => ({
         id: item.id,
         orderId: item.order_id,
         productId: item.product_id,
@@ -411,20 +413,16 @@ export class OrderRepository extends BaseRepository<
       .selectAll()
       .execute();
 
-    return results.map(row => this.mapRow(row));
+    return results.map((row) => this.mapRow(row));
   }
 
   /**
    * Find orders by status
    */
   async findByStatus(status: OrderStatus): Promise<Order[]> {
-    const results = await this.query()
-      .where('status', '=', status)
-      .orderBy('created_at', 'desc')
-      .selectAll()
-      .execute();
+    const results = await this.query().where('status', '=', status).orderBy('created_at', 'desc').selectAll().execute();
 
-    return results.map(row => this.mapRow(row));
+    return results.map((row) => this.mapRow(row));
   }
 
   /**
@@ -471,8 +469,14 @@ export class OrderRepository extends BaseRepository<
         this.qb.fn.count('id').as('totalOrders'),
         this.qb.fn.sum('total').as('totalRevenue'),
         this.qb.fn.avg('total').as('averageOrderValue'),
-        this.qb.fn.countAll().filter((eb) => eb('status', '=', OrderStatus.DELIVERED)).as('deliveredOrders'),
-        this.qb.fn.countAll().filter((eb) => eb('status', '=', OrderStatus.CANCELLED)).as('cancelledOrders'),
+        this.qb.fn
+          .countAll()
+          .filter((eb) => eb('status', '=', OrderStatus.DELIVERED))
+          .as('deliveredOrders'),
+        this.qb.fn
+          .countAll()
+          .filter((eb) => eb('status', '=', OrderStatus.CANCELLED))
+          .as('cancelledOrders'),
       ])
       .executeTakeFirst();
 
@@ -506,7 +510,7 @@ export class OrderRepository extends BaseRepository<
       .limit(limit)
       .execute();
 
-    return results.map(row => ({
+    return results.map((row) => ({
       customerId: row.id,
       email: row.email,
       name: `${row.first_name} ${row.last_name}`,
@@ -536,7 +540,7 @@ export class OrderRepository extends BaseRepository<
       .limit(limit)
       .execute();
 
-    return results.map(row => ({
+    return results.map((row) => ({
       productId: row.product_id,
       sku: row.sku,
       name: row.name,

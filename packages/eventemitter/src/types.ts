@@ -1,4 +1,3 @@
-
 /* eslint-disable @typescript-eslint/no-unsafe-function-type */
 
 // Core event types

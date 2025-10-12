@@ -11,7 +11,7 @@ describe('HttpCacheManager', () => {
   beforeEach(() => {
     cacheManager = new HttpCacheManager({
       defaultMaxAge: 5000,
-      debug: false
+      debug: false,
     });
   });
 
@@ -54,7 +54,7 @@ describe('HttpCacheManager', () => {
       expect(result1).toEqual({ value: 1 });
 
       // Wait for cache to expire
-      await new Promise(resolve => setTimeout(resolve, 60));
+      await new Promise((resolve) => setTimeout(resolve, 60));
 
       // Second call - should fetch again
       const result2 = await cacheManager.get(key, fetcher, { maxAge: 50 });
@@ -78,34 +78,34 @@ describe('HttpCacheManager', () => {
       const fetcher = jest.fn(async () => {
         fetchCount++;
         // Simulate slow fetch
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
         return { value: `data-${fetchCount}` };
       });
 
       // Initial fetch
       const result1 = await cacheManager.get(key, fetcher, {
         maxAge: 100,
-        staleWhileRevalidate: 1000
+        staleWhileRevalidate: 1000,
       });
       expect(result1).toEqual({ value: 'data-1' });
 
       // Wait for cache to become stale but within staleWhileRevalidate window
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       // Should return stale data immediately
       const result2 = await cacheManager.get(key, fetcher, {
         maxAge: 100,
-        staleWhileRevalidate: 1000
+        staleWhileRevalidate: 1000,
       });
       expect(result2).toEqual({ value: 'data-1' }); // Stale data
 
       // Wait for background revalidation
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Next call should return fresh data
       const result3 = await cacheManager.get(key, fetcher, {
         maxAge: 100,
-        staleWhileRevalidate: 1000
+        staleWhileRevalidate: 1000,
       });
       expect(result3).toEqual({ value: 'data-2' }); // Fresh data
     });
@@ -124,16 +124,16 @@ describe('HttpCacheManager', () => {
       // Initial successful fetch
       await cacheManager.get(key, fetcher, {
         maxAge: 50,
-        staleWhileRevalidate: 1000
+        staleWhileRevalidate: 1000,
       });
 
       // Wait for cache to become stale
-      await new Promise(resolve => setTimeout(resolve, 60));
+      await new Promise((resolve) => setTimeout(resolve, 60));
 
       // Should still return stale data even if revalidation fails
       const result = await cacheManager.get(key, fetcher, {
         maxAge: 50,
-        staleWhileRevalidate: 1000
+        staleWhileRevalidate: 1000,
       });
       expect(result).toEqual({ value: 'initial' });
     });
@@ -274,7 +274,7 @@ describe('HttpCacheManager', () => {
   describe('Cache Eviction', () => {
     it('should evict oldest entries when max entries reached', async () => {
       const cache = new HttpCacheManager({
-        maxEntries: 2
+        maxEntries: 2,
       });
 
       // Track fetch counts
@@ -344,16 +344,16 @@ describe('HttpCacheManager', () => {
       // Initial successful fetch
       await cacheManager.get(key, fetcher, {
         maxAge: 50,
-        cacheOnError: true
+        cacheOnError: true,
       });
 
       // Wait for cache to expire
-      await new Promise(resolve => setTimeout(resolve, 60));
+      await new Promise((resolve) => setTimeout(resolve, 60));
 
       // Should return stale data on error
       const result = await cacheManager.get(key, fetcher, {
         maxAge: 50,
-        cacheOnError: true
+        cacheOnError: true,
       });
       expect(result).toEqual({ value: 'initial' });
     });
@@ -366,7 +366,7 @@ describe('HttpCacheManager', () => {
       await expect(
         cacheManager.get('new-key', fetcher, {
           maxAge: 1000,
-          cacheOnError: true
+          cacheOnError: true,
         })
       ).rejects.toThrow('Fetch failed');
     });
@@ -383,7 +383,7 @@ describe('HttpCacheManager', () => {
       expect(stats.entries).toBe(1);
 
       // Wait for expiration plus buffer
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       stats = cacheManager.getStats();
       expect(stats.entries).toBe(0);
@@ -397,7 +397,7 @@ describe('HttpCacheManager', () => {
         hit: jest.fn((data) => events.push({ type: 'hit', data })),
         miss: jest.fn((data) => events.push({ type: 'miss', data })),
         set: jest.fn((data) => events.push({ type: 'set', data })),
-        invalidate: jest.fn((data) => events.push({ type: 'invalidate', data }))
+        invalidate: jest.fn((data) => events.push({ type: 'invalidate', data })),
       };
 
       cacheManager.on('cache-hit', handlers.hit);
@@ -427,7 +427,7 @@ describe('HttpCacheManager', () => {
       const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
       const cache = new HttpCacheManager({
         defaultMaxAge: 5000,
-        debug: true
+        debug: true,
       });
 
       const fetcher = jest.fn(async () => ({ data: 'test' }));
@@ -448,7 +448,7 @@ describe('HttpCacheManager', () => {
       const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
       const cache = new HttpCacheManager({
         defaultMaxAge: 5000,
-        debug: true
+        debug: true,
       });
 
       const fetcher = jest.fn(async () => ({ data: 'test' }));
@@ -457,7 +457,7 @@ describe('HttpCacheManager', () => {
       await cache.get('stale-key', fetcher, { maxAge: 50, staleWhileRevalidate: 100 });
 
       // Wait for cache to become stale
-      await new Promise(resolve => setTimeout(resolve, 60));
+      await new Promise((resolve) => setTimeout(resolve, 60));
 
       // Access stale cache
       await cache.get('stale-key', fetcher, { maxAge: 50, staleWhileRevalidate: 100 });
@@ -471,7 +471,7 @@ describe('HttpCacheManager', () => {
       const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
       const cache = new HttpCacheManager({
         defaultMaxAge: 5000,
-        debug: true
+        debug: true,
       });
 
       const fetcher = jest.fn(async () => ({ data: 'test', timestamp: Date.now() }));
@@ -481,7 +481,7 @@ describe('HttpCacheManager', () => {
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[Cache] MISS'));
 
       // Wait for cache to become stale
-      await new Promise(resolve => setTimeout(resolve, 60));
+      await new Promise((resolve) => setTimeout(resolve, 60));
 
       consoleSpy.mockClear();
 
@@ -500,7 +500,7 @@ describe('HttpCacheManager', () => {
     it('should evict entries when max size is exceeded', async () => {
       const cache = new HttpCacheManager({
         maxSizeBytes: 1000,
-        maxEntries: 10 // Allow enough entries
+        maxEntries: 10, // Allow enough entries
       });
 
       const fetcher1 = jest.fn(async () => ({ data: 'x'.repeat(400) })); // ~400 bytes
@@ -527,7 +527,7 @@ describe('HttpCacheManager', () => {
 
     it('should calculate size correctly', async () => {
       const cache = new HttpCacheManager({
-        maxSizeBytes: 10000
+        maxSizeBytes: 10000,
       });
 
       const smallData = { value: 'small' };
@@ -555,14 +555,14 @@ describe('HttpCacheManager', () => {
       const promises = [
         cacheManager.get('concurrent-key', fetcher, { maxAge: 1000 }),
         cacheManager.get('concurrent-key', fetcher, { maxAge: 1000 }),
-        cacheManager.get('concurrent-key', fetcher, { maxAge: 1000 })
+        cacheManager.get('concurrent-key', fetcher, { maxAge: 1000 }),
       ];
 
       const results = await Promise.all(promises);
 
       // Should not fetch again (still 1 time)
       expect(fetcher).toHaveBeenCalledTimes(1);
-      results.forEach(result => {
+      results.forEach((result) => {
         expect(result).toEqual({ data: 'concurrent' });
       });
     });
@@ -657,9 +657,7 @@ describe('HttpCacheManager', () => {
 
       cacheManager.invalidate(['test']);
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[Cache] INVALIDATED: 2 entries')
-      );
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[Cache] INVALIDATED: 2 entries'));
 
       consoleSpy.mockRestore();
     });
@@ -673,9 +671,7 @@ describe('HttpCacheManager', () => {
       await cacheManager.get('key2', fetcher, { maxAge: 1000 });
       await cacheManager.get('key3', fetcher, { maxAge: 1000 }); // Should evict key1
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[Cache] EVICTED:')
-      );
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[Cache] EVICTED:'));
 
       consoleSpy.mockRestore();
     });
@@ -700,23 +696,23 @@ describe('HttpCacheManager', () => {
       const cacheManager = new HttpCacheManager({ debug: false });
 
       // Mock a slow fetcher to keep revalidation active
-      const slowFetcher = jest.fn().mockImplementation(() =>
-        new Promise(resolve => setTimeout(() => resolve('data'), 50))
-      );
+      const slowFetcher = jest
+        .fn()
+        .mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve('data'), 50)));
 
       // First call
       await cacheManager.get('key', slowFetcher, {
         maxAge: 10,
-        staleWhileRevalidate: 1000
+        staleWhileRevalidate: 1000,
       });
 
       // Wait for stale
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
 
       // Trigger revalidation
       const promise = cacheManager.get('key', slowFetcher, {
         maxAge: 10,
-        staleWhileRevalidate: 1000
+        staleWhileRevalidate: 1000,
       });
 
       // Check stats during revalidation

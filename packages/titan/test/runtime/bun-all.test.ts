@@ -3,7 +3,7 @@
  * Simplified tests for Bun compatibility
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect } from 'bun:test';
 
 // Import core functionality
 import { Application, createApp } from '../../src/application';
@@ -32,7 +32,7 @@ describe('Titan Application in Bun', () => {
   test('should create application', () => {
     const app = createApp({
       disableGracefulShutdown: true,
-      name: 'bun-test-app'
+      name: 'bun-test-app',
     });
     expect(app).toBeDefined();
     expect(app instanceof Application).toBe(true);
@@ -43,10 +43,13 @@ describe('Titan Application in Bun', () => {
     const { Container } = await import('@omnitron-dev/nexus');
     const container = new Container();
 
-    const app = new Application({
-      disableGracefulShutdown: true,
-      name: 'bun-test-app'
-    }, container);
+    const app = new Application(
+      {
+        disableGracefulShutdown: true,
+        name: 'bun-test-app',
+      },
+      container
+    );
 
     await app.start();
     expect(app.state).toBe('started');

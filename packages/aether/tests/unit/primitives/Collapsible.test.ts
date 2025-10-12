@@ -3,11 +3,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { signal } from '../../../src/core/reactivity/signal.js';
-import {
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
-} from '../../../src/primitives/Collapsible.js';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '../../../src/primitives/Collapsible.js';
 import { renderComponent, nextTick, createSpy } from '../../helpers/test-utils.js';
 
 describe('Collapsible', () => {
@@ -19,10 +15,7 @@ describe('Collapsible', () => {
     it('should render collapsible with default closed state', () => {
       const component = () =>
         Collapsible({
-          children: () => [
-            CollapsibleTrigger({ children: 'Toggle' }),
-            CollapsibleContent({ children: 'Content' }),
-          ],
+          children: () => [CollapsibleTrigger({ children: 'Toggle' }), CollapsibleContent({ children: 'Content' })],
         });
 
       const { container } = renderComponent(component);
@@ -36,10 +29,7 @@ describe('Collapsible', () => {
       const component = () =>
         Collapsible({
           defaultOpen: true,
-          children: () => [
-            CollapsibleTrigger({ children: 'Toggle' }),
-            CollapsibleContent({ children: 'Content' }),
-          ],
+          children: () => [CollapsibleTrigger({ children: 'Toggle' }), CollapsibleContent({ children: 'Content' })],
         });
 
       const { container } = renderComponent(component);
@@ -73,10 +63,7 @@ describe('Collapsible', () => {
     it('should toggle open state on trigger click', async () => {
       const component = () =>
         Collapsible({
-          children: () => [
-            CollapsibleTrigger({ children: 'Toggle' }),
-            CollapsibleContent({ children: 'Content' }),
-          ],
+          children: () => [CollapsibleTrigger({ children: 'Toggle' }), CollapsibleContent({ children: 'Content' })],
         });
 
       const { container } = renderComponent(component);
@@ -154,10 +141,7 @@ describe('Collapsible', () => {
       const component = () =>
         Collapsible({
           open,
-          children: () => [
-            CollapsibleTrigger({ children: 'Toggle' }),
-            CollapsibleContent({ children: 'Content' }),
-          ],
+          children: () => [CollapsibleTrigger({ children: 'Toggle' }), CollapsibleContent({ children: 'Content' })],
         });
 
       const { container } = renderComponent(component);
@@ -188,10 +172,7 @@ describe('Collapsible', () => {
       const component = () =>
         Collapsible({
           onOpenChange,
-          children: () => [
-            CollapsibleTrigger({ children: 'Toggle' }),
-            CollapsibleContent({ children: 'Content' }),
-          ],
+          children: () => [CollapsibleTrigger({ children: 'Toggle' }), CollapsibleContent({ children: 'Content' })],
         });
 
       const { container } = renderComponent(component);
@@ -224,10 +205,7 @@ describe('Collapsible', () => {
             onOpenChange(newValue);
             open.set(newValue);
           },
-          children: () => [
-            CollapsibleTrigger({ children: 'Toggle' }),
-            CollapsibleContent({ children: 'Content' }),
-          ],
+          children: () => [CollapsibleTrigger({ children: 'Toggle' }), CollapsibleContent({ children: 'Content' })],
         });
 
       const { container } = renderComponent(component);
@@ -250,10 +228,7 @@ describe('Collapsible', () => {
       const component = () =>
         Collapsible({
           disabled: true,
-          children: () => [
-            CollapsibleTrigger({ children: 'Toggle' }),
-            CollapsibleContent({ children: 'Content' }),
-          ],
+          children: () => [CollapsibleTrigger({ children: 'Toggle' }), CollapsibleContent({ children: 'Content' })],
         });
 
       const { container } = renderComponent(component);
@@ -269,10 +244,7 @@ describe('Collapsible', () => {
       const component = () =>
         Collapsible({
           disabled: true,
-          children: () => [
-            CollapsibleTrigger({ children: 'Toggle' }),
-            CollapsibleContent({ children: 'Content' }),
-          ],
+          children: () => [CollapsibleTrigger({ children: 'Toggle' }), CollapsibleContent({ children: 'Content' })],
         });
 
       const { container } = renderComponent(component);
@@ -295,10 +267,7 @@ describe('Collapsible', () => {
         Collapsible({
           disabled: true,
           onOpenChange,
-          children: () => [
-            CollapsibleTrigger({ children: 'Toggle' }),
-            CollapsibleContent({ children: 'Content' }),
-          ],
+          children: () => [CollapsibleTrigger({ children: 'Toggle' }), CollapsibleContent({ children: 'Content' })],
         });
 
       const { container } = renderComponent(component);
@@ -364,10 +333,7 @@ describe('Collapsible', () => {
       const component = () =>
         Collapsible({
           defaultOpen: false,
-          children: () => [
-            CollapsibleTrigger({ children: 'Toggle' }),
-            CollapsibleContent({ children: 'Content' }),
-          ],
+          children: () => [CollapsibleTrigger({ children: 'Toggle' }), CollapsibleContent({ children: 'Content' })],
         });
 
       const { container } = renderComponent(component);
@@ -385,10 +351,7 @@ describe('Collapsible', () => {
     it('should have proper ARIA attributes on trigger', () => {
       const component = () =>
         Collapsible({
-          children: () => [
-            CollapsibleTrigger({ children: 'Toggle' }),
-            CollapsibleContent({ children: 'Content' }),
-          ],
+          children: () => [CollapsibleTrigger({ children: 'Toggle' }), CollapsibleContent({ children: 'Content' })],
         });
 
       const { container } = renderComponent(component);
@@ -404,10 +367,7 @@ describe('Collapsible', () => {
       const component = () =>
         Collapsible({
           defaultOpen: false,
-          children: () => [
-            CollapsibleTrigger({ children: 'Toggle' }),
-            CollapsibleContent({ children: 'Content' }),
-          ],
+          children: () => [CollapsibleTrigger({ children: 'Toggle' }), CollapsibleContent({ children: 'Content' })],
         });
 
       const { container } = renderComponent(component);
@@ -428,10 +388,7 @@ describe('Collapsible', () => {
       const component = () =>
         Collapsible({
           defaultOpen: true,
-          children: () => [
-            CollapsibleTrigger({ children: 'Toggle' }),
-            CollapsibleContent({ children: 'Content' }),
-          ],
+          children: () => [CollapsibleTrigger({ children: 'Toggle' }), CollapsibleContent({ children: 'Content' })],
         });
 
       const { container } = renderComponent(component);
@@ -450,10 +407,7 @@ describe('Collapsible', () => {
     it('should have data-state attributes', async () => {
       const component = () =>
         Collapsible({
-          children: () => [
-            CollapsibleTrigger({ children: 'Toggle' }),
-            CollapsibleContent({ children: 'Content' }),
-          ],
+          children: () => [CollapsibleTrigger({ children: 'Toggle' }), CollapsibleContent({ children: 'Content' })],
         });
 
       const { container } = renderComponent(component);
@@ -483,10 +437,7 @@ describe('Collapsible', () => {
         Collapsible({
           class: 'custom-class',
           'data-testid': 'collapsible-root',
-          children: () => [
-            CollapsibleTrigger({ children: 'Toggle' }),
-            CollapsibleContent({ children: 'Content' }),
-          ],
+          children: () => [CollapsibleTrigger({ children: 'Toggle' }), CollapsibleContent({ children: 'Content' })],
         });
 
       const { container } = renderComponent(component);
@@ -562,10 +513,7 @@ describe('Collapsible', () => {
     it('should handle rapid toggling', async () => {
       const component = () =>
         Collapsible({
-          children: () => [
-            CollapsibleTrigger({ children: 'Toggle' }),
-            CollapsibleContent({ children: 'Content' }),
-          ],
+          children: () => [CollapsibleTrigger({ children: 'Toggle' }), CollapsibleContent({ children: 'Content' })],
         });
 
       const { container } = renderComponent(component);
@@ -619,10 +567,7 @@ describe('Collapsible', () => {
         Collapsible({
           open,
           defaultOpen: true, // Should be ignored when open is provided
-          children: () => [
-            CollapsibleTrigger({ children: 'Toggle' }),
-            CollapsibleContent({ children: 'Content' }),
-          ],
+          children: () => [CollapsibleTrigger({ children: 'Toggle' }), CollapsibleContent({ children: 'Content' })],
         });
 
       const { container } = renderComponent(component);
@@ -662,10 +607,7 @@ describe('Collapsible', () => {
     it('should synchronize state between trigger and content', async () => {
       const component = () =>
         Collapsible({
-          children: () => [
-            CollapsibleTrigger({ children: 'Toggle' }),
-            CollapsibleContent({ children: 'Content' }),
-          ],
+          children: () => [CollapsibleTrigger({ children: 'Toggle' }), CollapsibleContent({ children: 'Content' })],
         });
 
       const { container } = renderComponent(component);

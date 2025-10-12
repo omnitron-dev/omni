@@ -9,11 +9,13 @@ describe('Lua Atomic Retry Script', () => {
   let redis: Redis;
 
   beforeAll(async () => {
-    manager = new NotificationManager(createTestConfig(1, {
-      blockInterval: 100,
-      scheduledBatchSize: 1000,
-      checkDelayInterval: 100,
-    }));
+    manager = new NotificationManager(
+      createTestConfig(1, {
+        blockInterval: 100,
+        scheduledBatchSize: 1000,
+        checkDelayInterval: 100,
+      })
+    );
     redis = manager.redis;
     await redis.flushdb();
   });
@@ -28,17 +30,21 @@ describe('Lua Atomic Retry Script', () => {
 
     let attemptCount = 0;
 
-    await manager.subscribe(channel, async (msg) => {
-      attemptCount++;
-      if (msg.attempt < 3) {
-        throw new Error('Trigger retry'); // Теперь retry вызывается автоматически при ошибке
-      } else {
-        await msg.ack();
+    await manager.subscribe(
+      channel,
+      async (msg) => {
+        attemptCount++;
+        if (msg.attempt < 3) {
+          throw new Error('Trigger retry'); // Теперь retry вызывается автоматически при ошибке
+        } else {
+          await msg.ack();
+        }
+      },
+      {
+        groupName: 'retryGroup',
+        retryDelay: 500,
       }
-    }, {
-      groupName: 'retryGroup',
-      retryDelay: 500
-    });
+    );
 
     await delay(400);
 

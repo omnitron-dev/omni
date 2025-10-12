@@ -18,14 +18,14 @@ export default class CachingService {
     const startTime = Date.now();
 
     // Simulate expensive computation
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     const result = input * input + Math.floor(Math.random() * 100);
 
     return {
       result,
       cached: false,
-      computationTime: Date.now() - startTime
+      computationTime: Date.now() - startTime,
     };
   }
 
@@ -36,7 +36,7 @@ export default class CachingService {
       hits: this.cacheHits,
       misses: this.cacheMisses,
       computations: this.computations,
-      hitRate: total > 0 ? this.cacheHits / total : 0
+      hitRate: total > 0 ? this.cacheHits / total : 0,
     };
   }
 }

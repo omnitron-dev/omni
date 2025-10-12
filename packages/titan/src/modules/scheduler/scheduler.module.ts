@@ -21,13 +21,10 @@ import {
   DEFAULT_SCHEDULER_CONFIG,
   SCHEDULER_DISCOVERY_TOKEN,
   SCHEDULER_LISTENERS_TOKEN,
-  SCHEDULER_PERSISTENCE_TOKEN
+  SCHEDULER_PERSISTENCE_TOKEN,
 } from './scheduler.constants.js';
 
-import type {
-  ISchedulerModuleOptions,
-  ISchedulerModuleAsyncOptions
-} from './scheduler.interfaces.js';
+import type { ISchedulerModuleOptions, ISchedulerModuleAsyncOptions } from './scheduler.interfaces.js';
 
 /**
  * Scheduler module
@@ -40,7 +37,7 @@ export class SchedulerModule {
   static forRoot(options: ISchedulerModuleOptions = {}): DynamicModule {
     const config = {
       ...DEFAULT_SCHEDULER_CONFIG,
-      ...options
+      ...options,
     };
 
     return {
@@ -58,15 +55,10 @@ export class SchedulerModule {
         // Export main service alias
         [SchedulerService, { useExisting: SCHEDULER_SERVICE_TOKEN }],
         // Listeners
-        [SCHEDULER_LISTENERS_TOKEN, { useValue: options.listeners || [] }]
+        [SCHEDULER_LISTENERS_TOKEN, { useValue: options.listeners || [] }],
       ] as any,
-      exports: [
-        SchedulerService,
-        SCHEDULER_SERVICE_TOKEN,
-        SCHEDULER_REGISTRY_TOKEN,
-        SCHEDULER_METRICS_TOKEN
-      ],
-      global: true
+      exports: [SchedulerService, SCHEDULER_SERVICE_TOKEN, SCHEDULER_REGISTRY_TOKEN, SCHEDULER_METRICS_TOKEN],
+      global: true,
     };
   }
 
@@ -85,17 +77,14 @@ export class SchedulerModule {
             const config = await options.useFactory!(...args);
             return {
               ...DEFAULT_SCHEDULER_CONFIG,
-              ...config
+              ...config,
             };
           },
-          inject: options.inject || []
-        }
+          inject: options.inject || [],
+        },
       ] as any);
     } else if (options.useExisting) {
-      providers.push([
-        SCHEDULER_CONFIG_TOKEN,
-        { useExisting: options.useExisting }
-      ] as any);
+      providers.push([SCHEDULER_CONFIG_TOKEN, { useExisting: options.useExisting }] as any);
     }
 
     // Add listeners provider
@@ -103,8 +92,8 @@ export class SchedulerModule {
       SCHEDULER_LISTENERS_TOKEN,
       {
         useFactory: (config: ISchedulerModuleOptions) => config.listeners || [],
-        inject: [SCHEDULER_CONFIG_TOKEN]
-      }
+        inject: [SCHEDULER_CONFIG_TOKEN],
+      },
     ] as any);
 
     // Add core services
@@ -122,13 +111,8 @@ export class SchedulerModule {
       module: SchedulerModule,
       imports: options.imports || [],
       providers,
-      exports: [
-        SchedulerService,
-        SCHEDULER_SERVICE_TOKEN,
-        SCHEDULER_REGISTRY_TOKEN,
-        SCHEDULER_METRICS_TOKEN
-      ],
-      global: true
+      exports: [SchedulerService, SCHEDULER_SERVICE_TOKEN, SCHEDULER_REGISTRY_TOKEN, SCHEDULER_METRICS_TOKEN],
+      global: true,
     };
   }
 
@@ -139,7 +123,7 @@ export class SchedulerModule {
     return {
       module: SchedulerModule,
       providers,
-      exports: providers
+      exports: providers,
     };
   }
 }

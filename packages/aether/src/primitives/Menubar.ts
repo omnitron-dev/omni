@@ -322,16 +322,12 @@ export const MenubarContent = defineComponent<MenubarContentProps>((props) => {
 
       const trigger = document.getElementById(ctx.triggerId);
       if (trigger) {
-        const position = calculatePosition(
-          trigger,
-          element,
-          {
-            side: props.side || 'bottom',
-            align: props.align || 'start',
-            sideOffset: props.sideOffset || 4,
-            alignOffset: props.alignOffset || 0,
-          },
-        );
+        const position = calculatePosition(trigger, element, {
+          side: props.side || 'bottom',
+          align: props.align || 'start',
+          sideOffset: props.sideOffset || 4,
+          alignOffset: props.alignOffset || 0,
+        });
         applyPosition(element, position);
       }
     }
@@ -414,43 +410,46 @@ export const MenubarItem = defineComponent<MenubarItemProps>((props) => {
 /**
  * Menubar Separator
  */
-export const MenubarSeparator = defineComponent<MenubarSeparatorProps>((props) => () => jsx('div', {
+export const MenubarSeparator = defineComponent<MenubarSeparatorProps>(
+  (props) => () =>
+    jsx('div', {
       ...props,
       'data-menubar-separator': '',
       role: 'separator',
       'aria-orientation': 'horizontal',
-    }));
+    })
+);
 
 /**
  * Menubar Label
  */
 export const MenubarLabel = defineComponent<MenubarLabelProps>((props) => () => {
-    const { children, ...restProps } = props;
-    // Evaluate function children during render (Pattern 17)
-    const evaluatedChildren = typeof children === 'function' ? children() : children;
+  const { children, ...restProps } = props;
+  // Evaluate function children during render (Pattern 17)
+  const evaluatedChildren = typeof children === 'function' ? children() : children;
 
-    return jsx('div', {
-      ...restProps,
-      'data-menubar-label': '',
-      children: evaluatedChildren,
-    });
+  return jsx('div', {
+    ...restProps,
+    'data-menubar-label': '',
+    children: evaluatedChildren,
   });
+});
 
 /**
  * Menubar Shortcut
  */
 export const MenubarShortcut = defineComponent<MenubarShortcutProps>((props) => () => {
-    const { children, ...restProps } = props;
-    // Evaluate function children during render (Pattern 17)
-    const evaluatedChildren = typeof children === 'function' ? children() : children;
+  const { children, ...restProps } = props;
+  // Evaluate function children during render (Pattern 17)
+  const evaluatedChildren = typeof children === 'function' ? children() : children;
 
-    return jsx('span', {
-      ...restProps,
-      'data-menubar-shortcut': '',
-      'aria-hidden': 'true',
-      children: evaluatedChildren,
-    });
+  return jsx('span', {
+    ...restProps,
+    'data-menubar-shortcut': '',
+    'aria-hidden': 'true',
+    children: evaluatedChildren,
   });
+});
 
 // Attach sub-components
 (Menubar as any).Menu = MenubarMenu;

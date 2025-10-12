@@ -33,10 +33,5 @@ export function createAuthenticateRequest(credentials: AuthCredentials): Authent
  * Validate authenticate response
  */
 export function isAuthenticateResponse(obj: any): obj is AuthenticateResponse {
-  return (
-    obj &&
-    typeof obj === 'object' &&
-    'success' in obj &&
-    typeof obj.success === 'boolean'
-  );
+  return obj && typeof obj === 'object' && 'success' in obj && typeof obj.success === 'boolean';
 }

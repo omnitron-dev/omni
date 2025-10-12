@@ -13,7 +13,7 @@ import type { IHealthStatus } from '../../src/modules/pm/types.js';
 @Process({
   name: 'calculator',
   version: '1.0.0',
-  health: { enabled: true }
+  health: { enabled: true },
 })
 export class CalculatorWorker {
   private requestCount = 0;
@@ -48,10 +48,10 @@ export class CalculatorWorker {
         {
           name: 'requests',
           status: 'pass',
-          details: { count: this.requestCount }
-        }
+          details: { count: this.requestCount },
+        },
       ],
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 }
@@ -61,7 +61,7 @@ export class CalculatorWorker {
  */
 @Process({
   name: 'counter',
-  version: '1.0.0'
+  version: '1.0.0',
 })
 export class StatefulCounterWorker {
   private counter = 0;
@@ -110,7 +110,7 @@ export class StatefulCounterWorker {
 @Process({
   name: 'crashable',
   version: '1.0.0',
-  health: { enabled: true }
+  health: { enabled: true },
 })
 export class CrashableWorker {
   private shouldCrash = false;
@@ -160,10 +160,10 @@ export class CrashableWorker {
         {
           name: 'crash-mode',
           status: this.shouldCrash ? 'fail' : 'pass',
-          details: { crashMode: this.shouldCrash }
-        }
+          details: { crashMode: this.shouldCrash },
+        },
       ],
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 }
@@ -173,13 +173,13 @@ export class CrashableWorker {
  */
 @Process({
   name: 'heavy-compute',
-  version: '1.0.0'
+  version: '1.0.0',
 })
 export class HeavyComputeWorker {
   @Public()
   async fibonacci(n: number): Promise<number> {
     if (n <= 1) return n;
-    return await this.fibonacci(n - 1) + await this.fibonacci(n - 2);
+    return (await this.fibonacci(n - 1)) + (await this.fibonacci(n - 2));
   }
 
   @Public()
@@ -209,7 +209,7 @@ export class HeavyComputeWorker {
   name: 'metrics-tracker',
   version: '1.0.0',
   health: { enabled: true },
-  observability: { metrics: true }
+  observability: { metrics: true },
 })
 export class MetricsTrackerWorker {
   private operations = new Map<string, number>();
@@ -235,9 +235,7 @@ export class MetricsTrackerWorker {
   @Public()
   async getStats(operation: string): Promise<any> {
     const latencyList = this.latencies.get(operation) || [];
-    const avg = latencyList.length > 0
-      ? latencyList.reduce((a, b) => a + b, 0) / latencyList.length
-      : 0;
+    const avg = latencyList.length > 0 ? latencyList.reduce((a, b) => a + b, 0) / latencyList.length : 0;
 
     return {
       operation,
@@ -245,7 +243,7 @@ export class MetricsTrackerWorker {
       errors: this.errors.get(operation) || 0,
       avgLatency: avg,
       p95: this.calculatePercentile(latencyList, 0.95),
-      p99: this.calculatePercentile(latencyList, 0.99)
+      p99: this.calculatePercentile(latencyList, 0.99),
     };
   }
 
@@ -266,10 +264,10 @@ export class MetricsTrackerWorker {
         {
           name: 'error-rate',
           status: errorRate > 0.5 ? 'fail' : errorRate > 0.2 ? 'warn' : 'pass',
-          details: { errorRate, totalOps, totalErrors }
-        }
+          details: { errorRate, totalOps, totalErrors },
+        },
       ],
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 

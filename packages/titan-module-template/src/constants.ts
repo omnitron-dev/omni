@@ -6,7 +6,8 @@ import { createToken, Token } from '@omnitron-dev/titan/nexus';
 import type { TemplateModuleOptions } from './types.js';
 
 // Token for module options
-export const TEMPLATE_MODULE_OPTIONS: Token<TemplateModuleOptions> = createToken<TemplateModuleOptions>('TEMPLATE_MODULE_OPTIONS');
+export const TEMPLATE_MODULE_OPTIONS: Token<TemplateModuleOptions> =
+  createToken<TemplateModuleOptions>('TEMPLATE_MODULE_OPTIONS');
 
 // Token for the main service
 export const TEMPLATE_SERVICE: Token = createToken('TEMPLATE_SERVICE');

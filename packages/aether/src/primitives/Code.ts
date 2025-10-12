@@ -63,29 +63,29 @@ export interface CodeProps {
  * - Technical articles
  */
 export const Code = defineComponent<CodeProps>((props) => () => {
-    const { block, language, children, ...restProps } = props;
+  const { block, language, children, ...restProps } = props;
 
-    if (block) {
-      // Block code: <pre><code>
-      return jsx('pre', {
-        ...restProps,
-        'data-code-block': '',
-        'data-language': language,
-        children: jsx('code', {
-          'data-language': language,
-          children,
-        }),
-      });
-    }
-
-    // Inline code: <code>
-    return jsx('code', {
+  if (block) {
+    // Block code: <pre><code>
+    return jsx('pre', {
       ...restProps,
-      'data-code': '',
+      'data-code-block': '',
       'data-language': language,
-      children,
+      children: jsx('code', {
+        'data-language': language,
+        children,
+      }),
     });
+  }
+
+  // Inline code: <code>
+  return jsx('code', {
+    ...restProps,
+    'data-code': '',
+    'data-language': language,
+    children,
   });
+});
 
 // Attach display name
 Code.displayName = 'Code';

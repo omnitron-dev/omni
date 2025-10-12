@@ -18,13 +18,16 @@ export class HttpNetronClient {
   async queryInterface(serviceName) {
     const [name, version] = serviceName.split('@');
 
-    return new Proxy({}, {
-      get: (target, method) => {
-        return async (...args) => {
-          return this.invoke(serviceName, method, args);
-        };
+    return new Proxy(
+      {},
+      {
+        get: (target, method) => {
+          return async (...args) => {
+            return this.invoke(serviceName, method, args);
+          };
+        },
       }
-    });
+    );
   }
 
   async invoke(serviceName, methodName, args) {
@@ -36,7 +39,7 @@ export class HttpNetronClient {
       timestamp: Date.now(),
       service: serviceName,
       method: methodName,
-      input: args || []
+      input: args || [],
     };
 
     const controller = new AbortController();
@@ -47,10 +50,10 @@ export class HttpNetronClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...this.headers
+          ...this.headers,
         },
         body: JSON.stringify(body),
-        signal: controller.signal
+        signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
@@ -79,7 +82,7 @@ export class HttpNetronClient {
   getMetrics() {
     return {
       clientId: 'browser-client',
-      baseUrl: this.baseUrl
+      baseUrl: this.baseUrl,
     };
   }
 }

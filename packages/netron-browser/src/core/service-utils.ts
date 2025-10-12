@@ -10,8 +10,7 @@
  * @param _obj - The object to check
  * @returns false - services are server-side only
  */
-export const isNetronService = (_obj: any): boolean => 
+export const isNetronService = (_obj: any): boolean =>
   // Services are defined on the server, not in the browser client
   // This is a placeholder for potential future browser-side service definitions
-   false
-;
+  false;

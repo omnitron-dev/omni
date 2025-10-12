@@ -7,10 +7,12 @@ describe('DLQ - Requeue from DLQ', () => {
   let manager: NotificationManager;
 
   beforeAll(async () => {
-    manager = new NotificationManager(createTestConfig(1, {
-      checkDelayInterval: 100,
-      blockInterval: 100,
-    }));
+    manager = new NotificationManager(
+      createTestConfig(1, {
+        checkDelayInterval: 100,
+        blockInterval: 100,
+      })
+    );
     await manager.redis.flushdb();
   });
 
@@ -25,13 +27,17 @@ describe('DLQ - Requeue from DLQ', () => {
     let failOnce = true;
 
     // Subscribe to channel and fail once to put msg in DLQ
-    await manager.subscribe(channel, async (msg) => {
-      if (failOnce) {
-        failOnce = false;
-        throw new Error('forced failure');
-      }
-      received.push(msg.payload);
-    }, { maxRetries: 0 });
+    await manager.subscribe(
+      channel,
+      async (msg) => {
+        if (failOnce) {
+          failOnce = false;
+          throw new Error('forced failure');
+        }
+        received.push(msg.payload);
+      },
+      { maxRetries: 0 }
+    );
 
     await delayMs(100);
 

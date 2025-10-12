@@ -9,7 +9,10 @@ import { InjectionToken } from './types.js';
  * Base error class for all Nexus errors
  */
 export abstract class NexusError extends Error {
-  constructor(message: string, public readonly code: string) {
+  constructor(
+    message: string,
+    public readonly code: string
+  ) {
     super(message);
     this.name = this.constructor.name;
     Object.setPrototypeOf(this, new.target.prototype);
@@ -28,15 +31,10 @@ export class ResolutionError extends NexusError {
     super(ResolutionError.formatMessage(token, chain, cause), 'RESOLUTION_ERROR');
   }
 
-  private static formatMessage(
-    token: InjectionToken<any>,
-    chain: InjectionToken<any>[],
-    cause?: Error
-  ): string {
+  private static formatMessage(token: InjectionToken<any>, chain: InjectionToken<any>[], cause?: Error): string {
     const tokenName = getTokenName(token);
-    const chainStr = chain.length > 0
-      ? chain.map(t => `  → ${getTokenName(t)}`).join('\n')
-      : '  (no dependency chain)';
+    const chainStr =
+      chain.length > 0 ? chain.map((t) => `  → ${getTokenName(t)}`).join('\n') : '  (no dependency chain)';
 
     return `
 Failed to resolve: ${tokenName}
@@ -65,7 +63,7 @@ export class CircularDependencyError extends NexusError {
   }
 
   private static formatMessage(chain: InjectionToken<any>[]): string {
-    const chainStr = chain.map(t => `  → ${getTokenName(t)}`).join('\n');
+    const chainStr = chain.map((t) => `  → ${getTokenName(t)}`).join('\n');
     const circular = getTokenName(chain[chain.length - 1]);
 
     return `
@@ -92,10 +90,7 @@ export class RegistrationError extends NexusError {
     public readonly token: InjectionToken<any>,
     public readonly reason: string
   ) {
-    super(
-      `Failed to register '${getTokenName(token)}': ${reason}`,
-      'REGISTRATION_ERROR'
-    );
+    super(`Failed to register '${getTokenName(token)}': ${reason}`, 'REGISTRATION_ERROR');
   }
 }
 
@@ -104,10 +99,7 @@ export class RegistrationError extends NexusError {
  */
 export class DuplicateRegistrationError extends NexusError {
   constructor(public readonly token: InjectionToken<any>) {
-    super(
-      `Token '${getTokenName(token)}' is already registered. Use replace() to override.`,
-      'DUPLICATE_REGISTRATION'
-    );
+    super(`Token '${getTokenName(token)}' is already registered. Use replace() to override.`, 'DUPLICATE_REGISTRATION');
   }
 }
 
@@ -151,10 +143,7 @@ export class InvalidProviderError extends NexusError {
     public readonly token: InjectionToken<any>,
     public readonly reason: string
   ) {
-    super(
-      `Invalid provider for '${getTokenName(token)}': ${reason}`,
-      'INVALID_PROVIDER'
-    );
+    super(`Invalid provider for '${getTokenName(token)}': ${reason}`, 'INVALID_PROVIDER');
   }
 }
 
@@ -178,10 +167,7 @@ export class DisposalError extends NexusError {
     public readonly token: InjectionToken<any>,
     public override readonly cause: Error
   ) {
-    super(
-      `Failed to dispose '${getTokenName(token)}': ${cause.message}`,
-      'DISPOSAL_ERROR'
-    );
+    super(`Failed to dispose '${getTokenName(token)}': ${cause.message}`, 'DISPOSAL_ERROR');
   }
 }
 
@@ -194,10 +180,7 @@ export class ModuleError extends NexusError {
     public readonly operation: string,
     public readonly reason: string
   ) {
-    super(
-      `Module '${moduleName}' ${operation} failed: ${reason}`,
-      'MODULE_ERROR'
-    );
+    super(`Module '${moduleName}' ${operation} failed: ${reason}`, 'MODULE_ERROR');
   }
 }
 
@@ -209,10 +192,7 @@ export class InitializationError extends NexusError {
     public readonly token: InjectionToken<any>,
     public override readonly cause: Error
   ) {
-    super(
-      `Failed to initialize '${getTokenName(token)}': ${cause.message}`,
-      'INITIALIZATION_ERROR'
-    );
+    super(`Failed to initialize '${getTokenName(token)}': ${cause.message}`, 'INITIALIZATION_ERROR');
   }
 }
 
@@ -221,10 +201,7 @@ export class InitializationError extends NexusError {
  */
 export class ContainerDisposedError extends NexusError {
   constructor() {
-    super(
-      'Container has been disposed and cannot be used',
-      'CONTAINER_DISPOSED'
-    );
+    super('Container has been disposed and cannot be used', 'CONTAINER_DISPOSED');
   }
 }
 

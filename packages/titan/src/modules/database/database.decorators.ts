@@ -12,10 +12,7 @@ import {
   METADATA_KEYS,
 } from './database.constants.js';
 import { Errors } from '../../errors/index.js';
-import type {
-  RepositoryConfig,
-  PaginationOptions,
-} from './database.types.js';
+import type { RepositoryConfig, PaginationOptions } from './database.types.js';
 import type { TransactionOptions } from './transaction/transaction.types.js';
 
 /**
@@ -73,7 +70,7 @@ export function Repository<Entity = any>(config: RepositoryConfig<Entity>): Clas
         softDelete: config.softDelete,
         timestamps: config.timestamps,
         audit: config.audit,
-      }
+      },
     });
     Reflect.defineMetadata('database:repositories', globalRepos, global);
 
@@ -146,38 +143,9 @@ export function Transactional(options?: TransactionOptions): MethodDecorator {
         }
 
         // Use database service's transaction method
-        return databaseService.transaction(
-          async (trx: any) => {
-            // Store transaction in context for nested operations
-            const context = { transaction: trx };
-            Object.defineProperty(this, '__transactionContext', {
-              value: context,
-              writable: false,
-              configurable: true,
-            });
-
-            try {
-              // Call original method
-              return await originalMethod.apply(this, args);
-            } finally {
-              // Clean up transaction context
-              delete (this as any).__transactionContext;
-            }
-          },
-          options
-        );
-      }
-
-      // Use transaction manager with advanced features
-      return transactionManager.executeInTransaction(
-        async (trx: any) => {
+        return databaseService.transaction(async (trx: any) => {
           // Store transaction in context for nested operations
-          const context = {
-            transaction: trx,
-            transactionManager,
-            transactionContext: transactionManager.getCurrentTransaction()
-          };
-
+          const context = { transaction: trx };
           Object.defineProperty(this, '__transactionContext', {
             value: context,
             writable: false,
@@ -191,9 +159,32 @@ export function Transactional(options?: TransactionOptions): MethodDecorator {
             // Clean up transaction context
             delete (this as any).__transactionContext;
           }
-        },
-        options
-      );
+        }, options);
+      }
+
+      // Use transaction manager with advanced features
+      return transactionManager.executeInTransaction(async (trx: any) => {
+        // Store transaction in context for nested operations
+        const context = {
+          transaction: trx,
+          transactionManager,
+          transactionContext: transactionManager.getCurrentTransaction(),
+        };
+
+        Object.defineProperty(this, '__transactionContext', {
+          value: context,
+          writable: false,
+          configurable: true,
+        });
+
+        try {
+          // Call original method
+          return await originalMethod.apply(this, args);
+        } finally {
+          // Clean up transaction context
+          delete (this as any).__transactionContext;
+        }
+      }, options);
     };
 
     // Store metadata
@@ -215,13 +206,9 @@ export function Paginated(defaults?: Partial<PaginationOptions>): MethodDecorato
       // Extract pagination options from arguments
       const lastArg = args[args.length - 1];
       const isPaginationOptions =
-        lastArg &&
-        typeof lastArg === 'object' &&
-        ('page' in lastArg || 'limit' in lastArg || 'cursor' in lastArg);
+        lastArg && typeof lastArg === 'object' && ('page' in lastArg || 'limit' in lastArg || 'cursor' in lastArg);
 
-      const paginationOptions: PaginationOptions = isPaginationOptions
-        ? { ...defaults, ...lastArg }
-        : defaults || {};
+      const paginationOptions: PaginationOptions = isPaginationOptions ? { ...defaults, ...lastArg } : defaults || {};
 
       // Get database service
       const databaseService = (this as any).databaseService;
@@ -233,10 +220,7 @@ export function Paginated(defaults?: Partial<PaginationOptions>): MethodDecorato
       }
 
       // Call original method to get query
-      const query = await originalMethod.apply(
-        this,
-        isPaginationOptions ? args.slice(0, -1) : args
-      );
+      const query = await originalMethod.apply(this, isPaginationOptions ? args.slice(0, -1) : args);
 
       // Apply pagination
       if (paginationOptions.cursor) {
@@ -276,9 +260,7 @@ export function Query(sql: string): MethodDecorator {
       const db = (this as any).db;
 
       if (!db) {
-        throw Errors.internal(
-          `@Query decorator requires database connection in ${target.constructor.name}`
-        );
+        throw Errors.internal(`@Query decorator requires database connection in ${target.constructor.name}`);
       }
 
       // Replace placeholders in SQL with actual values
@@ -298,10 +280,7 @@ export function Query(sql: string): MethodDecorator {
  * SoftDelete decorator
  * Marks a repository to use soft delete
  */
-export function SoftDelete(config?: {
-  column?: string;
-  includeDeleted?: boolean;
-}): ClassDecorator {
+export function SoftDelete(config?: { column?: string; includeDeleted?: boolean }): ClassDecorator {
   return (target: any) => {
     const existingConfig = Reflect.getMetadata(METADATA_KEYS.REPOSITORY, target) || {};
 
@@ -322,10 +301,7 @@ export function SoftDelete(config?: {
  * Timestamps decorator
  * Marks a repository to use automatic timestamps
  */
-export function Timestamps(config?: {
-  createdAt?: string;
-  updatedAt?: string;
-}): ClassDecorator {
+export function Timestamps(config?: { createdAt?: string; updatedAt?: string }): ClassDecorator {
   return (target: any) => {
     const existingConfig = Reflect.getMetadata(METADATA_KEYS.REPOSITORY, target) || {};
 

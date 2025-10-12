@@ -335,9 +335,7 @@ describe('Component Context', () => {
 
   describe('Performance', () => {
     it('should handle many contexts efficiently', () => {
-      const contexts = Array.from({ length: 100 }, (_, i) =>
-        createContext(i)
-      );
+      const contexts = Array.from({ length: 100 }, (_, i) => createContext(i));
 
       const Consumer = defineComponent(() => {
         const values = contexts.map((ctx) => useContext(ctx));

@@ -162,9 +162,7 @@ export function cachingPlugin(options: CacheOptions = {}): ITitanPlugin {
 
   // Generate cache key
   const generateKey = (table: string, operation: string, args: any[]): string => {
-    const hash = createHash('sha256')
-      .update(JSON.stringify({ table, operation, args }))
-      .digest('hex');
+    const hash = createHash('sha256').update(JSON.stringify({ table, operation, args })).digest('hex');
     return `${prefix}${table}:${operation}:${hash}`;
   };
 
@@ -266,9 +264,7 @@ export function cachingPlugin(options: CacheOptions = {}): ITitanPlugin {
 
       // Add cache management methods
       repository.clearCache = async function (pattern?: string) {
-        const fullPattern = pattern
-          ? `${prefix}${this.tableName}:${pattern}`
-          : `${prefix}${this.tableName}:.*`;
+        const fullPattern = pattern ? `${prefix}${this.tableName}:${pattern}` : `${prefix}${this.tableName}:.*`;
         await cache.clear(fullPattern);
       };
 
@@ -316,7 +312,7 @@ export function cachingPlugin(options: CacheOptions = {}): ITitanPlugin {
     afterTransaction(result: 'commit' | 'rollback') {
       if (result === 'commit') {
         // Clear cache after successful transaction
-        cache.clear(`${prefix}*`).catch(err => {
+        cache.clear(`${prefix}*`).catch((err) => {
           console.error('Failed to clear cache after transaction:', err);
         });
       }

@@ -11,7 +11,7 @@ import {
   toTitanError,
   assert,
   assertDefined,
-  assertType
+  assertType,
 } from '../../src/errors/factories.js';
 import { TitanError } from '../../src/errors/core.js';
 import { ErrorCode } from '../../src/errors/codes.js';
@@ -87,7 +87,7 @@ describe('Error Factories', () => {
     it('should create validation error', () => {
       const errors = [
         { field: 'email', message: 'Invalid email' },
-        { field: 'password', message: 'Too short' }
+        { field: 'password', message: 'Too short' },
       ];
 
       const error = Errors.validation(errors);
@@ -407,7 +407,7 @@ describe('Error Factories', () => {
     it('should return TitanError as-is', () => {
       const original = new TitanError({
         code: ErrorCode.NOT_FOUND,
-        message: 'Not found'
+        message: 'Not found',
       });
 
       const result = toTitanError(original);
@@ -466,7 +466,7 @@ describe('Error Factories', () => {
     it('should throw with custom error', () => {
       const customError = new TitanError({
         code: ErrorCode.BAD_REQUEST,
-        message: 'Custom error'
+        message: 'Custom error',
       });
 
       expect(() => {

@@ -85,40 +85,40 @@ const SIZE_MAP: Record<ContainerSize, string> = {
  * ```
  */
 export const Container = defineComponent<ContainerProps>((props) => () => {
-    const size = props.size ?? 'lg';
-    const centerContent = props.centerContent ?? true;
-    const fluid = props.fluid ?? false;
+  const size = props.size ?? 'lg';
+  const centerContent = props.centerContent ?? true;
+  const fluid = props.fluid ?? false;
 
-    const {
-      size: _size,
-      centerContent: _center,
-      fluid: _fluid,
-      px,
-      py,
-      children,
-      class: className,
-      style,
-      ...restProps
-    } = props;
+  const {
+    size: _size,
+    centerContent: _center,
+    fluid: _fluid,
+    px,
+    py,
+    children,
+    class: className,
+    style,
+    ...restProps
+  } = props;
 
-    const maxWidth = fluid ? '100%' : SIZE_MAP[size];
-    const margin = centerContent ? '0 auto' : undefined;
-    const paddingX = px !== undefined ? (typeof px === 'number' ? `${px}px` : px) : '16px';
-    const paddingY = py !== undefined ? (typeof py === 'number' ? `${py}px` : py) : undefined;
+  const maxWidth = fluid ? '100%' : SIZE_MAP[size];
+  const margin = centerContent ? '0 auto' : undefined;
+  const paddingX = px !== undefined ? (typeof px === 'number' ? `${px}px` : px) : '16px';
+  const paddingY = py !== undefined ? (typeof py === 'number' ? `${py}px` : py) : undefined;
 
-    const containerStyles: Record<string, any> = {
-      width: '100%',
-      maxWidth,
-      ...(margin && { margin }),
-      ...(paddingX && { paddingLeft: paddingX, paddingRight: paddingX }),
-      ...(paddingY && { paddingTop: paddingY, paddingBottom: paddingY }),
-      ...style,
-    };
+  const containerStyles: Record<string, any> = {
+    width: '100%',
+    maxWidth,
+    ...(margin && { margin }),
+    ...(paddingX && { paddingLeft: paddingX, paddingRight: paddingX }),
+    ...(paddingY && { paddingTop: paddingY, paddingBottom: paddingY }),
+    ...style,
+  };
 
-    return jsx('div', {
-      class: className,
-      style: containerStyles,
-      ...restProps,
-      children,
-    });
+  return jsx('div', {
+    class: className,
+    style: containerStyles,
+    ...restProps,
+    children,
   });
+});

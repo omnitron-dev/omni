@@ -12,10 +12,7 @@ const config: JestConfigWithTsJest = {
   coverageDirectory: 'coverage',
   moduleFileExtensions: ['ts', 'js', 'json'],
   testMatch: ['<rootDir>/test/**/*.spec.ts'],
-  testPathIgnorePatterns: [
-    '/node_modules/',
-    '/test/runtime/',
-  ],
+  testPathIgnorePatterns: ['/node_modules/', '/test/runtime/'],
   transform: {
     '^.+\\.ts$': [
       'ts-jest',
@@ -32,9 +29,7 @@ const config: JestConfigWithTsJest = {
       },
     ],
   },
-  transformIgnorePatterns: [
-    'node_modules/(?!(@noble|@omnitron-dev|@devgrid)/)',
-  ],
+  transformIgnorePatterns: ['node_modules/(?!(@noble|@omnitron-dev|@devgrid)/)'],
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',

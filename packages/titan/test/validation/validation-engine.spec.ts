@@ -33,7 +33,7 @@ describe('ValidationEngine', () => {
     it('should support lazy compilation', () => {
       const schema = z.object({
         name: z.string(),
-        age: z.number()
+        age: z.number(),
       });
 
       const validator = engine.compile(schema);
@@ -61,7 +61,7 @@ describe('ValidationEngine', () => {
         id: z.string().uuid(),
         email: z.string().email(),
         age: z.number().int().min(0).max(150).optional(),
-        roles: z.array(z.enum(['user', 'admin', 'moderator'])).default(['user'])
+        roles: z.array(z.enum(['user', 'admin', 'moderator'])).default(['user']),
       });
 
       const validator = engine.compile(schema);
@@ -69,7 +69,7 @@ describe('ValidationEngine', () => {
       const validData = {
         id: '123e4567-e89b-12d3-a456-426614174000',
         email: 'user@example.com',
-        age: 25
+        age: 25,
       };
 
       const result = validator.validate(validData);
@@ -87,7 +87,10 @@ describe('ValidationEngine', () => {
     });
 
     it('should handle transforms', () => {
-      const schema = z.string().email().transform(s => s.toLowerCase());
+      const schema = z
+        .string()
+        .email()
+        .transform((s) => s.toLowerCase());
       const validator = engine.compile(schema);
 
       const input = 'TEST@EXAMPLE.COM';
@@ -110,7 +113,7 @@ describe('ValidationEngine', () => {
       const schema = z.string().refine(
         async (val) => {
           // Simulate async check
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           return val.length > 5;
         },
         { message: 'String must be longer than 5 characters' }
@@ -127,7 +130,7 @@ describe('ValidationEngine', () => {
     it('should provide type guard functionality', () => {
       const schema = z.object({
         name: z.string(),
-        age: z.number()
+        age: z.number(),
       });
 
       const validator = engine.compile(schema);
@@ -144,7 +147,7 @@ describe('ValidationEngine', () => {
     it('should optimize object schemas', () => {
       const schema = z.object({
         id: z.string(),
-        name: z.string()
+        name: z.string(),
       });
 
       const validator = engine.compile(schema, { mode: 'strict' });
@@ -153,7 +156,7 @@ describe('ValidationEngine', () => {
       const dataWithExtra = {
         id: '123',
         name: 'Test',
-        extra: 'field'
+        extra: 'field',
       };
 
       expect(() => validator.validate(dataWithExtra)).toThrow(ValidationError);
@@ -162,7 +165,7 @@ describe('ValidationEngine', () => {
     it('should handle strip mode', () => {
       const schema = z.object({
         id: z.string(),
-        name: z.string()
+        name: z.string(),
       });
 
       const validator = engine.compile(schema, { mode: 'strip' });
@@ -170,7 +173,7 @@ describe('ValidationEngine', () => {
       const dataWithExtra = {
         id: '123',
         name: 'Test',
-        extra: 'field'
+        extra: 'field',
       };
 
       const result = validator.validate(dataWithExtra);
@@ -181,14 +184,14 @@ describe('ValidationEngine', () => {
     it('should handle coercion', () => {
       const schema = z.object({
         age: z.number(),
-        active: z.boolean()
+        active: z.boolean(),
       });
 
       const validator = engine.compile(schema, { coerce: true });
 
       const data = {
         age: '25',
-        active: 'true'
+        active: 'true',
       };
 
       const result = validator.validate(data);
@@ -201,7 +204,7 @@ describe('ValidationEngine', () => {
     it('should throw ValidationError with details', () => {
       const schema = z.object({
         email: z.string().email(),
-        age: z.number().min(18)
+        age: z.number().min(18),
       });
 
       const validator = engine.compile(schema);
@@ -209,7 +212,7 @@ describe('ValidationEngine', () => {
       try {
         validator.validate({
           email: 'invalid',
-          age: 15
+          age: 15,
         });
         fail('Should have thrown');
       } catch (error) {
@@ -246,7 +249,7 @@ describe('ValidationEngine', () => {
       const schema = z.object({
         email: z.string().email(),
         age: z.number().min(18),
-        name: z.string().min(2)
+        name: z.string().min(2),
       });
 
       const validator1 = engine.compile(schema, { abortEarly: true });
@@ -255,7 +258,7 @@ describe('ValidationEngine', () => {
       const invalidData = {
         email: 'invalid',
         age: 15,
-        name: 'a'
+        name: 'a',
       };
 
       try {
@@ -282,14 +285,12 @@ describe('ValidationEngine', () => {
 
   describe('cache management', () => {
     it('should cache validators effectively', () => {
-      const schemas = Array.from({ length: 100 }, (_, i) =>
-        z.object({ [`field${i}`]: z.string() })
-      );
+      const schemas = Array.from({ length: 100 }, (_, i) => z.object({ [`field${i}`]: z.string() }));
 
-      const validators = schemas.map(schema => engine.compile(schema));
+      const validators = schemas.map((schema) => engine.compile(schema));
 
       // All validators should be cached
-      const validators2 = schemas.map(schema => engine.compile(schema));
+      const validators2 = schemas.map((schema) => engine.compile(schema));
 
       validators.forEach((validator, i) => {
         expect(validator).toBe(validators2[i]);
@@ -304,7 +305,7 @@ describe('ValidationEngine', () => {
         engine.compile(schema, { mode: 'strip' }),
         engine.compile(schema, { mode: 'strict' }),
         engine.compile(schema, { coerce: true }),
-        engine.compile(schema, { skipValidation: true })
+        engine.compile(schema, { skipValidation: true }),
       ];
 
       // All should be different due to different options
@@ -337,7 +338,7 @@ describe('ValidationEngine', () => {
     it('should handle passthrough mode', () => {
       const schema = z.object({
         id: z.string(),
-        name: z.string()
+        name: z.string(),
       });
 
       const validator = engine.compile(schema, { mode: 'passthrough' });
@@ -345,7 +346,7 @@ describe('ValidationEngine', () => {
       const dataWithExtra = {
         id: '123',
         name: 'Test',
-        extra: 'field'
+        extra: 'field',
       };
 
       const result = validator.validate(dataWithExtra);
@@ -354,7 +355,7 @@ describe('ValidationEngine', () => {
     });
 
     it('should not modify schemas with effects/transforms', () => {
-      const schema = z.string().transform(s => s.toUpperCase());
+      const schema = z.string().transform((s) => s.toUpperCase());
       const validator = engine.compile(schema, { mode: 'strict' });
 
       const result = validator.validate('test');
@@ -365,13 +366,13 @@ describe('ValidationEngine', () => {
   describe('coercion edge cases', () => {
     it('should coerce dates', () => {
       const schema = z.object({
-        createdAt: z.date()
+        createdAt: z.date(),
       });
 
       const validator = engine.compile(schema, { coerce: true });
 
       const data = {
-        createdAt: '2024-01-01T00:00:00.000Z'
+        createdAt: '2024-01-01T00:00:00.000Z',
       };
 
       const result = validator.validate(data);
@@ -383,7 +384,7 @@ describe('ValidationEngine', () => {
         id: z.string(),
         age: z.number(),
         price: z.number(),
-        active: z.boolean()
+        active: z.boolean(),
       });
 
       const validator = engine.compile(schema, { coerce: true });
@@ -392,7 +393,7 @@ describe('ValidationEngine', () => {
         id: '123',
         age: '25',
         price: '29.99',
-        active: 'true'
+        active: 'true',
       };
 
       const result = validator.validate(data);
@@ -407,14 +408,14 @@ describe('ValidationEngine', () => {
     it('should handle async validation with coercion', async () => {
       const schema = z.object({
         age: z.number(),
-        active: z.boolean()
+        active: z.boolean(),
       });
 
       const validator = engine.compile(schema, { coerce: true });
 
       const data = {
         age: '25',
-        active: 'true'
+        active: 'true',
       };
 
       const result = await validator.validateAsync(data);
@@ -426,7 +427,7 @@ describe('ValidationEngine', () => {
       const schema = z.object({
         email: z.string().email(),
         age: z.number().min(18),
-        name: z.string().min(2)
+        name: z.string().min(2),
       });
 
       const validator = engine.compile(schema, { abortEarly: true });
@@ -434,7 +435,7 @@ describe('ValidationEngine', () => {
       const invalidData = {
         email: 'invalid',
         age: 15,
-        name: 'a'
+        name: 'a',
       };
 
       try {
@@ -452,7 +453,7 @@ describe('ValidationEngine', () => {
     it('should handle detailed error format', () => {
       const schema = z.object({
         email: z.string().email(),
-        age: z.number().int().min(18)
+        age: z.number().int().min(18),
       });
 
       const validator = engine.compile(schema, { errorFormat: 'detailed' });
@@ -460,7 +461,7 @@ describe('ValidationEngine', () => {
       try {
         validator.validate({
           email: 'invalid',
-          age: 15
+          age: 15,
         });
         fail('Should have thrown');
       } catch (error) {
@@ -505,10 +506,12 @@ describe('ValidationEngine', () => {
         password: z.string().min(8),
         age: z.number().int().min(18).max(120),
         role: z.enum(['admin', 'user']),
-        preferences: z.object({
-          newsletter: z.boolean(),
-          notifications: z.boolean()
-        }).optional()
+        preferences: z
+          .object({
+            newsletter: z.boolean(),
+            notifications: z.boolean(),
+          })
+          .optional(),
       });
 
       const validator = engine.compile(userSchema);
@@ -520,8 +523,8 @@ describe('ValidationEngine', () => {
         role: 'user' as const,
         preferences: {
           newsletter: true,
-          notifications: false
-        }
+          notifications: false,
+        },
       };
 
       expect(() => validator.validate(validUser)).not.toThrow();
@@ -535,7 +538,7 @@ describe('ValidationEngine', () => {
         currency: z.enum(['USD', 'EUR', 'GBP']),
         stock: z.number().int().min(0),
         tags: z.array(z.string()).min(1).max(10),
-        metadata: z.record(z.string(), z.any()).optional()
+        metadata: z.record(z.string(), z.any()).optional(),
       });
 
       const validator = engine.compile(productSchema, { mode: 'strip' });
@@ -547,7 +550,7 @@ describe('ValidationEngine', () => {
         currency: 'USD' as const,
         stock: 100,
         tags: ['electronics', 'gadget'],
-        extraField: 'should be stripped'
+        extraField: 'should be stripped',
       };
 
       const result = validator.validate(validProduct);
@@ -558,21 +561,25 @@ describe('ValidationEngine', () => {
     it('should validate API response with nested objects', () => {
       const responseSchema = z.object({
         status: z.enum(['success', 'error']),
-        data: z.object({
-          user: z.object({
-            id: z.string(),
-            name: z.string(),
-            email: z.string().email()
-          }),
-          session: z.object({
-            token: z.string(),
-            expiresAt: z.string().datetime()
+        data: z
+          .object({
+            user: z.object({
+              id: z.string(),
+              name: z.string(),
+              email: z.string().email(),
+            }),
+            session: z.object({
+              token: z.string(),
+              expiresAt: z.string().datetime(),
+            }),
           })
-        }).nullable(),
-        error: z.object({
-          code: z.string(),
-          message: z.string()
-        }).nullable()
+          .nullable(),
+        error: z
+          .object({
+            code: z.string(),
+            message: z.string(),
+          })
+          .nullable(),
       });
 
       const validator = engine.compile(responseSchema);
@@ -583,14 +590,14 @@ describe('ValidationEngine', () => {
           user: {
             id: '123',
             name: 'John Doe',
-            email: 'john@example.com'
+            email: 'john@example.com',
           },
           session: {
             token: 'abc123',
-            expiresAt: '2024-12-31T23:59:59.000Z'
-          }
+            expiresAt: '2024-12-31T23:59:59.000Z',
+          },
         },
-        error: null
+        error: null,
       };
 
       expect(() => validator.validate(validResponse)).not.toThrow();
@@ -601,17 +608,17 @@ describe('ValidationEngine', () => {
         z.object({
           type: z.literal('user.created'),
           userId: z.string().uuid(),
-          email: z.string().email()
+          email: z.string().email(),
         }),
         z.object({
           type: z.literal('user.deleted'),
-          userId: z.string().uuid()
+          userId: z.string().uuid(),
         }),
         z.object({
           type: z.literal('user.updated'),
           userId: z.string().uuid(),
-          changes: z.record(z.string(), z.any())
-        })
+          changes: z.record(z.string(), z.any()),
+        }),
       ]);
 
       const validator = engine.compile(eventSchema);
@@ -620,20 +627,20 @@ describe('ValidationEngine', () => {
         {
           type: 'user.created',
           userId: '123e4567-e89b-12d3-a456-426614174000',
-          email: 'user@example.com'
+          email: 'user@example.com',
         },
         {
           type: 'user.deleted',
-          userId: '123e4567-e89b-12d3-a456-426614174000'
+          userId: '123e4567-e89b-12d3-a456-426614174000',
         },
         {
           type: 'user.updated',
           userId: '123e4567-e89b-12d3-a456-426614174000',
-          changes: { name: 'New Name' }
-        }
+          changes: { name: 'New Name' },
+        },
       ];
 
-      events.forEach(event => {
+      events.forEach((event) => {
         expect(() => validator.validate(event)).not.toThrow();
       });
     });

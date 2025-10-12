@@ -14,13 +14,7 @@ import { onMount } from '../core/component/lifecycle.js';
 import { Portal } from '../control-flow/Portal.js';
 import { jsx } from '../jsx-runtime.js';
 import { generateId } from './utils/id.js';
-import {
-  calculatePosition,
-  applyPosition,
-  calculateArrowPosition,
-  type Side,
-  type Align,
-} from './utils/position.js';
+import { calculatePosition, applyPosition, calculateArrowPosition, type Side, type Align } from './utils/position.js';
 
 /**
  * Popover context
@@ -97,7 +91,7 @@ export const Popover = defineComponent<PopoverProps>((props) => {
 
   // Controlled/Uncontrolled pattern
   const isControlled = () => props.open !== undefined;
-  const currentOpen = () => (isControlled() ? props.open ?? false : internalOpen());
+  const currentOpen = () => (isControlled() ? (props.open ?? false) : internalOpen());
 
   const contextValue: PopoverContextValue = {
     isOpen: currentOpen,

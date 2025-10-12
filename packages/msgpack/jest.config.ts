@@ -32,9 +32,7 @@ const config: JestConfigWithTsJest = {
       },
     ],
   },
-  transformIgnorePatterns: [
-    'node_modules/(?!(@omnitron-dev)/)',
-  ],
+  transformIgnorePatterns: ['node_modules/(?!(@omnitron-dev)/)'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
     ...pathsToModuleNameMapper(tsConfig.compilerOptions?.paths || {}, { prefix: '<rootDir>/' }),

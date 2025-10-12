@@ -167,11 +167,15 @@ describe('Deduplication Coverage Tests', () => {
 
         manager.redis.set = setSpy;
 
-        await manager.subscribe('atomic.test', async (msg) => {
-          processingTimes.push(Date.now() - startTime);
-          processedCount++;
-          await msg.ack();
-        }, { exactlyOnce: true });
+        await manager.subscribe(
+          'atomic.test',
+          async (msg) => {
+            processingTimes.push(Date.now() - startTime);
+            processedCount++;
+            await msg.ack();
+          },
+          { exactlyOnce: true }
+        );
 
         await delay(100);
 
@@ -188,10 +192,14 @@ describe('Deduplication Coverage Tests', () => {
         let processedCount = 0;
         let duplicateDetected = false;
 
-        await manager.subscribe('setnx.fail', async (msg) => {
-          processedCount++;
-          await msg.ack();
-        }, { exactlyOnce: true });
+        await manager.subscribe(
+          'setnx.fail',
+          async (msg) => {
+            processedCount++;
+            await msg.ack();
+          },
+          { exactlyOnce: true }
+        );
 
         await delay(100);
 
@@ -202,7 +210,7 @@ describe('Deduplication Coverage Tests', () => {
           channel: 'setnx.fail',
           payload,
           group: 'grp:setnx.fail', // Consumer-side uses group
-          side: 'con'
+          side: 'con',
         });
         await manager.redis.set(dedupKey, '1', 'EX', 3600);
 
@@ -221,15 +229,23 @@ describe('Deduplication Coverage Tests', () => {
         let group1Received = 0;
         let group2Received = 0;
 
-        await manager.subscribe('groups.test', async (msg) => {
-          group1Received++;
-          await msg.ack();
-        }, { groupName: 'group1', exactlyOnce: true });
+        await manager.subscribe(
+          'groups.test',
+          async (msg) => {
+            group1Received++;
+            await msg.ack();
+          },
+          { groupName: 'group1', exactlyOnce: true }
+        );
 
-        await manager.subscribe('groups.test', async (msg) => {
-          group2Received++;
-          await msg.ack();
-        }, { groupName: 'group2', exactlyOnce: true });
+        await manager.subscribe(
+          'groups.test',
+          async (msg) => {
+            group2Received++;
+            await msg.ack();
+          },
+          { groupName: 'group2', exactlyOnce: true }
+        );
 
         await delay(100);
 
@@ -259,10 +275,14 @@ describe('Deduplication Coverage Tests', () => {
 
         await shortTTLManager.redis.flushdb();
 
-        await shortTTLManager.subscribe('ttl.test', async (msg) => {
-          processedCount++;
-          await msg.ack();
-        }, { exactlyOnce: true });
+        await shortTTLManager.subscribe(
+          'ttl.test',
+          async (msg) => {
+            processedCount++;
+            await msg.ack();
+          },
+          { exactlyOnce: true }
+        );
 
         await delay(100);
 
@@ -289,10 +309,14 @@ describe('Deduplication Coverage Tests', () => {
       it('should use per-message TTL override', async () => {
         let processedCount = 0;
 
-        await manager.subscribe('ttl.override', async (msg) => {
-          processedCount++;
-          await msg.ack();
-        }, { exactlyOnce: true });
+        await manager.subscribe(
+          'ttl.override',
+          async (msg) => {
+            processedCount++;
+            await msg.ack();
+          },
+          { exactlyOnce: true }
+        );
 
         await delay(100);
 
@@ -343,10 +367,14 @@ describe('Deduplication Coverage Tests', () => {
           return originalSet(...args);
         };
 
-        await manager.subscribe('error.dedup', async (msg) => {
-          processedCount++;
-          await msg.ack();
-        }, { exactlyOnce: true });
+        await manager.subscribe(
+          'error.dedup',
+          async (msg) => {
+            processedCount++;
+            await msg.ack();
+          },
+          { exactlyOnce: true }
+        );
 
         await delay(100);
 
@@ -371,20 +399,24 @@ describe('Deduplication Coverage Tests', () => {
         let attemptCount = 0;
         const processedIds = new Set<string>();
 
-        await manager.subscribe('retry.dedup', async (msg) => {
-          attemptCount++;
-          processedIds.add(msg.id);
+        await manager.subscribe(
+          'retry.dedup',
+          async (msg) => {
+            attemptCount++;
+            processedIds.add(msg.id);
 
-          if (msg.attempt === 1) {
-            throw new Error('First attempt fails');
+            if (msg.attempt === 1) {
+              throw new Error('First attempt fails');
+            }
+
+            await msg.ack();
+          },
+          {
+            exactlyOnce: true,
+            maxRetries: 3,
+            retryDelay: 100,
           }
-
-          await msg.ack();
-        }, {
-          exactlyOnce: true,
-          maxRetries: 3,
-          retryDelay: 100,
-        });
+        );
 
         await delay(100);
 
@@ -414,13 +446,17 @@ describe('Deduplication Coverage Tests', () => {
         let processedCount = 0;
         const uniquePayloads = new Set<string>();
 
-        await perfManager.subscribe('perf.dedup', async (msg) => {
-          processedCount++;
-          const payloadStr = JSON.stringify(msg.payload);
-          uniquePayloads.add(payloadStr);
-          console.log(`Processed message ${processedCount}:`, payloadStr);
-          await msg.ack();
-        }, { exactlyOnce: true });
+        await perfManager.subscribe(
+          'perf.dedup',
+          async (msg) => {
+            processedCount++;
+            const payloadStr = JSON.stringify(msg.payload);
+            uniquePayloads.add(payloadStr);
+            console.log(`Processed message ${processedCount}:`, payloadStr);
+            await msg.ack();
+          },
+          { exactlyOnce: true }
+        );
 
         await delay(100);
 
@@ -448,9 +484,14 @@ describe('Deduplication Coverage Tests', () => {
         for (let i = 0; i < 900; i++) {
           const payload = { id: i % 100, data: 'perf-test' };
           duplicatePromises.push(
-            perfManager.publish('perf.dedup', payload, { exactlyOnce: true })
-              .then(() => { /* Should be blocked */ })
-              .catch(() => { duplicatesBlocked++; })
+            perfManager
+              .publish('perf.dedup', payload, { exactlyOnce: true })
+              .then(() => {
+                /* Should be blocked */
+              })
+              .catch(() => {
+                duplicatesBlocked++;
+              })
           );
         }
 

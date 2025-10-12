@@ -14,13 +14,7 @@ import { onMount } from '../core/component/lifecycle.js';
 import { Portal } from '../control-flow/Portal.js';
 import { jsx } from '../jsx-runtime.js';
 import { effect } from '../core/reactivity/effect.js';
-import {
-  generateId,
-  calculatePosition,
-  applyPosition,
-  type Side,
-  type Align,
-} from './utils/index.js';
+import { generateId, calculatePosition, applyPosition, type Side, type Align } from './utils/index.js';
 
 // ============================================================================
 // Types
@@ -135,7 +129,7 @@ export interface TooltipContextValue {
   disabled: boolean;
 }
 
-const noop = () => { };
+const noop = () => {};
 const noopGetter = () => false;
 
 export const TooltipContext = createContext<TooltipContextValue>(
@@ -207,91 +201,89 @@ export const Tooltip = defineComponent<TooltipProps>((props) => {
 /**
  * Tooltip Trigger component
  */
-export const TooltipTrigger = defineComponent<{ children: any;[key: string]: any }>(
-  (props) => {
-    // Defer context access to render time (like HoverCard)
-    let ctx: TooltipContextValue;
-    let openTimeoutId: ReturnType<typeof setTimeout> | null = null;
-    let closeTimeoutId: ReturnType<typeof setTimeout> | null = null;
+export const TooltipTrigger = defineComponent<{ children: any; [key: string]: any }>((props) => {
+  // Defer context access to render time (like HoverCard)
+  let ctx: TooltipContextValue;
+  let openTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  let closeTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
-    const delayDuration = 700; // default delay
-    const closeDelay = 0;
+  const delayDuration = 700; // default delay
+  const closeDelay = 0;
 
-    onMount(() => () => {
-      if (openTimeoutId) clearTimeout(openTimeoutId);
-      if (closeTimeoutId) clearTimeout(closeTimeoutId);
-    });
+  onMount(() => () => {
+    if (openTimeoutId) clearTimeout(openTimeoutId);
+    if (closeTimeoutId) clearTimeout(closeTimeoutId);
+  });
 
-    return () => {
-      // Get context at render time
-      ctx = useContext(TooltipContext);
+  return () => {
+    // Get context at render time
+    ctx = useContext(TooltipContext);
 
-      const handlePointerEnter = () => {
-        if (ctx.disabled) return;
+    const handlePointerEnter = () => {
+      if (ctx.disabled) return;
 
-        if (closeTimeoutId) {
-          clearTimeout(closeTimeoutId);
-          closeTimeoutId = null;
-        }
+      if (closeTimeoutId) {
+        clearTimeout(closeTimeoutId);
+        closeTimeoutId = null;
+      }
 
-        openTimeoutId = setTimeout(() => {
-          ctx.open();
-        }, delayDuration);
-      };
-
-      const handlePointerLeave = () => {
-        if (openTimeoutId) {
-          clearTimeout(openTimeoutId);
-          openTimeoutId = null;
-        }
-
-        closeTimeoutId = setTimeout(() => {
-          ctx.close();
-        }, closeDelay);
-      };
-
-      const handleFocus = () => {
-        if (ctx.disabled) return;
+      openTimeoutId = setTimeout(() => {
         ctx.open();
-      };
+      }, delayDuration);
+    };
 
-      const handleBlur = () => {
+    const handlePointerLeave = () => {
+      if (openTimeoutId) {
+        clearTimeout(openTimeoutId);
+        openTimeoutId = null;
+      }
+
+      closeTimeoutId = setTimeout(() => {
         ctx.close();
-      };
+      }, closeDelay);
+    };
 
-      // Create refCallback to set up effect for reactive attributes
-      const refCallback = (element: HTMLButtonElement | null) => {
-        if (!element) return;
+    const handleFocus = () => {
+      if (ctx.disabled) return;
+      ctx.open();
+    };
 
-        // Set up effect to update attributes when isOpen changes
-        effect(() => {
-          const isOpen = ctx.isOpen();
-          element.setAttribute('data-state', isOpen ? 'open' : 'closed');
+    const handleBlur = () => {
+      ctx.close();
+    };
 
-          // Remove aria-describedby when closed, set it when open
-          if (isOpen) {
-            element.setAttribute('aria-describedby', ctx.contentId);
-          } else {
-            element.removeAttribute('aria-describedby');
-          }
-        });
-      };
+    // Create refCallback to set up effect for reactive attributes
+    const refCallback = (element: HTMLButtonElement | null) => {
+      if (!element) return;
 
-      return jsx('button', {
-        ...props,
-        ref: refCallback,
-        id: ctx.triggerId,
-        type: 'button',
-        'aria-describedby': ctx.isOpen() ? ctx.contentId : undefined,
-        'data-state': ctx.isOpen() ? 'open' : 'closed',
-        onPointerEnter: handlePointerEnter,
-        onPointerLeave: handlePointerLeave,
-        onFocus: handleFocus,
-        onBlur: handleBlur,
+      // Set up effect to update attributes when isOpen changes
+      effect(() => {
+        const isOpen = ctx.isOpen();
+        element.setAttribute('data-state', isOpen ? 'open' : 'closed');
+
+        // Remove aria-describedby when closed, set it when open
+        if (isOpen) {
+          element.setAttribute('aria-describedby', ctx.contentId);
+        } else {
+          element.removeAttribute('aria-describedby');
+        }
       });
     };
-  }
-);
+
+    return jsx('button', {
+      ...props,
+      ref: refCallback,
+      id: ctx.triggerId,
+      type: 'button',
+      'aria-describedby': ctx.isOpen() ? ctx.contentId : undefined,
+      'data-state': ctx.isOpen() ? 'open' : 'closed',
+      onPointerEnter: handlePointerEnter,
+      onPointerLeave: handlePointerLeave,
+      onFocus: handleFocus,
+      onBlur: handleBlur,
+    });
+  };
+});
 
 /**
  * Tooltip Content component
@@ -348,14 +340,12 @@ export const TooltipContent = defineComponent<TooltipContentProps>((props) => {
         const isOpen = ctx.isOpen();
         el.setAttribute('data-state', isOpen ? 'open' : 'closed');
         // Control visibility via display style instead of conditional rendering
-        el.style.display = (isOpen || props.forceMount) ? '' : 'none';
+        el.style.display = isOpen || props.forceMount ? '' : 'none';
       });
     };
 
     // Evaluate function children if needed
-    const resolvedChildren = typeof props.children === 'function'
-      ? props.children()
-      : props.children;
+    const resolvedChildren = typeof props.children === 'function' ? props.children() : props.children;
 
     // Create the content div
     const contentDiv = jsx('div', {
@@ -367,7 +357,7 @@ export const TooltipContent = defineComponent<TooltipContentProps>((props) => {
       style: {
         position: 'absolute',
         zIndex: 9999,
-        display: (ctx.isOpen() || props.forceMount) ? '' : 'none',
+        display: ctx.isOpen() || props.forceMount ? '' : 'none',
         ...((props.style as any) || {}),
       },
       onPointerEnter: handlePointerEnter,

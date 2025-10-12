@@ -21,10 +21,14 @@ describe('Exactly-Once Edge Cases', () => {
   it('should handle exactly-once with empty payloads', async () => {
     let processedCount = 0;
 
-    await manager.subscribe('edge.empty', async (msg) => {
-      processedCount++;
-      await msg.ack();
-    }, { exactlyOnce: true });
+    await manager.subscribe(
+      'edge.empty',
+      async (msg) => {
+        processedCount++;
+        await msg.ack();
+      },
+      { exactlyOnce: true }
+    );
 
     await delay(100);
 
@@ -44,11 +48,15 @@ describe('Exactly-Once Edge Cases', () => {
     let processedCount = 0;
     const processedSizes: number[] = [];
 
-    await manager.subscribe('edge.large', async (msg) => {
-      processedCount++;
-      processedSizes.push(JSON.stringify(msg.payload).length);
-      await msg.ack();
-    }, { exactlyOnce: true });
+    await manager.subscribe(
+      'edge.large',
+      async (msg) => {
+        processedCount++;
+        processedSizes.push(JSON.stringify(msg.payload).length);
+        await msg.ack();
+      },
+      { exactlyOnce: true }
+    );
 
     await delay(100);
 
@@ -69,11 +77,15 @@ describe('Exactly-Once Edge Cases', () => {
     let processedCount = 0;
     const processedPayloads: any[] = [];
 
-    await manager.subscribe('edge.special', async (msg) => {
-      processedCount++;
-      processedPayloads.push(msg.payload);
-      await msg.ack();
-    }, { exactlyOnce: true });
+    await manager.subscribe(
+      'edge.special',
+      async (msg) => {
+        processedCount++;
+        processedPayloads.push(msg.payload);
+        await msg.ack();
+      },
+      { exactlyOnce: true }
+    );
 
     await delay(100);
 
@@ -101,10 +113,14 @@ describe('Exactly-Once Edge Cases', () => {
     let processedCount = 0;
     let errorCount = 0;
 
-    await manager.subscribe('edge.circular', async (msg) => {
-      processedCount++;
-      await msg.ack();
-    }, { exactlyOnce: true });
+    await manager.subscribe(
+      'edge.circular',
+      async (msg) => {
+        processedCount++;
+        await msg.ack();
+      },
+      { exactlyOnce: true }
+    );
 
     await delay(100);
 
@@ -129,10 +145,14 @@ describe('Exactly-Once Edge Cases', () => {
     let processedCount = 0;
     let errorCount = 0;
 
-    await manager.subscribe('edge.disconnect', async (msg) => {
-      processedCount++;
-      await msg.ack();
-    }, { exactlyOnce: true });
+    await manager.subscribe(
+      'edge.disconnect',
+      async (msg) => {
+        processedCount++;
+        await msg.ack();
+      },
+      { exactlyOnce: true }
+    );
 
     await delay(100);
 
@@ -163,11 +183,15 @@ describe('Exactly-Once Edge Cases', () => {
     let processedCount = 0;
     const uniqueIds = new Set<number>();
 
-    await manager.subscribe('edge.frequency', async (msg) => {
-      processedCount++;
-      uniqueIds.add((msg.payload as any).id);
-      await msg.ack();
-    }, { exactlyOnce: true });
+    await manager.subscribe(
+      'edge.frequency',
+      async (msg) => {
+        processedCount++;
+        uniqueIds.add((msg.payload as any).id);
+        await msg.ack();
+      },
+      { exactlyOnce: true }
+    );
 
     await delay(100);
 
@@ -192,11 +216,15 @@ describe('Exactly-Once Edge Cases', () => {
     let processedCount = 0;
     const processedPayloads: any[] = [];
 
-    await manager.subscribe('edge.mixed', async (msg) => {
-      processedCount++;
-      processedPayloads.push(msg.payload);
-      await msg.ack();
-    }, { exactlyOnce: true });
+    await manager.subscribe(
+      'edge.mixed',
+      async (msg) => {
+        processedCount++;
+        processedPayloads.push(msg.payload);
+        await msg.ack();
+      },
+      { exactlyOnce: true }
+    );
 
     await delay(100);
 
@@ -215,8 +243,8 @@ describe('Exactly-Once Edge Cases', () => {
 
     // exactlyOnce messages deduplicated, others not
     expect(processedCount).toBe(3);
-    const withExactly = processedPayloads.filter(p => p.data === 'with-exactly-once');
-    const withoutExactly = processedPayloads.filter(p => p.data === 'without-exactly-once');
+    const withExactly = processedPayloads.filter((p) => p.data === 'with-exactly-once');
+    const withoutExactly = processedPayloads.filter((p) => p.data === 'without-exactly-once');
     expect(withExactly).toHaveLength(1);
     expect(withoutExactly).toHaveLength(2);
   });
@@ -225,15 +253,19 @@ describe('Exactly-Once Edge Cases', () => {
     let processedCount = 0;
     let timeoutReached = false;
 
-    await manager.subscribe('edge.noack', async (msg) => {
-      processedCount++;
-      // Never call msg.ack()
-      await delay(100);
-    }, {
-      exactlyOnce: true,
-      maxRetries: 1,
-      retryDelay: 100,
-    });
+    await manager.subscribe(
+      'edge.noack',
+      async (msg) => {
+        processedCount++;
+        // Never call msg.ack()
+        await delay(100);
+      },
+      {
+        exactlyOnce: true,
+        maxRetries: 1,
+        retryDelay: 100,
+      }
+    );
 
     await delay(100);
 
@@ -257,11 +289,15 @@ describe('Exactly-Once Edge Cases', () => {
     let processedCount = 0;
     const processedPayloads: any[] = [];
 
-    await manager.subscribe('edge.dates', async (msg) => {
-      processedCount++;
-      processedPayloads.push(msg.payload);
-      await msg.ack();
-    }, { exactlyOnce: true });
+    await manager.subscribe(
+      'edge.dates',
+      async (msg) => {
+        processedCount++;
+        processedPayloads.push(msg.payload);
+        await msg.ack();
+      },
+      { exactlyOnce: true }
+    );
 
     await delay(100);
 
@@ -285,10 +321,14 @@ describe('Exactly-Once Edge Cases', () => {
   it('should handle exactly-once with deep nested objects', async () => {
     let processedCount = 0;
 
-    await manager.subscribe('edge.nested', async (msg) => {
-      processedCount++;
-      await msg.ack();
-    }, { exactlyOnce: true });
+    await manager.subscribe(
+      'edge.nested',
+      async (msg) => {
+        processedCount++;
+        await msg.ack();
+      },
+      { exactlyOnce: true }
+    );
 
     await delay(100);
 
@@ -319,11 +359,15 @@ describe('Exactly-Once Edge Cases', () => {
     let processedCount = 0;
     const processedArrays: any[] = [];
 
-    await manager.subscribe('edge.arrays', async (msg) => {
-      processedCount++;
-      processedArrays.push(msg.payload);
-      await msg.ack();
-    }, { exactlyOnce: true });
+    await manager.subscribe(
+      'edge.arrays',
+      async (msg) => {
+        processedCount++;
+        processedArrays.push(msg.payload);
+        await msg.ack();
+      },
+      { exactlyOnce: true }
+    );
 
     await delay(100);
 
@@ -342,11 +386,15 @@ describe('Exactly-Once Edge Cases', () => {
     let processedCount = 0;
     const processedValues: any[] = [];
 
-    await manager.subscribe('edge.primitives', async (msg) => {
-      processedCount++;
-      processedValues.push(msg.payload);
-      await msg.ack();
-    }, { exactlyOnce: true });
+    await manager.subscribe(
+      'edge.primitives',
+      async (msg) => {
+        processedCount++;
+        processedValues.push(msg.payload);
+        await msg.ack();
+      },
+      { exactlyOnce: true }
+    );
 
     await delay(100);
 

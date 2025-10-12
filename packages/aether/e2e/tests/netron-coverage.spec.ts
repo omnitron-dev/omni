@@ -17,7 +17,7 @@ test.describe('Netron Coverage Tests', () => {
 
         const client = new Netron({
           transport: 'websocket',
-          url: 'ws://localhost:3334'
+          url: 'ws://localhost:3334',
         });
 
         await client.connect();
@@ -31,7 +31,7 @@ test.describe('Netron Coverage Tests', () => {
           hasId: 'id' in metrics,
           hasTransport: 'transport' in metrics,
           hasConnected: 'connected' in metrics,
-          hasUrl: 'url' in metrics
+          hasUrl: 'url' in metrics,
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -53,7 +53,7 @@ test.describe('Netron Coverage Tests', () => {
 
         const client = new Netron({
           transport: 'websocket',
-          url: 'ws://localhost:3334'
+          url: 'ws://localhost:3334',
         });
 
         // Get metrics before connecting
@@ -62,7 +62,7 @@ test.describe('Netron Coverage Tests', () => {
         return {
           success: true,
           hasMetrics: metrics !== null,
-          hasId: 'id' in metrics
+          hasId: 'id' in metrics,
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -80,7 +80,7 @@ test.describe('Netron Coverage Tests', () => {
 
         const client = new Netron({
           transport: 'http',
-          url: 'http://localhost:3333'
+          url: 'http://localhost:3333',
         });
 
         const states = [];
@@ -94,7 +94,7 @@ test.describe('Netron Coverage Tests', () => {
 
         return {
           success: true,
-          states
+          states,
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -117,7 +117,7 @@ test.describe('Netron Coverage Tests', () => {
           url: 'ws://localhost:3334',
           reconnect: true,
           reconnectInterval: 1000,
-          maxReconnectAttempts: 3
+          maxReconnectAttempts: 3,
         });
 
         await client.connect();
@@ -126,7 +126,7 @@ test.describe('Netron Coverage Tests', () => {
 
         return {
           success: true,
-          connected
+          connected,
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -144,7 +144,7 @@ test.describe('Netron Coverage Tests', () => {
 
         const client = new Netron({
           transport: 'http',
-          url: 'http://localhost:3333'
+          url: 'http://localhost:3333',
         });
 
         await client.connect();
@@ -157,7 +157,7 @@ test.describe('Netron Coverage Tests', () => {
         const created = await userService.createUser({
           name: 'Mixed Test',
           email: 'mixed@example.com',
-          age: 30
+          age: 30,
         });
 
         await client.disconnect();
@@ -166,7 +166,7 @@ test.describe('Netron Coverage Tests', () => {
           success: true,
           gotUser: user !== null,
           gotUsers: users.length > 0,
-          created: created.name === 'Mixed Test'
+          created: created.name === 'Mixed Test',
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -186,7 +186,7 @@ test.describe('Netron Coverage Tests', () => {
 
         const client = new Netron({
           transport: 'websocket',
-          url: 'ws://localhost:3334'
+          url: 'ws://localhost:3334',
         });
 
         await client.connect();
@@ -198,7 +198,7 @@ test.describe('Netron Coverage Tests', () => {
         const created = await userService.createUser({
           name: 'Sequential Test',
           email: 'seq@example.com',
-          age: 25
+          age: 25,
         });
         const users2 = await userService.getUsers();
         const updated = await userService.updateUser(created.id, { age: 26 });
@@ -211,7 +211,7 @@ test.describe('Netron Coverage Tests', () => {
           operationsCompleted: 5,
           usersIncreased: users2.length > users1.length,
           updated: updated?.age === 26,
-          deleted
+          deleted,
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -229,7 +229,7 @@ test.describe('Netron Coverage Tests', () => {
 
         const client = new Netron({
           transport: 'http',
-          url: 'http://localhost:3333'
+          url: 'http://localhost:3333',
         });
 
         await client.connect();
@@ -252,7 +252,7 @@ test.describe('Netron Coverage Tests', () => {
         return {
           success: true,
           errorCaught,
-          successAfterError: users.length > 0
+          successAfterError: users.length > 0,
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -271,7 +271,7 @@ test.describe('Netron Coverage Tests', () => {
 
         const client = new Netron({
           transport: 'http',
-          url: 'http://localhost:3333'
+          url: 'http://localhost:3333',
         });
 
         await client.connect();
@@ -284,14 +284,14 @@ test.describe('Netron Coverage Tests', () => {
           await client.disconnect();
           return {
             success: true,
-            gotUsers: users.length > 0
+            gotUsers: users.length > 0,
           };
         } catch (error: any) {
           await client.disconnect();
           // Might fail if server requires version, that's ok
           return {
             success: true,
-            errorExpected: true
+            errorExpected: true,
           };
         }
       } catch (error: any) {
@@ -309,7 +309,7 @@ test.describe('Netron Coverage Tests', () => {
 
         const client = new Netron({
           transport: 'http',
-          url: 'http://localhost:3333'
+          url: 'http://localhost:3333',
         });
 
         await client.connect();
@@ -321,14 +321,14 @@ test.describe('Netron Coverage Tests', () => {
           then: userService.then === undefined,
           catch: userService.catch === undefined,
           constructor: userService.constructor !== undefined, // Object has constructor
-          toString: typeof userService.toString === 'function' // Object has toString
+          toString: typeof userService.toString === 'function', // Object has toString
         };
 
         await client.disconnect();
 
         return {
           success: true,
-          checks
+          checks,
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -347,12 +347,12 @@ test.describe('Netron Coverage Tests', () => {
 
         const client1 = new Netron({
           transport: 'http',
-          url: 'http://localhost:3333'
+          url: 'http://localhost:3333',
         });
 
         const client2 = new Netron({
           transport: 'http',
-          url: 'http://localhost:3333'
+          url: 'http://localhost:3333',
         });
 
         // Access ID via metrics since it's public
@@ -369,7 +369,7 @@ test.describe('Netron Coverage Tests', () => {
           success: true,
           id1: metrics1.id,
           id2: metrics2.id,
-          unique: metrics1.id !== metrics2.id
+          unique: metrics1.id !== metrics2.id,
         };
       } catch (error: any) {
         return { success: false, error: error.message };

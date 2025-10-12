@@ -97,10 +97,7 @@ describe('RangeSlider', () => {
       const component = () =>
         RangeSlider({
           defaultValue: { min: 30, max: 70 },
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -117,10 +114,7 @@ describe('RangeSlider', () => {
         RangeSlider({
           min: 10,
           max: 100,
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -138,10 +132,7 @@ describe('RangeSlider', () => {
       const component = () =>
         RangeSlider({
           value: value,
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -184,10 +175,7 @@ describe('RangeSlider', () => {
     it('should use default min (0) and max (100)', () => {
       const component = () =>
         RangeSlider({
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -204,10 +192,7 @@ describe('RangeSlider', () => {
         RangeSlider({
           min: 10,
           max: 200,
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -224,10 +209,7 @@ describe('RangeSlider', () => {
           max: 100,
           step: 5,
           defaultValue: { min: 23, max: 77 },
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -246,10 +228,7 @@ describe('RangeSlider', () => {
           max: 100,
           step: 10,
           defaultValue: { min: 30, max: 70 },
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -503,10 +482,7 @@ describe('RangeSlider', () => {
     it('should default to horizontal orientation', () => {
       const component = () =>
         RangeSlider({
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -523,10 +499,7 @@ describe('RangeSlider', () => {
       const component = () =>
         RangeSlider({
           orientation: 'vertical',
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -545,10 +518,7 @@ describe('RangeSlider', () => {
       const component = () =>
         RangeSlider({
           disabled: true,
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -571,10 +541,7 @@ describe('RangeSlider', () => {
           disabled: true,
           defaultValue: { min: 30, max: 70 },
           onValueChange,
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -923,10 +890,7 @@ describe('RangeSlider', () => {
     it('should have role="slider" on both thumbs', () => {
       const component = () =>
         RangeSlider({
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -958,10 +922,7 @@ describe('RangeSlider', () => {
         RangeSlider({
           min: 10,
           max: 200,
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -978,10 +939,7 @@ describe('RangeSlider', () => {
       const component = () =>
         RangeSlider({
           defaultValue: { min: 35, max: 65 },
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -997,10 +955,7 @@ describe('RangeSlider', () => {
       const component = () =>
         RangeSlider({
           value: value,
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -1019,10 +974,7 @@ describe('RangeSlider', () => {
       const component = () =>
         RangeSlider({
           orientation: 'vertical',
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -1036,10 +988,7 @@ describe('RangeSlider', () => {
       const component = () =>
         RangeSlider({
           disabled: true,
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -1052,10 +1001,7 @@ describe('RangeSlider', () => {
     it('should be focusable (tabindex 0) when not disabled', () => {
       const component = () =>
         RangeSlider({
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -1069,10 +1015,7 @@ describe('RangeSlider', () => {
       const component = () =>
         RangeSlider({
           disabled: true,
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -1118,10 +1061,7 @@ describe('RangeSlider', () => {
           min: -100,
           max: 100,
           defaultValue: { min: -50, max: 50 },
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -1189,10 +1129,7 @@ describe('RangeSlider', () => {
           max: 100,
           step: 5,
           defaultValue: { min: 23, max: 77 },
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -1210,10 +1147,7 @@ describe('RangeSlider', () => {
           min: 0,
           max: 100,
           defaultValue: { min: 50, max: 50 },
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -1253,10 +1187,7 @@ describe('RangeSlider', () => {
     it('should have data-range-slider on root', () => {
       const component = () =>
         RangeSlider({
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -1269,10 +1200,7 @@ describe('RangeSlider', () => {
       const component = () =>
         RangeSlider({
           orientation: 'vertical',
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);
@@ -1285,10 +1213,7 @@ describe('RangeSlider', () => {
       const component = () =>
         RangeSlider({
           disabled: true,
-          children: [
-            RangeSliderThumb({ position: 'min' }),
-            RangeSliderThumb({ position: 'max' }),
-          ],
+          children: [RangeSliderThumb({ position: 'min' }), RangeSliderThumb({ position: 'max' })],
         });
 
       const { container } = renderComponent(component);

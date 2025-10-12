@@ -68,9 +68,7 @@ describe('Calendar', () => {
     });
 
     it('should render with disabled state', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Calendar({ disabled: true })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Calendar({ disabled: true }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-calendar]');
@@ -78,9 +76,7 @@ describe('Calendar', () => {
     });
 
     it('should not have data-disabled when not disabled', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Calendar({ disabled: false })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Calendar({ disabled: false }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-calendar]');
@@ -103,10 +99,7 @@ describe('Calendar', () => {
     it('should render multiple children using function (Pattern 17)', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         Calendar({
-          children: () => [
-            CalendarHeader({ children: 'Header' }),
-            CalendarGrid({ children: 'Grid' }),
-          ],
+          children: () => [CalendarHeader({ children: 'Header' }), CalendarGrid({ children: 'Grid' })],
         })
       );
       cleanup = dispose;
@@ -118,9 +111,7 @@ describe('Calendar', () => {
     });
 
     it('should render with empty children', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Calendar({ children: () => null })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Calendar({ children: () => null }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-calendar]');
@@ -128,9 +119,7 @@ describe('Calendar', () => {
     });
 
     it('should accept custom class', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Calendar({ class: 'custom-calendar' })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Calendar({ class: 'custom-calendar' }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-calendar]');
@@ -201,10 +190,7 @@ describe('Calendar', () => {
     it('should provide navigation functions through context', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         Calendar({
-          children: () => [
-            CalendarPrevButton({ children: 'Prev' }),
-            CalendarNextButton({ children: 'Next' }),
-          ],
+          children: () => [CalendarPrevButton({ children: 'Prev' }), CalendarNextButton({ children: 'Next' })],
         })
       );
       cleanup = dispose;
@@ -505,10 +491,7 @@ describe('Calendar', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         Calendar({
           defaultMonth: new Date(2024, 1, 1),
-          children: () => [
-            CalendarPrevButton({ children: 'Prev' }),
-            CalendarHeading({}),
-          ],
+          children: () => [CalendarPrevButton({ children: 'Prev' }), CalendarHeading({})],
         })
       );
       cleanup = dispose;
@@ -609,10 +592,7 @@ describe('Calendar', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         Calendar({
           defaultMonth: new Date(2024, 0, 1),
-          children: () => [
-            CalendarNextButton({ children: 'Next' }),
-            CalendarHeading({}),
-          ],
+          children: () => [CalendarNextButton({ children: 'Next' }), CalendarHeading({})],
         })
       );
       cleanup = dispose;
@@ -739,10 +719,7 @@ describe('Calendar', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         Calendar({
           defaultMonth: new Date(2024, 2, 1),
-          children: () => [
-            CalendarNextButton({}),
-            CalendarHeading({}),
-          ],
+          children: () => [CalendarNextButton({}), CalendarHeading({})],
         })
       );
       cleanup = dispose;
@@ -1462,9 +1439,7 @@ describe('Calendar', () => {
       cleanup = dispose;
 
       const cells = Array.from(container.querySelectorAll('[data-calendar-cell]'));
-      const enabledCell = cells.find(
-        (cell) => !cell.hasAttribute('disabled')
-      ) as HTMLButtonElement;
+      const enabledCell = cells.find((cell) => !cell.hasAttribute('disabled')) as HTMLButtonElement;
 
       if (enabledCell) {
         enabledCell.click();
@@ -1527,11 +1502,7 @@ describe('Calendar', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         Calendar({
           defaultMonth: new Date(2024, 0, 1),
-          children: () => [
-            CalendarNextButton({}),
-            CalendarHeading({}),
-            CalendarGridBody({}),
-          ],
+          children: () => [CalendarNextButton({}), CalendarHeading({}), CalendarGridBody({})],
         })
       );
       cleanup = dispose;
@@ -1585,10 +1556,7 @@ describe('Calendar', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         Calendar({
           disabled: true,
-          children: () => [
-            CalendarPrevButton({}),
-            CalendarNextButton({}),
-          ],
+          children: () => [CalendarPrevButton({}), CalendarNextButton({})],
         })
       );
       cleanup = dispose;
@@ -1606,11 +1574,7 @@ describe('Calendar', () => {
           defaultMonth: new Date(2024, 0, 1),
           minDate: new Date(2024, 0, 10),
           maxDate: new Date(2024, 0, 20),
-          children: () => [
-            CalendarNextButton({}),
-            CalendarHeading({}),
-            CalendarGridBody({}),
-          ],
+          children: () => [CalendarNextButton({}), CalendarHeading({}), CalendarGridBody({})],
         })
       );
       cleanup = dispose;

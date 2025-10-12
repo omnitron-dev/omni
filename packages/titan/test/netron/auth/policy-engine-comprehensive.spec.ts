@@ -5,10 +5,7 @@
 
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { PolicyEngine } from '../../../src/netron/auth/policy-engine.js';
-import type {
-  ExecutionContext,
-  PolicyDefinition,
-} from '../../../src/netron/auth/types.js';
+import type { ExecutionContext, PolicyDefinition } from '../../../src/netron/auth/types.js';
 
 describe('PolicyEngine - Comprehensive Tests', () => {
   let policyEngine: PolicyEngine;
@@ -127,7 +124,7 @@ describe('PolicyEngine - Comprehensive Tests', () => {
     it('should handle policy with invalid result (no allowed field)', async () => {
       const policy: PolicyDefinition = {
         name: 'invalid-result',
-        evaluate: () => ({ reason: 'broken' } as any),
+        evaluate: () => ({ reason: 'broken' }) as any,
       };
 
       policyEngine.registerPolicy(policy);
@@ -192,20 +189,14 @@ describe('PolicyEngine - Comprehensive Tests', () => {
     });
 
     it('should return first failure in evaluateAll', async () => {
-      const decision = await policyEngine.evaluateAll(
-        ['allow1', 'deny1', 'deny2'],
-        mockContext,
-      );
+      const decision = await policyEngine.evaluateAll(['allow1', 'deny1', 'deny2'], mockContext);
 
       expect(decision.allowed).toBe(false);
       expect(decision.reason).toBe('Denied 1');
     });
 
     it('should return deny with all reasons in evaluateAny when all fail', async () => {
-      const decision = await policyEngine.evaluateAny(
-        ['deny1', 'deny2'],
-        mockContext,
-      );
+      const decision = await policyEngine.evaluateAny(['deny1', 'deny2'], mockContext);
 
       expect(decision.allowed).toBe(false);
       expect(decision.reason).toBe('No policies passed');
@@ -241,12 +232,9 @@ describe('PolicyEngine - Comprehensive Tests', () => {
       // (p1 OR p4) AND (p2 OR p3)
       const decision = await policyEngine.evaluateExpression(
         {
-          and: [
-            { or: ['p1', 'p4'] },
-            { or: ['p2', 'p3'] },
-          ],
+          and: [{ or: ['p1', 'p4'] }, { or: ['p2', 'p3'] }],
         },
-        mockContext,
+        mockContext
       );
 
       expect(decision.allowed).toBe(true);
@@ -258,27 +246,21 @@ describe('PolicyEngine - Comprehensive Tests', () => {
         {
           and: [
             {
-              or: [
-                { and: ['p1', 'p2'] },
-                'p4',
-              ],
+              or: [{ and: ['p1', 'p2'] }, 'p4'],
             },
             { not: 'p4' },
           ],
         },
-        mockContext,
+        mockContext
       );
 
       expect(decision.allowed).toBe(true);
     });
 
     it('should throw on invalid expression structure', async () => {
-      await expect(
-        policyEngine.evaluateExpression(
-          { invalid: ['p1'] } as any,
-          mockContext,
-        ),
-      ).rejects.toThrow('Invalid policy expression');
+      await expect(policyEngine.evaluateExpression({ invalid: ['p1'] } as any, mockContext)).rejects.toThrow(
+        'Invalid policy expression'
+      );
     });
   });
 
@@ -544,7 +526,7 @@ describe('PolicyEngine - Comprehensive Tests', () => {
       }
 
       // Additional delay to ensure GC completes
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const memBefore = process.memoryUsage().heapUsed;
 
@@ -558,7 +540,7 @@ describe('PolicyEngine - Comprehensive Tests', () => {
       }
 
       // Additional delay to ensure GC completes
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const memAfter = process.memoryUsage().heapUsed;
       const memDelta = (memAfter - memBefore) / 1024 / 1024; // MB
@@ -726,7 +708,7 @@ describe('PolicyEngine - Comprehensive Tests', () => {
 
       // Run 10 concurrent evaluations
       const promises = Array.from({ length: 10 }, () =>
-        policyEngine.evaluate('concurrent', mockContext, { skipCache: true }),
+        policyEngine.evaluate('concurrent', mockContext, { skipCache: true })
       );
 
       const results = await Promise.all(promises);

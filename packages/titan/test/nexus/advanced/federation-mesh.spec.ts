@@ -4,15 +4,12 @@
  */
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
-import {
-  Container,
-  createToken
-} from '../../../src/nexus/index.js';
+import { Container, createToken } from '../../../src/nexus/index.js';
 import {
   ModuleFederationContainer,
   createFederatedModule,
   createLazyModule,
-  SharedDependencies
+  SharedDependencies,
 } from '../../../src/nexus/federation.js';
 import {
   ConsulServiceDiscovery,
@@ -21,7 +18,7 @@ import {
   CircuitBreaker,
   createRemoteProxy,
   HealthCheck,
-  ServiceEndpoint
+  ServiceEndpoint,
 } from '../../../src/nexus/mesh.js';
 
 describe('Module Federation', () => {
@@ -45,24 +42,27 @@ describe('Module Federation', () => {
         json: async () => ({
           name: 'RemoteModule',
           version: '1.0.0',
-          exports: ['ServiceA', 'ServiceB']
-        })
+          exports: ['ServiceA', 'ServiceB'],
+        }),
       });
 
       const remoteModule = await createFederatedModule({
         name: 'remote',
         remoteUrl,
-        exports: ['ServiceA', 'ServiceB']
+        exports: ['ServiceA', 'ServiceB'],
       });
 
       await federation.loadRemoteModule(remoteModule);
 
       expect(federation.hasModule('remote')).toBe(true);
-      expect(global.fetch).toHaveBeenCalledWith(remoteUrl, expect.objectContaining({
-        headers: expect.objectContaining({
-          'Accept': 'application/javascript'
+      expect(global.fetch).toHaveBeenCalledWith(
+        remoteUrl,
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Accept: 'application/javascript',
+          }),
         })
-      }));
+      );
     });
 
     it('should handle remote module failure with fallback', async () => {
@@ -71,9 +71,9 @@ describe('Module Federation', () => {
         providers: [
           {
             provide: createToken('Service'),
-            useValue: 'fallback-service'
-          }
-        ]
+            useValue: 'fallback-service',
+          },
+        ],
       };
 
       global.fetch = jest.fn().mockRejectedValue(new Error('Network error'));
@@ -81,7 +81,7 @@ describe('Module Federation', () => {
       const remoteModule = await createFederatedModule({
         name: 'remote',
         remoteUrl: 'http://failing-remote/module',
-        fallback: fallbackModule
+        fallback: fallbackModule,
       });
 
       const loaded = await federation.loadRemoteModule(remoteModule);
@@ -99,7 +99,7 @@ describe('Module Federation', () => {
         }
         return Promise.resolve({
           ok: true,
-          json: async () => ({ name: 'RemoteModule' })
+          json: async () => ({ name: 'RemoteModule' }),
         });
       });
 
@@ -108,8 +108,8 @@ describe('Module Federation', () => {
         remoteUrl: 'http://remote/module',
         retry: {
           maxAttempts: 3,
-          delay: 10
-        }
+          delay: 10,
+        },
       });
 
       await federation.loadRemoteModule(remoteModule);
@@ -121,7 +121,7 @@ describe('Module Federation', () => {
     it('should cache remote modules', async () => {
       const fetchMock = jest.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ name: 'CachedModule' })
+        json: async () => ({ name: 'CachedModule' }),
       });
 
       global.fetch = fetchMock;
@@ -130,8 +130,8 @@ describe('Module Federation', () => {
         name: 'cached',
         remoteUrl: 'http://remote/cached',
         cache: {
-          ttl: 60000
-        }
+          ttl: 60000,
+        },
       });
 
       // Load twice
@@ -154,9 +154,9 @@ describe('Module Federation', () => {
           providers: [
             {
               provide: createToken('LazyService'),
-              useValue: 'lazy-value'
-            }
-          ]
+              useValue: 'lazy-value',
+            },
+          ],
         });
       });
 
@@ -176,12 +176,9 @@ describe('Module Federation', () => {
     it('should support conditional lazy loading', async () => {
       const condition = { shouldLoad: false };
 
-      const lazyModule = createLazyModule(
-        () => import('./test-module'),
-        {
-          condition: () => condition.shouldLoad
-        }
-      );
+      const lazyModule = createLazyModule(() => import('./test-module'), {
+        condition: () => condition.shouldLoad,
+      });
 
       const result1 = await lazyModule.shouldLoad();
       expect(result1).toBe(false);
@@ -203,9 +200,9 @@ describe('Module Federation', () => {
           {
             provide: createToken('ServiceA'),
             useFactory: (shared: string) => `A-${shared}`,
-            inject: [sharedToken]
-          }
-        ]
+            inject: [sharedToken],
+          },
+        ],
       };
 
       const moduleB = {
@@ -214,17 +211,17 @@ describe('Module Federation', () => {
           {
             provide: createToken('ServiceB'),
             useFactory: (shared: string) => `B-${shared}`,
-            inject: [sharedToken]
-          }
-        ]
+            inject: [sharedToken],
+          },
+        ],
       };
 
       const shared: SharedDependencies = {
         [sharedToken.toString()]: {
           version: '1.0.0',
           singleton: true,
-          provider: { useValue: 'shared-value' }
-        }
+          provider: { useValue: 'shared-value' },
+        },
       };
 
       await federation.loadModuleWithShared(moduleA, shared);
@@ -245,23 +242,23 @@ describe('Module Federation', () => {
       const moduleA = {
         name: 'ModuleA',
         requiredShared: {
-          [sharedToken.toString()]: '^1.0.0'
-        }
+          [sharedToken.toString()]: '^1.0.0',
+        },
       };
 
       const moduleB = {
         name: 'ModuleB',
         requiredShared: {
-          [sharedToken.toString()]: '^2.0.0'
-        }
+          [sharedToken.toString()]: '^2.0.0',
+        },
       };
 
       const shared: SharedDependencies = {
         [sharedToken.toString()]: {
           version: '1.5.0',
           singleton: true,
-          provider: { useValue: 'v1.5' }
-        }
+          provider: { useValue: 'v1.5' },
+        },
       };
 
       await federation.loadModuleWithShared(moduleA, shared);
@@ -270,9 +267,7 @@ describe('Module Federation', () => {
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
       await federation.loadModuleWithShared(moduleB, shared);
 
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Version conflict')
-      );
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Version conflict'));
 
       warnSpy.mockRestore();
     });
@@ -288,7 +283,7 @@ describe('Service Mesh', () => {
     container = new Container();
     discovery = new ConsulServiceDiscovery({
       host: 'localhost',
-      port: 8500
+      port: 8500,
     });
     loadBalancer = new LoadBalancer();
   });
@@ -304,9 +299,9 @@ describe('Service Mesh', () => {
       const mockConsul = {
         agent: {
           service: {
-            register: jest.fn().mockResolvedValue(true)
-          }
-        }
+            register: jest.fn().mockResolvedValue(true),
+          },
+        },
       };
 
       discovery['consul'] = mockConsul as any;
@@ -319,8 +314,8 @@ describe('Service Mesh', () => {
         tags: ['api', 'v1'],
         check: {
           http: 'http://127.0.0.1:3000/health',
-          interval: '10s'
-        }
+          interval: '10s',
+        },
       });
 
       expect(mockConsul.agent.service.register).toHaveBeenCalledWith({
@@ -331,8 +326,8 @@ describe('Service Mesh', () => {
         tags: ['api', 'v1'],
         check: {
           http: 'http://127.0.0.1:3000/health',
-          interval: '10s'
-        }
+          interval: '10s',
+        },
       });
     });
 
@@ -345,19 +340,19 @@ describe('Service Mesh', () => {
                 ID: 'service-1',
                 Service: 'test-service',
                 Address: '127.0.0.1',
-                Port: 3000
-              }
+                Port: 3000,
+              },
             },
             {
               Service: {
                 ID: 'service-2',
                 Service: 'test-service',
                 Address: '127.0.0.2',
-                Port: 3001
-              }
-            }
-          ])
-        }
+                Port: 3001,
+              },
+            },
+          ]),
+        },
       };
 
       discovery['consul'] = mockConsul as any;
@@ -369,13 +364,13 @@ describe('Service Mesh', () => {
         id: 'service-1',
         name: 'test-service',
         address: '127.0.0.1',
-        port: 3000
+        port: 3000,
       });
       expect(services[1]).toMatchObject({
         id: 'service-2',
         name: 'test-service',
         address: '127.0.0.2',
-        port: 3001
+        port: 3001,
       });
     });
 
@@ -386,9 +381,9 @@ describe('Service Mesh', () => {
       const mockConsul = {
         agent: {
           service: {
-            register: jest.fn().mockResolvedValue(undefined)
-          }
-        }
+            register: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       };
 
       discovery['consul'] = mockConsul as any;
@@ -403,7 +398,7 @@ describe('Service Mesh', () => {
         id: 'new-service',
         name: 'test-service',
         address: '127.0.0.3',
-        port: 3002
+        port: 3002,
       });
 
       // The watcher should have been called
@@ -416,7 +411,7 @@ describe('Service Mesh', () => {
     const endpoints: ServiceEndpoint[] = [
       { id: '1', address: '127.0.0.1', port: 3000, weight: 1 },
       { id: '2', address: '127.0.0.2', port: 3001, weight: 2 },
-      { id: '3', address: '127.0.0.3', port: 3002, weight: 1 }
+      { id: '3', address: '127.0.0.3', port: 3002, weight: 1 },
     ];
 
     it('should use round-robin strategy', () => {
@@ -498,7 +493,7 @@ describe('Service Mesh', () => {
       const breaker = new CircuitBreaker({
         threshold: 2,
         resetTimeout: 100,
-        requestTimeout: 50
+        requestTimeout: 50,
       });
 
       const failingCall = async () => {
@@ -519,7 +514,7 @@ describe('Service Mesh', () => {
     it('should transition to half-open after timeout', async () => {
       const breaker = new CircuitBreaker({
         threshold: 1,
-        resetTimeout: 50
+        resetTimeout: 50,
       });
 
       let shouldFail = true;
@@ -536,7 +531,7 @@ describe('Service Mesh', () => {
       shouldFail = false;
 
       // Wait for reset timeout
-      await new Promise(resolve => setTimeout(resolve, 60));
+      await new Promise((resolve) => setTimeout(resolve, 60));
 
       // Should be half-open and try the call
       const result = await breaker.call(call);
@@ -546,11 +541,11 @@ describe('Service Mesh', () => {
 
     it('should handle request timeout', async () => {
       const breaker = new CircuitBreaker({
-        requestTimeout: 50
+        requestTimeout: 50,
       });
 
       const slowCall = async () => {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
         return 'too-late';
       };
 
@@ -568,7 +563,7 @@ describe('Service Mesh', () => {
       const proxy = createRemoteProxy<RemoteService>({
         serviceName: 'remote-service',
         discovery,
-        loadBalancer
+        loadBalancer,
       });
 
       expect(proxy).toBeDefined();
@@ -583,7 +578,7 @@ describe('Service Mesh', () => {
 
       const mockFetch = jest.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ id: '1', name: 'John' })
+        json: async () => ({ id: '1', name: 'John' }),
       });
 
       global.fetch = mockFetch;
@@ -592,9 +587,9 @@ describe('Service Mesh', () => {
         serviceName: 'api-service',
         endpoints: [
           { id: '1', address: 'api1.example.com', port: 80 },
-          { id: '2', address: 'api2.example.com', port: 80 }
+          { id: '2', address: 'api2.example.com', port: 80 },
         ],
-        loadBalancer
+        loadBalancer,
       });
 
       const user = await proxy.getUser('1');
@@ -616,7 +611,7 @@ describe('Service Mesh', () => {
         }
         return Promise.resolve({
           ok: true,
-          json: async () => 'success'
+          json: async () => 'success',
         });
       });
 
@@ -627,8 +622,8 @@ describe('Service Mesh', () => {
         endpoints: [{ id: '1', address: 'localhost', port: 3000 }],
         retry: {
           maxAttempts: 3,
-          delay: 10
-        }
+          delay: 10,
+        },
       });
 
       const result = await proxy.call();
@@ -643,12 +638,12 @@ describe('Service Mesh', () => {
       const healthCheck = new HealthCheck({
         endpoint: 'http://localhost:3000/health',
         interval: 1000,
-        timeout: 500
+        timeout: 500,
       });
 
       global.fetch = jest.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ status: 'healthy' })
+        json: async () => ({ status: 'healthy' }),
       });
 
       const result = await healthCheck.check();
@@ -659,7 +654,7 @@ describe('Service Mesh', () => {
 
     it('should mark unhealthy on failure', async () => {
       const healthCheck = new HealthCheck({
-        endpoint: 'http://localhost:3000/health'
+        endpoint: 'http://localhost:3000/health',
       });
 
       global.fetch = jest.fn().mockRejectedValue(new Error('Connection refused'));
@@ -673,7 +668,7 @@ describe('Service Mesh', () => {
     it('should track consecutive failures', async () => {
       const healthCheck = new HealthCheck({
         endpoint: 'http://localhost:3000/health',
-        unhealthyThreshold: 3
+        unhealthyThreshold: 3,
       });
 
       global.fetch = jest.fn().mockRejectedValue(new Error('Failed'));

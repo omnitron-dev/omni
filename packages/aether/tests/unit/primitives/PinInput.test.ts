@@ -3,11 +3,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { signal } from '../../../src/core/reactivity/signal.js';
-import {
-  PinInput,
-  PinInputInput,
-  __resetGlobalContext__,
-} from '../../../src/primitives/PinInput.js';
+import { PinInput, PinInputInput, __resetGlobalContext__ } from '../../../src/primitives/PinInput.js';
 import { renderComponent, nextTick, createSpy } from '../../helpers/test-utils.js';
 
 // Track active element globally for focus/blur mocking
@@ -119,11 +115,7 @@ describe('PinInput', () => {
       const component = () =>
         PinInput({
           length: 3,
-          children: [
-            PinInputInput({ index: 0 }),
-            PinInputInput({ index: 1 }),
-            PinInputInput({ index: 2 }),
-          ],
+          children: [PinInputInput({ index: 0 }), PinInputInput({ index: 1 }), PinInputInput({ index: 2 })],
         });
       const { container } = renderComponent(component);
 
@@ -137,11 +129,7 @@ describe('PinInput', () => {
       const component = () =>
         PinInput({
           length: 3,
-          children: [
-            PinInputInput({ index: 0 }),
-            PinInputInput({ index: 1 }),
-            PinInputInput({ index: 2 }),
-          ],
+          children: [PinInputInput({ index: 0 }), PinInputInput({ index: 1 }), PinInputInput({ index: 2 })],
         });
       const { container } = renderComponent(component);
 
@@ -1549,7 +1537,7 @@ describe('PinInput', () => {
               PinInputInput({
                 index: i,
                 'data-testid': `pin-${i}`,
-              }),
+              })
             ),
         });
       const { container } = renderComponent(component);
@@ -1570,7 +1558,7 @@ describe('PinInput', () => {
               PinInputInput({
                 index: i,
                 class: 'custom-pin-input',
-              }),
+              })
             ),
         });
       const { container } = renderComponent(component);

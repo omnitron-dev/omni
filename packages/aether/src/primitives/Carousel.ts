@@ -114,7 +114,7 @@ export const Carousel = defineComponent<CarouselProps>((props) => {
   let autoplayTimer: number | null = null;
 
   const isControlled = () => props.value !== undefined;
-  const currentIndex = () => (isControlled() ? props.value ?? 0 : internalValue());
+  const currentIndex = () => (isControlled() ? (props.value ?? 0) : internalValue());
 
   const setValue = (index: number) => {
     if (!isControlled()) {

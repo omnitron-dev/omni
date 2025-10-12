@@ -33,7 +33,7 @@ describe('Titan Application in Deno', () => {
   it('should create application', () => {
     const app = createApp({
       disableGracefulShutdown: true,
-      name: 'deno-test-app'
+      name: 'deno-test-app',
     });
     expect(app).toBeDefined();
     expect(app instanceof Application).toBe(true);
@@ -43,10 +43,13 @@ describe('Titan Application in Deno', () => {
     // Create a new container for this test to avoid duplicate registration
     const container = new Container();
 
-    const app = new Application({
-      disableGracefulShutdown: true,
-      name: 'deno-test-app'
-    }, container);
+    const app = new Application(
+      {
+        disableGracefulShutdown: true,
+        name: 'deno-test-app',
+      },
+      container
+    );
 
     await app.start();
     expect(app.state).toBe('started');

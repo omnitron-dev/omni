@@ -3,13 +3,7 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { signal } from '../../../src/core/reactivity/signal.js';
-import {
-  Tree,
-  TreeItem,
-  TreeTrigger,
-  TreeContent,
-  TreeLabel,
-} from '../../../src/primitives/Tree.js';
+import { Tree, TreeItem, TreeTrigger, TreeContent, TreeLabel } from '../../../src/primitives/Tree.js';
 import { renderComponent, nextTick } from '../../helpers/test-utils.js';
 
 describe('Tree', () => {
@@ -82,10 +76,7 @@ describe('Tree', () => {
           children: () =>
             TreeItem({
               value: 'folder1',
-              children: () => [
-                TreeTrigger({ children: 'Folder' }),
-                TreeContent({ children: () => 'Content' }),
-              ],
+              children: () => [TreeTrigger({ children: 'Folder' }), TreeContent({ children: () => 'Content' })],
             }),
         });
 
@@ -139,10 +130,7 @@ describe('Tree', () => {
           children: () =>
             TreeItem({
               value: 'folder1',
-              children: () => [
-                TreeTrigger({ children: 'Folder' }),
-                TreeContent({ children: () => 'Content' }),
-              ],
+              children: () => [TreeTrigger({ children: 'Folder' }), TreeContent({ children: () => 'Content' })],
             }),
         });
 
@@ -160,10 +148,7 @@ describe('Tree', () => {
           children: () =>
             TreeItem({
               value: 'folder1',
-              children: () => [
-                TreeTrigger({ children: 'Folder' }),
-                TreeContent({ children: () => 'Content' }),
-              ],
+              children: () => [TreeTrigger({ children: 'Folder' }), TreeContent({ children: () => 'Content' })],
             }),
         });
 
@@ -180,10 +165,7 @@ describe('Tree', () => {
           children: () =>
             TreeItem({
               value: 'folder1',
-              children: () => [
-                TreeTrigger({ children: 'Folder' }),
-                TreeContent({ children: () => 'Content' }),
-              ],
+              children: () => [TreeTrigger({ children: 'Folder' }), TreeContent({ children: () => 'Content' })],
             }),
         });
 
@@ -206,10 +188,7 @@ describe('Tree', () => {
           children: () =>
             TreeItem({
               value: 'folder1',
-              children: () => [
-                TreeTrigger({ children: 'Folder' }),
-                TreeContent({ children: () => 'Content' }),
-              ],
+              children: () => [TreeTrigger({ children: 'Folder' }), TreeContent({ children: () => 'Content' })],
             }),
         });
 
@@ -235,10 +214,7 @@ describe('Tree', () => {
             TreeItem({
               value: 'folder1',
               disabled: true,
-              children: () => [
-                TreeTrigger({ children: 'Folder' }),
-                TreeContent({ children: () => 'Content' }),
-              ],
+              children: () => [TreeTrigger({ children: 'Folder' }), TreeContent({ children: () => 'Content' })],
             }),
         });
 
@@ -259,17 +235,17 @@ describe('Tree', () => {
           children: () =>
             TreeItem({
               value: 'folder1',
-              children: () => [
-                TreeTrigger({ children: 'Folder' }),
-                TreeContent({ children: () => 'Hidden Content' }),
-              ],
+              children: () => [TreeTrigger({ children: 'Folder' }), TreeContent({ children: () => 'Hidden Content' })],
             }),
         });
 
       const { container } = renderComponent(component);
 
-      const content = container.querySelector('[data-tree-content]');
-      expect(content).toBeFalsy();
+      const content = container.querySelector('[data-tree-content]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('none');
+      expect(content.getAttribute('data-state')).toBe('closed');
+      expect(content.getAttribute('aria-hidden')).toBe('true');
     });
 
     it('should render when expanded', async () => {
@@ -278,10 +254,7 @@ describe('Tree', () => {
           children: () =>
             TreeItem({
               value: 'folder1',
-              children: () => [
-                TreeTrigger({ children: 'Folder' }),
-                TreeContent({ children: () => 'Visible Content' }),
-              ],
+              children: () => [TreeTrigger({ children: 'Folder' }), TreeContent({ children: () => 'Visible Content' })],
             }),
         });
 
@@ -291,11 +264,13 @@ describe('Tree', () => {
       trigger.click();
       await nextTick();
 
-      const content = container.querySelector('[data-tree-content]');
+      const content = container.querySelector('[data-tree-content]') as HTMLElement;
       expect(content).toBeTruthy();
-      expect(content?.textContent).toBe('Visible Content');
-      expect(content?.getAttribute('data-state')).toBe('open');
-      expect(content?.getAttribute('role')).toBe('group');
+      expect(content.style.display).toBe('block');
+      expect(content.textContent).toBe('Visible Content');
+      expect(content.getAttribute('data-state')).toBe('open');
+      expect(content.getAttribute('aria-hidden')).toBe('false');
+      expect(content.getAttribute('role')).toBe('group');
     });
   });
 
@@ -389,30 +364,30 @@ describe('Tree', () => {
           children: () =>
             TreeItem({
               value: 'folder1',
-              children: () => [
-                TreeTrigger({ children: 'Folder' }),
-                TreeContent({ children: () => 'Content' }),
-              ],
+              children: () => [TreeTrigger({ children: 'Folder' }), TreeContent({ children: () => 'Content' })],
             }),
         });
 
       const { container } = renderComponent(component);
 
       // Initially collapsed
-      let content = container.querySelector('[data-tree-content]');
-      expect(content).toBeFalsy();
+      let content = container.querySelector('[data-tree-content]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('none');
 
       // Expand externally
       expanded.set(['folder1']);
 
-      content = container.querySelector('[data-tree-content]');
+      content = container.querySelector('[data-tree-content]') as HTMLElement;
       expect(content).toBeTruthy();
+      expect(content.style.display).toBe('block');
 
       // Collapse externally
       expanded.set([]);
 
-      content = container.querySelector('[data-tree-content]');
-      expect(content).toBeFalsy();
+      content = container.querySelector('[data-tree-content]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('none');
     });
 
     it('should support defaultExpanded for uncontrolled mode', () => {
@@ -422,10 +397,7 @@ describe('Tree', () => {
           children: () =>
             TreeItem({
               value: 'folder1',
-              children: () => [
-                TreeTrigger({ children: 'Folder' }),
-                TreeContent({ children: () => 'Content' }),
-              ],
+              children: () => [TreeTrigger({ children: 'Folder' }), TreeContent({ children: () => 'Content' })],
             }),
         });
 
@@ -443,17 +415,11 @@ describe('Tree', () => {
           children: () => [
             TreeItem({
               value: 'folder1',
-              children: () => [
-                TreeTrigger({ children: 'Folder 1' }),
-                TreeContent({ children: () => 'Content 1' }),
-              ],
+              children: () => [TreeTrigger({ children: 'Folder 1' }), TreeContent({ children: () => 'Content 1' })],
             }),
             TreeItem({
               value: 'folder2',
-              children: () => [
-                TreeTrigger({ children: 'Folder 2' }),
-                TreeContent({ children: () => 'Content 2' }),
-              ],
+              children: () => [TreeTrigger({ children: 'Folder 2' }), TreeContent({ children: () => 'Content 2' })],
             }),
           ],
         });
@@ -614,18 +580,21 @@ describe('Tree', () => {
 
       const { container } = renderComponent(component);
 
-      // Initially, nested items are not visible
-      let items = container.querySelectorAll('[data-tree-item]');
-      expect(items.length).toBe(1); // Only parent
+      // Initially, nested items exist but content is hidden (visibility toggle pattern)
+      const items = container.querySelectorAll('[data-tree-item]');
+      expect(items.length).toBe(3); // All items in DOM (parent + 2 children)
+
+      const content = container.querySelector('[data-tree-content]') as HTMLElement;
+      expect(content.style.display).toBe('none'); // Content is hidden
 
       // Expand parent
       const trigger = container.querySelector('[data-tree-trigger]') as HTMLButtonElement;
       trigger.click();
       await nextTick();
 
-      // Now nested items are visible
-      items = container.querySelectorAll('[data-tree-item]');
-      expect(items.length).toBe(3); // Parent + 2 children
+      // Now content is visible
+      expect(content.style.display).toBe('block'); // Content is visible
+      expect(items.length).toBe(3); // Still 3 items (they were always in DOM)
     });
 
     it('should support deeply nested structures', () => {
@@ -709,10 +678,7 @@ describe('Tree', () => {
           children: () =>
             TreeItem({
               value: 'folder1',
-              children: () => [
-                TreeTrigger({ children: 'Folder' }),
-                TreeContent({ children: () => 'Content' }),
-              ],
+              children: () => [TreeTrigger({ children: 'Folder' }), TreeContent({ children: () => 'Content' })],
             }),
         });
 

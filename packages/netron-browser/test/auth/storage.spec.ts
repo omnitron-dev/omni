@@ -3,11 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  LocalTokenStorage,
-  SessionTokenStorage,
-  MemoryTokenStorage,
-} from '../../src/auth/storage.js';
+import { LocalTokenStorage, SessionTokenStorage, MemoryTokenStorage } from '../../src/auth/storage.js';
 
 describe('MemoryTokenStorage', () => {
   let storage: MemoryTokenStorage;

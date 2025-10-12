@@ -31,7 +31,7 @@ describe('EventScheduler', () => {
     it('should schedule event at specific time', () => {
       const futureTime = new Date(Date.now() + 2000);
       const options: ScheduleOptions = { at: futureTime };
-      
+
       scheduler.schedule('test', { data: 'test' }, options, emitFn);
 
       jest.advanceTimersByTime(1999);
@@ -52,7 +52,7 @@ describe('EventScheduler', () => {
     it('should handle past time as immediate execution', () => {
       const pastTime = new Date(Date.now() - 1000);
       const options: ScheduleOptions = { at: pastTime };
-      
+
       scheduler.schedule('test', { data: 'test' }, options, emitFn);
 
       jest.advanceTimersByTime(0);
@@ -149,25 +149,25 @@ describe('EventScheduler', () => {
       expect(events[0]).toMatchObject({
         event: 'event1',
         data: { data: 1 },
-        status: 'pending'
+        status: 'pending',
       });
       expect(events[1]).toMatchObject({
         event: 'event2',
         data: { data: 2 },
-        status: 'pending'
+        status: 'pending',
       });
     });
 
     it('should update status when executing', async () => {
       const mockEmitFn = jest.fn<(event: string, data: any) => void>();
       scheduler.schedule('event1', { data: 1 }, { delay: 0 }, mockEmitFn);
-      
+
       // Execute all timers
       jest.runAllTimers();
-      
+
       // Wait a bit for async operations
       await Promise.resolve();
-      
+
       // Event should be removed after execution
       const events = scheduler.getScheduledEvents();
       expect(events).toHaveLength(0);
@@ -182,7 +182,7 @@ describe('EventScheduler', () => {
 
       const pending = scheduler.getPendingEvents();
       expect(pending).toHaveLength(2);
-      expect(pending.every(e => e.status === 'pending')).toBe(true);
+      expect(pending.every((e) => e.status === 'pending')).toBe(true);
     });
 
     it('should not include cancelled events', () => {
@@ -214,14 +214,14 @@ describe('EventScheduler', () => {
         retry: {
           maxAttempts: 3,
           delay: 10,
-          backoff: 'linear'
-        }
+          backoff: 'linear',
+        },
       };
 
       scheduler.schedule('retry-test', { data: 'test' }, options, failingEmitFn);
 
       // Wait for retries to complete
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(failingEmitFn).toHaveBeenCalledTimes(3);
       expect(attempts).toBe(3);
@@ -244,18 +244,18 @@ describe('EventScheduler', () => {
           maxAttempts: 3,
           delay: 10,
           backoff: 'exponential',
-          factor: 2
-        }
+          factor: 2,
+        },
       };
 
       const startTime = Date.now();
       scheduler.schedule('retry-test', { data: 'test' }, options, failingEmitFn);
 
       // Wait for retries to complete
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
       expect(failingEmitFn).toHaveBeenCalledTimes(3);
-      
+
       // With exponential backoff: first attempt immediate, then 10ms, then 20ms
       const totalTime = Date.now() - startTime;
       expect(totalTime).toBeGreaterThanOrEqual(30);
@@ -279,18 +279,18 @@ describe('EventScheduler', () => {
           delay: 10,
           backoff: 'exponential',
           factor: 10,
-          maxDelay: 50
-        }
+          maxDelay: 50,
+        },
       };
 
       const startTime = Date.now();
       scheduler.schedule('retry-test', { data: 'test' }, options, failingEmitFn);
 
       // Wait for retries to complete
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise((resolve) => setTimeout(resolve, 300));
 
       expect(failingEmitFn).toHaveBeenCalledTimes(4);
-      
+
       // Delays should be capped at maxDelay
       // First attempt: immediate, then 10ms, then 50ms (capped from 100ms), then 50ms (capped from 1000ms)
       const totalTime = Date.now() - startTime;
@@ -308,14 +308,14 @@ describe('EventScheduler', () => {
         delay: 0,
         retry: {
           maxAttempts: 2,
-          delay: 10
-        }
+          delay: 10,
+        },
       };
 
       scheduler.schedule('retry-test', { data: 'test' }, options, failingEmitFn);
 
       // Wait for retries to complete
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(failingEmitFn).toHaveBeenCalledTimes(2);
     });
@@ -332,7 +332,7 @@ describe('EventScheduler', () => {
       scheduler.schedule('no-retry', { data: 'test' }, options, failingEmitFn);
 
       // Wait a bit
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(failingEmitFn).toHaveBeenCalledTimes(1);
     });

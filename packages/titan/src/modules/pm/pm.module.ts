@@ -41,25 +41,25 @@ export const DEFAULT_PM_CONFIG: IProcessManagerConfig = {
       type: 'exponential',
       initial: 1000,
       max: 30000,
-      factor: 2
-    }
+      factor: 2,
+    },
   },
   resources: {
     maxMemory: '512MB',
     maxCpu: 1.0,
-    timeout: 30000
+    timeout: 30000,
   },
   monitoring: {
     healthCheck: { interval: 30000, timeout: 5000 },
     metrics: true,
-    tracing: false
+    tracing: false,
   },
   testing: {
-    useMockSpawner: false
+    useMockSpawner: false,
   },
   advanced: {
-    gracefulShutdownTimeout: 5000
-  }
+    gracefulShutdownTimeout: 5000,
+  },
 };
 
 /**
@@ -90,24 +90,24 @@ export class ProcessManagerModule {
       ...options,
       restartPolicy: {
         ...DEFAULT_PM_CONFIG.restartPolicy,
-        ...options.restartPolicy
+        ...options.restartPolicy,
       },
       resources: {
         ...DEFAULT_PM_CONFIG.resources,
-        ...options.resources
+        ...options.resources,
       },
       monitoring: {
         ...DEFAULT_PM_CONFIG.monitoring,
-        ...options.monitoring
+        ...options.monitoring,
       },
       testing: {
         ...DEFAULT_PM_CONFIG.testing,
-        ...options.testing
+        ...options.testing,
       },
       advanced: {
         ...DEFAULT_PM_CONFIG.advanced,
-        ...options.advanced
-      }
+        ...options.advanced,
+      },
     };
 
     return {
@@ -121,23 +121,24 @@ export class ProcessManagerModule {
         [
           PM_SPAWNER_TOKEN,
           {
-            useFactory: (logger: any, pmConfig: IProcessManagerConfig) => ProcessSpawnerFactory.create(logger, pmConfig),
-            inject: [LOGGER_SERVICE_TOKEN, PM_CONFIG_TOKEN]
-          }
+            useFactory: (logger: any, pmConfig: IProcessManagerConfig) =>
+              ProcessSpawnerFactory.create(logger, pmConfig),
+            inject: [LOGGER_SERVICE_TOKEN, PM_CONFIG_TOKEN],
+          },
         ],
         [
           PM_METRICS_TOKEN,
           {
             useFactory: (logger: any) => new ProcessMetricsCollector(logger),
-            inject: [LOGGER_SERVICE_TOKEN]
-          }
+            inject: [LOGGER_SERVICE_TOKEN],
+          },
         ],
         [
           PM_HEALTH_TOKEN,
           {
             useFactory: (logger: any) => new ProcessHealthChecker(logger),
-            inject: [LOGGER_SERVICE_TOKEN]
-          }
+            inject: [LOGGER_SERVICE_TOKEN],
+          },
         ],
 
         // Main Process Manager
@@ -145,21 +146,15 @@ export class ProcessManagerModule {
           PM_MANAGER_TOKEN,
           {
             useFactory: (logger: any, pmConfig: IProcessManagerConfig) => new ProcessManager(logger, pmConfig),
-            inject: [LOGGER_SERVICE_TOKEN, PM_CONFIG_TOKEN]
-          }
+            inject: [LOGGER_SERVICE_TOKEN, PM_CONFIG_TOKEN],
+          },
         ],
 
         // Export alias
-        [ProcessManager, { useExisting: PM_MANAGER_TOKEN }]
+        [ProcessManager, { useExisting: PM_MANAGER_TOKEN }],
       ] as any,
-      exports: [
-        ProcessManager,
-        PM_MANAGER_TOKEN,
-        PM_REGISTRY_TOKEN,
-        PM_METRICS_TOKEN,
-        PM_HEALTH_TOKEN
-      ],
-      global: true
+      exports: [ProcessManager, PM_MANAGER_TOKEN, PM_REGISTRY_TOKEN, PM_METRICS_TOKEN, PM_HEALTH_TOKEN],
+      global: true,
     };
   }
 
@@ -182,17 +177,14 @@ export class ProcessManagerModule {
             const config = await options.useFactory!(...args);
             return {
               ...DEFAULT_PM_CONFIG,
-              ...config
+              ...config,
             };
           },
-          inject: options.inject || []
-        }
+          inject: options.inject || [],
+        },
       ] as any);
     } else if (options.useExisting) {
-      providers.push([
-        PM_CONFIG_TOKEN,
-        { useExisting: options.useExisting }
-      ] as any);
+      providers.push([PM_CONFIG_TOKEN, { useExisting: options.useExisting }] as any);
     }
 
     // Add service providers
@@ -202,29 +194,29 @@ export class ProcessManagerModule {
         PM_SPAWNER_TOKEN,
         {
           useFactory: (logger: any, config: IProcessManagerConfig) => ProcessSpawnerFactory.create(logger, config),
-          inject: [LOGGER_SERVICE_TOKEN, PM_CONFIG_TOKEN]
-        }
+          inject: [LOGGER_SERVICE_TOKEN, PM_CONFIG_TOKEN],
+        },
       ],
       [
         PM_METRICS_TOKEN,
         {
           useFactory: (logger: any) => new ProcessMetricsCollector(logger),
-          inject: [LOGGER_SERVICE_TOKEN]
-        }
+          inject: [LOGGER_SERVICE_TOKEN],
+        },
       ],
       [
         PM_HEALTH_TOKEN,
         {
           useFactory: (logger: any) => new ProcessHealthChecker(logger),
-          inject: [LOGGER_SERVICE_TOKEN]
-        }
+          inject: [LOGGER_SERVICE_TOKEN],
+        },
       ],
       [
         PM_MANAGER_TOKEN,
         {
           useFactory: (logger: any, config: IProcessManagerConfig) => new ProcessManager(logger, config),
-          inject: [LOGGER_SERVICE_TOKEN, PM_CONFIG_TOKEN]
-        }
+          inject: [LOGGER_SERVICE_TOKEN, PM_CONFIG_TOKEN],
+        },
       ],
       [ProcessManager, { useExisting: PM_MANAGER_TOKEN }]
     );
@@ -232,14 +224,8 @@ export class ProcessManagerModule {
     return {
       module: ProcessManagerModule,
       providers: providers as any,
-      exports: [
-        ProcessManager,
-        PM_MANAGER_TOKEN,
-        PM_REGISTRY_TOKEN,
-        PM_METRICS_TOKEN,
-        PM_HEALTH_TOKEN
-      ],
-      global: true
+      exports: [ProcessManager, PM_MANAGER_TOKEN, PM_REGISTRY_TOKEN, PM_METRICS_TOKEN, PM_HEALTH_TOKEN],
+      global: true,
     };
   }
 }

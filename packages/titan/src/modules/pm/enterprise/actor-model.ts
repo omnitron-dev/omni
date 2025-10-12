@@ -58,7 +58,7 @@ export enum SupervisorAction {
   RESTART = 'restart',
   STOP = 'stop',
   ESCALATE = 'escalate',
-  RESUME = 'resume'
+  RESUME = 'resume',
 }
 
 /**
@@ -209,7 +209,7 @@ class ActorInstance<T extends Actor = Actor> extends EventEmitter {
         }
         return child;
       },
-      stop: () => this.stop()
+      stop: () => this.stop(),
     };
 
     this.actor.context = context;
@@ -220,7 +220,7 @@ class ActorInstance<T extends Actor = Actor> extends EventEmitter {
       id: this.id,
       tell: (message) => this.tell(message),
       ask: (message, timeout) => this.ask(message, timeout),
-      stop: () => this.stop()
+      stop: () => this.stop(),
     };
   }
 
@@ -254,7 +254,7 @@ class ActorInstance<T extends Actor = Actor> extends EventEmitter {
       type: typeof message === 'object' ? message.type || 'unknown' : 'primitive',
       payload: message,
       from: sender?.id,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
 
     this.mailbox.push(actorMessage);
@@ -280,7 +280,7 @@ class ActorInstance<T extends Actor = Actor> extends EventEmitter {
         id: messageId,
         type: typeof message === 'object' ? message.type || 'unknown' : 'primitive',
         payload: message,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       this.mailbox.push(actorMessage);
@@ -305,13 +305,12 @@ class ActorInstance<T extends Actor = Actor> extends EventEmitter {
             id: message.from,
             tell: () => {}, // Would be resolved by system
             ask: async <R>() => null as unknown as R,
-            stop: async () => {}
+            stop: async () => {},
           };
         }
 
         // Use current behavior or default receive
-        const behavior = this.behaviors[this.behaviors.length - 1] ||
-                        ((msg, ctx) => this.actor.receive(msg, ctx));
+        const behavior = this.behaviors[this.behaviors.length - 1] || ((msg, ctx) => this.actor.receive(msg, ctx));
 
         const result = await behavior(message.payload, this.actor.context);
 
@@ -397,10 +396,7 @@ export class ActorSystem {
   /**
    * Create an actor
    */
-  async actorOf<T extends Actor>(
-    ActorClass: new () => T,
-    name?: string
-  ): Promise<ActorRef<T>> {
+  async actorOf<T extends Actor>(ActorClass: new () => T, name?: string): Promise<ActorRef<T>> {
     const id = name || uuid();
 
     if (this.actors.has(id)) {
@@ -443,7 +439,7 @@ export class ActorSystem {
    */
   async shutdown(): Promise<void> {
     // Stop all root actors (they will stop their children)
-    const stopPromises = Array.from(this.rootActors).map(id => this.stop(id));
+    const stopPromises = Array.from(this.rootActors).map((id) => this.stop(id));
     await Promise.all(stopPromises);
   }
 
@@ -454,7 +450,7 @@ export class ActorSystem {
     return {
       totalActors: this.actors.size,
       rootActors: this.rootActors.size,
-      actors: Array.from(this.actors.keys())
+      actors: Array.from(this.actors.keys()),
     };
   }
 }
@@ -466,7 +462,10 @@ export class RoundRobinRouter extends Actor {
   private routees: ActorRef[] = [];
   private currentIndex = 0;
 
-  constructor(private routeeCount: number, private RouteeClass: new () => Actor) {
+  constructor(
+    private routeeCount: number,
+    private RouteeClass: new () => Actor
+  ) {
     super();
   }
 
@@ -494,7 +493,10 @@ export class RoundRobinRouter extends Actor {
 export class BroadcastRouter extends Actor {
   private routees: ActorRef[] = [];
 
-  constructor(private routeeCount: number, private RouteeClass: new () => Actor) {
+  constructor(
+    private routeeCount: number,
+    private RouteeClass: new () => Actor
+  ) {
     super();
   }
 
@@ -506,7 +508,7 @@ export class BroadcastRouter extends Actor {
   }
 
   override receive(message: any, context: ActorContext): void {
-    this.routees.forEach(routee => routee.tell(message));
+    this.routees.forEach((routee) => routee.tell(message));
   }
 }
 
@@ -548,7 +550,7 @@ export class ConsistentHashRouter extends Actor {
   private hash(key: string): number {
     let hash = 0;
     for (let i = 0; i < key.length; i++) {
-      hash = ((hash << 5) - hash) + key.charCodeAt(i);
+      hash = (hash << 5) - hash + key.charCodeAt(i);
       hash = hash & hash;
     }
     return Math.abs(hash);

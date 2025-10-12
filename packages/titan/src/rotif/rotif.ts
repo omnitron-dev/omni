@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { minimatch } from 'minimatch'
+import { minimatch } from 'minimatch';
 import { Redis, RedisOptions } from 'ioredis';
 import { randomUUID, createHash } from 'node:crypto';
 import { defer, Deferred, delay as delayMs } from '@omnitron-dev/common';
@@ -11,7 +11,14 @@ import { StatsTracker } from './stats.js';
 import { defaultLogger } from './utils/logger.js';
 import { Middleware, MiddlewareManager } from './middleware.js';
 import { RotifConfig, RotifLogger, RotifMessage, Subscription, PublishOptions, SubscribeOptions } from './types.js';
-import { getLoopKey, parseFields, getStreamKey, getGroupName, generateDedupKey, defaultConsumerName } from './utils/common.js';
+import {
+  getLoopKey,
+  parseFields,
+  getStreamKey,
+  getGroupName,
+  generateDedupKey,
+  defaultConsumerName,
+} from './utils/common.js';
 import { createRetryDelayFn, RetryStrategies } from './retry-strategies.js';
 import { DLQManager, type DLQCleanupConfig } from './dlq-manager.js';
 
@@ -40,7 +47,10 @@ export class NotificationManager {
   private initializationDefer: Deferred;
   private subClient?: Redis;
   private dlqClient?: Redis;
-  private consumerLoops = new Map<string, { loopPromise: Promise<void>; subscriptions: Set<Subscription>; readyPromise: Promise<void> }>();
+  private consumerLoops = new Map<
+    string,
+    { loopPromise: Promise<void>; subscriptions: Set<Subscription>; readyPromise: Promise<void> }
+  >();
   private luaScripts = new Map<string, string>();
   private roundRobinIndices = new Map<string, number>();
   private dlqSubscriptionPromise?: Promise<void>;
@@ -120,7 +130,7 @@ export class NotificationManager {
         return;
       }
 
-      const luaFiles = fs.readdirSync(luaDir).filter(file => file.endsWith('.lua'));
+      const luaFiles = fs.readdirSync(luaDir).filter((file) => file.endsWith('.lua'));
 
       for (const file of luaFiles) {
         const scriptContent = fs.readFileSync(path.join(luaDir, file), 'utf-8');
@@ -128,7 +138,7 @@ export class NotificationManager {
         const localSha = createHash('sha1').update(scriptContent).digest('hex');
 
         // Always reload scripts in development to ensure changes are picked up
-        const sha = await this.redis.script('LOAD', scriptContent) as string;
+        const sha = (await this.redis.script('LOAD', scriptContent)) as string;
         this.luaScripts.set(scriptName, sha);
       }
       this.logger.info('Lua scripts loaded or reused');
@@ -138,11 +148,7 @@ export class NotificationManager {
     }
   }
 
-  async runLuaScript<T = any>(
-    scriptName: string,
-    keys: string[],
-    args: (string | number)[]
-  ): Promise<T> {
+  async runLuaScript<T = any>(scriptName: string, keys: string[], args: (string | number)[]): Promise<T> {
     const sha = this.luaScripts.get(scriptName);
     if (!sha) {
       throw Errors.notFound('Lua script', scriptName);
@@ -201,9 +207,7 @@ export class NotificationManager {
     await this.initializationDefer.promise;
     await this.middleware.runBeforePublish(channel, payload, options);
 
-    const matchingPatterns = Array.from(this.activePatterns).filter(pattern =>
-      minimatch(channel, pattern)
-    );
+    const matchingPatterns = Array.from(this.activePatterns).filter((pattern) => minimatch(channel, pattern));
 
     if (matchingPatterns.length === 0) {
       this.logger.debug(`No active patterns match channel ${channel}, skipping publish.`);
@@ -229,7 +233,8 @@ export class NotificationManager {
     for (const pattern of matchingPatterns) {
       const streamKey = getStreamKey(pattern);
       const dedupKey = options?.exactlyOnce
-        ? (this.config.generateDedupKey?.({ channel, payload, pattern }) ?? generateDedupKey({ channel, payload, pattern, side: 'pub' }))
+        ? (this.config.generateDedupKey?.({ channel, payload, pattern }) ??
+          generateDedupKey({ channel, payload, pattern, side: 'pub' }))
         : '';
       try {
         const result = await this.runLuaScript(
@@ -259,7 +264,10 @@ export class NotificationManager {
         }
       } catch (err) {
         this.logger.error(`Error publishing to ${streamKey}`, err);
-        await this.middleware.runOnError({ channel, payload, attempt: +attempt, id: '', timestamp: +timestamp, ack: async () => { } }, err as Error);
+        await this.middleware.runOnError(
+          { channel, payload, attempt: +attempt, id: '', timestamp: +timestamp, ack: async () => {} },
+          err as Error
+        );
       }
     }
 
@@ -271,7 +279,7 @@ export class NotificationManager {
 
     await this.middleware.runAfterPublish(channel, payload, results as string[], options);
 
-    return results.length === 1 ? results[0] as string : results as string[];
+    return results.length === 1 ? (results[0] as string) : (results as string[]);
   }
 
   /**
@@ -281,7 +289,11 @@ export class NotificationManager {
    * @param {SubscribeOptions} [options] - Subscription options
    * @returns {Promise<Subscription>} Subscription instance
    */
-  async subscribe(pattern: string, handler: (msg: RotifMessage) => Promise<void>, options?: SubscribeOptions): Promise<Subscription> {
+  async subscribe(
+    pattern: string,
+    handler: (msg: RotifMessage) => Promise<void>,
+    options?: SubscribeOptions
+  ): Promise<Subscription> {
     await this.initializationDefer.promise;
     const group = getGroupName(pattern, options?.groupName);
     const consumer = this.config.consumerNameFn?.() || defaultConsumerName();
@@ -330,11 +342,7 @@ export class NotificationManager {
         }
 
         if (removePattern) {
-          const newCount = await this.runLuaScript(
-            'safe-unsubscribe',
-            ['rotif:patterns'],
-            [pattern]
-          );
+          const newCount = await this.runLuaScript('safe-unsubscribe', ['rotif:patterns'], [pattern]);
 
           if (Number(newCount) === 0) {
             // Immediately remove from local activePatterns
@@ -344,8 +352,12 @@ export class NotificationManager {
           }
         }
       },
-      pause: () => { sub.isPaused = true; },
-      resume: () => { sub.isPaused = false; },
+      pause: () => {
+        sub.isPaused = true;
+      },
+      resume: () => {
+        sub.isPaused = false;
+      },
       isPaused: false,
       stats: () => stats.getStats(),
     };
@@ -410,9 +422,7 @@ export class NotificationManager {
     this.dlqManager.stopAutoCleanup();
 
     // Unsubscribe all first
-    const unsubscribePromises = Array.from(this.subscriptions.values()).map(sub =>
-      sub.unsubscribe(false)
-    );
+    const unsubscribePromises = Array.from(this.subscriptions.values()).map((sub) => sub.unsubscribe(false));
     await Promise.all(unsubscribePromises);
 
     // Now mark as inactive to stop loops
@@ -422,16 +432,16 @@ export class NotificationManager {
     if (this.dlqSubscriptionPromise) {
       await Promise.race([
         this.dlqSubscriptionPromise,
-        delayMs(3000)  // 3 second timeout
+        delayMs(3000), // 3 second timeout
       ]);
     }
 
     // Wait for consumer loops to finish (with timeout)
-    const loopPromises = Array.from(this.consumerLoops.values()).map(loop => loop.loopPromise);
+    const loopPromises = Array.from(this.consumerLoops.values()).map((loop) => loop.loopPromise);
     if (loopPromises.length > 0) {
       await Promise.race([
         Promise.all(loopPromises),
-        delayMs(3000)  // 3 second timeout
+        delayMs(3000), // 3 second timeout
       ]);
     }
 
@@ -480,12 +490,18 @@ export class NotificationManager {
           // Break if stopAll has been called
           if (!this.active) break;
 
-          const entries = await this.dlqClient!.xreadgroup(
-            'GROUP', group, consumer,
-            'COUNT', 1000,
-            'BLOCK', 1000,  // Reduce block timeout for faster shutdown
-            'STREAMS', streamKey, '>'
-          ) as [string, [string, string[]][]][] | null;
+          const entries = (await this.dlqClient!.xreadgroup(
+            'GROUP',
+            group,
+            consumer,
+            'COUNT',
+            1000,
+            'BLOCK',
+            1000, // Reduce block timeout for faster shutdown
+            'STREAMS',
+            streamKey,
+            '>'
+          )) as [string, [string, string[]][]][] | null;
 
           if (!entries) continue;
 
@@ -503,7 +519,9 @@ export class NotificationManager {
                 payload: JSON.parse(payloadStr),
                 timestamp,
                 attempt,
-                ack: async () => { await this.redis.xack(streamKey, group, id); },
+                ack: async () => {
+                  await this.redis.xack(streamKey, group, id);
+                },
               };
 
               try {
@@ -533,11 +551,7 @@ export class NotificationManager {
   async requeueFromDLQ(count = 10): Promise<number> {
     await this.initializationDefer.promise;
 
-    const requeuedCount = await this.runLuaScript(
-      'requeue-from-dlq',
-      ['rotif:dlq'],
-      [count.toString()]
-    );
+    const requeuedCount = await this.runLuaScript('requeue-from-dlq', ['rotif:dlq'], [count.toString()]);
 
     this.logger.info(`Requeued ${requeuedCount} messages from DLQ`);
 
@@ -554,7 +568,7 @@ export class NotificationManager {
 
       this.subClient = new Redis(this.config.redis as RedisOptions);
 
-      this.subClient.subscribe('rotif:subscriptions:updates').catch(err => {
+      this.subClient.subscribe('rotif:subscriptions:updates').catch((err) => {
         this.logger.error('Pub/Sub subscription failed:', err);
       });
 
@@ -607,7 +621,6 @@ export class NotificationManager {
       const dedupTTL = fields['dedupTTL'];
       const pattern = fields['pattern'] ?? channel; // Get pattern from message
 
-
       let payload: any;
       try {
         payload = payloadStr ? JSON.parse(payloadStr) : null;
@@ -629,13 +642,11 @@ export class NotificationManager {
         },
       };
 
-      const matchingSubs = Array.from(subscriptions).filter(sub =>
-        !sub.isPaused && minimatch(channel, sub.pattern)
-      );
+      const matchingSubs = Array.from(subscriptions).filter((sub) => !sub.isPaused && minimatch(channel, sub.pattern));
 
       if (matchingSubs.length === 0) {
         // Check if we have any subscriptions at all (even paused ones)
-        const allSubs = Array.from(subscriptions).filter(sub => minimatch(channel, sub.pattern));
+        const allSubs = Array.from(subscriptions).filter((sub) => minimatch(channel, sub.pattern));
         if (allSubs.length > 0) {
           // We have paused subscriptions, just acknowledge without warning
           await this.runLuaScript('ack-message', [stream], [group, id, '1']);
@@ -675,10 +686,19 @@ export class NotificationManager {
         // So total attempts allowed = maxRetries + 1
         // Only check this for retries (attempt > 1)
         if (msg.attempt > 1 && msg.attempt > maxRetries + 1) {
-          await this.runLuaScript('move-to-dlq', [stream, 'rotif:dlq'], [
-            group, msg.id, channel, payloadStr,
-            'Max retries exceeded', msg.timestamp.toString(), msg.attempt.toString(),
-          ]);
+          await this.runLuaScript(
+            'move-to-dlq',
+            [stream, 'rotif:dlq'],
+            [
+              group,
+              msg.id,
+              channel,
+              payloadStr,
+              'Max retries exceeded',
+              msg.timestamp.toString(),
+              msg.attempt.toString(),
+            ]
+          );
           // Record failure when message moved to DLQ
           sub.statsTracker?.recordFailure();
           this.logger.error(`Message ${id} moved to DLQ - max retries exceeded`);
@@ -692,13 +712,7 @@ export class NotificationManager {
           // Use group for consumer-side deduplication
           dedupKey = generateDedupKey({ channel, payload: msg.payload, group, side: 'con' });
           // Use atomic SET NX to prevent race conditions
-          const wasSet = await this.redis.set(
-            dedupKey,
-            '1',
-            'EX',
-            dedupTTL ? Number(dedupTTL) : 3600,
-            'NX'
-          );
+          const wasSet = await this.redis.set(dedupKey, '1', 'EX', dedupTTL ? Number(dedupTTL) : 3600, 'NX');
 
           if (!wasSet) {
             // Message was already processed by another worker
@@ -731,10 +745,11 @@ export class NotificationManager {
           if (msg.attempt >= maxRetries + 1) {
             // Move to DLQ with the actual error message
             const errorMessage = err instanceof Error ? err.message : String(err);
-            await this.runLuaScript('move-to-dlq', [stream, 'rotif:dlq'], [
-              group, msg.id, channel, payloadStr,
-              errorMessage, msg.timestamp.toString(), msg.attempt.toString(),
-            ]);
+            await this.runLuaScript(
+              'move-to-dlq',
+              [stream, 'rotif:dlq'],
+              [group, msg.id, channel, payloadStr, errorMessage, msg.timestamp.toString(), msg.attempt.toString()]
+            );
             // Record failure when message moved to DLQ
             sub.statsTracker?.recordFailure();
             this.logger.error(`Message ${id} moved to DLQ after error: ${errorMessage}`);
@@ -760,19 +775,31 @@ export class NotificationManager {
           // Determine the correct stream for retry - always use the main stream (without :retry suffix)
           // This ensures retries go to the main stream, not back to retry stream
           const mainStream = stream.endsWith(':retry')
-            ? stream.slice(0, -6)  // Remove ':retry' suffix to get main stream
+            ? stream.slice(0, -6) // Remove ':retry' suffix to get main stream
             : stream; // Already the main stream
           const nextAttempt = attempt + 1;
           const retryAt = Date.now() + retryDelay;
 
-
           try {
             this.logger.debug(`Scheduling retry: stream=${mainStream}, attempt=${nextAttempt}, delay=${retryDelay}ms`);
-            const result = await this.runLuaScript('retry-message', [stream, 'rotif:scheduled'], [
-              group, msg.id, channel, payloadStr, timestamp.toString(), nextAttempt.toString(),
-              retryAt.toString(), randomUUID(), fields['exactlyOnce'] ?? 'false', dedupTTL ?? '3600', mainStream,
-              pattern, // Pass pattern for retries
-            ]);
+            const result = await this.runLuaScript(
+              'retry-message',
+              [stream, 'rotif:scheduled'],
+              [
+                group,
+                msg.id,
+                channel,
+                payloadStr,
+                timestamp.toString(),
+                nextAttempt.toString(),
+                retryAt.toString(),
+                randomUUID(),
+                fields['exactlyOnce'] ?? 'false',
+                dedupTTL ?? '3600',
+                mainStream,
+                pattern, // Pass pattern for retries
+              ]
+            );
             this.logger.debug(`Retry scheduled successfully: ${result}`);
           } catch (luaErr) {
             this.logger.error(`Failed to schedule retry: ${luaErr}`);
@@ -783,7 +810,6 @@ export class NotificationManager {
           (sub as any).inflightCount = Math.max(0, ((sub as any).inflightCount || 0) - 1);
         }
       }
-
     };
 
     // Create the loop promise but DON'T start it yet
@@ -793,7 +819,7 @@ export class NotificationManager {
     const loopEntry = {
       loopPromise: null as any, // Will be set below
       subscriptions,
-      readyPromise: readyDefer.promise!
+      readyPromise: readyDefer.promise!,
     };
     this.consumerLoops.set(loopKey, loopEntry);
 
@@ -829,7 +855,13 @@ export class NotificationManager {
               if (pendingEntries && pendingEntries.length > 0) {
                 const staleIds = pendingEntries.map((entry: any) => entry[0]);
 
-                const claimedMessages = await this.redis.xclaim(stream, group, consumer, idleThreshold, ...staleIds) as [string, string[]][];
+                const claimedMessages = (await this.redis.xclaim(
+                  stream,
+                  group,
+                  consumer,
+                  idleThreshold,
+                  ...staleIds
+                )) as [string, string[]][];
 
                 for (const [id, rawFields] of claimedMessages) {
                   await handleMessage(id, rawFields);
@@ -839,10 +871,16 @@ export class NotificationManager {
           }
 
           const entries = await this.redis.xreadgroup(
-            'GROUP', group, consumer,
-            'COUNT', 5000,
-            'BLOCK', this.config.blockInterval ?? 5000,
-            'STREAMS', stream, '>'
+            'GROUP',
+            group,
+            consumer,
+            'COUNT',
+            5000,
+            'BLOCK',
+            this.config.blockInterval ?? 5000,
+            'STREAMS',
+            stream,
+            '>'
           );
 
           if (!entries) {
@@ -891,11 +929,7 @@ export class NotificationManager {
    * @param {string} group - Group name
    * @param {string} [startId='$'] - Starting ID for the group
    */
-  private async ensureStreamGroup(
-    stream: string,
-    group: string,
-    startId: string = '0'
-  ) {
+  private async ensureStreamGroup(stream: string, group: string, startId: string = '0') {
     try {
       await this.redis.xgroup('CREATE', stream, group, startId, 'MKSTREAM');
     } catch (err: any) {

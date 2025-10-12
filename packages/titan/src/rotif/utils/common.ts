@@ -67,12 +67,22 @@ export function defaultConsumerName(): string {
  * @param {string} side - 'pub' for publisher, 'con' for consumer
  * @returns {string} Deduplication key
  */
-export function generateDedupKey({ channel, payload, group, pattern, side = 'pub' }: { channel: string, payload: any, group?: string, pattern?: string, side?: 'pub' | 'con' }): string {
+export function generateDedupKey({
+  channel,
+  payload,
+  group,
+  pattern,
+  side = 'pub',
+}: {
+  channel: string;
+  payload: any;
+  group?: string;
+  pattern?: string;
+  side?: 'pub' | 'con';
+}): string {
   // Create a unique serialization for the payload
   // Include the type to ensure different types with same value get different hashes
-  const typePrefix = typeof payload === 'object' && payload === null
-    ? 'null:'
-    : `${typeof payload}:`;
+  const typePrefix = typeof payload === 'object' && payload === null ? 'null:' : `${typeof payload}:`;
 
   let dataToHash: Buffer;
   if (payload === null || payload === undefined) {

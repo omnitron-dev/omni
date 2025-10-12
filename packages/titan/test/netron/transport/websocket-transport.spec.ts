@@ -32,7 +32,7 @@ describe('WebSocketTransport', () => {
 
   afterEach(async () => {
     // Clean up WebSocket server
-    wsServer.clients.forEach(client => client.close());
+    wsServer.clients.forEach((client) => client.close());
     wsServer.close();
 
     // Clean up HTTP server
@@ -51,7 +51,7 @@ describe('WebSocketTransport', () => {
         binary: true,
         reconnection: false, // WebSockets don't support native reconnection
         multiplexing: false,
-        server: true
+        server: true,
       });
     });
 
@@ -71,7 +71,7 @@ describe('WebSocketTransport', () => {
         host: 'localhost',
         port: 8080,
         path: '/path',
-        params: {}
+        params: {},
       });
 
       const addr2 = transport.parseAddress('wss://example.com');
@@ -80,7 +80,7 @@ describe('WebSocketTransport', () => {
         host: 'example.com',
         port: 443, // Default for wss
         path: '/',
-        params: {}
+        params: {},
       });
 
       const addr3 = transport.parseAddress('ws://localhost:8080?token=abc');
@@ -142,7 +142,7 @@ describe('WebSocketTransport', () => {
     it('should connect to WebSocket server', async () => {
       // Set up WebSocket server handler
       let resolveConnection: (ws: WebSocket) => void;
-      const connectionPromise = new Promise<WebSocket>(resolve => {
+      const connectionPromise = new Promise<WebSocket>((resolve) => {
         resolveConnection = resolve;
       });
 
@@ -171,9 +171,9 @@ describe('WebSocketTransport', () => {
 
       const client = await transport.connect(`ws://127.0.0.1:${testPort}`, {
         headers: {
-          'Authorization': 'Bearer test-token',
-          'X-Custom-Header': 'custom-value'
-        }
+          Authorization: 'Bearer test-token',
+          'X-Custom-Header': 'custom-value',
+        },
       });
 
       // Wait a bit for the connection to be established
@@ -191,7 +191,7 @@ describe('WebSocketTransport', () => {
 
       try {
         await transport.connect(`ws://127.0.0.1:${fakePort}`, {
-          connectTimeout: 1000
+          connectTimeout: 1000,
         });
         fail('Should have thrown connection error');
       } catch (error: any) {
@@ -211,7 +211,7 @@ describe('WebSocketTransport', () => {
 
       try {
         await transport.connect(`ws://127.0.0.1:${slowPort}`, {
-          connectTimeout: 500
+          connectTimeout: 500,
         });
         fail('Should have timed out');
       } catch (error: any) {
@@ -229,7 +229,7 @@ describe('WebSocketTransport', () => {
     beforeEach(async () => {
       // Set up WebSocket server handler
       let resolveConnection: (ws: WebSocket) => void;
-      const connectionPromise = new Promise<WebSocket>(resolve => {
+      const connectionPromise = new Promise<WebSocket>((resolve) => {
         resolveConnection = resolve;
       });
 
@@ -293,7 +293,7 @@ describe('WebSocketTransport', () => {
       expect(receivedPacket.id).toBe(123);
       expect(receivedPacket.data).toMatchObject({
         message: 'WebSocket packet',
-        serviceId: 'ws-service'
+        serviceId: 'ws-service',
       });
     });
 
@@ -481,7 +481,7 @@ describe('WebSocketTransport', () => {
       });
 
       const client = await transport.connect(`ws://127.0.0.1:${testPort}`, {
-        requestTimeout: 100
+        requestTimeout: 100,
       });
       serverConnection = await connectionPromise;
 
@@ -529,17 +529,13 @@ describe('WebSocketTransport', () => {
       serverConnection = await connectionPromise;
 
       // Send multiple pings concurrently
-      const pingPromises = [
-        client.ping(),
-        client.ping(),
-        client.ping()
-      ];
+      const pingPromises = [client.ping(), client.ping(), client.ping()];
 
       const rtts = await Promise.all(pingPromises);
 
       // All pings should succeed
       expect(rtts.length).toBe(3);
-      rtts.forEach(rtt => {
+      rtts.forEach((rtt) => {
         expect(typeof rtt).toBe('number');
         expect(rtt).toBeGreaterThan(0);
       });
@@ -607,7 +603,7 @@ describe('WebSocketTransport', () => {
       const errorPromise = waitForEvent(client, 'error');
 
       // Force an error by sending invalid frame
-      (serverWs as any)._socket.write(Buffer.from([0xFF, 0xFF, 0xFF, 0xFF]));
+      (serverWs as any)._socket.write(Buffer.from([0xff, 0xff, 0xff, 0xff]));
 
       const error = await errorPromise;
       expect(error).toBeDefined();
@@ -670,15 +666,11 @@ describe('WebSocketTransport', () => {
       const data3Promise = waitForEvent(client3, 'data');
 
       // Broadcast message - use short data that can't be mistaken for a packet
-      const broadcastData = Buffer.from([0xAA, 0xBB, 0xCC]);
+      const broadcastData = Buffer.from([0xaa, 0xbb, 0xcc]);
       await server.broadcast(broadcastData);
 
       // All clients should receive the message
-      const [data1, data2, data3] = await Promise.all([
-        data1Promise,
-        data2Promise,
-        data3Promise
-      ]);
+      const [data1, data2, data3] = await Promise.all([data1Promise, data2Promise, data3Promise]);
 
       expect(Buffer.from(data1 as any)).toEqual(broadcastData);
       expect(Buffer.from(data2 as any)).toEqual(broadcastData);
@@ -707,8 +699,8 @@ describe('WebSocketTransport', () => {
           enabled: true,
           maxAttempts: 3,
           delay: 100,
-          maxDelay: 500
-        }
+          maxDelay: 500,
+        },
       });
 
       serverWs = await connectionPromise;
@@ -749,7 +741,7 @@ describe('WebSocketTransport', () => {
 
       try {
         await transport.connect(`ws://127.0.0.1:${httpPort}`, {
-          connectTimeout: 1000
+          connectTimeout: 1000,
         });
         fail('Should have thrown error');
       } catch (error: any) {
@@ -798,7 +790,7 @@ describe('WebSocketTransport', () => {
       // Configure server to accept specific subprotocol
       const customWsServer = new WebSocketServer({
         server: subprotocolHttpServer,
-        handleProtocols: (protocols) => protocols.has('netron') ? 'netron' : false
+        handleProtocols: (protocols) => (protocols.has('netron') ? 'netron' : false),
       });
 
       let serverWs: WebSocket;
@@ -810,7 +802,7 @@ describe('WebSocketTransport', () => {
 
       // Connect with subprotocol using transport (which wraps WebSocket)
       const client = await transport.connect(`ws://127.0.0.1:${subprotocolPort}`, {
-        protocols: ['netron']
+        protocols: ['netron'],
       });
 
       serverWs = await connectionPromise;

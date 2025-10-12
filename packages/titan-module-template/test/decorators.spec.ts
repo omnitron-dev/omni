@@ -12,7 +12,7 @@ import {
   Timed,
   Timeout,
   Throttle,
-  Debounce
+  Debounce,
 } from '../src/decorators/index.js';
 import { delay } from '../src/utils.js';
 
@@ -22,7 +22,7 @@ describe('Decorators', () => {
       cache = {
         get: jest.fn(),
         set: jest.fn(),
-        delete: jest.fn()
+        delete: jest.fn(),
       };
 
       callCount = 0;
@@ -73,12 +73,12 @@ describe('Decorators', () => {
   describe('@Validate', () => {
     const schema = z.object({
       name: z.string(),
-      age: z.number().positive()
+      age: z.number().positive(),
     });
 
     class TestService {
       logger = {
-        error: jest.fn()
+        error: jest.fn(),
       };
 
       @Validate(schema)
@@ -120,7 +120,7 @@ describe('Decorators', () => {
   describe('@ValidateReturn', () => {
     const schema = z.object({
       success: z.boolean(),
-      data: z.any()
+      data: z.any(),
     });
 
     class TestService {
@@ -156,7 +156,7 @@ describe('Decorators', () => {
       logger = {
         debug: jest.fn(),
         warn: jest.fn(),
-        error: jest.fn()
+        error: jest.fn(),
       };
 
       @Timed({ warnThreshold: 50 })
@@ -309,8 +309,7 @@ describe('Decorators', () => {
 
     it('should validate UUID', () => {
       expect(() => Schemas.UUID.parse('invalid')).toThrow();
-      expect(Schemas.UUID.parse('550e8400-e29b-41d4-a716-446655440000'))
-        .toBe('550e8400-e29b-41d4-a716-446655440000');
+      expect(Schemas.UUID.parse('550e8400-e29b-41d4-a716-446655440000')).toBe('550e8400-e29b-41d4-a716-446655440000');
     });
   });
 });

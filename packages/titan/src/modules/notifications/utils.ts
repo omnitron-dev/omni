@@ -42,10 +42,7 @@ export function isValidUrl(url: string): boolean {
  * Hash a value for caching
  */
 export function hash(data: any): string {
-  return createHash('sha256')
-    .update(JSON.stringify(data))
-    .digest('hex')
-    .substring(0, 16);
+  return createHash('sha256').update(JSON.stringify(data)).digest('hex').substring(0, 16);
 }
 
 /**
@@ -69,7 +66,7 @@ export function formatTimestamp(timestamp: number): string {
  * Sleep for specified milliseconds
  */
 export function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -86,11 +83,7 @@ export function chunk<T>(array: T[], size: number): T[][] {
 /**
  * Retry a function with exponential backoff
  */
-export async function retry<T>(
-  fn: () => Promise<T>,
-  maxAttempts: number = 3,
-  initialDelay: number = 100
-): Promise<T> {
+export async function retry<T>(fn: () => Promise<T>, maxAttempts: number = 3, initialDelay: number = 100): Promise<T> {
   let lastError: Error;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {

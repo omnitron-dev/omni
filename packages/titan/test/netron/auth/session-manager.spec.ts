@@ -3,9 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import {
-  SessionManager,
-} from '../../../src/netron/auth/session-manager.js';
+import { SessionManager } from '../../../src/netron/auth/session-manager.js';
 import type { AuthContext } from '../../../src/netron/auth/types.js';
 
 describe('SessionManager', () => {
@@ -188,9 +186,7 @@ describe('SessionManager', () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
 
       const retrievedSession = await manager.getSession(session.sessionId);
-      expect(retrievedSession?.lastActivityAt.getTime()).toBeGreaterThan(
-        originalActivityTime,
-      );
+      expect(retrievedSession?.lastActivityAt.getTime()).toBeGreaterThan(originalActivityTime);
 
       await manager.destroy();
     });
@@ -335,10 +331,7 @@ describe('SessionManager', () => {
       const session = await sessionManager.createSession(userId, context);
       const customTTL = 60 * 60 * 1000; // 1 hour
 
-      const refreshedSession = await sessionManager.refreshSession(
-        session.sessionId,
-        customTTL,
-      );
+      const refreshedSession = await sessionManager.refreshSession(session.sessionId, customTTL);
 
       const expectedExpiry = Date.now() + customTTL;
       expect(refreshedSession?.expiresAt.getTime()).toBeCloseTo(expectedExpiry, -2);
@@ -417,10 +410,7 @@ describe('SessionManager', () => {
       const session2 = await sessionManager.createSession(userId, context);
       const session3 = await sessionManager.createSession(userId, context);
 
-      const revokedCount = await sessionManager.revokeOtherSessions(
-        userId,
-        session2.sessionId,
-      );
+      const revokedCount = await sessionManager.revokeOtherSessions(userId, session2.sessionId);
 
       expect(revokedCount).toBe(2);
 
@@ -435,10 +425,7 @@ describe('SessionManager', () => {
 
       const session = await sessionManager.createSession(userId, context);
 
-      const revokedCount = await sessionManager.revokeOtherSessions(
-        userId,
-        session.sessionId,
-      );
+      const revokedCount = await sessionManager.revokeOtherSessions(userId, session.sessionId);
 
       expect(revokedCount).toBe(0);
     });
@@ -601,9 +588,7 @@ describe('SessionManager', () => {
       const userId = 'user123';
       const context = createMockAuthContext(userId);
 
-      const promises = Array.from({ length: 100 }, () =>
-        sessionManager.createSession(userId, context),
-      );
+      const promises = Array.from({ length: 100 }, () => sessionManager.createSession(userId, context));
 
       const sessions = await Promise.all(promises);
       expect(sessions).toHaveLength(100);

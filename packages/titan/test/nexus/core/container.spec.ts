@@ -14,7 +14,7 @@ import {
   DependencyNotFoundError,
   ContainerDisposedError,
   InvalidProviderError,
-  DuplicateRegistrationError
+  DuplicateRegistrationError,
 } from '../../../src/nexus/index.js';
 
 describe('Core Container', () => {
@@ -43,7 +43,7 @@ describe('Core Container', () => {
       const token = createToken<number>('TestFactory');
 
       container.register(token, {
-        useFactory: () => 42
+        useFactory: () => 42,
       });
 
       const resolved = container.resolve(token);
@@ -52,7 +52,9 @@ describe('Core Container', () => {
 
     it('should register class provider', () => {
       class TestService {
-        getValue() { return 'service-value'; }
+        getValue() {
+          return 'service-value';
+        }
       }
 
       const token = createToken<TestService>('TestService');
@@ -109,7 +111,7 @@ describe('Core Container', () => {
       container.register(depToken, { useValue: 'dep-value' });
       container.register(serviceToken, {
         useFactory: (dep: string) => ({ dep }),
-        inject: [depToken]
+        inject: [depToken],
       });
 
       const resolved = container.resolve(serviceToken);
@@ -122,7 +124,7 @@ describe('Core Container', () => {
 
       container.register(serviceToken, {
         useFactory: (opt?: string) => ({ opt }),
-        inject: [{ token: optionalToken, optional: true }]
+        inject: [{ token: optionalToken, optional: true }],
       });
 
       const resolved = container.resolve(serviceToken);
@@ -146,12 +148,12 @@ describe('Core Container', () => {
 
       container.register(tokenA, {
         useFactory: (b: any) => ({ b }),
-        inject: [tokenB]
+        inject: [tokenB],
       });
 
       container.register(tokenB, {
         useFactory: (a: any) => ({ a }),
-        inject: [tokenA]
+        inject: [tokenA],
       });
 
       expect(() => container.resolve(tokenA)).toThrow(CircularDependencyError);
@@ -168,7 +170,7 @@ describe('Core Container', () => {
 
       container.register(contextToken, {
         useFactory: (context) => context.value,
-        inject: [{ token: 'CONTEXT', type: 'context' }]
+        inject: [{ token: 'CONTEXT', type: 'context' }],
       });
 
       const resolved = container.resolve(contextToken, { value: 'context-value' });
@@ -183,7 +185,7 @@ describe('Core Container', () => {
 
       container.register(token, {
         useFactory: () => ++counter,
-        scope: Scope.Singleton
+        scope: Scope.Singleton,
       });
 
       const first = container.resolve(token);
@@ -200,7 +202,7 @@ describe('Core Container', () => {
 
       container.register(token, {
         useFactory: () => ++counter,
-        scope: Scope.Transient
+        scope: Scope.Transient,
       });
 
       const first = container.resolve(token);
@@ -217,7 +219,7 @@ describe('Core Container', () => {
 
       container.register(token, {
         useFactory: () => ++counter,
-        scope: Scope.Scoped
+        scope: Scope.Scoped,
       });
 
       const scope1 = container.createScope();
@@ -238,7 +240,7 @@ describe('Core Container', () => {
 
       container.register(token, {
         useFactory: () => ++counter,
-        scope: Scope.Request
+        scope: Scope.Request,
       });
 
       const request1 = container.createScope({ request: { id: 'req1' } });
@@ -285,7 +287,7 @@ describe('Core Container', () => {
       const token = createToken<TestService>('TestService');
       container.register(token, {
         useClass: TestService,
-        scope: Scope.Singleton
+        scope: Scope.Singleton,
       });
 
       container.resolve(token);
@@ -304,7 +306,7 @@ describe('Core Container', () => {
       }
 
       class ServiceB {
-        constructor(public a: ServiceA) { }
+        constructor(public a: ServiceA) {}
         async onDestroy() {
           disposeOrder.push('B');
         }
@@ -317,7 +319,7 @@ describe('Core Container', () => {
       container.register(tokenB, {
         useFactory: (a) => new ServiceB(a),
         inject: [tokenA],
-        scope: Scope.Singleton
+        scope: Scope.Singleton,
       });
 
       container.resolve(tokenB);
@@ -364,7 +366,7 @@ describe('Core Container', () => {
 
       container.register(token, {
         useFactory: () => ++counter,
-        scope: Scope.Scoped
+        scope: Scope.Scoped,
       });
 
       const scope1 = container.createScope();
@@ -383,7 +385,7 @@ describe('Core Container', () => {
       const token = createToken<string>('ContextAware');
       child.register(token, {
         useFactory: (ctx) => ctx[contextKey],
-        inject: [{ token: 'CONTEXT', type: 'context' }]
+        inject: [{ token: 'CONTEXT', type: 'context' }],
       });
 
       expect(child.resolve(token)).toBe(contextValue);
@@ -398,12 +400,12 @@ describe('Core Container', () => {
 
       container.register(tokenA, {
         useFactory: (b) => ({ b }),
-        inject: [tokenB]
+        inject: [tokenB],
       });
 
       container.register(tokenB, {
         useFactory: (c) => ({ c }),
-        inject: [tokenC]
+        inject: [tokenC],
       });
 
       try {
@@ -424,7 +426,7 @@ describe('Core Container', () => {
       container.register(token, {
         useFactory: () => {
           throw new Error(errorMessage);
-        }
+        },
       });
 
       expect(() => container.resolve(token)).toThrow(ResolutionError);
@@ -452,7 +454,7 @@ describe('Core Container', () => {
 
       container.register(token, {
         useFactory: factory,
-        scope: Scope.Singleton
+        scope: Scope.Singleton,
       });
 
       container.resolve(token);
@@ -473,12 +475,12 @@ describe('Core Container', () => {
 
         if (i === 0) {
           container.register(token, {
-            useValue: { level: i }
+            useValue: { level: i },
           });
         } else {
           container.register(token, {
             useFactory: (prev) => ({ level: i, prev }),
-            inject: [tokens[i - 1]]
+            inject: [tokens[i - 1]],
           });
         }
       }

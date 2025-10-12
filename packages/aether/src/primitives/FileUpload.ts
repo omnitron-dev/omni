@@ -136,7 +136,8 @@ const useFileUploadContext = (): FileUploadContextValue => {
 // Helper Functions
 // ============================================================================
 
-const createFilePreview = (file: File): Promise<FileWithPreview> => new Promise((resolve) => {
+const createFilePreview = (file: File): Promise<FileWithPreview> =>
+  new Promise((resolve) => {
     const fileWithPreview = file as FileWithPreview;
 
     // Only create preview for images
@@ -159,7 +160,7 @@ const validateFile = (
   file: File,
   maxSize?: number,
   accept?: string,
-  validator?: (file: File) => string | null,
+  validator?: (file: File) => string | null
 ): Array<{ code: string; message: string }> => {
   const errors: Array<{ code: string; message: string }> = [];
 
@@ -222,9 +223,7 @@ export const FileUpload = defineComponent<FileUploadProps>((props) => {
   const disabled = props.disabled ?? false;
 
   // State
-  const internalFiles: WritableSignal<FileWithPreview[]> = signal<FileWithPreview[]>(
-    props.defaultValue ?? [],
-  );
+  const internalFiles: WritableSignal<FileWithPreview[]> = signal<FileWithPreview[]>(props.defaultValue ?? []);
   const isDragging: WritableSignal<boolean> = signal<boolean>(false);
 
   const inputRef: { current: HTMLInputElement | null } = { current: null };
@@ -482,14 +481,14 @@ export const FileUploadDropzone = defineComponent<FileUploadDropzoneProps>((prop
 // ============================================================================
 
 export const FileUploadItem = defineComponent<FileUploadItemProps>((props) => () => {
-    const { file, children } = props;
+  const { file, children } = props;
 
-    return jsx('div', {
-      'data-file-upload-item': '',
-      'data-file-name': file.name,
-      children,
-    });
+  return jsx('div', {
+    'data-file-upload-item': '',
+    'data-file-name': file.name,
+    children,
   });
+});
 
 // ============================================================================
 // FileUpload Item Remove

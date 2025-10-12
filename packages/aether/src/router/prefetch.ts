@@ -34,11 +34,7 @@ const prefetchCache = new Set<string>();
  * await prefetchRoute(router, '/about');
  * ```
  */
-export async function prefetchRoute(
-  router: Router,
-  path: string,
-  options: { force?: boolean } = {}
-): Promise<void> {
+export async function prefetchRoute(router: Router, path: string, options: { force?: boolean } = {}): Promise<void> {
   const { force = false } = options;
 
   // Skip if already prefetched (unless forced)

@@ -12,7 +12,7 @@ function render(element: any): { container: HTMLElement } {
   const container = document.createElement('div');
   if (element) {
     if (Array.isArray(element)) {
-      element.forEach(el => container.appendChild(el));
+      element.forEach((el) => container.appendChild(el));
     } else {
       container.appendChild(element);
     }
@@ -120,10 +120,11 @@ describe('For', () => {
 
       const result = For({
         each: todos,
-        children: (todo: Todo) => jsx('div', {
-          'data-id': String(todo.id),
-          children: todo.text
-        }),
+        children: (todo: Todo) =>
+          jsx('div', {
+            'data-id': String(todo.id),
+            children: todo.text,
+          }),
       });
       const { container } = render(result);
 
@@ -302,15 +303,16 @@ describe('For', () => {
     it('should handle nested For loops', () => {
       const matrix = signal([
         [1, 2],
-        [3, 4]
+        [3, 4],
       ]);
 
       const result = For({
         each: () => matrix(),
-        children: (row: number[]) => For({
-          each: row,
-          children: (cell: number) => jsx('span', { children: String(cell) }),
-        }),
+        children: (row: number[]) =>
+          For({
+            each: row,
+            children: (cell: number) => jsx('span', { children: String(cell) }),
+          }),
       });
       const { container } = render(result);
 
@@ -358,7 +360,7 @@ describe('For', () => {
     it('should handle items that render null', () => {
       const result = For({
         each: [1, 2, 3],
-        children: (item: number) => item === 2 ? null : jsx('div', { children: String(item) }),
+        children: (item: number) => (item === 2 ? null : jsx('div', { children: String(item) })),
       });
       const { container } = render(result);
 
@@ -366,14 +368,14 @@ describe('For', () => {
       // All 3 wrappers exist but one is empty
       expect(list.children.length).toBe(3);
       expect(list.children[0].textContent).toBe('1');
-      expect(list.children[1].textContent).toBe('');  // null rendered as empty
+      expect(list.children[1].textContent).toBe(''); // null rendered as empty
       expect(list.children[2].textContent).toBe('3');
     });
 
     it('should handle text node children', () => {
       const result = For({
         each: ['hello', 'world'],
-        children: (item: string) => item,  // Returns string directly
+        children: (item: string) => item, // Returns string directly
       });
       const { container } = render(result);
 

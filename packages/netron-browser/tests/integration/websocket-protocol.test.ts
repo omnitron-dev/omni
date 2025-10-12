@@ -193,16 +193,7 @@ describe('WebSocket Protocol Integration', () => {
 
   describe('Serialization', () => {
     it('should serialize and deserialize primitive types', () => {
-      const values = [
-        null,
-        undefined,
-        true,
-        false,
-        42,
-        -123.456,
-        'test string',
-        '',
-      ];
+      const values = [null, undefined, true, false, 42, -123.456, 'test string', ''];
 
       for (const value of values) {
         const encoded = serializer.encode(value);
@@ -235,7 +226,11 @@ describe('WebSocket Protocol Integration', () => {
         [1, 2, 3],
         ['a', 'b', 'c'],
         [1, 'two', true, null, { key: 'value' }],
-        [[1, 2], [3, 4], [5, 6]],
+        [
+          [1, 2],
+          [3, 4],
+          [5, 6],
+        ],
       ];
 
       for (const arr of arrays) {
@@ -293,9 +288,7 @@ describe('WebSocket Protocol Integration', () => {
 
   describe('Concurrent Operations', () => {
     it('should handle multiple concurrent requests', async () => {
-      const promises = Array.from({ length: 50 }, (_, i) =>
-        client.invoke('calculator@1.0.0', 'add', [i, i + 1])
-      );
+      const promises = Array.from({ length: 50 }, (_, i) => client.invoke('calculator@1.0.0', 'add', [i, i + 1]));
 
       const results = await Promise.all(promises);
 
@@ -353,15 +346,11 @@ describe('WebSocket Protocol Integration', () => {
     });
 
     it('should handle non-existent service gracefully', async () => {
-      await expect(
-        client.invoke('nonexistent@1.0.0', 'someMethod', [])
-      ).rejects.toThrow();
+      await expect(client.invoke('nonexistent@1.0.0', 'someMethod', [])).rejects.toThrow();
     });
 
     it('should handle non-existent method gracefully', async () => {
-      await expect(
-        client.invoke('calculator@1.0.0', 'nonExistentMethod', [])
-      ).rejects.toThrow();
+      await expect(client.invoke('calculator@1.0.0', 'nonExistentMethod', [])).rejects.toThrow();
     });
   });
 
@@ -388,9 +377,7 @@ describe('WebSocket Protocol Integration', () => {
       const start = Date.now();
       const count = 1000;
 
-      const promises = Array.from({ length: count }, (_, i) =>
-        client.invoke('calculator@1.0.0', 'add', [i, 1])
-      );
+      const promises = Array.from({ length: count }, (_, i) => client.invoke('calculator@1.0.0', 'add', [i, 1]));
 
       const results = await Promise.all(promises);
       const duration = Date.now() - start;

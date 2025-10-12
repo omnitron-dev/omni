@@ -250,9 +250,7 @@ describe('DIContainer', () => {
         useValue: { value: 'parent' } as any,
       });
 
-      const child = container.createChild([
-        { provide: TestService, useValue: { value: 'child' } as any },
-      ]);
+      const child = container.createChild([{ provide: TestService, useValue: { value: 'child' } as any }]);
 
       const parentInstance = container.get(TestService);
       const childInstance = child.get(TestService);

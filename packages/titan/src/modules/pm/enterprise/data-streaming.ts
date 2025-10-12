@@ -106,10 +106,7 @@ export abstract class StreamProcessor<TIn = any, TOut = any> {
   /**
    * Process with exactly-once semantics
    */
-  async processExactlyOnce(
-    element: TIn,
-    context: ProcessContext
-  ): Promise<TOut | null> {
+  async processExactlyOnce(element: TIn, context: ProcessContext): Promise<TOut | null> {
     const checkpoint = this.getCheckpoint(context.streamId);
 
     // Check if already processed
@@ -141,7 +138,7 @@ export abstract class StreamProcessor<TIn = any, TOut = any> {
       streamId: context.streamId,
       position: context.position || '',
       timestamp: Date.now(),
-      offset: context.offset
+      offset: context.offset,
     };
 
     this.checkpoints.set(context.streamId, checkpoint);
@@ -247,7 +244,7 @@ export class CDCConnector extends EventEmitter {
           table,
           op: 'SNAPSHOT',
           timestamp: Date.now(),
-          after: row
+          after: row,
         };
 
         this.emit('change', event);
@@ -291,7 +288,7 @@ export class CDCConnector extends EventEmitter {
     return Array.from({ length: 10 }, (_, i) => ({
       id: i + 1,
       table,
-      data: `snapshot-${i}`
+      data: `snapshot-${i}`,
     }));
   }
 
@@ -301,11 +298,13 @@ export class CDCConnector extends EventEmitter {
   private async fetchChanges(): Promise<any[]> {
     // Simulate change events
     if (Math.random() > 0.7) {
-      return [{
-        type: ['INSERT', 'UPDATE', 'DELETE'][Math.floor(Math.random() * 3)],
-        table: this.config.tables?.[0] || 'table1',
-        data: { id: Date.now(), value: Math.random() }
-      }];
+      return [
+        {
+          type: ['INSERT', 'UPDATE', 'DELETE'][Math.floor(Math.random() * 3)],
+          table: this.config.tables?.[0] || 'table1',
+          data: { id: Date.now(), value: Math.random() },
+        },
+      ];
     }
     return [];
   }
@@ -322,7 +321,7 @@ export class CDCConnector extends EventEmitter {
       timestamp: Date.now(),
       position: `${Date.now()}`,
       before: change.type === 'UPDATE' ? change.before : undefined,
-      after: change.type !== 'DELETE' ? change.data : undefined
+      after: change.type !== 'DELETE' ? change.data : undefined,
     };
   }
 
@@ -334,7 +333,7 @@ export class CDCConnector extends EventEmitter {
       if (this.running) {
         this.emit('heartbeat', {
           position: this.position,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         });
       }
     }, this.config.heartbeatInterval!);
@@ -363,7 +362,7 @@ export class CDCConnector extends EventEmitter {
   }
 
   private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 
@@ -386,12 +385,10 @@ export class StreamPipeline<T = any> {
   /**
    * Add transformation
    */
-  transform<TOut>(
-    processor: (input: T) => TOut | Promise<TOut>
-  ): StreamPipeline<TOut> {
+  transform<TOut>(processor: (input: T) => TOut | Promise<TOut>): StreamPipeline<TOut> {
     this.stages.push({
       type: 'transform',
-      processor
+      processor,
     });
     return this as any;
   }
@@ -402,7 +399,7 @@ export class StreamPipeline<T = any> {
   filter(predicate: (input: T) => boolean | Promise<boolean>): this {
     this.stages.push({
       type: 'filter',
-      processor: predicate
+      processor: predicate,
     });
     return this;
   }
@@ -413,7 +410,7 @@ export class StreamPipeline<T = any> {
   map<TOut>(mapper: (input: T) => TOut | Promise<TOut>): StreamPipeline<TOut> {
     this.stages.push({
       type: 'map',
-      processor: mapper
+      processor: mapper,
     });
     return this as any;
   }
@@ -421,12 +418,10 @@ export class StreamPipeline<T = any> {
   /**
    * Add flatMap operation
    */
-  flatMap<TOut>(
-    mapper: (input: T) => TOut[] | AsyncIterable<TOut>
-  ): StreamPipeline<TOut> {
+  flatMap<TOut>(mapper: (input: T) => TOut[] | AsyncIterable<TOut>): StreamPipeline<TOut> {
     this.stages.push({
       type: 'flatMap',
-      processor: mapper
+      processor: mapper,
     });
     return this as any;
   }
@@ -434,17 +429,14 @@ export class StreamPipeline<T = any> {
   /**
    * Add reduce operation
    */
-  reduce<TAcc>(
-    reducer: (acc: TAcc, input: T) => TAcc,
-    initial: TAcc
-  ): StreamPipeline<TAcc> {
+  reduce<TAcc>(reducer: (acc: TAcc, input: T) => TAcc, initial: TAcc): StreamPipeline<TAcc> {
     let accumulator = initial;
     this.stages.push({
       type: 'reduce',
       processor: (input: T) => {
         accumulator = reducer(accumulator, input);
         return accumulator;
-      }
+      },
     });
     return this as any;
   }
@@ -472,7 +464,7 @@ export class StreamPipeline<T = any> {
         }
 
         return null;
-      }
+      },
     });
 
     return this as any;
@@ -502,7 +494,7 @@ export class StreamPipeline<T = any> {
         }
 
         return null;
-      }
+      },
     });
 
     return this as any;
@@ -533,18 +525,15 @@ export class StreamPipeline<T = any> {
     const sinkStream = this.sink.createStream();
 
     // Create transform streams for stages
-    const transforms = this.stages.map(stage => this.createTransform(stage));
+    const transforms = this.stages.map((stage) => this.createTransform(stage));
 
     // Build pipeline
     const streams = [sourceStream, ...transforms, sinkStream];
     await new Promise((resolve, reject) => {
-      (pipeline as any)(
-        ...streams,
-        (err: Error | null) => {
-          if (err) reject(err);
-          else resolve(undefined);
-        }
-      );
+      (pipeline as any)(...streams, (err: Error | null) => {
+        if (err) reject(err);
+        else resolve(undefined);
+      });
     });
   }
 
@@ -574,7 +563,7 @@ export class StreamPipeline<T = any> {
         } catch (error) {
           callback(error as Error);
         }
-      }
+      },
     });
   }
 
@@ -640,11 +629,11 @@ export class KafkaSource<T = any> implements StreamSource<T> {
           topic: config?.topic,
           partition: 0,
           offset: Date.now(),
-          value: { data: Math.random() }
+          value: { data: Math.random() },
         };
         this.push(message);
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      },
     });
   }
 }
@@ -672,7 +661,7 @@ export class DatabaseSink<T = any> implements StreamSink<T> {
 
         if (batch.length >= batchSize) {
           // Simulate batch write to database
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           batch.length = 0;
         }
 
@@ -681,10 +670,10 @@ export class DatabaseSink<T = any> implements StreamSink<T> {
       async final(callback) {
         if (batch.length > 0) {
           // Write remaining batch
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
         }
         callback();
-      }
+      },
     });
   }
 }
@@ -707,10 +696,10 @@ export class EnrichmentProcessor extends StreamProcessor<ChangeEvent, any> {
       enrichedAt: Date.now(),
       context: {
         streamId: context.streamId,
-        watermark: context.watermark
+        watermark: context.watermark,
       },
       // Simulate enrichment with external data
-      additionalData: await this.fetchAdditionalData(event)
+      additionalData: await this.fetchAdditionalData(event),
     };
 
     this.updateWatermark(event.timestamp);
@@ -722,7 +711,7 @@ export class EnrichmentProcessor extends StreamProcessor<ChangeEvent, any> {
     // Simulate fetching additional data
     return {
       category: 'enriched',
-      metadata: { source: event.source }
+      metadata: { source: event.source },
     };
   }
 }

@@ -15,10 +15,16 @@ export const Timeout = createMethodInterceptor<{ ms: number }>('Timeout', (origi
   return Promise.race([
     originalMethod(...args),
     new Promise((_, reject) =>
-      setTimeout(() => reject(new TimeoutError(
-        `Method ${context.target.constructor.name}.${String(context.propertyKey)} timed out after ${timeoutMs}ms`
-      )), timeoutMs)
-    )
+      setTimeout(
+        () =>
+          reject(
+            new TimeoutError(
+              `Method ${context.target.constructor.name}.${String(context.propertyKey)} timed out after ${timeoutMs}ms`
+            )
+          ),
+        timeoutMs
+      )
+    ),
   ]);
 });
 
@@ -32,13 +38,7 @@ export const Retryable = createMethodInterceptor<{
   backoff?: number;
   retryOn?: (error: any) => boolean;
 }>('Retryable', async (originalMethod, args, context) => {
-  const {
-    attempts = 3,
-    delay = 1000,
-    maxDelay = 30000,
-    backoff = 2,
-    retryOn
-  } = context.options || {};
+  const { attempts = 3, delay = 1000, maxDelay = 30000, backoff = 2, retryOn } = context.options || {};
 
   let lastError: any;
   let currentDelay = delay;
@@ -56,7 +56,7 @@ export const Retryable = createMethodInterceptor<{
 
       if (attempt < attempts) {
         // Wait before retrying
-        await new Promise(resolve => setTimeout(resolve, currentDelay));
+        await new Promise((resolve) => setTimeout(resolve, currentDelay));
 
         // Apply exponential backoff
         currentDelay = Math.min(currentDelay * backoff, maxDelay);
@@ -87,7 +87,7 @@ export const Log = createMethodInterceptor<{
 
   const logData: any = {
     method: methodName,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   };
 
   if (context.options?.includeArgs) {
@@ -135,13 +135,12 @@ export const Monitor = createMethodInterceptor<{
     return originalMethod(...args);
   }
 
-  const metricName = context.options?.name ||
-    `${context.target.constructor.name}.${String(context.propertyKey)}`;
+  const metricName = context.options?.name || `${context.target.constructor.name}.${String(context.propertyKey)}`;
   const start = performance.now();
 
   const metadata: any = {
     method: metricName,
-    timestamp: Date.now()
+    timestamp: Date.now(),
   };
 
   if (context.options?.includeArgs) {

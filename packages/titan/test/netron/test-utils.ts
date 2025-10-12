@@ -55,7 +55,7 @@ export function createStreamLogger(writable: Writable, level: string = 'info'): 
       level: logLevel,
       time: new Date().toISOString(),
       ...(typeof obj === 'string' ? { msg: obj } : obj),
-      ...(msg ? { msg } : {})
+      ...(msg ? { msg } : {}),
     };
     const logStr = JSON.stringify(logEntry);
     logs.push(logStr);
@@ -81,11 +81,9 @@ export function createStreamLogger(writable: Writable, level: string = 'info'): 
         fatal: childLogger.fatal,
       };
 
-      Object.keys(originalLogFns).forEach(key => {
+      Object.keys(originalLogFns).forEach((key) => {
         (childLogger as any)[key] = (obj: any, msg?: string) => {
-          const mergedObj = typeof obj === 'string'
-            ? { ...context, msg: obj }
-            : { ...context, ...obj };
+          const mergedObj = typeof obj === 'string' ? { ...context, msg: obj } : { ...context, ...obj };
           (originalLogFns as any)[key](mergedObj, msg);
         };
       });
@@ -121,7 +119,7 @@ export async function createNetronServer(options: {
   server.registerTransport('ws', () => new WebSocketTransport());
   server.registerTransportServer('ws', {
     name: 'ws',
-    options: { host: 'localhost', port: options.port }
+    options: { host: 'localhost', port: options.port },
   });
 
   // Set transport options if provided
@@ -135,10 +133,7 @@ export async function createNetronServer(options: {
 /**
  * Creates a Netron client instance with WebSocket transport
  */
-export async function createNetronClient(options?: {
-  logger?: any;
-  transportOptions?: any;
-}): Promise<any> {
+export async function createNetronClient(options?: { logger?: any; transportOptions?: any }): Promise<any> {
   const { Netron } = await import('../../src/netron/netron.js');
   const { WebSocketTransport } = await import('../../src/netron/transport/websocket-transport.js');
 

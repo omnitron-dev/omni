@@ -12,10 +12,7 @@ import { onCleanup } from '../core/reactivity/context.js';
  *
  * Takes an element and optional parameters, returns cleanup function
  */
-export type DirectiveFunction<T = void> = (
-  element: HTMLElement,
-  params: T
-) => void | (() => void);
+export type DirectiveFunction<T = void> = (element: HTMLElement, params: T) => void | (() => void);
 
 /**
  * Directive with update support
@@ -73,9 +70,7 @@ export interface DirectiveResult {
  * <button ref={tooltip('Click to submit')}>Submit</button>
  * ```
  */
-export function createDirective<T = void>(
-  setup: DirectiveFunction<T>
-): (params: T) => (element: HTMLElement) => void {
+export function createDirective<T = void>(setup: DirectiveFunction<T>): (params: T) => (element: HTMLElement) => void {
   return (params: T) => (element: HTMLElement) => {
     const cleanup = setup(element, params);
     if (cleanup) {
@@ -147,9 +142,7 @@ export function createUpdatableDirective<T = void>(
  * <div ref={multiDirective}>Content</div>
  * ```
  */
-export function combineDirectives(
-  directives: Array<(element: HTMLElement) => void>
-): (element: HTMLElement) => void {
+export function combineDirectives(directives: Array<(element: HTMLElement) => void>): (element: HTMLElement) => void {
   return (element: HTMLElement) => {
     for (const directive of directives) {
       directive(element);
@@ -193,22 +186,20 @@ export const autoFocus = createDirective<void>((element) => {
  * <div ref={clickOutside(handleClose)}>Modal</div>
  * ```
  */
-export const clickOutside = createDirective<(event: MouseEvent) => void>(
-  (element, handler) => {
-    const handleClick = (event: MouseEvent) => {
-      if (!element.contains(event.target as Node)) {
-        handler(event);
-      }
-    };
+export const clickOutside = createDirective<(event: MouseEvent) => void>((element, handler) => {
+  const handleClick = (event: MouseEvent) => {
+    if (!element.contains(event.target as Node)) {
+      handler(event);
+    }
+  };
 
-    // Use capture phase to handle clicks before they bubble
-    document.addEventListener('click', handleClick, true);
+  // Use capture phase to handle clicks before they bubble
+  document.addEventListener('click', handleClick, true);
 
-    return () => {
-      document.removeEventListener('click', handleClick, true);
-    };
-  }
-);
+  return () => {
+    document.removeEventListener('click', handleClick, true);
+  };
+});
 
 /**
  * Intersection observer directive
@@ -235,14 +226,11 @@ export const intersectionObserver = createDirective<{
   handler: (entry: IntersectionObserverEntry) => void;
   options?: IntersectionObserverInit;
 }>((element, { handler, options }) => {
-  const observer = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        handler(entry);
-      }
-    },
-    options
-  );
+  const observer = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      handler(entry);
+    }
+  }, options);
 
   observer.observe(element);
 
@@ -269,9 +257,7 @@ export const intersectionObserver = createDirective<{
  * </div>
  * ```
  */
-export const resizeObserver = createDirective<
-  (entry: ResizeObserverEntry) => void
->((element, handler) => {
+export const resizeObserver = createDirective<(entry: ResizeObserverEntry) => void>((element, handler) => {
   const observer = new ResizeObserver((entries) => {
     for (const entry of entries) {
       handler(entry);
@@ -363,10 +349,7 @@ export const longPress = createDirective<{
 export const portal = createDirective<{
   target: HTMLElement | string;
 }>((element, { target }) => {
-  const targetElement =
-    typeof target === 'string'
-      ? document.querySelector(target)
-      : target;
+  const targetElement = typeof target === 'string' ? document.querySelector(target) : target;
 
   if (!targetElement) {
     console.warn(`Portal target not found: ${target}`);

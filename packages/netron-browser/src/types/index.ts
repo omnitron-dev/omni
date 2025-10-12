@@ -43,8 +43,8 @@ export interface NetronClientOptions {
    */
   websocket?: {
     /**
-    * WebSocket protocols
-    */
+     * WebSocket protocols
+     */
     protocols?: string | string[];
 
     /**

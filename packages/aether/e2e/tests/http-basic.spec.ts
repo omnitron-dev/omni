@@ -16,7 +16,7 @@ test.describe('HTTP Transport - Basic Connection and RPC', () => {
     await page.evaluate(() => {
       (window as any).testState = {
         client: null,
-        results: []
+        results: [],
       };
     });
   });
@@ -38,7 +38,7 @@ test.describe('HTTP Transport - Basic Connection and RPC', () => {
 
         // Create client
         const client = new HttpNetronClient({
-          baseUrl: 'http://localhost:3333'
+          baseUrl: 'http://localhost:3333',
         });
 
         // Initialize
@@ -70,7 +70,7 @@ test.describe('HTTP Transport - Basic Connection and RPC', () => {
         return {
           success: true,
           users,
-          count: users.length
+          count: users.length,
         };
       } catch (error: any) {
         return { success: false, error: error.message, stack: error.stack };
@@ -118,7 +118,7 @@ test.describe('HTTP Transport - Basic Connection and RPC', () => {
         const newUser = await userService.createUser({
           name: 'Test User',
           email: 'test@example.com',
-          age: 30
+          age: 30,
         });
 
         return { success: true, user: newUser };
@@ -146,7 +146,7 @@ test.describe('HTTP Transport - Basic Connection and RPC', () => {
         const userService = await client.queryInterface('UserService@1.0.0');
         const updatedUser = await userService.updateUser('user-1', {
           name: 'Updated Name',
-          age: 35
+          age: 35,
         });
 
         return { success: true, user: updatedUser };
@@ -220,7 +220,7 @@ test.describe('HTTP Transport - Basic Connection and RPC', () => {
           success: true,
           count1: users1.length,
           count2: users2.length,
-          singleUser: user.id
+          singleUser: user.id,
         };
       } catch (error: any) {
         return { success: false, error: error.message };

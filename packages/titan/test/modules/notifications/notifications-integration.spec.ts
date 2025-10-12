@@ -2,7 +2,12 @@ import 'reflect-metadata';
 import { Redis } from 'ioredis';
 import { Container } from '../../../src/nexus/index.js';
 import { TitanNotificationsModule } from '../../../src/modules/notifications/notifications.module.js';
-import { NOTIFICATION_SERVICE, PREFERENCE_MANAGER, RATE_LIMITER, CHANNEL_MANAGER } from '../../../src/modules/notifications/constants.js';
+import {
+  NOTIFICATION_SERVICE,
+  PREFERENCE_MANAGER,
+  RATE_LIMITER,
+  CHANNEL_MANAGER,
+} from '../../../src/modules/notifications/constants.js';
 import type { PreferenceManager } from '../../../src/modules/notifications/preference-manager.js';
 import type { RateLimiter } from '../../../src/modules/notifications/rate-limiter.js';
 import type { ChannelManager } from '../../../src/modules/notifications/channel-manager.js';
@@ -17,7 +22,7 @@ describe('Notifications Module Integration', () => {
     redis = new Redis({
       host: 'localhost',
       port: 6379,
-      db: 1
+      db: 1,
     });
 
     // Clean Redis
@@ -34,8 +39,8 @@ describe('Notifications Module Integration', () => {
         redis: {
           host: 'localhost',
           port: 6379,
-          db: 1
-        }
+          db: 1,
+        },
       });
 
       expect(module).toBeDefined();
@@ -50,9 +55,9 @@ describe('Notifications Module Integration', () => {
           redis: {
             host: 'localhost',
             port: 6379,
-            db: 1
-          }
-        })
+            db: 1,
+          },
+        }),
       });
 
       expect(module).toBeDefined();
@@ -101,8 +106,8 @@ describe('Notifications Module Integration', () => {
         const updated = await preferenceManager.updatePreferences('user-1', {
           enabled: false,
           channels: {
-            email: { enabled: false }
-          }
+            email: { enabled: false },
+          },
         });
 
         expect(updated.enabled).toBe(false);
@@ -116,7 +121,7 @@ describe('Notifications Module Integration', () => {
       it('should check if notification should be sent', async () => {
         // Disable notifications for user
         await preferenceManager.updatePreferences('user-2', {
-          enabled: false
+          enabled: false,
         });
 
         const shouldSend = await preferenceManager.shouldSendNotification(
@@ -124,7 +129,7 @@ describe('Notifications Module Integration', () => {
           {
             type: 'info',
             title: 'Test',
-            body: 'Message'
+            body: 'Message',
           },
           'email'
         );
@@ -142,8 +147,8 @@ describe('Notifications Module Integration', () => {
             enabled: true,
             start: `${startHour.toString().padStart(2, '0')}:00`,
             end: `${endHour.toString().padStart(2, '0')}:00`,
-            timezone: 'UTC'
-          }
+            timezone: 'UTC',
+          },
         });
 
         const shouldSend = await preferenceManager.shouldSendNotification(
@@ -151,7 +156,7 @@ describe('Notifications Module Integration', () => {
           {
             type: 'info',
             title: 'Test',
-            body: 'Non-urgent message'
+            body: 'Non-urgent message',
           },
           'email'
         );
@@ -166,8 +171,8 @@ describe('Notifications Module Integration', () => {
             title: 'Urgent',
             body: 'Urgent message',
             metadata: {
-              priority: 'urgent'
-            }
+              priority: 'urgent',
+            },
           },
           'email'
         );
@@ -185,7 +190,7 @@ describe('Notifications Module Integration', () => {
       it('should enforce rate limits', async () => {
         const customLimits = {
           perMinute: 3,
-          burstLimit: 2
+          burstLimit: 2,
         };
 
         let allowedCount = 0;
@@ -233,20 +238,16 @@ describe('Notifications Module Integration', () => {
       it('should plan delivery for recipients', async () => {
         const recipients = [
           { id: 'user-1', email: 'user1@example.com' },
-          { id: 'user-2', email: 'user2@example.com' }
+          { id: 'user-2', email: 'user2@example.com' },
         ];
 
         const notification = {
           type: 'info' as const,
           title: 'Test',
-          body: 'Message'
+          body: 'Message',
         };
 
-        const plan = await channelManager.planDelivery(
-          recipients,
-          notification,
-          {}
-        );
+        const plan = await channelManager.planDelivery(recipients, notification, {});
 
         expect(plan).toBeDefined();
         expect(plan.size).toBeGreaterThan(0);
@@ -267,7 +268,7 @@ describe('Notifications Module Integration', () => {
           type: 'info',
           title: 'Test Title',
           body: 'Test Body',
-          data: { custom: 'data' }
+          data: { custom: 'data' },
         });
 
         expect(content.subject).toBe('Test Title');

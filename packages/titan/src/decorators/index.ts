@@ -32,13 +32,13 @@ export {
   Memoize,
   Retry,
   Deprecated,
-  Validate
+  Validate,
 } from './decorator-factory.js';
 
 // Export core decorators
 export {
   // Core DI
-  Module,  // TODO: Eventually migrate to Nexus Module
+  Module, // TODO: Eventually migrate to Nexus Module
   Injectable,
   Singleton,
   Transient,
@@ -59,7 +59,7 @@ export {
   // Types
   type Scope,
   type InjectableOptions,
-  type ModuleDecoratorOptions
+  type ModuleDecoratorOptions,
 } from './core.js';
 
 // Export injection decorators

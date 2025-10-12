@@ -12,7 +12,7 @@ function render(element: any): { container: HTMLElement } {
   const container = document.createElement('div');
   if (element) {
     if (Array.isArray(element)) {
-      element.forEach(el => container.appendChild(el));
+      element.forEach((el) => container.appendChild(el));
     } else {
       container.appendChild(element);
     }
@@ -109,7 +109,7 @@ describe('Show', () => {
         { when: 'text', expected: 'Content' },
         { when: 1, expected: 'Content' },
         { when: {}, expected: 'Content' },
-        { when: [], expected: 'Content' }
+        { when: [], expected: 'Content' },
       ];
 
       tests.forEach(({ when, expected }) => {
@@ -128,7 +128,7 @@ describe('Show', () => {
       const result = Show({
         when: () => isVisible(),
         children: 'Content',
-        fallback: 'Fallback'
+        fallback: 'Fallback',
       });
       const { container } = render(result);
 
@@ -153,7 +153,7 @@ describe('Show', () => {
       const result = Show({
         when: () => isVisible(),
         children: 'Content',
-        fallback: 'Fallback'
+        fallback: 'Fallback',
       });
       const { container } = render(result);
 
@@ -175,7 +175,7 @@ describe('Show', () => {
       const isVisible = signal(false);
       const result = Show({
         when: () => isVisible(),
-        children: 'Content'
+        children: 'Content',
       });
       const { container } = render(result);
 
@@ -200,7 +200,7 @@ describe('Show', () => {
       const result = Show({
         when: () => count() > 5,
         children: 'Count is greater than 5',
-        fallback: 'Count is 5 or less'
+        fallback: 'Count is 5 or less',
       });
       const { container } = render(result);
 
@@ -236,9 +236,9 @@ describe('Show', () => {
         children: Show({
           when: () => inner(),
           children: 'Inner content',
-          fallback: 'Inner fallback'
+          fallback: 'Inner fallback',
         }),
-        fallback: 'Outer fallback'
+        fallback: 'Outer fallback',
       });
 
       const { container } = render(result);
@@ -280,10 +280,7 @@ describe('Show', () => {
     });
 
     it('should handle array of DOM elements', () => {
-      const elements = [
-        jsx('div', { children: 'First' }),
-        jsx('span', { children: 'Second' })
-      ];
+      const elements = [jsx('div', { children: 'First' }), jsx('span', { children: 'Second' })];
       const result = Show({ when: true, children: elements });
       const { container } = render(result);
 

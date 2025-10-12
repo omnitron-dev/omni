@@ -4,10 +4,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
-import {
-  Container,
-  createToken
-} from '../../../src/nexus/index.js';
+import { Container, createToken } from '../../../src/nexus/index.js';
 import {
   SimpleTracer,
   TracingPlugin,
@@ -16,7 +13,7 @@ import {
   W3CTraceContextPropagator,
   SpanStatus,
   withSpan,
-  trace
+  trace,
 } from '../../../src/nexus/tracing.js';
 import {
   DevToolsPlugin,
@@ -24,7 +21,7 @@ import {
   MessageType,
   DependencyGraph,
   exportToDot,
-  exportToMermaid
+  exportToMermaid,
 } from '../../../src/nexus/devtools.js';
 
 describe('Tracing', () => {
@@ -64,7 +61,7 @@ describe('Tracing', () => {
       expect(span.attributes).toEqual({
         'user.id': '123',
         'http.method': 'GET',
-        'http.status_code': 200
+        'http.status_code': 200,
       });
     });
 
@@ -88,11 +85,11 @@ describe('Tracing', () => {
 
       span.setStatus({
         code: SpanStatus.ERROR,
-        message: 'Something went wrong'
+        message: 'Something went wrong',
       });
       expect(span.status).toEqual({
         code: SpanStatus.ERROR,
-        message: 'Something went wrong'
+        message: 'Something went wrong',
       });
     });
 
@@ -118,8 +115,7 @@ describe('Tracing', () => {
       const spans = tracer.getSpans();
 
       expect(spans).toHaveLength(4);
-      expect(spans.find(s => s.name === 'grandchild')?.parentId)
-        .toBe(spans.find(s => s.name === 'child1')?.spanId);
+      expect(spans.find((s) => s.name === 'grandchild')?.parentId).toBe(spans.find((s) => s.name === 'child1')?.spanId);
     });
   });
 
@@ -134,7 +130,7 @@ describe('Tracing', () => {
       container.resolve(token);
 
       const spans = tracer.getSpans();
-      expect(spans.some(s => s.name === `resolve:${token.name}`)).toBe(true);
+      expect(spans.some((s) => s.name === `resolve:${token.name}`)).toBe(true);
     });
 
     it('should trace async resolution', async () => {
@@ -144,18 +140,21 @@ describe('Tracing', () => {
       const token = createToken<string>('AsyncService');
       container.register(token, {
         useFactory: async () => {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           return 'async-value';
-        }
+        },
       });
 
       await container.resolveAsync(token);
 
       const spans = tracer.getSpans();
       console.log('Total spans:', spans.length);
-      console.log('Span names:', spans.map(s => s.name));
+      console.log(
+        'Span names:',
+        spans.map((s) => s.name)
+      );
 
-      const resolveSpan = spans.find(s => s.name === `resolve:${token.name}`);
+      const resolveSpan = spans.find((s) => s.name === `resolve:${token.name}`);
 
       // Debug output
       if (resolveSpan) {
@@ -164,7 +163,7 @@ describe('Tracing', () => {
           startTime: resolveSpan.startTime,
           endTime: resolveSpan.endTime,
           duration: resolveSpan.duration,
-          isRecording: resolveSpan.isRecording()
+          isRecording: resolveSpan.isRecording(),
         });
       } else {
         console.log('No span found for:', `resolve:${token.name}`);
@@ -184,7 +183,7 @@ describe('Tracing', () => {
       container.register(token, {
         useFactory: () => {
           throw new Error('Service initialization failed');
-        }
+        },
       });
 
       try {
@@ -194,7 +193,7 @@ describe('Tracing', () => {
       }
 
       const spans = tracer.getSpans();
-      const errorSpan = spans.find(s => s.name === `resolve:${token.name}`);
+      const errorSpan = spans.find((s) => s.name === `resolve:${token.name}`);
 
       expect(errorSpan?.status?.code).toBe(SpanStatus.ERROR);
       expect(errorSpan?.status?.message).toContain('Service initialization failed');
@@ -203,7 +202,7 @@ describe('Tracing', () => {
     it('should propagate trace context', () => {
       const tracingPlugin = new TracingPlugin({
         tracer,
-        propagator: new W3CTraceContextPropagator()
+        propagator: new W3CTraceContextPropagator(),
       });
       container.use(tracingPlugin);
 
@@ -216,7 +215,7 @@ describe('Tracing', () => {
       container.resolve(token, { traceContext: context });
 
       const spans = tracer.getSpans();
-      const resolveSpan = spans.find(s => s.name === `resolve:${token.name}`);
+      const resolveSpan = spans.find((s) => s.name === `resolve:${token.name}`);
 
       expect(resolveSpan?.parentId).toBe(parentSpan.spanId);
       expect(resolveSpan?.traceId).toBe(parentSpan.traceId);
@@ -228,7 +227,7 @@ describe('Tracing', () => {
       class TestService {
         @trace('custom-operation')
         async performOperation(input: string): Promise<string> {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           return `processed: ${input}`;
         }
 
@@ -246,21 +245,21 @@ describe('Tracing', () => {
 
       const spans = tracer.getSpans();
 
-      expect(spans.some(s => s.name === 'custom-operation')).toBe(true);
-      expect(spans.some(s => s.name === 'TestService.syncOperation')).toBe(true);
+      expect(spans.some((s) => s.name === 'custom-operation')).toBe(true);
+      expect(spans.some((s) => s.name === 'TestService.syncOperation')).toBe(true);
     });
 
     it('should use withSpan helper', async () => {
       const result = await withSpan(tracer, 'wrapped-operation', async (span) => {
         span.setAttribute('custom.attribute', 'value');
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         return 'result';
       });
 
       expect(result).toBe('result');
 
       const spans = tracer.getSpans();
-      const wrappedSpan = spans.find(s => s.name === 'wrapped-operation');
+      const wrappedSpan = spans.find((s) => s.name === 'wrapped-operation');
 
       expect(wrappedSpan).toBeDefined();
       expect(wrappedSpan?.attributes?.['custom.attribute']).toBe('value');
@@ -272,7 +271,7 @@ describe('Tracing', () => {
       const exporter = new JaegerExporter({
         endpoint: 'http://localhost:14268/api/traces',
         serviceName: 'test-service',
-        batchSize: 1
+        batchSize: 1,
       });
 
       try {
@@ -290,9 +289,9 @@ describe('Tracing', () => {
           expect.objectContaining({
             method: 'POST',
             headers: expect.objectContaining({
-              'Content-Type': 'application/json'
+              'Content-Type': 'application/json',
             }),
-            body: expect.stringContaining('test-span')
+            body: expect.stringContaining('test-span'),
           })
         );
       } finally {
@@ -302,7 +301,7 @@ describe('Tracing', () => {
 
     it('should export to Zipkin format', async () => {
       const exporter = new ZipkinExporter({
-        endpoint: 'http://localhost:9411/api/v2/spans'
+        endpoint: 'http://localhost:9411/api/v2/spans',
       });
 
       const span = tracer.startSpan('zipkin-span');
@@ -318,8 +317,8 @@ describe('Tracing', () => {
         expect.objectContaining({
           method: 'POST',
           headers: expect.objectContaining({
-            'Content-Type': 'application/json'
-          })
+            'Content-Type': 'application/json',
+          }),
         })
       );
     });
@@ -334,9 +333,7 @@ describe('Tracing', () => {
 
       propagator.inject(span.getContext(), carrier);
 
-      expect(carrier['traceparent']).toMatch(
-        /^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/
-      );
+      expect(carrier['traceparent']).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/);
 
       const extractedContext = propagator.extract(carrier);
 
@@ -370,8 +367,8 @@ describe('DevTools', () => {
 
       const events = devTools.getEvents();
 
-      expect(events.some(e => e.type === 'register')).toBe(true);
-      expect(events.some(e => e.type === 'resolve')).toBe(true);
+      expect(events.some((e) => e.type === 'register')).toBe(true);
+      expect(events.some((e) => e.type === 'resolve')).toBe(true);
     });
 
     it('should capture performance metrics', () => {
@@ -386,7 +383,7 @@ describe('DevTools', () => {
             // Busy wait
           }
           return 'result';
-        }
+        },
       });
 
       container.resolve(token);
@@ -411,8 +408,8 @@ describe('DevTools', () => {
 
       expect(snapshot.timestamp).toBeDefined();
       expect(snapshot.registrations).toHaveLength(2);
-      expect(snapshot.registrations.some(r => r.token === token1.name)).toBe(true);
-      expect(snapshot.registrations.some(r => r.token === token2.name)).toBe(true);
+      expect(snapshot.registrations.some((r) => r.token === token1.name)).toBe(true);
+      expect(snapshot.registrations.some((r) => r.token === token2.name)).toBe(true);
     });
 
     it('should generate dependency graph', () => {
@@ -426,11 +423,11 @@ describe('DevTools', () => {
       container.register(tokenA, { useValue: 'A' });
       container.register(tokenB, {
         useFactory: (a) => ({ a }),
-        inject: [tokenA]
+        inject: [tokenA],
       });
       container.register(tokenC, {
         useFactory: (b) => ({ b }),
-        inject: [tokenB]
+        inject: [tokenB],
       });
 
       container.resolve(tokenC);
@@ -439,12 +436,8 @@ describe('DevTools', () => {
 
       expect(graph.nodes).toHaveLength(3);
       expect(graph.edges).toHaveLength(2);
-      expect(graph.edges.some(e =>
-        e.from === tokenC.name && e.to === tokenB.name
-      )).toBe(true);
-      expect(graph.edges.some(e =>
-        e.from === tokenB.name && e.to === tokenA.name
-      )).toBe(true);
+      expect(graph.edges.some((e) => e.from === tokenC.name && e.to === tokenB.name)).toBe(true);
+      expect(graph.edges.some((e) => e.from === tokenB.name && e.to === tokenA.name)).toBe(true);
     });
   });
 
@@ -452,7 +445,7 @@ describe('DevTools', () => {
     it('should start WebSocket server', async () => {
       const server = new DevToolsServer({
         port: 9229,
-        host: 'localhost'
+        host: 'localhost',
       });
 
       await server.start();
@@ -470,7 +463,7 @@ describe('DevTools', () => {
       const mockClient = {
         send: jest.fn(),
         on: jest.fn(),
-        close: jest.fn()
+        close: jest.fn(),
       };
 
       server.handleConnection(mockClient as any);
@@ -481,7 +474,7 @@ describe('DevTools', () => {
         type: MessageType.ContainerCreated,
         timestamp: Date.now(),
         containerId: 'test-container',
-        data: { event: 'test' }
+        data: { event: 'test' },
       });
 
       expect(mockClient.send).toHaveBeenCalled();
@@ -497,26 +490,24 @@ describe('DevTools', () => {
 
       const mockClient = {
         send: jest.fn(),
-        on: jest.fn()
+        on: jest.fn(),
       };
 
       server.handleConnection(mockClient as any);
 
       // Simulate client requesting snapshot
-      const messageHandler = mockClient.on.mock.calls.find(
-        call => call[0] === 'message'
-      )?.[1];
+      const messageHandler = mockClient.on.mock.calls.find((call) => call[0] === 'message')?.[1];
 
       if (messageHandler) {
-        messageHandler(JSON.stringify({
-          type: 'request-snapshot',
-          id: '123'
-        }));
+        messageHandler(
+          JSON.stringify({
+            type: 'request-snapshot',
+            id: '123',
+          })
+        );
       }
 
-      expect(mockClient.send).toHaveBeenCalledWith(
-        expect.stringContaining('snapshot')
-      );
+      expect(mockClient.send).toHaveBeenCalledWith(expect.stringContaining('snapshot'));
 
       await server.stop();
     });
@@ -528,12 +519,12 @@ describe('DevTools', () => {
         nodes: [
           { id: 'A', label: 'ServiceA' },
           { id: 'B', label: 'ServiceB' },
-          { id: 'C', label: 'ServiceC' }
+          { id: 'C', label: 'ServiceC' },
         ],
         edges: [
           { from: 'B', to: 'A' },
-          { from: 'C', to: 'B' }
-        ]
+          { from: 'C', to: 'B' },
+        ],
       };
 
       const dot = exportToDot(graph);
@@ -551,12 +542,12 @@ describe('DevTools', () => {
         nodes: [
           { id: 'A', label: 'ServiceA', type: 'singleton' },
           { id: 'B', label: 'ServiceB', type: 'transient' },
-          { id: 'C', label: 'ServiceC', type: 'scoped' }
+          { id: 'C', label: 'ServiceC', type: 'scoped' },
         ],
         edges: [
           { from: 'B', to: 'A' },
-          { from: 'C', to: 'B' }
-        ]
+          { from: 'C', to: 'B' },
+        ],
       };
 
       const mermaid = exportToMermaid(graph);
@@ -579,11 +570,9 @@ describe('DevTools', () => {
       expect(initialMemory.heapTotal).toBeGreaterThan(0);
 
       // Create some objects
-      const tokens = Array.from({ length: 100 }, (_, i) =>
-        createToken(`Service${i}`)
-      );
+      const tokens = Array.from({ length: 100 }, (_, i) => createToken(`Service${i}`));
 
-      tokens.forEach(token => {
+      tokens.forEach((token) => {
         container.register(token, { useValue: `value${token.name}` });
       });
 
@@ -604,11 +593,11 @@ describe('DevTools', () => {
             // Busy wait
           }
           return 'slow';
-        }
+        },
       });
 
       container.register(fastToken, {
-        useValue: 'fast'
+        useValue: 'fast',
       });
 
       container.resolve(slowToken);

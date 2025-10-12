@@ -56,27 +56,16 @@ export interface AuthMiddlewareOptions {
 /**
  * Create authentication token injection middleware
  */
-export function createAuthMiddleware(
-  options: AuthMiddlewareOptions
-): MiddlewareFunction {
-  const {
-    tokenProvider,
-    headerName = 'Authorization',
-    skipServices = [],
-    skipMethods = [],
-  } = options;
+export function createAuthMiddleware(options: AuthMiddlewareOptions): MiddlewareFunction {
+  const { tokenProvider, headerName = 'Authorization', skipServices = [], skipMethods = [] } = options;
 
   // Use explicit tokenPrefix if provided, otherwise use getTokenType or default 'Bearer '
-  const tokenPrefix = options.tokenPrefix !== undefined
-    ? options.tokenPrefix
-    : (tokenProvider.getTokenType?.() || 'Bearer ');
+  const tokenPrefix =
+    options.tokenPrefix !== undefined ? options.tokenPrefix : tokenProvider.getTokenType?.() || 'Bearer ';
 
   return async (ctx, next) => {
     // Skip if service or method is in skip list
-    if (
-      skipServices.includes(ctx.service) ||
-      skipMethods.includes(`${ctx.service}.${ctx.method}`)
-    ) {
+    if (skipServices.includes(ctx.service) || skipMethods.includes(`${ctx.service}.${ctx.method}`)) {
       return next();
     }
 

@@ -34,16 +34,19 @@ export interface DialogContextValue {
 const noop = () => {};
 const noopGetter = () => false;
 
-export const DialogContext = createContext<DialogContextValue>({
-  isOpen: noopGetter,
-  open: noop,
-  close: noop,
-  toggle: noop,
-  triggerId: '',
-  contentId: '',
-  titleId: '',
-  descriptionId: '',
-}, 'Dialog');
+export const DialogContext = createContext<DialogContextValue>(
+  {
+    isOpen: noopGetter,
+    open: noop,
+    close: noop,
+    toggle: noop,
+    triggerId: '',
+    contentId: '',
+    titleId: '',
+    descriptionId: '',
+  },
+  'Dialog'
+);
 
 /**
  * Dialog props
@@ -221,10 +224,13 @@ export interface DialogPortalProps {
  * Dialog portal component
  * Renders children into a different part of the DOM
  */
-export const DialogPortal = defineComponent<DialogPortalProps>((props) => () => jsx(Portal, {
-    target: props.container,
-    children: props.children,
-  }));
+export const DialogPortal = defineComponent<DialogPortalProps>(
+  (props) => () =>
+    jsx(Portal, {
+      target: props.container,
+      children: props.children,
+    })
+);
 
 /**
  * Dialog overlay props

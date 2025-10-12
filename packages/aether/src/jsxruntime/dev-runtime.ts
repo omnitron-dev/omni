@@ -47,9 +47,7 @@ export function jsxDEV(
   }
 
   // Use production implementation
-  const result = isStaticChildren
-    ? prodJsxs(type, props, key)
-    : prodJsx(type, props, key);
+  const result = isStaticChildren ? prodJsxs(type, props, key) : prodJsx(type, props, key);
 
   // Attach debugging metadata to DOM elements
   if (result instanceof Element && source) {

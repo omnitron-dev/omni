@@ -5,10 +5,7 @@
  */
 
 import { HttpClient, type HttpClientOptions } from './http-client.js';
-import {
-  WebSocketClient,
-  type WebSocketClientOptions,
-} from './ws-client.js';
+import { WebSocketClient, type WebSocketClientOptions } from './ws-client.js';
 import type {
   NetronClientOptions,
   TransportType,
@@ -128,7 +125,10 @@ export class NetronClient {
    */
   service<T extends object>(serviceName: string): T {
     return new Proxy({} as T, {
-      get: (_target, prop: string) => async (...args: any[]) => await this.invoke(serviceName, prop, args),
+      get:
+        (_target, prop: string) =>
+        async (...args: any[]) =>
+          await this.invoke(serviceName, prop, args),
     });
   }
 

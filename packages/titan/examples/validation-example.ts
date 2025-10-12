@@ -13,14 +13,17 @@ const UserSchema = z.object({
   email: z.string().email(),
   name: z.string().min(2).max(100),
   age: z.number().int().min(0).max(150).optional(),
-  roles: z.array(z.enum(['user', 'admin', 'moderator'])).default(['user'])
+  roles: z.array(z.enum(['user', 'admin', 'moderator'])).default(['user']),
 });
 
 const CreateUserInput = z.object({
   email: z.string().email(),
   name: z.string().min(2),
-  password: z.string().min(8).regex(/^(?=.*[A-Za-z])(?=.*\d)/, 'Password must contain letters and numbers'),
-  age: z.number().int().min(18).max(150).optional()
+  password: z
+    .string()
+    .min(8)
+    .regex(/^(?=.*[A-Za-z])(?=.*\d)/, 'Password must contain letters and numbers'),
+  age: z.number().int().min(18).max(150).optional(),
 });
 
 // Define service contract
@@ -30,34 +33,38 @@ const UserServiceContract = contract({
     output: UserSchema,
     errors: {
       409: z.object({ code: z.literal('USER_EXISTS'), email: z.string() }),
-      422: z.object({ code: z.literal('VALIDATION_ERROR'), errors: z.array(z.string()) })
-    }
+      422: z.object({ code: z.literal('VALIDATION_ERROR'), errors: z.array(z.string()) }),
+    },
   },
   getUser: {
     input: z.string().uuid(),
-    output: UserSchema.nullable()
+    output: UserSchema.nullable(),
   },
   listUsers: {
     input: z.object({
-      filter: z.object({
-        role: z.enum(['user', 'admin', 'moderator']).optional(),
-        search: z.string().optional()
-      }).optional(),
-      pagination: z.object({
-        cursor: z.string().optional(),
-        limit: z.number().int().min(1).max(100).default(20)
-      }).optional()
+      filter: z
+        .object({
+          role: z.enum(['user', 'admin', 'moderator']).optional(),
+          search: z.string().optional(),
+        })
+        .optional(),
+      pagination: z
+        .object({
+          cursor: z.string().optional(),
+          limit: z.number().int().min(1).max(100).default(20),
+        })
+        .optional(),
     }),
     output: UserSchema,
-    stream: true
+    stream: true,
   },
   updateUser: {
     input: z.object({
       id: z.string().uuid(),
-      data: UserSchema.partial().omit({ id: true })
+      data: UserSchema.partial().omit({ id: true }),
     }),
-    output: UserSchema
-  }
+    output: UserSchema,
+  },
 });
 
 // Extract types from contract
@@ -72,7 +79,7 @@ type UserType = z.infer<typeof UserSchema>;
 @WithValidationOptions({
   mode: 'strip', // Strip unknown properties
   coerce: false, // Don't coerce types
-  abortEarly: false // Collect all validation errors
+  abortEarly: false, // Collect all validation errors
 })
 class UserService {
   private users = new Map<string, UserType>();
@@ -92,7 +99,7 @@ class UserService {
       email: input.email.toLowerCase(),
       name: input.name,
       age: input.age,
-      roles: ['user']
+      roles: ['user'],
     };
 
     // Store user
@@ -134,9 +141,9 @@ class UserService {
   @Validate({
     input: z.object({
       id: z.string().uuid(),
-      data: UserSchema.partial().omit({ id: true })
+      data: UserSchema.partial().omit({ id: true }),
     }),
-    output: UserSchema
+    output: UserSchema,
   })
   async updateUser(input: { id: string; data: Partial<UserType> }): Promise<UserType> {
     const user = this.users.get(input.id);
@@ -161,7 +168,7 @@ class UserService {
  */
 @Module({
   providers: [UserService],
-  exports: [UserService]
+  exports: [UserService],
 })
 class UserModule {}
 
@@ -174,7 +181,7 @@ async function main() {
   // Create application
   const app = await Application.create(UserModule, {
     name: 'validation-example',
-    debug: true
+    debug: true,
   });
 
   // Start application
@@ -197,7 +204,7 @@ async function main() {
       email: 'john.doe@example.com',
       name: 'John Doe',
       password: 'SecurePass123',
-      age: 25
+      age: 25,
     });
     console.log('✅ User created:', user);
   } catch (error: any) {
@@ -210,7 +217,7 @@ async function main() {
     await validatedService.createUser({
       email: 'invalid-email',
       name: 'Jane Doe',
-      password: 'SecurePass123'
+      password: 'SecurePass123',
     });
   } catch (error: any) {
     console.error('❌ Validation error:', error.toJSON ? error.toJSON() : error.message);
@@ -222,7 +229,7 @@ async function main() {
     await validatedService.createUser({
       email: 'jane.doe@example.com',
       name: 'Jane Doe',
-      password: 'weak' // Too short and no numbers
+      password: 'weak', // Too short and no numbers
     });
   } catch (error: any) {
     console.error('❌ Validation error:', error.toJSON ? error.toJSON() : error.message);
@@ -241,7 +248,7 @@ async function main() {
     console.log('\nListing users with filter...');
     const generator = validatedService.listUsers({
       filter: { role: 'user' },
-      pagination: { limit: 10 }
+      pagination: { limit: 10 },
     });
 
     for await (const user of generator) {
@@ -258,7 +265,7 @@ async function main() {
     if (users.length > 0) {
       const updated = await validatedService.updateUser({
         id: users[0].id,
-        data: { name: 'John Updated', age: 26 }
+        data: { name: 'John Updated', age: 26 },
       });
       console.log('✅ User updated:', updated);
     }

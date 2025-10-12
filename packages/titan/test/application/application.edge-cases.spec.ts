@@ -6,11 +6,7 @@ import { describe, it, expect, afterEach, jest } from '@jest/globals';
 import { createToken } from '../../src/nexus/index.js';
 import { Application, createApp } from '../../src/application.js';
 const CONFIG_SERVICE_TOKEN = createToken('ConfigModule');
-import {
-  ApplicationState,
-  IApplication,
-  IModule,
-} from '../../src/types.js';
+import { ApplicationState, IApplication, IModule } from '../../src/types.js';
 
 // Test fixture
 class EdgeCaseModule implements IModule {
@@ -26,7 +22,7 @@ describe('Titan Application Edge Cases', () => {
 
   afterEach(async () => {
     if (app && app.state === ApplicationState.Started) {
-      await app.stop().catch(() => { });
+      await app.stop().catch(() => {});
     }
   });
 
@@ -39,8 +35,8 @@ describe('Titan Application Edge Cases', () => {
         name: 'slow-stop-hook',
         timeout: 50,
         handler: async () => {
-          await new Promise(resolve => setTimeout(resolve, 200));
-        }
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        },
       });
 
       await app.start();
@@ -123,7 +119,7 @@ describe('Titan Application Edge Cases', () => {
 
       // Add stop hook as function (covers line 431)
       app.onStop(async () => {
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
         hookCalled = true;
       });
 
@@ -136,7 +132,7 @@ describe('Titan Application Edge Cases', () => {
     it('should handle errors in error handlers gracefully', async () => {
       app = createApp();
 
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
       // Add error handler that throws (covers lines 589-592)
       app.onError(() => {
@@ -150,10 +146,7 @@ describe('Titan Application Edge Cases', () => {
       // Emit error - should handle the throwing handler gracefully
       app.emit('error', new Error('Test error'));
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        'Error in error handler:',
-        expect.any(Error)
-      );
+      expect(consoleSpy).toHaveBeenCalledWith('Error in error handler:', expect.any(Error));
       expect(workingHandler).toHaveBeenCalled();
 
       consoleSpy.mockRestore();
@@ -319,8 +312,8 @@ describe('Titan Application Edge Cases', () => {
         name: 'timeout-test',
         timeout: 1,
         handler: async () => {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        },
       });
 
       try {
@@ -359,13 +352,22 @@ describe('Titan Application Edge Cases', () => {
 
       const events: string[] = [];
       const eventTypes: any[] = [
-        'starting', 'started', 'stopping', 'stopped',
-        'error', 'module:registered', 'module:started',
-        'module:stopped', 'config:changed', 'health:check'
+        'starting',
+        'started',
+        'stopping',
+        'stopped',
+        'error',
+        'module:registered',
+        'module:started',
+        'module:stopped',
+        'config:changed',
+        'health:check',
       ];
 
-      eventTypes.forEach(event => {
-        app.on(event, () => { events.push(event); });
+      eventTypes.forEach((event) => {
+        app.on(event, () => {
+          events.push(event);
+        });
       });
 
       // Trigger various events
@@ -389,12 +391,12 @@ describe('Titan Application Edge Cases', () => {
 
         async onStart(): Promise<void> {
           // Simulate long initialization
-          await new Promise(resolve => setTimeout(resolve, 200));
+          await new Promise((resolve) => setTimeout(resolve, 200));
         }
 
         async onStop(): Promise<void> {
           // Simulate long cleanup
-          await new Promise(resolve => setTimeout(resolve, 200));
+          await new Promise((resolve) => setTimeout(resolve, 200));
         }
       }
 
@@ -420,7 +422,7 @@ describe('Titan Application Edge Cases', () => {
       await app.start();
 
       // Wait a bit for uptime
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const metrics = app.metrics;
 

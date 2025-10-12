@@ -110,7 +110,7 @@ export class RedisTestHelper {
         await client.quit();
         return;
       } catch (error) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
     }
 

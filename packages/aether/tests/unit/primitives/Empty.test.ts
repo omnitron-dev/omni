@@ -2,13 +2,7 @@
  * @vitest-environment happy-dom
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  Empty,
-  EmptyIcon,
-  EmptyTitle,
-  EmptyDescription,
-  EmptyActions,
-} from '../../../src/primitives/Empty.js';
+import { Empty, EmptyIcon, EmptyTitle, EmptyDescription, EmptyActions } from '../../../src/primitives/Empty.js';
 import { renderComponent } from '../../helpers/test-utils.js';
 
 describe('Empty', () => {
@@ -539,8 +533,7 @@ describe('Empty', () => {
     });
 
     it('should apply class to description', () => {
-      const component = () =>
-        EmptyDescription({ class: 'text-muted', children: 'Description' });
+      const component = () => EmptyDescription({ class: 'text-muted', children: 'Description' });
 
       const { container } = renderComponent(component);
 

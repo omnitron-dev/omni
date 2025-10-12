@@ -18,7 +18,7 @@ import type {
   IEnvironmentConfigSource,
   IArgvConfigSource,
   IObjectConfigSource,
-  IRemoteConfigSource
+  IRemoteConfigSource,
 } from './types.js';
 
 @Injectable()
@@ -50,7 +50,7 @@ export class ConfigLoaderService implements IConfigLoader {
         if (!source.optional) {
           throw Errors.badRequest(`Failed to load required config source ${source.name || source.type}`, {
             source: source.name || source.type,
-            error: error instanceof Error ? error.message : String(error)
+            error: error instanceof Error ? error.message : String(error),
           });
         }
         // Skip optional sources that fail
@@ -78,7 +78,7 @@ export class ConfigLoaderService implements IConfigLoader {
         return this.loadRemote(source);
       default:
         throw Errors.badRequest(`Unsupported configuration source type: ${(source as any).type}`, {
-          type: (source as any).type
+          type: (source as any).type,
         });
     }
   }
@@ -125,7 +125,7 @@ export class ConfigLoaderService implements IConfigLoader {
       default:
         throw Errors.badRequest(`Unsupported config file format: ${format}`, {
           format,
-          filePath
+          filePath,
         });
     }
 
@@ -224,14 +224,14 @@ export class ConfigLoaderService implements IConfigLoader {
     try {
       const response = await fetch(source.url, {
         headers: source.headers,
-        signal: controller.signal
+        signal: controller.signal,
       });
 
       if (!response.ok) {
         throw Errors.badRequest(`Failed to fetch remote config: HTTP ${response.status}`, {
           url: source.url,
           status: response.status,
-          statusText: response.statusText
+          statusText: response.statusText,
         });
       }
 
@@ -311,8 +311,7 @@ export class ConfigLoaderService implements IConfigLoader {
    */
   private parseEnvValue(value: string): any {
     // Remove quotes if present
-    if ((value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))) {
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
       return value.slice(1, -1);
     }
 
@@ -334,8 +333,7 @@ export class ConfigLoaderService implements IConfigLoader {
     }
 
     // Parse JSON arrays and objects
-    if ((value.startsWith('[') && value.endsWith(']')) ||
-      (value.startsWith('{') && value.endsWith('}'))) {
+    if ((value.startsWith('[') && value.endsWith(']')) || (value.startsWith('{') && value.endsWith('}'))) {
       try {
         return JSON.parse(value);
       } catch {
@@ -443,7 +441,7 @@ export class ConfigLoaderService implements IConfigLoader {
     }
 
     if (Array.isArray(obj)) {
-      return obj.map(item => this.transformObject(item, transformer));
+      return obj.map((item) => this.transformObject(item, transformer));
     }
 
     const result: Record<string, any> = {};

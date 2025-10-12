@@ -7,12 +7,7 @@ import { Netron } from '@omnitron-dev/titan/netron';
 import { HttpTransport } from '@omnitron-dev/titan/netron/transport/http';
 import { WebSocketTransport } from '@omnitron-dev/titan/netron/transport/websocket';
 import pino from 'pino';
-import {
-  CalculatorService,
-  UserService,
-  EchoService,
-  StreamService,
-} from './test-services.js';
+import { CalculatorService, UserService, EchoService, StreamService } from './test-services.js';
 
 export interface TitanServerFixture {
   netron: Netron;
@@ -32,9 +27,7 @@ export interface TitanServerOptions {
 /**
  * Create and start a Titan server with Netron for testing
  */
-export async function createTitanServer(
-  options: TitanServerOptions = {}
-): Promise<TitanServerFixture> {
+export async function createTitanServer(options: TitanServerOptions = {}): Promise<TitanServerFixture> {
   const {
     port = 0, // Use 0 for random available port
     enableHttp = true,

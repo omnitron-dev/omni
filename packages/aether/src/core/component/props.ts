@@ -27,9 +27,7 @@ import { context } from '../reactivity/context.js';
  * });
  * ```
  */
-export function mergeProps<T extends Record<string, any>>(
-  ...sources: Partial<T>[]
-): T {
+export function mergeProps<T extends Record<string, any>>(...sources: Partial<T>[]): T {
   const result = {} as T;
 
   for (const source of sources) {
@@ -66,10 +64,7 @@ export function mergeProps<T extends Record<string, any>>(
  * );
  * ```
  */
-export function splitProps<T extends Record<string, any>>(
-  props: T,
-  ...keys: (keyof T)[][]
-): any[] {
+export function splitProps<T extends Record<string, any>>(props: T, ...keys: (keyof T)[][]): any[] {
   const groups: any[] = [];
   const allKeys = new Set<keyof T>();
 
@@ -124,9 +119,7 @@ export function splitProps<T extends Record<string, any>>(
  * });
  * ```
  */
-export function reactiveProps<T extends Record<string, any>>(
-  props: T
-): T & { [PROPS_UPDATE]?: (newProps: T) => void } {
+export function reactiveProps<T extends Record<string, any>>(props: T): T & { [PROPS_UPDATE]?: (newProps: T) => void } {
   // Create signal to store current props
   const propsSignal: WritableSignal<T> = signal<T>(props);
 

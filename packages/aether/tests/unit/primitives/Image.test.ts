@@ -206,8 +206,7 @@ describe('Image', () => {
     });
 
     it('should support fit="scale-down"', () => {
-      const component = () =>
-        Image({ src: '/test.jpg', alt: 'Test', fit: 'scale-down', lazy: false });
+      const component = () => Image({ src: '/test.jpg', alt: 'Test', fit: 'scale-down', lazy: false });
 
       const { container } = renderComponent(component);
 
@@ -665,7 +664,8 @@ describe('Image', () => {
 
   describe('Edge Cases', () => {
     it('should handle very long src URLs', () => {
-      const longUrl = 'https://example.com/path/to/very/long/url/with/many/segments/image.jpg?param1=value1&param2=value2';
+      const longUrl =
+        'https://example.com/path/to/very/long/url/with/many/segments/image.jpg?param1=value1&param2=value2';
       const component = () =>
         Image({
           src: longUrl,
@@ -708,7 +708,8 @@ describe('Image', () => {
     });
 
     it('should handle data URLs', () => {
-      const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+      const dataUrl =
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
       const component = () =>
         Image({
           src: dataUrl,
@@ -835,7 +836,9 @@ describe('Image', () => {
       const { container } = renderComponent(component);
 
       // Should have either placeholder or image
-      expect(container.querySelector('[data-image-placeholder]') || container.querySelector('[data-image]')).toBeTruthy();
+      expect(
+        container.querySelector('[data-image-placeholder]') || container.querySelector('[data-image]')
+      ).toBeTruthy();
     });
 
     it('should work with error fallback UI', () => {

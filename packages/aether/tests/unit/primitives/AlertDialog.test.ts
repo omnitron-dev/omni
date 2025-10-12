@@ -392,10 +392,7 @@ describe('AlertDialog Primitive', () => {
           children: [
             AlertDialogTrigger({ children: 'Open' }),
             AlertDialogContent({
-              children: [
-                AlertDialogTitle({ children: 'Alert' }),
-                AlertDialogAction({ children: 'OK' }),
-              ],
+              children: [AlertDialogTitle({ children: 'Alert' }), AlertDialogAction({ children: 'OK' })],
             }),
           ],
         });
@@ -720,10 +717,7 @@ describe('AlertDialog Primitive', () => {
           AlertDialog({
             defaultOpen: true,
             children: AlertDialogContent({
-              children: [
-                AlertDialogTitle({ children: 'Title only' }),
-                AlertDialogAction({ children: 'OK' }),
-              ],
+              children: [AlertDialogTitle({ children: 'Title only' }), AlertDialogAction({ children: 'OK' })],
             }),
           });
         });
@@ -736,10 +730,7 @@ describe('AlertDialog Primitive', () => {
           AlertDialog({
             defaultOpen: true,
             children: AlertDialogContent({
-              children: [
-                AlertDialogTitle({ children: 'Alert' }),
-                AlertDialogAction({ children: 'OK' }),
-              ],
+              children: [AlertDialogTitle({ children: 'Alert' }), AlertDialogAction({ children: 'OK' })],
             }),
           });
         });

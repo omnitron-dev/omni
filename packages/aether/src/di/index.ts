@@ -33,15 +33,7 @@ export { InjectionToken, createInjectionToken } from './tokens.js';
 export { DIContainer, getRootInjector, resetRootInjector } from './container.js';
 
 // Inject
-export {
-  inject,
-  Inject,
-  Optional,
-  Self,
-  SkipSelf,
-  setInjectorContext,
-  getInjectorContext,
-} from './inject.js';
+export { inject, Inject, Optional, Self, SkipSelf, setInjectorContext, getInjectorContext } from './inject.js';
 
 // Injectable
 export { Injectable, injectable, isInjectable, getInjectableOptions } from './injectable.js';

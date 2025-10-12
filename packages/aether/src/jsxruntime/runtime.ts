@@ -20,11 +20,7 @@ export const Fragment = FragmentType;
  * @param key - Optional key for lists
  * @returns DOM node or component result
  */
-export function jsx(
-  type: JSXElementType,
-  props: JSXProps | null,
-  key?: string | number
-): JSXElement {
+export function jsx(type: JSXElementType, props: JSXProps | null, key?: string | number): JSXElement {
   return createJSXElement(type, props, key);
 }
 
@@ -36,22 +32,14 @@ export function jsx(
  * @param key - Optional key for lists
  * @returns DOM node or component result
  */
-export function jsxs(
-  type: JSXElementType,
-  props: JSXProps | null,
-  key?: string | number
-): JSXElement {
+export function jsxs(type: JSXElementType, props: JSXProps | null, key?: string | number): JSXElement {
   return createJSXElement(type, props, key);
 }
 
 /**
  * Core JSX element creation
  */
-function createJSXElement(
-  type: JSXElementType,
-  props: JSXProps | null,
-  key?: string | number
-): JSXElement {
+function createJSXElement(type: JSXElementType, props: JSXProps | null, key?: string | number): JSXElement {
   // Handle Fragment
   if (type === Fragment) {
     return createFragment(props?.children);
@@ -101,7 +89,7 @@ function createComponentElement(
   const componentProps = {
     ...restProps,
     ...(children !== undefined && { children }),
-    ...(key !== undefined && { key })
+    ...(key !== undefined && { key }),
   };
 
   const result = Component(componentProps);
@@ -121,16 +109,10 @@ function createComponentElement(
 /**
  * Create DOM element
  */
-function createDOMElement(
-  tag: string,
-  props: JSXProps | null,
-  key?: string | number
-): HTMLElement | SVGElement {
+function createDOMElement(tag: string, props: JSXProps | null, key?: string | number): HTMLElement | SVGElement {
   // Create element (handle SVG)
   const isSVG = tag === 'svg' || tag === 'path' || tag === 'circle' || tag === 'rect';
-  const element = isSVG
-    ? document.createElementNS('http://www.w3.org/2000/svg', tag)
-    : document.createElement(tag);
+  const element = isSVG ? document.createElementNS('http://www.w3.org/2000/svg', tag) : document.createElement(tag);
 
   // Apply props
   if (props) {
@@ -148,10 +130,7 @@ function createDOMElement(
 /**
  * Apply props to DOM element
  */
-function applyProps(
-  element: HTMLElement | SVGElement,
-  props: JSXProps
-): void {
+function applyProps(element: HTMLElement | SVGElement, props: JSXProps): void {
   const { children, ref, ...restProps } = props;
 
   // Apply attributes and properties
@@ -238,7 +217,7 @@ function applyStyle(element: HTMLElement | SVGElement, style: Record<string, any
   for (const [property, value] of Object.entries(style)) {
     if (value != null) {
       // Convert camelCase to kebab-case
-      const cssProperty = property.replace(/[A-Z]/g, m => `-${m.toLowerCase()}`);
+      const cssProperty = property.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
       element.style.setProperty(cssProperty, String(value));
     }
   }
@@ -263,10 +242,7 @@ function applyClass(element: HTMLElement | SVGElement, value: any): void {
 /**
  * Append children to element
  */
-function appendChildren(
-  element: HTMLElement | SVGElement,
-  children: any
-): void {
+function appendChildren(element: HTMLElement | SVGElement, children: any): void {
   const childArray = normalizeChildren(children);
 
   for (const child of childArray) {

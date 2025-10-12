@@ -21,9 +21,9 @@ describe('Netron Integration', () => {
       name: 'test-netron',
       config: {
         netron: {
-          id: 'test-node'
-        }
-      }
+          id: 'test-node',
+        },
+      },
     });
 
     await app.start();
@@ -39,9 +39,9 @@ describe('Netron Integration', () => {
       name: 'test-injection',
       config: {
         netron: {
-          id: 'injection-test'
-        }
-      }
+          id: 'injection-test',
+        },
+      },
     });
 
     await app.start();
@@ -61,9 +61,9 @@ describe('Netron Integration', () => {
       name: 'test-lifecycle',
       config: {
         netron: {
-          id: 'lifecycle-test'
-        }
-      }
+          id: 'lifecycle-test',
+        },
+      },
     });
 
     const startSpy = jest.fn();
@@ -91,7 +91,7 @@ describe('Netron Integration', () => {
 
   it('should handle missing Netron configuration gracefully', async () => {
     app = createApp({
-      name: 'test-no-config'
+      name: 'test-no-config',
       // No netron config provided
     });
 
@@ -109,9 +109,9 @@ describe('Netron Integration', () => {
       name: 'test-failure',
       config: {
         netron: {
-          port: -1 // Invalid port
-        }
-      }
+          port: -1, // Invalid port
+        },
+      },
     });
 
     // App should start even if Netron has issues
@@ -123,15 +123,15 @@ describe('Netron Integration', () => {
     const app1 = createApp({
       name: 'app1',
       config: {
-        netron: { id: 'netron1' }
-      }
+        netron: { id: 'netron1' },
+      },
     });
 
     const app2 = createApp({
       name: 'app2',
       config: {
-        netron: { id: 'netron2' }
-      }
+        netron: { id: 'netron2' },
+      },
     });
 
     await app1.start();
@@ -149,9 +149,9 @@ describe('Netron Integration', () => {
       name: 'test-error-handling',
       config: {
         netron: {
-          id: 'error-test'
-        }
-      }
+          id: 'error-test',
+        },
+      },
     });
 
     // Mock Netron's start method to simulate an error
@@ -177,9 +177,9 @@ describe('Netron Integration', () => {
       name: 'test-cleanup',
       config: {
         netron: {
-          id: 'cleanup-test'
-        }
-      }
+          id: 'cleanup-test',
+        },
+      },
     });
 
     await app.start();
@@ -207,8 +207,8 @@ describe('Netron Integration', () => {
       name: 'test-logger',
       config: {
         netron: { id: 'logger-test' },
-        logger: true
-      }
+        logger: true,
+      },
     });
 
     await app.start();
@@ -231,14 +231,14 @@ describe('Netron Integration', () => {
       port: 8080,
       host: 'localhost',
       reconnectInterval: 5000,
-      maxReconnectAttempts: 10
+      maxReconnectAttempts: 10,
     };
 
     app = createApp({
       name: 'test-custom',
       config: {
-        netron: customConfig
-      }
+        netron: customConfig,
+      },
     });
 
     await app.start();

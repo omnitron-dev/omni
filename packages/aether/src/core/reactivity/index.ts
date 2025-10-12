@@ -1,6 +1,6 @@
 /**
  * Vibrancy - Next-generation reactive system
- * 
+ *
  * Fine-grained reactivity with advanced features:
  * - Diamond dependency resolution
  * - Async computed values
@@ -30,7 +30,7 @@ export { DependencyGraph, globalDependencyGraph } from './dependency-graph.js';
 // Context and reactive cleanup
 export {
   getOwner,
-  onCleanup  // This is the reactive system's onCleanup
+  onCleanup, // This is the reactive system's onCleanup
 } from './context.js';
 
 // Diamond dependency resolution
@@ -39,7 +39,7 @@ export {
   getDiamondResolvable,
   type DiamondResolvable,
   calculateDependencyDepth,
-  resolveDiamondDependencies
+  resolveDiamondDependencies,
 } from './diamond-resolver.js';
 
 export {
@@ -48,7 +48,7 @@ export {
   storeComputed,
   StoreSubscriptionManager,
   type SubscriptionOptions,
-  type SubscriptionCallback
+  type SubscriptionCallback,
 } from './store-subscriptions.js';
 
 export {
@@ -57,7 +57,7 @@ export {
   type MiddlewareConfig,
   StoreMiddlewareManager,
   type MiddlewareContext,
-  type MiddlewareFunction
+  type MiddlewareFunction,
 } from './store-middleware.js';
 
 // Advanced features
@@ -68,7 +68,7 @@ export {
   type AsyncComputed,
   suspenseAsyncComputed,
   type AsyncComputedState,
-  type AsyncComputedOptions
+  type AsyncComputedOptions,
 } from './async-computed.js';
 export {
   optional,
@@ -77,7 +77,7 @@ export {
   CircularDependencyError,
   CircularDependencyResolver,
   type ResolvableComputation,
-  type CircularDependencyOptions
+  type CircularDependencyOptions,
 } from './circular-dependency-resolver.js';
 
 // Re-export types from local types file
@@ -96,7 +96,7 @@ export type {
   ComputedOptions,
   ResourceOptions,
   ReactiveContext,
-  TrackingContext
+  TrackingContext,
 } from './types.js';
 
 import { store } from './store.js';
@@ -119,5 +119,5 @@ export default {
   untrack,
   createRoot,
   onCleanup,
-  asyncComputed
+  asyncComputed,
 };

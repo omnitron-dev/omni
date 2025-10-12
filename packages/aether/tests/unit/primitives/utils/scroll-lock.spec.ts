@@ -3,7 +3,11 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { disableBodyScroll, enableBodyScroll, forceUnlockBodyScroll } from '../../../../src/primitives/utils/scroll-lock.js';
+import {
+  disableBodyScroll,
+  enableBodyScroll,
+  forceUnlockBodyScroll,
+} from '../../../../src/primitives/utils/scroll-lock.js';
 
 describe('Scroll Lock Utilities', () => {
   let originalOverflow: string;

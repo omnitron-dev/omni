@@ -7,7 +7,7 @@ export enum ChannelType {
   SMS = 'sms',
   Push = 'push',
   Webhook = 'webhook',
-  InApp = 'inApp'
+  InApp = 'inApp',
 }
 
 export interface ChannelContent {
@@ -127,18 +127,15 @@ export class ChannelManager {
 
     // Filter channels based on request and availability
     for (const channelType of requestedChannels) {
-      const channel = Array.from(this.channels.values()).find(c => c.type === channelType);
+      const channel = Array.from(this.channels.values()).find((c) => c.type === channelType);
 
-      if (channel && await this.isChannelSuitable(channel, recipient, notification)) {
+      if (channel && (await this.isChannelSuitable(channel, recipient, notification))) {
         availableChannels.push(channel);
       }
     }
 
     // Apply channel strategy
-    return this.applyChannelStrategy(
-      availableChannels,
-      options.channelStrategy || 'first-available'
-    );
+    return this.applyChannelStrategy(availableChannels, options.channelStrategy || 'first-available');
   }
 
   /**
@@ -218,7 +215,7 @@ export class InAppChannel implements NotificationChannel {
     return {
       subject: notification.title,
       text: notification.body,
-      data: notification.data
+      data: notification.data,
     };
   }
 }
@@ -252,7 +249,7 @@ export class EmailChannel implements NotificationChannel {
     return {
       subject: notification.title,
       html: `<h1>${notification.title}</h1><p>${notification.body}</p>`,
-      text: `${notification.title}\n\n${notification.body}`
+      text: `${notification.title}\n\n${notification.body}`,
     };
   }
 

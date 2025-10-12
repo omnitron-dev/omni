@@ -17,13 +17,8 @@ import { NetronReadableStream } from './readable-stream.js';
 import { NetronWritableStream } from './writable-stream.js';
 import { isServiceDefinition, isNetronStreamReference } from './predicates.js';
 import { NetronErrors, Errors } from '../errors/index.js';
-import {
-  REQUEST_TIMEOUT,
-} from './constants.js';
-import {
-  NetronOptions,
-  EventSubscriber,
-} from './types.js';
+import { REQUEST_TIMEOUT } from './constants.js';
+import { NetronOptions, EventSubscriber } from './types.js';
 import {
   Packet,
   TYPE_GET,
@@ -152,7 +147,7 @@ export class RemotePeer extends AbstractPeer {
       this.logger.info('Initializing as connector - using auth-aware on-demand service discovery');
       this.logger.debug(
         'Services will be discovered on-demand via queryInterface() with authorization checks. ' +
-        'Use authenticate() core-task to establish user authentication.'
+          'Use authenticate() core-task to establish user authentication.'
       );
     }
   }
@@ -184,7 +179,7 @@ export class RemotePeer extends AbstractPeer {
         {
           serviceName: meta.name,
           transportCount: meta.transports.length,
-          transports: meta.transports
+          transports: meta.transports,
         },
         'Service configured with transports'
       );
@@ -236,7 +231,7 @@ export class RemotePeer extends AbstractPeer {
       this.logger.info(
         {
           serviceName,
-          transportCount: transports.length
+          transportCount: transports.length,
         },
         'Cleaning up transport associations for service'
       );
@@ -389,8 +384,7 @@ export class RemotePeer extends AbstractPeer {
 
     // Check if socket is open or connecting (works for both WebSocket and TransportAdapter)
     const readyState = this.socket.readyState;
-    if (readyState === 1 || readyState === 'OPEN' ||
-      readyState === 0 || readyState === 'CONNECTING') {
+    if (readyState === 1 || readyState === 'OPEN' || readyState === 0 || readyState === 'CONNECTING') {
       // Use async close if available (TransportAdapter), otherwise sync close (WebSocket)
       if (typeof this.socket.close === 'function') {
         const closeResult = this.socket.close();
@@ -527,7 +521,8 @@ export class RemotePeer extends AbstractPeer {
   sendPacket(packet: Packet) {
     return new Promise<void>((resolve, reject) => {
       // Check if socket is open (works for both WebSocket and TransportAdapter)
-      if (this.socket.readyState === 1 || this.socket.readyState === 'OPEN') { // 1 is WebSocket.OPEN
+      if (this.socket.readyState === 1 || this.socket.readyState === 'OPEN') {
+        // 1 is WebSocket.OPEN
         // For stream packets, don't wait for callback - just resolve immediately
         if (packet.getType() === TYPE_STREAM) {
           this.socket.send(encodePacket(packet), { binary: true });
@@ -894,9 +889,7 @@ export class RemotePeer extends AbstractPeer {
     if (serviceName === pattern) return true;
     if (!pattern.includes('*')) return false;
 
-    const regexPattern = pattern
-      .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-      .replace(/\*/g, '.*');
+    const regexPattern = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
     const regex = new RegExp(`^${regexPattern}$`);
     return regex.test(serviceName);
   }
@@ -968,7 +961,7 @@ export class RemotePeer extends AbstractPeer {
         methodCount: Object.keys(definition.meta.methods || {}).length,
         isAuthenticated: this.isAuthenticated(),
       },
-      'Remote interface queried successfully',
+      'Remote interface queried successfully'
     );
 
     return definition;
@@ -988,10 +981,7 @@ export class RemotePeer extends AbstractPeer {
    */
   setAuthContext(context: AuthContext): void {
     this.authContext = context;
-    this.logger.info(
-      { userId: context.userId, roles: context.roles },
-      'Authentication context set for peer',
-    );
+    this.logger.info({ userId: context.userId, roles: context.roles }, 'Authentication context set for peer');
   }
 
   /**

@@ -25,7 +25,7 @@ import {
   type IDiscoveryService,
   REDIS_TOKEN,
   LOGGER_TOKEN,
-  DISCOVERY_OPTIONS_TOKEN
+  DISCOVERY_OPTIONS_TOKEN,
 } from './types.js';
 
 // Default configuration values
@@ -93,11 +93,14 @@ export class DiscoveryService implements IDiscoveryService {
     if (this.options.clientMode) {
       this.logger.info('DiscoveryService started in client mode (no heartbeat or node registration)');
     } else {
-      this.logger.info({
-        nodeId: this.nodeId,
-        address: this.address,
-        services: this.services,
-      }, 'DiscoveryService initialized');
+      this.logger.info(
+        {
+          nodeId: this.nodeId,
+          address: this.address,
+          services: this.services,
+        },
+        'DiscoveryService initialized'
+      );
     }
   }
 
@@ -294,10 +297,7 @@ export class DiscoveryService implements IDiscoveryService {
       const activeNodes = await this.getActiveNodes();
 
       return activeNodes.filter((node) =>
-        node.services.some(
-          (service) =>
-            service.name === serviceName && (!version || service.version === version)
-        )
+        node.services.some((service) => service.name === serviceName && (!version || service.version === version))
       );
     } catch (error) {
       this.logger.error({ error, serviceName, version }, 'Error finding nodes by service');
@@ -378,10 +378,7 @@ export class DiscoveryService implements IDiscoveryService {
     await this.publishHeartbeat();
 
     // Set up periodic heartbeat
-    this.heartbeatTimer = setInterval(
-      () => this.publishHeartbeat(),
-      this.options.heartbeatInterval
-    );
+    this.heartbeatTimer = setInterval(() => this.publishHeartbeat(), this.options.heartbeatInterval);
   }
 
   /**
@@ -443,9 +440,7 @@ export class DiscoveryService implements IDiscoveryService {
 
         if (attempt < maxRetries) {
           // Exponential backoff
-          await new Promise((resolve) =>
-            setTimeout(resolve, this.options.retryDelay * Math.pow(2, attempt - 1))
-          );
+          await new Promise((resolve) => setTimeout(resolve, this.options.retryDelay * Math.pow(2, attempt - 1)));
         }
       }
     }
@@ -516,10 +511,7 @@ export class DiscoveryService implements IDiscoveryService {
   /**
    * Publish an event to the PubSub channel
    */
-  private async publishEvent(
-    type: DiscoveryEvent['type'],
-    nodeId?: string
-  ): Promise<void> {
+  private async publishEvent(type: DiscoveryEvent['type'], nodeId?: string): Promise<void> {
     if (!this.options.pubSubEnabled || !this.redis) {
       return;
     }
@@ -592,7 +584,7 @@ export class DiscoveryService implements IDiscoveryService {
               nodeId,
               address: nodeData['address'],
               services: JSON.parse(nodeData['services'] || '[]'),
-              timestamp: parseInt(nodeData['timestamp'] || '0')
+              timestamp: parseInt(nodeData['timestamp'] || '0'),
             });
           }
         }
@@ -604,7 +596,6 @@ export class DiscoveryService implements IDiscoveryService {
       return [];
     }
   }
-
 
   /**
    * Get all nodes (active and inactive)
@@ -626,7 +617,7 @@ export class DiscoveryService implements IDiscoveryService {
             nodeId,
             address: nodeData['address'],
             services: JSON.parse(nodeData['services'] || '[]'),
-            timestamp: parseInt(nodeData['timestamp'] || '0')
+            timestamp: parseInt(nodeData['timestamp'] || '0'),
           });
         }
       }
@@ -656,7 +647,7 @@ export class DiscoveryService implements IDiscoveryService {
         nodeId,
         address: nodeData['address'],
         services: JSON.parse(nodeData['services'] || '[]'),
-        timestamp: parseInt(nodeData['timestamp'] || '0')
+        timestamp: parseInt(nodeData['timestamp'] || '0'),
       };
     } catch (error) {
       this.logger.error({ error, nodeId }, 'Failed to get node info');
@@ -685,9 +676,7 @@ export class DiscoveryService implements IDiscoveryService {
    */
   async registerService(service: ServiceInfo): Promise<void> {
     // Check if service already exists
-    const exists = this.services.some(
-      s => s.name === service.name && s.version === service.version
-    );
+    const exists = this.services.some((s) => s.name === service.name && s.version === service.version);
 
     if (!exists) {
       this.services.push(service);
@@ -703,7 +692,7 @@ export class DiscoveryService implements IDiscoveryService {
    * Unregister a service by name
    */
   async unregisterService(serviceName: string): Promise<void> {
-    this.services = this.services.filter(s => s.name !== serviceName);
+    this.services = this.services.filter((s) => s.name !== serviceName);
 
     // Trigger immediate heartbeat to update Redis
     if (this.registered && !this.options.clientMode) {

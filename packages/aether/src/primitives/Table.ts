@@ -192,21 +192,15 @@ export const TableRow = defineComponent<TableRowProps>((props) => () => {
  * Renders a <th> element with optional sorting support
  */
 export const TableHead = defineComponent<TableHeadProps>((props) => () => {
-  const {
-    children,
-    scope = 'col',
-    sortable,
-    sortDirection = 'none',
-    style,
-    ...restProps
-  } = props;
+  const { children, scope = 'col', sortable, sortDirection = 'none', style, ...restProps } = props;
 
   return jsx('th', {
     ...restProps,
     scope,
     'data-table-head': '',
     'data-sortable': sortable ? '' : undefined,
-    'aria-sort': sortable && sortDirection !== 'none' ? (sortDirection === 'asc' ? 'ascending' : 'descending') : undefined,
+    'aria-sort':
+      sortable && sortDirection !== 'none' ? (sortDirection === 'asc' ? 'ascending' : 'descending') : undefined,
     style: sortable ? { cursor: 'pointer', ...style } : style,
     children,
   });

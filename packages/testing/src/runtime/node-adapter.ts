@@ -23,7 +23,7 @@ export const fakeTimers = {
   },
   clearAllTimers: () => {
     timerUtils.clearAllTimers();
-  }
+  },
 };
 
 // Re-export Jest globals for consistency with other adapters

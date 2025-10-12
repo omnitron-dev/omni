@@ -24,7 +24,7 @@ import type {
   IHealthStatus,
   IProcessManagerConfig,
   ISupervisorOptions,
-  IProcessMetadata
+  IProcessMetadata,
 } from './types.js';
 
 import { ProcessStatus } from './types.js';
@@ -108,7 +108,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
       name: mergedOptions.name || processName,
       status: ProcessStatus.PENDING,
       startTime: Date.now(),
-      restartCount: 0
+      restartCount: 0,
     };
 
     this.processes.set(processId, processInfo);
@@ -123,10 +123,10 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
         processId,
         name: mergedOptions.name,
         version: mergedOptions.version,
-        config: mergedOptions,  // Pass whole options as config
+        config: mergedOptions, // Pass whole options as config
         transport: mergedOptions.netron?.transport as any,
         host: mergedOptions.netron?.host,
-        isolation: mergedOptions.security?.isolation as any
+        isolation: mergedOptions.security?.isolation as any,
       });
 
       // Store references
@@ -142,12 +142,14 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
       }
 
       // Use proxy from handle if available
-      const proxy = handle.proxy || await this.createServiceProxy<T>(
-        ProcessClass || {} as any,  // Pass empty object if using file path
-        processId,
-        null,
-        mergedOptions
-      );
+      const proxy =
+        handle.proxy ||
+        (await this.createServiceProxy<T>(
+          ProcessClass || ({} as any), // Pass empty object if using file path
+          processId,
+          null,
+          mergedOptions
+        ));
 
       this.serviceProxies.set(processId, proxy);
 
@@ -184,12 +186,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
     processPathOrClass: string | (new (...args: any[]) => T),
     options: IProcessPoolOptions = {}
   ): Promise<IProcessPool<T>> {
-    const pool = new ProcessPool<T>(
-      this,
-      processPathOrClass,
-      options,
-      this.logger
-    );
+    const pool = new ProcessPool<T>(this, processPathOrClass, options, this.logger);
 
     await pool.initialize();
 
@@ -212,7 +209,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
         }
 
         return undefined;
-      }
+      },
     }) as IProcessPool<T>;
   }
 
@@ -241,14 +238,12 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
   async workflow<T>(WorkflowPathOrClass: string | (new () => T)): Promise<T> {
     // For now, workflows must be classes, not file paths
     if (typeof WorkflowPathOrClass === 'string') {
-      throw Errors.notImplemented('Workflow file paths are not yet supported. Please pass the workflow class directly.');
+      throw Errors.notImplemented(
+        'Workflow file paths are not yet supported. Please pass the workflow class directly.'
+      );
     }
 
-    const workflow = new ProcessWorkflow<T>(
-      this,
-      WorkflowPathOrClass,
-      this.logger
-    );
+    const workflow = new ProcessWorkflow<T>(this, WorkflowPathOrClass, this.logger);
 
     return workflow.create();
   }
@@ -256,16 +251,8 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
   /**
    * Create a supervisor tree
    */
-  async supervisor(
-    SupervisorClass: new () => any,
-    options: ISupervisorOptions = {}
-  ): Promise<any> {
-    const supervisor = new ProcessSupervisor(
-      this,
-      SupervisorClass,
-      options,
-      this.logger
-    );
+  async supervisor(SupervisorClass: new () => any, options: ISupervisorOptions = {}): Promise<any> {
+    const supervisor = new ProcessSupervisor(this, SupervisorClass, options, this.logger);
 
     await supervisor.start();
     return supervisor;
@@ -381,7 +368,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
 
     this.logger.info('Shutting down Process Manager');
 
-    const shutdownPromises = Array.from(this.processes.keys()).map(processId =>
+    const shutdownPromises = Array.from(this.processes.keys()).map((processId) =>
       this.kill(processId, force ? 'SIGKILL' : 'SIGTERM')
     );
 
@@ -390,7 +377,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
         Promise.all(shutdownPromises),
         new Promise<void>((_, reject) =>
           setTimeout(() => reject(Errors.timeout('Process Manager shutdown', timeout)), timeout)
-        )
+        ),
       ]);
     } catch (error) {
       if (force) {
@@ -420,19 +407,16 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
   /**
    * Merge process options
    */
-  private mergeOptions(
-    metadata: IProcessMetadata | undefined,
-    options: IProcessOptions
-  ): IProcessOptions {
+  private mergeOptions(metadata: IProcessMetadata | undefined, options: IProcessOptions): IProcessOptions {
     return {
       // Set memory limit from PM config if not specified
       memory: {
         limit: this.config.resources?.maxMemory,
         ...metadata?.memory,
-        ...options.memory
+        ...options.memory,
       },
       ...metadata,
-      ...options
+      ...options,
     };
   }
 
@@ -471,12 +455,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
     netron: any,
     options: IProcessOptions
   ): Promise<ServiceProxy<T>> {
-    const handler = new ServiceProxyHandler<T>(
-      processId,
-      netron,
-      ProcessClass.name,
-      this.logger
-    );
+    const handler = new ServiceProxyHandler<T>(processId, netron, ProcessClass.name, this.logger);
 
     return handler.createProxy();
   }
@@ -487,7 +466,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
   private setupShutdownHandlers(): void {
     const signals = ['SIGINT', 'SIGTERM', 'SIGUSR2'];
 
-    signals.forEach(signal => {
+    signals.forEach((signal) => {
       process.on(signal as any, async () => {
         this.logger.info({ signal }, 'Received shutdown signal');
         await this.shutdown();

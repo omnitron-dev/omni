@@ -1,10 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
 import { RedisModuleOptions } from '../../../src/modules/redis/redis.types.js';
-import {
-  createRedisTestHelper,
-  RedisTestHelper
-} from '../../utils/redis-test-utils.js';
+import { createRedisTestHelper, RedisTestHelper } from '../../utils/redis-test-utils.js';
 
 describe('RedisManager with Real Redis', () => {
   let manager: RedisManager;
@@ -25,12 +22,14 @@ describe('RedisManager with Real Redis', () => {
   describe('Client Management', () => {
     it('should create and manage single client', async () => {
       const options: RedisModuleOptions = {
-        clients: [{
-          namespace: 'default',
-          host: 'localhost',
-          port: 6379,
-          db: 15,
-        }],
+        clients: [
+          {
+            namespace: 'default',
+            host: 'localhost',
+            port: 6379,
+            db: 15,
+          },
+        ],
       };
 
       manager = new RedisManager(options, null as any);
@@ -93,12 +92,14 @@ describe('RedisManager with Real Redis', () => {
 
     it('should dynamically create new clients', async () => {
       const options: RedisModuleOptions = {
-        clients: [{
-          namespace: 'default',
-          host: 'localhost',
-          port: 6379,
-          db: 15,
-        }],
+        clients: [
+          {
+            namespace: 'default',
+            host: 'localhost',
+            port: 6379,
+            db: 15,
+          },
+        ],
       };
 
       manager = new RedisManager(options, null as any);
@@ -207,10 +208,10 @@ describe('RedisManager with Real Redis', () => {
       manager = new RedisManager(options, null as any);
 
       // Don't wait for init to complete - broken client won't connect
-      manager.init().catch(() => { }); // Ignore error
+      manager.init().catch(() => {}); // Ignore error
 
       // Give it a moment
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const health = await manager.healthCheck();
 
@@ -225,12 +226,14 @@ describe('RedisManager with Real Redis', () => {
   describe('Script Management', () => {
     it('should load and execute Lua scripts', async () => {
       const options: RedisModuleOptions = {
-        clients: [{
-          namespace: 'default',
-          host: 'localhost',
-          port: 6379,
-          db: 15,
-        }],
+        clients: [
+          {
+            namespace: 'default',
+            host: 'localhost',
+            port: 6379,
+            db: 15,
+          },
+        ],
         scripts: [
           {
             name: 'increment',
@@ -272,12 +275,14 @@ describe('RedisManager with Real Redis', () => {
 
     it('should handle script errors', async () => {
       const options: RedisModuleOptions = {
-        clients: [{
-          namespace: 'default',
-          host: 'localhost',
-          port: 6379,
-          db: 15,
-        }],
+        clients: [
+          {
+            namespace: 'default',
+            host: 'localhost',
+            port: 6379,
+            db: 15,
+          },
+        ],
         scripts: [
           {
             name: 'bad-script',
@@ -296,12 +301,14 @@ describe('RedisManager with Real Redis', () => {
   describe('Lifecycle Management', () => {
     it('should handle init and destroy lifecycle', async () => {
       const options: RedisModuleOptions = {
-        clients: [{
-          namespace: 'default',
-          host: 'localhost',
-          port: 6379,
-          db: 15,
-        }],
+        clients: [
+          {
+            namespace: 'default',
+            host: 'localhost',
+            port: 6379,
+            db: 15,
+          },
+        ],
       };
 
       manager = new RedisManager(options, null as any);
@@ -326,12 +333,14 @@ describe('RedisManager with Real Redis', () => {
 
     it('should handle onModuleInit and onModuleDestroy hooks', async () => {
       const options: RedisModuleOptions = {
-        clients: [{
-          namespace: 'default',
-          host: 'localhost',
-          port: 6379,
-          db: 15,
-        }],
+        clients: [
+          {
+            namespace: 'default',
+            host: 'localhost',
+            port: 6379,
+            db: 15,
+          },
+        ],
       };
 
       manager = new RedisManager(options, null as any);
@@ -353,18 +362,20 @@ describe('RedisManager with Real Redis', () => {
   describe('Error Handling', () => {
     it('should handle connection errors gracefully', async () => {
       const options: RedisModuleOptions = {
-        clients: [{
-          namespace: 'fail',
-          host: 'invalid-host',
-          port: 6379,
-          retryStrategy: () => null,
-        }],
+        clients: [
+          {
+            namespace: 'fail',
+            host: 'invalid-host',
+            port: 6379,
+            retryStrategy: () => null,
+          },
+        ],
       };
 
       manager = new RedisManager(options, null as any);
 
       // Init should not throw but client won't be healthy
-      await manager.init().catch(() => { }); // Catch init error
+      await manager.init().catch(() => {}); // Catch init error
 
       const health = await manager.isHealthy('fail');
       expect(health).toBe(false);
@@ -372,20 +383,20 @@ describe('RedisManager with Real Redis', () => {
 
     it('should throw when accessing non-existent client', async () => {
       const options: RedisModuleOptions = {
-        clients: [{
-          namespace: 'default',
-          host: 'localhost',
-          port: 6379,
-          db: 15,
-        }],
+        clients: [
+          {
+            namespace: 'default',
+            host: 'localhost',
+            port: 6379,
+            db: 15,
+          },
+        ],
       };
 
       manager = new RedisManager(options, null as any);
       await manager.init();
 
-      expect(() => manager.getClient('non-existent')).toThrow(
-        'Redis client with namespace "non-existent" not found'
-      );
+      expect(() => manager.getClient('non-existent')).toThrow('Redis client with namespace "non-existent" not found');
     });
 
     it('should handle duplicate namespaces', async () => {
@@ -429,12 +440,14 @@ describe('RedisManager with Real Redis', () => {
   describe('Performance', () => {
     it('should handle concurrent operations efficiently', async () => {
       const options: RedisModuleOptions = {
-        clients: [{
-          namespace: 'default',
-          host: 'localhost',
-          port: 6379,
-          db: 15,
-        }],
+        clients: [
+          {
+            namespace: 'default',
+            host: 'localhost',
+            port: 6379,
+            db: 15,
+          },
+        ],
       };
 
       manager = new RedisManager(options, null as any);
@@ -445,11 +458,7 @@ describe('RedisManager with Real Redis', () => {
 
       // Execute 1000 operations concurrently
       for (let i = 0; i < 1000; i++) {
-        operations.push(
-          client.set(`key-${i}`, `value-${i}`).then(() =>
-            client.get(`key-${i}`)
-          )
-        );
+        operations.push(client.set(`key-${i}`, `value-${i}`).then(() => client.get(`key-${i}`)));
       }
 
       const start = Date.now();

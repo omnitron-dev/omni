@@ -41,7 +41,7 @@ export class WildcardMatcher {
    * Find all patterns that match an event name
    */
   findMatchingPatterns(eventName: string, patterns: string[]): string[] {
-    return patterns.filter(pattern => this.match(eventName, pattern));
+    return patterns.filter((pattern) => this.match(eventName, pattern));
   }
 
   /**
@@ -68,7 +68,7 @@ export class WildcardMatcher {
         pattern,
         regex: new RegExp(`^${this.escapeRegex(pattern)}$`),
         parts,
-        isWildcard: false
+        isWildcard: false,
       };
     }
 
@@ -189,7 +189,7 @@ export class WildcardMatcher {
       pattern,
       regex,
       parts,
-      isWildcard: true
+      isWildcard: true,
     };
   }
 

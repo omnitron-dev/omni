@@ -21,7 +21,7 @@ import {
   LOGGER_SERVICE_TOKEN,
   CONFIG_SERVICE_TOKEN,
   IApplication,
-  HealthStatus
+  HealthStatus,
 } from '../src/index';
 import { Module, EnhancedApplicationModule } from '../src/enhanced-module';
 
@@ -61,9 +61,7 @@ class TaskRepository implements OnInit, OnDestroy {
   private tasks: Map<string, Task> = new Map();
   private logger!: Logger;
 
-  constructor(
-    @Inject(LOGGER_SERVICE_TOKEN) private loggerModule: any
-  ) {
+  constructor(@Inject(LOGGER_SERVICE_TOKEN) private loggerModule: any) {
     this.logger = this.loggerModule.child({ service: 'TaskRepository' });
   }
 
@@ -87,7 +85,7 @@ class TaskRepository implements OnInit, OnDestroy {
         status: 'completed',
         priority: 'high',
         createdAt: new Date('2024-01-01'),
-        updatedAt: new Date('2024-01-02')
+        updatedAt: new Date('2024-01-02'),
       },
       {
         id: '2',
@@ -96,11 +94,11 @@ class TaskRepository implements OnInit, OnDestroy {
         status: 'in-progress',
         priority: 'high',
         createdAt: new Date('2024-01-03'),
-        updatedAt: new Date('2024-01-10')
-      }
+        updatedAt: new Date('2024-01-10'),
+      },
     ];
 
-    seedTasks.forEach(task => this.tasks.set(task.id, task));
+    seedTasks.forEach((task) => this.tasks.set(task.id, task));
     this.logger.debug(`Seeded ${this.tasks.size} tasks`);
   }
 
@@ -124,7 +122,7 @@ class TaskRepository implements OnInit, OnDestroy {
     return {
       status: 'healthy',
       message: 'Repository is operational',
-      details: { taskCount: this.tasks.size }
+      details: { taskCount: this.tasks.size },
     };
   }
 }
@@ -157,7 +155,7 @@ class TaskService implements OnInit {
       ...taskData,
       id: this.generateId(),
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
     };
 
     await this.repository.save(task);
@@ -182,7 +180,7 @@ class TaskService implements OnInit {
       ...updates,
       id: task.id,
       createdAt: task.createdAt,
-      updatedAt: new Date()
+      updatedAt: new Date(),
     };
 
     await this.repository.save(updatedTask);
@@ -217,16 +215,16 @@ class TaskService implements OnInit {
       byStatus: {
         pending: 0,
         'in-progress': 0,
-        completed: 0
+        completed: 0,
       },
       byPriority: {
         low: 0,
         medium: 0,
-        high: 0
-      }
+        high: 0,
+      },
     };
 
-    tasks.forEach(task => {
+    tasks.forEach((task) => {
       stats.byStatus[task.status]++;
       stats.byPriority[task.priority]++;
     });
@@ -239,7 +237,7 @@ class TaskService implements OnInit {
     return {
       status: 'healthy',
       message: 'TaskService is operational',
-      details: stats
+      details: stats,
     };
   }
 }
@@ -263,7 +261,7 @@ class NotificationService implements OnInit {
   async onInit(): Promise<void> {
     this.config = this.configModule.get('notifications', {
       enabled: true,
-      channels: ['email', 'push']
+      channels: ['email', 'push'],
     });
     this.logger.info('NotificationService initialized', this.config);
   }
@@ -276,30 +274,28 @@ class NotificationService implements OnInit {
 
     this.logger.info(`Sending ${type} notification`, data);
     // Simulate async operation
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
 
   async notifyTaskCreated(task: Task): Promise<void> {
     await this.sendNotification('task-created', {
       taskId: task.id,
-      title: task.title
+      title: task.title,
     });
   }
 
   async notifyTaskCompleted(task: Task): Promise<void> {
     await this.sendNotification('task-completed', {
       taskId: task.id,
-      title: task.title
+      title: task.title,
     });
   }
 
   async health(): Promise<HealthStatus> {
     return {
       status: this.config.enabled ? 'healthy' : 'degraded',
-      message: this.config.enabled ?
-        'NotificationService is operational' :
-        'NotificationService is disabled',
-      details: this.config
+      message: this.config.enabled ? 'NotificationService is operational' : 'NotificationService is disabled',
+      details: this.config,
     };
   }
 }
@@ -337,7 +333,7 @@ class TaskCoordinator implements OnInit {
     this.logger.debug(`Completing task ${taskId}`);
 
     const task = await this.taskService.update(taskId, {
-      status: 'completed'
+      status: 'completed',
     });
 
     if (task) {
@@ -360,7 +356,7 @@ class TaskCoordinator implements OnInit {
   async health(): Promise<HealthStatus> {
     return {
       status: 'healthy',
-      message: 'TaskCoordinator is operational'
+      message: 'TaskCoordinator is operational',
     };
   }
 }
@@ -386,9 +382,9 @@ class TaskCoordinator implements OnInit {
     [TaskRepositoryToken, { useClass: TaskRepository, scope: 'singleton' }],
     [TaskServiceToken, { useClass: TaskService, scope: 'singleton' }],
     [NotificationServiceToken, { useClass: NotificationService, scope: 'singleton' }],
-    [TaskCoordinatorToken, { useClass: TaskCoordinator, scope: 'singleton' }]
+    [TaskCoordinatorToken, { useClass: TaskCoordinator, scope: 'singleton' }],
   ],
-  exports: [TaskCoordinatorToken, TaskServiceToken] // Only expose public API
+  exports: [TaskCoordinatorToken, TaskServiceToken], // Only expose public API
 })
 class TaskManagerModule {
   private logger?: Logger;
@@ -421,24 +417,24 @@ const appConfig = {
   config: {
     app: {
       name: 'Enhanced Task Manager',
-      environment: process.env['NODE_ENV'] || 'development'
+      environment: process.env['NODE_ENV'] || 'development',
     },
     database: {
       host: 'localhost',
-      port: 5432
+      port: 5432,
     },
     notifications: {
       enabled: true,
       channels: ['email', 'push', 'sms'],
-      retryAttempts: 3
-    }
+      retryAttempts: 3,
+    },
   },
   logging: {
     level: 'debug',
-    prettyPrint: true
+    prettyPrint: true,
   },
   // Module registration is now cleaner
-  modules: [TaskManagerModule]
+  modules: [TaskManagerModule],
 };
 
 // ============================
@@ -485,7 +481,7 @@ async function bootstrap() {
     title: 'Implement enhanced module system',
     description: 'Add automatic provider management',
     status: 'pending',
-    priority: 'high'
+    priority: 'high',
   });
   console.log('Task created:', newTask);
 
@@ -497,7 +493,7 @@ async function bootstrap() {
   // Demo: Get all tasks
   console.log('\nAll tasks:');
   const allTasks = await taskService.findAll();
-  allTasks.forEach(task => {
+  allTasks.forEach((task) => {
     console.log(`  - [${task.status}] ${task.title} (Priority: ${task.priority})`);
   });
 
@@ -520,7 +516,7 @@ async function bootstrap() {
 
 // Run when executed directly
 if (require.main === module) {
-  bootstrap().catch(error => {
+  bootstrap().catch((error) => {
     console.error('Failed to start application:', error);
     process.exit(1);
   });
@@ -537,5 +533,5 @@ export {
   TaskServiceToken,
   TaskRepositoryToken,
   NotificationServiceToken,
-  TaskCoordinatorToken
+  TaskCoordinatorToken,
 };

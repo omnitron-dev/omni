@@ -19,16 +19,12 @@ describe('Accordion', () => {
           defaultValue: 'item1',
           children: () => [
             AccordionItem({
-              value: 'item1', children: () => [
-                AccordionTrigger({ children: 'Item 1' }),
-                AccordionContent({ children: 'Content 1' }),
-              ],
+              value: 'item1',
+              children: () => [AccordionTrigger({ children: 'Item 1' }), AccordionContent({ children: 'Content 1' })],
             }),
             AccordionItem({
-              value: 'item2', children: () => [
-                AccordionTrigger({ children: 'Item 2' }),
-                AccordionContent({ children: 'Content 2' }),
-              ],
+              value: 'item2',
+              children: () => [AccordionTrigger({ children: 'Item 2' }), AccordionContent({ children: 'Content 2' })],
             }),
           ],
         });
@@ -55,16 +51,12 @@ describe('Accordion', () => {
           collapsible: true,
           children: () => [
             AccordionItem({
-              value: 'item1', children: () => [
-                AccordionTrigger({ children: 'Item 1' }),
-                AccordionContent({ children: 'Content 1' }),
-              ],
+              value: 'item1',
+              children: () => [AccordionTrigger({ children: 'Item 1' }), AccordionContent({ children: 'Content 1' })],
             }),
             AccordionItem({
-              value: 'item2', children: () => [
-                AccordionTrigger({ children: 'Item 2' }),
-                AccordionContent({ children: 'Content 2' }),
-              ],
+              value: 'item2',
+              children: () => [AccordionTrigger({ children: 'Item 2' }), AccordionContent({ children: 'Content 2' })],
             }),
           ],
         });
@@ -82,7 +74,9 @@ describe('Accordion', () => {
 
       // Find visible content (not hidden)
       const contents = container.querySelectorAll('[role="region"]') as NodeListOf<HTMLElement>;
-      const visibleContent = Array.from(contents).find(el => !el.hasAttribute('hidden') && el.style.display !== 'none');
+      const visibleContent = Array.from(contents).find(
+        (el) => !el.hasAttribute('hidden') && el.style.display !== 'none'
+      );
       expect(visibleContent?.textContent).toBe('Content 2');
     });
 
@@ -94,10 +88,8 @@ describe('Accordion', () => {
           collapsible: true,
           children: () => [
             AccordionItem({
-              value: 'item1', children: () => [
-                AccordionTrigger({ children: 'Item 1' }),
-                AccordionContent({ children: 'Content 1' }),
-              ],
+              value: 'item1',
+              children: () => [AccordionTrigger({ children: 'Item 1' }), AccordionContent({ children: 'Content 1' })],
             }),
           ],
         });
@@ -127,10 +119,8 @@ describe('Accordion', () => {
           collapsible: false,
           children: () => [
             AccordionItem({
-              value: 'item1', children: () => [
-                AccordionTrigger({ children: 'Item 1' }),
-                AccordionContent({ children: 'Content 1' }),
-              ],
+              value: 'item1',
+              children: () => [AccordionTrigger({ children: 'Item 1' }), AccordionContent({ children: 'Content 1' })],
             }),
           ],
         });
@@ -159,22 +149,16 @@ describe('Accordion', () => {
           defaultValue: ['item1', 'item2'],
           children: () => [
             AccordionItem({
-              value: 'item1', children: () => [
-                AccordionTrigger({ children: 'Item 1' }),
-                AccordionContent({ children: 'Content 1' }),
-              ],
+              value: 'item1',
+              children: () => [AccordionTrigger({ children: 'Item 1' }), AccordionContent({ children: 'Content 1' })],
             }),
             AccordionItem({
-              value: 'item2', children: () => [
-                AccordionTrigger({ children: 'Item 2' }),
-                AccordionContent({ children: 'Content 2' }),
-              ],
+              value: 'item2',
+              children: () => [AccordionTrigger({ children: 'Item 2' }), AccordionContent({ children: 'Content 2' })],
             }),
             AccordionItem({
-              value: 'item3', children: () => [
-                AccordionTrigger({ children: 'Item 3' }),
-                AccordionContent({ children: 'Content 3' }),
-              ],
+              value: 'item3',
+              children: () => [AccordionTrigger({ children: 'Item 3' }), AccordionContent({ children: 'Content 3' })],
             }),
           ],
         });
@@ -190,7 +174,9 @@ describe('Accordion', () => {
 
       // Two contents should be visible (not hidden)
       const allContents = container.querySelectorAll('[role="region"]') as NodeListOf<HTMLElement>;
-      const visibleContents = Array.from(allContents).filter(el => !el.hasAttribute('hidden') && el.style.display !== 'none');
+      const visibleContents = Array.from(allContents).filter(
+        (el) => !el.hasAttribute('hidden') && el.style.display !== 'none'
+      );
       expect(visibleContents.length).toBe(2);
     });
 
@@ -201,16 +187,12 @@ describe('Accordion', () => {
           defaultValue: ['item1'],
           children: () => [
             AccordionItem({
-              value: 'item1', children: () => [
-                AccordionTrigger({ children: 'Item 1' }),
-                AccordionContent({ children: 'Content 1' }),
-              ],
+              value: 'item1',
+              children: () => [AccordionTrigger({ children: 'Item 1' }), AccordionContent({ children: 'Content 1' })],
             }),
             AccordionItem({
-              value: 'item2', children: () => [
-                AccordionTrigger({ children: 'Item 2' }),
-                AccordionContent({ children: 'Content 2' }),
-              ],
+              value: 'item2',
+              children: () => [AccordionTrigger({ children: 'Item 2' }), AccordionContent({ children: 'Content 2' })],
             }),
           ],
         });
@@ -228,7 +210,9 @@ describe('Accordion', () => {
 
       // Both contents should be visible (not hidden)
       const allContents = container.querySelectorAll('[role="region"]') as NodeListOf<HTMLElement>;
-      const visibleContents = Array.from(allContents).filter(el => !el.hasAttribute('hidden') && el.style.display !== 'none');
+      const visibleContents = Array.from(allContents).filter(
+        (el) => !el.hasAttribute('hidden') && el.style.display !== 'none'
+      );
       expect(visibleContents.length).toBe(2);
     });
 
@@ -241,16 +225,12 @@ describe('Accordion', () => {
           value: openItems,
           children: () => [
             AccordionItem({
-              value: 'item1', children: () => [
-                AccordionTrigger({ children: 'Item 1' }),
-                AccordionContent({ children: 'Content 1' }),
-              ],
+              value: 'item1',
+              children: () => [AccordionTrigger({ children: 'Item 1' }), AccordionContent({ children: 'Content 1' })],
             }),
             AccordionItem({
-              value: 'item2', children: () => [
-                AccordionTrigger({ children: 'Item 2' }),
-                AccordionContent({ children: 'Content 2' }),
-              ],
+              value: 'item2',
+              children: () => [AccordionTrigger({ children: 'Item 2' }), AccordionContent({ children: 'Content 2' })],
             }),
           ],
         });
@@ -259,7 +239,9 @@ describe('Accordion', () => {
 
       // Initially only item1 is open (visible)
       let allContents = container.querySelectorAll('[role="region"]') as NodeListOf<HTMLElement>;
-      let visibleContents = Array.from(allContents).filter(el => !el.hasAttribute('hidden') && el.style.display !== 'none');
+      let visibleContents = Array.from(allContents).filter(
+        (el) => !el.hasAttribute('hidden') && el.style.display !== 'none'
+      );
       expect(visibleContents.length).toBe(1);
       expect(visibleContents[0]?.textContent).toBe('Content 1');
 
@@ -268,7 +250,9 @@ describe('Accordion', () => {
 
       // Now only item2 should be open (visible)
       allContents = container.querySelectorAll('[role="region"]') as NodeListOf<HTMLElement>;
-      visibleContents = Array.from(allContents).filter(el => !el.hasAttribute('hidden') && el.style.display !== 'none');
+      visibleContents = Array.from(allContents).filter(
+        (el) => !el.hasAttribute('hidden') && el.style.display !== 'none'
+      );
       expect(visibleContents.length).toBe(1);
       expect(visibleContents[0]?.textContent).toBe('Content 2');
     });
@@ -282,10 +266,8 @@ describe('Accordion', () => {
           disabled: true,
           children: () => [
             AccordionItem({
-              value: 'item1', children: () => [
-                AccordionTrigger({ children: 'Item 1' }),
-                AccordionContent({ children: 'Content 1' }),
-              ],
+              value: 'item1',
+              children: () => [AccordionTrigger({ children: 'Item 1' }), AccordionContent({ children: 'Content 1' })],
             }),
           ],
         });
@@ -300,19 +282,16 @@ describe('Accordion', () => {
     it('should disable individual items', () => {
       const component = () =>
         Accordion({
-          type: 'single', children: () => [
+          type: 'single',
+          children: () => [
             AccordionItem({
-              value: 'item1', children: () => [
-                AccordionTrigger({ children: 'Item 1' }),
-                AccordionContent({ children: 'Content 1' }),
-              ],
+              value: 'item1',
+              children: () => [AccordionTrigger({ children: 'Item 1' }), AccordionContent({ children: 'Content 1' })],
             }),
             AccordionItem({
               value: 'item2',
-              disabled: true, children: () => [
-                AccordionTrigger({ children: 'Item 2' }),
-                AccordionContent({ children: 'Content 2' }),
-              ],
+              disabled: true,
+              children: () => [AccordionTrigger({ children: 'Item 2' }), AccordionContent({ children: 'Content 2' })],
             }),
           ],
         });
@@ -343,10 +322,8 @@ describe('Accordion', () => {
           defaultValue: 'item1',
           children: () => [
             AccordionItem({
-              value: 'item1', children: () => [
-                AccordionTrigger({ children: 'Item 1' }),
-                AccordionContent({ children: 'Content 1' }),
-              ],
+              value: 'item1',
+              children: () => [AccordionTrigger({ children: 'Item 1' }), AccordionContent({ children: 'Content 1' })],
             }),
           ],
         });
@@ -373,10 +350,8 @@ describe('Accordion', () => {
           defaultValue: 'item1',
           children: () => [
             AccordionItem({
-              value: 'item1', children: () => [
-                AccordionTrigger({ children: 'Item 1' }),
-                AccordionContent({ children: 'Content 1' }),
-              ],
+              value: 'item1',
+              children: () => [AccordionTrigger({ children: 'Item 1' }), AccordionContent({ children: 'Content 1' })],
             }),
             AccordionItem({
               value: 'item2',

@@ -25,11 +25,7 @@ describe('Flex', () => {
     it('should render children correctly', () => {
       const component = () =>
         Flex({
-          children: [
-            'Child 1',
-            document.createElement('span'),
-            'Child 2',
-          ],
+          children: ['Child 1', document.createElement('span'), 'Child 2'],
         });
 
       const { container } = renderComponent(component);

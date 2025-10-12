@@ -76,7 +76,17 @@ export interface RotifConfig {
   /** Custom function to generate consumer names */
   consumerNameFn?: () => string;
   /** Generate dedup key */
-  generateDedupKey?: ({ channel, payload, group, pattern }: { channel: string, payload: any, group?: string, pattern?: string }) => string;
+  generateDedupKey?: ({
+    channel,
+    payload,
+    group,
+    pattern,
+  }: {
+    channel: string;
+    payload: any;
+    group?: string;
+    pattern?: string;
+  }) => string;
   /** DLQ cleanup configuration */
   dlqCleanup?: DLQCleanupConfig;
 }
@@ -111,7 +121,6 @@ export interface Subscription {
   /** Number of messages currently being processed (internal) */
   inflightCount?: number;
 }
-
 
 /**
  * Statistics for a subscription.

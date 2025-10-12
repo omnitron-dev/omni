@@ -7,22 +7,20 @@
 
 import { Inject, Injectable } from '@omnitron-dev/titan/decorators';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import {
-  ServiceStatus
-} from '../types.js';
+import { ServiceStatus } from '../types.js';
 import type {
   TemplateModuleOptions,
   TemplateData,
   TemplateEvent,
   OperationResult,
-  HealthCheckResult
+  HealthCheckResult,
 } from '../types.js';
 import {
   TEMPLATE_MODULE_OPTIONS,
   TEMPLATE_CACHE_SERVICE,
   TEMPLATE_LOGGER,
   TEMPLATE_EVENTS,
-  ERROR_MESSAGES
+  ERROR_MESSAGES,
 } from '../constants.js';
 import { CacheService } from './cache.service.js';
 import { LoggerService } from './logger.service.js';
@@ -60,7 +58,7 @@ export class TemplateService extends EventEmitter {
       // Emit initialization event
       await this.emit(TEMPLATE_EVENTS.INITIALIZED, {
         timestamp: new Date(),
-        options: this.options
+        options: this.options,
       });
 
       this.initialized = true;
@@ -121,7 +119,7 @@ export class TemplateService extends EventEmitter {
         description: data.description,
         metadata: data.metadata || {},
         createdAt: now,
-        updatedAt: now
+        updatedAt: now,
       };
 
       // Store in memory
@@ -136,7 +134,7 @@ export class TemplateService extends EventEmitter {
       const event: TemplateEvent = {
         type: 'created',
         data: newData,
-        timestamp: now
+        timestamp: now,
       };
       await this.emit(TEMPLATE_EVENTS.DATA_CREATED, event);
 
@@ -195,7 +193,7 @@ export class TemplateService extends EventEmitter {
         ...updates,
         id, // Ensure ID doesn't change
         createdAt: existing.createdAt, // Preserve creation time
-        updatedAt: new Date()
+        updatedAt: new Date(),
       };
 
       // Update in memory
@@ -210,7 +208,7 @@ export class TemplateService extends EventEmitter {
       const event: TemplateEvent = {
         type: 'updated',
         data: updated,
-        timestamp: new Date()
+        timestamp: new Date(),
       };
       await this.emit(TEMPLATE_EVENTS.DATA_UPDATED, event);
 
@@ -245,7 +243,7 @@ export class TemplateService extends EventEmitter {
       const event: TemplateEvent = {
         type: 'deleted',
         data,
-        timestamp: new Date()
+        timestamp: new Date(),
       };
       await this.emit(TEMPLATE_EVENTS.DATA_DELETED, event);
 
@@ -274,10 +272,7 @@ export class TemplateService extends EventEmitter {
   /**
    * Execute an operation with retry
    */
-  async executeWithRetry<T>(
-    operation: () => Promise<T>,
-    retryOptions?: Parameters<typeof retry>[1]
-  ): Promise<T> {
+  async executeWithRetry<T>(operation: () => Promise<T>, retryOptions?: Parameters<typeof retry>[1]): Promise<T> {
     return retry(operation, retryOptions);
   }
 
@@ -293,8 +288,8 @@ export class TemplateService extends EventEmitter {
       message: `Service status: ${this.status}`,
       details: {
         initialized: this.initialized,
-        dataCount: this.dataStore.size
-      }
+        dataCount: this.dataStore.size,
+      },
     };
 
     // Check cache
@@ -302,21 +297,21 @@ export class TemplateService extends EventEmitter {
       const cacheHealth = await this.cache.healthCheck();
       checks['cache'] = {
         status: cacheHealth ? 'up' : 'down',
-        message: 'Cache service health'
+        message: 'Cache service health',
       };
     } catch (error) {
       checks['cache'] = {
         status: 'down',
-        message: (error as Error).message
+        message: (error as Error).message,
       };
     }
 
-    const allHealthy = Object.values(checks).every(check => check.status === 'up');
+    const allHealthy = Object.values(checks).every((check) => check.status === 'up');
 
     return {
       status: allHealthy ? 'healthy' : 'unhealthy',
       checks,
-      timestamp: new Date()
+      timestamp: new Date(),
     };
   }
 
@@ -335,7 +330,7 @@ export class TemplateService extends EventEmitter {
       status: this.status,
       dataCount: this.dataStore.size,
       cacheEnabled: this.options.enableCache,
-      uptime: process.uptime()
+      uptime: process.uptime(),
     };
   }
 }

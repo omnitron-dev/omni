@@ -25,7 +25,7 @@ describe('Transport-Agnostic Error System', () => {
       const error = createError({
         code: ErrorCode.NOT_FOUND,
         message: 'User not found',
-        details: { userId: '123' }
+        details: { userId: '123' },
       });
 
       expect(error).toBeInstanceOf(TitanError);
@@ -52,7 +52,7 @@ describe('Transport-Agnostic Error System', () => {
       const error = createError({
         code: ErrorCode.SERVICE_UNAVAILABLE,
         message: 'Cannot process request',
-        cause: originalError
+        cause: originalError,
       });
 
       expect(error.cause).toBe(originalError);
@@ -79,8 +79,8 @@ describe('Transport-Agnostic Error System', () => {
           expected: 'string',
           received: 'number',
           path: ['name'],
-          message: 'Expected string, received number'
-        }
+          message: 'Expected string, received number',
+        },
       ]);
 
       const error = ValidationError.fromZodError(zodError);
@@ -98,13 +98,13 @@ describe('Transport-Agnostic Error System', () => {
         {
           code: 'custom',
           path: ['email'],
-          message: 'Invalid email format'
-        }
+          message: 'Invalid email format',
+        },
       ]);
 
       const error = ValidationError.fromZodError(zodError, {
         message: 'Please check your input',
-        code: ErrorCode.BAD_REQUEST
+        code: ErrorCode.BAD_REQUEST,
       });
 
       expect(error.message).toBe('Please check your input');
@@ -122,13 +122,13 @@ describe('Transport-Agnostic Error System', () => {
           404: z.object({
             code: z.literal('USER_NOT_FOUND'),
             message: z.string(),
-            userId: z.string()
+            userId: z.string(),
           }),
           403: z.object({
             code: z.literal('ACCESS_DENIED'),
-            reason: z.string()
-          })
-        }
+            reason: z.string(),
+          }),
+        },
       },
       createUser: {
         input: z.object({ name: z.string(), email: z.string() }),
@@ -136,24 +136,26 @@ describe('Transport-Agnostic Error System', () => {
         errors: {
           409: z.object({
             code: z.literal('USER_EXISTS'),
-            email: z.string()
+            email: z.string(),
           }),
           422: z.object({
             code: z.literal('INVALID_DATA'),
-            errors: z.array(z.object({
-              field: z.string(),
-              message: z.string()
-            }))
-          })
-        }
-      }
+            errors: z.array(
+              z.object({
+                field: z.string(),
+                message: z.string(),
+              })
+            ),
+          }),
+        },
+      },
     });
 
     it('should create contract-aware errors', () => {
       const error = ContractError.create(userContract, 'getUser', 404, {
         code: 'USER_NOT_FOUND',
         message: 'User not found',
-        userId: '123'
+        userId: '123',
       });
 
       expect(error).toBeInstanceOf(ContractError);
@@ -162,7 +164,7 @@ describe('Transport-Agnostic Error System', () => {
       expect(error.payload).toEqual({
         code: 'USER_NOT_FOUND',
         message: 'User not found',
-        userId: '123'
+        userId: '123',
       });
     });
 
@@ -171,7 +173,7 @@ describe('Transport-Agnostic Error System', () => {
       expect(() => {
         ContractError.create(userContract, 'getUser', 404, {
           code: 'USER_NOT_FOUND',
-          message: 'User not found'
+          message: 'User not found',
           // Missing userId
         });
       }).toThrow('Invalid error payload for contract');
@@ -179,7 +181,7 @@ describe('Transport-Agnostic Error System', () => {
       // Invalid error code for method
       expect(() => {
         ContractError.create(userContract, 'getUser', 500, {
-          message: 'Server error'
+          message: 'Server error',
         });
       }).toThrow('Error code 500 not defined in contract');
     });
@@ -191,12 +193,12 @@ describe('Transport-Agnostic Error System', () => {
       const error404: GetUserErrors[404] = {
         code: 'USER_NOT_FOUND',
         message: 'Not found',
-        userId: '123'
+        userId: '123',
       };
 
       const error403: GetUserErrors[403] = {
         code: 'ACCESS_DENIED',
-        reason: 'Insufficient permissions'
+        reason: 'Insufficient permissions',
       };
 
       // TypeScript should catch these at compile time
@@ -205,7 +207,7 @@ describe('Transport-Agnostic Error System', () => {
 
       // @ts-expect-error - Invalid payload structure
       const invalidPayload: GetUserErrors[404] = {
-        code: 'WRONG_CODE'
+        code: 'WRONG_CODE',
       };
     });
 
@@ -219,7 +221,7 @@ describe('Transport-Agnostic Error System', () => {
             throw ContractError.create(this.contract, 'getUser', 404, {
               code: 'USER_NOT_FOUND',
               message: 'User not found',
-              userId: input.id
+              userId: input.id,
             });
           }
 
@@ -236,7 +238,7 @@ describe('Transport-Agnostic Error System', () => {
       it('should map to HTTP status codes', () => {
         const error = createError({
           code: ErrorCode.NOT_FOUND,
-          message: 'Resource not found'
+          message: 'Resource not found',
         });
 
         const httpResponse = mapToTransport(error, TransportType.HTTP);
@@ -246,17 +248,17 @@ describe('Transport-Agnostic Error System', () => {
           error: {
             code: 'NOT_FOUND',
             message: 'Resource not found',
-            details: {}
-          }
+            details: {},
+          },
         });
         expect(httpResponse.headers).toEqual({
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         });
       });
 
       it('should handle custom HTTP errors', () => {
         const error = new HttpError(418, "I'm a teapot", {
-          custom: 'data'
+          custom: 'data',
         });
 
         const httpResponse = mapToTransport(error, TransportType.HTTP);
@@ -269,7 +271,7 @@ describe('Transport-Agnostic Error System', () => {
       it('should map to WebSocket message format', () => {
         const error = createError({
           code: ErrorCode.BAD_REQUEST,
-          message: 'Invalid parameters'
+          message: 'Invalid parameters',
         });
 
         const wsMessage = mapToTransport(error, TransportType.WEBSOCKET);
@@ -280,19 +282,19 @@ describe('Transport-Agnostic Error System', () => {
             code: 400,
             name: 'BAD_REQUEST',
             message: 'Invalid parameters',
-            details: {}
-          }
+            details: {},
+          },
         });
       });
 
       it('should include request ID if provided', () => {
         const error = createError({
           code: ErrorCode.NOT_FOUND,
-          requestId: 'req-123'
+          requestId: 'req-123',
         });
 
         const wsMessage = mapToTransport(error, TransportType.WEBSOCKET, {
-          requestId: 'req-123'
+          requestId: 'req-123',
         });
 
         expect(wsMessage.id).toBe('req-123');
@@ -302,12 +304,12 @@ describe('Transport-Agnostic Error System', () => {
     describe('gRPC Mapping', () => {
       it('should map to gRPC status codes', () => {
         const errorMappings = [
-          { titan: ErrorCode.NOT_FOUND, grpc: 5 },            // NOT_FOUND
-          { titan: ErrorCode.INVALID_ARGUMENT, grpc: 3 },     // INVALID_ARGUMENT
-          { titan: ErrorCode.PERMISSION_DENIED, grpc: 7 },    // PERMISSION_DENIED
-          { titan: ErrorCode.UNAUTHORIZED, grpc: 16 },        // UNAUTHENTICATED
-          { titan: ErrorCode.INTERNAL_ERROR, grpc: 13 },      // INTERNAL
-          { titan: ErrorCode.SERVICE_UNAVAILABLE, grpc: 14 }  // UNAVAILABLE
+          { titan: ErrorCode.NOT_FOUND, grpc: 5 }, // NOT_FOUND
+          { titan: ErrorCode.INVALID_ARGUMENT, grpc: 3 }, // INVALID_ARGUMENT
+          { titan: ErrorCode.PERMISSION_DENIED, grpc: 7 }, // PERMISSION_DENIED
+          { titan: ErrorCode.UNAUTHORIZED, grpc: 16 }, // UNAUTHENTICATED
+          { titan: ErrorCode.INTERNAL_ERROR, grpc: 13 }, // INTERNAL
+          { titan: ErrorCode.SERVICE_UNAVAILABLE, grpc: 14 }, // UNAVAILABLE
         ];
 
         errorMappings.forEach(({ titan, grpc }) => {
@@ -325,7 +327,7 @@ describe('Transport-Agnostic Error System', () => {
       it('should map to binary protocol format', () => {
         const error = createError({
           code: ErrorCode.NOT_FOUND,
-          message: 'Not found'
+          message: 'Not found',
         });
 
         const tcpPacket = mapToTransport(error, TransportType.TCP);
@@ -357,7 +359,7 @@ describe('Transport-Agnostic Error System', () => {
     it('should optimize serialization for frequent errors', () => {
       const error = createError({
         code: ErrorCode.VALIDATION_ERROR,
-        details: { fields: ['email', 'password'] }
+        details: { fields: ['email', 'password'] },
       });
 
       const start = performance.now();
@@ -389,12 +391,12 @@ describe('Transport-Agnostic Error System', () => {
   describe('Error Recovery and Retry Logic', () => {
     it('should determine if error is retryable', () => {
       const retryableError = createError({
-        code: ErrorCode.SERVICE_UNAVAILABLE
+        code: ErrorCode.SERVICE_UNAVAILABLE,
       });
       expect(retryableError.isRetryable()).toBe(true);
 
       const nonRetryableError = createError({
-        code: ErrorCode.BAD_REQUEST
+        code: ErrorCode.BAD_REQUEST,
       });
       expect(nonRetryableError.isRetryable()).toBe(false);
     });
@@ -402,7 +404,7 @@ describe('Transport-Agnostic Error System', () => {
     it('should suggest retry strategy', () => {
       const error = createError({
         code: ErrorCode.RATE_LIMITED,
-        details: { retryAfter: 60 }
+        details: { retryAfter: 60 },
       });
 
       const strategy = error.getRetryStrategy();
@@ -417,7 +419,7 @@ describe('Transport-Agnostic Error System', () => {
       const errors = [
         createError({ code: ErrorCode.VALIDATION_ERROR, message: 'Invalid email' }),
         createError({ code: ErrorCode.VALIDATION_ERROR, message: 'Invalid password' }),
-        createError({ code: ErrorCode.BAD_REQUEST, message: 'Missing field' })
+        createError({ code: ErrorCode.BAD_REQUEST, message: 'Missing field' }),
       ];
 
       const aggregated = TitanError.aggregate(errors);
@@ -431,7 +433,7 @@ describe('Transport-Agnostic Error System', () => {
       const errors = [
         createError({ code: ErrorCode.NOT_FOUND, message: 'User not found' }),
         createError({ code: ErrorCode.NOT_FOUND, message: 'User not found' }),
-        createError({ code: ErrorCode.NOT_FOUND, message: 'Post not found' })
+        createError({ code: ErrorCode.NOT_FOUND, message: 'Post not found' }),
       ];
 
       const aggregated = TitanError.aggregate(errors, { deduplicate: true });
@@ -448,8 +450,8 @@ describe('Transport-Agnostic Error System', () => {
           userId: 'user-456',
           service: 'UserService',
           method: 'getUser',
-          timestamp: Date.now()
-        }
+          timestamp: Date.now(),
+        },
       });
 
       expect(error.context.requestId).toBe('req-123');
@@ -461,7 +463,7 @@ describe('Transport-Agnostic Error System', () => {
         code: ErrorCode.SERVICE_UNAVAILABLE,
         correlationId: 'corr-789',
         spanId: 'span-123',
-        traceId: 'trace-456'
+        traceId: 'trace-456',
       });
 
       const serialized = error.toJSON();
@@ -488,7 +490,7 @@ describe('Transport-Agnostic Error System', () => {
     it('should provide error rate metrics', () => {
       const metrics = TitanError.getMetrics({
         window: '1m',
-        groupBy: ['code', 'category']
+        groupBy: ['code', 'category'],
       });
 
       expect(metrics).toHaveProperty('rate');

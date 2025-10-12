@@ -8,7 +8,7 @@ import {
   FluentInterface,
   ConfigurableProxy,
   HttpCacheManager,
-  RetryManager
+  RetryManager,
 } from '../../../../src/netron/transport/http/fluent-interface/index.js';
 import { HttpTransportClient } from '../../../../src/netron/transport/http/client.js';
 import type { Definition } from '../../../../src/netron/definition.js';
@@ -29,20 +29,15 @@ describe('FluentInterface', () => {
         version: '1.0.0',
         methods: {
           getUser: { name: 'getUser' },
-          getUsers: { name: 'getUsers' }
-        }
-      }
+          getUsers: { name: 'getUsers' },
+        },
+      },
     } as Definition;
 
     cacheManager = new HttpCacheManager({ maxEntries: 100 });
     retryManager = new RetryManager();
 
-    fluentInterface = new FluentInterface(
-      transport,
-      definition,
-      cacheManager,
-      retryManager
-    );
+    fluentInterface = new FluentInterface(transport, definition, cacheManager, retryManager);
   });
 
   describe('Configuration Methods', () => {
@@ -195,9 +190,7 @@ describe('FluentInterface', () => {
     });
 
     it('should allow chaining globalCache() and globalRetry()', () => {
-      const result = fluentInterface
-        .globalCache({ maxAge: 120000 })
-        .globalRetry({ attempts: 5 });
+      const result = fluentInterface.globalCache({ maxAge: 120000 }).globalRetry({ attempts: 5 });
       expect(result).toBe(fluentInterface);
     });
 

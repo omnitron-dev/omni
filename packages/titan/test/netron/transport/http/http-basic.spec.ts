@@ -53,7 +53,6 @@ describe('HTTP Transport Basic', () => {
       expect(connection).toBeDefined();
       expect(connection).toBeInstanceOf(HttpConnection);
     });
-
   });
 
   describe('Server Creation', () => {

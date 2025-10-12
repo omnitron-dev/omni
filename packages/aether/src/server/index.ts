@@ -5,14 +5,7 @@
  */
 
 // Types
-export type {
-  Server,
-  ServerConfig,
-  RenderContext,
-  RenderResult,
-  RenderMode,
-  MetaTags,
-} from './types.js';
+export type { Server, ServerConfig, RenderContext, RenderResult, RenderMode, MetaTags } from './types.js';
 
 // Server
 export { createServer } from './server.js';

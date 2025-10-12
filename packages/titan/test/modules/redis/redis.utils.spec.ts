@@ -313,9 +313,7 @@ describe('Redis Utils', () => {
         throw new Error('ENOENT: no such file or directory');
       });
 
-      expect(() => loadScriptContent('/nonexistent.lua')).toThrow(
-        'ENOENT: no such file or directory'
-      );
+      expect(() => loadScriptContent('/nonexistent.lua')).toThrow('ENOENT: no such file or directory');
     });
   });
 
@@ -517,7 +515,7 @@ describe('Redis Utils', () => {
       });
       testClients.push(badClient);
 
-      badClient.connect().catch(() => { }); // Ignore connection error
+      badClient.connect().catch(() => {}); // Ignore connection error
       const result = await waitForConnection(badClient, 500);
       expect(result).toBe(false);
     });
@@ -621,7 +619,7 @@ describe('Redis Utils', () => {
       }) as Redis;
       testClients.push(client);
 
-      client.connect().catch(() => { }); // Ignore connection error
+      client.connect().catch(() => {}); // Ignore connection error
       const result = await waitForConnection(client, 200);
       expect(result).toBe(false);
     });

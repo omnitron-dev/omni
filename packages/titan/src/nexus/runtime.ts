@@ -12,7 +12,7 @@ export enum Runtime {
   Bun = 'bun',
   Deno = 'deno',
   Browser = 'browser',
-  Unknown = 'unknown'
+  Unknown = 'unknown',
 }
 
 /**
@@ -41,7 +41,7 @@ export function detectRuntime(): RuntimeInfo {
       isServer: true,
       hasWorkers: true,
       hasESM: true,
-      platform: process?.platform
+      platform: process?.platform,
     };
   }
 
@@ -54,7 +54,7 @@ export function detectRuntime(): RuntimeInfo {
       isServer: true,
       hasWorkers: true,
       hasESM: true,
-      platform: (globalThis as any).Deno.build?.os
+      platform: (globalThis as any).Deno.build?.os,
     };
   }
 
@@ -67,7 +67,7 @@ export function detectRuntime(): RuntimeInfo {
       isServer: true,
       hasWorkers: typeof (globalThis as any).Worker !== 'undefined',
       hasESM: true, // Node 12+ has ESM support
-      platform: process.platform
+      platform: process.platform,
     };
   }
 
@@ -80,7 +80,7 @@ export function detectRuntime(): RuntimeInfo {
       isServer: false,
       hasWorkers: typeof Worker !== 'undefined',
       hasESM: true, // Modern browsers support ESM
-      platform: navigator?.platform
+      platform: navigator?.platform,
     };
   }
 
@@ -90,7 +90,7 @@ export function detectRuntime(): RuntimeInfo {
     isBrowser: false,
     isServer: false,
     hasWorkers: false,
-    hasESM: false
+    hasESM: false,
   };
 }
 
@@ -188,7 +188,7 @@ export async function loadRuntimeModule<T>(modulePaths: {
   default: string;
 }): Promise<T> {
   const runtime = getRuntimeInfo().runtime;
-  
+
   let modulePath: string;
   switch (runtime) {
     case Runtime.Node:
@@ -211,7 +211,10 @@ export async function loadRuntimeModule<T>(modulePaths: {
     const module = await import(modulePath);
     return module.default || module;
   } catch (error) {
-    throw Errors.internal(`Failed to load module '${modulePath}' for runtime '${runtime}'`, error instanceof Error ? error : undefined);
+    throw Errors.internal(
+      `Failed to load module '${modulePath}' for runtime '${runtime}'`,
+      error instanceof Error ? error : undefined
+    );
   }
 }
 
@@ -255,7 +258,7 @@ export function getMemoryUsage(): { used: number; total: number } | null {
     const usage = process.memoryUsage();
     return {
       used: usage.heapUsed,
-      total: usage.heapTotal
+      total: usage.heapTotal,
     };
   }
 
@@ -266,7 +269,7 @@ export function getMemoryUsage(): { used: number; total: number } | null {
       if (usage) {
         return {
           used: usage.heapUsed,
-          total: usage.heapTotal
+          total: usage.heapTotal,
         };
       }
     } catch {
@@ -281,7 +284,7 @@ export function getMemoryUsage(): { used: number; total: number } | null {
       if (metrics) {
         return {
           used: metrics.memory.heapUsed,
-          total: metrics.memory.heapTotal
+          total: metrics.memory.heapTotal,
         };
       }
     } catch {
@@ -293,7 +296,7 @@ export function getMemoryUsage(): { used: number; total: number } | null {
     const memory = (performance as any).memory;
     return {
       used: memory.usedJSHeapSize,
-      total: memory.totalJSHeapSize
+      total: memory.totalJSHeapSize,
     };
   }
 

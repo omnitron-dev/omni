@@ -34,10 +34,7 @@ import { TitanError, ErrorCode } from '../../errors/index.js';
  *   token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
  * });
  */
-export async function authenticate(
-  peer: RemotePeer,
-  credentials: AuthCredentials,
-): Promise<AuthResult> {
+export async function authenticate(peer: RemotePeer, credentials: AuthCredentials): Promise<AuthResult> {
   // Get AuthenticationManager from Netron
   // Note: This will need to be exposed via netron.authenticationManager
   const authManager = (peer.netron as any).authenticationManager;
@@ -72,14 +69,14 @@ export async function authenticate(
           userId: result.context.userId,
           roles: result.context.roles,
         },
-        'Peer authenticated successfully',
+        'Peer authenticated successfully'
       );
     } else {
       peer.logger.warn(
         {
           error: result.error,
         },
-        'Authentication failed',
+        'Authentication failed'
       );
     }
 
@@ -90,7 +87,7 @@ export async function authenticate(
         error,
         credentials: { ...credentials, password: '***', token: '***' },
       },
-      'Authentication error',
+      'Authentication error'
     );
 
     return {

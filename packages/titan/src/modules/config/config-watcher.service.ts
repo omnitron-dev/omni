@@ -20,7 +20,7 @@ export class ConfigWatcherService implements IConfigWatcher {
    */
   watch(sources: ConfigSource[], onChange: (event: IConfigChangeEvent) => void): void {
     // Only watch file sources
-    const fileSources = sources.filter(s => s.type === 'file');
+    const fileSources = sources.filter((s) => s.type === 'file');
 
     for (const source of fileSources) {
       const filePath = path.resolve((source as any).path);
@@ -38,7 +38,7 @@ export class ConfigWatcherService implements IConfigWatcher {
               oldValue: null, // Would need to cache old values to provide this
               newValue: null, // Would need to reload to provide this
               source: source.name || 'file',
-              timestamp: new Date()
+              timestamp: new Date(),
             });
           }
         });

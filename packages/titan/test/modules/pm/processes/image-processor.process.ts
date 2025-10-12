@@ -23,14 +23,14 @@ export default class ImageProcessorService {
 
     // Simulate image processing based on transformations
     const processingTime = job.transformations.length * 50;
-    await new Promise(resolve => setTimeout(resolve, processingTime));
+    await new Promise((resolve) => setTimeout(resolve, processingTime));
 
     this.processedCount++;
 
     return {
       success: true,
       outputUrl: `processed/${job.id}.jpg`,
-      processingTime: Date.now() - startTime
+      processingTime: Date.now() - startTime,
     };
   }
 
@@ -43,10 +43,8 @@ export default class ImageProcessorService {
   async checkHealth(): Promise<IHealthStatus> {
     return {
       status: this.processedCount < 1000 ? 'healthy' : 'degraded',
-      checks: [
-        { name: 'processor', status: 'pass', message: `${this.processedCount} images processed` }
-      ],
-      timestamp: Date.now()
+      checks: [{ name: 'processor', status: 'pass', message: `${this.processedCount} images processed` }],
+      timestamp: Date.now(),
     };
   }
 

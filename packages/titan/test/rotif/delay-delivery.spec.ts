@@ -10,10 +10,12 @@ describe('NotificationManager - delay delivery', () => {
   jest.setTimeout(10000);
 
   beforeAll(async () => {
-    manager = new NotificationManager(createTestConfig(1, {
-      checkDelayInterval: 100,
-      blockInterval: 100,
-    }));
+    manager = new NotificationManager(
+      createTestConfig(1, {
+        checkDelayInterval: 100,
+        blockInterval: 100,
+      })
+    );
     await manager.redis.flushdb();
   });
 

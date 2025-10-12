@@ -129,7 +129,11 @@ export class PluginManager {
           // Check nexus version compatibility
           const nexusVersion = '2.0.0'; // Current version
           if (!this.isCompatibleVersion(nexusVersion, versionRange)) {
-            throw Errors.badRequest(`Plugin version incompatible`, { plugin: plugin.name, required: versionRange, actual: nexusVersion });
+            throw Errors.badRequest(`Plugin version incompatible`, {
+              plugin: plugin.name,
+              required: versionRange,
+              actual: nexusVersion,
+            });
           }
         }
         // Add other requirement checks as needed
@@ -322,9 +326,12 @@ export class PluginManager {
       const [curMajor, curMinor = '0', curPatch = '0'] = version.split('.');
 
       // Major version must match, minor and patch can be higher
-      return parseInt(curMajor || '0') === parseInt(reqMajor || '0') &&
+      return (
+        parseInt(curMajor || '0') === parseInt(reqMajor || '0') &&
         (parseInt(curMinor || '0') > parseInt(reqMinor || '0') ||
-          (parseInt(curMinor || '0') === parseInt(reqMinor || '0') && parseInt(curPatch || '0') >= parseInt(reqPatch || '0')));
+          (parseInt(curMinor || '0') === parseInt(reqMinor || '0') &&
+            parseInt(curPatch || '0') >= parseInt(reqPatch || '0')))
+      );
     }
 
     // Exact version match
@@ -365,7 +372,6 @@ export function ValidationPlugin(options: { validators?: Record<string, (value: 
               // Check provider-level validation
               if ((registration.provider as any).validate) {
                 (registration.provider as any).validate(value);
-
               }
               // Check options-level validation
               if (registration.options?.validate) {
@@ -381,7 +387,7 @@ export function ValidationPlugin(options: { validators?: Record<string, (value: 
           }
 
           return validateResult(result);
-        }
+        },
       });
 
       container.addMiddleware(validationMiddleware);
@@ -406,8 +412,8 @@ export function ValidationPlugin(options: { validators?: Record<string, (value: 
             }
           }
         }
-      }
-    }
+      },
+    },
   });
 }
 
@@ -430,13 +436,12 @@ export function MetricsPlugin(options: { enabled?: boolean } = {}): Plugin {
 
     hooks: {
       afterResolve: (token, instance, context) => {
-        const name = typeof token === 'string' ? token :
-          typeof token === 'symbol' ? token.toString() :
-            token?.name || 'unknown';
+        const name =
+          typeof token === 'string' ? token : typeof token === 'symbol' ? token.toString() : token?.name || 'unknown';
         const count = metrics.get(name) || 0;
         metrics.set(name, count + 1);
-      }
-    }
+      },
+    },
   });
 
   // Add getMetrics method to the plugin
@@ -444,7 +449,7 @@ export function MetricsPlugin(options: { enabled?: boolean } = {}): Plugin {
     totalResolutions: Array.from(metrics.values()).reduce((a, b) => a + b, 0),
     resolutionCounts: Object.fromEntries(metrics),
     cacheHits: 0,
-    cacheMisses: 0
+    cacheMisses: 0,
   });
 
   return plugin;
@@ -462,7 +467,7 @@ export function LoggingPlugin(options: { level?: 'debug' | 'info' | 'warn' | 'er
     description: 'Logs dependency resolution',
 
     config: {
-      logLevel: level
+      logLevel: level,
     },
 
     install(container: IContainer) {
@@ -474,29 +479,31 @@ export function LoggingPlugin(options: { level?: 'debug' | 'info' | 'warn' | 'er
     hooks: {
       beforeResolve: (token) => {
         if (level === 'debug') {
-          const name = typeof token === 'string' ? token :
-            typeof token === 'symbol' ? token.toString() :
-              token?.name || 'unknown';
+          const name =
+            typeof token === 'string' ? token : typeof token === 'symbol' ? token.toString() : token?.name || 'unknown';
           console.log(`[Nexus] Resolving: ${name}`);
         }
       },
 
       afterResolve: (token, instance) => {
         if (level === 'debug' || level === 'info') {
-          const name = typeof token === 'string' ? token :
-            typeof token === 'symbol' ? token.toString() :
-              token?.name || 'unknown';
+          const name =
+            typeof token === 'string' ? token : typeof token === 'symbol' ? token.toString() : token?.name || 'unknown';
           console.log(`[Nexus] Resolved: ${name}`, instance?.constructor?.name || typeof instance);
         }
       },
 
       onError: (error, token) => {
-        const name = token ? (typeof token === 'string' ? token :
-          typeof token === 'symbol' ? token.toString() :
-            token?.name || 'unknown') : 'unknown';
+        const name = token
+          ? typeof token === 'string'
+            ? token
+            : typeof token === 'symbol'
+              ? token.toString()
+              : token?.name || 'unknown'
+          : 'unknown';
         console.error(`[Nexus] Error resolving ${name}:`, error);
-      }
-    }
+      },
+    },
   });
 }
 
@@ -527,17 +534,16 @@ export function PerformancePlugin(options: { threshold?: number } = {}): Plugin 
         const startTime = timings.get(token);
         if (startTime) {
           const duration = performance.now() - startTime;
-          const name = typeof token === 'string' ? token :
-            typeof token === 'symbol' ? token.toString() :
-              token?.name || 'unknown';
+          const name =
+            typeof token === 'string' ? token : typeof token === 'symbol' ? token.toString() : token?.name || 'unknown';
 
           if (duration > threshold) {
             console.warn(`[Nexus] Slow resolution: ${name} took ${duration.toFixed(2)}ms`);
           }
           timings.delete(token);
         }
-      }
-    }
+      },
+    },
   });
 }
 
@@ -557,7 +563,7 @@ export function CachingPlugin(options: { ttl?: number; maxSize?: number } = {}):
 
     config: {
       ttl,
-      maxSize
+      maxSize,
     },
 
     install(container: IContainer) {
@@ -595,7 +601,7 @@ export function CachingPlugin(options: { ttl?: number; maxSize?: number } = {}):
       beforeResolve: (token, context) => {
         // Check cache for token
         const cached = cache.get(token);
-        if (cached && (Date.now() - cached.timestamp) < ttl) {
+        if (cached && Date.now() - cached.timestamp < ttl) {
           // Return cached value by setting it in context
           (context as any).__cached = cached.value;
         }
@@ -612,8 +618,8 @@ export function CachingPlugin(options: { ttl?: number; maxSize?: number } = {}):
         if (interval) {
           clearInterval(interval);
         }
-      }
-    }
+      },
+    },
   });
 
   // Add clearCache method
@@ -624,7 +630,7 @@ export function CachingPlugin(options: { ttl?: number; maxSize?: number } = {}):
   // Add getCacheStats method
   (plugin as any).getCacheStats = () => ({
     size: cache.size,
-    entries: Array.from(cache.keys())
+    entries: Array.from(cache.keys()),
   });
 
   return plugin;
@@ -650,7 +656,7 @@ export function StrictValidationPlugin(options: { strict?: boolean } = {}): Plug
         if (registration?.provider?.validate) {
           registration.provider.validate(instance);
         }
-      }
-    }
+      },
+    },
   });
 }

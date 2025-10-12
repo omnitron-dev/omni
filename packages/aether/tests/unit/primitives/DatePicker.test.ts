@@ -58,10 +58,7 @@ describe('DatePicker', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         DatePicker({
           defaultOpen: true,
-          children: () => [
-            DatePickerTrigger({}),
-            DatePickerContent({}),
-          ],
+          children: () => [DatePickerTrigger({}), DatePickerContent({})],
         })
       );
       cleanup = dispose;
@@ -78,10 +75,7 @@ describe('DatePicker', () => {
           defaultOpen: true,
           children: () => [
             DatePickerTrigger({
-              children: [
-                DatePickerIcon({ children: '📅' }),
-                DatePickerValue({}),
-              ],
+              children: [DatePickerIcon({ children: '📅' }), DatePickerValue({})],
             }),
             DatePickerContent({
               children: DatePickerCalendar({}),
@@ -751,10 +745,7 @@ describe('DatePicker', () => {
       const { cleanup: dispose } = renderComponent(() =>
         DatePicker({
           defaultOpen: true,
-          children: () => [
-            DatePickerTrigger({}),
-            DatePickerContent({}),
-          ],
+          children: () => [DatePickerTrigger({}), DatePickerContent({})],
         })
       );
       cleanup = dispose;
@@ -767,10 +758,7 @@ describe('DatePicker', () => {
       const { cleanup: dispose } = renderComponent(() =>
         DatePicker({
           defaultOpen: true,
-          children: () => [
-            DatePickerTrigger({}),
-            DatePickerContent({ children: 'Content' }),
-          ],
+          children: () => [DatePickerTrigger({}), DatePickerContent({ children: 'Content' })],
         })
       );
       cleanup = dispose;
@@ -803,10 +791,7 @@ describe('DatePicker', () => {
       const { cleanup: dispose } = renderComponent(() =>
         DatePicker({
           defaultOpen: true,
-          children: () => [
-            DatePickerTrigger({}),
-            DatePickerContent({ children: DatePickerCalendar({}) }),
-          ],
+          children: () => [DatePickerTrigger({}), DatePickerContent({ children: DatePickerCalendar({}) })],
         })
       );
       cleanup = dispose;
@@ -1006,9 +991,7 @@ describe('DatePicker', () => {
       const isDateDisabled = (date: Date) =>
         disabledDates.some(
           (d) =>
-            d.getFullYear() === date.getFullYear() &&
-            d.getMonth() === date.getMonth() &&
-            d.getDate() === date.getDate()
+            d.getFullYear() === date.getFullYear() && d.getMonth() === date.getMonth() && d.getDate() === date.getDate()
         );
       const { container, cleanup: dispose } = renderComponent(() =>
         DatePicker({
@@ -1064,10 +1047,7 @@ describe('DatePicker', () => {
           defaultOpen: true,
           children: () => [
             DatePickerTrigger({
-              children: [
-                DatePickerIcon({ children: '📅' }),
-                DatePickerValue({}),
-              ],
+              children: [DatePickerIcon({ children: '📅' }), DatePickerValue({})],
             }),
             DatePickerContent({
               children: DatePickerCalendar({}),
@@ -1106,10 +1086,7 @@ describe('DatePicker', () => {
         DatePicker({
           children: () =>
             DatePickerTrigger({
-              children: [
-                DatePickerIcon({ children: '🗓️' }),
-                DatePickerValue({ placeholder: 'Select date' }),
-              ],
+              children: [DatePickerIcon({ children: '🗓️' }), DatePickerValue({ placeholder: 'Select date' })],
             }),
         })
       );
@@ -1162,10 +1139,7 @@ describe('DatePicker', () => {
           defaultOpen: true,
           children: () => [
             DatePickerTrigger({
-              children: [
-                DatePickerIcon({ children: '📅' }),
-                DatePickerValue({}),
-              ],
+              children: [DatePickerIcon({ children: '📅' }), DatePickerValue({})],
             }),
             DatePickerContent({
               children: DatePickerCalendar({}),

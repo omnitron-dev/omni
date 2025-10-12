@@ -46,7 +46,7 @@ describe('RemotePeer Service Versioning', () => {
     localNetron.registerTransport('ws', () => new WebSocketTransport());
     localNetron.registerTransportServer('ws', {
       name: 'ws',
-      options: { host: 'localhost', port: 9090 }
+      options: { host: 'localhost', port: 9090 },
     });
 
     await localNetron.peer.exposeService(new VersionedServiceV1());

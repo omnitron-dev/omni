@@ -28,10 +28,12 @@ export class ConfigValidatorService implements IConfigValidator {
       }
       return {
         success: false,
-        errors: [{
-          path: '',
-          message: error instanceof Error ? error.message : 'Unknown validation error'
-        }]
+        errors: [
+          {
+            path: '',
+            message: error instanceof Error ? error.message : 'Unknown validation error',
+          },
+        ],
       };
     }
   }
@@ -52,19 +54,21 @@ export class ConfigValidatorService implements IConfigValidator {
         const result = this.formatZodError(error);
         // Prepend path to error paths
         if (result.errors) {
-          result.errors = result.errors.map(err => ({
+          result.errors = result.errors.map((err) => ({
             ...err,
-            path: path + (err.path ? '.' + err.path : '')
+            path: path + (err.path ? '.' + err.path : ''),
           }));
         }
         return result;
       }
       return {
         success: false,
-        errors: [{
-          path,
-          message: error instanceof Error ? error.message : 'Unknown validation error'
-        }]
+        errors: [
+          {
+            path,
+            message: error instanceof Error ? error.message : 'Unknown validation error',
+          },
+        ],
       };
     }
   }
@@ -77,12 +81,12 @@ export class ConfigValidatorService implements IConfigValidator {
       path: issue.path.join('.'),
       message: issue.message,
       expected: issue.expected,
-      received: issue.received
+      received: issue.received,
     }));
 
     return {
       success: false,
-      errors
+      errors,
     };
   }
 }

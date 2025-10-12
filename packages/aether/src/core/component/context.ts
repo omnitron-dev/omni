@@ -57,10 +57,7 @@ const contextStorage = new WeakMap<any, Map<symbol, any>>();
  * });
  * ```
  */
-export function createContext<T>(
-  defaultValue: T,
-  name?: string
-): Context<T> {
+export function createContext<T>(defaultValue: T, name?: string): Context<T> {
   const id = Symbol(name || 'context');
 
   const Provider = (props: { value: T; children: any }): any => {

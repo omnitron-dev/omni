@@ -121,10 +121,7 @@ describe('Mentions', () => {
           children: () => [
             MentionsInput({}),
             MentionsSuggestions({
-              children: () =>
-                mockMentions.map((mention) =>
-                  MentionsSuggestion({ mention, children: mention.display })
-                ),
+              children: () => mockMentions.map((mention) => MentionsSuggestion({ mention, children: mention.display })),
             }),
           ],
         });
@@ -143,8 +140,7 @@ describe('Mentions', () => {
           children: () => [
             MentionsInput({}),
             MentionsSuggestions({
-              children: () =>
-                MentionsSuggestion({ mention: mockMentions[0] as Mention, children: 'alice' }),
+              children: () => MentionsSuggestion({ mention: mockMentions[0] as Mention, children: 'alice' }),
             }),
           ],
         });
@@ -302,10 +298,7 @@ describe('Mentions', () => {
           children: () => [
             MentionsInput({}),
             MentionsSuggestions({
-              children: () =>
-                mockMentions.map((mention) =>
-                  MentionsSuggestion({ mention, children: mention.display })
-                ),
+              children: () => mockMentions.map((mention) => MentionsSuggestion({ mention, children: mention.display })),
             }),
           ],
         });
@@ -325,10 +318,7 @@ describe('Mentions', () => {
           children: () => [
             MentionsInput({}),
             MentionsSuggestions({
-              children: () =>
-                mockMentions.map((mention) =>
-                  MentionsSuggestion({ mention, children: mention.display })
-                ),
+              children: () => mockMentions.map((mention) => MentionsSuggestion({ mention, children: mention.display })),
             }),
           ],
         });
@@ -396,10 +386,7 @@ describe('Mentions', () => {
           children: () => [
             MentionsInput({}),
             MentionsSuggestions({
-              children: () =>
-                mockMentions.map((mention) =>
-                  MentionsSuggestion({ mention, children: mention.display })
-                ),
+              children: () => mockMentions.map((mention) => MentionsSuggestion({ mention, children: mention.display })),
             }),
           ],
         });
@@ -445,9 +432,7 @@ describe('Mentions', () => {
 
   describe('Mention display', () => {
     it('should use display property', () => {
-      const mentions: Mention[] = [
-        { id: '1', display: 'alice', value: 'Alice Smith' },
-      ];
+      const mentions: Mention[] = [{ id: '1', display: 'alice', value: 'Alice Smith' }];
 
       const component = () =>
         Mentions({
@@ -455,10 +440,7 @@ describe('Mentions', () => {
           children: () => [
             MentionsInput({}),
             MentionsSuggestions({
-              children: () =>
-                mentions.map((mention) =>
-                  MentionsSuggestion({ mention, children: mention.display })
-                ),
+              children: () => mentions.map((mention) => MentionsSuggestion({ mention, children: mention.display })),
             }),
           ],
         });
@@ -500,10 +482,7 @@ describe('Mentions', () => {
           children: () => [
             MentionsInput({}),
             MentionsSuggestions({
-              children: () =>
-                mockMentions.map((mention) =>
-                  MentionsSuggestion({ mention, children: mention.display })
-                ),
+              children: () => mockMentions.map((mention) => MentionsSuggestion({ mention, children: mention.display })),
             }),
           ],
         });
@@ -521,10 +500,7 @@ describe('Mentions', () => {
           children: () => [
             MentionsInput({}),
             MentionsSuggestions({
-              children: () =>
-                mockMentions.map((mention) =>
-                  MentionsSuggestion({ mention, children: mention.display })
-                ),
+              children: () => mockMentions.map((mention) => MentionsSuggestion({ mention, children: mention.display })),
             }),
           ],
         });
@@ -602,10 +578,7 @@ describe('Mentions', () => {
           children: () => [
             MentionsInput({}),
             MentionsSuggestions({
-              children: () =>
-                mockMentions.map((mention) =>
-                  MentionsSuggestion({ mention, children: mention.display })
-                ),
+              children: () => mockMentions.map((mention) => MentionsSuggestion({ mention, children: mention.display })),
             }),
           ],
         });
@@ -624,10 +597,7 @@ describe('Mentions', () => {
           children: () => [
             MentionsInput({}),
             MentionsSuggestions({
-              children: () =>
-                mockMentions.map((mention) =>
-                  MentionsSuggestion({ mention, children: mention.display })
-                ),
+              children: () => mockMentions.map((mention) => MentionsSuggestion({ mention, children: mention.display })),
             }),
           ],
         });
@@ -644,10 +614,7 @@ describe('Mentions', () => {
           children: () => [
             MentionsInput({}),
             MentionsSuggestions({
-              children: () =>
-                mockMentions.map((mention) =>
-                  MentionsSuggestion({ mention, children: mention.display })
-                ),
+              children: () => mockMentions.map((mention) => MentionsSuggestion({ mention, children: mention.display })),
             }),
           ],
         });

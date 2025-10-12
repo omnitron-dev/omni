@@ -25,7 +25,7 @@ export function parseRoutePattern(pattern: string): RouteSegment[] {
   // Remove leading/trailing slashes and split
   const parts = pattern.replace(/^\/|\/$/g, '').split('/');
 
-  return parts.map(part => {
+  return parts.map((part) => {
     // Optional catch-all: [[...rest]]
     if (/^\[\[\.\.\.(.+)\]\]$/.test(part)) {
       const name = part.match(/^\[\[\.\.\.(.+)\]\]$/)?.[1];
@@ -60,12 +60,12 @@ export function parseRoutePattern(pattern: string): RouteSegment[] {
  *
  * @returns Match result with params, or null if no match
  */
-export function matchRoute(
-  pathname: string,
-  route: RouteDefinition
-): RouteMatch | null {
+export function matchRoute(pathname: string, route: RouteDefinition): RouteMatch | null {
   const segments = parseRoutePattern(route.path);
-  const pathParts = pathname.replace(/^\/|\/$/g, '').split('/').filter(Boolean);
+  const pathParts = pathname
+    .replace(/^\/|\/$/g, '')
+    .split('/')
+    .filter(Boolean);
 
   const params: RouteParams = {};
   let score = 0;
@@ -143,10 +143,7 @@ export function matchRoute(
  *
  * Routes are sorted by score (higher is better)
  */
-export function findBestMatch(
-  pathname: string,
-  routes: RouteDefinition[]
-): RouteMatch | null {
+export function findBestMatch(pathname: string, routes: RouteDefinition[]): RouteMatch | null {
   const matches: RouteMatch[] = [];
 
   for (const route of routes) {
@@ -176,7 +173,7 @@ export function findBestMatch(
 export function buildPath(pattern: string, params: RouteParams = {}): string {
   const segments = parseRoutePattern(pattern);
 
-  const parts = segments.map(segment => {
+  const parts = segments.map((segment) => {
     if (segment.type === 'static') {
       return segment.value;
     }
@@ -209,7 +206,7 @@ export function buildPath(pattern: string, params: RouteParams = {}): string {
   });
 
   // Filter out null parts (optional params that weren't provided)
-  const filteredParts = parts.filter(p => p !== null);
+  const filteredParts = parts.filter((p) => p !== null);
 
   return '/' + filteredParts.join('/');
 }

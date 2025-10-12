@@ -66,7 +66,7 @@ export class DLQManager {
     totalMessages: 0,
     messagesByChannel: {},
     messagesCleanedUp: 0,
-    messagesArchived: 0
+    messagesArchived: 0,
   };
 
   constructor(
@@ -82,7 +82,7 @@ export class DLQManager {
       batchSize: 100,
       archiveBeforeDelete: false,
       archivePrefix: 'rotif:dlq:archive',
-      ...config
+      ...config,
     };
   }
 
@@ -98,13 +98,13 @@ export class DLQManager {
     this.stopAutoCleanup();
 
     // Run initial cleanup
-    this.cleanup().catch(err => {
+    this.cleanup().catch((err) => {
       this.logger.error('DLQ cleanup error:', err);
     });
 
     // Schedule periodic cleanup
     this.cleanupTimer = setInterval(() => {
-      this.cleanup().catch(err => {
+      this.cleanup().catch((err) => {
         this.logger.error('DLQ cleanup error:', err);
       });
     }, this.config.cleanupInterval!);
@@ -138,13 +138,7 @@ export class DLQManager {
       let hasMore = true;
       while (hasMore) {
         // Read a batch of messages
-        const messages = await this.redis.xrange(
-          dlqKey,
-          '-',
-          '+',
-          'COUNT',
-          this.config.batchSize!
-        );
+        const messages = await this.redis.xrange(dlqKey, '-', '+', 'COUNT', this.config.batchSize!);
 
         if (!messages || messages.length === 0) {
           hasMore = false;
@@ -192,7 +186,6 @@ export class DLQManager {
 
       // Check size limit
       await this.enforceMaxSize();
-
     } catch (err) {
       this.logger.error('DLQ cleanup failed:', err);
       throw err;
@@ -213,7 +206,7 @@ export class DLQManager {
       const archiveData = {
         id,
         ...fieldsObj,
-        archivedAt: Date.now()
+        archivedAt: Date.now(),
       };
 
       pipeline.rpush(archiveKey, JSON.stringify(archiveData));
@@ -241,13 +234,7 @@ export class DLQManager {
       const toTrim = size - this.config.maxSize!;
 
       // Get oldest messages to remove
-      const messages = await this.redis.xrange(
-        dlqKey,
-        '-',
-        '+',
-        'COUNT',
-        toTrim
-      );
+      const messages = await this.redis.xrange(dlqKey, '-', '+', 'COUNT', toTrim);
 
       if (messages && messages.length > 0) {
         const ids = messages.map(([id]) => id);
@@ -288,13 +275,7 @@ export class DLQManager {
       let hasMore = true;
 
       while (hasMore) {
-        const batch = await this.redis.xrange(
-          dlqKey,
-          lastId === '-' ? '-' : `(${lastId}`,
-          '+',
-          'COUNT',
-          100
-        );
+        const batch = await this.redis.xrange(dlqKey, lastId === '-' ? '-' : `(${lastId}`, '+', 'COUNT', 100);
 
         if (!batch || batch.length === 0) {
           hasMore = false;
@@ -319,7 +300,7 @@ export class DLQManager {
         oldestMessage: first[0] ? parseInt(parseFields(first[0][1] as string[])['timestamp'] || '0') : undefined,
         newestMessage: last[0] ? parseInt(parseFields(last[0][1] as string[])['timestamp'] || '0') : undefined,
         messagesCleanedUp: this.stats.messagesCleanedUp,
-        messagesArchived: this.stats.messagesArchived
+        messagesArchived: this.stats.messagesArchived,
       };
     } catch (err) {
       this.logger.error('Failed to get DLQ stats:', err);
@@ -330,12 +311,14 @@ export class DLQManager {
   /**
    * Get messages from DLQ with filtering options
    */
-  async getMessages(options: {
-    channel?: string;
-    limit?: number;
-    offset?: number;
-    maxAge?: number;
-  } = {}): Promise<DLQMessageInfo[]> {
+  async getMessages(
+    options: {
+      channel?: string;
+      limit?: number;
+      offset?: number;
+      maxAge?: number;
+    } = {}
+  ): Promise<DLQMessageInfo[]> {
     const dlqKey = 'rotif:dlq';
     const { limit = 100, offset = 0, channel, maxAge } = options;
 
@@ -362,13 +345,12 @@ export class DLQManager {
           error: fieldsObj['error'],
           timestamp,
           attempt: parseInt(fieldsObj['attempt'] || '0'),
-          age
+          age,
         });
       }
 
       // Apply pagination
       return filtered.slice(offset, offset + limit);
-
     } catch (err) {
       this.logger.error('Failed to get DLQ messages:', err);
       throw err;

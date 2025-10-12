@@ -186,7 +186,7 @@ export class CostOptimizer extends EventEmitter {
       storage: storageCost,
       network: networkCost,
       total: computeCost + storageCost + networkCost,
-      savings: this.savings
+      savings: this.savings,
     };
   }
 
@@ -238,7 +238,7 @@ export class CostOptimizer extends EventEmitter {
         current: this.currentCost,
         projected: this.projectedCost,
         budget: monthly,
-        percentage: this.projectedCost / monthly
+        percentage: this.projectedCost / monthly,
       });
 
       // Execute budget actions
@@ -289,7 +289,7 @@ export class CostOptimizer extends EventEmitter {
           type: 'idle-resource',
           resource: id,
           action: 'shutdown',
-          savings: this.calculateComputeCost(usage)
+          savings: this.calculateComputeCost(usage),
         });
       }
 
@@ -299,7 +299,7 @@ export class CostOptimizer extends EventEmitter {
           type: 'over-provisioned',
           resource: id,
           action: 'downsize',
-          savings: this.calculateComputeCost(usage) * 0.3
+          savings: this.calculateComputeCost(usage) * 0.3,
         });
       }
 
@@ -311,7 +311,7 @@ export class CostOptimizer extends EventEmitter {
             type: 'spot-opportunity',
             resource: id,
             action: 'convert-to-spot',
-            savings: spotSavings
+            savings: spotSavings,
           });
         }
       }
@@ -427,7 +427,7 @@ export class CostOptimizer extends EventEmitter {
         bins.push({
           cpu: usage.cpu,
           memory: usage.memory,
-          resources: [id]
+          resources: [id],
         });
       }
     }
@@ -517,14 +517,10 @@ export class CostOptimizer extends EventEmitter {
   /**
    * Select optimal instance type
    */
-  selectOptimalInstance(requirements: {
-    cpu: number;
-    memory: number;
-    spot?: boolean;
-  }): InstanceType | null {
+  selectOptimalInstance(requirements: { cpu: number; memory: number; spot?: boolean }): InstanceType | null {
     const candidates = this.instanceTypes
-      .filter(i => i.cpu >= requirements.cpu && i.memory >= requirements.memory)
-      .filter(i => !requirements.spot || i.type === 'spot');
+      .filter((i) => i.cpu >= requirements.cpu && i.memory >= requirements.memory)
+      .filter((i) => !requirements.spot || i.type === 'spot');
 
     if (candidates.length === 0) return null;
 
@@ -541,13 +537,13 @@ export class CostOptimizer extends EventEmitter {
     const onDemandPrice = 0.01; // Price per work unit on demand
 
     // Use spot for large batches with flexible deadlines
-    const useSpot = totalWork > 1000 && !jobs.some(j => j.urgent);
+    const useSpot = totalWork > 1000 && !jobs.some((j) => j.urgent);
 
     return {
       strategy: useSpot ? 'spot' : 'on-demand',
       estimatedCost: totalWork * (useSpot ? spotPrice : onDemandPrice),
       estimatedTime: totalWork * (useSpot ? 1.2 : 1), // Spot might be slower
-      instances: Math.ceil(totalWork / 100) // 100 work units per instance
+      instances: Math.ceil(totalWork / 100), // 100 work units per instance
     };
   }
 
@@ -559,18 +555,18 @@ export class CostOptimizer extends EventEmitter {
       current: {
         hourly: this.currentCost,
         daily: this.currentCost * 24,
-        monthly: this.projectedCost
+        monthly: this.projectedCost,
       },
       breakdown: {
         compute: this.currentCost * 0.7,
         storage: this.currentCost * 0.2,
-        network: this.currentCost * 0.1
+        network: this.currentCost * 0.1,
       },
       savings: {
         realized: this.savings,
-        potential: this.calculatePotentialSavings()
+        potential: this.calculatePotentialSavings(),
       },
-      recommendations: this.getTopRecommendations()
+      recommendations: this.getTopRecommendations(),
     };
   }
 
@@ -655,10 +651,14 @@ export class CostOptimizer extends EventEmitter {
     const num = parseInt(value || '0', 10);
 
     switch (unit) {
-      case 's': return num * 1000;
-      case 'm': return num * 60 * 1000;
-      case 'h': return num * 60 * 60 * 1000;
-      default: return 3600000;
+      case 's':
+        return num * 1000;
+      case 'm':
+        return num * 60 * 1000;
+      case 'h':
+        return num * 60 * 60 * 1000;
+      default:
+        return 3600000;
     }
   }
 
@@ -707,4 +707,3 @@ export interface CostReport {
   };
   recommendations: string[];
 }
-

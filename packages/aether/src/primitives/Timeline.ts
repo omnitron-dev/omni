@@ -101,7 +101,7 @@ const useTimelineContext = (): TimelineContextValue => {
   // Graceful degradation: return default context if not found
   if (!context) {
     return {
-      orientation: 'vertical' // Default orientation
+      orientation: 'vertical', // Default orientation
     };
   }
   return context;
@@ -114,7 +114,7 @@ const useTimelineItemContext = (): TimelineItemContextValue => {
   // Graceful degradation: return default context if not found
   if (!context) {
     return {
-      status: () => 'pending' // Default status
+      status: () => 'pending', // Default status
     };
   }
   return context;
@@ -230,59 +230,59 @@ export const TimelineConnector = defineComponent<TimelineConnectorProps>((props)
 // ============================================================================
 
 export const TimelineContent = defineComponent<TimelineContentProps>((props) => () => {
-    const { children: childrenProp, ...rest } = props;
+  const { children: childrenProp, ...rest } = props;
 
-    // Evaluate function children
-    const children = typeof childrenProp === 'function' ? childrenProp() : childrenProp;
+  // Evaluate function children
+  const children = typeof childrenProp === 'function' ? childrenProp() : childrenProp;
 
-    return jsx('div', {
-      'data-timeline-content': '',
-      ...rest,
-      children,
-    });
+  return jsx('div', {
+    'data-timeline-content': '',
+    ...rest,
+    children,
   });
+});
 
 // ============================================================================
 // Timeline Title
 // ============================================================================
 
 export const TimelineTitle = defineComponent<TimelineTitleProps>((props) => () => {
-    const { children, ...rest } = props;
+  const { children, ...rest } = props;
 
-    return jsx('h4', {
-      'data-timeline-title': '',
-      ...rest,
-      children,
-    });
+  return jsx('h4', {
+    'data-timeline-title': '',
+    ...rest,
+    children,
   });
+});
 
 // ============================================================================
 // Timeline Description
 // ============================================================================
 
 export const TimelineDescription = defineComponent<TimelineDescriptionProps>((props) => () => {
-    const { children, ...rest } = props;
+  const { children, ...rest } = props;
 
-    return jsx('p', {
-      'data-timeline-description': '',
-      ...rest,
-      children,
-    });
+  return jsx('p', {
+    'data-timeline-description': '',
+    ...rest,
+    children,
   });
+});
 
 // ============================================================================
 // Timeline Timestamp
 // ============================================================================
 
 export const TimelineTimestamp = defineComponent<TimelineTimestampProps>((props) => () => {
-    const { children, ...rest } = props;
+  const { children, ...rest } = props;
 
-    return jsx('time', {
-      'data-timeline-timestamp': '',
-      ...rest,
-      children,
-    });
+  return jsx('time', {
+    'data-timeline-timestamp': '',
+    ...rest,
+    children,
   });
+});
 
 // ============================================================================
 // Attach sub-components

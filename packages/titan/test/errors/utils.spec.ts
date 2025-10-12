@@ -12,7 +12,7 @@ import {
   retryWithBackoff,
   CircuitBreaker,
   ErrorLogger,
-  ErrorMatcher
+  ErrorMatcher,
 } from '../../src/errors/utils.js';
 import { TitanError } from '../../src/errors/core.js';
 import { ErrorCode } from '../../src/errors/codes.js';
@@ -36,7 +36,7 @@ describe('Error Utilities', () => {
     it('should preserve TitanError', async () => {
       const original = new TitanError({
         code: ErrorCode.NOT_FOUND,
-        message: 'Not found'
+        message: 'Not found',
       });
 
       await expect(
@@ -88,7 +88,7 @@ describe('Error Utilities', () => {
     it('should preserve TitanError', () => {
       const original = new TitanError({
         code: ErrorCode.FORBIDDEN,
-        message: 'Forbidden'
+        message: 'Forbidden',
       });
 
       expect(() => {
@@ -121,11 +121,11 @@ describe('Error Utilities', () => {
         async () => {
           throw new TitanError({
             code: ErrorCode.NOT_FOUND,
-            message: 'Not found'
+            message: 'Not found',
           });
         },
         {
-          [ErrorCode.NOT_FOUND]: async () => 'recovered'
+          [ErrorCode.NOT_FOUND]: async () => 'recovered',
         }
       );
 
@@ -137,11 +137,11 @@ describe('Error Utilities', () => {
         async () => {
           throw new TitanError({
             code: ErrorCode.INTERNAL_ERROR,
-            message: 'Error'
+            message: 'Error',
           });
         },
         {
-          default: async () => 'default recovery'
+          default: async () => 'default recovery',
         }
       );
 
@@ -154,11 +154,11 @@ describe('Error Utilities', () => {
           async () => {
             throw new TitanError({
               code: ErrorCode.NOT_FOUND,
-              message: 'Not found'
+              message: 'Not found',
             });
           },
           {
-            [ErrorCode.BAD_REQUEST]: async () => 'recovered'
+            [ErrorCode.BAD_REQUEST]: async () => 'recovered',
           }
         )
       ).rejects.toThrow(TitanError);
@@ -170,7 +170,7 @@ describe('Error Utilities', () => {
           throw new Error('Generic error');
         },
         {
-          [ErrorCode.INTERNAL_ERROR]: async () => 'handled'
+          [ErrorCode.INTERNAL_ERROR]: async () => 'handled',
         }
       );
 
@@ -193,7 +193,7 @@ describe('Error Utilities', () => {
 
       const error = new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
-        message: 'Error'
+        message: 'Error',
       });
 
       await chain.handle(error);
@@ -216,12 +216,10 @@ describe('Error Utilities', () => {
         async () => {
           calls.push('not-found');
         },
-        error => error.code === ErrorCode.NOT_FOUND
+        (error) => error.code === ErrorCode.NOT_FOUND
       );
 
-      await chain.handle(
-        new TitanError({ code: ErrorCode.BAD_REQUEST, message: 'Bad request' })
-      );
+      await chain.handle(new TitanError({ code: ErrorCode.BAD_REQUEST, message: 'Bad request' }));
 
       expect(calls).toEqual(['all']);
     });
@@ -234,9 +232,7 @@ describe('Error Utilities', () => {
         handled = true;
       });
 
-      await chain.handle(
-        new TitanError({ code: ErrorCode.NOT_FOUND, message: 'Not found' })
-      );
+      await chain.handle(new TitanError({ code: ErrorCode.NOT_FOUND, message: 'Not found' }));
 
       expect(handled).toBe(true);
     });
@@ -249,9 +245,7 @@ describe('Error Utilities', () => {
         handled = true;
       });
 
-      await chain.handle(
-        new TitanError({ code: ErrorCode.BAD_REQUEST, message: 'Bad request' })
-      );
+      await chain.handle(new TitanError({ code: ErrorCode.BAD_REQUEST, message: 'Bad request' }));
 
       expect(handled).toBe(true);
     });
@@ -277,7 +271,7 @@ describe('Error Utilities', () => {
     it('should call onError callback', async () => {
       let errorCaught: TitanError | null = null;
 
-      const boundary = createErrorBoundary('default', error => {
+      const boundary = createErrorBoundary('default', (error) => {
         errorCaught = error;
       });
 
@@ -292,7 +286,7 @@ describe('Error Utilities', () => {
     it('should convert non-TitanError', async () => {
       let errorCaught: TitanError | null = null;
 
-      const boundary = createErrorBoundary(null, error => {
+      const boundary = createErrorBoundary(null, (error) => {
         errorCaught = error;
       });
 
@@ -319,7 +313,7 @@ describe('Error Utilities', () => {
         if (attempts < 3) {
           throw new TitanError({
             code: ErrorCode.SERVICE_UNAVAILABLE,
-            message: 'Unavailable'
+            message: 'Unavailable',
           });
         }
         return 'success';
@@ -338,7 +332,7 @@ describe('Error Utilities', () => {
             attempts++;
             throw new TitanError({
               code: ErrorCode.SERVICE_UNAVAILABLE,
-              message: 'Unavailable'
+              message: 'Unavailable',
             });
           },
           { maxAttempts: 2 }
@@ -356,7 +350,7 @@ describe('Error Utilities', () => {
           async () => {
             throw new TitanError({
               code: ErrorCode.SERVICE_UNAVAILABLE,
-              message: 'Unavailable'
+              message: 'Unavailable',
             });
           },
           {
@@ -365,7 +359,7 @@ describe('Error Utilities', () => {
             backoffFactor: 2,
             onRetry: (_error, _attempt, delay) => {
               delays.push(delay);
-            }
+            },
           }
         );
       } catch {
@@ -383,7 +377,7 @@ describe('Error Utilities', () => {
           async () => {
             throw new TitanError({
               code: ErrorCode.SERVICE_UNAVAILABLE,
-              message: 'Unavailable'
+              message: 'Unavailable',
             });
           },
           {
@@ -393,7 +387,7 @@ describe('Error Utilities', () => {
             backoffFactor: 2,
             onRetry: (_error, _attempt, delay) => {
               delays.push(delay);
-            }
+            },
           }
         );
       } catch {
@@ -414,11 +408,11 @@ describe('Error Utilities', () => {
             attempts++;
             throw new TitanError({
               code: ErrorCode.BAD_REQUEST,
-              message: 'Bad request'
+              message: 'Bad request',
             });
           },
           {
-            shouldRetry: error => error.code === ErrorCode.SERVICE_UNAVAILABLE
+            shouldRetry: (error) => error.code === ErrorCode.SERVICE_UNAVAILABLE,
           }
         )
       ).rejects.toThrow();
@@ -431,7 +425,7 @@ describe('Error Utilities', () => {
     it('should execute successfully when closed', async () => {
       const breaker = new CircuitBreaker({
         failureThreshold: 3,
-        resetTimeout: 1000
+        resetTimeout: 1000,
       });
 
       const result = await breaker.execute(async () => 'success');
@@ -442,7 +436,7 @@ describe('Error Utilities', () => {
     it('should open after failure threshold', async () => {
       const breaker = new CircuitBreaker({
         failureThreshold: 3,
-        resetTimeout: 1000
+        resetTimeout: 1000,
       });
 
       // Trigger 3 failures
@@ -457,15 +451,13 @@ describe('Error Utilities', () => {
       }
 
       // Circuit should now be open
-      await expect(
-        breaker.execute(async () => 'success')
-      ).rejects.toThrow('Circuit breaker is open');
+      await expect(breaker.execute(async () => 'success')).rejects.toThrow('Circuit breaker is open');
     });
 
     it('should transition to half-open after timeout', async () => {
       const breaker = new CircuitBreaker({
         failureThreshold: 2,
-        resetTimeout: 100
+        resetTimeout: 100,
       });
 
       // Trigger failures to open circuit
@@ -480,7 +472,7 @@ describe('Error Utilities', () => {
       }
 
       // Wait for reset timeout
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       // Should allow one test request
       const result = await breaker.execute(async () => 'success');
@@ -492,7 +484,7 @@ describe('Error Utilities', () => {
     it('should provide circuit state', () => {
       const breaker = new CircuitBreaker({
         failureThreshold: 5,
-        resetTimeout: 1000
+        resetTimeout: 1000,
       });
 
       const state = breaker.getState();
@@ -504,7 +496,7 @@ describe('Error Utilities', () => {
     it('should reset circuit manually', async () => {
       const breaker = new CircuitBreaker({
         failureThreshold: 1,
-        resetTimeout: 10000
+        resetTimeout: 10000,
       });
 
       // Trigger failure
@@ -531,13 +523,13 @@ describe('Error Utilities', () => {
         logger: {
           error: (msg, data) => logs.push({ level: 'error', msg, data }),
           warn: (msg, data) => logs.push({ level: 'warn', msg, data }),
-          info: (msg, data) => logs.push({ level: 'info', msg, data })
-        }
+          info: (msg, data) => logs.push({ level: 'info', msg, data }),
+        },
       });
 
       const error = new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
-        message: 'Internal error'
+        message: 'Internal error',
       });
 
       logger.log(error);
@@ -553,13 +545,13 @@ describe('Error Utilities', () => {
         logger: {
           error: (msg, data) => logs.push({ level: 'error', msg, data }),
           warn: (msg, data) => logs.push({ level: 'warn', msg, data }),
-          info: (msg, data) => logs.push({ level: 'info', msg, data })
-        }
+          info: (msg, data) => logs.push({ level: 'info', msg, data }),
+        },
       });
 
       const error = new TitanError({
         code: ErrorCode.BAD_REQUEST,
-        message: 'Bad request'
+        message: 'Bad request',
       });
 
       logger.log(error);
@@ -574,13 +566,13 @@ describe('Error Utilities', () => {
         logger: {
           error: (msg, data) => logs.push({ level: 'error', msg, data }),
           warn: (msg, data) => logs.push({ level: 'warn', msg, data }),
-          info: (msg, data) => logs.push({ level: 'info', msg, data })
-        }
+          info: (msg, data) => logs.push({ level: 'info', msg, data }),
+        },
       });
 
       const error = new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
-        message: 'Error'
+        message: 'Error',
       });
 
       logger.log(error);
@@ -595,14 +587,14 @@ describe('Error Utilities', () => {
         logger: {
           error: (msg, data) => logs.push({ level: 'error', msg, data }),
           warn: (msg, data) => logs.push({ level: 'warn', msg, data }),
-          info: (msg, data) => logs.push({ level: 'info', msg, data })
-        }
+          info: (msg, data) => logs.push({ level: 'info', msg, data }),
+        },
       });
 
       const error = new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
         message: 'Error',
-        context: { userId: '123' }
+        context: { userId: '123' },
       });
 
       logger.log(error);
@@ -613,12 +605,12 @@ describe('Error Utilities', () => {
     it('should filter errors', () => {
       const logs: any[] = [];
       const logger = new ErrorLogger({
-        filter: error => error.code !== ErrorCode.NOT_FOUND,
+        filter: (error) => error.code !== ErrorCode.NOT_FOUND,
         logger: {
           error: (msg, data) => logs.push({ level: 'error', msg, data }),
           warn: (msg, data) => logs.push({ level: 'warn', msg, data }),
-          info: (msg, data) => logs.push({ level: 'info', msg, data })
-        }
+          info: (msg, data) => logs.push({ level: 'info', msg, data }),
+        },
       });
 
       logger.log(new TitanError({ code: ErrorCode.NOT_FOUND, message: 'Not found' }));
@@ -634,15 +626,15 @@ describe('Error Utilities', () => {
         logger: {
           error: (msg, data) => logs.push({ level: 'error', msg, data }),
           warn: (msg, data) => logs.push({ level: 'warn', msg, data }),
-          info: (msg, data) => logs.push({ level: 'info', msg, data })
-        }
+          info: (msg, data) => logs.push({ level: 'info', msg, data }),
+        },
       });
 
       const error = new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
         message: 'Error',
         requestId: 'req-123',
-        correlationId: 'corr-456'
+        correlationId: 'corr-456',
       });
 
       logger.log(error);
@@ -684,18 +676,18 @@ describe('Error Utilities', () => {
     });
 
     it('should match by details', () => {
-      const matcher = new ErrorMatcher().withDetails(details => details.userId === '123');
+      const matcher = new ErrorMatcher().withDetails((details) => details.userId === '123');
 
       const error1 = new TitanError({
         code: ErrorCode.NOT_FOUND,
         message: 'Not found',
-        details: { userId: '123' }
+        details: { userId: '123' },
       });
 
       const error2 = new TitanError({
         code: ErrorCode.NOT_FOUND,
         message: 'Not found',
-        details: { userId: '456' }
+        details: { userId: '456' },
       });
 
       expect(matcher.matches(error1)).toBe(true);
@@ -706,18 +698,18 @@ describe('Error Utilities', () => {
       const matcher = new ErrorMatcher()
         .withCode(ErrorCode.NOT_FOUND)
         .withMessage(/user/i)
-        .withDetails(details => details.id !== undefined);
+        .withDetails((details) => details.id !== undefined);
 
       const matchingError = new TitanError({
         code: ErrorCode.NOT_FOUND,
         message: 'User not found',
-        details: { id: '123' }
+        details: { id: '123' },
       });
 
       const nonMatchingError = new TitanError({
         code: ErrorCode.NOT_FOUND,
         message: 'Post not found',
-        details: { id: '123' }
+        details: { id: '123' },
       });
 
       expect(matcher.matches(matchingError)).toBe(true);

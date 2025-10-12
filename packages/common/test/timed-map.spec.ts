@@ -74,7 +74,9 @@ describe('TimedMap', () => {
         // Use real timers for Bun
         const quickMap = new TimedMap<string, number>(50);
         let callbackKey: string | undefined;
-        const callback = (key: string) => { callbackKey = key; };
+        const callback = (key: string) => {
+          callbackKey = key;
+        };
         quickMap.set('key1', 100, callback);
         await sleep(60);
         expect(callbackKey).toBe('key1');

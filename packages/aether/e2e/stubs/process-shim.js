@@ -4,7 +4,7 @@ export const process = {
   platform: 'browser',
   version: 'v22.0.0',
   cwd: () => '/',
-  nextTick: (fn) => Promise.resolve().then(fn)
+  nextTick: (fn) => Promise.resolve().then(fn),
 };
 
 // setImmediate shim (use setTimeout with 0 delay)

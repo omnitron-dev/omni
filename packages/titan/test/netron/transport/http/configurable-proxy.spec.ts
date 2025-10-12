@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import {
   ConfigurableProxy,
   HttpCacheManager,
-  RetryManager
+  RetryManager,
 } from '../../../../src/netron/transport/http/fluent-interface/index.js';
 import { HttpTransportClient } from '../../../../src/netron/transport/http/client.js';
 
@@ -33,48 +33,28 @@ describe('ConfigurableProxy', () => {
 
   describe('Configuration Chaining', () => {
     it('should chain cache configuration', () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        retryManager
-      );
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, retryManager);
 
       const chained = proxy.cache(60000);
       expect(chained).toBeInstanceOf(ConfigurableProxy);
     });
 
     it('should chain retry configuration', () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        retryManager
-      );
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, retryManager);
 
       const chained = proxy.retry(3);
       expect(chained).toBeInstanceOf(ConfigurableProxy);
     });
 
     it('should chain multiple configurations', () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        retryManager
-      );
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, retryManager);
 
       const chained = proxy.cache(60000).retry(3).timeout(5000);
       expect(chained).toBeInstanceOf(ConfigurableProxy);
     });
 
     it('should chain all available configuration methods', () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        retryManager
-      );
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, retryManager);
 
       const chained = proxy
         .cache({ maxAge: 60000 })
@@ -96,12 +76,7 @@ describe('ConfigurableProxy', () => {
 
   describe('Option Accumulation', () => {
     it('should accumulate cache option', () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        retryManager
-      );
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, retryManager);
 
       proxy.cache(60000);
       // Options should be accumulated internally
@@ -109,24 +84,14 @@ describe('ConfigurableProxy', () => {
     });
 
     it('should accumulate retry option', () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        retryManager
-      );
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, retryManager);
 
       proxy.retry(3);
       expect((proxy as any).accumulatedOptions.retry).toEqual({ attempts: 3 });
     });
 
     it('should accumulate multiple options', () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        retryManager
-      );
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, retryManager);
 
       proxy.cache(60000).retry(3).timeout(5000);
 
@@ -137,13 +102,9 @@ describe('ConfigurableProxy', () => {
     });
 
     it('should handle initial options', () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        retryManager,
-        { cache: { maxAge: 30000 } }
-      );
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, retryManager, {
+        cache: { maxAge: 30000 },
+      });
 
       expect((proxy as any).accumulatedOptions.cache).toEqual({ maxAge: 30000 });
     });
@@ -151,12 +112,7 @@ describe('ConfigurableProxy', () => {
 
   describe('Method Call Interception', () => {
     it('should intercept method calls via Proxy', () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        retryManager
-      ) as any;
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, retryManager) as any;
 
       // Mock transport.invoke to avoid actual HTTP call
       const invokeSpy = jest.spyOn(transport, 'invoke').mockResolvedValue({ id: '123', name: 'Test' });
@@ -169,32 +125,17 @@ describe('ConfigurableProxy', () => {
     });
 
     it('should pass arguments to method call', async () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        retryManager
-      ) as any;
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, retryManager) as any;
 
       const invokeSpy = jest.spyOn(transport, 'invoke').mockResolvedValue({ id: '123', name: 'Test' });
 
       await proxy.getUser('user-123');
 
-      expect(invokeSpy).toHaveBeenCalledWith(
-        'TestService@1.0.0',
-        'getUser',
-        ['user-123'],
-        expect.any(Object)
-      );
+      expect(invokeSpy).toHaveBeenCalledWith('TestService@1.0.0', 'getUser', ['user-123'], expect.any(Object));
     });
 
     it('should handle methods with multiple arguments', async () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        retryManager
-      ) as any;
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, retryManager) as any;
 
       const invokeSpy = jest.spyOn(transport, 'invoke').mockResolvedValue([]);
 
@@ -209,12 +150,7 @@ describe('ConfigurableProxy', () => {
     });
 
     it('should handle methods with no arguments', async () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        retryManager
-      ) as any;
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, retryManager) as any;
 
       const invokeSpy = jest.spyOn(transport, 'invoke').mockResolvedValue([]);
 
@@ -226,12 +162,7 @@ describe('ConfigurableProxy', () => {
 
   describe('Configuration Application', () => {
     it('should apply accumulated cache option to request', async () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        retryManager
-      ) as any;
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, retryManager) as any;
 
       const getSpy = jest.spyOn(cacheManager, 'get').mockResolvedValue({ id: '123', name: 'Test' });
 
@@ -242,12 +173,7 @@ describe('ConfigurableProxy', () => {
     });
 
     it('should apply accumulated retry option to request', async () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        retryManager
-      ) as any;
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, retryManager) as any;
 
       const executeSpy = jest.spyOn(retryManager, 'execute').mockResolvedValue({ id: '123', name: 'Test' });
 
@@ -258,12 +184,7 @@ describe('ConfigurableProxy', () => {
     });
 
     it('should apply multiple accumulated options to request', async () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        retryManager
-      ) as any;
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, retryManager) as any;
 
       const getSpy = jest.spyOn(cacheManager, 'get').mockResolvedValue({ id: '123', name: 'Test' });
 
@@ -276,12 +197,7 @@ describe('ConfigurableProxy', () => {
 
   describe('Type Safety', () => {
     it('should provide type-safe method access', () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        retryManager
-      ) as any;
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, retryManager) as any;
 
       // TypeScript should know about getUser, getUsers, createUser
       expect(typeof proxy.getUser).toBe('function');
@@ -290,12 +206,7 @@ describe('ConfigurableProxy', () => {
     });
 
     it('should return Promise for method calls', () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        retryManager
-      ) as any;
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, retryManager) as any;
 
       jest.spyOn(transport, 'invoke').mockResolvedValue({ id: '123', name: 'Test' });
 
@@ -306,46 +217,26 @@ describe('ConfigurableProxy', () => {
 
   describe('Edge Cases', () => {
     it('should handle symbol properties gracefully', () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        retryManager
-      ) as any;
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, retryManager) as any;
 
       const sym = Symbol('test');
       expect(() => proxy[sym]).not.toThrow();
     });
 
     it('should handle toString calls', () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        retryManager
-      ) as any;
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, retryManager) as any;
 
       expect(() => proxy.toString()).not.toThrow();
     });
 
     it('should create proxy without cache manager', () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        undefined,
-        retryManager
-      );
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, undefined, retryManager);
 
       expect(proxy).toBeInstanceOf(ConfigurableProxy);
     });
 
     it('should create proxy without retry manager', () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        undefined
-      );
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, undefined);
 
       expect(proxy).toBeInstanceOf(ConfigurableProxy);
     });
@@ -353,31 +244,21 @@ describe('ConfigurableProxy', () => {
 
   describe('Transform and Validate', () => {
     it('should apply transform function', async () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        retryManager
-      ) as any;
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, retryManager) as any;
 
       jest.spyOn(transport, 'invoke').mockResolvedValue([
         { id: '1', name: 'User 1' },
-        { id: '2', name: 'User 2' }
+        { id: '2', name: 'User 2' },
       ]);
 
-      proxy.transform((users: any[]) => users.map(u => u.name));
+      proxy.transform((users: any[]) => users.map((u) => u.name));
       const result = await proxy.getUsers();
 
       expect(result).toEqual(['User 1', 'User 2']);
     });
 
     it('should apply validate function', async () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        retryManager
-      ) as any;
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, retryManager) as any;
 
       jest.spyOn(transport, 'invoke').mockResolvedValue([]);
 
@@ -388,12 +269,7 @@ describe('ConfigurableProxy', () => {
     });
 
     it('should use fallback on validation failure', async () => {
-      const proxy = new ConfigurableProxy<ITestService>(
-        transport,
-        serviceName,
-        cacheManager,
-        retryManager
-      ) as any;
+      const proxy = new ConfigurableProxy<ITestService>(transport, serviceName, cacheManager, retryManager) as any;
 
       jest.spyOn(transport, 'invoke').mockResolvedValue('invalid');
 

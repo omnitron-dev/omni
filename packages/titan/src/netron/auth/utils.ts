@@ -48,7 +48,9 @@ export function extractBearerToken(authHeader: string | undefined): string | nul
  * parseAuthorizationHeader('Bearer abc123') // returns { scheme: 'Bearer', credentials: 'abc123' }
  * parseAuthorizationHeader('Basic xyz') // returns { scheme: 'Basic', credentials: 'xyz' }
  */
-export function parseAuthorizationHeader(authHeader: string | undefined): { scheme: string; credentials: string } | null {
+export function parseAuthorizationHeader(
+  authHeader: string | undefined
+): { scheme: string; credentials: string } | null {
   if (!authHeader || typeof authHeader !== 'string') {
     return null;
   }
@@ -57,7 +59,7 @@ export function parseAuthorizationHeader(authHeader: string | undefined): { sche
   if (parts.length === 2 && parts[0] && parts[1]) {
     return {
       scheme: parts[0],
-      credentials: parts[1]
+      credentials: parts[1],
     };
   }
 

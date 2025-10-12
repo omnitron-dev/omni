@@ -1,6 +1,6 @@
 /**
  * Event Scheduler Service
- * 
+ *
  * Schedules events for delayed or recurring emission
  */
 
@@ -25,10 +25,7 @@ export class EventSchedulerService {
   private destroyed = false;
   private logger: any = null;
 
-  constructor(
-    @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
-
-  ) { }
+  constructor(@Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter) {}
 
   /**
    * Initialize the service
@@ -69,19 +66,15 @@ export class EventSchedulerService {
         completedJobs: stats.completed,
         failedJobs: stats.failed,
         activeTimers: this.timers.size,
-        activeIntervals: this.intervals.size
-      }
+        activeIntervals: this.intervals.size,
+      },
     };
   }
 
   /**
    * Schedule an event (alias for scheduleEvent)
    */
-  schedule(
-    event: string,
-    data: any,
-    delay: number
-  ): string {
+  schedule(event: string, data: any, delay: number): string {
     return this.scheduleEvent(event, data, { delay });
   }
 
@@ -95,18 +88,15 @@ export class EventSchedulerService {
   /**
    * Get scheduled jobs (first implementation)
    */
-  getScheduledJobs(filter?: {
-    status?: IEventSchedulerJob['status'];
-    event?: string;
-  }): IEventSchedulerJob[] {
+  getScheduledJobs(filter?: { status?: IEventSchedulerJob['status']; event?: string }): IEventSchedulerJob[] {
     let jobs = Array.from(this.jobs.values());
 
     if (filter?.status) {
-      jobs = jobs.filter(j => j.status === filter.status);
+      jobs = jobs.filter((j) => j.status === filter.status);
     }
 
     if (filter?.event) {
-      jobs = jobs.filter(j => j.event === filter.event);
+      jobs = jobs.filter((j) => j.event === filter.event);
     }
 
     return jobs;
@@ -132,19 +122,19 @@ export class EventSchedulerService {
   scheduleEvent(
     event: string,
     data: any,
-    delayOrOptions: number | {
-      delay?: number;
-      at?: Date;
-      cron?: string;
-      retry?: {
-        attempts: number;
-        delay: number;
-      };
-    }
+    delayOrOptions:
+      | number
+      | {
+          delay?: number;
+          at?: Date;
+          cron?: string;
+          retry?: {
+            attempts: number;
+            delay: number;
+          };
+        }
   ): string {
-    const options = typeof delayOrOptions === 'number'
-      ? { delay: delayOrOptions }
-      : delayOrOptions;
+    const options = typeof delayOrOptions === 'number' ? { delay: delayOrOptions } : delayOrOptions;
     const jobId = this.generateJobId();
     const scheduledAt = options.at || new Date(Date.now() + (options.delay || 0));
 
@@ -155,7 +145,7 @@ export class EventSchedulerService {
       scheduledAt,
       cron: options.cron,
       status: 'pending',
-      retry: options.retry ? { ...options.retry, currentAttempt: 0 } : undefined
+      retry: options.retry ? { ...options.retry, currentAttempt: 0 } : undefined,
     };
 
     this.jobs.set(jobId, job);
@@ -198,18 +188,15 @@ export class EventSchedulerService {
   /**
    * Get all scheduled jobs
    */
-  getJobs(filter?: {
-    status?: IEventSchedulerJob['status'];
-    event?: string;
-  }): IEventSchedulerJob[] {
+  getJobs(filter?: { status?: IEventSchedulerJob['status']; event?: string }): IEventSchedulerJob[] {
     let jobs = Array.from(this.jobs.values());
 
     if (filter?.status) {
-      jobs = jobs.filter(j => j.status === filter.status);
+      jobs = jobs.filter((j) => j.status === filter.status);
     }
 
     if (filter?.event) {
-      jobs = jobs.filter(j => j.event === filter.event);
+      jobs = jobs.filter((j) => j.event === filter.event);
     }
 
     return jobs;
@@ -287,8 +274,9 @@ export class EventSchedulerService {
    * Clear completed jobs
    */
   clearCompletedJobs(): number {
-    const completed = Array.from(this.jobs.entries())
-      .filter(([, job]) => job.status === 'completed' || job.status === 'cancelled');
+    const completed = Array.from(this.jobs.entries()).filter(
+      ([, job]) => job.status === 'completed' || job.status === 'cancelled'
+    );
 
     for (const [id] of completed) {
       this.jobs.delete(id);
@@ -324,11 +312,11 @@ export class EventSchedulerService {
 
     return {
       total: jobs.length,
-      pending: jobs.filter(j => j.status === 'pending').length,
-      running: jobs.filter(j => j.status === 'running').length,
-      completed: jobs.filter(j => j.status === 'completed').length,
-      failed: jobs.filter(j => j.status === 'failed').length,
-      cancelled: jobs.filter(j => j.status === 'cancelled').length
+      pending: jobs.filter((j) => j.status === 'pending').length,
+      running: jobs.filter((j) => j.status === 'running').length,
+      completed: jobs.filter((j) => j.status === 'completed').length,
+      failed: jobs.filter((j) => j.status === 'failed').length,
+      cancelled: jobs.filter((j) => j.status === 'cancelled').length,
     };
   }
 
@@ -389,9 +377,12 @@ export class EventSchedulerService {
         job.status = 'pending';
 
         // Schedule retry
-        setTimeout(() => {
-          this.runJob(job);
-        }, job.retry.delay * Math.pow(2, job.retry.currentAttempt - 1));
+        setTimeout(
+          () => {
+            this.runJob(job);
+          },
+          job.retry.delay * Math.pow(2, job.retry.currentAttempt - 1)
+        );
       }
     }
   }

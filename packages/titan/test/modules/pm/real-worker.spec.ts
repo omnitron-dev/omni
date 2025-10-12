@@ -12,7 +12,7 @@ import { LoggerService } from '../../../src/modules/logger/logger.service.js';
 // Create logger
 const loggerService = new LoggerService({
   level: process.env.LOG_LEVEL || 'error',
-  pretty: false
+  pretty: false,
 });
 const logger = loggerService.child({ module: 'RealWorker-Tests' });
 
@@ -68,7 +68,7 @@ describe('Real Worker Thread Spawning', () => {
     pm = new ProcessManager(logger, {
       useRealProcesses: true,
       useWorkerThreads: true,
-      useMockSpawner: false
+      useMockSpawner: false,
     });
   });
 
@@ -178,7 +178,7 @@ describe('Real Worker Thread Pools', () => {
     pm = new ProcessManager(logger, {
       useRealProcesses: true,
       useWorkerThreads: true,
-      useMockSpawner: false
+      useMockSpawner: false,
     });
   });
 
@@ -188,7 +188,7 @@ describe('Real Worker Thread Pools', () => {
 
   it('should create a pool of real worker threads', async () => {
     const pool = await pm.pool(RealWorkerService, {
-      size: 2
+      size: 2,
     });
 
     expect(pool).toBeDefined();
@@ -205,7 +205,7 @@ describe('Real Worker Thread Pools', () => {
   it('should distribute load across pool workers', async () => {
     const pool = await pm.pool(RealWorkerService, {
       size: 3,
-      strategy: 'round-robin' as any
+      strategy: 'round-robin' as any,
     });
 
     // Make multiple calls
@@ -215,14 +215,17 @@ describe('Real Worker Thread Pools', () => {
       pool.increment(),
       pool.increment(),
       pool.increment(),
-      pool.increment()
+      pool.increment(),
     ]);
 
     // Each worker should have been called twice (round-robin with 3 workers)
-    const counts = results.reduce((acc, val) => {
-      acc[val] = (acc[val] || 0) + 1;
-      return acc;
-    }, {} as Record<number, number>);
+    const counts = results.reduce(
+      (acc, val) => {
+        acc[val] = (acc[val] || 0) + 1;
+        return acc;
+      },
+      {} as Record<number, number>
+    );
 
     // We should see values 1 and 2 from each worker
     expect(Object.keys(counts).length).toBeLessThanOrEqual(3);

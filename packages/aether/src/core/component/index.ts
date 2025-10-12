@@ -17,13 +17,7 @@ export { mergeProps, splitProps, reactiveProps } from './props.js';
 export { createContext, useContext, provideContext, type Context } from './context.js';
 
 // Refs
-export {
-  createRef,
-  useRef,
-  reactiveRef,
-  mergeRefs,
-  type Ref,
-} from './refs.js';
+export { createRef, useRef, reactiveRef, mergeRefs, type Ref } from './refs.js';
 
 // Lazy loading
 export { lazy, preloadComponent, type ComponentLoader } from './lazy.js';

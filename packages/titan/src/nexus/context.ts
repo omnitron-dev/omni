@@ -21,7 +21,7 @@ export function createContextKey<T>(name: string): ContextKey<T> {
   return {
     id: Symbol(name),
     name,
-    type: undefined as any
+    type: undefined as any,
   };
 }
 
@@ -41,7 +41,7 @@ export const ContextKeys = {
   CorrelationId: createContextKey<string>('correlationId'),
   Transaction: createContextKey<any>('transaction'),
   Logger: createContextKey<any>('logger'),
-  Metrics: createContextKey<any>('metrics')
+  Metrics: createContextKey<any>('metrics'),
 } as const;
 
 /**
@@ -229,7 +229,7 @@ export class FeatureFlagStrategy implements ResolutionStrategy {
   }
 
   select<T>(providers: any[], context: ResolutionContext): any {
-    const features = context.metadata?.['features'] as string[] || [];
+    const features = (context.metadata?.['features'] as string[]) || [];
 
     for (const provider of providers) {
       if (provider.feature && features.includes(provider.feature)) {
@@ -238,7 +238,7 @@ export class FeatureFlagStrategy implements ResolutionStrategy {
     }
 
     // Return default provider
-    return providers.find(p => !p.feature) || providers[0];
+    return providers.find((p) => !p.feature) || providers[0];
   }
 }
 
@@ -262,7 +262,7 @@ export class TenantStrategy implements ResolutionStrategy {
     }
 
     // Return multi-tenant provider or first
-    return providers.find(p => p.multiTenant) || providers[0];
+    return providers.find((p) => p.multiTenant) || providers[0];
   }
 }
 
@@ -277,7 +277,7 @@ export class RoleBasedStrategy implements ResolutionStrategy {
   }
 
   select<T>(providers: any[], context: ResolutionContext): any {
-    const roles = context.metadata?.['user']?.roles as string[] || [];
+    const roles = (context.metadata?.['user']?.roles as string[]) || [];
 
     // Find provider with matching required role
     for (const provider of providers) {
@@ -287,7 +287,7 @@ export class RoleBasedStrategy implements ResolutionStrategy {
     }
 
     // Return public provider or first
-    return providers.find(p => !p.requiredRole) || providers[0];
+    return providers.find((p) => !p.requiredRole) || providers[0];
   }
 }
 
@@ -371,11 +371,7 @@ export class ContextManager {
   /**
    * Apply strategies to select provider
    */
-  selectProvider<T>(
-    token: InjectionToken<T>,
-    providers: any[],
-    context: ResolutionContext
-  ): any {
+  selectProvider<T>(token: InjectionToken<T>, providers: any[], context: ResolutionContext): any {
     if (providers.length === 0) {
       return undefined;
     }
@@ -413,8 +409,8 @@ export class ContextManager {
       scope,
       metadata: {
         ...contextProvider.toObject(),
-        ...metadata
-      }
+        ...metadata,
+      },
     };
   }
 }
@@ -451,8 +447,6 @@ export interface ContextAwareProvider<T = any> {
 /**
  * Create context-aware provider
  */
-export function createContextAwareProvider<T>(
-  provider: ContextAwareProvider<T>
-): ContextAwareProvider<T> {
+export function createContextAwareProvider<T>(provider: ContextAwareProvider<T>): ContextAwareProvider<T> {
   return provider;
 }

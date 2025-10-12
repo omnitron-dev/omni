@@ -1,6 +1,6 @@
 /**
  * Simplified API Example
- * 
+ *
  * This example demonstrates the extremely user-friendly API of Titan.
  * You can create a fully functional application with just a few lines of code.
  */
@@ -12,7 +12,7 @@ import {
   LOGGER_SERVICE_TOKEN,
   CONFIG_SERVICE_TOKEN,
   createToken,
-  type HealthStatus
+  type HealthStatus,
 } from '../src';
 
 /**
@@ -21,15 +21,15 @@ import {
  */
 async function simplestApp() {
   console.log('=== Example 1: Simplest App ===\n');
-  
+
   const app = await createAndStartApp({
     name: 'simplest-app',
-    version: '1.0.0'
+    version: '1.0.0',
   });
 
   const logger = app.get(LOGGER_SERVICE_TOKEN).logger;
   logger.info('This is the simplest possible Titan app!');
-  
+
   await app.stop();
 }
 
@@ -43,30 +43,30 @@ async function simpleModuleApp() {
   // Define a module in the most straightforward way
   const HelloModule = defineModule({
     name: 'hello',
-    
+
     // Simple lifecycle - just functions
     async onStart(app) {
       console.log('Hello module starting!');
     },
-    
+
     async onStop(app) {
       console.log('Hello module stopping!');
     },
-    
+
     // Add any methods you want - they become part of the module
     sayHello(name: string) {
       return `Hello, ${name}!`;
     },
-    
+
     sayGoodbye(name: string) {
       return `Goodbye, ${name}!`;
-    }
+    },
   });
 
   // Create app and use the module
   const app = await createAndStartApp({
     name: 'hello-app',
-    modules: [HelloModule]
+    modules: [HelloModule],
   });
 
   // Use the module - it just works!
@@ -91,24 +91,28 @@ async function fluentApiApp() {
       version: '2.0.0',
       debug: true,
       custom: {
-        message: 'Configured via fluent API'
-      }
-    })
-    .use(defineModule({
-      name: 'printer',
-      print(text: string) {
-        console.log(`[PRINTER] ${text}`);
-      }
-    }))
-    .use(defineModule({
-      name: 'calculator',
-      add(a: number, b: number) {
-        return a + b;
+        message: 'Configured via fluent API',
       },
-      multiply(a: number, b: number) {
-        return a * b;
-      }
-    }));
+    })
+    .use(
+      defineModule({
+        name: 'printer',
+        print(text: string) {
+          console.log(`[PRINTER] ${text}`);
+        },
+      })
+    )
+    .use(
+      defineModule({
+        name: 'calculator',
+        add(a: number, b: number) {
+          return a + b;
+        },
+        multiply(a: number, b: number) {
+          return a * b;
+        },
+      })
+    );
 
   // Add hooks fluently
   app
@@ -129,7 +133,7 @@ async function fluentApiApp() {
   const calculatorToken = createToken<any>('calculator');
   const printer = app.get(printerToken);
   const calculator = app.get(calculatorToken);
-  
+
   printer.print('Testing the printer module');
   printer.print(`2 + 3 = ${calculator.add(2, 3)}`);
   printer.print(`4 × 5 = ${calculator.multiply(4, 5)}`);
@@ -145,62 +149,70 @@ async function replaceModulesApp() {
   console.log('\n=== Example 4: Replace Core Modules ===\n');
 
   const app = createApp({
-    name: 'custom-core-app'
+    name: 'custom-core-app',
   });
 
   // Replace logger with a simple console logger in one line
-  app.replaceModule(LOGGER_SERVICE_TOKEN, defineModule({
-    name: 'simple-logger',
-    logger: {
-      trace: console.log,
-      debug: console.log,
-      info: console.info,
-      warn: console.warn,
-      error: console.error,
-      fatal: console.error,
-      child: function() { return this; }
-    }
-  }));
+  app.replaceModule(
+    LOGGER_SERVICE_TOKEN,
+    defineModule({
+      name: 'simple-logger',
+      logger: {
+        trace: console.log,
+        debug: console.log,
+        info: console.info,
+        warn: console.warn,
+        error: console.error,
+        fatal: console.error,
+        child: function () {
+          return this;
+        },
+      },
+    })
+  );
 
   // Replace config with a simple object
-  app.replaceModule(CONFIG_SERVICE_TOKEN, defineModule({
-    name: 'simple-config',
-    _data: { app: { name: 'replaced' } },
-    // Add loadObject method expected by Application
-    loadObject(obj: any) {
-      Object.assign(this._data, obj);
-    },
-    get(path?: string, defaultValue?: any) {
-      return path ? this._data[path] || defaultValue : this._data;
-    },
-    set(path: string, value: any) {
-      this._data[path] = value;
-    },
-    has(path: string) {
-      return path in this._data;
-    },
-    delete(path: string) {
-      delete this._data[path];
-    },
-    getEnvironment() {
-      return 'custom';
-    },
-    isProduction() {
-      return false;
-    },
-    isDevelopment() {
-      return true;
-    },
-    isTest() {
-      return false;
-    }
-  }));
+  app.replaceModule(
+    CONFIG_SERVICE_TOKEN,
+    defineModule({
+      name: 'simple-config',
+      _data: { app: { name: 'replaced' } },
+      // Add loadObject method expected by Application
+      loadObject(obj: any) {
+        Object.assign(this._data, obj);
+      },
+      get(path?: string, defaultValue?: any) {
+        return path ? this._data[path] || defaultValue : this._data;
+      },
+      set(path: string, value: any) {
+        this._data[path] = value;
+      },
+      has(path: string) {
+        return path in this._data;
+      },
+      delete(path: string) {
+        delete this._data[path];
+      },
+      getEnvironment() {
+        return 'custom';
+      },
+      isProduction() {
+        return false;
+      },
+      isDevelopment() {
+        return true;
+      },
+      isTest() {
+        return false;
+      },
+    })
+  );
 
   await app.start();
 
   const logger = app.get(LOGGER_SERVICE_TOKEN).logger;
   const config = app.get(CONFIG_SERVICE_TOKEN);
-  
+
   logger.info('Using replaced logger!');
   console.log('Config environment:', config.getEnvironment());
 
@@ -229,36 +241,36 @@ async function serviceOrientedApp() {
     name: 'users',
     _users: new Map([
       ['1', { id: '1', name: 'Alice' }],
-      ['2', { id: '2', name: 'Bob' }]
+      ['2', { id: '2', name: 'Bob' }],
     ]),
-    
+
     getUser(id: string) {
       return this._users.get(id) || { id: '0', name: 'Unknown' };
     },
-    
+
     createUser(name: string) {
       const id = String(this._users.size + 1);
       const user = { id, name };
       this._users.set(id, user);
       return user;
-    }
+    },
   });
 
   const EmailModule = defineModule<EmailService>({
     name: 'email',
     _sent: [] as any[],
-    
+
     sendEmail(to: string, subject: string, body: string) {
       const email = { to, subject, body, timestamp: new Date() };
       this._sent.push(email);
       console.log(`📧 Email sent to ${to}: "${subject}"`);
-    }
+    },
   });
 
   // Create app with services
   const app = await createAndStartApp({
     name: 'service-app',
-    modules: [UserModule, EmailModule]
+    modules: [UserModule, EmailModule],
   });
 
   // Use services with full type safety
@@ -274,11 +286,7 @@ async function serviceOrientedApp() {
   const newUser = users.createUser('Charlie');
   console.log('Created user:', newUser);
 
-  email.sendEmail(
-    'charlie@example.com',
-    'Welcome!',
-    `Hello ${newUser.name}, welcome to our app!`
-  );
+  email.sendEmail('charlie@example.com', 'Welcome!', `Hello ${newUser.name}, welcome to our app!`);
 
   await app.stop();
 }
@@ -293,19 +301,19 @@ async function asyncModulesApp() {
   // Simulate a database connection
   class FakeDatabase {
     connected = false;
-    
+
     async connect() {
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
       this.connected = true;
       console.log('📊 Database connected');
     }
-    
+
     async disconnect() {
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
       this.connected = false;
       console.log('📊 Database disconnected');
     }
-    
+
     async query(sql: string) {
       if (!this.connected) throw new Error('Not connected');
       return { rows: [], sql };
@@ -315,29 +323,29 @@ async function asyncModulesApp() {
   const DatabaseModule = defineModule({
     name: 'database',
     _db: null as FakeDatabase | null,
-    
+
     async onStart() {
       this._db = new FakeDatabase();
       await this._db.connect();
     },
-    
+
     async onStop() {
       if (this._db) {
         await this._db.disconnect();
       }
     },
-    
+
     async health(): Promise<HealthStatus> {
       return {
         status: this._db?.connected ? 'healthy' : 'unhealthy',
-        message: this._db?.connected ? 'Database is connected' : 'Database is not connected'
+        message: this._db?.connected ? 'Database is connected' : 'Database is not connected',
       };
     },
-    
+
     async query(sql: string) {
       if (!this._db) throw new Error('Database not initialized');
       return this._db.query(sql);
-    }
+    },
   });
 
   const app = createApp({ name: 'async-app' });
@@ -348,11 +356,11 @@ async function asyncModulesApp() {
 
   const dbToken = createToken<typeof DatabaseModule>('database');
   const db = app.get(dbToken);
-  
+
   // Check health
   const health = await db.health?.();
   console.log('Database health:', health);
-  
+
   // Use the database
   await db.query('SELECT * FROM users');
   console.log('Query executed successfully');
@@ -367,7 +375,7 @@ async function asyncModulesApp() {
 async function main() {
   console.log('🚀 Titan Simplified API Examples\n');
   console.log('This demonstrates how user-friendly Titan API is.\n');
-  console.log('=' .repeat(50));
+  console.log('='.repeat(50));
 
   try {
     await simplestApp();
@@ -376,7 +384,7 @@ async function main() {
     await replaceModulesApp();
     await serviceOrientedApp();
     await asyncModulesApp();
-    
+
     console.log('\n' + '='.repeat(50));
     console.log('✅ All examples completed successfully!');
   } catch (error) {

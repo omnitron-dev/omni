@@ -32,7 +32,7 @@ export class NetronError extends TitanError {
       ...super.toJSON(),
       serviceId: this.serviceId,
       methodName: this.methodName,
-      peerId: this.peerId
+      peerId: this.peerId,
     };
   }
 }
@@ -46,7 +46,7 @@ export class ServiceNotFoundError extends NetronError {
       code: ErrorCode.NOT_FOUND,
       message: `Service not found: ${serviceId}`,
       details,
-      serviceId
+      serviceId,
     });
     this.name = 'ServiceNotFoundError';
   }
@@ -66,7 +66,7 @@ export class MethodNotFoundError extends NetronError {
       message: `Method not found: ${serviceId}.${methodName}`,
       details,
       serviceId,
-      methodName
+      methodName,
     });
     this.name = 'MethodNotFoundError';
   }
@@ -104,7 +104,7 @@ export class TransportError extends NetronError {
       message: `Failed to connect to ${address} via ${transport}`,
       transport,
       address,
-      cause
+      cause,
     });
   }
 
@@ -116,7 +116,7 @@ export class TransportError extends NetronError {
       code: ErrorCode.REQUEST_TIMEOUT,
       message: `Connection timeout to ${address} via ${transport}`,
       transport,
-      address
+      address,
     });
   }
 
@@ -128,7 +128,7 @@ export class TransportError extends NetronError {
       code: ErrorCode.SERVICE_UNAVAILABLE,
       message: reason || `Connection closed unexpectedly`,
       transport,
-      details: { reason }
+      details: { reason },
     });
   }
 
@@ -136,7 +136,7 @@ export class TransportError extends NetronError {
     return {
       ...super.toJSON(),
       transport: this.transport,
-      address: this.address
+      address: this.address,
     };
   }
 }
@@ -161,7 +161,7 @@ export class PeerError extends NetronError {
     return new PeerError({
       code: ErrorCode.NOT_FOUND,
       message: `Peer not found: ${peerId}`,
-      peerId
+      peerId,
     });
   }
 
@@ -173,7 +173,7 @@ export class PeerError extends NetronError {
       code: ErrorCode.SERVICE_UNAVAILABLE,
       message: `Peer disconnected: ${peerId}${reason ? ` (${reason})` : ''}`,
       peerId,
-      details: { reason }
+      details: { reason },
     });
   }
 
@@ -184,7 +184,7 @@ export class PeerError extends NetronError {
     return new PeerError({
       code: ErrorCode.UNAUTHORIZED,
       message: `Peer not authorized: ${peerId}`,
-      peerId
+      peerId,
     });
   }
 }
@@ -216,7 +216,7 @@ export class RpcError extends NetronError {
       message: `RPC call ${serviceId}.${methodName} timed out after ${timeoutMs}ms`,
       serviceId,
       methodName,
-      details: { timeout: timeoutMs }
+      details: { timeout: timeoutMs },
     });
   }
 
@@ -227,7 +227,7 @@ export class RpcError extends NetronError {
     return new RpcError({
       code: ErrorCode.BAD_REQUEST,
       message: `Invalid RPC request: ${reason}`,
-      details
+      details,
     });
   }
 
@@ -240,14 +240,14 @@ export class RpcError extends NetronError {
       message: `Invalid RPC response from ${serviceId}.${methodName}`,
       serviceId,
       methodName,
-      details
+      details,
     });
   }
 
   override toJSON(): any {
     return {
       ...super.toJSON(),
-      rpcId: this.rpcId
+      rpcId: this.rpcId,
     };
   }
 }
@@ -276,7 +276,7 @@ export class StreamError extends NetronError {
       code: ErrorCode.GONE,
       message: `Stream closed: ${streamId}${reason ? ` (${reason})` : ''}`,
       streamId,
-      details: { reason }
+      details: { reason },
     });
   }
 
@@ -288,7 +288,7 @@ export class StreamError extends NetronError {
       code: ErrorCode.INTERNAL_ERROR,
       message: `Stream error: ${error.message}`,
       streamId,
-      cause: error
+      cause: error,
     });
   }
 
@@ -300,14 +300,14 @@ export class StreamError extends NetronError {
       code: ErrorCode.TOO_MANY_REQUESTS,
       message: `Stream backpressure: buffer size ${bufferSize}`,
       streamId,
-      details: { bufferSize }
+      details: { bufferSize },
     });
   }
 
   override toJSON(): any {
     return {
       ...super.toJSON(),
-      streamId: this.streamId
+      streamId: this.streamId,
     };
   }
 }
@@ -336,7 +336,7 @@ export class SerializationError extends NetronError {
       code: ErrorCode.INTERNAL_ERROR,
       message: `Failed to encode value: ${typeof value}`,
       serializationType: 'encode',
-      cause
+      cause,
     });
   }
 
@@ -348,14 +348,14 @@ export class SerializationError extends NetronError {
       code: ErrorCode.BAD_REQUEST,
       message: `Failed to decode data`,
       serializationType: 'decode',
-      cause
+      cause,
     });
   }
 
   override toJSON(): any {
     return {
       ...super.toJSON(),
-      serializationType: this.serializationType
+      serializationType: this.serializationType,
     };
   }
 }

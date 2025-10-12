@@ -9,15 +9,12 @@ export {
   EventCollector,
   createMockRedisClient,
   createDeferred,
-  suppressConsole
+  suppressConsole,
 } from './test-helpers.js';
 export * from './test-fixtures.js';
 export * from './test-mocks.js';
 export * from './redis-test-utils.js';
-export {
-  waitFor,
-  collectEvents
-} from './test-utilities.js';
+export { waitFor, collectEvents } from './test-utilities.js';
 
 // Re-export async utilities
 export {
@@ -32,5 +29,5 @@ export {
   waitForCondition,
   MockTimerController,
   EventListenerTracker,
-  collectEvents as collectEventsAsync
+  collectEvents as collectEventsAsync,
 } from './async-test-utils.js';

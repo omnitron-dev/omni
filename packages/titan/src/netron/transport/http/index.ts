@@ -21,7 +21,7 @@ export {
   ConfigurableProxy,
   QueryBuilder,
   HttpCacheManager,
-  RetryManager
+  RetryManager,
 } from './fluent-interface/index.js';
 
 // Advanced features (Phase 4)
@@ -39,7 +39,7 @@ export type {
   TransportOptions,
   TransportAddress,
   ConnectionState,
-  ServerMetrics
+  ServerMetrics,
 } from '../types.js';
 
 // Export fluent interface types

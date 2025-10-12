@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import {
   HttpMiddlewareAdapter,
   HttpBuiltinMiddleware,
-  type HttpMiddlewareContext
+  type HttpMiddlewareContext,
 } from '../../../src/netron/middleware/index.js';
 import { TitanError, ErrorCode } from '../../../src/errors/index.js';
 import type { IncomingMessage, ServerResponse } from 'http';
@@ -25,18 +25,18 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
       method: 'POST',
       url: '/api/test',
       headers: {
-        'content-type': 'application/json'
+        'content-type': 'application/json',
       },
       socket: {
-        remoteAddress: '127.0.0.1'
-      } as any
+        remoteAddress: '127.0.0.1',
+      } as any,
     };
 
     mockResponse = {
       statusCode: 200,
       setHeader: jest.fn(),
       writeHead: jest.fn(),
-      end: jest.fn()
+      end: jest.fn(),
     };
 
     mockNext = jest.fn().mockResolvedValue(undefined);
@@ -53,7 +53,7 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: mockRequest as IncomingMessage,
         response: mockResponse as ServerResponse,
-        error: new Error('Regular error')
+        error: new Error('Regular error'),
       };
 
       const httpCtx = {};
@@ -66,7 +66,7 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
     it('should set status from TitanError.httpStatus', () => {
       const titanError = new TitanError({
         code: ErrorCode.BAD_REQUEST,
-        message: 'Bad request'
+        message: 'Bad request',
       });
 
       const netronCtx: HttpMiddlewareContext = {
@@ -78,7 +78,7 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: mockRequest as IncomingMessage,
         response: mockResponse as ServerResponse,
-        error: titanError
+        error: titanError,
       };
 
       const httpCtx = {};
@@ -97,7 +97,7 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
         metadata: new Map(),
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: mockRequest as IncomingMessage,
-        response: mockResponse as ServerResponse
+        response: mockResponse as ServerResponse,
       };
 
       const httpCtx = {};
@@ -111,7 +111,7 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
   describe('HttpBuiltinMiddleware - alias methods', () => {
     it('should use cors alias', async () => {
       const middleware = HttpBuiltinMiddleware.cors({
-        origin: '*'
+        origin: '*',
       });
 
       const ctx: HttpMiddlewareContext = {
@@ -123,9 +123,9 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: {
           ...mockRequest,
-          headers: { origin: 'http://example.com' }
+          headers: { origin: 'http://example.com' },
         } as IncomingMessage,
-        response: mockResponse as ServerResponse
+        response: mockResponse as ServerResponse,
       };
 
       await middleware(ctx, mockNext);
@@ -145,10 +145,10 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: {
           ...mockRequest,
-          headers: { 'accept-encoding': 'gzip' }
+          headers: { 'accept-encoding': 'gzip' },
         } as IncomingMessage,
         response: mockResponse as ServerResponse,
-        body: 'x'.repeat(2000) // Large enough to compress
+        body: 'x'.repeat(2000), // Large enough to compress
       };
 
       await middleware(ctx, mockNext);
@@ -168,10 +168,10 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: {
           ...mockRequest,
-          headers: { 'accept-encoding': 'gzip' }
+          headers: { 'accept-encoding': 'gzip' },
         } as IncomingMessage,
         response: mockResponse as ServerResponse,
-        body: 'x'.repeat(2000)
+        body: 'x'.repeat(2000),
       };
 
       await middleware(ctx, mockNext);
@@ -183,7 +183,7 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
     it('should use compression alias with options object', async () => {
       const middleware = HttpBuiltinMiddleware.compression({
         threshold: 100,
-        level: 9
+        level: 9,
       });
 
       const ctx: HttpMiddlewareContext = {
@@ -195,10 +195,10 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: {
           ...mockRequest,
-          headers: { 'accept-encoding': 'gzip' }
+          headers: { 'accept-encoding': 'gzip' },
         } as IncomingMessage,
         response: mockResponse as ServerResponse,
-        body: 'x'.repeat(200)
+        body: 'x'.repeat(200),
       };
 
       await middleware(ctx, mockNext);
@@ -215,7 +215,7 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
             return 'http://trusted.com';
           }
           return false;
-        }
+        },
       });
 
       const ctx: HttpMiddlewareContext = {
@@ -227,9 +227,9 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: {
           ...mockRequest,
-          headers: { origin: 'http://trusted.com' }
+          headers: { origin: 'http://trusted.com' },
         } as IncomingMessage,
-        response: mockResponse as ServerResponse
+        response: mockResponse as ServerResponse,
       };
 
       await middleware(ctx, mockNext);
@@ -239,7 +239,7 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
 
     it('should reject when function returns false', async () => {
       const middleware = HttpBuiltinMiddleware.corsMiddleware({
-        origin: () => false
+        origin: () => false,
       });
 
       const ctx: HttpMiddlewareContext = {
@@ -251,17 +251,14 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: {
           ...mockRequest,
-          headers: { origin: 'http://untrusted.com' }
+          headers: { origin: 'http://untrusted.com' },
         } as IncomingMessage,
-        response: mockResponse as ServerResponse
+        response: mockResponse as ServerResponse,
       };
 
       await middleware(ctx, mockNext);
 
-      expect(mockResponse.setHeader).not.toHaveBeenCalledWith(
-        'Access-Control-Allow-Origin',
-        expect.anything()
-      );
+      expect(mockResponse.setHeader).not.toHaveBeenCalledWith('Access-Control-Allow-Origin', expect.anything());
     });
   });
 
@@ -278,7 +275,7 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: mockRequest as IncomingMessage,
         response: mockResponse as ServerResponse,
-        body: { already: 'parsed' }
+        body: { already: 'parsed' },
       };
 
       await middleware(ctx, mockNext);
@@ -311,7 +308,7 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
         metadata: new Map(),
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: mockStream as IncomingMessage,
-        response: mockResponse as ServerResponse
+        response: mockResponse as ServerResponse,
       };
 
       await middleware(ctx, mockNext);
@@ -341,7 +338,7 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
         metadata: new Map(),
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: mockStream as IncomingMessage,
-        response: mockResponse as ServerResponse
+        response: mockResponse as ServerResponse,
       };
 
       await middleware(ctx, mockNext);
@@ -354,7 +351,7 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
   describe('compressionMiddleware - body type variants', () => {
     it('should compress Buffer body', async () => {
       const middleware = HttpBuiltinMiddleware.compressionMiddleware({
-        threshold: 10
+        threshold: 10,
       });
 
       const ctx: HttpMiddlewareContext = {
@@ -366,10 +363,10 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: {
           ...mockRequest,
-          headers: { 'accept-encoding': 'gzip' }
+          headers: { 'accept-encoding': 'gzip' },
         } as IncomingMessage,
         response: mockResponse as ServerResponse,
-        body: Buffer.from('x'.repeat(100))
+        body: Buffer.from('x'.repeat(100)),
       };
 
       await middleware(ctx, mockNext);
@@ -380,7 +377,7 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
 
     it('should compress object body', async () => {
       const middleware = HttpBuiltinMiddleware.compressionMiddleware({
-        threshold: 10
+        threshold: 10,
       });
 
       const ctx: HttpMiddlewareContext = {
@@ -392,10 +389,10 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: {
           ...mockRequest,
-          headers: { 'accept-encoding': 'gzip' }
+          headers: { 'accept-encoding': 'gzip' },
         } as IncomingMessage,
         response: mockResponse as ServerResponse,
-        body: { data: 'x'.repeat(100) }
+        body: { data: 'x'.repeat(100) },
       };
 
       await middleware(ctx, mockNext);
@@ -406,7 +403,7 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
 
     it('should use deflate encoding when gzip not accepted', async () => {
       const middleware = HttpBuiltinMiddleware.compressionMiddleware({
-        threshold: 10
+        threshold: 10,
       });
 
       const ctx: HttpMiddlewareContext = {
@@ -418,10 +415,10 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: {
           ...mockRequest,
-          headers: { 'accept-encoding': 'deflate' }
+          headers: { 'accept-encoding': 'deflate' },
         } as IncomingMessage,
         response: mockResponse as ServerResponse,
-        body: 'x'.repeat(100)
+        body: 'x'.repeat(100),
       };
 
       await middleware(ctx, mockNext);
@@ -432,7 +429,7 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
 
     it('should not compress when accept-encoding does not include gzip or deflate', async () => {
       const middleware = HttpBuiltinMiddleware.compressionMiddleware({
-        threshold: 10
+        threshold: 10,
       });
 
       const largeBody = 'x'.repeat(100);
@@ -445,10 +442,10 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: {
           ...mockRequest,
-          headers: { 'accept-encoding': 'identity' }
+          headers: { 'accept-encoding': 'identity' },
         } as IncomingMessage,
         response: mockResponse as ServerResponse,
-        body: largeBody
+        body: largeBody,
       };
 
       await middleware(ctx, mockNext);
@@ -470,8 +467,8 @@ describe('HttpMiddlewareAdapter - Edge Cases', () => {
     it('should include CORS middleware when options provided', () => {
       const adapter = new HttpMiddlewareAdapter({
         cors: {
-          origin: '*'
-        }
+          origin: '*',
+        },
       });
 
       const middleware = adapter.getTransportMiddleware();

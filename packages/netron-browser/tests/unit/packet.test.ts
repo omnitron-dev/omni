@@ -8,7 +8,7 @@ import {
   createStreamPacket,
   encodePacket,
   decodePacket,
-  serializer
+  serializer,
 } from '../../src/packet/index.js';
 
 describe('Packet System', () => {
@@ -114,9 +114,9 @@ describe('Packet System', () => {
         nested: {
           key: 'value',
           deep: {
-            deeper: 'value'
-          }
-        }
+            deeper: 'value',
+          },
+        },
       };
 
       const original = createPacket(2, 1, TYPE_CALL, complexData);
@@ -154,7 +154,7 @@ describe('Packet System', () => {
       const errorData = {
         code: 'ERROR_CODE',
         message: 'Something went wrong',
-        details: { reason: 'test' }
+        details: { reason: 'test' },
       };
 
       const original = createPacket(5, 0, TYPE_CALL, errorData);
@@ -197,7 +197,7 @@ describe('Packet System', () => {
     it('should handle large numbers', () => {
       const original = createPacket(9, 1, TYPE_CALL, {
         maxSafeInteger: Number.MAX_SAFE_INTEGER,
-        minSafeInteger: Number.MIN_SAFE_INTEGER
+        minSafeInteger: Number.MIN_SAFE_INTEGER,
       });
       const encoded = encodePacket(original);
       const decoded = decodePacket(encoded);

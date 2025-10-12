@@ -59,74 +59,74 @@ export interface EmptyActionsProps {
 // ============================================================================
 
 export const Empty = defineComponent<EmptyProps>((props) => () => {
-    const { variant = 'no-data', children, ...rest } = props;
+  const { variant = 'no-data', children, ...rest } = props;
 
-    return jsx('div', {
-      'data-empty': '',
-      'data-variant': variant,
-      role: 'status',
-      'aria-live': 'polite',
-      ...rest,
-      children,
-    });
+  return jsx('div', {
+    'data-empty': '',
+    'data-variant': variant,
+    role: 'status',
+    'aria-live': 'polite',
+    ...rest,
+    children,
   });
+});
 
 // ============================================================================
 // Empty Icon
 // ============================================================================
 
 export const EmptyIcon = defineComponent<EmptyIconProps>((props) => () => {
-    const { children, ...rest } = props;
+  const { children, ...rest } = props;
 
-    return jsx('div', {
-      'data-empty-icon': '',
-      'aria-hidden': 'true',
-      ...rest,
-      children,
-    });
+  return jsx('div', {
+    'data-empty-icon': '',
+    'aria-hidden': 'true',
+    ...rest,
+    children,
   });
+});
 
 // ============================================================================
 // Empty Title
 // ============================================================================
 
 export const EmptyTitle = defineComponent<EmptyTitleProps>((props) => () => {
-    const { children, ...rest } = props;
+  const { children, ...rest } = props;
 
-    return jsx('h3', {
-      'data-empty-title': '',
-      ...rest,
-      children,
-    });
+  return jsx('h3', {
+    'data-empty-title': '',
+    ...rest,
+    children,
   });
+});
 
 // ============================================================================
 // Empty Description
 // ============================================================================
 
 export const EmptyDescription = defineComponent<EmptyDescriptionProps>((props) => () => {
-    const { children, ...rest } = props;
+  const { children, ...rest } = props;
 
-    return jsx('p', {
-      'data-empty-description': '',
-      ...rest,
-      children,
-    });
+  return jsx('p', {
+    'data-empty-description': '',
+    ...rest,
+    children,
   });
+});
 
 // ============================================================================
 // Empty Actions
 // ============================================================================
 
 export const EmptyActions = defineComponent<EmptyActionsProps>((props) => () => {
-    const { children, ...rest } = props;
+  const { children, ...rest } = props;
 
-    return jsx('div', {
-      'data-empty-actions': '',
-      ...rest,
-      children,
-    });
+  return jsx('div', {
+    'data-empty-actions': '',
+    ...rest,
+    children,
   });
+});
 
 // ============================================================================
 // Attach sub-components

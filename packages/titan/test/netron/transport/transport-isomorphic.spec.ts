@@ -11,13 +11,13 @@ import {
   ITransport,
   ITransportConnection,
   ITransportServer,
-  ConnectionState
+  ConnectionState,
 } from '../../../src/netron/transport/types.js';
 import {
   TcpTransport,
   WebSocketTransport,
   UnixSocketTransport,
-  NamedPipeTransport
+  NamedPipeTransport,
 } from '../../../src/netron/transport/index.js';
 import { Packet, encodePacket } from '../../../src/netron/packet/index.js';
 import { tmpdir } from 'node:os';
@@ -50,19 +50,14 @@ function getSocketPath(): string {
   }
 }
 
-
 // Helper to wait for condition
-async function waitForCondition(
-  condition: () => boolean,
-  timeout = 5000,
-  interval = 100
-): Promise<void> {
+async function waitForCondition(condition: () => boolean, timeout = 5000, interval = 100): Promise<void> {
   const startTime = Date.now();
   while (!condition()) {
     if (Date.now() - startTime > timeout) {
       throw new Error('Timeout waiting for condition');
     }
-    await new Promise(resolve => setTimeout(resolve, interval));
+    await new Promise((resolve) => setTimeout(resolve, interval));
   }
 }
 
@@ -75,7 +70,7 @@ const createTestPacket = (id: number): Packet => ({
   isBroadcast: false,
   isPart: false,
   isEnd: false,
-  args: [`test-${id}`, { value: id }]
+  args: [`test-${id}`, { value: id }],
 });
 
 describe('Isomorphic Transport Test Suite', () => {
@@ -88,7 +83,7 @@ describe('Isomorphic Transport Test Suite', () => {
       name: 'TCP',
       transport: new TcpTransport(),
       serverAddress: `tcp://127.0.0.1:${tcpPort}`,
-      clientAddress: `tcp://127.0.0.1:${tcpPort}`
+      clientAddress: `tcp://127.0.0.1:${tcpPort}`,
     });
 
     // Setup WebSocket transport
@@ -103,7 +98,7 @@ describe('Isomorphic Transport Test Suite', () => {
       clientAddress: `ws://127.0.0.1:${wsPort}`,
       setupServer: async () => {
         httpServer = createHttpServer();
-        await new Promise<void>(resolve => {
+        await new Promise<void>((resolve) => {
           httpServer.listen(wsPort, '127.0.0.1', resolve);
         });
         wsServer = new WebSocketServer({ server: httpServer });
@@ -111,8 +106,8 @@ describe('Isomorphic Transport Test Suite', () => {
       },
       teardownServer: async () => {
         wsServer?.close();
-        await new Promise(resolve => httpServer?.close(resolve));
-      }
+        await new Promise((resolve) => httpServer?.close(resolve));
+      },
     });
 
     // Setup Unix/Named Pipe transport
@@ -123,7 +118,7 @@ describe('Isomorphic Transport Test Suite', () => {
       name: isWindows ? 'NamedPipe' : 'Unix',
       transport: isWindows ? new NamedPipeTransport() : new UnixSocketTransport(),
       serverAddress: socketPath,
-      clientAddress: socketPath
+      clientAddress: socketPath,
     });
   });
 
@@ -187,12 +182,9 @@ describe('Isomorphic Transport Test Suite', () => {
         });
 
         it('should validate addresses correctly', () => {
-          const validAddresses = [
-            config.clientAddress,
-            config.serverAddress
-          ];
+          const validAddresses = [config.clientAddress, config.serverAddress];
 
-          validAddresses.forEach(addr => {
+          validAddresses.forEach((addr) => {
             expect(config.transport.isValidAddress(addr)).toBe(true);
           });
 
@@ -200,10 +192,10 @@ describe('Isomorphic Transport Test Suite', () => {
           const invalidAddresses = [
             'invalid://address',
             'http://localhost:8080', // Wrong protocol
-            ''
+            '',
           ];
 
-          invalidAddresses.forEach(addr => {
+          invalidAddresses.forEach((addr) => {
             if (addr && !addr.startsWith(config.name.toLowerCase())) {
               expect(config.transport.isValidAddress(addr)).toBe(false);
             }
@@ -259,9 +251,8 @@ describe('Isomorphic Transport Test Suite', () => {
           await client.close();
 
           // Verify disconnected state
-          await waitForCondition(() =>
-            client.state === ConnectionState.DISCONNECTED ||
-            client.state === ConnectionState.ERROR
+          await waitForCondition(
+            () => client.state === ConnectionState.DISCONNECTED || client.state === ConnectionState.ERROR
           );
 
           expect([ConnectionState.DISCONNECTED, ConnectionState.ERROR]).toContain(client.state);
@@ -274,9 +265,9 @@ describe('Isomorphic Transport Test Suite', () => {
               return;
             }
 
-            const serverConnPromise = server ?
-              waitForEvent(server, 'connection') :
-              waitForEvent(externalServer, 'connection');
+            const serverConnPromise = server
+              ? waitForEvent(server, 'connection')
+              : waitForEvent(externalServer, 'connection');
 
             const client = await config.transport.connect(config.clientAddress);
             const serverConn = await serverConnPromise;
@@ -289,7 +280,7 @@ describe('Isomorphic Transport Test Suite', () => {
             const dataPromise = new Promise<Buffer>((resolve) => {
               const handlers = {
                 data: (data: Buffer) => resolve(data),
-                packet: (packet: any) => resolve(packet.data || Buffer.from(packet.args || []))
+                packet: (packet: any) => resolve(packet.data || Buffer.from(packet.args || [])),
               };
 
               serverConn.on('data', handlers.data);
@@ -302,9 +293,7 @@ describe('Isomorphic Transport Test Suite', () => {
             // Wait for data with timeout
             receivedData = await Promise.race([
               dataPromise,
-              new Promise<Buffer>((_, reject) =>
-                setTimeout(() => reject(new Error('Data timeout')), 2000)
-              )
+              new Promise<Buffer>((_, reject) => setTimeout(() => reject(new Error('Data timeout')), 2000)),
             ]);
 
             expect(receivedData).toBeDefined();
@@ -321,9 +310,9 @@ describe('Isomorphic Transport Test Suite', () => {
               return;
             }
 
-            const serverConnPromise = server ?
-              waitForEvent(server, 'connection') :
-              waitForEvent(externalServer, 'connection');
+            const serverConnPromise = server
+              ? waitForEvent(server, 'connection')
+              : waitForEvent(externalServer, 'connection');
 
             const client = await config.transport.connect(config.clientAddress);
             const serverConn = await serverConnPromise;
@@ -362,9 +351,9 @@ describe('Isomorphic Transport Test Suite', () => {
               return;
             }
 
-            const serverConnPromise = server ?
-              waitForEvent(server, 'connection') :
-              waitForEvent(externalServer, 'connection');
+            const serverConnPromise = server
+              ? waitForEvent(server, 'connection')
+              : waitForEvent(externalServer, 'connection');
 
             const client = await config.transport.connect(config.clientAddress);
             const serverConn = await serverConnPromise;
@@ -431,9 +420,9 @@ describe('Isomorphic Transport Test Suite', () => {
             return;
           }
 
-          const serverConnPromise = server ?
-            waitForEvent(server, 'connection') :
-            waitForEvent(externalServer, 'connection');
+          const serverConnPromise = server
+            ? waitForEvent(server, 'connection')
+            : waitForEvent(externalServer, 'connection');
 
           const client = await config.transport.connect(config.clientAddress);
           const serverConn = await serverConnPromise;
@@ -460,9 +449,7 @@ describe('Isomorphic Transport Test Suite', () => {
           // Wait for packet
           const receivedPacket = await Promise.race([
             packetPromise,
-            new Promise<Packet>((_, reject) =>
-              setTimeout(() => reject(new Error('Packet timeout')), 2000)
-            )
+            new Promise<Packet>((_, reject) => setTimeout(() => reject(new Error('Packet timeout')), 2000)),
           ]);
 
           // Verify packet integrity
@@ -480,9 +467,9 @@ describe('Isomorphic Transport Test Suite', () => {
             return;
           }
 
-          const serverConnPromise = server ?
-            waitForEvent(server, 'connection') :
-            waitForEvent(externalServer, 'connection');
+          const serverConnPromise = server
+            ? waitForEvent(server, 'connection')
+            : waitForEvent(externalServer, 'connection');
 
           const client = await config.transport.connect(config.clientAddress);
           const serverConn = await serverConnPromise;
@@ -527,13 +514,14 @@ describe('Isomorphic Transport Test Suite', () => {
       describe(`${config.name} Transport`, () => {
         it('should handle connection failures gracefully', async () => {
           // Use invalid address
-          const invalidAddress = config.name === 'TCP' || config.name === 'WebSocket' ?
-            `${config.clientAddress.split(':').slice(0, -1).join(':')}:1` : // Port 1
-            '/invalid/path/that/does/not/exist';
+          const invalidAddress =
+            config.name === 'TCP' || config.name === 'WebSocket'
+              ? `${config.clientAddress.split(':').slice(0, -1).join(':')}:1` // Port 1
+              : '/invalid/path/that/does/not/exist';
 
           try {
             await config.transport.connect(invalidAddress, {
-              connectTimeout: 100
+              connectTimeout: 100,
             });
             fail('Should have thrown connection error');
           } catch (error: any) {
@@ -571,7 +559,7 @@ describe('Isomorphic Transport Test Suite', () => {
           // Some transports might not emit error immediately
           const errorOrTimeout = await Promise.race([
             errorPromise,
-            new Promise<null>(resolve => setTimeout(() => resolve(null), 1000))
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000)),
           ]);
 
           // Clean up
@@ -593,8 +581,8 @@ describe('Isomorphic Transport Test Suite', () => {
               reconnect: {
                 enabled: true,
                 maxAttempts: 3,
-                delay: 100
-              }
+                delay: 100,
+              },
             });
 
             const reconnectPromise = waitForEvent(client, 'reconnect');
@@ -611,7 +599,7 @@ describe('Isomorphic Transport Test Suite', () => {
             // Wait for reconnect
             const reconnectEvent = await Promise.race([
               reconnectPromise,
-              new Promise<null>(resolve => setTimeout(() => resolve(null), 2000))
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000)),
             ]);
 
             if (reconnectEvent) {
@@ -668,9 +656,9 @@ describe('Isomorphic Transport Test Suite', () => {
             return;
           }
 
-          const serverConnPromise = server ?
-            waitForEvent(server, 'connection') :
-            waitForEvent(externalServer, 'connection');
+          const serverConnPromise = server
+            ? waitForEvent(server, 'connection')
+            : waitForEvent(externalServer, 'connection');
 
           const client = await config.transport.connect(config.clientAddress);
           const serverConn = await serverConnPromise;
@@ -709,9 +697,9 @@ describe('Isomorphic Transport Test Suite', () => {
             return;
           }
 
-          const serverConnPromise = server ?
-            waitForEvent(server, 'connection') :
-            waitForEvent(externalServer, 'connection');
+          const serverConnPromise = server
+            ? waitForEvent(server, 'connection')
+            : waitForEvent(externalServer, 'connection');
 
           const client = await config.transport.connect(config.clientAddress);
           const serverConn = await serverConnPromise;
@@ -757,9 +745,7 @@ describe('Isomorphic Transport Test Suite', () => {
           // Create multiple concurrent connections
           const connectionPromises = [];
           for (let i = 0; i < connectionCount; i++) {
-            connectionPromises.push(
-              config.transport.connect(config.clientAddress)
-            );
+            connectionPromises.push(config.transport.connect(config.clientAddress));
           }
 
           const connectedClients = await Promise.all(connectionPromises);
@@ -772,12 +758,12 @@ describe('Isomorphic Transport Test Suite', () => {
           expect(serverConnections.length).toBe(connectionCount);
 
           // Verify all clients are connected
-          clients.forEach(client => {
+          clients.forEach((client) => {
             expect(client.state).toBe(ConnectionState.CONNECTED);
           });
 
           // Clean up
-          await Promise.all(clients.map(c => c.close()));
+          await Promise.all(clients.map((c) => c.close()));
         });
       });
     });
@@ -840,7 +826,7 @@ describe('Isomorphic Transport Test Suite', () => {
           }
 
           // Clean up
-          await Promise.all(clients.map(c => c.close()));
+          await Promise.all(clients.map((c) => c.close()));
           await server.close();
         });
       });
@@ -849,7 +835,7 @@ describe('Isomorphic Transport Test Suite', () => {
 
   describe('Isomorphic Guarantees', () => {
     it('should provide consistent API across all transports', () => {
-      transportConfigs.forEach(config => {
+      transportConfigs.forEach((config) => {
         const transport = config.transport;
 
         // All transports must implement these methods
@@ -975,7 +961,7 @@ describe('Isomorphic Transport Test Suite', () => {
 
           // Trigger some activity
           await client.send(Buffer.from('test'));
-          await new Promise(resolve => setTimeout(resolve, 100)); // Wait a bit for events
+          await new Promise((resolve) => setTimeout(resolve, 100)); // Wait a bit for events
           await client.close();
 
           // All transports should emit at least these events

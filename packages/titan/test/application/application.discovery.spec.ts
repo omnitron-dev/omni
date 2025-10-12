@@ -34,7 +34,7 @@ describe('Application Module Discovery', () => {
     app = createApp({
       name: 'discovery-test',
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
   });
 
@@ -71,15 +71,9 @@ TestDiscoveredModule2.__titanModuleMetadata = {};
 module.exports = { TestDiscoveredModule2 };
 `;
 
-      fs.writeFileSync(
-        path.join(tempDir, 'module1.cjs'),
-        module1Content
-      );
+      fs.writeFileSync(path.join(tempDir, 'module1.cjs'), module1Content);
 
-      fs.writeFileSync(
-        path.join(tempDir, 'module2.cjs'),
-        module2Content
-      );
+      fs.writeFileSync(path.join(tempDir, 'module2.cjs'), module2Content);
 
       await app.discoverModules(tempDir);
 
@@ -113,20 +107,14 @@ TestDiscoveredModule2.__titanModuleMetadata = {};
 module.exports = { TestDiscoveredModule2 };
 `;
 
-      fs.writeFileSync(
-        path.join(tempDir, 'module1.cjs'),
-        module1Content
-      );
+      fs.writeFileSync(path.join(tempDir, 'module1.cjs'), module1Content);
 
-      fs.writeFileSync(
-        path.join(tempDir, 'module2.cjs'),
-        module2Content
-      );
+      fs.writeFileSync(path.join(tempDir, 'module2.cjs'), module2Content);
 
       await app.discoverModules(path.join(tempDir, '*.cjs'));
 
       const modules = app.getModules();
-      const moduleNames = modules.map(m => m.name);
+      const moduleNames = modules.map((m) => m.name);
 
       expect(moduleNames).toContain('discovered-1');
       expect(moduleNames).toContain('discovered-2');
@@ -142,10 +130,7 @@ class NotAModule {
 }
 module.exports = { NotAModule };
 `;
-      fs.writeFileSync(
-        path.join(tempDir, 'not-module.cjs'),
-        nonModuleContent
-      );
+      fs.writeFileSync(path.join(tempDir, 'not-module.cjs'), nonModuleContent);
 
       await app.discoverModules(tempDir);
 
@@ -172,7 +157,7 @@ class ErrorModule {
     beforeEach(() => {
       // Clean up any existing test files
       const testFiles = ['module1.cjs', 'module2.cjs', 'error-module.cjs'];
-      testFiles.forEach(file => {
+      testFiles.forEach((file) => {
         const filePath = path.join(tempDir, file);
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
@@ -200,22 +185,16 @@ TestDiscoveredModule2.__titanModule = true;
 TestDiscoveredModule2.__titanModuleMetadata = {};
 module.exports = { TestDiscoveredModule2 };`;
 
-      fs.writeFileSync(
-        path.join(tempDir, 'module1.cjs'),
-        module1Content
-      );
+      fs.writeFileSync(path.join(tempDir, 'module1.cjs'), module1Content);
 
-      fs.writeFileSync(
-        path.join(tempDir, 'module2.cjs'),
-        module2Content
-      );
+      fs.writeFileSync(path.join(tempDir, 'module2.cjs'), module2Content);
     });
 
     it('should scan modules from configured paths', async () => {
       const app = await Application.create({
         scanPaths: [tempDir],
         disableGracefulShutdown: true,
-        disableCoreModules: true
+        disableCoreModules: true,
       });
 
       // Modules should be auto-discovered during creation
@@ -239,15 +218,12 @@ module.exports = { TestDiscoveredModule2 };`;
 TestDiscoveredModule3.__titanModule = true;
 TestDiscoveredModule3.__titanModuleMetadata = {};
 module.exports = { TestDiscoveredModule3 };`;
-        fs.writeFileSync(
-          path.join(tempDir2, 'module3.cjs'),
-          module3Content
-        );
+        fs.writeFileSync(path.join(tempDir2, 'module3.cjs'), module3Content);
 
         const app = await Application.create({
           scanPaths: [tempDir, tempDir2],
           disableGracefulShutdown: true,
-          disableCoreModules: true
+          disableCoreModules: true,
         });
 
         expect(app.hasModule('discovered-1')).toBe(true);
@@ -265,7 +241,7 @@ module.exports = { TestDiscoveredModule3 };`;
         scanPaths: [tempDir],
         excludePaths: ['**/module1.cjs'],
         disableGracefulShutdown: true,
-        disableCoreModules: true
+        disableCoreModules: true,
       });
 
       expect(app.hasModule('discovered-1')).toBe(false);
@@ -313,10 +289,7 @@ class InvalidModule {
 InvalidModule.__titanModule = true;
 module.exports = { InvalidModule };
 `;
-      fs.writeFileSync(
-        path.join(tempDir, 'invalid-module.cjs'),
-        invalidModuleContent
-      );
+      fs.writeFileSync(path.join(tempDir, 'invalid-module.cjs'), invalidModuleContent);
 
       await expect(app.discoverModules(tempDir)).rejects.toThrow();
     });
@@ -394,7 +367,7 @@ module.exports = { InvalidModule };
 
       const module = createDatabaseModule({
         host: 'localhost',
-        port: 5432
+        port: 5432,
       });
 
       app.use(module);
@@ -403,14 +376,14 @@ module.exports = { InvalidModule };
       const retrieved = app.getModule('database') as any;
       expect(retrieved.getConfig()).toEqual({
         host: 'localhost',
-        port: 5432
+        port: 5432,
       });
     });
 
     it('should support async module factories', async () => {
       const createAsyncModule = async () => {
         // Simulate async initialization
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
 
         class AsyncCreatedModule implements IModule {
           readonly name = 'async-created';
@@ -431,7 +404,7 @@ module.exports = { InvalidModule };
     it('should discover module metadata', () => {
       @Module({
         providers: [{ provide: 'TEST', useValue: 'test' }],
-        exports: ['TEST']
+        exports: ['TEST'],
       })
       class MetadataModule implements IModule {
         readonly name = 'metadata-module';
@@ -455,7 +428,7 @@ module.exports = { InvalidModule };
 
       @Module({
         providers: [TestService],
-        exports: [TestService]
+        exports: [TestService],
       })
       class ServiceModule implements IModule {
         readonly name = 'service-module';

@@ -4,12 +4,7 @@
  * These fixtures represent realistic module patterns used in production applications
  */
 
-import {
-  IModule,
-  IApplication,
-  IHealthStatus,
-  ApplicationEvent
-} from '../../src/types.js';
+import { IModule, IApplication, IHealthStatus, ApplicationEvent } from '../../src/types.js';
 import { Application, createApp } from '../../src/application.js';
 import { Injectable, Module, Service } from '../../src/decorators/index.js';
 import { createToken, Token } from '@nexus';
@@ -59,8 +54,8 @@ export class SimpleModule implements IModule {
       message: 'Simple module health check',
       details: {
         started: this.startCalled,
-        config: this.configValue
-      }
+        config: this.configValue,
+      },
     };
   }
 }
@@ -72,15 +67,14 @@ export class SlowModule implements IModule {
   readonly name = 'slow';
   readonly version = '1.0.0';
 
-  constructor(public delay = 100) {
-  }
+  constructor(public delay = 100) {}
 
   async onStart(): Promise<void> {
-    await new Promise(resolve => setTimeout(resolve, this.delay));
+    await new Promise((resolve) => setTimeout(resolve, this.delay));
   }
 
   async onStop(): Promise<void> {
-    await new Promise(resolve => setTimeout(resolve, this.delay));
+    await new Promise((resolve) => setTimeout(resolve, this.delay));
   }
 }
 
@@ -94,8 +88,7 @@ export class FailingModule implements IModule {
   constructor(
     public failOn: 'start' | 'stop' | 'register' | 'destroy' = 'start',
     public errorMessage = 'Module failure'
-  ) {
-  }
+  ) {}
 
   async onRegister(): Promise<void> {
     if (this.failOn === 'register') {
@@ -147,7 +140,7 @@ export class DatabaseModule implements IModule {
     this.connection = {
       id: Math.random().toString(36).substring(7),
       host: this.config.host || 'localhost',
-      port: this.config.port || 5432
+      port: this.config.port || 5432,
     };
 
     // Initialize connection pool
@@ -155,7 +148,7 @@ export class DatabaseModule implements IModule {
       this.pool.push({
         id: i,
         busy: false,
-        connection: { ...this.connection }
+        connection: { ...this.connection },
       });
     }
   }
@@ -167,7 +160,7 @@ export class DatabaseModule implements IModule {
   }
 
   async health(): Promise<IHealthStatus> {
-    const activeConnections = this.pool.filter(c => !c.busy).length;
+    const activeConnections = this.pool.filter((c) => !c.busy).length;
     return {
       status: this.connection ? 'healthy' : 'unhealthy',
       message: 'Database connection status',
@@ -177,9 +170,9 @@ export class DatabaseModule implements IModule {
         activeConnections,
         config: {
           host: this.config.host,
-          port: this.config.port
-        }
-      }
+          port: this.config.port,
+        },
+      },
     };
   }
 
@@ -216,12 +209,12 @@ export class HttpServerModule implements IModule {
     this.server = {
       listening: true,
       port: this.port,
-      address: `http://localhost:${this.port}`
+      address: `http://localhost:${this.port}`,
     };
 
     // Emit server started event
     app.emit('server:started' as any, {
-      port: this.port
+      port: this.port,
     });
   }
 
@@ -242,8 +235,8 @@ export class HttpServerModule implements IModule {
         listening: this.server?.listening || false,
         port: this.port,
         routes: this.routes.size,
-        middleware: this.middleware.length
-      }
+        middleware: this.middleware.length,
+      },
     };
   }
 
@@ -304,8 +297,8 @@ export class CacheModule implements IModule {
       details: {
         entries: this.cache.size,
         ttl: this.ttl,
-        cleanupRunning: !!this.cleanupInterval
-      }
+        cleanupRunning: !!this.cleanupInterval,
+      },
     };
   }
 
@@ -382,8 +375,8 @@ export class MessageQueueModule implements IModule {
         processing: this.processing,
         queues: this.queues.size,
         processors: this.processors.size,
-        totalMessages
-      }
+        totalMessages,
+      },
     };
   }
 
@@ -513,7 +506,7 @@ export class NotificationService {
       message,
       type,
       timestamp: Date.now(),
-      read: false
+      read: false,
     };
 
     this.notifications.push(notification);
@@ -533,11 +526,11 @@ export class NotificationService {
   }
 
   getNotifications(userId: string): any[] {
-    return this.notifications.filter(n => n.userId === userId);
+    return this.notifications.filter((n) => n.userId === userId);
   }
 
   markAsRead(notificationId: string): void {
-    const notification = this.notifications.find(n => n.id === notificationId);
+    const notification = this.notifications.find((n) => n.id === notificationId);
     if (notification) {
       notification.read = true;
     }
@@ -554,22 +547,16 @@ export class NotificationService {
     NotificationService,
     { provide: AuthServiceToken, useClass: AuthService },
     { provide: UserServiceToken, useClass: UserService },
-    { provide: NotificationServiceToken, useClass: NotificationService }
+    { provide: NotificationServiceToken, useClass: NotificationService },
   ],
-  exports: [
-    AuthServiceToken,
-    UserServiceToken,
-    NotificationServiceToken
-  ]
+  exports: [AuthServiceToken, UserServiceToken, NotificationServiceToken],
 })
 export class ApplicationModule implements IModule {
   readonly name = 'application';
   readonly version = '1.0.0';
 
-  constructor(
-    // Services will be injected if DI is properly configured
-  ) {
-  }
+  constructor() // Services will be injected if DI is properly configured
+  {}
 
   async onStart(app: IApplication): Promise<void> {
     // Initialize application services
@@ -578,7 +565,7 @@ export class ApplicationModule implements IModule {
   async health(): Promise<IHealthStatus> {
     return {
       status: 'healthy',
-      message: 'Application module is running'
+      message: 'Application module is running',
     };
   }
 }
@@ -613,7 +600,7 @@ export class AuthModule implements IModule {
   async health(): Promise<IHealthStatus> {
     return {
       status: this.isAuthenticated ? 'healthy' : 'unhealthy',
-      message: 'Auth module status'
+      message: 'Auth module status',
     };
   }
 }
@@ -641,7 +628,7 @@ export class NotificationsModule implements IModule {
   async health(): Promise<IHealthStatus> {
     return {
       status: this.connected ? 'healthy' : 'unhealthy',
-      message: 'Notifications module status'
+      message: 'Notifications module status',
     };
   }
 }
@@ -670,8 +657,8 @@ export class DependentModule implements IModule {
       message: 'Dependent module status',
       details: {
         hasDatabase: !!this.db,
-        hasCache: !!this.cache
-      }
+        hasCache: !!this.cache,
+      },
     };
   }
 
@@ -753,10 +740,12 @@ export function createCustomModule(options: {
     dependencies: options.dependencies,
     onStart: options.onStart,
     onStop: options.onStop,
-    health: options.health || (async () => ({
-      status: 'healthy',
-      message: `${options.name} is healthy`
-    }))
+    health:
+      options.health ||
+      (async () => ({
+        status: 'healthy',
+        message: `${options.name} is healthy`,
+      })),
   };
 }
 
@@ -770,17 +759,17 @@ export function createApplicationWithDependencies() {
   // module-a depends on module-b, module-b depends on module-c
   const moduleC = createCustomModule({
     name: 'module-c',
-    dependencies: []
+    dependencies: [],
   });
 
   const moduleB = createCustomModule({
     name: 'module-b',
-    dependencies: ['module-c']
+    dependencies: ['module-c'],
   });
 
   const moduleA = createCustomModule({
     name: 'module-a',
-    dependencies: ['module-b']
+    dependencies: ['module-b'],
   });
 
   // Register in arbitrary order - the framework should sort them
@@ -800,12 +789,12 @@ export function createApplicationWithCircularDeps() {
   // Create modules with circular dependencies
   const moduleA = createCustomModule({
     name: 'moduleA',
-    dependencies: ['moduleB']
+    dependencies: ['moduleB'],
   });
 
   const moduleB = createCustomModule({
     name: 'moduleB',
-    dependencies: ['moduleA'] // Circular dependency
+    dependencies: ['moduleA'], // Circular dependency
   });
 
   app.use(moduleA);
@@ -821,7 +810,7 @@ export function createWebApplication(options: any = {}) {
   const app = createApp({
     disableGracefulShutdown: true,
     disableCoreModules: true,
-    ...options
+    ...options,
   });
 
   // Register web-related modules
@@ -845,9 +834,9 @@ export function createFullStackApplication(options: any = {}) {
       queue: { enabled: true },
       auth: { enabled: true, secret: 'test-secret' },
       notifications: { enabled: true, channels: ['email', 'push'] },
-      ...(options.config || {})
+      ...(options.config || {}),
     },
-    ...options
+    ...options,
   });
 
   // Register all modules

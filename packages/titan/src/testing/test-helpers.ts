@@ -72,7 +72,7 @@ export async function waitFor(
     if (await condition()) {
       return;
     }
-    await new Promise(resolve => setTimeout(resolve, interval));
+    await new Promise((resolve) => setTimeout(resolve, interval));
   }
 
   throw Errors.timeout('waitFor', timeout);
@@ -81,11 +81,7 @@ export async function waitFor(
 /**
  * Wait for event to be emitted
  */
-export async function waitForEvent<T = any>(
-  emitter: EventEmitter,
-  event: string,
-  timeout = 5000
-): Promise<T> {
+export async function waitForEvent<T = any>(emitter: EventEmitter, event: string, timeout = 5000): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       reject(Errors.timeout('event: ' + event, timeout));
@@ -134,7 +130,7 @@ export class EventCollector<T = any> {
    */
   getEvents(eventName?: string): Array<{ event: string; data: T; timestamp: number }> {
     if (eventName) {
-      return this.events.filter(e => e.event === eventName);
+      return this.events.filter((e) => e.event === eventName);
     }
     return [...this.events];
   }
@@ -143,7 +139,7 @@ export class EventCollector<T = any> {
    * Get event data only
    */
   getData(eventName?: string): T[] {
-    return this.getEvents(eventName).map(e => e.data);
+    return this.getEvents(eventName).map((e) => e.data);
   }
 
   /**
@@ -190,12 +186,12 @@ export function createMockRedisClient(): any {
       }
       return deleted;
     }),
-    exists: jest.fn(async (...keys: string[]) => keys.filter(k => data.has(k)).length),
+    exists: jest.fn(async (...keys: string[]) => keys.filter((k) => data.has(k)).length),
     keys: jest.fn(async (pattern: string) => {
       if (pattern === '*') return Array.from(data.keys());
       // Simple pattern matching
       const regex = new RegExp(pattern.replace('*', '.*'));
-      return Array.from(data.keys()).filter(k => regex.test(k));
+      return Array.from(data.keys()).filter((k) => regex.test(k));
     }),
 
     // Hash operations
@@ -309,8 +305,8 @@ export function createMockRedisClient(): any {
     }),
 
     multi: jest.fn((): any => ({
-        exec: jest.fn(async () => []),
-      })),
+      exec: jest.fn(async () => []),
+    })),
 
     // Utility
     ping: jest.fn(async () => 'PONG'),

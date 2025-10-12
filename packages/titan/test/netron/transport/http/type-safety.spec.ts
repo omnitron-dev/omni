@@ -8,7 +8,7 @@ import {
   FluentInterface,
   ConfigurableProxy,
   HttpCacheManager,
-  RetryManager
+  RetryManager,
 } from '../../../../src/netron/transport/http/fluent-interface/index.js';
 import { HttpInterface } from '../../../../src/netron/transport/http/interface.js';
 import { HttpTransportClient } from '../../../../src/netron/transport/http/client.js';
@@ -60,9 +60,9 @@ describe('Type Safety Tests', () => {
           getUsers: { name: 'getUsers' },
           createUser: { name: 'createUser' },
           updateUser: { name: 'updateUser' },
-          deleteUser: { name: 'deleteUser' }
-        }
-      }
+          deleteUser: { name: 'deleteUser' },
+        },
+      },
     } as Definition;
 
     cacheManager = new HttpCacheManager({ maxEntries: 100 });
@@ -71,12 +71,7 @@ describe('Type Safety Tests', () => {
 
   describe('FluentInterface Type Inference', () => {
     it('should infer correct service type', () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
       // Type check: service should be FluentInterface<IUserService>
       const check: FluentInterface<IUserService> = service;
@@ -84,12 +79,7 @@ describe('Type Safety Tests', () => {
     });
 
     it('should return ConfigurableProxy with correct type from cache()', () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
       const proxy = service.cache(60000);
 
@@ -99,12 +89,7 @@ describe('Type Safety Tests', () => {
     });
 
     it('should return ConfigurableProxy with correct type from retry()', () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
       const proxy = service.retry(3);
 
@@ -114,17 +99,9 @@ describe('Type Safety Tests', () => {
     });
 
     it('should support method chaining with correct types', () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
-      const proxy = service
-        .cache(60000)
-        .retry(3)
-        .timeout(5000);
+      const proxy = service.cache(60000).retry(3).timeout(5000);
 
       // Type check: each step should return ConfigurableProxy<IUserService>
       const check: ConfigurableProxy<IUserService> = proxy;
@@ -132,12 +109,7 @@ describe('Type Safety Tests', () => {
     });
 
     it('should return FluentInterface from globalCache()', () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
       const result = service.globalCache({ maxAge: 120000 });
 
@@ -147,12 +119,7 @@ describe('Type Safety Tests', () => {
     });
 
     it('should return FluentInterface from globalRetry()', () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
       const result = service.globalRetry({ attempts: 5 });
 
@@ -162,16 +129,9 @@ describe('Type Safety Tests', () => {
     });
 
     it('should allow chaining global configurations', () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
-      const result = service
-        .globalCache({ maxAge: 120000 })
-        .globalRetry({ attempts: 5 });
+      const result = service.globalCache({ maxAge: 120000 }).globalRetry({ attempts: 5 });
 
       // Type check: should return FluentInterface<IUserService>
       const check: FluentInterface<IUserService> = result;
@@ -181,18 +141,9 @@ describe('Type Safety Tests', () => {
 
   describe('ConfigurableProxy Type Inference', () => {
     it('should preserve service type through configuration chain', () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
-      const proxy = service
-        .cache(60000)
-        .retry(3)
-        .timeout(5000)
-        .priority('high');
+      const proxy = service.cache(60000).retry(3).timeout(5000).priority('high');
 
       // Type check: should still be ConfigurableProxy<IUserService>
       const check: ConfigurableProxy<IUserService> = proxy;
@@ -200,12 +151,7 @@ describe('Type Safety Tests', () => {
     });
 
     it('should support all configuration methods with correct types', () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
       const proxy = service
         .cache({ maxAge: 60000, tags: ['users'] })
@@ -227,12 +173,7 @@ describe('Type Safety Tests', () => {
 
   describe('Return Type Inference', () => {
     it('should infer void return type correctly', async () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
       // Mock the transport
       jest.spyOn(transport, 'invoke').mockResolvedValue(undefined);
@@ -245,12 +186,7 @@ describe('Type Safety Tests', () => {
     });
 
     it('should infer object return type correctly', async () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
       const mockUser: User = { id: '123', name: 'John', email: 'john@example.com' };
       jest.spyOn(transport, 'invoke').mockResolvedValue(mockUser);
@@ -263,16 +199,11 @@ describe('Type Safety Tests', () => {
     });
 
     it('should infer array return type correctly', async () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
       const mockUsers: User[] = [
         { id: '1', name: 'John', email: 'john@example.com' },
-        { id: '2', name: 'Jane', email: 'jane@example.com' }
+        { id: '2', name: 'Jane', email: 'jane@example.com' },
       ];
       jest.spyOn(transport, 'invoke').mockResolvedValue(mockUsers);
 
@@ -286,12 +217,7 @@ describe('Type Safety Tests', () => {
 
   describe('Argument Type Safety', () => {
     it('should enforce correct argument types for service methods', async () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
       const mockUser: User = { id: '123', name: 'John', email: 'john@example.com' };
       jest.spyOn(transport, 'invoke').mockResolvedValue(mockUser);
@@ -315,68 +241,43 @@ describe('Type Safety Tests', () => {
 
   describe('Configuration Option Types', () => {
     it('should accept cache options as number', () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
       const proxy = service.cache(60000);
       expect(proxy).toBeInstanceOf(ConfigurableProxy);
     });
 
     it('should accept cache options as object', () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
       const proxy = service.cache({
         maxAge: 60000,
         tags: ['users'],
-        staleWhileRevalidate: true
+        staleWhileRevalidate: true,
       });
       expect(proxy).toBeInstanceOf(ConfigurableProxy);
     });
 
     it('should accept retry options as number', () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
       const proxy = service.retry(3);
       expect(proxy).toBeInstanceOf(ConfigurableProxy);
     });
 
     it('should accept retry options as object', () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
       const proxy = service.retry({
         attempts: 3,
         backoff: 'exponential',
-        maxDelay: 5000
+        maxDelay: 5000,
       });
       expect(proxy).toBeInstanceOf(ConfigurableProxy);
     });
 
     it('should accept correct priority levels', () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
       const proxy1 = service.priority('high');
       const proxy2 = service.priority('normal');
@@ -388,25 +289,15 @@ describe('Type Safety Tests', () => {
     });
 
     it('should accept transform function with correct signature', () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
-      const proxy = service.transform<User[]>((data: any) => Array.isArray(data) ? data : [data]);
+      const proxy = service.transform<User[]>((data: any) => (Array.isArray(data) ? data : [data]));
 
       expect(proxy).toBeInstanceOf(ConfigurableProxy);
     });
 
     it('should accept validate function with correct signature', () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
       const proxy1 = service.validate((data: any) => !!data);
       const proxy2 = service.validate(async (data: any) => Promise.resolve(!!data));
@@ -418,14 +309,10 @@ describe('Type Safety Tests', () => {
 
   describe('Backward Compatibility Type Safety', () => {
     it('should support HttpInterface with same types', () => {
-      const service = new HttpInterface<IUserService>(
-        transport,
-        definition,
-        {
-          cache: cacheManager,
-          retry: retryManager
-        }
-      );
+      const service = new HttpInterface<IUserService>(transport, definition, {
+        cache: cacheManager,
+        retry: retryManager,
+      });
 
       // Type check: should be HttpInterface<IUserService>
       const check: HttpInterface<IUserService> = service;

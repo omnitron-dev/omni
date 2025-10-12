@@ -69,8 +69,7 @@ describe('HoverCard Primitive', () => {
 
   describe('Component Structure', () => {
     it('should create HoverCard with required props', () => {
-      const component = () =>
-        HoverCard({ children: () => HoverCardTrigger({ children: 'Hover me' }) });
+      const component = () => HoverCard({ children: () => HoverCardTrigger({ children: 'Hover me' }) });
       const { container } = renderComponent(component);
       expect(container).toBeTruthy();
     });
@@ -109,10 +108,7 @@ describe('HoverCard Primitive', () => {
     it('should render children', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Trigger' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Trigger' }), HoverCardContent({ children: 'Content' })],
         });
       const { container } = renderComponent(component);
       expect(container).toBeTruthy();
@@ -133,11 +129,12 @@ describe('HoverCard Primitive', () => {
     it('should accept additional props', () => {
       const component = () =>
         HoverCard({
-          children: () => HoverCardTrigger({
-            children: 'Hover',
-            className: 'custom-trigger',
-            'data-test': 'trigger',
-          }),
+          children: () =>
+            HoverCardTrigger({
+              children: 'Hover',
+              className: 'custom-trigger',
+              'data-test': 'trigger',
+            }),
         });
       const { container } = renderComponent(component);
       const trigger = container.querySelector('a');
@@ -170,10 +167,7 @@ describe('HoverCard Primitive', () => {
     it('should create content with children', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       renderComponent(component);
       expect(true).toBe(true);
@@ -199,10 +193,7 @@ describe('HoverCard Primitive', () => {
       sides.forEach((side) => {
         const component = () =>
           HoverCard({
-            children: () => [
-              HoverCardTrigger({ children: 'Hover' }),
-              HoverCardContent({ side, children: 'Content' }),
-            ],
+            children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ side, children: 'Content' })],
           });
         renderComponent(component);
       });
@@ -229,10 +220,7 @@ describe('HoverCard Primitive', () => {
       aligns.forEach((align) => {
         const component = () =>
           HoverCard({
-            children: () => [
-              HoverCardTrigger({ children: 'Hover' }),
-              HoverCardContent({ align, children: 'Content' }),
-            ],
+            children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ align, children: 'Content' })],
           });
         renderComponent(component);
       });
@@ -415,10 +403,7 @@ describe('HoverCard Primitive', () => {
     it('should allow composing trigger and content', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: '@username' }),
-            HoverCardContent({ children: 'User profile' }),
-          ],
+          children: () => [HoverCardTrigger({ children: '@username' }), HoverCardContent({ children: 'User profile' })],
         });
       const { container } = renderComponent(component);
       expect(container.querySelector('a')).toBeTruthy();
@@ -451,12 +436,7 @@ describe('HoverCard Primitive', () => {
             HoverCardContent({
               side: 'top',
               align: 'center',
-              children: [
-                'Avatar image',
-                'John Doe',
-                'Software Engineer',
-                HoverCardArrow({}),
-              ],
+              children: ['Avatar image', 'John Doe', 'Software Engineer', HoverCardArrow({})],
             }),
           ],
         });
@@ -511,10 +491,7 @@ describe('HoverCard Primitive', () => {
     it('should have role dialog when open', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       const { container } = renderComponent(component);
       const trigger = container.querySelector('a');
@@ -527,10 +504,7 @@ describe('HoverCard Primitive', () => {
     it('should have aria-labelledby pointing to trigger', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       const { container } = renderComponent(component);
       const trigger = container.querySelector('a');
@@ -543,10 +517,7 @@ describe('HoverCard Primitive', () => {
     it('should have id attribute', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       const { container } = renderComponent(component);
       const trigger = container.querySelector('a');
@@ -559,10 +530,7 @@ describe('HoverCard Primitive', () => {
     it('should have data-state attribute', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       const { container } = renderComponent(component);
       const trigger = container.querySelector('a');
@@ -605,10 +573,7 @@ describe('HoverCard Primitive', () => {
     it('should use default side of bottom', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       renderComponent(component);
       expect(true).toBe(true);
@@ -617,10 +582,7 @@ describe('HoverCard Primitive', () => {
     it('should use default align of center', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       renderComponent(component);
       expect(true).toBe(true);
@@ -629,10 +591,7 @@ describe('HoverCard Primitive', () => {
     it('should use default sideOffset of 8', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       renderComponent(component);
       expect(true).toBe(true);
@@ -641,10 +600,7 @@ describe('HoverCard Primitive', () => {
     it('should use default alignOffset of 0', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       renderComponent(component);
       expect(true).toBe(true);
@@ -653,10 +609,7 @@ describe('HoverCard Primitive', () => {
     it('should enable collision avoidance by default', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       renderComponent(component);
       expect(true).toBe(true);
@@ -665,10 +618,7 @@ describe('HoverCard Primitive', () => {
     it('should use default collisionPadding of 8', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       renderComponent(component);
       expect(true).toBe(true);
@@ -679,10 +629,7 @@ describe('HoverCard Primitive', () => {
     it('should not open immediately on hover', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       const { container } = renderComponent(component);
       const trigger = container.querySelector('a');
@@ -694,10 +641,7 @@ describe('HoverCard Primitive', () => {
     it('should open after default delay (700ms)', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       const { container } = renderComponent(component);
       const trigger = container.querySelector('a');
@@ -712,10 +656,7 @@ describe('HoverCard Primitive', () => {
       const component = () =>
         HoverCard({
           openDelay: 500,
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       const { container } = renderComponent(component);
       const trigger = container.querySelector('a');
@@ -732,10 +673,7 @@ describe('HoverCard Primitive', () => {
     it('should cancel open timeout if pointer leaves before delay', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       const { container } = renderComponent(component);
       const trigger = container.querySelector('a');
@@ -753,10 +691,7 @@ describe('HoverCard Primitive', () => {
     it('should not close immediately when pointer leaves', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       const { container } = renderComponent(component);
       const trigger = container.querySelector('a');
@@ -771,10 +706,7 @@ describe('HoverCard Primitive', () => {
     it('should close after default delay (300ms)', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       const { container } = renderComponent(component);
       const trigger = container.querySelector('a');
@@ -791,10 +723,7 @@ describe('HoverCard Primitive', () => {
       const component = () =>
         HoverCard({
           closeDelay: 200,
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       const { container } = renderComponent(component);
       const trigger = container.querySelector('a');
@@ -813,10 +742,7 @@ describe('HoverCard Primitive', () => {
     it('should cancel close timeout if pointer re-enters', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       const { container } = renderComponent(component);
       const trigger = container.querySelector('a');
@@ -836,10 +762,7 @@ describe('HoverCard Primitive', () => {
     it('should open on focus', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       const { container } = renderComponent(component);
       const trigger = container.querySelector('a');
@@ -851,10 +774,7 @@ describe('HoverCard Primitive', () => {
     it('should close on blur', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       const { container } = renderComponent(component);
       const trigger = container.querySelector('a');
@@ -869,10 +789,7 @@ describe('HoverCard Primitive', () => {
       const component = () =>
         HoverCard({
           openDelay: 1000,
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       const { container } = renderComponent(component);
       const trigger = container.querySelector('a');
@@ -885,10 +802,7 @@ describe('HoverCard Primitive', () => {
       const component = () =>
         HoverCard({
           closeDelay: 1000,
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       const { container } = renderComponent(component);
       const trigger = container.querySelector('a');
@@ -904,10 +818,7 @@ describe('HoverCard Primitive', () => {
     it('should not render content when closed', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       renderComponent(component);
 
@@ -922,10 +833,7 @@ describe('HoverCard Primitive', () => {
     it('should render content when open', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       const { container } = renderComponent(component);
       const trigger = container.querySelector('a');
@@ -940,10 +848,7 @@ describe('HoverCard Primitive', () => {
     it('should render content in portal', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       const { container } = renderComponent(component);
       const trigger = container.querySelector('a');
@@ -960,10 +865,7 @@ describe('HoverCard Primitive', () => {
     it('should keep open when hovering over content', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       const { container } = renderComponent(component);
       const trigger = container.querySelector('a');
@@ -982,10 +884,7 @@ describe('HoverCard Primitive', () => {
     it('should close when pointer leaves content', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       const { container } = renderComponent(component);
       const trigger = container.querySelector('a');
@@ -1023,10 +922,7 @@ describe('HoverCard Primitive', () => {
     it('should have matching trigger and content IDs', () => {
       const component = () =>
         HoverCard({
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       const { container } = renderComponent(component);
       const trigger = container.querySelector('a');
@@ -1043,8 +939,7 @@ describe('HoverCard Primitive', () => {
 
   describe('Type Safety', () => {
     it('should accept children prop on HoverCard', () => {
-      const component = () =>
-        HoverCard({ children: () => HoverCardTrigger({ children: 'Hover' }) });
+      const component = () => HoverCard({ children: () => HoverCardTrigger({ children: 'Hover' }) });
       renderComponent(component);
       expect(true).toBe(true);
     });
@@ -1054,10 +949,7 @@ describe('HoverCard Primitive', () => {
         HoverCard({
           openDelay: 500,
           closeDelay: 200,
-          children: () => [
-            HoverCardTrigger({ children: 'Hover' }),
-            HoverCardContent({ children: 'Content' }),
-          ],
+          children: () => [HoverCardTrigger({ children: 'Hover' }), HoverCardContent({ children: 'Content' })],
         });
       renderComponent(component);
       expect(true).toBe(true);

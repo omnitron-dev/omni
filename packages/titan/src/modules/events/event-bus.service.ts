@@ -18,7 +18,7 @@ import type {
   EventHandler,
   VarArgEventHandler,
   IEventSubscription,
-  HealthCheckResult
+  HealthCheckResult,
 } from './event.types.js';
 import type { IEventBusMessage } from './types.js';
 
@@ -44,7 +44,7 @@ export class EventBusService {
   constructor(
     @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
     @Optional() @Inject(LOGGER_TOKEN) private readonly logger?: any
-  ) { }
+  ) {}
 
   /**
    * Initialize the service
@@ -120,17 +120,16 @@ export class EventBusService {
    * Get health status
    */
   async health(): Promise<HealthCheckResult> {
-    const listenerCount = Array.from(this.subscriptions.values())
-      .reduce((acc, handlers) => acc + handlers.size, 0);
+    const listenerCount = Array.from(this.subscriptions.values()).reduce((acc, handlers) => acc + handlers.size, 0);
 
     const eventCount = this.subscriptions.size;
 
     return {
       status: this.initialized && !this.destroyed ? 'healthy' : 'unhealthy',
       details: {
-        eventCount,  // Number of unique events with handlers
-        listenerCount  // Total number of listeners
-      }
+        eventCount, // Number of unique events with handlers
+        listenerCount, // Total number of listeners
+      },
     };
   }
 
@@ -149,14 +148,18 @@ export class EventBusService {
       unsubscribe: () => {
         this.off(event, handler);
       },
-      isActive: () => this.subscriptions.get(event)?.has(handler) || false
+      isActive: () => this.subscriptions.get(event)?.has(handler) || false,
     };
   }
 
   /**
    * Subscribe to an event with options
    */
-  subscribe(event: string, handler: VarArgEventHandler, options?: { priority?: number; replay?: boolean }): IEventSubscription {
+  subscribe(
+    event: string,
+    handler: VarArgEventHandler,
+    options?: { priority?: number; replay?: boolean }
+  ): IEventSubscription {
     // Store handler priority if provided
     if (options?.priority !== undefined) {
       this.handlerPriorities.set(handler, options.priority);
@@ -179,15 +182,15 @@ export class EventBusService {
         return priorityB - priorityA; // Higher priority first
       });
       handlers.clear();
-      sortedHandlers.forEach(h => handlers.add(h));
+      sortedHandlers.forEach((h) => handlers.add(h));
     }
 
     // Replay events if requested
     if (options?.replay && this.replayEnabled) {
-      const eventsToReplay = this.replayBuffer.filter(item => item.event === event);
-      eventsToReplay.forEach(item => {
+      const eventsToReplay = this.replayBuffer.filter((item) => item.event === event);
+      eventsToReplay.forEach((item) => {
         try {
-          handler(item.data);  // Only pass data, not metadata for event replay
+          handler(item.data); // Only pass data, not metadata for event replay
         } catch (err) {
           this.logger?.error({ err, event }, 'Error replaying event');
         }
@@ -198,7 +201,7 @@ export class EventBusService {
       unsubscribe: () => {
         this.off(event, handler);
       },
-      isActive: () => this.subscriptions.get(event)?.has(handler) || false
+      isActive: () => this.subscriptions.get(event)?.has(handler) || false,
     };
   }
 
@@ -210,7 +213,7 @@ export class EventBusService {
       // Remove all handlers for this event
       const handlers = this.subscriptions.get(event);
       if (handlers) {
-        handlers.forEach(h => this.handlerPriorities.delete(h));
+        handlers.forEach((h) => this.handlerPriorities.delete(h));
       }
       this.subscriptions.delete(event);
       this.emitter.removeAllListeners(event);
@@ -256,7 +259,7 @@ export class EventBusService {
     const fullMetadata: EventMetadata = {
       id: this.generateMessageId(),
       timestamp: Date.now(),
-      ...metadata
+      ...metadata,
     } as EventMetadata;
 
     // Store in replay buffer if enabled
@@ -270,7 +273,7 @@ export class EventBusService {
     // Call registered handlers directly (not through emitter to avoid duplication)
     const handlers = this.subscriptions.get(event);
     if (handlers) {
-      const handlerPromises = Array.from(handlers).map(async handler => {
+      const handlerPromises = Array.from(handlers).map(async (handler) => {
         try {
           await Promise.resolve(handler(processedData, fullMetadata));
         } catch (err) {
@@ -280,7 +283,7 @@ export class EventBusService {
             // Use direct emit to ensure error handlers are called
             const errorHandlers = this.subscriptions.get('error');
             if (errorHandlers) {
-              errorHandlers.forEach(errorHandler => {
+              errorHandlers.forEach((errorHandler) => {
                 try {
                   errorHandler(err);
                 } catch (errorHandlerErr) {
@@ -299,7 +302,7 @@ export class EventBusService {
     // Handle wildcard patterns
     for (const [pattern, patternHandlers] of this.subscriptions.entries()) {
       if (pattern.includes('*') && this.matchesPattern(event, pattern)) {
-        const wildcardPromises = Array.from(patternHandlers).map(async handler => {
+        const wildcardPromises = Array.from(patternHandlers).map(async (handler) => {
           try {
             await Promise.resolve(handler(processedData, fullMetadata));
           } catch (err) {
@@ -309,7 +312,7 @@ export class EventBusService {
               // Use direct emit to ensure error handlers are called
               const errorHandlers = this.subscriptions.get('error');
               if (errorHandlers) {
-                errorHandlers.forEach(errorHandler => {
+                errorHandlers.forEach((errorHandler) => {
                   try {
                     errorHandler(err);
                   } catch (errorHandlerErr) {
@@ -357,7 +360,7 @@ export class EventBusService {
     const fullMetadata: EventMetadata = {
       id: this.generateMessageId(),
       timestamp: Date.now(),
-      ...metadata
+      ...metadata,
     } as EventMetadata;
 
     // Emit through internal emitter sequentially
@@ -395,7 +398,7 @@ export class EventBusService {
     const fullMetadata: EventMetadata = {
       id: this.generateMessageId(),
       timestamp: Date.now(),
-      ...metadata
+      ...metadata,
     } as EventMetadata;
 
     // Get handlers
@@ -471,11 +474,11 @@ export class EventBusService {
       metadata: {
         id: this.generateMessageId(),
         timestamp: Date.now(),
-        ...options?.metadata
+        ...options?.metadata,
       },
       timestamp: Date.now(),
       source: options?.source,
-      target: options?.target
+      target: options?.target,
     };
 
     // If target is specified, add to queue
@@ -532,7 +535,7 @@ export class EventBusService {
           }
         }
       },
-      isActive: () => this.channels.get(channel)?.has(wrappedHandler) || false
+      isActive: () => this.channels.get(channel)?.has(wrappedHandler) || false,
     };
   }
 
@@ -554,28 +557,25 @@ export class EventBusService {
     return new Promise((resolve, reject) => {
       const timer = timeout
         ? setTimeout(() => {
-          unsubscribe();
-          reject(Errors.timeout(`channel request: ${channel}`, timeout));
-        }, timeout)
+            unsubscribe();
+            reject(Errors.timeout(`channel request: ${channel}`, timeout));
+          }, timeout)
         : null;
 
       // Subscribe to response
-      const unsubscribe = this.emitter.subscribe(
-        `bus:${responseChannel}`,
-        (message: IEventBusMessage<TResponse>) => {
-          if (timer) clearTimeout(timer);
-          unsubscribe();
-          resolve(message.data);
-        }
-      );
+      const unsubscribe = this.emitter.subscribe(`bus:${responseChannel}`, (message: IEventBusMessage<TResponse>) => {
+        if (timer) clearTimeout(timer);
+        unsubscribe();
+        resolve(message.data);
+      });
 
       // Publish request
       this.publish(channel, data, {
         metadata: {
           ...options?.metadata,
           requestId,
-          responseChannel
-        }
+          responseChannel,
+        },
       });
     });
   }
@@ -583,10 +583,7 @@ export class EventBusService {
   /**
    * Reply to a request
    */
-  async reply<T = EventData>(
-    message: IEventBusMessage,
-    data: T
-  ): Promise<void> {
+  async reply<T = EventData>(message: IEventBusMessage, data: T): Promise<void> {
     const responseChannel = message.metadata?.['responseChannel'];
     if (!responseChannel) {
       throw Errors.badRequest('Cannot reply to message without responseChannel');
@@ -597,8 +594,8 @@ export class EventBusService {
       target: message.source,
       metadata: {
         requestId: message.metadata['requestId'],
-        inReplyTo: message.id
-      }
+        inReplyTo: message.id,
+      },
     });
   }
 
@@ -625,7 +622,7 @@ export class EventBusService {
       await remoteBus.publish(remoteChannel, transformed.data, {
         source: transformed.source,
         target: transformed.target,
-        metadata: transformed.metadata
+        metadata: transformed.metadata,
       });
     });
 
@@ -640,7 +637,7 @@ export class EventBusService {
         await this.publish(localChannel, transformed.data, {
           source: transformed.source,
           target: transformed.target,
-          metadata: transformed.metadata
+          metadata: transformed.metadata,
         });
       });
     }
@@ -660,7 +657,6 @@ export class EventBusService {
     this.messageQueue.delete(target);
   }
 
-
   /**
    * Get channel statistics
    */
@@ -670,11 +666,11 @@ export class EventBusService {
     for (const [channel, handlers] of this.channels.entries()) {
       const queuedCount = Array.from(this.messageQueue.values())
         .flat()
-        .filter(m => m.event === channel).length;
+        .filter((m) => m.event === channel).length;
 
       stats.set(channel, {
         subscribers: handlers.size,
-        queued: queuedCount
+        queued: queuedCount,
       });
     }
 

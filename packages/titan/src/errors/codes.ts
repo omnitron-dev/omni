@@ -72,13 +72,13 @@ export enum ErrorCode {
  * Error categories for grouping related errors
  */
 export enum ErrorCategory {
-  SUCCESS = 'success',       // 2xx
-  CLIENT = 'client',        // 4xx
-  SERVER = 'server',        // 5xx
-  AUTH = 'auth',           // 401, 403, 407
+  SUCCESS = 'success', // 2xx
+  CLIENT = 'client', // 4xx
+  SERVER = 'server', // 5xx
+  AUTH = 'auth', // 401, 403, 407
   VALIDATION = 'validation', // 400, 422
   RATE_LIMIT = 'rate_limit', // 429
-  CUSTOM = 'custom'         // 600+
+  CUSTOM = 'custom', // 600+
 }
 
 /**
@@ -158,7 +158,7 @@ export function getErrorName(code: ErrorCode | number): string {
     504: 'GATEWAY_TIMEOUT',
     507: 'INSUFFICIENT_STORAGE',
     600: 'MULTIPLE_ERRORS',
-    601: 'UNKNOWN_ERROR'
+    601: 'UNKNOWN_ERROR',
   };
 
   return names[code] || `ERROR_${code}`;
@@ -188,7 +188,7 @@ export function getDefaultMessage(code: ErrorCode | number): string {
     503: 'The service is temporarily unavailable',
     504: 'Gateway timeout',
     600: 'Multiple errors occurred',
-    601: 'An unknown error occurred'
+    601: 'An unknown error occurred',
   };
 
   return messages[code] || `Error ${code}`;

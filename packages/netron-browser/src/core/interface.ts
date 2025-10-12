@@ -12,7 +12,16 @@ import { IPeer } from './types.js';
  *
  * @constant {string[]} INTERNAL_READ_PROPERTIES
  */
-const INTERNAL_READ_PROPERTIES = ['$def', '$peer', 'waitForAssigned', '$pendingPromises', 'then', '$$typeof', 'nodeType', 'tagName'];
+const INTERNAL_READ_PROPERTIES = [
+  '$def',
+  '$peer',
+  'waitForAssigned',
+  '$pendingPromises',
+  'then',
+  '$$typeof',
+  'nodeType',
+  'tagName',
+];
 
 /**
  * List of internal properties that can be written to the Interface instance.

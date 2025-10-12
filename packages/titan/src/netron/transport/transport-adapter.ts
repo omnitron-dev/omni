@@ -14,7 +14,7 @@ import {
   TransportOptions,
   ConnectionState,
   TransportCapabilities,
-  TransportAddress
+  TransportAddress,
 } from './types.js';
 import { TransportRegistry, getTransportForAddress } from './transport-registry.js';
 import { Packet, encodePacket } from '../packet/index.js';
@@ -91,7 +91,7 @@ export class BinaryTransportAdapter extends EventEmitter {
       remoteAddress: this.connection.remoteAddress?.split(':')[0],
       remotePort: this.connection.remoteAddress?.split(':')[1],
       localAddress: this.connection.localAddress?.split(':')[0],
-      localPort: this.connection.localAddress?.split(':')[1]
+      localPort: this.connection.localAddress?.split(':')[1],
     };
   }
 
@@ -108,17 +108,19 @@ export class BinaryTransportAdapter extends EventEmitter {
     // Map packet/data events to message
     this.connection.on('packet', (packet: Packet) => {
       const encoded = encodePacket(packet);
-      const data = this._binaryType === 'arraybuffer' ?
-                  encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength) :
-                  Buffer.from(encoded);
+      const data =
+        this._binaryType === 'arraybuffer'
+          ? encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength)
+          : Buffer.from(encoded);
       // Packets are always binary
       this.emit('message', data, true);
     });
 
     this.connection.on('data', (data: Buffer | ArrayBuffer) => {
-      const buffer = this._binaryType === 'arraybuffer' && Buffer.isBuffer(data) ?
-                    data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) :
-                    data;
+      const buffer =
+        this._binaryType === 'arraybuffer' && Buffer.isBuffer(data)
+          ? data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)
+          : data;
       // Raw data is treated as non-binary (text) for handshake messages
       this.emit('message', buffer, false);
     });
@@ -156,11 +158,12 @@ export class BinaryTransportAdapter extends EventEmitter {
       return;
     }
 
-    this.connection.send(buffer)
+    this.connection
+      .send(buffer)
       .then(() => {
         if (typeof callback === 'function') callback();
       })
-      .catch(err => {
+      .catch((err) => {
         if (typeof callback === 'function') callback(err);
         // Log error if no callback provided
         else console.error('BinaryTransportAdapter send error:', err);
@@ -172,8 +175,7 @@ export class BinaryTransportAdapter extends EventEmitter {
    */
   close(code?: number, reason?: string): void {
     this._readyState = BinaryTransportAdapter.CLOSING;
-    this.connection.close(code, reason)
-      .catch(error => this.emit('error', error));
+    this.connection.close(code, reason).catch((error) => this.emit('error', error));
   }
 
   /**
@@ -181,9 +183,10 @@ export class BinaryTransportAdapter extends EventEmitter {
    * Uses unified TYPE_PING packet protocol from BaseConnection
    */
   ping(data?: any, mask?: boolean, callback?: (err?: Error) => void): void {
-    this.connection.ping()
+    this.connection
+      .ping()
       .then(() => callback?.())
-      .catch(err => callback?.(err));
+      .catch((err) => callback?.(err));
   }
 
   /**
@@ -199,8 +202,9 @@ export class BinaryTransportAdapter extends EventEmitter {
    */
   terminate(): void {
     this._readyState = BinaryTransportAdapter.CLOSED;
-    this.connection.close(1006, 'Terminated')
-      .catch(() => { /* Ignore errors on terminate */ });
+    this.connection.close(1006, 'Terminated').catch(() => {
+      /* Ignore errors on terminate */
+    });
   }
 }
 
@@ -244,13 +248,15 @@ export class TransportConnectionFactory {
    * Check if we can use native WebSocket (for backward compatibility)
    */
   static isNativeWebSocket(socket: any): socket is WebSocket {
-    return socket instanceof WebSocket ||
-           (typeof socket === 'object' &&
-            socket !== null &&
-            'readyState' in socket &&
-            'send' in socket &&
-            'close' in socket &&
-            !('connection' in socket)); // Exclude our adapter
+    return (
+      socket instanceof WebSocket ||
+      (typeof socket === 'object' &&
+        socket !== null &&
+        'readyState' in socket &&
+        'send' in socket &&
+        'close' in socket &&
+        !('connection' in socket))
+    ); // Exclude our adapter
   }
 
   /**
@@ -315,9 +321,11 @@ class NativeWebSocketWrapper extends EventEmitter implements ITransportConnectio
   private setupHandlers(): void {
     this.ws.on('open', () => this.emit('connect'));
     this.ws.on('message', (data) => {
-      const buffer = Buffer.isBuffer(data) ? data :
-                    data instanceof ArrayBuffer ? Buffer.from(data) :
-                    Buffer.concat(data as Buffer[]);
+      const buffer = Buffer.isBuffer(data)
+        ? data
+        : data instanceof ArrayBuffer
+          ? Buffer.from(data)
+          : Buffer.concat(data as Buffer[]);
       this.emit('data', buffer);
     });
     this.ws.on('error', (err) => this.emit('error', err));

@@ -24,7 +24,7 @@ describe('Transport Options', () => {
     server.registerTransport('ws', () => new WebSocketTransport());
     server.registerTransportServer('ws', {
       name: 'ws',
-      options: { host: 'localhost', port: testPort }
+      options: { host: 'localhost', port: testPort },
     });
     await server.start();
 
@@ -42,7 +42,7 @@ describe('Transport Options', () => {
     it('should set transport options for registered transport', async () => {
       const transportOptions = {
         requestTimeout: 1000,
-        connectTimeout: 5000
+        connectTimeout: 5000,
       };
 
       expect(() => {
@@ -59,7 +59,7 @@ describe('Transport Options', () => {
     it('should allow setting options before connecting', async () => {
       client.setTransportOptions('ws', {
         requestTimeout: 2000,
-        connectTimeout: 3000
+        connectTimeout: 3000,
       });
 
       await client.start();
@@ -168,8 +168,8 @@ describe('Transport Options', () => {
         reconnect: {
           enabled: true,
           maxAttempts: 2,
-          delay: 100
-        }
+          delay: 100,
+        },
       });
 
       await client.start();
@@ -182,8 +182,8 @@ describe('Transport Options', () => {
     it('should not reconnect when maxAttempts is 0', async () => {
       client.setTransportOptions('ws', {
         reconnect: {
-          maxAttempts: 0
-        }
+          maxAttempts: 0,
+        },
       });
 
       await client.start();
@@ -201,7 +201,7 @@ describe('Transport Options', () => {
       client.setTransportOptions('ws', {
         headers: customHeaders,
         requestTimeout: 3000,
-        connectTimeout: 5000
+        connectTimeout: 5000,
       });
 
       await client.start();
@@ -258,11 +258,11 @@ describe('Transport Options', () => {
     it('should preserve other options when updating', async () => {
       client.setTransportOptions('ws', {
         requestTimeout: 1000,
-        connectTimeout: 2000
+        connectTimeout: 2000,
       });
 
       client.setTransportOptions('ws', {
-        requestTimeout: 3000
+        requestTimeout: 3000,
       });
 
       // Both options should work after update
@@ -280,7 +280,7 @@ describe('Transport Options', () => {
       const customTimeout = 3000;
       client.setTransportOptions('ws', {
         requestTimeout: customTimeout,
-        connectTimeout: 8000
+        connectTimeout: 8000,
       });
 
       await client.start();
@@ -307,7 +307,7 @@ describe('Transport Options', () => {
     it('should handle transportOptions with only partial fields', async () => {
       // Set only some fields
       client.setTransportOptions('ws', {
-        connectTimeout: 7000
+        connectTimeout: 7000,
         // requestTimeout not set - should use default
       });
 
@@ -335,7 +335,7 @@ describe('Transport Options', () => {
     it('should create RemotePeer with custom requestTimeout from transportOptions', async () => {
       const customRequestTimeout = 2500;
       client.setTransportOptions('ws', {
-        requestTimeout: customRequestTimeout
+        requestTimeout: customRequestTimeout,
       });
 
       const service = new TestService();
@@ -380,14 +380,14 @@ describe('Transport Options', () => {
       server2.registerTransport('ws', () => new WebSocketTransport());
       server2.registerTransportServer('ws', {
         name: 'ws',
-        options: { host: 'localhost', port: secondPort }
+        options: { host: 'localhost', port: secondPort },
       });
       await server2.start();
 
       // Set same transport options (ws) but for different connections
       client.setTransportOptions('ws', {
         requestTimeout: 4000,
-        connectTimeout: 6000
+        connectTimeout: 6000,
       });
 
       await client.start();
@@ -418,14 +418,12 @@ describe('Transport Options', () => {
       const unavailablePort = await getAvailablePort(45000, 50000);
 
       client.setTransportOptions('ws', {
-        connectTimeout: 500
+        connectTimeout: 500,
       });
       await client.start();
 
       // Should reject with timeout or connection error
-      await expect(
-        client.connect(`ws://localhost:${unavailablePort}`)
-      ).rejects.toThrow();
+      await expect(client.connect(`ws://localhost:${unavailablePort}`)).rejects.toThrow();
     });
   });
 
@@ -435,7 +433,7 @@ describe('Transport Options', () => {
 
       // Create client with custom streamTimeout
       const customClient = new NetronClass(createMockLogger(), {
-        streamTimeout: 30000 // 30 seconds
+        streamTimeout: 30000, // 30 seconds
       });
       customClient.registerTransport('ws', () => new WebSocketTransport());
 

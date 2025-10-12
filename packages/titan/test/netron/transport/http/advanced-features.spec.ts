@@ -8,7 +8,7 @@ import { HttpRemotePeer } from '../../../../src/netron/transport/http/peer.js';
 import {
   QueryBuilder,
   HttpCacheManager,
-  RetryManager
+  RetryManager,
 } from '../../../../src/netron/transport/http/fluent-interface/index.js';
 import { HttpTransportClient } from '../../../../src/netron/transport/http/client.js';
 import type { INetron } from '../../../../src/netron/types.js';
@@ -34,8 +34,8 @@ describe('Advanced Features Tests - Phase 3', () => {
         info: jest.fn(),
         warn: jest.fn(),
         error: jest.fn(),
-        child: jest.fn().mockReturnThis()
-      }
+        child: jest.fn().mockReturnThis(),
+      },
     } as any;
 
     // Create mock connection
@@ -43,18 +43,14 @@ describe('Advanced Features Tests - Phase 3', () => {
       on: jest.fn(),
       off: jest.fn(),
       send: jest.fn(),
-      close: jest.fn()
+      close: jest.fn(),
     };
 
     cacheManager = new HttpCacheManager({ maxEntries: 100 });
     retryManager = new RetryManager();
 
     // Create peer
-    peer = new HttpRemotePeer(
-      mockConnection as any,
-      mockNetron,
-      'http://localhost:3000'
-    );
+    peer = new HttpRemotePeer(mockConnection as any, mockNetron, 'http://localhost:3000');
 
     // Configure peer with managers
     peer.setCacheManager(cacheManager);
@@ -69,9 +65,9 @@ describe('Advanced Features Tests - Phase 3', () => {
         methods: {
           getUser: { name: 'getUser' },
           getUsers: { name: 'getUsers' },
-          updateUser: { name: 'updateUser' }
-        }
-      }
+          updateUser: { name: 'updateUser' },
+        },
+      },
     });
 
     // Create and mock transport
@@ -82,7 +78,7 @@ describe('Advanced Features Tests - Phase 3', () => {
     jest.spyOn(mockTransport, 'invoke').mockResolvedValue({
       id: '123',
       name: 'Default',
-      version: 1
+      version: 1,
     });
   });
 
@@ -110,14 +106,16 @@ describe('Advanced Features Tests - Phase 3', () => {
       expect(QueryBuilder.getActiveBackgroundRefetchCount()).toBe(1);
 
       // Wait for background refetch to trigger
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       expect(callCount).toBeGreaterThan(1);
     });
 
     it('should update cache silently during background refetch', async () => {
       let version = 1;
-      jest.spyOn(mockTransport, 'invoke').mockImplementation(async () => ({ id: '123', name: 'John', version: version++ }));
+      jest
+        .spyOn(mockTransport, 'invoke')
+        .mockImplementation(async () => ({ id: '123', name: 'John', version: version++ }));
 
       const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
@@ -127,7 +125,7 @@ describe('Advanced Features Tests - Phase 3', () => {
       expect(user1.version).toBe(1);
 
       // Wait for background refetch
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       // Get from cache - should have updated version
       const proxy2 = service.cache(10000) as any;
@@ -152,7 +150,7 @@ describe('Advanced Features Tests - Phase 3', () => {
       expect(user).toBeDefined();
 
       // Wait for background refetch (which will fail silently)
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       // Should not crash
       expect(callCount).toBeGreaterThan(1);
@@ -162,7 +160,7 @@ describe('Advanced Features Tests - Phase 3', () => {
       jest.spyOn(mockTransport, 'invoke').mockResolvedValue({
         id: '123',
         name: 'John',
-        version: 1
+        version: 1,
       });
 
       const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
@@ -189,7 +187,7 @@ describe('Advanced Features Tests - Phase 3', () => {
       jest.spyOn(mockTransport, 'invoke').mockImplementation(async () => {
         callCount++;
         // Simulate slow request
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
         return { id: '123', name: 'John', version: 1 };
       });
 
@@ -206,14 +204,14 @@ describe('Advanced Features Tests - Phase 3', () => {
       // Should only make 1 actual call due to deduplication
       expect(callCount).toBe(1);
       expect(results).toHaveLength(5);
-      expect(results.every(r => r.id === '123')).toBe(true);
+      expect(results.every((r) => r.id === '123')).toBe(true);
     });
 
     it('should deduplicate using custom dedupe key', async () => {
       let callCount = 0;
       jest.spyOn(mockTransport, 'invoke').mockImplementation(async () => {
         callCount++;
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
         return { id: '123', name: 'John', version: 1 };
       });
 
@@ -246,7 +244,7 @@ describe('Advanced Features Tests - Phase 3', () => {
       const promises = [
         (service.cache(10000) as any).getUser('1'),
         (service.cache(10000) as any).getUser('2'),
-        (service.cache(10000) as any).getUser('3')
+        (service.cache(10000) as any).getUser('3'),
       ];
 
       const results = await Promise.all(promises);
@@ -262,7 +260,7 @@ describe('Advanced Features Tests - Phase 3', () => {
   describe('Optimistic Updates', () => {
     it('should apply optimistic update to cache immediately', async () => {
       jest.spyOn(mockTransport, 'invoke').mockImplementation(async () => {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
         return { id: '123', name: 'Updated Name', version: 2 };
       });
 
@@ -277,19 +275,17 @@ describe('Advanced Features Tests - Phase 3', () => {
       cacheManager.set(cacheKey, { id: '123', name: 'John', version: 1 }, { maxAge: 10000 });
 
       // Update with optimistic update using fluent API
-      const proxy = service
-        .cache({ maxAge: 10000 })
-        .optimistic((current: any) => ({
-          ...(current || {}),
-          id: '123',
-          name: 'Optimistic Name',
-          version: (current?.version || 0) + 1
-        })) as any;
+      const proxy = service.cache({ maxAge: 10000 }).optimistic((current: any) => ({
+        ...(current || {}),
+        id: '123',
+        name: 'Optimistic Name',
+        version: (current?.version || 0) + 1,
+      })) as any;
 
       const updatePromise = proxy.updateUser(userId, updateData);
 
       // Wait a bit for optimistic update to be applied
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       // Cache should immediately have optimistic value
       const cachedValue = cacheManager.getRaw(cacheKey);
@@ -315,14 +311,12 @@ describe('Advanced Features Tests - Phase 3', () => {
       cacheManager.set(cacheKey, { id: '123', name: 'John', version: 1 }, { maxAge: 10000 });
 
       // Try update with optimistic update using fluent API
-      const proxy = service
-        .cache({ maxAge: 10000 })
-        .optimistic((current: any) => ({
-          ...(current || {}),
-          id: '123',
-          name: 'Optimistic Name',
-          version: (current?.version || 0) + 1
-        })) as any;
+      const proxy = service.cache({ maxAge: 10000 }).optimistic((current: any) => ({
+        ...(current || {}),
+        id: '123',
+        name: 'Optimistic Name',
+        version: (current?.version || 0) + 1,
+      })) as any;
 
       await expect(proxy.updateUser(userId, updateData)).rejects.toThrow();
 
@@ -346,7 +340,7 @@ describe('Advanced Features Tests - Phase 3', () => {
           ...(current || {}),
           id: '123',
           name: 'Optimistic',
-          version: 1
+          version: 1,
         }))
         .fallback(fallbackValue) as any;
 
@@ -360,21 +354,21 @@ describe('Advanced Features Tests - Phase 3', () => {
   describe('Combined Advanced Features', () => {
     it('should work with cache + optimistic + background refetch', async () => {
       let version = 1;
-      jest.spyOn(mockTransport, 'invoke').mockImplementation(async () => ({ id: '123', name: 'John', version: version++ }));
+      jest
+        .spyOn(mockTransport, 'invoke')
+        .mockImplementation(async () => ({ id: '123', name: 'John', version: version++ }));
 
       const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
 
       // Use cache + background refetch together
-      const proxy = service
-        .cache(10000)
-        .background(100) as any;
+      const proxy = service.cache(10000).background(100) as any;
 
       // First call - will fetch and cache (version 1)
       const user1 = await proxy.getUser('123');
       expect(user1.version).toBe(1);
 
       // Wait for background refetch
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       // Version should have incremented from background refetch
       const proxy2 = service.cache(10000) as any;
@@ -394,7 +388,7 @@ describe('Advanced Features Tests - Phase 3', () => {
           throw new Error('Temporary failure');
         }
 
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
         return { id: '123', name: 'John', version: 1 };
       });
 

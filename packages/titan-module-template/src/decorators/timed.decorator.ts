@@ -41,12 +41,7 @@ export interface TimedOptions {
 export function Timed(options: TimedOptions = {}): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     // Store metadata
-    Reflect.defineMetadata(
-      TEMPLATE_METADATA.TIMED_METHOD,
-      options,
-      target,
-      propertyKey
-    );
+    Reflect.defineMetadata(TEMPLATE_METADATA.TIMED_METHOD, options, target, propertyKey);
 
     const originalMethod = descriptor.value;
     const methodName = String(propertyKey);

@@ -5,13 +5,7 @@
  * the configuration module capabilities.
  */
 
-import {
-  Application,
-  Module,
-  Injectable,
-  OnStart,
-  OnStop
-} from '../src/index.js';
+import { Application, Module, Injectable, OnStart, OnStop } from '../src/index.js';
 
 import {
   ConfigModule,
@@ -23,7 +17,7 @@ import {
   Configuration,
   ConfigDefaults,
   ConfigValidate,
-  ConfigTransform
+  ConfigTransform,
 } from '../src/modules/config/index.js';
 
 import { z } from 'zod';
@@ -37,13 +31,13 @@ const BasicConfigSchema = z.object({
     name: z.string(),
     version: z.string(),
     port: z.number().min(1).max(65535),
-    debug: z.boolean().default(false)
+    debug: z.boolean().default(false),
   }),
   database: z.object({
     host: z.string(),
     port: z.number().default(5432),
-    database: z.string()
-  })
+    database: z.string(),
+  }),
 });
 
 @Injectable()
@@ -61,7 +55,7 @@ class BasicService {
     return {
       app: this.appName,
       port: this.port,
-      database: this.dbHost
+      database: this.dbHost,
     };
   }
 }
@@ -78,20 +72,20 @@ class BasicService {
             app: {
               name: 'BasicApp',
               version: '1.0.0',
-              port: 3000
+              port: 3000,
             },
             database: {
               host: 'localhost',
               port: 5432,
-              database: 'myapp'
-            }
-          }
+              database: 'myapp',
+            },
+          },
         },
-        { type: 'env', prefix: 'APP_' }
-      ]
-    })
+        { type: 'env', prefix: 'APP_' },
+      ],
+    }),
   ],
-  providers: [BasicService]
+  providers: [BasicService],
 })
 class BasicConfigModule {}
 
@@ -115,21 +109,21 @@ class EnvironmentService {
         host: this.config.get('database.host'),
         port: this.config.get('database.port'),
         ssl: true,
-        poolSize: 20
+        poolSize: 20,
       };
     } else if (env === 'staging') {
       return {
         host: this.config.get('database.host'),
         port: this.config.get('database.port'),
         ssl: true,
-        poolSize: 10
+        poolSize: 10,
       };
     } else {
       return {
         host: 'localhost',
         port: 5432,
         ssl: false,
-        poolSize: 5
+        poolSize: 5,
       };
     }
   }
@@ -147,18 +141,18 @@ class EnvironmentService {
         {
           type: 'file',
           path: `./config/${process.env.NODE_ENV || 'development'}.json`,
-          optional: true
+          optional: true,
         },
 
         // Environment variables
         { type: 'env', prefix: 'APP_' },
 
         // Command-line arguments
-        { type: 'argv', prefix: '--' }
-      ]
-    })
+        { type: 'argv', prefix: '--' },
+      ],
+    }),
   ],
-  providers: [EnvironmentService]
+  providers: [EnvironmentService],
 })
 class MultiEnvModule {}
 
@@ -195,7 +189,7 @@ class HotReloadService implements OnStart, OnStop {
         path: event.path,
         oldValue: event.oldValue,
         newValue: event.newValue,
-        timestamp: event.timestamp
+        timestamp: event.timestamp,
       });
     });
   }
@@ -223,12 +217,10 @@ class HotReloadService implements OnStart, OnStop {
   imports: [
     ConfigModule.forRoot({
       watchForChanges: true, // Enable hot reload
-      sources: [
-        { type: 'file', path: './config/app.json', optional: true }
-      ]
-    })
+      sources: [{ type: 'file', path: './config/app.json', optional: true }],
+    }),
   ],
-  providers: [HotReloadService]
+  providers: [HotReloadService],
 })
 class HotReloadModule {}
 
@@ -239,11 +231,13 @@ class HotReloadModule {}
 const ServerConfigSchema = z.object({
   port: z.number().min(1).max(65535),
   host: z.string().default('0.0.0.0'),
-  ssl: z.object({
-    enabled: z.boolean().default(false),
-    cert: z.string().optional(),
-    key: z.string().optional()
-  }).optional()
+  ssl: z
+    .object({
+      enabled: z.boolean().default(false),
+      cert: z.string().optional(),
+      key: z.string().optional(),
+    })
+    .optional(),
 });
 
 @Configuration('server')
@@ -252,8 +246,8 @@ const ServerConfigSchema = z.object({
   port: 3000,
   host: '0.0.0.0',
   ssl: {
-    enabled: false
-  }
+    enabled: false,
+  },
 })
 class ServerConfiguration {
   port: number = 3000;
@@ -267,15 +261,10 @@ class ServerConfiguration {
 
 @Injectable()
 class ServerService {
-  constructor(
-    @InjectConfig() private config: ConfigService
-  ) {}
+  constructor(@InjectConfig() private config: ConfigService) {}
 
   async startServer() {
-    const serverConfig = this.config.getTyped(
-      ServerConfigSchema,
-      'server'
-    );
+    const serverConfig = this.config.getTyped(ServerConfigSchema, 'server');
 
     console.log(`Starting server on ${serverConfig.host}:${serverConfig.port}`);
 
@@ -308,7 +297,7 @@ class ValidatedService {
   @Config('app.environment', 'development')
   private environment: string;
 
-  @ConfigTransform((value: string) => value.split(',').map(s => s.trim()))
+  @ConfigTransform((value: string) => value.split(',').map((s) => s.trim()))
   @Config('app.allowedOrigins', '')
   private allowedOrigins: string[];
 
@@ -328,7 +317,7 @@ class ValidatedService {
       retries: this.maxRetries,
       env: this.environment,
       origins: this.allowedOrigins,
-      features: this.features
+      features: this.features,
     };
   }
 }
@@ -384,7 +373,7 @@ class FeatureFlagService {
     // Check rollout percentage for specific user
     if (userId) {
       const hash = this.hashString(userId + featureId);
-      const percentage = (hash % 100);
+      const percentage = hash % 100;
       return percentage < flag.rolloutPercentage;
     }
 
@@ -395,7 +384,7 @@ class FeatureFlagService {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
+      hash = (hash << 5) - hash + char;
       hash = hash & hash; // Convert to 32-bit integer
     }
     return Math.abs(hash);
@@ -469,7 +458,7 @@ class MultiTenantService {
       ...config.database,
       // Add shared credentials from main config
       user: this.config.get('database.user'),
-      password: this.config.get('database.password')
+      password: this.config.get('database.password'),
     };
   }
 
@@ -493,7 +482,7 @@ const AppConfigSchema = z.object({
     name: z.string(),
     version: z.string(),
     port: z.number(),
-    host: z.string().default('0.0.0.0')
+    host: z.string().default('0.0.0.0'),
   }),
   database: z.object({
     host: z.string(),
@@ -501,21 +490,25 @@ const AppConfigSchema = z.object({
     database: z.string(),
     user: z.string(),
     password: z.string(),
-    pool: z.object({
-      min: z.number().default(2),
-      max: z.number().default(10)
-    }).optional()
+    pool: z
+      .object({
+        min: z.number().default(2),
+        max: z.number().default(10),
+      })
+      .optional(),
   }),
-  redis: z.object({
-    host: z.string(),
-    port: z.number().default(6379),
-    password: z.string().optional()
-  }).optional(),
+  redis: z
+    .object({
+      host: z.string(),
+      port: z.number().default(6379),
+      password: z.string().optional(),
+    })
+    .optional(),
   logging: z.object({
     level: z.enum(['trace', 'debug', 'info', 'warn', 'error']),
-    pretty: z.boolean().default(false)
+    pretty: z.boolean().default(false),
   }),
-  features: z.record(z.boolean()).default({})
+  features: z.record(z.boolean()).default({}),
 });
 
 type AppConfig = z.infer<typeof AppConfigSchema>;
@@ -554,7 +547,7 @@ class ApplicationService implements OnStart {
       version: this.version,
       status: 'healthy',
       environment: this.config.environment,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
   }
 }
@@ -567,7 +560,7 @@ class ApplicationService implements OnStart {
       watchForChanges: process.env.NODE_ENV === 'development',
       cache: {
         enabled: true,
-        ttl: 30000 // 30 seconds
+        ttl: 30000, // 30 seconds
       },
       sources: [
         // Default configuration
@@ -578,18 +571,18 @@ class ApplicationService implements OnStart {
               name: 'TitanApp',
               version: '1.0.0',
               port: 3000,
-              host: '0.0.0.0'
+              host: '0.0.0.0',
             },
             logging: {
               level: 'info',
-              pretty: false
+              pretty: false,
             },
             features: {
               newUI: false,
               analytics: true,
-              apiV2: false
-            }
-          }
+              apiV2: false,
+            },
+          },
         },
 
         // Configuration files
@@ -597,7 +590,7 @@ class ApplicationService implements OnStart {
         {
           type: 'file',
           path: `./config/${process.env.NODE_ENV || 'development'}.json`,
-          optional: true
+          optional: true,
         },
 
         // Local overrides (not committed to git)
@@ -607,19 +600,15 @@ class ApplicationService implements OnStart {
         {
           type: 'env',
           prefix: 'TITAN_',
-          separator: '__'
+          separator: '__',
         },
 
         // Command-line arguments
-        { type: 'argv', prefix: '--' }
-      ]
-    })
+        { type: 'argv', prefix: '--' },
+      ],
+    }),
   ],
-  providers: [
-    ApplicationService,
-    FeatureFlagService,
-    MultiTenantService
-  ]
+  providers: [ApplicationService, FeatureFlagService, MultiTenantService],
 })
 class CompleteAppModule {}
 
@@ -686,5 +675,5 @@ export {
   HotReloadService,
   ApplicationService,
   FeatureFlagService,
-  MultiTenantService
+  MultiTenantService,
 };

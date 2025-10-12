@@ -28,7 +28,7 @@ import {
   EnhancedApplicationModule,
   type ModuleMetadata as EnhancedModuleMetadata,
   type Module as IModule,
-  type IApplication
+  type IApplication,
 } from '../src/index';
 
 // ============================
@@ -67,9 +67,7 @@ class TaskService implements OnInit, OnDestroy {
   private tasks: Map<string, Task> = new Map();
   private logger!: Logger;
 
-  constructor(
-    @Inject(LOGGER_SERVICE_TOKEN) private loggerModule: LoggerModule
-  ) {
+  constructor(@Inject(LOGGER_SERVICE_TOKEN) private loggerModule: LoggerModule) {
     // Logger is properly injected with correct type
     this.logger = this.loggerModule.logger.child({ service: 'TaskService' });
   }
@@ -93,7 +91,7 @@ class TaskService implements OnInit, OnDestroy {
         status: 'completed',
         priority: 'high',
         createdAt: new Date('2024-01-01'),
-        updatedAt: new Date('2024-01-02')
+        updatedAt: new Date('2024-01-02'),
       },
       {
         id: '2',
@@ -102,11 +100,11 @@ class TaskService implements OnInit, OnDestroy {
         status: 'in-progress',
         priority: 'high',
         createdAt: new Date('2024-01-03'),
-        updatedAt: new Date('2024-01-10')
-      }
+        updatedAt: new Date('2024-01-10'),
+      },
     ];
 
-    mockTasks.forEach(task => this.tasks.set(task.id, task));
+    mockTasks.forEach((task) => this.tasks.set(task.id, task));
     this.logger.debug(`Loaded ${this.tasks.size} tasks`);
   }
 
@@ -115,7 +113,7 @@ class TaskService implements OnInit, OnDestroy {
       ...taskData,
       id: this.generateId(),
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
     };
 
     this.tasks.set(task.id, task);
@@ -140,7 +138,7 @@ class TaskService implements OnInit, OnDestroy {
       ...updates,
       id: task.id,
       createdAt: task.createdAt,
-      updatedAt: new Date()
+      updatedAt: new Date(),
     };
 
     this.tasks.set(id, updatedTask);
@@ -173,16 +171,16 @@ class TaskService implements OnInit, OnDestroy {
       byStatus: {
         pending: 0,
         'in-progress': 0,
-        completed: 0
+        completed: 0,
       },
       byPriority: {
         low: 0,
         medium: 0,
-        high: 0
-      }
+        high: 0,
+      },
     };
 
-    tasks.forEach(task => {
+    tasks.forEach((task) => {
       stats.byStatus[task.status]++;
       stats.byPriority[task.priority]++;
     });
@@ -211,7 +209,7 @@ class NotificationService implements OnInit {
   async onInit(): Promise<void> {
     const notificationConfig = this.configModule.get('notifications', {
       enabled: true,
-      channels: ['email', 'push']
+      channels: ['email', 'push'],
     });
     this.logger.info({ config: notificationConfig }, 'NotificationService initialized');
   }
@@ -221,20 +219,20 @@ class NotificationService implements OnInit {
     // In a real app, this would send emails, push notifications, etc.
 
     // Simulate async operation
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
 
   async notifyTaskCreated(task: Task): Promise<void> {
     await this.sendNotification('task-created', {
       taskId: task.id,
-      title: task.title
+      title: task.title,
     });
   }
 
   async notifyTaskCompleted(task: Task): Promise<void> {
     await this.sendNotification('task-completed', {
       taskId: task.id,
-      title: task.title
+      title: task.title,
     });
   }
 }
@@ -273,7 +271,7 @@ class TaskCoordinator implements OnInit {
     this.logger.debug(`Completing task ${taskId}`);
 
     const task = await this.taskService.update(taskId, {
-      status: 'completed'
+      status: 'completed',
     });
 
     if (task) {
@@ -311,10 +309,10 @@ class TaskManagerModule extends EnhancedApplicationModule {
       providers: [
         [TaskServiceToken, { useClass: TaskService, scope: 'singleton' }],
         [NotificationServiceToken, { useClass: NotificationService, scope: 'singleton' }],
-        [TaskCoordinatorToken, { useClass: TaskCoordinator, scope: 'singleton' }]
+        [TaskCoordinatorToken, { useClass: TaskCoordinator, scope: 'singleton' }],
       ],
       // Export these services so other modules can use them
-      exports: [TaskServiceToken, NotificationServiceToken, TaskCoordinatorToken]
+      exports: [TaskServiceToken, NotificationServiceToken, TaskCoordinatorToken],
     });
   }
 
@@ -355,23 +353,23 @@ const appConfig = {
   config: {
     app: {
       name: 'TaskManager',
-      environment: process.env['NODE_ENV'] || 'development'
+      environment: process.env['NODE_ENV'] || 'development',
     },
     database: {
       host: 'localhost',
-      port: 5432
+      port: 5432,
     },
     notifications: {
       enabled: true,
-      channels: ['email', 'push', 'sms']
-    }
+      channels: ['email', 'push', 'sms'],
+    },
   },
   logging: {
     level: 'debug',
-    prettyPrint: true
+    prettyPrint: true,
   },
   // Register our custom module - now can use class reference instead of instance!
-  modules: [TaskManagerModule]  // Improved: no need for 'new TaskManagerModule()'
+  modules: [TaskManagerModule], // Improved: no need for 'new TaskManagerModule()'
 };
 
 // ============================
@@ -417,7 +415,7 @@ async function bootstrap() {
     title: 'Implement caching',
     description: 'Add Redis caching layer',
     status: 'pending',
-    priority: 'high'
+    priority: 'high',
   });
   console.log('Task created:', newTask);
 
@@ -429,7 +427,7 @@ async function bootstrap() {
   // Demo: Get all tasks
   console.log('\nAll tasks:');
   const allTasks = await taskService.findAll();
-  allTasks.forEach(task => {
+  allTasks.forEach((task) => {
     console.log(`  - ${task.title} (${task.status})`);
   });
 
@@ -446,7 +444,7 @@ async function bootstrap() {
 
 // Run when executed directly
 if (require.main === module) {
-  bootstrap().catch(error => {
+  bootstrap().catch((error) => {
     console.error('Failed to start application:', error);
     process.exit(1);
   });
@@ -461,5 +459,5 @@ export {
   TaskCoordinator,
   TaskServiceToken,
   NotificationServiceToken,
-  TaskCoordinatorToken
+  TaskCoordinatorToken,
 };

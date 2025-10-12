@@ -5,11 +5,7 @@
  */
 
 import { createDecorator, createMethodInterceptor } from '../../decorators/index.js';
-import {
-  EVENT_HANDLER_METADATA,
-  EVENT_ONCE_METADATA,
-  EVENT_EMITTER_METADATA
-} from './event-discovery.service.js';
+import { EVENT_HANDLER_METADATA, EVENT_ONCE_METADATA, EVENT_EMITTER_METADATA } from './event-discovery.service.js';
 
 /**
  * Event handler decorator - listens for events
@@ -58,7 +54,7 @@ export const OnEvent = createDecorator<{
       filter: context.options?.filter,
       transform: context.options?.transform,
       errorBoundary: context.options?.errorBoundary,
-      onError: context.options?.onError
+      onError: context.options?.onError,
     };
   })
   .withHooks({
@@ -68,12 +64,12 @@ export const OnEvent = createDecorator<{
         EVENT_HANDLER_METADATA,
         {
           event: context.options?.event,
-          options: context.options
+          options: context.options,
         },
         context.target,
         context.propertyKey!
       );
-    }
+    },
   })
   .build();
 
@@ -103,7 +99,7 @@ export const OnceEvent = createDecorator<{
     once: true,
     timeout: context.options?.timeout,
     filter: context.options?.filter,
-    transform: context.options?.transform
+    transform: context.options?.transform,
   }))
   .withHooks({
     afterApply: (context: any) => {
@@ -112,12 +108,12 @@ export const OnceEvent = createDecorator<{
         EVENT_ONCE_METADATA,
         {
           event: context.options?.event,
-          options: context.options
+          options: context.options,
         },
         context.target,
         context.propertyKey!
       );
-    }
+    },
   })
   .build();
 
@@ -145,7 +141,7 @@ export const OnAnyEvent = createDecorator<{
     handler: true,
     anyEvent: true,
     filter: context.options?.filter,
-    priority: context.options?.priority || 0
+    priority: context.options?.priority || 0,
   }))
   .withHooks({
     afterApply: (context: any) => {
@@ -154,12 +150,12 @@ export const OnAnyEvent = createDecorator<{
         EVENT_HANDLER_METADATA,
         {
           event: '*',
-          options: context.options
+          options: context.options,
         },
         context.target,
         context.propertyKey!
       );
-    }
+    },
   })
   .build();
 
@@ -197,12 +193,7 @@ export const EmitEvent = createMethodInterceptor<{
     void eventData; // Suppress unused variable warning
 
     // Store metadata for discovery
-    Reflect.defineMetadata(
-      EVENT_EMITTER_METADATA,
-      { event: `${event}.success` },
-      context.target,
-      context.propertyKey!
-    );
+    Reflect.defineMetadata(EVENT_EMITTER_METADATA, { event: `${event}.success` }, context.target, context.propertyKey!);
 
     return result;
   } catch (error) {
@@ -213,12 +204,7 @@ export const EmitEvent = createMethodInterceptor<{
     void errorData; // Suppress unused variable warning
 
     // Store metadata for discovery
-    Reflect.defineMetadata(
-      EVENT_EMITTER_METADATA,
-      { event: `${event}.error` },
-      context.target,
-      context.propertyKey!
-    );
+    Reflect.defineMetadata(EVENT_EMITTER_METADATA, { event: `${event}.error` }, context.target, context.propertyKey!);
 
     throw error;
   }
@@ -253,7 +239,7 @@ export const ScheduleEvent = createDecorator<{
     event: context.options?.event,
     cron: context.options?.cron,
     delay: context.options?.delay,
-    at: context.options?.at
+    at: context.options?.at,
   }))
   .withHooks({
     afterApply: (context: any) => {
@@ -265,12 +251,12 @@ export const ScheduleEvent = createDecorator<{
           event: context.options?.event,
           cron: context.options?.cron,
           delay: context.options?.delay,
-          at: context.options?.at
+          at: context.options?.at,
         },
         context.target,
         context.propertyKey!
       );
-    }
+    },
   })
   .build();
 
@@ -302,7 +288,7 @@ export const BatchEvents = createDecorator<{
     batch: true,
     event: context.options?.event,
     maxSize: context.options?.maxSize,
-    maxWait: context.options?.maxWait
+    maxWait: context.options?.maxWait,
   }))
   .withHooks({
     afterApply: (context: any) => {
@@ -312,12 +298,12 @@ export const BatchEvents = createDecorator<{
         BATCH_HANDLER_METADATA,
         {
           event: `${context.options?.event}:batch`,
-          options: context.options
+          options: context.options,
         },
         context.target,
         context.propertyKey!
       );
-    }
+    },
   })
   .build();
 
@@ -389,7 +375,7 @@ export const EventEmitter = createDecorator<{
     eventEmitter: true,
     namespace: context.options?.namespace,
     wildcard: context.options?.wildcard !== false,
-    delimiter: context.options?.delimiter || '.'
+    delimiter: context.options?.delimiter || '.',
   }))
   .withHooks({
     afterApply: (context: any) => {
@@ -400,10 +386,10 @@ export const EventEmitter = createDecorator<{
           eventEmitter: true,
           namespace: context.options?.namespace,
           wildcard: context.options?.wildcard !== false,
-          delimiter: context.options?.delimiter || '.'
+          delimiter: context.options?.delimiter || '.',
         },
         context.target
       );
-    }
+    },
   })
   .build();

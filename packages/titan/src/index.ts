@@ -17,7 +17,7 @@ export {
   Application,
   APPLICATION_TOKEN as ApplicationToken,
   NETRON_TOKEN as NetronToken,
-  Application as TitanApplication
+  Application as TitanApplication,
 } from './application/index.js';
 
 // ============================================================================
@@ -39,7 +39,7 @@ export async function createAndStartApp(options?: {
   const app = createApp({
     name: options?.name,
     version: options?.version,
-    config: options?.config
+    config: options?.config,
   });
 
   if (options?.modules) {
@@ -53,7 +53,6 @@ export async function createAndStartApp(options?: {
 }
 
 // defineModule is now exported from application module
-
 
 // Lifecycle interfaces
 export interface IOnInit {
@@ -86,5 +85,5 @@ export const FEATURES = {
   MODULE_DEPENDENCIES: true,
   ERROR_HANDLING: true,
   ENHANCED_MODULES: true,
-  DISCOVERY_MODULE: true
+  DISCOVERY_MODULE: true,
 } as const;

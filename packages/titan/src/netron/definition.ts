@@ -42,7 +42,7 @@ export class Definition {
     public id: string,
     public peerId: string,
     public meta: ServiceMetadata
-  ) { }
+  ) {}
 
   /**
    * Generates a new cryptographically secure unique identifier using the Node.js crypto module.

@@ -15,14 +15,14 @@ describe('Batch', () => {
   });
 
   // Helper to wait for next microtask
-  const nextTick = () => new Promise(resolve => queueMicrotask(resolve));
+  const nextTick = () => new Promise((resolve) => queueMicrotask(resolve));
 
   // Helper to wait for effects to flush
-  const waitForEffects = () => new Promise(resolve => setTimeout(resolve, 0));
+  const waitForEffects = () => new Promise((resolve) => setTimeout(resolve, 0));
 
   describe('Basic batching', () => {
     it('should batch multiple signal updates', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const a = signal(1);
         const b = signal(2);
@@ -45,12 +45,12 @@ describe('Batch', () => {
     });
 
     it('should batch updates synchronously within batch scope', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const s = signal(0);
         const values: number[] = [];
 
-        s.subscribe(v => values.push(v));
+        s.subscribe((v) => values.push(v));
 
         batch(() => {
           s.set(1);
@@ -69,7 +69,7 @@ describe('Batch', () => {
     });
 
     it('should handle nested batches', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const s = signal(0);
         const fn = vi.fn(() => s());
@@ -106,7 +106,7 @@ describe('Batch', () => {
 
   describe('Effect interaction', () => {
     it('should defer effect execution during batch', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const s = signal(0);
         const values: number[] = [];
@@ -132,7 +132,7 @@ describe('Batch', () => {
     });
 
     it('should handle effects creating new batches', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const a = signal(0);
         const b = signal(0);
@@ -161,7 +161,7 @@ describe('Batch', () => {
     });
 
     it('should handle multiple effects in batch', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const s = signal(0);
         const results: number[] = [];
@@ -184,7 +184,7 @@ describe('Batch', () => {
 
   describe('Computed interaction', () => {
     it('should batch computed updates', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const a = signal(1);
         const b = signal(2);
@@ -208,7 +208,7 @@ describe('Batch', () => {
     });
 
     it('should handle diamond dependencies in batch', () => {
-      createRoot(disposeRoot => {
+      createRoot((disposeRoot) => {
         dispose = disposeRoot;
         const a = signal(1);
         const b = computed(() => a() * 2);
@@ -234,7 +234,7 @@ describe('Batch', () => {
 
   describe('Untrack interaction', () => {
     it('should not track untracked reads in batch', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const tracked = signal(1);
         const untracked = signal(2);
@@ -264,7 +264,7 @@ describe('Batch', () => {
     });
 
     it('should handle untrack within batch', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const s = signal(0);
         const values: number[] = [];
@@ -289,7 +289,7 @@ describe('Batch', () => {
 
   describe('Error handling', () => {
     it('should complete batch even if error occurs', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const s = signal(0);
         const values: number[] = [];
@@ -310,7 +310,7 @@ describe('Batch', () => {
     });
 
     it('should handle errors in nested batches', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const s = signal(0);
 
@@ -333,7 +333,7 @@ describe('Batch', () => {
 
   describe('Subscription management', () => {
     it('should handle subscribe/unsubscribe during batch', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const s = signal(0);
         const values: number[] = [];
@@ -341,7 +341,7 @@ describe('Batch', () => {
 
         batch(() => {
           s.set(1);
-          unsubscribe = s.subscribe(v => values.push(v));
+          unsubscribe = s.subscribe((v) => values.push(v));
           s.set(2);
         });
 
@@ -357,16 +357,16 @@ describe('Batch', () => {
     });
 
     it('should handle multiple subscriptions in batch', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const s = signal(0);
         const values1: number[] = [];
         const values2: number[] = [];
 
         batch(() => {
-          s.subscribe(v => values1.push(v));
+          s.subscribe((v) => values1.push(v));
           s.set(1);
-          s.subscribe(v => values2.push(v));
+          s.subscribe((v) => values2.push(v));
           s.set(2);
         });
 
@@ -378,13 +378,13 @@ describe('Batch', () => {
 
   describe('Performance and edge cases', () => {
     it('should handle large number of updates', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const signals = Array.from({ length: 100 }, () => signal(0));
         let effectCount = 0;
 
         effect(() => {
-          signals.forEach(s => s());
+          signals.forEach((s) => s());
           effectCount++;
         });
 
@@ -400,7 +400,7 @@ describe('Batch', () => {
     });
 
     it('should handle rapid successive batches', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const s = signal(0);
         const values: number[] = [];
@@ -417,7 +417,7 @@ describe('Batch', () => {
     });
 
     it('should maintain consistency with circular updates', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const a = signal(1);
         const b = signal(1);
@@ -454,8 +454,8 @@ describe('Batch', () => {
     });
 
     it('should handle mixed sync and async operations', async () => {
-      await new Promise<void>(resolve => {
-        createRoot(d => {
+      await new Promise<void>((resolve) => {
+        createRoot((d) => {
           dispose = d;
           const s = signal(0);
           const syncResults: string[] = [];
@@ -506,7 +506,7 @@ describe('Batch', () => {
           batch(() => {
             this.executed = this.value === 42;
           });
-        }
+        },
       };
 
       obj.run();
@@ -518,7 +518,7 @@ describe('Batch', () => {
     it('should batch within createRoot', () => {
       let outerDispose: (() => void) | undefined;
 
-      createRoot(d => {
+      createRoot((d) => {
         outerDispose = d;
         const s = signal(0);
         const values: number[] = [];
@@ -542,12 +542,12 @@ describe('Batch', () => {
     it('should handle disposal during batch', () => {
       let innerDispose: (() => void) | undefined;
 
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
         const s = signal(0);
         const values: number[] = [];
 
-        createRoot(id => {
+        createRoot((id) => {
           innerDispose = id;
           effect(() => values.push(s()));
         });

@@ -21,10 +21,7 @@ export function getFocusableElements(container: HTMLElement): HTMLElement[] {
   ].join(',');
 
   return Array.from(container.querySelectorAll<HTMLElement>(selector)).filter(
-    (el) =>
-      !el.hasAttribute('disabled') &&
-      !el.getAttribute('aria-hidden') &&
-      el.getAttribute('tabindex') !== '-1',
+    (el) => !el.hasAttribute('disabled') && !el.getAttribute('aria-hidden') && el.getAttribute('tabindex') !== '-1'
   );
 }
 

@@ -93,17 +93,17 @@ export class TemplateEngine {
         email: {
           subject: 'Welcome to {{appName}}!',
           html: '<h1>Welcome {{userName}}!</h1><p>Thank you for joining {{appName}}.</p>',
-          text: 'Welcome {{userName}}! Thank you for joining {{appName}}.'
+          text: 'Welcome {{userName}}! Thank you for joining {{appName}}.',
         },
         inApp: {
           title: 'Welcome!',
-          body: 'Thank you for joining {{appName}}, {{userName}}!'
-        }
+          body: 'Thank you for joining {{appName}}, {{userName}}!',
+        },
       },
       variables: [
         { name: 'userName', type: 'string', required: true },
-        { name: 'appName', type: 'string', default: 'Our App' }
-      ]
+        { name: 'appName', type: 'string', default: 'Our App' },
+      ],
     });
   }
 
@@ -129,11 +129,7 @@ export class TemplateEngine {
   /**
    * Render a template with data
    */
-  async render(
-    templateId: string,
-    data: any,
-    options: RenderOptions = {}
-  ): Promise<RenderedContent> {
+  async render(templateId: string, data: any, options: RenderOptions = {}): Promise<RenderedContent> {
     // Check cache first
     if (!options.skipCache && this.options?.cache !== false) {
       const cached = await this.getCachedRender(templateId, data, options.locale);
@@ -171,9 +167,7 @@ export class TemplateEngine {
     // Simple variable replacement
     const replaceVariables = (text: string): string =>
       // Use the class method to replace all {{variable}} patterns
-      this.replaceVariables(text, data)
-      ;
-
+      this.replaceVariables(text, data);
     // Render email content if present
     if (template.content.email) {
       rendered.subject = replaceVariables(template.content.email.subject);
@@ -192,11 +186,7 @@ export class TemplateEngine {
   /**
    * Get cached render
    */
-  private async getCachedRender(
-    templateId: string,
-    data: any,
-    locale?: string
-  ): Promise<RenderedContent | null> {
+  private async getCachedRender(templateId: string, data: any, locale?: string): Promise<RenderedContent | null> {
     const cacheKey = this.getCacheKey(templateId, data, locale);
     const cached = this.redis ? await this.redis.get(cacheKey) : null;
 
@@ -358,7 +348,7 @@ export class TemplateEngine {
           ...notification,
           subject: rendered.subject || notification.title,
           html: rendered.html,
-          text: rendered.text || notification.body
+          text: rendered.text || notification.body,
         };
       }
     }
@@ -367,7 +357,7 @@ export class TemplateEngine {
     return {
       ...notification,
       subject: notification.title,
-      text: notification.body
+      text: notification.body,
     };
   }
 

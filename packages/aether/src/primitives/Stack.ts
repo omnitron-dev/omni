@@ -74,63 +74,63 @@ export interface StackProps {
  * ```
  */
 export const Stack = defineComponent<StackProps>((props) => () => {
-    const direction = props.direction ?? 'vertical';
-    const spacing = props.spacing ?? 0;
-    const isVertical = direction === 'vertical';
+  const direction = props.direction ?? 'vertical';
+  const spacing = props.spacing ?? 0;
+  const isVertical = direction === 'vertical';
 
-    const {
-      direction: _direction,
-      spacing: _spacing,
-      align,
-      justify,
-      wrap,
-      divider,
-      children,
-      class: className,
-      style,
-      ...restProps
-    } = props;
+  const {
+    direction: _direction,
+    spacing: _spacing,
+    align,
+    justify,
+    wrap,
+    divider,
+    children,
+    class: className,
+    style,
+    ...restProps
+  } = props;
 
-    // Convert align to flexbox alignment
-    const alignItems = align === 'start' ? 'flex-start' : align === 'end' ? 'flex-end' : align;
-    const justifyContent = justify === 'start' ? 'flex-start' : justify === 'end' ? 'flex-end' : justify;
+  // Convert align to flexbox alignment
+  const alignItems = align === 'start' ? 'flex-start' : align === 'end' ? 'flex-end' : align;
+  const justifyContent = justify === 'start' ? 'flex-start' : justify === 'end' ? 'flex-end' : justify;
 
-    const stackStyles: Record<string, any> = {
-      display: 'flex',
-      flexDirection: isVertical ? 'column' : 'row',
-      gap: typeof spacing === 'number' ? `${spacing}px` : spacing,
-      ...(alignItems && { alignItems }),
-      ...(justifyContent && { justifyContent }),
-      ...(wrap && { flexWrap: 'wrap' }),
-      ...style,
-    };
+  const stackStyles: Record<string, any> = {
+    display: 'flex',
+    flexDirection: isVertical ? 'column' : 'row',
+    gap: typeof spacing === 'number' ? `${spacing}px` : spacing,
+    ...(alignItems && { alignItems }),
+    ...(justifyContent && { justifyContent }),
+    ...(wrap && { flexWrap: 'wrap' }),
+    ...style,
+  };
 
-    // If divider is provided, manually add spacing and dividers
-    let content = children;
-    if (divider && Array.isArray(children)) {
-      const items = [];
-      for (let i = 0; i < children.length; i++) {
-        items.push(children[i]);
-        if (i < children.length - 1) {
-          items.push(
-            jsx('div', {
-              key: `divider-${i}`,
-              style: { display: 'contents' },
-              children: divider,
-            }),
-          );
-        }
+  // If divider is provided, manually add spacing and dividers
+  let content = children;
+  if (divider && Array.isArray(children)) {
+    const items = [];
+    for (let i = 0; i < children.length; i++) {
+      items.push(children[i]);
+      if (i < children.length - 1) {
+        items.push(
+          jsx('div', {
+            key: `divider-${i}`,
+            style: { display: 'contents' },
+            children: divider,
+          })
+        );
       }
-      content = items;
     }
+    content = items;
+  }
 
-    return jsx('div', {
-      class: className,
-      style: stackStyles,
-      ...restProps,
-      children: content,
-    });
+  return jsx('div', {
+    class: className,
+    style: stackStyles,
+    ...restProps,
+    children: content,
   });
+});
 
 // ============================================================================
 // VStack (Vertical Stack) - Convenience wrapper

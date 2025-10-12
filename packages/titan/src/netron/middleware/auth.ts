@@ -4,12 +4,7 @@
  */
 
 import type { NetronMiddlewareContext, MiddlewareFunction } from './types.js';
-import type {
-  AuthContext,
-  ExecutionContext,
-  MethodOptions,
-  PolicyExpression,
-} from '../auth/types.js';
+import type { AuthContext, ExecutionContext, MethodOptions, PolicyExpression } from '../auth/types.js';
 import type { PolicyEngine } from '../auth/policy-engine.js';
 import type { ILogger } from '../../modules/logger/logger.types.js';
 import { METADATA_KEYS } from '../../decorators/core.js';
@@ -36,10 +31,7 @@ export interface AuthMiddlewareOptions {
 /**
  * Build ExecutionContext from NetronMiddlewareContext
  */
-export function buildExecutionContext(
-  ctx: NetronMiddlewareContext,
-  authContext?: AuthContext,
-): ExecutionContext {
+export function buildExecutionContext(ctx: NetronMiddlewareContext, authContext?: AuthContext): ExecutionContext {
   const execCtx: ExecutionContext = {
     auth: authContext,
     service: {
@@ -80,10 +72,7 @@ export function buildExecutionContext(
 /**
  * Read @Method metadata from service prototype
  */
-export function readMethodMetadata(
-  serviceInstance: any,
-  methodName: string,
-): MethodOptions | undefined {
+export function readMethodMetadata(serviceInstance: any, methodName: string): MethodOptions | undefined {
   if (!serviceInstance || !methodName) {
     return undefined;
   }
@@ -91,11 +80,7 @@ export function readMethodMetadata(
   const prototype = Object.getPrototypeOf(serviceInstance);
 
   // Try to read complete METHOD_OPTIONS first
-  const methodOptions = Reflect.getMetadata(
-    METADATA_KEYS.METHOD_OPTIONS,
-    prototype,
-    methodName,
-  );
+  const methodOptions = Reflect.getMetadata(METADATA_KEYS.METHOD_OPTIONS, prototype, methodName);
 
   if (methodOptions) {
     return methodOptions;
@@ -148,14 +133,8 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
     }
 
     // Skip if service or method is in skip list
-    if (
-      skipServices.includes(ctx.serviceName) ||
-      skipMethods.includes(`${ctx.serviceName}.${ctx.methodName}`)
-    ) {
-      logger.debug(
-        { service: ctx.serviceName, method: ctx.methodName },
-        'Skipping auth for service/method',
-      );
+    if (skipServices.includes(ctx.serviceName) || skipMethods.includes(`${ctx.serviceName}.${ctx.methodName}`)) {
+      logger.debug({ service: ctx.serviceName, method: ctx.methodName }, 'Skipping auth for service/method');
       return next();
     }
 
@@ -196,10 +175,7 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
 
     // Check if anonymous access is allowed
     if (authConfig.allowAnonymous && !authContext) {
-      logger.debug(
-        { service: ctx.serviceName, method: ctx.methodName },
-        'Anonymous access allowed',
-      );
+      logger.debug({ service: ctx.serviceName, method: ctx.methodName }, 'Anonymous access allowed');
       return next();
     }
 
@@ -220,9 +196,7 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
 
     // Check roles
     if (authConfig.roles && authConfig.roles.length > 0) {
-      const hasRequiredRole = authConfig.roles.some((role) =>
-        authContext.roles.includes(role),
-      );
+      const hasRequiredRole = authConfig.roles.some((role) => authContext.roles.includes(role));
 
       if (!hasRequiredRole) {
         logger.warn(
@@ -232,7 +206,7 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
             requiredRoles: authConfig.roles,
             userRoles: authContext.roles,
           },
-          'User lacks required role',
+          'User lacks required role'
         );
 
         throw new TitanError({
@@ -250,14 +224,10 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
 
     // Check permissions
     if (authConfig.permissions && authConfig.permissions.length > 0) {
-      const hasAllPermissions = authConfig.permissions.every((perm) =>
-        authContext.permissions.includes(perm),
-      );
+      const hasAllPermissions = authConfig.permissions.every((perm) => authContext.permissions.includes(perm));
 
       if (!hasAllPermissions) {
-        const missingPermissions = authConfig.permissions.filter(
-          (perm) => !authContext.permissions.includes(perm),
-        );
+        const missingPermissions = authConfig.permissions.filter((perm) => !authContext.permissions.includes(perm));
 
         logger.warn(
           {
@@ -265,7 +235,7 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
             method: ctx.methodName,
             missingPermissions,
           },
-          'User lacks required permissions',
+          'User lacks required permissions'
         );
 
         throw new TitanError({
@@ -282,14 +252,10 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
 
     // Check scopes (OAuth2)
     if (authConfig.scopes && authConfig.scopes.length > 0) {
-      const hasAllScopes = authConfig.scopes.every((scope) =>
-        authContext.scopes?.includes(scope),
-      );
+      const hasAllScopes = authConfig.scopes.every((scope) => authContext.scopes?.includes(scope));
 
       if (!hasAllScopes) {
-        const missingScopes = authConfig.scopes.filter(
-          (scope) => !authContext.scopes?.includes(scope),
-        );
+        const missingScopes = authConfig.scopes.filter((scope) => !authContext.scopes?.includes(scope));
 
         logger.warn(
           {
@@ -297,7 +263,7 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
             method: ctx.methodName,
             missingScopes,
           },
-          'User lacks required scopes',
+          'User lacks required scopes'
         );
 
         throw new TitanError({
@@ -318,28 +284,24 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
 
       if (Array.isArray(authConfig.policies)) {
         // Array of policy names - evaluate all (AND logic)
-        policyDecision = await policyEngine.evaluateAll(
-          authConfig.policies,
-          execContext,
-        );
-      } else if (typeof authConfig.policies === 'object' && 'all' in authConfig.policies && Array.isArray(authConfig.policies.all)) {
+        policyDecision = await policyEngine.evaluateAll(authConfig.policies, execContext);
+      } else if (
+        typeof authConfig.policies === 'object' &&
+        'all' in authConfig.policies &&
+        Array.isArray(authConfig.policies.all)
+      ) {
         // Explicit AND logic
-        policyDecision = await policyEngine.evaluateAll(
-          authConfig.policies.all as string[],
-          execContext,
-        );
-      } else if (typeof authConfig.policies === 'object' && 'any' in authConfig.policies && Array.isArray(authConfig.policies.any)) {
+        policyDecision = await policyEngine.evaluateAll(authConfig.policies.all as string[], execContext);
+      } else if (
+        typeof authConfig.policies === 'object' &&
+        'any' in authConfig.policies &&
+        Array.isArray(authConfig.policies.any)
+      ) {
         // Explicit OR logic
-        policyDecision = await policyEngine.evaluateAny(
-          authConfig.policies.any as string[],
-          execContext,
-        );
+        policyDecision = await policyEngine.evaluateAny(authConfig.policies.any as string[], execContext);
       } else {
         // Policy expression (complex AND/OR/NOT)
-        policyDecision = await policyEngine.evaluateExpression(
-          authConfig.policies as PolicyExpression,
-          execContext,
-        );
+        policyDecision = await policyEngine.evaluateExpression(authConfig.policies as PolicyExpression, execContext);
       }
 
       if (!policyDecision.allowed) {
@@ -350,7 +312,7 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
             reason: policyDecision.reason,
             userId: authContext.userId,
           },
-          'Policy evaluation failed',
+          'Policy evaluation failed'
         );
 
         throw new TitanError({
@@ -371,7 +333,7 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
           userId: authContext.userId,
           evaluationTime: policyDecision.evaluationTime,
         },
-        'Policy evaluation succeeded',
+        'Policy evaluation succeeded'
       );
     }
 

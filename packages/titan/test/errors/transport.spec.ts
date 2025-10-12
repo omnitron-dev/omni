@@ -10,7 +10,7 @@ import {
   WebSocketTransportAdapter,
   createTransportAdapter,
   parseHttpError,
-  mapToHttp
+  mapToHttp,
 } from '../../src/errors/transport.js';
 import { TitanError } from '../../src/errors/core.js';
 import { ErrorCode } from '../../src/errors/codes.js';
@@ -23,7 +23,7 @@ describe('Transport Mapping', () => {
         code: ErrorCode.VALIDATION_ERROR,
         message: 'Invalid input data',
         details: { field: 'email' },
-        requestId: 'req-gql-001'
+        requestId: 'req-gql-001',
       });
 
       const graphqlError = mapToTransport(error, TransportType.GRAPHQL);
@@ -34,8 +34,8 @@ describe('Transport Mapping', () => {
           code: 'UNPROCESSABLE_ENTITY',
           statusCode: 422,
           details: { field: 'email' },
-          requestId: 'req-gql-001'
-        }
+          requestId: 'req-gql-001',
+        },
       });
     });
 
@@ -43,16 +43,16 @@ describe('Transport Mapping', () => {
       const error = new TitanError({
         code: ErrorCode.NOT_FOUND,
         message: 'User not found',
-        context: { userId: '123', service: 'users' }
+        context: { userId: '123', service: 'users' },
       });
 
       const graphqlError = mapToTransport(error, TransportType.GRAPHQL, {
-        includeContext: true
+        includeContext: true,
       });
 
       expect(graphqlError.extensions.context).toEqual({
         userId: '123',
-        service: 'users'
+        service: 'users',
       });
     });
 
@@ -62,10 +62,10 @@ describe('Transport Mapping', () => {
         ErrorCode.UNAUTHORIZED,
         ErrorCode.FORBIDDEN,
         ErrorCode.NOT_FOUND,
-        ErrorCode.INTERNAL_ERROR
+        ErrorCode.INTERNAL_ERROR,
       ];
 
-      codes.forEach(code => {
+      codes.forEach((code) => {
         const error = new TitanError({ code, message: 'Test error' });
         const graphqlError = mapToTransport(error, TransportType.GRAPHQL);
 
@@ -82,11 +82,11 @@ describe('Transport Mapping', () => {
       const error = new TitanError({
         code: ErrorCode.BAD_REQUEST,
         message: 'Invalid parameters',
-        details: { param: 'id' }
+        details: { param: 'id' },
       });
 
       const jsonRpcError = mapToTransport(error, TransportType.JSONRPC, {
-        requestId: 'rpc-1'
+        requestId: 'rpc-1',
       });
 
       expect(jsonRpcError).toEqual({
@@ -95,15 +95,15 @@ describe('Transport Mapping', () => {
         error: {
           code: -32602,
           message: 'Invalid parameters',
-          data: { param: 'id' }
-        }
+          data: { param: 'id' },
+        },
       });
     });
 
     it('should map NOT_FOUND to method not found (-32601)', () => {
       const error = new TitanError({
         code: ErrorCode.NOT_FOUND,
-        message: 'Method not found'
+        message: 'Method not found',
       });
 
       const jsonRpcError = mapToTransport(error, TransportType.JSONRPC);
@@ -114,7 +114,7 @@ describe('Transport Mapping', () => {
     it('should map VALIDATION_ERROR to invalid params (-32602)', () => {
       const error = new TitanError({
         code: ErrorCode.VALIDATION_ERROR,
-        message: 'Validation failed'
+        message: 'Validation failed',
       });
 
       const jsonRpcError = mapToTransport(error, TransportType.JSONRPC);
@@ -125,7 +125,7 @@ describe('Transport Mapping', () => {
     it('should map INTERNAL_ERROR to internal error (-32603)', () => {
       const error = new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
-        message: 'Internal error'
+        message: 'Internal error',
       });
 
       const jsonRpcError = mapToTransport(error, TransportType.JSONRPC);
@@ -136,7 +136,7 @@ describe('Transport Mapping', () => {
     it('should map other errors to custom server error range', () => {
       const error = new TitanError({
         code: ErrorCode.SERVICE_UNAVAILABLE,
-        message: 'Service unavailable'
+        message: 'Service unavailable',
       });
 
       const jsonRpcError = mapToTransport(error, TransportType.JSONRPC);
@@ -148,11 +148,11 @@ describe('Transport Mapping', () => {
     it('should include request ID when provided', () => {
       const error = new TitanError({
         code: ErrorCode.BAD_REQUEST,
-        message: 'Bad request'
+        message: 'Bad request',
       });
 
       const jsonRpcError = mapToTransport(error, TransportType.JSONRPC, {
-        requestId: '123'
+        requestId: '123',
       });
 
       expect(jsonRpcError.id).toBe('123');
@@ -161,7 +161,7 @@ describe('Transport Mapping', () => {
     it('should always include jsonrpc version', () => {
       const error = new TitanError({
         code: ErrorCode.NOT_FOUND,
-        message: 'Not found'
+        message: 'Not found',
       });
 
       const jsonRpcError = mapToTransport(error, TransportType.JSONRPC);
@@ -174,7 +174,7 @@ describe('Transport Mapping', () => {
     it('should create binary packet with correct structure', () => {
       const error = new TitanError({
         code: ErrorCode.NOT_FOUND,
-        message: 'Resource not found'
+        message: 'Resource not found',
       });
 
       const buffer = mapToTransport(error, TransportType.TCP);
@@ -196,10 +196,10 @@ describe('Transport Mapping', () => {
     it('should handle various error codes in binary format', () => {
       const codes = [400, 401, 403, 500, 503];
 
-      codes.forEach(code => {
+      codes.forEach((code) => {
         const error = new TitanError({
           code: code as ErrorCode,
-          message: 'Test message'
+          message: 'Test message',
         });
 
         const buffer = mapToTransport(error, TransportType.TCP);
@@ -213,7 +213,7 @@ describe('Transport Mapping', () => {
       const longMessage = 'A'.repeat(1000);
       const error = new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
-        message: longMessage
+        message: longMessage,
       });
 
       const buffer = mapToTransport(error, TransportType.TCP);
@@ -227,7 +227,7 @@ describe('Transport Mapping', () => {
     it('should handle UTF-8 characters correctly', () => {
       const error = new TitanError({
         code: ErrorCode.BAD_REQUEST,
-        message: 'Error: 你好世界 🌍'
+        message: 'Error: 你好世界 🌍',
       });
 
       const buffer = mapToTransport(error, TransportType.TCP);
@@ -249,7 +249,7 @@ describe('Transport Mapping', () => {
         const adapter = new HttpTransportAdapter();
         const error = new TitanError({
           code: ErrorCode.NOT_FOUND,
-          message: 'Not found'
+          message: 'Not found',
         });
 
         const mapped = adapter.mapError(error);
@@ -262,7 +262,7 @@ describe('Transport Mapping', () => {
         const adapter = new HttpTransportAdapter();
         const error = new TitanError({
           code: ErrorCode.BAD_REQUEST,
-          message: 'Invalid request'
+          message: 'Invalid request',
         });
 
         const mockResponse = {
@@ -280,7 +280,7 @@ describe('Transport Mapping', () => {
           json(data: any) {
             this.body = data;
             return this;
-          }
+          },
         };
 
         await adapter.sendError(error, mockResponse);
@@ -296,8 +296,8 @@ describe('Transport Mapping', () => {
           error: {
             statusCode: 404,
             message: 'Not found',
-            details: { id: '123' }
-          }
+            details: { id: '123' },
+          },
         };
 
         const error = adapter.parseError(data);
@@ -328,7 +328,7 @@ describe('Transport Mapping', () => {
         const error = new TitanError({
           code: ErrorCode.UNAUTHORIZED,
           message: 'Unauthorized',
-          requestId: 'ws-req-001'
+          requestId: 'ws-req-001',
         });
 
         const mapped = adapter.mapError(error, { requestId: 'ws-req-001' });
@@ -343,14 +343,14 @@ describe('Transport Mapping', () => {
         const adapter = new WebSocketTransportAdapter();
         const error = new TitanError({
           code: ErrorCode.BAD_REQUEST,
-          message: 'Bad request'
+          message: 'Bad request',
         });
 
         const mockWs = {
           sentMessages: [] as string[],
           send(message: string) {
             this.sentMessages.push(message);
-          }
+          },
         };
 
         await adapter.sendError(error, mockWs);
@@ -367,8 +367,8 @@ describe('Transport Mapping', () => {
           error: {
             code: 503,
             message: 'Service unavailable',
-            details: { reason: 'maintenance' }
-          }
+            details: { reason: 'maintenance' },
+          },
         };
 
         const error = adapter.parseError(data);
@@ -403,7 +403,7 @@ describe('Transport Mapping', () => {
     it('should throw error for unsupported transport type', () => {
       const error = new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
-        message: 'Test error'
+        message: 'Test error',
       });
 
       expect(() => {
@@ -419,8 +419,8 @@ describe('Transport Mapping', () => {
           error: {
             code: 'NOT_FOUND',
             message: 'Resource not found',
-            details: { id: '123' }
-          }
+            details: { id: '123' },
+          },
         });
 
         expect(error).toBeInstanceOf(TitanError);
@@ -434,8 +434,8 @@ describe('Transport Mapping', () => {
           error: {
             code: 400,
             message: 'Bad request',
-            details: { field: 'email' }
-          }
+            details: { field: 'email' },
+          },
         });
 
         expect(error.code).toBe(ErrorCode.BAD_REQUEST);
@@ -446,8 +446,8 @@ describe('Transport Mapping', () => {
       it('should use status as fallback when code is missing', () => {
         const error = parseHttpError(500, {
           error: {
-            message: 'Server error'
-          }
+            message: 'Server error',
+          },
         });
 
         expect(error.code).toBe(500);
@@ -462,7 +462,7 @@ describe('Transport Mapping', () => {
             'X-Request-ID': 'req-123',
             'X-Correlation-ID': 'corr-456',
             'X-Trace-ID': 'trace-789',
-            'X-Span-ID': 'span-abc'
+            'X-Span-ID': 'span-abc',
           }
         );
 
@@ -478,7 +478,7 @@ describe('Transport Mapping', () => {
           { error: { code: 'NOT_FOUND', message: 'Not found' } },
           {
             'x-request-id': 'req-lowercase',
-            'X-Correlation-ID': 'corr-mixedcase'
+            'X-Correlation-ID': 'corr-mixedcase',
           }
         );
 
@@ -494,7 +494,7 @@ describe('Transport Mapping', () => {
             'Retry-After': '60',
             'X-RateLimit-Limit': '100',
             'X-RateLimit-Remaining': '0',
-            'X-RateLimit-Reset': '1609459200'
+            'X-RateLimit-Reset': '1609459200',
           }
         );
 
@@ -511,7 +511,7 @@ describe('Transport Mapping', () => {
           401,
           { error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
           {
-            'WWW-Authenticate': 'Bearer realm="api"'
+            'WWW-Authenticate': 'Bearer realm="api"',
           }
         );
 
@@ -526,7 +526,7 @@ describe('Transport Mapping', () => {
           401,
           { error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
           {
-            'WWW-Authenticate': 'Basic realm="admin"'
+            'WWW-Authenticate': 'Basic realm="admin"',
           }
         );
 
@@ -540,7 +540,7 @@ describe('Transport Mapping', () => {
         const error = parseHttpError(500, {
           code: 'INTERNAL_SERVER_ERROR',
           message: 'Internal error',
-          details: { stack: 'error stack' }
+          details: { stack: 'error stack' },
         });
 
         expect(error.code).toBe(ErrorCode.INTERNAL_SERVER_ERROR);
@@ -558,9 +558,9 @@ describe('Transport Mapping', () => {
       it('should handle all standard error codes', () => {
         const codes = [400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504];
 
-        codes.forEach(status => {
+        codes.forEach((status) => {
           const error = parseHttpError(status, {
-            error: { code: status, message: `Error ${status}` }
+            error: { code: status, message: `Error ${status}` },
           });
 
           expect(error.code).toBe(status);
@@ -574,7 +574,7 @@ describe('Transport Mapping', () => {
         const original = new TitanError({
           code: ErrorCode.NOT_FOUND,
           message: 'User not found',
-          details: { userId: '123' }
+          details: { userId: '123' },
         });
 
         const httpResponse = mapToHttp(original);
@@ -592,7 +592,7 @@ describe('Transport Mapping', () => {
           requestId: 'req-abc',
           correlationId: 'corr-def',
           traceId: 'trace-ghi',
-          spanId: 'span-jkl'
+          spanId: 'span-jkl',
         });
 
         const httpResponse = mapToHttp(original);
@@ -606,12 +606,16 @@ describe('Transport Mapping', () => {
 
       it('should preserve rate limit information', () => {
         const resetTime = new Date('2025-01-01T00:00:00Z');
-        const original = new RateLimitError('Rate limit exceeded', {}, {
-          limit: 100,
-          remaining: 0,
-          resetTime,
-          retryAfter: 60
-        });
+        const original = new RateLimitError(
+          'Rate limit exceeded',
+          {},
+          {
+            limit: 100,
+            remaining: 0,
+            resetTime,
+            retryAfter: 60,
+          }
+        );
 
         const httpResponse = mapToHttp(original);
         const parsed = parseHttpError(httpResponse.status, httpResponse.body, httpResponse.headers);
@@ -625,10 +629,14 @@ describe('Transport Mapping', () => {
       });
 
       it('should preserve auth information', () => {
-        const original = new AuthError('Bearer token required', {}, {
-          authType: 'Bearer',
-          realm: 'api'
-        });
+        const original = new AuthError(
+          'Bearer token required',
+          {},
+          {
+            authType: 'Bearer',
+            realm: 'api',
+          }
+        );
 
         const httpResponse = mapToHttp(original);
         const parsed = parseHttpError(httpResponse.status, httpResponse.body, httpResponse.headers);
@@ -642,7 +650,7 @@ describe('Transport Mapping', () => {
       it('should handle errors with retryable status', () => {
         const original = new TitanError({
           code: ErrorCode.SERVICE_UNAVAILABLE,
-          message: 'Service temporarily unavailable'
+          message: 'Service temporarily unavailable',
         });
 
         const httpResponse = mapToHttp(original);
@@ -659,9 +667,9 @@ describe('Transport Mapping', () => {
           details: {
             errors: [
               { field: 'email', message: 'Invalid email' },
-              { field: 'password', message: 'Too short' }
-            ]
-          }
+              { field: 'password', message: 'Too short' },
+            ],
+          },
         });
 
         const httpResponse = mapToHttp(original);
@@ -678,10 +686,10 @@ describe('Transport Mapping', () => {
           ErrorCode.UNAUTHORIZED,
           ErrorCode.NOT_FOUND,
           ErrorCode.INTERNAL_ERROR,
-          ErrorCode.SERVICE_UNAVAILABLE
+          ErrorCode.SERVICE_UNAVAILABLE,
         ];
 
-        codes.forEach(code => {
+        codes.forEach((code) => {
           const original = new TitanError({ code, message: 'Test error' });
           const httpResponse = mapToHttp(original);
           const parsed = parseHttpError(httpResponse.status, httpResponse.body, httpResponse.headers);
@@ -693,10 +701,14 @@ describe('Transport Mapping', () => {
 
     describe('Enhanced mapToHttp() headers', () => {
       it('should include WWW-Authenticate header for AuthError', () => {
-        const error = new AuthError('Bearer token required', {}, {
-          authType: 'Bearer',
-          realm: 'api'
-        });
+        const error = new AuthError(
+          'Bearer token required',
+          {},
+          {
+            authType: 'Bearer',
+            realm: 'api',
+          }
+        );
 
         const httpResponse = mapToHttp(error);
 
@@ -705,12 +717,16 @@ describe('Transport Mapping', () => {
 
       it('should include full rate limit headers for RateLimitError', () => {
         const resetTime = new Date('2025-01-01T00:00:00Z');
-        const error = new RateLimitError('Rate limit exceeded', {}, {
-          limit: 100,
-          remaining: 0,
-          resetTime,
-          retryAfter: 60
-        });
+        const error = new RateLimitError(
+          'Rate limit exceeded',
+          {},
+          {
+            limit: 100,
+            remaining: 0,
+            resetTime,
+            retryAfter: 60,
+          }
+        );
 
         const httpResponse = mapToHttp(error);
 
@@ -724,7 +740,7 @@ describe('Transport Mapping', () => {
         const error = new TitanError({
           code: ErrorCode.TOO_MANY_REQUESTS,
           message: 'Too many requests',
-          details: { retryAfter: 30 }
+          details: { retryAfter: 30 },
         });
 
         const httpResponse = mapToHttp(error);

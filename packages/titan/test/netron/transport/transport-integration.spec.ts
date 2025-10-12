@@ -13,7 +13,7 @@ import {
   WebSocketTransport,
   UnixSocketTransport,
   NamedPipeTransport,
-  BaseTransport
+  BaseTransport,
 } from '../../../src/netron/transport/index.js';
 import { ConnectionState } from '../../../src/netron/transport/types.js';
 import { promises as fs } from 'node:fs';
@@ -190,7 +190,7 @@ describe('Transport Integration Tests', () => {
       }
 
       // Wait for all server connections
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(clients.length).toBe(clientCount);
       expect(serverConnections.length).toBe(clientCount);
@@ -229,7 +229,7 @@ describe('Transport Integration Tests', () => {
       const endTime = Date.now();
 
       // Wait for all messages
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       expect(messages.length).toBe(messageCount);
       console.log(`TCP throughput: ${messageCount} messages in ${endTime - startTime}ms`);
@@ -248,7 +248,7 @@ describe('Transport Integration Tests', () => {
 
       // Create HTTP server for WebSocket
       httpServer = createHttpServer();
-      await new Promise<void>(resolve => {
+      await new Promise<void>((resolve) => {
         httpServer.listen(wsPort, '127.0.0.1', resolve);
       });
 
@@ -258,7 +258,7 @@ describe('Transport Integration Tests', () => {
 
     afterEach(async () => {
       wsServer?.close();
-      await new Promise(resolve => httpServer?.close(resolve));
+      await new Promise((resolve) => httpServer?.close(resolve));
     });
 
     it('should connect to WebSocket server', async () => {
@@ -289,7 +289,7 @@ describe('Transport Integration Tests', () => {
       const serverSocket = await serverConnectionPromise;
 
       // Wait for connection to stabilize
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Verify connection state
       expect(client.state).toBe(ConnectionState.CONNECTED);
@@ -360,14 +360,18 @@ describe('Transport Integration Tests', () => {
       let messageReceived = false;
 
       // Listen for any data/packet event to confirm message was received
-      serverConn.on('data', () => { messageReceived = true; });
-      serverConn.on('packet', () => { messageReceived = true; });
+      serverConn.on('data', () => {
+        messageReceived = true;
+      });
+      serverConn.on('packet', () => {
+        messageReceived = true;
+      });
 
       const testData = Buffer.from('Unix/Pipe test data');
       await client.send(testData);
 
       // Wait a bit for the message to arrive
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Just verify that some message was received
       expect(messageReceived).toBe(true);
@@ -380,15 +384,13 @@ describe('Transport Integration Tests', () => {
     it('should handle mixed transport types concurrently', async () => {
       const tcpTransport = new TcpTransport();
       const wsTransport = new WebSocketTransport();
-      const unixTransport = process.platform === 'win32'
-        ? new NamedPipeTransport()
-        : new UnixSocketTransport();
+      const unixTransport = process.platform === 'win32' ? new NamedPipeTransport() : new UnixSocketTransport();
 
       // Create servers
       const tcpServer = await tcpTransport.createServer(`tcp://127.0.0.1:${tcpPort}`);
 
       const httpServer = createHttpServer();
-      await new Promise<void>(resolve => {
+      await new Promise<void>((resolve) => {
         httpServer.listen(wsPort, '127.0.0.1', resolve);
       });
       const wsServer = new WebSocketServer({ server: httpServer });
@@ -417,7 +419,7 @@ describe('Transport Integration Tests', () => {
       await tcpServer.close();
       await unixServer.close();
       wsServer.close();
-      await new Promise(resolve => httpServer.close(resolve));
+      await new Promise((resolve) => httpServer.close(resolve));
     });
   });
 
@@ -447,7 +449,7 @@ describe('Transport Integration Tests', () => {
           await client.send(testData);
         }
 
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
         const endTime = Date.now();
 
         results['TCP'] = endTime - startTime;
@@ -458,9 +460,7 @@ describe('Transport Integration Tests', () => {
 
       // Test Unix/Named Pipe
       {
-        const unixTransport = process.platform === 'win32'
-          ? new NamedPipeTransport()
-          : new UnixSocketTransport();
+        const unixTransport = process.platform === 'win32' ? new NamedPipeTransport() : new UnixSocketTransport();
         const server = await unixTransport.createServer(socketPath);
 
         const serverConnPromise = waitForEvent(server, 'connection');
@@ -477,7 +477,7 @@ describe('Transport Integration Tests', () => {
           await client.send(testData);
         }
 
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
         const endTime = Date.now();
 
         results[process.platform === 'win32' ? 'NamedPipe' : 'Unix'] = endTime - startTime;
@@ -507,7 +507,7 @@ describe('Transport Integration Tests', () => {
       // Try to connect to non-existent server
       try {
         await tcpTransport.connect('tcp://127.0.0.1:1', {
-          connectTimeout: 100
+          connectTimeout: 100,
         });
         fail('Should have thrown connection error');
       } catch (error: any) {
@@ -522,9 +522,7 @@ describe('Transport Integration Tests', () => {
       // Create multiple connections concurrently
       const connectionPromises = [];
       for (let i = 0; i < 20; i++) {
-        connectionPromises.push(
-          tcpTransport.connect(`tcp://127.0.0.1:${tcpPort}`)
-        );
+        connectionPromises.push(tcpTransport.connect(`tcp://127.0.0.1:${tcpPort}`));
       }
 
       const clients = await Promise.all(connectionPromises);
@@ -552,7 +550,7 @@ describe('Transport Integration Tests', () => {
           binary: true,
           reconnection: false,
           multiplexing: false,
-          server: true
+          server: true,
         };
 
         isValidAddress(address: string): boolean {
@@ -570,7 +568,7 @@ describe('Transport Integration Tests', () => {
             send: async () => {},
             close: async () => {},
             on: () => {},
-            off: () => {}
+            off: () => {},
           };
         }
 
@@ -580,7 +578,7 @@ describe('Transport Integration Tests', () => {
             listen: async () => {},
             close: async () => {},
             on: () => {},
-            off: () => {}
+            off: () => {},
           };
         }
       }
@@ -653,7 +651,7 @@ describe('Transport Integration Tests', () => {
       }
 
       // Wait for connections to establish
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Send messages from different clients
       await clients[0].send(Buffer.from('Hello from client 0'));
@@ -661,7 +659,7 @@ describe('Transport Integration Tests', () => {
       await clients[2].send(Buffer.from('Hello from client 2'));
 
       // Wait for messages to propagate
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
       expect(messages.length).toBe(3);
 
@@ -678,9 +676,7 @@ describe('Transport Integration Tests', () => {
       const serviceA = await tcpTransport.createServer(`tcp://127.0.0.1:${tcpPort}`);
 
       // Service B - Unix/Named Pipe
-      const unixTransport = process.platform === 'win32'
-        ? new NamedPipeTransport()
-        : new UnixSocketTransport();
+      const unixTransport = process.platform === 'win32' ? new NamedPipeTransport() : new UnixSocketTransport();
       const serviceB = await unixTransport.createServer(socketPath);
 
       // Service A connects to Service B
@@ -691,10 +687,14 @@ describe('Transport Integration Tests', () => {
 
       // Request flow: Client -> Service A -> Service B
       // For now, just test basic connectivity
-      await client.send(Buffer.from(JSON.stringify({
-        request: 'process',
-        serviceId: 'service-b'
-      })));
+      await client.send(
+        Buffer.from(
+          JSON.stringify({
+            request: 'process',
+            serviceId: 'service-b',
+          })
+        )
+      );
 
       // Clean up
       await client.close();

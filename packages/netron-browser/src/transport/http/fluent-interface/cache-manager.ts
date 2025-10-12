@@ -405,11 +405,7 @@ export class HttpCacheManager extends EventEmitter {
   /**
    * Revalidate in background
    */
-  private async revalidateInBackground(
-    key: string,
-    fetcher: () => Promise<any>,
-    options: CacheOptions
-  ): Promise<void> {
+  private async revalidateInBackground(key: string, fetcher: () => Promise<any>, options: CacheOptions): Promise<void> {
     const entry = this.cache.get(key);
     if (!entry) return;
 

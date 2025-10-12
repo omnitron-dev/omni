@@ -8,10 +8,12 @@ describe('Stats - tracking', () => {
     let manager: NotificationManager;
 
     beforeAll(async () => {
-      manager = new NotificationManager(createTestConfig(1, {
-        checkDelayInterval: 50,
-        blockInterval: 100,
-      }));
+      manager = new NotificationManager(
+        createTestConfig(1, {
+          checkDelayInterval: 50,
+          blockInterval: 100,
+        })
+      );
 
       await manager.redis.flushdb();
     });
@@ -21,16 +23,20 @@ describe('Stats - tracking', () => {
     });
 
     it('tracks successful retries correctly', async () => {
-      const sub = await manager.subscribe('test.stats', async (msg) => {
-        if (msg.attempt === 1) {
-          throw new Error('Forced retry');
+      const sub = await manager.subscribe(
+        'test.stats',
+        async (msg) => {
+          if (msg.attempt === 1) {
+            throw new Error('Forced retry');
+          }
+          await delayMs(50);
+        },
+        {
+          startFrom: '0',
+          maxRetries: 2,
+          retryDelay: 200, // ⚠️ увеличил retryDelay до 200мс
         }
-        await delayMs(50);
-      }, {
-        startFrom: '0',
-        maxRetries: 2,
-        retryDelay: 200, // ⚠️ увеличил retryDelay до 200мс
-      });
+      );
 
       await delayMs(100);
 
@@ -52,11 +58,13 @@ describe('Stats - tracking', () => {
     let manager: NotificationManager;
 
     beforeAll(async () => {
-      manager = new NotificationManager(createTestConfig(1, {
-        checkDelayInterval: 100,
-        maxRetries: 2,
-        blockInterval: 100,
-      }));
+      manager = new NotificationManager(
+        createTestConfig(1, {
+          checkDelayInterval: 100,
+          maxRetries: 2,
+          blockInterval: 100,
+        })
+      );
 
       await manager.redis.flushdb();
     });
@@ -66,13 +74,17 @@ describe('Stats - tracking', () => {
     });
 
     it('tracks DLQ entries correctly', async () => {
-      const sub = await manager.subscribe('test.stats.dlq', async () => {
-        throw new Error('always fail');
-      }, {
-        startFrom: '0',
-        retryDelay: 50,
-        maxRetries: 2,
-      });
+      const sub = await manager.subscribe(
+        'test.stats.dlq',
+        async () => {
+          throw new Error('always fail');
+        },
+        {
+          startFrom: '0',
+          retryDelay: 50,
+          maxRetries: 2,
+        }
+      );
 
       await delayMs(100);
 
@@ -83,7 +95,7 @@ describe('Stats - tracking', () => {
       const stats = sub.stats();
 
       expect(stats.messages).toBe(0); // нет успешных сообщений
-      expect(stats.retries).toBe(2);  // 2 retry после первой неудачи (при maxRetries=2, всего 3 попытки)
+      expect(stats.retries).toBe(2); // 2 retry после первой неудачи (при maxRetries=2, всего 3 попытки)
       expect(stats.failures).toBe(1); // 1 сообщение попало в DLQ
       expect(stats.lastMessageAt).toBe(0); // нет успешной обработки
     }, 10000);

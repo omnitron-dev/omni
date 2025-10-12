@@ -6,18 +6,9 @@
 
 import 'reflect-metadata';
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import {
-  createTestProcessManager,
-  TestProcessManager
-} from '../../../src/modules/pm/testing/test-process-manager.js';
+import { createTestProcessManager, TestProcessManager } from '../../../src/modules/pm/testing/test-process-manager.js';
 
-import {
-  Process,
-  Public,
-  HealthCheck,
-  Workflow,
-  Stage
-} from '../../../src/modules/pm/decorators.js';
+import { Process, Public, HealthCheck, Workflow, Stage } from '../../../src/modules/pm/decorators.js';
 
 // ============================================================================
 // Test Services
@@ -26,7 +17,7 @@ import {
 @Process({
   name: 'calculator',
   version: '1.0.0',
-  health: { enabled: true }
+  health: { enabled: true },
 })
 class CalculatorService {
   private operations = 0;
@@ -55,7 +46,7 @@ class CalculatorService {
     if (n <= 1) {
       result = n;
     } else {
-      result = await this.fibonacci(n - 1) + await this.fibonacci(n - 2);
+      result = (await this.fibonacci(n - 1)) + (await this.fibonacci(n - 2));
     }
 
     this.cache.set(n, result);
@@ -66,12 +57,14 @@ class CalculatorService {
   async checkHealth() {
     return {
       status: 'healthy' as const,
-      checks: [{
-        name: 'operations',
-        status: 'pass' as const,
-        details: { count: this.operations }
-      }],
-      timestamp: Date.now()
+      checks: [
+        {
+          name: 'operations',
+          status: 'pass' as const,
+          details: { count: this.operations },
+        },
+      ],
+      timestamp: Date.now(),
     };
   }
 
@@ -85,14 +78,14 @@ class CalculatorService {
 class DataProcessorService {
   @Public()
   async processData(data: string[]): Promise<string[]> {
-    return data.map(item => item.toUpperCase());
+    return data.map((item) => item.toUpperCase());
   }
 
   @Public()
   async *streamProcess(count: number): AsyncGenerator<number> {
     for (let i = 0; i < count; i++) {
       yield i * 2;
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
     }
   }
 }
@@ -107,7 +100,8 @@ class NotificationService {
   async send(message: string, recipient: string): Promise<void> {
     // Simple rate limiting simulation
     const now = Date.now();
-    if (now - this.lastRequestTime < 200) { // 5 RPS = max 1 request per 200ms
+    if (now - this.lastRequestTime < 200) {
+      // 5 RPS = max 1 request per 200ms
       this.requestCount++;
       if (this.requestCount > 5) {
         throw new Error('Rate limit exceeded');
@@ -191,16 +185,11 @@ describe('Process Manager Integration - Simplified', () => {
     it('should create and use process pools', async () => {
       const pool = await pm.pool(CalculatorService, {
         size: 3,
-        strategy: 'round-robin' as any
+        strategy: 'round-robin' as any,
       });
 
       // Make parallel requests
-      const results = await Promise.all([
-        pool.add(1, 2),
-        pool.add(3, 4),
-        pool.add(5, 6),
-        pool.add(7, 8)
-      ]);
+      const results = await Promise.all([pool.add(1, 2), pool.add(3, 4), pool.add(5, 6), pool.add(7, 8)]);
 
       expect(results).toEqual([3, 7, 11, 15]);
       expect(pool.size).toBe(3);
@@ -221,14 +210,10 @@ describe('Process Manager Integration - Simplified', () => {
     it('should collect pool metrics', async () => {
       const pool = await pm.pool(CalculatorService, {
         size: 2,
-        metrics: true
+        metrics: true,
       });
 
-      await Promise.all([
-        pool.add(1, 1),
-        pool.add(2, 2),
-        pool.add(3, 3)
-      ]);
+      await Promise.all([pool.add(1, 1), pool.add(2, 2), pool.add(3, 3)]);
 
       const metrics = pool.metrics;
       expect(metrics.totalRequests).toBeGreaterThanOrEqual(3);
@@ -239,7 +224,7 @@ describe('Process Manager Integration - Simplified', () => {
   describe('Health Monitoring', () => {
     it('should monitor process health', async () => {
       const calc = await pm.spawn(CalculatorService, {
-        health: { enabled: true, interval: 100 }
+        health: { enabled: true, interval: 100 },
       });
 
       // Make some operations
@@ -255,7 +240,7 @@ describe('Process Manager Integration - Simplified', () => {
 
     it('should collect process metrics', async () => {
       const calc = await pm.spawn(CalculatorService, {
-        observability: { metrics: true }
+        observability: { metrics: true },
       });
 
       await calc.fibonacci(5);
@@ -298,20 +283,21 @@ describe('Process Manager Integration - Simplified', () => {
       await notifier.send('Message 1', 'user@example.com');
 
       // Wait to reset rate limit
-      await new Promise(resolve => setTimeout(resolve, 250));
+      await new Promise((resolve) => setTimeout(resolve, 250));
 
       // Try to send many notifications quickly
       const promises = [];
       for (let i = 2; i <= 8; i++) {
         promises.push(
-          notifier.send(`Message ${i}`, 'user@example.com')
+          notifier
+            .send(`Message ${i}`, 'user@example.com')
             .then(() => 'success')
-            .catch(e => e.message)
+            .catch((e) => e.message)
         );
       }
 
       const results = await Promise.all(promises);
-      const errors = results.filter(r => r === 'Rate limit exceeded');
+      const errors = results.filter((r) => r === 'Rate limit exceeded');
 
       // Some should be rate limited
       expect(errors.length).toBeGreaterThan(0);
@@ -335,7 +321,7 @@ describe('Process Manager Integration - Simplified', () => {
 
       const operations = pm.getOperations();
       expect(operations.length).toBeGreaterThan(0);
-      expect(operations.find(op => op.type === 'spawn')).toBeDefined();
+      expect(operations.find((op) => op.type === 'spawn')).toBeDefined();
     });
 
     it('should simulate metrics', async () => {
@@ -346,7 +332,7 @@ describe('Process Manager Integration - Simplified', () => {
         cpu: 50,
         memory: 2048,
         requests: 100,
-        errors: 2
+        errors: 2,
       });
 
       const metrics = await pm.getMetrics(processId);
@@ -369,7 +355,7 @@ class DataPipeline {
   async extract(): Promise<any[]> {
     const data = [
       { id: 1, value: 'raw1' },
-      { id: 2, value: 'raw2' }
+      { id: 2, value: 'raw2' },
     ];
     this.results.extract = data;
     return data;
@@ -377,10 +363,10 @@ class DataPipeline {
 
   @Stage({ dependsOn: 'extract' })
   async transform(data: any[]): Promise<any[]> {
-    const transformed = data.map(item => ({
+    const transformed = data.map((item) => ({
       ...item,
       value: item.value.toUpperCase(),
-      transformed: true
+      transformed: true,
     }));
     this.results.transform = transformed;
     return transformed;
@@ -495,9 +481,7 @@ describe('Advanced Process Features - Simplified', () => {
     expect(services).toHaveLength(5);
 
     // Each should be independent
-    const results = await Promise.all(
-      services.map((s, i) => s.add(i, i))
-    );
+    const results = await Promise.all(services.map((s, i) => s.add(i, i)));
     expect(results).toEqual([0, 2, 4, 6, 8]);
   });
 

@@ -32,8 +32,8 @@ class CircuitBreaker {
       threshold: number;
       timeout: number;
       resetTimeout: number;
-    },
-  ) { }
+    }
+  ) {}
 
   isOpen(): boolean {
     if (this.state === 'open') {
@@ -149,7 +149,7 @@ export class PolicyEngine {
   constructor(
     logger: ILogger,
     @Optional() private config?: PolicyEngineConfig,
-    @Optional() auditLogger?: AuditLogger,
+    @Optional() auditLogger?: AuditLogger
   ) {
     this.logger = logger.child({ component: 'PolicyEngine' });
     this.debugMode = config?.debug ?? false;
@@ -168,7 +168,7 @@ export class PolicyEngine {
         timeout: number;
         resetTimeout: number;
       };
-    },
+    }
   ): void {
     if (this.policies.has(policy.name)) {
       throw Errors.conflict('Policy already registered: ' + policy.name, { policyName: policy.name });
@@ -178,10 +178,7 @@ export class PolicyEngine {
 
     // Setup circuit breaker if configured
     if (options?.circuitBreaker) {
-      this.circuitBreakers.set(
-        policy.name,
-        new CircuitBreaker(options.circuitBreaker),
-      );
+      this.circuitBreakers.set(policy.name, new CircuitBreaker(options.circuitBreaker));
     }
 
     this.logger.debug({ policyName: policy.name }, 'Policy registered');
@@ -223,7 +220,7 @@ export class PolicyEngine {
   async evaluate(
     policyName: string,
     context: ExecutionContext,
-    options?: PolicyEvaluationOptions,
+    options?: PolicyEvaluationOptions
   ): Promise<EnhancedPolicyDecision> {
     const startTime = performance.now();
     const trace: Array<{ step: string; timestamp: number; data?: any }> = [];
@@ -283,7 +280,7 @@ export class PolicyEngine {
       const decision = await this.evaluateWithTimeout(
         Promise.resolve(policy.evaluate(context)),
         timeout,
-        options?.signal,
+        options?.signal
       );
 
       // Validate decision structure
@@ -310,8 +307,7 @@ export class PolicyEngine {
 
       // Cache successful evaluations
       if (decision.allowed && !options?.skipCache) {
-        const cacheTTL =
-          options?.cacheTTL ?? this.config?.defaultCacheTTL ?? 60000;
+        const cacheTTL = options?.cacheTTL ?? this.config?.defaultCacheTTL ?? 60000;
         const cacheKey = this.getCacheKey(policyName, context);
         this.policyCache.set(cacheKey, enhancedDecision, cacheTTL);
         if (this.debugMode) {
@@ -332,7 +328,7 @@ export class PolicyEngine {
           service: context.service.name,
           method: context.method?.name,
         },
-        'Policy evaluated',
+        'Policy evaluated'
       );
 
       // Audit policy decision
@@ -374,7 +370,7 @@ export class PolicyEngine {
           evaluationTime,
           circuitBreakerState: circuitBreaker?.getState(),
         },
-        'Policy evaluation error',
+        'Policy evaluation error'
       );
 
       // Audit policy error
@@ -411,14 +407,12 @@ export class PolicyEngine {
   async evaluateAll(
     policyNames: string[],
     context: ExecutionContext,
-    options?: PolicyEvaluationOptions,
+    options?: PolicyEvaluationOptions
   ): Promise<EnhancedPolicyDecision> {
     const startTime = performance.now();
 
     // Parallel evaluation
-    const decisions = await Promise.all(
-      policyNames.map((name) => this.evaluate(name, context, options)),
-    );
+    const decisions = await Promise.all(policyNames.map((name) => this.evaluate(name, context, options)));
 
     const failed = decisions.find((d) => !d.allowed);
     if (failed) {
@@ -451,7 +445,7 @@ export class PolicyEngine {
   async evaluateAny(
     policyNames: string[],
     context: ExecutionContext,
-    options?: PolicyEvaluationOptions,
+    options?: PolicyEvaluationOptions
   ): Promise<EnhancedPolicyDecision> {
     const startTime = performance.now();
     const decisions: EnhancedPolicyDecision[] = [];
@@ -494,7 +488,7 @@ export class PolicyEngine {
   async evaluateExpression(
     expression: PolicyExpression,
     context: ExecutionContext,
-    options?: PolicyEvaluationOptions,
+    options?: PolicyEvaluationOptions
   ): Promise<EnhancedPolicyDecision> {
     if (typeof expression === 'string') {
       return this.evaluate(expression, context, options);
@@ -502,14 +496,10 @@ export class PolicyEngine {
 
     if ('and' in expression) {
       const decisions = await Promise.all(
-        expression.and.map((expr) =>
-          this.evaluateExpression(expr, context, options),
-        ),
+        expression.and.map((expr) => this.evaluateExpression(expr, context, options))
       );
       const failed = decisions.find((d) => !d.allowed);
-      return (
-        failed ?? { allowed: true, reason: 'AND expression passed' }
-      );
+      return failed ?? { allowed: true, reason: 'AND expression passed' };
     }
 
     if ('or' in expression) {
@@ -521,16 +511,10 @@ export class PolicyEngine {
     }
 
     if ('not' in expression) {
-      const decision = await this.evaluateExpression(
-        expression.not,
-        context,
-        options,
-      );
+      const decision = await this.evaluateExpression(expression.not, context, options);
       return {
         allowed: !decision.allowed,
-        reason: decision.allowed
-          ? 'NOT expression passed'
-          : 'NOT expression failed',
+        reason: decision.allowed ? 'NOT expression passed' : 'NOT expression failed',
       };
     }
 
@@ -553,14 +537,12 @@ export class PolicyEngine {
   async evaluateBatch(
     contexts: ExecutionContext[],
     policyName: string,
-    options?: PolicyEvaluationOptions,
+    options?: PolicyEvaluationOptions
   ): Promise<EnhancedPolicyDecision[]> {
     const startTime = performance.now();
 
     // Evaluate all contexts in parallel
-    const decisions = await Promise.all(
-      contexts.map((context) => this.evaluate(policyName, context, options)),
-    );
+    const decisions = await Promise.all(contexts.map((context) => this.evaluate(policyName, context, options)));
 
     this.logger.debug(
       {
@@ -568,7 +550,7 @@ export class PolicyEngine {
         contextCount: contexts.length,
         evaluationTime: performance.now() - startTime,
       },
-      'Batch evaluation completed',
+      'Batch evaluation completed'
     );
 
     return decisions;
@@ -585,9 +567,7 @@ export class PolicyEngine {
    * Get policies by tag
    */
   getPoliciesByTag(tag: string): PolicyDefinition[] {
-    return this.getPolicies().filter((policy) =>
-      policy.tags?.includes(tag),
-    );
+    return this.getPolicies().filter((policy) => policy.tags?.includes(tag));
   }
 
   /**
@@ -638,18 +618,11 @@ export class PolicyEngine {
     return `${policyName}:${context.auth?.userId}:${context.service.name}:${context.method?.name}:${context.resource?.id}`;
   }
 
-  private async evaluateWithTimeout<T>(
-    promise: Promise<T>,
-    timeout: number,
-    signal?: AbortSignal,
-  ): Promise<T> {
+  private async evaluateWithTimeout<T>(promise: Promise<T>, timeout: number, signal?: AbortSignal): Promise<T> {
     return Promise.race([
       promise,
       new Promise<T>((_, reject) => {
-        const timer = setTimeout(
-          () => reject(Errors.timeout('Policy evaluation timeout', timeout)),
-          timeout,
-        );
+        const timer = setTimeout(() => reject(Errors.timeout('Policy evaluation timeout', timeout)), timeout);
         signal?.addEventListener('abort', () => {
           clearTimeout(timer);
           reject(Errors.internal('Policy evaluation aborted'));

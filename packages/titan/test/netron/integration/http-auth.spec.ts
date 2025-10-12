@@ -163,11 +163,7 @@ describe('HTTP Transport Authentication Integration', () => {
         transports: [],
       };
 
-      const filtered = authzManager.filterDefinition(
-        'documentService@1.0.0',
-        definition,
-        userContext,
-      );
+      const filtered = authzManager.filterDefinition('documentService@1.0.0', definition, userContext);
 
       expect(filtered.methods.getDocument).toBeDefined();
       expect(filtered.methods.createDocument).toBeUndefined();
@@ -208,11 +204,7 @@ describe('HTTP Transport Authentication Integration', () => {
         transports: [],
       };
 
-      const filtered = authzManager.filterDefinition(
-        'documentService@1.0.0',
-        definition,
-        adminContext,
-      );
+      const filtered = authzManager.filterDefinition('documentService@1.0.0', definition, adminContext);
 
       expect(filtered.methods.getDocument).toBeDefined();
       expect(filtered.methods.createDocument).toBeDefined();
@@ -248,7 +240,7 @@ describe('HTTP Transport Authentication Integration', () => {
         authManager.authenticate({
           username: `user${i + 1}`,
           password: 'password',
-        }),
+        })
       );
 
       const results = await Promise.all(requests);
@@ -272,9 +264,7 @@ describe('HTTP Transport Authentication Integration', () => {
         permissions: [],
       };
 
-      const checks = Array.from({ length: 10 }, () =>
-        authzManager.canAccessService('testService@1.0.0', context),
-      );
+      const checks = Array.from({ length: 10 }, () => authzManager.canAccessService('testService@1.0.0', context));
 
       expect(checks.every((result) => result === true)).toBe(true);
     });

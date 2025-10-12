@@ -43,7 +43,7 @@ describe('Configuration Decorators', () => {
           if (path === 'database.host') return 'prod-db.example.com';
           if (path === 'app.port') return 3000;
           return defaultValue;
-        }
+        },
       };
 
       const config = service.getConfig();
@@ -79,15 +79,11 @@ describe('Configuration Decorators', () => {
         value!: string;
       }
 
-      const metadata = Reflect.getMetadata(
-        CONFIG_INJECT_METADATA_KEY,
-        TestService.prototype,
-        'value'
-      );
+      const metadata = Reflect.getMetadata(CONFIG_INJECT_METADATA_KEY, TestService.prototype, 'value');
 
       expect(metadata).toEqual({
         path: 'test.path',
-        defaultValue: 'default'
+        defaultValue: 'default',
       });
     });
 
@@ -97,11 +93,7 @@ describe('Configuration Decorators', () => {
         serverPort!: number;
       }
 
-      const metadata = Reflect.getMetadata(
-        CONFIG_INJECT_METADATA_KEY,
-        TestService.prototype,
-        'serverPort'
-      );
+      const metadata = Reflect.getMetadata(CONFIG_INJECT_METADATA_KEY, TestService.prototype, 'serverPort');
 
       expect(metadata.path).toBe('serverPort');
     });
@@ -131,7 +123,7 @@ describe('Configuration Decorators', () => {
       const AppSchema = z.object({
         name: z.string(),
         port: z.number(),
-        debug: z.boolean()
+        debug: z.boolean(),
       });
 
       @ConfigSchema(AppSchema)
@@ -147,7 +139,7 @@ describe('Configuration Decorators', () => {
 
     it('should add validate method to instance', () => {
       const Schema = z.object({
-        value: z.string().min(3)
+        value: z.string().min(3),
       });
 
       @ConfigSchema(Schema)
@@ -164,7 +156,7 @@ describe('Configuration Decorators', () => {
 
     it('should add static validate method to class', () => {
       const Schema = z.object({
-        value: z.number()
+        value: z.number(),
       });
 
       @ConfigSchema(Schema)
@@ -234,10 +226,7 @@ describe('Configuration Decorators', () => {
         email = 'test@example.com';
       }
 
-      const schema = Reflect.getMetadata(
-        'titan:config:validation:email',
-        UserConfig.prototype
-      );
+      const schema = Reflect.getMetadata('titan:config:validation:email', UserConfig.prototype);
 
       expect(schema).toBe(EmailSchema);
     });
@@ -272,7 +261,7 @@ describe('Configuration Decorators', () => {
       const defaults = {
         host: 'localhost',
         port: 5432,
-        ssl: false
+        ssl: false,
       };
 
       @ConfigDefaults(defaults)
@@ -294,7 +283,7 @@ describe('Configuration Decorators', () => {
         async provideDatabaseConfig() {
           return {
             host: 'db.example.com',
-            port: 5432
+            port: 5432,
           };
         }
 
@@ -302,7 +291,7 @@ describe('Configuration Decorators', () => {
         provideCacheConfig() {
           return {
             ttl: 3600,
-            maxSize: 100
+            maxSize: 100,
           };
         }
       }
@@ -347,10 +336,7 @@ describe('Configuration Decorators', () => {
         value = 'test';
       }
 
-      const storedTransformer = Reflect.getMetadata(
-        'titan:config:transform:value',
-        Config.prototype
-      );
+      const storedTransformer = Reflect.getMetadata('titan:config:transform:value', Config.prototype);
 
       expect(storedTransformer).toBe(transformer);
     });
@@ -404,7 +390,7 @@ describe('Configuration Decorators', () => {
       const DatabaseSchema = z.object({
         host: z.string(),
         port: z.number().positive(),
-        ssl: z.boolean()
+        ssl: z.boolean(),
       });
 
       @Configuration('database')
@@ -412,7 +398,7 @@ describe('Configuration Decorators', () => {
       @ConfigDefaults({
         host: 'localhost',
         port: 5432,
-        ssl: false
+        ssl: false,
       })
       class DatabaseConfig {
         @Config('database.host')
@@ -436,11 +422,7 @@ describe('Configuration Decorators', () => {
       expect(Reflect.getMetadata('titan:config:defaults', DatabaseConfig)).toBeDefined();
       expect(Reflect.getMetadata('titan:config:watch', DatabaseConfig.prototype)).toBeDefined();
 
-      const hostMetadata = Reflect.getMetadata(
-        CONFIG_INJECT_METADATA_KEY,
-        DatabaseConfig.prototype,
-        'host'
-      );
+      const hostMetadata = Reflect.getMetadata(CONFIG_INJECT_METADATA_KEY, DatabaseConfig.prototype, 'host');
       expect(hostMetadata.path).toBe('database.host');
     });
   });

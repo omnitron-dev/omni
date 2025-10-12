@@ -60,8 +60,8 @@ describe('Auth Security Tests', () => {
           authManager.authenticate({
             username: 'admin',
             password: `wrong-password-${i}`,
-          }),
-        ),
+          })
+        )
       );
 
       const endTime = Date.now();
@@ -78,9 +78,7 @@ describe('Auth Security Tests', () => {
       // FINDING: No built-in brute force protection
       // System allows unlimited rapid authentication attempts
       // RECOMMENDATION: Implement rate limiting based on IP/username
-      console.log(
-        `⚠️  SECURITY: No brute force protection - ${attempts} attempts in ${duration}ms`,
-      );
+      console.log(`⚠️  SECURITY: No brute force protection - ${attempts} attempts in ${duration}ms`);
     });
 
     it('should handle credential stuffing attack patterns', async () => {
@@ -113,9 +111,7 @@ describe('Auth Security Tests', () => {
         { username: 'legituser', password: 'legitpass' }, // This one succeeds
       ];
 
-      const results = await Promise.all(
-        leakedCredentials.map((creds) => authManager.authenticate(creds)),
-      );
+      const results = await Promise.all(leakedCredentials.map((creds) => authManager.authenticate(creds)));
 
       const successfulAttempts = results.filter((r) => r.success);
       expect(successfulAttempts.length).toBe(1);
@@ -176,19 +172,15 @@ describe('Auth Security Tests', () => {
       }
 
       // Calculate average timings
-      const avgCorrect =
-        timings.correct.reduce((a, b) => a + b, 0) / timings.correct.length;
-      const avgIncorrect =
-        timings.incorrect.reduce((a, b) => a + b, 0) / timings.incorrect.length;
+      const avgCorrect = timings.correct.reduce((a, b) => a + b, 0) / timings.correct.length;
+      const avgIncorrect = timings.incorrect.reduce((a, b) => a + b, 0) / timings.incorrect.length;
 
       // Timing difference should be minimal (< 10% variation)
       const timingDifference = Math.abs(avgCorrect - avgIncorrect);
       const maxTiming = Math.max(avgCorrect, avgIncorrect);
       const percentDifference = (timingDifference / maxTiming) * 100;
 
-      console.log(
-        `   Avg timing - Correct: ${avgCorrect.toFixed(3)}ms, Incorrect: ${avgIncorrect.toFixed(3)}ms`,
-      );
+      console.log(`   Avg timing - Correct: ${avgCorrect.toFixed(3)}ms, Incorrect: ${avgIncorrect.toFixed(3)}ms`);
       console.log(`   Timing difference: ${percentDifference.toFixed(2)}%`);
 
       // FINDING: Timing may vary based on comparison implementation
@@ -229,9 +221,7 @@ describe('Auth Security Tests', () => {
       // FINDING: Sessions can be reused multiple times (no single-use tokens)
       // This is expected behavior for sessions, but tokens should have nonce/jti
       // RECOMMENDATION: For high-security operations, use single-use tokens with nonce
-      console.log(
-        `⚠️  SECURITY: Sessions are reusable (expected), implement nonce for critical operations`,
-      );
+      console.log(`⚠️  SECURITY: Sessions are reusable (expected), implement nonce for critical operations`);
 
       await sessionManager.destroy();
     });
@@ -247,11 +237,9 @@ describe('Auth Security Tests', () => {
       };
 
       const fixedSessionId = 'fixed-session-id-123';
-      const attackerSession = await sessionManager.createSession(
-        'attacker',
-        attackerContext,
-        { sessionId: fixedSessionId },
-      );
+      const attackerSession = await sessionManager.createSession('attacker', attackerContext, {
+        sessionId: fixedSessionId,
+      });
 
       // Victim tries to authenticate with the same session ID (fixation attempt)
       const victimContext: AuthContext = {
@@ -272,9 +260,7 @@ describe('Auth Security Tests', () => {
 
       // FINDING: System allows predetermined session IDs
       // RECOMMENDATION: Always generate new session IDs server-side on authentication
-      console.log(
-        `⚠️  SECURITY: Session fixation possible - always regenerate session IDs`,
-      );
+      console.log(`⚠️  SECURITY: Session fixation possible - always regenerate session IDs`);
 
       await sessionManager.destroy();
     });
@@ -316,9 +302,7 @@ describe('Auth Security Tests', () => {
         { username: "admin'; DROP TABLE users--", password: 'test' },
       ];
 
-      const results = await Promise.all(
-        sqlInjectionPayloads.map((payload) => authManager.authenticate(payload)),
-      );
+      const results = await Promise.all(sqlInjectionPayloads.map((payload) => authManager.authenticate(payload)));
 
       // All SQL injection attempts should fail
       expect(results.every((r) => !r.success)).toBe(true);
@@ -359,9 +343,7 @@ describe('Auth Security Tests', () => {
       // FINDING: No automatic XSS sanitization (this is correct)
       // Sanitization should occur at render/output time, not storage
       // RECOMMENDATION: Document that output sanitization is required
-      console.log(
-        `✓ SECURITY: XSS payloads stored as-is (sanitize at output/render time)`,
-      );
+      console.log(`✓ SECURITY: XSS payloads stored as-is (sanitize at output/render time)`);
 
       await sessionManager.destroy();
     });
@@ -492,10 +474,10 @@ describe('Auth Security Tests', () => {
       const authManager = new AuthenticationManager(mockLogger);
 
       const mockAuth = jest.fn(async (creds: AuthCredentials) => ({
-          userId: creds.username!,
-          roles: ['user'],
-          permissions: [],
-        }));
+        userId: creds.username!,
+        roles: ['user'],
+        permissions: [],
+      }));
 
       authManager.configure({ authenticate: mockAuth });
 
@@ -508,9 +490,7 @@ describe('Auth Security Tests', () => {
         { username: '👨‍💻', password: '🔒🔑' }, // Emoji only
       ];
 
-      const results = await Promise.all(
-        unicodeTests.map((creds) => authManager.authenticate(creds)),
-      );
+      const results = await Promise.all(unicodeTests.map((creds) => authManager.authenticate(creds)));
 
       // All should succeed (Unicode support)
       expect(results.every((r) => r.success)).toBe(true);
@@ -582,9 +562,7 @@ describe('Auth Security Tests', () => {
       };
 
       // Evaluate with circular expression (not currently supported, but should not hang)
-      await expect(
-        policyEngine.evaluateAll(['policyA', 'policyB'], context),
-      ).resolves.toBeDefined();
+      await expect(policyEngine.evaluateAll(['policyA', 'policyB'], context)).resolves.toBeDefined();
 
       // Should complete without hanging
       expect(policyAEvaluations).toBeLessThan(10);
@@ -694,19 +672,14 @@ describe('Auth Security Tests', () => {
 
       try {
         for (let i = 0; i < sessionCount; i++) {
-          const session = await sessionManager.createSession(
-            `user${i}`,
-            authContext,
-          );
+          const session = await sessionManager.createSession(`user${i}`, authContext);
           sessions.push(session.sessionId);
         }
 
         const stats = sessionManager.getStats();
         expect(stats.totalSessions).toBe(sessionCount);
 
-        console.log(
-          `✓ SECURITY: Handled ${sessionCount} sessions (${(stats.totalSessions / 1000).toFixed(0)}K)`,
-        );
+        console.log(`✓ SECURITY: Handled ${sessionCount} sessions (${(stats.totalSessions / 1000).toFixed(0)}K)`);
       } catch (error: any) {
         // If OOM occurs, it should be handled gracefully
         console.log(`⚠️  SECURITY: Memory limit reached at ${sessions.length} sessions`);

@@ -19,7 +19,7 @@ import { z } from 'zod';
 // ============================================
 
 const greeter = service({
-  greet: (name: string) => `Hello, ${name}!`
+  greet: (name: string) => `Hello, ${name}!`,
 });
 
 // ============================================
@@ -28,7 +28,9 @@ const greeter = service({
 
 @Injectable()
 class Database {
-  async connect() { return 'Connected to DB'; }
+  async connect() {
+    return 'Connected to DB';
+  }
 }
 
 @Injectable()
@@ -52,7 +54,7 @@ const Config = z.object({
   database: z.object({
     host: z.string().default('localhost'),
     port: z.number().default(5432),
-  })
+  }),
 });
 
 // Main application module
@@ -144,12 +146,12 @@ async function main() {
 
     // Everything is optional with smart defaults
     features: {
-      redis: true,      // Auto-connects to Redis
-      scheduler: true,  // Enables cron jobs
-      events: true,     // Event bus
-      metrics: true,    // Prometheus metrics
-      health: true,     // Health checks
-      tracing: true,   // OpenTelemetry
+      redis: true, // Auto-connects to Redis
+      scheduler: true, // Enables cron jobs
+      events: true, // Event bus
+      metrics: true, // Prometheus metrics
+      health: true, // Health checks
+      tracing: true, // OpenTelemetry
     },
 
     // Auto-scales based on CPU cores
@@ -159,7 +161,7 @@ async function main() {
     gracefulShutdown: {
       timeout: 30000,
       handlers: 'auto', // Handles SIGTERM, SIGINT, uncaught errors
-    }
+    },
   });
 
   // Use the app directly

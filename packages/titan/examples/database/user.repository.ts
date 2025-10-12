@@ -78,13 +78,7 @@ interface Database {
 })
 @SoftDelete({ column: 'deleted_at' })
 @Timestamps({ createdAt: 'created_at', updatedAt: 'updated_at' })
-export class UserRepository extends BaseRepository<
-  Database,
-  'users',
-  User,
-  CreateUserInput,
-  UpdateUserInput
-> {
+export class UserRepository extends BaseRepository<Database, 'users', User, CreateUserInput, UpdateUserInput> {
   /**
    * Map database row to entity
    */
@@ -125,10 +119,7 @@ export class UserRepository extends BaseRepository<
    * Find user by email
    */
   async findByEmail(email: string): Promise<User | null> {
-    const result = await this.query()
-      .where('email', '=', email)
-      .selectAll()
-      .executeTakeFirst();
+    const result = await this.query().where('email', '=', email).selectAll().executeTakeFirst();
 
     return result ? this.mapRow(result) : null;
   }
@@ -137,10 +128,7 @@ export class UserRepository extends BaseRepository<
    * Find user by username
    */
   async findByUsername(username: string): Promise<User | null> {
-    const result = await this.query()
-      .where('username', '=', username)
-      .selectAll()
-      .executeTakeFirst();
+    const result = await this.query().where('username', '=', username).selectAll().executeTakeFirst();
 
     return result ? this.mapRow(result) : null;
   }
@@ -156,7 +144,7 @@ export class UserRepository extends BaseRepository<
       .selectAll()
       .execute();
 
-    return results.map(row => this.mapRow(row));
+    return results.map((row) => this.mapRow(row));
   }
 
   /**
@@ -166,27 +154,19 @@ export class UserRepository extends BaseRepository<
     const term = `%${searchTerm}%`;
 
     const results = await this.query()
-      .where((qb) =>
-        qb.where('first_name', 'like', term)
-          .or('last_name', 'like', term)
-          .or('username', 'like', term)
-      )
+      .where((qb) => qb.where('first_name', 'like', term).or('last_name', 'like', term).or('username', 'like', term))
       .where('deleted_at', 'is', null)
       .selectAll()
       .execute();
 
-    return results.map(row => this.mapRow(row));
+    return results.map((row) => this.mapRow(row));
   }
 
   /**
    * Update last login timestamp
    */
   async updateLastLogin(userId: number): Promise<void> {
-    await this.qb
-      .updateTable('users')
-      .set({ last_login_at: new Date() })
-      .where('id', '=', userId)
-      .execute();
+    await this.qb.updateTable('users').set({ last_login_at: new Date() }).where('id', '=', userId).execute();
   }
 
   /**
@@ -210,7 +190,8 @@ export class UserRepository extends BaseRepository<
     if (options.search) {
       const term = `%${options.search}%`;
       query = query.where((qb) =>
-        qb.where('username', 'like', term)
+        qb
+          .where('username', 'like', term)
           .or('email', 'like', term)
           .or('first_name', 'like', term)
           .or('last_name', 'like', term)
@@ -274,25 +255,26 @@ export class UserRepository extends BaseRepository<
 
     const [totalUsers, activeUsers, deletedUsers, recentLogins] = await Promise.all([
       // Total users
-      db.selectFrom('users')
-        .select(db.fn.count('id').as('count'))
-        .executeTakeFirst(),
+      db.selectFrom('users').select(db.fn.count('id').as('count')).executeTakeFirst(),
 
       // Active users
-      db.selectFrom('users')
+      db
+        .selectFrom('users')
         .where('is_active', '=', true)
         .where('deleted_at', 'is', null)
         .select(db.fn.count('id').as('count'))
         .executeTakeFirst(),
 
       // Deleted users
-      db.selectFrom('users')
+      db
+        .selectFrom('users')
         .where('deleted_at', 'is not', null)
         .select(db.fn.count('id').as('count'))
         .executeTakeFirst(),
 
       // Recent logins (last 7 days)
-      db.selectFrom('users')
+      db
+        .selectFrom('users')
         .where('last_login_at', '>', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))
         .select(db.fn.count('id').as('count'))
         .executeTakeFirst(),

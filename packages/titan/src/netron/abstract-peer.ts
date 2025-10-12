@@ -37,7 +37,7 @@ export abstract class AbstractPeer implements IPeer {
   constructor(
     public netron: INetron,
     public id: string
-  ) { }
+  ) {}
 
   /**
    * Sets a property value or calls a method on the remote peer.

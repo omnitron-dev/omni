@@ -3,10 +3,7 @@ import { RedisHealthIndicator } from '../../../src/modules/redis/redis.health.js
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
 import { TitanError } from '../../../src/errors/core.js';
 import Redis from 'ioredis';
-import {
-  createRedisTestHelper,
-  RedisTestHelper
-} from '../../utils/redis-test-utils.js';
+import { createRedisTestHelper, RedisTestHelper } from '../../utils/redis-test-utils.js';
 
 describe('RedisHealthIndicator', () => {
   let healthIndicator: RedisHealthIndicator;
@@ -44,8 +41,8 @@ describe('RedisHealthIndicator', () => {
           port: 6379,
           db: 14,
           lazyConnect: false,
-        }
-      ]
+        },
+      ],
     });
 
     // Initialize manager manually
@@ -81,25 +78,29 @@ describe('RedisHealthIndicator', () => {
 
     it('should throw TitanError when manager reports unhealthy', async () => {
       // Create a manager with invalid config
-      const badManager = new RedisManager({
-        clients: [{
-          namespace: 'bad',
-          host: 'invalid-host',
-          port: 6379,
-          retryStrategy: () => null,
-        }]
-      }, null as any);
+      const badManager = new RedisManager(
+        {
+          clients: [
+            {
+              namespace: 'bad',
+              host: 'invalid-host',
+              port: 6379,
+              retryStrategy: () => null,
+            },
+          ],
+        },
+        null as any
+      );
 
       const badHealthIndicator = new RedisHealthIndicator(badManager);
 
-      await expect(badHealthIndicator.isHealthy('redis', 'bad'))
-        .rejects.toThrow(TitanError);
+      await expect(badHealthIndicator.isHealthy('redis', 'bad')).rejects.toThrow(TitanError);
     });
 
     it('should include error details in TitanError', async () => {
       // Mock manager to throw error
       const errorManager = {
-        isHealthy: jest.fn().mockRejectedValue(new Error('Connection timeout'))
+        isHealthy: jest.fn().mockRejectedValue(new Error('Connection timeout')),
       } as any;
 
       const errorHealthIndicator = new RedisHealthIndicator(errorManager);
@@ -135,22 +136,25 @@ describe('RedisHealthIndicator', () => {
 
     it('should throw TitanError if any client is unhealthy', async () => {
       // Create manager with one bad client
-      const mixedManager = new RedisManager({
-        clients: [
-          {
-            namespace: 'good',
-            host: 'localhost',
-            port: 6379,
-            db: 15,
-          },
-          {
-            namespace: 'bad',
-            host: 'invalid-host',
-            port: 6379,
-            retryStrategy: () => null,
-          }
-        ]
-      }, null as any);
+      const mixedManager = new RedisManager(
+        {
+          clients: [
+            {
+              namespace: 'good',
+              host: 'localhost',
+              port: 6379,
+              db: 15,
+            },
+            {
+              namespace: 'bad',
+              host: 'invalid-host',
+              port: 6379,
+              retryStrategy: () => null,
+            },
+          ],
+        },
+        null as any
+      );
 
       const mixedHealthIndicator = new RedisHealthIndicator(mixedManager);
 
@@ -164,7 +168,7 @@ describe('RedisHealthIndicator', () => {
           good: { healthy: true, latency: 1 },
           bad1: { healthy: false, latency: -1 },
           bad2: { healthy: false, latency: -1 },
-        })
+        }),
       } as any;
 
       const mockHealthIndicator = new RedisHealthIndicator(mockManager);
@@ -204,12 +208,12 @@ describe('RedisHealthIndicator', () => {
     it('should throw TitanError when ping fails', async () => {
       // Mock manager with client that fails ping
       const mockClient = {
-        ping: jest.fn().mockRejectedValue(new Error('Network error'))
+        ping: jest.fn().mockRejectedValue(new Error('Network error')),
       };
 
       const mockManager = {
         getClient: jest.fn().mockReturnValue(mockClient),
-        ping: jest.fn().mockRejectedValue(new Error('Network error'))
+        ping: jest.fn().mockRejectedValue(new Error('Network error')),
       } as any;
 
       const mockHealthIndicator = new RedisHealthIndicator(mockManager);
@@ -219,7 +223,7 @@ describe('RedisHealthIndicator', () => {
 
     it('should throw TitanError when client not found', async () => {
       const mockManager = {
-        ping: jest.fn().mockRejectedValue(new Error('Client not found'))
+        ping: jest.fn().mockRejectedValue(new Error('Client not found')),
       } as any;
 
       const mockHealthIndicator = new RedisHealthIndicator(mockManager);
@@ -249,7 +253,7 @@ describe('RedisHealthIndicator', () => {
 
     it('should throw TitanError for disconnected client', async () => {
       const mockManager = {
-        isHealthy: jest.fn().mockResolvedValue(false)
+        isHealthy: jest.fn().mockResolvedValue(false),
       } as any;
 
       const mockHealthIndicator = new RedisHealthIndicator(mockManager);
@@ -259,7 +263,7 @@ describe('RedisHealthIndicator', () => {
 
     it('should handle cluster connections', async () => {
       const mockManager = {
-        isHealthy: jest.fn().mockResolvedValue(true)
+        isHealthy: jest.fn().mockResolvedValue(true),
       } as any;
 
       const mockHealthIndicator = new RedisHealthIndicator(mockManager);
@@ -273,7 +277,7 @@ describe('RedisHealthIndicator', () => {
 
     it('should throw when client not found', async () => {
       const mockManager = {
-        isHealthy: jest.fn().mockRejectedValue(new Error('Client not found'))
+        isHealthy: jest.fn().mockRejectedValue(new Error('Client not found')),
       } as any;
 
       const mockHealthIndicator = new RedisHealthIndicator(mockManager);
@@ -285,7 +289,7 @@ describe('RedisHealthIndicator', () => {
   describe('Error Handling', () => {
     it('should handle non-Error objects in catch', async () => {
       const mockManager = {
-        isHealthy: jest.fn().mockRejectedValue('String error')
+        isHealthy: jest.fn().mockRejectedValue('String error'),
       } as any;
 
       const mockHealthIndicator = new RedisHealthIndicator(mockManager);
@@ -305,7 +309,7 @@ describe('RedisHealthIndicator', () => {
       error.message = undefined as any;
 
       const mockManager = {
-        isHealthy: jest.fn().mockRejectedValue(error)
+        isHealthy: jest.fn().mockRejectedValue(error),
       } as any;
 
       const mockHealthIndicator = new RedisHealthIndicator(mockManager);

@@ -2,14 +2,7 @@
  * @vitest-environment happy-dom
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-} from '../../../src/primitives/Card.js';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../../../src/primitives/Card.js';
 import { renderComponent } from '../../helpers/test-utils.js';
 
 describe('Card', () => {
@@ -258,7 +251,8 @@ describe('Card', () => {
     });
 
     it('should render with long text', () => {
-      const longText = 'This is a very long description that might span multiple lines and provide detailed information about the card content';
+      const longText =
+        'This is a very long description that might span multiple lines and provide detailed information about the card content';
       const component = () => CardDescription({ children: longText });
 
       const { container } = renderComponent(component);
@@ -723,7 +717,8 @@ describe('Card', () => {
     });
 
     it('should handle very long title text', () => {
-      const longTitle = 'This is a very long title that might need to be truncated or wrapped depending on the styling applied to the card';
+      const longTitle =
+        'This is a very long title that might need to be truncated or wrapped depending on the styling applied to the card';
       const component = () => CardTitle({ children: longTitle });
 
       const { container } = renderComponent(component);

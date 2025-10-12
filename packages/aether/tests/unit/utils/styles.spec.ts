@@ -119,12 +119,7 @@ describe('Style Utilities', () => {
     });
 
     it('should filter out undefined and null objects', () => {
-      const result = mergeStyles(
-        { color: 'red' },
-        undefined,
-        { fontSize: '16px' },
-        null
-      );
+      const result = mergeStyles({ color: 'red' }, undefined, { fontSize: '16px' }, null);
 
       expect(result).toEqual({
         color: 'red',
@@ -177,7 +172,7 @@ describe('Style Utilities', () => {
       const primary = () => '#007bff';
       const result = cssVars({
         'primary-color': primary,
-        'spacing': '1rem',
+        spacing: '1rem',
       });
 
       expect(result).toEqual({
@@ -189,11 +184,7 @@ describe('Style Utilities', () => {
 
   describe('conditionalStyles', () => {
     it('should apply true styles when condition is true', () => {
-      const result = conditionalStyles(
-        true,
-        { color: 'green', fontWeight: 'bold' },
-        { color: 'gray' }
-      );
+      const result = conditionalStyles(true, { color: 'green', fontWeight: 'bold' }, { color: 'gray' });
 
       expect(result).toEqual({
         color: 'green',
@@ -202,11 +193,7 @@ describe('Style Utilities', () => {
     });
 
     it('should apply false styles when condition is false', () => {
-      const result = conditionalStyles(
-        false,
-        { color: 'green', fontWeight: 'bold' },
-        { color: 'gray' }
-      );
+      const result = conditionalStyles(false, { color: 'green', fontWeight: 'bold' }, { color: 'gray' });
 
       expect(result).toEqual({
         color: 'gray',
@@ -215,11 +202,7 @@ describe('Style Utilities', () => {
 
     it('should handle function conditions', () => {
       const isActive = () => true;
-      const result = conditionalStyles(
-        isActive,
-        { color: 'green' },
-        { color: 'gray' }
-      );
+      const result = conditionalStyles(isActive, { color: 'green' }, { color: 'gray' });
 
       expect(result).toEqual({
         color: 'green',

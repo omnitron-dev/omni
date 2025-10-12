@@ -1,9 +1,9 @@
 /**
  * DevTools Extension for Nexus DI
- * 
+ *
  * @module devtools
  * @packageDocumentation
- * 
+ *
  * Provides debugging and visualization tools for dependency injection
  */
 
@@ -29,7 +29,7 @@ export enum MessageType {
   ModuleLoaded = 'MODULE_LOADED',
   PluginInstalled = 'PLUGIN_INSTALLED',
   StateSnapshot = 'STATE_SNAPSHOT',
-  PerformanceMetrics = 'PERFORMANCE_METRICS'
+  PerformanceMetrics = 'PERFORMANCE_METRICS',
 }
 
 /**
@@ -159,8 +159,7 @@ export class DevToolsServer {
     // Check if we're in a Node.js environment
     if (typeof global !== 'undefined' && global.process) {
       try {
-        const { WebSocketServer } = (await import('ws'));
-
+        const { WebSocketServer } = await import('ws');
 
         this.server = new WebSocketServer({ port: this.port, host: this.host });
         this.running = true;
@@ -169,7 +168,7 @@ export class DevToolsServer {
           this.connections.add(ws);
 
           // Send queued messages
-          this.messageQueue.forEach(msg => {
+          this.messageQueue.forEach((msg) => {
             ws.send(JSON.stringify(msg));
           });
 
@@ -199,7 +198,7 @@ export class DevToolsServer {
    */
   async stop(): Promise<void> {
     if (this.server) {
-      this.connections.forEach(ws => {
+      this.connections.forEach((ws) => {
         if (ws && typeof ws.close === 'function') {
           ws.close();
         }
@@ -250,11 +249,13 @@ export class DevToolsServer {
 
           // Send response for snapshot request
           if (message.type === 'request-snapshot' && client.send) {
-            client.send(JSON.stringify({
-              type: 'snapshot',
-              id: message.id,
-              data: { snapshot: {} }
-            }));
+            client.send(
+              JSON.stringify({
+                type: 'snapshot',
+                id: message.id,
+                data: { snapshot: {} },
+              })
+            );
           }
         } catch (error) {
           console.error('Failed to parse message:', error);
@@ -270,10 +271,10 @@ export class DevToolsServer {
     const serialized = JSON.stringify(message);
 
     if (this.connections.size > 0) {
-      this.connections.forEach(ws => {
+      this.connections.forEach((ws) => {
         // For real WebSocket connections, check readyState
         // For mock connections (testing), just call send if it exists
-        if ((ws.readyState === 1) || (typeof ws.readyState === 'undefined' && typeof ws.send === 'function')) {
+        if (ws.readyState === 1 || (typeof ws.readyState === 'undefined' && typeof ws.send === 'function')) {
           ws.send(serialized);
         }
       });
@@ -325,12 +326,7 @@ export class DevToolsPlugin implements Plugin {
   private events: Array<{ type: string; timestamp: number; data: any }> = [];
   private currentContainer?: Container;
 
-  constructor(config?: {
-    port?: number;
-    autoStart?: boolean;
-    enabled?: boolean;
-    server?: DevToolsServer;
-  }) {
+  constructor(config?: { port?: number; autoStart?: boolean; enabled?: boolean; server?: DevToolsServer }) {
     this.server = config?.server || new DevToolsServer(config?.port);
     this.enabled = config?.enabled !== false;
 
@@ -355,7 +351,7 @@ export class DevToolsPlugin implements Plugin {
       type: MessageType.ContainerCreated,
       timestamp: Date.now(),
       containerId,
-      data: { id: containerId }
+      data: { id: containerId },
     });
 
     // Install hooks
@@ -393,7 +389,7 @@ export class DevToolsPlugin implements Plugin {
       instances: [],
       scopes: [],
       modules: [],
-      plugins: []
+      plugins: [],
     };
 
     // Get registrations (excluding DevTools itself)
@@ -409,7 +405,7 @@ export class DevToolsPlugin implements Plugin {
           token: tokenName,
           provider: this.getProviderType(registration.provider),
           scope: registration.scope,
-          metadata: registration.metadata || {}
+          metadata: registration.metadata || {},
         });
       });
     }
@@ -422,7 +418,7 @@ export class DevToolsPlugin implements Plugin {
           token: this.getTokenName(token),
           created: true,
           createdAt: Date.now(),
-          disposed: false
+          disposed: false,
         });
       });
     }
@@ -442,14 +438,14 @@ export class DevToolsPlugin implements Plugin {
     lines.push('  node [shape=box];');
 
     // Add nodes
-    graph.nodes.forEach(node => {
+    graph.nodes.forEach((node) => {
       const color = node.instanceCreated ? 'lightgreen' : 'lightgray';
       const label = `${node.token}\\n${node.scope}\\n(${node.resolutionCount} resolutions)`;
       lines.push(`  "${node.id}" [label="${label}", fillcolor="${color}", style="filled"];`);
     });
 
     // Add edges
-    graph.edges.forEach(edge => {
+    graph.edges.forEach((edge) => {
       const style = edge.type === 'parent' ? 'dashed' : 'solid';
       lines.push(`  "${edge.from}" -> "${edge.to}" [style="${style}"];`);
     });
@@ -468,14 +464,14 @@ export class DevToolsPlugin implements Plugin {
     const lines: string[] = ['graph TD'];
 
     // Add nodes
-    graph.nodes.forEach(node => {
+    graph.nodes.forEach((node) => {
       const shape = node.scope === Scope.Singleton ? '((' : '([';
       const endShape = node.scope === Scope.Singleton ? '))' : '])';
       lines.push(`  ${node.id}${shape}${node.token}${endShape}`);
     });
 
     // Add edges
-    graph.edges.forEach(edge => {
+    graph.edges.forEach((edge) => {
       const arrow = edge.type === 'parent' ? '-..->' : '-->';
       lines.push(`  ${edge.from} ${arrow} ${edge.to}`);
     });
@@ -488,18 +484,20 @@ export class DevToolsPlugin implements Plugin {
    */
   exportTelemetry(containerId: string): any {
     const graph = this.graphs.get(containerId);
-    const exportableGraph = graph ? {
-      nodes: Array.from(graph.nodes.values()).map(node => ({
-        id: node.id,
-        label: node.token
-      })),
-      edges: graph.edges
-    } : undefined;
+    const exportableGraph = graph
+      ? {
+          nodes: Array.from(graph.nodes.values()).map((node) => ({
+            id: node.id,
+            label: node.token,
+          })),
+          edges: graph.edges,
+        }
+      : undefined;
 
     return {
       graph: exportableGraph,
       metrics: this.metrics.get(containerId),
-      snapshot: this.getSnapshot(containerId)
+      snapshot: this.getSnapshot(containerId),
     };
   }
 
@@ -523,7 +521,7 @@ export class DevToolsPlugin implements Plugin {
       this.events.push({
         type: 'register',
         timestamp: Date.now(),
-        data: { token: this.getTokenName(token) }
+        data: { token: this.getTokenName(token) },
       });
 
       const nodeId = this.getNodeId(token);
@@ -537,7 +535,7 @@ export class DevToolsPlugin implements Plugin {
           dependents: [],
           metadata: {},
           instanceCreated: false,
-          resolutionCount: 0
+          resolutionCount: 0,
         });
       }
 
@@ -558,13 +556,13 @@ export class DevToolsPlugin implements Plugin {
               dependents: [],
               metadata: {},
               instanceCreated: false,
-              resolutionCount: 0
+              resolutionCount: 0,
             });
           }
 
           // Add edge from token to dependency
           const edge = { from: fromNodeId, to: toNodeId, type: 'dependency' as const };
-          if (!graph.edges.some(e => e.from === edge.from && e.to === edge.to)) {
+          if (!graph.edges.some((e) => e.from === edge.from && e.to === edge.to)) {
             graph.edges.push(edge);
           }
 
@@ -587,8 +585,8 @@ export class DevToolsPlugin implements Plugin {
         containerId,
         data: {
           token: this.getTokenName(token),
-          provider: provider ? this.getProviderType(provider) : 'unknown'
-        }
+          provider: provider ? this.getProviderType(provider) : 'unknown',
+        },
       });
     });
 
@@ -603,7 +601,7 @@ export class DevToolsPlugin implements Plugin {
       this.events.push({
         type: 'resolve',
         timestamp: Date.now(),
-        data: { token: this.getTokenName(token) }
+        data: { token: this.getTokenName(token) },
       });
 
       const startTime = Date.now();
@@ -615,8 +613,8 @@ export class DevToolsPlugin implements Plugin {
         containerId,
         data: {
           token: this.getTokenName(token),
-          context: this.serializeContext(context)
-        }
+          context: this.serializeContext(context),
+        },
       });
     });
 
@@ -656,11 +654,12 @@ export class DevToolsPlugin implements Plugin {
       metrics.averageResolutionTime = times.reduce((a, b) => a + b, 0) / times.length;
 
       // Track slowest
-      if (duration > 10) { // More than 10ms is considered slow
+      if (duration > 10) {
+        // More than 10ms is considered slow
         metrics.slowestResolutions.push({
           token: this.getTokenName(token),
           time: duration,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         });
         metrics.slowestResolutions.sort((a, b) => b.time - a.time);
         metrics.slowestResolutions = metrics.slowestResolutions.slice(0, 10);
@@ -673,8 +672,8 @@ export class DevToolsPlugin implements Plugin {
         data: {
           token: this.getTokenName(token),
           duration,
-          instance: this.serializeInstance(instance)
-        }
+          instance: this.serializeInstance(instance),
+        },
       });
     });
 
@@ -695,10 +694,10 @@ export class DevToolsPlugin implements Plugin {
           error: {
             name: error.name,
             message: error.message,
-            stack: error.stack
+            stack: error.stack,
           },
-          context: context ? this.serializeContext(context) : {}
-        }
+          context: context ? this.serializeContext(context) : {},
+        },
       });
     });
 
@@ -708,7 +707,7 @@ export class DevToolsPlugin implements Plugin {
         type: MessageType.ContainerDisposed,
         timestamp: Date.now(),
         containerId,
-        data: { id: containerId }
+        data: { id: containerId },
       });
 
       // Clean up
@@ -725,8 +724,8 @@ export class DevToolsPlugin implements Plugin {
         timestamp: Date.now(),
         containerId,
         data: {
-          moduleName: data.metadata?.moduleName || 'unknown'
-        }
+          moduleName: data.metadata?.moduleName || 'unknown',
+        },
       });
     });
 
@@ -737,8 +736,8 @@ export class DevToolsPlugin implements Plugin {
         timestamp: Date.now(),
         containerId,
         data: {
-          pluginName: data.metadata?.pluginName || 'unknown'
-        }
+          pluginName: data.metadata?.pluginName || 'unknown',
+        },
       });
     });
 
@@ -795,7 +794,7 @@ export class DevToolsPlugin implements Plugin {
   private serializeContext(context: ResolutionContext): any {
     return {
       scope: context.scope,
-      parentExists: !!context.parent
+      parentExists: !!context.parent,
     };
   }
 
@@ -807,7 +806,7 @@ export class DevToolsPlugin implements Plugin {
       return {
         type: 'function',
         name: instance.name || 'anonymous',
-        length: instance.length
+        length: instance.length,
       };
     }
 
@@ -815,15 +814,13 @@ export class DevToolsPlugin implements Plugin {
       return {
         type: 'object',
         constructor: instance.constructor?.name || 'Object',
-        keys: Object.keys(instance).slice(0, 10)
+        keys: Object.keys(instance).slice(0, 10),
       };
     }
 
     return {
       type,
-      value: type === 'string' && instance.length > 100
-        ? instance.substring(0, 100) + '...'
-        : instance
+      value: type === 'string' && instance.length > 100 ? instance.substring(0, 100) + '...' : instance,
     };
   }
 
@@ -832,7 +829,7 @@ export class DevToolsPlugin implements Plugin {
       nodes: new Map(),
       edges: [],
       roots: [],
-      leaves: []
+      leaves: [],
     };
   }
 
@@ -844,10 +841,10 @@ export class DevToolsPlugin implements Plugin {
       memoryUsage: {
         heapUsed: 0,
         heapTotal: 0,
-        external: 0
+        external: 0,
       },
       cacheHitRate: 0,
-      errorRate: 0
+      errorRate: 0,
     };
   }
 
@@ -885,22 +882,24 @@ export class DevToolsPlugin implements Plugin {
     if (!this.currentContainer) {
       return {
         timestamp: Date.now(),
-        registrations: []
+        registrations: [],
       };
     }
 
     const containerId = (this.currentContainer as any).__devtools_id;
-    return this.getSnapshot(containerId) || {
-      timestamp: Date.now(),
-      registrations: []
-    };
+    return (
+      this.getSnapshot(containerId) || {
+        timestamp: Date.now(),
+        registrations: [],
+      }
+    );
   }
 
   getDependencyGraph(): DependencyGraph {
     if (!this.currentContainer) {
       return {
         nodes: [],
-        edges: []
+        edges: [],
       };
     }
 
@@ -910,21 +909,21 @@ export class DevToolsPlugin implements Plugin {
     if (!graph) {
       return {
         nodes: [],
-        edges: []
+        edges: [],
       };
     }
 
     // Convert Map to Array for compatibility with tests, excluding DevTools itself
     const nodes = Array.from(graph.nodes.values())
-      .filter(node => node.token !== 'DevTools')
-      .map(node => ({
+      .filter((node) => node.token !== 'DevTools')
+      .map((node) => ({
         id: node.id,
-        label: node.token
+        label: node.token,
       }));
 
     return {
       nodes,
-      edges: graph.edges
+      edges: graph.edges,
     };
   }
 
@@ -933,12 +932,12 @@ export class DevToolsPlugin implements Plugin {
       const usage = process.memoryUsage();
       return {
         heapUsed: usage.heapUsed,
-        heapTotal: usage.heapTotal
+        heapTotal: usage.heapTotal,
       };
     }
     return {
       heapUsed: 0,
-      heapTotal: 0
+      heapTotal: 0,
     };
   }
 
@@ -1031,7 +1030,7 @@ export class DevToolsExtension {
   private handleMessage(message: DevToolsMessage): void {
     const listeners = this.listeners.get(message.type);
     if (listeners) {
-      listeners.forEach(callback => callback(message.data));
+      listeners.forEach((callback) => callback(message.data));
     }
   }
 }
@@ -1086,7 +1085,7 @@ export function exportToDot(graph: DependencyGraph): string {
   lines.push('  node [shape=box];');
 
   // Add nodes
-  graph.nodes.forEach(node => {
+  graph.nodes.forEach((node) => {
     const label = node.label || node.id;
     // Only quote node IDs if they contain special characters
     const nodeId = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(node.id) ? node.id : `"${node.id}"`;
@@ -1094,7 +1093,7 @@ export function exportToDot(graph: DependencyGraph): string {
   });
 
   // Add edges
-  graph.edges.forEach(edge => {
+  graph.edges.forEach((edge) => {
     // Only quote node IDs if they contain special characters
     const fromId = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(edge.from) ? edge.from : `"${edge.from}"`;
     const toId = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(edge.to) ? edge.to : `"${edge.to}"`;
@@ -1109,7 +1108,7 @@ export function exportToMermaid(graph: DependencyGraph): string {
   const lines: string[] = ['graph TD'];
 
   // Add nodes
-  graph.nodes.forEach(node => {
+  graph.nodes.forEach((node) => {
     const label = node.label || node.id;
     const nodeId = node.id.replace(/[^a-zA-Z0-9]/g, ''); // Sanitize ID for Mermaid
 
@@ -1118,7 +1117,7 @@ export function exportToMermaid(graph: DependencyGraph): string {
   });
 
   // Add edges
-  graph.edges.forEach(edge => {
+  graph.edges.forEach((edge) => {
     const fromId = edge.from.replace(/[^a-zA-Z0-9]/g, '');
     const toId = edge.to.replace(/[^a-zA-Z0-9]/g, '');
     lines.push(`  ${fromId} --> ${toId}`);

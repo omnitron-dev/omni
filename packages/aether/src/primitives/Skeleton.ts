@@ -76,19 +76,19 @@ export interface SkeletonProps {
  * ```
  */
 export const Skeleton = defineComponent<SkeletonProps>((props) => () => {
-    const { width, height, radius, animate = true, style, ...restProps } = props;
+  const { width, height, radius, animate = true, style, ...restProps } = props;
 
-    return jsx('div', {
-      ...restProps,
-      'data-skeleton': '',
-      'data-animate': animate ? '' : undefined,
-      'aria-busy': 'true',
-      'aria-live': 'polite',
-      style: {
-        ...style,
-        width: typeof width === 'number' ? `${width}px` : width,
-        height: typeof height === 'number' ? `${height}px` : height,
-        borderRadius: typeof radius === 'number' ? `${radius}px` : radius || '4px',
-      },
-    });
+  return jsx('div', {
+    ...restProps,
+    'data-skeleton': '',
+    'data-animate': animate ? '' : undefined,
+    'aria-busy': 'true',
+    'aria-live': 'polite',
+    style: {
+      ...style,
+      width: typeof width === 'number' ? `${width}px` : width,
+      height: typeof height === 'number' ? `${height}px` : height,
+      borderRadius: typeof radius === 'number' ? `${radius}px` : radius || '4px',
+    },
   });
+});

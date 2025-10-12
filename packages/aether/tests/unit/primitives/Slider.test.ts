@@ -675,10 +675,7 @@ describe('Slider', () => {
           max: 100,
           orientation: 'horizontal',
           defaultValue: 0,
-          children: [
-            SliderTrack({ class: 'track', children: SliderRange({}) }),
-            SliderThumb({}),
-          ],
+          children: [SliderTrack({ class: 'track', children: SliderRange({}) }), SliderThumb({})],
         });
 
       const { container } = renderComponent(component);
@@ -715,10 +712,7 @@ describe('Slider', () => {
         Slider({
           disabled: true,
           defaultValue: 50,
-          children: [
-            SliderTrack({ class: 'track', children: SliderRange({}) }),
-            SliderThumb({}),
-          ],
+          children: [SliderTrack({ class: 'track', children: SliderRange({}) }), SliderThumb({})],
         });
 
       const { container } = renderComponent(component);
@@ -772,10 +766,7 @@ describe('Slider', () => {
           min: 0,
           max: 100,
           defaultValue: [30, 70],
-          children: [
-            SliderThumb({ index: 0, class: 'thumb-0' }),
-            SliderThumb({ index: 1, class: 'thumb-1' }),
-          ],
+          children: [SliderThumb({ index: 0, class: 'thumb-0' }), SliderThumb({ index: 1, class: 'thumb-1' })],
         });
 
       const { container } = renderComponent(component);
@@ -814,10 +805,7 @@ describe('Slider', () => {
       const component = () =>
         Slider({
           defaultValue: [30, 70],
-          children: [
-            SliderThumb({ index: 0, class: 'thumb-0' }),
-            SliderThumb({ index: 1, class: 'thumb-1' }),
-          ],
+          children: [SliderThumb({ index: 0, class: 'thumb-0' }), SliderThumb({ index: 1, class: 'thumb-1' })],
         });
 
       const { container } = renderComponent(component);

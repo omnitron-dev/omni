@@ -1041,8 +1041,7 @@ describe('Serializer', () => {
         buf.writeUInt32BE(obj.data / 2);
       };
 
-      const mytypeDecode = (data: SmartBuffer): MyType =>
-        new MyType(data.readUInt32BE()! + data.readUInt32BE()!);
+      const mytypeDecode = (data: SmartBuffer): MyType => new MyType(data.readUInt32BE()! + data.readUInt32BE()!);
 
       customSerializer.register(0x44, MyType, mytypeEncode, mytypeDecode);
 
@@ -1144,8 +1143,7 @@ describe('Serializer', () => {
         buf.writeUInt32BE(obj.data / 2);
       };
 
-      const mytypeDecode = (data: SmartBuffer): MyType =>
-        new MyType(data.readUInt32BE()! + data.readUInt32BE()!);
+      const mytypeDecode = (data: SmartBuffer): MyType => new MyType(data.readUInt32BE()! + data.readUInt32BE()!);
 
       customSerializer.register(0x44, MyType, mytypeEncode, mytypeDecode);
 
@@ -1215,7 +1213,7 @@ describe('Serializer', () => {
   });
 
   it('should not encode a function inside a map', () => {
-    const noop = () => { };
+    const noop = () => {};
 
     const toEncode = {
       hello: 'world',

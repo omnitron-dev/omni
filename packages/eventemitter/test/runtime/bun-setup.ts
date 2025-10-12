@@ -3,7 +3,7 @@
  * Sets up Jest compatibility for Bun runtime
  */
 
-import { describe, test, expect, mock, beforeEach, afterEach, beforeAll, afterAll } from "bun:test";
+import { describe, test, expect, mock, beforeEach, afterEach, beforeAll, afterAll } from 'bun:test';
 
 // Setup global test functions for Jest compatibility
 (global as any).describe = describe;
@@ -33,7 +33,7 @@ const timerUtils = {
   },
   clearAllTimers() {
     // Can't clear all timers in Bun
-  }
+  },
 };
 
 // Setup Jest mock functions
@@ -44,7 +44,7 @@ const jestMock = {
   advanceTimersByTime: (ms: number) => timerUtils.advanceTimersByTime(ms),
   runAllTimers: () => timerUtils.runAllTimers(),
   clearAllTimers: () => timerUtils.clearAllTimers(),
-  now: () => Date.now()
+  now: () => Date.now(),
 };
 
 (global as any).jest = jestMock;
@@ -57,10 +57,11 @@ if (!originalExpect.toBeInstanceOf) {
       const pass = received instanceof constructor;
       return {
         pass,
-        message: () => pass
-          ? `expected ${received} not to be instance of ${constructor.name}`
-          : `expected ${received} to be instance of ${constructor.name}`
+        message: () =>
+          pass
+            ? `expected ${received} not to be instance of ${constructor.name}`
+            : `expected ${received} to be instance of ${constructor.name}`,
       };
-    }
+    },
   });
 }

@@ -130,7 +130,7 @@ export enum ServiceStatus {
   IDLE = 'idle',
   RUNNING = 'running',
   ERROR = 'error',
-  STOPPED = 'stopped'
+  STOPPED = 'stopped',
 }
 
 /**

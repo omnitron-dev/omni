@@ -82,53 +82,53 @@ export interface SimpleGridProps {
  * ```
  */
 export const SimpleGrid = defineComponent<SimpleGridProps>((props) => () => {
-    const {
-      columns,
-      minChildWidth,
-      spacing,
-      spacingX,
-      spacingY,
-      behavior,
-      children,
-      class: className,
-      style,
-      ...restProps
-    } = props;
+  const {
+    columns,
+    minChildWidth,
+    spacing,
+    spacingX,
+    spacingY,
+    behavior,
+    children,
+    class: className,
+    style,
+    ...restProps
+  } = props;
 
-    const behaviorType = behavior ?? 'fill';
+  const behaviorType = behavior ?? 'fill';
 
-    // Determine grid template columns
-    let templateColumns: string;
+  // Determine grid template columns
+  let templateColumns: string;
 
-    if (minChildWidth) {
-      // Auto-responsive based on min child width
-      const minWidth = typeof minChildWidth === 'number' ? `${minChildWidth}px` : minChildWidth;
-      templateColumns = `repeat(auto-${behaviorType}, minmax(${minWidth}, 1fr))`;
-    } else if (columns) {
-      // Fixed number of columns
-      templateColumns = `repeat(${columns}, 1fr)`;
-    } else {
-      // Default to single column
-      templateColumns = '1fr';
-    }
+  if (minChildWidth) {
+    // Auto-responsive based on min child width
+    const minWidth = typeof minChildWidth === 'number' ? `${minChildWidth}px` : minChildWidth;
+    templateColumns = `repeat(auto-${behaviorType}, minmax(${minWidth}, 1fr))`;
+  } else if (columns) {
+    // Fixed number of columns
+    templateColumns = `repeat(${columns}, 1fr)`;
+  } else {
+    // Default to single column
+    templateColumns = '1fr';
+  }
 
-    // Handle spacing
-    const gap = spacing !== undefined ? (typeof spacing === 'number' ? `${spacing}px` : spacing) : undefined;
-    const columnGap = spacingX !== undefined ? (typeof spacingX === 'number' ? `${spacingX}px` : spacingX) : gap;
-    const rowGap = spacingY !== undefined ? (typeof spacingY === 'number' ? `${spacingY}px` : spacingY) : gap;
+  // Handle spacing
+  const gap = spacing !== undefined ? (typeof spacing === 'number' ? `${spacing}px` : spacing) : undefined;
+  const columnGap = spacingX !== undefined ? (typeof spacingX === 'number' ? `${spacingX}px` : spacingX) : gap;
+  const rowGap = spacingY !== undefined ? (typeof spacingY === 'number' ? `${spacingY}px` : spacingY) : gap;
 
-    const gridStyles: Record<string, any> = {
-      display: 'grid',
-      gridTemplateColumns: templateColumns,
-      ...(columnGap && { columnGap }),
-      ...(rowGap && { rowGap }),
-      ...style,
-    };
+  const gridStyles: Record<string, any> = {
+    display: 'grid',
+    gridTemplateColumns: templateColumns,
+    ...(columnGap && { columnGap }),
+    ...(rowGap && { rowGap }),
+    ...style,
+  };
 
-    return jsx('div', {
-      class: className,
-      style: gridStyles,
-      ...restProps,
-      children,
-    });
+  return jsx('div', {
+    class: className,
+    style: gridStyles,
+    ...restProps,
+    children,
   });
+});

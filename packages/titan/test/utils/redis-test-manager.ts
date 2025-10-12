@@ -173,7 +173,7 @@ export class RedisTestManager {
   private async findAvailablePort(): Promise<number> {
     for (let i = 0; i < this.maxRetries; i++) {
       const port = this.basePort + Math.floor(Math.random() * 1000);
-      if (!this.usedPorts.has(port) && await this.isPortAvailable(port)) {
+      if (!this.usedPorts.has(port) && (await this.isPortAvailable(port))) {
         this.usedPorts.add(port);
         return port;
       }
@@ -222,7 +222,7 @@ export class RedisTestManager {
     try {
       execSync(startCmd, {
         env,
-        stdio: this.verbose ? 'inherit' : 'ignore'
+        stdio: this.verbose ? 'inherit' : 'ignore',
       });
     } catch (error) {
       throw new Error(`Failed to start Redis container: ${error}`);
@@ -253,7 +253,7 @@ export class RedisTestManager {
         try {
           execSync(stopCmd, {
             env,
-            stdio: this.verbose ? 'inherit' : 'ignore'
+            stdio: this.verbose ? 'inherit' : 'ignore',
           });
         } catch (error) {
           console.warn(`Failed to stop container ${id}: ${error}`);
@@ -262,7 +262,7 @@ export class RedisTestManager {
         // Remove from tracking
         this.containers.delete(id);
         this.usedPorts.delete(port);
-      }
+      },
     };
 
     this.containers.set(id, container);
@@ -290,7 +290,7 @@ export class RedisTestManager {
       try {
         execSync(startCmd, {
           env,
-          stdio: this.verbose ? 'inherit' : 'ignore'
+          stdio: this.verbose ? 'inherit' : 'ignore',
         });
       } catch (error) {
         // Cleanup already started nodes on failure
@@ -320,7 +320,7 @@ export class RedisTestManager {
             console.warn(`Failed to stop cluster node ${nodeId}: ${error}`);
           }
           this.usedPorts.delete(nodePort);
-        }
+        },
       };
 
       containers.push(container);
@@ -337,14 +337,14 @@ export class RedisTestManager {
 
   private async initializeCluster(containers: RedisTestContainer[]): Promise<void> {
     // Create cluster using redis-cli
-    const clusterNodes = containers.map(c => `${c.host}:${c.port}`).join(' ');
+    const clusterNodes = containers.map((c) => `${c.host}:${c.port}`).join(' ');
     const firstContainer = containers[0];
 
     try {
       const createClusterCmd = `"${this.dockerPath}" exec redis-test-${firstContainer.id} redis-cli --cluster create ${clusterNodes} --cluster-replicas 0 --cluster-yes`;
       execSync(createClusterCmd, {
         stdio: this.verbose ? 'inherit' : 'ignore',
-        timeout: 10000
+        timeout: 10000,
       });
     } catch (error) {
       if (this.verbose) {
@@ -360,12 +360,12 @@ export class RedisTestManager {
       try {
         const client = new Redis(url, {
           retryStrategy: () => null, // Don't retry during initial connection
-          lazyConnect: false
+          lazyConnect: false,
         });
         await client.ping();
         return client;
       } catch (error) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
     }
 
@@ -384,9 +384,7 @@ export class RedisTestManager {
   }
 
   async cleanupAll(): Promise<void> {
-    const cleanupPromises = Array.from(this.containers.values()).map(
-      container => container.cleanup()
-    );
+    const cleanupPromises = Array.from(this.containers.values()).map((container) => container.cleanup());
     await Promise.all(cleanupPromises);
     this.containers.clear();
     this.usedPorts.clear();
@@ -447,7 +445,7 @@ export class RedisTestManager {
     const client = new Redis(url || 'redis://localhost:6379', {
       connectTimeout: 5000,
       retryStrategy: () => null,
-      lazyConnect: false
+      lazyConnect: false,
     });
 
     await client.ping(); // Verify connection

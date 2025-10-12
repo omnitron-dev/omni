@@ -7,12 +7,7 @@
 
 import { Errors } from '../../errors/index.js';
 import type { ILogger } from '../logger/logger.types.js';
-import type {
-  IWorkflowStage,
-  IWorkflowContext,
-  IStageResult,
-  IProcessManager
-} from './types.js';
+import type { IWorkflowStage, IWorkflowContext, IStageResult, IProcessManager } from './types.js';
 import type { WorkflowHandler } from './common-types.js';
 
 import { WORKFLOW_METADATA_KEY } from './decorators.js';
@@ -45,7 +40,7 @@ export class ProcessWorkflow<T> {
       id: this.generateId(),
       stages: this.stageResults,
       state: {},
-      metadata: {}
+      metadata: {},
     };
   }
 
@@ -126,12 +121,12 @@ export class ProcessWorkflow<T> {
 
     // Group stages by level for parallel execution
     const plan: IWorkflowStage[][] = [];
-    const maxLevel = Math.max(...Array.from(dag.values()).map(n => n.level));
+    const maxLevel = Math.max(...Array.from(dag.values()).map((n) => n.level));
 
     for (let level = 0; level <= maxLevel; level++) {
       const batch = Array.from(dag.values())
-        .filter(node => node.level === level)
-        .map(node => node.stage);
+        .filter((node) => node.level === level)
+        .map((node) => node.stage);
 
       if (batch.length > 0) {
         plan.push(batch);
@@ -154,7 +149,7 @@ export class ProcessWorkflow<T> {
         stage,
         dependencies: deps,
         dependents: [],
-        level: 0
+        level: 0,
       });
     }
 
@@ -250,33 +245,25 @@ export class ProcessWorkflow<T> {
   private getDependencies(stage: IWorkflowStage): string[] {
     if (!stage.dependsOn) return [];
 
-    return Array.isArray(stage.dependsOn)
-      ? stage.dependsOn
-      : [stage.dependsOn];
+    return Array.isArray(stage.dependsOn) ? stage.dependsOn : [stage.dependsOn];
   }
 
   /**
    * Execute a batch of stages
    */
-  private async executeBatch(
-    batch: IWorkflowStage[],
-    input: any
-  ): Promise<void> {
-    const promises = batch.map(stage => this.executeStage(stage, input));
+  private async executeBatch(batch: IWorkflowStage[], input: any): Promise<void> {
+    const promises = batch.map((stage) => this.executeStage(stage, input));
     await Promise.all(promises);
   }
 
   /**
    * Execute a single stage
    */
-  private async executeStage(
-    stage: IWorkflowStage,
-    input: any
-  ): Promise<void> {
+  private async executeStage(stage: IWorkflowStage, input: any): Promise<void> {
     const result: IStageResult = {
       stage: stage.name,
       status: 'pending',
-      startTime: Date.now()
+      startTime: Date.now(),
     };
 
     this.stageResults.set(stage.name, result);
@@ -289,28 +276,19 @@ export class ProcessWorkflow<T> {
       const stageInput = this.getStageInput(stage, input);
 
       // Execute with timeout and retries
-      const output = await this.executeWithRetries(
-        stage,
-        stageInput
-      );
+      const output = await this.executeWithRetries(stage, stageInput);
 
       result.status = 'completed';
       result.result = output;
       result.endTime = Date.now();
 
-      this.logger.debug(
-        { stage: stage.name, duration: result.endTime - result.startTime! },
-        'Stage completed'
-      );
+      this.logger.debug({ stage: stage.name, duration: result.endTime - result.startTime! }, 'Stage completed');
     } catch (error) {
       result.status = 'failed';
       result.error = error as Error;
       result.endTime = Date.now();
 
-      this.logger.error(
-        { error, stage: stage.name },
-        'Stage failed'
-      );
+      this.logger.error({ error, stage: stage.name }, 'Stage failed');
 
       // Don't run compensation here, it will be handled at the workflow level
       throw error;
@@ -348,37 +326,25 @@ export class ProcessWorkflow<T> {
   /**
    * Execute stage with retries
    */
-  private async executeWithRetries(
-    stage: IWorkflowStage,
-    input: any
-  ): Promise<any> {
+  private async executeWithRetries(stage: IWorkflowStage, input: any): Promise<any> {
     const maxRetries = stage.retries || 0;
     const timeout = stage.timeout || 0;
 
     let lastError: Error | undefined;
 
     // Bind the handler to the workflow instance if it exists
-    const boundHandler = this.workflowInstance
-      ? stage.handler.bind(this.workflowInstance)
-      : stage.handler;
+    const boundHandler = this.workflowInstance ? stage.handler.bind(this.workflowInstance) : stage.handler;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         if (timeout > 0) {
-          return await this.executeWithTimeout(
-            boundHandler,
-            input,
-            timeout
-          );
+          return await this.executeWithTimeout(boundHandler, input, timeout);
         } else {
           return await boundHandler(input);
         }
       } catch (error) {
         lastError = error as Error;
-        this.logger.warn(
-          { error, stage: stage.name, attempt },
-          'Stage execution failed, retrying'
-        );
+        this.logger.warn({ error, stage: stage.name, attempt }, 'Stage execution failed, retrying');
 
         if (attempt < maxRetries) {
           await this.delay(Math.pow(2, attempt) * 1000); // Exponential backoff
@@ -392,16 +358,10 @@ export class ProcessWorkflow<T> {
   /**
    * Execute with timeout
    */
-  private async executeWithTimeout(
-    handler: WorkflowHandler,
-    input: any,
-    timeout: number
-  ): Promise<any> {
+  private async executeWithTimeout(handler: WorkflowHandler, input: any, timeout: number): Promise<any> {
     return Promise.race([
       handler(input),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(Errors.timeout('Stage', timeout)), timeout)
-      )
+      new Promise((_, reject) => setTimeout(() => reject(Errors.timeout('Stage', timeout)), timeout)),
     ]);
   }
 
@@ -417,15 +377,10 @@ export class ProcessWorkflow<T> {
     try {
       const stageResult = this.stageResults.get(stage.name);
       // Bind the compensation handler to the workflow instance
-      const boundCompensate = this.workflowInstance
-        ? compensate.bind(this.workflowInstance)
-        : compensate;
+      const boundCompensate = this.workflowInstance ? compensate.bind(this.workflowInstance) : compensate;
       await boundCompensate(stageResult?.result);
     } catch (error) {
-      this.logger.error(
-        { error, stage: stage.name },
-        'Compensation failed'
-      );
+      this.logger.error({ error, stage: stage.name }, 'Compensation failed');
     }
   }
 
@@ -477,6 +432,6 @@ export class ProcessWorkflow<T> {
    * Delay helper
    */
   private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

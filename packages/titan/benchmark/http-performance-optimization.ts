@@ -39,7 +39,7 @@ class CalculatorService {
 
 @Module({
   providers: [CalculatorService],
-  exports: [CalculatorService]
+  exports: [CalculatorService],
 })
 class BenchmarkModule {}
 
@@ -96,7 +96,7 @@ async function runBenchmark(
     minLatency: latencies[0],
     maxLatency: latencies[iterations - 1],
     p95Latency: latencies[p95Index],
-    p99Latency: latencies[p99Index]
+    p99Latency: latencies[p99Index],
   };
 }
 
@@ -119,8 +119,8 @@ function printResults(results: BenchmarkResult[]): void {
 
   // Calculate improvements
   if (results.length >= 2) {
-    const baseline = results.find(r => r.name.includes('Baseline'));
-    const optimized = results.find(r => r.name.includes('Optimized'));
+    const baseline = results.find((r) => r.name.includes('Baseline'));
+    const optimized = results.find((r) => r.name.includes('Optimized'));
 
     if (baseline && optimized) {
       const latencyImprovement = ((baseline.avgLatency - optimized.avgLatency) / baseline.avgLatency) * 100;
@@ -142,7 +142,7 @@ async function main() {
   // Create application
   const app = await Application.create(BenchmarkModule, {
     disableGracefulShutdown: true,
-    disableCoreModules: true
+    disableCoreModules: true,
   });
 
   await app.start();
@@ -184,7 +184,7 @@ async function main() {
   const errorService = {
     throwError: () => {
       throw new Error('Test error');
-    }
+    },
   };
 
   let errorCount = 0;
@@ -239,7 +239,7 @@ async function main() {
         calculator.multiply(13, 14),
         calculator.multiply(15, 16),
         calculator.add(17, 18),
-        calculator.add(19, 20)
+        calculator.add(19, 20),
       ]);
     },
     100

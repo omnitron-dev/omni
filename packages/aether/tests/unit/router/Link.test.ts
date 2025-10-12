@@ -14,12 +14,7 @@ describe('Link Component', () => {
     // Create a memory router for testing
     router = createRouter({
       mode: 'memory',
-      routes: [
-        { path: '/' },
-        { path: '/about' },
-        { path: '/users/:id' },
-        { path: '/blog' },
-      ],
+      routes: [{ path: '/' }, { path: '/about' }, { path: '/users/:id' }, { path: '/blog' }],
     });
 
     setRouter(router);
@@ -75,9 +70,12 @@ describe('Link Component', () => {
       link.dispatchEvent(event);
 
       expect(event.defaultPrevented).toBe(true);
-      expect(navigateSpy).toHaveBeenCalledWith('/about', expect.objectContaining({
-        scroll: true,
-      }));
+      expect(navigateSpy).toHaveBeenCalledWith(
+        '/about',
+        expect.objectContaining({
+          scroll: true,
+        })
+      );
     });
 
     it('should use replace option', () => {
@@ -88,9 +86,12 @@ describe('Link Component', () => {
       const event = new MouseEvent('click', { bubbles: true, cancelable: true });
       link.dispatchEvent(event);
 
-      expect(navigateSpy).toHaveBeenCalledWith('/about', expect.objectContaining({
-        replace: true,
-      }));
+      expect(navigateSpy).toHaveBeenCalledWith(
+        '/about',
+        expect.objectContaining({
+          replace: true,
+        })
+      );
     });
 
     it('should pass state on navigation', () => {
@@ -102,9 +103,12 @@ describe('Link Component', () => {
       const event = new MouseEvent('click', { bubbles: true, cancelable: true });
       link.dispatchEvent(event);
 
-      expect(navigateSpy).toHaveBeenCalledWith('/about', expect.objectContaining({
-        state,
-      }));
+      expect(navigateSpy).toHaveBeenCalledWith(
+        '/about',
+        expect.objectContaining({
+          state,
+        })
+      );
     });
 
     it('should disable scroll if scroll=false', () => {
@@ -115,9 +119,12 @@ describe('Link Component', () => {
       const event = new MouseEvent('click', { bubbles: true, cancelable: true });
       link.dispatchEvent(event);
 
-      expect(navigateSpy).toHaveBeenCalledWith('/about', expect.objectContaining({
-        scroll: false,
-      }));
+      expect(navigateSpy).toHaveBeenCalledWith(
+        '/about',
+        expect.objectContaining({
+          scroll: false,
+        })
+      );
     });
   });
 

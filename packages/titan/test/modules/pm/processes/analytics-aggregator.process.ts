@@ -25,7 +25,7 @@ export default class AnalyticsAggregatorService {
     totalEvents: 0,
     eventsByType: {},
     uniqueUsers: new Set(),
-    timeWindow: { start: Date.now(), end: Date.now() }
+    timeWindow: { start: Date.now(), end: Date.now() },
   };
 
   @Public()
@@ -41,7 +41,7 @@ export default class AnalyticsAggregatorService {
       if (this.stats.totalEvents % 10 === 0) {
         yield {
           ...this.stats,
-          uniqueUsers: new Set(this.stats.uniqueUsers) // Clone set
+          uniqueUsers: new Set(this.stats.uniqueUsers), // Clone set
         };
       }
     }
@@ -56,7 +56,7 @@ export default class AnalyticsAggregatorService {
       totalEvents: this.stats.totalEvents,
       eventsByType: { ...this.stats.eventsByType },
       uniqueUserCount: this.stats.uniqueUsers.size,
-      timeWindow: { ...this.stats.timeWindow }
+      timeWindow: { ...this.stats.timeWindow },
     };
   }
 
@@ -66,7 +66,7 @@ export default class AnalyticsAggregatorService {
       totalEvents: 0,
       eventsByType: {},
       uniqueUsers: new Set(),
-      timeWindow: { start: Date.now(), end: Date.now() }
+      timeWindow: { start: Date.now(), end: Date.now() },
     };
   }
 }

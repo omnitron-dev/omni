@@ -6,12 +6,7 @@
 
 import { readdirSync } from 'fs';
 import { join, resolve } from 'path';
-import type {
-  IMigration,
-  MigrationMetadata,
-  IMigrationProvider,
-  MigrationConfig,
-} from './migration.types.js';
+import type { IMigration, MigrationMetadata, IMigrationProvider, MigrationConfig } from './migration.types.js';
 import { getMigrationMetadata, isMigration } from '../database.decorators.js';
 
 export class MigrationProvider implements IMigrationProvider {
@@ -50,9 +45,7 @@ export class MigrationProvider implements IMigrationProvider {
    */
   async getAllMetadata(): Promise<MigrationMetadata[]> {
     await this.loadMigrations();
-    return Array.from(this.metadata.values()).sort((a, b) =>
-      a.version.localeCompare(b.version)
-    );
+    return Array.from(this.metadata.values()).sort((a, b) => a.version.localeCompare(b.version));
   }
 
   /**
@@ -101,7 +94,7 @@ export class MigrationProvider implements IMigrationProvider {
       // Filter migration files based on pattern
       const pattern = this.config.pattern || '*.migration.ts';
       const regex = this.patternToRegex(pattern);
-      const migrationFiles = files.filter(file => regex.test(file));
+      const migrationFiles = files.filter((file) => regex.test(file));
 
       for (const file of migrationFiles) {
         const filePath = join(directory, file);
@@ -149,7 +142,6 @@ export class MigrationProvider implements IMigrationProvider {
 
           this.migrations.set(version, instance);
           this.metadata.set(version, metadata);
-
         } catch (error) {
           console.error(`Error loading migration from ${file}:`, error);
         }
@@ -179,7 +171,6 @@ export class MigrationProvider implements IMigrationProvider {
 
         this.migrations.set(metadata.version, instance);
         this.metadata.set(metadata.version, metadata);
-
       } catch (error) {
         console.error(`Error loading registered migration ${target.name}:`, error);
       }
@@ -194,7 +185,6 @@ export class MigrationProvider implements IMigrationProvider {
       // In ESM environment
       const fileUrl = `file://${filePath}`;
       return await import(fileUrl);
-
     } catch (error) {
       console.error(`Error importing migration from ${filePath}:`, error);
       return null;
@@ -236,21 +226,14 @@ export class MigrationProvider implements IMigrationProvider {
    * Check if object is a valid migration
    */
   private isValidMigration(obj: any): obj is IMigration {
-    return (
-      obj &&
-      typeof obj.up === 'function' &&
-      typeof obj.down === 'function'
-    );
+    return obj && typeof obj.up === 'function' && typeof obj.down === 'function';
   }
 
   /**
    * Convert glob pattern to regex
    */
   private patternToRegex(pattern: string): RegExp {
-    const escaped = pattern
-      .replace(/\./g, '\\.')
-      .replace(/\*/g, '.*')
-      .replace(/\?/g, '.');
+    const escaped = pattern.replace(/\./g, '\\.').replace(/\*/g, '.*').replace(/\?/g, '.');
     return new RegExp(`^${escaped}$`);
   }
 
@@ -264,10 +247,10 @@ export class MigrationProvider implements IMigrationProvider {
     // V001__create_users.sql -> 001
 
     const patterns = [
-      /^(\d+)_/,                    // 001_name
-      /^(\d{8}_\d{6})_/,           // 20250103_120000_name
-      /^V(\d+)__/,                 // V001__name (Flyway style)
-      /^(\d{14})-/,                // 20250103120000-name
+      /^(\d+)_/, // 001_name
+      /^(\d{8}_\d{6})_/, // 20250103_120000_name
+      /^V(\d+)__/, // V001__name (Flyway style)
+      /^(\d{14})-/, // 20250103120000-name
     ];
 
     for (const pattern of patterns) {

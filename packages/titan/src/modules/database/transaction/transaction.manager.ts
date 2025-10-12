@@ -56,10 +56,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
   /**
    * Execute function within transaction
    */
-  async executeInTransaction<T>(
-    fn: (trx: Transaction<any>) => Promise<T>,
-    options?: TransactionOptions
-  ): Promise<T> {
+  async executeInTransaction<T>(fn: (trx: Transaction<any>) => Promise<T>, options?: TransactionOptions): Promise<T> {
     const opts = { ...this.defaultOptions, ...options };
     const propagation = opts.propagation || TransactionPropagation.REQUIRED;
 
@@ -83,18 +80,18 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
         if (currentContext) {
           return this.executeInExistingTransaction(fn, currentContext, opts);
         }
-        return fn(await this.manager.getConnection(opts.connection) as any);
+        return fn((await this.manager.getConnection(opts.connection)) as any);
 
       case TransactionPropagation.NOT_SUPPORTED:
         // Execute without transaction, suspend current
-        return fn(await this.manager.getConnection(opts.connection) as any);
+        return fn((await this.manager.getConnection(opts.connection)) as any);
 
       case TransactionPropagation.MANDATORY:
         // Must have existing transaction
         if (!currentContext) {
           throw Errors.badRequest('Invalid transaction propagation', {
             propagation,
-            message: 'Transaction required but none exists'
+            message: 'Transaction required but none exists',
           });
         }
         return this.executeInExistingTransaction(fn, currentContext, opts);
@@ -104,10 +101,10 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
         if (currentContext) {
           throw Errors.badRequest('Invalid transaction propagation', {
             propagation,
-            message: 'Transaction exists but none allowed'
+            message: 'Transaction exists but none allowed',
           });
         }
-        return fn(await this.manager.getConnection(opts.connection) as any);
+        return fn((await this.manager.getConnection(opts.connection)) as any);
 
       case TransactionPropagation.NESTED:
         // Create nested transaction with savepoint
@@ -163,33 +160,37 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
 
     try {
       // Execute with retry for deadlocks
-      const result = await this.executeWithRetry(async () => db.transaction().execute(async (trx) => {
-          // Set isolation level if specified
-          if (options.isolationLevel) {
-            await this.setTransactionIsolationLevel(trx, options.isolationLevel);
-          }
+      const result = await this.executeWithRetry(
+        async () =>
+          db.transaction().execute(async (trx) => {
+            // Set isolation level if specified
+            if (options.isolationLevel) {
+              await this.setTransactionIsolationLevel(trx, options.isolationLevel);
+            }
 
-          // Set read-only if specified
-          if (options.readOnly) {
-            await this.setTransactionReadOnly(trx, true);
-          }
+            // Set read-only if specified
+            if (options.readOnly) {
+              await this.setTransactionReadOnly(trx, true);
+            }
 
-          // Store transaction
-          this.transactions.set(transactionId, context);
-          this.connections.set(transactionId, trx);
+            // Store transaction
+            this.transactions.set(transactionId, context);
+            this.connections.set(transactionId, trx);
 
-          // Execute with timeout if specified
-          if (options.timeout) {
-            return this.executeWithTimeout(
-              () => this.storage.run(context, () => fn(trx)),
-              options.timeout,
-              transactionId
-            );
-          }
+            // Execute with timeout if specified
+            if (options.timeout) {
+              return this.executeWithTimeout(
+                () => this.storage.run(context, () => fn(trx)),
+                options.timeout,
+                transactionId
+              );
+            }
 
-          // Execute function with context
-          return this.storage.run(context, () => fn(trx));
-        }), options);
+            // Execute function with context
+            return this.storage.run(context, () => fn(trx));
+          }),
+        options
+      );
 
       // Update context state
       context.state = TransactionState.COMMITTED;
@@ -340,10 +341,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
   /**
    * Execute with retry for deadlocks
    */
-  private async executeWithRetry<T>(
-    fn: () => Promise<T>,
-    options: TransactionOptions
-  ): Promise<T> {
+  private async executeWithRetry<T>(fn: () => Promise<T>, options: TransactionOptions): Promise<T> {
     const maxAttempts = options.retryAttempts || 3;
     const retryDelay = options.retryDelay || 'exponential';
     const initialDelay = options.initialRetryDelay || 100;
@@ -367,7 +365,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
           throw Errors.conflict('Transaction deadlock detected', {
             transactionId: '',
             attempt,
-            message: `Transaction failed after ${maxAttempts} attempts due to deadlock`
+            message: `Transaction failed after ${maxAttempts} attempts due to deadlock`,
           });
         }
 
@@ -403,18 +401,11 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
   /**
    * Execute with timeout
    */
-  private async executeWithTimeout<T>(
-    fn: () => Promise<T>,
-    timeout: number,
-    transactionId: string
-  ): Promise<T> {
+  private async executeWithTimeout<T>(fn: () => Promise<T>, timeout: number, transactionId: string): Promise<T> {
     return Promise.race([
       fn(),
       new Promise<T>((_, reject) =>
-        setTimeout(
-          () => reject(Errors.timeout('transaction: ' + transactionId, timeout)),
-          timeout
-        )
+        setTimeout(() => reject(Errors.timeout('transaction: ' + transactionId, timeout)), timeout)
       ),
     ]);
   }
@@ -422,10 +413,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
   /**
    * Set transaction isolation level
    */
-  private async setTransactionIsolationLevel(
-    trx: Transaction<any>,
-    level: TransactionIsolationLevel
-  ): Promise<void> {
+  private async setTransactionIsolationLevel(trx: Transaction<any>, level: TransactionIsolationLevel): Promise<void> {
     const dialect = await this.getDialect();
 
     switch (dialect) {
@@ -447,10 +435,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
   /**
    * Set transaction as read-only
    */
-  private async setTransactionReadOnly(
-    trx: Transaction<any>,
-    readOnly: boolean
-  ): Promise<void> {
+  private async setTransactionReadOnly(trx: Transaction<any>, readOnly: boolean): Promise<void> {
     const dialect = await this.getDialect();
 
     switch (dialect) {
@@ -543,7 +528,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
    * Sleep utility
    */
   private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   // Public methods from interface

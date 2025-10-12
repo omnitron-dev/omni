@@ -55,7 +55,7 @@ describe('HttpTransportClient - Unit Tests', () => {
     it('should accept options parameter', () => {
       const client = new HttpTransportClient('http://localhost:3000', undefined, {
         timeout: 5000,
-        headers: { 'X-Custom': 'value' }
+        headers: { 'X-Custom': 'value' },
       });
       expect(client).toBeInstanceOf(HttpTransportClient);
     });
@@ -70,7 +70,7 @@ describe('HttpTransportClient - Unit Tests', () => {
         baseUrl: 'http://localhost:3000',
         connected: false,
         hasPeer: false,
-        connectionMetrics: undefined
+        connectionMetrics: undefined,
       });
     });
 
@@ -122,8 +122,8 @@ describe('HttpTransportClient - Unit Tests', () => {
           version: '2.0',
           timestamp: Date.now(),
           success: true,
-          data: 'result'
-        })
+          data: 'result',
+        }),
       });
 
       // Access private method via type casting
@@ -135,10 +135,10 @@ describe('HttpTransportClient - Unit Tests', () => {
           method: 'POST',
           headers: expect.objectContaining({
             'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'X-Netron-Version': '2.0'
+            Accept: 'application/json',
+            'X-Netron-Version': '2.0',
           }),
-          body: JSON.stringify(message)
+          body: JSON.stringify(message),
         })
       );
       expect(result.success).toBe(true);
@@ -149,8 +149,8 @@ describe('HttpTransportClient - Unit Tests', () => {
       const client = new HttpTransportClient('http://localhost:3000', undefined, {
         headers: {
           'X-Custom-Header': 'custom-value',
-          'Authorization': 'Bearer token123'
-        }
+          Authorization: 'Bearer token123',
+        },
       });
       const message = createRequestMessage('TestService', 'testMethod', [{}]);
 
@@ -162,8 +162,8 @@ describe('HttpTransportClient - Unit Tests', () => {
           version: '2.0',
           timestamp: Date.now(),
           success: true,
-          data: 'result'
-        })
+          data: 'result',
+        }),
       });
 
       await (client as any).sendRequest(message);
@@ -173,8 +173,8 @@ describe('HttpTransportClient - Unit Tests', () => {
         expect.objectContaining({
           headers: expect.objectContaining({
             'X-Custom-Header': 'custom-value',
-            'Authorization': 'Bearer token123'
-          })
+            Authorization: 'Bearer token123',
+          }),
         })
       );
     });
@@ -182,16 +182,23 @@ describe('HttpTransportClient - Unit Tests', () => {
     it('should use timeout from message hints', async () => {
       const client = new HttpTransportClient('http://localhost:3000');
       const message = createRequestMessage('TestService', 'testMethod', [{}], {
-        hints: { timeout: 5000 }
+        hints: { timeout: 5000 },
       });
 
       // Mock slow response that would timeout
-      mockFetch.mockImplementationOnce(() =>
-        new Promise((resolve) => setTimeout(() => resolve({
-          ok: true,
-          status: 200,
-          json: jest.fn().mockResolvedValue({ success: true, data: 'result' })
-        }), 100))
+      mockFetch.mockImplementationOnce(
+        () =>
+          new Promise((resolve) =>
+            setTimeout(
+              () =>
+                resolve({
+                  ok: true,
+                  status: 200,
+                  json: jest.fn().mockResolvedValue({ success: true, data: 'result' }),
+                }),
+              100
+            )
+          )
       );
 
       const result = await (client as any).sendRequest(message);
@@ -200,7 +207,7 @@ describe('HttpTransportClient - Unit Tests', () => {
 
     it('should use timeout from options when hints not provided', async () => {
       const client = new HttpTransportClient('http://localhost:3000', undefined, {
-        timeout: 10000
+        timeout: 10000,
       });
       const message = createRequestMessage('TestService', 'testMethod', [{}]);
 
@@ -212,8 +219,8 @@ describe('HttpTransportClient - Unit Tests', () => {
           version: '2.0',
           timestamp: Date.now(),
           success: true,
-          data: 'result'
-        })
+          data: 'result',
+        }),
       });
 
       const result = await (client as any).sendRequest(message);
@@ -232,8 +239,8 @@ describe('HttpTransportClient - Unit Tests', () => {
           version: '2.0',
           timestamp: Date.now(),
           success: true,
-          data: 'result'
-        })
+          data: 'result',
+        }),
       });
 
       const result = await (client as any).sendRequest(message);
@@ -248,13 +255,13 @@ describe('HttpTransportClient - Unit Tests', () => {
         version: '2.0',
         timestamp: Date.now(),
         success: true,
-        data: { result: 'test-data', count: 42 }
+        data: { result: 'test-data', count: 42 },
       };
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: jest.fn().mockResolvedValue(expectedResponse)
+        json: jest.fn().mockResolvedValue(expectedResponse),
       });
 
       const result = await (client as any).sendRequest(message);
@@ -276,9 +283,9 @@ describe('HttpTransportClient - Unit Tests', () => {
         json: jest.fn().mockResolvedValue({
           error: {
             code: 'VALIDATION_ERROR',
-            message: 'Invalid input parameters'
-          }
-        })
+            message: 'Invalid input parameters',
+          },
+        }),
       });
 
       const result = await (client as any).sendRequest(message);
@@ -298,7 +305,7 @@ describe('HttpTransportClient - Unit Tests', () => {
         status: 500,
         statusText: 'Internal Server Error',
         headers: new Map(),
-        json: jest.fn().mockRejectedValue(new Error('Not JSON'))
+        json: jest.fn().mockRejectedValue(new Error('Not JSON')),
       });
 
       const result = await (client as any).sendRequest(message);
@@ -320,7 +327,7 @@ describe('HttpTransportClient - Unit Tests', () => {
         status: 404,
         statusText: 'Not Found',
         headers: new Map(),
-        json: jest.fn().mockRejectedValue(new Error('Not JSON'))
+        json: jest.fn().mockRejectedValue(new Error('Not JSON')),
       });
 
       const result = await (client as any).sendRequest(message);
@@ -334,7 +341,7 @@ describe('HttpTransportClient - Unit Tests', () => {
     it('should handle timeout (AbortError)', async () => {
       const client = new HttpTransportClient('http://localhost:3000');
       const message = createRequestMessage('TestService', 'testMethod', [{}], {
-        hints: { timeout: 100 }
+        hints: { timeout: 100 },
       });
 
       // Simulate timeout by throwing AbortError
@@ -410,8 +417,8 @@ describe('HttpTransportClient - Unit Tests', () => {
           version: '2.0',
           timestamp: Date.now(),
           success: true,
-          data: 'result'
-        })
+          data: 'result',
+        }),
       });
 
       await (client as any).sendRequest(message);
@@ -430,7 +437,7 @@ describe('HttpTransportClient - Unit Tests', () => {
         ok: false,
         status: 500,
         statusText: 'Error',
-        json: jest.fn().mockRejectedValue(new Error('Not JSON'))
+        json: jest.fn().mockRejectedValue(new Error('Not JSON')),
       });
 
       await (client as any).sendRequest(message);
@@ -466,9 +473,9 @@ describe('HttpTransportClient - Unit Tests', () => {
           error: {
             code: 'PERMISSION_DENIED',
             message: 'User lacks required permissions',
-            details: { requiredRole: 'admin' }
-          }
-        })
+            details: { requiredRole: 'admin' },
+          },
+        }),
       });
 
       const result = await (client as any).sendRequest(message);
@@ -492,8 +499,8 @@ describe('HttpTransportClient - Unit Tests', () => {
           version: '2.0',
           timestamp: Date.now(),
           success: true,
-          data: 'result'
-        })
+          data: 'result',
+        }),
       });
 
       await (client as any).sendRequest(message);
@@ -501,7 +508,7 @@ describe('HttpTransportClient - Unit Tests', () => {
       expect(mockFetch).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
-          signal: expect.any(AbortSignal)
+          signal: expect.any(AbortSignal),
         })
       );
     });
@@ -518,27 +525,31 @@ describe('HttpTransportClient - Unit Tests', () => {
           version: '2.0',
           timestamp: Date.now(),
           success: true,
-          data: 'result'
-        })
+          data: 'result',
+        }),
       });
 
       await (client as any).sendRequest(message);
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://api.example.com:8080/netron/invoke',
-        expect.any(Object)
-      );
+      expect(mockFetch).toHaveBeenCalledWith('http://api.example.com:8080/netron/invoke', expect.any(Object));
     });
 
     it('should serialize message correctly in request body', async () => {
       const client = new HttpTransportClient('http://localhost:3000');
-      const message = createRequestMessage('TestService', 'testMethod', [{
-        complex: 'data',
-        nested: { value: 123 }
-      }], {
-        context: { traceId: 'trace-123', userId: 'user-456' },
-        hints: { timeout: 5000, priority: 'high' }
-      });
+      const message = createRequestMessage(
+        'TestService',
+        'testMethod',
+        [
+          {
+            complex: 'data',
+            nested: { value: 123 },
+          },
+        ],
+        {
+          context: { traceId: 'trace-123', userId: 'user-456' },
+          hints: { timeout: 5000, priority: 'high' },
+        }
+      );
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -548,8 +559,8 @@ describe('HttpTransportClient - Unit Tests', () => {
           version: '2.0',
           timestamp: Date.now(),
           success: true,
-          data: 'result'
-        })
+          data: 'result',
+        }),
       });
 
       await (client as any).sendRequest(message);

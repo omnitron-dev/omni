@@ -118,13 +118,13 @@ class DatabaseService implements Database {
   private connectionCount = 0;
 
   async connect(): Promise<void> {
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
     this.connected = true;
     this.connectionCount++;
   }
 
   async disconnect(): Promise<void> {
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
     this.connected = false;
   }
 
@@ -143,7 +143,7 @@ class ServiceWithDeps {
   constructor(
     @Inject(LoggerToken) private logger: Logger,
     @Inject(DatabaseToken) private database: Database
-  ) { }
+  ) {}
 
   async doWork(): Promise<string> {
     this.logger.log('Starting work');
@@ -163,9 +163,9 @@ class ServiceWithDeps {
 @Module({
   providers: [
     [ServiceAToken, { useClass: ServiceA }],
-    [LoggerToken, { useClass: LoggerService }]
+    [LoggerToken, { useClass: LoggerService }],
   ],
-  exports: [ServiceAToken, LoggerToken]
+  exports: [ServiceAToken, LoggerToken],
 })
 class ModuleA {
   initialized = false;
@@ -186,9 +186,9 @@ class ModuleA {
 @Module({
   providers: [
     [ServiceBToken, { useClass: ServiceB }],
-    [DatabaseToken, { useClass: DatabaseService }]
+    [DatabaseToken, { useClass: DatabaseService }],
   ],
-  exports: [ServiceBToken, DatabaseToken]
+  exports: [ServiceBToken, DatabaseToken],
 })
 class ModuleB {
   initialized = false;
@@ -212,11 +212,11 @@ const ServiceWithDepsToken = createToken<ServiceWithDeps>('ServiceWithDeps');
   providers: [
     [LoggerToken, { useClass: LoggerService }],
     [DatabaseToken, { useClass: DatabaseService }],
-    [ServiceWithDepsToken, { useClass: ServiceWithDeps }]
+    [ServiceWithDepsToken, { useClass: ServiceWithDeps }],
   ],
-  exports: [ServiceWithDepsToken, LoggerToken, DatabaseToken]
+  exports: [ServiceWithDepsToken, LoggerToken, DatabaseToken],
 })
-class ModuleWithDeps { }
+class ModuleWithDeps {}
 
 describe('Multiple Applications', () => {
   let appA: Application;
@@ -237,7 +237,7 @@ describe('Multiple Applications', () => {
       version: '1.0.0',
       modules: [ModuleA],
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     // Create second application
@@ -246,7 +246,7 @@ describe('Multiple Applications', () => {
       version: '2.0.0',
       modules: [ModuleB],
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     // Start both applications
@@ -283,18 +283,18 @@ describe('Multiple Applications', () => {
       name: 'config-app-a',
       config: {
         port: 3000,
-        database: 'db-a'
+        database: 'db-a',
       },
-      disableGracefulShutdown: true
+      disableGracefulShutdown: true,
     });
 
     appB = await Application.create({
       name: 'config-app-b',
       config: {
         port: 4000,
-        database: 'db-b'
+        database: 'db-b',
       },
-      disableGracefulShutdown: true
+      disableGracefulShutdown: true,
     });
 
     await appA.start();
@@ -315,13 +315,13 @@ describe('Multiple Applications', () => {
     appA = await Application.create({
       name: 'event-app-a',
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     appB = await Application.create({
       name: 'event-app-b',
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     // Add event listeners
@@ -361,27 +361,23 @@ describe('Multiple Applications', () => {
     appA = await Application.create({
       name: 'multi-app-a',
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     appB = await Application.create({
       name: 'multi-app-b',
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     appC = await Application.create({
       name: 'multi-app-c',
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     // Start all three
-    await Promise.all([
-      appA.start(),
-      appB.start(),
-      appC.start()
-    ]);
+    await Promise.all([appA.start(), appB.start(), appC.start()]);
 
     // All should be started
     expect(appA.state).toBe('started');
@@ -394,11 +390,7 @@ describe('Multiple Applications', () => {
     expect((appC as any)._config.name).toBe('multi-app-c');
 
     // Stop all three
-    await Promise.all([
-      appA.stop(),
-      appB.stop(),
-      appC.stop()
-    ]);
+    await Promise.all([appA.stop(), appB.stop(), appC.stop()]);
 
     // All should be stopped
     expect(appA.state).toBe('stopped');
@@ -412,20 +404,20 @@ describe('Multiple Applications', () => {
       name: 'config-isolation-a',
       config: {
         apiKey: 'key-a',
-        environment: 'dev'
+        environment: 'dev',
       },
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     appB = await Application.create({
       name: 'config-isolation-b',
       config: {
         apiKey: 'key-b',
-        environment: 'prod'
+        environment: 'prod',
       },
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     await appA.start();
@@ -451,18 +443,16 @@ describe('Multiple Applications', () => {
 
     // Module that includes error service
     @Module({
-      providers: [
-        [ErrorServiceToken, { useClass: ErrorService }]
-      ]
+      providers: [[ErrorServiceToken, { useClass: ErrorService }]],
     })
-    class ErrorModule { }
+    class ErrorModule {}
 
     // Create healthy app first
     appA = await Application.create({
       name: 'healthy-app',
       modules: [ModuleA],
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     await appA.start();
@@ -473,7 +463,7 @@ describe('Multiple Applications', () => {
       name: 'error-app',
       modules: [ErrorModule],
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     await appB.start();
@@ -526,18 +516,16 @@ describe('Multiple Applications', () => {
     const ResourceTrackerToken = createToken<ResourceTracker>('ResourceTracker');
 
     @Module({
-      providers: [
-        [ResourceTrackerToken, { useClass: ResourceTracker }]
-      ]
+      providers: [[ResourceTrackerToken, { useClass: ResourceTracker }]],
     })
-    class ResourceModule { }
+    class ResourceModule {}
 
     // Create app with resources
     appA = await Application.create({
       name: 'resource-app',
       modules: [ResourceModule],
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     await appA.start();
@@ -574,13 +562,13 @@ describe('Multiple Applications', () => {
         name: `concurrent-app-${i}`,
         modules: [ModuleA],
         disableGracefulShutdown: true,
-        disableCoreModules: true
+        disableCoreModules: true,
       });
       apps.push(app);
     }
 
     // Start all apps concurrently
-    await Promise.all(apps.map(app => app.start()));
+    await Promise.all(apps.map((app) => app.start()));
 
     // Verify all are started
     apps.forEach((app, i) => {
@@ -603,10 +591,10 @@ describe('Multiple Applications', () => {
     });
 
     // Stop all apps concurrently
-    await Promise.all(apps.map(app => app.stop()));
+    await Promise.all(apps.map((app) => app.stop()));
 
     // Verify all are stopped
-    apps.forEach(app => {
+    apps.forEach((app) => {
       expect(app.state).toBe('stopped');
     });
   });
@@ -614,26 +602,24 @@ describe('Multiple Applications', () => {
   it('should support module sharing patterns properly', async () => {
     // Create shared module
     @Module({
-      providers: [
-        [SharedServiceToken, { useClass: SharedService }]
-      ],
-      exports: [SharedServiceToken]
+      providers: [[SharedServiceToken, { useClass: SharedService }]],
+      exports: [SharedServiceToken],
     })
-    class SharedModule { }
+    class SharedModule {}
 
     // Create apps that use shared module pattern
     appA = await Application.create({
       name: 'shared-app-a',
       modules: [SharedModule],
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     appB = await Application.create({
       name: 'shared-app-b',
       modules: [SharedModule],
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     await appA.start();
@@ -689,31 +675,27 @@ describe('Multiple Applications', () => {
     const CounterServiceBToken = createToken<CounterServiceB>('CounterServiceB');
 
     @Module({
-      providers: [
-        [CounterServiceAToken, { useClass: CounterServiceA }]
-      ]
+      providers: [[CounterServiceAToken, { useClass: CounterServiceA }]],
     })
-    class CounterModuleA { }
+    class CounterModuleA {}
 
     @Module({
-      providers: [
-        [CounterServiceBToken, { useClass: CounterServiceB }]
-      ]
+      providers: [[CounterServiceBToken, { useClass: CounterServiceB }]],
     })
-    class CounterModuleB { }
+    class CounterModuleB {}
 
     appA = await Application.create({
       name: 'counter-app-a',
       modules: [CounterModuleA],
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     appB = await Application.create({
       name: 'counter-app-b',
       modules: [CounterModuleB],
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     // Start both apps
@@ -757,14 +739,14 @@ describe('Multiple Applications', () => {
       name: 'deps-app-a',
       modules: [ModuleWithDeps],
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     appB = await Application.create({
       name: 'deps-app-b',
       modules: [ModuleWithDeps],
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     await appA.start();
@@ -797,8 +779,8 @@ describe('Multiple Applications', () => {
 
     // Service A should have more logs than service B
     expect(logsAAfter.length).toBeGreaterThan(logsBAfter.length);
-    expect(logsAAfter.filter(l => l === 'Work completed').length).toBe(2);
-    expect(logsBAfter.filter(l => l === 'Work completed').length).toBe(1);
+    expect(logsAAfter.filter((l) => l === 'Work completed').length).toBe(2);
+    expect(logsBAfter.filter((l) => l === 'Work completed').length).toBe(1);
   });
 
   it('should handle rapid start/stop cycles', async () => {
@@ -809,7 +791,7 @@ describe('Multiple Applications', () => {
         name: `cycle-app-${i}`,
         modules: [ModuleA],
         disableGracefulShutdown: true,
-        disableCoreModules: true
+        disableCoreModules: true,
       });
 
       await appA.start();
@@ -831,13 +813,13 @@ describe('Multiple Applications', () => {
     appA = await Application.create({
       name: 'events-app-a',
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     appB = await Application.create({
       name: 'events-app-b',
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     // Custom event handlers
@@ -865,14 +847,14 @@ describe('Multiple Applications', () => {
       name: 'versioned-app',
       version: '1.0.0',
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     appB = await Application.create({
       name: 'versioned-app',
       version: '2.0.0',
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     await appA.start();
@@ -892,14 +874,14 @@ describe('Multiple Applications', () => {
       name: 'auto-discovery-a',
       autoDiscovery: false, // Disable to avoid conflicts
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     appB = await Application.create({
       name: 'auto-discovery-b',
       autoDiscovery: false, // Disable to avoid conflicts
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     await appA.start();

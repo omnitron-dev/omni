@@ -39,7 +39,7 @@ export enum ReplicationStrategy {
   ACTIVE_ACTIVE = 'active-active',
   ACTIVE_PASSIVE = 'active-passive',
   PRIMARY_BACKUP = 'primary-backup',
-  MULTI_PRIMARY = 'multi-primary'
+  MULTI_PRIMARY = 'multi-primary',
 }
 
 /**
@@ -49,7 +49,7 @@ export enum ConsistencyLevel {
   STRONG = 'strong',
   EVENTUAL = 'eventual',
   BOUNDED = 'bounded',
-  LINEARIZABLE = 'linearizable'
+  LINEARIZABLE = 'linearizable',
 }
 
 /**
@@ -59,7 +59,7 @@ export enum ConflictResolution {
   LWW = 'lww', // Last Write Wins
   CRDT = 'crdt', // Conflict-free Replicated Data Type
   CUSTOM = 'custom',
-  MANUAL = 'manual'
+  MANUAL = 'manual',
 }
 
 /**
@@ -126,7 +126,7 @@ export enum GeoRoutingStrategy {
   LEAST_LOADED = 'least-loaded',
   PREFERRED = 'preferred',
   STICKY = 'sticky',
-  WEIGHTED = 'weighted'
+  WEIGHTED = 'weighted',
 }
 
 /**
@@ -154,7 +154,7 @@ export class GlobalLoadBalancer extends EventEmitter {
    * Initialize regions
    */
   private initializeRegions(): void {
-    this.config.regions.forEach(region => {
+    this.config.regions.forEach((region) => {
       this.regions.set(region.id, region);
       this.healthStatus.set(region.id, true);
     });
@@ -175,7 +175,7 @@ export class GlobalLoadBalancer extends EventEmitter {
    * Check all regions health
    */
   private async checkAllRegions(): Promise<void> {
-    const checks = Array.from(this.regions.values()).map(async region => {
+    const checks = Array.from(this.regions.values()).map(async (region) => {
       try {
         const healthy = await this.checkRegionHealth(region);
         this.healthStatus.set(region.id, healthy);
@@ -224,26 +224,26 @@ export class GlobalLoadBalancer extends EventEmitter {
    * Select fallback region
    */
   private selectFallbackRegion(failedRegion: GeoRegion): GeoRegion | null {
-    const healthyRegions = Array.from(this.regions.values())
-      .filter(r => r.id !== failedRegion.id && this.healthStatus.get(r.id));
+    const healthyRegions = Array.from(this.regions.values()).filter(
+      (r) => r.id !== failedRegion.id && this.healthStatus.get(r.id)
+    );
 
     if (healthyRegions.length === 0) return null;
 
     // Select based on capacity and latency
-    return healthyRegions.sort((a, b) => {
-      const latencyA = this.getLatency(failedRegion.id, a.id);
-      const latencyB = this.getLatency(failedRegion.id, b.id);
-      return latencyA - latencyB;
-    })[0] || null;
+    return (
+      healthyRegions.sort((a, b) => {
+        const latencyA = this.getLatency(failedRegion.id, a.id);
+        const latencyB = this.getLatency(failedRegion.id, b.id);
+        return latencyA - latencyB;
+      })[0] || null
+    );
   }
 
   /**
    * Route request to optimal region
    */
-  async route<T>(
-    serviceName: string,
-    context: GeoRequestContext = {}
-  ): Promise<ServiceProxy<T>> {
+  async route<T>(serviceName: string, context: GeoRequestContext = {}): Promise<ServiceProxy<T>> {
     const region = this.selectRegion(context);
     const regionServices = this.services.get(region.id);
 
@@ -265,8 +265,7 @@ export class GlobalLoadBalancer extends EventEmitter {
    */
   private selectRegion(context: GeoRequestContext): GeoRegion {
     const strategy = this.config.strategy || GeoRoutingStrategy.NEAREST;
-    const healthyRegions = Array.from(this.regions.values())
-      .filter(r => r.active && this.healthStatus.get(r.id));
+    const healthyRegions = Array.from(this.regions.values()).filter((r) => r.active && this.healthStatus.get(r.id));
 
     if (healthyRegions.length === 0) {
       throw Errors.notFound('No healthy regions available');
@@ -334,7 +333,7 @@ export class GlobalLoadBalancer extends EventEmitter {
   private selectPreferredRegion(regions: GeoRegion[], context: GeoRequestContext): GeoRegion {
     if (context.preferredRegions && context.preferredRegions.length > 0) {
       for (const preferred of context.preferredRegions) {
-        const region = regions.find(r => r.id === preferred);
+        const region = regions.find((r) => r.id === preferred);
         if (region) return region;
       }
     }
@@ -350,8 +349,10 @@ export class GlobalLoadBalancer extends EventEmitter {
     const dLon = this.toRad(loc2.longitude - loc1.longitude);
     const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.toRad(loc1.latitude)) * Math.cos(this.toRad(loc2.latitude)) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      Math.cos(this.toRad(loc1.latitude)) *
+        Math.cos(this.toRad(loc2.latitude)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   }
@@ -384,11 +385,7 @@ export class GlobalLoadBalancer extends EventEmitter {
   /**
    * Register service in region
    */
-  registerService<T>(
-    regionId: string,
-    serviceName: string,
-    service: ServiceProxy<T>
-  ): void {
+  registerService<T>(regionId: string, serviceName: string, service: ServiceProxy<T>): void {
     if (!this.services.has(regionId)) {
       this.services.set(regionId, new Map());
     }
@@ -408,7 +405,7 @@ export class GlobalLoadBalancer extends EventEmitter {
       healthy: this.healthStatus.get(regionId),
       services: this.services.get(regionId)?.size || 0,
       capacity: region.capacity,
-      location: region.location
+      location: region.location,
     };
   }
 }
@@ -559,10 +556,10 @@ export class RaftConsensus extends EventEmitter {
     this.emit('election:started', { term: this.currentTerm });
 
     // Request votes from peers
-    const votePromises = this.peers.map(peer => this.requestVote(peer));
+    const votePromises = this.peers.map((peer) => this.requestVote(peer));
 
-    Promise.all(votePromises).then(results => {
-      votes += results.filter(r => r).length;
+    Promise.all(votePromises).then((results) => {
+      votes += results.filter((r) => r).length;
 
       if (votes > Math.floor((this.peers.length + 1) / 2)) {
         this.becomeLeader();
@@ -596,7 +593,7 @@ export class RaftConsensus extends EventEmitter {
   private sendHeartbeats(): void {
     if (this.state !== 'leader') return;
 
-    this.peers.forEach(peer => this.sendHeartbeat(peer));
+    this.peers.forEach((peer) => this.sendHeartbeat(peer));
 
     setTimeout(() => this.sendHeartbeats(), 50);
   }
@@ -620,10 +617,10 @@ export class RaftConsensus extends EventEmitter {
     this.log.push(entry);
 
     // Replicate to majority of nodes
-    const replicationPromises = this.peers.map(peer => this.replicateToPeer(peer, entry));
+    const replicationPromises = this.peers.map((peer) => this.replicateToPeer(peer, entry));
     const results = await Promise.all(replicationPromises);
 
-    const successCount = results.filter(r => r).length + 1; // +1 for self
+    const successCount = results.filter((r) => r).length + 1; // +1 for self
     if (successCount > Math.floor((this.peers.length + 1) / 2)) {
       this.commitIndex = this.log.length - 1;
       this.emit('entry:committed', entry);

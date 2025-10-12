@@ -27,7 +27,7 @@ export {
   CONFIG_WATCHER_SERVICE_TOKEN,
   CONFIG_OPTIONS_TOKEN,
   CONFIG_SCHEMA_TOKEN,
-  CONFIG_LOGGER_TOKEN
+  CONFIG_LOGGER_TOKEN,
 } from './config.tokens.js';
 
 // Types
@@ -49,7 +49,7 @@ export type {
   IConfigValidationResult,
   IConfigMetadata,
   IConfigFeatureOptions,
-  IConfigAsyncOptions
+  IConfigAsyncOptions,
 } from './types.js';
 
 // Decorator exports

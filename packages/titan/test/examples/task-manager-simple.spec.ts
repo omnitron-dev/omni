@@ -7,7 +7,7 @@ import {
   TaskCoordinator,
   TaskServiceToken,
   NotificationServiceToken,
-  TaskCoordinatorToken
+  TaskCoordinatorToken,
 } from '../fixtures/task-manager-fixture';
 
 describe('TaskManagerSimple Example', () => {
@@ -21,13 +21,13 @@ describe('TaskManagerSimple Example', () => {
       config: {
         notifications: {
           enabled: true,
-          channels: ['test']
-        }
+          channels: ['test'],
+        },
       },
       logging: {
-        level: 'error' // Quiet for tests
+        level: 'error', // Quiet for tests
       },
-      modules: [new TaskManagerModule()]
+      modules: [new TaskManagerModule()],
     });
   });
 
@@ -42,7 +42,7 @@ describe('TaskManagerSimple Example', () => {
       await app.start();
 
       const modules = Array.from((app as any)._modules.values());
-      const taskManager = modules.find(m => m.name === 'task-manager');
+      const taskManager = modules.find((m) => m.name === 'task-manager');
 
       expect(taskManager).toBeDefined();
       expect(taskManager?.version).toBe('2.0.0');
@@ -71,7 +71,7 @@ describe('TaskManagerSimple Example', () => {
         title: 'Test Task',
         description: 'Test Description',
         status: 'pending',
-        priority: 'high'
+        priority: 'high',
       });
 
       expect(task).toBeDefined();
@@ -84,7 +84,7 @@ describe('TaskManagerSimple Example', () => {
 
       // Update task
       const updated = await taskService.update(task.id, {
-        status: 'completed'
+        status: 'completed',
       });
 
       expect(updated?.status).toBe('completed');
@@ -108,14 +108,14 @@ describe('TaskManagerSimple Example', () => {
         title: 'Task 1',
         description: 'Desc 1',
         status: 'pending',
-        priority: 'high'
+        priority: 'high',
       });
 
       await taskService.create({
         title: 'Task 2',
         description: 'Desc 2',
         status: 'in-progress',
-        priority: 'medium'
+        priority: 'medium',
       });
 
       const stats = await taskService.getStatistics();
@@ -140,7 +140,7 @@ describe('TaskManagerSimple Example', () => {
         title: 'Coordinated Task',
         description: 'Created via coordinator',
         status: 'pending',
-        priority: 'high'
+        priority: 'high',
       });
 
       expect(task).toBeDefined();
@@ -164,7 +164,7 @@ describe('TaskManagerSimple Example', () => {
 
       // Mock TaskService onInit
       const originalOnInit = TaskService.prototype.onInit;
-      TaskService.prototype.onInit = async function() {
+      TaskService.prototype.onInit = async function () {
         onInitSpy();
         return originalOnInit?.call(this);
       };
@@ -182,7 +182,7 @@ describe('TaskManagerSimple Example', () => {
 
       // Mock TaskService onDestroy
       const originalOnDestroy = TaskService.prototype.onDestroy;
-      TaskService.prototype.onDestroy = async function() {
+      TaskService.prototype.onDestroy = async function () {
         onDestroySpy();
         return originalOnDestroy?.call(this);
       };

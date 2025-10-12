@@ -492,10 +492,7 @@ describe('Box', () => {
       const component = () =>
         Box({
           'aria-describedby': 'help-text',
-          children: [
-            Box({ children: 'Input field' }),
-            Box({ id: 'help-text', children: 'Enter your name' }),
-          ],
+          children: [Box({ children: 'Input field' }), Box({ id: 'help-text', children: 'Enter your name' })],
         });
 
       const { container } = renderComponent(component);

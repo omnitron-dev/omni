@@ -14,13 +14,13 @@ const mockLogger = {
   error: jest.fn(),
   warn: jest.fn(),
   debug: jest.fn(),
-  child: jest.fn(() => mockLogger)
+  child: jest.fn(() => mockLogger),
 } as any;
 
 // Test process class
 @Process({
   name: 'test-service',
-  version: '1.0.0'
+  version: '1.0.0',
 })
 class TestService {
   private counter = 0;
@@ -45,10 +45,12 @@ class TestService {
   async checkHealth() {
     return {
       status: 'healthy' as const,
-      checks: [{
-        name: 'test',
-        status: 'pass' as const
-      }]
+      checks: [
+        {
+          name: 'test',
+          status: 'pass' as const,
+        },
+      ],
     };
   }
 }
@@ -60,7 +62,7 @@ class StreamingService {
   async *streamNumbers(max: number): AsyncGenerator<number> {
     for (let i = 0; i < max; i++) {
       yield i;
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
     }
   }
 }
@@ -70,11 +72,11 @@ describe('ProcessManager', () => {
 
   beforeEach(() => {
     pm = new ProcessManager(mockLogger as any, {
-      useMockSpawner: true,  // Force mock spawner for tests
+      useMockSpawner: true, // Force mock spawner for tests
       netron: {
         transport: 'unix',
-        discovery: 'local'
-      }
+        discovery: 'local',
+      },
     });
   });
 
@@ -121,8 +123,8 @@ describe('ProcessManager', () => {
 
       const processes = pm.listProcesses();
       expect(processes.length).toBeGreaterThanOrEqual(2);
-      expect(processes.some(p => p.id === service1.__processId)).toBe(true);
-      expect(processes.some(p => p.id === service2.__processId)).toBe(true);
+      expect(processes.some((p) => p.id === service1.__processId)).toBe(true);
+      expect(processes.some((p) => p.id === service2.__processId)).toBe(true);
     });
   });
 
@@ -145,7 +147,7 @@ describe('ProcessManager', () => {
       await pm.shutdown();
 
       const processes = pm.listProcesses();
-      expect(processes.every(p => p.status === ProcessStatus.STOPPED)).toBe(true);
+      expect(processes.every((p) => p.status === ProcessStatus.STOPPED)).toBe(true);
     });
 
     it('should handle forced shutdown', async () => {
@@ -154,14 +156,14 @@ describe('ProcessManager', () => {
       await pm.shutdown({ force: true, timeout: 1000 });
 
       const processes = pm.listProcesses();
-      expect(processes.every(p => p.status === ProcessStatus.STOPPED)).toBe(true);
+      expect(processes.every((p) => p.status === ProcessStatus.STOPPED)).toBe(true);
     });
   });
 
   describe('Health Monitoring', () => {
     it('should get health status', async () => {
       const service = await pm.spawn(TestService, {
-        health: { enabled: true, interval: 1000 }
+        health: { enabled: true, interval: 1000 },
       });
 
       const health = await pm.getHealth(service.__processId);
@@ -172,7 +174,7 @@ describe('ProcessManager', () => {
 
     it('should get metrics', async () => {
       const service = await pm.spawn(TestService, {
-        observability: { metrics: true }
+        observability: { metrics: true },
       });
 
       const metrics = await pm.getMetrics(service.__processId);
@@ -185,7 +187,7 @@ describe('ProcessManager', () => {
   describe('Service Discovery', () => {
     it('should discover services by name', async () => {
       const service = await pm.spawn(TestService, {
-        name: 'discoverable-service'
+        name: 'discoverable-service',
       });
 
       const discovered = await pm.discover<TestService>('discoverable-service');
@@ -205,7 +207,7 @@ describe('ProcessPool', () => {
 
   beforeEach(() => {
     pm = new ProcessManager(mockLogger as any, {
-      useMockSpawner: true  // Force mock spawner for tests
+      useMockSpawner: true, // Force mock spawner for tests
     });
   });
 
@@ -225,15 +227,11 @@ describe('ProcessPool', () => {
     it('should handle pool method calls', async () => {
       const pool = await pm.pool(TestService, { size: 2 });
 
-      const results = await Promise.all([
-        pool.increment(),
-        pool.increment(),
-        pool.increment()
-      ]);
+      const results = await Promise.all([pool.increment(), pool.increment(), pool.increment()]);
 
       // Results should come from different workers
       expect(results).toContain(1);
-      expect(results.filter(r => r === 1).length).toBeGreaterThan(0);
+      expect(results.filter((r) => r === 1).length).toBeGreaterThan(0);
     });
 
     it('should scale pool up', async () => {
@@ -262,7 +260,7 @@ describe('ProcessPool', () => {
     it('should use round-robin strategy', async () => {
       const pool = await pm.pool(TestService, {
         size: 2,
-        strategy: 'round-robin' as any
+        strategy: 'round-robin' as any,
       });
 
       const results = [];
@@ -280,22 +278,17 @@ describe('ProcessPool', () => {
     it('should track pool metrics', async () => {
       const pool = await pm.pool(TestService, {
         size: 2,
-        metrics: true
+        metrics: true,
       });
 
       // Execute several requests
-      await Promise.all([
-        pool.increment(),
-        pool.increment(),
-        pool.increment(),
-        pool.increment()
-      ]);
+      await Promise.all([pool.increment(), pool.increment(), pool.increment(), pool.increment()]);
 
       // Check metrics after requests complete
       const metrics = pool.metrics;
       expect(metrics.totalRequests).toBeGreaterThanOrEqual(4);
       expect(metrics.totalWorkers).toBe(2);
-      expect(metrics.idleWorkers).toBe(2);  // All workers should be idle after requests complete
+      expect(metrics.idleWorkers).toBe(2); // All workers should be idle after requests complete
       expect(metrics.avgResponseTime).toBeGreaterThanOrEqual(0);
       expect(metrics.queueSize).toBe(0); // Queue should be empty after processing
 
@@ -332,7 +325,7 @@ describe('Streaming', () => {
 
   beforeEach(() => {
     pm = new ProcessManager(mockLogger as any, {
-      useMockSpawner: true  // Force mock spawner for tests
+      useMockSpawner: true, // Force mock spawner for tests
     });
   });
 
@@ -368,7 +361,7 @@ describe('ProcessManager - Edge Cases', () => {
 
   beforeEach(() => {
     pm = new ProcessManager(mockLogger as any, {
-      useMockSpawner: true
+      useMockSpawner: true,
     });
   });
 
@@ -386,7 +379,7 @@ describe('ProcessManager - Edge Cases', () => {
     expect(services).toHaveLength(5);
 
     // Each service should have a unique process ID
-    const processIds = services.map(s => s.__processId);
+    const processIds = services.map((s) => s.__processId);
     const uniqueIds = new Set(processIds);
     expect(uniqueIds.size).toBe(5);
   });
@@ -422,10 +415,7 @@ describe('ProcessManager - Edge Cases', () => {
     const pool = await pm.pool(TestService, { size: 1 });
     expect(pool.size).toBe(1);
 
-    const results = await Promise.all([
-      pool.increment(),
-      pool.increment()
-    ]);
+    const results = await Promise.all([pool.increment(), pool.increment()]);
 
     // Both calls should go to the same worker, so results should be [1, 2]
     expect(results).toEqual([1, 2]);
@@ -455,6 +445,6 @@ describe('ProcessManager - Edge Cases', () => {
     await pm.shutdown();
 
     const processes = pm.listProcesses();
-    expect(processes.every(p => p.status === ProcessStatus.STOPPED)).toBe(true);
+    expect(processes.every((p) => p.status === ProcessStatus.STOPPED)).toBe(true);
   });
 });

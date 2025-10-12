@@ -11,7 +11,7 @@ import {
   Stage,
   Compensate,
   createTestProcessManager,
-  TestProcessManager
+  TestProcessManager,
 } from '../../../src/modules/pm/index.js';
 
 // ============================================================================
@@ -25,14 +25,14 @@ class LinearWorkflow {
   @Stage({ name: 'step1' })
   async step1(input: string): Promise<{ data: string }> {
     this.executionLog.push('step1');
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
     return { data: `${input}-step1` };
   }
 
   @Stage({ name: 'step2', dependsOn: 'step1' })
   async step2(input: any): Promise<{ data: string }> {
     this.executionLog.push('step2');
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
     // Input from step1 is an object with 'data' field
     const prevData = typeof input === 'string' ? input : input.data || input;
     return { data: `${prevData}-step2` };
@@ -41,12 +41,12 @@ class LinearWorkflow {
   @Stage({ name: 'step3', dependsOn: 'step2' })
   async step3(input: any): Promise<{ data: string; finalResult: string }> {
     this.executionLog.push('step3');
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
     // Input from step2 is an object with 'data' field
     const prevData = typeof input === 'string' ? input : input.data || input;
     return {
       data: `${prevData}-step3`,
-      finalResult: 'completed'
+      finalResult: 'completed',
     };
   }
 }
@@ -64,7 +64,7 @@ class ParallelWorkflow {
   @Stage({ name: 'taskA', dependsOn: 'init', parallel: true })
   async taskA(): Promise<{ result: string }> {
     this.executionLog.push('taskA-start');
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
     this.executionLog.push('taskA-end');
     return { result: 'A' };
   }
@@ -72,7 +72,7 @@ class ParallelWorkflow {
   @Stage({ name: 'taskB', dependsOn: 'init', parallel: true })
   async taskB(): Promise<{ result: string }> {
     this.executionLog.push('taskB-start');
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
     this.executionLog.push('taskB-end');
     return { result: 'B' };
   }
@@ -80,7 +80,7 @@ class ParallelWorkflow {
   @Stage({ name: 'taskC', dependsOn: 'init', parallel: true })
   async taskC(): Promise<{ result: string }> {
     this.executionLog.push('taskC-start');
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
     this.executionLog.push('taskC-end');
     return { result: 'C' };
   }
@@ -112,21 +112,21 @@ class TravelBookingSaga {
   public bookingIds = {
     flight: '',
     hotel: '',
-    car: ''
+    car: '',
   };
 
   public compensationLog: string[] = [];
 
   @Stage({ name: 'book-flight' })
   async bookFlight(data: BookingData): Promise<{ bookingId: string; success: boolean }> {
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     this.flightBooked = true;
     this.bookingIds.flight = `FLIGHT-${data.flightId}`;
 
     return {
       bookingId: this.bookingIds.flight,
-      success: true
+      success: true,
     };
   }
 
@@ -134,21 +134,21 @@ class TravelBookingSaga {
   async cancelFlight(): Promise<void> {
     this.compensationLog.push('cancel-flight');
     if (this.flightBooked) {
-      await new Promise(resolve => setTimeout(resolve, 30));
+      await new Promise((resolve) => setTimeout(resolve, 30));
       this.flightBooked = false;
     }
   }
 
   @Stage({ name: 'book-hotel', dependsOn: 'book-flight' })
   async bookHotel(data: BookingData): Promise<{ bookingId: string; success: boolean }> {
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     this.hotelBooked = true;
     this.bookingIds.hotel = `HOTEL-${data.hotelId}`;
 
     return {
       bookingId: this.bookingIds.hotel,
-      success: true
+      success: true,
     };
   }
 
@@ -156,14 +156,14 @@ class TravelBookingSaga {
   async cancelHotel(): Promise<void> {
     this.compensationLog.push('cancel-hotel');
     if (this.hotelBooked) {
-      await new Promise(resolve => setTimeout(resolve, 30));
+      await new Promise((resolve) => setTimeout(resolve, 30));
       this.hotelBooked = false;
     }
   }
 
   @Stage({ name: 'book-car', dependsOn: 'book-hotel' })
   async bookCar(data: BookingData, simulateFailure: boolean = false): Promise<{ bookingId: string; success: boolean }> {
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     if (simulateFailure) {
       throw new Error('Car rental service unavailable');
@@ -174,7 +174,7 @@ class TravelBookingSaga {
 
     return {
       bookingId: this.bookingIds.car,
-      success: true
+      success: true,
     };
   }
 
@@ -182,18 +182,18 @@ class TravelBookingSaga {
   async cancelCar(): Promise<void> {
     this.compensationLog.push('cancel-car');
     if (this.carBooked) {
-      await new Promise(resolve => setTimeout(resolve, 30));
+      await new Promise((resolve) => setTimeout(resolve, 30));
       this.carBooked = false;
     }
   }
 
   @Stage({ name: 'confirm-booking', dependsOn: 'book-car' })
   async confirmBooking(): Promise<{ confirmed: boolean; bookingReference: string }> {
-    await new Promise(resolve => setTimeout(resolve, 30));
+    await new Promise((resolve) => setTimeout(resolve, 30));
 
     return {
       confirmed: true,
-      bookingReference: `REF-${Date.now()}`
+      bookingReference: `REF-${Date.now()}`,
     };
   }
 }
@@ -208,11 +208,11 @@ class DataPipelineWorkflow {
 
   @Stage({ name: 'extract-data' })
   async extractData(source: string): Promise<{ records: any[]; count: number }> {
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     const records = Array.from({ length: 100 }, (_, i) => ({
       id: i,
-      value: Math.random() * 100
+      value: Math.random() * 100,
     }));
 
     this.stageResults.set('extract', records);
@@ -222,7 +222,7 @@ class DataPipelineWorkflow {
 
   @Stage({ name: 'validate-data', dependsOn: 'extract-data' })
   async validateData(): Promise<{ valid: number; invalid: number }> {
-    await new Promise(resolve => setTimeout(resolve, 30));
+    await new Promise((resolve) => setTimeout(resolve, 30));
 
     const records = this.stageResults.get('extract') || [];
     const valid = records.filter((r: any) => r.value > 0).length;
@@ -232,12 +232,12 @@ class DataPipelineWorkflow {
 
   @Stage({ name: 'transform-data', dependsOn: 'validate-data', parallel: true })
   async transformData(): Promise<{ transformed: number }> {
-    await new Promise(resolve => setTimeout(resolve, 80));
+    await new Promise((resolve) => setTimeout(resolve, 80));
 
     const records = this.stageResults.get('extract') || [];
     const transformed = records.map((r: any) => ({
       ...r,
-      normalized: r.value / 100
+      normalized: r.value / 100,
     }));
 
     this.stageResults.set('transform', transformed);
@@ -247,12 +247,12 @@ class DataPipelineWorkflow {
 
   @Stage({ name: 'enrich-data', dependsOn: 'validate-data', parallel: true })
   async enrichData(): Promise<{ enriched: number }> {
-    await new Promise(resolve => setTimeout(resolve, 80));
+    await new Promise((resolve) => setTimeout(resolve, 80));
 
     const records = this.stageResults.get('extract') || [];
     const enriched = records.map((r: any) => ({
       ...r,
-      category: r.value > 50 ? 'high' : 'low'
+      category: r.value > 50 ? 'high' : 'low',
     }));
 
     this.stageResults.set('enrich', enriched);
@@ -262,7 +262,7 @@ class DataPipelineWorkflow {
 
   @Stage({ name: 'aggregate-data', dependsOn: ['transform-data', 'enrich-data'] })
   async aggregateData(): Promise<{ total: number; average: number }> {
-    await new Promise(resolve => setTimeout(resolve, 40));
+    await new Promise((resolve) => setTimeout(resolve, 40));
 
     const records = this.stageResults.get('extract') || [];
     const total = records.reduce((sum: number, r: any) => sum + r.value, 0);
@@ -273,13 +273,13 @@ class DataPipelineWorkflow {
 
   @Stage({ name: 'load-data', dependsOn: 'aggregate-data' })
   async loadData(): Promise<{ loaded: boolean; recordCount: number }> {
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     const records = this.stageResults.get('extract') || [];
 
     return {
       loaded: true,
-      recordCount: records.length
+      recordCount: records.length,
     };
   }
 }
@@ -300,13 +300,13 @@ class ConditionalWorkflow {
 
     return {
       requiresApproval: this.requiresApproval,
-      amount
+      amount,
     };
   }
 
   @Stage({
     name: 'request-approval',
-    dependsOn: 'check-requirements'
+    dependsOn: 'check-requirements',
     // In real implementation, would have condition: (ctx) => ctx.requiresApproval
   })
   async requestApproval(): Promise<{ approved: boolean }> {
@@ -315,7 +315,7 @@ class ConditionalWorkflow {
     }
 
     this.executedStages.push('request-approval');
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     return { approved: true };
   }
@@ -323,7 +323,7 @@ class ConditionalWorkflow {
   @Stage({ name: 'process', dependsOn: 'request-approval' })
   async process(): Promise<{ processed: boolean }> {
     this.executedStages.push('process');
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     return { processed: true };
   }
@@ -346,14 +346,14 @@ class ErrorHandlingWorkflow {
   @Stage({ name: 'reliable-stage' })
   async reliableStage(): Promise<{ success: boolean }> {
     this.attemptLog.push('reliable-stage');
-    await new Promise(resolve => setTimeout(resolve, 30));
+    await new Promise((resolve) => setTimeout(resolve, 30));
     return { success: true };
   }
 
   @Stage({ name: 'unreliable-stage', dependsOn: 'reliable-stage' })
   async unreliableStage(input: any): Promise<{ success: boolean }> {
     this.attemptLog.push('unreliable-stage');
-    await new Promise(resolve => setTimeout(resolve, 30));
+    await new Promise((resolve) => setTimeout(resolve, 30));
 
     if (this.shouldFail) {
       throw new Error('Stage failed as expected');
@@ -365,7 +365,7 @@ class ErrorHandlingWorkflow {
   @Stage({ name: 'recovery-stage', dependsOn: 'unreliable-stage' })
   async recoveryStage(input: any): Promise<{ recovered: boolean }> {
     this.attemptLog.push('recovery-stage');
-    await new Promise(resolve => setTimeout(resolve, 30));
+    await new Promise((resolve) => setTimeout(resolve, 30));
     return { recovered: true };
   }
 }
@@ -481,7 +481,7 @@ describe('Workflow Orchestration - Saga Pattern', () => {
       flightId: 'FL123',
       hotelId: 'HT456',
       carRentalId: 'CR789',
-      userId: 'user123'
+      userId: 'user123',
     };
 
     const result = await (workflow as any).run(bookingData);
@@ -503,7 +503,7 @@ describe('Workflow Orchestration - Saga Pattern', () => {
       flightId: 'FL123',
       hotelId: 'HT456',
       carRentalId: 'CR789',
-      userId: 'user123'
+      userId: 'user123',
     };
 
     // This would trigger car booking failure
@@ -532,7 +532,7 @@ describe('Workflow Orchestration - Saga Pattern', () => {
       flightId: 'FL123',
       hotelId: 'HT456',
       carRentalId: 'CR789',
-      userId: 'user123'
+      userId: 'user123',
     };
 
     await (workflow as any).run(bookingData);
@@ -715,13 +715,11 @@ describe('Workflow Orchestration - Performance', () => {
     const workflows = await Promise.all([
       pm.workflow(LinearWorkflow),
       pm.workflow(LinearWorkflow),
-      pm.workflow(LinearWorkflow)
+      pm.workflow(LinearWorkflow),
     ]);
 
     const startTime = Date.now();
-    await Promise.all(
-      workflows.map((wf, i) => (wf as any).run(`input-${i}`))
-    );
+    await Promise.all(workflows.map((wf, i) => (wf as any).run(`input-${i}`)));
     const duration = Date.now() - startTime;
 
     // Concurrent execution should be faster than sequential

@@ -37,7 +37,7 @@ async function bootstrap() {
   // Create WebSocket server
   const wss = new WebSocketServer({
     port: 3334,
-    host: '0.0.0.0'
+    host: '0.0.0.0',
   });
 
   console.log('WebSocket server listening on ws://0.0.0.0:3334');
@@ -53,36 +53,44 @@ async function bootstrap() {
         if (message.type === 'call') {
           const method = serviceMethods.get(message.method!);
           if (!method) {
-            ws.send(JSON.stringify({
-              id: message.id,
-              type: 'error',
-              error: { message: `Method ${message.method} not found`, code: 'METHOD_NOT_FOUND' }
-            }));
+            ws.send(
+              JSON.stringify({
+                id: message.id,
+                type: 'error',
+                error: { message: `Method ${message.method} not found`, code: 'METHOD_NOT_FOUND' },
+              })
+            );
             return;
           }
 
           try {
             const result = await method(...(message.args || []));
-            ws.send(JSON.stringify({
-              id: message.id,
-              type: 'response',
-              result
-            }));
+            ws.send(
+              JSON.stringify({
+                id: message.id,
+                type: 'response',
+                result,
+              })
+            );
           } catch (error: any) {
-            ws.send(JSON.stringify({
-              id: message.id,
-              type: 'error',
-              error: { message: error.message, code: 'METHOD_ERROR' }
-            }));
+            ws.send(
+              JSON.stringify({
+                id: message.id,
+                type: 'error',
+                error: { message: error.message, code: 'METHOD_ERROR' },
+              })
+            );
           }
         }
       } catch (error: any) {
         console.error('Error processing message:', error);
-        ws.send(JSON.stringify({
-          id: 'error',
-          type: 'error',
-          error: { message: error.message }
-        }));
+        ws.send(
+          JSON.stringify({
+            id: 'error',
+            type: 'error',
+            error: { message: error.message },
+          })
+        );
       }
     });
 
@@ -100,14 +108,16 @@ async function bootstrap() {
     if (req.url === '/health') {
       res.writeHead(200, {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
+        'Access-Control-Allow-Origin': '*',
       });
-      res.end(JSON.stringify({
-        status: 'ok',
-        timestamp: new Date().toISOString(),
-        services: ['UserService@1.0.0'],
-        transports: { websocket: 3334 }
-      }));
+      res.end(
+        JSON.stringify({
+          status: 'ok',
+          timestamp: new Date().toISOString(),
+          services: ['UserService@1.0.0'],
+          transports: { websocket: 3334 },
+        })
+      );
     } else {
       res.writeHead(404);
       res.end('Not Found');

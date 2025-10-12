@@ -22,7 +22,7 @@ describe('RequestBatcher', () => {
     timestamp: Date.now(),
     service,
     method,
-    input: { test: 'data' }
+    input: { test: 'data' },
   });
 
   // Helper to create a successful batch response
@@ -31,21 +31,21 @@ describe('RequestBatcher', () => {
     version: '2.0',
     timestamp: Date.now(),
     success: true,
-    responses: requestIds.map(id => ({
+    responses: requestIds.map((id) => ({
       id,
       version: '2.0',
       timestamp: Date.now(),
       success: true,
-      data: { result: `success-${id}` }
+      data: { result: `success-${id}` },
     })),
     hints: {
       successCount: requestIds.length,
-      failureCount: 0
-    }
+      failureCount: 0,
+    },
   });
 
   // Helper to wait for a short time
-  const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+  const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -54,7 +54,7 @@ describe('RequestBatcher', () => {
 
   afterEach(async () => {
     // Wait a bit for any pending operations to complete
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     if (batcher) {
       batcher.destroy();
@@ -77,7 +77,7 @@ describe('RequestBatcher', () => {
         maxBatchWait: 50,
         maxRequestAge: 200,
         enableRetry: false,
-        maxRetries: 5
+        maxRetries: 5,
       });
 
       expect(batcher).toBeInstanceOf(RequestBatcher);
@@ -87,8 +87,8 @@ describe('RequestBatcher', () => {
       batcher = new RequestBatcher(baseUrl, {
         headers: {
           'X-Custom': 'test-header',
-          'Authorization': 'Bearer token'
-        }
+          Authorization: 'Bearer token',
+        },
       });
 
       expect(batcher).toBeInstanceOf(RequestBatcher);
@@ -99,14 +99,14 @@ describe('RequestBatcher', () => {
     beforeEach(() => {
       batcher = new RequestBatcher(baseUrl, {
         maxBatchSize: 3,
-        maxBatchWait: 20
+        maxBatchWait: 20,
       });
     });
 
     it('should queue a single request', async () => {
       mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => createBatchResponse(['req-1'])
+        json: async () => createBatchResponse(['req-1']),
       } as Response);
 
       const requestPromise = batcher.add(createRequest('req-1', 'TestService', 'testMethod'));
@@ -145,12 +145,12 @@ describe('RequestBatcher', () => {
     it('should flush immediately when batch size limit reached', async () => {
       batcher = new RequestBatcher(baseUrl, {
         maxBatchSize: 2,
-        maxBatchWait: 1000
+        maxBatchWait: 1000,
       });
 
       mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => createBatchResponse(['req-1', 'req-2'])
+        json: async () => createBatchResponse(['req-1', 'req-2']),
       } as Response);
 
       const promise1 = batcher.add(createRequest('req-1', 'Service', 'method'));
@@ -170,12 +170,12 @@ describe('RequestBatcher', () => {
     it('should flush on timer when batch size not reached', async () => {
       batcher = new RequestBatcher(baseUrl, {
         maxBatchSize: 10,
-        maxBatchWait: 20
+        maxBatchWait: 20,
       });
 
       mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => createBatchResponse(['req-1'])
+        json: async () => createBatchResponse(['req-1']),
       } as Response);
 
       const promise = batcher.add(createRequest('req-1', 'Service', 'method'));
@@ -189,12 +189,12 @@ describe('RequestBatcher', () => {
       batcher = new RequestBatcher(baseUrl, {
         maxBatchSize: 10,
         maxBatchWait: 1000,
-        maxRequestAge: 50
+        maxRequestAge: 50,
       });
 
       mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => createBatchResponse(['req-1'])
+        json: async () => createBatchResponse(['req-1']),
       } as Response);
 
       const promise = batcher.add(createRequest('req-1', 'Service', 'method'));
@@ -209,14 +209,14 @@ describe('RequestBatcher', () => {
     beforeEach(() => {
       batcher = new RequestBatcher(baseUrl, {
         maxBatchSize: 5,
-        maxBatchWait: 20
+        maxBatchWait: 20,
       });
     });
 
     it('should send batch request with correct format', async () => {
       mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => createBatchResponse(['req-1', 'req-2'])
+        json: async () => createBatchResponse(['req-1', 'req-2']),
       } as Response);
 
       const promise1 = batcher.add(createRequest('req-1', 'ServiceA', 'methodA'));
@@ -230,8 +230,8 @@ describe('RequestBatcher', () => {
           method: 'POST',
           headers: expect.objectContaining({
             'Content-Type': 'application/json',
-            'X-Netron-Version': '2.0'
-          })
+            'X-Netron-Version': '2.0',
+          }),
         })
       );
 
@@ -243,14 +243,14 @@ describe('RequestBatcher', () => {
       expect(body.requests[1].id).toBe('req-2');
       expect(body.options).toEqual({
         parallel: true,
-        stopOnError: false
+        stopOnError: false,
       });
     });
 
     it('should resolve promises with correct data', async () => {
       mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => createBatchResponse(['req-1', 'req-2'])
+        json: async () => createBatchResponse(['req-1', 'req-2']),
       } as Response);
 
       const promise1 = batcher.add(createRequest('req-1', 'Service', 'method'));
@@ -274,7 +274,7 @@ describe('RequestBatcher', () => {
 
       mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => createBatchResponse(['req-1'])
+        json: async () => createBatchResponse(['req-1']),
       } as Response);
 
       batcher.add(createRequest('req-1', 'Service', 'method'));
@@ -293,7 +293,7 @@ describe('RequestBatcher', () => {
 
       mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => createBatchResponse(['req-1'])
+        json: async () => createBatchResponse(['req-1']),
       } as Response);
 
       batcher.add(createRequest('req-1', 'Service', 'method'));
@@ -312,7 +312,7 @@ describe('RequestBatcher', () => {
 
       mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => createBatchResponse(['req-1'])
+        json: async () => createBatchResponse(['req-1']),
       } as Response);
 
       batcher.add(createRequest('req-1', 'Service', 'method'));
@@ -326,7 +326,7 @@ describe('RequestBatcher', () => {
       batcher = new RequestBatcher(baseUrl, {
         maxBatchSize: 5,
         maxBatchWait: 20,
-        enableRetry: false
+        enableRetry: false,
       });
     });
 
@@ -338,17 +338,19 @@ describe('RequestBatcher', () => {
           version: '2.0',
           timestamp: Date.now(),
           success: true,
-          responses: [{
-            id: 'req-1',
-            version: '2.0',
-            timestamp: Date.now(),
-            success: false,
-            error: {
-              code: 'SERVICE_ERROR',
-              message: 'Service failed'
-            }
-          }]
-        })
+          responses: [
+            {
+              id: 'req-1',
+              version: '2.0',
+              timestamp: Date.now(),
+              success: false,
+              error: {
+                code: 'SERVICE_ERROR',
+                message: 'Service failed',
+              },
+            },
+          ],
+        }),
       } as Response);
 
       const promise = batcher.add(createRequest('req-1', 'Service', 'method'));
@@ -390,17 +392,19 @@ describe('RequestBatcher', () => {
           version: '2.0',
           timestamp: Date.now(),
           success: true,
-          responses: [{
-            id: 'req-1',
-            version: '2.0',
-            timestamp: Date.now(),
-            success: false,
-            error: {
-              code: 'ERROR',
-              message: 'Failed'
-            }
-          }]
-        })
+          responses: [
+            {
+              id: 'req-1',
+              version: '2.0',
+              timestamp: Date.now(),
+              success: false,
+              error: {
+                code: 'ERROR',
+                message: 'Failed',
+              },
+            },
+          ],
+        }),
       } as Response);
 
       const failurePromise = new Promise<void>((resolve) => {
@@ -420,7 +424,7 @@ describe('RequestBatcher', () => {
       mockFetch.mockResolvedValue({
         ok: false,
         status: 500,
-        statusText: 'Internal Server Error'
+        statusText: 'Internal Server Error',
       } as Response);
 
       const promise = batcher.add(createRequest('req-1', 'Service', 'method'));
@@ -435,7 +439,7 @@ describe('RequestBatcher', () => {
         maxBatchSize: 5,
         maxBatchWait: 20,
         enableRetry: true,
-        maxRetries: 2
+        maxRetries: 2,
       });
     });
 
@@ -448,20 +452,22 @@ describe('RequestBatcher', () => {
           version: '2.0',
           timestamp: Date.now(),
           success: true,
-          responses: [{
-            id: 'req-1',
-            version: '2.0',
-            timestamp: Date.now(),
-            success: false,
-            error: { code: 'TEMP_ERROR', message: 'Temporary failure' }
-          }]
-        })
+          responses: [
+            {
+              id: 'req-1',
+              version: '2.0',
+              timestamp: Date.now(),
+              success: false,
+              error: { code: 'TEMP_ERROR', message: 'Temporary failure' },
+            },
+          ],
+        }),
       } as Response);
 
       // Second attempt succeeds
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => createBatchResponse(['req-1'])
+        json: async () => createBatchResponse(['req-1']),
       } as Response);
 
       const promise = batcher.add(createRequest('req-1', 'Service', 'method'));
@@ -482,14 +488,16 @@ describe('RequestBatcher', () => {
           version: '2.0',
           timestamp: Date.now(),
           success: true,
-          responses: [{
-            id: 'req-1',
-            version: '2.0',
-            timestamp: Date.now(),
-            success: false,
-            error: { code: 'ERROR', message: 'Failed' }
-          }]
-        })
+          responses: [
+            {
+              id: 'req-1',
+              version: '2.0',
+              timestamp: Date.now(),
+              success: false,
+              error: { code: 'ERROR', message: 'Failed' },
+            },
+          ],
+        }),
       } as Response);
 
       const retryPromise = new Promise<void>((resolve) => {
@@ -514,14 +522,16 @@ describe('RequestBatcher', () => {
           version: '2.0',
           timestamp: Date.now(),
           success: true,
-          responses: [{
-            id: 'req-1',
-            version: '2.0',
-            timestamp: Date.now(),
-            success: false,
-            error: { code: 'ERROR', message: 'Persistent failure' }
-          }]
-        })
+          responses: [
+            {
+              id: 'req-1',
+              version: '2.0',
+              timestamp: Date.now(),
+              success: false,
+              error: { code: 'ERROR', message: 'Persistent failure' },
+            },
+          ],
+        }),
       } as Response);
 
       const promise = batcher.add(createRequest('req-1', 'Service', 'method'));
@@ -538,7 +548,7 @@ describe('RequestBatcher', () => {
       // Third attempt succeeds
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => createBatchResponse(['req-1'])
+        json: async () => createBatchResponse(['req-1']),
       } as Response);
 
       const promise = batcher.add(createRequest('req-1', 'Service', 'method'));
@@ -553,14 +563,14 @@ describe('RequestBatcher', () => {
     beforeEach(() => {
       batcher = new RequestBatcher(baseUrl, {
         maxBatchSize: 5,
-        maxBatchWait: 20
+        maxBatchWait: 20,
       });
     });
 
     it('should track batch statistics', async () => {
       mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => createBatchResponse(['req-1', 'req-2'])
+        json: async () => createBatchResponse(['req-1', 'req-2']),
       } as Response);
 
       const promise1 = batcher.add(createRequest('req-1', 'Service', 'method'));
@@ -593,23 +603,23 @@ describe('RequestBatcher', () => {
               version: '2.0',
               timestamp: Date.now(),
               success: true,
-              data: { result: 'success' }
+              data: { result: 'success' },
             },
             {
               id: 'req-2',
               version: '2.0',
               timestamp: Date.now(),
               success: false,
-              error: { code: 'ERROR', message: 'Failed' }
-            }
-          ]
-        })
+              error: { code: 'ERROR', message: 'Failed' },
+            },
+          ],
+        }),
       } as Response);
 
       batcher = new RequestBatcher(baseUrl, {
         maxBatchSize: 5,
         maxBatchWait: 20,
-        enableRetry: false
+        enableRetry: false,
       });
 
       const promise1 = batcher.add(createRequest('req-1', 'Service', 'method'));
@@ -626,7 +636,7 @@ describe('RequestBatcher', () => {
     it('should reset statistics', async () => {
       mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => createBatchResponse(['req-1'])
+        json: async () => createBatchResponse(['req-1']),
       } as Response);
 
       await batcher.add(createRequest('req-1', 'Service', 'method'));
@@ -644,19 +654,19 @@ describe('RequestBatcher', () => {
     it('should maintain rolling average of batch sizes', async () => {
       mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => createBatchResponse(['req-1', 'req-2'])
+        json: async () => createBatchResponse(['req-1', 'req-2']),
       } as Response);
 
       // First batch with 2 requests
       await Promise.all([
         batcher.add(createRequest('req-1', 'Service', 'method')),
-        batcher.add(createRequest('req-2', 'Service', 'method'))
+        batcher.add(createRequest('req-2', 'Service', 'method')),
       ]);
 
       // Second batch with 1 request
       mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => createBatchResponse(['req-3'])
+        json: async () => createBatchResponse(['req-3']),
       } as Response);
 
       await batcher.add(createRequest('req-3', 'Service', 'method'));
@@ -670,14 +680,14 @@ describe('RequestBatcher', () => {
     beforeEach(() => {
       batcher = new RequestBatcher(baseUrl, {
         maxBatchSize: 10,
-        maxBatchWait: 1000
+        maxBatchWait: 1000,
       });
     });
 
     it('should support manual flush', async () => {
       mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => createBatchResponse(['req-1'])
+        json: async () => createBatchResponse(['req-1']),
       } as Response);
 
       const promise = batcher.add(createRequest('req-1', 'Service', 'method'));
@@ -696,10 +706,19 @@ describe('RequestBatcher', () => {
     });
 
     it('should not flush if already processing', async () => {
-      mockFetch.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve({
-        ok: true,
-        json: async () => createBatchResponse(['req-1'])
-      } as Response), 50)));
+      mockFetch.mockImplementation(
+        () =>
+          new Promise((resolve) =>
+            setTimeout(
+              () =>
+                resolve({
+                  ok: true,
+                  json: async () => createBatchResponse(['req-1']),
+                } as Response),
+              50
+            )
+          )
+      );
 
       const promise = batcher.add(createRequest('req-1', 'Service', 'method'));
 
@@ -717,7 +736,7 @@ describe('RequestBatcher', () => {
       batcher.setConfiguration({
         maxBatchSize: 20,
         maxBatchWait: 200,
-        maxRequestAge: 300
+        maxRequestAge: 300,
       });
 
       // Configuration change is successful (no error thrown)
@@ -729,7 +748,7 @@ describe('RequestBatcher', () => {
     it('should destroy batcher and reject pending requests', async () => {
       batcher = new RequestBatcher(baseUrl, {
         maxBatchSize: 10,
-        maxBatchWait: 1000
+        maxBatchWait: 1000,
       });
 
       const promise = batcher.add(createRequest('req-1', 'Service', 'method'));
@@ -760,7 +779,7 @@ describe('RequestBatcher', () => {
       expect(() => {
         mockFetch.mockResolvedValue({
           ok: true,
-          json: async () => createBatchResponse(['req-1'])
+          json: async () => createBatchResponse(['req-1']),
         } as Response);
         batcher.add(createRequest('req-1', 'Service', 'method'));
       }).not.toThrow();
@@ -771,12 +790,12 @@ describe('RequestBatcher', () => {
     it('should process multiple batches sequentially', async () => {
       batcher = new RequestBatcher(baseUrl, {
         maxBatchSize: 2,
-        maxBatchWait: 20
+        maxBatchWait: 20,
       });
 
       mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => createBatchResponse(['req-1', 'req-2'])
+        json: async () => createBatchResponse(['req-1', 'req-2']),
       } as Response);
 
       // First batch
@@ -788,7 +807,7 @@ describe('RequestBatcher', () => {
       // Second batch
       mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => createBatchResponse(['req-3', 'req-4'])
+        json: async () => createBatchResponse(['req-3', 'req-4']),
       } as Response);
 
       const promise3 = batcher.add(createRequest('req-3', 'Service', 'method'));
@@ -806,12 +825,12 @@ describe('RequestBatcher', () => {
     it('should queue remaining requests after flush', async () => {
       batcher = new RequestBatcher(baseUrl, {
         maxBatchSize: 2,
-        maxBatchWait: 20
+        maxBatchWait: 20,
       });
 
       mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => createBatchResponse(['req-1', 'req-2'])
+        json: async () => createBatchResponse(['req-1', 'req-2']),
       } as Response);
 
       // Add 3 requests - first 2 should flush immediately
@@ -828,7 +847,7 @@ describe('RequestBatcher', () => {
       // Wait for second batch
       mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => createBatchResponse(['req-3'])
+        json: async () => createBatchResponse(['req-3']),
       } as Response);
 
       await promise3;

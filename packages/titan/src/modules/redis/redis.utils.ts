@@ -86,12 +86,7 @@ export function createRetryStrategy(options: RetryStrategyOptions | number = {},
   }
 
   // New options-based pattern
-  const {
-    retries = 10,
-    minDelay = 100,
-    maxDelay: max = 10000,
-    factor = 2,
-  } = options;
+  const { retries = 10, minDelay = 100, maxDelay: max = 10000, factor = 2 } = options;
 
   return (times: number) => {
     if (times <= 0 || times > retries) {
@@ -107,7 +102,7 @@ export function createRetryStrategy(options: RetryStrategyOptions | number = {},
 
 export function mergeOptions(
   commonOptions?: Partial<RedisClientOptions>,
-  clientOptions?: RedisClientOptions,
+  clientOptions?: RedisClientOptions
 ): RedisClientOptions {
   if (!commonOptions) {
     return clientOptions || {};
@@ -134,8 +129,13 @@ export function mergeOptions(
     } else if (Array.isArray(overrideValue)) {
       // Arrays are replaced, not merged
       merged[key] = overrideValue;
-    } else if (typeof overrideValue === 'object' && !Array.isArray(overrideValue) &&
-               typeof baseValue === 'object' && !Array.isArray(baseValue) && baseValue !== null) {
+    } else if (
+      typeof overrideValue === 'object' &&
+      !Array.isArray(overrideValue) &&
+      typeof baseValue === 'object' &&
+      !Array.isArray(baseValue) &&
+      baseValue !== null
+    ) {
       // Deep merge objects
       merged[key] = { ...baseValue, ...overrideValue };
     } else {
@@ -153,10 +153,7 @@ export function mergeOptions(
   return merged;
 }
 
-export async function waitForConnection(
-  client: RedisClient,
-  timeout = 5000,
-): Promise<boolean> {
+export async function waitForConnection(client: RedisClient, timeout = 5000): Promise<boolean> {
   // Handle invalid timeouts
   if (timeout <= 0) {
     return Promise.resolve(false);

@@ -18,7 +18,7 @@ describe('EventValidationService', () => {
       once: jest.fn(),
       removeAllListeners: jest.fn(),
       listeners: jest.fn().mockReturnValue([]),
-      eventNames: jest.fn().mockReturnValue([])
+      eventNames: jest.fn().mockReturnValue([]),
     };
 
     validationService = new EventValidationService(mockEmitter);
@@ -37,9 +37,9 @@ describe('EventValidationService', () => {
       type: 'object',
       properties: {
         id: { type: 'number' },
-        name: { type: 'string' }
+        name: { type: 'string' },
       },
-      required: ['id']
+      required: ['id'],
     };
 
     validationService.registerSchema('user.event', schema);
@@ -64,7 +64,7 @@ describe('EventValidationService', () => {
       name: 'John',
       password: 'secret123',
       ssn: '123-45-6789',
-      safe: 'value'
+      safe: 'value',
     };
 
     const sanitized = validationService.sanitizeData(data);

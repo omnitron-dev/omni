@@ -15,14 +15,9 @@ import {
   PeerError,
   RpcError,
   StreamError,
-  SerializationError
+  SerializationError,
 } from './netron.js';
-import {
-  HttpError,
-  AuthError,
-  PermissionError,
-  RateLimitError
-} from './http.js';
+import { HttpError, AuthError, PermissionError, RateLimitError } from './http.js';
 
 /**
  * Common error factories
@@ -42,7 +37,7 @@ export const Errors = {
     return new TitanError({
       code: ErrorCode.BAD_REQUEST,
       message,
-      details
+      details,
     });
   },
 
@@ -53,7 +48,7 @@ export const Errors = {
     return new TitanError({
       code: ErrorCode.UNAUTHORIZED,
       message,
-      details
+      details,
     });
   },
 
@@ -64,7 +59,7 @@ export const Errors = {
     return new TitanError({
       code: ErrorCode.FORBIDDEN,
       message,
-      details
+      details,
     });
   },
 
@@ -76,7 +71,7 @@ export const Errors = {
     return new TitanError({
       code: ErrorCode.NOT_FOUND,
       message,
-      details: { resource, id }
+      details: { resource, id },
     });
   },
 
@@ -87,7 +82,7 @@ export const Errors = {
     return new TitanError({
       code: ErrorCode.CONFLICT,
       message,
-      details
+      details,
     });
   },
 
@@ -105,7 +100,7 @@ export const Errors = {
     return new TitanError({
       code: ErrorCode.INTERNAL_ERROR,
       message,
-      cause
+      cause,
     });
   },
 
@@ -116,7 +111,7 @@ export const Errors = {
     return new TitanError({
       code: ErrorCode.REQUEST_TIMEOUT,
       message: `${operation} timed out after ${timeoutMs}ms`,
-      details: { operation, timeout: timeoutMs }
+      details: { operation, timeout: timeoutMs },
     });
   },
 
@@ -127,7 +122,7 @@ export const Errors = {
     return new TitanError({
       code: ErrorCode.SERVICE_UNAVAILABLE,
       message: `Service ${service} is unavailable${reason ? `: ${reason}` : ''}`,
-      details: { service, reason }
+      details: { service, reason },
     });
   },
 
@@ -145,9 +140,9 @@ export const Errors = {
     return new TitanError({
       code: ErrorCode.NOT_IMPLEMENTED,
       message: `${feature} is not implemented`,
-      details: { feature }
+      details: { feature },
     });
-  }
+  },
 };
 
 /**
@@ -264,7 +259,7 @@ export const NetronErrors = {
    */
   serializeDecode(data: any, cause?: Error): SerializationError {
     return SerializationError.decode(data, cause);
-  }
+  },
 };
 
 /**
@@ -325,7 +320,7 @@ export const HttpErrors = {
    */
   internal(message = 'Internal Server Error', details?: any): HttpError {
     return HttpError.internalServerError(message, details);
-  }
+  },
 };
 
 /**
@@ -358,7 +353,7 @@ export const AuthErrors = {
    */
   insufficientPermissions(required: string, userPermissions?: string[]): PermissionError {
     return PermissionError.insufficientPermissions(required, userPermissions);
-  }
+  },
 };
 
 /**
@@ -373,30 +368,26 @@ export function toTitanError(error: unknown): TitanError {
     return new TitanError({
       code: ErrorCode.INTERNAL_ERROR,
       message: error.message,
-      cause: error
+      cause: error,
     });
   }
 
   return new TitanError({
     code: ErrorCode.UNKNOWN_ERROR,
-    message: String(error)
+    message: String(error),
   });
 }
 
 /**
  * Assert condition and throw error if false
  */
-export function assert(
-  condition: boolean,
-  errorOrMessage: TitanError | string,
-  details?: any
-): asserts condition {
+export function assert(condition: boolean, errorOrMessage: TitanError | string, details?: any): asserts condition {
   if (!condition) {
     if (typeof errorOrMessage === 'string') {
       throw new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
         message: errorOrMessage,
-        details
+        details,
       });
     }
     throw errorOrMessage;
@@ -406,14 +397,11 @@ export function assert(
 /**
  * Throw if value is null or undefined
  */
-export function assertDefined<T>(
-  value: T | null | undefined,
-  message: string
-): asserts value is T {
+export function assertDefined<T>(value: T | null | undefined, message: string): asserts value is T {
   if (value === null || value === undefined) {
     throw new TitanError({
       code: ErrorCode.INTERNAL_ERROR,
-      message
+      message,
     });
   }
 }
@@ -429,7 +417,7 @@ export function assertType<T>(
   if (!check(value)) {
     throw new TitanError({
       code: ErrorCode.BAD_REQUEST,
-      message
+      message,
     });
   }
 }

@@ -31,7 +31,7 @@ async function bootstrap() {
   const httpServer = new HttpServer({
     port: 3333,
     host: '0.0.0.0',
-    cors: true
+    cors: true,
   });
 
   // Attach server to peer
@@ -45,12 +45,14 @@ async function bootstrap() {
   const healthServer = http.createServer((req, res) => {
     if (req.url === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        status: 'ok',
-        timestamp: new Date().toISOString(),
-        services: ['UserService@1.0.0'],
-        transports: { http: 3333 }
-      }));
+      res.end(
+        JSON.stringify({
+          status: 'ok',
+          timestamp: new Date().toISOString(),
+          services: ['UserService@1.0.0'],
+          transports: { http: 3333 },
+        })
+      );
     } else {
       res.writeHead(404);
       res.end('Not Found');

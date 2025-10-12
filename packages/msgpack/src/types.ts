@@ -17,4 +17,4 @@ export type BufferType = Buffer | SmartBuffer;
 export type BufferWithSmartBufferCompat = Buffer & {
   buffer: Buffer;
   toBuffer(): Buffer;
-}
+};

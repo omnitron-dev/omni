@@ -26,7 +26,7 @@ export {
   getTransportRegistry,
   registerTransport,
   getTransport,
-  getTransportForAddress
+  getTransportForAddress,
 } from './transport-registry.js';
 
 // Auto-register transports when module is imported

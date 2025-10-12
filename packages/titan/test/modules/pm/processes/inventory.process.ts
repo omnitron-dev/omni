@@ -10,7 +10,7 @@ export default class InventoryService {
   private inventory = new Map<string, number>([
     ['SKU001', 100],
     ['SKU002', 50],
-    ['SKU003', 200]
+    ['SKU003', 200],
   ]);
   private reservations = new Map<string, Map<string, number>>();
 

@@ -17,7 +17,7 @@ describe('EventSchedulerService', () => {
     mockEmitter = {
       emit: jest.fn((event: string, data: any) => {
         const handlers = eventHandlers.get(event) || [];
-        handlers.forEach(handler => handler(data));
+        handlers.forEach((handler) => handler(data));
         return true;
       }),
       on: jest.fn((event: string, handler: Function) => {
@@ -38,7 +38,7 @@ describe('EventSchedulerService', () => {
       once: jest.fn(),
       removeAllListeners: jest.fn(),
       listeners: jest.fn().mockReturnValue([]),
-      eventNames: jest.fn().mockReturnValue([])
+      eventNames: jest.fn().mockReturnValue([]),
     };
 
     schedulerService = new EventSchedulerService(mockEmitter);

@@ -579,10 +579,7 @@ describe('Table', () => {
     it('35. should handle empty rows and cells', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         TableBody({
-          children: [
-            TableRow({ children: TableCell({}) }),
-            TableRow({ children: TableCell({}) }),
-          ],
+          children: [TableRow({ children: TableCell({}) }), TableRow({ children: TableCell({}) })],
         })
       );
       cleanup = dispose;
@@ -606,10 +603,7 @@ describe('Table', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         TableHeader({
           children: TableRow({
-            children: [
-              TableHead({ scope: 'col', children: 'Name' }),
-              TableHead({ scope: 'col', children: 'Email' }),
-            ],
+            children: [TableHead({ scope: 'col', children: 'Name' }), TableHead({ scope: 'col', children: 'Email' })],
           }),
         })
       );
@@ -730,10 +724,7 @@ describe('Table', () => {
           children: [
             TableHeader({
               children: TableRow({
-                children: [
-                  TableHead({ scope: 'col', children: 'Name' }),
-                  TableHead({ scope: 'col', children: 'Age' }),
-                ],
+                children: [TableHead({ scope: 'col', children: 'Name' }), TableHead({ scope: 'col', children: 'Age' })],
               }),
             }),
             TableBody({

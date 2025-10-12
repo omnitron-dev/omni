@@ -3,10 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import {
-  NetronBuiltinMiddleware,
-  type NetronMiddlewareContext
-} from '../../../src/netron/middleware/index.js';
+import { NetronBuiltinMiddleware, type NetronMiddlewareContext } from '../../../src/netron/middleware/index.js';
 import { TitanError, ErrorCode } from '../../../src/errors/index.js';
 
 describe('NetronBuiltinMiddleware - Edge Cases', () => {
@@ -22,8 +19,8 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
       metadata: new Map(),
       timing: {
         start: Date.now(),
-        middlewareTimes: new Map()
-      }
+        middlewareTimes: new Map(),
+      },
     };
     mockNext = jest.fn().mockResolvedValue(undefined);
   });
@@ -55,7 +52,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
 
       const contextWithoutMetadata = {
         ...mockContext,
-        metadata: undefined as any
+        metadata: undefined as any,
       };
 
       await middleware(contextWithoutMetadata, mockNext);
@@ -84,7 +81,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
     it('should allow requests within rate limit', async () => {
       const middleware = NetronBuiltinMiddleware.rateLimit({
         maxRequests: 5,
-        window: 60000
+        window: 60000,
       });
 
       mockContext.metadata.set('clientId', 'client-1');
@@ -100,7 +97,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
     it('should reject requests exceeding rate limit', async () => {
       const middleware = NetronBuiltinMiddleware.rateLimit({
         maxRequests: 3,
-        window: 60000
+        window: 60000,
       });
 
       mockContext.metadata.set('clientId', 'client-2');
@@ -114,7 +111,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
       await expect(middleware(mockContext, mockNext)).rejects.toThrow(TitanError);
       await expect(middleware(mockContext, mockNext)).rejects.toMatchObject({
         code: ErrorCode.TOO_MANY_REQUESTS,
-        message: 'Rate limit exceeded'
+        message: 'Rate limit exceeded',
       });
     });
 
@@ -123,7 +120,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
 
       const middleware = NetronBuiltinMiddleware.rateLimit({
         maxRequests: 2,
-        window: 1000
+        window: 1000,
       });
 
       mockContext.metadata.set('clientId', 'client-3');
@@ -149,7 +146,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
     it('should use default clientId if not provided', async () => {
       const middleware = NetronBuiltinMiddleware.rateLimit({
         maxRequests: 2,
-        window: 60000
+        window: 60000,
       });
 
       // No clientId in metadata
@@ -163,7 +160,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
     it('should handle different clients independently', async () => {
       const middleware = NetronBuiltinMiddleware.rateLimit({
         maxRequests: 1,
-        window: 60000
+        window: 60000,
       });
 
       const context1 = { ...mockContext, metadata: new Map([['clientId', 'client-a']]) };
@@ -185,7 +182,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
       const middleware = NetronBuiltinMiddleware.circuitBreaker({
         threshold: 3,
         timeout: 60000,
-        resetTimeout: 30000
+        resetTimeout: 30000,
       });
 
       await middleware(mockContext, mockNext);
@@ -197,7 +194,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
       const middleware = NetronBuiltinMiddleware.circuitBreaker({
         threshold: 3,
         timeout: 60000,
-        resetTimeout: 30000
+        resetTimeout: 30000,
       });
 
       const error = new Error('Service failure');
@@ -213,7 +210,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
       await expect(middleware(mockContext, mockNext)).rejects.toThrow(TitanError);
       await expect(middleware(mockContext, mockNext)).rejects.toMatchObject({
         code: ErrorCode.SERVICE_UNAVAILABLE,
-        message: 'Circuit breaker is open'
+        message: 'Circuit breaker is open',
       });
 
       expect(mockNext).not.toHaveBeenCalled();
@@ -225,7 +222,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
       const middleware = NetronBuiltinMiddleware.circuitBreaker({
         threshold: 2,
         timeout: 60000,
-        resetTimeout: 1000
+        resetTimeout: 1000,
       });
 
       const error = new Error('Service failure');
@@ -257,7 +254,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
       const middleware = NetronBuiltinMiddleware.circuitBreaker({
         threshold: 2,
         timeout: 60000,
-        resetTimeout: 1000
+        resetTimeout: 1000,
       });
 
       const error = new Error('Service failure');
@@ -298,7 +295,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
           method: 'testMethod',
           duration: expect.any(Number),
           success: true,
-          timestamp: expect.any(String)
+          timestamp: expect.any(String),
         })
       );
       expect(mockNext).toHaveBeenCalled();
@@ -329,7 +326,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
           service: 'TestService',
           method: 'testMethod',
           duration: expect.any(Number),
-          success: false
+          success: false,
         })
       );
     });
@@ -339,7 +336,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
     it('should work as alias to loggingMiddleware', async () => {
       const logger = {
         info: jest.fn(),
-        error: jest.fn()
+        error: jest.fn(),
       };
 
       const middleware = NetronBuiltinMiddleware.logging(logger);
@@ -358,7 +355,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
 
       const middleware = NetronBuiltinMiddleware.cachingMiddleware({
         cache,
-        ttl: 60000
+        ttl: 60000,
       });
 
       // No result set
@@ -373,7 +370,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
 
       const middleware = NetronBuiltinMiddleware.cachingMiddleware({
         cache,
-        ttl: 60000
+        ttl: 60000,
       });
 
       mockContext.result = { data: 'test' };
@@ -390,7 +387,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
 
       const middleware = NetronBuiltinMiddleware.cachingMiddleware({
         cache,
-        ttl: 1000
+        ttl: 1000,
       });
 
       mockContext.result = { data: 'cached' };
@@ -416,7 +413,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
       const middleware = NetronBuiltinMiddleware.cachingMiddleware({
         cache,
         ttl: 60000,
-        keyGenerator
+        keyGenerator,
       });
 
       mockContext.result = { data: 'test' };
@@ -433,7 +430,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
 
       mockContext.metadata.set('user', {
         userId: '123',
-        roles: ['admin', 'user']
+        roles: ['admin', 'user'],
       });
 
       await middleware(mockContext, mockNext);
@@ -446,12 +443,12 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
 
       mockContext.metadata.set('user', {
         userId: '123',
-        roles: ['user', 'guest']
+        roles: ['user', 'guest'],
       });
 
       await expect(middleware(mockContext, mockNext)).rejects.toThrow(TitanError);
       await expect(middleware(mockContext, mockNext)).rejects.toMatchObject({
-        code: ErrorCode.FORBIDDEN
+        code: ErrorCode.FORBIDDEN,
       });
     });
   });
@@ -461,7 +458,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
       const metrics = {
         recordRequest: jest.fn(),
         recordDuration: jest.fn(),
-        recordError: jest.fn()
+        recordError: jest.fn(),
       };
 
       const middleware = NetronBuiltinMiddleware.metricsMiddleware(metrics);
@@ -469,7 +466,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
       const contextWithoutService = {
         ...mockContext,
         serviceName: undefined,
-        methodName: undefined
+        methodName: undefined,
       };
 
       await middleware(contextWithoutService, mockNext);
@@ -482,14 +479,14 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
       const metrics = {
         recordRequest: jest.fn(),
         recordDuration: jest.fn(),
-        recordError: jest.fn()
+        recordError: jest.fn(),
       };
 
       const middleware = NetronBuiltinMiddleware.metricsMiddleware(metrics);
 
       const contextWithoutService = {
         ...mockContext,
-        serviceName: undefined
+        serviceName: undefined,
       };
 
       await middleware(contextWithoutService, mockNext);
@@ -502,14 +499,14 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
       const metrics = {
         recordRequest: jest.fn(),
         recordDuration: jest.fn(),
-        recordError: jest.fn()
+        recordError: jest.fn(),
       };
 
       const middleware = NetronBuiltinMiddleware.metricsMiddleware(metrics);
 
       const contextWithoutService = {
         ...mockContext,
-        serviceName: undefined
+        serviceName: undefined,
       };
 
       const error = new Error('Test error');
@@ -524,7 +521,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
   describe('authenticationMiddleware - edge cases', () => {
     it('should handle non-Bearer token', async () => {
       const authenticator = {
-        verify: jest.fn().mockResolvedValue({ userId: '123' })
+        verify: jest.fn().mockResolvedValue({ userId: '123' }),
       };
 
       const middleware = NetronBuiltinMiddleware.authenticationMiddleware(authenticator);
@@ -539,7 +536,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
 
     it('should reject non-string authorization header', async () => {
       const authenticator = {
-        verify: jest.fn()
+        verify: jest.fn(),
       };
 
       const middleware = NetronBuiltinMiddleware.authenticationMiddleware(authenticator);
@@ -548,7 +545,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
 
       await expect(middleware(mockContext, mockNext)).rejects.toThrow(TitanError);
       await expect(middleware(mockContext, mockNext)).rejects.toMatchObject({
-        code: ErrorCode.UNAUTHORIZED
+        code: ErrorCode.UNAUTHORIZED,
       });
 
       expect(authenticator.verify).not.toHaveBeenCalled();
@@ -558,7 +555,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
   describe('compressionMiddleware - edge cases', () => {
     it('should handle object results by stringifying', async () => {
       const middleware = NetronBuiltinMiddleware.compressionMiddleware({
-        threshold: 10
+        threshold: 10,
       });
 
       mockContext.result = { large: 'data'.repeat(100) };
@@ -571,7 +568,7 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
 
     it('should not compress when result is null', async () => {
       const middleware = NetronBuiltinMiddleware.compressionMiddleware({
-        threshold: 10
+        threshold: 10,
       });
 
       mockContext.result = null;
@@ -588,8 +585,8 @@ describe('NetronBuiltinMiddleware - Edge Cases', () => {
       const tracer = {
         startSpan: jest.fn().mockReturnValue({
           setTag: jest.fn(),
-          finish: jest.fn()
-        })
+          finish: jest.fn(),
+        }),
       };
 
       const middleware = NetronBuiltinMiddleware.tracingMiddleware(tracer);

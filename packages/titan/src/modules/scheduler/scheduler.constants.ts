@@ -4,10 +4,7 @@
 
 import { Token, createToken } from '../../nexus/index.js';
 
-import type {
-  IJobListener,
-  ISchedulerConfig
-} from './scheduler.interfaces.js';
+import type { IJobListener, ISchedulerConfig } from './scheduler.interfaces.js';
 
 /**
  * Scheduler metadata keys
@@ -17,7 +14,7 @@ export const SCHEDULER_METADATA = {
   INTERVAL: Symbol('scheduler:interval'),
   TIMEOUT: Symbol('scheduler:timeout'),
   SCHEDULED_JOB: Symbol('scheduler:job'),
-  JOB_OPTIONS: Symbol('scheduler:options')
+  JOB_OPTIONS: Symbol('scheduler:options'),
 } as const;
 
 /**
@@ -40,23 +37,23 @@ export const DEFAULT_SCHEDULER_CONFIG: ISchedulerConfig = {
   timezone: 'UTC',
   persistence: {
     enabled: false,
-    provider: 'memory'
+    provider: 'memory',
   },
   metrics: {
     enabled: true,
     interval: 60000,
-    includeDetails: false
+    includeDetails: false,
   },
   distributed: {
     enabled: false,
     lockProvider: 'redis',
-    lockTTL: 30000
+    lockTTL: 30000,
   },
   retry: {
     maxAttempts: 3,
     delay: 1000,
     backoff: 2,
-    maxDelay: 30000
+    maxDelay: 30000,
   },
   maxConcurrent: 10,
   queueSize: 100,
@@ -64,8 +61,8 @@ export const DEFAULT_SCHEDULER_CONFIG: ISchedulerConfig = {
   shutdownTimeout: 30000,
   healthCheck: {
     enabled: true,
-    path: '/health/scheduler'
-  }
+    path: '/health/scheduler',
+  },
 };
 
 /**
@@ -84,7 +81,7 @@ export const ERROR_MESSAGES = {
   PERSISTENCE_ERROR: 'Failed to persist job state',
   LOCK_ACQUISITION_FAILED: 'Failed to acquire job lock',
   INVALID_JOB_TYPE: 'Invalid job type',
-  MAX_RETRIES_EXCEEDED: 'Maximum retry attempts exceeded'
+  MAX_RETRIES_EXCEEDED: 'Maximum retry attempts exceeded',
 } as const;
 
 /**
@@ -103,7 +100,7 @@ export const SCHEDULER_EVENTS = {
   SCHEDULER_STARTED: 'scheduler:started',
   SCHEDULER_STOPPED: 'scheduler:stopped',
   SCHEDULER_ERROR: 'scheduler:error',
-  METRICS_UPDATED: 'scheduler:metrics:updated'
+  METRICS_UPDATED: 'scheduler:metrics:updated',
 } as const;
 
 /**
@@ -116,7 +113,7 @@ export const CRON_POSITIONS = {
   DAY_OF_MONTH: 3,
   MONTH: 4,
   DAY_OF_WEEK: 5,
-  YEAR: 6
+  YEAR: 6,
 } as const;
 
 /**
@@ -127,5 +124,5 @@ export const DEFAULT_PRIORITIES = {
   INTERVAL: 2,
   TIMEOUT: 3,
   DELAYED: 2,
-  RECURRING: 2
+  RECURRING: 2,
 } as const;

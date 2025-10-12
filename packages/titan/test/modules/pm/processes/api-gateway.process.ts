@@ -13,7 +13,7 @@ export default class ApiGatewayService {
   @Public()
   @RateLimit({
     rps: 10, // 10 requests per second
-    burst: 15 // Allow burst up to 15 requests
+    burst: 15, // Allow burst up to 15 requests
   })
   async handleRequest(userId: string, request: any): Promise<{ success: boolean; data?: any; rateLimited?: boolean }> {
     // Track requests per user
@@ -21,11 +21,11 @@ export default class ApiGatewayService {
     this.requestCounts.set(userId, count + 1);
 
     // Process request
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     return {
       success: true,
-      data: { userId, processed: true, timestamp: Date.now() }
+      data: { userId, processed: true, timestamp: Date.now() },
     };
   }
 

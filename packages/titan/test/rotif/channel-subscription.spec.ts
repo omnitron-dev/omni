@@ -1,4 +1,3 @@
-
 import { delay, defer } from '@omnitron-dev/common';
 
 import { NotificationManager } from '../../src/rotif/rotif.js';
@@ -8,9 +7,11 @@ describe('NotificationManager – Channel Subscription Tests', () => {
   let manager: NotificationManager;
 
   beforeEach(async () => {
-    manager = new NotificationManager(createTestConfig(1, {
-      blockInterval: 100,
-    }));
+    manager = new NotificationManager(
+      createTestConfig(1, {
+        blockInterval: 100,
+      })
+    );
     await manager.redis.flushdb();
   });
 
@@ -54,21 +55,29 @@ describe('NotificationManager – Channel Subscription Tests', () => {
     const received: string[] = [];
     const def = defer();
 
-    await manager.subscribe('users.signout', async (msg) => {
-      received.push(`users.signout:${msg.channel}`);
-      await msg.ack();
-      if (received.length === 2) {
-        def.resolve?.(undefined);
-      }
-    }, { groupName: 'g1' });
+    await manager.subscribe(
+      'users.signout',
+      async (msg) => {
+        received.push(`users.signout:${msg.channel}`);
+        await msg.ack();
+        if (received.length === 2) {
+          def.resolve?.(undefined);
+        }
+      },
+      { groupName: 'g1' }
+    );
 
-    await manager.subscribe('users.signout', async (msg) => {
-      received.push(`users.signout:${msg.channel}`);
-      await msg.ack();
-      if (received.length === 2) {
-        def.resolve?.(undefined);
-      }
-    }, { groupName: 'g2' });
+    await manager.subscribe(
+      'users.signout',
+      async (msg) => {
+        received.push(`users.signout:${msg.channel}`);
+        await msg.ack();
+        if (received.length === 2) {
+          def.resolve?.(undefined);
+        }
+      },
+      { groupName: 'g2' }
+    );
 
     // Small delay to ensure both consumer loops are ready
     await delay(100);
@@ -77,9 +86,7 @@ describe('NotificationManager – Channel Subscription Tests', () => {
 
     await def.promise;
 
-    expect(received).toEqual(
-      expect.arrayContaining(['users.signout:users.signout', 'users.signout:users.signout']),
-    );
+    expect(received).toEqual(expect.arrayContaining(['users.signout:users.signout', 'users.signout:users.signout']));
     expect(received.length).toBe(2);
   }, 10000);
 
@@ -88,15 +95,19 @@ describe('NotificationManager – Channel Subscription Tests', () => {
     const received: any[] = [];
     const def = defer();
 
-    await manager.subscribe('users.signup', async (msg) => {
-      attempts.push(msg.attempt);
-      received.push(msg.payload);
-      throw new Error('forced error');
-    }, {
-      exactlyOnce: true,
-      maxRetries: 2,
-      retryDelay: 50,
-    });
+    await manager.subscribe(
+      'users.signup',
+      async (msg) => {
+        attempts.push(msg.attempt);
+        received.push(msg.payload);
+        throw new Error('forced error');
+      },
+      {
+        exactlyOnce: true,
+        maxRetries: 2,
+        retryDelay: 50,
+      }
+    );
 
     const dlqMsgs: any[] = [];
     manager.subscribeToDLQ(async (msg) => {
@@ -120,11 +131,15 @@ describe('NotificationManager – Channel Subscription Tests', () => {
     const start = Date.now();
     const def = defer();
 
-    await manager.subscribe('notifications.reminder', async (msg) => {
-      timestamps.push(Date.now() - start);
-      await msg.ack();
-      def.resolve?.(undefined);
-    }, { startFrom: '0' });
+    await manager.subscribe(
+      'notifications.reminder',
+      async (msg) => {
+        timestamps.push(Date.now() - start);
+        await msg.ack();
+        def.resolve?.(undefined);
+      },
+      { startFrom: '0' }
+    );
 
     await delay(400);
 
@@ -135,7 +150,6 @@ describe('NotificationManager – Channel Subscription Tests', () => {
     expect(timestamps.length).toBe(1);
     expect(timestamps[0]).toBeGreaterThanOrEqual(500);
   }, 10000);
-
 
   // it('should requeue messages from DLQ correctly', async () => {
   //   const received: any[] = [];

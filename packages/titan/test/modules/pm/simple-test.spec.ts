@@ -14,7 +14,7 @@ const mockLogger = {
   error: (...args: any[]) => console.error('[ERROR]', ...args),
   warn: (...args: any[]) => console.warn('[WARN]', ...args),
   debug: (...args: any[]) => console.log('[DEBUG]', ...args),
-  child: () => mockLogger
+  child: () => mockLogger,
 } as any;
 
 // Very simple test class
@@ -39,7 +39,7 @@ describe('Simple ProcessManager Test', () => {
   beforeEach(() => {
     console.log('Creating ProcessManager with mock spawner...');
     pm = new ProcessManager(mockLogger, {
-      useMockSpawner: true  // Force mock spawner
+      useMockSpawner: true, // Force mock spawner
     });
   });
 

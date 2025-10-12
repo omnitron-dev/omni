@@ -126,7 +126,7 @@ function generatePageNumbers(
   currentPage: number,
   totalPages: number,
   siblingCount: number,
-  showFirstLast: boolean,
+  showFirstLast: boolean
 ): (number | 'ellipsis')[] {
   // Total page numbers to show
   const totalNumbers = siblingCount * 2 + 3; // current + siblings on each side + first + last
@@ -166,10 +166,7 @@ function generatePageNumbers(
   }
 
   // Show both ellipsis
-  const middleRange = Array.from(
-    { length: rightSiblingIndex - leftSiblingIndex + 1 },
-    (_, i) => leftSiblingIndex + i,
-  );
+  const middleRange = Array.from({ length: rightSiblingIndex - leftSiblingIndex + 1 }, (_, i) => leftSiblingIndex + i);
 
   if (showFirstLast) {
     return [1, 'ellipsis', ...middleRange, 'ellipsis', totalPages];
@@ -246,83 +243,83 @@ export const Pagination = defineComponent<PaginationProps>((props) => {
  * Renders page number buttons with ellipsis.
  */
 export const PaginationItems = defineComponent<PaginationItemsProps>((props) => () => {
-    // Get context at render time, after Provider is set up
-    const ctx = useContext(PaginationContext);
+  // Get context at render time, after Provider is set up
+  const ctx = useContext(PaginationContext);
 
-    const pageNumbers = ctx.getPageNumbers();
-    const currentPage = ctx.currentPage();
+  const pageNumbers = ctx.getPageNumbers();
+  const currentPage = ctx.currentPage();
 
-    const renderItem = props.renderItem;
-    const renderEllipsis = props.renderEllipsis;
+  const renderItem = props.renderItem;
+  const renderEllipsis = props.renderEllipsis;
 
-    const items: any[] = [];
+  const items: any[] = [];
 
-    for (const page of pageNumbers) {
-      if (page === 'ellipsis') {
-        if (renderEllipsis) {
-          items.push(renderEllipsis());
-        } else {
-          items.push(
-            jsx('span', {
-              'data-pagination-ellipsis': '',
-              'aria-hidden': 'true',
-              children: '...',
-            })
-          );
-        }
+  for (const page of pageNumbers) {
+    if (page === 'ellipsis') {
+      if (renderEllipsis) {
+        items.push(renderEllipsis());
       } else {
-        const isCurrent = page === currentPage;
+        items.push(
+          jsx('span', {
+            'data-pagination-ellipsis': '',
+            'aria-hidden': 'true',
+            children: '...',
+          })
+        );
+      }
+    } else {
+      const isCurrent = page === currentPage;
 
-        if (renderItem) {
-          items.push(renderItem(page, isCurrent));
-        } else {
-          const buttonRef = createRef<HTMLButtonElement>();
+      if (renderItem) {
+        items.push(renderItem(page, isCurrent));
+      } else {
+        const buttonRef = createRef<HTMLButtonElement>();
 
-          const buttonRefCallback = (element: HTMLButtonElement | null) => {
-            buttonRef.current = element || undefined;
-            if (!element) return;
+        const buttonRefCallback = (element: HTMLButtonElement | null) => {
+          buttonRef.current = element || undefined;
+          if (!element) return;
 
-            // Set up effect to update button attributes when current page changes
-            effect(() => {
-              const isCurrentPage = ctx.currentPage() === page;
-              element.setAttribute('data-state', isCurrentPage ? 'active' : 'inactive');
-              if (isCurrentPage) {
-                element.setAttribute('data-current', '');
-                element.setAttribute('aria-current', 'page');
-                element.disabled = true;
-              } else {
-                element.removeAttribute('data-current');
-                element.removeAttribute('aria-current');
-                element.disabled = false;
-              }
-            });
-          };
+          // Set up effect to update button attributes when current page changes
+          effect(() => {
+            const isCurrentPage = ctx.currentPage() === page;
+            element.setAttribute('data-state', isCurrentPage ? 'active' : 'inactive');
+            if (isCurrentPage) {
+              element.setAttribute('data-current', '');
+              element.setAttribute('aria-current', 'page');
+              element.disabled = true;
+            } else {
+              element.removeAttribute('data-current');
+              element.removeAttribute('aria-current');
+              element.disabled = false;
+            }
+          });
+        };
 
-          items.push(
-            jsx('button', {
-              ref: buttonRefCallback,
-              'data-pagination-item': '',
-              'data-current': isCurrent ? '' : undefined,
-              'data-state': isCurrent ? 'active' : 'inactive',
-              'aria-current': isCurrent ? 'page' : undefined,
-              'aria-label': `Page ${page}`,
-              onClick: () => ctx.goToPage(page),
-              disabled: isCurrent,
-              children: page,
-            })
-          );
-        }
+        items.push(
+          jsx('button', {
+            ref: buttonRefCallback,
+            'data-pagination-item': '',
+            'data-current': isCurrent ? '' : undefined,
+            'data-state': isCurrent ? 'active' : 'inactive',
+            'aria-current': isCurrent ? 'page' : undefined,
+            'aria-label': `Page ${page}`,
+            onClick: () => ctx.goToPage(page),
+            disabled: isCurrent,
+            children: page,
+          })
+        );
       }
     }
+  }
 
-    const { ...restProps } = props;
+  const { ...restProps } = props;
 
-    return jsx('div', {
-      ...restProps,
-      'data-pagination-items': '',
-      children: items,
-    });
+  return jsx('div', {
+    ...restProps,
+    'data-pagination-items': '',
+    children: items,
   });
+});
 
 /**
  * Pagination Previous

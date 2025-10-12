@@ -4,11 +4,7 @@
 
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { AuthenticationManager } from '../../../src/netron/auth/authentication-manager.js';
-import type {
-  AuthCredentials,
-  AuthContext,
-  NetronAuthConfig,
-} from '../../../src/netron/auth/types.js';
+import type { AuthCredentials, AuthContext, NetronAuthConfig } from '../../../src/netron/auth/types.js';
 
 describe('AuthenticationManager', () => {
   let authManager: AuthenticationManager;
@@ -128,7 +124,7 @@ describe('AuthenticationManager', () => {
           roles: ['user', 'admin'],
           permissions: ['read:documents', 'write:documents'],
         }),
-        'User authenticated successfully',
+        'User authenticated successfully'
       );
     });
 
@@ -151,7 +147,7 @@ describe('AuthenticationManager', () => {
           error: 'Invalid credentials',
           username: 'testuser',
         }),
-        'Authentication failed',
+        'Authentication failed'
       );
     });
   });
@@ -643,9 +639,7 @@ describe('AuthenticationManager', () => {
       };
 
       // Create a promise that never resolves
-      mockAuthenticateFn.mockImplementation(
-        () => new Promise(() => {}),
-      );
+      mockAuthenticateFn.mockImplementation(() => new Promise(() => {}));
 
       authManager.configure({
         authenticate: mockAuthenticateFn,
@@ -735,7 +729,7 @@ describe('AuthenticationManager', () => {
         authManager.authenticate({
           username: `user${i}`,
           password: 'testpass',
-        }),
+        })
       );
 
       const results = await Promise.all(promises);
@@ -771,9 +765,7 @@ describe('AuthenticationManager', () => {
       const iterations = 1000;
 
       // Run 1000 authentications
-      const promises = Array.from({ length: iterations }, () =>
-        authManager.authenticate(credentials),
-      );
+      const promises = Array.from({ length: iterations }, () => authManager.authenticate(credentials));
 
       const results = await Promise.all(promises);
 
@@ -808,9 +800,7 @@ describe('AuthenticationManager', () => {
       const batches = 100; // 100K total iterations
 
       for (let i = 0; i < batches; i++) {
-        const promises = Array.from({ length: batchSize }, () =>
-          authManager.authenticate(credentials),
-        );
+        const promises = Array.from({ length: batchSize }, () => authManager.authenticate(credentials));
         await Promise.all(promises);
       }
 

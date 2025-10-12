@@ -5,7 +5,11 @@
 import { context, onCleanup, UpdatePriority, ComputationImpl, ComputationType } from './context.js';
 import type { DiamondResolvable } from './diamond-resolver.js';
 import { calculateDependencyDepth } from './diamond-resolver.js';
-import { globalCircularResolver, CircularDependencyError, type ResolvableComputation } from './circular-dependency-resolver.js';
+import {
+  globalCircularResolver,
+  CircularDependencyError,
+  type ResolvableComputation,
+} from './circular-dependency-resolver.js';
 
 import type { Signal, ComputedOptions } from './types.js';
 
@@ -29,17 +33,17 @@ const computingStack = new Set<ComputedImpl<any>>();
 class ComputedImpl<T> implements DiamondResolvable, ResolvableComputation {
   private cache: T | undefined;
   private isStale = true;
-  private isInitialized = false;  // Track if value has been computed at least once
+  private isInitialized = false; // Track if value has been computed at least once
   private computation: ComputationImpl;
   private subscribers = new Set<(value: T) => void>();
-  private computations = new Set<ComputationImpl>();  // Track dependent computations
+  private computations = new Set<ComputationImpl>(); // Track dependent computations
   private equals: (a: T, b: T) => boolean;
   private isComputing = false;
   private hasError = false;
   private error: any;
   private isDisposed = false;
   private static idCounter = 0;
-  
+
   // ResolvableComputation properties
   public readonly id: string;
   public readonly name?: string;
@@ -55,7 +59,7 @@ class ComputedImpl<T> implements DiamondResolvable, ResolvableComputation {
     this.isOptional = options?.isOptional;
     this.defaultValue = options?.defaultValue;
     this.equals = options?.equals || defaultEquals;
-    
+
     // Create computation that will recompute when dependencies change
     this.computation = new ComputationImpl(
       () => {
@@ -68,15 +72,15 @@ class ComputedImpl<T> implements DiamondResolvable, ResolvableComputation {
       UpdatePriority.SYNC, // Computeds run with SYNC priority
       ComputationType.COMPUTED // Mark as computed type
     );
-    
+
     // Store reference to this computed in the computation for signal notification
     (this.computation as any).__computed = this;
-    
+
     // Set error handler that re-throws for computed
     this.computation.setErrorHandler((error: Error) => {
       throw error;
     });
-    
+
     // Don't initialize immediately - let first access trigger it
     // This avoids issues with accessing other computeds during construction
   }
@@ -85,34 +89,34 @@ class ComputedImpl<T> implements DiamondResolvable, ResolvableComputation {
   execute(): void {
     this.computeValue();
   }
-  
+
   invalidate(): void {
     this.markStale();
   }
-  
+
   // Get value with dependency tracking
   get(): T {
     // Try to enter computation context using circular resolver
     const canProceed = globalCircularResolver.enter(this as ResolvableComputation);
-    
+
     if (!canProceed) {
       // Circular dependency detected and resolver decided to skip
       globalCircularResolver.exit(this as ResolvableComputation);
-      
+
       // Return default value if available, otherwise cached value
       if (this.defaultValue !== undefined) {
         return this.defaultValue;
       }
       return this.cache !== undefined ? this.cache : (undefined as any);
     }
-    
+
     // Legacy check for backward compatibility
     if (computingStack.has(this)) {
       globalCircularResolver.exit(this as ResolvableComputation);
       console.warn('Circular dependency detected in computed value (legacy check)');
       return this.cache !== undefined ? this.cache : (undefined as any);
     }
-    
+
     try {
       // If disposed, just return cached value without tracking
       if (this.isDisposed || (this.computation as any).isDisposed) {
@@ -122,27 +126,27 @@ class ComputedImpl<T> implements DiamondResolvable, ResolvableComputation {
         }
         return this.cache!;
       }
-      
+
       // Track this computed as a dependency if we're in another computation
       context.tracking.track(this as unknown as Signal<T>);
-      
+
       // Add current computation as subscriber (same as Signal)
       const computation = context.tracking.computation;
       if (computation instanceof ComputationImpl) {
         this.computations.add(computation);
         computation.addDependency(this as any);
       }
-      
+
       // If stale or never computed, recompute
       if ((this.isStale || !this.isInitialized) && !this.isComputing) {
         this.computeValue();
       }
-      
+
       // If we had an error, throw it
       if (this.hasError) {
         throw this.error;
       }
-      
+
       return this.cache!;
     } finally {
       // Always exit from circular resolver
@@ -155,11 +159,11 @@ class ComputedImpl<T> implements DiamondResolvable, ResolvableComputation {
       // Use untrack to avoid creating dependencies
       context.untrack(() => this.computeValue());
     }
-    
+
     if (this.hasError) {
       throw this.error;
     }
-    
+
     return this.cache!;
   }
 
@@ -179,7 +183,7 @@ class ComputedImpl<T> implements DiamondResolvable, ResolvableComputation {
       this.cache = this.defaultValue;
     }
   }
-  
+
   // Compute the value and track dependencies
   private computeValue(): void {
     if (this.isComputing) {
@@ -189,19 +193,18 @@ class ComputedImpl<T> implements DiamondResolvable, ResolvableComputation {
     this.isComputing = true;
     computingStack.add(this); // Add to computing stack for circular dependency detection
     const oldValue = this.cache;
-    
-    
+
     try {
       // Clear error state
       this.hasError = false;
       this.error = undefined;
-      
+
       // Replace the computation's execute function temporarily
       const originalExecute = this.computation.execute;
       this.computation.execute = () => {
         this.cache = this.fn();
       };
-      
+
       try {
         // Run the computation - this will track dependencies
         this.computation.run();
@@ -210,16 +213,17 @@ class ComputedImpl<T> implements DiamondResolvable, ResolvableComputation {
         // Restore original execute function
         this.computation.execute = originalExecute;
       }
-      
+
       // Mark as initialized after first computation
       const wasInitialized = this.isInitialized;
       this.isInitialized = true;
-      
+
       // Check if value changed and notify subscribers
       // Always notify if value changed, or if this is the first computation
-      const valueChanged = wasInitialized && oldValue !== undefined && this.cache !== undefined && !this.equals(oldValue, this.cache);
+      const valueChanged =
+        wasInitialized && oldValue !== undefined && this.cache !== undefined && !this.equals(oldValue, this.cache);
       const shouldNotify = valueChanged || !wasInitialized;
-      
+
       if (shouldNotify && this.subscribers.size > 0) {
         this.notifySubscribers();
       }
@@ -256,32 +260,32 @@ class ComputedImpl<T> implements DiamondResolvable, ResolvableComputation {
     if (this.isDisposed || (this.computation as any).isDisposed) {
       return;
     }
-    
+
     // Mark as stale
     this.isStale = true;
-    
+
     // Always invalidate dependent computations, even if already stale
     // This is crucial for diamond dependencies where multiple paths may lead to the same computed
     const computations = Array.from(this.computations);
     for (const computation of computations) {
       computation.invalidate();
     }
-    
+
     // Note: We don't recompute immediately - wait for next access
     // This is important for efficiency and avoiding unnecessary computations
   }
-  
+
   // Mark stale without propagating to dependents (used by signal notification for diamond deps)
   markStaleWithoutPropagation(): void {
     // Don't mark stale if disposed
     if (this.isDisposed || (this.computation as any).isDisposed) {
       return;
     }
-    
+
     // Just mark as stale without propagating
     this.isStale = true;
   }
-  
+
   // Get the dependency depth for topological sorting
   getDependencyDepth(): number {
     return calculateDependencyDepth(this);
@@ -321,34 +325,28 @@ export interface ComputedOptionsExtended extends ComputedOptions {
 /**
  * Create a computed value
  */
-export function computed<T>(
-  fn: () => T,
-  options?: ComputedOptionsExtended
-): Signal<T> {
+export function computed<T>(fn: () => T, options?: ComputedOptionsExtended): Signal<T> {
   const c = new ComputedImpl(fn, options);
-  
+
   // Create callable interface
-  const callable = Object.assign(
-    () => c.get(),
-    {
-      peek: () => c.peek(),
-      subscribe: (callback: (value: T) => void) => c.subscribe(callback)
-    }
-  );
-  
+  const callable = Object.assign(() => c.get(), {
+    peek: () => c.peek(),
+    subscribe: (callback: (value: T) => void) => c.subscribe(callback),
+  });
+
   // Store the internal computed instance for cleanup
   (callable as any).__internal = c;
-  
+
   // Add debug representation
   Object.defineProperty(callable, Symbol.for('nodejs.util.inspect.custom'), {
-    value: () => `Computed(${JSON.stringify(c.peek())})`
+    value: () => `Computed(${JSON.stringify(c.peek())})`,
   });
-  
+
   // Register for cleanup with current owner
   const owner = context.owner;
   if (owner) {
     onCleanup(() => c.dispose());
   }
-  
+
   return callable as Signal<T>;
 }

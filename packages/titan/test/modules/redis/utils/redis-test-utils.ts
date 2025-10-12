@@ -111,7 +111,7 @@ export class RedisTestHelper {
         await client.quit();
         return;
       } catch (error) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
     }
 
@@ -373,7 +373,7 @@ export class MockRedisClient {
 
   async keys(pattern: string): Promise<string[]> {
     const regex = new RegExp('^' + pattern.replace(/\*/g, '.*').replace(/\?/g, '.') + '$');
-    return Array.from(this.data.keys()).filter(key => {
+    return Array.from(this.data.keys()).filter((key) => {
       this.checkExpiry(key);
       return regex.test(key) && this.data.has(key);
     });

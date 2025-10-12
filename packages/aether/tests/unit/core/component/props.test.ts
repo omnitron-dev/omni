@@ -49,13 +49,7 @@ describe('Props System', () => {
     });
 
     it('should handle many objects', () => {
-      const merged = mergeProps(
-        { a: 1 },
-        { b: 2 },
-        { c: 3 },
-        { d: 4 },
-        { e: 5 }
-      );
+      const merged = mergeProps({ a: 1 }, { b: 2 }, { c: 3 }, { d: 4 }, { e: 5 });
 
       expect(merged).toEqual({ a: 1, b: 2, c: 3, d: 4, e: 5 });
     });
@@ -165,11 +159,7 @@ describe('Props System', () => {
         data: 'value',
       };
 
-      const [domProps, componentProps] = splitProps(props, [
-        'class',
-        'style',
-        'onClick',
-      ]);
+      const [domProps, componentProps] = splitProps(props, ['class', 'style', 'onClick']);
 
       expect(domProps).toEqual({
         class: 'my-class',
@@ -224,11 +214,7 @@ describe('Props System', () => {
         customProp: 'custom',
       };
 
-      const [htmlProps, customProps] = splitProps(inputProps, [
-        'type',
-        'placeholder',
-        'value',
-      ]);
+      const [htmlProps, customProps] = splitProps(inputProps, ['type', 'placeholder', 'value']);
 
       expect(htmlProps).toEqual({
         type: 'text',
@@ -251,11 +237,7 @@ describe('Props System', () => {
         config: {},
       };
 
-      const [domProps, eventProps, customProps] = splitProps(
-        allProps,
-        ['class', 'id'],
-        ['onClick', 'onInput']
-      );
+      const [domProps, eventProps, customProps] = splitProps(allProps, ['class', 'id'], ['onClick', 'onInput']);
 
       expect(domProps).toEqual({ class: 'container', id: 'main' });
       expect(eventProps).toEqual({
@@ -270,10 +252,7 @@ describe('Props System', () => {
       const userProps = { variant: 'secondary', onClick: () => {} };
 
       const merged = mergeProps(defaults, userProps);
-      const [styleProps, behaviorProps] = splitProps(merged, [
-        'variant',
-        'size',
-      ]);
+      const [styleProps, behaviorProps] = splitProps(merged, ['variant', 'size']);
 
       expect(styleProps).toEqual({ variant: 'secondary', size: 'medium' });
       expect(behaviorProps).toEqual({

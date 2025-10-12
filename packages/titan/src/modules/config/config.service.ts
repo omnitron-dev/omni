@@ -14,7 +14,7 @@ import {
   CONFIG_VALIDATOR_SERVICE_TOKEN,
   CONFIG_WATCHER_SERVICE_TOKEN,
   CONFIG_SCHEMA_TOKEN,
-  CONFIG_LOGGER_TOKEN
+  CONFIG_LOGGER_TOKEN,
 } from './config.tokens.js';
 
 import type {
@@ -22,7 +22,7 @@ import type {
   IConfigModuleOptions,
   IConfigMetadata,
   IConfigValidationResult,
-  IConfigChangeEvent
+  IConfigChangeEvent,
 } from './types.js';
 
 import type { ConfigLoaderService } from './config-loader.service.js';
@@ -51,7 +51,7 @@ export class ConfigService implements IConfigProvider {
       environment: options.environment || process.env['NODE_ENV'] || 'development',
       sources: [],
       validated: false,
-      cached: options.cache?.enabled || false
+      cached: options.cache?.enabled || false,
     };
 
     // Set initial config from sources if they are object type
@@ -79,10 +79,10 @@ export class ConfigService implements IConfigProvider {
         this.config = await this.loader.load(this.options.sources);
 
         // Update metadata
-        this.metadata.sources = this.options.sources.map(s => ({
+        this.metadata.sources = this.options.sources.map((s) => ({
           type: s.type,
           name: s.name,
-          loaded: true
+          loaded: true,
         }));
       }
 
@@ -91,7 +91,7 @@ export class ConfigService implements IConfigProvider {
         const result = this.validator.validate(this.config, this.schema);
         if (!result.success) {
           throw Errors.badRequest('Configuration validation failed', {
-            errors: result.errors
+            errors: result.errors,
           });
         }
         this.metadata.validated = true;
@@ -107,7 +107,7 @@ export class ConfigService implements IConfigProvider {
       this.initialized = true;
       this.logger?.info('Configuration service initialized', {
         environment: this.metadata.environment,
-        sources: this.metadata.sources?.length || 0
+        sources: this.metadata.sources?.length || 0,
       });
     } catch (error) {
       this.logger?.error({ error }, 'Failed to initialize configuration service');
@@ -179,7 +179,7 @@ export class ConfigService implements IConfigProvider {
       oldValue,
       newValue: value,
       source: 'runtime',
-      timestamp: new Date()
+      timestamp: new Date(),
     };
     this.notifyChangeListeners(event);
   }
@@ -193,7 +193,7 @@ export class ConfigService implements IConfigProvider {
 
     if (!result.success) {
       throw Errors.badRequest(`Configuration validation failed for ${path || 'root'}`, {
-        errors: result.error.issues
+        errors: result.error.issues,
       });
     }
 
@@ -250,7 +250,7 @@ export class ConfigService implements IConfigProvider {
         // Restore old config on validation failure
         this.config = oldConfig;
         throw Errors.badRequest('Configuration validation failed', {
-          errors: result.errors
+          errors: result.errors,
         });
       }
     }
@@ -264,7 +264,7 @@ export class ConfigService implements IConfigProvider {
       oldValue: oldConfig,
       newValue: this.config,
       source: 'reload',
-      timestamp: new Date()
+      timestamp: new Date(),
     });
   }
 
@@ -329,7 +329,7 @@ export class ConfigService implements IConfigProvider {
   private setValueByPath(obj: any, path: string, value: any): void {
     // Handle empty path - replace entire config
     if (!path || path === '') {
-      Object.keys(obj).forEach(key => delete obj[key]);
+      Object.keys(obj).forEach((key) => delete obj[key]);
       Object.assign(obj, value);
       return;
     }

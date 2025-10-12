@@ -31,18 +31,10 @@ export interface ValidationOptions {
 /**
  * Validate method parameters
  */
-export function Validate(
-  schema: ValidationSchema,
-  options: ValidationOptions = {}
-): MethodDecorator {
+export function Validate(schema: ValidationSchema, options: ValidationOptions = {}): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     // Store metadata
-    Reflect.defineMetadata(
-      TEMPLATE_METADATA.VALIDATED_METHOD,
-      { schema, options },
-      target,
-      propertyKey
-    );
+    Reflect.defineMetadata(TEMPLATE_METADATA.VALIDATED_METHOD, { schema, options }, target, propertyKey);
 
     const originalMethod = descriptor.value;
     const methodName = String(propertyKey);
@@ -50,9 +42,7 @@ export function Validate(
     descriptor.value = async function validatedMethod(...args: any[]) {
       try {
         // Transform if needed
-        const transformedArgs = options.transform
-          ? args.map(options.transform)
-          : args;
+        const transformedArgs = options.transform ? args.map(options.transform) : args;
 
         // Validate arguments
         const validatedArgs = transformedArgs.map((arg, index) => {
@@ -60,8 +50,7 @@ export function Validate(
             return schema.parse(arg);
           } catch (error) {
             if (options.throwOnError !== false) {
-              const message = options.errorMessage ||
-                `Validation failed for ${methodName} parameter ${index}`;
+              const message = options.errorMessage || `Validation failed for ${methodName} parameter ${index}`;
               throw new Error(`${message}: ${(error as z.ZodError).message}`);
             }
             return arg; // Return original if not throwing
@@ -93,10 +82,7 @@ export function Validate(
 /**
  * Validate return value
  */
-export function ValidateReturn(
-  schema: ValidationSchema,
-  options: ValidationOptions = {}
-): MethodDecorator {
+export function ValidateReturn(schema: ValidationSchema, options: ValidationOptions = {}): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     const originalMethod = descriptor.value;
     const methodName = String(propertyKey);
@@ -106,9 +92,7 @@ export function ValidateReturn(
 
       try {
         // Transform if needed
-        const transformed = options.transform
-          ? options.transform(result)
-          : result;
+        const transformed = options.transform ? options.transform(result) : result;
 
         // Validate result
         return schema.parse(transformed);
@@ -119,8 +103,7 @@ export function ValidateReturn(
         }
 
         if (options.throwOnError !== false) {
-          const message = options.errorMessage ||
-            `Return validation failed for ${methodName}`;
+          const message = options.errorMessage || `Return validation failed for ${methodName}`;
           throw new Error(`${message}: ${(error as z.ZodError).message}`);
         }
 
@@ -174,5 +157,5 @@ export const Schemas = {
   /**
    * Optional string
    */
-  OptionalString: z.string().optional()
+  OptionalString: z.string().optional(),
 };

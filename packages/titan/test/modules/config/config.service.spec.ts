@@ -19,18 +19,14 @@ describe('ConfigService', () => {
   beforeEach(() => {
     // Create mocked dependencies
     mockLoader = {
-      load: jest.fn().mockResolvedValue({})
+      load: jest.fn().mockResolvedValue({}),
     } as any;
     mockValidator = {
-      validate: jest.fn().mockReturnValue({ success: true, errors: [] })
+      validate: jest.fn().mockReturnValue({ success: true, errors: [] }),
     } as any;
 
     // Create ConfigService with mocked dependencies
-    configService = new ConfigService(
-      { loadEnvironment: false },
-      mockLoader,
-      mockValidator
-    );
+    configService = new ConfigService({ loadEnvironment: false }, mockLoader, mockValidator);
 
     tempDir = path.join(process.cwd(), 'packages/titan/test/modules/config/.temp-test');
     if (!fs.existsSync(tempDir)) {
@@ -89,13 +85,13 @@ describe('ConfigService', () => {
       app: z.object({
         name: z.string().min(3),
         port: z.number().int().positive(),
-        debug: z.boolean()
-      })
+        debug: z.boolean(),
+      }),
     });
 
     it('should validate configuration with schema', async () => {
       const validConfig = {
-        app: { name: 'test-app', port: 3000, debug: false }
+        app: { name: 'test-app', port: 3000, debug: false },
       };
 
       mockLoader.load = jest.fn().mockResolvedValue(validConfig);
@@ -105,10 +101,12 @@ describe('ConfigService', () => {
         {
           schema: testSchema,
           validateOnStartup: true,
-          sources: [{
-            type: 'object',
-            data: validConfig
-          }]
+          sources: [
+            {
+              type: 'object',
+              data: validConfig,
+            },
+          ],
         },
         mockLoader,
         mockValidator,
@@ -125,13 +123,13 @@ describe('ConfigService', () => {
 
     it('should throw on invalid configuration', async () => {
       const invalidConfig = {
-        app: { name: 'ab', port: -1, debug: 'invalid' }
+        app: { name: 'ab', port: -1, debug: 'invalid' },
       };
 
       mockLoader.load = jest.fn().mockResolvedValue(invalidConfig);
       mockValidator.validate = jest.fn().mockReturnValue({
         success: false,
-        errors: ['Invalid configuration']
+        errors: ['Invalid configuration'],
       });
 
       configService = new ConfigService(
@@ -139,7 +137,7 @@ describe('ConfigService', () => {
           schema: testSchema,
           defaults: invalidConfig,
           validateOnStartup: true,
-          sources: []
+          sources: [],
         },
         mockLoader,
         mockValidator,
@@ -154,18 +152,20 @@ describe('ConfigService', () => {
   describe('Configuration sources', () => {
     it('should load from sources', async () => {
       const configData = {
-        app: { name: 'loaded-app', port: 4000 }
+        app: { name: 'loaded-app', port: 4000 },
       };
 
       mockLoader.load = jest.fn().mockResolvedValue(configData);
 
       configService = new ConfigService(
         {
-          sources: [{
-            type: 'file',
-            path: 'test.json',
-            format: 'json'
-          }]
+          sources: [
+            {
+              type: 'file',
+              path: 'test.json',
+              format: 'json',
+            },
+          ],
         },
         mockLoader,
         mockValidator
@@ -181,7 +181,7 @@ describe('ConfigService', () => {
     it('should handle multiple sources', async () => {
       const mergedConfig = {
         app: { name: 'merged-app', port: 5000 },
-        database: { host: 'localhost' }
+        database: { host: 'localhost' },
       };
 
       mockLoader.load = jest.fn().mockResolvedValue(mergedConfig);
@@ -191,8 +191,8 @@ describe('ConfigService', () => {
           sources: [
             { type: 'file', path: 'base.json', format: 'json' },
             { type: 'env', prefix: 'APP_' },
-            { type: 'object', data: { app: { port: 5000 } } }
-          ]
+            { type: 'object', data: { app: { port: 5000 } } },
+          ],
         },
         mockLoader,
         mockValidator
@@ -219,7 +219,7 @@ describe('ConfigService', () => {
         oldValue: undefined,
         newValue: 42,
         source: 'runtime',
-        timestamp: expect.any(Date)
+        timestamp: expect.any(Date),
       });
 
       unsubscribe();
@@ -236,7 +236,7 @@ describe('ConfigService', () => {
       configService = new ConfigService(
         {
           cache: { enabled: true, ttl: 1000 },
-          sources: []
+          sources: [],
         },
         mockLoader,
         mockValidator
@@ -261,7 +261,7 @@ describe('ConfigService', () => {
       configService = new ConfigService(
         {
           cache: { enabled: true, ttl: 100 }, // 100ms TTL
-          sources: []
+          sources: [],
         },
         mockLoader,
         mockValidator
@@ -274,7 +274,7 @@ describe('ConfigService', () => {
       expect(value1).toBe('value');
 
       // Wait for cache to expire
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       // Change value
       configService.set('test', 'new-value');
@@ -287,7 +287,7 @@ describe('ConfigService', () => {
     it('should get typed configuration with schema', async () => {
       const schema = z.object({
         port: z.number(),
-        host: z.string()
+        host: z.string(),
       });
 
       await configService.initialize();
@@ -300,7 +300,7 @@ describe('ConfigService', () => {
     it('should throw on invalid typed configuration', async () => {
       const schema = z.object({
         port: z.number(),
-        host: z.string()
+        host: z.string(),
       });
 
       await configService.initialize();
@@ -315,13 +315,11 @@ describe('ConfigService', () => {
       const initialData = { version: 1 };
       const updatedData = { version: 2 };
 
-      mockLoader.load = jest.fn()
-        .mockResolvedValueOnce(initialData)
-        .mockResolvedValueOnce(updatedData);
+      mockLoader.load = jest.fn().mockResolvedValueOnce(initialData).mockResolvedValueOnce(updatedData);
 
       configService = new ConfigService(
         {
-          sources: [{ type: 'file', path: 'config.json' }]
+          sources: [{ type: 'file', path: 'config.json' }],
         },
         mockLoader,
         mockValidator
@@ -339,11 +337,10 @@ describe('ConfigService', () => {
       const initialData = { version: 1, valid: true };
       const invalidData = { version: 2, valid: false };
 
-      mockLoader.load = jest.fn()
-        .mockResolvedValueOnce(initialData)
-        .mockResolvedValueOnce(invalidData);
+      mockLoader.load = jest.fn().mockResolvedValueOnce(initialData).mockResolvedValueOnce(invalidData);
 
-      mockValidator.validate = jest.fn()
+      mockValidator.validate = jest
+        .fn()
         .mockReturnValueOnce({ success: true, errors: [] })
         .mockReturnValueOnce({ success: false, errors: ['Invalid'] });
 
@@ -353,7 +350,7 @@ describe('ConfigService', () => {
         {
           sources: [{ type: 'file', path: 'config.json' }],
           validateOnStartup: true,
-          schema
+          schema,
         },
         mockLoader,
         mockValidator,
@@ -376,7 +373,7 @@ describe('ConfigService', () => {
         {
           environment: 'test',
           sources: [{ type: 'file', path: 'test.json', name: 'test-file' }],
-          cache: { enabled: true }
+          cache: { enabled: true },
         },
         mockLoader,
         mockValidator
@@ -391,11 +388,7 @@ describe('ConfigService', () => {
     });
 
     it('should get environment from metadata', async () => {
-      configService = new ConfigService(
-        { environment: 'production' },
-        mockLoader,
-        mockValidator
-      );
+      configService = new ConfigService({ environment: 'production' }, mockLoader, mockValidator);
 
       expect(configService.environment).toBe('production');
     });

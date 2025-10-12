@@ -21,18 +21,20 @@ export class LoggerService {
     if (existingLogger) {
       this.logger = existingLogger.child({
         module: 'TemplateModule',
-        prefix: options.prefix
+        prefix: options.prefix,
       });
     } else {
       this.logger = pino({
         name: 'TemplateModule',
         level: options.debug ? 'debug' : 'info',
-        transport: options.debug ? {
-          target: 'pino-pretty',
-          options: {
-            colorize: true
-          }
-        } : undefined
+        transport: options.debug
+          ? {
+              target: 'pino-pretty',
+              options: {
+                colorize: true,
+              },
+            }
+          : undefined,
       });
     }
   }
@@ -76,11 +78,13 @@ export class LoggerService {
   error(message: string, error?: Error, data?: any): void {
     const errorData = {
       ...data,
-      error: error ? {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      } : undefined
+      error: error
+        ? {
+            message: error.message,
+            stack: error.stack,
+            name: error.name,
+          }
+        : undefined,
     };
 
     this.logger.error(errorData, message);

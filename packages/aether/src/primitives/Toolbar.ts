@@ -149,7 +149,7 @@ export const Toolbar = defineComponent<ToolbarProps>((props) => {
 
     const toolbar = e.currentTarget as HTMLElement;
     const items = Array.from(
-      toolbar.querySelectorAll('[data-toolbar-button]:not([disabled]), [data-toolbar-link]'),
+      toolbar.querySelectorAll('[data-toolbar-button]:not([disabled]), [data-toolbar-link]')
     ) as HTMLElement[];
 
     if (items.length === 0) return;
@@ -261,12 +261,15 @@ export const ToolbarLink = defineComponent<ToolbarLinkProps>((props) => () => {
  *
  * Visual separator between toolbar items.
  */
-export const ToolbarSeparator = defineComponent<ToolbarSeparatorProps>((props) => () => jsx('div', {
-  ...props,
-  'data-toolbar-separator': '',
-  role: 'separator',
-  'aria-orientation': 'vertical',
-}));
+export const ToolbarSeparator = defineComponent<ToolbarSeparatorProps>(
+  (props) => () =>
+    jsx('div', {
+      ...props,
+      'data-toolbar-separator': '',
+      role: 'separator',
+      'aria-orientation': 'vertical',
+    })
+);
 
 /**
  * Toolbar Toggle Group
@@ -274,14 +277,7 @@ export const ToolbarSeparator = defineComponent<ToolbarSeparatorProps>((props) =
  * Group of toggle buttons (like radio or checkbox group).
  */
 export const ToolbarToggleGroup = defineComponent<ToolbarToggleGroupProps>((props) => () => {
-  const {
-    type = 'single',
-    value,
-    defaultValue,
-    onValueChange,
-    children,
-    ...restProps
-  } = props;
+  const { type = 'single', value, defaultValue, onValueChange, children, ...restProps } = props;
 
   // This is a simplified version - in a real implementation,
   // this would manage the toggle state

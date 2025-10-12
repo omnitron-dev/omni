@@ -3,7 +3,6 @@ import { delay } from '@omnitron-dev/common';
 import { NotificationManager } from '../../src/rotif/rotif.js';
 import { getTestRedisUrl } from './helpers/test-utils.js';
 
-
 describe('Multiple Subscribers Handling whithin one rotif instance', () => {
   let manager: NotificationManager;
 
@@ -47,13 +46,21 @@ describe('Multiple Subscribers Handling whithin one rotif instance', () => {
     const receivedA: any[] = [];
     const receivedB: any[] = [];
 
-    await manager.subscribe('multi.unique', async (msg) => {
-      receivedA.push(msg.payload);
-    }, { groupName: 'groupA' });
+    await manager.subscribe(
+      'multi.unique',
+      async (msg) => {
+        receivedA.push(msg.payload);
+      },
+      { groupName: 'groupA' }
+    );
 
-    await manager.subscribe('multi.unique', async (msg) => {
-      receivedB.push(msg.payload);
-    }, { groupName: 'groupB' });
+    await manager.subscribe(
+      'multi.unique',
+      async (msg) => {
+        receivedB.push(msg.payload);
+      },
+      { groupName: 'groupB' }
+    );
 
     await delay(100);
 
@@ -76,9 +83,13 @@ describe('Multiple Subscribers Handling whithin one rotif instance', () => {
       receivedDefault.push(msg.payload);
     });
 
-    await manager.subscribe('multi.mixed', async (msg) => {
-      receivedUnique.push(msg.payload);
-    }, { groupName: 'unique-group' });
+    await manager.subscribe(
+      'multi.mixed',
+      async (msg) => {
+        receivedUnique.push(msg.payload);
+      },
+      { groupName: 'unique-group' }
+    );
 
     await delay(100);
 
@@ -92,5 +103,4 @@ describe('Multiple Subscribers Handling whithin one rotif instance', () => {
     expect(receivedDefault[0]).toEqual({ data: 'mixed-test' });
     expect(receivedUnique[0]).toEqual({ data: 'mixed-test' });
   });
-
 });

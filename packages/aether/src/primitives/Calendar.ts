@@ -64,20 +64,17 @@ export interface CalendarHeaderProps {
   [key: string]: any;
 }
 
-export interface CalendarPrevButtonProps
-   {
+export interface CalendarPrevButtonProps {
   children?: any;
   [key: string]: any;
 }
 
-export interface CalendarNextButtonProps
-   {
+export interface CalendarNextButtonProps {
   children?: any;
   [key: string]: any;
 }
 
-export interface CalendarHeadingProps
-   {
+export interface CalendarHeadingProps {
   children?: any;
   [key: string]: any;
 }
@@ -87,20 +84,17 @@ export interface CalendarGridProps {
   [key: string]: any;
 }
 
-export interface CalendarGridHeadProps
-   {
+export interface CalendarGridHeadProps {
   children?: any;
   [key: string]: any;
 }
 
-export interface CalendarHeadCellProps
-   {
+export interface CalendarHeadCellProps {
   children?: any;
   [key: string]: any;
 }
 
-export interface CalendarGridBodyProps
-   {
+export interface CalendarGridBodyProps {
   children?: any;
   [key: string]: any;
 }
@@ -184,7 +178,6 @@ function isSameMonth(date1: Date, date2: Date): boolean {
   return date1.getFullYear() === date2.getFullYear() && date1.getMonth() === date2.getMonth();
 }
 
-
 function addMonths(date: Date, months: number): Date {
   const newDate = new Date(date);
   newDate.setMonth(newDate.getMonth() + months);
@@ -198,7 +191,7 @@ function getDaysInMonth(year: number, month: number): number {
 function generateCalendarDays(
   year: number,
   month: number,
-  weekStartsOn: 0 | 1,
+  weekStartsOn: 0 | 1
 ): { date: Date; isCurrentMonth: boolean }[] {
   const days: { date: Date; isCurrentMonth: boolean }[] = [];
   const firstDay = new Date(year, month, 1);
@@ -256,15 +249,13 @@ function generateCalendarDays(
  * Container with state management and date logic
  */
 export const Calendar = defineComponent<CalendarProps>((props) => {
-  const internalValue: WritableSignal<Date | null> = signal<Date | null>(
-    props.value ?? props.defaultValue ?? null,
-  );
+  const internalValue: WritableSignal<Date | null> = signal<Date | null>(props.value ?? props.defaultValue ?? null);
   const currentMonth: WritableSignal<Date> = signal<Date>(
-    props.defaultMonth ?? props.value ?? props.defaultValue ?? new Date(),
+    props.defaultMonth ?? props.value ?? props.defaultValue ?? new Date()
   );
 
   const isControlled = () => props.value !== undefined;
-  const currentValue = () => (isControlled() ? props.value ?? null : internalValue());
+  const currentValue = () => (isControlled() ? (props.value ?? null) : internalValue());
 
   const setValue = (date: Date | null) => {
     if (!isControlled()) {
@@ -310,19 +301,17 @@ export const Calendar = defineComponent<CalendarProps>((props) => {
 
   const days = computed(() => {
     const month = currentMonth();
-    const generatedDays = generateCalendarDays(
-      month.getFullYear(),
-      month.getMonth(),
-      props.weekStartsOn ?? 0,
-    );
+    const generatedDays = generateCalendarDays(month.getFullYear(), month.getMonth(), props.weekStartsOn ?? 0);
 
-    return generatedDays.map((day): DayInfo => ({
-      date: day.date,
-      isCurrentMonth: day.isCurrentMonth,
-      isToday: isToday(day.date),
-      isSelected: isDateSelected(day.date),
-      isDisabled: isDateDisabledFn(day.date),
-    }));
+    return generatedDays.map(
+      (day): DayInfo => ({
+        date: day.date,
+        isCurrentMonth: day.isCurrentMonth,
+        isToday: isToday(day.date),
+        isSelected: isDateSelected(day.date),
+        isDisabled: isDateDisabledFn(day.date),
+      })
+    );
   });
 
   const contextValue: CalendarContextValue = {
@@ -546,9 +535,9 @@ export const CalendarGridBody = defineComponent<CalendarGridBodyProps>((props) =
               'data-selected': day.isSelected ? '' : undefined,
               disabled: day.isDisabled,
               children: day.date.getDate(),
-            }),
+            })
           ),
-        }),
+        })
       ),
     });
   };

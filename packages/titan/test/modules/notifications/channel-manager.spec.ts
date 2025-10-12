@@ -6,7 +6,7 @@ import {
   EmailChannel,
   SMSChannel,
   ChannelContent,
-  Recipient
+  Recipient,
 } from '../../../src/modules/notifications/channel-manager.js';
 import type { NotificationPayload, SendOptions } from '../../../src/modules/notifications/notifications.service.js';
 
@@ -67,21 +67,19 @@ describe('ChannelManager', () => {
       channelManager.registerChannel(emailChannel, 1);
       channelManager.registerChannel(smsChannel, 2);
 
-      const recipients: Recipient[] = [
-        { id: 'user-1', email: 'user@example.com', phone: '+1234567890' }
-      ];
+      const recipients: Recipient[] = [{ id: 'user-1', email: 'user@example.com', phone: '+1234567890' }];
 
       const notification: NotificationPayload = {
         id: 'notif-1',
         type: 'info',
         title: 'Test',
         body: 'Test notification',
-        data: {}
+        data: {},
       };
 
       const options: SendOptions = {
         channels: [ChannelType.Email, ChannelType.SMS],
-        channelStrategy: 'all'
+        channelStrategy: 'all',
       };
 
       const plan = await channelManager.planDelivery(recipients, notification, options);
@@ -103,21 +101,19 @@ describe('ChannelManager', () => {
       channelManager.registerChannel(emailChannel, 1);
       channelManager.registerChannel(smsChannel, 2);
 
-      const recipients: Recipient[] = [
-        { id: 'user-1', phone: '+1234567890' }
-      ];
+      const recipients: Recipient[] = [{ id: 'user-1', phone: '+1234567890' }];
 
       const notification: NotificationPayload = {
         id: 'notif-1',
         type: 'error',
         title: 'Error',
         body: 'Something went wrong',
-        data: {}
+        data: {},
       };
 
       const options: SendOptions = {
         channels: [ChannelType.Email, ChannelType.SMS],
-        channelStrategy: 'first-available'
+        channelStrategy: 'first-available',
       };
 
       const plan = await channelManager.planDelivery(recipients, notification, options);
@@ -137,7 +133,7 @@ describe('ChannelManager', () => {
       channelManager.registerChannel(emailChannel, 1);
 
       const recipients: Recipient[] = [
-        { id: 'user-1' } // No email address
+        { id: 'user-1' }, // No email address
       ];
 
       const notification: NotificationPayload = {
@@ -145,12 +141,12 @@ describe('ChannelManager', () => {
         type: 'info',
         title: 'Test',
         body: 'Test',
-        data: {}
+        data: {},
       };
 
       const options: SendOptions = {
         channels: [ChannelType.Email],
-        channelStrategy: 'all'
+        channelStrategy: 'all',
       };
 
       const plan = await channelManager.planDelivery(recipients, notification, options);
@@ -195,10 +191,7 @@ describe('InAppChannel', () => {
 
     await channel.send(recipient, content);
 
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('InApp notification sent'),
-      expect.any(Object)
-    );
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('InApp notification sent'), expect.any(Object));
 
     consoleSpy.mockRestore();
   });
@@ -229,12 +222,12 @@ describe('EmailChannel', () => {
     const content: ChannelContent = {
       subject: 'Test Email',
       html: '<p>Email body content</p>',
-      text: 'Email body content'
+      text: 'Email body content',
     };
 
     const recipient: Recipient = {
       id: 'user-1',
-      email: 'user@example.com'
+      email: 'user@example.com',
     };
 
     // Mock console.log to verify the send was called
@@ -253,7 +246,7 @@ describe('EmailChannel', () => {
   it('should handle email sending failure', async () => {
     const content: ChannelContent = {
       subject: 'Test',
-      text: 'Test'
+      text: 'Test',
     };
 
     const recipient: Recipient = { id: 'user-1' }; // No email
@@ -285,12 +278,12 @@ describe('SMSChannel', () => {
 
   it('should send SMS notification', async () => {
     const content: ChannelContent = {
-      message: 'This is an SMS message'
+      message: 'This is an SMS message',
     };
 
     const recipient: Recipient = {
       id: 'user-1',
-      phone: '+12345678901'
+      phone: '+12345678901',
     };
 
     // Mock console.log to verify the send was called
@@ -313,7 +306,7 @@ describe('SMSChannel', () => {
       type: 'info',
       title: 'Test',
       body: longBody,
-      data: {}
+      data: {},
     };
 
     const content = channel.formatContent(notification);

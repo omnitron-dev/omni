@@ -4,11 +4,7 @@
  */
 import { describe, it, expect, jest } from '@jest/globals';
 
-import {
-  Container,
-  createToken,
-  createModule
-} from '../../../src/nexus/index.js';
+import { Container, createToken, createModule } from '../../../src/nexus/index.js';
 import {
   TestContainer,
   createTestContainer,
@@ -23,14 +19,14 @@ import {
   expectResolution,
   expectRejection,
   expectDependency,
-  expectLifecycle
+  expectLifecycle,
 } from '../../../src/nexus/testing/index.js';
 
 describe('Testing Utilities', () => {
   describe('TestContainer', () => {
     it('should create test container with auto-mocking', () => {
       const testContainer = createTestContainer({
-        autoMock: true
+        autoMock: true,
       });
 
       const token = createToken<{ getData: () => string }>('Service');
@@ -61,7 +57,7 @@ describe('Testing Utilities', () => {
       const token = createToken<{ method: (arg: string) => string }>('Service');
 
       testContainer.mock(token, {
-        method: jest.fn().mockReturnValue('mocked')
+        method: jest.fn().mockReturnValue('mocked'),
       });
 
       const service = testContainer.resolve(token);
@@ -96,7 +92,7 @@ describe('Testing Utilities', () => {
 
       testContainer.stub(token, {
         method1: 'stubbed',
-        method2: 42
+        method2: 42,
       });
 
       const service = testContainer.resolve(token);
@@ -154,7 +150,7 @@ describe('Testing Utilities', () => {
 
       expect(interactions).toEqual([
         { method: 'method', args: ['test1'] },
-        { method: 'method', args: ['test2'] }
+        { method: 'method', args: ['test2'] },
       ]);
     });
   });
@@ -166,12 +162,8 @@ describe('Testing Utilities', () => {
 
       const testModule = createTestModule({
         name: 'TestModule',
-        providers: [
-          { provide: serviceToken, useValue: 'test-service' }
-        ],
-        mocks: [
-          { provide: mockToken, useValue: 'mock-value' }
-        ]
+        providers: [{ provide: serviceToken, useValue: 'test-service' }],
+        mocks: [{ provide: mockToken, useValue: 'mock-value' }],
       });
 
       const container = new Container();
@@ -186,15 +178,11 @@ describe('Testing Utilities', () => {
 
       const originalModule = createModule({
         name: 'Original',
-        providers: [
-          { provide: token, useValue: 'original' }
-        ]
+        providers: [{ provide: token, useValue: 'original' }],
       });
 
       const testModule = TestModule.override(originalModule, {
-        providers: [
-          { provide: token, useValue: 'overridden' }
-        ]
+        providers: [{ provide: token, useValue: 'overridden' }],
       });
 
       const container = new Container();
@@ -212,12 +200,14 @@ describe('Testing Utilities', () => {
 
       const testModule = createTestModule({
         name: 'TestModule',
-        mocks: [{
-          provide: userServiceToken,
-          useValue: {
-            getUser: jest.fn().mockResolvedValue({ id: '1', name: 'Test User' })
-          }
-        }]
+        mocks: [
+          {
+            provide: userServiceToken,
+            useValue: {
+              getUser: jest.fn().mockResolvedValue({ id: '1', name: 'Test User' }),
+            },
+          },
+        ],
       });
 
       const container = new Container();
@@ -234,9 +224,7 @@ describe('Testing Utilities', () => {
   describe('TestHarness', () => {
     it('should create test harness for component', async () => {
       class TestComponent {
-        constructor(
-          private service: { getData: () => string }
-        ) { }
+        constructor(private service: { getData: () => string }) {}
 
         process() {
           return this.service.getData();
@@ -253,9 +241,9 @@ describe('Testing Utilities', () => {
           {
             provide: componentToken,
             useFactory: (service) => new TestComponent(service),
-            inject: [serviceToken]
-          }
-        ]
+            inject: [serviceToken],
+          },
+        ],
       });
 
       await harness.initialize();
@@ -277,9 +265,9 @@ describe('Testing Utilities', () => {
         providers: [
           {
             provide: serviceToken,
-            useFactory: () => ({ getValue: () => value })
-          }
-        ]
+            useFactory: () => ({ getValue: () => value }),
+          },
+        ],
       });
 
       await harness.initialize();
@@ -303,15 +291,15 @@ describe('Testing Utilities', () => {
         zone: {
           onEnter: () => events.push('enter'),
           onLeave: () => events.push('leave'),
-          onError: (error) => events.push(`error: ${error.message}`)
-        }
+          onError: (error) => events.push(`error: ${error.message}`),
+        },
       });
 
       await harness.initialize();
 
       await harness.runInZone(async () => {
         events.push('executing');
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         events.push('completed');
       });
 
@@ -365,7 +353,7 @@ describe('Testing Utilities', () => {
       let counter = 0;
       container.register(token, {
         useFactory: () => ++counter,
-        scope: 'transient'
+        scope: 'transient',
       });
 
       // Take snapshot
@@ -424,10 +412,7 @@ describe('Testing Utilities', () => {
 
       container.register(token, { useValue: 'expected' });
 
-      await expectResolution(container, token)
-        .toResolve()
-        .withValue('expected')
-        .inTime(100);
+      await expectResolution(container, token).toResolve().withValue('expected').inTime(100);
     });
 
     it('should use expectRejection', async () => {
@@ -437,12 +422,10 @@ describe('Testing Utilities', () => {
       container.register(token, {
         useFactory: () => {
           throw new Error('Expected failure');
-        }
+        },
       });
 
-      await expectRejection(container, token)
-        .toThrow('Expected failure')
-        .withErrorType(Error);
+      await expectRejection(container, token).toThrow('Expected failure').withErrorType(Error);
     });
 
     it('should use expectDependency', () => {
@@ -453,12 +436,10 @@ describe('Testing Utilities', () => {
       container.register(depToken, { useValue: 'dep' });
       container.register(serviceToken, {
         useFactory: (dep) => ({ dep }),
-        inject: [depToken]
+        inject: [depToken],
       });
 
-      expectDependency(container, serviceToken)
-        .toHaveDependency(depToken)
-        .withCardinality(1);
+      expectDependency(container, serviceToken).toHaveDependency(depToken).withCardinality(1);
     });
 
     it('should use expectLifecycle', async () => {
@@ -467,21 +448,23 @@ describe('Testing Utilities', () => {
       const destroySpy = jest.fn();
 
       class TestService {
-        async onInit() { initSpy(); }
-        async onDestroy() { destroySpy(); }
+        async onInit() {
+          initSpy();
+        }
+        async onDestroy() {
+          destroySpy();
+        }
       }
 
       const token = createToken<TestService>('TestService');
       container.register(token, {
         useClass: TestService,
-        scope: 'singleton'
+        scope: 'singleton',
       });
 
       container.resolve(token);
 
-      await expectLifecycle(container, token)
-        .toCallOnInit()
-        .toCallOnDestroy();
+      await expectLifecycle(container, token).toCallOnInit().toCallOnDestroy();
 
       await container.initialize();
       expect(initSpy).toHaveBeenCalled();
@@ -495,7 +478,7 @@ describe('Testing Utilities', () => {
     it('should create mock provider', () => {
       const mockProvider = new MockProvider({
         getData: jest.fn().mockReturnValue('mocked-data'),
-        processData: jest.fn()
+        processData: jest.fn(),
       });
 
       expect(mockProvider.getData()).toBe('mocked-data');
@@ -507,7 +490,7 @@ describe('Testing Utilities', () => {
 
     it('should create spy provider', () => {
       const original = {
-        method: () => 'original-result'
+        method: () => 'original-result',
       };
 
       const spyProvider = new SpyProvider(original, ['method']);
@@ -523,7 +506,7 @@ describe('Testing Utilities', () => {
       const stubProvider = new StubProvider({
         method1: 'stubbed1',
         method2: 42,
-        method3: { nested: 'value' }
+        method3: { nested: 'value' },
       });
 
       expect(stubProvider.method1()).toBe('stubbed1');
@@ -535,7 +518,7 @@ describe('Testing Utilities', () => {
   describe('Leak Detection', () => {
     it('should detect leaked tokens', async () => {
       const testContainer = createTestContainer({
-        detectLeaks: true
+        detectLeaks: true,
       });
 
       const token1 = createToken<any>('Token1');
@@ -543,12 +526,12 @@ describe('Testing Utilities', () => {
 
       testContainer.register(token1, {
         useValue: { data: 'value1' },
-        scope: 'singleton'
+        scope: 'singleton',
       });
 
       testContainer.register(token2, {
         useValue: { data: 'value2' },
-        scope: 'singleton'
+        scope: 'singleton',
       });
 
       // Resolve token1 but not token2
@@ -564,17 +547,18 @@ describe('Testing Utilities', () => {
 
     it('should track memory usage', () => {
       const testContainer = createTestContainer({
-        trackMemory: true
+        trackMemory: true,
       });
 
       const initialMemory = testContainer.getMemoryUsage();
       expect(initialMemory.objectCount).toBe(0); // Should start at 0
 
       // Create many services
-      for (let i = 0; i < 10; i++) { // Use smaller number for easier debugging
+      for (let i = 0; i < 10; i++) {
+        // Use smaller number for easier debugging
         const token = createToken(`Service${i}`);
         testContainer.register(token, {
-          useValue: new Array(1000).fill(i)
+          useValue: new Array(1000).fill(i),
         });
       }
 
@@ -605,7 +589,7 @@ describe('Testing Utilities', () => {
           const token = createToken<string>('Service');
           container.register(token, { useValue: 'container3' });
           return container.resolve(token);
-        })()
+        })(),
       ]);
 
       expect(results).toEqual(['container1', 'container2', 'container3']);

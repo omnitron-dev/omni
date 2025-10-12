@@ -79,76 +79,31 @@ export interface DividerProps {
  * ```
  */
 export const Divider = defineComponent<DividerProps>((props) => () => {
-    const orientation = props.orientation ?? 'horizontal';
-    const variant = props.variant ?? 'solid';
-    const thickness = props.thickness ?? 1;
-    const labelPosition = props.labelPosition ?? 'center';
-    const labelSpacing = props.labelSpacing ?? 16;
-    const isHorizontal = orientation === 'horizontal';
-    const hasLabel = !!(props.label || props.children);
+  const orientation = props.orientation ?? 'horizontal';
+  const variant = props.variant ?? 'solid';
+  const thickness = props.thickness ?? 1;
+  const labelPosition = props.labelPosition ?? 'center';
+  const labelSpacing = props.labelSpacing ?? 16;
+  const isHorizontal = orientation === 'horizontal';
+  const hasLabel = !!(props.label || props.children);
 
-    const {
-      orientation: _orientation,
-      label,
-      children,
-      labelPosition: _labelPosition,
-      variant: _variant,
-      thickness: _thickness,
-      color,
-      labelSpacing: _labelSpacing,
-      decorative,
-      class: className,
-      style,
-      ...restProps
-    } = props;
+  const {
+    orientation: _orientation,
+    label,
+    children,
+    labelPosition: _labelPosition,
+    variant: _variant,
+    thickness: _thickness,
+    color,
+    labelSpacing: _labelSpacing,
+    decorative,
+    class: className,
+    style,
+    ...restProps
+  } = props;
 
-    // Without label - simple line
-    if (!hasLabel) {
-      const lineStyles: Record<string, any> = {
-        border: 'none',
-        ...(isHorizontal
-          ? {
-              borderTopWidth: `${thickness}px`,
-              borderTopStyle: variant,
-              ...(color && { borderTopColor: color }),
-              width: '100%',
-              height: '0',
-            }
-          : {
-              borderLeftWidth: `${thickness}px`,
-              borderLeftStyle: variant,
-              ...(color && { borderLeftColor: color }),
-              height: '100%',
-              width: '0',
-            }),
-        ...style,
-      };
-
-      return jsx('hr', {
-        role: decorative ? 'presentation' : 'separator',
-        'aria-orientation': orientation,
-        class: className,
-        style: lineStyles,
-        ...restProps,
-      });
-    }
-
-    // With label - flex container with lines and label
-    const containerStyles: Record<string, any> = {
-      display: 'flex',
-      alignItems: 'center',
-      ...(isHorizontal
-        ? {
-            flexDirection: 'row',
-            width: '100%',
-          }
-        : {
-            flexDirection: 'column',
-            height: '100%',
-          }),
-      ...style,
-    };
-
+  // Without label - simple line
+  if (!hasLabel) {
     const lineStyles: Record<string, any> = {
       border: 'none',
       ...(isHorizontal
@@ -156,77 +111,121 @@ export const Divider = defineComponent<DividerProps>((props) => () => {
             borderTopWidth: `${thickness}px`,
             borderTopStyle: variant,
             ...(color && { borderTopColor: color }),
+            width: '100%',
             height: '0',
           }
         : {
             borderLeftWidth: `${thickness}px`,
             borderLeftStyle: variant,
             ...(color && { borderLeftColor: color }),
+            height: '100%',
             width: '0',
           }),
+      ...style,
     };
 
-    const labelStyles: Record<string, any> = {
-      flexShrink: 0,
-      ...(isHorizontal
-        ? {
-            paddingLeft: `${labelSpacing}px`,
-            paddingRight: `${labelSpacing}px`,
-          }
-        : {
-            paddingTop: `${labelSpacing}px`,
-            paddingBottom: `${labelSpacing}px`,
-          }),
-    };
-
-    // Determine flex values for lines based on label position
-    const startLineFlex =
-      labelPosition === 'start' ? '0 0 auto' : labelPosition === 'center' ? '1 1 0%' : '1 1 0%';
-    const endLineFlex = labelPosition === 'end' ? '0 0 auto' : labelPosition === 'center' ? '1 1 0%' : '1 1 0%';
-
-    const dividerChildren = [];
-
-    // Start line
-    if (labelPosition !== 'start') {
-      dividerChildren.push(
-        jsx('hr', {
-          key: 'line-start',
-          style: { ...lineStyles, flex: startLineFlex },
-          'aria-hidden': 'true',
-        }),
-      );
-    }
-
-    // Label
-    dividerChildren.push(
-      jsx(
-        'span',
-        {
-          key: 'label',
-          style: labelStyles,
-        },
-        label ?? children,
-      ),
-    );
-
-    // End line
-    if (labelPosition !== 'end') {
-      dividerChildren.push(
-        jsx('hr', {
-          key: 'line-end',
-          style: { ...lineStyles, flex: endLineFlex },
-          'aria-hidden': 'true',
-        }),
-      );
-    }
-
-    return jsx('div', {
+    return jsx('hr', {
       role: decorative ? 'presentation' : 'separator',
       'aria-orientation': orientation,
-      'aria-label': typeof label === 'string' ? label : undefined,
       class: className,
-      style: containerStyles,
+      style: lineStyles,
       ...restProps,
-      children: dividerChildren,
     });
+  }
+
+  // With label - flex container with lines and label
+  const containerStyles: Record<string, any> = {
+    display: 'flex',
+    alignItems: 'center',
+    ...(isHorizontal
+      ? {
+          flexDirection: 'row',
+          width: '100%',
+        }
+      : {
+          flexDirection: 'column',
+          height: '100%',
+        }),
+    ...style,
+  };
+
+  const lineStyles: Record<string, any> = {
+    border: 'none',
+    ...(isHorizontal
+      ? {
+          borderTopWidth: `${thickness}px`,
+          borderTopStyle: variant,
+          ...(color && { borderTopColor: color }),
+          height: '0',
+        }
+      : {
+          borderLeftWidth: `${thickness}px`,
+          borderLeftStyle: variant,
+          ...(color && { borderLeftColor: color }),
+          width: '0',
+        }),
+  };
+
+  const labelStyles: Record<string, any> = {
+    flexShrink: 0,
+    ...(isHorizontal
+      ? {
+          paddingLeft: `${labelSpacing}px`,
+          paddingRight: `${labelSpacing}px`,
+        }
+      : {
+          paddingTop: `${labelSpacing}px`,
+          paddingBottom: `${labelSpacing}px`,
+        }),
+  };
+
+  // Determine flex values for lines based on label position
+  const startLineFlex = labelPosition === 'start' ? '0 0 auto' : labelPosition === 'center' ? '1 1 0%' : '1 1 0%';
+  const endLineFlex = labelPosition === 'end' ? '0 0 auto' : labelPosition === 'center' ? '1 1 0%' : '1 1 0%';
+
+  const dividerChildren = [];
+
+  // Start line
+  if (labelPosition !== 'start') {
+    dividerChildren.push(
+      jsx('hr', {
+        key: 'line-start',
+        style: { ...lineStyles, flex: startLineFlex },
+        'aria-hidden': 'true',
+      })
+    );
+  }
+
+  // Label
+  dividerChildren.push(
+    jsx(
+      'span',
+      {
+        key: 'label',
+        style: labelStyles,
+      },
+      label ?? children
+    )
+  );
+
+  // End line
+  if (labelPosition !== 'end') {
+    dividerChildren.push(
+      jsx('hr', {
+        key: 'line-end',
+        style: { ...lineStyles, flex: endLineFlex },
+        'aria-hidden': 'true',
+      })
+    );
+  }
+
+  return jsx('div', {
+    role: decorative ? 'presentation' : 'separator',
+    'aria-orientation': orientation,
+    'aria-label': typeof label === 'string' ? label : undefined,
+    class: className,
+    style: containerStyles,
+    ...restProps,
+    children: dividerChildren,
   });
+});

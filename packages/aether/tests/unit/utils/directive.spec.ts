@@ -83,22 +83,20 @@ describe('Directive Utilities', () => {
 
   describe('createUpdatableDirective', () => {
     it('should create updatable directive', () => {
-      const directive = createUpdatableDirective<{ value: string }>(
-        (element, params) => {
-          const update = (newParams: { value: string }) => {
-            element.textContent = newParams.value;
-          };
+      const directive = createUpdatableDirective<{ value: string }>((element, params) => {
+        const update = (newParams: { value: string }) => {
+          element.textContent = newParams.value;
+        };
 
-          update(params);
+        update(params);
 
-          return {
-            update,
-            destroy: () => {
-              element.textContent = '';
-            },
-          };
-        }
-      );
+        return {
+          update,
+          destroy: () => {
+            element.textContent = '';
+          },
+        };
+      });
 
       const div = document.createElement('div');
 

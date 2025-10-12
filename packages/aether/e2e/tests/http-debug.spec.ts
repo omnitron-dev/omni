@@ -15,7 +15,7 @@ test('should import and use standalone HttpNetronClient', async ({ page }) => {
 
       // Create client
       const client = new HttpNetronClient({
-        baseUrl: 'http://localhost:3333'
+        baseUrl: 'http://localhost:3333',
       });
 
       await client.initialize();
@@ -23,14 +23,14 @@ test('should import and use standalone HttpNetronClient', async ({ page }) => {
       return {
         success: true,
         clientCreated: true,
-        metrics: client.getMetrics()
+        metrics: client.getMetrics(),
       };
     } catch (error: any) {
       console.error('Error:', error);
       return {
         success: false,
         error: error.message,
-        stack: error.stack
+        stack: error.stack,
       };
     }
   });

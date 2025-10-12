@@ -8,10 +8,7 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import { HttpTransport } from '../../../../src/netron/transport/http/http-transport.js';
 import { HttpServer } from '../../../../src/netron/transport/http/server.js';
 import { HttpConnection } from '../../../../src/netron/transport/http/connection.js';
-import {
-  ConnectionState,
-  type TransportOptions
-} from '../../../../src/netron/transport/types.js';
+import { ConnectionState, type TransportOptions } from '../../../../src/netron/transport/types.js';
 
 describe('HttpTransport', () => {
   let transport: HttpTransport;
@@ -95,8 +92,8 @@ describe('HttpTransport', () => {
         json: async () => ({
           version: '2.0',
           services: {},
-          contracts: {}
-        })
+          contracts: {},
+        }),
       } as Response);
 
       const connection = await transport.connect('http://localhost:3000');
@@ -112,14 +109,14 @@ describe('HttpTransport', () => {
         json: async () => ({
           version: '2.0',
           services: {},
-          contracts: {}
-        })
+          contracts: {},
+        }),
       } as Response);
 
       const options: TransportOptions = {
         timeout: 5000,
         headers: { 'X-Api-Key': 'test123' },
-        reconnect: false
+        reconnect: false,
       };
       const connection = await transport.connect('http://localhost:3000', options);
       expect(connection).toBeDefined();
@@ -130,7 +127,7 @@ describe('HttpTransport', () => {
     it('should create HTTP server', async () => {
       const server = await transport.createServer({
         port: 3001,
-        host: 'localhost'
+        host: 'localhost',
       });
       expect(server).toBeDefined();
       expect(server).toBeInstanceOf(HttpServer);
@@ -143,11 +140,10 @@ describe('HttpTransport', () => {
       const clientOnlyTransport = new HttpTransport();
       (clientOnlyTransport as any).capabilities = {
         ...clientOnlyTransport.capabilities,
-        server: false
+        server: false,
       };
 
-      await expect(clientOnlyTransport.createServer())
-        .rejects.toThrow('HTTP transport server capability is disabled');
+      await expect(clientOnlyTransport.createServer()).rejects.toThrow('HTTP transport server capability is disabled');
     });
   });
 
@@ -174,24 +170,16 @@ describe('HttpTransport', () => {
 
   describe('Protocol Detection', () => {
     it('should detect protocol from address', () => {
-      const httpAddresses = [
-        'http://localhost:3000',
-        'http://example.com',
-        'http://127.0.0.1'
-      ];
+      const httpAddresses = ['http://localhost:3000', 'http://example.com', 'http://127.0.0.1'];
 
-      const httpsAddresses = [
-        'https://localhost:3000',
-        'https://example.com',
-        'https://api.example.com'
-      ];
+      const httpsAddresses = ['https://localhost:3000', 'https://example.com', 'https://api.example.com'];
 
-      httpAddresses.forEach(addr => {
+      httpAddresses.forEach((addr) => {
         const parsed = transport.parseAddress(addr);
         expect(parsed.protocol).toBe('http');
       });
 
-      httpsAddresses.forEach(addr => {
+      httpsAddresses.forEach((addr) => {
         const parsed = transport.parseAddress(addr);
         expect(parsed.protocol).toBe('https');
       });
@@ -217,9 +205,9 @@ describe('HttpTransport', () => {
     it('should support custom headers', async () => {
       const options: TransportOptions = {
         headers: {
-          'Authorization': 'Bearer token123',
-          'X-Custom-Header': 'value'
-        }
+          Authorization: 'Bearer token123',
+          'X-Custom-Header': 'value',
+        },
       };
 
       const connection = await transport.connect('http://localhost:3000', options);
@@ -228,7 +216,7 @@ describe('HttpTransport', () => {
 
     it('should support timeout configuration', async () => {
       const options: TransportOptions = {
-        timeout: 10000
+        timeout: 10000,
       };
 
       const connection = await transport.connect('http://localhost:3000', options);
@@ -237,7 +225,7 @@ describe('HttpTransport', () => {
 
     it('should support compression flag', async () => {
       const options: TransportOptions = {
-        compression: true
+        compression: true,
       };
 
       const server = await transport.createServer(options);
@@ -270,7 +258,7 @@ describe('HttpTransport', () => {
         protocol: 'http',
         host: 'localhost',
         port: 3000,
-        path: '/'
+        path: '/',
       });
       expect(formatted1).toBe('http://localhost:3000/');
 
@@ -278,7 +266,7 @@ describe('HttpTransport', () => {
         protocol: 'https',
         host: 'api.example.com',
         port: 443,
-        path: '/v1'
+        path: '/v1',
       });
       expect(formatted2).toBe('https://api.example.com/v1');
 
@@ -287,7 +275,7 @@ describe('HttpTransport', () => {
         host: '127.0.0.1',
         port: 8080,
         path: '/api',
-        params: { key: 'value' }
+        params: { key: 'value' },
       });
       expect(formatted3).toBe('http://127.0.0.1:8080/api?key=value');
     });
@@ -297,7 +285,7 @@ describe('HttpTransport', () => {
         protocol: 'http',
         host: 'example.com',
         port: 80,
-        path: '/'
+        path: '/',
       });
       expect(formatted1).toBe('http://example.com/');
 
@@ -305,7 +293,7 @@ describe('HttpTransport', () => {
         protocol: 'https',
         host: 'example.com',
         port: 443,
-        path: '/'
+        path: '/',
       });
       expect(formatted2).toBe('https://example.com/');
     });

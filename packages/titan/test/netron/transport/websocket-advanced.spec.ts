@@ -36,7 +36,7 @@ describe('WebSocket Advanced Tests', () => {
 
   afterEach(async () => {
     // Clean up WebSocket server
-    wsServer.clients.forEach(client => client.close());
+    wsServer.clients.forEach((client) => client.close());
     wsServer.close();
 
     // Clean up HTTP server
@@ -60,8 +60,8 @@ describe('WebSocket Advanced Tests', () => {
         keepAlive: {
           enabled: true,
           interval: 100, // Very short interval for testing
-          timeout: 200   // Timeout for pong response
-        }
+          timeout: 200, // Timeout for pong response
+        },
       });
 
       serverWs = await connectionPromise;
@@ -96,8 +96,8 @@ describe('WebSocket Advanced Tests', () => {
         keepAlive: {
           enabled: true,
           interval: 200,
-          timeout: 1000 // Longer timeout to allow recovery
-        }
+          timeout: 1000, // Longer timeout to allow recovery
+        },
       });
 
       serverWs = await connectionPromise;
@@ -127,8 +127,8 @@ describe('WebSocket Advanced Tests', () => {
           enabled: true,
           maxAttempts: 2,
           delay: 100,
-          maxDelay: 200
-        }
+          maxDelay: 200,
+        },
       });
 
       firstConnection = await firstConnPromise;
@@ -150,10 +150,7 @@ describe('WebSocket Advanced Tests', () => {
       await reconnectPromise;
 
       // Should have attempted reconnection
-      const secondConnection = await Promise.race([
-        secondConnPromise,
-        delay(1000).then(() => null)
-      ]);
+      const secondConnection = await Promise.race([secondConnPromise, delay(1000).then(() => null)]);
 
       // If reconnection succeeded, we get a connection
       // If not, that's also ok - we tested the reconnect attempt
@@ -254,7 +251,7 @@ describe('WebSocket Advanced Tests', () => {
     });
 
     it('should handle Uint8Array data type', async () => {
-      const uint8Array = new Uint8Array([0xDE, 0xAD, 0xBE, 0xEF]);
+      const uint8Array = new Uint8Array([0xde, 0xad, 0xbe, 0xef]);
 
       const messagePromise = new Promise<Buffer>((resolve) => {
         serverWs.once('message', (data) => {
@@ -265,7 +262,7 @@ describe('WebSocket Advanced Tests', () => {
       await clientConnection.send(uint8Array);
 
       const received = await messagePromise;
-      expect(received).toEqual(Buffer.from([0xDE, 0xAD, 0xBE, 0xEF]));
+      expect(received).toEqual(Buffer.from([0xde, 0xad, 0xbe, 0xef]));
     });
 
     it('should handle message larger than maxPayload', async () => {
@@ -276,7 +273,7 @@ describe('WebSocket Advanced Tests', () => {
 
       const smallWsServer = new WebSocketServer({
         server: smallHttpServer,
-        maxPayload: 1024 // 1KB limit
+        maxPayload: 1024, // 1KB limit
       });
 
       const connPromise = new Promise<WebSocket>((resolve) => {
@@ -286,13 +283,13 @@ describe('WebSocket Advanced Tests', () => {
       });
 
       const smallClient = await transport.connect(`ws://127.0.0.1:${smallPort}`, {
-        maxPayload: 1024
+        maxPayload: 1024,
       });
 
       const smallServerWs = await connPromise;
 
       // Try to send data larger than maxPayload
-      const largeData = Buffer.alloc(2048, 0xFF); // 2KB
+      const largeData = Buffer.alloc(2048, 0xff); // 2KB
 
       // Listen for error on client side (recipient)
       const errorPromise = new Promise((resolve) => {
@@ -304,7 +301,7 @@ describe('WebSocket Advanced Tests', () => {
 
       const error = await Promise.race([
         errorPromise,
-        delay(2000).then(() => ({ message: 'Max payload size exceeded' }))
+        delay(2000).then(() => ({ message: 'Max payload size exceeded' })),
       ]);
 
       expect(error).toBeDefined();
@@ -319,7 +316,7 @@ describe('WebSocket Advanced Tests', () => {
       const arrayBuffer = new ArrayBuffer(8);
       const view = new DataView(arrayBuffer);
       view.setUint32(0, 0x12345678, false); // Big-endian
-      view.setUint32(4, 0x9ABCDEF0, false);
+      view.setUint32(4, 0x9abcdef0, false);
 
       const dataPromise = new Promise<Buffer>((resolve) => {
         clientConnection.once('data', (data: Buffer) => {
@@ -331,7 +328,7 @@ describe('WebSocket Advanced Tests', () => {
 
       const received = await dataPromise;
       expect(received.readUInt32BE(0)).toBe(0x12345678);
-      expect(received.readUInt32BE(4)).toBe(0x9ABCDEF0);
+      expect(received.readUInt32BE(4)).toBe(0x9abcdef0);
     });
 
     it('should handle incoming Buffer[] (fragmented) frames', async () => {
@@ -352,11 +349,7 @@ describe('WebSocket Advanced Tests', () => {
       });
 
       // Simulate fragmented message by sending array of buffers
-      const fragments = [
-        Buffer.from([0x01, 0x02]),
-        Buffer.from([0x03, 0x04]),
-        Buffer.from([0x05, 0x06])
-      ];
+      const fragments = [Buffer.from([0x01, 0x02]), Buffer.from([0x03, 0x04]), Buffer.from([0x05, 0x06])];
 
       // WebSocket 'ws' library handles fragmentation internally,
       // but we can test the handling by manually triggering the message event
@@ -379,7 +372,7 @@ describe('WebSocket Advanced Tests', () => {
 
       // Configure server to accept connection without subprotocol
       const customWsServer = new WebSocketServer({
-        server: subprotocolHttpServer
+        server: subprotocolHttpServer,
       });
 
       // Connect without requiring subprotocol
@@ -410,7 +403,7 @@ describe('WebSocket Advanced Tests', () => {
           if (protocols.has('netron-v2')) return 'netron-v2';
           if (protocols.has('netron')) return 'netron';
           return false;
-        }
+        },
       });
 
       // Connect with multiple subprotocols
@@ -446,7 +439,7 @@ describe('WebSocket Advanced Tests', () => {
       const errorPromise = waitForEvent(client, 'error');
 
       // Trigger error by writing invalid data to underlying socket
-      (serverWs as any)._socket.write(Buffer.from([0xFF, 0xFF, 0xFF, 0xFF]));
+      (serverWs as any)._socket.write(Buffer.from([0xff, 0xff, 0xff, 0xff]));
 
       const error = await errorPromise;
       expect(error).toBeDefined();
@@ -466,8 +459,8 @@ describe('WebSocket Advanced Tests', () => {
         keepAlive: {
           enabled: true,
           interval: 100,
-          timeout: 50
-        }
+          timeout: 50,
+        },
       });
 
       serverWs = await connectionPromise;

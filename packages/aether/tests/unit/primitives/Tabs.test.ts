@@ -80,9 +80,7 @@ describe('Tabs', () => {
       expect(contents.length).toBe(2); // All content is rendered
 
       // Find the visible content (not display:none)
-      const visibleContent = Array.from(contents).find(
-        (el) => (el as HTMLElement).style.display !== 'none'
-      );
+      const visibleContent = Array.from(contents).find((el) => (el as HTMLElement).style.display !== 'none');
       expect(visibleContent?.textContent).toBe('Content 1');
     });
 
@@ -116,9 +114,7 @@ describe('Tabs', () => {
       // Check that second content is visible
       // Find the visible content (not display:none)
       const contents = container.querySelectorAll('[role="tabpanel"]');
-      const visibleContent = Array.from(contents).find(
-        (el) => (el as HTMLElement).style.display !== 'none'
-      );
+      const visibleContent = Array.from(contents).find((el) => (el as HTMLElement).style.display !== 'none');
       expect(visibleContent?.textContent).toBe('Content 2');
     });
 
@@ -144,9 +140,7 @@ describe('Tabs', () => {
 
       // Initially tab1 is active
       let contents = container.querySelectorAll('[role="tabpanel"]');
-      let visibleContent = Array.from(contents).find(
-        (el) => (el as HTMLElement).style.display !== 'none'
-      );
+      let visibleContent = Array.from(contents).find((el) => (el as HTMLElement).style.display !== 'none');
       expect(visibleContent?.textContent).toBe('Content 1');
 
       // Change controlled value
@@ -154,9 +148,7 @@ describe('Tabs', () => {
 
       // Check that tab2 is now active
       contents = container.querySelectorAll('[role="tabpanel"]');
-      visibleContent = Array.from(contents).find(
-        (el) => (el as HTMLElement).style.display !== 'none'
-      );
+      visibleContent = Array.from(contents).find((el) => (el as HTMLElement).style.display !== 'none');
       expect(visibleContent?.textContent).toBe('Content 2');
     });
   });
@@ -322,9 +314,7 @@ describe('Tabs', () => {
 
       // Find the visible content (not display:none)
       const contents = container.querySelectorAll('[role="tabpanel"]');
-      const visibleContent = Array.from(contents).find(
-        (el) => (el as HTMLElement).style.display !== 'none'
-      );
+      const visibleContent = Array.from(contents).find((el) => (el as HTMLElement).style.display !== 'none');
       expect(visibleContent?.textContent).toBe('Content 1'); // Still showing first content
     });
   });

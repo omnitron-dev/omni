@@ -9,7 +9,7 @@ import {
   ComplianceStandard,
   DataClassification,
   type AuditEvent,
-  type AuditConfig
+  type AuditConfig,
 } from '../../../../src/modules/pm/enterprise/compliance.js';
 
 describe('AuditLogger', () => {
@@ -20,7 +20,7 @@ describe('AuditLogger', () => {
     encryption: false,
     immutable: true,
     redactPII: true,
-    standards: [ComplianceStandard.GDPR, ComplianceStandard.SOC2]
+    standards: [ComplianceStandard.GDPR, ComplianceStandard.SOC2],
   };
 
   beforeEach(() => {
@@ -36,7 +36,7 @@ describe('AuditLogger', () => {
         actor: { type: 'user', id: 'user123' },
         action: 'data.access',
         resource: { type: 'document', id: 'doc456' },
-        outcome: 'success'
+        outcome: 'success',
       });
 
       expect(eventLogged).toHaveBeenCalledWith(
@@ -46,7 +46,7 @@ describe('AuditLogger', () => {
           actor: expect.objectContaining({ type: 'user', id: 'user123' }),
           action: 'data.access',
           resource: expect.objectContaining({ type: 'document', id: 'doc456' }),
-          outcome: 'success'
+          outcome: 'success',
         })
       );
     });
@@ -59,13 +59,13 @@ describe('AuditLogger', () => {
         actor: { type: 'system', id: 'system' },
         action: 'startup',
         resource: { type: 'service', id: 'main' },
-        outcome: 'success'
+        outcome: 'success',
       });
 
       expect(eventLogged).toHaveBeenCalledWith(
         expect.objectContaining({
           hash: expect.any(String),
-          signature: expect.any(String)
+          signature: expect.any(String),
         })
       );
     });
@@ -82,13 +82,13 @@ describe('AuditLogger', () => {
         resource: { type: 'profile', id: 'profile456' },
         outcome: 'success',
         pii: true,
-        metadata: { ssn: '123-45-6789' }
+        metadata: { ssn: '123-45-6789' },
       });
 
       expect(eventLogged).toHaveBeenCalledWith(
         expect.objectContaining({
           metadata: expect.objectContaining({ ssn: '***-**-****' }),
-          redacted: expect.arrayContaining(['ssn'])
+          redacted: expect.arrayContaining(['ssn']),
         })
       );
     });
@@ -103,13 +103,13 @@ describe('AuditLogger', () => {
         resource: { type: 'transaction', id: 'tx789' },
         outcome: 'success',
         pii: true,
-        metadata: { card: '4111-1111-1111-1111' }
+        metadata: { card: '4111-1111-1111-1111' },
       });
 
       expect(eventLogged).toHaveBeenCalledWith(
         expect.objectContaining({
           metadata: expect.objectContaining({ card: '****-****-****-****' }),
-          redacted: expect.arrayContaining(['creditCard'])
+          redacted: expect.arrayContaining(['creditCard']),
         })
       );
     });
@@ -124,13 +124,13 @@ describe('AuditLogger', () => {
         resource: { type: 'account', id: 'acc123' },
         outcome: 'success',
         pii: true,
-        metadata: { email: 'user@example.com' }
+        metadata: { email: 'user@example.com' },
       });
 
       expect(eventLogged).toHaveBeenCalledWith(
         expect.objectContaining({
           metadata: expect.objectContaining({ email: '***@***.***' }),
-          redacted: expect.arrayContaining(['email'])
+          redacted: expect.arrayContaining(['email']),
         })
       );
     });
@@ -143,34 +143,34 @@ describe('AuditLogger', () => {
         actor: { type: 'user', id: 'user1' },
         action: 'login',
         resource: { type: 'system', id: 'auth' },
-        outcome: 'success'
+        outcome: 'success',
       });
 
       auditLogger.log({
         actor: { type: 'user', id: 'user2' },
         action: 'login',
         resource: { type: 'system', id: 'auth' },
-        outcome: 'failure'
+        outcome: 'failure',
       });
 
       auditLogger.log({
         actor: { type: 'user', id: 'user1' },
         action: 'logout',
         resource: { type: 'system', id: 'auth' },
-        outcome: 'success'
+        outcome: 'success',
       });
     });
 
     it('should query by actor', () => {
       const results = auditLogger.query({ actor: 'user1' });
       expect(results).toHaveLength(2);
-      expect(results.every(e => e.actor.id === 'user1')).toBe(true);
+      expect(results.every((e) => e.actor.id === 'user1')).toBe(true);
     });
 
     it('should query by action', () => {
       const results = auditLogger.query({ action: 'login' });
       expect(results).toHaveLength(2);
-      expect(results.every(e => e.action === 'login')).toBe(true);
+      expect(results.every((e) => e.action === 'login')).toBe(true);
     });
 
     it('should query by outcome', () => {
@@ -183,7 +183,7 @@ describe('AuditLogger', () => {
       const now = Date.now();
       const results = auditLogger.query({
         startTime: now - 60000,
-        endTime: now + 60000
+        endTime: now + 60000,
       });
       expect(results.length).toBeGreaterThan(0);
     });
@@ -198,7 +198,7 @@ describe('AuditLogger', () => {
         actor: { type: 'user', id: 'user123' },
         action: 'test',
         resource: { type: 'test', id: 'test' },
-        outcome: 'success'
+        outcome: 'success',
       });
 
       const event = eventLogged.mock.calls[0]?.[0] as AuditEvent;
@@ -213,7 +213,7 @@ describe('AuditLogger', () => {
         actor: { type: 'user', id: 'user123' },
         action: 'test',
         resource: { type: 'test', id: 'test' },
-        outcome: 'success'
+        outcome: 'success',
       });
 
       const event = eventLogged.mock.calls[0]?.[0] as AuditEvent;
@@ -230,7 +230,7 @@ describe('AuditLogger', () => {
         actor: { type: 'user', id: 'user1' },
         action: 'test',
         resource: { type: 'test', id: 'test1' },
-        outcome: 'success'
+        outcome: 'success',
       });
     });
 
@@ -262,8 +262,8 @@ describe('ComplianceManager', () => {
         encryption: true,
         immutable: true,
         redactPII: true,
-        standards: [ComplianceStandard.GDPR]
-      }
+        standards: [ComplianceStandard.GDPR],
+      },
     });
   });
 
@@ -273,7 +273,7 @@ describe('ComplianceManager', () => {
 
       // Create a spy for the emit method before creating the manager
       const originalEmit = ComplianceManager.prototype.emit;
-      ComplianceManager.prototype.emit = jest.fn(function(this: any, event: string, ...args: any[]) {
+      ComplianceManager.prototype.emit = jest.fn(function (this: any, event: string, ...args: any[]) {
         if (event === 'standard:applied') {
           standardApplied(...args);
         }
@@ -289,8 +289,8 @@ describe('ComplianceManager', () => {
           encryption: false,
           immutable: true,
           redactPII: true,
-          standards: [ComplianceStandard.GDPR]
-        }
+          standards: [ComplianceStandard.GDPR],
+        },
       });
 
       // Standards are applied during initialization
@@ -306,13 +306,13 @@ describe('ComplianceManager', () => {
       const response = await complianceManager.processDataSubjectRequest({
         id: 'req123',
         subjectId: 'user123',
-        type: 'access'
+        type: 'access',
       });
 
       expect(response).toMatchObject({
         requestId: 'req123',
         status: expect.stringMatching(/completed|failed/),
-        message: expect.any(String)
+        message: expect.any(String),
       });
     });
 
@@ -320,7 +320,7 @@ describe('ComplianceManager', () => {
       const response = await complianceManager.processDataSubjectRequest({
         id: 'req124',
         subjectId: 'user123',
-        type: 'erasure'
+        type: 'erasure',
       });
 
       expect(response).toMatchObject({
@@ -328,8 +328,8 @@ describe('ComplianceManager', () => {
         status: 'completed',
         message: 'Data erased successfully',
         metadata: expect.objectContaining({
-          systemsProcessed: expect.any(Number)
-        })
+          systemsProcessed: expect.any(Number),
+        }),
       });
     });
 
@@ -338,13 +338,13 @@ describe('ComplianceManager', () => {
         id: 'req125',
         subjectId: 'user123',
         type: 'rectification',
-        corrections: { name: 'Updated Name' }
+        corrections: { name: 'Updated Name' },
       });
 
       expect(response).toMatchObject({
         requestId: 'req125',
         status: expect.stringMatching(/completed|failed/),
-        message: expect.any(String)
+        message: expect.any(String),
       });
     });
 
@@ -353,12 +353,12 @@ describe('ComplianceManager', () => {
         id: 'req126',
         subjectId: 'user123',
         type: 'portability',
-        format: 'json'
+        format: 'json',
       });
 
       expect(response).toMatchObject({
         requestId: 'req126',
-        status: expect.stringMatching(/completed|failed/)
+        status: expect.stringMatching(/completed|failed/),
       });
     });
 
@@ -367,12 +367,12 @@ describe('ComplianceManager', () => {
         id: 'req127',
         subjectId: 'user123',
         type: 'restriction',
-        reason: 'Legal hold'
+        reason: 'Legal hold',
       });
 
       expect(response).toMatchObject({
         requestId: 'req127',
-        status: expect.stringMatching(/completed|failed/)
+        status: expect.stringMatching(/completed|failed/),
       });
     });
   });
@@ -383,7 +383,7 @@ describe('ComplianceManager', () => {
         id: 'consent123',
         subjectId: 'user123',
         purposes: ['marketing', 'analytics'],
-        grantedAt: Date.now()
+        grantedAt: Date.now(),
       });
 
       const hasConsent = complianceManager.verifyConsent('user123', 'marketing');
@@ -395,7 +395,7 @@ describe('ComplianceManager', () => {
         id: 'consent124',
         subjectId: 'user124',
         purposes: ['analytics'],
-        grantedAt: Date.now()
+        grantedAt: Date.now(),
       });
 
       expect(complianceManager.verifyConsent('user124', 'analytics')).toBe(true);
@@ -408,7 +408,7 @@ describe('ComplianceManager', () => {
         subjectId: 'user125',
         purposes: ['marketing'],
         grantedAt: Date.now() - 100000,
-        expiresAt: Date.now() - 1000 // Expired
+        expiresAt: Date.now() - 1000, // Expired
       });
 
       expect(complianceManager.verifyConsent('user125', 'marketing')).toBe(false);
@@ -428,14 +428,14 @@ describe('ComplianceManager', () => {
         owner: 'data-team',
         retention: '3y',
         pii: true,
-        encrypted: true
+        encrypted: true,
       });
 
       expect(inventoryRegistered).toHaveBeenCalledWith(
         expect.objectContaining({
           id: 'inv123',
           name: 'User Database',
-          classification: DataClassification.CONFIDENTIAL
+          classification: DataClassification.CONFIDENTIAL,
         })
       );
     });
@@ -457,9 +457,9 @@ describe('ComplianceManager', () => {
             compliant: expect.any(Boolean),
             score: expect.any(Number),
             gaps: expect.any(Array),
-            recommendations: expect.any(Array)
-          })
-        })
+            recommendations: expect.any(Array),
+          }),
+        }),
       });
     });
 
@@ -487,7 +487,7 @@ describe('Encryption and Security', () => {
       encryption: true,
       immutable: false,
       redactPII: false,
-      standards: []
+      standards: [],
     });
 
     const eventLogged = jest.fn();
@@ -498,7 +498,7 @@ describe('Encryption and Security', () => {
       action: 'sensitive.access',
       resource: { type: 'secret', id: 'secret456' },
       outcome: 'success',
-      metadata: { secret: 'confidential-data' }
+      metadata: { secret: 'confidential-data' },
     });
 
     const event = eventLogged.mock.calls[0]?.[0] as AuditEvent;
@@ -507,7 +507,7 @@ describe('Encryption and Security', () => {
     expect(event.metadata).toMatchObject({
       encrypted: expect.any(String),
       iv: expect.any(String),
-      tag: expect.any(String)
+      tag: expect.any(String),
     });
   });
 });
@@ -518,7 +518,7 @@ describe('Data Classification', () => {
       DataClassification.PUBLIC,
       DataClassification.INTERNAL,
       DataClassification.CONFIDENTIAL,
-      DataClassification.RESTRICTED
+      DataClassification.RESTRICTED,
     ];
 
     const complianceManager = new ComplianceManager({
@@ -529,11 +529,11 @@ describe('Data Classification', () => {
         encryption: false,
         immutable: false,
         redactPII: false,
-        standards: [ComplianceStandard.SOC2]
-      }
+        standards: [ComplianceStandard.SOC2],
+      },
     });
 
-    levels.forEach(classification => {
+    levels.forEach((classification) => {
       complianceManager.registerDataInventory({
         id: `item-${classification}`,
         name: `Test ${classification}`,
@@ -542,7 +542,7 @@ describe('Data Classification', () => {
         owner: 'test',
         retention: '1y',
         pii: false,
-        encrypted: false
+        encrypted: false,
       });
     });
 

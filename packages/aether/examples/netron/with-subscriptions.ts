@@ -71,7 +71,7 @@ async function main() {
 
     // Keep connection alive for 30 seconds to receive events
     console.log('\nListening for events (30 seconds)...\n');
-    await new Promise(resolve => setTimeout(resolve, 30000));
+    await new Promise((resolve) => setTimeout(resolve, 30000));
 
     // 9. Unsubscribe from specific event
     console.log('\nUnsubscribing from chat messages...');

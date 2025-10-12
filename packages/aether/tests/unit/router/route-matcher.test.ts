@@ -161,11 +161,7 @@ describe('Route Matcher', () => {
 
   describe('findBestMatch', () => {
     it('should find matching route', () => {
-      const routes: RouteDefinition[] = [
-        { path: '/about' },
-        { path: '/contact' },
-        { path: '/users/[id]' },
-      ];
+      const routes: RouteDefinition[] = [{ path: '/about' }, { path: '/contact' }, { path: '/users/[id]' }];
 
       const match = findBestMatch('/users/123', routes);
 
@@ -175,10 +171,7 @@ describe('Route Matcher', () => {
     });
 
     it('should prioritize static routes over dynamic', () => {
-      const routes: RouteDefinition[] = [
-        { path: '/users/[id]' },
-        { path: '/users/profile' },
-      ];
+      const routes: RouteDefinition[] = [{ path: '/users/[id]' }, { path: '/users/profile' }];
 
       const match = findBestMatch('/users/profile', routes);
 
@@ -186,11 +179,7 @@ describe('Route Matcher', () => {
     });
 
     it('should prioritize more specific routes', () => {
-      const routes: RouteDefinition[] = [
-        { path: '/[...all]' },
-        { path: '/users/[id]' },
-        { path: '/users/profile' },
-      ];
+      const routes: RouteDefinition[] = [{ path: '/[...all]' }, { path: '/users/[id]' }, { path: '/users/profile' }];
 
       const match = findBestMatch('/users/profile', routes);
 

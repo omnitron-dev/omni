@@ -18,7 +18,7 @@ export class ServiceProxyHandler<T> {
     private readonly netron: NetronClient,
     private readonly serviceName: string,
     private readonly logger: ILogger
-  ) { }
+  ) {}
 
   /**
    * Create a type-safe proxy for the service
@@ -88,9 +88,9 @@ export class ServiceProxyHandler<T> {
       getOwnPropertyDescriptor() {
         return {
           enumerable: true,
-          configurable: true
+          configurable: true,
         };
-      }
+      },
     };
 
     // Create and return proxy
@@ -112,10 +112,7 @@ export class ServiceProxyHandler<T> {
 
       return result;
     } catch (error) {
-      this.logger.error(
-        { error, processId: this.processId, methodName, args },
-        'Failed to call remote method'
-      );
+      this.logger.error({ error, processId: this.processId, methodName, args }, 'Failed to call remote method');
       throw error;
     }
   }
@@ -144,10 +141,7 @@ export class ServiceProxyHandler<T> {
         yield stream;
       }
     } catch (error) {
-      this.logger.error(
-        { error, processId: this.processId, methodName, args },
-        'Failed to call streaming method'
-      );
+      this.logger.error({ error, processId: this.processId, methodName, args }, 'Failed to call streaming method');
       throw error;
     }
   }
@@ -180,7 +174,7 @@ export class ServiceProxyHandler<T> {
         cpu: 0,
         memory: 0,
         requests: 0,
-        errors: 0
+        errors: 0,
       };
     }
   }
@@ -197,12 +191,14 @@ export class ServiceProxyHandler<T> {
       // Return unhealthy status on error
       return {
         status: 'unhealthy',
-        checks: [{
-          name: 'connectivity',
-          status: 'fail',
-          message: 'Failed to connect to process'
-        }],
-        timestamp: Date.now()
+        checks: [
+          {
+            name: 'connectivity',
+            status: 'fail',
+            message: 'Failed to connect to process',
+          },
+        ],
+        timestamp: Date.now(),
       };
     }
   }
@@ -217,7 +213,7 @@ export class StreamingServiceProxyHandler<T> {
     private readonly netron: NetronClient,
     private readonly serviceName: string,
     private readonly logger: ILogger
-  ) { }
+  ) {}
 
   /**
    * Create a proxy that handles async generators
@@ -243,14 +239,11 @@ export class StreamingServiceProxyHandler<T> {
               yield value;
             }
           } catch (error) {
-            logger.error(
-              { error, processId, methodName },
-              'Streaming method failed'
-            );
+            logger.error({ error, processId, methodName }, 'Streaming method failed');
             throw error;
           }
         };
-      }
+      },
     };
 
     return new Proxy({} as any, handler) as ServiceProxy<T>;

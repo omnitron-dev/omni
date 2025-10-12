@@ -48,7 +48,7 @@ describe('Titan packet simulation', () => {
           name: { type: 'String', readonly: false },
           description: { type: 'String', readonly: false },
           data: { type: 'Object', readonly: false },
-          isActive: { type: 'Boolean', readonly: true }
+          isActive: { type: 'Boolean', readonly: true },
         },
         methods: {
           greet: { type: 'String', arguments: [] },
@@ -76,8 +76,8 @@ describe('Titan packet simulation', () => {
           getRegExp: { type: 'RegExp', arguments: [] },
           getMap: { type: 'Map', arguments: [] },
           getSet: { type: 'Set', arguments: [] },
-          getPromise: { type: 'Promise', arguments: [] }
-        }
+          getPromise: { type: 'Promise', arguments: [] },
+        },
       },
       ''
     );
@@ -96,8 +96,8 @@ describe('Titan packet simulation', () => {
         version: '',
         qualifiedName: 'service1',
         peerId: 'n1',
-        definition: def
-      }
+        definition: def,
+      },
     ];
 
     console.log('Task data to encode:', JSON.stringify(taskData).slice(0, 100));

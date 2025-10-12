@@ -8,8 +8,8 @@ test('should debug HttpNetronClient', async ({ page }) => {
   await page.goto('/');
 
   // Enable console logging
-  page.on('console', msg => console.log('BROWSER:', msg.text()));
-  page.on('pageerror', err => console.error('PAGE ERROR:', err));
+  page.on('console', (msg) => console.log('BROWSER:', msg.text()));
+  page.on('pageerror', (err) => console.error('PAGE ERROR:', err));
 
   const result = await page.evaluate(async () => {
     try {
@@ -36,14 +36,14 @@ test('should debug HttpNetronClient', async ({ page }) => {
       return {
         success: true,
         users,
-        count: users ? users.length : 0
+        count: users ? users.length : 0,
       };
     } catch (error: any) {
       console.error('ERROR:', error);
       return {
         success: false,
         error: error.message,
-        stack: error.stack
+        stack: error.stack,
       };
     }
   });

@@ -21,14 +21,14 @@ import {
   MemoryIntensiveService,
   LifecycleService,
   TimeoutService,
-  MetricsService
+  MetricsService,
 } from './fixtures/test-services.js';
 import { LoggerService } from '../../../src/modules/logger/logger.service.js';
 
 // Real logger for comprehensive testing
 const loggerService = new LoggerService({
   level: process.env.LOG_LEVEL || 'error',
-  pretty: false
+  pretty: false,
 });
 const logger = loggerService.child({ module: 'PM-Tests' });
 
@@ -39,8 +39,8 @@ describe('Real Process Manager', () => {
     pm = new ProcessManager(logger, {
       netron: {
         transport: 'unix',
-        discovery: 'local'
-      }
+        discovery: 'local',
+      },
     });
   });
 
@@ -94,7 +94,7 @@ describe('Real Process Manager', () => {
 
     it('should track process information correctly', async () => {
       const service = await pm.spawn(CalculatorService, {
-        name: 'my-calculator'
+        name: 'my-calculator',
       });
 
       const processInfo = pm.getProcess(service.__processId);
@@ -109,7 +109,7 @@ describe('Real Process Manager', () => {
       const services = await Promise.all([
         pm.spawn(CalculatorService),
         pm.spawn(CounterService),
-        pm.spawn(ErrorService)
+        pm.spawn(ErrorService),
       ]);
 
       expect(services).toHaveLength(3);
@@ -149,8 +149,8 @@ describe('Real Process Manager', () => {
         restart: {
           enabled: true,
           maxRetries: 3,
-          delay: 100
-        }
+          delay: 100,
+        },
       });
 
       const originalId = service.__processId;
@@ -163,7 +163,7 @@ describe('Real Process Manager', () => {
       }
 
       // Wait for restart
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
       // Service should still be usable after restart
       const result = await service.add(5, 5);
@@ -174,7 +174,7 @@ describe('Real Process Manager', () => {
       const services = await Promise.all([
         pm.spawn(CalculatorService),
         pm.spawn(CounterService),
-        pm.spawn(LifecycleService)
+        pm.spawn(LifecycleService),
       ]);
 
       // Do some work
@@ -186,7 +186,7 @@ describe('Real Process Manager', () => {
       await pm.shutdown({ force: false, timeout: 5000 });
 
       const processes = pm.listProcesses();
-      expect(processes.every(p => p.status === ProcessStatus.STOPPED)).toBe(true);
+      expect(processes.every((p) => p.status === ProcessStatus.STOPPED)).toBe(true);
     });
   });
 
@@ -196,8 +196,8 @@ describe('Real Process Manager', () => {
         health: {
           enabled: true,
           interval: 1000,
-          unhealthyThreshold: 3
-        }
+          unhealthyThreshold: 3,
+        },
       });
 
       // Perform some operations
@@ -216,8 +216,8 @@ describe('Real Process Manager', () => {
       const service = await pm.spawn(MetricsService, {
         observability: {
           metrics: true,
-          interval: 100
-        }
+          interval: 100,
+        },
       });
 
       // Generate some metrics
@@ -246,11 +246,11 @@ describe('Real Process Manager', () => {
   describe('Service Discovery', () => {
     it('should discover services by name', async () => {
       await pm.spawn(CalculatorService, {
-        name: 'calc-service-1'
+        name: 'calc-service-1',
       });
 
       await pm.spawn(CalculatorService, {
-        name: 'calc-service-2'
+        name: 'calc-service-2',
       });
 
       const discovered1 = await pm.discover<CalculatorService>('calc-service-1');
@@ -284,7 +284,7 @@ describe('Process Pools', () => {
     it('should create a process pool', async () => {
       const pool = await pm.pool(CalculatorService, {
         size: 3,
-        warmup: true
+        warmup: true,
       });
 
       expect(pool).toBeDefined();
@@ -296,16 +296,11 @@ describe('Process Pools', () => {
     it('should handle pool method calls with load balancing', async () => {
       const pool = await pm.pool(CounterService, {
         size: 2,
-        strategy: PoolStrategy.ROUND_ROBIN
+        strategy: PoolStrategy.ROUND_ROBIN,
       });
 
       // Each worker maintains its own state
-      const results = await Promise.all([
-        pool.increment(),
-        pool.increment(),
-        pool.increment(),
-        pool.increment()
-      ]);
+      const results = await Promise.all([pool.increment(), pool.increment(), pool.increment(), pool.increment()]);
 
       // Results should show that calls were distributed
       // Each worker should have been called twice
@@ -314,7 +309,7 @@ describe('Process Pools', () => {
 
     it('should scale pool up', async () => {
       const pool = await pm.pool(CalculatorService, {
-        size: 2
+        size: 2,
       });
 
       expect(pool.size).toBe(2);
@@ -323,19 +318,14 @@ describe('Process Pools', () => {
       expect(pool.size).toBe(4);
 
       // Test that new workers are functional
-      const results = await Promise.all([
-        pool.add(1, 1),
-        pool.add(2, 2),
-        pool.add(3, 3),
-        pool.add(4, 4)
-      ]);
+      const results = await Promise.all([pool.add(1, 1), pool.add(2, 2), pool.add(3, 3), pool.add(4, 4)]);
 
       expect(results).toEqual([2, 4, 6, 8]);
     });
 
     it('should scale pool down', async () => {
       const pool = await pm.pool(CalculatorService, {
-        size: 4
+        size: 4,
       });
 
       expect(pool.size).toBe(4);
@@ -344,17 +334,14 @@ describe('Process Pools', () => {
       expect(pool.size).toBe(2);
 
       // Remaining workers should still be functional
-      const results = await Promise.all([
-        pool.multiply(3, 3),
-        pool.multiply(4, 4)
-      ]);
+      const results = await Promise.all([pool.multiply(3, 3), pool.multiply(4, 4)]);
 
       expect(results).toEqual([9, 16]);
     });
 
     it('should auto-size pool based on CPU cores', async () => {
       const pool = await pm.pool(CalculatorService, {
-        size: 'auto'
+        size: 'auto',
       });
 
       const cpuCount = cpus().length;
@@ -366,7 +353,7 @@ describe('Process Pools', () => {
     it('should use round-robin strategy', async () => {
       const pool = await pm.pool(CounterService, {
         size: 3,
-        strategy: PoolStrategy.ROUND_ROBIN
+        strategy: PoolStrategy.ROUND_ROBIN,
       });
 
       const results = [];
@@ -376,10 +363,13 @@ describe('Process Pools', () => {
 
       // Each worker maintains its own counter
       // With round-robin, we should see pattern like: 1,1,1,2,2,2
-      const counts = results.reduce((acc, val) => {
-        acc[val] = (acc[val] || 0) + 1;
-        return acc;
-      }, {} as Record<number, number>);
+      const counts = results.reduce(
+        (acc, val) => {
+          acc[val] = (acc[val] || 0) + 1;
+          return acc;
+        },
+        {} as Record<number, number>
+      );
 
       // Should have multiple distinct values showing distribution
       expect(Object.keys(counts).length).toBeGreaterThanOrEqual(2);
@@ -392,18 +382,14 @@ describe('Process Pools', () => {
     it('should use least-loaded strategy', async () => {
       const pool = await pm.pool(TimeoutService, {
         size: 2,
-        strategy: PoolStrategy.LEAST_LOADED
+        strategy: PoolStrategy.LEAST_LOADED,
       });
 
       // Start a slow operation on one worker
       const slowPromise = pool.slowOperation(500);
 
       // Quick operations should go to the other worker
-      const quickResults = await Promise.all([
-        pool.quickOperation(),
-        pool.quickOperation(),
-        pool.quickOperation()
-      ]);
+      const quickResults = await Promise.all([pool.quickOperation(), pool.quickOperation(), pool.quickOperation()]);
 
       expect(quickResults).toEqual(['quick', 'quick', 'quick']);
       expect(await slowPromise).toBe('slow-complete');
@@ -412,7 +398,7 @@ describe('Process Pools', () => {
     it('should handle random strategy', async () => {
       const pool = await pm.pool(CalculatorService, {
         size: 3,
-        strategy: PoolStrategy.RANDOM
+        strategy: PoolStrategy.RANDOM,
       });
 
       const results = [];
@@ -435,8 +421,8 @@ describe('Process Pools', () => {
         healthCheck: {
           enabled: true,
           interval: 1000,
-          unhealthyThreshold: 3
-        }
+          unhealthyThreshold: 3,
+        },
       });
 
       // Some operations will fail
@@ -444,15 +430,15 @@ describe('Process Pools', () => {
         pool.maybeThrow(0.3, 'Random error'), // Lower probability to ensure some succeed
         pool.maybeThrow(0.3, 'Random error'),
         pool.maybeThrow(0.3, 'Random error'),
-        pool.maybeThrow(0.3, 'Random error')
+        pool.maybeThrow(0.3, 'Random error'),
       ]);
 
       // Should have at least some results
       expect(results.length).toBe(4);
 
       // Count successes and failures
-      const successes = results.filter(r => r.status === 'fulfilled');
-      const failures = results.filter(r => r.status === 'rejected');
+      const successes = results.filter((r) => r.status === 'fulfilled');
+      const failures = results.filter((r) => r.status === 'rejected');
 
       // At least some operations should complete (either success or failure)
       expect(successes.length + failures.length).toBe(4);
@@ -462,7 +448,7 @@ describe('Process Pools', () => {
       const pool = await pm.pool(TimeoutService, {
         size: 2,
         maxQueueSize: 10,
-        requestTimeout: 5000
+        requestTimeout: 5000,
       });
 
       // Start operations that will keep workers busy
@@ -470,7 +456,7 @@ describe('Process Pools', () => {
         pool.slowOperation(200),
         pool.slowOperation(200),
         pool.slowOperation(200), // This will be queued
-        pool.slowOperation(200)  // This will be queued
+        pool.slowOperation(200), // This will be queued
       ];
 
       const results = await Promise.all(operations);
@@ -488,8 +474,8 @@ describe('Process Pools', () => {
           enabled: true,
           threshold: 3,
           timeout: 1000,
-          halfOpenRequests: 1
-        }
+          halfOpenRequests: 1,
+        },
       });
 
       // Circuit breaker tests are complex with pools
@@ -514,14 +500,11 @@ describe('Process Pools', () => {
   describe('Pool Lifecycle', () => {
     it('should drain pool gracefully', async () => {
       const pool = await pm.pool(TimeoutService, {
-        size: 2
+        size: 2,
       });
 
       // Start some operations
-      const operations = [
-        pool.slowOperation(100),
-        pool.slowOperation(100)
-      ];
+      const operations = [pool.slowOperation(100), pool.slowOperation(100)];
 
       // Drain the pool
       await pool.drain();
@@ -537,11 +520,11 @@ describe('Process Pools', () => {
     it('should destroy pool and cleanup resources', async () => {
       const pool = await pm.pool(CalculatorService, {
         size: 1,
-        warmup: false // Disable warmup to avoid timing issues
+        warmup: false, // Disable warmup to avoid timing issues
       });
 
       // Wait for pool to be fully initialized
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       const initialSize = pool.size;
       expect(initialSize).toBe(1);
@@ -550,7 +533,7 @@ describe('Process Pools', () => {
       await pool.destroy();
 
       // Give time for cleanup
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       // After destruction, size should be 0
       expect(pool.size).toBe(0);
@@ -568,8 +551,8 @@ describe('Process Pools', () => {
           targetCPU: 70,
           scaleUpThreshold: 0.8,
           scaleDownThreshold: 0.2,
-          cooldownPeriod: 500
-        }
+          cooldownPeriod: 500,
+        },
       });
 
       const initialSize = pool.size;
@@ -640,7 +623,7 @@ describe('Advanced Features', () => {
       const results = await Promise.allSettled(calls);
 
       // Some should succeed, some might be rate limited
-      const successes = results.filter(r => r.status === 'fulfilled');
+      const successes = results.filter((r) => r.status === 'fulfilled');
       expect(successes.length).toBeGreaterThan(0);
 
       const history = await service.getCallHistory();
@@ -658,7 +641,7 @@ describe('Advanced Features', () => {
 
       const results = await Promise.all(calls);
       expect(results).toHaveLength(10);
-      expect(results.every(r => r === 'burst-allowed')).toBe(true);
+      expect(results.every((r) => r === 'burst-allowed')).toBe(true);
     });
   });
 
@@ -675,7 +658,7 @@ describe('Advanced Features', () => {
       await service.emitEvent('test-event', { message: 'World' });
 
       // Give time for events to propagate
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const history = await service.getEventHistory();
       expect(history).toHaveLength(2);
@@ -724,7 +707,7 @@ describe('Advanced Features', () => {
       const pool = await pm.pool(MemoryIntensiveService, {
         size: 2,
         recycleAfter: 5, // Recycle after 5 requests
-        maxLifetime: 60000
+        maxLifetime: 60000,
       });
 
       // Make requests that will trigger recycling
@@ -742,7 +725,7 @@ describe('Advanced Features', () => {
     it('should distribute CPU-intensive work across pool', async () => {
       const pool = await pm.pool(CpuIntensiveService, {
         size: 4,
-        strategy: PoolStrategy.LEAST_LOADED
+        strategy: PoolStrategy.LEAST_LOADED,
       });
 
       const startTime = Date.now();
@@ -752,14 +735,14 @@ describe('Advanced Features', () => {
         pool.calculatePrimes(100),
         pool.calculatePrimes(100),
         pool.calculatePrimes(100),
-        pool.calculatePrimes(100)
+        pool.calculatePrimes(100),
       ]);
 
       const duration = Date.now() - startTime;
 
       // Should be faster than serial execution
       expect(results).toHaveLength(4);
-      results.forEach(primes => {
+      results.forEach((primes) => {
         expect(primes).toContain(2);
         expect(primes).toContain(97);
       });
@@ -786,7 +769,7 @@ describe('Performance and Stress Tests', () => {
     const pool = await pm.pool(CalculatorService, {
       size: 4,
       maxQueueSize: 100,
-      strategy: PoolStrategy.ADAPTIVE
+      strategy: PoolStrategy.ADAPTIVE,
     });
 
     const operations = [];
@@ -808,7 +791,7 @@ describe('Performance and Stress Tests', () => {
   it('should maintain performance under sustained load', async () => {
     const pool = await pm.pool(CalculatorService, {
       size: 3,
-      warmup: true
+      warmup: true,
     });
 
     const iterations = 20; // Reduce iterations for faster test

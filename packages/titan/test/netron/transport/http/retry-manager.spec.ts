@@ -11,7 +11,7 @@ describe('RetryManager', () => {
 
   beforeEach(() => {
     retryManager = new RetryManager({
-      debug: false
+      debug: false,
     });
   });
 
@@ -33,7 +33,7 @@ describe('RetryManager', () => {
       const result = await retryManager.execute(fn, {
         attempts: 3,
         initialDelay: 10,
-        backoff: 'constant'
+        backoff: 'constant',
       });
 
       expect(result).toBe('success');
@@ -48,7 +48,7 @@ describe('RetryManager', () => {
       await expect(
         retryManager.execute(fn, {
           attempts: 2,
-          initialDelay: 10
+          initialDelay: 10,
         })
       ).rejects.toThrow('Persistent failure');
 
@@ -60,7 +60,7 @@ describe('RetryManager', () => {
 
       const result = await retryManager.execute(fn, {
         attempts: 3,
-        initialDelay: 10
+        initialDelay: 10,
       });
 
       expect(result).toBe('success');
@@ -82,7 +82,7 @@ describe('RetryManager', () => {
       await retryManager.execute(fn, {
         attempts: 3,
         initialDelay: 10,
-        onRetry
+        onRetry,
       });
 
       expect(onRetry).toHaveBeenCalledTimes(2);
@@ -110,7 +110,7 @@ describe('RetryManager', () => {
           initialDelay: 100,
           backoff: 'exponential',
           factor: 2,
-          jitter: 0 // Disable jitter for predictable testing
+          jitter: 0, // Disable jitter for predictable testing
         });
       } catch {
         // Expected to fail
@@ -121,9 +121,9 @@ describe('RetryManager', () => {
 
       // Check delays are exponentially increasing
       expect(delays.length).toBe(3);
-      expect(delays[0]).toBe(100);  // Initial delay
-      expect(delays[1]).toBe(200);  // 100 * 2
-      expect(delays[2]).toBe(400);  // 200 * 2
+      expect(delays[0]).toBe(100); // Initial delay
+      expect(delays[1]).toBe(200); // 100 * 2
+      expect(delays[2]).toBe(400); // 200 * 2
     });
 
     it('should use linear backoff', async () => {
@@ -143,7 +143,7 @@ describe('RetryManager', () => {
           attempts: 3,
           initialDelay: 100,
           backoff: 'linear',
-          jitter: 0
+          jitter: 0,
         });
       } catch {
         // Expected to fail
@@ -154,9 +154,9 @@ describe('RetryManager', () => {
 
       // Check delays are linearly increasing
       expect(delays.length).toBe(3);
-      expect(delays[0]).toBe(100);  // Initial delay
-      expect(delays[1]).toBe(200);  // 100 + 100
-      expect(delays[2]).toBe(300);  // 200 + 100
+      expect(delays[0]).toBe(100); // Initial delay
+      expect(delays[1]).toBe(200); // 100 + 100
+      expect(delays[2]).toBe(300); // 200 + 100
     });
 
     it('should use constant backoff', async () => {
@@ -176,7 +176,7 @@ describe('RetryManager', () => {
           attempts: 3,
           initialDelay: 100,
           backoff: 'constant',
-          jitter: 0
+          jitter: 0,
         });
       } catch {
         // Expected to fail
@@ -211,7 +211,7 @@ describe('RetryManager', () => {
           backoff: 'exponential',
           factor: 3,
           maxDelay: 500,
-          jitter: 0
+          jitter: 0,
         });
       } catch {
         // Expected to fail
@@ -221,11 +221,11 @@ describe('RetryManager', () => {
       (retryManager as any).delay = originalDelay;
 
       // Check delays are capped at maxDelay
-      expect(delays[0]).toBe(100);  // Initial
-      expect(delays[1]).toBe(300);  // 100 * 3
-      expect(delays[2]).toBe(500);  // Capped at maxDelay
-      expect(delays[3]).toBe(500);  // Still capped
-      expect(delays[4]).toBe(500);  // Still capped
+      expect(delays[0]).toBe(100); // Initial
+      expect(delays[1]).toBe(300); // 100 * 3
+      expect(delays[2]).toBe(500); // Capped at maxDelay
+      expect(delays[3]).toBe(500); // Still capped
+      expect(delays[4]).toBe(500); // Still capped
     });
   });
 
@@ -245,7 +245,7 @@ describe('RetryManager', () => {
         retryManager.execute(fn, {
           attempts: 5,
           initialDelay: 10,
-          shouldRetry
+          shouldRetry,
         })
       ).rejects.toThrow('Attempt 3');
 
@@ -267,7 +267,7 @@ describe('RetryManager', () => {
 
       const result = await retryManager.execute(fn, {
         attempts: 3,
-        initialDelay: 10
+        initialDelay: 10,
       });
 
       expect(result).toBe('success');
@@ -288,7 +288,7 @@ describe('RetryManager', () => {
 
       const result = await retryManager.execute(fn, {
         attempts: 3,
-        initialDelay: 10
+        initialDelay: 10,
       });
 
       expect(result).toBe('success');
@@ -305,7 +305,7 @@ describe('RetryManager', () => {
       await expect(
         retryManager.execute(fn, {
           attempts: 3,
-          initialDelay: 10
+          initialDelay: 10,
         })
       ).rejects.toThrow('Bad request');
 
@@ -319,7 +319,7 @@ describe('RetryManager', () => {
         if (attempts < 3) {
           throw new TitanError({
             code: ErrorCode.SERVICE_UNAVAILABLE,
-            message: 'Service unavailable'
+            message: 'Service unavailable',
           });
         }
         return 'success';
@@ -327,7 +327,7 @@ describe('RetryManager', () => {
 
       const result = await retryManager.execute(fn, {
         attempts: 3,
-        initialDelay: 10
+        initialDelay: 10,
       });
 
       expect(result).toBe('success');
@@ -338,14 +338,14 @@ describe('RetryManager', () => {
       const fn = jest.fn(async () => {
         throw new TitanError({
           code: ErrorCode.INVALID_ARGUMENT,
-          message: 'Invalid argument'
+          message: 'Invalid argument',
         });
       });
 
       await expect(
         retryManager.execute(fn, {
           attempts: 3,
-          initialDelay: 10
+          initialDelay: 10,
         })
       ).rejects.toThrow('Invalid argument');
 
@@ -356,7 +356,7 @@ describe('RetryManager', () => {
   describe('Timeout', () => {
     it('should timeout individual attempts', async () => {
       const fn = jest.fn(async () => {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
         return 'success';
       });
 
@@ -364,7 +364,7 @@ describe('RetryManager', () => {
         retryManager.execute(fn, {
           attempts: 2,
           initialDelay: 10,
-          attemptTimeout: 50
+          attemptTimeout: 50,
         })
       ).rejects.toThrow('Request timeout after 50ms');
 
@@ -374,14 +374,14 @@ describe('RetryManager', () => {
 
     it('should succeed if completed before timeout', async () => {
       const fn = jest.fn(async () => {
-        await new Promise(resolve => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 20));
         return 'success';
       });
 
       const result = await retryManager.execute(fn, {
         attempts: 2,
         initialDelay: 10,
-        attemptTimeout: 100
+        attemptTimeout: 100,
       });
 
       expect(result).toBe('success');
@@ -395,8 +395,8 @@ describe('RetryManager', () => {
         circuitBreaker: {
           threshold: 3,
           windowTime: 1000,
-          cooldownTime: 100
-        }
+          cooldownTime: 100,
+        },
       });
 
       const fn = jest.fn(async () => {
@@ -415,9 +415,7 @@ describe('RetryManager', () => {
       expect(manager.getCircuitBreakerState()).toBe('open');
 
       // Should reject immediately when circuit is open
-      await expect(
-        manager.execute(fn, { attempts: 3, initialDelay: 10 })
-      ).rejects.toThrow('Circuit breaker is open');
+      await expect(manager.execute(fn, { attempts: 3, initialDelay: 10 })).rejects.toThrow('Circuit breaker is open');
     });
 
     it('should transition to half-open after cooldown', async () => {
@@ -425,8 +423,8 @@ describe('RetryManager', () => {
         circuitBreaker: {
           threshold: 2,
           windowTime: 1000,
-          cooldownTime: 50
-        }
+          cooldownTime: 50,
+        },
       });
 
       const fn = jest.fn(async () => {
@@ -445,14 +443,17 @@ describe('RetryManager', () => {
       expect(manager.getCircuitBreakerState()).toBe('open');
 
       // Wait for cooldown
-      await new Promise(resolve => setTimeout(resolve, 60));
+      await new Promise((resolve) => setTimeout(resolve, 60));
 
       // Should transition to half-open and allow one attempt
       try {
-        await manager.execute(jest.fn(async () => 'success'), {
-          attempts: 0,
-          initialDelay: 10
-        });
+        await manager.execute(
+          jest.fn(async () => 'success'),
+          {
+            attempts: 0,
+            initialDelay: 10,
+          }
+        );
       } catch {
         // May fail or succeed
       }
@@ -467,8 +468,8 @@ describe('RetryManager', () => {
           threshold: 2,
           windowTime: 1000,
           cooldownTime: 50,
-          successThreshold: 2
-        }
+          successThreshold: 2,
+        },
       });
 
       // Open the circuit
@@ -487,7 +488,7 @@ describe('RetryManager', () => {
       expect(manager.getCircuitBreakerState()).toBe('open');
 
       // Wait for cooldown
-      await new Promise(resolve => setTimeout(resolve, 60));
+      await new Promise((resolve) => setTimeout(resolve, 60));
 
       // Successful requests should close the circuit
       const successFn = jest.fn(async () => 'success');
@@ -502,8 +503,8 @@ describe('RetryManager', () => {
         circuitBreaker: {
           threshold: 5,
           windowTime: 1000,
-          cooldownTime: 100
-        }
+          cooldownTime: 100,
+        },
       });
 
       expect(manager.getCircuitBreakerState()).toBe('closed');
@@ -531,7 +532,7 @@ describe('RetryManager', () => {
 
       await retryManager.execute(fn, {
         attempts: 3,
-        initialDelay: 10
+        initialDelay: 10,
       });
 
       const stats = retryManager.getStats();
@@ -549,7 +550,7 @@ describe('RetryManager', () => {
       try {
         await retryManager.execute(fn, {
           attempts: 1,
-          initialDelay: 10
+          initialDelay: 10,
         });
       } catch {
         // Expected
@@ -584,13 +585,13 @@ describe('RetryManager', () => {
 
       await retryManager.execute(fn, {
         attempts: 3,
-        initialDelay: 10
+        initialDelay: 10,
       });
 
       // Should have retry events
-      expect(events.filter(e => e.type === 'retry')).toHaveLength(2);
-      expect(events.filter(e => e.type === 'success')).toHaveLength(1);
-      expect(events.filter(e => e.type === 'exhausted')).toHaveLength(0);
+      expect(events.filter((e) => e.type === 'retry')).toHaveLength(2);
+      expect(events.filter((e) => e.type === 'success')).toHaveLength(1);
+      expect(events.filter((e) => e.type === 'exhausted')).toHaveLength(0);
     });
 
     it('should emit exhausted event when max attempts reached', async () => {
@@ -604,7 +605,7 @@ describe('RetryManager', () => {
       try {
         await retryManager.execute(fn, {
           attempts: 2,
-          initialDelay: 10
+          initialDelay: 10,
         });
       } catch {
         // Expected
@@ -612,7 +613,7 @@ describe('RetryManager', () => {
 
       expect(exhaustedHandler).toHaveBeenCalledWith({
         attempts: 3,
-        error: 'Always fails'
+        error: 'Always fails',
       });
     });
   });
@@ -642,7 +643,7 @@ describe('RetryManager', () => {
 
       await debugManager.execute(fn, {
         attempts: 3,
-        initialDelay: 10
+        initialDelay: 10,
       });
 
       // Should log attempt numbers
@@ -666,7 +667,7 @@ describe('RetryManager', () => {
       try {
         await debugManager.execute(fn, {
           attempts: 2,
-          initialDelay: 10
+          initialDelay: 10,
         });
       } catch {
         // Expected
@@ -685,7 +686,7 @@ describe('RetryManager', () => {
       try {
         await debugManager.execute(fn, {
           attempts: 1,
-          initialDelay: 10
+          initialDelay: 10,
         });
       } catch {
         // Expected
@@ -704,7 +705,7 @@ describe('RetryManager', () => {
       try {
         await retryManager.execute(fn, {
           attempts: 3,
-          initialDelay: 10
+          initialDelay: 10,
         });
       } catch (error: any) {
         expect(error).toBeInstanceOf(TypeError);
@@ -721,7 +722,7 @@ describe('RetryManager', () => {
       try {
         await retryManager.execute(fn, {
           attempts: 3,
-          initialDelay: 10
+          initialDelay: 10,
         });
       } catch (error: any) {
         expect(error).toBeInstanceOf(ReferenceError);
@@ -744,7 +745,7 @@ describe('RetryManager', () => {
 
       const result = await retryManager.execute(fn, {
         attempts: 3,
-        initialDelay: 10
+        initialDelay: 10,
       });
 
       expect(result).toBe('success');
@@ -765,7 +766,7 @@ describe('RetryManager', () => {
 
       const result = await retryManager.execute(fn, {
         attempts: 3,
-        initialDelay: 10
+        initialDelay: 10,
       });
 
       expect(result).toBe('success');
@@ -785,7 +786,7 @@ describe('RetryManager', () => {
 
       const result = await retryManager.execute(fn, {
         attempts: 3,
-        initialDelay: 10
+        initialDelay: 10,
       });
 
       expect(result).toBe('success');
@@ -805,7 +806,7 @@ describe('RetryManager', () => {
       const result = await retryManager.execute(fn, {
         attempts: 3,
         initialDelay: 10,
-        backoff: 'invalid' as any // Invalid backoff to trigger default case
+        backoff: 'invalid' as any, // Invalid backoff to trigger default case
       });
 
       expect(result).toBe('success');
@@ -826,8 +827,8 @@ describe('RetryManager', () => {
           threshold: 3,
           cooldownTime: 50,
           windowTime: 100,
-          successThreshold: 2
-        }
+          successThreshold: 2,
+        },
       });
     });
 
@@ -845,7 +846,7 @@ describe('RetryManager', () => {
         try {
           await cbManager.execute(fn, {
             attempts: 0,
-            initialDelay: 10
+            initialDelay: 10,
           });
         } catch {
           // Expected
@@ -855,13 +856,13 @@ describe('RetryManager', () => {
       expect(consoleLogSpy).toHaveBeenCalledWith('[CircuitBreaker] Transitioned to OPEN');
 
       // Wait for cooldown
-      await new Promise(resolve => setTimeout(resolve, 60));
+      await new Promise((resolve) => setTimeout(resolve, 60));
 
       // Try again - should transition to half-open
       try {
         await cbManager.execute(fn, {
           attempts: 0,
-          initialDelay: 10
+          initialDelay: 10,
         });
       } catch {
         // Expected
@@ -886,7 +887,7 @@ describe('RetryManager', () => {
         try {
           await cbManager.execute(fn, {
             attempts: 0,
-            initialDelay: 10
+            initialDelay: 10,
           });
         } catch {
           // Expected
@@ -896,13 +897,13 @@ describe('RetryManager', () => {
       expect(consoleLogSpy).toHaveBeenCalledWith('[CircuitBreaker] Transitioned to OPEN');
 
       // Wait for cooldown
-      await new Promise(resolve => setTimeout(resolve, 60));
+      await new Promise((resolve) => setTimeout(resolve, 60));
 
       // Successful attempts to close circuit
       for (let i = 0; i < 2; i++) {
         await cbManager.execute(fn, {
           attempts: 0,
-          initialDelay: 10
+          initialDelay: 10,
         });
       }
 
@@ -930,29 +931,29 @@ describe('RetryManager', () => {
         try {
           await cbManager.execute(fn, {
             attempts: 0,
-            initialDelay: 10
+            initialDelay: 10,
           });
         } catch {
           // Expected
         }
       }
 
-      expect(events.some(e => e.type === 'open')).toBe(true);
-      expect(events.find(e => e.type === 'open')).toHaveProperty('nextAttemptTime');
+      expect(events.some((e) => e.type === 'open')).toBe(true);
+      expect(events.find((e) => e.type === 'open')).toHaveProperty('nextAttemptTime');
 
       // Wait for cooldown
-      await new Promise(resolve => setTimeout(resolve, 60));
+      await new Promise((resolve) => setTimeout(resolve, 60));
 
       // Successful attempts to close circuit
       for (let i = 0; i < 2; i++) {
         await cbManager.execute(fn, {
           attempts: 0,
-          initialDelay: 10
+          initialDelay: 10,
         });
       }
 
-      expect(events.some(e => e.type === 'half-open')).toBe(true);
-      expect(events.some(e => e.type === 'closed')).toBe(true);
+      expect(events.some((e) => e.type === 'half-open')).toBe(true);
+      expect(events.some((e) => e.type === 'closed')).toBe(true);
     });
 
     it('should reset circuit breaker state on stats reset', async () => {
@@ -965,7 +966,7 @@ describe('RetryManager', () => {
         try {
           await cbManager.execute(fn, {
             attempts: 0,
-            initialDelay: 10
+            initialDelay: 10,
           });
         } catch {
           // Expected
@@ -993,8 +994,8 @@ describe('RetryManager', () => {
           threshold: 3,
           cooldownTime: 10,
           windowTime: 30, // Very short window
-          successThreshold: 2
-        }
+          successThreshold: 2,
+        },
       });
 
       const fn = jest.fn(async () => {
@@ -1005,14 +1006,14 @@ describe('RetryManager', () => {
       try {
         await fastCbManager.execute(fn, {
           attempts: 0,
-          initialDelay: 5
+          initialDelay: 5,
         });
       } catch {
         // Expected
       }
 
       // Wait longer than window time
-      await new Promise(resolve => setTimeout(resolve, 40));
+      await new Promise((resolve) => setTimeout(resolve, 40));
 
       // Should have reset failures due to window expiry
       // Need 3 more failures to open circuit
@@ -1020,7 +1021,7 @@ describe('RetryManager', () => {
         try {
           await fastCbManager.execute(fn, {
             attempts: 0,
-            initialDelay: 5
+            initialDelay: 5,
           });
         } catch {
           // Expected
@@ -1035,13 +1036,13 @@ describe('RetryManager', () => {
   describe('Edge Cases', () => {
     it('should handle timeout of 0 (no timeout)', async () => {
       const fn = jest.fn(async () => {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
         return 'success';
       });
 
       const result = await retryManager.execute(fn, {
         attempts: 0,
-        attemptTimeout: 0 // No timeout
+        attemptTimeout: 0, // No timeout
       });
 
       expect(result).toBe('success');
@@ -1050,13 +1051,13 @@ describe('RetryManager', () => {
 
     it('should handle negative timeout (no timeout)', async () => {
       const fn = jest.fn(async () => {
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
         return 'success';
       });
 
       const result = await retryManager.execute(fn, {
         attempts: 0,
-        attemptTimeout: -1 // Negative means no timeout
+        attemptTimeout: -1, // Negative means no timeout
       });
 
       expect(result).toBe('success');

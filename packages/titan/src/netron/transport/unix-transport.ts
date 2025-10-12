@@ -8,11 +8,7 @@ import net from 'node:net';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { TcpConnection, TcpServer, TcpTransport, TcpOptions } from './tcp-transport.js';
-import {
-  TransportCapabilities,
-  ITransportConnection,
-  ITransportServer
-} from './types.js';
+import { TransportCapabilities, ITransportConnection, ITransportServer } from './types.js';
 import { NetronErrors, Errors } from '../../errors/index.js';
 
 /**
@@ -83,7 +79,7 @@ export class UnixSocketTransport extends TcpTransport {
     binary: true,
     reconnection: true,
     multiplexing: false,
-    server: true
+    server: true,
   };
 
   /**
@@ -94,18 +90,19 @@ export class UnixSocketTransport extends TcpTransport {
 
     // Reject non-Unix addresses
     if (parsed.protocol && parsed.protocol !== 'unix') {
-      throw Errors.badRequest(`Invalid Unix socket address: ${address}. Protocol '${parsed.protocol}' is not supported.`, {
-        address,
-        protocol: parsed.protocol
-      });
+      throw Errors.badRequest(
+        `Invalid Unix socket address: ${address}. Protocol '${parsed.protocol}' is not supported.`,
+        {
+          address,
+          protocol: parsed.protocol,
+        }
+      );
     }
 
     const socketPath = parsed.path || address;
 
     // Ensure socket path is absolute
-    const absolutePath = path.isAbsolute(socketPath) ?
-                        socketPath :
-                        path.join(process.cwd(), socketPath);
+    const absolutePath = path.isAbsolute(socketPath) ? socketPath : path.join(process.cwd(), socketPath);
 
     // Check if socket exists
     try {
@@ -121,7 +118,7 @@ export class UnixSocketTransport extends TcpTransport {
     }
 
     const socket = net.createConnection({
-      path: absolutePath
+      path: absolutePath,
     });
 
     return new Promise((resolve, reject) => {
@@ -163,9 +160,7 @@ export class UnixSocketTransport extends TcpTransport {
     }
 
     // Ensure socket path is absolute
-    const absolutePath = path.isAbsolute(socketPath) ?
-                        socketPath :
-                        path.join(process.cwd(), socketPath);
+    const absolutePath = path.isAbsolute(socketPath) ? socketPath : path.join(process.cwd(), socketPath);
 
     // Ensure directory exists
     const socketDir = path.dirname(absolutePath);
@@ -195,7 +190,7 @@ export class UnixSocketTransport extends TcpTransport {
       server.listen(absolutePath, () => {
         // Set socket permissions if specified
         if (options.mode !== undefined) {
-          fs.chmod(absolutePath, options.mode).catch(error => {
+          fs.chmod(absolutePath, options.mode).catch((error) => {
             console.error('Failed to set socket permissions:', error);
           });
         }
@@ -230,7 +225,7 @@ export class UnixSocketTransport extends TcpTransport {
       return {
         protocol: 'unix',
         path: address.substring(7),
-        params: {}
+        params: {},
       };
     }
 
@@ -238,7 +233,7 @@ export class UnixSocketTransport extends TcpTransport {
       return {
         protocol: 'unix',
         path: address.substring(5),
-        params: {}
+        params: {},
       };
     }
 
@@ -251,7 +246,7 @@ export class UnixSocketTransport extends TcpTransport {
     return {
       protocol: 'unix',
       path: address,
-      params: {}
+      params: {},
     };
   }
 
@@ -281,7 +276,7 @@ export class NamedPipeTransport extends TcpTransport {
     binary: true,
     reconnection: true,
     multiplexing: false,
-    server: true
+    server: true,
   };
 
   /**
@@ -292,21 +287,22 @@ export class NamedPipeTransport extends TcpTransport {
 
     // Reject non-pipe addresses
     if (parsed.protocol && parsed.protocol !== 'pipe') {
-      throw Errors.badRequest(`Invalid named pipe address: ${address}. Protocol '${parsed.protocol}' is not supported.`, {
-        address,
-        protocol: parsed.protocol
-      });
+      throw Errors.badRequest(
+        `Invalid named pipe address: ${address}. Protocol '${parsed.protocol}' is not supported.`,
+        {
+          address,
+          protocol: parsed.protocol,
+        }
+      );
     }
 
     const pipeName = parsed.path || address;
 
     // Build Windows pipe path
-    const pipePath = pipeName.startsWith('\\\\.\\pipe\\') ?
-                    pipeName :
-                    `\\\\.\\pipe\\${pipeName}`;
+    const pipePath = pipeName.startsWith('\\\\.\\pipe\\') ? pipeName : `\\\\.\\pipe\\${pipeName}`;
 
     const socket = net.createConnection({
-      path: pipePath
+      path: pipePath,
     });
 
     return new Promise((resolve, reject) => {
@@ -348,9 +344,7 @@ export class NamedPipeTransport extends TcpTransport {
     }
 
     // Build Windows pipe path
-    const pipePath = pipeName.startsWith('\\\\.\\pipe\\') ?
-                    pipeName :
-                    `\\\\.\\pipe\\${pipeName}`;
+    const pipePath = pipeName.startsWith('\\\\.\\pipe\\') ? pipeName : `\\\\.\\pipe\\${pipeName}`;
 
     const server = net.createServer();
 
@@ -375,7 +369,7 @@ export class NamedPipeTransport extends TcpTransport {
       return {
         protocol: 'pipe',
         path: path.startsWith('\\\\.\\pipe\\') ? path : `\\\\.\\pipe\\${path}`,
-        params: {}
+        params: {},
       };
     }
 
@@ -384,7 +378,7 @@ export class NamedPipeTransport extends TcpTransport {
       return {
         protocol: 'pipe',
         path: path.startsWith('\\\\.\\pipe\\') ? path : `\\\\.\\pipe\\${path}`,
-        params: {}
+        params: {},
       };
     }
 
@@ -392,7 +386,7 @@ export class NamedPipeTransport extends TcpTransport {
     return {
       protocol: 'pipe',
       path: address.startsWith('\\\\.\\pipe\\') ? address : `\\\\.\\pipe\\${address}`,
-      params: {}
+      params: {},
     };
   }
 

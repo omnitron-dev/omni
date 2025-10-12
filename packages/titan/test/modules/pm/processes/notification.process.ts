@@ -13,19 +13,19 @@ export default class NotificationService {
   @RateLimit({ rps: 10 })
   async sendNotification(userId: string, message: string): Promise<void> {
     // Simulate sending notification
-    await new Promise(resolve => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 20));
 
     this.notifications.push({
       userId,
       message,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
   }
 
   @Public()
   async getNotifications(userId: string): Promise<Array<{ message: string; timestamp: number }>> {
     return this.notifications
-      .filter(n => n.userId === userId)
+      .filter((n) => n.userId === userId)
       .map(({ message, timestamp }) => ({ message, timestamp }));
   }
 }

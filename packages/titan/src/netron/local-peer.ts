@@ -82,7 +82,7 @@ export class LocalPeer extends AbstractPeer {
         {
           serviceName: meta.name,
           transportCount: meta.transports.length,
-          transports: meta.transports
+          transports: meta.transports,
         },
         'Service configured with transports'
       );
@@ -100,7 +100,8 @@ export class LocalPeer extends AbstractPeer {
     for (const [transportName, server] of this.netron.transportServers) {
       if (typeof (server as any).registerService === 'function') {
         // Contract is stored in the metadata, not directly on the constructor
-        const contract = (meta as any).contract ||
+        const contract =
+          (meta as any).contract ||
           Reflect.getMetadata('validation:contract', instance.constructor) ||
           (instance.constructor as any).contract;
         (server as any).registerService(meta.name, def, contract);

@@ -94,7 +94,7 @@ export function Lazy<T>(tokenFactory: () => InjectionToken<T>) {
         return cachedValue;
       },
       enumerable: true,
-      configurable: true
+      configurable: true,
     });
   };
 }
@@ -128,11 +128,7 @@ export function InjectConfig(path: string) {
 /**
  * Conditionally inject based on a predicate
  */
-export function ConditionalInject<T>(
-  token: InjectionToken<T>,
-  condition: () => boolean,
-  fallback?: T | (() => T)
-) {
+export function ConditionalInject<T>(token: InjectionToken<T>, condition: () => boolean, fallback?: T | (() => T)) {
   return function (target: any, propertyKey: string | symbol | undefined, parameterIndex?: number) {
     if (propertyKey === undefined && parameterIndex !== undefined) {
       const existing = Reflect.getMetadata('nexus:conditional', target) || [];

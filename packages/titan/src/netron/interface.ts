@@ -13,7 +13,16 @@ import { IPeer } from './types.js';
  *
  * @constant {string[]} INTERNAL_READ_PROPERTIES
  */
-const INTERNAL_READ_PROPERTIES = ['$def', '$peer', 'waitForAssigned', '$pendingPromises', 'then', '$$typeof', 'nodeType', 'tagName'];
+const INTERNAL_READ_PROPERTIES = [
+  '$def',
+  '$peer',
+  'waitForAssigned',
+  '$pendingPromises',
+  'then',
+  '$$typeof',
+  'nodeType',
+  'tagName',
+];
 
 /**
  * List of internal properties that can be written to the Interface instance.
@@ -136,8 +145,8 @@ export class Interface {
           throw Errors.badRequest(`Property is not writable: '${prop}' is marked as readonly`);
         }
 
-        let resolvePromise: () => void = () => { };
-        let rejectPromise: (reason?: any) => void = () => { };
+        let resolvePromise: () => void = () => {};
+        let rejectPromise: (reason?: any) => void = () => {};
 
         const promise = new Promise<void>((resolve, reject) => {
           resolvePromise = resolve;

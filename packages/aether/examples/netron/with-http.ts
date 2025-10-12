@@ -26,7 +26,7 @@ async function main() {
     baseUrl: 'http://localhost:3000',
     timeout: 60000,
     headers: {
-      'Authorization': 'Bearer your-api-token',
+      Authorization: 'Bearer your-api-token',
     },
   });
 

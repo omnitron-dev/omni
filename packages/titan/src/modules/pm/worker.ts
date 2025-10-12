@@ -50,7 +50,7 @@ async function initialize() {
 
     // Initialize Netron for this process
     const netron = new Netron(console as any, {
-      id: config.netron.id
+      id: config.netron.id,
       // discoveryUrl: config.netron.discoveryUrl  // TODO: fix this
     });
 
@@ -102,7 +102,7 @@ async function initialize() {
       memory: process.memoryUsage().heapUsed,
       requests: (processInstance as any).__requestCount || 0,
       errors: (processInstance as any).__errorCount || 0,
-      uptime: process.uptime()
+      uptime: process.uptime(),
     });
 
     serviceInterface.__getProcessHealth = async () => {
@@ -115,7 +115,7 @@ async function initialize() {
           return {
             status: 'unhealthy' as const,
             error: error.message,
-            timestamp: Date.now()
+            timestamp: Date.now(),
           };
         }
       }
@@ -123,7 +123,7 @@ async function initialize() {
       return {
         status: 'healthy' as const,
         checks: [],
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
     };
 
@@ -147,7 +147,7 @@ async function initialize() {
     parentPort?.postMessage({
       type: 'ready',
       processId: config.processId,
-      transportUrl
+      transportUrl,
     });
 
     // Handle messages from parent
@@ -172,13 +172,12 @@ async function initialize() {
     process.on('SIGINT', async () => {
       await serviceInterface.__shutdown();
     });
-
   } catch (error: any) {
     console.error('Failed to initialize worker:', error);
     parentPort?.postMessage({
       type: 'error',
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
     process.exit(1);
   }

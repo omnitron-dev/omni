@@ -119,7 +119,7 @@ describe('Netron Streams', () => {
       const streamTimeout = 50; // 50ms for faster test
 
       // Create new netron with custom timeout
-      Netron.create(createMockLogger(), { streamTimeout }).then(customNetron => {
+      Netron.create(createMockLogger(), { streamTimeout }).then((customNetron) => {
         const customPeer = new RemotePeer({} as WebSocket, customNetron, 'timeout-peer');
         const stream = new NetronReadableStream({ peer: customPeer, streamId: 4 });
 
@@ -164,7 +164,7 @@ describe('Netron Streams', () => {
         createStreamPacket(3, 5, 2, true, false, 3),
       ];
 
-      packets.forEach(packet => stream.onPacket(packet));
+      packets.forEach((packet) => stream.onPacket(packet));
     });
 
     it('should handle live streams without timeout', async () => {
@@ -206,10 +206,7 @@ describe('Netron Streams', () => {
 
       stream.on('close', () => {
         expect(stream.destroyed).toBe(true);
-        expect(errorSpy).toHaveBeenCalledWith(
-          { streamId: stream.id, error },
-          'Stream error occurred'
-        );
+        expect(errorSpy).toHaveBeenCalledWith({ streamId: stream.id, error }, 'Stream error occurred');
         expect(peer.readableStreams.has(stream.id)).toBe(false);
         errorSpy.mockRestore();
         done();
@@ -225,8 +222,7 @@ describe('Netron Streams', () => {
     beforeEach(() => {
       // Create a peer with mocked sendStreamChunk
       mockPeer = new RemotePeer({} as WebSocket, netron, 'mock-write-peer');
-      mockPeer.sendStreamChunk = jest.fn<typeof mockPeer.sendStreamChunk>()
-        .mockResolvedValue(undefined);
+      mockPeer.sendStreamChunk = jest.fn<typeof mockPeer.sendStreamChunk>().mockResolvedValue(undefined);
     });
 
     it('should correctly send data in sequence', async () => {
@@ -247,10 +243,8 @@ describe('Netron Streams', () => {
 
     it('should handle sendStreamChunk errors correctly', async () => {
       const error = new Error('Send failed');
-      mockPeer.sendStreamChunk = jest.fn<typeof mockPeer.sendStreamChunk>()
-        .mockRejectedValue(error);
-      mockPeer.sendPacket = jest.fn<typeof mockPeer.sendPacket>()
-        .mockResolvedValue();
+      mockPeer.sendStreamChunk = jest.fn<typeof mockPeer.sendStreamChunk>().mockRejectedValue(error);
+      mockPeer.sendPacket = jest.fn<typeof mockPeer.sendPacket>().mockResolvedValue();
 
       const stream = new NetronWritableStream({ peer: mockPeer, isLive: false });
 
@@ -288,8 +282,7 @@ describe('Netron Streams', () => {
     });
 
     it('should handle destroy with error', async () => {
-      mockPeer.sendPacket = jest.fn<typeof mockPeer.sendPacket>()
-        .mockResolvedValue();
+      mockPeer.sendPacket = jest.fn<typeof mockPeer.sendPacket>().mockResolvedValue();
 
       const stream = new NetronWritableStream({ peer: mockPeer });
       const error = new Error('Destroy error');
@@ -307,10 +300,7 @@ describe('Netron Streams', () => {
       await new Promise((resolve) => stream.on('close', resolve));
 
       expect(errorEmitted).toBe(true);
-      expect(infoSpy).toHaveBeenCalledWith(
-        { streamId: stream.id, error },
-        'Destroying stream'
-      );
+      expect(infoSpy).toHaveBeenCalledWith({ streamId: stream.id, error }, 'Destroying stream');
       expect(mockPeer.writableStreams.has(stream.id)).toBe(false);
       expect(mockPeer.sendPacket).toHaveBeenCalled();
 
@@ -324,7 +314,7 @@ describe('Netron Streams', () => {
       stream.destroy();
 
       // Wait for the destroy to complete
-      await new Promise(resolve => stream.on('close', resolve));
+      await new Promise((resolve) => stream.on('close', resolve));
 
       // Verify the stream is destroyed
       expect(stream.destroyed).toBe(true);
@@ -345,12 +335,14 @@ describe('Netron Streams', () => {
       const result = await Promise.race([
         writePromise,
         errorPromise,
-        new Promise(resolve => setTimeout(() => resolve('timeout'), 100))
+        new Promise((resolve) => setTimeout(() => resolve('timeout'), 100)),
       ]);
 
       // The stream should either call the callback with an error or emit an error event
       if (result instanceof Error) {
-        expect(result.message).toMatch(/Cannot call write after a stream was destroyed|Stream is already closed|write after end/);
+        expect(result.message).toMatch(
+          /Cannot call write after a stream was destroyed|Stream is already closed|write after end/
+        );
       } else if (result === 'timeout') {
         // If neither happened, check if write returned false (synchronous rejection)
         const syncResult = stream.write('test2');
@@ -384,17 +376,13 @@ describe('Netron Streams', () => {
       const stream1to2Data: any[] = [];
       const stream2to1Data: any[] = [];
 
-      peer1.sendStreamChunk = jest.fn<typeof peer1.sendStreamChunk>(
-        async (streamId, chunk, index, isLast) => {
-          stream1to2Data.push({ streamId, chunk, index, isLast });
-        }
-      );
+      peer1.sendStreamChunk = jest.fn<typeof peer1.sendStreamChunk>(async (streamId, chunk, index, isLast) => {
+        stream1to2Data.push({ streamId, chunk, index, isLast });
+      });
 
-      peer2.sendStreamChunk = jest.fn<typeof peer2.sendStreamChunk>(
-        async (streamId, chunk, index, isLast) => {
-          stream2to1Data.push({ streamId, chunk, index, isLast });
-        }
-      );
+      peer2.sendStreamChunk = jest.fn<typeof peer2.sendStreamChunk>(async (streamId, chunk, index, isLast) => {
+        stream2to1Data.push({ streamId, chunk, index, isLast });
+      });
 
       // Create writable stream on peer1
       const writable1 = new NetronWritableStream({ peer: peer1, streamId: 100 });
@@ -413,10 +401,10 @@ describe('Netron Streams', () => {
       expect(stream1to2Data[2]).toEqual({ streamId: 100, chunk: null, index: 2, isLast: true });
 
       // Clean up
-      peer1.readableStreams.forEach(s => s.destroy());
-      peer1.writableStreams.forEach(s => s.destroy());
-      peer2.readableStreams.forEach(s => s.destroy());
-      peer2.writableStreams.forEach(s => s.destroy());
+      peer1.readableStreams.forEach((s) => s.destroy());
+      peer1.writableStreams.forEach((s) => s.destroy());
+      peer2.readableStreams.forEach((s) => s.destroy());
+      peer2.writableStreams.forEach((s) => s.destroy());
     });
   });
 });

@@ -38,7 +38,7 @@ describe('Netron DI Integration', () => {
 
     // Register logger
     container.register(LOGGER_SERVICE_TOKEN, {
-      useValue: logger
+      useValue: logger,
     });
   });
 
@@ -54,7 +54,7 @@ describe('Netron DI Integration', () => {
 
     // Register as singleton in container
     container.register(NETRON_TOKEN, {
-      useValue: netron
+      useValue: netron,
     });
 
     // Resolve Netron
@@ -66,7 +66,7 @@ describe('Netron DI Integration', () => {
     expect(resolvedNetron.options?.listenPort).toBe(8080);
     expect(logger.child).toHaveBeenCalledWith({
       module: 'netron',
-      netronId: 'test-netron'
+      netronId: 'test-netron',
     });
   });
 
@@ -76,7 +76,7 @@ describe('Netron DI Integration', () => {
 
     // Register as singleton in container
     container.register(NETRON_TOKEN, {
-      useValue: netron
+      useValue: netron,
     });
 
     // Resolve Netron

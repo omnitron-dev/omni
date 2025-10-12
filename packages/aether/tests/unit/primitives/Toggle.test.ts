@@ -224,8 +224,7 @@ describe('Toggle', () => {
 
     it('should not toggle when disabled', () => {
       const onPressedChange = createSpy();
-      const component = () =>
-        Toggle({ disabled: true, defaultPressed: false, onPressedChange, children: 'B' });
+      const component = () => Toggle({ disabled: true, defaultPressed: false, onPressedChange, children: 'B' });
       const { container } = renderComponent(component);
 
       const button = container.querySelector('button') as HTMLButtonElement;
@@ -372,8 +371,7 @@ describe('Toggle', () => {
     });
 
     it('should support custom aria-label', () => {
-      const component = () =>
-        Toggle({ 'aria-label': 'Toggle bold formatting', children: 'B' });
+      const component = () => Toggle({ 'aria-label': 'Toggle bold formatting', children: 'B' });
       const { container } = renderComponent(component);
 
       const button = container.querySelector('button');
@@ -427,8 +425,7 @@ describe('Toggle', () => {
 
   describe('Custom Props Pass-through', () => {
     it('should pass custom data attributes', () => {
-      const component = () =>
-        Toggle({ 'data-testid': 'bold-toggle', 'data-cy': 'toggle-bold', children: 'B' });
+      const component = () => Toggle({ 'data-testid': 'bold-toggle', 'data-cy': 'toggle-bold', children: 'B' });
       const { container } = renderComponent(component);
 
       const button = container.querySelector('button');

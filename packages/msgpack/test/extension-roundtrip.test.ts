@@ -5,7 +5,11 @@ import { SmartBuffer } from '../src/smart-buffer.js';
 describe('Extension type roundtrip', () => {
   it('should encode and decode custom type correctly', () => {
     class TestClass {
-      constructor(public a: string, public b: number, public c: object) {}
+      constructor(
+        public a: string,
+        public b: number,
+        public c: object
+      ) {}
     }
 
     const ser = new Serializer();
@@ -50,7 +54,10 @@ describe('Extension type roundtrip', () => {
     }
 
     class Outer {
-      constructor(public name: string, public inner: Inner) {}
+      constructor(
+        public name: string,
+        public inner: Inner
+      ) {}
     }
 
     const ser = new Serializer();

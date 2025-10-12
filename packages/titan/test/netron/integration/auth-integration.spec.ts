@@ -72,7 +72,7 @@ async function findAvailablePort(start: number = 9000): Promise<number> {
       testNetron.registerTransport('http', () => new HttpTransport());
       const server = await testNetron.registerTransportServer('http', {
         name: 'http',
-        options: { host: 'localhost', port }
+        options: { host: 'localhost', port },
       });
       await testNetron.start();
       await testNetron.stop();
@@ -101,29 +101,29 @@ describe('Netron Auth Integration Tests', () => {
       password: 'admin123',
       roles: ['admin', 'user'],
       permissions: ['read:all', 'write:all', 'delete:all'],
-      tenant: 'tenant1'
+      tenant: 'tenant1',
     },
     'user@test.com': {
       id: 'user-2',
       password: 'user123',
       roles: ['user'],
       permissions: ['read:own', 'write:own'],
-      tenant: 'tenant1'
+      tenant: 'tenant1',
     },
     'tenant2-user@test.com': {
       id: 'user-3',
       password: 'user123',
       roles: ['user'],
       permissions: ['read:own'],
-      tenant: 'tenant2'
+      tenant: 'tenant2',
     },
     'guest@test.com': {
       id: 'user-4',
       password: 'guest123',
       roles: ['guest'],
       permissions: ['read:public'],
-      tenant: 'tenant1'
-    }
+      tenant: 'tenant1',
+    },
   };
 
   beforeEach(async () => {
@@ -148,7 +148,7 @@ describe('Netron Auth Integration Tests', () => {
           username: credentials.username,
           roles: user.roles,
           permissions: user.permissions,
-          metadata: { tenant: user.tenant }
+          metadata: { tenant: user.tenant },
         };
       },
       validateToken: async (token: string): Promise<AuthContext> => {
@@ -158,7 +158,7 @@ describe('Netron Auth Integration Tests', () => {
         } catch {
           throw new Error('Invalid token');
         }
-      }
+      },
     });
 
     // Setup authorization
@@ -170,24 +170,24 @@ describe('Netron Auth Integration Tests', () => {
       allowedRoles: ['admin', 'user', 'guest', 'service'], // Add service role
       methods: {
         authenticatedMethod: {
-          allowedRoles: ['admin', 'user', 'service'] // Allow service accounts
+          allowedRoles: ['admin', 'user', 'service'], // Allow service accounts
         },
         adminMethod: {
-          allowedRoles: ['admin', 'service'] // Allow service accounts for admin methods
-        }
-      }
+          allowedRoles: ['admin', 'service'], // Allow service accounts for admin methods
+        },
+      },
     });
 
     authzManager.registerACL({
       service: 'tenantService@1.0.0',
-      allowedRoles: ['admin', 'user']
+      allowedRoles: ['admin', 'user'],
     });
 
     // Setup policy engine
     policyEngine = new PolicyEngine(serverLogger, {
       debug: false,
       defaultTimeout: 5000,
-      defaultCacheTTL: 60000
+      defaultCacheTTL: 60000,
     });
 
     // Register tenant isolation policy
@@ -207,7 +207,7 @@ describe('Netron Auth Integration Tests', () => {
         }
 
         return { allowed: true, reason: 'Tenant access allowed' };
-      }
+      },
     });
 
     // Register rate limiting policy
@@ -238,7 +238,7 @@ describe('Netron Auth Integration Tests', () => {
         }
 
         return { allowed: true, reason: 'Within rate limit' };
-      }
+      },
     });
 
     // Setup session manager
@@ -247,7 +247,7 @@ describe('Netron Auth Integration Tests', () => {
       maxSessionsPerUser: 5,
       autoCleanup: true,
       cleanupInterval: 60000,
-      trackActivity: true
+      trackActivity: true,
     });
 
     // Attach auth components to server
@@ -263,12 +263,12 @@ describe('Netron Auth Integration Tests', () => {
     // Register servers
     await serverNetron.registerTransportServer('http', {
       name: 'http',
-      options: { host: 'localhost', port: httpPort }
+      options: { host: 'localhost', port: httpPort },
     });
 
     await serverNetron.registerTransportServer('ws', {
       name: 'ws',
-      options: { host: 'localhost', port: wsPort }
+      options: { host: 'localhost', port: wsPort },
     });
 
     // Start server
@@ -294,16 +294,16 @@ describe('Netron Auth Integration Tests', () => {
 
   describe('WebSocket Auth Features', () => {
     it('should authenticate with custom headers', async () => {
-      const peer = await clientNetron.connect(`ws://localhost:${wsPort}`, {
+      const peer = (await clientNetron.connect(`ws://localhost:${wsPort}`, {
         headers: {
-          'Origin': 'http://example.com',
-          'X-Requested-With': 'XMLHttpRequest'
-        }
-      }) as RemotePeer;
+          Origin: 'http://example.com',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+      })) as RemotePeer;
 
       const authResult = await peer.runTask('authenticate', {
         username: 'user@test.com',
-        password: 'user123'
+        password: 'user123',
       });
 
       expect(authResult.success).toBe(true);
@@ -321,17 +321,17 @@ describe('Netron Auth Integration Tests', () => {
               userId: 'api-user',
               username: 'api-user',
               roles: ['api'],
-              permissions: ['read:all']
+              permissions: ['read:all'],
             };
           }
           throw new Error('Invalid API key');
-        }
+        },
       });
 
-      const peer = await clientNetron.connect(`ws://localhost:${wsPort}`) as RemotePeer;
+      const peer = (await clientNetron.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
 
       const authResult = await peer.runTask('authenticate', {
-        'X-API-Key': 'test-api-key-123'
+        'X-API-Key': 'test-api-key-123',
       });
 
       expect(authResult.success).toBe(true);
@@ -344,23 +344,23 @@ describe('Netron Auth Integration Tests', () => {
       // Configure with slow authenticate function
       authManager.configure({
         authenticate: async (credentials: AuthCredentials): Promise<AuthContext> => {
-          await new Promise(resolve => setTimeout(resolve, 15000)); // 15 seconds
+          await new Promise((resolve) => setTimeout(resolve, 15000)); // 15 seconds
           return {
             userId: 'user-1',
             username: credentials.username!,
             roles: ['user'],
-            permissions: []
+            permissions: [],
           };
-        }
+        },
       });
 
       authManager.setTimeout(1000); // 1 second timeout
 
-      const peer = await clientNetron.connect(`ws://localhost:${wsPort}`) as RemotePeer;
+      const peer = (await clientNetron.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
 
       const authResult = await peer.runTask('authenticate', {
         username: 'user@test.com',
-        password: 'user123'
+        password: 'user123',
       });
 
       expect(authResult.success).toBe(false);
@@ -370,28 +370,28 @@ describe('Netron Auth Integration Tests', () => {
     });
 
     it('should support token refresh flow', async () => {
-      const peer = await clientNetron.connect(`ws://localhost:${wsPort}`) as RemotePeer;
+      const peer = (await clientNetron.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
 
       // Initial authentication
       const authResult = await peer.runTask('authenticate', {
         username: 'user@test.com',
-        password: 'user123'
+        password: 'user123',
       });
 
       expect(authResult.success).toBe(true);
 
       // Create session
-      const session = await sessionManager.createSession(
-        authResult.context.userId,
-        authResult.context,
-        { ttl: 3600000 }
-      );
+      const session = await sessionManager.createSession(authResult.context.userId, authResult.context, {
+        ttl: 3600000,
+      });
 
       // Generate token
-      const token = Buffer.from(JSON.stringify({
-        ...authResult.context,
-        sessionId: session.sessionId
-      })).toString('base64');
+      const token = Buffer.from(
+        JSON.stringify({
+          ...authResult.context,
+          sessionId: session.sessionId,
+        })
+      ).toString('base64');
 
       // Authenticate with token
       const tokenAuthResult = await peer.runTask('authenticate', { token });
@@ -403,7 +403,7 @@ describe('Netron Auth Integration Tests', () => {
       const originalExpiresAt = session.expiresAt.getTime();
 
       // Wait to ensure timestamp difference (timing-sensitive)
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // Refresh session with new TTL (7200000ms = 2 hours vs original 3600000ms = 1 hour)
       const refreshResult = await sessionManager.refreshSession(session.sessionId, 7200000);
@@ -419,11 +419,11 @@ describe('Netron Auth Integration Tests', () => {
 
   describe('WebSocket Integration', () => {
     it('should authenticate during WebSocket connection', async () => {
-      const peer = await clientNetron.connect(`ws://localhost:${wsPort}`) as RemotePeer;
+      const peer = (await clientNetron.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
 
       const authResult = await peer.runTask('authenticate', {
         username: 'admin@test.com',
-        password: 'admin123'
+        password: 'admin123',
       });
 
       expect(authResult.success).toBe(true);
@@ -434,12 +434,12 @@ describe('Netron Auth Integration Tests', () => {
     });
 
     it('should re-authenticate on reconnect', async () => {
-      let peer = await clientNetron.connect(`ws://localhost:${wsPort}`) as RemotePeer;
+      let peer = (await clientNetron.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
 
       // First authentication
       const authResult1 = await peer.runTask('authenticate', {
         username: 'user@test.com',
-        password: 'user123'
+        password: 'user123',
       });
 
       expect(authResult1.success).toBe(true);
@@ -448,12 +448,12 @@ describe('Netron Auth Integration Tests', () => {
       await peer.disconnect();
 
       // Reconnect
-      peer = await clientNetron.connect(`ws://localhost:${wsPort}`) as RemotePeer;
+      peer = (await clientNetron.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
 
       // Re-authenticate
       const authResult2 = await peer.runTask('authenticate', {
         username: 'user@test.com',
-        password: 'user123'
+        password: 'user123',
       });
 
       expect(authResult2.success).toBe(true);
@@ -463,12 +463,12 @@ describe('Netron Auth Integration Tests', () => {
     });
 
     it('should handle auth expiration during active session', async () => {
-      const peer = await clientNetron.connect(`ws://localhost:${wsPort}`) as RemotePeer;
+      const peer = (await clientNetron.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
 
       // Authenticate
       const authResult = await peer.runTask('authenticate', {
         username: 'user@test.com',
-        password: 'user123'
+        password: 'user123',
       });
 
       expect(authResult.success).toBe(true);
@@ -481,7 +481,7 @@ describe('Netron Auth Integration Tests', () => {
       );
 
       // Wait for expiration
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise((resolve) => setTimeout(resolve, 1500));
 
       // Try to get expired session
       const expiredSession = await sessionManager.getSession(session.sessionId);
@@ -499,18 +499,18 @@ describe('Netron Auth Integration Tests', () => {
       await client2.start();
 
       // Connect first session
-      const peer1 = await clientNetron.connect(`ws://localhost:${wsPort}`) as RemotePeer;
+      const peer1 = (await clientNetron.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
       const auth1 = await peer1.runTask('authenticate', {
         username: 'admin@test.com',
-        password: 'admin123'
+        password: 'admin123',
       });
       expect(auth1.success).toBe(true);
 
       // Connect second session
-      const peer2 = await client2.connect(`ws://localhost:${wsPort}`) as RemotePeer;
+      const peer2 = (await client2.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
       const auth2 = await peer2.runTask('authenticate', {
         username: 'admin@test.com',
-        password: 'admin123'
+        password: 'admin123',
       });
       expect(auth2.success).toBe(true);
 
@@ -524,26 +524,28 @@ describe('Netron Auth Integration Tests', () => {
 
     it('should support different auth mechanisms across connections', async () => {
       // First peer with password
-      const peer1 = await clientNetron.connect(`ws://localhost:${wsPort}`) as RemotePeer;
+      const peer1 = (await clientNetron.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
       const auth1 = await peer1.runTask('authenticate', {
         username: 'user@test.com',
-        password: 'user123'
+        password: 'user123',
       });
       expect(auth1.success).toBe(true);
 
       // Second peer with token
-      const token = Buffer.from(JSON.stringify({
-        userId: 'user-1',
-        username: 'admin@test.com',
-        roles: ['admin'],
-        permissions: ['read:all', 'write:all']
-      })).toString('base64');
+      const token = Buffer.from(
+        JSON.stringify({
+          userId: 'user-1',
+          username: 'admin@test.com',
+          roles: ['admin'],
+          permissions: ['read:all', 'write:all'],
+        })
+      ).toString('base64');
 
       const client2 = new Netron(createMockLogger(), { id: 'client2' });
       client2.registerTransport('ws', () => new WebSocketTransport());
       await client2.start();
 
-      const peer2 = await client2.connect(`ws://localhost:${wsPort}`) as RemotePeer;
+      const peer2 = (await client2.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
       const auth2 = await peer2.runTask('authenticate', { token });
       expect(auth2.success).toBe(true);
 
@@ -562,13 +564,13 @@ describe('Netron Auth Integration Tests', () => {
             return { allowed: false, reason: 'HTTP not allowed for this operation' };
           }
           return { allowed: true, reason: 'WebSocket transport allowed' };
-        }
+        },
       });
 
       // Test with HTTP (should fail due to wsOnly policy)
       const httpDecision = await policyEngine.evaluate('wsOnly', {
         service: { name: 'testService', version: '1.0.0' },
-        environment: { transport: 'http' }
+        environment: { transport: 'http' },
       });
 
       expect(httpDecision.allowed).toBe(false);
@@ -577,7 +579,7 @@ describe('Netron Auth Integration Tests', () => {
       // Test with WebSocket (should pass)
       const wsDecision = await policyEngine.evaluate('wsOnly', {
         service: { name: 'testService', version: '1.0.0' },
-        environment: { transport: 'ws' }
+        environment: { transport: 'ws' },
       });
 
       expect(wsDecision.allowed).toBe(true);
@@ -586,21 +588,18 @@ describe('Netron Auth Integration Tests', () => {
 
   describe('Full Auth Flow', () => {
     it('should complete full auth flow: Login → API calls → Token refresh → Logout', async () => {
-      const peer = await clientNetron.connect(`ws://localhost:${wsPort}`) as RemotePeer;
+      const peer = (await clientNetron.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
 
       // Step 1: Login
       const authResult = await peer.runTask('authenticate', {
         username: 'admin@test.com',
-        password: 'admin123'
+        password: 'admin123',
       });
 
       expect(authResult.success).toBe(true);
 
       // Step 2: Create session
-      const session = await sessionManager.createSession(
-        authResult.context.userId,
-        authResult.context
-      );
+      const session = await sessionManager.createSession(authResult.context.userId, authResult.context);
 
       expect(session.sessionId).toBeDefined();
 
@@ -614,7 +613,7 @@ describe('Netron Auth Integration Tests', () => {
 
       // Step 4: Refresh token (capture original time, wait, then refresh)
       const originalExpiresAt = session.expiresAt.getTime();
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       const refreshedSession = await sessionManager.refreshSession(session.sessionId);
       expect(refreshedSession).toBeDefined();
@@ -633,12 +632,12 @@ describe('Netron Auth Integration Tests', () => {
     });
 
     it('should handle session expiration and auto-logout', async () => {
-      const peer = await clientNetron.connect(`ws://localhost:${wsPort}`) as RemotePeer;
+      const peer = (await clientNetron.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
 
       // Login
       const authResult = await peer.runTask('authenticate', {
         username: 'user@test.com',
-        password: 'user123'
+        password: 'user123',
       });
 
       expect(authResult.success).toBe(true);
@@ -656,7 +655,7 @@ describe('Netron Auth Integration Tests', () => {
       expect(result).toBe('public');
 
       // Wait for session to expire
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // Verify session expired
       const expiredSession = await sessionManager.getSession(session.sessionId);
@@ -685,11 +684,11 @@ describe('Netron Auth Integration Tests', () => {
       // Register middleware (auth manager acts as middleware)
       executionOrder.push('start');
 
-      const peer = await clientNetron.connect(`ws://localhost:${wsPort}`) as RemotePeer;
+      const peer = (await clientNetron.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
 
       await peer.runTask('authenticate', {
         username: 'user@test.com',
-        password: 'user123'
+        password: 'user123',
       });
 
       // Verify execution order
@@ -703,14 +702,14 @@ describe('Netron Auth Integration Tests', () => {
       authManager.configure({
         authenticate: async (credentials: AuthCredentials): Promise<AuthContext> => {
           throw new Error('Database connection failed');
-        }
+        },
       });
 
-      const peer = await clientNetron.connect(`ws://localhost:${wsPort}`) as RemotePeer;
+      const peer = (await clientNetron.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
 
       const authResult = await peer.runTask('authenticate', {
         username: 'user@test.com',
-        password: 'user123'
+        password: 'user123',
       });
 
       expect(authResult.success).toBe(false);
@@ -723,10 +722,10 @@ describe('Netron Auth Integration Tests', () => {
   describe('Real-world Scenarios', () => {
     it('should enforce multi-tenant isolation', async () => {
       // User 1 from tenant1
-      const peer1 = await clientNetron.connect(`ws://localhost:${wsPort}`) as RemotePeer;
+      const peer1 = (await clientNetron.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
       await peer1.runTask('authenticate', {
         username: 'user@test.com',
-        password: 'user123'
+        password: 'user123',
       });
 
       // User 2 from tenant2
@@ -734,10 +733,10 @@ describe('Netron Auth Integration Tests', () => {
       client2.registerTransport('ws', () => new WebSocketTransport());
       await client2.start();
 
-      const peer2 = await client2.connect(`ws://localhost:${wsPort}`) as RemotePeer;
+      const peer2 = (await client2.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
       await peer2.runTask('authenticate', {
         username: 'tenant2-user@test.com',
-        password: 'user123'
+        password: 'user123',
       });
 
       // Get service
@@ -758,7 +757,7 @@ describe('Netron Auth Integration Tests', () => {
       const context1 = {
         auth: { userId: 'user-2', roles: ['user'], permissions: [], metadata: { tenant: 'tenant1' } },
         service: { name: 'tenantService', version: '1.0.0' },
-        method: { name: 'getTenantData', args: ['tenant2'] }
+        method: { name: 'getTenantData', args: ['tenant2'] },
       };
 
       const decision1 = await policyEngine.evaluate('tenantIsolation', context1);
@@ -772,19 +771,19 @@ describe('Netron Auth Integration Tests', () => {
     });
 
     it('should handle admin panel with fine-grained permissions', async () => {
-      const adminPeer = await clientNetron.connect(`ws://localhost:${wsPort}`) as RemotePeer;
-      const userPeer = await clientNetron.connect(`ws://localhost:${wsPort}`) as RemotePeer;
+      const adminPeer = (await clientNetron.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
+      const userPeer = (await clientNetron.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
 
       // Authenticate admin
       await adminPeer.runTask('authenticate', {
         username: 'admin@test.com',
-        password: 'admin123'
+        password: 'admin123',
       });
 
       // Authenticate regular user
       await userPeer.runTask('authenticate', {
         username: 'user@test.com',
-        password: 'user123'
+        password: 'user123',
       });
 
       // Get services
@@ -812,24 +811,24 @@ describe('Netron Auth Integration Tests', () => {
 
     it('should implement rate limiting per role', async () => {
       // Admin user (high limit)
-      const adminPeer = await clientNetron.connect(`ws://localhost:${wsPort}`) as RemotePeer;
+      const adminPeer = (await clientNetron.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
       await adminPeer.runTask('authenticate', {
         username: 'admin@test.com',
-        password: 'admin123'
+        password: 'admin123',
       });
 
       // Regular user (low limit)
-      const userPeer = await clientNetron.connect(`ws://localhost:${wsPort}`) as RemotePeer;
+      const userPeer = (await clientNetron.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
       await userPeer.runTask('authenticate', {
         username: 'user@test.com',
-        password: 'user123'
+        password: 'user123',
       });
 
       // Test admin rate limit (1000/min)
       const adminContext = {
         auth: { userId: 'user-1', roles: ['admin'], permissions: [] },
         service: { name: 'testService', version: '1.0.0' },
-        method: { name: 'publicMethod', args: [] }
+        method: { name: 'publicMethod', args: [] },
       };
 
       // Make 10 requests (should all pass for admin)
@@ -842,7 +841,7 @@ describe('Netron Auth Integration Tests', () => {
       const userContext = {
         auth: { userId: 'user-101', roles: ['user'], permissions: [] }, // Fresh user
         service: { name: 'testService', version: '1.0.0' },
-        method: { name: 'publicMethod', args: [] }
+        method: { name: 'publicMethod', args: [] },
       };
 
       // Verify that admin has higher limit than user
@@ -874,7 +873,7 @@ describe('Netron Auth Integration Tests', () => {
                 userId: 'service-1',
                 username: 'service-account@internal',
                 roles: ['service'],
-                permissions: ['read:all', 'write:all']
+                permissions: ['read:all', 'write:all'],
               };
             }
           }
@@ -890,17 +889,17 @@ describe('Netron Auth Integration Tests', () => {
             username: credentials.username,
             roles: user.roles,
             permissions: user.permissions,
-            metadata: { tenant: user.tenant }
+            metadata: { tenant: user.tenant },
           };
-        }
+        },
       });
 
       // Service-to-service connection
-      const servicePeer = await clientNetron.connect(`ws://localhost:${wsPort}`) as RemotePeer;
+      const servicePeer = (await clientNetron.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
 
       const authResult = await servicePeer.runTask('authenticate', {
         username: 'service-account@internal',
-        password: 'service-secret-key'
+        password: 'service-secret-key',
       });
 
       expect(authResult.success).toBe(true);

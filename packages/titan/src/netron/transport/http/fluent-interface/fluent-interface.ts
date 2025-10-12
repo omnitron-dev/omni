@@ -285,7 +285,7 @@ export class FluentInterface<TService = any> {
 
           return builder.execute();
         };
-      }
+      },
     }) as TService;
   }
 

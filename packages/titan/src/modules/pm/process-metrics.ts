@@ -20,11 +20,7 @@ export class ProcessMetricsCollector {
   /**
    * Start collecting metrics for a process
    */
-  startCollection(
-    processId: string,
-    proxy: ServiceProxy<any>,
-    interval: number = 5000
-  ): void {
+  startCollection(processId: string, proxy: ServiceProxy<any>, interval: number = 5000): void {
     if (this.collectors.has(processId)) {
       return; // Already collecting
     }
@@ -41,10 +37,7 @@ export class ProcessMetricsCollector {
         const metrics = await this.collectMetrics(proxy);
         this.storeMetrics(processId, metrics);
       } catch (error) {
-        this.logger.error(
-          { error, processId },
-          'Failed to collect metrics'
-        );
+        this.logger.error({ error, processId }, 'Failed to collect metrics');
       }
     }, interval);
 
@@ -88,19 +81,14 @@ export class ProcessMetricsCollector {
   /**
    * Get aggregated metrics for a process
    */
-  getAggregatedMetrics(
-    processId: string,
-    windowSize: number = 60000
-  ): IProcessMetrics | null {
+  getAggregatedMetrics(processId: string, windowSize: number = 60000): IProcessMetrics | null {
     const history = this.metricsHistory.get(processId);
     if (!history || history.length === 0) {
       return null;
     }
 
     const now = Date.now();
-    const recentMetrics = history.filter(
-      m => (m as any).timestamp && now - (m as any).timestamp < windowSize
-    );
+    const recentMetrics = history.filter((m) => (m as any).timestamp && now - (m as any).timestamp < windowSize);
 
     if (recentMetrics.length === 0) {
       return null;
@@ -143,7 +131,7 @@ export class ProcessMetricsCollector {
         cpu: 0,
         memory: 0,
         requests: 0,
-        errors: 0
+        errors: 0,
       };
     } catch (error) {
       this.logger.error({ error }, 'Failed to collect process metrics');
@@ -152,7 +140,7 @@ export class ProcessMetricsCollector {
         cpu: 0,
         memory: 0,
         requests: 0,
-        errors: 1
+        errors: 1,
       };
     }
   }
@@ -166,7 +154,7 @@ export class ProcessMetricsCollector {
     // Add timestamp
     const timestampedMetrics = {
       ...metrics,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
 
     history.push(timestampedMetrics as IProcessMetrics);
@@ -198,7 +186,7 @@ export class ProcessMetricsCollector {
       p90: this.percentile(sorted, 90),
       p95: this.percentile(sorted, 95),
       p99: this.percentile(sorted, 99),
-      mean: sorted.reduce((a, b) => a + b, 0) / len
+      mean: sorted.reduce((a, b) => a + b, 0) / len,
     };
   }
 
@@ -221,36 +209,39 @@ export class ProcessMetricsCollector {
         cpu: 0,
         memory: 0,
         requests: 0,
-        errors: 0
+        errors: 0,
       };
     }
 
-    const sum = metrics.reduce((acc, m) => ({
-      cpu: acc.cpu + m.cpu,
-      memory: acc.memory + m.memory,
-      requests: (acc.requests ?? 0) + (m.requests ?? 0),
-      errors: (acc.errors ?? 0) + (m.errors ?? 0)
-    }), {
-      cpu: 0,
-      memory: 0,
-      requests: 0,
-      errors: 0
-    });
+    const sum = metrics.reduce(
+      (acc, m) => ({
+        cpu: acc.cpu + m.cpu,
+        memory: acc.memory + m.memory,
+        requests: (acc.requests ?? 0) + (m.requests ?? 0),
+        errors: (acc.errors ?? 0) + (m.errors ?? 0),
+      }),
+      {
+        cpu: 0,
+        memory: 0,
+        requests: 0,
+        errors: 0,
+      }
+    );
 
     const count = metrics.length;
 
     // Aggregate latency metrics if present
     let latency: ILatencyMetrics | undefined;
-    const latencyMetrics = metrics.filter(m => m.latency).map(m => m.latency!);
+    const latencyMetrics = metrics.filter((m) => m.latency).map((m) => m.latency!);
 
     if (latencyMetrics.length > 0) {
       latency = {
-        p50: this.average(latencyMetrics.map(l => l.p50)),
-        p75: this.average(latencyMetrics.map(l => l.p75)),
-        p90: this.average(latencyMetrics.map(l => l.p90)),
-        p95: this.average(latencyMetrics.map(l => l.p95)),
-        p99: this.average(latencyMetrics.map(l => l.p99)),
-        mean: this.average(latencyMetrics.map(l => l.mean))
+        p50: this.average(latencyMetrics.map((l) => l.p50)),
+        p75: this.average(latencyMetrics.map((l) => l.p75)),
+        p90: this.average(latencyMetrics.map((l) => l.p90)),
+        p95: this.average(latencyMetrics.map((l) => l.p95)),
+        p99: this.average(latencyMetrics.map((l) => l.p99)),
+        mean: this.average(latencyMetrics.map((l) => l.mean)),
       };
     }
 
@@ -259,7 +250,7 @@ export class ProcessMetricsCollector {
       memory: sum.memory / count,
       requests: sum.requests,
       errors: sum.errors,
-      latency
+      latency,
     };
   }
 

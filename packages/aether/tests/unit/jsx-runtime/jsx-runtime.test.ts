@@ -85,11 +85,7 @@ describe('JSX Runtime', () => {
 
     it('should handle static children', () => {
       const element = jsxs('ul', {
-        children: [
-          jsx('li', { children: '1' }),
-          jsx('li', { children: '2' }),
-          jsx('li', { children: '3' }),
-        ],
+        children: [jsx('li', { children: '1' }), jsx('li', { children: '2' }), jsx('li', { children: '3' })],
       }) as HTMLUListElement;
 
       expect(element.children.length).toBe(3);
@@ -100,10 +96,7 @@ describe('JSX Runtime', () => {
   describe('Fragment', () => {
     it('should create document fragment', () => {
       const fragment = jsx(Fragment, {
-        children: [
-          jsx('div', { children: '1' }),
-          jsx('div', { children: '2' }),
-        ],
+        children: [jsx('div', { children: '1' }), jsx('div', { children: '2' })],
       }) as DocumentFragment;
 
       expect(fragment).toBeInstanceOf(DocumentFragment);
@@ -385,10 +378,7 @@ describe('JSX Runtime', () => {
         children: [
           jsx('header', { children: jsx('h1', { children: 'Title' }) }),
           jsx('main', {
-            children: [
-              jsx('p', { children: 'Paragraph 1' }),
-              jsx('p', { children: 'Paragraph 2' }),
-            ],
+            children: [jsx('p', { children: 'Paragraph 1' }), jsx('p', { children: 'Paragraph 2' })],
           }),
           jsx('footer', { children: 'Footer' }),
         ],
@@ -411,9 +401,7 @@ describe('JSX Runtime', () => {
     it('should handle list rendering', () => {
       const items = ['A', 'B', 'C'];
       const element = jsx('ul', {
-        children: items.map((item, i) =>
-          jsx('li', { children: item }, `item-${i}`)
-        ),
+        children: items.map((item, i) => jsx('li', { children: item }, `item-${i}`)),
       }) as HTMLUListElement;
 
       expect(element.children.length).toBe(3);

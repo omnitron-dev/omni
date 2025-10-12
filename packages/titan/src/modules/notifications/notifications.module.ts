@@ -18,7 +18,7 @@ import {
   WORKFLOW_ENGINE,
   ANALYTICS_SERVICE,
   ROTIF_MANAGER,
-  NOTIFICATION_MODULE_OPTIONS
+  NOTIFICATION_MODULE_OPTIONS,
 } from './constants.js';
 
 export interface NotificationModuleOptions {
@@ -121,80 +121,108 @@ export class TitanNotificationsModule {
       host: options.redis?.host || 'localhost',
       port: options.redis?.port || 6379,
       db: options.redis?.db || 0,
-      password: options.redis?.password
+      password: options.redis?.password,
     });
 
     providers.push(['REDIS_CLIENT' as any, { useValue: redis }]);
 
     // Create Rotif manager
-    providers.push([ROTIF_MANAGER, {
-      useFactory: () => {
-        const rotifConfig = {
-          redis: options.redis || { host: 'localhost', port: 6379 },
-          ...options.rotif
-        };
-        return new NotificationManager(rotifConfig);
-      }
-    }]);
+    providers.push([
+      ROTIF_MANAGER,
+      {
+        useFactory: () => {
+          const rotifConfig = {
+            redis: options.redis || { host: 'localhost', port: 6379 },
+            ...options.rotif,
+          };
+          return new NotificationManager(rotifConfig);
+        },
+      },
+    ]);
 
     // Core services
-    providers.push([CHANNEL_MANAGER, {
-      useFactory: () => new ChannelManager()
-    }]);
-
-    providers.push([PREFERENCE_MANAGER, {
-      useFactory: (redisClient: Redis) => new PreferenceManager(redisClient),
-      inject: ['REDIS_CLIENT' as any]
-    }]);
-
-    providers.push([RATE_LIMITER, {
-      useFactory: (redisClient: Redis) => {
-        const rateLimitConfig = options.rateLimit?.default;
-        return new RateLimiter(redisClient, rateLimitConfig);
+    providers.push([
+      CHANNEL_MANAGER,
+      {
+        useFactory: () => new ChannelManager(),
       },
-      inject: ['REDIS_CLIENT' as any]
-    }]);
+    ]);
+
+    providers.push([
+      PREFERENCE_MANAGER,
+      {
+        useFactory: (redisClient: Redis) => new PreferenceManager(redisClient),
+        inject: ['REDIS_CLIENT' as any],
+      },
+    ]);
+
+    providers.push([
+      RATE_LIMITER,
+      {
+        useFactory: (redisClient: Redis) => {
+          const rateLimitConfig = options.rateLimit?.default;
+          return new RateLimiter(redisClient, rateLimitConfig);
+        },
+        inject: ['REDIS_CLIENT' as any],
+      },
+    ]);
 
     // Template engine (optional)
     if (options.templates?.enabled !== false) {
-      providers.push([TEMPLATE_ENGINE, {
-        useFactory: (redisClient: Redis) => new TemplateEngine(redisClient, options.templates),
-        inject: ['REDIS_CLIENT' as any]
-      }]);
+      providers.push([
+        TEMPLATE_ENGINE,
+        {
+          useFactory: (redisClient: Redis) => new TemplateEngine(redisClient, options.templates),
+          inject: ['REDIS_CLIENT' as any],
+        },
+      ]);
     }
 
     // Workflow engine (optional)
     if (options.workflows?.enabled !== false) {
-      providers.push([WORKFLOW_ENGINE, {
-        useFactory: (notificationService: NotificationService, redisClient: Redis) => new WorkflowEngine(notificationService, redisClient, options.workflows),
-        inject: [NOTIFICATION_SERVICE, 'REDIS_CLIENT' as any]
-      }]);
+      providers.push([
+        WORKFLOW_ENGINE,
+        {
+          useFactory: (notificationService: NotificationService, redisClient: Redis) =>
+            new WorkflowEngine(notificationService, redisClient, options.workflows),
+          inject: [NOTIFICATION_SERVICE, 'REDIS_CLIENT' as any],
+        },
+      ]);
     }
 
     // Analytics (optional)
     if (options.analytics?.enabled !== false) {
-      providers.push([ANALYTICS_SERVICE, {
-        useFactory: (redisClient: Redis) => new NotificationAnalytics(redisClient, options.analytics),
-        inject: ['REDIS_CLIENT' as any]
-      }]);
+      providers.push([
+        ANALYTICS_SERVICE,
+        {
+          useFactory: (redisClient: Redis) => new NotificationAnalytics(redisClient, options.analytics),
+          inject: ['REDIS_CLIENT' as any],
+        },
+      ]);
     }
 
     // Main notification service
-    providers.push([NOTIFICATION_SERVICE, {
-      useFactory: (
-        rotif: NotificationManager,
-        channelManager: ChannelManager,
-        preferenceManager: PreferenceManager,
-        rateLimiter: RateLimiter
-      ) => new NotificationService(rotif, channelManager, preferenceManager, rateLimiter),
-      inject: [ROTIF_MANAGER, CHANNEL_MANAGER, PREFERENCE_MANAGER, RATE_LIMITER]
-    }]);
+    providers.push([
+      NOTIFICATION_SERVICE,
+      {
+        useFactory: (
+          rotif: NotificationManager,
+          channelManager: ChannelManager,
+          preferenceManager: PreferenceManager,
+          rateLimiter: RateLimiter
+        ) => new NotificationService(rotif, channelManager, preferenceManager, rateLimiter),
+        inject: [ROTIF_MANAGER, CHANNEL_MANAGER, PREFERENCE_MANAGER, RATE_LIMITER],
+      },
+    ]);
 
     // Also register with class token for easier injection
-    providers.push([NotificationService as any, {
-      useFactory: (service: NotificationService) => service,
-      inject: [NOTIFICATION_SERVICE]
-    }]);
+    providers.push([
+      NotificationService as any,
+      {
+        useFactory: (service: NotificationService) => service,
+        inject: [NOTIFICATION_SERVICE],
+      },
+    ]);
 
     // Exports
     const exports: InjectionToken<any>[] = [
@@ -203,7 +231,7 @@ export class TitanNotificationsModule {
       CHANNEL_MANAGER,
       PREFERENCE_MANAGER,
       RATE_LIMITER,
-      ROTIF_MANAGER
+      ROTIF_MANAGER,
     ];
 
     if (options.templates?.enabled !== false) {
@@ -222,7 +250,7 @@ export class TitanNotificationsModule {
       module: TitanNotificationsModule,
       providers,
       exports,
-      global: options.isGlobal
+      global: options.isGlobal,
     };
   }
 
@@ -231,85 +259,117 @@ export class TitanNotificationsModule {
 
     // Create async options provider
     if (options.useFactory) {
-      providers.push([NOTIFICATION_MODULE_OPTIONS, {
-        useFactory: options.useFactory,
-        inject: options.inject || []
-      }]);
+      providers.push([
+        NOTIFICATION_MODULE_OPTIONS,
+        {
+          useFactory: options.useFactory,
+          inject: options.inject || [],
+        },
+      ]);
     } else if (options.useExisting) {
-      providers.push([NOTIFICATION_MODULE_OPTIONS, {
-        useFactory: async (optionsFactory: NotificationOptionsFactory) =>
-          optionsFactory.createNotificationOptions(),
-        inject: [options.useExisting]
-      }]);
+      providers.push([
+        NOTIFICATION_MODULE_OPTIONS,
+        {
+          useFactory: async (optionsFactory: NotificationOptionsFactory) => optionsFactory.createNotificationOptions(),
+          inject: [options.useExisting],
+        },
+      ]);
     } else if (options.useClass) {
-      providers.push([options.useClass as any, {
-        useClass: options.useClass
-      }]);
+      providers.push([
+        options.useClass as any,
+        {
+          useClass: options.useClass,
+        },
+      ]);
 
-      providers.push([NOTIFICATION_MODULE_OPTIONS, {
-        useFactory: async (optionsFactory: NotificationOptionsFactory) =>
-          optionsFactory.createNotificationOptions(),
-        inject: [options.useClass as any]
-      }]);
+      providers.push([
+        NOTIFICATION_MODULE_OPTIONS,
+        {
+          useFactory: async (optionsFactory: NotificationOptionsFactory) => optionsFactory.createNotificationOptions(),
+          inject: [options.useClass as any],
+        },
+      ]);
     }
 
     // Create services using async options
-    providers.push(['REDIS_CLIENT' as any, {
-      useFactory: (moduleOptions: NotificationModuleOptions) => new Redis({
-        host: moduleOptions.redis?.host || 'localhost',
-        port: moduleOptions.redis?.port || 6379,
-        db: moduleOptions.redis?.db || 0,
-        password: moduleOptions.redis?.password
-      }),
-      inject: [NOTIFICATION_MODULE_OPTIONS]
-    }]);
+    providers.push([
+      'REDIS_CLIENT' as any,
+      {
+        useFactory: (moduleOptions: NotificationModuleOptions) =>
+          new Redis({
+            host: moduleOptions.redis?.host || 'localhost',
+            port: moduleOptions.redis?.port || 6379,
+            db: moduleOptions.redis?.db || 0,
+            password: moduleOptions.redis?.password,
+          }),
+        inject: [NOTIFICATION_MODULE_OPTIONS],
+      },
+    ]);
 
     // Create Rotif manager
-    providers.push([ROTIF_MANAGER, {
-      useFactory: (moduleOptions: NotificationModuleOptions) => {
-        const rotifConfig = {
-          redis: moduleOptions.redis || { host: 'localhost', port: 6379 },
-          ...moduleOptions.rotif
-        };
-        return new NotificationManager(rotifConfig);
+    providers.push([
+      ROTIF_MANAGER,
+      {
+        useFactory: (moduleOptions: NotificationModuleOptions) => {
+          const rotifConfig = {
+            redis: moduleOptions.redis || { host: 'localhost', port: 6379 },
+            ...moduleOptions.rotif,
+          };
+          return new NotificationManager(rotifConfig);
+        },
+        inject: [NOTIFICATION_MODULE_OPTIONS],
       },
-      inject: [NOTIFICATION_MODULE_OPTIONS]
-    }]);
+    ]);
 
     // Core services
-    providers.push([CHANNEL_MANAGER, {
-      useFactory: () => new ChannelManager()
-    }]);
-
-    providers.push([PREFERENCE_MANAGER, {
-      useFactory: (redisClient: Redis) => new PreferenceManager(redisClient),
-      inject: ['REDIS_CLIENT' as any]
-    }]);
-
-    providers.push([RATE_LIMITER, {
-      useFactory: (redisClient: Redis, moduleOptions: NotificationModuleOptions) => {
-        const rateLimitConfig = moduleOptions.rateLimit?.default;
-        return new RateLimiter(redisClient, rateLimitConfig);
+    providers.push([
+      CHANNEL_MANAGER,
+      {
+        useFactory: () => new ChannelManager(),
       },
-      inject: ['REDIS_CLIENT' as any, NOTIFICATION_MODULE_OPTIONS]
-    }]);
+    ]);
+
+    providers.push([
+      PREFERENCE_MANAGER,
+      {
+        useFactory: (redisClient: Redis) => new PreferenceManager(redisClient),
+        inject: ['REDIS_CLIENT' as any],
+      },
+    ]);
+
+    providers.push([
+      RATE_LIMITER,
+      {
+        useFactory: (redisClient: Redis, moduleOptions: NotificationModuleOptions) => {
+          const rateLimitConfig = moduleOptions.rateLimit?.default;
+          return new RateLimiter(redisClient, rateLimitConfig);
+        },
+        inject: ['REDIS_CLIENT' as any, NOTIFICATION_MODULE_OPTIONS],
+      },
+    ]);
 
     // Main notification service
-    providers.push([NOTIFICATION_SERVICE, {
-      useFactory: (
-        rotif: NotificationManager,
-        channelManager: ChannelManager,
-        preferenceManager: PreferenceManager,
-        rateLimiter: RateLimiter
-      ) => new NotificationService(rotif, channelManager, preferenceManager, rateLimiter),
-      inject: [ROTIF_MANAGER, CHANNEL_MANAGER, PREFERENCE_MANAGER, RATE_LIMITER]
-    }]);
+    providers.push([
+      NOTIFICATION_SERVICE,
+      {
+        useFactory: (
+          rotif: NotificationManager,
+          channelManager: ChannelManager,
+          preferenceManager: PreferenceManager,
+          rateLimiter: RateLimiter
+        ) => new NotificationService(rotif, channelManager, preferenceManager, rateLimiter),
+        inject: [ROTIF_MANAGER, CHANNEL_MANAGER, PREFERENCE_MANAGER, RATE_LIMITER],
+      },
+    ]);
 
     // Also register with class token
-    providers.push([NotificationService as any, {
-      useFactory: (service: NotificationService) => service,
-      inject: [NOTIFICATION_SERVICE]
-    }]);
+    providers.push([
+      NotificationService as any,
+      {
+        useFactory: (service: NotificationService) => service,
+        inject: [NOTIFICATION_SERVICE],
+      },
+    ]);
 
     // Exports
     const exports: InjectionToken<any>[] = [
@@ -318,7 +378,7 @@ export class TitanNotificationsModule {
       CHANNEL_MANAGER,
       PREFERENCE_MANAGER,
       RATE_LIMITER,
-      ROTIF_MANAGER
+      ROTIF_MANAGER,
     ];
 
     return {
@@ -326,7 +386,7 @@ export class TitanNotificationsModule {
       imports: options.imports || [],
       providers,
       exports,
-      global: options.isGlobal
+      global: options.isGlobal,
     };
   }
 }

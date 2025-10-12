@@ -7,13 +7,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createTitanServer, TitanServerFixture } from '../fixtures/titan-server.js';
 import { WebSocketClient } from '../../src/client/ws-client.js';
 import { HttpClient } from '../../src/client/http-client.js';
-import {
-  TitanError,
-  serializeError,
-  deserializeError,
-  parseHttpError,
-  ErrorCode,
-} from '../../src/errors/index.js';
+import { TitanError, serializeError, deserializeError, parseHttpError, ErrorCode } from '../../src/errors/index.js';
 import { serializer } from '../../src/packet/serializer.js';
 import { SmartBuffer } from '@omnitron-dev/smartbuffer';
 
@@ -43,33 +37,25 @@ describe('Error Serialization (WebSocket)', () => {
 
   describe('Error Propagation', () => {
     it('should propagate basic errors from server', async () => {
-      await expect(
-        client.invoke('echo@1.0.0', 'throwError', ['Custom error message'])
-      ).rejects.toThrow('Custom error message');
+      await expect(client.invoke('echo@1.0.0', 'throwError', ['Custom error message'])).rejects.toThrow(
+        'Custom error message'
+      );
     });
 
     it('should propagate division by zero error', async () => {
-      await expect(
-        client.invoke('calculator@1.0.0', 'divide', [10, 0])
-      ).rejects.toThrow('Division by zero');
+      await expect(client.invoke('calculator@1.0.0', 'divide', [10, 0])).rejects.toThrow('Division by zero');
     });
 
     it('should propagate user not found error', async () => {
-      await expect(
-        client.invoke('user@1.0.0', 'getUser', ['nonexistent'])
-      ).rejects.toThrow('User not found');
+      await expect(client.invoke('user@1.0.0', 'getUser', ['nonexistent'])).rejects.toThrow('User not found');
     });
 
     it('should handle service not found error', async () => {
-      await expect(
-        client.invoke('nonexistent@1.0.0', 'someMethod', [])
-      ).rejects.toThrow();
+      await expect(client.invoke('nonexistent@1.0.0', 'someMethod', [])).rejects.toThrow();
     });
 
     it('should handle method not found error', async () => {
-      await expect(
-        client.invoke('calculator@1.0.0', 'nonExistentMethod', [])
-      ).rejects.toThrow();
+      await expect(client.invoke('calculator@1.0.0', 'nonExistentMethod', [])).rejects.toThrow();
     });
   });
 
@@ -221,35 +207,25 @@ describe('Error Serialization (HTTP)', () => {
 
   describe('HTTP Error Propagation', () => {
     it('should propagate errors via HTTP transport', async () => {
-      await expect(
-        client.invoke('echo@1.0.0', 'throwError', ['HTTP error test'])
-      ).rejects.toThrow('HTTP error test');
+      await expect(client.invoke('echo@1.0.0', 'throwError', ['HTTP error test'])).rejects.toThrow('HTTP error test');
     });
 
     it('should handle division by zero via HTTP', async () => {
-      await expect(
-        client.invoke('calculator@1.0.0', 'divide', [10, 0])
-      ).rejects.toThrow('Division by zero');
+      await expect(client.invoke('calculator@1.0.0', 'divide', [10, 0])).rejects.toThrow('Division by zero');
     });
 
     it('should handle not found errors via HTTP', async () => {
-      await expect(
-        client.invoke('user@1.0.0', 'getUser', ['nonexistent'])
-      ).rejects.toThrow('User not found');
+      await expect(client.invoke('user@1.0.0', 'getUser', ['nonexistent'])).rejects.toThrow('User not found');
     });
   });
 
   describe('HTTP-Specific Error Handling', () => {
     it('should handle service not found', async () => {
-      await expect(
-        client.invoke('nonexistent@1.0.0', 'method', [])
-      ).rejects.toThrow();
+      await expect(client.invoke('nonexistent@1.0.0', 'method', [])).rejects.toThrow();
     });
 
     it('should handle method not found', async () => {
-      await expect(
-        client.invoke('calculator@1.0.0', 'invalidMethod', [])
-      ).rejects.toThrow();
+      await expect(client.invoke('calculator@1.0.0', 'invalidMethod', [])).rejects.toThrow();
     });
   });
 

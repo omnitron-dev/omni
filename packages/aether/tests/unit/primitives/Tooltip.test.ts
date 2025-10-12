@@ -3,12 +3,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { signal } from '../../../src/core/reactivity/signal.js';
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-  TooltipArrow,
-} from '../../../src/primitives/Tooltip.js';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipArrow } from '../../../src/primitives/Tooltip.js';
 import { renderComponent, nextTick, createSpy } from '../../helpers/test-utils.js';
 
 describe('Tooltip', () => {
@@ -18,7 +13,7 @@ describe('Tooltip', () => {
   });
 
   afterEach(() => {
-    document.querySelectorAll('.aether-portal').forEach(el => el.remove());
+    document.querySelectorAll('.aether-portal').forEach((el) => el.remove());
     vi.clearAllTimers();
     vi.useRealTimers();
     vi.restoreAllMocks();
@@ -28,10 +23,7 @@ describe('Tooltip', () => {
     it('should render tooltip root with children', () => {
       const component = () =>
         Tooltip({
-          children: () => [
-            TooltipTrigger({ children: 'Hover me' }),
-            TooltipContent({ children: 'Tooltip text' }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Hover me' }), TooltipContent({ children: 'Tooltip text' })],
         });
 
       const { container } = renderComponent(component);
@@ -159,10 +151,11 @@ describe('Tooltip', () => {
     it('should forward custom props', () => {
       const component = () =>
         Tooltip({
-          children: () => TooltipTrigger({
-            children: 'Trigger',
-            'data-testid': 'custom-trigger',
-          }),
+          children: () =>
+            TooltipTrigger({
+              children: 'Trigger',
+              'data-testid': 'custom-trigger',
+            }),
         });
 
       const { container } = renderComponent(component);
@@ -173,10 +166,11 @@ describe('Tooltip', () => {
     it('should apply custom class names', () => {
       const component = () =>
         Tooltip({
-          children: () => TooltipTrigger({
-            children: 'Trigger',
-            class: 'custom-trigger',
-          }),
+          children: () =>
+            TooltipTrigger({
+              children: 'Trigger',
+              class: 'custom-trigger',
+            }),
         });
 
       const { container } = renderComponent(component);
@@ -189,10 +183,7 @@ describe('Tooltip', () => {
     it('should show tooltip after delay on pointer enter', async () => {
       const component = () =>
         Tooltip({
-          children: () => [
-            TooltipTrigger({ children: 'Hover me' }),
-            TooltipContent({ children: 'Tooltip text' }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Hover me' }), TooltipContent({ children: 'Tooltip text' })],
         });
 
       const { container } = renderComponent(component);
@@ -216,10 +207,7 @@ describe('Tooltip', () => {
     it('should hide tooltip on pointer leave', async () => {
       const component = () =>
         Tooltip({
-          children: () => [
-            TooltipTrigger({ children: 'Hover me' }),
-            TooltipContent({ children: 'Tooltip text' }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Hover me' }), TooltipContent({ children: 'Tooltip text' })],
         });
 
       const { container } = renderComponent(component);
@@ -245,10 +233,7 @@ describe('Tooltip', () => {
     it('should show tooltip immediately on focus', async () => {
       const component = () =>
         Tooltip({
-          children: () => [
-            TooltipTrigger({ children: 'Focus me' }),
-            TooltipContent({ children: 'Tooltip text' }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Focus me' }), TooltipContent({ children: 'Tooltip text' })],
         });
 
       const { container } = renderComponent(component);
@@ -264,10 +249,7 @@ describe('Tooltip', () => {
     it('should hide tooltip on blur', async () => {
       const component = () =>
         Tooltip({
-          children: () => [
-            TooltipTrigger({ children: 'Focus me' }),
-            TooltipContent({ children: 'Tooltip text' }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Focus me' }), TooltipContent({ children: 'Tooltip text' })],
         });
 
       const { container } = renderComponent(component);
@@ -291,10 +273,7 @@ describe('Tooltip', () => {
     it('should cancel open timeout on pointer leave before delay', async () => {
       const component = () =>
         Tooltip({
-          children: () => [
-            TooltipTrigger({ children: 'Hover me' }),
-            TooltipContent({ children: 'Tooltip text' }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Hover me' }), TooltipContent({ children: 'Tooltip text' })],
         });
 
       const { container } = renderComponent(component);
@@ -317,10 +296,7 @@ describe('Tooltip', () => {
       const component = () =>
         Tooltip({
           disabled: true,
-          children: () => [
-            TooltipTrigger({ children: 'Hover me' }),
-            TooltipContent({ children: 'Tooltip text' }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Hover me' }), TooltipContent({ children: 'Tooltip text' })],
         });
 
       const { container } = renderComponent(component);
@@ -340,10 +316,7 @@ describe('Tooltip', () => {
       const component = () =>
         Tooltip({
           disabled: true,
-          children: () => [
-            TooltipTrigger({ children: 'Focus me' }),
-            TooltipContent({ children: 'Tooltip text' }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Focus me' }), TooltipContent({ children: 'Tooltip text' })],
         });
 
       const { container } = renderComponent(component);
@@ -374,10 +347,7 @@ describe('Tooltip', () => {
     it('should have aria-describedby when open', async () => {
       const component = () =>
         Tooltip({
-          children: () => [
-            TooltipTrigger({ children: 'Trigger' }),
-            TooltipContent({ children: 'Tooltip text' }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Trigger' }), TooltipContent({ children: 'Tooltip text' })],
         });
 
       const { container } = renderComponent(component);
@@ -393,10 +363,7 @@ describe('Tooltip', () => {
     it('should update data-state to open when tooltip shows', async () => {
       const component = () =>
         Tooltip({
-          children: () => [
-            TooltipTrigger({ children: 'Trigger' }),
-            TooltipContent({ children: 'Tooltip text' }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Trigger' }), TooltipContent({ children: 'Tooltip text' })],
         });
 
       const { container } = renderComponent(component);
@@ -415,10 +382,7 @@ describe('Tooltip', () => {
     it('should render but be hidden when tooltip is closed', () => {
       const component = () =>
         Tooltip({
-          children: () => [
-            TooltipTrigger({ children: 'Trigger' }),
-            TooltipContent({ children: 'Tooltip text' }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Trigger' }), TooltipContent({ children: 'Tooltip text' })],
         });
 
       const { container } = renderComponent(component);
@@ -431,10 +395,7 @@ describe('Tooltip', () => {
     it('should render when tooltip is open', async () => {
       const component = () =>
         Tooltip({
-          children: () => [
-            TooltipTrigger({ children: 'Trigger' }),
-            TooltipContent({ children: 'Tooltip text' }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Trigger' }), TooltipContent({ children: 'Tooltip text' })],
         });
 
       const { container } = renderComponent(component);
@@ -466,10 +427,7 @@ describe('Tooltip', () => {
     it('should have role="tooltip"', async () => {
       const component = () =>
         Tooltip({
-          children: () => [
-            TooltipTrigger({ children: 'Trigger' }),
-            TooltipContent({ children: 'Tooltip text' }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Trigger' }), TooltipContent({ children: 'Tooltip text' })],
         });
 
       const { container } = renderComponent(component);
@@ -486,10 +444,7 @@ describe('Tooltip', () => {
     it('should have unique id', async () => {
       const component = () =>
         Tooltip({
-          children: () => [
-            TooltipTrigger({ children: 'Trigger' }),
-            TooltipContent({ children: 'Tooltip text' }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Trigger' }), TooltipContent({ children: 'Tooltip text' })],
         });
 
       const { container } = renderComponent(component);
@@ -507,10 +462,7 @@ describe('Tooltip', () => {
     it('should have data-state="open" when visible', async () => {
       const component = () =>
         Tooltip({
-          children: () => [
-            TooltipTrigger({ children: 'Trigger' }),
-            TooltipContent({ children: 'Tooltip text' }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Trigger' }), TooltipContent({ children: 'Tooltip text' })],
         });
 
       const { container } = renderComponent(component);
@@ -660,10 +612,7 @@ describe('Tooltip', () => {
     it('should stay open when hovering over content', async () => {
       const component = () =>
         Tooltip({
-          children: () => [
-            TooltipTrigger({ children: 'Trigger' }),
-            TooltipContent({ children: 'Tooltip text' }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Trigger' }), TooltipContent({ children: 'Tooltip text' })],
         });
 
       const { container } = renderComponent(component);
@@ -685,10 +634,7 @@ describe('Tooltip', () => {
     it('should close when pointer leaves content', async () => {
       const component = () =>
         Tooltip({
-          children: () => [
-            TooltipTrigger({ children: 'Trigger' }),
-            TooltipContent({ children: 'Tooltip text' }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Trigger' }), TooltipContent({ children: 'Tooltip text' })],
         });
 
       const { container } = renderComponent(component);
@@ -783,10 +729,7 @@ describe('Tooltip', () => {
           children: () => [
             TooltipTrigger({ children: 'Trigger' }),
             TooltipContent({
-              children: () => [
-                'Tooltip text',
-                TooltipArrow({}),
-              ],
+              children: () => ['Tooltip text', TooltipArrow({})],
             }),
           ],
         });
@@ -807,10 +750,7 @@ describe('Tooltip', () => {
           children: () => [
             TooltipTrigger({ children: 'Trigger' }),
             TooltipContent({
-              children: () => [
-                'Tooltip text',
-                TooltipArrow({ width: 12 }),
-              ],
+              children: () => ['Tooltip text', TooltipArrow({ width: 12 })],
             }),
           ],
         });
@@ -831,10 +771,7 @@ describe('Tooltip', () => {
           children: () => [
             TooltipTrigger({ children: 'Trigger' }),
             TooltipContent({
-              children: () => [
-                'Tooltip text',
-                TooltipArrow({ height: 6 }),
-              ],
+              children: () => ['Tooltip text', TooltipArrow({ height: 6 })],
             }),
           ],
         });
@@ -855,10 +792,7 @@ describe('Tooltip', () => {
           children: () => [
             TooltipTrigger({ children: 'Trigger' }),
             TooltipContent({
-              children: () => [
-                'Tooltip text',
-                TooltipArrow({ class: 'custom-arrow' }),
-              ],
+              children: () => ['Tooltip text', TooltipArrow({ class: 'custom-arrow' })],
             }),
           ],
         });
@@ -880,18 +814,12 @@ describe('Tooltip', () => {
         const wrapper = document.createElement('div');
         wrapper.appendChild(
           Tooltip({
-            children: () => [
-              TooltipTrigger({ children: 'Trigger 1' }),
-              TooltipContent({ children: 'Tooltip 1' }),
-            ],
+            children: () => [TooltipTrigger({ children: 'Trigger 1' }), TooltipContent({ children: 'Tooltip 1' })],
           })
         );
         wrapper.appendChild(
           Tooltip({
-            children: () => [
-              TooltipTrigger({ children: 'Trigger 2' }),
-              TooltipContent({ children: 'Tooltip 2' }),
-            ],
+            children: () => [TooltipTrigger({ children: 'Trigger 2' }), TooltipContent({ children: 'Tooltip 2' })],
           })
         );
         return wrapper;
@@ -911,10 +839,7 @@ describe('Tooltip', () => {
     it('should handle empty tooltip content', async () => {
       const component = () =>
         Tooltip({
-          children: () => [
-            TooltipTrigger({ children: 'Trigger' }),
-            TooltipContent({ children: '' }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Trigger' }), TooltipContent({ children: '' })],
         });
 
       const { container } = renderComponent(component);
@@ -933,10 +858,7 @@ describe('Tooltip', () => {
       const longContent = 'This is a very long tooltip content that might overflow and needs proper handling';
       const component = () =>
         Tooltip({
-          children: () => [
-            TooltipTrigger({ children: 'Trigger' }),
-            TooltipContent({ children: longContent }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Trigger' }), TooltipContent({ children: longContent })],
         });
 
       const { container } = renderComponent(component);
@@ -974,10 +896,7 @@ describe('Tooltip', () => {
     it('should handle rapid hover events', async () => {
       const component = () =>
         Tooltip({
-          children: () => [
-            TooltipTrigger({ children: 'Trigger' }),
-            TooltipContent({ children: 'Tooltip text' }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Trigger' }), TooltipContent({ children: 'Tooltip text' })],
         });
 
       const { container } = renderComponent(component);
@@ -998,10 +917,7 @@ describe('Tooltip', () => {
     it('should handle tooltip with null children', () => {
       const component = () =>
         Tooltip({
-          children: () => [
-            TooltipTrigger({ children: 'Trigger' }),
-            TooltipContent({ children: null }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Trigger' }), TooltipContent({ children: null })],
         });
 
       const { container } = renderComponent(component);
@@ -1011,10 +927,7 @@ describe('Tooltip', () => {
     it('should handle tooltip with undefined children', () => {
       const component = () =>
         Tooltip({
-          children: () => [
-            TooltipTrigger({ children: 'Trigger' }),
-            TooltipContent({ children: undefined }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Trigger' }), TooltipContent({ children: undefined })],
         });
 
       const { container } = renderComponent(component);
@@ -1101,10 +1014,7 @@ describe('Tooltip', () => {
         const form = document.createElement('form');
         form.appendChild(
           Tooltip({
-            children: () => [
-              TooltipTrigger({ children: 'Info' }),
-              TooltipContent({ children: 'Field help text' }),
-            ],
+            children: () => [TooltipTrigger({ children: 'Info' }), TooltipContent({ children: 'Field help text' })],
           })
         );
         return form;
@@ -1128,10 +1038,7 @@ describe('Tooltip', () => {
         wrapper.setAttribute('role', 'navigation');
         wrapper.appendChild(
           Tooltip({
-            children: () => [
-              TooltipTrigger({ children: 'Nav item' }),
-              TooltipContent({ children: 'Navigation help' }),
-            ],
+            children: () => [TooltipTrigger({ children: 'Nav item' }), TooltipContent({ children: 'Navigation help' })],
           })
         );
         return wrapper;
@@ -1175,10 +1082,7 @@ describe('Tooltip', () => {
     it('should cleanup timers on unmount', () => {
       const component = () =>
         Tooltip({
-          children: () => [
-            TooltipTrigger({ children: 'Trigger' }),
-            TooltipContent({ children: 'Content' }),
-          ],
+          children: () => [TooltipTrigger({ children: 'Trigger' }), TooltipContent({ children: 'Content' })],
         });
 
       const { container, cleanup } = renderComponent(component);

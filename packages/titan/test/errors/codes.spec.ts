@@ -11,7 +11,7 @@ import {
   isServerError,
   isRetryableError,
   getErrorName,
-  getDefaultMessage
+  getDefaultMessage,
 } from '../../src/errors/codes.js';
 
 describe('Error Codes', () => {

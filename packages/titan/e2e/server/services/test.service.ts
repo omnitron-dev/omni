@@ -51,7 +51,7 @@ export class TestService {
   @Public()
   async getUser(id: string): Promise<User | null> {
     await this.delay(50);
-    return this.users.find(u => u.id === id) || null;
+    return this.users.find((u) => u.id === id) || null;
   }
 
   /**
@@ -62,7 +62,7 @@ export class TestService {
     await this.delay(100);
     const newUser = {
       id: String(this.users.length + 1),
-      ...user
+      ...user,
     };
     this.users.push(newUser);
     return newUser;
@@ -74,7 +74,7 @@ export class TestService {
   @Public()
   async updateUser(id: string, updates: Partial<User>): Promise<User | null> {
     await this.delay(100);
-    const index = this.users.findIndex(u => u.id === id);
+    const index = this.users.findIndex((u) => u.id === id);
     if (index === -1) return null;
 
     this.users[index] = { ...this.users[index], ...updates };
@@ -87,7 +87,7 @@ export class TestService {
   @Public()
   async deleteUser(id: string): Promise<boolean> {
     await this.delay(50);
-    const index = this.users.findIndex(u => u.id === id);
+    const index = this.users.findIndex((u) => u.id === id);
     if (index === -1) return false;
 
     this.users.splice(index, 1);
@@ -119,7 +119,7 @@ export class TestService {
   async getNumbersStream(count: number): Promise<Readable> {
     const stream = new Readable({
       objectMode: true,
-      read() {}
+      read() {},
     });
 
     let current = 0;
@@ -158,12 +158,12 @@ export class TestService {
   async batchOperation(items: string[]): Promise<{ processed: string[]; count: number }> {
     await this.delay(100);
     return {
-      processed: items.map(item => item.toUpperCase()),
-      count: items.length
+      processed: items.map((item) => item.toUpperCase()),
+      count: items.length,
     };
   }
 
   private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

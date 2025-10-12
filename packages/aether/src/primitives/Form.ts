@@ -189,9 +189,7 @@ export const FormControl = defineComponent<FormControlProps>((props) => {
       id: field.controlId,
       name: field.name,
       'aria-labelledby': field.labelId,
-      'aria-describedby': field.hasError()
-        ? field.messageId
-        : field.descriptionId,
+      'aria-describedby': field.hasError() ? field.messageId : field.descriptionId,
       'aria-invalid': field.hasError() ? 'true' : undefined,
       'aria-required': field.isRequired() ? 'true' : undefined,
       'aria-disabled': field.isDisabled() ? 'true' : undefined,

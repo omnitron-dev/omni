@@ -61,10 +61,7 @@ export interface LazyToken<T = any> extends EnhancedToken<T> {
  * @param metadata - Optional metadata for the token
  * @returns A typed token
  */
-export function createToken<T = any>(
-  name: string,
-  metadata: Partial<TokenMetadata> = {}
-): EnhancedToken<T> {
+export function createToken<T = any>(name: string, metadata: Partial<TokenMetadata> = {}): EnhancedToken<T> {
   if (!name || (typeof name === 'string' && name.trim() === '')) {
     throw Errors.badRequest('Token name cannot be empty', { name });
   }
@@ -102,8 +99,8 @@ export function createToken<T = any>(
         ...token,
         metadata: {
           ...token.metadata,
-          ...newMetadata
-        }
+          ...newMetadata,
+        },
       };
     },
     toJSON() {
@@ -111,9 +108,9 @@ export function createToken<T = any>(
       return {
         name: token.name,
         type: 'Token',
-        metadata: cleanMetadata
+        metadata: cleanMetadata,
       };
-    }
+    },
   };
 
   // Cache the token only if it has no metadata (to avoid conflicts)
@@ -130,10 +127,7 @@ export function createToken<T = any>(
  * @param metadata - Optional metadata for the token
  * @returns A typed multi-token
  */
-export function createMultiToken<T = any>(
-  name?: string,
-  metadata: Partial<TokenMetadata> = {}
-): EnhancedMultiToken<T> {
+export function createMultiToken<T = any>(name?: string, metadata: Partial<TokenMetadata> = {}): EnhancedMultiToken<T> {
   const tokenName = name || `MultiToken_${Math.random().toString(36).substr(2, 9)}`;
 
   if (!tokenName || tokenName.trim() === '') {
@@ -153,7 +147,7 @@ export function createMultiToken<T = any>(
     metadata: {
       name: tokenName,
       multi: true,
-      ...metadata
+      ...metadata,
     },
     type: undefined as any as T,
     toString() {
@@ -167,17 +161,17 @@ export function createMultiToken<T = any>(
         ...token,
         metadata: {
           ...token.metadata,
-          ...newMetadata
-        }
+          ...newMetadata,
+        },
       };
     },
     toJSON() {
       return {
         name: token.name,
         type: 'MultiToken',
-        metadata: token.metadata
+        metadata: token.metadata,
       };
-    }
+    },
   };
 
   return token;
@@ -207,7 +201,7 @@ export function createOptionalToken<T = any>(
     metadata: {
       name,
       optional: true,
-      ...metadata
+      ...metadata,
     },
     type: undefined as any as T | undefined,
     isMulti: false,
@@ -223,17 +217,17 @@ export function createOptionalToken<T = any>(
         ...token,
         metadata: {
           ...token.metadata,
-          ...newMetadata
-        }
+          ...newMetadata,
+        },
       };
     },
     toJSON() {
       return {
         name: token.name,
         type: 'OptionalToken',
-        metadata: token.metadata
+        metadata: token.metadata,
       };
-    }
+    },
   };
 
   return token;
@@ -284,17 +278,17 @@ export function createConfigToken<T = any>(
         ...token,
         metadata: {
           ...token.metadata,
-          ...newMetadata
-        }
+          ...newMetadata,
+        },
       };
     },
     toJSON() {
       return {
         name: token.name,
         type: 'ConfigToken',
-        metadata: token.metadata
+        metadata: token.metadata,
       };
-    }
+    },
   };
 
   return token;
@@ -306,10 +300,7 @@ export function createConfigToken<T = any>(
  * @param metadata - Optional metadata for the token
  * @returns A typed lazy token
  */
-export function createLazyToken<T = any>(
-  name: string,
-  metadata: Partial<TokenMetadata> = {}
-): LazyToken<T> {
+export function createLazyToken<T = any>(name: string, metadata: Partial<TokenMetadata> = {}): LazyToken<T> {
   if (!name || name.trim() === '') {
     throw Errors.badRequest('Token name cannot be empty', { name });
   }
@@ -324,7 +315,7 @@ export function createLazyToken<T = any>(
     metadata: {
       name,
       tags: ['lazy', ...(metadata.tags || [])],
-      ...metadata
+      ...metadata,
     },
     type: undefined as any as T,
     isMulti: false,
@@ -341,17 +332,17 @@ export function createLazyToken<T = any>(
         ...token,
         metadata: {
           ...token.metadata,
-          ...newMetadata
-        }
+          ...newMetadata,
+        },
       };
     },
     toJSON() {
       return {
         name: token.name,
         type: 'LazyToken',
-        metadata: token.metadata
+        metadata: token.metadata,
       };
-    }
+    },
   };
 
   return token;
@@ -383,7 +374,7 @@ export function createScopedToken<T = any>(
     metadata: {
       name,
       scope,
-      ...metadata
+      ...metadata,
     },
     type: undefined as any as T,
     isMulti: false,
@@ -399,17 +390,17 @@ export function createScopedToken<T = any>(
         ...token,
         metadata: {
           ...token.metadata,
-          ...newMetadata
-        }
+          ...newMetadata,
+        },
       };
     },
     toJSON() {
       return {
         name: token.name,
         type: 'ScopedToken',
-        metadata: token.metadata
+        metadata: token.metadata,
       };
-    }
+    },
   };
 
   return token;
@@ -421,10 +412,7 @@ export function createScopedToken<T = any>(
  * @param metadata - Optional metadata for the token
  * @returns A typed async token
  */
-export function createAsyncToken<T = any>(
-  name: string,
-  metadata: Partial<TokenMetadata> = {}
-): EnhancedToken<T> {
+export function createAsyncToken<T = any>(name: string, metadata: Partial<TokenMetadata> = {}): EnhancedToken<T> {
   if (!name || name.trim() === '') {
     throw Errors.badRequest('Token name cannot be empty', { name });
   }
@@ -439,7 +427,7 @@ export function createAsyncToken<T = any>(
     metadata: {
       name,
       tags: ['async', ...(metadata.tags || [])],
-      ...metadata
+      ...metadata,
     },
     type: undefined as any as T,
     isMulti: false,
@@ -455,17 +443,17 @@ export function createAsyncToken<T = any>(
         ...token,
         metadata: {
           ...token.metadata,
-          ...newMetadata
-        }
+          ...newMetadata,
+        },
       };
     },
     toJSON() {
       return {
         name: token.name,
         type: 'AsyncToken',
-        metadata: token.metadata
+        metadata: token.metadata,
       };
-    }
+    },
   };
 
   return token;
@@ -495,7 +483,7 @@ export function createStreamToken<T = any>(
     metadata: {
       name,
       tags: ['stream', 'async', ...(metadata.tags || [])],
-      ...metadata
+      ...metadata,
     },
     type: undefined as any as AsyncIterable<T>,
     isMulti: false,
@@ -511,17 +499,17 @@ export function createStreamToken<T = any>(
         ...token,
         metadata: {
           ...token.metadata,
-          ...newMetadata
-        }
+          ...newMetadata,
+        },
       };
     },
     toJSON() {
       return {
         name: token.name,
         type: 'StreamToken',
-        metadata: token.metadata
+        metadata: token.metadata,
       };
-    }
+    },
   };
 
   return token;
@@ -533,12 +521,14 @@ export function createStreamToken<T = any>(
  * @returns True if the value is a Token
  */
 export function isToken(value: any): value is Token {
-  return !!value &&
+  return (
+    !!value &&
     typeof value === 'object' &&
     'id' in value &&
     typeof value.id === 'symbol' &&
     'name' in value &&
-    'metadata' in value;
+    'metadata' in value
+  );
 }
 
 /**
@@ -547,7 +537,9 @@ export function isToken(value: any): value is Token {
  * @returns True if the token is a MultiToken
  */
 export function isMultiToken(token: any): token is MultiToken {
-  return isToken(token) && ('multi' in token && token.multi === true || 'isMulti' in token && token.isMulti === true);
+  return (
+    isToken(token) && (('multi' in token && token.multi === true) || ('isMulti' in token && token.isMulti === true))
+  );
 }
 
 /**
@@ -603,7 +595,7 @@ export class TokenRegistry {
   private static instance: TokenRegistry;
   private tokens = new Map<symbol, Token>();
 
-  private constructor() { }
+  private constructor() {}
 
   static getInstance(): TokenRegistry {
     if (!TokenRegistry.instance) {

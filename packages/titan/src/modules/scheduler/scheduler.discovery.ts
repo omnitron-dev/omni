@@ -8,18 +8,10 @@ import { Container } from '../../nexus/index.js';
 import { Inject, Optional, Injectable } from '../../decorators/index.js';
 
 import { getScheduledJobs } from './scheduler.decorators.js';
-import {
-  SCHEDULER_METADATA,
-  SCHEDULER_CONFIG_TOKEN,
-  SCHEDULER_REGISTRY_TOKEN
-} from './scheduler.constants.js';
+import { SCHEDULER_METADATA, SCHEDULER_CONFIG_TOKEN, SCHEDULER_REGISTRY_TOKEN } from './scheduler.constants.js';
 
 import type { SchedulerRegistry } from './scheduler.registry.js';
-import type {
-  IJobMetadata,
-  IScheduledJob,
-  ISchedulerConfig
-} from './scheduler.interfaces.js';
+import type { IJobMetadata, IScheduledJob, ISchedulerConfig } from './scheduler.interfaces.js';
 
 /**
  * Discovers scheduled jobs in the application
@@ -32,7 +24,7 @@ export class SchedulerDiscovery {
     @Inject(Container) private readonly container: Container,
     @Inject(SCHEDULER_REGISTRY_TOKEN) private readonly registry: SchedulerRegistry,
     @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: ISchedulerConfig
-  ) { }
+  ) {}
 
   /**
    * Discover and register all scheduled jobs
@@ -84,11 +76,7 @@ export class SchedulerDiscovery {
   /**
    * Register a scheduled job
    */
-  private registerJob(
-    instance: any,
-    methodName: string,
-    metadata: IJobMetadata
-  ): IScheduledJob | null {
+  private registerJob(instance: any, methodName: string, metadata: IJobMetadata): IScheduledJob | null {
     try {
       // Generate job name
       const className = instance.constructor.name;

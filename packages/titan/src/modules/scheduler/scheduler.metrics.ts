@@ -11,14 +11,14 @@ import {
   SCHEDULER_EVENTS,
   SCHEDULER_CONFIG_TOKEN,
   SCHEDULER_REGISTRY_TOKEN,
-  SCHEDULER_EXECUTOR_TOKEN
+  SCHEDULER_EXECUTOR_TOKEN,
 } from './scheduler.constants.js';
 import {
   JobStatus,
   SchedulerJobType,
   type ISchedulerConfig,
   type ISchedulerMetrics,
-  type IJobExecutionResult
+  type IJobExecutionResult,
 } from './scheduler.interfaces.js';
 
 import type { SchedulerRegistry } from './scheduler.registry.js';
@@ -122,7 +122,7 @@ export class SchedulerMetricsService {
       [JobStatus.FAILED]: 0,
       [JobStatus.CANCELLED]: 0,
       [JobStatus.PAUSED]: 0,
-      [JobStatus.RETRYING]: 0
+      [JobStatus.RETRYING]: 0,
     };
 
     const jobsByType: Record<SchedulerJobType, number> = {
@@ -130,7 +130,7 @@ export class SchedulerMetricsService {
       [SchedulerJobType.INTERVAL]: 0,
       [SchedulerJobType.TIMEOUT]: 0,
       [SchedulerJobType.DELAYED]: 0,
-      [SchedulerJobType.RECURRING]: 0
+      [SchedulerJobType.RECURRING]: 0,
     };
 
     // Count jobs by status and type
@@ -145,9 +145,8 @@ export class SchedulerMetricsService {
     }
 
     // Calculate average execution time
-    const avgExecutionTime = this.executionTimes.length > 0
-      ? this.executionTimes.reduce((a, b) => a + b, 0) / this.executionTimes.length
-      : 0;
+    const avgExecutionTime =
+      this.executionTimes.length > 0 ? this.executionTimes.reduce((a, b) => a + b, 0) / this.executionTimes.length : 0;
 
     // Calculate uptime
     const uptime = Math.floor((Date.now() - this.startTime.getTime()) / 1000);
@@ -159,7 +158,7 @@ export class SchedulerMetricsService {
       memoryUsage = {
         rss: mem.rss,
         heapTotal: mem.heapTotal,
-        heapUsed: mem.heapUsed
+        heapUsed: mem.heapUsed,
       };
     }
 
@@ -175,7 +174,7 @@ export class SchedulerMetricsService {
       queueSize: this.executor?.getQueuedJobCount() || 0,
       uptime,
       memoryUsage,
-      timestamp: new Date()
+      timestamp: new Date(),
     };
   }
 
@@ -205,7 +204,7 @@ export class SchedulerMetricsService {
       avgExecutionTime: job.avgExecutionTime || 0,
       lastExecution: job.lastExecution,
       lastResult: job.lastResult,
-      lastError: job.lastError
+      lastError: job.lastError,
     };
   }
 
@@ -243,13 +242,11 @@ export class SchedulerMetricsService {
 
     const jobs = this.registry.getAllJobs();
     const failingJobs = jobs
-      .filter(job => job.failureCount > 0)
-      .map(job => ({
+      .filter((job) => job.failureCount > 0)
+      .map((job) => ({
         name: job.name,
         failureCount: job.failureCount,
-        failureRate: job.executionCount > 0
-          ? (job.failureCount / job.executionCount) * 100
-          : 0
+        failureRate: job.executionCount > 0 ? (job.failureCount / job.executionCount) * 100 : 0,
       }))
       .sort((a, b) => b.failureCount - a.failureCount)
       .slice(0, limit);
@@ -270,10 +267,10 @@ export class SchedulerMetricsService {
 
     const jobs = this.registry.getAllJobs();
     const slowestJobs = jobs
-      .filter(job => job.avgExecutionTime && job.avgExecutionTime > 0)
-      .map(job => ({
+      .filter((job) => job.avgExecutionTime && job.avgExecutionTime > 0)
+      .map((job) => ({
         name: job.name,
-        avgExecutionTime: job.avgExecutionTime || 0
+        avgExecutionTime: job.avgExecutionTime || 0,
       }))
       .sort((a, b) => b.avgExecutionTime - a.avgExecutionTime)
       .slice(0, limit);
@@ -310,8 +307,8 @@ export class SchedulerMetricsService {
         successRate: this.getSuccessRate(),
         failureRate: this.getFailureRate(),
         topFailingJobs: this.getTopFailingJobs(),
-        slowestJobs: this.getSlowestJobs()
-      }
+        slowestJobs: this.getSlowestJobs(),
+      },
     };
   }
 

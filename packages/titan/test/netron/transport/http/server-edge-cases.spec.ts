@@ -33,7 +33,7 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
     server = new HttpServer({
       port: testPort,
       host: 'localhost',
-      cors: true // Enable CORS for testing
+      cors: true, // Enable CORS for testing
     });
 
     // Create mock peer
@@ -41,7 +41,7 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
       stubs: new Map(),
       on: jest.fn(),
       off: jest.fn(),
-      emit: jest.fn()
+      emit: jest.fn(),
     } as any;
 
     // Create contracts for the test service
@@ -53,49 +53,45 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
           status: 201,
           contentType: 'application/json',
           responseHeaders: {
-            'X-Custom-Header': 'test-value'
-          }
-        }
+            'X-Custom-Header': 'test-value',
+          },
+        },
       },
       validatedMethod: {
         input: z.object({
-          value: z.number().min(0).max(100)
+          value: z.number().min(0).max(100),
         }),
-        output: z.any()
+        output: z.any(),
       },
       cacheableMethod: {
         input: z.any(),
         output: z.any(),
         http: {
           responseHeaders: {
-            'Cache-Control': 'public, max-age=60'
-          }
-        }
+            'Cache-Control': 'public, max-age=60',
+          },
+        },
       },
       errorMethod: {
         input: z.any(),
-        output: z.any()
-      }
+        output: z.any(),
+      },
     });
 
     // Register a test service
-    const testDefinition = new Definition(
-      'test-service-id',
-      'test-peer-id',
-      {
-        name: 'TestService',
-        version: '1.0.0',
-        description: 'Test service',
-        contract: testContract,
-        methods: {
-          simpleMethod: { description: 'Simple method without validation' },
-          validatedMethod: { description: 'Method with input validation' },
-          cacheableMethod: { description: 'Cacheable method' },
-          errorMethod: { description: 'Method that throws error' }
-        },
-        properties: {}
-      }
-    );
+    const testDefinition = new Definition('test-service-id', 'test-peer-id', {
+      name: 'TestService',
+      version: '1.0.0',
+      description: 'Test service',
+      contract: testContract,
+      methods: {
+        simpleMethod: { description: 'Simple method without validation' },
+        validatedMethod: { description: 'Method with input validation' },
+        cacheableMethod: { description: 'Cacheable method' },
+        errorMethod: { description: 'Method that throws error' },
+      },
+      properties: {},
+    });
 
     const stub = {
       definition: testDefinition,
@@ -114,7 +110,7 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
           throw new Error('Method execution failed');
         }
         throw new Error(`Method ${methodName} not found`);
-      })
+      }),
     };
 
     mockPeer.stubs.set('test-service', stub);
@@ -147,16 +143,16 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         service: 'TestService',
         method: 'simpleMethod',
         input: { data: 'test' },
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       // Make request without Authorization or Origin headers
       const response = await fetch(`${baseUrl}/netron/invoke`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       expect(response.status).toBe(201); // Custom status from contract
@@ -166,13 +162,13 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
       const data = await response.json();
       expect(data).toMatchObject({
         id: '1',
-        success: true
+        success: true,
       });
       // Result should be defined (content validated by stub.call mock)
       expect(data.data).toBeDefined();
       expect(data.data).toMatchObject({
         result: 'success',
-        input: { data: 'test' }
+        input: { data: 'test' },
       });
     });
 
@@ -183,15 +179,15 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         service: 'TestService',
         method: 'cacheableMethod',
         input: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       const response = await fetch(`${baseUrl}/netron/invoke`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       expect(response.status).toBe(200);
@@ -200,7 +196,7 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
       expect(data.hints).toBeDefined();
       expect(data.hints.cache).toEqual({
         maxAge: 60000,
-        tags: ['test', 'cache']
+        tags: ['test', 'cache'],
       });
       expect(data.hints.metrics).toBeDefined();
       expect(data.hints.metrics.serverTime).toBeGreaterThanOrEqual(0);
@@ -214,7 +210,7 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         service: 'TestService',
         method: 'simpleMethod',
         input: { data: 'test' },
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       // Include Authorization header to trigger full middleware pipeline
@@ -222,9 +218,9 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer test-token-123'
+          Authorization: 'Bearer test-token-123',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       expect(response.status).toBe(201);
@@ -240,7 +236,7 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         service: 'TestService',
         method: 'simpleMethod',
         input: { data: 'test' },
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       // Include Origin header to trigger CORS handling
@@ -248,9 +244,9 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Origin': 'http://example.com'
+          Origin: 'http://example.com',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       expect(response.status).toBe(201);
@@ -267,15 +263,15 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         service: 'NonExistentService@1.0.0',
         method: 'someMethod',
         input: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       const response = await fetch(`${baseUrl}/netron/invoke`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       expect(response.status).toBe(404);
@@ -293,15 +289,15 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         service: 'TestService',
         method: 'nonExistentMethod',
         input: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       const response = await fetch(`${baseUrl}/netron/invoke`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       expect(response.status).toBe(404);
@@ -319,7 +315,7 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         service: 'NonExistentService@1.0.0',
         method: 'someMethod',
         input: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       // Include Authorization to trigger middleware pipeline
@@ -327,9 +323,9 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer token'
+          Authorization: 'Bearer token',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       expect(response.status).toBe(404);
@@ -347,7 +343,7 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         service: 'TestService',
         method: 'nonExistentMethod',
         input: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       // Include Authorization to trigger middleware pipeline
@@ -355,9 +351,9 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer token'
+          Authorization: 'Bearer token',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       expect(response.status).toBe(404);
@@ -377,15 +373,15 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         service: 'TestService',
         method: 'validatedMethod',
         input: { value: 150 }, // Invalid: exceeds max of 100
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       const response = await fetch(`${baseUrl}/netron/invoke`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       expect(response.status).toBe(400);
@@ -405,7 +401,7 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         service: 'TestService',
         method: 'validatedMethod',
         input: { value: -5 }, // Invalid: below min of 0
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       // Include Authorization to trigger middleware pipeline
@@ -413,9 +409,9 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer token'
+          Authorization: 'Bearer token',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       expect(response.status).toBe(400);
@@ -433,15 +429,15 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         service: 'TestService',
         method: 'validatedMethod',
         input: {}, // Missing required 'value' field
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       const response = await fetch(`${baseUrl}/netron/invoke`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       expect(response.status).toBe(400);
@@ -458,9 +454,9 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
       const response = await fetch(`${baseUrl}/netron/invoke`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: 'invalid-json-{{{' // Malformed JSON
+        body: 'invalid-json-{{{', // Malformed JSON
       });
 
       expect(response.status).toBe(400);
@@ -476,15 +472,15 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         // Missing 'service' field
         method: 'someMethod',
         input: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       const response = await fetch(`${baseUrl}/netron/invoke`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(invalidRequest)
+        body: JSON.stringify(invalidRequest),
       });
 
       expect(response.status).toBe(400);
@@ -500,15 +496,15 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         service: 'TestService',
         // Missing 'method' field
         input: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       const response = await fetch(`${baseUrl}/netron/invoke`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(invalidRequest)
+        body: JSON.stringify(invalidRequest),
       });
 
       expect(response.status).toBe(400);
@@ -524,15 +520,15 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         service: 'TestService',
         method: 'simpleMethod',
         input: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       const response = await fetch(`${baseUrl}/netron/invoke`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(invalidRequest)
+        body: JSON.stringify(invalidRequest),
       });
 
       expect(response.status).toBe(400);
@@ -547,10 +543,10 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
       const response = await fetch(`${baseUrl}/netron/invoke`, {
         method: 'OPTIONS',
         headers: {
-          'Origin': 'http://example.com',
+          Origin: 'http://example.com',
           'Access-Control-Request-Method': 'POST',
-          'Access-Control-Request-Headers': 'Content-Type'
-        }
+          'Access-Control-Request-Headers': 'Content-Type',
+        },
       });
 
       expect(response.status).toBe(204);
@@ -566,16 +562,16 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         service: 'TestService',
         method: 'simpleMethod',
         input: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       const response = await fetch(`${baseUrl}/netron/invoke`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Origin': 'http://example.com'
+          Origin: 'http://example.com',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       expect(response.status).toBe(201);
@@ -592,16 +588,16 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         service: 'TestService',
         method: 'simpleMethod',
         input: { data: 'test' },
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       const response = await fetch(`${baseUrl}/netron/invoke`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer test-token-abc123'
+          Authorization: 'Bearer test-token-abc123',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       expect(response.status).toBe(201);
@@ -617,16 +613,16 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         service: 'TestService',
         method: 'simpleMethod',
         input: { data: 'test' },
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       const response = await fetch(`${baseUrl}/netron/invoke`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'InvalidFormat' // Not "Bearer <token>"
+          Authorization: 'InvalidFormat', // Not "Bearer <token>"
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       // Should still process request even with malformed auth
@@ -644,15 +640,15 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         service: 'TestService',
         method: 'errorMethod',
         input: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       const response = await fetch(`${baseUrl}/netron/invoke`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       expect(response.status).toBe(500);
@@ -672,15 +668,15 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         service: 'TestService',
         method: 'simpleMethod',
         input: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       const response = await fetch(`${baseUrl}/netron/invoke`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       expect(response.headers.get('X-Netron-Version')).toBe('2.0');
@@ -693,15 +689,15 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         service: 'TestService',
         method: 'simpleMethod',
         input: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       const response = await fetch(`${baseUrl}/netron/invoke`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       expect(response.headers.get('X-Custom-Header')).toBe('test-value');
@@ -714,15 +710,15 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         service: 'TestService',
         method: 'simpleMethod',
         input: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       const response = await fetch(`${baseUrl}/netron/invoke`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
@@ -742,17 +738,17 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         input: { data: 'test' },
         context: {
           userId: 'user-123',
-          sessionId: 'session-456'
+          sessionId: 'session-456',
         },
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       const response = await fetch(`${baseUrl}/netron/invoke`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       expect(response.status).toBe(201);
@@ -769,17 +765,17 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         input: {},
         hints: {
           timeout: 5000,
-          priority: 'high'
+          priority: 'high',
         },
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       const response = await fetch(`${baseUrl}/netron/invoke`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       expect(response.status).toBe(201);
@@ -794,7 +790,7 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
         service: 'TestService',
         method: 'simpleMethod',
         input: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       const response = await fetch(`${baseUrl}/netron/invoke`, {
@@ -804,9 +800,9 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
           'X-Request-ID': 'req-123',
           'X-Trace-ID': 'trace-456',
           'X-Correlation-ID': 'corr-789',
-          'X-Span-ID': 'span-012'
+          'X-Span-ID': 'span-012',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       expect(response.status).toBe(201);

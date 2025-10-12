@@ -24,7 +24,7 @@ beforeAll(async () => {
 // Cleanup after all tests
 afterAll(async () => {
   // Wait a bit for any pending operations
-  await new Promise(resolve => setTimeout(resolve, 100));
+  await new Promise((resolve) => setTimeout(resolve, 100));
 
   // Clean up any active connections
   if (activeConnections.size > 0) {

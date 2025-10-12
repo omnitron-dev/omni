@@ -7,7 +7,7 @@ import { IncomingMessage, ServerResponse } from 'http';
 import {
   HttpMiddlewareAdapter,
   HttpBuiltinMiddleware,
-  type HttpMiddlewareContext
+  type HttpMiddlewareContext,
 } from '../../../src/netron/middleware/index.js';
 
 describe('HttpMiddlewareAdapter - Branch Coverage', () => {
@@ -25,8 +25,8 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
       url: '/test',
       headers: {
         'content-type': 'application/json',
-        'authorization': 'Bearer token123'
-      }
+        authorization: 'Bearer token123',
+      },
     };
 
     mockResponse = {
@@ -34,7 +34,7 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
       setHeader: jest.fn(),
       getHeader: jest.fn(),
       removeHeader: jest.fn(),
-      end: jest.fn()
+      end: jest.fn(),
     };
   });
 
@@ -42,7 +42,7 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
     it('should use empty object for peer when not provided', () => {
       const httpCtx = {
         request: mockRequest,
-        response: mockResponse
+        response: mockResponse,
       };
 
       const netronCtx = adapter.toNetronContext(httpCtx);
@@ -55,7 +55,7 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
       const httpCtx = {
         peer: customPeer,
         request: mockRequest,
-        response: mockResponse
+        response: mockResponse,
       };
 
       const netronCtx = adapter.toNetronContext(httpCtx);
@@ -66,7 +66,7 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
     it('should create new Map for metadata when not provided', () => {
       const httpCtx = {
         request: mockRequest,
-        response: mockResponse
+        response: mockResponse,
       };
 
       const netronCtx = adapter.toNetronContext(httpCtx);
@@ -79,7 +79,7 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
       const httpCtx = {
         metadata: customMetadata,
         request: mockRequest,
-        response: mockResponse
+        response: mockResponse,
       };
 
       const netronCtx = adapter.toNetronContext(httpCtx);
@@ -91,7 +91,7 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
     it('should create timing object when not provided', () => {
       const httpCtx = {
         request: mockRequest,
-        response: mockResponse
+        response: mockResponse,
       };
 
       const netronCtx = adapter.toNetronContext(httpCtx);
@@ -104,12 +104,12 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
     it('should use provided timing when available', () => {
       const customTiming = {
         start: 123456789,
-        middlewareTimes: new Map([['middleware1', 100]])
+        middlewareTimes: new Map([['middleware1', 100]]),
       };
       const httpCtx = {
         timing: customTiming,
         request: mockRequest,
-        response: mockResponse
+        response: mockResponse,
       };
 
       const netronCtx = adapter.toNetronContext(httpCtx);
@@ -122,7 +122,7 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
       const httpCtxWithRoute = {
         route: '/api/users/:id',
         request: { ...mockRequest, url: '/api/users/123' },
-        response: mockResponse
+        response: mockResponse,
       };
 
       const netronCtx = adapter.toNetronContext(httpCtxWithRoute);
@@ -133,7 +133,7 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
     it('should fallback to request.url when route not provided', () => {
       const httpCtx = {
         request: mockRequest,
-        response: mockResponse
+        response: mockResponse,
       };
 
       const netronCtx = adapter.toNetronContext(httpCtx);
@@ -149,13 +149,13 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
           'empty-header': '',
           'null-header': null as any,
           'undefined-header': undefined as any,
-          'authorization': 'Bearer token'
-        }
+          authorization: 'Bearer token',
+        },
       };
 
       const httpCtx = {
         request: requestWithFalsyHeaders,
-        response: mockResponse
+        response: mockResponse,
       };
 
       const netronCtx = adapter.toNetronContext(httpCtx);
@@ -181,7 +181,7 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
         metadata: new Map(),
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: mockRequest as IncomingMessage,
-        response: mockResponse as ServerResponse
+        response: mockResponse as ServerResponse,
       };
 
       await middleware(ctx, mockNext);
@@ -201,10 +201,10 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: {
           ...mockRequest,
-          headers: { 'accept-encoding': 'gzip' }
+          headers: { 'accept-encoding': 'gzip' },
         } as IncomingMessage,
         response: mockResponse as ServerResponse,
-        body: 'x'.repeat(2000) // Above threshold
+        body: 'x'.repeat(2000), // Above threshold
       };
 
       await middleware(ctx, mockNext);
@@ -217,7 +217,7 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
   describe('corsMiddleware - origin function branches', () => {
     it('should use requestOrigin when function returns true and requestOrigin exists', async () => {
       const middleware = HttpBuiltinMiddleware.corsMiddleware({
-        origin: (origin) => origin === 'https://example.com'
+        origin: (origin) => origin === 'https://example.com',
       });
 
       const ctx: HttpMiddlewareContext = {
@@ -229,22 +229,19 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: {
           ...mockRequest,
-          headers: { origin: 'https://example.com' }
+          headers: { origin: 'https://example.com' },
         } as IncomingMessage,
-        response: mockResponse as ServerResponse
+        response: mockResponse as ServerResponse,
       };
 
       await middleware(ctx, mockNext);
 
-      expect(mockResponse.setHeader).toHaveBeenCalledWith(
-        'Access-Control-Allow-Origin',
-        'https://example.com'
-      );
+      expect(mockResponse.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Origin', 'https://example.com');
     });
 
     it('should use wildcard when function returns true but requestOrigin is undefined', async () => {
       const middleware = HttpBuiltinMiddleware.corsMiddleware({
-        origin: () => true
+        origin: () => true,
       });
 
       const ctx: HttpMiddlewareContext = {
@@ -256,23 +253,20 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: {
           ...mockRequest,
-          headers: {}
+          headers: {},
         } as IncomingMessage,
-        response: mockResponse as ServerResponse
+        response: mockResponse as ServerResponse,
       };
 
       await middleware(ctx, mockNext);
 
-      expect(mockResponse.setHeader).toHaveBeenCalledWith(
-        'Access-Control-Allow-Origin',
-        '*'
-      );
+      expect(mockResponse.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Origin', '*');
     });
 
     it('should handle preflightContinue flag', async () => {
       const middleware = HttpBuiltinMiddleware.corsMiddleware({
         origin: '*',
-        preflightContinue: true
+        preflightContinue: true,
       });
 
       const ctx: HttpMiddlewareContext = {
@@ -284,9 +278,9 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: {
           ...mockRequest,
-          method: 'OPTIONS'
+          method: 'OPTIONS',
         } as IncomingMessage,
-        response: mockResponse as ServerResponse
+        response: mockResponse as ServerResponse,
       };
 
       await middleware(ctx, mockNext);
@@ -316,9 +310,9 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
             if (event === 'end') {
               setTimeout(() => handler(), 0);
             }
-          })
+          }),
         } as any,
-        response: mockResponse as ServerResponse
+        response: mockResponse as ServerResponse,
       };
 
       await middleware(ctx, mockNext);
@@ -341,10 +335,10 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: {
           ...mockRequest,
-          headers: { 'accept-encoding': 'gzip' }
+          headers: { 'accept-encoding': 'gzip' },
         } as IncomingMessage,
         response: mockResponse as ServerResponse,
-        body: null
+        body: null,
       };
 
       await middleware(ctx, mockNext);
@@ -365,10 +359,10 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: {
           ...mockRequest,
-          headers: { 'accept-encoding': 'gzip' }
+          headers: { 'accept-encoding': 'gzip' },
         } as IncomingMessage,
         response: mockResponse as ServerResponse,
-        body: true as any
+        body: true as any,
       };
 
       await middleware(ctx, mockNext);
@@ -389,10 +383,10 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: {
           ...mockRequest,
-          headers: {}
+          headers: {},
         } as IncomingMessage,
         response: mockResponse as ServerResponse,
-        body: 'x'.repeat(2000)
+        body: 'x'.repeat(2000),
       };
 
       await middleware(ctx, mockNext);
@@ -415,7 +409,7 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
         metadata: new Map(),
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: mockRequest as IncomingMessage,
-        response: mockResponse as ServerResponse
+        response: mockResponse as ServerResponse,
       };
 
       await middleware(ctx, mockNext);
@@ -425,7 +419,7 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
 
     it('should not set X-Content-Type-Options when explicitly disabled', async () => {
       const middleware = HttpBuiltinMiddleware.securityHeadersMiddleware({
-        xContentTypeOptions: false
+        xContentTypeOptions: false,
       });
 
       const ctx: HttpMiddlewareContext = {
@@ -436,7 +430,7 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
         metadata: new Map(),
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: mockRequest as IncomingMessage,
-        response: mockResponse as ServerResponse
+        response: mockResponse as ServerResponse,
       };
 
       await middleware(ctx, mockNext);
@@ -455,7 +449,7 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
         metadata: new Map(),
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: mockRequest as IncomingMessage,
-        response: mockResponse as ServerResponse
+        response: mockResponse as ServerResponse,
       };
 
       await middleware(ctx, mockNext);
@@ -465,7 +459,7 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
 
     it('should not set X-XSS-Protection when explicitly disabled', async () => {
       const middleware = HttpBuiltinMiddleware.securityHeadersMiddleware({
-        xXssProtection: false
+        xXssProtection: false,
       });
 
       const ctx: HttpMiddlewareContext = {
@@ -476,7 +470,7 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
         metadata: new Map(),
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: mockRequest as IncomingMessage,
-        response: mockResponse as ServerResponse
+        response: mockResponse as ServerResponse,
       };
 
       await middleware(ctx, mockNext);
@@ -488,8 +482,8 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
       const middleware = HttpBuiltinMiddleware.securityHeadersMiddleware({
         strictTransportSecurity: {
           maxAge: 31536000,
-          includeSubDomains: true
-        }
+          includeSubDomains: true,
+        },
       });
 
       const ctx: HttpMiddlewareContext = {
@@ -500,7 +494,7 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
         metadata: new Map(),
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: mockRequest as IncomingMessage,
-        response: mockResponse as ServerResponse
+        response: mockResponse as ServerResponse,
       };
 
       await middleware(ctx, mockNext);
@@ -515,8 +509,8 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
       const middleware = HttpBuiltinMiddleware.securityHeadersMiddleware({
         strictTransportSecurity: {
           maxAge: 31536000,
-          preload: true
-        }
+          preload: true,
+        },
       });
 
       const ctx: HttpMiddlewareContext = {
@@ -527,15 +521,12 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
         metadata: new Map(),
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: mockRequest as IncomingMessage,
-        response: mockResponse as ServerResponse
+        response: mockResponse as ServerResponse,
       };
 
       await middleware(ctx, mockNext);
 
-      expect(mockResponse.setHeader).toHaveBeenCalledWith(
-        'Strict-Transport-Security',
-        'max-age=31536000; preload'
-      );
+      expect(mockResponse.setHeader).toHaveBeenCalledWith('Strict-Transport-Security', 'max-age=31536000; preload');
     });
 
     it('should set Strict-Transport-Security with both includeSubDomains and preload', async () => {
@@ -543,8 +534,8 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
         strictTransportSecurity: {
           maxAge: 31536000,
           includeSubDomains: true,
-          preload: true
-        }
+          preload: true,
+        },
       });
 
       const ctx: HttpMiddlewareContext = {
@@ -555,7 +546,7 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
         metadata: new Map(),
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: mockRequest as IncomingMessage,
-        response: mockResponse as ServerResponse
+        response: mockResponse as ServerResponse,
       };
 
       await middleware(ctx, mockNext);
@@ -577,15 +568,12 @@ describe('HttpMiddlewareAdapter - Branch Coverage', () => {
         metadata: new Map(),
         timing: { start: Date.now(), middlewareTimes: new Map() },
         request: mockRequest as IncomingMessage,
-        response: mockResponse as ServerResponse
+        response: mockResponse as ServerResponse,
       };
 
       await middleware(ctx, mockNext);
 
-      expect(mockResponse.setHeader).not.toHaveBeenCalledWith(
-        'Strict-Transport-Security',
-        expect.anything()
-      );
+      expect(mockResponse.setHeader).not.toHaveBeenCalledWith('Strict-Transport-Security', expect.anything());
     });
   });
 });

@@ -17,9 +17,10 @@ describe('RadioGroup', () => {
 
   describe('Rendering', () => {
     it('should render a div with role="radiogroup"', () => {
-      const component = () => RadioGroup({
-        children: () => [],
-      });
+      const component = () =>
+        RadioGroup({
+          children: () => [],
+        });
       const { container, dispose } = renderComponent(component);
       cleanup = dispose;
 
@@ -39,9 +40,10 @@ describe('RadioGroup', () => {
     });
 
     it('should generate unique ID', () => {
-      const component = () => RadioGroup({
-        children: () => [],
-      });
+      const component = () =>
+        RadioGroup({
+          children: () => [],
+        });
       const { container, dispose } = renderComponent(component);
       cleanup = dispose;
 
@@ -51,9 +53,10 @@ describe('RadioGroup', () => {
     });
 
     it('should default to vertical orientation', () => {
-      const component = () => RadioGroup({
-        children: () => [],
-      });
+      const component = () =>
+        RadioGroup({
+          children: () => [],
+        });
       const { container, dispose } = renderComponent(component);
       cleanup = dispose;
 
@@ -63,10 +66,11 @@ describe('RadioGroup', () => {
     });
 
     it('should support horizontal orientation', () => {
-      const component = () => RadioGroup({
-        orientation: 'horizontal',
-        children: () => [],
-      });
+      const component = () =>
+        RadioGroup({
+          orientation: 'horizontal',
+          children: () => [],
+        });
       const { container, dispose } = renderComponent(component);
       cleanup = dispose;
 
@@ -742,10 +746,12 @@ describe('RadioGroupItem', () => {
     it('should render children', () => {
       const component = () =>
         RadioGroup({
-          children: () => [RadioGroupItem({
-            value: 'option1',
-            children: 'Option 1',
-          })],
+          children: () => [
+            RadioGroupItem({
+              value: 'option1',
+              children: 'Option 1',
+            }),
+          ],
         });
       const { container, dispose } = renderComponent(component);
       cleanup = dispose;
@@ -769,10 +775,12 @@ describe('RadioGroupItem', () => {
     it('should use provided ID', () => {
       const component = () =>
         RadioGroup({
-          children: () => [RadioGroupItem({
-            value: 'option1',
-            id: 'my-radio',
-          })],
+          children: () => [
+            RadioGroupItem({
+              value: 'option1',
+              id: 'my-radio',
+            }),
+          ],
         });
       const { container, dispose } = renderComponent(component);
       cleanup = dispose;
@@ -945,10 +953,12 @@ describe('RadioGroupItem', () => {
     it('should accept and apply className', () => {
       const component = () =>
         RadioGroup({
-          children: () => [RadioGroupItem({
-            value: 'option1',
-            className: 'custom-radio',
-          })],
+          children: () => [
+            RadioGroupItem({
+              value: 'option1',
+              className: 'custom-radio',
+            }),
+          ],
         });
       const { container, dispose } = renderComponent(component);
       cleanup = dispose;
@@ -960,10 +970,12 @@ describe('RadioGroupItem', () => {
     it('should accept and apply style', () => {
       const component = () =>
         RadioGroup({
-          children: () => [RadioGroupItem({
-            value: 'option1',
-            style: { backgroundColor: 'blue' },
-          })],
+          children: () => [
+            RadioGroupItem({
+              value: 'option1',
+              style: { backgroundColor: 'blue' },
+            }),
+          ],
         });
       const { container, dispose } = renderComponent(component);
       cleanup = dispose;
@@ -975,10 +987,12 @@ describe('RadioGroupItem', () => {
     it('should accept and apply data attributes', () => {
       const component = () =>
         RadioGroup({
-          children: () => [RadioGroupItem({
-            value: 'option1',
-            'data-testid': 'my-radio',
-          })],
+          children: () => [
+            RadioGroupItem({
+              value: 'option1',
+              'data-testid': 'my-radio',
+            }),
+          ],
         });
       const { container, dispose } = renderComponent(component);
       cleanup = dispose;
@@ -990,10 +1004,12 @@ describe('RadioGroupItem', () => {
     it('should accept and apply aria attributes', () => {
       const component = () =>
         RadioGroup({
-          children: () => [RadioGroupItem({
-            value: 'option1',
-            'aria-label': 'Select option',
-          })],
+          children: () => [
+            RadioGroupItem({
+              value: 'option1',
+              'aria-label': 'Select option',
+            }),
+          ],
         });
       const { container, dispose } = renderComponent(component);
       cleanup = dispose;
@@ -1016,12 +1032,15 @@ describe('RadioGroupIndicator', () => {
     it('should not render when radio is unchecked', () => {
       const component = () =>
         RadioGroup({
-          children: () => [RadioGroupItem({
-            value: 'option1',
-            children: () => RadioGroupIndicator({
-              children: 'Checked!',
+          children: () => [
+            RadioGroupItem({
+              value: 'option1',
+              children: () =>
+                RadioGroupIndicator({
+                  children: 'Checked!',
+                }),
             }),
-          })],
+          ],
         });
       const { container, dispose } = renderComponent(component);
       cleanup = dispose;
@@ -1033,12 +1052,15 @@ describe('RadioGroupIndicator', () => {
       const component = () =>
         RadioGroup({
           defaultValue: 'option1',
-          children: () => [RadioGroupItem({
-            value: 'option1',
-            children: () => RadioGroupIndicator({
-              children: 'Checked!',
+          children: () => [
+            RadioGroupItem({
+              value: 'option1',
+              children: () =>
+                RadioGroupIndicator({
+                  children: 'Checked!',
+                }),
             }),
-          })],
+          ],
         });
       const { container, dispose } = renderComponent(component);
       cleanup = dispose;
@@ -1051,12 +1073,15 @@ describe('RadioGroupIndicator', () => {
       const component = () =>
         RadioGroup({
           value,
-          children: () => [RadioGroupItem({
-            value: 'option1',
-            children: () => RadioGroupIndicator({
-              children: 'Checked!',
+          children: () => [
+            RadioGroupItem({
+              value: 'option1',
+              children: () =>
+                RadioGroupIndicator({
+                  children: 'Checked!',
+                }),
             }),
-          })],
+          ],
         });
       const { container, dispose } = renderComponent(component);
       cleanup = dispose;
@@ -1076,12 +1101,15 @@ describe('RadioGroupIndicator', () => {
       const component = () =>
         RadioGroup({
           defaultValue: 'option1',
-          children: () => [RadioGroupItem({
-            value: 'option1',
-            children: () => RadioGroupIndicator({
-              children: '',
+          children: () => [
+            RadioGroupItem({
+              value: 'option1',
+              children: () =>
+                RadioGroupIndicator({
+                  children: '',
+                }),
             }),
-          })],
+          ],
         });
       const { container, dispose } = renderComponent(component);
       cleanup = dispose;
@@ -1096,10 +1124,12 @@ describe('RadioGroupIndicator', () => {
       const component = () =>
         RadioGroup({
           defaultValue: 'option1',
-          children: () => [RadioGroupItem({
-            value: 'option1',
-            children: () => RadioGroupIndicator({}),
-          })],
+          children: () => [
+            RadioGroupItem({
+              value: 'option1',
+              children: () => RadioGroupIndicator({}),
+            }),
+          ],
         });
       const { container, dispose } = renderComponent(component);
       cleanup = dispose;
@@ -1113,10 +1143,12 @@ describe('RadioGroupIndicator', () => {
       const component = () =>
         RadioGroup({
           value,
-          children: () => [RadioGroupItem({
-            value: 'option1',
-            children: () => RadioGroupIndicator({}),
-          })],
+          children: () => [
+            RadioGroupItem({
+              value: 'option1',
+              children: () => RadioGroupIndicator({}),
+            }),
+          ],
         });
       const { container, dispose } = renderComponent(component);
       cleanup = dispose;
@@ -1135,12 +1167,15 @@ describe('RadioGroupIndicator', () => {
       const component = () =>
         RadioGroup({
           defaultValue: 'option1',
-          children: () => [RadioGroupItem({
-            value: 'option1',
-            children: () => RadioGroupIndicator({
-              className: 'custom-indicator',
+          children: () => [
+            RadioGroupItem({
+              value: 'option1',
+              children: () =>
+                RadioGroupIndicator({
+                  className: 'custom-indicator',
+                }),
             }),
-          })],
+          ],
         });
       const { container, dispose } = renderComponent(component);
       cleanup = dispose;
@@ -1153,12 +1188,15 @@ describe('RadioGroupIndicator', () => {
       const component = () =>
         RadioGroup({
           defaultValue: 'option1',
-          children: () => [RadioGroupItem({
-            value: 'option1',
-            children: () => RadioGroupIndicator({
-              style: { color: 'green' },
+          children: () => [
+            RadioGroupItem({
+              value: 'option1',
+              children: () =>
+                RadioGroupIndicator({
+                  style: { color: 'green' },
+                }),
             }),
-          })],
+          ],
         });
       const { container, dispose } = renderComponent(component);
       cleanup = dispose;
@@ -1171,12 +1209,15 @@ describe('RadioGroupIndicator', () => {
       const component = () =>
         RadioGroup({
           defaultValue: 'option1',
-          children: () => [RadioGroupItem({
-            value: 'option1',
-            children: () => RadioGroupIndicator({
-              'data-testid': 'my-indicator',
+          children: () => [
+            RadioGroupItem({
+              value: 'option1',
+              children: () =>
+                RadioGroupIndicator({
+                  'data-testid': 'my-indicator',
+                }),
             }),
-          })],
+          ],
         });
       const { container, dispose } = renderComponent(component);
       cleanup = dispose;

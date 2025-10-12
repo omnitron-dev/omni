@@ -71,7 +71,7 @@ export class HttpCacheManager extends EventEmitter {
   private stats = {
     hits: 0,
     misses: 0,
-    revalidations: 0
+    revalidations: 0,
   };
   private revalidationTimers = new Map<string, NodeJS.Timeout>();
   private lastHitKeys = new Set<string>();
@@ -94,11 +94,7 @@ export class HttpCacheManager extends EventEmitter {
   /**
    * Get data from cache or fetch
    */
-  async get<T>(
-    key: string,
-    fetcher: () => Promise<T>,
-    options: CacheOptions
-  ): Promise<T> {
+  async get<T>(key: string, fetcher: () => Promise<T>, options: CacheOptions): Promise<T> {
     const entry = this.cache.get(key);
     const now = Date.now();
 
@@ -190,7 +186,7 @@ export class HttpCacheManager extends EventEmitter {
     const entry: CacheEntry = {
       data,
       timestamp: Date.now(),
-      options
+      options,
     };
 
     // Store in cache
@@ -227,7 +223,7 @@ export class HttpCacheManager extends EventEmitter {
       for (const tag of pattern) {
         const keys = this.tags.get(tag);
         if (keys) {
-          keys.forEach(key => keysToInvalidate.add(key));
+          keys.forEach((key) => keysToInvalidate.add(key));
           this.tags.delete(tag);
         }
       }
@@ -365,7 +361,7 @@ export class HttpCacheManager extends EventEmitter {
       misses,
       hitRate,
       sizeBytes,
-      activeRevalidations
+      activeRevalidations,
     };
   }
 
@@ -409,11 +405,7 @@ export class HttpCacheManager extends EventEmitter {
   /**
    * Revalidate in background
    */
-  private async revalidateInBackground(
-    key: string,
-    fetcher: () => Promise<any>,
-    options: CacheOptions
-  ): Promise<void> {
+  private async revalidateInBackground(key: string, fetcher: () => Promise<any>, options: CacheOptions): Promise<void> {
     const entry = this.cache.get(key);
     if (!entry) return;
 
@@ -422,7 +414,7 @@ export class HttpCacheManager extends EventEmitter {
     this.stats.revalidations++;
 
     const revalidationPromise = fetcher()
-      .then(data => {
+      .then((data) => {
         this.set(key, data, options);
         entry.revalidating = false;
         entry.revalidationPromise = undefined;
@@ -435,7 +427,7 @@ export class HttpCacheManager extends EventEmitter {
 
         return data;
       })
-      .catch(error => {
+      .catch((error) => {
         // Keep stale data on error
         entry.revalidating = false;
         entry.revalidationPromise = undefined;

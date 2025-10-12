@@ -24,11 +24,7 @@ export default defineConfig({
   tsconfig: './tsconfig.json',
   platform: 'browser',
   // External dependencies that should not be bundled
-  external: [
-    '@omnitron-dev/common',
-    '@omnitron-dev/eventemitter',
-    '@omnitron-dev/msgpack'
-  ],
+  external: ['@omnitron-dev/common', '@omnitron-dev/eventemitter', '@omnitron-dev/msgpack'],
   // Ensure browser-compatible code
   esbuildOptions(options) {
     options.platform = 'browser';

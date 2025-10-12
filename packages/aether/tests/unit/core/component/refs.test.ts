@@ -3,12 +3,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import {
-  createRef,
-  useRef,
-  reactiveRef,
-  mergeRefs,
-} from '../../../../src/core/component/refs.js';
+import { createRef, useRef, reactiveRef, mergeRefs } from '../../../../src/core/component/refs.js';
 import { effect } from '../../../../src/core/reactivity/effect.js';
 
 describe('Component Refs', () => {
@@ -254,10 +249,7 @@ describe('Component Refs', () => {
       const ref2 = createRef<number>();
 
       // Create merged callback
-      const merged = mergeRefs([
-        { current: undefined } as any,
-        ref2,
-      ]);
+      const merged = mergeRefs([{ current: undefined } as any, ref2]);
 
       merged(42);
 

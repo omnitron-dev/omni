@@ -70,10 +70,7 @@ export function Injectable(options?: InjectableOptions & { deps?: any[] }): Clas
  * });
  * ```
  */
-export function injectable<T>(
-  factory: () => T,
-  options?: InjectableOptions
-): Type<T> {
+export function injectable<T>(factory: () => T, options?: InjectableOptions): Type<T> {
   // Create a wrapper class
   class InjectableService {
     private static instance: T | null = null;

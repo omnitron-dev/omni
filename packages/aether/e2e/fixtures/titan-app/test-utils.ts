@@ -17,7 +17,7 @@ export function createMockLogger(): ILogger {
     error: noop,
     fatal: noop,
     child: () => mockLogger,
-    level: 'info'
+    level: 'info',
   };
   return mockLogger;
 }

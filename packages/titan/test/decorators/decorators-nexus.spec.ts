@@ -6,10 +6,7 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import 'reflect-metadata'; // Required for decorator support
-import {
-  Container,
-  createToken
-} from '../../src/nexus/index.js';
+import { Container, createToken } from '../../src/nexus/index.js';
 import {
   Injectable,
   Inject,
@@ -59,7 +56,7 @@ describe('Decorator Support', () => {
 
       @Injectable()
       class ServiceWithDep {
-        constructor(@Inject(depToken) public dep: string) { }
+        constructor(@Inject(depToken) public dep: string) {}
       }
 
       container.register(depToken, { useValue: 'injected-value' });
@@ -82,7 +79,7 @@ describe('Decorator Support', () => {
           @Inject(token1) public dep1: string,
           @Inject(token2) public dep2: number,
           @Inject(token3) public dep3: boolean
-        ) { }
+        ) {}
       }
 
       container.register(token1, { useValue: 'string' });
@@ -109,7 +106,7 @@ describe('Decorator Support', () => {
         constructor(
           @Inject(requiredToken) public required: string,
           @Optional() @Inject(optionalToken) public optional?: string
-        ) { }
+        ) {}
       }
 
       container.register(requiredToken, { useValue: 'required' });
@@ -128,9 +125,7 @@ describe('Decorator Support', () => {
 
       @Injectable()
       class ServiceWithOptional {
-        constructor(
-          @Optional() @Inject(optionalToken) public optional?: string
-        ) { }
+        constructor(@Optional() @Inject(optionalToken) public optional?: string) {}
       }
 
       container.register(optionalToken, { useValue: 'optional-value' });
@@ -228,7 +223,7 @@ describe('Decorator Support', () => {
 
       @Service('UserRepository')
       class UserRepository {
-        constructor(@Inject(dbToken) private db: any) { }
+        constructor(@Inject(dbToken) private db: any) {}
 
         findAll() {
           return this.db.query();
@@ -236,7 +231,7 @@ describe('Decorator Support', () => {
       }
 
       container.register(dbToken, {
-        useValue: { query: () => 'users-from-db' }
+        useValue: { query: () => 'users-from-db' },
       });
       container.autoRegister(UserRepository);
 
@@ -255,27 +250,31 @@ describe('Decorator Support', () => {
 
       @Injectable()
       class HandlerA {
-        handle() { return 'A'; }
+        handle() {
+          return 'A';
+        }
       }
 
       @Injectable()
       class HandlerB {
-        handle() { return 'B'; }
+        handle() {
+          return 'B';
+        }
       }
 
       @Injectable()
       class HandlerC {
-        handle() { return 'C'; }
+        handle() {
+          return 'C';
+        }
       }
 
       @Injectable()
       class HandlerManager {
-        constructor(
-          @InjectAll(handlerToken) public handlers: Array<{ handle: () => string }>
-        ) { }
+        constructor(@InjectAll(handlerToken) public handlers: Array<{ handle: () => string }>) {}
 
         handleAll() {
-          return this.handlers.map(h => h.handle()).join(',');
+          return this.handlers.map((h) => h.handle()).join(',');
         }
       }
 
@@ -395,7 +394,7 @@ describe('Decorator Support', () => {
         @Factory('LoggerFactory')
         createLogger(prefix: string) {
           return {
-            log: (msg: string) => `[${prefix}] ${msg}`
+            log: (msg: string) => `[${prefix}] ${msg}`,
           };
         }
       }
@@ -408,11 +407,11 @@ describe('Decorator Support', () => {
       const loggerToken = createToken<{ log: (msg: string) => string }>('Logger');
 
       container.register(configToken, {
-        useFactory: () => container.resolveFactory('ConfigFactory')
+        useFactory: () => container.resolveFactory('ConfigFactory'),
       });
 
       container.register(loggerToken, {
-        useFactory: () => container.resolveFactory('LoggerFactory', 'APP')
+        useFactory: () => container.resolveFactory('LoggerFactory', 'APP'),
       });
 
       const config = container.resolve(configToken);
@@ -432,12 +431,12 @@ describe('Decorator Support', () => {
         app: {
           name: 'TestApp',
           version: '1.0.0',
-          port: 3000
+          port: 3000,
         },
         database: {
           host: 'localhost',
-          port: 5432
-        }
+          port: 5432,
+        },
       });
 
       @Injectable()
@@ -446,7 +445,7 @@ describe('Decorator Support', () => {
           @Value('app.name') public appName: string,
           @Value('app.port') public appPort: number,
           @Value('database.host') public dbHost: string
-        ) { }
+        ) {}
       }
 
       const token = createToken<ConfigurableService>('ConfigurableService');
@@ -462,7 +461,7 @@ describe('Decorator Support', () => {
     it.skip('should handle default values', () => {
       // Skip: Value decorator is not integrated with container
       container.setConfig({
-        app: { name: 'TestApp' }
+        app: { name: 'TestApp' },
       });
 
       @Injectable()
@@ -471,7 +470,7 @@ describe('Decorator Support', () => {
           @Value('app.name') public appName: string,
           @Value('app.description', 'No description') public description: string,
           @Value('app.port', 3000) public port: number
-        ) { }
+        ) {}
       }
 
       const token = createToken<ServiceWithDefaults>('ServiceWithDefaults');
@@ -496,12 +495,12 @@ describe('Decorator Support', () => {
         providers: [
           {
             provide: serviceToken,
-            useValue: { name: 'test-service' }
-          }
+            useValue: { name: 'test-service' },
+          },
         ],
-        exports: [serviceToken]
+        exports: [serviceToken],
       })
-      class TestModule { }
+      class TestModule {}
 
       const module = TestModule.getModule();
       container.loadModule(module);
@@ -519,19 +518,19 @@ describe('Decorator Support', () => {
         providers: [
           {
             provide: sharedToken,
-            useValue: 'shared-value'
-          }
+            useValue: 'shared-value',
+          },
         ],
-        exports: [sharedToken]
+        exports: [sharedToken],
       })
-      class SharedModule { }
+      class SharedModule {}
 
       @Module({
         name: 'AppModule',
         imports: [SharedModule],
-        providers: []
+        providers: [],
       })
-      class AppModule { }
+      class AppModule {}
 
       const module = AppModule.getModule();
       container.loadModule(module);
@@ -562,10 +561,10 @@ describe('Decorator Support', () => {
 
       const logged: string[] = [];
       container.register(loggerToken, {
-        useValue: { log: (msg: string) => logged.push(msg) }
+        useValue: { log: (msg: string) => logged.push(msg) },
       });
       container.register(configToken, {
-        useValue: { apiUrl: 'https://api.example.com' }
+        useValue: { apiUrl: 'https://api.example.com' },
       });
 
       const token = createToken<ServiceWithPropertyInjection>('Service');
@@ -587,7 +586,7 @@ describe('Decorator Support', () => {
 
       @Injectable()
       class ServiceA {
-        constructor(@Lazy(() => tokenB) private getB: () => any) { }
+        constructor(@Lazy(() => tokenB) private getB: () => any) {}
 
         callB() {
           return this.getB().getName();
@@ -596,7 +595,7 @@ describe('Decorator Support', () => {
 
       @Injectable()
       class ServiceB {
-        constructor(@Lazy(() => tokenA) private getA: () => any) { }
+        constructor(@Lazy(() => tokenA) private getA: () => any) {}
 
         getName() {
           return 'ServiceB';

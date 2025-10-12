@@ -236,13 +236,10 @@ export class AccessibilityAssertions {
     for (let i = 0; i < 10; i++) {
       await this.page.keyboard.press('Tab');
       const focused = await this.page.evaluate(() => document.activeElement?.tagName);
-      const isInContainer = await containerLocator.evaluate(
-        (el, focusedTag) => {
-          const activeEl = document.activeElement;
-          return el.contains(activeEl);
-        },
-        focused
-      );
+      const isInContainer = await containerLocator.evaluate((el, focusedTag) => {
+        const activeEl = document.activeElement;
+        return el.contains(activeEl);
+      }, focused);
       expect(isInContainer).toBe(true);
     }
   }

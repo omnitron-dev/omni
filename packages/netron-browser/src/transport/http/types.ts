@@ -280,10 +280,7 @@ export function isHttpBatchRequest(value: any): value is HttpBatchRequest {
     Array.isArray(value.requests) &&
     value.requests.every(
       (r: any) =>
-        typeof r.id === 'string' &&
-        typeof r.service === 'string' &&
-        typeof r.method === 'string' &&
-        'input' in r,
+        typeof r.id === 'string' && typeof r.service === 'string' && typeof r.method === 'string' && 'input' in r
     )
   );
 }
@@ -302,10 +299,7 @@ export function isHttpBatchResponse(value: any): value is HttpBatchResponse {
     typeof value.timestamp === 'number' &&
     Array.isArray(value.responses) &&
     value.responses.every(
-      (r: any) =>
-        typeof r.id === 'string' &&
-        typeof r.success === 'boolean' &&
-        (r.success ? 'data' in r : 'error' in r),
+      (r: any) => typeof r.id === 'string' && typeof r.success === 'boolean' && (r.success ? 'data' in r : 'error' in r)
     )
   );
 }
@@ -328,7 +322,7 @@ export function createRequestMessage(
     id?: string;
     context?: HttpRequestContext;
     hints?: HttpRequestHints;
-  },
+  }
 ): HttpRequestMessage {
   return {
     id: options?.id || generateRequestId(),
@@ -345,11 +339,7 @@ export function createRequestMessage(
 /**
  * Create success response
  */
-export function createSuccessResponse(
-  requestId: string,
-  data: any,
-  hints?: HttpResponseHints,
-): HttpResponseMessage {
+export function createSuccessResponse(requestId: string, data: any, hints?: HttpResponseHints): HttpResponseMessage {
   return {
     id: requestId,
     version: '2.0',
@@ -366,7 +356,7 @@ export function createSuccessResponse(
 export function createErrorResponse(
   requestId: string,
   error: HttpResponseError,
-  hints?: HttpResponseHints,
+  hints?: HttpResponseHints
 ): HttpResponseMessage {
   return {
     id: requestId,

@@ -40,7 +40,7 @@ export function failure(error: Error | string, metadata?: Record<string, any>): 
  * Delay execution for a specified time
  */
 export function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -55,12 +55,7 @@ export async function retry<T>(
     factor?: number;
   } = {}
 ): Promise<T> {
-  const {
-    maxAttempts = 3,
-    baseDelay = 1000,
-    maxDelay = 10000,
-    factor = 2,
-  } = options;
+  const { maxAttempts = 3, baseDelay = 1000, maxDelay = 10000, factor = 2 } = options;
 
   let lastError: Error | undefined;
 
@@ -86,9 +81,7 @@ export async function retry<T>(
  * Create a cache key from components
  */
 export function createCacheKey(...components: (string | number | boolean)[]): string {
-  return components
-    .filter(c => c !== undefined && c !== null)
-    .join(':');
+  return components.filter((c) => c !== undefined && c !== null).join(':');
 }
 
 /**
@@ -136,11 +129,11 @@ export function deepClone<T>(obj: T): T {
   }
 
   if (obj instanceof Array) {
-    return obj.map(item => deepClone(item)) as T;
+    return obj.map((item) => deepClone(item)) as T;
   }
 
   if (obj instanceof Set) {
-    return new Set(Array.from(obj).map(item => deepClone(item))) as T;
+    return new Set(Array.from(obj).map((item) => deepClone(item))) as T;
   }
 
   if (obj instanceof Map) {

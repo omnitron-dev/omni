@@ -20,22 +20,13 @@ import {
  */
 export class MiddlewarePipeline implements IMiddlewareManager {
   // Global middleware by stage
-  private globalMiddleware = new Map<
-    MiddlewareStage,
-    MiddlewareRegistration[]
-  >();
+  private globalMiddleware = new Map<MiddlewareStage, MiddlewareRegistration[]>();
 
   // Service-specific middleware
-  private serviceMiddleware = new Map<
-    string,
-    Map<MiddlewareStage, MiddlewareRegistration[]>
-  >();
+  private serviceMiddleware = new Map<string, Map<MiddlewareStage, MiddlewareRegistration[]>>();
 
   // Method-specific middleware
-  private methodMiddleware = new Map<
-    string,
-    Map<MiddlewareStage, MiddlewareRegistration[]>
-  >();
+  private methodMiddleware = new Map<string, Map<MiddlewareStage, MiddlewareRegistration[]>>();
 
   // Metrics tracking
   private metrics: MiddlewareMetrics = {
@@ -75,9 +66,7 @@ export class MiddlewarePipeline implements IMiddlewareManager {
     stageMiddleware.push(registration);
 
     // Sort by priority
-    stageMiddleware.sort(
-      (a, b) => (a.config.priority ?? 0) - (b.config.priority ?? 0)
-    );
+    stageMiddleware.sort((a, b) => (a.config.priority ?? 0) - (b.config.priority ?? 0));
 
     this.globalMiddleware.set(stage, stageMiddleware);
   }
@@ -112,9 +101,7 @@ export class MiddlewarePipeline implements IMiddlewareManager {
 
     const stageMiddleware = serviceMap.get(stage)!;
     stageMiddleware.push(registration);
-    stageMiddleware.sort(
-      (a, b) => (a.config.priority ?? 0) - (b.config.priority ?? 0)
-    );
+    stageMiddleware.sort((a, b) => (a.config.priority ?? 0) - (b.config.priority ?? 0));
   }
 
   /**
@@ -150,19 +137,13 @@ export class MiddlewarePipeline implements IMiddlewareManager {
 
     const stageMiddleware = methodMap.get(stage)!;
     stageMiddleware.push(registration);
-    stageMiddleware.sort(
-      (a, b) => (a.config.priority ?? 0) - (b.config.priority ?? 0)
-    );
+    stageMiddleware.sort((a, b) => (a.config.priority ?? 0) - (b.config.priority ?? 0));
   }
 
   /**
    * Get middleware for specific service/method
    */
-  getMiddleware(
-    serviceName?: string,
-    methodName?: string,
-    stage?: MiddlewareStage
-  ): MiddlewareRegistration[] {
+  getMiddleware(serviceName?: string, methodName?: string, stage?: MiddlewareStage): MiddlewareRegistration[] {
     const stages = stage ? [stage] : Object.values(MiddlewareStage);
     const result: MiddlewareRegistration[] = [];
 
@@ -200,10 +181,7 @@ export class MiddlewarePipeline implements IMiddlewareManager {
   /**
    * Execute middleware pipeline
    */
-  async execute(
-    ctx: ClientMiddlewareContext,
-    stage: MiddlewareStage
-  ): Promise<void> {
+  async execute(ctx: ClientMiddlewareContext, stage: MiddlewareStage): Promise<void> {
     const startTime = performance.now();
     this.metrics.executions++;
 
@@ -266,9 +244,7 @@ export class MiddlewarePipeline implements IMiddlewareManager {
       const middlewareStart = performance.now();
 
       // Update per-middleware metrics
-      const middlewareMetrics = this.metrics.byMiddleware.get(
-        registration.config.name
-      ) || {
+      const middlewareMetrics = this.metrics.byMiddleware.get(registration.config.name) || {
         executions: 0,
         avgTime: 0,
         errors: 0,
@@ -281,9 +257,7 @@ export class MiddlewarePipeline implements IMiddlewareManager {
         middlewareMetrics.executions++;
         const time = performance.now() - middlewareStart;
         middlewareMetrics.avgTime =
-          (middlewareMetrics.avgTime * (middlewareMetrics.executions - 1) +
-            time) /
-          middlewareMetrics.executions;
+          (middlewareMetrics.avgTime * (middlewareMetrics.executions - 1) + time) / middlewareMetrics.executions;
 
         ctx.timing.middlewareTimes.set(registration.config.name, time);
       } catch (error: any) {
@@ -296,10 +270,7 @@ export class MiddlewarePipeline implements IMiddlewareManager {
 
         throw error;
       } finally {
-        this.metrics.byMiddleware.set(
-          registration.config.name,
-          middlewareMetrics
-        );
+        this.metrics.byMiddleware.set(registration.config.name, middlewareMetrics);
       }
     };
 
@@ -308,8 +279,7 @@ export class MiddlewarePipeline implements IMiddlewareManager {
     } finally {
       const totalTime = performance.now() - startTime;
       this.metrics.avgTime =
-        (this.metrics.avgTime * (this.metrics.executions - 1) + totalTime) /
-        this.metrics.executions;
+        (this.metrics.avgTime * (this.metrics.executions - 1) + totalTime) / this.metrics.executions;
     }
   }
 

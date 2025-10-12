@@ -17,7 +17,7 @@ export enum SchedulerJobType {
   INTERVAL = 'interval',
   TIMEOUT = 'timeout',
   DELAYED = 'delayed',
-  RECURRING = 'recurring'
+  RECURRING = 'recurring',
 }
 
 /**
@@ -28,7 +28,7 @@ export enum JobPriority {
   HIGH = 1,
   NORMAL = 2,
   LOW = 3,
-  IDLE = 4
+  IDLE = 4,
 }
 
 /**
@@ -41,7 +41,7 @@ export enum JobStatus {
   FAILED = 'failed',
   CANCELLED = 'cancelled',
   PAUSED = 'paused',
-  RETRYING = 'retrying'
+  RETRYING = 'retrying',
 }
 
 /**
@@ -139,8 +139,7 @@ export interface IIntervalOptions extends IBaseJobOptions {
 /**
  * Timeout job options
  */
-export interface ITimeoutOptions extends IBaseJobOptions {
-}
+export interface ITimeoutOptions extends IBaseJobOptions {}
 
 /**
  * Retry options
@@ -636,5 +635,5 @@ export enum CronExpression {
   EVERY_1ST_DAY_OF_MONTH = '0 0 1 * *',
   EVERY_LAST_DAY_OF_MONTH = '0 0 L * *',
   EVERY_QUARTER = '0 0 1 */3 *',
-  EVERY_YEAR = '0 0 1 1 *'
+  EVERY_YEAR = '0 0 1 1 *',
 }

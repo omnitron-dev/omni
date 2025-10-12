@@ -34,7 +34,7 @@ describe('EventMetadataService', () => {
       const metadata = service.createMetadata({
         userId: 'user123',
         source: 'api',
-        tags: ['important']
+        tags: ['important'],
       });
 
       expect(metadata.userId).toBe('user123');
@@ -45,7 +45,7 @@ describe('EventMetadataService', () => {
     it('should include default metadata', () => {
       service.setDefaultMetadata({
         environment: 'production',
-        version: '1.0.0'
+        version: '1.0.0',
       });
 
       const metadata = service.createMetadata();
@@ -84,7 +84,7 @@ describe('EventMetadataService', () => {
         source: 'web',
         tags: ['test'],
         priority: 5,
-        extraField: 'ignored'
+        extraField: 'ignored',
       };
 
       const metadata = service.extractFromContext(context);
@@ -95,7 +95,7 @@ describe('EventMetadataService', () => {
         correlationId: 'cor789',
         source: 'web',
         tags: ['test'],
-        priority: 5
+        priority: 5,
       });
     });
   });
@@ -112,14 +112,12 @@ describe('EventMetadataService', () => {
         userId: 'user1',
         sessionId: 'session1',
         source: 'web', // Later value wins
-        tags: ['important']
+        tags: ['important'],
       });
     });
 
     it('should add required fields if missing', () => {
-      const merged = service.mergeMetadata(
-        { custom: 'value' }
-      );
+      const merged = service.mergeMetadata({ custom: 'value' });
 
       expect(merged).toHaveProperty('id');
       expect(merged).toHaveProperty('timestamp');
@@ -183,9 +181,9 @@ describe('EventBusService', () => {
     container = new Container();
     emitter = new EnhancedEventEmitter();
     container.register(EVENT_EMITTER_TOKEN, { useValue: emitter });
-    container.register(EventBusService, { 
+    container.register(EventBusService, {
       useClass: EventBusService,
-      inject: [EVENT_EMITTER_TOKEN]
+      inject: [EVENT_EMITTER_TOKEN],
     });
     service = container.resolve(EventBusService);
   });
@@ -205,16 +203,20 @@ describe('EventBusService', () => {
         id: expect.any(String),
         event: 'test.channel',
         data: { data: 'test' },
-        timestamp: expect.any(Number)
+        timestamp: expect.any(Number),
       });
     });
 
     it('should filter messages by target', async () => {
       const received: any[] = [];
 
-      service.subscribeToChannel('channel', (message) => {
-        received.push(message);
-      }, { target: 'service1' });
+      service.subscribeToChannel(
+        'channel',
+        (message) => {
+          received.push(message);
+        },
+        { target: 'service1' }
+      );
 
       await service.publish('channel', { data: 1 }, { target: 'service1' });
       await service.publish('channel', { data: 2 }, { target: 'service2' });
@@ -227,11 +229,15 @@ describe('EventBusService', () => {
     it('should apply custom filter', async () => {
       const received: any[] = [];
 
-      service.subscribeToChannel('channel', (message) => {
-        received.push(message);
-      }, {
-        filter: (msg) => msg.data.priority === 'high'
-      });
+      service.subscribeToChannel(
+        'channel',
+        (message) => {
+          received.push(message);
+        },
+        {
+          filter: (msg) => msg.data.priority === 'high',
+        }
+      );
 
       await service.publish('channel', { priority: 'low' });
       await service.publish('channel', { priority: 'high' });
@@ -250,34 +256,32 @@ describe('EventBusService', () => {
 
       // Make request
       const response = await service.request('echo', 'Hello', {
-        timeout: 1000
+        timeout: 1000,
       });
 
       expect(response).toBe('Echo: Hello');
     });
 
     it('should timeout on no response', async () => {
-      await expect(
-        service.request('no-handler', 'data', { timeout: 100 })
-      ).rejects.toThrow(/timed out after/);
+      await expect(service.request('no-handler', 'data', { timeout: 100 })).rejects.toThrow(/timed out after/);
     });
   });
 
   describe('channel statistics', () => {
     it('should track channel statistics', () => {
-      service.subscribeToChannel('channel1', () => { });
-      service.subscribeToChannel('channel1', () => { });
-      service.subscribeToChannel('channel2', () => { });
+      service.subscribeToChannel('channel1', () => {});
+      service.subscribeToChannel('channel1', () => {});
+      service.subscribeToChannel('channel2', () => {});
 
       const stats = service.getChannelStats();
 
       expect(stats.get('channel1')).toMatchObject({
         subscribers: 2,
-        queued: 0
+        queued: 0,
       });
       expect(stats.get('channel2')).toMatchObject({
         subscribers: 1,
-        queued: 0
+        queued: 0,
       });
     });
   });
@@ -292,9 +296,9 @@ describe('EventSchedulerService', () => {
     container = new Container();
     emitter = new EnhancedEventEmitter();
     container.register(EVENT_EMITTER_TOKEN, { useValue: emitter });
-    container.register(EventSchedulerService, { 
+    container.register(EventSchedulerService, {
       useClass: EventSchedulerService,
-      inject: [EVENT_EMITTER_TOKEN]
+      inject: [EVENT_EMITTER_TOKEN],
     });
     service = container.resolve(EventSchedulerService);
   });
@@ -304,18 +308,20 @@ describe('EventSchedulerService', () => {
       const handler = jest.fn();
       emitter.on('delayed.event', handler);
 
-      const jobId = service.scheduleEvent('delayed.event', { data: 'test' }, {
-        delay: 50
-      });
+      const jobId = service.scheduleEvent(
+        'delayed.event',
+        { data: 'test' },
+        {
+          delay: 50,
+        }
+      );
 
       expect(jobId).toMatch(/^job_/);
       expect(handler).not.toHaveBeenCalled();
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
-      expect(handler).toHaveBeenCalledWith(
-        { data: 'test' }
-      );
+      expect(handler).toHaveBeenCalledWith({ data: 'test' });
     });
 
     it('should schedule event at specific time', async () => {
@@ -323,13 +329,17 @@ describe('EventSchedulerService', () => {
       emitter.on('scheduled.event', handler);
 
       const futureTime = new Date(Date.now() + 50);
-      const jobId = service.scheduleEvent('scheduled.event', { data: 'test' }, {
-        at: futureTime
-      });
+      const jobId = service.scheduleEvent(
+        'scheduled.event',
+        { data: 'test' },
+        {
+          at: futureTime,
+        }
+      );
 
       expect(handler).not.toHaveBeenCalled();
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(handler).toHaveBeenCalled();
     });
@@ -340,15 +350,19 @@ describe('EventSchedulerService', () => {
       const handler = jest.fn();
       emitter.on('cancelled.event', handler);
 
-      const jobId = service.scheduleEvent('cancelled.event', {}, {
-        delay: 100
-      });
+      const jobId = service.scheduleEvent(
+        'cancelled.event',
+        {},
+        {
+          delay: 100,
+        }
+      );
 
       const cancelled = service.cancelJob(jobId);
 
       expect(cancelled).toBe(true);
 
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       expect(handler).not.toHaveBeenCalled();
     });
@@ -362,21 +376,21 @@ describe('EventSchedulerService', () => {
       const jobs = service.getJobs();
 
       expect(jobs).toHaveLength(2);
-      expect(jobs.map(j => j.id)).toContain(job1);
-      expect(jobs.map(j => j.id)).toContain(job2);
+      expect(jobs.map((j) => j.id)).toContain(job1);
+      expect(jobs.map((j) => j.id)).toContain(job2);
     });
 
     it('should filter jobs by status', async () => {
       const job1 = service.scheduleEvent('event1', {}, { delay: 10 });
       const job2 = service.scheduleEvent('event2', {}, { delay: 1000 });
 
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       const pendingJobs = service.getJobs({ status: 'pending' });
       const completedJobs = service.getJobs({ status: 'completed' });
 
-      expect(pendingJobs.map(j => j.id)).toContain(job2);
-      expect(completedJobs.map(j => j.id)).toContain(job1);
+      expect(pendingJobs.map((j) => j.id)).toContain(job2);
+      expect(completedJobs.map((j) => j.id)).toContain(job1);
     });
   });
 
@@ -388,7 +402,7 @@ describe('EventSchedulerService', () => {
 
       service.cancelJob(cancelled);
 
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       const stats = service.getStatistics();
 
@@ -414,7 +428,7 @@ describe('EventValidationService', () => {
             return { valid: false, errors: ['Missing required field'] };
           }
           return { valid: true };
-        }
+        },
       });
 
       const valid = service.validate('test.event', { required: true });
@@ -454,8 +468,8 @@ describe('EventValidationService', () => {
         required: ['name', 'age'],
         properties: {
           name: { type: 'string' },
-          age: { type: 'number' }
-        }
+          age: { type: 'number' },
+        },
       });
 
       const result = schema.validate({ name: 'John' });
@@ -475,9 +489,9 @@ describe('EventHistoryService', () => {
     container = new Container();
     emitter = new EnhancedEventEmitter();
     container.register(EVENT_EMITTER_TOKEN, { useValue: emitter });
-    container.register(EventHistoryService, { 
+    container.register(EventHistoryService, {
       useClass: EventHistoryService,
-      inject: [EVENT_EMITTER_TOKEN]
+      inject: [EVENT_EMITTER_TOKEN],
     });
     service = container.resolve(EventHistoryService);
   });
@@ -516,7 +530,7 @@ describe('EventHistoryService', () => {
       expect(history).toHaveLength(2);
       expect(history[0]).toMatchObject({
         event: 'event1',
-        data: { data: 1 }
+        data: { data: 1 },
       });
     });
 
@@ -545,7 +559,7 @@ describe('EventHistoryService', () => {
       expect(parsed).toBeInstanceOf(Array);
       expect(parsed[0]).toMatchObject({
         event: 'event1',
-        data: { data: 'test' }
+        data: { data: 'test' },
       });
     });
 

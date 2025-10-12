@@ -50,9 +50,7 @@ describe('ColorPicker', () => {
     });
 
     it('should render with disabled state', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        ColorPicker({ disabled: true })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => ColorPicker({ disabled: true }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-color-picker]');
@@ -60,9 +58,7 @@ describe('ColorPicker', () => {
     });
 
     it('should not have data-disabled when not disabled', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        ColorPicker({ disabled: false })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => ColorPicker({ disabled: false }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-color-picker]');
@@ -85,10 +81,7 @@ describe('ColorPicker', () => {
     it('should render multiple children using function (Pattern 17)', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         ColorPicker({
-          children: () => [
-            ColorPickerTrigger({ children: 'Pick' }),
-            ColorPickerContent({ children: 'Content' }),
-          ],
+          children: () => [ColorPickerTrigger({ children: 'Pick' }), ColorPickerContent({ children: 'Content' })],
         })
       );
       cleanup = dispose;
@@ -127,9 +120,7 @@ describe('ColorPicker', () => {
     });
 
     it('should render with empty children', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        ColorPicker({ children: () => null })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => ColorPicker({ children: () => null }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-color-picker]');
@@ -271,11 +262,7 @@ describe('ColorPicker', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         ColorPicker({
           defaultValue: { h: 240, s: 100, l: 50, a: 1 },
-          children: () => [
-            ColorPickerTrigger({}),
-            ColorPickerArea({}),
-            ColorPickerHueSlider({}),
-          ],
+          children: () => [ColorPickerTrigger({}), ColorPickerArea({}), ColorPickerHueSlider({})],
         })
       );
       cleanup = dispose;
@@ -335,12 +322,14 @@ describe('ColorPicker', () => {
       preset.click();
 
       expect(onValueChange).toHaveBeenCalled();
-      expect(onValueChange).toHaveBeenCalledWith(expect.objectContaining({
-        h: expect.any(Number),
-        s: expect.any(Number),
-        l: expect.any(Number),
-        a: expect.any(Number),
-      }));
+      expect(onValueChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          h: expect.any(Number),
+          s: expect.any(Number),
+          l: expect.any(Number),
+          a: expect.any(Number),
+        })
+      );
     });
 
     it('should use controlled value over internal state', () => {
@@ -1151,9 +1140,7 @@ describe('ColorPicker', () => {
 
   describe('Edge Cases', () => {
     it('should handle empty children', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        ColorPicker({ children: undefined })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => ColorPicker({ children: undefined }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-color-picker]');
@@ -1231,10 +1218,7 @@ describe('ColorPicker', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         ColorPicker({
           format: 'hex',
-          children: () => [
-            ColorPickerTrigger({}),
-            ColorPickerPreset({ color: '#00ff00' }),
-          ],
+          children: () => [ColorPickerTrigger({}), ColorPickerPreset({ color: '#00ff00' })],
         })
       );
       cleanup = dispose;

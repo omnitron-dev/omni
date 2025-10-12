@@ -1,9 +1,9 @@
 /**
  * Service Mesh Integration for Nexus DI
- * 
+ *
  * @module mesh
  * @packageDocumentation
- * 
+ *
  * Provides service discovery, load balancing, and distributed communication
  */
 
@@ -47,7 +47,7 @@ export enum LoadBalancingStrategy {
   LeastConnections = 'least-connections',
   WeightedRoundRobin = 'weighted-round-robin',
   ResponseTime = 'response-time',
-  ConsistentHash = 'consistent-hash'
+  ConsistentHash = 'consistent-hash',
 }
 
 /**
@@ -56,7 +56,7 @@ export enum LoadBalancingStrategy {
 export enum CircuitState {
   Closed = 'closed',
   Open = 'open',
-  HalfOpen = 'half-open'
+  HalfOpen = 'half-open',
 }
 
 /**
@@ -112,7 +112,9 @@ export class ConsulServiceDiscovery implements ServiceDiscovery {
     this.startHealthChecking();
   }
 
-  async register(service: Partial<ServiceInstance> & { id: string; name: string; address: string; port: number }): Promise<void> {
+  async register(
+    service: Partial<ServiceInstance> & { id: string; name: string; address: string; port: number }
+  ): Promise<void> {
     // Use mocked consul if available (for testing)
     if (this.consul?.agent?.service?.register) {
       const registration = {
@@ -121,7 +123,7 @@ export class ConsulServiceDiscovery implements ServiceDiscovery {
         address: service.address,
         port: service.port,
         tags: service.tags,
-        check: (service as any).check
+        check: (service as any).check,
       };
       await this.consul.agent.service.register(registration);
     } else {
@@ -136,15 +138,15 @@ export class ConsulServiceDiscovery implements ServiceDiscovery {
         Check: (service as any).check || {
           HTTP: `http://${service.address}:${service.port}/health`,
           Interval: '10s',
-          Timeout: '5s'
-        }
+          Timeout: '5s',
+        },
       };
 
       const fetchFn = (global as any).fetch || fetch;
       const response = await fetchFn(`${this.consulUrl}/v1/agent/service/register`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(registration)
+        body: JSON.stringify(registration),
       });
 
       if (!response.ok) {
@@ -160,10 +162,7 @@ export class ConsulServiceDiscovery implements ServiceDiscovery {
   }
 
   async deregister(serviceId: string): Promise<void> {
-    const response = await fetch(
-      `${this.consulUrl}/v1/agent/service/deregister/${serviceId}`,
-      { method: 'PUT' }
-    );
+    const response = await fetch(`${this.consulUrl}/v1/agent/service/deregister/${serviceId}`, { method: 'PUT' });
 
     if (!response.ok) {
       throw HttpErrors.fromStatus(response.status, `Failed to deregister service: ${response.statusText}`);
@@ -171,7 +170,7 @@ export class ConsulServiceDiscovery implements ServiceDiscovery {
 
     // Update local cache
     for (const [name, instances] of this.services) {
-      const index = instances.findIndex(i => i.id === serviceId);
+      const index = instances.findIndex((i) => i.id === serviceId);
       if (index !== -1) {
         instances.splice(index, 1);
         this.notifyWatchers(name);
@@ -193,12 +192,12 @@ export class ConsulServiceDiscovery implements ServiceDiscovery {
         metadata: entry.Service.Meta || {},
         health: 'healthy',
         lastHeartbeat: new Date(),
-        tags: entry.Service.Tags
+        tags: entry.Service.Tags,
       }));
 
       // Filter by version if specified
       if (version) {
-        return instances.filter(i => i.version === version);
+        return instances.filter((i) => i.version === version);
       }
 
       return instances;
@@ -206,9 +205,7 @@ export class ConsulServiceDiscovery implements ServiceDiscovery {
       // Real implementation
       const fetchFn = (global as any).fetch || fetch;
       try {
-        const response = await fetchFn(
-          `${this.consulUrl}/v1/health/service/${serviceName}?passing=true`
-        );
+        const response = await fetchFn(`${this.consulUrl}/v1/health/service/${serviceName}?passing=true`);
 
         if (!response.ok) {
           // Return empty array if service not found
@@ -231,12 +228,12 @@ export class ConsulServiceDiscovery implements ServiceDiscovery {
           metadata: entry.Service.Meta || {},
           health: 'healthy',
           lastHeartbeat: new Date(),
-          tags: entry.Service.Tags
+          tags: entry.Service.Tags,
         }));
 
         // Filter by version if specified
         if (version) {
-          return instances.filter(i => i.version === version);
+          return instances.filter((i) => i.version === version);
         }
 
         return instances;
@@ -264,9 +261,7 @@ export class ConsulServiceDiscovery implements ServiceDiscovery {
   }
 
   async health(serviceId: string): Promise<'healthy' | 'unhealthy'> {
-    const response = await fetch(
-      `${this.consulUrl}/v1/agent/health/service/id/${serviceId}`
-    );
+    const response = await fetch(`${this.consulUrl}/v1/agent/health/service/id/${serviceId}`);
 
     if (!response.ok) {
       return 'unhealthy';
@@ -277,7 +272,7 @@ export class ConsulServiceDiscovery implements ServiceDiscovery {
   }
 
   private extractVersion(tags: string[]): string {
-    const versionTag = tags?.find(t => t.startsWith('version:'));
+    const versionTag = tags?.find((t) => t.startsWith('version:'));
     return versionTag ? versionTag.split(':')[1] || '1.0.0' : '1.0.0';
   }
 
@@ -285,7 +280,7 @@ export class ConsulServiceDiscovery implements ServiceDiscovery {
     const watchers = this.watchers.get(serviceName);
     if (watchers) {
       const instances = this.services.get(serviceName) || [];
-      watchers.forEach(callback => callback(instances));
+      watchers.forEach((callback) => callback(instances));
     }
   }
 
@@ -344,7 +339,7 @@ export class LoadBalancer {
   }
 
   setEndpoints(endpoints: ServiceEndpoint[]): void {
-    this.instances = endpoints.map(endpoint => ({
+    this.instances = endpoints.map((endpoint) => ({
       id: endpoint.id,
       name: 'service',
       version: '1.0.0',
@@ -353,7 +348,7 @@ export class LoadBalancer {
       metadata: {},
       health: 'healthy' as const,
       lastHeartbeat: new Date(),
-      weight: endpoint.weight
+      weight: endpoint.weight,
     }));
 
     // Build weighted sequence for deterministic weighted round-robin
@@ -361,7 +356,7 @@ export class LoadBalancer {
   }
 
   setInstances(instances: ServiceInstance[]): void {
-    this.instances = instances.filter(i => i.health === 'healthy');
+    this.instances = instances.filter((i) => i.health === 'healthy');
   }
 
   next(key?: string): ServiceEndpoint | null {
@@ -372,7 +367,7 @@ export class LoadBalancer {
       id: instance.id,
       address: instance.address,
       port: instance.port,
-      weight: instance.weight
+      weight: instance.weight,
     };
   }
 
@@ -563,9 +558,7 @@ export class CircuitBreaker {
   private async withTimeout<T>(promise: Promise<T>, timeout: number): Promise<T> {
     return Promise.race([
       promise,
-      new Promise<T>((_, reject) =>
-        setTimeout(() => reject(Errors.timeout('request', timeout)), timeout)
-      )
+      new Promise<T>((_, reject) => setTimeout(() => reject(Errors.timeout('request', timeout)), timeout)),
     ]);
   }
 
@@ -632,10 +625,7 @@ export class ServiceProxy<T = any> {
   private circuitBreaker?: CircuitBreaker;
   private config: ServiceProxyConfig;
 
-  constructor(
-    discovery: ServiceDiscovery,
-    config: ServiceProxyConfig
-  ) {
+  constructor(discovery: ServiceDiscovery, config: ServiceProxyConfig) {
     this.discovery = discovery;
     this.config = config;
     this.loadBalancer = new LoadBalancer(config.loadBalancing);
@@ -657,7 +647,7 @@ export class ServiceProxy<T = any> {
           return (...args: any[]) => this.invokeRemoteMethod(prop, args);
         }
         return undefined;
-      }
+      },
     }) as T;
   }
 
@@ -718,11 +708,7 @@ export class ServiceProxy<T = any> {
   /**
    * Call remote service
    */
-  private async callRemoteService(
-    instance: ServiceInstance,
-    method: string,
-    args: any[]
-  ): Promise<any> {
+  private async callRemoteService(instance: ServiceInstance, method: string, args: any[]): Promise<any> {
     const url = `http://${instance.address}:${instance.port}/rpc`;
     const timeout = this.config.timeout || 30000;
 
@@ -736,10 +722,10 @@ export class ServiceProxy<T = any> {
           'Content-Type': 'application/json',
           'X-Service-Name': this.config.serviceName,
           'X-Service-Version': this.config.version || '',
-          'X-Method': method
+          'X-Method': method,
         },
         body: JSON.stringify({ method, args }),
-        signal: controller.signal
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -763,19 +749,19 @@ export class ServiceProxy<T = any> {
   private startWatching(): void {
     this.discovery.watch(this.config.serviceName, (instances) => {
       if (this.config.version) {
-        instances = instances.filter(i => i.version === this.config.version);
+        instances = instances.filter((i) => i.version === this.config.version);
       }
       this.loadBalancer.setInstances(instances);
     });
 
     // Initial discovery
-    this.discovery.discover(this.config.serviceName, this.config.version).then(
-      instances => this.loadBalancer.setInstances(instances)
-    );
+    this.discovery
+      .discover(this.config.serviceName, this.config.version)
+      .then((instances) => this.loadBalancer.setInstances(instances));
   }
 
   private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 
@@ -796,7 +782,7 @@ export function createRemoteProxy<T extends object>(options: {
     const config: ServiceProxyConfig = {
       serviceName: options.serviceName,
       loadBalancing: LoadBalancingStrategy.RoundRobin,
-      retries: options.retry?.maxAttempts || 0
+      retries: options.retry?.maxAttempts || 0,
     };
 
     const proxy = new ServiceProxy<T>(options.discovery, config);
@@ -826,7 +812,7 @@ export function createRemoteProxy<T extends object>(options: {
                 const response = await fetch(url, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ method: prop, args })
+                  body: JSON.stringify({ method: prop, args }),
                 });
 
                 if (response.ok) {
@@ -838,7 +824,7 @@ export function createRemoteProxy<T extends object>(options: {
                 attempts++;
                 if (attempts >= maxAttempts) throw error;
                 if (options.retry?.delay) {
-                  await new Promise(resolve => setTimeout(resolve, options.retry!.delay));
+                  await new Promise((resolve) => setTimeout(resolve, options.retry!.delay));
                 }
               }
             }
@@ -847,7 +833,7 @@ export function createRemoteProxy<T extends object>(options: {
           };
         }
         return undefined;
-      }
+      },
     }) as T;
   }
 
@@ -905,7 +891,7 @@ export class ServiceMeshManager {
         loadBalancing: this.config.loadBalancing || LoadBalancingStrategy.RoundRobin,
         circuitBreaker: this.config.circuitBreaker,
         retries: this.config.retries,
-        timeout: this.config.timeout
+        timeout: this.config.timeout,
       };
 
       const proxy = new ServiceProxy<T>(this.discovery, proxyConfig);
@@ -958,7 +944,7 @@ export class ServiceRegistry {
         metadata: metadata.metadata || {},
         health: 'healthy',
         lastHeartbeat: new Date(),
-        ...metadata
+        ...metadata,
       });
     }
   }
@@ -1004,13 +990,13 @@ export function createRemoteServiceProvider<T>(
           timeout: 60000,
           resetTimeout: 30000,
           monitoringPeriod: 60000,
-          failureRate: 0.5
-        }
+          failureRate: 0.5,
+        },
       });
 
       return proxy.createProxy();
     },
-    inject: [discoveryToken]
+    inject: [discoveryToken],
   };
 }
 
@@ -1058,7 +1044,7 @@ export class HealthCheck {
       interval: 30000,
       timeout: 5000,
       unhealthyThreshold: 3,
-      ...config
+      ...config,
     };
   }
 
@@ -1076,8 +1062,8 @@ export class HealthCheck {
         const response = await fetch(this.config.endpoint, {
           signal: controller.signal,
           headers: {
-            'Accept': 'application/json'
-          }
+            Accept: 'application/json',
+          },
         });
 
         clearTimeout(timeoutId);
@@ -1091,7 +1077,7 @@ export class HealthCheck {
           return {
             healthy: true,
             status: result.status || 'healthy',
-            timestamp: this.lastCheck
+            timestamp: this.lastCheck,
           };
         } else {
           throw HttpErrors.fromStatus(response.status, response.statusText);
@@ -1110,7 +1096,7 @@ export class HealthCheck {
       return {
         healthy: false,
         error: error.message,
-        timestamp: this.lastCheck
+        timestamp: this.lastCheck,
       };
     }
   }

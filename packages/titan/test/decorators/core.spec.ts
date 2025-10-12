@@ -19,7 +19,7 @@ import {
   METADATA_KEYS,
   type InjectableOptions,
   type ModuleDecoratorOptions,
-  type Scope
+  type Scope,
 } from '../../src/decorators/core.js';
 
 describe('Core Decorators', () => {
@@ -58,7 +58,7 @@ describe('Core Decorators', () => {
     it('should store options metadata', () => {
       const options: InjectableOptions = {
         scope: 'singleton',
-        providedIn: 'root'
+        providedIn: 'root',
       };
 
       @Injectable(options)
@@ -86,7 +86,7 @@ describe('Core Decorators', () => {
         version: '1.0.0',
         imports: [],
         providers: [],
-        exports: []
+        exports: [],
       };
 
       @Module(options)
@@ -106,7 +106,7 @@ describe('Core Decorators', () => {
     it('should set auto-discovery properties', () => {
       const options: ModuleDecoratorOptions = {
         name: 'AutoModule',
-        providers: [class ServiceA {}]
+        providers: [class ServiceA {}],
       };
 
       @Module(options)
@@ -140,7 +140,7 @@ describe('Core Decorators', () => {
         imports: [SubModule],
         providers: [ServiceA, ServiceB],
         exports: [ServiceA],
-        global: true
+        global: true,
       };
 
       @Module(options)
@@ -205,7 +205,7 @@ describe('Core Decorators', () => {
       const metadata = Reflect.getMetadata('service', UserService);
       expect(metadata).toEqual({
         name: 'UserService',
-        version: undefined
+        version: undefined,
       });
 
       expect(Reflect.getMetadata(METADATA_KEYS.SERVICE_NAME, UserService)).toBe('UserService');
@@ -358,7 +358,7 @@ describe('Core Decorators', () => {
       @Global()
       @Module({
         name: 'SharedModule',
-        providers: []
+        providers: [],
       })
       class SharedModule {}
 
@@ -367,7 +367,7 @@ describe('Core Decorators', () => {
       expect(Reflect.hasMetadata('nexus:module', SharedModule)).toBe(true);
       expect(Reflect.getMetadata('nexus:module', SharedModule)).toEqual({
         name: 'SharedModule',
-        providers: []
+        providers: [],
       });
     });
 
@@ -395,7 +395,7 @@ describe('Core Decorators', () => {
       @Module({
         name: 'CompleteModule',
         providers: [Provider1, ApiController, DataRepository],
-        exports: [Provider1]
+        exports: [Provider1],
       })
       class CompleteModule {}
 
@@ -410,7 +410,7 @@ describe('Core Decorators', () => {
     it('should support all valid scope types', () => {
       const scopes: Scope[] = ['singleton', 'transient', 'scoped', 'request'];
 
-      scopes.forEach(scope => {
+      scopes.forEach((scope) => {
         @Injectable({ scope })
         class TestService {}
 

@@ -637,10 +637,7 @@ describe('Alert Composition', () => {
     it('should render alert with icon and description only', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         Alert({
-          children: [
-            AlertIcon({ children: 'ℹ' }),
-            AlertDescription({ children: 'Information message' }),
-          ],
+          children: [AlertIcon({ children: 'ℹ' }), AlertDescription({ children: 'Information message' })],
         })
       );
       cleanup = dispose;

@@ -14,26 +14,22 @@ import { CONFIG_SERVICE_TOKEN } from '../../src/modules/config/config.tokens.js'
 import { LoggerModule, LOGGER_SERVICE_TOKEN } from '../../src/modules/logger/index.js';
 
 // Wrapper for createApp that disables graceful shutdown by default in tests
-const createApp = (options: any = {}) => originalCreateApp({
+const createApp = (options: any = {}) =>
+  originalCreateApp({
     disableGracefulShutdown: true,
     disableCoreModules: true, // Disable core modules by default in tests
     logger: false, // Disable logger in tests to reduce noise
-    ...options
+    ...options,
   });
 
 // Create app with core modules for specific tests
-const createAppWithCoreModules = async (options: any = {}) => Application.create({
+const createAppWithCoreModules = async (options: any = {}) =>
+  Application.create({
     disableGracefulShutdown: true,
     logger: false,
-    ...options
+    ...options,
   });
-import {
-  ApplicationState,
-  Module,
-  HealthStatus,
-  IApplication,
-  IModule
-} from '../../src/types.js';
+import { ApplicationState, Module, HealthStatus, IApplication, IModule } from '../../src/types.js';
 
 // Test fixtures
 class TestModule implements IModule {
@@ -72,7 +68,7 @@ class TestModule implements IModule {
     return {
       status: 'healthy',
       message: 'Test module is healthy',
-      details: { startCalled: this.startCalled }
+      details: { startCalled: this.startCalled },
     };
   }
 }
@@ -86,11 +82,11 @@ class SlowModule implements IModule {
   }
 
   async onStart(): Promise<void> {
-    await new Promise(resolve => setTimeout(resolve, this.delay));
+    await new Promise((resolve) => setTimeout(resolve, this.delay));
   }
 
   async onStop(): Promise<void> {
-    await new Promise(resolve => setTimeout(resolve, this.delay));
+    await new Promise((resolve) => setTimeout(resolve, this.delay));
   }
 }
 
@@ -191,8 +187,8 @@ describe('Titan Application', () => {
         debug: true,
         gracefulShutdownTimeout: 5000,
         config: {
-          custom: 'value'
-        }
+          custom: 'value',
+        },
       });
 
       expect(app.config('name')).toBe('custom-app');
@@ -223,7 +219,7 @@ describe('Titan Application', () => {
       app = await Application.create({
         disableGracefulShutdown: true,
         disableCoreModules: true,
-        logger: false
+        logger: false,
       });
       expect(app.has(CONFIG_SERVICE_TOKEN)).toBe(false);
       expect(app.has(LOGGER_SERVICE_TOKEN)).toBe(false);
@@ -269,10 +265,18 @@ describe('Titan Application', () => {
       app = createApp();
 
       const events: string[] = [];
-      app.on('starting', () => { events.push('starting'); });
-      app.on('started', () => { events.push('started'); });
-      app.on('stopping', () => { events.push('stopping'); });
-      app.on('stopped', () => { events.push('stopped'); });
+      app.on('starting', () => {
+        events.push('starting');
+      });
+      app.on('started', () => {
+        events.push('started');
+      });
+      app.on('stopping', () => {
+        events.push('stopping');
+      });
+      app.on('stopped', () => {
+        events.push('stopped');
+      });
 
       await app.start();
       await app.stop();
@@ -325,16 +329,22 @@ describe('Titan Application', () => {
       app.onStart({
         name: 'hook1',
         priority: 200,
-        handler: () => { order.push('hook1'); }
+        handler: () => {
+          order.push('hook1');
+        },
       });
 
       app.onStart({
         name: 'hook2',
         priority: 100,
-        handler: () => { order.push('hook2'); }
+        handler: () => {
+          order.push('hook2');
+        },
       });
 
-      app.onStart(() => { order.push('hook3'); }); // Default priority 100
+      app.onStart(() => {
+        order.push('hook3');
+      }); // Default priority 100
 
       await app.start();
       expect(order).toEqual(['hook2', 'hook3', 'hook1']);
@@ -344,9 +354,15 @@ describe('Titan Application', () => {
       app = createApp();
       const order: string[] = [];
 
-      app.onStop(() => { order.push('hook1'); });
-      app.onStop(() => { order.push('hook2'); });
-      app.onStop(() => { order.push('hook3'); });
+      app.onStop(() => {
+        order.push('hook1');
+      });
+      app.onStop(() => {
+        order.push('hook2');
+      });
+      app.onStop(() => {
+        order.push('hook3');
+      });
 
       await app.start();
       await app.stop();
@@ -359,7 +375,7 @@ describe('Titan Application', () => {
       let hookCompleted = false;
 
       app.onStart(async () => {
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
         hookCompleted = true;
       });
 
@@ -374,8 +390,8 @@ describe('Titan Application', () => {
         name: 'slow-hook',
         timeout: 50,
         handler: async () => {
-          await new Promise(resolve => setTimeout(resolve, 200));
-        }
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        },
       });
 
       await expect(app.start()).rejects.toThrow('Start hook slow-hook timed out');
@@ -383,7 +399,7 @@ describe('Titan Application', () => {
 
     it('should handle startApp helper', async () => {
       app = await startApp({
-        name: 'helper-app'
+        name: 'helper-app',
       });
 
       expect(app.state).toBe(ApplicationState.Started);
@@ -426,8 +442,8 @@ describe('Titan Application', () => {
     it('should configure modules with config', () => {
       app = createApp({
         config: {
-          test: { key: 'value' }
-        }
+          test: { key: 'value' },
+        },
       });
 
       const module = new TestModule();
@@ -442,9 +458,15 @@ describe('Titan Application', () => {
       const module = new TestModule();
       const events: any[] = [];
 
-      app.on('module:registered', (data) => { events.push({ event: 'registered', ...data }); });
-      app.on('module:started', (data) => { events.push({ event: 'started', ...data }); });
-      app.on('module:stopped', (data) => { events.push({ event: 'stopped', ...data }); });
+      app.on('module:registered', (data) => {
+        events.push({ event: 'registered', ...data });
+      });
+      app.on('module:started', (data) => {
+        events.push({ event: 'started', ...data });
+      });
+      app.on('module:stopped', (data) => {
+        events.push({ event: 'stopped', ...data });
+      });
 
       app.use(module);
       await app.start();
@@ -452,19 +474,17 @@ describe('Titan Application', () => {
 
       // Note: 'registered' events are not emitted in current implementation
       // Only 'started' and 'stopped' events are emitted
-      const expectedEvents = events.filter(e =>
-        e.event === 'started' || e.event === 'stopped'
-      );
+      const expectedEvents = events.filter((e) => e.event === 'started' || e.event === 'stopped');
 
       // Check that we have module start/stop events
-      expect(expectedEvents.some(e => e.event === 'started' && e.module === 'test')).toBe(true);
-      expect(expectedEvents.some(e => e.event === 'stopped' && e.module === 'test')).toBe(true);
+      expect(expectedEvents.some((e) => e.event === 'started' && e.module === 'test')).toBe(true);
+      expect(expectedEvents.some((e) => e.event === 'stopped' && e.module === 'test')).toBe(true);
 
       // Core modules should also have events if they were registered
       // Note: Core modules (config, logger) emit events with different names
       // They are not registered as regular modules, so they emit 'logger' instead of 'LoggerModule'
       if (app.has(LOGGER_SERVICE_TOKEN)) {
-        expect(expectedEvents.some(e => e.event === 'started' && e.module === 'logger')).toBe(true);
+        expect(expectedEvents.some((e) => e.event === 'started' && e.module === 'logger')).toBe(true);
       }
     });
 
@@ -487,7 +507,9 @@ describe('Titan Application', () => {
       app.use(moduleA);
 
       const startOrder: string[] = [];
-      app.on('module:started', (data) => { startOrder.push(data.module); });
+      app.on('module:started', (data) => {
+        startOrder.push(data.module);
+      });
 
       await app.start();
 
@@ -545,7 +567,9 @@ describe('Titan Application', () => {
       app.use(module3);
 
       const stopOrder: string[] = [];
-      app.on('module:stopped', (data) => { stopOrder.push(data.module); });
+      app.on('module:stopped', (data) => {
+        stopOrder.push(data.module);
+      });
 
       await app.start();
       await app.stop();
@@ -611,8 +635,7 @@ describe('Titan Application', () => {
       const customConfig = new CustomConfigModule();
       const customLogger = new CustomLoggerModule();
 
-      app.replaceModule(CONFIG_SERVICE_TOKEN, customConfig)
-        .replaceModule(LOGGER_SERVICE_TOKEN, customLogger);
+      app.replaceModule(CONFIG_SERVICE_TOKEN, customConfig).replaceModule(LOGGER_SERVICE_TOKEN, customLogger);
 
       await app.start();
 
@@ -625,8 +648,9 @@ describe('Titan Application', () => {
       await app.start();
 
       const customConfig = new CustomConfigModule();
-      expect(() => app.replaceModule(CONFIG_SERVICE_TOKEN, customConfig))
-        .toThrow('Cannot replace modules after application has started');
+      expect(() => app.replaceModule(CONFIG_SERVICE_TOKEN, customConfig)).toThrow(
+        'Cannot replace modules after application has started'
+      );
     });
 
     it('should handle replacement of non-existent module', async () => {
@@ -649,7 +673,9 @@ describe('Titan Application', () => {
       app.use(testModule);
 
       const startOrder: string[] = [];
-      app.on('module:started', (data) => { startOrder.push(data.module); });
+      app.on('module:started', (data) => {
+        startOrder.push(data.module);
+      });
 
       await app.start();
 
@@ -667,13 +693,13 @@ describe('Titan Application', () => {
       app.configure({
         database: {
           host: 'localhost',
-          port: 5432
-        }
+          port: 5432,
+        },
       });
 
       expect(app.config('database')).toEqual({
         host: 'localhost',
-        port: 5432
+        port: 5432,
       });
     });
 
@@ -681,13 +707,13 @@ describe('Titan Application', () => {
       app = createApp({
         config: {
           app: { name: 'test' },
-          server: { port: 3000 }
-        }
+          server: { port: 3000 },
+        },
       });
 
       app.configure({
         server: { host: 'localhost' },
-        database: { url: 'postgres://...' }
+        database: { url: 'postgres://...' },
       });
 
       expect(app.config('app')).toEqual({ name: 'test' });
@@ -711,10 +737,7 @@ describe('Titan Application', () => {
     it('should chain configuration calls', () => {
       app = createApp();
 
-      const result = app
-        .configure({ a: 1 })
-        .configure({ b: 2 })
-        .configure({ c: 3 });
+      const result = app.configure({ a: 1 }).configure({ b: 2 }).configure({ c: 3 });
 
       expect(result).toBe(app);
       expect(app.config('a')).toBe(1);
@@ -736,7 +759,7 @@ describe('Titan Application', () => {
         expect.objectContaining({
           event: 'started',
           timestamp: expect.any(Number),
-          source: 'application'
+          source: 'application',
         })
       );
     });
@@ -787,12 +810,12 @@ describe('Titan Application', () => {
       let completed = false;
 
       app.on('started', async () => {
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
         completed = true;
       });
 
       await app.start();
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
       expect(completed).toBe(true);
     });
   });
@@ -852,10 +875,7 @@ describe('Titan Application', () => {
 
       app.emit('error', new Error('Original error'));
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        'Error in error handler:',
-        expect.any(Error)
-      );
+      expect(consoleSpy).toHaveBeenCalledWith('Error in error handler:', expect.any(Error));
 
       consoleSpy.mockRestore();
     });
@@ -906,7 +926,7 @@ describe('Titan Application', () => {
       // TODO: Implement graceful shutdown in Application
       app = createApp({
         gracefulShutdownTimeout: 100,
-        disableGracefulShutdown: false  // Enable for this test
+        disableGracefulShutdown: false, // Enable for this test
       });
       await app.start();
 
@@ -916,7 +936,7 @@ describe('Titan Application', () => {
         // Expected - process.exit mock throws
       }
 
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
       expect(exitCode).toBe(0);
     });
 
@@ -924,7 +944,7 @@ describe('Titan Application', () => {
       // TODO: Implement graceful shutdown in Application
       app = createApp({
         gracefulShutdownTimeout: 100,
-        disableGracefulShutdown: false  // Enable for this test
+        disableGracefulShutdown: false, // Enable for this test
       });
       await app.start();
 
@@ -934,14 +954,14 @@ describe('Titan Application', () => {
         // Expected - process.exit mock throws
       }
 
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
       expect(exitCode).toBe(0);
     });
 
     it.skip('should handle uncaught exception', async () => {
       // TODO: Implement graceful shutdown in Application
       app = createApp({
-        disableGracefulShutdown: false  // Enable for this test
+        disableGracefulShutdown: false, // Enable for this test
       });
       await app.start();
 
@@ -958,13 +978,13 @@ describe('Titan Application', () => {
     it.skip('should handle unhandled rejection', async () => {
       // TODO: Implement graceful shutdown in Application
       app = createApp({
-        disableGracefulShutdown: false  // Enable for this test
+        disableGracefulShutdown: false, // Enable for this test
       });
       await app.start();
 
       const rejectedPromise = Promise.reject('Test rejection');
       // Suppress unhandled rejection warning
-      rejectedPromise.catch(() => { });
+      rejectedPromise.catch(() => {});
 
       try {
         process.emit('unhandledRejection', 'Test rejection', rejectedPromise);
@@ -979,7 +999,7 @@ describe('Titan Application', () => {
       // TODO: Implement graceful shutdown in Application
       app = createApp({
         gracefulShutdownTimeout: 50,
-        disableGracefulShutdown: false  // Enable for this test
+        disableGracefulShutdown: false, // Enable for this test
       });
       const slowModule = new SlowModule(200);
       app.use(slowModule);
@@ -992,7 +1012,7 @@ describe('Titan Application', () => {
         // Expected - process.exit mock throws
       }
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
       expect(exitCode).toBe(1);
     });
   });
@@ -1002,8 +1022,8 @@ describe('Titan Application', () => {
       app = await createAppWithCoreModules({
         config: {
           app: { name: 'integration-test' },
-          logger: { level: 'debug' }
-        }
+          logger: { level: 'debug' },
+        },
       });
 
       await app.start();
@@ -1021,9 +1041,9 @@ describe('Titan Application', () => {
         config: {
           logger: {
             level: 'debug',
-            prettyPrint: false
-          }
-        }
+            prettyPrint: false,
+          },
+        },
       });
 
       await app.start();
@@ -1041,9 +1061,9 @@ describe('Titan Application', () => {
         config: {
           logger: {
             level: 'trace',
-            prettyPrint: false
-          }
-        }
+            prettyPrint: false,
+          },
+        },
       });
 
       await app.start();
@@ -1083,9 +1103,9 @@ describe('Titan Application', () => {
           logger: {
             level: 'info',
             enabled: true,
-            prettyPrint: false
-          }
-        }
+            prettyPrint: false,
+          },
+        },
       });
 
       // Spy on logger methods after module is created
@@ -1110,7 +1130,7 @@ describe('Titan Application', () => {
       expect(app.uptime).toBe(0);
 
       await app.start();
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(app.uptime).toBeGreaterThanOrEqual(100);
       expect(app.uptime).toBeLessThan(200);
@@ -1144,7 +1164,7 @@ describe('Titan Application', () => {
       const startDuration = Date.now() - startTime;
 
       // All modules should be started
-      modules.forEach(module => {
+      modules.forEach((module) => {
         expect(module.startCalled).toBe(true);
       });
 
@@ -1156,7 +1176,7 @@ describe('Titan Application', () => {
       const stopDuration = Date.now() - stopTime;
 
       // All modules should be stopped
-      modules.forEach(module => {
+      modules.forEach((module) => {
         expect(module.stopCalled).toBe(true);
       });
 
@@ -1223,7 +1243,7 @@ describe('Titan Application', () => {
       app = createApp();
 
       const minimalModule: Module = {
-        name: 'minimal'
+        name: 'minimal',
       };
 
       app.use(minimalModule);
@@ -1241,8 +1261,8 @@ describe('Titan Application', () => {
         nullValue: null,
         undefinedValue: undefined,
         nested: {
-          nullValue: null
-        }
+          nullValue: null,
+        },
       });
 
       expect(app.config('nullValue')).toBeNull();
@@ -1289,7 +1309,7 @@ describe('Titan Application', () => {
         name: 'bad',
         onStart: () => {
           throw new Error('Sync error');
-        }
+        },
       };
 
       app.use(badModule);
@@ -1354,12 +1374,12 @@ describe('Titan Application', () => {
         config: {
           features: {
             moduleA: true,
-            moduleB: false
-          }
-        }
+            moduleB: false,
+          },
+        },
       });
 
-      const config = await app.container.resolveAsync(CONFIG_SERVICE_TOKEN) as ConfigService;
+      const config = (await app.container.resolveAsync(CONFIG_SERVICE_TOKEN)) as ConfigService;
 
       if (config.get('features.moduleA')) {
         class ModuleA extends TestModule {
@@ -1495,7 +1515,7 @@ describe('Titan Application', () => {
         ApplicationState.Created,
         ApplicationState.Started,
         ApplicationState.Started,
-        ApplicationState.Stopped
+        ApplicationState.Stopped,
       ]);
     });
 
@@ -1525,10 +1545,18 @@ describe('Titan Application', () => {
 
       const states: ApplicationState[] = [];
 
-      app.on('starting', () => { states.push(app.state); });
-      app.on('started', () => { states.push(app.state); });
-      app.on('stopping', () => { states.push(app.state); });
-      app.on('stopped', () => { states.push(app.state); });
+      app.on('starting', () => {
+        states.push(app.state);
+      });
+      app.on('started', () => {
+        states.push(app.state);
+      });
+      app.on('stopping', () => {
+        states.push(app.state);
+      });
+      app.on('stopped', () => {
+        states.push(app.state);
+      });
 
       await app.restart();
 
@@ -1536,7 +1564,7 @@ describe('Titan Application', () => {
         ApplicationState.Stopping,
         ApplicationState.Stopped,
         ApplicationState.Starting,
-        ApplicationState.Started
+        ApplicationState.Started,
       ]);
     });
   });

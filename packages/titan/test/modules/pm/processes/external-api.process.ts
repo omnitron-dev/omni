@@ -15,13 +15,13 @@ export default class ExternalApiService {
   @CircuitBreaker({
     threshold: 5, // Open circuit after 5 failures
     timeout: 1000, // 1 second timeout per call
-    fallback: 'getFallbackData'
+    fallback: 'getFallbackData',
   })
   async fetchData(endpoint: string): Promise<{ data: any; source: 'primary' | 'fallback' }> {
     this.callCount++;
 
     // Simulate network latency
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     // Simulate failures based on failure rate
     if (Math.random() < this.failureRate) {
@@ -32,7 +32,7 @@ export default class ExternalApiService {
     this.consecutiveFailures = 0;
     return {
       data: { endpoint, timestamp: Date.now(), value: Math.random() },
-      source: 'primary'
+      source: 'primary',
     };
   }
 
@@ -41,7 +41,7 @@ export default class ExternalApiService {
     // Return cached or default data
     return {
       data: { endpoint, cached: true, timestamp: Date.now() },
-      source: 'fallback'
+      source: 'fallback',
     };
   }
 
@@ -55,7 +55,7 @@ export default class ExternalApiService {
     return {
       callCount: this.callCount,
       consecutiveFailures: this.consecutiveFailures,
-      failureRate: this.failureRate
+      failureRate: this.failureRate,
     };
   }
 

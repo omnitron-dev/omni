@@ -5,12 +5,7 @@
  */
 
 import { Application, createApp } from '../../src/application.js';
-import {
-  IApplicationOptions,
-  IModule,
-  IApplication,
-  ApplicationEvent
-} from '../../src/types.js';
+import { IApplicationOptions, IModule, IApplication, ApplicationEvent } from '../../src/types.js';
 import {
   SimpleModule,
   DatabaseModule,
@@ -24,7 +19,7 @@ import {
   NotificationService,
   AuthServiceToken,
   UserServiceToken,
-  NotificationServiceToken
+  NotificationServiceToken,
 } from './test-modules.js';
 import { Module, Injectable } from '../../src/decorators/index.js';
 import { createToken } from '@nexus';
@@ -48,8 +43,8 @@ export function createWebApplication(options: Partial<IApplicationOptions> = {})
       http: { port: 3000 },
       database: { host: 'localhost', port: 5432, poolSize: 10 },
       cache: { ttl: 60000 },
-      ...options.config
-    }
+      ...options.config,
+    },
   });
 
   const httpModule = new HttpServerModule();
@@ -75,18 +70,15 @@ class HealthCheckService {
       services: {
         api: 'up',
         database: 'up',
-        cache: 'up'
-      }
+        cache: 'up',
+      },
     };
   }
 }
 
 @Module({
-  providers: [
-    HealthCheckService,
-    { provide: 'CONFIG', useValue: { env: 'test' } }
-  ],
-  exports: [HealthCheckService]
+  providers: [HealthCheckService, { provide: 'CONFIG', useValue: { env: 'test' } }],
+  exports: [HealthCheckService],
 })
 class HealthModule extends SimpleModule {
   override readonly name = 'health';
@@ -107,8 +99,8 @@ export function createMicroserviceApplication(serviceName = 'microservice'): App
       health: { interval: 30000 },
       database: { host: 'db', port: 5432 },
       cache: { ttl: 30000 },
-      queue: { workers: 5 }
-    }
+      queue: { workers: 5 },
+    },
   });
 
   // Core infrastructure
@@ -147,7 +139,7 @@ class TaskProcessorModule extends SimpleModule {
         app.emit(ApplicationEvent.Custom, {
           type: 'task:processed',
           task,
-          count: this.tasksProcessed
+          count: this.tasksProcessed,
         });
       });
 
@@ -156,7 +148,7 @@ class TaskProcessorModule extends SimpleModule {
         // Process priority task
         app.emit(ApplicationEvent.Custom, {
           type: 'task:priority:processed',
-          task
+          task,
         });
       });
     }
@@ -180,8 +172,8 @@ export function createTaskProcessorApplication(): Application {
     config: {
       database: { host: 'localhost', port: 5432 },
       queue: { workers: 10, retryAttempts: 3 },
-      processor: { batchSize: 100, interval: 1000 }
-    }
+      processor: { batchSize: 100, interval: 1000 },
+    },
   });
 
   app.use(new DatabaseModule());
@@ -242,7 +234,7 @@ class ApiGatewayModule extends SimpleModule {
     // Health endpoint
     this.http.addRoute('/health', async () => ({
       status: 'ok',
-      timestamp: Date.now()
+      timestamp: Date.now(),
     }));
 
     // API routes
@@ -254,7 +246,7 @@ class ApiGatewayModule extends SimpleModule {
       // Fetch users (mock)
       const users = [
         { id: 1, name: 'User 1' },
-        { id: 2, name: 'User 2' }
+        { id: 2, name: 'User 2' },
       ];
 
       // Cache result
@@ -289,9 +281,9 @@ export function createApiGatewayApplication(): Application {
       gateway: {
         rateLimit: 1000,
         corsOrigins: ['*'],
-        timeout: 30000
-      }
-    }
+        timeout: 30000,
+      },
+    },
   });
 
   app.use(new HttpServerModule());
@@ -320,13 +312,13 @@ export function createFullStackApplication(): Application {
         host: 'localhost',
         port: 5432,
         poolSize: 20,
-        database: 'myapp'
+        database: 'myapp',
       },
       cache: { ttl: 300000 },
       queue: { workers: 5 },
       auth: { sessionTimeout: 3600000 },
-      notifications: { enabled: true }
-    }
+      notifications: { enabled: true },
+    },
   });
 
   // Infrastructure modules
@@ -368,7 +360,7 @@ export function createMinimalApplication(): Application {
     version: '0.1.0',
     debug: false,
     disableGracefulShutdown: true,
-    disableCoreModules: true
+    disableCoreModules: true,
   });
 
   app.use(new SimpleModule());
@@ -403,7 +395,7 @@ export function createApplicationWithDependencies(): Application {
     version: '1.0.0',
     debug: false,
     disableGracefulShutdown: true,
-    disableCoreModules: true
+    disableCoreModules: true,
   });
 
   // Register in any order - should be sorted by dependencies
@@ -437,7 +429,7 @@ export function createApplicationWithCircularDeps(): Application {
     version: '1.0.0',
     debug: false,
     disableGracefulShutdown: true,
-    disableCoreModules: true
+    disableCoreModules: true,
   });
 
   app.use(new CircularA());
@@ -463,7 +455,7 @@ class EventProducerModule extends SimpleModule {
       this.eventCount++;
       app.emit(ApplicationEvent.Custom, {
         type: 'data:update',
-        data: { count: this.eventCount, timestamp: Date.now() }
+        data: { count: this.eventCount, timestamp: Date.now() },
       });
     }, 100);
   }
@@ -516,7 +508,7 @@ export function createEventDrivenApplication(): Application {
     version: '1.0.0',
     debug: false,
     disableGracefulShutdown: true,
-    disableCoreModules: true
+    disableCoreModules: true,
   });
 
   app.use(new EventProducerModule());
@@ -537,16 +529,13 @@ export enum ApplicationType {
   FullStack = 'fullstack',
   Minimal = 'minimal',
   WithDependencies = 'with-dependencies',
-  EventDriven = 'event-driven'
+  EventDriven = 'event-driven',
 }
 
 /**
  * Factory to create different types of test applications
  */
-export function createTestApplication(
-  type: ApplicationType,
-  options: Partial<IApplicationOptions> = {}
-): Application {
+export function createTestApplication(type: ApplicationType, options: Partial<IApplicationOptions> = {}): Application {
   switch (type) {
     case ApplicationType.Web:
       return createWebApplication(options);

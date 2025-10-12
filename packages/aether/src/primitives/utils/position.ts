@@ -26,11 +26,7 @@ export interface Position {
 /**
  * Calculate position for floating element
  */
-export function calculatePosition(
-  anchor: HTMLElement,
-  floating: HTMLElement,
-  config: PositionConfig = {}
-): Position {
+export function calculatePosition(anchor: HTMLElement, floating: HTMLElement, config: PositionConfig = {}): Position {
   const {
     side = 'bottom',
     align = 'center',

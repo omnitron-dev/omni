@@ -241,14 +241,14 @@ export const promisify = (
 
   return options && options.context
     ? (...args: any[]) =>
-      new Promise((resolve, reject) => {
-        processFn(fn, options.context, args, options && Boolean(options.multiArgs), resolve, reject);
-      })
+        new Promise((resolve, reject) => {
+          processFn(fn, options.context, args, options && Boolean(options.multiArgs), resolve, reject);
+        })
     : function _(this: any, ...args: any[]) {
-      return new Promise((resolve, reject) => {
-        processFn(fn, this, args, Boolean(options?.multiArgs), resolve, reject);
-      });
-    };
+        return new Promise((resolve, reject) => {
+          processFn(fn, this, args, Boolean(options?.multiArgs), resolve, reject);
+        });
+      };
 };
 
 /**

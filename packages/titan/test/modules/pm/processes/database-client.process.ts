@@ -13,7 +13,10 @@ export default class DatabaseClientService {
   private connectionAttempts = 0;
 
   @Public()
-  async executeQuery(query: string, options?: { maxRetries?: number }): Promise<{ success: boolean; result: any; attempts: number }> {
+  async executeQuery(
+    query: string,
+    options?: { maxRetries?: number }
+  ): Promise<{ success: boolean; result: any; attempts: number }> {
     const maxRetries = options?.maxRetries || 3;
     let attempts = 0;
     let lastError: Error | null = null;
@@ -29,7 +32,7 @@ export default class DatabaseClientService {
         return {
           success: true,
           result: { query, rows: Math.floor(Math.random() * 100) },
-          attempts
+          attempts,
         };
       } catch (error) {
         lastError = error as Error;
@@ -37,7 +40,7 @@ export default class DatabaseClientService {
         if (attempts < maxRetries) {
           // Exponential backoff: 100ms, 200ms, 400ms, etc.
           const delay = Math.min(100 * Math.pow(2, attempts - 1), 2000);
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
     }
@@ -54,7 +57,7 @@ export default class DatabaseClientService {
     }
 
     // Simulate query execution
-    await new Promise(resolve => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 20));
 
     // Occasionally fail
     if (Math.random() < 0.1) {
@@ -81,10 +84,10 @@ export default class DatabaseClientService {
         {
           name: 'database-connection',
           status: this.isHealthy ? 'pass' : 'fail',
-          message: this.isHealthy ? 'Connected' : 'Disconnected'
-        }
+          message: this.isHealthy ? 'Connected' : 'Disconnected',
+        },
       ],
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 }

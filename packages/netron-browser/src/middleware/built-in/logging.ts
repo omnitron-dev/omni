@@ -97,9 +97,7 @@ export interface LoggingMiddlewareOptions {
 /**
  * Create logging middleware
  */
-export function createLoggingMiddleware(
-  options: LoggingMiddlewareOptions = {}
-): MiddlewareFunction {
+export function createLoggingMiddleware(options: LoggingMiddlewareOptions = {}): MiddlewareFunction {
   const {
     logger = new ConsoleLogger(),
     requestLogLevel = 'info',
@@ -113,10 +111,7 @@ export function createLoggingMiddleware(
 
   return async (ctx, next) => {
     // Skip if service or method is in skip list
-    if (
-      skipServices.includes(ctx.service) ||
-      skipMethods.includes(`${ctx.service}.${ctx.method}`)
-    ) {
+    if (skipServices.includes(ctx.service) || skipMethods.includes(`${ctx.service}.${ctx.method}`)) {
       return next();
     }
 

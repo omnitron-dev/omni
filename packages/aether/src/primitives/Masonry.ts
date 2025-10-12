@@ -36,13 +36,13 @@ export const Masonry = defineComponent<MasonryProps>((props) => {
 
     children.forEach((child, index) => {
       const col = index % columns;
-      const leftPercent = (col * (100 / columns));
+      const leftPercent = col * (100 / columns);
       const top = heights[col];
 
       child.style.position = 'absolute';
       child.style.left = leftPercent + '%';
       child.style.top = top + 'px';
-      child.style.width = 'calc(' + (100 / columns) + '% - ' + gap + 'px)';
+      child.style.width = 'calc(' + 100 / columns + '% - ' + gap + 'px)';
 
       heights[col] += child.offsetHeight + gap;
     });

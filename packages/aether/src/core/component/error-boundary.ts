@@ -41,10 +41,7 @@ export interface ErrorBoundaryContext {
 /**
  * Error context - provides error information and reset functionality
  */
-export const ErrorBoundaryContext = createContext<ErrorBoundaryContext | null>(
-  null,
-  'error-boundary'
-);
+export const ErrorBoundaryContext = createContext<ErrorBoundaryContext | null>(null, 'error-boundary');
 
 /**
  * Get current error boundary context
@@ -162,9 +159,7 @@ export const ErrorBoundary = defineComponent<ErrorBoundaryProps>((rawProps) => {
     const maxRetries = rawProps.maxRetries ?? Infinity;
 
     if (currentCount >= maxRetries) {
-      console.warn(
-        `ErrorBoundary: Maximum retries (${maxRetries}) exceeded. Use reset() instead.`
-      );
+      console.warn(`ErrorBoundary: Maximum retries (${maxRetries}) exceeded. Use reset() instead.`);
       return;
     }
 
@@ -304,9 +299,7 @@ export const ErrorBoundary = defineComponent<ErrorBoundaryProps>((rawProps) => {
 
     // Render children normally with retry key for re-mounting
     // Errors from children will be caught by defineComponent and passed to onError
-    const children = typeof rawProps.children === 'function'
-      ? rawProps.children()
-      : rawProps.children;
+    const children = typeof rawProps.children === 'function' ? rawProps.children() : rawProps.children;
 
     return jsx('div', {
       key: `error-boundary-${retryKey()}`,
@@ -365,8 +358,11 @@ export function withErrorBoundary<P = {}>(
   Component: (props: P) => any,
   errorBoundaryProps: Omit<ErrorBoundaryProps, 'children'>
 ) {
-  return defineComponent<P>((props) => () => ErrorBoundary({
-    ...errorBoundaryProps,
-    children: () => Component(props),
-  }));
+  return defineComponent<P>(
+    (props) => () =>
+      ErrorBoundary({
+        ...errorBoundaryProps,
+        children: () => Component(props),
+      })
+  );
 }

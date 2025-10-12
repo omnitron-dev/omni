@@ -33,14 +33,17 @@ export interface SwitchContextValue {
 const noop = () => {};
 const booleanGetter = () => false;
 
-export const SwitchContext = createContext<SwitchContextValue>({
-  checked: booleanGetter,
-  toggle: noop,
-  disabled: booleanGetter,
-  required: booleanGetter,
-  switchId: '',
-  thumbId: '',
-}, 'Switch');
+export const SwitchContext = createContext<SwitchContextValue>(
+  {
+    checked: booleanGetter,
+    toggle: noop,
+    disabled: booleanGetter,
+    required: booleanGetter,
+    switchId: '',
+    thumbId: '',
+  },
+  'Switch'
+);
 
 /**
  * Switch props
@@ -301,7 +304,7 @@ export const SwitchThumb = defineComponent<SwitchThumbProps>((props) => {
   };
 
   return () => {
-    const { ...restProps} = props;
+    const { ...restProps } = props;
 
     // Get context for id, even though it might be default
     // The id doesn't change so it's okay

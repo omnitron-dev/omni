@@ -4,11 +4,7 @@
  * Bridges HTTP-specific context with Netron's middleware system
  */
 
-import type {
-  NetronMiddlewareContext,
-  MiddlewareFunction,
-  ITransportMiddlewareAdapter
-} from './types.js';
+import type { NetronMiddlewareContext, MiddlewareFunction, ITransportMiddlewareAdapter } from './types.js';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { TitanError, ErrorCode } from '../../errors/index.js';
 import * as zlib from 'zlib';
@@ -45,9 +41,7 @@ export interface CorsOptions {
 export class HttpMiddlewareAdapter implements ITransportMiddlewareAdapter<HttpMiddlewareContext> {
   private corsOptions?: CorsOptions;
 
-  constructor(options?: {
-    cors?: CorsOptions;
-  }) {
+  constructor(options?: { cors?: CorsOptions }) {
     this.corsOptions = options?.cors;
   }
 
@@ -61,8 +55,8 @@ export class HttpMiddlewareAdapter implements ITransportMiddlewareAdapter<HttpMi
       metadata: httpCtx.metadata || new Map(),
       timing: httpCtx.timing || {
         start: Date.now(),
-        middlewareTimes: new Map()
-      }
+        middlewareTimes: new Map(),
+      },
     };
 
     // Set HTTP-specific metadata
@@ -148,7 +142,9 @@ export class HttpBuiltinMiddleware {
   /**
    * Compression middleware (alias)
    */
-  static compression(options?: boolean | { threshold?: number; level?: number }): MiddlewareFunction<HttpMiddlewareContext> {
+  static compression(
+    options?: boolean | { threshold?: number; level?: number }
+  ): MiddlewareFunction<HttpMiddlewareContext> {
     if (typeof options === 'boolean') {
       return options ? this.compressionMiddleware({}) : async (ctx, next) => next();
     }
@@ -166,7 +162,7 @@ export class HttpBuiltinMiddleware {
       credentials = false,
       maxAge = 86400,
       preflightContinue = false,
-      optionsSuccessStatus = 204
+      optionsSuccessStatus = 204,
     } = options;
 
     return async (ctx, next) => {
@@ -221,13 +217,15 @@ export class HttpBuiltinMiddleware {
   /**
    * Body parser middleware
    */
-  static bodyParserMiddleware(options: {
-    maxSize?: number;
-    encoding?: BufferEncoding;
-  } = {}): MiddlewareFunction<HttpMiddlewareContext> {
+  static bodyParserMiddleware(
+    options: {
+      maxSize?: number;
+      encoding?: BufferEncoding;
+    } = {}
+  ): MiddlewareFunction<HttpMiddlewareContext> {
     const {
       maxSize = 1024 * 1024 * 10, // 10MB default
-      encoding = 'utf8'
+      encoding = 'utf8',
     } = options;
 
     return async (ctx, next) => {
@@ -245,10 +243,12 @@ export class HttpBuiltinMiddleware {
           totalSize += chunk.length;
 
           if (totalSize > maxSize) {
-            reject(new TitanError({
-              code: ErrorCode.PAYLOAD_TOO_LARGE,
-              message: 'Request body too large'
-            }));
+            reject(
+              new TitanError({
+                code: ErrorCode.PAYLOAD_TOO_LARGE,
+                message: 'Request body too large',
+              })
+            );
             return;
           }
 
@@ -268,11 +268,13 @@ export class HttpBuiltinMiddleware {
             }
             resolve();
           } catch (error: any) {
-            reject(new TitanError({
-              code: ErrorCode.BAD_REQUEST,
-              message: 'Invalid request body',
-              cause: error
-            }));
+            reject(
+              new TitanError({
+                code: ErrorCode.BAD_REQUEST,
+                message: 'Invalid request body',
+                cause: error,
+              })
+            );
           }
         });
 
@@ -286,13 +288,15 @@ export class HttpBuiltinMiddleware {
   /**
    * Response compression middleware
    */
-  static compressionMiddleware(options: {
-    threshold?: number;
-    level?: number;
-  } = {}): MiddlewareFunction<HttpMiddlewareContext> {
+  static compressionMiddleware(
+    options: {
+      threshold?: number;
+      level?: number;
+    } = {}
+  ): MiddlewareFunction<HttpMiddlewareContext> {
     const {
       threshold = 1024, // 1KB
-      level = 6
+      level = 6,
     } = options;
 
     return async (ctx, next) => {
@@ -301,8 +305,8 @@ export class HttpBuiltinMiddleware {
       if (!ctx.body) return;
 
       const acceptEncoding = ctx.request.headers['accept-encoding'] || '';
-      const isCompressible = ctx.body &&
-        (typeof ctx.body === 'string' || Buffer.isBuffer(ctx.body) || typeof ctx.body === 'object');
+      const isCompressible =
+        ctx.body && (typeof ctx.body === 'string' || Buffer.isBuffer(ctx.body) || typeof ctx.body === 'object');
 
       if (!isCompressible) return;
 
@@ -330,17 +334,19 @@ export class HttpBuiltinMiddleware {
   /**
    * Security headers middleware
    */
-  static securityHeadersMiddleware(options: {
-    contentSecurityPolicy?: string;
-    xFrameOptions?: 'DENY' | 'SAMEORIGIN';
-    xContentTypeOptions?: boolean;
-    xXssProtection?: boolean;
-    strictTransportSecurity?: {
-      maxAge: number;
-      includeSubDomains?: boolean;
-      preload?: boolean;
-    };
-  } = {}): MiddlewareFunction<HttpMiddlewareContext> {
+  static securityHeadersMiddleware(
+    options: {
+      contentSecurityPolicy?: string;
+      xFrameOptions?: 'DENY' | 'SAMEORIGIN';
+      xContentTypeOptions?: boolean;
+      xXssProtection?: boolean;
+      strictTransportSecurity?: {
+        maxAge: number;
+        includeSubDomains?: boolean;
+        preload?: boolean;
+      };
+    } = {}
+  ): MiddlewareFunction<HttpMiddlewareContext> {
     return async (ctx, next) => {
       // Content Security Policy
       if (options.contentSecurityPolicy) {
@@ -379,14 +385,13 @@ export class HttpBuiltinMiddleware {
   /**
    * Request ID middleware
    */
-  static requestIdMiddleware(options: {
-    header?: string;
-    generator?: () => string;
-  } = {}): MiddlewareFunction<HttpMiddlewareContext> {
-    const {
-      header = 'X-Request-Id',
-      generator = () => crypto.randomUUID()
-    } = options;
+  static requestIdMiddleware(
+    options: {
+      header?: string;
+      generator?: () => string;
+    } = {}
+  ): MiddlewareFunction<HttpMiddlewareContext> {
+    const { header = 'X-Request-Id', generator = () => crypto.randomUUID() } = options;
 
     return async (ctx, next) => {
       const requestId = ctx.request.headers[header.toLowerCase()] || generator();
@@ -406,34 +411,43 @@ export class HttpBuiltinMiddleware {
       const start = Date.now();
 
       // Log request
-      logger.info({
-        method: ctx.request.method,
-        url: ctx.request.url,
-        ip: ctx.request.socket?.remoteAddress,
-        userAgent: ctx.request.headers['user-agent']
-      }, 'HTTP Request');
+      logger.info(
+        {
+          method: ctx.request.method,
+          url: ctx.request.url,
+          ip: ctx.request.socket?.remoteAddress,
+          userAgent: ctx.request.headers['user-agent'],
+        },
+        'HTTP Request'
+      );
 
       try {
         await next();
 
         // Log response
         const duration = Date.now() - start;
-        logger.info({
-          method: ctx.request.method,
-          url: ctx.request.url,
-          statusCode: ctx.response.statusCode,
-          duration
-        }, 'HTTP Response');
+        logger.info(
+          {
+            method: ctx.request.method,
+            url: ctx.request.url,
+            statusCode: ctx.response.statusCode,
+            duration,
+          },
+          'HTTP Response'
+        );
       } catch (error: any) {
         const duration = Date.now() - start;
 
-        logger.error({
-          method: ctx.request.method,
-          url: ctx.request.url,
-          error: error.message,
-          code: error.code,
-          duration
-        }, 'HTTP Error');
+        logger.error(
+          {
+            method: ctx.request.method,
+            url: ctx.request.url,
+            error: error.message,
+            code: error.code,
+            duration,
+          },
+          'HTTP Error'
+        );
 
         throw error;
       }

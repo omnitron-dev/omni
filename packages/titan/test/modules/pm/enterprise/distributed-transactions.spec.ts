@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import {
   DistributedTransactionCoordinator,
   TransactionParticipant,
-  TransactionPhase
+  TransactionPhase,
 } from '../../../../src/modules/pm/enterprise/distributed-transactions.js';
 
 // Mock logger
@@ -16,7 +16,7 @@ const mockLogger = {
   error: jest.fn(),
   warn: jest.fn(),
   debug: jest.fn(),
-  child: jest.fn(() => mockLogger)
+  child: jest.fn(() => mockLogger),
 } as any;
 
 describe('Distributed Transactions', () => {
@@ -87,10 +87,7 @@ describe('Distributed Transactions', () => {
 
     it('should handle participant timeouts', async () => {
       // Create coordinator with short timeout
-      const shortTimeoutCoordinator = new DistributedTransactionCoordinator(
-        mockLogger,
-        { timeout: 100 }
-      );
+      const shortTimeoutCoordinator = new DistributedTransactionCoordinator(mockLogger, { timeout: 100 });
 
       // Create participants
       const participant1 = new TransactionParticipant('participant1', mockLogger);
@@ -98,9 +95,9 @@ describe('Distributed Transactions', () => {
 
       // Mock prepare - participant2 times out
       jest.spyOn(participant1, 'prepare').mockResolvedValue(true);
-      jest.spyOn(participant2, 'prepare').mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve(true), 200))
-      );
+      jest
+        .spyOn(participant2, 'prepare')
+        .mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve(true), 200)));
 
       // Begin transaction
       const txId = await shortTimeoutCoordinator.begin([participant1, participant2]);
@@ -162,10 +159,7 @@ describe('Distributed Transactions', () => {
   describe('Transaction Recovery', () => {
     it('should log transactions for recovery', async () => {
       // Create coordinator with logging enabled
-      const loggingCoordinator = new DistributedTransactionCoordinator(
-        mockLogger,
-        { persistLog: true }
-      );
+      const loggingCoordinator = new DistributedTransactionCoordinator(mockLogger, { persistLog: true });
 
       const participant = new TransactionParticipant('test', mockLogger);
       jest.spyOn(participant, 'prepare').mockResolvedValue(true);
@@ -192,8 +186,8 @@ describe('Distributed Transactions', () => {
       // List transactions
       const transactions = coordinator.listTransactions();
       expect(transactions).toHaveLength(2);
-      expect(transactions.map(t => t.id)).toContain(tx1);
-      expect(transactions.map(t => t.id)).toContain(tx2);
+      expect(transactions.map((t) => t.id)).toContain(tx1);
+      expect(transactions.map((t) => t.id)).toContain(tx2);
     });
   });
 

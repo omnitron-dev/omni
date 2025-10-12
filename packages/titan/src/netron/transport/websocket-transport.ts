@@ -13,7 +13,7 @@ import {
   TransportOptions,
   ITransportConnection,
   ITransportServer,
-  ConnectionState
+  ConnectionState,
 } from './types.js';
 import { NetronErrors, Errors } from '../../errors/index.js';
 
@@ -84,9 +84,12 @@ export class WebSocketConnection extends BaseConnection {
 
     // Handle incoming messages
     this.socket.on('message', (data: RawData) => {
-      const buffer = data instanceof Buffer ? data :
-        data instanceof ArrayBuffer ? Buffer.from(data) :
-          Buffer.concat(data as Buffer[]);
+      const buffer =
+        data instanceof Buffer
+          ? data
+          : data instanceof ArrayBuffer
+            ? Buffer.from(data)
+            : Buffer.concat(data as Buffer[]);
       this.handleData(buffer);
     });
 
@@ -286,7 +289,7 @@ export class WebSocketServerAdapter extends BaseServer {
       // Emit listening event on next tick to ensure listeners are attached
       process.nextTick(() => this.handleListening());
       // Also return a promise that resolves after the event is emitted
-      await new Promise(resolve => setImmediate(resolve));
+      await new Promise((resolve) => setImmediate(resolve));
     } else {
       throw Errors.badRequest('WebSocketServer is not configured to listen. Provide port or server option.');
     }
@@ -324,7 +327,7 @@ export class WebSocketTransport extends BaseTransport {
     binary: true,
     reconnection: false, // WebSockets don't support native reconnection
     multiplexing: false,
-    server: true
+    server: true,
   };
 
   /**
@@ -353,7 +356,7 @@ export class WebSocketTransport extends BaseTransport {
         perMessageDeflate: options.perMessageDeflate,
         maxPayload: options.maxPayload,
         handshakeTimeout: options.handshakeTimeout ?? options.connectTimeout,
-        headers: options.headers
+        headers: options.headers,
       });
 
       // Create connection immediately to set up event handlers
@@ -422,14 +425,14 @@ export class WebSocketTransport extends BaseTransport {
       port,
       perMessageDeflate: options.perMessageDeflate,
       maxPayload: options.maxPayload,
-      ...((options as any).serverOptions || {})
+      ...((options as any).serverOptions || {}),
     });
 
     const server = new WebSocketServerAdapter(wss, options);
 
     // The WebSocketServer automatically starts listening when created with a port
     // Wait a bit to ensure it's ready
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     return server;
   }

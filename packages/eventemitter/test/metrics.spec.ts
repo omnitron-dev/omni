@@ -8,7 +8,7 @@ describe('MetricsCollector', () => {
     metrics = new MetricsCollector({
       slowThreshold: 100,
       sampleRate: 1,
-      trackMemory: true
+      trackMemory: true,
     });
   });
 
@@ -104,9 +104,10 @@ describe('MetricsCollector', () => {
       // Mock Math.random to control sampling
       const originalRandom = Math.random;
       let callCount = 0;
-      Math.random = jest.fn(() => 
-        // Alternate between sampled (< 0.5) and not sampled (>= 0.5)
-         (callCount++ % 2) * 0.6
+      Math.random = jest.fn(
+        () =>
+          // Alternate between sampled (< 0.5) and not sampled (>= 0.5)
+          (callCount++ % 2) * 0.6
       );
 
       for (let i = 0; i < 10; i++) {
@@ -129,8 +130,7 @@ describe('MetricsCollector', () => {
       const data = metrics.getMetrics();
       expect(data.avgProcessingTime.get('test')).toBeDefined();
       // Average should be of last 100 values (50-149)
-      const expectedAvg = Array.from({ length: 100 }, (_, i) => 50 + i)
-        .reduce((sum, n) => sum + n, 0) / 100;
+      const expectedAvg = Array.from({ length: 100 }, (_, i) => 50 + i).reduce((sum, n) => sum + n, 0) / 100;
       expect(data.avgProcessingTime.get('test')).toBeCloseTo(expectedAvg, 0);
     });
   });
@@ -177,22 +177,22 @@ describe('MetricsCollector', () => {
           eventsEmitted: 2,
           eventsFailed: 1,
           listenerCount: {
-            event1: 2
+            event1: 2,
           },
           eventCounts: {
             event1: 1,
-            event2: 1
+            event2: 1,
           },
           errorCounts: {
-            event2: 1
-          }
-        }
+            event2: 1,
+          },
+        },
       });
     });
 
     it('should export metrics in Prometheus format', () => {
       const prometheus = metrics.export('prometheus');
-      
+
       expect(prometheus).toContain('# HELP eventemitter_events_emitted_total');
       expect(prometheus).toContain('# TYPE eventemitter_events_emitted_total counter');
       expect(prometheus).toContain('eventemitter_events_emitted_total 2');
@@ -216,7 +216,7 @@ describe('MetricsCollector', () => {
       metrics.recordEmission('slow', true, 200);
 
       const summary = metrics.getSummary();
-      
+
       expect(summary).toContain('EventEmitter Metrics Summary');
       expect(summary).toContain('Total Events: 3');
       expect(summary).toContain('Failed Events: 1');
@@ -228,7 +228,7 @@ describe('MetricsCollector', () => {
     it('should handle empty metrics', () => {
       metrics.enable();
       const summary = metrics.getSummary();
-      
+
       expect(summary).toContain('Total Events: 0');
       expect(summary).toContain('Failed Events: 0');
       expect(summary).toContain('Failure Rate: 0.00%');

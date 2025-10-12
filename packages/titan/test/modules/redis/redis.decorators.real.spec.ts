@@ -105,7 +105,7 @@ if (!process.env.REDIS_URL) {
       expect(cached).toBe('"data-1"');
 
       // Wait for expiry
-      await new Promise(resolve => setTimeout(resolve, 2100));
+      await new Promise((resolve) => setTimeout(resolve, 2100));
 
       // Third call - cache expired
       const result3 = await service.getData(1);
@@ -228,7 +228,7 @@ if (!process.env.REDIS_URL) {
         @RedisLock({ key: 'process', ttl: 1 })
         async process(id: number): Promise<void> {
           executions++;
-          await new Promise(resolve => setTimeout(resolve, 50));
+          await new Promise((resolve) => setTimeout(resolve, 50));
         }
       }
 
@@ -244,7 +244,7 @@ if (!process.env.REDIS_URL) {
       const results = await Promise.allSettled(promises);
 
       // At least one should succeed for each unique ID
-      const succeeded = results.filter(r => r.status === 'fulfilled');
+      const succeeded = results.filter((r) => r.status === 'fulfilled');
       expect(succeeded.length).toBeGreaterThanOrEqual(1);
 
       // Verify locks are released
@@ -315,7 +315,7 @@ if (!process.env.REDIS_URL) {
           ttl: 1,
         })
         async process(id: number, type: string): Promise<void> {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
         }
       }
 
@@ -361,7 +361,7 @@ if (!process.env.REDIS_URL) {
         async process(id: number): Promise<void> {
           this.activeCount++;
           this.maxActive = Math.max(this.maxActive, this.activeCount);
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
           this.activeCount--;
         }
       }
@@ -369,14 +369,11 @@ if (!process.env.REDIS_URL) {
       const service = new TestService();
 
       // Try concurrent execution with same id
-      const [result1, result2] = await Promise.allSettled([
-        service.process(1),
-        service.process(1),
-      ]);
+      const [result1, result2] = await Promise.allSettled([service.process(1), service.process(1)]);
 
       // One should succeed, one should fail
-      const succeeded = [result1, result2].filter(r => r.status === 'fulfilled');
-      const failed = [result1, result2].filter(r => r.status === 'rejected');
+      const succeeded = [result1, result2].filter((r) => r.status === 'fulfilled');
+      const failed = [result1, result2].filter((r) => r.status === 'rejected');
 
       expect(succeeded).toHaveLength(1);
       expect(failed).toHaveLength(1);
@@ -409,7 +406,7 @@ if (!process.env.REDIS_URL) {
       await expect(service.callApi(2)).resolves.toBe('called-2');
 
       // Wait for window to expire
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      await new Promise((resolve) => setTimeout(resolve, 1100));
 
       // Should work again
       await expect(service.callApi(1)).resolves.toBe('called-1');
@@ -448,7 +445,7 @@ if (!process.env.REDIS_URL) {
         private redisManager = manager;
 
         @RedisRateLimit({ key: 'ttl-test', limit: 10, window: 60 })
-        async call(): Promise<void> { }
+        async call(): Promise<void> {}
       }
 
       const service = new TestService();
@@ -564,7 +561,7 @@ if (!process.env.REDIS_URL) {
         @RedisCache({ ttl: 60, key: 'combo' })
         async expensiveOperation(id: number): Promise<string> {
           this.processCount++;
-          await new Promise(resolve => setTimeout(resolve, 50));
+          await new Promise((resolve) => setTimeout(resolve, 50));
           return `result-${id}`;
         }
       }
@@ -582,10 +579,7 @@ if (!process.env.REDIS_URL) {
       expect(service.processCount).toBe(1);
 
       // Concurrent calls with different id
-      const [r1, r2] = await Promise.all([
-        service.expensiveOperation(2),
-        service.expensiveOperation(3),
-      ]);
+      const [r1, r2] = await Promise.all([service.expensiveOperation(2), service.expensiveOperation(3)]);
 
       expect(r1).toBe('result-2');
       expect(r2).toBe('result-3');
@@ -691,7 +685,7 @@ if (!process.env.REDIS_URL) {
         @RedisCache({ ttl: 60, key: 'perf' })
         async getData(id: number): Promise<string> {
           this.processCount++;
-          await new Promise(resolve => setTimeout(resolve, 50)); // Longer delay
+          await new Promise((resolve) => setTimeout(resolve, 50)); // Longer delay
           return `data-${id}`;
         }
       }
@@ -733,16 +727,14 @@ if (!process.env.REDIS_URL) {
       // Send burst of requests
       const promises = [];
       for (let i = 0; i < 15; i++) {
-        promises.push(
-          service.action(1).catch(err => ({ error: err.message }))
-        );
+        promises.push(service.action(1).catch((err) => ({ error: err.message })));
       }
 
       const results = await Promise.all(promises);
 
       // Should have 10 successful and 5 failed
-      const successful = results.filter(r => typeof r === 'number');
-      const failed = results.filter(r => r && typeof r === 'object' && 'error' in r);
+      const successful = results.filter((r) => typeof r === 'number');
+      const failed = results.filter((r) => r && typeof r === 'object' && 'error' in r);
 
       expect(successful).toHaveLength(10);
       expect(failed).toHaveLength(5);

@@ -8,9 +8,7 @@ import type { Store } from './types.js';
 /**
  * Middleware function type
  */
-export type MiddlewareFunction<T extends object = any> = (
-  context: MiddlewareContext<T>
-) => void | false | any;
+export type MiddlewareFunction<T extends object = any> = (context: MiddlewareContext<T>) => void | false | any;
 
 /**
  * Context passed to middleware
@@ -60,30 +58,25 @@ export interface Middleware<T extends object = any> extends MiddlewareConfig {
 export class StoreMiddlewareManager<T extends object> {
   private middlewares: Middleware<T>[] = [];
   private enabled = true;
-  
+
   /**
    * Add middleware
    */
-  use(
-    middleware: MiddlewareFunction<T> | Middleware<T>,
-    config?: MiddlewareConfig
-  ): () => void {
-    const mw: Middleware<T> = typeof middleware === 'function'
-      ? { handler: middleware, ...config }
-      : middleware;
-    
+  use(middleware: MiddlewareFunction<T> | Middleware<T>, config?: MiddlewareConfig): () => void {
+    const mw: Middleware<T> = typeof middleware === 'function' ? { handler: middleware, ...config } : middleware;
+
     // Set defaults
     mw.enabled = mw.enabled !== false;
     mw.priority = mw.priority ?? 50;
-    
+
     // Insert in priority order
-    const index = this.middlewares.findIndex(m => (m.priority || 50) > (mw.priority || 50));
+    const index = this.middlewares.findIndex((m) => (m.priority || 50) > (mw.priority || 50));
     if (index === -1) {
       this.middlewares.push(mw);
     } else {
       this.middlewares.splice(index, 0, mw);
     }
-    
+
     // Return unsubscribe function
     return () => {
       const idx = this.middlewares.indexOf(mw);
@@ -92,45 +85,45 @@ export class StoreMiddlewareManager<T extends object> {
       }
     };
   }
-  
+
   /**
    * Remove middleware by name
    */
   remove(name: string): boolean {
-    const index = this.middlewares.findIndex(m => m.name === name);
+    const index = this.middlewares.findIndex((m) => m.name === name);
     if (index !== -1) {
       this.middlewares.splice(index, 1);
       return true;
     }
     return false;
   }
-  
+
   /**
    * Clear all middleware
    */
   clear(): void {
     this.middlewares = [];
   }
-  
+
   /**
    * Enable/disable middleware
    */
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
   }
-  
+
   /**
    * Enable/disable specific middleware
    */
   setMiddlewareEnabled(name: string, enabled: boolean): boolean {
-    const mw = this.middlewares.find(m => m.name === name);
+    const mw = this.middlewares.find((m) => m.name === name);
     if (mw) {
       mw.enabled = enabled;
       return true;
     }
     return false;
   }
-  
+
   /**
    * Apply middleware to a change
    */
@@ -144,57 +137,60 @@ export class StoreMiddlewareManager<T extends object> {
     if (!this.enabled || this.middlewares.length === 0) {
       return { value: newValue, aborted: false };
     }
-    
+
     let currentValue = newValue;
     let aborted = false;
-    
+
     const context: MiddlewareContext<T> = {
       path,
       oldValue,
-      get newValue() { return currentValue; },
+      get newValue() {
+        return currentValue;
+      },
       store,
       metadata,
-      abort: () => { aborted = true; },
-      setValue: (value: any) => { currentValue = value; }
+      abort: () => {
+        aborted = true;
+      },
+      setValue: (value: any) => {
+        currentValue = value;
+      },
     };
-    
+
     for (const mw of this.middlewares) {
       // Skip disabled middleware
       if (!mw.enabled) continue;
-      
+
       // Check path pattern if specified
       if (mw.pathPattern) {
         const pathStr = path.join('.');
         if (typeof mw.pathPattern === 'string') {
           // Simple glob-like matching
-          const pattern = mw.pathPattern
-            .replace(/\./g, '\\.')
-            .replace(/\*/g, '[^.]*')
-            .replace(/\*\*/g, '.*');
+          const pattern = mw.pathPattern.replace(/\./g, '\\.').replace(/\*/g, '[^.]*').replace(/\*\*/g, '.*');
           const regex = new RegExp(`^${pattern}$`);
           if (!regex.test(pathStr)) continue;
         } else if (mw.pathPattern instanceof RegExp) {
           if (!mw.pathPattern.test(pathStr)) continue;
         }
       }
-      
+
       // Apply middleware
       const result = mw.handler(context);
-      
+
       // Check if aborted
       if (aborted || result === false) {
         return { value: oldValue, aborted: true };
       }
-      
+
       // Allow middleware to return new value
       if (result !== undefined && result !== null) {
         currentValue = result;
       }
     }
-    
+
     return { value: currentValue, aborted: false };
   }
-  
+
   /**
    * Get middleware list
    */
@@ -210,28 +206,24 @@ export const commonMiddleware = {
   /**
    * Logging middleware
    */
-  logger<T extends object>(options?: {
-    console?: Console;
-    prefix?: string;
-    includeStack?: boolean;
-  }): Middleware<T> {
+  logger<T extends object>(options?: { console?: Console; prefix?: string; includeStack?: boolean }): Middleware<T> {
     const console = options?.console ?? globalThis.console;
     const prefix = options?.prefix ?? '[Store]';
-    
+
     return {
       name: 'logger',
       priority: 100, // Run early
       handler: (ctx) => {
         const pathStr = ctx.path.join('.');
         console.log(`${prefix} ${pathStr}: ${JSON.stringify(ctx.oldValue)} → ${JSON.stringify(ctx.newValue)}`);
-        
+
         if (options?.includeStack) {
           console.trace();
         }
-      }
+      },
     };
   },
-  
+
   /**
    * Validation middleware
    */
@@ -243,16 +235,16 @@ export const commonMiddleware = {
       priority: 20, // Run before most middleware
       handler: (ctx) => {
         const pathStr = ctx.path.join('.');
-        
+
         // Check for exact match or pattern match
         for (const [pattern, validator] of Object.entries(validators)) {
           const regex = new RegExp(
             '^' + pattern.replace(/\./g, '\\.').replace(/\*/g, '[^.]*').replace(/\*\*/g, '.*') + '$'
           );
-          
+
           if (regex.test(pathStr)) {
             const result = validator(ctx.newValue, ctx);
-            
+
             if (result === false) {
               console.error(`Validation failed for ${pathStr}: value ${JSON.stringify(ctx.newValue)} is invalid`);
               ctx.abort();
@@ -264,10 +256,10 @@ export const commonMiddleware = {
             }
           }
         }
-      }
+      },
     };
   },
-  
+
   /**
    * Immutability middleware (creates deep copies)
    */
@@ -279,33 +271,35 @@ export const commonMiddleware = {
         if (typeof ctx.newValue === 'object' && ctx.newValue !== null) {
           ctx.setValue(structuredClone ? structuredClone(ctx.newValue) : JSON.parse(JSON.stringify(ctx.newValue)));
         }
-      }
+      },
     };
   },
-  
+
   /**
    * Persistence middleware
    */
-  persist<T extends object>(options: {
-    storage?: Storage;
-    key?: string;
-    debounce?: number;
-    serialize?: (value: any) => string;
-    deserialize?: (value: string) => any;
-  } = {}): Middleware<T> {
+  persist<T extends object>(
+    options: {
+      storage?: Storage;
+      key?: string;
+      debounce?: number;
+      serialize?: (value: any) => string;
+      deserialize?: (value: string) => any;
+    } = {}
+  ): Middleware<T> {
     const storage = options.storage ?? (typeof localStorage !== 'undefined' ? localStorage : undefined);
     const key = options.key ?? 'store';
     const serialize = options.serialize ?? JSON.stringify;
     // const deserialize = options.deserialize ?? JSON.parse; // Reserved for future use (loading persisted state)
 
     let timeoutId: any;
-    
+
     return {
       name: 'persist',
       priority: 80, // Run late
       handler: (ctx) => {
         if (!storage) return;
-        
+
         const save = () => {
           try {
             // Get root state
@@ -315,24 +309,26 @@ export const commonMiddleware = {
             console.error('Failed to persist store:', error);
           }
         };
-        
+
         if (options.debounce) {
           if (timeoutId) clearTimeout(timeoutId);
           timeoutId = setTimeout(save, options.debounce);
         } else {
           save();
         }
-      }
+      },
     };
   },
-  
+
   /**
    * History/undo middleware
    */
-  history<T extends object>(options: {
-    maxSize?: number;
-    debounce?: number;
-  } = {}): Middleware<T> & {
+  history<T extends object>(
+    options: {
+      maxSize?: number;
+      debounce?: number;
+    } = {}
+  ): Middleware<T> & {
     undo: () => void;
     redo: () => void;
     canUndo: () => boolean;
@@ -344,18 +340,18 @@ export const commonMiddleware = {
     let currentIndex = -1;
     let timeoutId: any;
     let store: Store<T> | null = null;
-    
+
     const handler: MiddlewareFunction<T> = (ctx) => {
       if (!store) store = ctx.store;
-      
+
       const addToHistory = () => {
         // Remove any redo history
         history.splice(currentIndex + 1);
-        
+
         // Add new state
         const state = ctx.store.get();
         history.push(structuredClone ? structuredClone(state) : JSON.parse(JSON.stringify(state)));
-        
+
         // Limit history size
         if (history.length > maxSize) {
           history.shift();
@@ -363,7 +359,7 @@ export const commonMiddleware = {
           currentIndex++;
         }
       };
-      
+
       if (options.debounce) {
         if (timeoutId) clearTimeout(timeoutId);
         timeoutId = setTimeout(addToHistory, options.debounce);
@@ -371,7 +367,7 @@ export const commonMiddleware = {
         addToHistory();
       }
     };
-    
+
     return {
       name: 'history',
       priority: 90,
@@ -395,10 +391,10 @@ export const commonMiddleware = {
       clear: () => {
         history.length = 0;
         currentIndex = -1;
-      }
+      },
     };
   },
-  
+
   /**
    * Freeze certain paths (make them read-only)
    */
@@ -412,10 +408,10 @@ export const commonMiddleware = {
           console.warn(`Attempted to modify frozen path: ${pathStr}`);
           ctx.abort();
         }
-      }
+      },
     };
   },
-  
+
   /**
    * Transform middleware (modify values)
    */
@@ -427,18 +423,18 @@ export const commonMiddleware = {
       priority: 40,
       handler: (ctx) => {
         const pathStr = ctx.path.join('.');
-        
+
         for (const [pattern, transformer] of Object.entries(transforms)) {
           const regex = new RegExp(
             '^' + pattern.replace(/\./g, '\\.').replace(/\*/g, '[^.]*').replace(/\*\*/g, '.*') + '$'
           );
-          
+
           if (regex.test(pathStr)) {
             const transformed = transformer(ctx.newValue, ctx);
             ctx.setValue(transformed);
           }
         }
-      }
+      },
     };
-  }
+  },
 };

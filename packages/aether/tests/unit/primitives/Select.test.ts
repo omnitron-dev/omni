@@ -209,10 +209,7 @@ describe('Select Primitive', () => {
         Select({
           children: () => [
             SelectTrigger({
-              children: () => [
-                SelectValue({ placeholder: 'Select' }),
-                SelectIcon({ children: '▼' }),
-              ],
+              children: () => [SelectValue({ placeholder: 'Select' }), SelectIcon({ children: '▼' })],
             }),
           ],
         });

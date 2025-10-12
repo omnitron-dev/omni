@@ -82,7 +82,12 @@ export const Resizable = defineComponent<ResizableProps>((props) => {
       ...restProps,
       'data-resizable-container': '',
       'data-orientation': orientation,
-      style: { display: 'flex', flexDirection: orientation === 'horizontal' ? 'row' : 'column', width: '100%', height: '100%' },
+      style: {
+        display: 'flex',
+        flexDirection: orientation === 'horizontal' ? 'row' : 'column',
+        width: '100%',
+        height: '100%',
+      },
       children,
     });
   };
@@ -96,9 +101,10 @@ export const ResizablePanel = defineComponent<ResizablePanelProps>((props) => {
   const index = panelCounter - 1;
 
   return () => {
-    const size = context ? context.sizes()[index] ?? 50 : 50;
+    const size = context ? (context.sizes()[index] ?? 50) : 50;
     const orientation = context?.orientation ?? 'horizontal';
-    const style = orientation === 'horizontal' ? { width: `${size}%`, height: '100%' } : { height: `${size}%`, width: '100%' };
+    const style =
+      orientation === 'horizontal' ? { width: `${size}%`, height: '100%' } : { height: `${size}%`, width: '100%' };
 
     const { id, minSize, maxSize, children, ...restProps } = props;
 
@@ -130,7 +136,11 @@ export const ResizableHandle = defineComponent<ResizableHandleProps>((props) => 
       'aria-orientation': orientation,
       'aria-disabled': isDisabled ? 'true' : 'false',
       tabIndex: isDisabled ? -1 : 0,
-      style: { cursor: orientation === 'horizontal' ? 'col-resize' : 'row-resize', touchAction: 'none', userSelect: 'none' },
+      style: {
+        cursor: orientation === 'horizontal' ? 'col-resize' : 'row-resize',
+        touchAction: 'none',
+        userSelect: 'none',
+      },
       children,
     });
   };

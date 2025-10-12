@@ -22,19 +22,19 @@ describe('ValidationMiddleware', () => {
       const service = {
         async createUser(input: any) {
           return { id: '123', ...input };
-        }
+        },
       };
 
       const methodContract = {
         input: z.object({
           email: z.string().email(),
-          name: z.string().min(2)
+          name: z.string().min(2),
         }),
         output: z.object({
           id: z.string(),
           email: z.string().email(),
-          name: z.string()
-        })
+          name: z.string(),
+        }),
       };
 
       const wrapped = middleware.wrapMethod(service, 'createUser', methodContract);
@@ -42,27 +42,29 @@ describe('ValidationMiddleware', () => {
       // Valid input
       const result = await wrapped.call(service, {
         email: 'test@example.com',
-        name: 'Test User'
+        name: 'Test User',
       });
 
       expect(result).toEqual({
         id: '123',
         email: 'test@example.com',
-        name: 'Test User'
+        name: 'Test User',
       });
 
       // Invalid input should throw
-      await expect(wrapped.call(service, {
-        email: 'invalid',
-        name: 'a'
-      })).rejects.toThrow();
+      await expect(
+        wrapped.call(service, {
+          email: 'invalid',
+          name: 'a',
+        })
+      ).rejects.toThrow();
     });
 
     it('should handle methods without validation', async () => {
       const service = {
         async noValidation(input: any) {
           return input;
-        }
+        },
       };
 
       const wrapped = middleware.wrapMethod(service, 'noValidation');
@@ -75,13 +77,13 @@ describe('ValidationMiddleware', () => {
       const service = {
         async inputOnly(input: any) {
           return { processed: true, ...input };
-        }
+        },
       };
 
       const methodContract = {
         input: z.object({
-          required: z.string()
-        })
+          required: z.string(),
+        }),
       };
 
       const wrapped = middleware.wrapMethod(service, 'inputOnly', methodContract);
@@ -98,14 +100,14 @@ describe('ValidationMiddleware', () => {
       const service = {
         async outputOnly(input: any) {
           return input;
-        }
+        },
       };
 
       const methodContract = {
         output: z.object({
           id: z.string(),
-          name: z.string()
-        })
+          name: z.string(),
+        }),
       };
 
       const wrapped = middleware.wrapMethod(service, 'outputOnly', methodContract);
@@ -113,15 +115,17 @@ describe('ValidationMiddleware', () => {
       // Valid output
       const result = await wrapped.call(service, {
         id: '123',
-        name: 'Test'
+        name: 'Test',
       });
       expect(result).toEqual({ id: '123', name: 'Test' });
 
       // Invalid output
-      await expect(wrapped.call(service, {
-        id: '123'
-        // missing name
-      })).rejects.toThrow();
+      await expect(
+        wrapped.call(service, {
+          id: '123',
+          // missing name
+        })
+      ).rejects.toThrow();
     });
   });
 
@@ -132,18 +136,18 @@ describe('ValidationMiddleware', () => {
           yield { id: '1', name: 'User 1' };
           yield { id: '2', name: 'User 2' };
           yield { id: 'invalid', name: 123 }; // Invalid
-        }
+        },
       };
 
       const methodContract = {
         input: z.object({
-          limit: z.number().optional()
+          limit: z.number().optional(),
         }),
         output: z.object({
           id: z.string(),
-          name: z.string()
+          name: z.string(),
         }),
-        stream: true
+        stream: true,
       };
 
       const wrapped = middleware.wrapMethod(service, 'streamUsers', methodContract);
@@ -172,17 +176,17 @@ describe('ValidationMiddleware', () => {
           validateCount++;
           yield { value: 1 };
           yield { value: 2 };
-        }
+        },
       };
 
       const methodContract = {
         input: z.object({
-          filter: z.string()
+          filter: z.string(),
         }),
         output: z.object({
-          value: z.number()
+          value: z.number(),
         }),
-        stream: true
+        stream: true,
       };
 
       const wrapped = middleware.wrapMethod(service, 'streamData', methodContract);
@@ -205,14 +209,14 @@ describe('ValidationMiddleware', () => {
       const service = {
         async failingMethod() {
           return { invalid: 'output' };
-        }
+        },
       };
 
       const methodContract = {
         output: z.object({
           id: z.string(),
-          name: z.string()
-        })
+          name: z.string(),
+        }),
       };
 
       const wrapped = middleware.wrapMethod(service, 'failingMethod', methodContract);
@@ -230,12 +234,12 @@ describe('ValidationMiddleware', () => {
       const service = {
         async errorMethod() {
           throw new Error('Original error');
-        }
+        },
       };
 
       const methodContract = {
         input: z.any(),
-        output: z.any()
+        output: z.any(),
       };
 
       const wrapped = middleware.wrapMethod(service, 'errorMethod', methodContract);
@@ -249,26 +253,29 @@ describe('ValidationMiddleware', () => {
       const service = {
         async echo(input: any) {
           return input;
-        }
+        },
       };
 
       const methodContract = {
         input: z.object({
-          email: z.string().email().transform(s => s.toLowerCase()),
-          age: z.string().transform(s => parseInt(s, 10))
-        })
+          email: z
+            .string()
+            .email()
+            .transform((s) => s.toLowerCase()),
+          age: z.string().transform((s) => parseInt(s, 10)),
+        }),
       };
 
       const wrapped = middleware.wrapMethod(service, 'echo', methodContract);
 
       const result = await wrapped.call(service, {
         email: 'TEST@EXAMPLE.COM',
-        age: '25'
+        age: '25',
       });
 
       expect(result).toEqual({
         email: 'test@example.com',
-        age: 25
+        age: 25,
       });
     });
 
@@ -277,16 +284,16 @@ describe('ValidationMiddleware', () => {
         async getData() {
           return {
             date: '2024-01-01',
-            count: '100'
+            count: '100',
           };
-        }
+        },
       };
 
       const methodContract = {
         output: z.object({
-          date: z.string().transform(s => new Date(s)),
-          count: z.string().transform(s => parseInt(s, 10))
-        })
+          date: z.string().transform((s) => new Date(s)),
+          count: z.string().transform((s) => parseInt(s, 10)),
+        }),
       };
 
       const wrapped = middleware.wrapMethod(service, 'getData', methodContract);
@@ -303,20 +310,18 @@ describe('ValidationMiddleware', () => {
       const service = {
         async method(input: any) {
           return input;
-        }
+        },
       };
 
       const methodContract = {
         input: z.object({ value: z.number() }),
-        output: z.object({ value: z.number() })
+        output: z.object({ value: z.number() }),
       };
 
       const wrapped = middleware.wrapMethod(service, 'method', methodContract);
 
       // Multiple calls should use cached validators
-      const promises = Array.from({ length: 100 }, (_, i) =>
-        wrapped.call(service, { value: i })
-      );
+      const promises = Array.from({ length: 100 }, (_, i) => wrapped.call(service, { value: i }));
 
       const results = await Promise.all(promises);
       expect(results).toHaveLength(100);
@@ -329,20 +334,26 @@ describe('ValidationMiddleware', () => {
   describe('wrapService', () => {
     it('should wrap all methods of a service', () => {
       const service = {
-        async method1(input: any) { return input; },
-        async method2(input: any) { return input; },
-        async method3(input: any) { return input; }
+        async method1(input: any) {
+          return input;
+        },
+        async method2(input: any) {
+          return input;
+        },
+        async method3(input: any) {
+          return input;
+        },
       };
 
       const serviceContract = contract({
         method1: {
           input: z.string(),
-          output: z.string()
+          output: z.string(),
         },
         method2: {
           input: z.number(),
-          output: z.number()
-        }
+          output: z.number(),
+        },
         // method3 has no contract
       });
 
@@ -361,28 +372,28 @@ describe('ValidationMiddleware', () => {
         },
         async getUser(id: any) {
           return { id, name: 'Test User' };
-        }
+        },
       };
 
       const serviceContract = contract({
         createUser: {
           input: z.object({
             email: z.string().email(),
-            name: z.string()
+            name: z.string(),
           }),
           output: z.object({
             id: z.string(),
             email: z.string(),
-            name: z.string()
-          })
+            name: z.string(),
+          }),
         },
         getUser: {
           input: z.string().uuid(),
           output: z.object({
             id: z.string(),
-            name: z.string()
-          })
-        }
+            name: z.string(),
+          }),
+        },
       });
 
       const wrappedService = middleware.wrapService(service, serviceContract);
@@ -390,7 +401,7 @@ describe('ValidationMiddleware', () => {
       // Valid call
       const user = await wrappedService.createUser({
         email: 'test@example.com',
-        name: 'Test'
+        name: 'Test',
       });
       expect(user.id).toBe('123');
 
@@ -402,18 +413,18 @@ describe('ValidationMiddleware', () => {
       const service = {
         async existingMethod(input: any) {
           return input;
-        }
+        },
       };
 
       const serviceContract = contract({
         existingMethod: {
           input: z.string(),
-          output: z.string()
+          output: z.string(),
         },
         missingMethod: {
           input: z.string(),
-          output: z.string()
-        }
+          output: z.string(),
+        },
       });
 
       const wrappedService = middleware.wrapService(service, serviceContract);
@@ -427,18 +438,18 @@ describe('ValidationMiddleware', () => {
         async method(input: any) {
           return input;
         },
-        property: 'not-a-function'
+        property: 'not-a-function',
       };
 
       const serviceContract = contract({
         method: {
           input: z.string(),
-          output: z.string()
+          output: z.string(),
         },
         property: {
           input: z.string(),
-          output: z.string()
-        }
+          output: z.string(),
+        },
       });
 
       const wrappedService = middleware.wrapService(service, serviceContract);
@@ -453,14 +464,14 @@ describe('ValidationMiddleware', () => {
       const service = {
         async process(input: any) {
           return { processed: true, ...input };
-        }
+        },
       };
 
       const serviceContract = contract({
         process: {
           input: z.object({ value: z.number() }),
-          output: z.object({ processed: z.boolean(), value: z.number() })
-        }
+          output: z.object({ processed: z.boolean(), value: z.number() }),
+        },
       });
 
       const beforeCalls: any[] = [];
@@ -472,7 +483,7 @@ describe('ValidationMiddleware', () => {
         },
         afterValidation: (method, output) => {
           afterCalls.push({ method, output });
-        }
+        },
       });
 
       await handler.process({ value: 42 });
@@ -490,14 +501,14 @@ describe('ValidationMiddleware', () => {
       const service = {
         async process(input: any) {
           return input;
-        }
+        },
       };
 
       const serviceContract = contract({
         process: {
           input: z.object({ value: z.number() }),
-          output: z.object({ value: z.number() })
-        }
+          output: z.object({ value: z.number() }),
+        },
       });
 
       const errorCalls: any[] = [];
@@ -505,7 +516,7 @@ describe('ValidationMiddleware', () => {
       const handler = middleware.createHandler(service, serviceContract, {
         onError: (method, error) => {
           errorCalls.push({ method, error });
-        }
+        },
       });
 
       try {
@@ -522,14 +533,14 @@ describe('ValidationMiddleware', () => {
       const service = {
         async process(input: any) {
           return input;
-        }
+        },
       };
 
       const serviceContract = contract({
         process: {
           input: z.object({ value: z.number() }),
-          output: z.object({ value: z.number() })
-        }
+          output: z.object({ value: z.number() }),
+        },
       });
 
       const handler = middleware.createHandler(service, serviceContract);
@@ -543,14 +554,14 @@ describe('ValidationMiddleware', () => {
         async process(input: any) {
           return input;
         },
-        config: { setting: 'value' }
+        config: { setting: 'value' },
       };
 
       const serviceContract = contract({
         process: {
           input: z.any(),
-          output: z.any()
-        }
+          output: z.any(),
+        },
       });
 
       const handler = middleware.createHandler(service, serviceContract, {});
@@ -561,19 +572,15 @@ describe('ValidationMiddleware', () => {
 
   describe('shouldSkipValidation', () => {
     it('should skip validation when metadata has skipValidation', () => {
-      const service = { method() { } };
+      const service = { method() {} };
 
-      const shouldSkip = middleware.shouldSkipValidation(
-        service,
-        'method',
-        { skipValidation: true }
-      );
+      const shouldSkip = middleware.shouldSkipValidation(service, 'method', { skipValidation: true });
 
       expect(shouldSkip).toBe(true);
     });
 
     it('should skip validation when @NoValidation is used', () => {
-      const service = { method() { } };
+      const service = { method() {} };
 
       Reflect.defineMetadata('validation:disabled', true, service, 'method');
 
@@ -583,7 +590,7 @@ describe('ValidationMiddleware', () => {
     });
 
     it('should not skip validation by default', () => {
-      const service = { method() { } };
+      const service = { method() {} };
 
       const shouldSkip = middleware.shouldSkipValidation(service, 'method');
 
@@ -593,10 +600,10 @@ describe('ValidationMiddleware', () => {
 
   describe('getMethodContract', () => {
     it('should get method-level validation contract', () => {
-      const service = { method() { } };
+      const service = { method() {} };
       const methodContract = {
         input: z.string(),
-        output: z.string()
+        output: z.string(),
       };
 
       Reflect.defineMetadata('validation:method', methodContract, service, 'method');
@@ -607,12 +614,12 @@ describe('ValidationMiddleware', () => {
     });
 
     it('should get class contract for method', () => {
-      const service = { method() { } };
+      const service = { method() {} };
       const classContract = contract({
         method: {
           input: z.string(),
-          output: z.string()
-        }
+          output: z.string(),
+        },
       });
 
       const retrieved = middleware.getMethodContract(service, 'method', classContract);
@@ -623,16 +630,16 @@ describe('ValidationMiddleware', () => {
     });
 
     it('should prioritize method-level over class contract', () => {
-      const service = { method() { } };
+      const service = { method() {} };
       const methodContract = {
         input: z.number(),
-        output: z.number()
+        output: z.number(),
       };
       const classContract = contract({
         method: {
           input: z.string(),
-          output: z.string()
-        }
+          output: z.string(),
+        },
       });
 
       Reflect.defineMetadata('validation:method', methodContract, service, 'method');
@@ -643,7 +650,7 @@ describe('ValidationMiddleware', () => {
     });
 
     it('should return undefined when no contract found', () => {
-      const service = { method() { } };
+      const service = { method() {} };
 
       const retrieved = middleware.getMethodContract(service, 'method');
 
@@ -662,8 +669,8 @@ describe('ValidationMiddleware', () => {
       const serviceContract = contract({
         createUser: {
           input: z.object({ name: z.string() }),
-          output: z.object({ id: z.string(), name: z.string() })
-        }
+          output: z.object({ id: z.string(), name: z.string() }),
+        },
       });
 
       Reflect.defineMetadata('validation:contract', serviceContract, UserService);
@@ -698,8 +705,8 @@ describe('ValidationMiddleware', () => {
       const serviceContract = contract({
         process: {
           input: z.object({ value: z.number() }),
-          output: z.object({ value: z.number() })
-        }
+          output: z.object({ value: z.number() }),
+        },
       });
 
       Reflect.defineMetadata('validation:contract', serviceContract, UserService);
@@ -723,15 +730,15 @@ describe('ValidationMiddleware', () => {
       const classContract = contract({
         process: {
           input: z.string(),
-          output: z.string()
-        }
+          output: z.string(),
+        },
       });
 
       const overrideContract = contract({
         process: {
           input: z.number(),
-          output: z.number()
-        }
+          output: z.number(),
+        },
       });
 
       Reflect.defineMetadata('validation:contract', classContract, UserService);
@@ -752,7 +759,7 @@ describe('ValidationMiddleware', () => {
 
       const methodContract = {
         input: z.string(),
-        output: z.string()
+        output: z.string(),
       };
 
       expect(() => {
@@ -764,13 +771,13 @@ describe('ValidationMiddleware', () => {
       const service = {
         notAGenerator(input: any) {
           return 'not a generator';
-        }
+        },
       };
 
       const methodContract = {
         input: z.any(),
         output: z.any(),
-        stream: true
+        stream: true,
       };
 
       const wrapped = middleware.wrapMethod(service, 'notAGenerator', methodContract);
@@ -788,12 +795,12 @@ describe('ValidationMiddleware', () => {
       const service = {
         async methodWithMultipleArgs(input: any, arg2: string, arg3: number) {
           return { input, arg2, arg3 };
-        }
+        },
       };
 
       const methodContract = {
         input: z.object({ value: z.number() }),
-        output: z.any()
+        output: z.any(),
       };
 
       const wrapped = middleware.wrapMethod(service, 'methodWithMultipleArgs', methodContract);
@@ -802,7 +809,7 @@ describe('ValidationMiddleware', () => {
       expect(result).toEqual({
         input: { value: 42 },
         arg2: 'test',
-        arg3: 123
+        arg3: 123,
       });
     });
   });

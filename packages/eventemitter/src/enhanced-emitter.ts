@@ -1,4 +1,3 @@
-
 /* eslint-disable @typescript-eslint/no-unsafe-function-type */
 
 import { EventEmitter } from './emitter.js';
@@ -23,7 +22,7 @@ import type {
   EventInterceptor,
   ValidationSchema,
   EventHistoryOptions,
-  ErrorHandlingOptions
+  ErrorHandlingOptions,
 } from './types.js';
 
 /**
@@ -61,12 +60,15 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
   private globalErrorHandler?: (error: Error, event: string, data: any, metadata?: EventMetadata) => void;
 
   // Circuit breakers
-  private circuitBreakers: Map<string, {
-    failures: number;
-    lastFailure: number;
-    state: 'closed' | 'open' | 'half-open';
-    options: any;
-  }> = new Map();
+  private circuitBreakers: Map<
+    string,
+    {
+      failures: number;
+      lastFailure: number;
+      state: 'closed' | 'open' | 'half-open';
+      options: any;
+    }
+  > = new Map();
 
   constructor(options: WildcardOptions & { concurrency?: number } = {}) {
     super(options.concurrency);
@@ -85,22 +87,14 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
   /**
    * Type-safe emit for mapped events
    */
-  emitTyped<K extends keyof TEventMap>(
-    event: K,
-    data: TEventMap[K],
-    options?: EmitOptions
-  ): boolean {
+  emitTyped<K extends keyof TEventMap>(event: K, data: TEventMap[K], options?: EmitOptions): boolean {
     return this.emitEnhanced(event as string, data, options);
   }
 
   /**
    * Type-safe on for mapped events
    */
-  onTyped<K extends keyof TEventMap>(
-    event: K,
-    listener: ListenerFn<TEventMap[K]>,
-    options?: ListenerOptions
-  ): this {
+  onTyped<K extends keyof TEventMap>(event: K, listener: ListenerFn<TEventMap[K]>, options?: ListenerOptions): this {
     return this.onEnhanced(event as string, listener, options);
   }
 
@@ -207,7 +201,7 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
           data,
           metadata,
           timestamp: Date.now(),
-          duration
+          duration,
         };
         this.history.record(record);
       }
@@ -228,7 +222,7 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
           metadata,
           timestamp: Date.now(),
           error: error as Error,
-          duration: Date.now() - startTime
+          duration: Date.now() - startTime,
         };
         this.history.record(record);
       }
@@ -260,12 +254,11 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
     // Add timeout if specified
     if (options?.timeout) {
       const originalListener = listener;
-      listener = async (...args: any[]) => Promise.race([
-        originalListener(...args),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Listener timeout')), options.timeout)
-        )
-      ]);
+      listener = async (...args: any[]) =>
+        Promise.race([
+          originalListener(...args),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Listener timeout')), options.timeout)),
+        ]);
     }
 
     return super.on(event, listener);
@@ -276,15 +269,14 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
    */
   private emitWithWildcard(event: string, data: any, metadata: EventMetadata): boolean {
     const allEvents = this.eventNames() as string[];
-    const matchingPatterns = allEvents.filter(pattern =>
-      this.wildcardMatcher.match(event, pattern)
-    );
+    const matchingPatterns = allEvents.filter((pattern) => this.wildcardMatcher.match(event, pattern));
 
     let handled = false;
 
     // First emit to wildcard patterns (excluding exact match)
     for (const pattern of matchingPatterns) {
-      if (pattern !== event) {  // Skip exact match here
+      if (pattern !== event) {
+        // Skip exact match here
         // Include the actual event name in metadata for wildcard handlers
         const wildcardMetadata = { ...metadata, event };
         if (super.emit(pattern, data, wildcardMetadata)) {
@@ -341,10 +333,7 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
    */
   addInterceptor(interceptor: EventInterceptor): this;
   addInterceptor(event: string, interceptor: EventInterceptor): this;
-  addInterceptor(
-    eventOrInterceptor: string | EventInterceptor,
-    interceptor?: EventInterceptor
-  ): this {
+  addInterceptor(eventOrInterceptor: string | EventInterceptor, interceptor?: EventInterceptor): this {
     if (typeof eventOrInterceptor === 'string') {
       // Event-specific interceptor
       const event = eventOrInterceptor;
@@ -508,7 +497,7 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
     return {
       id: this.generateId(),
       timestamp: Date.now(),
-      ...partial
+      ...partial,
     };
   }
 

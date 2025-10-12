@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import {
   FluentInterface,
   HttpCacheManager,
-  RetryManager
+  RetryManager,
 } from '../../../../src/netron/transport/http/fluent-interface/index.js';
 import { HttpInterface } from '../../../../src/netron/transport/http/interface.js';
 import { HttpTransportClient } from '../../../../src/netron/transport/http/client.js';
@@ -31,9 +31,9 @@ describe('Performance Benchmarks', () => {
         name: 'UserService@1.0.0',
         version: '1.0.0',
         methods: {
-          getUser: { name: 'getUser' }
-        }
-      }
+          getUser: { name: 'getUser' },
+        },
+      },
     } as Definition;
 
     cacheManager = new HttpCacheManager({ maxEntries: 1000 });
@@ -62,12 +62,7 @@ describe('Performance Benchmarks', () => {
       const startTime = performance.now();
 
       for (let i = 0; i < 1000; i++) {
-        new FluentInterface<IUserService>(
-          transport,
-          definition,
-          cacheManager,
-          retryManager
-        );
+        new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
       }
 
       const endTime = performance.now();
@@ -88,12 +83,7 @@ describe('Performance Benchmarks', () => {
       // Measure FluentInterface
       const fluentStart = performance.now();
       for (let i = 0; i < 1000; i++) {
-        new FluentInterface<IUserService>(
-          transport,
-          definition,
-          cacheManager,
-          retryManager
-        );
+        new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
       }
       const fluentDuration = performance.now() - fluentStart;
 
@@ -107,20 +97,12 @@ describe('Performance Benchmarks', () => {
 
   describe('Configuration Chain Performance', () => {
     it('should handle FluentInterface configuration chains efficiently', () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
       const startTime = performance.now();
 
       for (let i = 0; i < 1000; i++) {
-        service
-          .cache(60000)
-          .retry(3)
-          .timeout(5000);
+        service.cache(60000).retry(3).timeout(5000);
       }
 
       const endTime = performance.now();
@@ -133,16 +115,10 @@ describe('Performance Benchmarks', () => {
 
   describe('Global Configuration Performance', () => {
     it('should handle global configuration efficiently', () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager,
-        {
-          cache: { maxAge: 60000 },
-          retry: { maxAttempts: 3 }
-        }
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager, {
+        cache: { maxAge: 60000 },
+        retry: { maxAttempts: 3 },
+      });
 
       const startTime = performance.now();
 
@@ -161,17 +137,11 @@ describe('Performance Benchmarks', () => {
       const startTime = performance.now();
 
       for (let i = 0; i < 1000; i++) {
-        new FluentInterface<IUserService>(
-          transport,
-          definition,
-          cacheManager,
-          retryManager,
-          {
-            cache: { maxAge: 60000 },
-            retry: { maxAttempts: 3 },
-            timeout: 5000
-          }
-        );
+        new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager, {
+          cache: { maxAge: 60000 },
+          retry: { maxAttempts: 3 },
+          timeout: 5000,
+        });
       }
 
       const endTime = performance.now();
@@ -184,12 +154,7 @@ describe('Performance Benchmarks', () => {
 
   describe('Memory Efficiency', () => {
     it('should not leak memory with repeated configurations', () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
       // Run many configuration operations
       for (let i = 0; i < 10000; i++) {
@@ -201,13 +166,9 @@ describe('Performance Benchmarks', () => {
     });
 
     it('should handle large numbers of global configuration changes', () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager,
-        { cache: { maxAge: 60000 } }
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager, {
+        cache: { maxAge: 60000 },
+      });
 
       // Repeatedly override global config
       for (let i = 0; i < 1000; i++) {
@@ -220,20 +181,13 @@ describe('Performance Benchmarks', () => {
 
   describe('Execution Performance', () => {
     it('should execute FluentInterface method calls efficiently', async () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
       const startTime = performance.now();
 
       const promises = [];
       for (let i = 0; i < 100; i++) {
-        promises.push(
-          service.cache(60000).getUser('123')
-        );
+        promises.push(service.cache(60000).getUser('123'));
       }
 
       await Promise.all(promises);
@@ -248,12 +202,7 @@ describe('Performance Benchmarks', () => {
 
   describe('Cache Performance', () => {
     it('should handle cached requests efficiently', async () => {
-      const service = new FluentInterface<IUserService>(
-        transport,
-        definition,
-        cacheManager,
-        retryManager
-      );
+      const service = new FluentInterface<IUserService>(transport, definition, cacheManager, retryManager);
 
       // Prime the cache
       await service.cache(60000).getUser('123');
@@ -263,9 +212,7 @@ describe('Performance Benchmarks', () => {
       // All these should hit cache
       const promises = [];
       for (let i = 0; i < 1000; i++) {
-        promises.push(
-          service.cache(60000).getUser('123')
-        );
+        promises.push(service.cache(60000).getUser('123'));
       }
 
       await Promise.all(promises);

@@ -20,24 +20,16 @@ export function parseConnectionUrl(url: string): ConnectionConfig {
     database: parsed.pathname.slice(1),
     user: parsed.username || undefined,
     password: parsed.password || undefined,
-    ssl: parsed.searchParams.get('ssl') === 'true' ||
-         parsed.searchParams.get('sslmode') === 'require',
+    ssl: parsed.searchParams.get('ssl') === 'true' || parsed.searchParams.get('sslmode') === 'require',
   };
 }
 
 /**
  * Build connection URL from config
  */
-export function buildConnectionUrl(
-  dialect: DatabaseDialect,
-  config: ConnectionConfig
-): string {
+export function buildConnectionUrl(dialect: DatabaseDialect, config: ConnectionConfig): string {
   const protocol = dialect === 'postgres' ? 'postgresql' : dialect;
-  const auth = config.user
-    ? config.password
-      ? `${config.user}:${config.password}@`
-      : `${config.user}@`
-    : '';
+  const auth = config.user ? (config.password ? `${config.user}:${config.password}@` : `${config.user}@`) : '';
 
   const host = config.host || 'localhost';
   const port = config.port || getDefaultPort(dialect);
@@ -71,11 +63,7 @@ export function getDefaultPort(dialect: DatabaseDialect): number | null {
 /**
  * Check if table exists
  */
-export async function tableExists(
-  db: Kysely<any>,
-  tableName: string,
-  dialect: DatabaseDialect
-): Promise<boolean> {
+export async function tableExists(db: Kysely<any>, tableName: string, dialect: DatabaseDialect): Promise<boolean> {
   try {
     switch (dialect) {
       case 'postgres': {
@@ -119,11 +107,7 @@ export async function tableExists(
 /**
  * Get table columns
  */
-export async function getTableColumns(
-  db: Kysely<any>,
-  tableName: string,
-  dialect: DatabaseDialect
-): Promise<string[]> {
+export async function getTableColumns(db: Kysely<any>, tableName: string, dialect: DatabaseDialect): Promise<string[]> {
   try {
     switch (dialect) {
       case 'postgres': {
@@ -133,7 +117,7 @@ export async function getTableColumns(
           .where('table_name', '=', tableName)
           .where('table_schema', '=', 'public')
           .execute();
-        return results.map(r => r.column_name as string);
+        return results.map((r) => r.column_name as string);
       }
 
       case 'mysql': {
@@ -143,12 +127,12 @@ export async function getTableColumns(
           .where('table_name', '=', tableName)
           .where('table_schema', '=', sql`DATABASE()`)
           .execute();
-        return results.map(r => r.column_name as string);
+        return results.map((r) => r.column_name as string);
       }
 
       case 'sqlite': {
         const results = await sql.raw(`PRAGMA table_info(${tableName})`).execute(db);
-        return (results.rows as any[]).map(r => r.name);
+        return (results.rows as any[]).map((r) => r.name);
       }
 
       default:
@@ -237,8 +221,7 @@ export function isForeignKeyError(error: any, dialect: DatabaseDialect): boolean
     case 'postgres':
       return code === '23503' || message.includes('foreign key constraint');
     case 'mysql':
-      return code === 'ER_ROW_IS_REFERENCED' || code === '1451' ||
-             code === 'ER_NO_REFERENCED_ROW' || code === '1452';
+      return code === 'ER_ROW_IS_REFERENCED' || code === '1451' || code === 'ER_NO_REFERENCED_ROW' || code === '1452';
     case 'sqlite':
       return message.includes('foreign key constraint failed');
     default:
@@ -276,19 +259,30 @@ export async function getDatabaseSize(
   try {
     switch (dialect) {
       case 'postgres': {
-        const result = await sql.raw(
-          `SELECT pg_database_size(${databaseName ? `'${databaseName}'` : 'current_database()'}) as size`
-        ).execute(db).then(r => r.rows?.[0]);
+        const result = await sql
+          .raw(`SELECT pg_database_size(${databaseName ? `'${databaseName}'` : 'current_database()'}) as size`)
+          .execute(db)
+          .then((r) => r.rows?.[0]);
         return (result as any)?.size || 0;
       }
 
       case 'mysql': {
-        const dbName = databaseName || await sql.raw('SELECT DATABASE() as name').execute(db).then(r => (r.rows?.[0] as any)?.name);
-        const result = await sql.raw(`
+        const dbName =
+          databaseName ||
+          (await sql
+            .raw('SELECT DATABASE() as name')
+            .execute(db)
+            .then((r) => (r.rows?.[0] as any)?.name));
+        const result = await sql
+          .raw(
+            `
           SELECT SUM(data_length + index_length) as size
           FROM information_schema.tables
           WHERE table_schema = '${dbName}'
-        `).execute(db).then(r => r.rows?.[0]);
+        `
+          )
+          .execute(db)
+          .then((r) => r.rows?.[0]);
         return (result as any)?.size || 0;
       }
 
@@ -335,7 +329,7 @@ async function getTables(db: Kysely<any>, dialect: DatabaseDialect): Promise<str
           .where('table_schema', '=', 'public')
           .where('table_type', '=', 'BASE TABLE')
           .execute();
-        return results.map(r => r.table_name as string);
+        return results.map((r) => r.table_name as string);
       }
 
       case 'mysql': {
@@ -345,7 +339,7 @@ async function getTables(db: Kysely<any>, dialect: DatabaseDialect): Promise<str
           .where('table_schema', '=', sql`DATABASE()`)
           .where('table_type', '=', 'BASE TABLE')
           .execute();
-        return results.map(r => r.table_name as string);
+        return results.map((r) => r.table_name as string);
       }
 
       case 'sqlite': {
@@ -355,7 +349,7 @@ async function getTables(db: Kysely<any>, dialect: DatabaseDialect): Promise<str
           .where('type', '=', 'table')
           .where('name', 'not like', 'sqlite_%')
           .execute();
-        return results.map(r => r.name as string);
+        return results.map((r) => r.name as string);
       }
 
       default:
@@ -369,11 +363,7 @@ async function getTables(db: Kysely<any>, dialect: DatabaseDialect): Promise<str
 /**
  * Truncate a single table
  */
-async function truncateTable(
-  db: Kysely<any>,
-  tableName: string,
-  dialect: DatabaseDialect
-): Promise<void> {
+async function truncateTable(db: Kysely<any>, tableName: string, dialect: DatabaseDialect): Promise<void> {
   try {
     switch (dialect) {
       case 'postgres':

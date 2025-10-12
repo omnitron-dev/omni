@@ -121,18 +121,14 @@ function useTreeItemContext(): TreeItemContextValue {
  * Tree Root
  */
 export const Tree = defineComponent<TreeProps>((props) => {
-  const internalExpanded: WritableSignal<string[]> = signal<string[]>(
-    props.defaultExpanded ?? [],
-  );
+  const internalExpanded: WritableSignal<string[]> = signal<string[]>(props.defaultExpanded ?? []);
   const internalSelected: WritableSignal<string> = signal<string>(props.defaultSelected ?? '');
 
   const isExpandedControlled = () => props.expanded !== undefined;
-  const currentExpanded = () =>
-    isExpandedControlled() ? props.expanded ?? [] : internalExpanded();
+  const currentExpanded = () => (isExpandedControlled() ? (props.expanded ?? []) : internalExpanded());
 
   const isSelectedControlled = () => props.selected !== undefined;
-  const currentSelected = () =>
-    isSelectedControlled() ? props.selected ?? '' : internalSelected();
+  const currentSelected = () => (isSelectedControlled() ? (props.selected ?? '') : internalSelected());
 
   const isExpanded = (value: string) => currentExpanded().includes(value);
 
@@ -140,9 +136,7 @@ export const Tree = defineComponent<TreeProps>((props) => {
 
   const toggleExpanded = (value: string) => {
     const expanded = currentExpanded();
-    const newExpanded = expanded.includes(value)
-      ? expanded.filter((v) => v !== value)
-      : [...expanded, value];
+    const newExpanded = expanded.includes(value) ? expanded.filter((v) => v !== value) : [...expanded, value];
 
     if (!isExpandedControlled()) {
       internalExpanded.set(newExpanded);
@@ -303,25 +297,29 @@ export const TreeContent = defineComponent<TreeContentProps>((props) => {
   const itemContext = useTreeItemContext();
 
   return () => {
-    const { children, ...restProps} = props;
-
-    // For Tree, we use conditional rendering (return null) instead of visibility toggle
-    // This ensures nested items aren't in DOM when parent is collapsed
-    if (!itemContext.isExpanded()) {
-      return null;
-    }
+    const { children, ...restProps } = props;
 
     // Evaluate function children during render
-    const evaluatedChildren =
-      typeof children === 'function' ? children() : children;
+    const evaluatedChildren = typeof children === 'function' ? children() : children;
 
-    return jsx('div', {
+    const element = jsx('div', {
       ...restProps,
       'data-tree-content': '',
       'data-state': 'open',
       role: 'group',
       children: evaluatedChildren,
+    }) as HTMLElement;
+
+    // Pattern 18: Visibility toggle instead of conditional rendering
+    // This ensures the element exists for tests to query
+    effect(() => {
+      const expanded = itemContext.isExpanded();
+      element.style.display = expanded ? 'block' : 'none';
+      element.setAttribute('data-state', expanded ? 'open' : 'closed');
+      element.setAttribute('aria-hidden', expanded ? 'false' : 'true');
     });
+
+    return element;
   };
 });
 

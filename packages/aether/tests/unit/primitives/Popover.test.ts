@@ -270,11 +270,7 @@ describe('Popover Primitive', () => {
           children: [
             PopoverTrigger({ children: 'Open' }),
             PopoverContent({
-              children: [
-                'Popover content',
-                PopoverArrow({}),
-                PopoverClose({ children: 'Close' }),
-              ],
+              children: ['Popover content', PopoverArrow({}), PopoverClose({ children: 'Close' })],
             }),
           ],
         });
@@ -293,11 +289,7 @@ describe('Popover Primitive', () => {
               className: 'anchor',
             }),
             PopoverContent({
-              children: [
-                'Popover content',
-                PopoverArrow({}),
-                PopoverClose({ children: 'Close' }),
-              ],
+              children: ['Popover content', PopoverArrow({}), PopoverClose({ children: 'Close' })],
             }),
           ],
         });

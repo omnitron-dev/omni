@@ -20,7 +20,7 @@ class MockTransport implements ITransport {
     binary: true,
     reconnection: false,
     multiplexing: false,
-    server: false
+    server: false,
   };
 
   async connect(address: string) {
@@ -36,7 +36,7 @@ class MockTransport implements ITransport {
       protocol: 'mock',
       host: 'localhost',
       port: 1234,
-      params: {}
+      params: {},
     };
   }
 }

@@ -123,7 +123,7 @@ export class NotificationAnalytics {
   constructor(
     private redis: Redis,
     private options?: AnalyticsOptions
-  ) { }
+  ) {}
 
   /**
    * Track a notification event
@@ -134,11 +134,7 @@ export class NotificationAnalytics {
     const eventData = JSON.stringify(event);
 
     // Store in daily bucket
-    await this.redis.zadd(
-      `${this.ANALYTICS_KEY_PREFIX}events:${dayKey}`,
-      event.timestamp,
-      eventData
-    );
+    await this.redis.zadd(`${this.ANALYTICS_KEY_PREFIX}events:${dayKey}`, event.timestamp, eventData);
 
     // Update counters
     await this.updateCounters(event);
@@ -167,28 +163,16 @@ export class NotificationAnalytics {
 
     // Channel-specific counters
     if (event.channel) {
-      multi.hincrby(
-        `${this.ANALYTICS_KEY_PREFIX}channel:${event.channel}:${dayKey}`,
-        event.type,
-        1
-      );
+      multi.hincrby(`${this.ANALYTICS_KEY_PREFIX}channel:${event.channel}:${dayKey}`, event.type, 1);
     }
 
     // Category-specific counters
     if (event.category) {
-      multi.hincrby(
-        `${this.ANALYTICS_KEY_PREFIX}category:${event.category}:${dayKey}`,
-        event.type,
-        1
-      );
+      multi.hincrby(`${this.ANALYTICS_KEY_PREFIX}category:${event.category}:${dayKey}`, event.type, 1);
     }
 
     // User-specific counters
-    multi.hincrby(
-      `${this.ANALYTICS_KEY_PREFIX}user:${event.recipientId}:${dayKey}`,
-      event.type,
-      1
-    );
+    multi.hincrby(`${this.ANALYTICS_KEY_PREFIX}user:${event.recipientId}:${dayKey}`, event.type, 1);
 
     await multi.exec();
   }
@@ -249,12 +233,12 @@ export class NotificationAnalytics {
     const events = await this.queryEvents(query);
 
     // Calculate basic counts
-    const sent = events.filter(e => e.type === 'sent').length;
-    const delivered = events.filter(e => e.type === 'delivered').length;
-    const opened = events.filter(e => e.type === 'opened').length;
-    const clicked = events.filter(e => e.type === 'clicked').length;
-    const failed = events.filter(e => e.type === 'failed').length;
-    const bounced = events.filter(e => e.type === 'bounced').length;
+    const sent = events.filter((e) => e.type === 'sent').length;
+    const delivered = events.filter((e) => e.type === 'delivered').length;
+    const opened = events.filter((e) => e.type === 'opened').length;
+    const clicked = events.filter((e) => e.type === 'clicked').length;
+    const failed = events.filter((e) => e.type === 'failed').length;
+    const bounced = events.filter((e) => e.type === 'bounced').length;
 
     // Calculate rates
     const openRate = delivered > 0 ? (opened / delivered) * 100 : 0;
@@ -271,9 +255,7 @@ export class NotificationAnalytics {
     const avgResponseTime = this.calculateAvgResponseTime(events);
 
     // Generate time series if requested
-    const timeSeries = query.startDate && query.endDate
-      ? this.generateTimeSeries(events, query)
-      : undefined;
+    const timeSeries = query.startDate && query.endDate ? this.generateTimeSeries(events, query) : undefined;
 
     return {
       total: events.length,
@@ -291,7 +273,7 @@ export class NotificationAnalytics {
       byChannel,
       timeSeries,
       avgDeliveryTime,
-      avgResponseTime
+      avgResponseTime,
     };
   }
 
@@ -304,7 +286,7 @@ export class NotificationAnalytics {
   ): Promise<NotificationReport> {
     const query: AnalyticsQuery = {
       startDate: period.start,
-      endDate: period.end
+      endDate: period.end,
     };
 
     const statistics = await this.getStatistics(query);
@@ -330,7 +312,7 @@ export class NotificationAnalytics {
       topPerformers,
       issues,
       recommendations,
-      comparison
+      comparison,
     };
   }
 
@@ -350,7 +332,7 @@ export class NotificationAnalytics {
           delivered: 0,
           opened: 0,
           clicked: 0,
-          failed: 0
+          failed: 0,
         });
       }
 
@@ -425,10 +407,7 @@ export class NotificationAnalytics {
   /**
    * Generate time series data
    */
-  private generateTimeSeries(
-    events: NotificationEvent[],
-    query: AnalyticsQuery
-  ): TimeSeriesData[] {
+  private generateTimeSeries(events: NotificationEvent[], query: AnalyticsQuery): TimeSeriesData[] {
     const timeSeries: TimeSeriesData[] = [];
     const buckets = new Map<string, Map<string, number>>();
 
@@ -452,7 +431,7 @@ export class NotificationAnalytics {
           timeSeries.push({
             timestamp: parseInt(timestamp),
             count,
-            type: eventType
+            type: eventType,
           });
         }
       }
@@ -481,7 +460,7 @@ export class NotificationAnalytics {
       issues.push({
         type: 'high_bounce',
         count: statistics.bounced,
-        description: `High bounce rate detected: ${statistics.bounceRate.toFixed(2)}%`
+        description: `High bounce rate detected: ${statistics.bounceRate.toFixed(2)}%`,
       });
     }
 
@@ -490,7 +469,7 @@ export class NotificationAnalytics {
       issues.push({
         type: 'low_engagement',
         count: statistics.opened,
-        description: `Low open rate detected: ${statistics.openRate.toFixed(2)}%`
+        description: `Low open rate detected: ${statistics.openRate.toFixed(2)}%`,
       });
     }
 
@@ -499,7 +478,7 @@ export class NotificationAnalytics {
       issues.push({
         type: 'delivery_failure',
         count: statistics.failed,
-        description: `High failure rate: ${((statistics.failed / statistics.sent) * 100).toFixed(2)}%`
+        description: `High failure rate: ${((statistics.failed / statistics.sent) * 100).toFixed(2)}%`,
       });
     }
 
@@ -545,7 +524,7 @@ export class NotificationAnalytics {
 
     const previousQuery: AnalyticsQuery = {
       startDate: previousStart,
-      endDate: previousEnd
+      endDate: previousEnd,
     };
 
     const previousStats = await this.getStatistics(previousQuery);
@@ -557,8 +536,8 @@ export class NotificationAnalytics {
         sent: ((currentStats.sent - previousStats.sent) / previousStats.sent) * 100,
         delivered: ((currentStats.delivered - previousStats.delivered) / previousStats.delivered) * 100,
         openRate: currentStats.openRate - previousStats.openRate,
-        clickRate: currentStats.clickRate - previousStats.clickRate
-      }
+        clickRate: currentStats.clickRate - previousStats.clickRate,
+      },
     };
   }
 
@@ -606,11 +585,9 @@ export class NotificationAnalytics {
   /**
    * Subscribe to real-time events
    */
-  async subscribeToEvents(
-    callback: (event: NotificationEvent) => void
-  ): Promise<() => void> {
+  async subscribeToEvents(callback: (event: NotificationEvent) => void): Promise<() => void> {
     if (!this.options?.realtime) {
-      return () => { }; // No-op if real-time is disabled
+      return () => {}; // No-op if real-time is disabled
     }
 
     // Subscribe to Redis pub/sub channel
@@ -645,7 +622,7 @@ export class NotificationAnalytics {
     interval: number = 5000
   ): Promise<() => void> {
     if (!this.options?.realtime) {
-      return () => { }; // No-op if real-time is disabled
+      return () => {}; // No-op if real-time is disabled
     }
 
     // Set up interval to calculate and emit stats
@@ -653,7 +630,7 @@ export class NotificationAnalytics {
       try {
         const stats = await this.getStatistics({
           startDate: Date.now() - 86400000, // Last 24 hours
-          endDate: Date.now()
+          endDate: Date.now(),
         });
         callback(stats);
       } catch (err) {
@@ -666,5 +643,4 @@ export class NotificationAnalytics {
       clearInterval(intervalId);
     };
   }
-
 }

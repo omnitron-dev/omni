@@ -97,12 +97,15 @@ export interface RateLimitStats {
   currentQueueSize: number;
 
   /** Stats by tier */
-  byTier: Map<string, {
-    checks: number;
-    allowed: number;
-    denied: number;
-    queued: number;
-  }>;
+  byTier: Map<
+    string,
+    {
+      checks: number;
+      allowed: number;
+      denied: number;
+      queued: number;
+    }
+  >;
 
   /** Active keys being tracked */
   activeKeys: number;
@@ -351,7 +354,7 @@ export class RateLimiter {
         totalAllowed: state.allowed,
         totalDenied: state.denied,
         totalQueued: state.queued,
-        currentQueueSize: this.queue.filter(q => q.key === key).length,
+        currentQueueSize: this.queue.filter((q) => q.key === key).length,
         byTier: new Map(),
         activeKeys: 1,
       };
@@ -444,11 +447,11 @@ export class RateLimiter {
   ): { allowed: boolean; remaining: number; resetAt: Date; result: { allowed: boolean; resetAt: Date } } {
     // Remove expired timestamps
     const windowStart = now - this.config.window;
-    const validTimestamps = state.timestamps.filter(t => t > windowStart);
+    const validTimestamps = state.timestamps.filter((t) => t > windowStart);
 
     // Check if under limit
     const limit = tier.limit + (tier.burst ?? 0);
-    const currentCount = consume ? validTimestamps.length : state.timestamps.filter(t => t > windowStart).length;
+    const currentCount = consume ? validTimestamps.length : state.timestamps.filter((t) => t > windowStart).length;
     const allowed = currentCount < limit;
 
     // If consuming and allowed, add timestamp
@@ -507,7 +510,7 @@ export class RateLimiter {
     }
 
     // Calculate remaining and reset time
-    const finalCount = consume ? state.timestamps.length : (currentCount + (allowed ? 0 : 0));
+    const finalCount = consume ? state.timestamps.length : currentCount + (allowed ? 0 : 0);
     const remaining = Math.max(0, limit - finalCount);
     const resetAt = new Date(windowEnd);
 
@@ -550,7 +553,7 @@ export class RateLimiter {
     }
 
     // Calculate remaining and reset time
-    const remaining = Math.floor(consume ? (state.tokens ?? 0) : (allowed ? availableTokens - 1 : availableTokens));
+    const remaining = Math.floor(consume ? (state.tokens ?? 0) : allowed ? availableTokens - 1 : availableTokens);
     const tokensNeeded = maxTokens - (consume ? (state.tokens ?? 0) : availableTokens);
     const timeToRefill = tokensNeeded > 0 ? (tokensNeeded / tier.limit) * this.config.window : 0;
     const resetAt = new Date(now + timeToRefill);
@@ -572,7 +575,7 @@ export class RateLimiter {
       };
 
       // Insert in priority order (higher priority first)
-      const insertIndex = this.queue.findIndex(q => q.priority < request.priority);
+      const insertIndex = this.queue.findIndex((q) => q.priority < request.priority);
       if (insertIndex === -1) {
         this.queue.push(request);
       } else {
@@ -621,10 +624,7 @@ export class RateLimiter {
           request.resolve(true);
           processed.push(request);
 
-          this.logger.debug(
-            { key: request.key, tier: request.tier },
-            'Queued request processed'
-          );
+          this.logger.debug({ key: request.key, tier: request.tier }, 'Queued request processed');
         }
       } catch (error) {
         this.logger.error({ error, key: request.key }, 'Error processing queued request');
@@ -647,9 +647,12 @@ export class RateLimiter {
    */
   private startCleanup(): void {
     // Cleanup every 5 minutes
-    this.cleanupInterval = setInterval(() => {
-      this.cleanup();
-    }, 5 * 60 * 1000);
+    this.cleanupInterval = setInterval(
+      () => {
+        this.cleanup();
+      },
+      5 * 60 * 1000
+    );
   }
 
   /**

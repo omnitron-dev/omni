@@ -9,7 +9,7 @@ import {
   AsyncResolutionError,
   createAsyncToken,
   createStreamToken,
-  createLazyToken
+  createLazyToken,
 } from '../../../src/nexus/index.js';
 
 describe('Async Operations', () => {
@@ -29,9 +29,9 @@ describe('Async Operations', () => {
 
       container.registerAsync(token, {
         useFactory: async () => {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           return 'async-result';
-        }
+        },
       });
 
       const result = await container.resolveAsync(token);
@@ -44,17 +44,17 @@ describe('Async Operations', () => {
 
       container.registerAsync(configToken, {
         useFactory: async () => {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           return { apiUrl: 'https://api.example.com' };
-        }
+        },
       });
 
       container.registerAsync(serviceToken, {
         useFactory: async (config) => {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           return { config };
         },
-        inject: [configToken]
+        inject: [configToken],
       });
 
       const service = await container.resolveAsync(serviceToken);
@@ -68,16 +68,16 @@ describe('Async Operations', () => {
       container.registerAsync(token, {
         useFactory: async () => {
           callCount++;
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           return callCount;
         },
-        scope: 'singleton'
+        scope: 'singleton',
       });
 
       const [first, second, third] = await Promise.all([
         container.resolveAsync(token),
         container.resolveAsync(token),
-        container.resolveAsync(token)
+        container.resolveAsync(token),
       ]);
 
       expect(first).toBe(1);
@@ -91,9 +91,9 @@ describe('Async Operations', () => {
 
       container.registerAsync(token, {
         useFactory: async () => {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           throw new Error('Async initialization failed');
-        }
+        },
       });
 
       await expect(container.resolveAsync(token)).rejects.toThrow(AsyncResolutionError);
@@ -105,7 +105,7 @@ describe('Async Operations', () => {
         private initialized = false;
 
         async onInit() {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           this.initialized = true;
         }
 
@@ -118,7 +118,7 @@ describe('Async Operations', () => {
 
       container.registerAsync(token, {
         useClass: AsyncService,
-        async: true
+        async: true,
       });
 
       const service = await container.resolveAsync(token);
@@ -133,18 +133,18 @@ describe('Async Operations', () => {
 
       container.registerAsync(tokenA, {
         useFactory: async (b) => {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           return { b };
         },
-        inject: [tokenB]
+        inject: [tokenB],
       });
 
       container.registerAsync(tokenB, {
         useFactory: async (a) => {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           return { a };
         },
-        inject: [tokenA]
+        inject: [tokenA],
       });
 
       await expect(container.resolveAsync(tokenA)).rejects.toThrow('Circular dependency');
@@ -155,10 +155,10 @@ describe('Async Operations', () => {
 
       container.registerAsync(token, {
         useFactory: async () => {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise((resolve) => setTimeout(resolve, 1000));
           return 'too-slow';
         },
-        timeout: 100
+        timeout: 100,
       });
 
       await expect(container.resolveAsync(token)).rejects.toThrow('Async resolution timeout');
@@ -178,8 +178,8 @@ describe('Async Operations', () => {
         },
         retry: {
           maxAttempts: 3,
-          delay: 10
-        }
+          delay: 10,
+        },
       });
 
       const result = await container.resolveAsync(token);
@@ -197,7 +197,7 @@ describe('Async Operations', () => {
         useFactory: () => {
           created = true;
           return { value: 'lazy' };
-        }
+        },
       });
 
       const proxy = container.resolveLazy(token);
@@ -219,9 +219,9 @@ describe('Async Operations', () => {
         useFactory: () => {
           createCount++;
           return {
-            getValue: () => createCount
+            getValue: () => createCount,
           };
-        }
+        },
       });
 
       const proxy = container.resolveLazy(token);
@@ -241,7 +241,7 @@ describe('Async Operations', () => {
       container.register(depToken, { useValue: 'dependency' });
       container.register(lazyToken, {
         useFactory: (dep) => ({ dep }),
-        inject: [depToken]
+        inject: [depToken],
       });
 
       const proxy = container.resolveLazy(lazyToken);
@@ -254,7 +254,7 @@ describe('Async Operations', () => {
       container.register(token, {
         useFactory: () => {
           throw new Error('Lazy initialization failed');
-        }
+        },
       });
 
       const proxy = container.resolveLazy(token);
@@ -267,9 +267,9 @@ describe('Async Operations', () => {
 
       container.registerAsync(token, {
         useFactory: async () => {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           return { value: 'async-lazy' };
-        }
+        },
       });
 
       const proxy = await container.resolveLazyAsync(token);
@@ -284,12 +284,12 @@ describe('Async Operations', () => {
       const token = createStreamToken<number>('NumberStream');
 
       container.registerStream(token, {
-        async *useFactory () {
+        async *useFactory() {
           for (let i = 0; i < 5; i++) {
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
             yield i;
           }
-        }
+        },
       });
 
       const stream = container.resolveStream(token);
@@ -306,11 +306,11 @@ describe('Async Operations', () => {
       const token = createStreamToken<number>('ErrorStream');
 
       container.registerStream(token, {
-        async *useFactory () {
+        async *useFactory() {
           yield 1;
           yield 2;
           throw new Error('Stream error');
-        }
+        },
       });
 
       const stream = container.resolveStream(token);
@@ -332,18 +332,18 @@ describe('Async Operations', () => {
       const transformedToken = createStreamToken<string>('Transformed');
 
       container.registerStream(sourceToken, {
-        async *useFactory () {
+        async *useFactory() {
           yield* [1, 2, 3, 4, 5];
-        }
+        },
       });
 
       container.registerStream(transformedToken, {
-        async *useFactory (source) {
+        async *useFactory(source) {
           for await (const num of source) {
             yield `Number: ${num}`;
           }
         },
-        inject: [sourceToken]
+        inject: [sourceToken],
       });
 
       const stream = container.resolveStream(transformedToken);
@@ -353,25 +353,19 @@ describe('Async Operations', () => {
         values.push(value);
       }
 
-      expect(values).toEqual([
-        'Number: 1',
-        'Number: 2',
-        'Number: 3',
-        'Number: 4',
-        'Number: 5'
-      ]);
+      expect(values).toEqual(['Number: 1', 'Number: 2', 'Number: 3', 'Number: 4', 'Number: 5']);
     });
 
     it('should support stream filtering', async () => {
       const token = createStreamToken<number>('FilteredStream');
 
       container.registerStream(token, {
-        async *useFactory () {
+        async *useFactory() {
           for (let i = 0; i < 10; i++) {
             yield i;
           }
         },
-        filter: (value) => value % 2 === 0 // Only even numbers
+        filter: (value) => value % 2 === 0, // Only even numbers
       });
 
       const stream = container.resolveStream(token);
@@ -388,12 +382,12 @@ describe('Async Operations', () => {
       const token = createStreamToken<number[]>('BatchedStream');
 
       container.registerStream(token, {
-        async *useFactory () {
+        async *useFactory() {
           for (let i = 0; i < 10; i++) {
             yield i;
           }
         },
-        batch: { size: 3 }
+        batch: { size: 3 },
       });
 
       const stream = container.resolveStream(token);
@@ -403,12 +397,7 @@ describe('Async Operations', () => {
         batches.push(batch);
       }
 
-      expect(batches).toEqual([
-        [0, 1, 2],
-        [3, 4, 5],
-        [6, 7, 8],
-        [9]
-      ]);
+      expect(batches).toEqual([[0, 1, 2], [3, 4, 5], [6, 7, 8], [9]]);
     });
 
     it('should handle stream cancellation', async () => {
@@ -416,16 +405,16 @@ describe('Async Operations', () => {
       let cancelled = false;
 
       container.registerStream(token, {
-        async *useFactory () {
+        async *useFactory() {
           try {
             for (let i = 0; i < 100; i++) {
-              await new Promise(resolve => setTimeout(resolve, 10));
+              await new Promise((resolve) => setTimeout(resolve, 10));
               yield i;
             }
           } finally {
             cancelled = true;
           }
-        }
+        },
       });
 
       const stream = container.resolveStream(token);
@@ -437,7 +426,7 @@ describe('Async Operations', () => {
       }
 
       // Give time for cleanup
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(values).toEqual([0, 1, 2, 3, 4]);
       expect(cancelled).toBe(true);
@@ -449,29 +438,30 @@ describe('Async Operations', () => {
       const mergedToken = createStreamToken<string>('Merged');
 
       container.registerStream(stream1Token, {
-        async *useFactory () {
+        async *useFactory() {
           yield 'a1';
-          await new Promise(resolve => setTimeout(resolve, 20));
+          await new Promise((resolve) => setTimeout(resolve, 20));
           yield 'a2';
-        }
+        },
       });
 
       container.registerStream(stream2Token, {
-        async *useFactory () {
-          await new Promise(resolve => setTimeout(resolve, 10));
+        async *useFactory() {
+          await new Promise((resolve) => setTimeout(resolve, 10));
           yield 'b1';
-          await new Promise(resolve => setTimeout(resolve, 20));
+          await new Promise((resolve) => setTimeout(resolve, 20));
           yield 'b2';
-        }
+        },
       });
 
       container.registerStream(mergedToken, {
-        async *useFactory (s1, s2) {
+        async *useFactory(s1, s2) {
           // Simple merge - interleave streams
           const iter1 = s1[Symbol.asyncIterator]();
           const iter2 = s2[Symbol.asyncIterator]();
 
-          let done1 = false, done2 = false;
+          let done1 = false,
+            done2 = false;
 
           while (!done1 || !done2) {
             if (!done1) {
@@ -493,7 +483,7 @@ describe('Async Operations', () => {
             }
           }
         },
-        inject: [stream1Token, stream2Token]
+        inject: [stream1Token, stream2Token],
       });
 
       const stream = container.resolveStream(mergedToken);
@@ -512,16 +502,14 @@ describe('Async Operations', () => {
 
   describe('Parallel Resolution', () => {
     it('should resolve multiple tokens in parallel', async () => {
-      const tokens = Array.from({ length: 5 }, (_, i) =>
-        createAsyncToken<number>(`Parallel${i}`)
-      );
+      const tokens = Array.from({ length: 5 }, (_, i) => createAsyncToken<number>(`Parallel${i}`));
 
       tokens.forEach((token, i) => {
         container.registerAsync(token, {
           useFactory: async () => {
-            await new Promise(resolve => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 50));
             return i;
-          }
+          },
         });
       });
 
@@ -538,13 +526,13 @@ describe('Async Operations', () => {
       const failToken = createAsyncToken<string>('Fail');
 
       container.registerAsync(successToken, {
-        useFactory: async () => 'success'
+        useFactory: async () => 'success',
       });
 
       container.registerAsync(failToken, {
         useFactory: async () => {
           throw new Error('Failed');
-        }
+        },
       });
 
       const results = await container.resolveParallelSettled([successToken, failToken]);
@@ -562,22 +550,19 @@ describe('Async Operations', () => {
 
       container.registerAsync(fastToken, {
         useFactory: async () => {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           return 'fast';
-        }
+        },
       });
 
       container.registerAsync(slowToken, {
         useFactory: async () => {
-          await new Promise(resolve => setTimeout(resolve, 200));
+          await new Promise((resolve) => setTimeout(resolve, 200));
           return 'slow';
-        }
+        },
       });
 
-      const results = await container.resolveBatch(
-        { fast: fastToken, slow: slowToken },
-        { timeout: 100 }
-      );
+      const results = await container.resolveBatch({ fast: fastToken, slow: slowToken }, { timeout: 100 });
 
       expect(results.fast).toBe('fast');
       expect(results.slow).toBeUndefined(); // Timed out

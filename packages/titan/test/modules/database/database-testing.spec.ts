@@ -17,7 +17,10 @@ import {
   DatabaseManager,
   DATABASE_TESTING_SERVICE,
 } from '../../../src/modules/database/index.js';
-import { DatabaseTestingModule, DatabaseTestingService } from '../../../src/modules/database/testing/database-testing.module.js';
+import {
+  DatabaseTestingModule,
+  DatabaseTestingService,
+} from '../../../src/modules/database/testing/database-testing.module.js';
 import { DatabaseTestManager, DockerContainer } from '../../utils/docker-test-manager.js';
 
 // Test entities
@@ -114,17 +117,14 @@ class BlogService {
 
 // Test module
 @Module({
-  imports: [DatabaseTestingModule.forTest({
-    transactional: true,
-    autoMigrate: true,
-    autoClean: true,
-  })],
-  providers: [
-    BlogService,
-    UserRepository,
-    PostRepository,
-    CommentRepository,
+  imports: [
+    DatabaseTestingModule.forTest({
+      transactional: true,
+      autoMigrate: true,
+      autoClean: true,
+    }),
   ],
+  providers: [BlogService, UserRepository, PostRepository, CommentRepository],
   exports: [BlogService, DATABASE_TESTING_SERVICE],
 })
 class TestAppModule {}
@@ -141,7 +141,7 @@ describe('DatabaseTestingModule', () => {
         imports: [
           DatabaseTestingModule.forTest({
             transactional: true,
-            autoMigrate: false,  // Disable migrations for manual schema creation
+            autoMigrate: false, // Disable migrations for manual schema creation
             autoClean: true,
           }),
         ],
@@ -345,26 +345,23 @@ describe('DatabaseTestingModule', () => {
 
       // Create module with PostgreSQL connection
       @Module({
-        imports: [DatabaseTestingModule.forTest({
-          connection: {
-            dialect: 'postgres',
-            host: 'localhost',
-            port,
-            database: 'testdb',
-            user: 'testuser',
-            password: 'testpass',
-          },
-          transactional: true,
-          autoMigrate: false,
-          autoClean: true,
-          isolatedSchema: true,
-        })],
-        providers: [
-          BlogService,
-          UserRepository,
-          PostRepository,
-          CommentRepository,
+        imports: [
+          DatabaseTestingModule.forTest({
+            connection: {
+              dialect: 'postgres',
+              host: 'localhost',
+              port,
+              database: 'testdb',
+              user: 'testuser',
+              password: 'testpass',
+            },
+            transactional: true,
+            autoMigrate: false,
+            autoClean: true,
+            isolatedSchema: true,
+          }),
         ],
+        providers: [BlogService, UserRepository, PostRepository, CommentRepository],
         exports: [BlogService],
       })
       class PgTestModule {}
@@ -440,12 +437,14 @@ describe('DatabaseTestingModule', () => {
       expect(post.user_id).toBe(user.id);
 
       const stats = await blogService.getUserStats(user.id);
-      expect(stats).toEqual(expect.objectContaining({
-        id: user.id,
-        name: 'PG User',
-        post_count: 1,
-        comment_count: 0,
-      }));
+      expect(stats).toEqual(
+        expect.objectContaining({
+          id: user.id,
+          name: 'PG User',
+          post_count: 1,
+          comment_count: 0,
+        })
+      );
     });
 
     it('should support PostgreSQL-specific features', async () => {
@@ -466,9 +465,11 @@ describe('DatabaseTestingModule', () => {
       `.execute(db);
 
       expect(result.rows).toHaveLength(1);
-      expect(result.rows[0]).toEqual(expect.objectContaining({
-        name: 'Updated JSON User',
-      }));
+      expect(result.rows[0]).toEqual(
+        expect.objectContaining({
+          name: 'Updated JSON User',
+        })
+      );
     });
 
     it('should isolate schemas between test suites', async () => {
@@ -500,25 +501,22 @@ describe('DatabaseTestingModule', () => {
 
       // Create module with MySQL connection
       @Module({
-        imports: [DatabaseTestingModule.forTest({
-          connection: {
-            dialect: 'mysql',
-            host: 'localhost',
-            port,
-            database: 'testdb',
-            user: 'testuser',
-            password: 'testpass',
-          },
-          transactional: true,
-          autoMigrate: false,
-          autoClean: true,
-        })],
-        providers: [
-          BlogService,
-          UserRepository,
-          PostRepository,
-          CommentRepository,
+        imports: [
+          DatabaseTestingModule.forTest({
+            connection: {
+              dialect: 'mysql',
+              host: 'localhost',
+              port,
+              database: 'testdb',
+              user: 'testuser',
+              password: 'testpass',
+            },
+            transactional: true,
+            autoMigrate: false,
+            autoClean: true,
+          }),
         ],
+        providers: [BlogService, UserRepository, PostRepository, CommentRepository],
         exports: [BlogService],
       })
       class MySQLTestModule {}
@@ -597,12 +595,14 @@ describe('DatabaseTestingModule', () => {
       expect(post.user_id).toBe(user.id);
 
       const stats = await blogService.getUserStats(user.id);
-      expect(stats).toEqual(expect.objectContaining({
-        id: user.id,
-        name: 'MySQL User',
-        post_count: 1,
-        comment_count: 0,
-      }));
+      expect(stats).toEqual(
+        expect.objectContaining({
+          id: user.id,
+          name: 'MySQL User',
+          post_count: 1,
+          comment_count: 0,
+        })
+      );
     });
 
     it('should support MySQL-specific features', async () => {
@@ -627,11 +627,13 @@ describe('DatabaseTestingModule', () => {
       `.execute(db);
 
       expect(result.rows).toHaveLength(1);
-      expect(result.rows[0]).toEqual(expect.objectContaining({
-        email: 'duplicate@example.com',
-        name: 'Updated Name',
-        active: 0, // MySQL returns 0/1 for boolean
-      }));
+      expect(result.rows[0]).toEqual(
+        expect.objectContaining({
+          email: 'duplicate@example.com',
+          name: 'Updated Name',
+          active: 0, // MySQL returns 0/1 for boolean
+        })
+      );
     });
 
     it('should handle foreign key constraints properly', async () => {
@@ -687,14 +689,16 @@ describe('DatabaseTestingModule', () => {
       };
 
       @Module({
-        imports: [DatabaseTestingModule.forTest({
-          transactional: true,
-          autoMigrate: false,
-          autoClean: true,
-          autoSeed: true,
-          seeds: seedFunction,
-          preserveTables: ['migrations'], // Preserve migration table
-        })],
+        imports: [
+          DatabaseTestingModule.forTest({
+            transactional: true,
+            autoMigrate: false,
+            autoClean: true,
+            autoSeed: true,
+            seeds: seedFunction,
+            preserveTables: ['migrations'], // Preserve migration table
+          }),
+        ],
         providers: [BlogService, UserRepository, PostRepository, CommentRepository],
       })
       class AdvancedTestModule {}
@@ -805,17 +809,10 @@ describe('DatabaseTestingModule', () => {
     it('should execute queries in test context', async () => {
       const result = await testService.execute(async (db) => {
         // Insert data
-        await db
-          .insertInto('users')
-          .values({ email: 'execute@example.com', name: 'Execute User' })
-          .execute();
+        await db.insertInto('users').values({ email: 'execute@example.com', name: 'Execute User' }).execute();
 
         // Query data
-        return db
-          .selectFrom('users')
-          .where('email', '=', 'execute@example.com')
-          .selectAll()
-          .executeTakeFirst();
+        return db.selectFrom('users').where('email', '=', 'execute@example.com').selectAll().executeTakeFirst();
       });
 
       expect(result).toBeDefined();
@@ -873,9 +870,9 @@ describe('DatabaseTestingModule', () => {
 
     it('should handle savepoint errors gracefully', async () => {
       // Try to rollback without creating savepoint first
-      await expect(
-        testService.rollbackToSavepoint('nonexistent')
-      ).rejects.toThrow('Savepoints require transactional mode');
+      await expect(testService.rollbackToSavepoint('nonexistent')).rejects.toThrow(
+        'Savepoints require transactional mode'
+      );
     });
 
     it('should handle seed errors gracefully', async () => {

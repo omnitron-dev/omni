@@ -36,7 +36,7 @@ export class StreamReference {
     public readonly type: StreamReferenceType,
     public readonly isLive: boolean,
     public readonly peerId: string
-  ) { }
+  ) {}
 
   /**
    * Creates a StreamReference from an existing stream instance.

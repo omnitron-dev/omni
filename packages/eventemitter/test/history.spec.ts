@@ -15,7 +15,7 @@ describe('MemoryEventStorage', () => {
         event: 'test',
         data: { value: 1 },
         metadata: { id: '1' },
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       await storage.save(record);
@@ -31,7 +31,7 @@ describe('MemoryEventStorage', () => {
           event: `event${i}`,
           data: i,
           metadata: {},
-          timestamp: Date.now() + i
+          timestamp: Date.now() + i,
         });
       }
 
@@ -49,19 +49,19 @@ describe('MemoryEventStorage', () => {
         event: 'user.created',
         data: { id: 1 },
         metadata: { tags: ['user'], correlationId: 'corr1' },
-        timestamp: now - 3600000 // 1 hour ago
+        timestamp: now - 3600000, // 1 hour ago
       });
       await storage.save({
         event: 'user.updated',
         data: { id: 2 },
         metadata: { tags: ['user', 'important'], correlationId: 'corr2' },
-        timestamp: now - 1800000 // 30 min ago
+        timestamp: now - 1800000, // 30 min ago
       });
       await storage.save({
         event: 'post.created',
         data: { id: 3 },
         metadata: { tags: ['post'], correlationId: 'corr3' },
-        timestamp: now
+        timestamp: now,
       });
     });
 
@@ -69,21 +69,21 @@ describe('MemoryEventStorage', () => {
       const filter: EventFilter = { event: 'user' };
       const records = await storage.load(filter);
       expect(records).toHaveLength(2);
-      expect(records.every(r => r.event.includes('user'))).toBe(true);
+      expect(records.every((r) => r.event.includes('user'))).toBe(true);
     });
 
     it('should filter by event regex', async () => {
       const filter: EventFilter = { event: /\.created$/ };
       const records = await storage.load(filter);
       expect(records).toHaveLength(2);
-      expect(records.every(r => r.event.endsWith('.created'))).toBe(true);
+      expect(records.every((r) => r.event.endsWith('.created'))).toBe(true);
     });
 
     it('should filter by time range', async () => {
       const now = Date.now();
       const filter: EventFilter = {
         from: new Date(now - 2700000), // 45 min ago
-        to: new Date(now)
+        to: new Date(now),
       };
       const records = await storage.load(filter);
       expect(records).toHaveLength(2); // Only last 2 events
@@ -106,7 +106,7 @@ describe('MemoryEventStorage', () => {
     it('should combine multiple filters', async () => {
       const filter: EventFilter = {
         event: 'user',
-        tags: ['user']
+        tags: ['user'],
       };
       const records = await storage.load(filter);
       expect(records).toHaveLength(2);
@@ -119,7 +119,7 @@ describe('MemoryEventStorage', () => {
         event: 'test',
         data: {},
         metadata: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
 
       let records = await storage.load();
@@ -159,7 +159,7 @@ describe('EventHistory', () => {
         event: 'test',
         data: {},
         metadata: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       await history.record(record);
@@ -174,7 +174,7 @@ describe('EventHistory', () => {
         event: 'test',
         data: { value: 1 },
         metadata: { id: '1' },
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       await history.record(record);
@@ -192,14 +192,14 @@ describe('EventHistory', () => {
         event: 'allowed.event',
         data: {},
         metadata: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
 
       await history.record({
         event: 'blocked.event',
         data: {},
         metadata: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
 
       const records = await history.getHistory();
@@ -217,7 +217,7 @@ describe('EventHistory', () => {
         event: 'old',
         data: {},
         metadata: {},
-        timestamp: Date.now() - 2000
+        timestamp: Date.now() - 2000,
       });
 
       // Recent event (within TTL)
@@ -225,7 +225,7 @@ describe('EventHistory', () => {
         event: 'recent',
         data: {},
         metadata: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
 
       const records = await history.getHistory();
@@ -237,25 +237,25 @@ describe('EventHistory', () => {
   describe('getHistory', () => {
     beforeEach(async () => {
       history.enable();
-      
+
       const now = Date.now();
       await history.record({
         event: 'event1',
         data: { value: 1 },
         metadata: { tags: ['tag1'] },
-        timestamp: now - 2000
+        timestamp: now - 2000,
       });
       await history.record({
         event: 'event2',
         data: { value: 2 },
         metadata: { tags: ['tag2'] },
-        timestamp: now - 1000
+        timestamp: now - 1000,
       });
       await history.record({
         event: 'event3',
         data: { value: 3 },
         metadata: { tags: ['tag1', 'tag2'] },
-        timestamp: now
+        timestamp: now,
       });
     });
 
@@ -279,13 +279,13 @@ describe('EventHistory', () => {
         event: 'old',
         data: {},
         metadata: {},
-        timestamp: now - 2000
+        timestamp: now - 2000,
       });
       await history.record({
         event: 'recent',
         data: {},
         metadata: {},
-        timestamp: now - 500
+        timestamp: now - 500,
       });
 
       const records = await history.getHistory();
@@ -302,13 +302,13 @@ describe('EventHistory', () => {
         event: 'event1',
         data: { value: 1 },
         metadata: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
       await history.record({
         event: 'event2',
         data: { value: 2 },
         metadata: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
 
       const exported = await history.export();
@@ -335,14 +335,14 @@ describe('EventHistory', () => {
         data: {},
         metadata: {},
         timestamp: Date.now(),
-        duration: 10
+        duration: 10,
       });
       await history.record({
         event: 'event1',
         data: {},
         metadata: {},
         timestamp: Date.now(),
-        duration: 20
+        duration: 20,
       });
       await history.record({
         event: 'event2',
@@ -350,7 +350,7 @@ describe('EventHistory', () => {
         metadata: {},
         timestamp: Date.now(),
         duration: 30,
-        error: new Error('Test error')
+        error: new Error('Test error'),
       });
     });
 
@@ -382,7 +382,7 @@ describe('EventHistory', () => {
       const customStorage = {
         save: jest.fn(async () => {}),
         load: jest.fn(async () => []),
-        clear: jest.fn(async () => {})
+        clear: jest.fn(async () => {}),
       };
 
       history = new EventHistory({ storage: customStorage });
@@ -392,7 +392,7 @@ describe('EventHistory', () => {
         event: 'test',
         data: {},
         metadata: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
 
       expect(customStorage.save).toHaveBeenCalled();

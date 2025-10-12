@@ -12,7 +12,7 @@ import {
   type MiddlewareConfig,
   type MiddlewareRegistration,
   type IMiddlewareManager,
-  type MiddlewareMetrics
+  type MiddlewareMetrics,
 } from './types.js';
 
 /**
@@ -34,7 +34,7 @@ export class MiddlewarePipeline implements IMiddlewareManager {
     avgTime: 0,
     errors: 0,
     skips: 0,
-    byMiddleware: new Map()
+    byMiddleware: new Map(),
   };
 
   constructor() {
@@ -57,9 +57,9 @@ export class MiddlewarePipeline implements IMiddlewareManager {
       config: {
         name: config?.name || 'anonymous',
         priority: config?.priority ?? 100,
-        ...config
+        ...config,
       },
-      stage
+      stage,
     };
 
     const stageMiddleware = this.globalMiddleware.get(stage) || [];
@@ -94,9 +94,9 @@ export class MiddlewarePipeline implements IMiddlewareManager {
       config: {
         name: config?.name || `${serviceName}-middleware`,
         priority: config?.priority ?? 100,
-        ...config
+        ...config,
       },
-      stage
+      stage,
     };
 
     const stageMiddleware = serviceMap.get(stage)!;
@@ -130,9 +130,9 @@ export class MiddlewarePipeline implements IMiddlewareManager {
       config: {
         name: config?.name || `${key}-middleware`,
         priority: config?.priority ?? 100,
-        ...config
+        ...config,
       },
-      stage
+      stage,
     };
 
     const stageMiddleware = methodMap.get(stage)!;
@@ -143,11 +143,7 @@ export class MiddlewarePipeline implements IMiddlewareManager {
   /**
    * Get middleware for specific service/method
    */
-  getMiddleware(
-    serviceName?: string,
-    methodName?: string,
-    stage?: MiddlewareStage
-  ): MiddlewareRegistration[] {
+  getMiddleware(serviceName?: string, methodName?: string, stage?: MiddlewareStage): MiddlewareRegistration[] {
     const stages = stage ? [stage] : Object.values(MiddlewareStage);
     const result: MiddlewareRegistration[] = [];
 
@@ -193,7 +189,7 @@ export class MiddlewarePipeline implements IMiddlewareManager {
     const middlewares = this.getMiddleware(ctx.serviceName, ctx.methodName, stage);
 
     // Filter by conditions
-    const applicable = middlewares.filter(reg => {
+    const applicable = middlewares.filter((reg) => {
       if (reg.config.condition && !reg.config.condition(ctx)) {
         this.metrics.skips++;
         return false;
@@ -251,7 +247,7 @@ export class MiddlewarePipeline implements IMiddlewareManager {
       const middlewareMetrics = this.metrics.byMiddleware.get(registration.config.name) || {
         executions: 0,
         avgTime: 0,
-        errors: 0
+        errors: 0,
       };
 
       try {
@@ -261,8 +257,7 @@ export class MiddlewarePipeline implements IMiddlewareManager {
         middlewareMetrics.executions++;
         const time = performance.now() - middlewareStart;
         middlewareMetrics.avgTime =
-          (middlewareMetrics.avgTime * (middlewareMetrics.executions - 1) + time) /
-          middlewareMetrics.executions;
+          (middlewareMetrics.avgTime * (middlewareMetrics.executions - 1) + time) / middlewareMetrics.executions;
 
         ctx.timing.middlewareTimes.set(registration.config.name, time);
       } catch (error: any) {
@@ -284,8 +279,7 @@ export class MiddlewarePipeline implements IMiddlewareManager {
     } finally {
       const totalTime = performance.now() - startTime;
       this.metrics.avgTime =
-        (this.metrics.avgTime * (this.metrics.executions - 1) + totalTime) /
-        this.metrics.executions;
+        (this.metrics.avgTime * (this.metrics.executions - 1) + totalTime) / this.metrics.executions;
     }
   }
 
@@ -308,7 +302,7 @@ export class MiddlewarePipeline implements IMiddlewareManager {
       avgTime: 0,
       errors: 0,
       skips: 0,
-      byMiddleware: new Map()
+      byMiddleware: new Map(),
     };
   }
 

@@ -56,7 +56,7 @@ export class EventService {
       userId,
       userName,
       message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
     // Emit event to all subscribers
@@ -69,17 +69,13 @@ export class EventService {
    * Send notification
    */
   @Public()
-  async sendNotification(
-    type: NotificationEvent['type'],
-    title: string,
-    message: string
-  ): Promise<NotificationEvent> {
+  async sendNotification(type: NotificationEvent['type'], title: string, message: string): Promise<NotificationEvent> {
     const notification: NotificationEvent = {
       id: `notif-${++this.notificationIdCounter}`,
       type,
       title,
       message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
     this.eventEmitter.emit('notification', notification);
@@ -97,13 +93,13 @@ export class EventService {
     // Emit progress events
     (async () => {
       for (let i = 0; i <= steps; i++) {
-        await new Promise(resolve => setTimeout(resolve, stepDuration));
+        await new Promise((resolve) => setTimeout(resolve, stepDuration));
 
         const progress: ProgressEvent = {
           taskId,
           progress: (i / steps) * 100,
           status: i === 0 ? 'pending' : i < steps ? 'running' : 'completed',
-          message: i === steps ? 'Task completed' : `Processing step ${i}/${steps}`
+          message: i === steps ? 'Task completed' : `Processing step ${i}/${steps}`,
         };
 
         this.eventEmitter.emit('task.progress', progress);
@@ -162,7 +158,7 @@ export class EventService {
     return {
       messages: this.eventEmitter.listenerCount('message.sent'),
       notifications: this.eventEmitter.listenerCount('notification'),
-      taskProgress: this.eventEmitter.listenerCount('task.progress')
+      taskProgress: this.eventEmitter.listenerCount('task.progress'),
     };
   }
 
@@ -177,7 +173,7 @@ export class EventService {
         type: 'info',
         title: 'Periodic Update',
         message: `Server time: ${new Date().toISOString()}`,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
 
       this.eventEmitter.emit('notification', notification);
@@ -192,14 +188,14 @@ export class EventService {
     let emitted = 0;
 
     for (let i = 0; i < count; i++) {
-      await new Promise(resolve => setTimeout(resolve, intervalMs));
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
 
       const notification: NotificationEvent = {
         id: `notif-${++this.notificationIdCounter}`,
         type: 'info',
         title: `Rapid Event ${i + 1}`,
         message: `High frequency event ${i + 1}/${count}`,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
 
       this.eventEmitter.emit('notification', notification);

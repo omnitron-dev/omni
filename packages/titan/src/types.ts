@@ -13,7 +13,7 @@ export enum ApplicationState {
   Started = 'started',
   Stopping = 'stopping',
   Stopped = 'stopped',
-  Failed = 'failed'
+  Failed = 'failed',
 }
 
 /**
@@ -40,7 +40,7 @@ export enum ApplicationEvent {
   ShutdownTaskComplete = 'shutdown:task:complete',
   ShutdownTaskError = 'shutdown:task:error',
   ProcessExit = 'process:exit',
-  Custom = 'custom'
+  Custom = 'custom',
 }
 
 /**
@@ -66,7 +66,6 @@ export interface IModuleMetadata {
   dependencies?: Token<any>[];
   priority?: number;
 }
-
 
 /**
  * Health check status
@@ -143,7 +142,6 @@ export interface IEnvironment {
   ppid?: number;
 }
 
-
 /**
  * Application options
  */
@@ -209,7 +207,6 @@ export interface IApplication {
  */
 export type ModuleConstructor<T extends IModule = IModule> = new (...args: any[]) => T;
 
-
 // IDynamicModule is now replaced by DynamicModule from nexus/index.js
 // For backward compatibility, create a type alias
 export type IDynamicModule = DynamicModule;
@@ -218,12 +215,12 @@ export type IDynamicModule = DynamicModule;
  * Module input types - supports various module definition patterns
  */
 export type ModuleInput =
-  | IModule                        // Module instance
-  | ModuleConstructor             // Module class
-  | IDynamicModule               // Dynamic module with providers
-  | (() => IModule)                // Module factory function
-  | (() => Promise<IModule>)       // Async module factory
-  | (() => IDynamicModule)         // Dynamic module factory
+  | IModule // Module instance
+  | ModuleConstructor // Module class
+  | IDynamicModule // Dynamic module with providers
+  | (() => IModule) // Module factory function
+  | (() => Promise<IModule>) // Async module factory
+  | (() => IDynamicModule) // Dynamic module factory
   | (() => Promise<IDynamicModule>); // Async dynamic module factory
 
 /**
@@ -260,14 +257,7 @@ export enum ShutdownReason {
 /**
  * Process signals
  */
-export type ProcessSignal =
-  | 'SIGTERM'
-  | 'SIGINT'
-  | 'SIGHUP'
-  | 'SIGUSR1'
-  | 'SIGUSR2'
-  | 'SIGQUIT'
-  | 'SIGABRT';
+export type ProcessSignal = 'SIGTERM' | 'SIGINT' | 'SIGHUP' | 'SIGUSR1' | 'SIGUSR2' | 'SIGQUIT' | 'SIGABRT';
 
 /**
  * Shutdown priority levels
@@ -338,7 +328,7 @@ export interface ConfigObject {
   [key: string]: ConfigValue;
 }
 
-export interface ConfigArray extends Array<ConfigValue> { }
+export interface ConfigArray extends Array<ConfigValue> {}
 
 /**
  * Signal handler function type

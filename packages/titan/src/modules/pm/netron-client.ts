@@ -23,7 +23,7 @@ export class NetronClient {
   ) {
     this.netron = new Netron(logger as any, {
       id: `pm-client-${processId}`,
-      allowServiceEvents: true
+      allowServiceEvents: true,
     });
   }
 

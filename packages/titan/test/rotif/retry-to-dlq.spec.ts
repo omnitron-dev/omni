@@ -2,17 +2,19 @@ import { NotificationManager } from '../../src/rotif/rotif.js';
 import { createTestConfig } from './helpers/test-utils.js';
 
 // Use a local delay function to avoid any import issues
-const delayMs = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const delayMs = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe('NotificationManager - retry to DLQ', () => {
   let manager: NotificationManager;
 
   beforeEach(async () => {
-    manager = new NotificationManager(createTestConfig(1, {
-      checkDelayInterval: 50,
-      maxRetries: 3,
-      blockInterval: 10,
-    }));
+    manager = new NotificationManager(
+      createTestConfig(1, {
+        checkDelayInterval: 50,
+        maxRetries: 3,
+        blockInterval: 10,
+      })
+    );
     await manager.redis.flushdb();
   });
 
@@ -30,7 +32,7 @@ describe('NotificationManager - retry to DLQ', () => {
         attempts.push(msg.attempt);
         throw new Error('Handler failure');
       },
-      { startFrom: '0', retryDelay: 100, }
+      { startFrom: '0', retryDelay: 100 }
     );
 
     // Wait a bit to ensure subscription is ready
@@ -46,7 +48,7 @@ describe('NotificationManager - retry to DLQ', () => {
     expect(attempts).toEqual([1, 2, 3, 4]);
 
     // Check if message was moved to DLQ by reading the DLQ stream directly
-    const dlqMessages = await manager.redis.xrange('rotif:dlq', '-', '+') as any[];
+    const dlqMessages = (await manager.redis.xrange('rotif:dlq', '-', '+')) as any[];
     expect(dlqMessages.length).toBeGreaterThan(0);
 
     if (dlqMessages.length > 0) {

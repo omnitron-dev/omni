@@ -58,29 +58,21 @@ export interface CenterProps {
  * ```
  */
 export const Center = defineComponent<CenterProps>((props) => () => {
-    const {
-      inline,
-      height,
-      width,
-      children,
-      class: className,
-      style,
-      ...restProps
-    } = props;
+  const { inline, height, width, children, class: className, style, ...restProps } = props;
 
-    const centerStyles: Record<string, any> = {
-      display: inline ? 'inline-flex' : 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      ...(width !== undefined && { width: typeof width === 'number' ? `${width}px` : width }),
-      ...(height !== undefined && { height: typeof height === 'number' ? `${height}px` : height }),
-      ...style,
-    };
+  const centerStyles: Record<string, any> = {
+    display: inline ? 'inline-flex' : 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...(width !== undefined && { width: typeof width === 'number' ? `${width}px` : width }),
+    ...(height !== undefined && { height: typeof height === 'number' ? `${height}px` : height }),
+    ...style,
+  };
 
-    return jsx('div', {
-      class: className,
-      style: centerStyles,
-      ...restProps,
-      children,
-    });
+  return jsx('div', {
+    class: className,
+    style: centerStyles,
+    ...restProps,
+    children,
   });
+});

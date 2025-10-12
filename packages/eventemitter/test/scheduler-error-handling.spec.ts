@@ -21,7 +21,7 @@ describe('EventScheduler - Error Handling', () => {
       scheduler.schedule('sync-error', { data: 'test' }, { delay: 0 }, errorEmitFn);
 
       // Wait for execution
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(errorEmitFn).toHaveBeenCalled();
       expect(scheduler.getScheduledEvents()).toHaveLength(0);
@@ -39,7 +39,7 @@ describe('EventScheduler - Error Handling', () => {
       scheduler.schedule('error2', { data: 'test2' }, { delay: 0 }, errorEmitFn2);
 
       // Wait for execution
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
 
       expect(errorEmitFn1).toHaveBeenCalled();
       expect(errorEmitFn2).toHaveBeenCalled();
@@ -50,14 +50,14 @@ describe('EventScheduler - Error Handling', () => {
   describe('Asynchronous errors', () => {
     it('should handle async errors in emit function', async () => {
       const asyncErrorEmitFn = jest.fn(async () => {
-        await new Promise(resolve => setTimeout(resolve, 5));
+        await new Promise((resolve) => setTimeout(resolve, 5));
         throw new Error('Async error');
       });
 
       scheduler.schedule('async-error', { data: 'test' }, { delay: 0 }, asyncErrorEmitFn);
 
       // Wait for async execution to complete
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(asyncErrorEmitFn).toHaveBeenCalled();
       expect(scheduler.getScheduledEvents()).toHaveLength(0);
@@ -69,7 +69,7 @@ describe('EventScheduler - Error Handling', () => {
       scheduler.schedule('rejected', { data: 'test' }, { delay: 0 }, rejectedEmitFn);
 
       // Wait for execution
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
 
       expect(rejectedEmitFn).toHaveBeenCalled();
       expect(scheduler.getScheduledEvents()).toHaveLength(0);
@@ -84,17 +84,22 @@ describe('EventScheduler - Error Handling', () => {
         throw new Error(`Attempt ${attempts}`);
       });
 
-      scheduler.schedule('retry-error', { data: 'test' }, {
-        delay: 0,
-        retry: {
-          maxAttempts: 3,
-          delay: 10,
-          backoff: 'linear'
-        }
-      }, retryEmitFn);
+      scheduler.schedule(
+        'retry-error',
+        { data: 'test' },
+        {
+          delay: 0,
+          retry: {
+            maxAttempts: 3,
+            delay: 10,
+            backoff: 'linear',
+          },
+        },
+        retryEmitFn
+      );
 
       // Wait for all retries to complete
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(retryEmitFn).toHaveBeenCalledTimes(3);
       expect(scheduler.getScheduledEvents()).toHaveLength(0);
@@ -110,17 +115,22 @@ describe('EventScheduler - Error Handling', () => {
         // Success on second attempt
       });
 
-      scheduler.schedule('eventual-success', { data: 'test' }, {
-        delay: 0,
-        retry: {
-          maxAttempts: 3,
-          delay: 10,
-          backoff: 'linear'
-        }
-      }, eventualSuccessEmitFn);
+      scheduler.schedule(
+        'eventual-success',
+        { data: 'test' },
+        {
+          delay: 0,
+          retry: {
+            maxAttempts: 3,
+            delay: 10,
+            backoff: 'linear',
+          },
+        },
+        eventualSuccessEmitFn
+      );
 
       // Wait for retries
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(eventualSuccessEmitFn).toHaveBeenCalledTimes(2);
       expect(scheduler.getScheduledEvents()).toHaveLength(0);
@@ -130,7 +140,7 @@ describe('EventScheduler - Error Handling', () => {
   describe('Event status tracking', () => {
     it('should track status correctly during execution', async () => {
       const slowEmitFn = jest.fn(async () => {
-        await new Promise(resolve => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 20));
       });
 
       const id = scheduler.schedule('slow-event', { data: 'test' }, { delay: 0 }, slowEmitFn);
@@ -141,14 +151,14 @@ describe('EventScheduler - Error Handling', () => {
       expect(events[0]?.status).toBe('pending');
 
       // Wait a bit and check status during execution
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
       events = scheduler.getScheduledEvents();
       if (events.length > 0) {
         expect(events[0]?.status).toBe('executing');
       }
 
       // Wait for completion
-      await new Promise(resolve => setTimeout(resolve, 30));
+      await new Promise((resolve) => setTimeout(resolve, 30));
       events = scheduler.getScheduledEvents();
       expect(events).toHaveLength(0);
     });
@@ -170,10 +180,10 @@ describe('EventScheduler - Error Handling', () => {
   describe('Concurrent event handling', () => {
     it('should handle multiple concurrent events with mixed results', async () => {
       const successEmitFn = jest.fn(async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
       });
       const errorEmitFn = jest.fn(async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         throw new Error('Concurrent error');
       });
 
@@ -183,7 +193,7 @@ describe('EventScheduler - Error Handling', () => {
       scheduler.schedule('error2', { data: 'test4' }, { delay: 0 }, errorEmitFn);
 
       // Wait for all to complete
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(successEmitFn).toHaveBeenCalledTimes(2);
       expect(errorEmitFn).toHaveBeenCalledTimes(2);
@@ -197,7 +207,7 @@ describe('EventScheduler - Error Handling', () => {
 
       scheduler.schedule('undefined-return', { data: 'test' }, { delay: 0 }, undefinedEmitFn);
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(undefinedEmitFn).toHaveBeenCalled();
       expect(scheduler.getScheduledEvents()).toHaveLength(0);
@@ -210,7 +220,7 @@ describe('EventScheduler - Error Handling', () => {
 
       scheduler.schedule('value-return', { data: 'test' }, { delay: 0 }, valueEmitFn);
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(valueEmitFn).toHaveBeenCalled();
       expect(scheduler.getScheduledEvents()).toHaveLength(0);
@@ -218,20 +228,20 @@ describe('EventScheduler - Error Handling', () => {
 
     it('should handle very long-running emit functions', async () => {
       const longRunningEmitFn = jest.fn(async () => {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
       });
 
       scheduler.schedule('long-running', { data: 'test' }, { delay: 0 }, longRunningEmitFn);
 
       // Check that event is in executing state
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
       let events = scheduler.getScheduledEvents();
       if (events.length > 0) {
         expect(events[0]?.status).toBe('executing');
       }
 
       // Wait for completion
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
       events = scheduler.getScheduledEvents();
       expect(events).toHaveLength(0);
     });

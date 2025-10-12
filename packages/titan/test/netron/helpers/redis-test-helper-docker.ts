@@ -105,7 +105,7 @@ export class RedisDockerTestHelper {
     console.log(`Starting Redis in Docker on port ${this.port}...`);
 
     // Remove any existing container with the same name
-    await this.runCommand('docker', ['rm', '-f', this.containerName]).catch(() => { });
+    await this.runCommand('docker', ['rm', '-f', this.containerName]).catch(() => {});
 
     // Start Redis container
     this.dockerProcess = spawn('docker', [

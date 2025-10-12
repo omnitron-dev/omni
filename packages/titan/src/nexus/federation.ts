@@ -115,7 +115,7 @@ export class ModuleFederationContainer {
           fallback: remoteModule.fallback,
           timeout: remoteModule.timeout,
           retry: remoteModule.retry,
-          cache: remoteModule.cache
+          cache: remoteModule.cache,
         };
         // Register the remote
         this.registerRemote(config);
@@ -142,7 +142,7 @@ export class ModuleFederationContainer {
         fallback: remoteModule.fallback,
         timeout: remoteModule.timeout,
         retry: remoteModule.retry,
-        cache: remoteModule.cache
+        cache: remoteModule.cache,
       };
       // Register the remote
       this.registerRemote(config);
@@ -206,7 +206,10 @@ export class ModuleFederationContainer {
             this.modules.set(config.name, fallback);
             return fallback;
           }
-          throw Errors.internal(`Failed to load remote module ${config.name}`, error instanceof Error ? error : undefined);
+          throw Errors.internal(
+            `Failed to load remote module ${config.name}`,
+            error instanceof Error ? error : undefined
+          );
         }
         // Use configured delay or exponential backoff
         const delay = retryConfig.delay || Math.pow(2, attempt) * 1000;
@@ -229,8 +232,8 @@ export class ModuleFederationContainer {
       const response = await fetch(url, {
         signal: controller.signal,
         headers: {
-          'Accept': 'application/javascript'
-        }
+          Accept: 'application/javascript',
+        },
       });
 
       if (!response.ok) {
@@ -279,10 +282,7 @@ export class ModuleFederationContainer {
   /**
    * Validate and transform remote module
    */
-  private validateAndTransformModule(
-    remoteModule: any,
-    config: RemoteModuleConfig
-  ): IModule {
+  private validateAndTransformModule(remoteModule: any, config: RemoteModuleConfig): IModule {
     // If remoteModule has a name, use it for module registration
     const moduleName = remoteModule.name || config.name;
 
@@ -291,7 +291,7 @@ export class ModuleFederationContainer {
       name: moduleName,
       providers: remoteModule.providers || [],
       exports: config.exports || remoteModule.exports || [],
-      imports: remoteModule.imports || []
+      imports: remoteModule.imports || [],
     });
 
     // Validate exports
@@ -305,7 +305,7 @@ export class ModuleFederationContainer {
       name: moduleName,
       providers: remoteModule.providers || [],
       exports: config.exports,
-      imports: remoteModule.imports || []
+      imports: remoteModule.imports || [],
     };
   }
 
@@ -322,9 +322,7 @@ export class ModuleFederationContainer {
     // Share all exported providers
     if (module.exports) {
       for (const token of module.exports) {
-        const provider = module.providers?.find(p =>
-          (p as any).provide === token || (p as any).token === token
-        );
+        const provider = module.providers?.find((p) => (p as any).provide === token || (p as any).token === token);
         if (provider) {
           sharedScope.set(token, provider as Provider<any>);
         }
@@ -335,10 +333,7 @@ export class ModuleFederationContainer {
   /**
    * Initialize shared scope
    */
-  initSharedScope(
-    scopeName: string,
-    shared: Map<InjectionToken<any>, Provider<any>>
-  ): void {
+  initSharedScope(scopeName: string, shared: Map<InjectionToken<any>, Provider<any>>): void {
     this.sharedScopes.set(scopeName, shared);
   }
 
@@ -498,7 +493,7 @@ export class ModuleFederationContainer {
    * Helper delay function
    */
   private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 
@@ -518,14 +513,14 @@ export function createFederatedModule(config: RemoteModuleConfig): DynamicModule
     timeout: config.timeout,
     async onModuleInit() {
       // Module initialization can happen here if needed
-    }
+    },
   };
 
   return {
     module,
     providers: module.providers,
     imports: module.imports,
-    exports: module.exports
+    exports: module.exports,
   } as DynamicModule;
 }
 
@@ -549,7 +544,7 @@ export function createLazyModule(
       if (isLoading) {
         // Wait for loading to complete
         while (isLoading) {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
         }
         return loadedModule!;
       }
@@ -569,7 +564,7 @@ export function createLazyModule(
         return options.condition();
       }
       return true;
-    }
+    },
   };
 }
 
@@ -588,14 +583,11 @@ export class ModuleFederationPlugin {
    */
   install(container: Container): void {
     // Add federation methods to container
-    (container as any).loadRemoteModule = (name: string) =>
-      this.container.loadRemoteModule(name);
+    (container as any).loadRemoteModule = (name: string) => this.container.loadRemoteModule(name);
 
-    (container as any).registerRemote = (config: RemoteModuleConfig) =>
-      this.container.registerRemote(config);
+    (container as any).registerRemote = (config: RemoteModuleConfig) => this.container.registerRemote(config);
 
-    (container as any).shareModule = (module: IModule, scope?: string) =>
-      this.container.shareModule(module, scope);
+    (container as any).shareModule = (module: IModule, scope?: string) => this.container.shareModule(module, scope);
   }
 }
 
@@ -607,11 +599,14 @@ export interface WebpackModuleFederationConfig {
   filename: string;
   exposes: Record<string, string>;
   remotes: Record<string, string>;
-  shared: Record<string, {
-    singleton?: boolean;
-    requiredVersion?: string;
-    eager?: boolean;
-  }>;
+  shared: Record<
+    string,
+    {
+      singleton?: boolean;
+      requiredVersion?: string;
+      eager?: boolean;
+    }
+  >;
 }
 
 /**
@@ -630,9 +625,9 @@ export function generateWebpackConfig(
       ...options.shared,
       '@omnitron-dev/nexus': {
         singleton: true,
-        requiredVersion: '^1.5.0'
-      }
-    }
+        requiredVersion: '^1.5.0',
+      },
+    },
   };
 }
 
@@ -658,15 +653,13 @@ export class FederationHost {
    * Initialize remotes
    */
   async initializeRemotes(): Promise<void> {
-    const promises = Array.from(this.remotes.entries()).map(
-      async ([name, url]) => {
-        try {
-          await this.loadRemoteContainer(name, url);
-        } catch (error) {
-          console.error(`Failed to load remote ${name} from ${url}:`, error);
-        }
+    const promises = Array.from(this.remotes.entries()).map(async ([name, url]) => {
+      try {
+        await this.loadRemoteContainer(name, url);
+      } catch (error) {
+        console.error(`Failed to load remote ${name} from ${url}:`, error);
       }
-    );
+    });
 
     await Promise.all(promises);
   }
@@ -680,7 +673,7 @@ export class FederationHost {
     const config: RemoteModuleConfig = {
       name,
       remoteUrl: url,
-      exports: []
+      exports: [],
     };
 
     const federation = new ModuleFederationContainer();
@@ -729,9 +722,7 @@ export class SharedDependencyManager {
     if (this.dependencies.has(dep.name)) {
       const existing = this.dependencies.get(dep.name)!;
       if (dep.singleton && existing.version !== dep.version) {
-        throw new Error(
-          `Singleton dependency ${dep.name} version conflict: ${existing.version} vs ${dep.version}`
-        );
+        throw new Error(`Singleton dependency ${dep.name} version conflict: ${existing.version} vs ${dep.version}`);
       }
     }
     this.dependencies.set(dep.name, dep);
@@ -768,7 +759,10 @@ export class SharedDependencyManager {
   private satisfiesVersion(version: string, required: string): boolean {
     // Simplified version check - in production use a proper semver library
     const [major1, minor1 = 0] = version.split('.').map(Number);
-    const [major2, minor2 = 0] = required.replace(/[^0-9.]/g, '').split('.').map(Number);
+    const [major2, minor2 = 0] = required
+      .replace(/[^0-9.]/g, '')
+      .split('.')
+      .map(Number);
 
     if (required.startsWith('^')) {
       return major1 === major2 && minor1 >= minor2;
@@ -793,10 +787,7 @@ export class ModuleFederationRuntime {
   /**
    * Initialize the runtime
    */
-  async initialize(config?: {
-    remotes?: RemoteModuleConfig[];
-    shared?: SharedDependency[];
-  }): Promise<void> {
+  async initialize(config?: { remotes?: RemoteModuleConfig[]; shared?: SharedDependency[] }): Promise<void> {
     if (this.initialized) return;
 
     // Register shared dependencies
@@ -882,7 +873,7 @@ export class ModuleFederationRuntime {
       name,
       providers,
       exports,
-      imports: []
+      imports: [],
     };
   }
 }

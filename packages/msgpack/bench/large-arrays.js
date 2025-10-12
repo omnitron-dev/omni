@@ -13,7 +13,7 @@ const createLargeArray = (size) => {
 
 // Test data - same as the failing test
 const testData = {
-  first: createLargeArray(0xffff + 42),  // 65577 elements
+  first: createLargeArray(0xffff + 42), // 65577 elements
   second: createLargeArray(0xffff + 42),
 };
 
@@ -35,7 +35,7 @@ function measurePerformance(name, operation, iterations = 1000) {
   return {
     name,
     time: end - start,
-    opsPerSec: iterations / ((end - start) / 1000)
+    opsPerSec: iterations / ((end - start) / 1000),
   };
 }
 
@@ -50,7 +50,7 @@ const results = [
 // Output results
 console.log('Benchmark Results (Large Arrays):');
 console.log('==================================');
-results.forEach(result => {
+results.forEach((result) => {
   console.log(`${result.name}:`);
   console.log(`  Total Time: ${result.time.toFixed(2)}ms`);
   console.log(`  Ops/sec: ${result.opsPerSec.toFixed(2)}`);

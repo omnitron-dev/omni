@@ -142,7 +142,7 @@ export class DIContainer implements Container, Injector {
   get<T>(token: InjectableToken<T>, options?: InjectOptions): T {
     // Check circular dependencies
     if (this.resolutionStack.includes(token)) {
-      const chain = [...this.resolutionStack, token].map(t => this.tokenToString(t)).join(' → ');
+      const chain = [...this.resolutionStack, token].map((t) => this.tokenToString(t)).join(' → ');
       throw new Error(`Circular dependency detected: ${chain}`);
     }
 
@@ -184,7 +184,7 @@ export class DIContainer implements Container, Injector {
     }
 
     // Multi providers - return array
-    return providers.map(p => this.instantiate(p)) as any;
+    return providers.map((p) => this.instantiate(p)) as any;
   }
 
   /**
@@ -198,7 +198,7 @@ export class DIContainer implements Container, Injector {
         return this.instantiate(providers[0]);
       }
       // Multi providers - return array
-      return providers.map(p => this.instantiate(p)) as any;
+      return providers.map((p) => this.instantiate(p)) as any;
     }
 
     // Not found locally, check parent
@@ -221,12 +221,7 @@ export class DIContainer implements Container, Injector {
     const { token, type, scope, def } = providerDef;
 
     // Check if instance already exists in scope
-    const existing = this.scopeManager.getInstance<T>(
-      token,
-      scope,
-      this.moduleId,
-      this.requestId
-    );
+    const existing = this.scopeManager.getInstance<T>(token, scope, this.moduleId, this.requestId);
 
     if (existing !== undefined) {
       return existing;
@@ -314,16 +309,14 @@ export class DIContainer implements Container, Injector {
     const { useFactory, deps = [] } = factoryDef;
 
     // Resolve factory dependencies
-    const resolvedDeps = deps.map(dep => this.get(dep));
+    const resolvedDeps = deps.map((dep) => this.get(dep));
 
     // Call factory
     const result = useFactory(...resolvedDeps);
 
     // Handle async factories
     if (factoryDef.async && result instanceof Promise) {
-      throw new Error(
-        'Async providers must be resolved asynchronously. Use resolveAsync() instead.'
-      );
+      throw new Error('Async providers must be resolved asynchronously. Use resolveAsync() instead.');
     }
 
     return result as T;
@@ -336,7 +329,7 @@ export class DIContainer implements Container, Injector {
     const child = new DIContainer({ parent: this });
 
     if (providers) {
-      providers.forEach(provider => {
+      providers.forEach((provider) => {
         const normalized = normalizeProvider(provider);
         child.register(normalized.token, provider);
       });

@@ -7,7 +7,7 @@ import {
   MiddlewarePipeline,
   MiddlewareStage,
   type NetronMiddlewareContext,
-  type MiddlewareFunction
+  type MiddlewareFunction,
 } from '../../../src/netron/middleware/index.js';
 
 describe('MiddlewarePipeline', () => {
@@ -23,8 +23,8 @@ describe('MiddlewarePipeline', () => {
       metadata: new Map(),
       timing: {
         start: Date.now(),
-        middlewareTimes: new Map()
-      }
+        middlewareTimes: new Map(),
+      },
     };
   });
 
@@ -135,7 +135,7 @@ describe('MiddlewarePipeline', () => {
         'middleware1-before',
         'middleware2-before',
         'middleware2-after',
-        'middleware1-after'
+        'middleware1-after',
       ]);
     });
 
@@ -149,7 +149,7 @@ describe('MiddlewarePipeline', () => {
 
       pipeline.use(middleware, {
         name: 'conditional',
-        condition: (ctx) => ctx.serviceName === 'SkipService'
+        condition: (ctx) => ctx.serviceName === 'SkipService',
       });
 
       // Should skip
@@ -172,7 +172,7 @@ describe('MiddlewarePipeline', () => {
 
       pipeline.use(middleware, {
         name: 'service-filter',
-        services: ['UserService', 'AuthService']
+        services: ['UserService', 'AuthService'],
       });
 
       // Should not execute for TestService
@@ -195,7 +195,7 @@ describe('MiddlewarePipeline', () => {
 
       pipeline.use(middleware, {
         name: 'service-regex',
-        services: /^User/
+        services: /^User/,
       });
 
       // Should not execute for TestService
@@ -218,7 +218,7 @@ describe('MiddlewarePipeline', () => {
 
       pipeline.use(middleware, {
         name: 'method-filter',
-        methods: ['getUser', 'getUsers']
+        methods: ['getUser', 'getUsers'],
       });
 
       // Should not execute for testMethod
@@ -262,22 +262,17 @@ describe('MiddlewarePipeline', () => {
 
       pipeline.use(middleware, {
         name: 'error-middleware',
-        onError: errorHandler
+        onError: errorHandler,
       });
 
-      await expect(
-        pipeline.execute(mockContext, MiddlewareStage.PRE_INVOKE)
-      ).rejects.toThrow('Middleware error');
+      await expect(pipeline.execute(mockContext, MiddlewareStage.PRE_INVOKE)).rejects.toThrow('Middleware error');
 
-      expect(errorHandler).toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'Middleware error' }),
-        mockContext
-      );
+      expect(errorHandler).toHaveBeenCalledWith(expect.objectContaining({ message: 'Middleware error' }), mockContext);
     });
 
     it('should track middleware execution time', async () => {
       const middleware: MiddlewareFunction = async (ctx, next) => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         await next();
       };
 
@@ -319,7 +314,7 @@ describe('MiddlewarePipeline', () => {
 
       pipeline.use(middleware, {
         name: 'error-middleware',
-        onError: () => {} // Suppress error
+        onError: () => {}, // Suppress error
       });
 
       try {
@@ -340,7 +335,7 @@ describe('MiddlewarePipeline', () => {
 
       pipeline.use(middleware, {
         name: 'skip-middleware',
-        condition: () => false
+        condition: () => false,
       });
 
       await pipeline.execute(mockContext, MiddlewareStage.PRE_INVOKE);
@@ -456,7 +451,7 @@ describe('MiddlewarePipeline', () => {
       const results: number[] = [];
 
       const middleware1: MiddlewareFunction = async (ctx, next) => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         results.push(1);
         await next();
         results.push(4);

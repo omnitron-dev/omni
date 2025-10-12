@@ -36,7 +36,7 @@ describe('Application Core', () => {
         name: 'test-app',
         version: '2.0.0',
         debug: true,
-        config: { key: 'value' }
+        config: { key: 'value' },
       };
 
       app = createApp(options);
@@ -158,7 +158,7 @@ describe('Application Core', () => {
     it('should handle startApp helper', async () => {
       app = await startApp({
         disableGracefulShutdown: true,
-        disableCoreModules: true
+        disableCoreModules: true,
       });
 
       expect(app).toBeInstanceOf(Application);
@@ -173,7 +173,7 @@ describe('Application Core', () => {
       expect(app.metrics.uptime).toBe(0);
 
       await app.start();
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const uptime = app.metrics.uptime;
       expect(uptime).toBeGreaterThan(0);
@@ -202,7 +202,7 @@ describe('Application Core', () => {
         ApplicationState.Starting,
         ApplicationState.Started,
         ApplicationState.Stopping,
-        ApplicationState.Stopped
+        ApplicationState.Stopped,
       ]);
     });
 
@@ -236,9 +236,7 @@ describe('Application Core', () => {
       // Rapid stop/start
       const operations = [];
       for (let i = 0; i < 5; i++) {
-        operations.push(
-          app.stop().then(() => app.start())
-        );
+        operations.push(app.stop().then(() => app.start()));
       }
 
       await Promise.all(operations);

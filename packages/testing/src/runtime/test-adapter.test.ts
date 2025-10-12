@@ -11,7 +11,7 @@ import {
   timerUtils,
   supportsFakeTimers,
   skipIfNoFakeTimers,
-  normalizeGlobalChecks
+  normalizeGlobalChecks,
 } from './test-adapter';
 
 describe('test-adapter runtime detection', () => {
@@ -22,7 +22,7 @@ describe('test-adapter runtime detection', () => {
 
   it('should have exactly one runtime flag set to true', () => {
     const flags = [isBun, isDeno, isNode];
-    const trueFlags = flags.filter(flag => flag === true);
+    const trueFlags = flags.filter((flag) => flag === true);
     expect(trueFlags.length).toBe(1);
   });
 
@@ -72,7 +72,7 @@ describe('timer utilities', () => {
     if (hasFakeTimers) {
       expect(shouldSkip).toBe(false); // Don't skip if we have fake timers
     } else {
-      expect(shouldSkip).toBe(true);  // Skip if no fake timers
+      expect(shouldSkip).toBe(true); // Skip if no fake timers
     }
   });
 });

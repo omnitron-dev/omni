@@ -14,7 +14,7 @@ import {
   DatabaseModule,
   HttpServerModule,
   CacheModule,
-  createTrackedModule
+  createTrackedModule,
 } from '../fixtures/test-modules.js';
 import { delay } from '@omnitron-dev/common';
 
@@ -25,7 +25,7 @@ describe('Application Lifecycle', () => {
     app = createApp({
       name: 'lifecycle-test',
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
   });
 
@@ -107,12 +107,9 @@ describe('Application Lifecycle', () => {
         ApplicationState.Starting,
         ApplicationState.Started,
         ApplicationState.Stopping,
-        ApplicationState.Stopped
+        ApplicationState.Stopped,
       ]);
-      expect(prevStates).toEqual([
-        ApplicationState.Created,
-        ApplicationState.Started
-      ]);
+      expect(prevStates).toEqual([ApplicationState.Created, ApplicationState.Started]);
     });
 
     it('should handle state during restart', async () => {
@@ -159,12 +156,7 @@ describe('Application Lifecycle', () => {
       await app.start();
       await app.stop();
 
-      expect(events).toEqual([
-        'starting',
-        'started',
-        'stopping',
-        'stopped'
-      ]);
+      expect(events).toEqual(['starting', 'started', 'stopping', 'stopped']);
     });
 
     it('should pass application instance in events', async () => {
@@ -234,11 +226,10 @@ describe('Application Lifecycle', () => {
       app.use(module);
 
       // Create a timeout wrapper for testing
-      const startWithTimeout = () => Promise.race([
+      const startWithTimeout = () =>
+        Promise.race([
           app.start(),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Operation timeout')), 100)
-          )
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Operation timeout')), 100)),
         ]);
 
       await expect(startWithTimeout()).rejects.toThrow(/timeout/i);
@@ -262,7 +253,7 @@ describe('Application Lifecycle', () => {
       const app = createApp({
         lifecycleTimeout: 100,
         disableGracefulShutdown: true,
-        disableCoreModules: true
+        disableCoreModules: true,
       });
 
       const module = new CustomTimeoutModule();
@@ -286,10 +277,7 @@ describe('Application Lifecycle', () => {
       const stopPromise = app.stop({ force: true, timeout: 100 });
 
       // Force stop should complete within timeout
-      await expect(Promise.race([
-        stopPromise,
-        delay(200).then(() => 'timeout')
-      ])).resolves.not.toBe('timeout');
+      await expect(Promise.race([stopPromise, delay(200).then(() => 'timeout')])).resolves.not.toBe('timeout');
 
       const duration = Date.now() - startTime;
       expect(duration).toBeLessThan(300);
@@ -324,14 +312,10 @@ describe('Application Lifecycle', () => {
     it('should handle concurrent restart attempts', async () => {
       await app.start();
 
-      const results = await Promise.allSettled([
-        app.restart(),
-        app.restart(),
-        app.restart()
-      ]);
+      const results = await Promise.allSettled([app.restart(), app.restart(), app.restart()]);
 
-      const successful = results.filter(r => r.status === 'fulfilled');
-      const failed = results.filter(r => r.status === 'rejected');
+      const successful = results.filter((r) => r.status === 'fulfilled');
+      const failed = results.filter((r) => r.status === 'rejected');
 
       expect(successful.length).toBeGreaterThanOrEqual(1);
       expect(app.state).toBe(ApplicationState.Started);
@@ -353,7 +337,7 @@ describe('Application Lifecycle', () => {
       const results = await Promise.allSettled([startPromise, stopPromise]);
 
       // At least one should succeed
-      const succeeded = results.filter(r => r.status === 'fulfilled');
+      const succeeded = results.filter((r) => r.status === 'fulfilled');
       expect(succeeded.length).toBeGreaterThan(0);
 
       // Final state should be either started or stopped
@@ -403,13 +387,9 @@ describe('Application Lifecycle', () => {
     });
 
     it('should track lifecycle performance metrics', async () => {
-      const modules = [
-        new SlowModule(100),
-        new SlowModule(200),
-        new SlowModule(50)
-      ];
+      const modules = [new SlowModule(100), new SlowModule(200), new SlowModule(50)];
 
-      modules.forEach(m => app.use(m));
+      modules.forEach((m) => app.use(m));
 
       const startTime = Date.now();
       await app.start();
@@ -440,8 +420,8 @@ describe('Application Lifecycle', () => {
       }
 
       // Module should have correct call count
-      expect(module.calls.filter(c => c === 'start').length).toBe(3);
-      expect(module.calls.filter(c => c === 'stop').length).toBe(3);
+      expect(module.calls.filter((c) => c === 'start').length).toBe(3);
+      expect(module.calls.filter((c) => c === 'stop').length).toBe(3);
     });
 
     it('should handle error recovery during lifecycle', async () => {
@@ -518,7 +498,7 @@ describe('Application Lifecycle', () => {
       app.use(module);
 
       // Listen to all events
-      ['starting', 'started', 'stopping', 'stopped'].forEach(event => {
+      ['starting', 'started', 'stopping', 'stopped'].forEach((event) => {
         app.on(event as any, () => events.push(event));
       });
 
@@ -527,10 +507,10 @@ describe('Application Lifecycle', () => {
       await app.stop();
 
       // Should have events from start, restart (stop+start), and final stop
-      expect(events.filter(e => e === 'starting').length).toBe(2);
-      expect(events.filter(e => e === 'started').length).toBe(2);
-      expect(events.filter(e => e === 'stopping').length).toBe(2);
-      expect(events.filter(e => e === 'stopped').length).toBe(2);
+      expect(events.filter((e) => e === 'starting').length).toBe(2);
+      expect(events.filter((e) => e === 'started').length).toBe(2);
+      expect(events.filter((e) => e === 'stopping').length).toBe(2);
+      expect(events.filter((e) => e === 'stopped').length).toBe(2);
     });
 
     it('should properly cleanup resources on failure', async () => {
@@ -565,18 +545,14 @@ describe('Application Lifecycle', () => {
     });
 
     it('should handle partial module failure gracefully', async () => {
-      const workingModules = [
-        new SimpleModule(),
-        new SimpleModule(),
-        new SimpleModule()
-      ];
+      const workingModules = [new SimpleModule(), new SimpleModule(), new SimpleModule()];
 
       // Give unique names to avoid conflicts
       workingModules.forEach((m, i) => {
         m.name = `simple${i + 1}`;
       });
 
-      workingModules.forEach(m => app.use(m));
+      workingModules.forEach((m) => app.use(m));
 
       // Add a failing module in the middle
       const failingModule = new FailingModule('stop', 'Stop failure');
@@ -585,7 +561,7 @@ describe('Application Lifecycle', () => {
       await app.start();
 
       // All modules including failing one should start
-      workingModules.forEach(m => expect(m.startCalled).toBe(true));
+      workingModules.forEach((m) => expect(m.startCalled).toBe(true));
 
       // Stop should handle the failure by throwing when not graceful
       await expect(app.stop({ graceful: false })).rejects.toThrow('Stop failure');

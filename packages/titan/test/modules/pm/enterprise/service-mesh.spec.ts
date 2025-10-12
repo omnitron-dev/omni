@@ -12,7 +12,7 @@ const mockLogger = {
   info: jest.fn(),
   error: jest.fn(),
   warn: jest.fn(),
-  debug: jest.fn()
+  debug: jest.fn(),
 } as any;
 
 // Mock service
@@ -26,7 +26,7 @@ class TestService {
   }
 
   async slowMethod(): Promise<string> {
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
     return 'slow-result';
   }
 
@@ -84,12 +84,16 @@ describe('ServiceMeshProxy', () => {
       const service = new TestService();
       const proxy = createMockServiceProxy(service);
 
-      const meshProxy = new ServiceMeshProxy(proxy, {
-        circuitBreaker: {
-          threshold: 3,
-          timeout: 1000
-        }
-      }, mockLogger as any);
+      const meshProxy = new ServiceMeshProxy(
+        proxy,
+        {
+          circuitBreaker: {
+            threshold: 3,
+            timeout: 1000,
+          },
+        },
+        mockLogger as any
+      );
 
       const meshedService = meshProxy.createProxy();
 
@@ -106,12 +110,16 @@ describe('ServiceMeshProxy', () => {
       const service = new TestService();
       const proxy = createMockServiceProxy(service);
 
-      const meshProxy = new ServiceMeshProxy(proxy, {
-        circuitBreaker: {
-          threshold: 2,
-          resetTimeout: 100
-        }
-      }, mockLogger as any);
+      const meshProxy = new ServiceMeshProxy(
+        proxy,
+        {
+          circuitBreaker: {
+            threshold: 2,
+            resetTimeout: 100,
+          },
+        },
+        mockLogger as any
+      );
 
       const meshedService = meshProxy.createProxy();
 
@@ -121,7 +129,7 @@ describe('ServiceMeshProxy', () => {
       }
 
       // Wait for reset timeout
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       // Should allow one request in half-open state
       const result = await meshedService.normalMethod('test');
@@ -134,13 +142,17 @@ describe('ServiceMeshProxy', () => {
       const service = new TestService();
       const proxy = createMockServiceProxy(service);
 
-      const meshProxy = new ServiceMeshProxy(proxy, {
-        rateLimit: {
-          rps: 2,
-          burst: 2,
-          strategy: 'token-bucket'
-        }
-      }, mockLogger as any);
+      const meshProxy = new ServiceMeshProxy(
+        proxy,
+        {
+          rateLimit: {
+            rps: 2,
+            burst: 2,
+            strategy: 'token-bucket',
+          },
+        },
+        mockLogger as any
+      );
 
       const meshedService = meshProxy.createProxy();
 
@@ -156,13 +168,17 @@ describe('ServiceMeshProxy', () => {
       const service = new TestService();
       const proxy = createMockServiceProxy(service);
 
-      const meshProxy = new ServiceMeshProxy(proxy, {
-        rateLimit: {
-          rps: 10,
-          burst: 2,
-          strategy: 'token-bucket'
-        }
-      }, mockLogger as any);
+      const meshProxy = new ServiceMeshProxy(
+        proxy,
+        {
+          rateLimit: {
+            rps: 10,
+            burst: 2,
+            strategy: 'token-bucket',
+          },
+        },
+        mockLogger as any
+      );
 
       const meshedService = meshProxy.createProxy();
 
@@ -171,7 +187,7 @@ describe('ServiceMeshProxy', () => {
       await meshedService.normalMethod('2');
 
       // Wait for token refill
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
       // Should have new tokens
       const result = await meshedService.normalMethod('3');
@@ -185,12 +201,16 @@ describe('ServiceMeshProxy', () => {
       service.setFailuresBeforeSuccess(2);
       const proxy = createMockServiceProxy(service);
 
-      const meshProxy = new ServiceMeshProxy(proxy, {
-        retry: {
-          attempts: 3,
-          backoff: 'fixed'
-        }
-      }, mockLogger as any);
+      const meshProxy = new ServiceMeshProxy(
+        proxy,
+        {
+          retry: {
+            attempts: 3,
+            backoff: 'fixed',
+          },
+        },
+        mockLogger as any
+      );
 
       const meshedService = meshProxy.createProxy();
 
@@ -204,14 +224,18 @@ describe('ServiceMeshProxy', () => {
       service.setFailuresBeforeSuccess(2);
       const proxy = createMockServiceProxy(service);
 
-      const meshProxy = new ServiceMeshProxy(proxy, {
-        retry: {
-          attempts: 3,
-          backoff: 'exponential',
-          factor: 2,
-          maxDelay: 100
-        }
-      }, mockLogger as any);
+      const meshProxy = new ServiceMeshProxy(
+        proxy,
+        {
+          retry: {
+            attempts: 3,
+            backoff: 'exponential',
+            factor: 2,
+            maxDelay: 100,
+          },
+        },
+        mockLogger as any
+      );
 
       const meshedService = meshProxy.createProxy();
 
@@ -227,12 +251,16 @@ describe('ServiceMeshProxy', () => {
       const service = new TestService();
       const proxy = createMockServiceProxy(service);
 
-      const meshProxy = new ServiceMeshProxy(proxy, {
-        retry: {
-          attempts: 2,
-          backoff: 'fixed'
-        }
-      }, mockLogger as any);
+      const meshProxy = new ServiceMeshProxy(
+        proxy,
+        {
+          retry: {
+            attempts: 2,
+            backoff: 'fixed',
+          },
+        },
+        mockLogger as any
+      );
 
       const meshedService = meshProxy.createProxy();
 
@@ -245,21 +273,21 @@ describe('ServiceMeshProxy', () => {
       const service = new TestService();
       const proxy = createMockServiceProxy(service);
 
-      const meshProxy = new ServiceMeshProxy(proxy, {
-        bulkhead: {
-          maxConcurrent: 2,
-          maxQueue: 1
-        }
-      }, mockLogger as any);
+      const meshProxy = new ServiceMeshProxy(
+        proxy,
+        {
+          bulkhead: {
+            maxConcurrent: 2,
+            maxQueue: 1,
+          },
+        },
+        mockLogger as any
+      );
 
       const meshedService = meshProxy.createProxy();
 
       // Start 3 concurrent slow requests
-      const promises = [
-        meshedService.slowMethod(),
-        meshedService.slowMethod(),
-        meshedService.slowMethod()
-      ];
+      const promises = [meshedService.slowMethod(), meshedService.slowMethod(), meshedService.slowMethod()];
 
       // First 2 should run, third should queue
       await Promise.all(promises);
@@ -269,12 +297,16 @@ describe('ServiceMeshProxy', () => {
       const service = new TestService();
       const proxy = createMockServiceProxy(service);
 
-      const meshProxy = new ServiceMeshProxy(proxy, {
-        bulkhead: {
-          maxConcurrent: 1,
-          maxQueue: 1
-        }
-      }, mockLogger as any);
+      const meshProxy = new ServiceMeshProxy(
+        proxy,
+        {
+          bulkhead: {
+            maxConcurrent: 1,
+            maxQueue: 1,
+          },
+        },
+        mockLogger as any
+      );
 
       const meshedService = meshProxy.createProxy();
 
@@ -282,7 +314,7 @@ describe('ServiceMeshProxy', () => {
       const promises = [
         meshedService.slowMethod(),
         meshedService.slowMethod(),
-        meshedService.slowMethod().catch(e => e.message)
+        meshedService.slowMethod().catch((e) => e.message),
       ];
 
       const results = await Promise.all(promises);
@@ -296,12 +328,16 @@ describe('ServiceMeshProxy', () => {
       service.setFailuresBeforeSuccess(1);
       const proxy = createMockServiceProxy(service);
 
-      const meshProxy = new ServiceMeshProxy(proxy, {
-        circuitBreaker: { threshold: 5 },
-        rateLimit: { rps: 10 },
-        retry: { attempts: 2 },
-        bulkhead: { maxConcurrent: 5 }
-      }, mockLogger as any);
+      const meshProxy = new ServiceMeshProxy(
+        proxy,
+        {
+          circuitBreaker: { threshold: 5 },
+          rateLimit: { rps: 10 },
+          retry: { attempts: 2 },
+          bulkhead: { maxConcurrent: 5 },
+        },
+        mockLogger as any
+      );
 
       const meshedService = meshProxy.createProxy();
 
@@ -323,9 +359,13 @@ describe('ServiceMeshProxy', () => {
       const service = new TestService();
       const proxy = createMockServiceProxy(service);
 
-      const meshProxy = new ServiceMeshProxy(proxy, {
-        metrics: true
-      }, mockLogger as any);
+      const meshProxy = new ServiceMeshProxy(
+        proxy,
+        {
+          metrics: true,
+        },
+        mockLogger as any
+      );
 
       const meshedService = meshProxy.createProxy();
 
@@ -347,9 +387,13 @@ describe('ServiceMeshProxy', () => {
       const service = new TestService();
       const proxy = createMockServiceProxy(service);
 
-      const meshProxy = new ServiceMeshProxy(proxy, {
-        metrics: true
-      }, mockLogger as any);
+      const meshProxy = new ServiceMeshProxy(
+        proxy,
+        {
+          metrics: true,
+        },
+        mockLogger as any
+      );
 
       const meshedService = meshProxy.createProxy();
 
@@ -370,9 +414,13 @@ describe('ServiceMeshProxy', () => {
       const service = new TestService();
       const proxy = createMockServiceProxy(service);
 
-      const meshProxy = new ServiceMeshProxy(proxy, {
-        timeout: 50
-      }, mockLogger as any);
+      const meshProxy = new ServiceMeshProxy(
+        proxy,
+        {
+          timeout: 50,
+        },
+        mockLogger as any
+      );
 
       const meshedService = meshProxy.createProxy();
 

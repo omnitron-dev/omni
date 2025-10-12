@@ -20,7 +20,7 @@ interface Logger {
 }
 
 class SimpleLogger implements Logger {
-  constructor(private readonly context: string) { }
+  constructor(private readonly context: string) {}
 
   log(message: string): void {
     console.log(`[${this.context}] ${message}`);
@@ -119,11 +119,7 @@ export class RedisManager {
     return client;
   }
 
-  private async connectClient(
-    client: RedisClient,
-    namespace: string,
-    options: RedisClientOptions
-  ): Promise<void> {
+  private async connectClient(client: RedisClient, namespace: string, options: RedisClientOptions): Promise<void> {
     try {
       // Only connect if lazyConnect is false (not lazy) and client is not already connected
       // When lazyConnect is true, we should NOT connect immediately
@@ -137,7 +133,11 @@ export class RedisManager {
           this.logger.debug(`Redis client "${namespace}" already ready`);
         } else {
           // Check if already connected/connecting
-          if ((client as any).status !== 'ready' && (client as any).status !== 'connecting' && (client as any).status !== 'connect') {
+          if (
+            (client as any).status !== 'ready' &&
+            (client as any).status !== 'connecting' &&
+            (client as any).status !== 'connect'
+          ) {
             await client.connect();
           }
 
@@ -226,10 +226,10 @@ export class RedisManager {
         const scriptMap = this.scripts.get(namespace)!;
 
         try {
-          const [exists] = await client.script('EXISTS', sha) as [number];
+          const [exists] = (await client.script('EXISTS', sha)) as [number];
 
           if (!exists) {
-            const loadedSha = await client.script('LOAD', content) as string;
+            const loadedSha = (await client.script('LOAD', content)) as string;
             scriptMap.set(script.name, loadedSha);
           } else {
             scriptMap.set(script.name, sha);
@@ -346,7 +346,7 @@ export class RedisManager {
     scriptName: string,
     keys: string[],
     args: (string | number)[],
-    namespace?: string,
+    namespace?: string
   ): Promise<T> {
     const ns = namespace || 'default';
     const client = this.getClient(ns);
@@ -357,18 +357,18 @@ export class RedisManager {
     }
 
     try {
-      return await client.evalsha(sha, keys.length, ...keys, ...args) as T;
+      return (await client.evalsha(sha, keys.length, ...keys, ...args)) as T;
     } catch (error: any) {
       if (error.message?.includes('NOSCRIPT')) {
-        const script = this.options.scripts?.find(s => s.name === scriptName);
+        const script = this.options.scripts?.find((s) => s.name === scriptName);
         if (!script) {
           throw Errors.notFound(`Script "${scriptName}" in configuration`, '');
         }
 
         const content = script.content || loadScriptContent(script.path!);
-        const result = await client.eval(content, keys.length, ...keys, ...args) as T;
+        const result = (await client.eval(content, keys.length, ...keys, ...args)) as T;
 
-        const newSha = await client.script('LOAD', content) as string;
+        const newSha = (await client.script('LOAD', content)) as string;
         this.scripts.get(ns)?.set(scriptName, newSha);
 
         return result;

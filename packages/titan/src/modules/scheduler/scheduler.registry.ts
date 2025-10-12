@@ -8,11 +8,7 @@ import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { Inject, Optional, Injectable } from '../../decorators/index.js';
 import { Errors } from '../../errors/index.js';
 
-import {
-  ERROR_MESSAGES,
-  SCHEDULER_EVENTS,
-  SCHEDULER_CONFIG_TOKEN
-} from './scheduler.constants.js';
+import { ERROR_MESSAGES, SCHEDULER_EVENTS, SCHEDULER_CONFIG_TOKEN } from './scheduler.constants.js';
 import {
   JobStatus,
   SchedulerJobType,
@@ -21,7 +17,7 @@ import {
   type ITimeoutOptions,
   type ISchedulerConfig,
   type IIntervalOptions,
-  type IJobFilterOptions
+  type IJobFilterOptions,
 } from './scheduler.interfaces.js';
 
 /**
@@ -35,9 +31,7 @@ export class SchedulerRegistry {
   private eventEmitter: EventEmitter = new EventEmitter();
   private jobIdCounter = 0;
 
-  constructor(
-    @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: ISchedulerConfig
-  ) {
+  constructor(@Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: ISchedulerConfig) {
     // Initialize type and status maps
     for (const type of Object.values(SchedulerJobType)) {
       this.jobsByType.set(type as SchedulerJobType, new Set());
@@ -83,7 +77,7 @@ export class SchedulerRegistry {
       failureCount: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
-      isRunning: false
+      isRunning: false,
     };
 
     // Store job
@@ -172,7 +166,8 @@ export class SchedulerRegistry {
       if (!job.avgExecutionTime) {
         job.avgExecutionTime = execution.executionTime;
       } else {
-        job.avgExecutionTime = (job.avgExecutionTime * (job.executionCount - 1) + execution.executionTime) / job.executionCount;
+        job.avgExecutionTime =
+          (job.avgExecutionTime * (job.executionCount - 1) + execution.executionTime) / job.executionCount;
       }
     }
 
@@ -224,7 +219,7 @@ export class SchedulerRegistry {
   getJobsByType(type: SchedulerJobType): IScheduledJob[] {
     const jobNames = this.jobsByType.get(type) || new Set();
     return Array.from(jobNames)
-      .map(name => this.jobs.get(name))
+      .map((name) => this.jobs.get(name))
       .filter((job): job is IScheduledJob => job !== undefined);
   }
 
@@ -234,7 +229,7 @@ export class SchedulerRegistry {
   getJobsByStatus(status: JobStatus): IScheduledJob[] {
     const jobNames = this.jobsByStatus.get(status) || new Set();
     return Array.from(jobNames)
-      .map(name => this.jobs.get(name))
+      .map((name) => this.jobs.get(name))
       .filter((job): job is IScheduledJob => job !== undefined);
   }
 
@@ -247,27 +242,25 @@ export class SchedulerRegistry {
     // Filter by status
     if (filter.status) {
       const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
-      jobs = jobs.filter(job => statuses.includes(job.status));
+      jobs = jobs.filter((job) => statuses.includes(job.status));
     }
 
     // Filter by type
     if (filter.type) {
       const types = Array.isArray(filter.type) ? filter.type : [filter.type];
-      jobs = jobs.filter(job => types.includes(job.type));
+      jobs = jobs.filter((job) => types.includes(job.type));
     }
 
     // Filter by name pattern
     if (filter.namePattern) {
-      const pattern = filter.namePattern instanceof RegExp
-        ? filter.namePattern
-        : new RegExp(filter.namePattern);
-      jobs = jobs.filter(job => pattern.test(job.name));
+      const pattern = filter.namePattern instanceof RegExp ? filter.namePattern : new RegExp(filter.namePattern);
+      jobs = jobs.filter((job) => pattern.test(job.name));
     }
 
     // Filter by priority
     if (filter.priority !== undefined) {
       const priorities = Array.isArray(filter.priority) ? filter.priority : [filter.priority];
-      jobs = jobs.filter(job => {
+      jobs = jobs.filter((job) => {
         const jobPriority = (job.options as any).priority;
         return jobPriority !== undefined && priorities.includes(jobPriority);
       });
@@ -275,7 +268,7 @@ export class SchedulerRegistry {
 
     // Filter disabled jobs
     if (!filter.includeDisabled) {
-      jobs = jobs.filter(job => !(job.options as any).disabled);
+      jobs = jobs.filter((job) => !(job.options as any).disabled);
     }
 
     // Sort
@@ -344,8 +337,8 @@ export class SchedulerRegistry {
    */
   clear(): void {
     this.jobs.clear();
-    this.jobsByType.forEach(set => set.clear());
-    this.jobsByStatus.forEach(set => set.clear());
+    this.jobsByType.forEach((set) => set.clear());
+    this.jobsByStatus.forEach((set) => set.clear());
   }
 
   /**

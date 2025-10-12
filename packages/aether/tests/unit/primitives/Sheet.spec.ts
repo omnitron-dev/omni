@@ -218,10 +218,7 @@ describe('Sheet Primitive', () => {
       expect(() => {
         dispose = createRoot(() => {
           Sheet({
-            children: [
-              SheetTrigger({ children: 'Open' }),
-              SheetContent({ children: 'Content' }),
-            ],
+            children: [SheetTrigger({ children: 'Open' }), SheetContent({ children: 'Content' })],
           });
         });
       }).not.toThrow();
@@ -691,10 +688,7 @@ describe('Sheet Primitive', () => {
           Sheet({
             open: true,
             onOpenChange: () => {},
-            children: [
-              SheetTrigger({ children: 'Open' }),
-              SheetContent({ children: 'Content' }),
-            ],
+            children: [SheetTrigger({ children: 'Open' }), SheetContent({ children: 'Content' })],
           });
         });
       }).not.toThrow();
@@ -979,10 +973,7 @@ describe('Sheet Primitive', () => {
         dispose = createRoot(() => {
           Sheet({
             defaultOpen: true,
-            children: [
-              SheetTrigger({ children: 'Open' }),
-              SheetContent({ children: 'Content' }),
-            ],
+            children: [SheetTrigger({ children: 'Open' }), SheetContent({ children: 'Content' })],
           });
         });
       }).not.toThrow();
@@ -1045,10 +1036,7 @@ describe('Sheet Primitive', () => {
           Sheet({
             defaultOpen: true,
             children: SheetContent({
-              children: [
-                SheetClose({ children: 'Close 1' }),
-                SheetClose({ children: 'Close 2' }),
-              ],
+              children: [SheetClose({ children: 'Close 1' }), SheetClose({ children: 'Close 2' })],
             }),
           });
         });
@@ -1137,10 +1125,7 @@ describe('Sheet Primitive', () => {
           Sheet({
             defaultOpen: true,
             children: SheetContent({
-              children: [
-                SheetTitle({ children: 'Title' }),
-                SheetClose({ children: 'Close' }),
-              ],
+              children: [SheetTitle({ children: 'Title' }), SheetClose({ children: 'Close' })],
             }),
           });
         });

@@ -10,7 +10,7 @@ import {
   RaftConsensus,
   GeoRoutingStrategy,
   type GeoRegion,
-  type GeoLocation
+  type GeoLocation,
 } from '../../../../src/modules/pm/enterprise/geo-distribution.js';
 
 describe('GlobalLoadBalancer', () => {
@@ -19,11 +19,11 @@ describe('GlobalLoadBalancer', () => {
     {
       id: 'us-east',
       name: 'US East',
-      location: { latitude: 40.7128, longitude: -74.0060, country: 'US' },
+      location: { latitude: 40.7128, longitude: -74.006, country: 'US' },
       endpoints: ['http://us-east.example.com'],
       capacity: 1000,
       active: true,
-      primary: true
+      primary: true,
     },
     {
       id: 'eu-west',
@@ -31,7 +31,7 @@ describe('GlobalLoadBalancer', () => {
       location: { latitude: 51.5074, longitude: -0.1278, country: 'UK' },
       endpoints: ['http://eu-west.example.com'],
       capacity: 800,
-      active: true
+      active: true,
     },
     {
       id: 'ap-south',
@@ -39,21 +39,21 @@ describe('GlobalLoadBalancer', () => {
       location: { latitude: 1.3521, longitude: 103.8198, country: 'SG' },
       endpoints: ['http://ap-south.example.com'],
       capacity: 600,
-      active: true
-    }
+      active: true,
+    },
   ];
 
   beforeEach(() => {
     loadBalancer = new GlobalLoadBalancer({
       regions,
-      strategy: GeoRoutingStrategy.NEAREST
+      strategy: GeoRoutingStrategy.NEAREST,
     });
   });
 
   describe('Region Routing', () => {
     it('should route to nearest region by default', async () => {
       const context = {
-        clientLocation: { latitude: 37.7749, longitude: -122.4194, country: 'US' } // San Francisco
+        clientLocation: { latitude: 37.7749, longitude: -122.4194, country: 'US' }, // San Francisco
       };
 
       // Mock the service registration
@@ -69,7 +69,7 @@ describe('GlobalLoadBalancer', () => {
 
     it('should handle preferred regions', async () => {
       const context = {
-        preferredRegions: ['eu-west']
+        preferredRegions: ['eu-west'],
       };
 
       // Register service in EU region
@@ -108,7 +108,7 @@ describe('GlobalLoadBalancer', () => {
         healthy: true,
         services: 0,
         capacity: 1000,
-        location: expect.any(Object)
+        location: expect.any(Object),
       });
     });
 
@@ -162,7 +162,7 @@ describe('CRDT Implementations', () => {
       const register2 = new LWWRegister('initial', 'node2');
 
       register1.set('value1');
-      await new Promise(resolve => setTimeout(resolve, 10)); // Ensure different timestamps
+      await new Promise((resolve) => setTimeout(resolve, 10)); // Ensure different timestamps
       register2.set('value2');
 
       register1.merge(register2);
@@ -178,7 +178,7 @@ describe('CRDT Implementations', () => {
 
       // Simulate concurrent writes with small delay to ensure different timestamps
       register1.set('A');
-      await new Promise(resolve => setTimeout(resolve, 1));
+      await new Promise((resolve) => setTimeout(resolve, 1));
       register2.set('B');
 
       // Both merge with each other
@@ -278,7 +278,7 @@ describe('Geo-Distribution Integration', () => {
           endpoints: ['http://primary.test'],
           capacity: 100,
           active: true,
-          primary: true
+          primary: true,
         },
         {
           id: 'backup',
@@ -286,15 +286,15 @@ describe('Geo-Distribution Integration', () => {
           location: { latitude: 10, longitude: 10, country: 'TEST' },
           endpoints: ['http://backup.test'],
           capacity: 100,
-          active: true
-        }
+          active: true,
+        },
       ],
       strategy: GeoRoutingStrategy.NEAREST,
       healthCheck: {
         interval: 100,
         timeout: 50,
-        threshold: 3
-      }
+        threshold: 3,
+      },
     });
 
     loadBalancer.once('failover:started', ({ from, to }) => {
@@ -318,20 +318,22 @@ describe('Geo-Distribution Integration', () => {
       GeoRoutingStrategy.LEAST_LOADED,
       GeoRoutingStrategy.PREFERRED,
       GeoRoutingStrategy.STICKY,
-      GeoRoutingStrategy.WEIGHTED
+      GeoRoutingStrategy.WEIGHTED,
     ];
 
-    strategies.forEach(strategy => {
+    strategies.forEach((strategy) => {
       const lb = new GlobalLoadBalancer({
-        regions: [{
-          id: 'test',
-          name: 'Test',
-          location: { latitude: 0, longitude: 0, country: 'TEST' },
-          endpoints: ['http://test'],
-          capacity: 100,
-          active: true
-        }],
-        strategy
+        regions: [
+          {
+            id: 'test',
+            name: 'Test',
+            location: { latitude: 0, longitude: 0, country: 'TEST' },
+            endpoints: ['http://test'],
+            capacity: 100,
+            active: true,
+          },
+        ],
+        strategy,
       });
 
       expect(lb).toBeDefined();
@@ -342,10 +344,10 @@ describe('Geo-Distribution Integration', () => {
 describe('Distance Calculations', () => {
   it('should calculate correct distance between locations', () => {
     const loadBalancer = new GlobalLoadBalancer({
-      regions: []
+      regions: [],
     });
 
-    const loc1: GeoLocation = { latitude: 40.7128, longitude: -74.0060, country: 'US' }; // NYC
+    const loc1: GeoLocation = { latitude: 40.7128, longitude: -74.006, country: 'US' }; // NYC
     const loc2: GeoLocation = { latitude: 51.5074, longitude: -0.1278, country: 'UK' }; // London
 
     // Use private method via any cast for testing
@@ -358,7 +360,7 @@ describe('Distance Calculations', () => {
 
   it('should estimate latency based on distance', () => {
     const loadBalancer = new GlobalLoadBalancer({
-      regions: []
+      regions: [],
     });
 
     const loc1: GeoLocation = { latitude: 0, longitude: 0, country: 'TEST' };

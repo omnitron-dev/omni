@@ -67,7 +67,7 @@ export class DistributedLockManager {
         acquired: true,
         expiresAt: Date.now() + ttl,
         release: async () => this.release(lockId),
-        extend: async (newTtl?: number) => this.extend(lockId, newTtl || ttl)
+        extend: async (newTtl?: number) => this.extend(lockId, newTtl || ttl),
       };
 
       this.locks.set(resource, lock);
@@ -159,7 +159,7 @@ export interface IGeoSpatialConfig {
  */
 export class GeoSpatialQueryManager {
   private spatialIndex = new Map<string, Set<any>>();
-  
+
   constructor(private config: IGeoSpatialConfig = {}) {}
 
   /**
@@ -167,11 +167,11 @@ export class GeoSpatialQueryManager {
    */
   async index(entity: any, location: IGeoPoint): Promise<void> {
     const hash = this.computeGeoHash(location);
-    
+
     if (!this.spatialIndex.has(hash)) {
       this.spatialIndex.set(hash, new Set());
     }
-    
+
     this.spatialIndex.get(hash)!.add(entity);
   }
 
@@ -181,7 +181,7 @@ export class GeoSpatialQueryManager {
   async nearby(location: IGeoPoint, radius: number): Promise<any[]> {
     const centerHash = this.computeGeoHash(location);
     const neighbors = this.getNeighbors(centerHash, radius);
-    
+
     const results: any[] = [];
     for (const hash of neighbors) {
       const entities = this.spatialIndex.get(hash);
@@ -189,11 +189,12 @@ export class GeoSpatialQueryManager {
         results.push(...entities);
       }
     }
-    
+
     // Filter by actual distance
-    return results.filter(entity => 
-      // In real implementation, entity would have location
-       true // Simplified for now
+    return results.filter(
+      (entity) =>
+        // In real implementation, entity would have location
+        true // Simplified for now
     );
   }
 
@@ -215,7 +216,7 @@ export class GeoSpatialQueryManager {
     const [latPart, lngPart] = hash.split('_');
     const lat = parseInt(latPart || '0');
     const lng = parseInt(lngPart || '0');
-    
+
     // Add surrounding cells
     for (let dlat = -1; dlat <= 1; dlat++) {
       for (let dlng = -1; dlng <= 1; dlng++) {
@@ -223,7 +224,7 @@ export class GeoSpatialQueryManager {
         neighbors.push(`${lat + dlat}_${lng + dlng}`);
       }
     }
-    
+
     return neighbors;
   }
 }
@@ -262,9 +263,9 @@ export class RealtimeMatchingService<T, U> {
    */
   async match(items1: T[], items2: U[], scorer: (a: T, b: U) => number): Promise<IMatch<T, U>[]> {
     const { algorithm = 'hungarian', timeout = 30000 } = this.config;
-    
+
     const startTime = Date.now();
-    
+
     switch (algorithm) {
       case 'hungarian':
         return this.hungarianAlgorithm(items1, items2, scorer);
@@ -282,27 +283,27 @@ export class RealtimeMatchingService<T, U> {
     // Simplified Hungarian algorithm implementation
     const matches: IMatch<T, U>[] = [];
     const used2 = new Set<U>();
-    
+
     for (const item1 of items1) {
       let bestMatch: U | null = null;
       let bestScore = -Infinity;
-      
+
       for (const item2 of items2) {
         if (used2.has(item2)) continue;
-        
+
         const score = scorer(item1, item2);
         if (score > bestScore) {
           bestScore = score;
           bestMatch = item2;
         }
       }
-      
+
       if (bestMatch) {
         used2.add(bestMatch);
         matches.push({ item1, item2: bestMatch, score: bestScore });
       }
     }
-    
+
     return matches;
   }
 
@@ -312,21 +313,21 @@ export class RealtimeMatchingService<T, U> {
   private greedyMatching(items1: T[], items2: U[], scorer: (a: T, b: U) => number): IMatch<T, U>[] {
     const matches: IMatch<T, U>[] = [];
     const pairs: Array<{ item1: T; item2: U; score: number }> = [];
-    
+
     // Generate all pairs with scores
     for (const item1 of items1) {
       for (const item2 of items2) {
         pairs.push({ item1, item2, score: scorer(item1, item2) });
       }
     }
-    
+
     // Sort by score descending
     pairs.sort((a, b) => b.score - a.score);
-    
+
     // Greedily select matches
     const used1 = new Set<T>();
     const used2 = new Set<U>();
-    
+
     for (const pair of pairs) {
       if (!used1.has(pair.item1) && !used2.has(pair.item2)) {
         matches.push(pair);
@@ -334,7 +335,7 @@ export class RealtimeMatchingService<T, U> {
         used2.add(pair.item2);
       }
     }
-    
+
     return matches;
   }
 }
@@ -369,7 +370,7 @@ export interface IOrderedMessage {
 export class TotalOrderMessageBus extends EventEmitter {
   private sequenceNumber = 0;
   private messageHistory = new Map<string, IOrderedMessage[]>();
-  
+
   constructor(private config: IMessageBusConfig = {}) {
     super();
   }
@@ -383,23 +384,23 @@ export class TotalOrderMessageBus extends EventEmitter {
       sequence: this.sequenceNumber++,
       timestamp: Date.now(),
       channel,
-      payload: message
+      payload: message,
     };
-    
+
     // Store in history
     if (!this.messageHistory.has(channel)) {
       this.messageHistory.set(channel, []);
     }
-    
+
     const history = this.messageHistory.get(channel)!;
     history.push(orderedMessage);
-    
+
     // Limit history size
     const { history: maxHistory = 1000 } = this.config;
     if (history.length > maxHistory) {
       history.shift();
     }
-    
+
     // Emit in order
     this.emit(channel, orderedMessage);
   }
@@ -409,7 +410,7 @@ export class TotalOrderMessageBus extends EventEmitter {
    */
   subscribe(channel: string, handler: (message: IOrderedMessage) => void): () => void {
     this.on(channel, handler);
-    
+
     // Return unsubscribe function
     return () => this.off(channel, handler);
   }
@@ -497,27 +498,27 @@ export class ResourcePool {
       resource.inUse = true;
       resource.lastUsedAt = Date.now();
       resource.usageCount++;
-      
+
       // Check if needs recycling
       const { recycleAfter = 10 } = this.config;
       if (resource.usageCount >= recycleAfter) {
         // Mark for recycling after release
         (resource as any).needsRecycle = true;
       }
-      
+
       return resource;
     }
-    
+
     // Create new resource if under max
     const { max = 100 } = this.config;
     if (this.resources.size < max) {
       const resource = await this.createResource();
       resource.inUse = true;
       resource.lastUsedAt = Date.now();
-      resource.usageCount = 1;  // Set initial usage count
+      resource.usageCount = 1; // Set initial usage count
       return resource;
     }
-    
+
     // Wait for available resource
     return new Promise((resolve) => {
       this.waitingQueue.push(resolve);
@@ -529,13 +530,13 @@ export class ResourcePool {
    */
   async release(resource: IPooledResource): Promise<void> {
     resource.inUse = false;
-    
+
     // Check if needs recycling
     if ((resource as any).needsRecycle) {
       await this.recycleResource(resource);
       return;
     }
-    
+
     // Process waiting queue
     if (this.waitingQueue.length > 0) {
       const waiter = this.waitingQueue.shift()!;
@@ -558,7 +559,7 @@ export class ResourcePool {
       inUse: false,
       usageCount: 0,
       createdAt: Date.now(),
-      resource: {} // Actual resource would be created here
+      resource: {}, // Actual resource would be created here
     };
 
     this.resources.set(resource.id, resource);
@@ -571,10 +572,10 @@ export class ResourcePool {
    */
   private async recycleResource(resource: IPooledResource): Promise<void> {
     this.resources.delete(resource.id);
-    
+
     // Create replacement
     const newResource = await this.createResource();
-    
+
     // If there are waiters, give them the new resource
     if (this.waitingQueue.length > 0) {
       const waiter = this.waitingQueue.shift()!;
@@ -593,5 +594,5 @@ export {
   DistributedLockManager as DistributedLock,
   GeoSpatialQueryManager as GeoSpatialQuery,
   RealtimeMatchingService as RealtimeMatch,
-  TotalOrderMessageBus as MessageBus
+  TotalOrderMessageBus as MessageBus,
 };

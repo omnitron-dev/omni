@@ -50,7 +50,7 @@ export class MockProviderDI<T> {
           return (target as any)[prop];
         }
         return undefined;
-      }
+      },
     });
   }
 
@@ -102,7 +102,7 @@ export function createMockProvider<T>(config: MockProviderConfig<T>): MockProvid
 export function createAutoMockProvider<T>(token: Token<T>): MockProviderDI<T> {
   return new MockProviderDI({
     token,
-    autoMock: true
+    autoMock: true,
   });
 }
 
@@ -132,7 +132,10 @@ export class SpyProvider {
   private calls = new Map<string, Array<{ args: any[]; result?: any; error?: Error }>>();
   private spies = new Map<string, any>();
 
-  constructor(private original: any, methods: string[]) {
+  constructor(
+    private original: any,
+    methods: string[]
+  ) {
     for (const method of methods) {
       if (typeof this.original[method] === 'function') {
         const spy = jest.spyOn(this.original, method);

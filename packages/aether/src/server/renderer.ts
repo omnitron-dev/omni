@@ -18,10 +18,7 @@ import type { RenderContext, RenderResult, ServerConfig } from './types.js';
  * @param context - Render context
  * @returns Render result with HTML and hydration data
  */
-export async function renderToString(
-  config: ServerConfig,
-  context: RenderContext
-): Promise<RenderResult> {
+export async function renderToString(config: ServerConfig, context: RenderContext): Promise<RenderResult> {
   const { routes, base = '/' } = config;
   const { url, method } = context;
 
@@ -171,7 +168,7 @@ function renderJSXToHTML(jsx: any): string {
 
   // Handle arrays (fragments)
   if (Array.isArray(jsx)) {
-    return jsx.map(child => renderJSXToHTML(child)).join('');
+    return jsx.map((child) => renderJSXToHTML(child)).join('');
   }
 
   // Handle JSX elements
@@ -228,10 +225,10 @@ function renderHTMLElement(tag: string, props: any = {}): string {
 
   // Regular tags
   const childrenHTML = Array.isArray(children)
-    ? children.map(child => renderJSXToHTML(child)).join('')
+    ? children.map((child) => renderJSXToHTML(child)).join('')
     : children != null
-    ? renderJSXToHTML(children)
-    : '';
+      ? renderJSXToHTML(children)
+      : '';
 
   return `<${tag}${attrs ? ' ' + attrs : ''}>${childrenHTML}</${tag}>`;
 }
@@ -240,9 +237,22 @@ function renderHTMLElement(tag: string, props: any = {}): string {
  * Check if HTML tag is self-closing
  */
 function isSelfClosing(tag: string): boolean {
-  return ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'].includes(
-    tag.toLowerCase()
-  );
+  return [
+    'area',
+    'base',
+    'br',
+    'col',
+    'embed',
+    'hr',
+    'img',
+    'input',
+    'link',
+    'meta',
+    'param',
+    'source',
+    'track',
+    'wbr',
+  ].includes(tag.toLowerCase());
 }
 
 /**
@@ -311,11 +321,7 @@ function renderErrorPage(status: number, message: string): string {
  * @param meta - Meta tags
  * @returns Complete HTML document
  */
-export function renderDocument(
-  html: string,
-  data?: Record<string, any>,
-  meta?: Record<string, string>
-): string {
+export function renderDocument(html: string, data?: Record<string, any>, meta?: Record<string, string>): string {
   const title = meta?.title || 'Aether App';
   const description = meta?.description || '';
 

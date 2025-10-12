@@ -83,9 +83,7 @@ describe('NetronClient', () => {
         url: 'ws://localhost:3000',
       });
 
-      await expect(client.queryInterface('TestService')).rejects.toThrow(
-        'Not connected. Call connect() first.'
-      );
+      await expect(client.queryInterface('TestService')).rejects.toThrow('Not connected. Call connect() first.');
     });
   });
 
@@ -95,9 +93,7 @@ describe('NetronClient', () => {
         url: 'ws://localhost:3000',
       });
 
-      await expect(client.subscribe('test.event', () => {})).rejects.toThrow(
-        'Not connected. Call connect() first.'
-      );
+      await expect(client.subscribe('test.event', () => {})).rejects.toThrow('Not connected. Call connect() first.');
     });
   });
 
@@ -107,9 +103,7 @@ describe('NetronClient', () => {
         url: 'ws://localhost:3000',
       });
 
-      await expect(client.unsubscribe('test.event', () => {})).rejects.toThrow(
-        'Not connected. Call connect() first.'
-      );
+      await expect(client.unsubscribe('test.event', () => {})).rejects.toThrow('Not connected. Call connect() first.');
     });
   });
 
@@ -157,7 +151,7 @@ describe('HttpNetronClient', () => {
       const client = new HttpNetronClient({
         baseUrl: 'http://localhost:3000',
         headers: {
-          'Authorization': 'Bearer token',
+          Authorization: 'Bearer token',
           'X-Custom': 'value',
         },
       });

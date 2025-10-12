@@ -3,9 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import {
-  RateLimiter,
-} from '../../../src/netron/auth/rate-limiter.js';
+import { RateLimiter } from '../../../src/netron/auth/rate-limiter.js';
 
 describe('RateLimiter', () => {
   let mockLogger: any;
@@ -77,7 +75,7 @@ describe('RateLimiter', () => {
       await expect(limiter.consume('user-1')).rejects.toThrow();
 
       // Wait for window to reset
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       // Should be allowed again
       const result = await limiter.check('user-1');
@@ -151,14 +149,14 @@ describe('RateLimiter', () => {
 
       // Make 2 requests
       await limiter.consume('user-1');
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
       await limiter.consume('user-1');
 
       // Should be denied (2 requests within 200ms)
       await expect(limiter.consume('user-1')).rejects.toThrow();
 
       // Wait for first request to slide out
-      await new Promise(resolve => setTimeout(resolve, 160));
+      await new Promise((resolve) => setTimeout(resolve, 160));
 
       // Should be allowed again
       const result = await limiter.check('user-1');
@@ -179,7 +177,7 @@ describe('RateLimiter', () => {
       await limiter.consume('user-1');
 
       // Wait 50ms (half the window)
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       // With fixed window, this might be allowed (new window)
       // With sliding window, should still be denied
@@ -242,7 +240,7 @@ describe('RateLimiter', () => {
       await expect(limiter.consume('user-1')).rejects.toThrow();
 
       // Wait for some tokens to refill (50ms = 5 tokens)
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       // Should have ~5 tokens available
       const result = await limiter.check('user-1');
@@ -372,7 +370,7 @@ describe('RateLimiter', () => {
       const queuePromise = limiter.consume('user-1');
 
       // Give it time to queue
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       // Check queue status
       const stats = limiter.getStats();
@@ -400,7 +398,7 @@ describe('RateLimiter', () => {
       const consumePromise = limiter.consume('user-1').catch(() => null);
 
       // Wait for window to reset and queue to process
-      await new Promise(resolve => setTimeout(resolve, 250));
+      await new Promise((resolve) => setTimeout(resolve, 250));
 
       // Queue should be processed
       const stats = limiter.getStats();
@@ -612,9 +610,7 @@ describe('RateLimiter', () => {
       // 100 concurrent requests for same user
       const promises = [];
       for (let i = 0; i < 100; i++) {
-        promises.push(
-          limiter.consume('user-1').catch(() => null)
-        );
+        promises.push(limiter.consume('user-1').catch(() => null));
       }
 
       await Promise.all(promises);
@@ -665,7 +661,7 @@ describe('RateLimiter', () => {
       expect(limiter.getStats().activeKeys).toBe(3);
 
       // Wait for entries to expire (2 windows)
-      await new Promise(resolve => setTimeout(resolve, 250));
+      await new Promise((resolve) => setTimeout(resolve, 250));
 
       // Manually trigger cleanup (normally happens periodically)
       // @ts-ignore - accessing private method for testing
@@ -701,7 +697,7 @@ describe('RateLimiter', () => {
       await limiter.consume('user-1');
 
       // Wait for window to reset
-      await new Promise(resolve => setTimeout(resolve, 5));
+      await new Promise((resolve) => setTimeout(resolve, 5));
 
       const result = await limiter.check('user-1');
       expect(result.allowed).toBe(true);

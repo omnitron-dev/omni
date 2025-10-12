@@ -19,7 +19,7 @@ export enum ComplianceStandard {
   PCI_DSS = 'PCI-DSS',
   ISO_27001 = 'ISO-27001',
   CCPA = 'CCPA',
-  FedRAMP = 'FedRAMP'
+  FedRAMP = 'FedRAMP',
 }
 
 /**
@@ -105,7 +105,7 @@ export enum DataClassification {
   PUBLIC = 'public',
   INTERNAL = 'internal',
   CONFIDENTIAL = 'confidential',
-  RESTRICTED = 'restricted'
+  RESTRICTED = 'restricted',
 }
 
 /**
@@ -131,7 +131,7 @@ export class AuditLogger extends EventEmitter {
     { name: 'creditCard', pattern: /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g, replacement: '****-****-****-****' },
     { name: 'email', pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, replacement: '***@***.***' },
     { name: 'phone', pattern: /\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, replacement: '***-***-****' },
-    { name: 'ipAddress', pattern: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g, replacement: '***.***.***.***' }
+    { name: 'ipAddress', pattern: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g, replacement: '***.***.***.***' },
   ];
 
   constructor(private config: AuditConfig) {
@@ -148,7 +148,7 @@ export class AuditLogger extends EventEmitter {
     const fullEvent: AuditEvent = {
       ...event,
       id: randomUUID(),
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
 
     // Redact PII if configured
@@ -164,9 +164,7 @@ export class AuditLogger extends EventEmitter {
     }
 
     // Encrypt if configured
-    const storedEvent = this.config.encryption
-      ? this.encryptEvent(fullEvent)
-      : fullEvent;
+    const storedEvent = this.config.encryption ? this.encryptEvent(fullEvent) : fullEvent;
 
     this.events.push(storedEvent);
     // Emit the encrypted event if encryption is enabled
@@ -215,7 +213,7 @@ export class AuditLogger extends EventEmitter {
       actor: event.actor,
       action: event.action,
       resource: event.resource,
-      outcome: event.outcome
+      outcome: event.outcome,
     });
 
     return createHash('sha256').update(content).digest('hex');
@@ -227,7 +225,9 @@ export class AuditLogger extends EventEmitter {
   private generateSignature(event: AuditEvent): string {
     // In production, would use proper digital signature with private key
     const content = event.hash || this.generateHash(event);
-    return createHash('sha512').update(content + 'secret').digest('hex');
+    return createHash('sha512')
+      .update(content + 'secret')
+      .digest('hex');
   }
 
   /**
@@ -240,18 +240,15 @@ export class AuditLogger extends EventEmitter {
     const cipher = createCipheriv('aes-256-gcm', this.encryptionKey, iv);
 
     const sensitive = JSON.stringify(event.metadata || {});
-    const encrypted = Buffer.concat([
-      cipher.update(sensitive, 'utf8'),
-      cipher.final()
-    ]);
+    const encrypted = Buffer.concat([cipher.update(sensitive, 'utf8'), cipher.final()]);
 
     return {
       ...event,
       metadata: {
         encrypted: encrypted.toString('base64'),
         iv: iv.toString('base64'),
-        tag: (cipher as any).getAuthTag().toString('base64')
-      }
+        tag: (cipher as any).getAuthTag().toString('base64'),
+      },
     };
   }
 
@@ -261,22 +258,18 @@ export class AuditLogger extends EventEmitter {
   private decryptEvent(event: AuditEvent): AuditEvent {
     if (!this.encryptionKey || !event.metadata?.['encrypted']) return event;
 
-    const decipher = createDecipheriv(
-      'aes-256-gcm',
-      this.encryptionKey,
-      Buffer.from(event.metadata['iv'], 'base64')
-    );
+    const decipher = createDecipheriv('aes-256-gcm', this.encryptionKey, Buffer.from(event.metadata['iv'], 'base64'));
 
     (decipher as any).setAuthTag(Buffer.from(event.metadata['tag'], 'base64'));
 
     const decrypted = Buffer.concat([
       decipher.update(Buffer.from(event.metadata['encrypted'], 'base64')),
-      decipher.final()
+      decipher.final(),
     ]);
 
     return {
       ...event,
-      metadata: JSON.parse(decrypted.toString('utf8'))
+      metadata: JSON.parse(decrypted.toString('utf8')),
     };
   }
 
@@ -287,8 +280,8 @@ export class AuditLogger extends EventEmitter {
     const retentionMs = this.parseRetention(this.config.retention);
     const cutoff = Date.now() - retentionMs;
 
-    const retained = this.events.filter(e => e.timestamp > cutoff);
-    const archived = this.events.filter(e => e.timestamp <= cutoff);
+    const retained = this.events.filter((e) => e.timestamp > cutoff);
+    const archived = this.events.filter((e) => e.timestamp <= cutoff);
 
     if (archived.length > 0) {
       this.archiveEvents(archived);
@@ -307,11 +300,16 @@ export class AuditLogger extends EventEmitter {
     const num = parseInt(value || '0', 10);
 
     switch (unit) {
-      case 'y': return num * 365 * 24 * 60 * 60 * 1000;
-      case 'm': return num * 30 * 24 * 60 * 60 * 1000;
-      case 'd': return num * 24 * 60 * 60 * 1000;
-      case 'h': return num * 60 * 60 * 1000;
-      default: throw Errors.notFound(`Unknown retention unit: ${unit}`);
+      case 'y':
+        return num * 365 * 24 * 60 * 60 * 1000;
+      case 'm':
+        return num * 30 * 24 * 60 * 60 * 1000;
+      case 'd':
+        return num * 24 * 60 * 60 * 1000;
+      case 'h':
+        return num * 60 * 60 * 1000;
+      default:
+        throw Errors.notFound(`Unknown retention unit: ${unit}`);
     }
   }
 
@@ -334,7 +332,7 @@ export class AuditLogger extends EventEmitter {
     resource?: string;
     outcome?: 'success' | 'failure';
   }): AuditEvent[] {
-    return this.events.filter(event => {
+    return this.events.filter((event) => {
       if (filter.startTime && event.timestamp < filter.startTime) return false;
       if (filter.endTime && event.timestamp > filter.endTime) return false;
       if (filter.actor && event.actor.id !== filter.actor) return false;
@@ -372,16 +370,16 @@ export class AuditLogger extends EventEmitter {
    */
   private exportCSV(): string {
     const headers = ['id', 'timestamp', 'actor_id', 'action', 'resource_id', 'outcome'];
-    const rows = this.events.map(e => [
+    const rows = this.events.map((e) => [
       e.id,
       new Date(e.timestamp).toISOString(),
       e.actor.id,
       e.action,
       e.resource.id,
-      e.outcome
+      e.outcome,
     ]);
 
-    return [headers, ...rows].map(row => row.join(',')).join('\n');
+    return [headers, ...rows].map((row) => row.join(',')).join('\n');
   }
 }
 
@@ -479,7 +477,7 @@ export class ComplianceManager extends EventEmitter {
       action: `data-subject-request:${request.type}`,
       resource: { type: 'personal-data', id: request.subjectId },
       outcome: 'success',
-      metadata: { requestType: request.type }
+      metadata: { requestType: request.type },
     });
 
     switch (request.type) {
@@ -508,7 +506,7 @@ export class ComplianceManager extends EventEmitter {
         requestId: request.id,
         status: 'completed',
         data: null,
-        message: 'No data found for subject'
+        message: 'No data found for subject',
       };
     }
 
@@ -516,7 +514,7 @@ export class ComplianceManager extends EventEmitter {
       requestId: request.id,
       status: 'completed',
       data: this.sanitizeSubjectData(subject),
-      message: 'Data access granted'
+      message: 'Data access granted',
     };
   }
 
@@ -529,7 +527,7 @@ export class ComplianceManager extends EventEmitter {
       return {
         requestId: request.id,
         status: 'failed',
-        message: 'Subject not found'
+        message: 'Subject not found',
       };
     }
 
@@ -542,7 +540,7 @@ export class ComplianceManager extends EventEmitter {
     return {
       requestId: request.id,
       status: 'completed',
-      message: 'Data rectified successfully'
+      message: 'Data rectified successfully',
     };
   }
 
@@ -554,7 +552,7 @@ export class ComplianceManager extends EventEmitter {
     const systems = this.getSystemsWithSubjectData(request.subjectId);
 
     const deletionResults = await Promise.all(
-      systems.map(system => this.deleteFromSystem(system, request.subjectId))
+      systems.map((system) => this.deleteFromSystem(system, request.subjectId))
     );
 
     // Remove from local storage
@@ -567,8 +565,8 @@ export class ComplianceManager extends EventEmitter {
       message: 'Data erased successfully',
       metadata: {
         systemsProcessed: systems.length,
-        deletionResults
-      }
+        deletionResults,
+      },
     };
   }
 
@@ -581,7 +579,7 @@ export class ComplianceManager extends EventEmitter {
       return {
         requestId: request.id,
         status: 'failed',
-        message: 'Subject not found'
+        message: 'Subject not found',
       };
     }
 
@@ -589,14 +587,14 @@ export class ComplianceManager extends EventEmitter {
       subject: this.sanitizeSubjectData(subject),
       consent: this.consentRecords.get(request.subjectId),
       exportedAt: new Date().toISOString(),
-      format: request.format || 'json'
+      format: request.format || 'json',
     };
 
     return {
       requestId: request.id,
       status: 'completed',
       data: portableData,
-      message: 'Data exported successfully'
+      message: 'Data exported successfully',
     };
   }
 
@@ -609,7 +607,7 @@ export class ComplianceManager extends EventEmitter {
       return {
         requestId: request.id,
         status: 'failed',
-        message: 'Subject not found'
+        message: 'Subject not found',
       };
     }
 
@@ -620,7 +618,7 @@ export class ComplianceManager extends EventEmitter {
     return {
       requestId: request.id,
       status: 'completed',
-      message: 'Processing restricted successfully'
+      message: 'Processing restricted successfully',
     };
   }
 
@@ -634,7 +632,7 @@ export class ComplianceManager extends EventEmitter {
       action: 'consent:recorded',
       resource: { type: 'consent', id: consent.id },
       outcome: 'success',
-      metadata: { purposes: consent.purposes }
+      metadata: { purposes: consent.purposes },
     });
   }
 
@@ -645,8 +643,7 @@ export class ComplianceManager extends EventEmitter {
     const consent = this.consentRecords.get(subjectId);
     if (!consent) return false;
 
-    return consent.purposes.includes(purpose) &&
-           (!consent.expiresAt || consent.expiresAt > Date.now());
+    return consent.purposes.includes(purpose) && (!consent.expiresAt || consent.expiresAt > Date.now());
   }
 
   /**
@@ -680,7 +677,7 @@ export class ComplianceManager extends EventEmitter {
     const { data, ...metadata } = subject;
     return {
       ...metadata,
-      data: this.auditLogger['redactPII'](data)
+      data: this.auditLogger['redactPII'](data),
     };
   }
 
@@ -695,7 +692,7 @@ export class ComplianceManager extends EventEmitter {
       consentRecords: this.consentRecords.size,
       dataInventory: this.dataInventory.size,
       auditEvents: this.auditLogger.query({}).length,
-      compliance: this.assessCompliance()
+      compliance: this.assessCompliance(),
     };
   }
 
@@ -710,7 +707,7 @@ export class ComplianceManager extends EventEmitter {
         compliant: true,
         score: 95 + Math.random() * 5,
         gaps: [],
-        recommendations: []
+        recommendations: [],
       };
     }
 
@@ -801,4 +798,3 @@ export interface ComplianceAssessment {
   gaps: string[];
   recommendations: string[];
 }
-

@@ -14,20 +14,16 @@ import {
   Memoize,
   Retry,
   Deprecated,
-  Validate
+  Validate,
 } from '../../src/decorators/index.js';
 
 describe('Custom Decorators', () => {
   describe('createDecorator', () => {
     it('should create a basic class decorator', () => {
-      const TestDecorator = createDecorator()
-        .withName('Test')
-        .forClass()
-        .withMetadata('test', true)
-        .build();
+      const TestDecorator = createDecorator().withName('Test').forClass().withMetadata('test', true).build();
 
       @TestDecorator()
-      class TestClass { }
+      class TestClass {}
 
       expect(hasDecorator('Test', TestClass)).toBe(true);
       expect(getCustomMetadata('Test', TestClass)).toBeDefined();
@@ -107,10 +103,7 @@ describe('Custom Decorators', () => {
         .build();
 
       class TestClass {
-        method(
-          @ParamDecorator({ name: 'first' }) param1: string,
-          @ParamDecorator({ name: 'second' }) param2: number
-        ) {
+        method(@ParamDecorator({ name: 'first' }) param1: string, @ParamDecorator({ name: 'second' }) param2: number) {
           return { param1, param2 };
         }
       }
@@ -130,19 +123,16 @@ describe('Custom Decorators', () => {
 
       expect(() => {
         @ValidatedDecorator({ min: 10, max: 5 })
-        class TestClass { }
+        class TestClass {}
       }).toThrow('Invalid options for @Validated: min must be less than max');
     });
 
     it('should enforce target restrictions', () => {
-      const MethodOnlyDecorator = createDecorator()
-        .withName('MethodOnly')
-        .forMethod()
-        .build();
+      const MethodOnlyDecorator = createDecorator().withName('MethodOnly').forMethod().build();
 
       expect(() => {
         @MethodOnlyDecorator()
-        class TestClass { }
+        class TestClass {}
       }).toThrow('@MethodOnly cannot be applied to class');
     });
 
@@ -173,11 +163,7 @@ describe('Custom Decorators', () => {
         })
         .build();
 
-      const Combined = createDecorator()
-        .withName('Combined')
-        .forMethod()
-        .compose(First(), Second())
-        .build();
+      const Combined = createDecorator().withName('Combined').forMethod().compose(First(), Second()).build();
 
       class TestClass {
         @Combined()
@@ -204,7 +190,7 @@ describe('Custom Decorators', () => {
         class TestClass {
           @NonStackable()
           @NonStackable()
-          method() { }
+          method() {}
         }
       }).toThrow('@NonStackable has already been applied and is not stackable');
     });
@@ -220,7 +206,7 @@ describe('Custom Decorators', () => {
       class TestClass {
         @Stackable()
         @Stackable()
-        method() { }
+        method() {}
       }
 
       const metadata = getCustomMetadata('Stackable', TestClass.prototype, 'method');
@@ -235,12 +221,12 @@ describe('Custom Decorators', () => {
         .forClass()
         .withHooks({
           beforeApply: () => hookCalls.push('before'),
-          afterApply: () => hookCalls.push('after')
+          afterApply: () => hookCalls.push('after'),
         })
         .build();
 
       @HookedDecorator()
-      class TestClass { }
+      class TestClass {}
 
       expect(hookCalls).toEqual(['before', 'after']);
     });
@@ -251,12 +237,12 @@ describe('Custom Decorators', () => {
         .forClass()
         .withMetadata((context) => ({
           className: context.target.name,
-          prefixed: `${context.options?.prefix}_${context.target.name}`
+          prefixed: `${context.options?.prefix}_${context.target.name}`,
         }))
         .build();
 
       @DynamicMetadata({ prefix: 'test' })
-      class TestClass { }
+      class TestClass {}
 
       const metadataKeys = Reflect.getMetadataKeys(TestClass);
       const classNameMetadata = Reflect.getMetadata('custom:Dynamic:className', TestClass);
@@ -305,22 +291,19 @@ describe('Custom Decorators', () => {
     });
 
     it('should create method interceptors', () => {
-      const Timing = createMethodInterceptor(
-        'Timing',
-        (originalMethod, args, context) => {
-          const start = Date.now();
-          const result = originalMethod(...args);
-          const duration = Date.now() - start;
-          context.metadata.set('lastDuration', duration);
-          return result;
-        }
-      );
+      const Timing = createMethodInterceptor('Timing', (originalMethod, args, context) => {
+        const start = Date.now();
+        const result = originalMethod(...args);
+        const duration = Date.now() - start;
+        context.metadata.set('lastDuration', duration);
+        return result;
+      });
 
       class TestService {
         @Timing()
         process() {
           // Simulate work
-          for (let i = 0; i < 1000000; i++) { }
+          for (let i = 0; i < 1000000; i++) {}
           return 'done';
         }
       }
@@ -332,13 +315,10 @@ describe('Custom Decorators', () => {
     });
 
     it('should create property interceptors', () => {
-      const Uppercase = createPropertyInterceptor(
-        'Uppercase',
-        {
-          get: (value) => value?.toUpperCase(),
-          set: (value) => value?.toLowerCase()
-        }
-      );
+      const Uppercase = createPropertyInterceptor('Uppercase', {
+        get: (value) => value?.toUpperCase(),
+        set: (value) => value?.toLowerCase(),
+      });
 
       class TestClass {
         @Uppercase()
@@ -408,9 +388,7 @@ describe('Custom Decorators', () => {
       const api = new OldAPI();
       api.oldMethod();
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        'Use newMethod instead'
-      );
+      expect(consoleSpy).toHaveBeenCalledWith('Use newMethod instead');
 
       consoleSpy.mockRestore();
     });
@@ -442,29 +420,26 @@ describe('Custom Decorators', () => {
         .build();
 
       @Inheritable()
-      class BaseClass { }
+      class BaseClass {}
 
-      class DerivedClass extends BaseClass { }
+      class DerivedClass extends BaseClass {}
 
       expect(hasDecorator('Inheritable', BaseClass)).toBe(true);
       // Note: Inheritance metadata would need additional handling in actual implementation
     });
 
     it('should handle async method decorators', async () => {
-      const AsyncLogger = createMethodInterceptor(
-        'AsyncLogger',
-        async (originalMethod, args, context) => {
-          console.log(`Before ${String(context.propertyKey)}`);
-          const result = await originalMethod(...args);
-          console.log(`After ${String(context.propertyKey)}`);
-          return result;
-        }
-      );
+      const AsyncLogger = createMethodInterceptor('AsyncLogger', async (originalMethod, args, context) => {
+        console.log(`Before ${String(context.propertyKey)}`);
+        const result = await originalMethod(...args);
+        console.log(`After ${String(context.propertyKey)}`);
+        return result;
+      });
 
       class AsyncService {
         @AsyncLogger()
         async fetchData(): Promise<string> {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           return 'data';
         }
       }
@@ -482,22 +457,14 @@ describe('Custom Decorators', () => {
     });
 
     it('should support multiple decorators on same target', () => {
-      const First = createDecorator()
-        .withName('First')
-        .forMethod()
-        .withMetadata('order', 1)
-        .build();
+      const First = createDecorator().withName('First').forMethod().withMetadata('order', 1).build();
 
-      const Second = createDecorator()
-        .withName('Second')
-        .forMethod()
-        .withMetadata('order', 2)
-        .build();
+      const Second = createDecorator().withName('Second').forMethod().withMetadata('order', 2).build();
 
       class TestClass {
         @First()
         @Second()
-        method() { }
+        method() {}
       }
 
       expect(hasDecorator('First', TestClass.prototype, 'method')).toBe(true);

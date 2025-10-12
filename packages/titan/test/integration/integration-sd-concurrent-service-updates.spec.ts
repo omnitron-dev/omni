@@ -5,10 +5,10 @@ import { Netron, Service } from '@omnitron-dev/netron/src/index.js';
 import { cleanupRedis, getTestRedisUrl, createTestRedisClient } from '@omnitron-dev/netron/test/helpers/test-utils.js';
 
 @Service('service.alpha@1.0.0')
-class ServiceAlpha { }
+class ServiceAlpha {}
 
 @Service('service.beta@1.0.0')
-class ServiceBeta { }
+class ServiceBeta {}
 
 describe('ServiceDiscovery Integration - Concurrent Service Updates', () => {
   let redis: Redis;

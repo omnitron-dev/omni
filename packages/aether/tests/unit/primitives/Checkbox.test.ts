@@ -682,9 +682,10 @@ describe('CheckboxIndicator', () => {
     it('should not render when checkbox is unchecked', () => {
       const { container, dispose } = renderComponent(() =>
         Checkbox({
-          children: () => CheckboxIndicator({
-            children: '',
-          }),
+          children: () =>
+            CheckboxIndicator({
+              children: '',
+            }),
         })
       );
       cleanup = dispose;
@@ -699,9 +700,10 @@ describe('CheckboxIndicator', () => {
       const { container, dispose } = renderComponent(() =>
         Checkbox({
           defaultChecked: true,
-          children: () => CheckboxIndicator({
-            children: '',
-          }),
+          children: () =>
+            CheckboxIndicator({
+              children: '',
+            }),
         })
       );
       cleanup = dispose;
@@ -715,9 +717,10 @@ describe('CheckboxIndicator', () => {
       const { container, dispose } = renderComponent(() =>
         Checkbox({
           defaultChecked: 'indeterminate',
-          children: () => CheckboxIndicator({
-            children: '',
-          }),
+          children: () =>
+            CheckboxIndicator({
+              children: '',
+            }),
         })
       );
       cleanup = dispose;
@@ -730,9 +733,10 @@ describe('CheckboxIndicator', () => {
     it('should show/hide when checkbox is toggled', () => {
       const { container, dispose } = renderComponent(() =>
         Checkbox({
-          children: () => CheckboxIndicator({
-            children: '',
-          }),
+          children: () =>
+            CheckboxIndicator({
+              children: '',
+            }),
         })
       );
       cleanup = dispose;
@@ -752,10 +756,11 @@ describe('CheckboxIndicator', () => {
     it('should always render when forceMount=true and unchecked', () => {
       const { container, dispose } = renderComponent(() =>
         Checkbox({
-          children: () => CheckboxIndicator({
-            forceMount: true,
-            children: '',
-          }),
+          children: () =>
+            CheckboxIndicator({
+              forceMount: true,
+              children: '',
+            }),
         })
       );
       cleanup = dispose;
@@ -769,10 +774,11 @@ describe('CheckboxIndicator', () => {
       const { container, dispose } = renderComponent(() =>
         Checkbox({
           defaultChecked: true,
-          children: () => CheckboxIndicator({
-            forceMount: true,
-            children: '',
-          }),
+          children: () =>
+            CheckboxIndicator({
+              forceMount: true,
+              children: '',
+            }),
         })
       );
       cleanup = dispose;
@@ -846,9 +852,10 @@ describe('CheckboxIndicator', () => {
       const { container, dispose } = renderComponent(() =>
         Checkbox({
           defaultChecked: true,
-          children: () => CheckboxIndicator({
-            className: 'custom-indicator',
-          }),
+          children: () =>
+            CheckboxIndicator({
+              className: 'custom-indicator',
+            }),
         })
       );
       cleanup = dispose;
@@ -861,9 +868,10 @@ describe('CheckboxIndicator', () => {
       const { container, dispose } = renderComponent(() =>
         Checkbox({
           defaultChecked: true,
-          children: () => CheckboxIndicator({
-            style: { color: 'green' },
-          }),
+          children: () =>
+            CheckboxIndicator({
+              style: { color: 'green' },
+            }),
         })
       );
       cleanup = dispose;
@@ -876,9 +884,10 @@ describe('CheckboxIndicator', () => {
       const { container, dispose } = renderComponent(() =>
         Checkbox({
           defaultChecked: true,
-          children: () => CheckboxIndicator({
-            'data-testid': 'my-indicator',
-          }),
+          children: () =>
+            CheckboxIndicator({
+              'data-testid': 'my-indicator',
+            }),
         })
       );
       cleanup = dispose;

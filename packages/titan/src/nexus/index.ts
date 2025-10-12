@@ -1,6 +1,6 @@
 /**
  * Nexus DI Container - Next-generation dependency injection for TypeScript
- * 
+ *
  * @packageDocumentation
  */
 
@@ -20,20 +20,14 @@ export * from './devtools.js';
 export * from './federation.js';
 
 // Container
-export {
-  Container
-} from './container.js';
+export { Container } from './container.js';
 
 // Token and other types are exported below from types.js
 
 // Convenience exports
 export { Container as NexusContainer } from './container.js';
 
-export {
-  SpyProvider,
-  MockProvider,
-  StubProvider
-} from './testing/mock-provider.js';
+export { SpyProvider, MockProvider, StubProvider } from './testing/mock-provider.js';
 
 // Decorator utilities already exported from main decorators module
 
@@ -47,7 +41,7 @@ export {
   CachingPlugin,
   type PluginHooks,
   ValidationPlugin,
-  PerformancePlugin
+  PerformancePlugin,
 } from './plugin.js';
 // Decorators are exported from main decorators module above
 // Testing Utilities
@@ -58,7 +52,7 @@ export {
   TestModuleBuilder,
   createTestContainer,
   type TestContainerOptions,
-  createIsolatedTestContainer
+  createIsolatedTestContainer,
 } from './testing/test-container.js';
 
 /**
@@ -82,7 +76,7 @@ export {
   type LifecycleHook,
   PerformanceObserver,
   type LifecycleObserver,
-  type LifecycleEventData
+  type LifecycleEventData,
 } from './lifecycle.js';
 
 export {
@@ -95,7 +89,7 @@ export {
   createTestModule,
   createTestHarness,
   type SnapshotContainer,
-  type IsolatedContainer
+  type IsolatedContainer,
 } from './testing/test-utilities.js';
 
 // Provider Utilities
@@ -109,7 +103,7 @@ export {
   createMultiProvider,
   createConditionalProvider,
   hasScope,
-  isMultiProvider
+  isMultiProvider,
 } from './provider-utils.js';
 
 // Runtime Detection
@@ -128,27 +122,27 @@ export {
   type RuntimeInfo,
   hasWorkerSupport,
   PerformanceTimer,
-  loadRuntimeModule
+  loadRuntimeModule,
 } from './runtime.js';
 
 // Token System
 export {
   isToken,
   createToken,
-  createToken as token,  // Alias for convenience
+  createToken as token, // Alias for convenience
   isMultiToken,
   getTokenName,
   tokenFromClass,
   createLazyToken,
   isOptionalToken,
   createMultiToken,
-  createMultiToken as multiToken,  // Alias for convenience
+  createMultiToken as multiToken, // Alias for convenience
   createAsyncToken,
   createConfigToken,
   createScopedToken,
   createStreamToken,
   type TokenRegistry,
-  createOptionalToken
+  createOptionalToken,
 } from './token.js';
 
 // Enhanced Module System
@@ -164,7 +158,7 @@ export {
   createConfigModule,
   type ModuleCompiler,
   createDynamicModule,
-  createFeatureModule
+  createFeatureModule,
 } from './module.js';
 
 // Advanced Context System
@@ -182,7 +176,7 @@ export {
   DefaultContextProvider,
   type ResolutionStrategy,
   type ContextAwareProvider,
-  createContextAwareProvider
+  createContextAwareProvider,
 } from './context.js';
 
 /**
@@ -211,14 +205,14 @@ export const FEATURES = {
   MODULE_FEDERATION: true,
   SERVICE_MESH: true,
   DISTRIBUTED_TRACING: true,
-  DEVTOOLS: true
+  DEVTOOLS: true,
 } as const;
 
 /**
  * Phase 3 Features Notice
- * 
+ *
  * Phase 3 features are available but require separate imports:
- * 
+ *
  * - Decorators: import from '@nexus/decorators'
  * - Federation: import from '@nexus/federation'
  * - Service Mesh: import from '@nexus/mesh'
@@ -245,7 +239,7 @@ export {
   ContainerDisposedError,
   CircularDependencyError,
   DependencyNotFoundError,
-  DuplicateRegistrationError
+  DuplicateRegistrationError,
 } from './errors.js';
 
 // Middleware System
@@ -267,7 +261,7 @@ export {
   type MiddlewareContext,
   type MiddlewareFunction,
   CircuitBreakerMiddleware,
-  ValidationMiddlewareClass
+  ValidationMiddlewareClass,
 } from './middleware.js';
 
 // Core Types
@@ -283,9 +277,7 @@ export {
   type ProviderInput,
   type MultiToken,
   type IContainer,
-
   type ModuleMetadata,
-
   type Disposable,
   // Type definitions
   type Constructor,
@@ -297,7 +289,6 @@ export {
   type ValueProvider,
   type TokenProvider,
   type InjectionToken,
-
   type FactoryProvider,
   type ServiceIdentifier,
   type ResolutionContext,
@@ -305,5 +296,5 @@ export {
   type AbstractConstructor,
   type ConditionalProvider,
   type RegistrationOptions,
-  type AsyncFactoryProvider
+  type AsyncFactoryProvider,
 } from './types.js';

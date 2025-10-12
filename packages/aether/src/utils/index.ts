@@ -77,8 +77,4 @@ export {
   portal,
   draggable,
 } from './directive.js';
-export type {
-  DirectiveFunction,
-  DirectiveWithUpdate,
-  DirectiveResult,
-} from './directive.js';
+export type { DirectiveFunction, DirectiveWithUpdate, DirectiveResult } from './directive.js';

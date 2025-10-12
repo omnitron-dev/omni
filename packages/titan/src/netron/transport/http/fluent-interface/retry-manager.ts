@@ -73,7 +73,7 @@ export class RetryManager extends EventEmitter {
     totalAttempts: 0,
     successfulRetries: 0,
     failedRetries: 0,
-    retryDelays: [] as number[]
+    retryDelays: [] as number[],
   };
 
   // Circuit breaker state
@@ -109,7 +109,7 @@ export class RetryManager extends EventEmitter {
         successes: 0,
         lastFailureTime: 0,
         nextAttemptTime: 0,
-        options: options.circuitBreaker
+        options: options.circuitBreaker,
       };
     }
   }
@@ -117,10 +117,7 @@ export class RetryManager extends EventEmitter {
   /**
    * Execute function with retry logic
    */
-  async execute<T>(
-    fn: () => Promise<T>,
-    options: RetryOptions
-  ): Promise<T> {
+  async execute<T>(fn: () => Promise<T>, options: RetryOptions): Promise<T> {
     // Merge with default options
     const retryOptions: Required<RetryOptions> = {
       attempts: options.attempts,
@@ -128,10 +125,11 @@ export class RetryManager extends EventEmitter {
       initialDelay: options.initialDelay || this.options.defaultOptions?.initialDelay || 1000,
       maxDelay: options.maxDelay || this.options.defaultOptions?.maxDelay || 30000,
       jitter: options.jitter ?? this.options.defaultOptions?.jitter ?? 0.1,
-      shouldRetry: options.shouldRetry || this.options.defaultOptions?.shouldRetry || this.defaultShouldRetry.bind(this),
+      shouldRetry:
+        options.shouldRetry || this.options.defaultOptions?.shouldRetry || this.defaultShouldRetry.bind(this),
       onRetry: options.onRetry || this.options.defaultOptions?.onRetry || (() => {}),
       attemptTimeout: options.attemptTimeout || this.options.defaultOptions?.attemptTimeout || 0,
-      factor: options.factor || this.options.defaultOptions?.factor || 2
+      factor: options.factor || this.options.defaultOptions?.factor || 2,
     };
 
     // Check circuit breaker
@@ -142,8 +140,8 @@ export class RetryManager extends EventEmitter {
           code: ErrorCode.SERVICE_UNAVAILABLE,
           message: 'Circuit breaker is open',
           details: {
-            nextAttemptTime: this.circuitBreaker.nextAttemptTime
-          }
+            nextAttemptTime: this.circuitBreaker.nextAttemptTime,
+          },
         });
       }
     }
@@ -219,7 +217,7 @@ export class RetryManager extends EventEmitter {
           this.emit('retry', {
             attempt: attempt + 1,
             error: error.message,
-            delay: actualDelay
+            delay: actualDelay,
           });
 
           // Wait before retry
@@ -246,7 +244,7 @@ export class RetryManager extends EventEmitter {
 
           this.emit('retry-exhausted', {
             attempts: retryOptions.attempts + 1,
-            error: error.message
+            error: error.message,
           });
         }
       }
@@ -258,10 +256,7 @@ export class RetryManager extends EventEmitter {
   /**
    * Execute with timeout
    */
-  private async executeWithTimeout<T>(
-    fn: () => Promise<T>,
-    timeout: number
-  ): Promise<T> {
+  private async executeWithTimeout<T>(fn: () => Promise<T>, timeout: number): Promise<T> {
     if (!timeout || timeout <= 0) {
       return fn();
     }
@@ -270,12 +265,14 @@ export class RetryManager extends EventEmitter {
       fn(),
       new Promise<never>((_, reject) => {
         setTimeout(() => {
-          reject(new TitanError({
-            code: ErrorCode.REQUEST_TIMEOUT,
-            message: `Request timeout after ${timeout}ms`
-          }));
+          reject(
+            new TitanError({
+              code: ErrorCode.REQUEST_TIMEOUT,
+              message: `Request timeout after ${timeout}ms`,
+            })
+          );
         }, timeout);
-      })
+      }),
     ]);
   }
 
@@ -289,11 +286,13 @@ export class RetryManager extends EventEmitter {
     }
 
     // Network errors are retryable
-    if (error.code === 'ECONNREFUSED' ||
-        error.code === 'ECONNRESET' ||
-        error.code === 'ETIMEDOUT' ||
-        error.code === 'ENOTFOUND' ||
-        error.code === 'ENETUNREACH') {
+    if (
+      error.code === 'ECONNREFUSED' ||
+      error.code === 'ECONNRESET' ||
+      error.code === 'ETIMEDOUT' ||
+      error.code === 'ENOTFOUND' ||
+      error.code === 'ENETUNREACH'
+    ) {
       return true;
     }
 
@@ -446,7 +445,7 @@ export class RetryManager extends EventEmitter {
    * Delay execution
    */
   private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
@@ -520,8 +519,10 @@ export class RetryManager extends EventEmitter {
     }
 
     // Check if we should open the circuit from closed state
-    if (this.circuitBreaker.state === 'closed' &&
-        this.circuitBreaker.failures >= this.circuitBreaker.options.threshold) {
+    if (
+      this.circuitBreaker.state === 'closed' &&
+      this.circuitBreaker.failures >= this.circuitBreaker.options.threshold
+    ) {
       this.circuitBreaker.state = 'open';
       this.circuitBreaker.nextAttemptTime = now + this.circuitBreaker.options.cooldownTime;
       this.emit('circuit-breaker-open', { nextAttemptTime: this.circuitBreaker.nextAttemptTime });
@@ -536,16 +537,17 @@ export class RetryManager extends EventEmitter {
    * Get retry statistics
    */
   getStats(): RetryStats {
-    const avgRetryDelay = this.stats.retryDelays.length > 0
-      ? this.stats.retryDelays.reduce((a, b) => a + b, 0) / this.stats.retryDelays.length
-      : 0;
+    const avgRetryDelay =
+      this.stats.retryDelays.length > 0
+        ? this.stats.retryDelays.reduce((a, b) => a + b, 0) / this.stats.retryDelays.length
+        : 0;
 
     return {
       totalAttempts: this.stats.totalAttempts,
       successfulRetries: this.stats.successfulRetries,
       failedRetries: this.stats.failedRetries,
       avgRetryDelay,
-      circuitState: this.circuitBreaker?.state
+      circuitState: this.circuitBreaker?.state,
     };
   }
 
@@ -557,7 +559,7 @@ export class RetryManager extends EventEmitter {
       totalAttempts: 0,
       successfulRetries: 0,
       failedRetries: 0,
-      retryDelays: []
+      retryDelays: [],
     };
 
     if (this.circuitBreaker) {

@@ -347,28 +347,30 @@ export interface MethodOptions {
   readonly?: boolean;
 
   /** Authentication and authorization configuration */
-  auth?: boolean | {
-    /** Required roles (RBAC) */
-    roles?: string[];
+  auth?:
+    | boolean
+    | {
+        /** Required roles (RBAC) */
+        roles?: string[];
 
-    /** Required permissions (RBAC) */
-    permissions?: string[];
+        /** Required permissions (RBAC) */
+        permissions?: string[];
 
-    /** Required OAuth2 scopes */
-    scopes?: string[];
+        /** Required OAuth2 scopes */
+        scopes?: string[];
 
-    /** Policy names or expressions to evaluate */
-    policies?: string[] | { all: string[] } | { any: string[] } | PolicyExpression;
+        /** Policy names or expressions to evaluate */
+        policies?: string[] | { all: string[] } | { any: string[] } | PolicyExpression;
 
-    /** Allow anonymous access */
-    allowAnonymous?: boolean;
+        /** Allow anonymous access */
+        allowAnonymous?: boolean;
 
-    /** Inherit class-level policies */
-    inherit?: boolean;
+        /** Inherit class-level policies */
+        inherit?: boolean;
 
-    /** Override class-level policies */
-    override?: boolean;
-  };
+        /** Override class-level policies */
+        override?: boolean;
+      };
 
   /** Rate limiting configuration */
   rateLimit?: any; // RateLimitConfig from rate-limiter.ts

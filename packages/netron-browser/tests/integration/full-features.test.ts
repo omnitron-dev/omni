@@ -13,12 +13,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Application } from '@omnitron-dev/titan';
 import { Module, Injectable } from '@omnitron-dev/titan/decorators';
-import {
-  NetronModule,
-  Service,
-  Public,
-  type INetronPeer,
-} from '@omnitron-dev/titan/netron';
+import { NetronModule, Service, Public, type INetronPeer } from '@omnitron-dev/titan/netron';
 import { HttpRemotePeer } from '../../src/transport/http/peer.js';
 import { AuthenticationClient, MemoryTokenStorage } from '../../src/auth/index.js';
 import {
@@ -80,10 +75,7 @@ class AuthService {
   @Public()
   async authenticate(credentials: AuthCredentials) {
     // Simple mock authentication
-    if (
-      credentials.username === 'testuser' &&
-      credentials.password === 'testpass'
-    ) {
+    if (credentials.username === 'testuser' && credentials.password === 'testpass') {
       return {
         success: true,
         context: {
@@ -101,10 +93,7 @@ class AuthService {
       };
     }
 
-    if (
-      credentials.username === 'admin' &&
-      credentials.password === 'adminpass'
-    ) {
+    if (credentials.username === 'admin' && credentials.password === 'adminpass') {
       return {
         success: true,
         context: {
@@ -232,10 +221,7 @@ describe('Full Features Integration', () => {
       });
 
       // Call authenticate through peer
-      const response = await client.call(
-        CORE_TASK_AUTHENTICATE,
-        authRequest
-      );
+      const response = await client.call(CORE_TASK_AUTHENTICATE, authRequest);
 
       // Verify response
       expect(isAuthenticateResponse(response)).toBe(true);
@@ -261,10 +247,7 @@ describe('Full Features Integration', () => {
         password: 'adminpass',
       });
 
-      const response = await client.call(
-        CORE_TASK_AUTHENTICATE,
-        authRequest
-      );
+      const response = await client.call(CORE_TASK_AUTHENTICATE, authRequest);
 
       expect(isAuthenticateResponse(response)).toBe(true);
       expect(response.success).toBe(true);
@@ -280,10 +263,7 @@ describe('Full Features Integration', () => {
         password: 'wrong',
       });
 
-      const response = await client.call(
-        CORE_TASK_AUTHENTICATE,
-        authRequest
-      );
+      const response = await client.call(CORE_TASK_AUTHENTICATE, authRequest);
 
       expect(isAuthenticateResponse(response)).toBe(true);
       expect(response.success).toBe(false);
@@ -299,10 +279,7 @@ describe('Full Features Integration', () => {
         password: 'testpass',
       });
 
-      const authResponse = await client.call(
-        CORE_TASK_AUTHENTICATE,
-        authRequest
-      );
+      const authResponse = await client.call(CORE_TASK_AUTHENTICATE, authRequest);
 
       authClient.setAuth(authResponse);
 
@@ -311,11 +288,7 @@ describe('Full Features Integration', () => {
       pipeline.use(createAuthMiddleware({ tokenProvider }), { priority: 1 });
 
       // Call a protected method - middleware should inject token
-      const userProfile = await client.call(
-        'UserService@1.0.0',
-        'getUserProfile',
-        ['user-123']
-      );
+      const userProfile = await client.call('UserService@1.0.0', 'getUserProfile', ['user-123']);
 
       expect(userProfile).toBeDefined();
       expect(userProfile.id).toBe('user-123');
@@ -329,10 +302,7 @@ describe('Full Features Integration', () => {
         password: 'adminpass',
       });
 
-      const authResponse = await client.call(
-        CORE_TASK_AUTHENTICATE,
-        authRequest
-      );
+      const authResponse = await client.call(CORE_TASK_AUTHENTICATE, authRequest);
 
       authClient.setAuth(authResponse);
 
@@ -348,10 +318,7 @@ describe('Full Features Integration', () => {
 
       pipeline.use(createAuthMiddleware({ tokenProvider }), { priority: 1 });
       pipeline.use(createLoggingMiddleware({ logger }), { priority: 2 });
-      pipeline.use(
-        createTimingMiddleware({ collector: metricsCollector }),
-        { priority: 3 }
-      );
+      pipeline.use(createTimingMiddleware({ collector: metricsCollector }), { priority: 3 });
 
       // Make a call
       await client.call('UserService@1.0.0', 'getPublicInfo');
@@ -367,10 +334,7 @@ describe('Full Features Integration', () => {
   describe('Auth-Aware Service Discovery', () => {
     it('should query interface and discover service methods', async () => {
       const queryRequest = createQueryInterfaceRequest('UserService@1.0.0');
-      const response = await client.call(
-        CORE_TASK_QUERY_INTERFACE,
-        queryRequest
-      );
+      const response = await client.call(CORE_TASK_QUERY_INTERFACE, queryRequest);
 
       expect(isQueryInterfaceResponse(response)).toBe(true);
 
@@ -389,10 +353,7 @@ describe('Full Features Integration', () => {
         password: 'testpass',
       });
 
-      const authResponse = await client.call(
-        CORE_TASK_AUTHENTICATE,
-        authRequest
-      );
+      const authResponse = await client.call(CORE_TASK_AUTHENTICATE, authRequest);
 
       authClient.setAuth(authResponse);
 
@@ -402,10 +363,7 @@ describe('Full Features Integration', () => {
 
       // Query interface with auth headers automatically added
       const queryRequest = createQueryInterfaceRequest('UserService@1.0.0');
-      const response = await client.call(
-        CORE_TASK_QUERY_INTERFACE,
-        queryRequest
-      );
+      const response = await client.call(CORE_TASK_QUERY_INTERFACE, queryRequest);
 
       expect(isQueryInterfaceResponse(response)).toBe(true);
 
@@ -423,10 +381,7 @@ describe('Full Features Integration', () => {
         password: 'adminpass',
       });
 
-      const authResponse = await client.call(
-        CORE_TASK_AUTHENTICATE,
-        authRequest
-      );
+      const authResponse = await client.call(CORE_TASK_AUTHENTICATE, authRequest);
 
       authClient.setAuth(authResponse);
 
@@ -436,10 +391,7 @@ describe('Full Features Integration', () => {
 
       // Query interface
       const queryRequest = createQueryInterfaceRequest('UserService@1.0.0');
-      const response = await client.call(
-        CORE_TASK_QUERY_INTERFACE,
-        queryRequest
-      );
+      const response = await client.call(CORE_TASK_QUERY_INTERFACE, queryRequest);
 
       expect(isQueryInterfaceResponse(response)).toBe(true);
 
@@ -447,18 +399,10 @@ describe('Full Features Integration', () => {
       const publicInfo = await client.call('UserService@1.0.0', 'getPublicInfo');
       expect(publicInfo.info).toBeDefined();
 
-      const userProfile = await client.call(
-        'UserService@1.0.0',
-        'getUserProfile',
-        ['user-123']
-      );
+      const userProfile = await client.call('UserService@1.0.0', 'getUserProfile', ['user-123']);
       expect(userProfile.id).toBe('user-123');
 
-      const deleteResult = await client.call(
-        'UserService@1.0.0',
-        'deleteUser',
-        ['user-789']
-      );
+      const deleteResult = await client.call('UserService@1.0.0', 'deleteUser', ['user-789']);
       expect(deleteResult.success).toBe(true);
     });
   });
@@ -474,14 +418,9 @@ describe('Full Features Integration', () => {
       expect(cacheStats1.http.size).toBeGreaterThan(0);
 
       // Invalidate cache
-      const invalidateRequest = createInvalidateCacheRequest(
-        'UserService@1.0.0:getPublicInfo'
-      );
+      const invalidateRequest = createInvalidateCacheRequest('UserService@1.0.0:getPublicInfo');
 
-      const response = await client.invalidateCache(
-        invalidateRequest.pattern,
-        invalidateRequest.cacheType
-      );
+      const response = await client.invalidateCache(invalidateRequest.pattern, invalidateRequest.cacheType);
 
       expect(response.count).toBeGreaterThan(0);
 
@@ -533,10 +472,7 @@ describe('Full Features Integration', () => {
         password: 'testpass',
       });
 
-      const authResponse = await client.call(
-        CORE_TASK_AUTHENTICATE,
-        authRequest
-      );
+      const authResponse = await client.call(CORE_TASK_AUTHENTICATE, authRequest);
 
       expect(authResponse.success).toBe(true);
       authClient.setAuth(authResponse);
@@ -544,42 +480,26 @@ describe('Full Features Integration', () => {
       // 2. Setup middleware with auth token
       const tokenProvider = new SimpleTokenProvider(authClient.getToken()!);
       pipeline.use(createAuthMiddleware({ tokenProvider }), { priority: 1 });
-      pipeline.use(
-        createTimingMiddleware({ collector: metricsCollector }),
-        { priority: 2 }
-      );
+      pipeline.use(createTimingMiddleware({ collector: metricsCollector }), { priority: 2 });
 
       // 3. Discover available services
       const queryRequest = createQueryInterfaceRequest('UserService@1.0.0');
-      const serviceInfo = await client.call(
-        CORE_TASK_QUERY_INTERFACE,
-        queryRequest
-      );
+      const serviceInfo = await client.call(CORE_TASK_QUERY_INTERFACE, queryRequest);
 
       expect(isQueryInterfaceResponse(serviceInfo)).toBe(true);
 
       // 4. Call service methods
-      const publicInfo = await client.call(
-        'UserService@1.0.0',
-        'getPublicInfo'
-      );
+      const publicInfo = await client.call('UserService@1.0.0', 'getPublicInfo');
       expect(publicInfo.info).toBeDefined();
 
-      const userProfile = await client.call(
-        'UserService@1.0.0',
-        'getUserProfile',
-        ['user-123']
-      );
+      const userProfile = await client.call('UserService@1.0.0', 'getUserProfile', ['user-123']);
       expect(userProfile.id).toBe('user-123');
 
       // 5. Verify timing metrics collected
       const metrics = metricsCollector.getMetrics();
       expect(metrics.length).toBeGreaterThan(0);
 
-      const avgDuration = metricsCollector.getAverageDuration(
-        'UserService@1.0.0',
-        'getPublicInfo'
-      );
+      const avgDuration = metricsCollector.getAverageDuration('UserService@1.0.0', 'getPublicInfo');
       expect(avgDuration).toBeGreaterThan(0);
 
       // 6. Invalidate cache after operations
@@ -599,10 +519,7 @@ describe('Full Features Integration', () => {
         password: 'adminpass',
       });
 
-      const authResponse = await client.call(
-        CORE_TASK_AUTHENTICATE,
-        authRequest
-      );
+      const authResponse = await client.call(CORE_TASK_AUTHENTICATE, authRequest);
 
       authClient.setAuth(authResponse);
 
@@ -618,17 +535,11 @@ describe('Full Features Integration', () => {
 
       pipeline.use(createAuthMiddleware({ tokenProvider }), { priority: 1 });
       pipeline.use(createLoggingMiddleware({ logger }), { priority: 2 });
-      pipeline.use(
-        createTimingMiddleware({ collector: metricsCollector }),
-        { priority: 3 }
-      );
+      pipeline.use(createTimingMiddleware({ collector: metricsCollector }), { priority: 3 });
 
       // 3. Query interface to discover available methods
       const queryRequest = createQueryInterfaceRequest('UserService@1.0.0');
-      const serviceInfo = await client.call(
-        CORE_TASK_QUERY_INTERFACE,
-        queryRequest
-      );
+      const serviceInfo = await client.call(CORE_TASK_QUERY_INTERFACE, queryRequest);
 
       const methods = Object.keys(serviceInfo.definition.meta.methods);
       expect(methods).toContain('deleteUser');
@@ -638,18 +549,13 @@ describe('Full Features Integration', () => {
       const publicInfo = await client.call('UserService@1.0.0', 'getPublicInfo');
       expect(publicInfo.info).toBeDefined();
 
-      const updateResult = await client.call(
-        'UserService@1.0.0',
-        'updateUserProfile',
-        ['user-456', { name: 'Updated Name' }]
-      );
+      const updateResult = await client.call('UserService@1.0.0', 'updateUserProfile', [
+        'user-456',
+        { name: 'Updated Name' },
+      ]);
       expect(updateResult.updated).toBe(true);
 
-      const deleteResult = await client.call(
-        'UserService@1.0.0',
-        'deleteUser',
-        ['user-789']
-      );
+      const deleteResult = await client.call('UserService@1.0.0', 'deleteUser', ['user-789']);
       expect(deleteResult.success).toBe(true);
 
       // 5. Verify logging middleware captured all calls
@@ -676,10 +582,7 @@ describe('Full Features Integration', () => {
         password: 'wrong',
       });
 
-      const response = await client.call(
-        CORE_TASK_AUTHENTICATE,
-        authRequest
-      );
+      const response = await client.call(CORE_TASK_AUTHENTICATE, authRequest);
 
       expect(response.success).toBe(false);
       expect(response.error).toBeDefined();
@@ -689,9 +592,7 @@ describe('Full Features Integration', () => {
     });
 
     it('should handle missing service gracefully', async () => {
-      const queryRequest = createQueryInterfaceRequest(
-        'NonExistentService@1.0.0'
-      );
+      const queryRequest = createQueryInterfaceRequest('NonExistentService@1.0.0');
 
       await expect(async () => {
         await client.call(CORE_TASK_QUERY_INTERFACE, queryRequest);
@@ -715,10 +616,7 @@ describe('Full Features Integration', () => {
   describe('Performance and Caching', () => {
     it('should benefit from caching on repeated calls', async () => {
       // Setup timing middleware
-      pipeline.use(
-        createTimingMiddleware({ collector: metricsCollector }),
-        { priority: 1 }
-      );
+      pipeline.use(createTimingMiddleware({ collector: metricsCollector }), { priority: 1 });
 
       // First call - no cache
       const start1 = performance.now();
@@ -738,10 +636,7 @@ describe('Full Features Integration', () => {
 
     it('should show metrics for all operations', async () => {
       // Setup timing middleware
-      pipeline.use(
-        createTimingMiddleware({ collector: metricsCollector }),
-        { priority: 1 }
-      );
+      pipeline.use(createTimingMiddleware({ collector: metricsCollector }), { priority: 1 });
 
       // Make several calls
       await client.call('UserService@1.0.0', 'getPublicInfo');
@@ -752,16 +647,11 @@ describe('Full Features Integration', () => {
       const metrics = metricsCollector.getMetrics();
       expect(metrics.length).toBeGreaterThan(0);
 
-      const avgDuration = metricsCollector.getAverageDuration(
-        'UserService@1.0.0',
-        'getPublicInfo'
-      );
+      const avgDuration = metricsCollector.getAverageDuration('UserService@1.0.0', 'getPublicInfo');
       expect(avgDuration).toBeGreaterThan(0);
 
       // Get all service metrics
-      const serviceMetrics = metricsCollector.getServiceMetrics(
-        'UserService@1.0.0'
-      );
+      const serviceMetrics = metricsCollector.getServiceMetrics('UserService@1.0.0');
       expect(serviceMetrics.length).toBeGreaterThan(0);
     });
   });

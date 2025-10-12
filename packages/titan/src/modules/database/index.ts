@@ -140,10 +140,7 @@ export { MigrationEventType } from './migration/migration.types.js';
 // Transaction
 export { TransactionManager } from './transaction/transaction.manager.js';
 export { TransactionScope, TransactionScopeFactory } from './transaction/transaction.scope.js';
-export {
-  InjectTransactionScope,
-  RequiresTransactionScope,
-} from './transaction/transaction.scope.js';
+export { InjectTransactionScope, RequiresTransactionScope } from './transaction/transaction.scope.js';
 export type {
   ITransactionManager,
   TransactionOptions,
@@ -207,18 +204,7 @@ export {
 } from './database.utils.js';
 
 // Re-export Kysely types for convenience
-export type {
-  Kysely,
-  Transaction,
-  Selectable,
-  Insertable,
-  Updateable,
-  sql,
-} from 'kysely';
+export type { Kysely, Transaction, Selectable, Insertable, Updateable, sql } from 'kysely';
 
 // Re-export Kysera utilities
-export {
-  parseDatabaseError,
-  paginate,
-  paginateCursor,
-} from '@kysera/core';
+export { parseDatabaseError, paginate, paginateCursor } from '@kysera/core';

@@ -15,7 +15,7 @@ describe('Large packet encoding/decoding', () => {
           name: { type: 'String', readonly: false },
           description: { type: 'String', readonly: false },
           data: { type: 'Object', readonly: false },
-          isActive: { type: 'Boolean', readonly: true }
+          isActive: { type: 'Boolean', readonly: true },
         },
         methods: {
           greet: { type: 'String', arguments: [] },
@@ -43,10 +43,10 @@ describe('Large packet encoding/decoding', () => {
           getRegExp: { type: 'RegExp', arguments: [] },
           getMap: { type: 'Map', arguments: [] },
           getSet: { type: 'Set', arguments: [] },
-          getPromise: { type: 'Promise', arguments: [] }
-        }
+          getPromise: { type: 'Promise', arguments: [] },
+        },
       },
-      parentId: ''
+      parentId: '',
     };
 
     // Encode to buffer
@@ -72,7 +72,7 @@ describe('Large packet encoding/decoding', () => {
           name: { type: 'String', readonly: false },
           description: { type: 'String', readonly: false },
           data: { type: 'Object', readonly: false },
-          isActive: { type: 'Boolean', readonly: true }
+          isActive: { type: 'Boolean', readonly: true },
         },
         methods: {
           greet: { type: 'String', arguments: [] },
@@ -100,10 +100,10 @@ describe('Large packet encoding/decoding', () => {
           getRegExp: { type: 'RegExp', arguments: [] },
           getMap: { type: 'Map', arguments: [] },
           getSet: { type: 'Set', arguments: [] },
-          getPromise: { type: 'Promise', arguments: [] }
-        }
+          getPromise: { type: 'Promise', arguments: [] },
+        },
       },
-      parentId: ''
+      parentId: '',
     };
 
     // Encode to SmartBuffer
@@ -140,7 +140,7 @@ describe('Large packet encoding/decoding', () => {
               name: { type: 'String', readonly: false },
               description: { type: 'String', readonly: false },
               data: { type: 'Object', readonly: false },
-              isActive: { type: 'Boolean', readonly: true }
+              isActive: { type: 'Boolean', readonly: true },
             },
             methods: {
               greet: { type: 'String', arguments: [] },
@@ -168,12 +168,12 @@ describe('Large packet encoding/decoding', () => {
               getRegExp: { type: 'RegExp', arguments: [] },
               getMap: { type: 'Map', arguments: [] },
               getSet: { type: 'Set', arguments: [] },
-              getPromise: { type: 'Promise', arguments: [] }
-            }
+              getPromise: { type: 'Promise', arguments: [] },
+            },
           },
-          parentId: ''
-        }
-      }
+          parentId: '',
+        },
+      },
     ];
 
     // Encode

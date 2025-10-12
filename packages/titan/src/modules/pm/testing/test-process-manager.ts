@@ -8,12 +8,7 @@
 import { Errors } from '../../../errors/index.js';
 import { ProcessManager } from '../process-manager.js';
 import { ProcessStatus } from '../types.js';
-import type {
-  IProcessOptions,
-  IProcessInfo,
-  ServiceProxy,
-  IProcessManagerConfig
-} from '../types.js';
+import type { IProcessOptions, IProcessInfo, ServiceProxy, IProcessManagerConfig } from '../types.js';
 
 /**
  * Test process manager configuration
@@ -49,7 +44,7 @@ export class TestProcessManager extends ProcessManager {
   private timeOffset = 0;
   private crashHandlers = new Map<string, () => void>();
   private recoveryHandlers = new Map<string, () => void>();
-  
+
   constructor(config: ITestProcessManagerConfig = {}) {
     // Create a simple logger that wraps console
     const logger = {
@@ -62,20 +57,17 @@ export class TestProcessManager extends ProcessManager {
       child: () => logger,
       isLevelEnabled: () => true,
       time: () => ({}),
-      _pino: {} as any
+      _pino: {} as any,
     } as any;
 
-    super(
-      logger,
-      {
-        ...config,
-        testing: {
-          ...config.testing,
-          useMockSpawner: config.mock !== false
-        }
-      }
-    );
-    
+    super(logger, {
+      ...config,
+      testing: {
+        ...config.testing,
+        useMockSpawner: config.mock !== false,
+      },
+    });
+
     // Setup test event handlers
     this.setupTestHandlers();
   }
@@ -90,7 +82,7 @@ export class TestProcessManager extends ProcessManager {
         handler();
       }
     });
-    
+
     this.on('process:ready', (info) => {
       const handler = this.recoveryHandlers.get(info.id);
       if (handler) {
@@ -107,13 +99,13 @@ export class TestProcessManager extends ProcessManager {
     options: IProcessOptions = {}
   ): Promise<ServiceProxy<T>> {
     this.recordOperation('spawn', undefined, ProcessClass.name, options);
-    
+
     // Check for simulated failure
     const failureKey = `spawn:${ProcessClass.name}`;
     if (this.simulatedFailures.has(failureKey)) {
       throw this.simulatedFailures.get(failureKey)!;
     }
-    
+
     return super.spawn(ProcessClass, options);
   }
 
@@ -121,9 +113,7 @@ export class TestProcessManager extends ProcessManager {
    * Simulate a process crash
    */
   async simulateCrash(processOrId: ServiceProxy<any> | string): Promise<void> {
-    const processId = typeof processOrId === 'string'
-      ? processOrId
-      : (processOrId as any).__processId;
+    const processId = typeof processOrId === 'string' ? processOrId : (processOrId as any).__processId;
 
     const info = this.getProcess(processId);
     if (!info) {
@@ -148,26 +138,21 @@ export class TestProcessManager extends ProcessManager {
   /**
    * Wait for a process to recover
    */
-  async waitForRecovery(
-    processOrId: ServiceProxy<any> | string,
-    timeout: number = 5000
-  ): Promise<boolean> {
-    const processId = typeof processOrId === 'string' 
-      ? processOrId 
-      : (processOrId as any).__processId;
-    
+  async waitForRecovery(processOrId: ServiceProxy<any> | string, timeout: number = 5000): Promise<boolean> {
+    const processId = typeof processOrId === 'string' ? processOrId : (processOrId as any).__processId;
+
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.recoveryHandlers.delete(processId);
         resolve(false);
       }, timeout);
-      
+
       this.recoveryHandlers.set(processId, () => {
         clearTimeout(timer);
         this.recoveryHandlers.delete(processId);
         resolve(true);
       });
-      
+
       // Check if already recovered
       const info = this.getProcess(processId);
       if (info && info.status === ProcessStatus.RUNNING) {
@@ -264,48 +249,35 @@ export class TestProcessManager extends ProcessManager {
   /**
    * Verify operation occurred
    */
-  verifyOperation(
-    type: string,
-    predicate?: (op: IOperationRecord) => boolean
-  ): boolean {
-    return this.operations.some(op => 
-      op.type === type && (!predicate || predicate(op))
-    );
+  verifyOperation(type: string, predicate?: (op: IOperationRecord) => boolean): boolean {
+    return this.operations.some((op) => op.type === type && (!predicate || predicate(op)));
   }
 
   /**
    * Wait for a specific operation
    */
-  async waitForOperation(
-    type: string,
-    timeout: number = 5000
-  ): Promise<IOperationRecord | null> {
+  async waitForOperation(type: string, timeout: number = 5000): Promise<IOperationRecord | null> {
     const startTime = Date.now();
-    
+
     while (Date.now() - startTime < timeout) {
-      const op = this.operations.find(o => o.type === type);
+      const op = this.operations.find((o) => o.type === type);
       if (op) return op;
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    
+
     return null;
   }
 
   /**
    * Record an operation for verification
    */
-  private recordOperation(
-    type: any,
-    processId?: string,
-    processClass?: string,
-    data?: any
-  ): void {
+  private recordOperation(type: any, processId?: string, processClass?: string, data?: any): void {
     this.operations.push({
       type,
       processId,
       processClass,
       timestamp: this.getCurrentTime(),
-      data
+      data,
     });
   }
 
@@ -326,41 +298,33 @@ export class TestProcessManager extends ProcessManager {
   /**
    * Create a spy for a process method
    */
-  spyOnMethod<T>(
-    proxy: ServiceProxy<T>,
-    methodName: keyof T
-  ): jest.SpyInstance | any {
+  spyOnMethod<T>(proxy: ServiceProxy<T>, methodName: keyof T): jest.SpyInstance | any {
     const original = (proxy as any)[methodName];
     const calls: any[] = [];
-    
+
     (proxy as any)[methodName] = async (...args: any[]) => {
       calls.push({ args, timestamp: this.getCurrentTime() });
       return original.apply(proxy, args);
     };
-    
+
     // Return spy-like interface
     return {
       calls,
-      mockClear: () => calls.length = 0,
-      mockRestore: () => (proxy as any)[methodName] = original
+      mockClear: () => (calls.length = 0),
+      mockRestore: () => ((proxy as any)[methodName] = original),
     };
   }
 
   /**
    * Assert process state
    */
-  assertProcessState(
-    processId: string,
-    expectedStatus: ProcessStatus
-  ): void {
+  assertProcessState(processId: string, expectedStatus: ProcessStatus): void {
     const info = this.getProcess(processId);
     if (!info) {
       throw Errors.notFound('Process', processId);
     }
     if (info.status !== expectedStatus) {
-      throw Errors.badRequest(
-        `Expected process ${processId} to have status ${expectedStatus}, but got ${info.status}`
-      );
+      throw Errors.badRequest(`Expected process ${processId} to have status ${expectedStatus}, but got ${info.status}`);
     }
   }
 
@@ -368,28 +332,24 @@ export class TestProcessManager extends ProcessManager {
    * Get all processes of a specific class
    */
   getProcessesByClass<T>(ProcessClass: new (...args: any[]) => T): IProcessInfo[] {
-    return this.listProcesses().filter(
-      info => info.name === ProcessClass.name
-    );
+    return this.listProcesses().filter((info) => info.name === ProcessClass.name);
   }
 
   /**
    * Count processes by status
    */
   countByStatus(status: ProcessStatus): number {
-    return this.listProcesses().filter(info => info.status === status).length;
+    return this.listProcesses().filter((info) => info.status === status).length;
   }
 }
 
 /**
  * Create a test process manager with defaults
  */
-export function createTestProcessManager(
-  config?: ITestProcessManagerConfig
-): TestProcessManager {
+export function createTestProcessManager(config?: ITestProcessManagerConfig): TestProcessManager {
   return new TestProcessManager({
     mock: true,
     recordOperations: true,
-    ...config
+    ...config,
   });
 }

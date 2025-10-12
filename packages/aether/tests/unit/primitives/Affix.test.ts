@@ -785,10 +785,11 @@ describe('Affix', () => {
   // Integration tests
   describe('Integration', () => {
     it('should work with complex children', () => {
-      const component = () => Affix({
-        offsetTop: 10,
-        children: ['Header ', 'Navigation']
-      });
+      const component = () =>
+        Affix({
+          offsetTop: 10,
+          children: ['Header ', 'Navigation'],
+        });
       const { container, cleanup } = renderComponent(component);
 
       const affix = container.querySelector('[data-affix]');

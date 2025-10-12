@@ -13,7 +13,7 @@ import {
   QueryBus,
   type IDomainEvent,
   type ICommand,
-  type IQuery
+  type IQuery,
 } from '../../../../src/modules/pm/enterprise/event-sourcing.js';
 
 // Mock logger
@@ -21,7 +21,7 @@ const mockLogger = {
   info: jest.fn(),
   error: jest.fn(),
   warn: jest.fn(),
-  debug: jest.fn()
+  debug: jest.fn(),
 } as any;
 
 // Test aggregate
@@ -87,14 +87,20 @@ class UserAggregate extends AggregateRoot {
     return {
       name: this.name,
       email: this.email,
-      isActive: this.isActive
+      isActive: this.isActive,
     };
   }
 
   // Getters for testing
-  getName(): string | undefined { return this.name; }
-  getEmail(): string | undefined { return this.email; }
-  getIsActive(): boolean { return this.isActive; }
+  getName(): string | undefined {
+    return this.name;
+  }
+  getEmail(): string | undefined {
+    return this.email;
+  }
+  getIsActive(): boolean {
+    return this.isActive;
+  }
 }
 
 // Test read model projection
@@ -113,7 +119,7 @@ class UserReadModel extends ReadModelProjection {
     this.users.set(event.aggregateId, {
       id: event.aggregateId,
       ...event.eventData,
-      version: event.eventVersion
+      version: event.eventVersion,
     });
     this.activeUsers.add(event.aggregateId);
   }
@@ -181,7 +187,7 @@ describe('Event Sourcing', () => {
           eventType: 'UserCreated',
           eventVersion: 1,
           eventData: { name: 'Bob', email: 'bob@example.com' },
-          timestamp: Date.now()
+          timestamp: Date.now(),
         },
         {
           aggregateId: 'user-3',
@@ -189,7 +195,7 @@ describe('Event Sourcing', () => {
           eventType: 'UserUpdated',
           eventVersion: 2,
           eventData: { email: 'robert@example.com' },
-          timestamp: Date.now()
+          timestamp: Date.now(),
         },
         {
           aggregateId: 'user-3',
@@ -197,8 +203,8 @@ describe('Event Sourcing', () => {
           eventType: 'UserDeactivated',
           eventVersion: 3,
           eventData: {},
-          timestamp: Date.now()
-        }
+          timestamp: Date.now(),
+        },
       ];
 
       const user = new UserAggregate('user-3');
@@ -308,8 +314,8 @@ describe('Event Sourcing', () => {
           eventType: 'TestEvent',
           eventVersion: 1,
           eventData: { test: true },
-          timestamp: Date.now()
-        }
+          timestamp: Date.now(),
+        },
       ];
 
       await eventStore.append(events);
@@ -327,7 +333,7 @@ describe('Event Sourcing', () => {
           eventType: 'TypeA',
           eventVersion: 1,
           eventData: {},
-          timestamp: Date.now()
+          timestamp: Date.now(),
         },
         {
           aggregateId: 'agg-2',
@@ -335,7 +341,7 @@ describe('Event Sourcing', () => {
           eventType: 'TypeB',
           eventVersion: 1,
           eventData: {},
-          timestamp: Date.now()
+          timestamp: Date.now(),
         },
         {
           aggregateId: 'agg-3',
@@ -343,15 +349,15 @@ describe('Event Sourcing', () => {
           eventType: 'TypeA',
           eventVersion: 1,
           eventData: {},
-          timestamp: Date.now()
-        }
+          timestamp: Date.now(),
+        },
       ];
 
       await eventStore.append(events);
       const typeAEvents = await eventStore.getEventsByType('TypeA');
 
       expect(typeAEvents).toHaveLength(2);
-      expect(typeAEvents.every(e => e.eventType === 'TypeA')).toBe(true);
+      expect(typeAEvents.every((e) => e.eventType === 'TypeA')).toBe(true);
     });
   });
 
@@ -365,7 +371,7 @@ describe('Event Sourcing', () => {
         eventType: 'UserCreated',
         eventVersion: 1,
         eventData: { name: 'Read Model User', email: 'rm@example.com' },
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       await readModel.handleEvent(event);
@@ -386,7 +392,7 @@ describe('Event Sourcing', () => {
           eventType: 'UserCreated',
           eventVersion: 1,
           eventData: { name: 'Multi Event', email: 'multi@example.com' },
-          timestamp: Date.now()
+          timestamp: Date.now(),
         },
         {
           aggregateId: 'user-9',
@@ -394,7 +400,7 @@ describe('Event Sourcing', () => {
           eventType: 'UserUpdated',
           eventVersion: 2,
           eventData: { name: 'Updated Multi' },
-          timestamp: Date.now()
+          timestamp: Date.now(),
         },
         {
           aggregateId: 'user-9',
@@ -402,8 +408,8 @@ describe('Event Sourcing', () => {
           eventType: 'UserDeactivated',
           eventVersion: 3,
           eventData: {},
-          timestamp: Date.now()
-        }
+          timestamp: Date.now(),
+        },
       ];
 
       for (const event of events) {
@@ -424,14 +430,14 @@ describe('Event Sourcing', () => {
         const handler = {
           async handle(command: ICommand): Promise<string> {
             return `Handled: ${command.data.value}`;
-          }
+          },
         };
 
         commandBus.register('TestCommand', handler);
 
         const result = await commandBus.execute<string>({
           type: 'TestCommand',
-          data: { value: 'test' }
+          data: { value: 'test' },
         });
 
         expect(result).toBe('Handled: test');
@@ -440,10 +446,12 @@ describe('Event Sourcing', () => {
       it('should throw for unregistered commands', async () => {
         const commandBus = new CommandBus();
 
-        await expect(commandBus.execute({
-          type: 'UnknownCommand',
-          data: {}
-        })).rejects.toThrow('No handler registered for command UnknownCommand');
+        await expect(
+          commandBus.execute({
+            type: 'UnknownCommand',
+            data: {},
+          })
+        ).rejects.toThrow('No handler registered for command UnknownCommand');
       });
     });
 
@@ -454,14 +462,14 @@ describe('Event Sourcing', () => {
         const handler = {
           async handle(query: IQuery): Promise<any[]> {
             return [{ id: 1, name: 'Result' }];
-          }
+          },
         };
 
         queryBus.register('TestQuery', handler);
 
         const results = await queryBus.execute<any[]>({
           type: 'TestQuery',
-          criteria: { filter: 'test' }
+          criteria: { filter: 'test' },
         });
 
         expect(results).toHaveLength(1);

@@ -18,7 +18,7 @@ describe('EventMetadataService', () => {
       once: jest.fn(),
       removeAllListeners: jest.fn(),
       listeners: jest.fn().mockReturnValue([]),
-      eventNames: jest.fn().mockReturnValue([])
+      eventNames: jest.fn().mockReturnValue([]),
     };
 
     metadataService = new EventMetadataService(mockEmitter);
@@ -27,7 +27,7 @@ describe('EventMetadataService', () => {
   it('should store and retrieve metadata', () => {
     metadataService.setMetadata('test.event', {
       description: 'Test event',
-      schema: { type: 'object' }
+      schema: { type: 'object' },
     });
 
     const metadata = metadataService.getMetadata('test.event');
@@ -41,10 +41,10 @@ describe('EventMetadataService', () => {
         type: 'object',
         properties: {
           name: { type: 'string' },
-          age: { type: 'number' }
+          age: { type: 'number' },
         },
-        required: ['name']
-      }
+        required: ['name'],
+      },
     });
 
     const valid = metadataService.validate('validated.event', { name: 'John', age: 30 });

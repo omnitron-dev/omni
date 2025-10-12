@@ -14,14 +14,7 @@ import { createContext, useContext } from '../core/component/context.js';
 import { onMount } from '../core/component/lifecycle.js';
 import { Portal } from '../control-flow/Portal.js';
 import { jsx } from '../jsx-runtime.js';
-import {
-  generateId,
-  trapFocus,
-  saveFocus,
-  restoreFocus,
-  disableBodyScroll,
-  enableBodyScroll,
-} from './utils/index.js';
+import { generateId, trapFocus, saveFocus, restoreFocus, disableBodyScroll, enableBodyScroll } from './utils/index.js';
 
 // ============================================================================
 // Types
@@ -167,25 +160,23 @@ export const AlertDialog = defineComponent<AlertDialogProps>((props) => {
 /**
  * AlertDialog Trigger component
  */
-export const AlertDialogTrigger = defineComponent<{ children: any; [key: string]: any }>(
-  (props) => {
-    const ctx = useContext(AlertDialogContext);
+export const AlertDialogTrigger = defineComponent<{ children: any; [key: string]: any }>((props) => {
+  const ctx = useContext(AlertDialogContext);
 
-    return () =>
-      jsx('button', {
-        ...props,
-        id: ctx.triggerId,
-        type: 'button',
-        'aria-haspopup': 'dialog',
-        'aria-expanded': ctx.isOpen() ? 'true' : 'false',
-        'data-state': ctx.isOpen() ? 'open' : 'closed',
-        onClick: (e: Event) => {
-          props.onClick?.(e);
-          ctx.open();
-        },
-      });
-  }
-);
+  return () =>
+    jsx('button', {
+      ...props,
+      id: ctx.triggerId,
+      type: 'button',
+      'aria-haspopup': 'dialog',
+      'aria-expanded': ctx.isOpen() ? 'true' : 'false',
+      'data-state': ctx.isOpen() ? 'open' : 'closed',
+      onClick: (e: Event) => {
+        props.onClick?.(e);
+        ctx.open();
+      },
+    });
+});
 
 /**
  * AlertDialog Content component
@@ -221,12 +212,7 @@ export const AlertDialogContent = defineComponent<AlertDialogContentProps>((prop
   };
 
   const handleOutsideClick = (e: MouseEvent) => {
-    if (
-      props.closeOnOutsideClick &&
-      contentRef &&
-      e.target instanceof Node &&
-      !contentRef.contains(e.target)
-    ) {
+    if (props.closeOnOutsideClick && contentRef && e.target instanceof Node && !contentRef.contains(e.target)) {
       ctx.close();
     }
   };
@@ -262,66 +248,60 @@ export const AlertDialogContent = defineComponent<AlertDialogContentProps>((prop
 /**
  * AlertDialog Title component
  */
-export const AlertDialogTitle = defineComponent<{ children: any; [key: string]: any }>(
-  (props) => {
-    const ctx = useContext(AlertDialogContext);
+export const AlertDialogTitle = defineComponent<{ children: any; [key: string]: any }>((props) => {
+  const ctx = useContext(AlertDialogContext);
 
-    return () =>
-      jsx('h2', {
-        ...props,
-        id: ctx.titleId,
-      });
-  }
-);
+  return () =>
+    jsx('h2', {
+      ...props,
+      id: ctx.titleId,
+    });
+});
 
 /**
  * AlertDialog Description component
  */
-export const AlertDialogDescription = defineComponent<{ children: any; [key: string]: any }>(
-  (props) => {
-    const ctx = useContext(AlertDialogContext);
+export const AlertDialogDescription = defineComponent<{ children: any; [key: string]: any }>((props) => {
+  const ctx = useContext(AlertDialogContext);
 
-    return () =>
-      jsx('p', {
-        ...props,
-        id: ctx.descriptionId,
-      });
-  }
-);
+  return () =>
+    jsx('p', {
+      ...props,
+      id: ctx.descriptionId,
+    });
+});
 
 /**
  * AlertDialog Action component (confirm/primary action)
  */
 export const AlertDialogAction = defineComponent<{ children: any; [key: string]: any }>(
   (props) => () =>
-      jsx('button', {
-        ...props,
-        type: 'button',
-        onClick: (e: Event) => {
-          props.onClick?.(e);
-          // Don't auto-close, let user handle it via onClick
-        },
-      })
+    jsx('button', {
+      ...props,
+      type: 'button',
+      onClick: (e: Event) => {
+        props.onClick?.(e);
+        // Don't auto-close, let user handle it via onClick
+      },
+    })
 );
 
 /**
  * AlertDialog Cancel component (cancel/secondary action)
  */
-export const AlertDialogCancel = defineComponent<{ children: any; [key: string]: any }>(
-  (props) => {
-    const ctx = useContext(AlertDialogContext);
+export const AlertDialogCancel = defineComponent<{ children: any; [key: string]: any }>((props) => {
+  const ctx = useContext(AlertDialogContext);
 
-    return () =>
-      jsx('button', {
-        ...props,
-        type: 'button',
-        onClick: (e: Event) => {
-          props.onClick?.(e);
-          ctx.close();
-        },
-      });
-  }
-);
+  return () =>
+    jsx('button', {
+      ...props,
+      type: 'button',
+      onClick: (e: Event) => {
+        props.onClick?.(e);
+        ctx.close();
+      },
+    });
+});
 
 // ============================================================================
 // Sub-component Attachment

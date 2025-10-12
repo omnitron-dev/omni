@@ -48,12 +48,12 @@ export class UserService {
       { name: 'Charlie Brown', email: 'charlie@example.com', age: 42, active: false },
     ];
 
-    testUsers.forEach(userData => {
+    testUsers.forEach((userData) => {
       const id = this.generateId();
       this.users.set(id, {
         id,
         ...userData,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
       });
     });
   }
@@ -93,11 +93,11 @@ export class UserService {
     let users = Array.from(this.users.values());
 
     if (filters.active !== undefined) {
-      users = users.filter(u => u.active === filters.active);
+      users = users.filter((u) => u.active === filters.active);
     }
 
     if (filters.minAge !== undefined) {
-      users = users.filter(u => u.age >= filters.minAge);
+      users = users.filter((u) => u.age >= filters.minAge);
     }
 
     return users;
@@ -117,7 +117,7 @@ export class UserService {
       email: dto.email,
       age: dto.age,
       active: true,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
 
     this.users.set(id, user);
@@ -138,7 +138,7 @@ export class UserService {
 
     const updated = {
       ...user,
-      ...dto
+      ...dto,
     };
 
     this.users.set(id, updated);
@@ -178,6 +178,6 @@ export class UserService {
   }
 
   private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

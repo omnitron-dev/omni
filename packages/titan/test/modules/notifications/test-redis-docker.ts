@@ -71,16 +71,9 @@ export class RedisDockerTestHelper {
           '/Applications/Docker.app/Contents/Resources/bin/docker',
         ];
       case 'linux':
-        return [
-          '/usr/bin/docker',
-          '/usr/local/bin/docker',
-          '/snap/bin/docker',
-        ];
+        return ['/usr/bin/docker', '/usr/local/bin/docker', '/snap/bin/docker'];
       case 'win32':
-        return [
-          'docker.exe',
-          'C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe',
-        ];
+        return ['docker.exe', 'C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe'];
       default:
         return ['/usr/local/bin/docker', '/usr/bin/docker', 'docker'];
     }
@@ -113,10 +106,9 @@ export class RedisDockerTestHelper {
 
       // Start new Redis container
       console.log('Starting Redis container for testing...');
-      execSync(
-        `"${docker}" run -d --name ${this.containerName} -p ${this.port}:6379 redis:7-alpine`,
-        { stdio: 'pipe' }
-      );
+      execSync(`"${docker}" run -d --name ${this.containerName} -p ${this.port}:6379 redis:7-alpine`, {
+        stdio: 'pipe',
+      });
 
       // Wait for Redis to be ready
       await this.waitForRedis();
@@ -129,7 +121,7 @@ export class RedisDockerTestHelper {
         retryStrategy: (times: number) => {
           if (times > 3) return null;
           return Math.min(times * 100, 2000);
-        }
+        },
       });
 
       await this.redis.ping();
@@ -173,7 +165,7 @@ export class RedisDockerTestHelper {
           host: 'localhost',
           port: this.port,
           retryStrategy: () => null,
-          lazyConnect: false
+          lazyConnect: false,
         });
 
         await testClient.ping();
@@ -183,7 +175,7 @@ export class RedisDockerTestHelper {
         if (i === maxAttempts - 1) {
           throw new Error('Redis container failed to start in time');
         }
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     }
   }
@@ -195,13 +187,13 @@ export class RedisDockerTestHelper {
     const options = {
       host: 'localhost',
       port: this.port,
-      maxRetriesPerRequest: 3
+      maxRetriesPerRequest: 3,
     };
 
     return {
       redis: new Redis(options),
       pubRedis: new Redis(options),
-      subRedis: new Redis(options)
+      subRedis: new Redis(options),
     };
   }
 

@@ -10,10 +10,7 @@ export type EventData = Record<string, unknown>;
 /**
  * Event handler function type
  */
-export type EventHandler<T = EventData> = (
-  data: T,
-  metadata?: EventMetadata
-) => void | Promise<void>;
+export type EventHandler<T = EventData> = (data: T, metadata?: EventMetadata) => void | Promise<void>;
 
 /**
  * Event handler with variable arguments
@@ -53,10 +50,7 @@ export type EventTransformer<TIn = EventData, TOut = EventData> = (data: TIn) =>
 /**
  * Event middleware function
  */
-export type EventMiddleware<T = EventData> = (
-  data: T,
-  next: (data: T) => void | Promise<void>
-) => void | Promise<void>;
+export type EventMiddleware<T = EventData> = (data: T, next: (data: T) => void | Promise<void>) => void | Promise<void>;
 
 /**
  * Event schema definition
@@ -73,11 +67,7 @@ export interface EventSchema<T = EventData> {
 /**
  * Event error handler
  */
-export type EventErrorHandler = (
-  error: Error,
-  event: string,
-  data: EventData
-) => void | Promise<void>;
+export type EventErrorHandler = (error: Error, event: string, data: EventData) => void | Promise<void>;
 
 /**
  * Event emission options

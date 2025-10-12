@@ -4,10 +4,7 @@
 
 import { describe, expect, it, beforeEach, jest } from '@jest/globals';
 import { PolicyEngine } from '../../../src/netron/auth/policy-engine.js';
-import type {
-  ExecutionContext,
-  PolicyDefinition,
-} from '../../../src/netron/auth/types.js';
+import type { ExecutionContext, PolicyDefinition } from '../../../src/netron/auth/types.js';
 
 describe('PolicyEngine', () => {
   let policyEngine: PolicyEngine;
@@ -48,9 +45,7 @@ describe('PolicyEngine', () => {
 
       policyEngine.registerPolicy(policy);
 
-      expect(() => policyEngine.registerPolicy(policy)).toThrow(
-        "Policy already registered: test-policy",
-      );
+      expect(() => policyEngine.registerPolicy(policy)).toThrow('Policy already registered: test-policy');
     });
 
     it('should register multiple policies', () => {
@@ -120,9 +115,9 @@ describe('PolicyEngine', () => {
     });
 
     it('should throw error for non-existent policy', async () => {
-      await expect(
-        policyEngine.evaluate('non-existent', mockContext),
-      ).rejects.toThrow("Policy with id non-existent not found");
+      await expect(policyEngine.evaluate('non-existent', mockContext)).rejects.toThrow(
+        'Policy with id non-existent not found'
+      );
     });
 
     it('should evaluate async policy', async () => {
@@ -271,30 +266,21 @@ describe('PolicyEngine', () => {
 
     describe('evaluateAll (AND logic)', () => {
       it('should pass when all policies pass', async () => {
-        const decision = await policyEngine.evaluateAll(
-          ['allow1', 'allow2'],
-          mockContext,
-        );
+        const decision = await policyEngine.evaluateAll(['allow1', 'allow2'], mockContext);
 
         expect(decision.allowed).toBe(true);
         expect(decision.reason).toBe('All policies passed');
       });
 
       it('should fail when one policy fails', async () => {
-        const decision = await policyEngine.evaluateAll(
-          ['allow1', 'deny1'],
-          mockContext,
-        );
+        const decision = await policyEngine.evaluateAll(['allow1', 'deny1'], mockContext);
 
         expect(decision.allowed).toBe(false);
         expect(decision.reason).toBe('Denied');
       });
 
       it('should fail when all policies fail', async () => {
-        const decision = await policyEngine.evaluateAll(
-          ['deny1', 'deny2'],
-          mockContext,
-        );
+        const decision = await policyEngine.evaluateAll(['deny1', 'deny2'], mockContext);
 
         expect(decision.allowed).toBe(false);
       });
@@ -302,28 +288,19 @@ describe('PolicyEngine', () => {
 
     describe('evaluateAny (OR logic)', () => {
       it('should pass when one policy passes', async () => {
-        const decision = await policyEngine.evaluateAny(
-          ['deny1', 'allow1'],
-          mockContext,
-        );
+        const decision = await policyEngine.evaluateAny(['deny1', 'allow1'], mockContext);
 
         expect(decision.allowed).toBe(true);
       });
 
       it('should pass when all policies pass', async () => {
-        const decision = await policyEngine.evaluateAny(
-          ['allow1', 'allow2'],
-          mockContext,
-        );
+        const decision = await policyEngine.evaluateAny(['allow1', 'allow2'], mockContext);
 
         expect(decision.allowed).toBe(true);
       });
 
       it('should fail when all policies fail', async () => {
-        const decision = await policyEngine.evaluateAny(
-          ['deny1', 'deny2'],
-          mockContext,
-        );
+        const decision = await policyEngine.evaluateAny(['deny1', 'deny2'], mockContext);
 
         expect(decision.allowed).toBe(false);
         expect(decision.reason).toBe('No policies passed');
@@ -343,10 +320,7 @@ describe('PolicyEngine', () => {
           },
         ]);
 
-        await policyEngine.evaluateAny(
-          ['first-allow', 'second'],
-          mockContext,
-        );
+        await policyEngine.evaluateAny(['first-allow', 'second'], mockContext);
 
         expect(secondPolicyEvaluated).toBe(false);
       });
@@ -367,46 +341,31 @@ describe('PolicyEngine', () => {
     });
 
     it('should evaluate string expression', async () => {
-      const decision = await policyEngine.evaluateExpression(
-        'allow',
-        mockContext,
-      );
+      const decision = await policyEngine.evaluateExpression('allow', mockContext);
 
       expect(decision.allowed).toBe(true);
     });
 
     it('should evaluate AND expression', async () => {
-      const decision = await policyEngine.evaluateExpression(
-        { and: ['allow', 'allow'] },
-        mockContext,
-      );
+      const decision = await policyEngine.evaluateExpression({ and: ['allow', 'allow'] }, mockContext);
 
       expect(decision.allowed).toBe(true);
     });
 
     it('should fail AND expression when one fails', async () => {
-      const decision = await policyEngine.evaluateExpression(
-        { and: ['allow', 'deny'] },
-        mockContext,
-      );
+      const decision = await policyEngine.evaluateExpression({ and: ['allow', 'deny'] }, mockContext);
 
       expect(decision.allowed).toBe(false);
     });
 
     it('should evaluate OR expression', async () => {
-      const decision = await policyEngine.evaluateExpression(
-        { or: ['deny', 'allow'] },
-        mockContext,
-      );
+      const decision = await policyEngine.evaluateExpression({ or: ['deny', 'allow'] }, mockContext);
 
       expect(decision.allowed).toBe(true);
     });
 
     it('should evaluate NOT expression', async () => {
-      const decision = await policyEngine.evaluateExpression(
-        { not: 'deny' },
-        mockContext,
-      );
+      const decision = await policyEngine.evaluateExpression({ not: 'deny' }, mockContext);
 
       expect(decision.allowed).toBe(true);
     });
@@ -421,7 +380,7 @@ describe('PolicyEngine', () => {
             },
           ],
         },
-        mockContext,
+        mockContext
       );
 
       expect(decision.allowed).toBe(true);
@@ -460,10 +419,7 @@ describe('PolicyEngine', () => {
       expect(state).toBe('open');
 
       // Next evaluation should be rejected by circuit breaker
-      const decision = await policyEngine.evaluate(
-        'failing-policy',
-        mockContext,
-      );
+      const decision = await policyEngine.evaluate('failing-policy', mockContext);
       expect(decision.allowed).toBe(false);
       expect(decision.reason).toContain('circuit breaker open');
     });
@@ -509,10 +465,7 @@ describe('PolicyEngine', () => {
         service: { name: 'testService', version: '1.0.0' },
       };
 
-      const decision = await debugEngine.evaluateAll(
-        ['policy1', 'policy2'],
-        mockContext,
-      );
+      const decision = await debugEngine.evaluateAll(['policy1', 'policy2'], mockContext);
 
       expect(decision.metadata?.allDecisions).toBeDefined();
     });
@@ -528,10 +481,7 @@ describe('PolicyEngine', () => {
         service: { name: 'testService', version: '1.0.0' },
       };
 
-      const decision = await policyEngine.evaluateAll(
-        ['policy1', 'policy2'],
-        mockContext,
-      );
+      const decision = await policyEngine.evaluateAll(['policy1', 'policy2'], mockContext);
 
       expect(decision.metadata?.allDecisions).toBeUndefined();
     });

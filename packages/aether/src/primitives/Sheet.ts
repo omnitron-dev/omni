@@ -14,14 +14,7 @@ import { signal } from '../core/reactivity/signal.js';
 import { onMount } from '../core/component/lifecycle.js';
 import { Portal } from '../control-flow/Portal.js';
 import { jsx } from '../jsx-runtime.js';
-import {
-  generateId,
-  saveFocus,
-  restoreFocus,
-  trapFocus,
-  disableBodyScroll,
-  enableBodyScroll,
-} from './utils/index.js';
+import { generateId, saveFocus, restoreFocus, trapFocus, disableBodyScroll, enableBodyScroll } from './utils/index.js';
 
 // ============================================================================
 // Types
@@ -177,26 +170,24 @@ export const Sheet = defineComponent<SheetProps>((props) => {
 /**
  * Sheet Trigger component
  */
-export const SheetTrigger = defineComponent<{ children: any; [key: string]: any }>(
-  (props) => {
-    const ctx = useContext(SheetContext);
+export const SheetTrigger = defineComponent<{ children: any; [key: string]: any }>((props) => {
+  const ctx = useContext(SheetContext);
 
-    const handleClick = () => {
-      ctx.open();
-    };
+  const handleClick = () => {
+    ctx.open();
+  };
 
-    return () =>
-      jsx('button', {
-        ...props,
-        id: ctx.triggerId,
-        type: 'button',
-        'data-state': ctx.isOpen() ? 'open' : 'closed',
-        'aria-haspopup': 'dialog',
-        'aria-expanded': ctx.isOpen(),
-        onClick: handleClick,
-      });
-  }
-);
+  return () =>
+    jsx('button', {
+      ...props,
+      id: ctx.triggerId,
+      type: 'button',
+      'data-state': ctx.isOpen() ? 'open' : 'closed',
+      'aria-haspopup': 'dialog',
+      'aria-expanded': ctx.isOpen(),
+      onClick: handleClick,
+    });
+});
 
 /**
  * Sheet Content component
@@ -225,7 +216,7 @@ export const SheetContent = defineComponent<SheetContentProps>((props) => {
   });
 
   const handleEscapeKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape' && (props.closeOnEscape !== false)) {
+    if (e.key === 'Escape' && props.closeOnEscape !== false) {
       e.preventDefault();
       ctx.close();
     }
@@ -267,50 +258,44 @@ export const SheetContent = defineComponent<SheetContentProps>((props) => {
 /**
  * Sheet Title component
  */
-export const SheetTitle = defineComponent<{ children: any; [key: string]: any }>(
-  (props) => {
-    const ctx = useContext(SheetContext);
+export const SheetTitle = defineComponent<{ children: any; [key: string]: any }>((props) => {
+  const ctx = useContext(SheetContext);
 
-    return () =>
-      jsx('h2', {
-        ...props,
-        id: ctx.titleId,
-      });
-  }
-);
+  return () =>
+    jsx('h2', {
+      ...props,
+      id: ctx.titleId,
+    });
+});
 
 /**
  * Sheet Description component
  */
-export const SheetDescription = defineComponent<{ children: any; [key: string]: any }>(
-  (props) => {
-    const ctx = useContext(SheetContext);
+export const SheetDescription = defineComponent<{ children: any; [key: string]: any }>((props) => {
+  const ctx = useContext(SheetContext);
 
-    return () =>
-      jsx('p', {
-        ...props,
-        id: ctx.descriptionId,
-      });
-  }
-);
+  return () =>
+    jsx('p', {
+      ...props,
+      id: ctx.descriptionId,
+    });
+});
 
 /**
  * Sheet Close component
  */
-export const SheetClose = defineComponent<{ children: any; [key: string]: any }>(
-  (props) => {
-    const ctx = useContext(SheetContext);
+export const SheetClose = defineComponent<{ children: any; [key: string]: any }>((props) => {
+  const ctx = useContext(SheetContext);
 
-    const handleClick = (e: Event) => {
-      props.onClick?.(e);
-      ctx.close();
-    };
+  const handleClick = (e: Event) => {
+    props.onClick?.(e);
+    ctx.close();
+  };
 
-    return () =>
-      jsx('button', {
-        ...props,
-        type: 'button',
-        onClick: handleClick,
-      });
-  }
-);
+  return () =>
+    jsx('button', {
+      ...props,
+      type: 'button',
+      onClick: handleClick,
+    });
+});

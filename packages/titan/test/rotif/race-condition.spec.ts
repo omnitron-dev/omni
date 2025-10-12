@@ -24,21 +24,29 @@ describe('Race Condition Tests', () => {
     const processedIds = new Set<string>();
 
     // Create two consumers in the same group to simulate concurrent processing
-    await manager.subscribe('race.test', async (msg) => {
-      // Simulate some processing time
-      await delay(100);
-      processedCount++;
-      processedIds.add(msg.id);
-      await msg.ack();
-    }, { groupName: 'concurrent-group', exactlyOnce: true });
+    await manager.subscribe(
+      'race.test',
+      async (msg) => {
+        // Simulate some processing time
+        await delay(100);
+        processedCount++;
+        processedIds.add(msg.id);
+        await msg.ack();
+      },
+      { groupName: 'concurrent-group', exactlyOnce: true }
+    );
 
-    await manager.subscribe('race.test', async (msg) => {
-      // Simulate some processing time
-      await delay(100);
-      processedCount++;
-      processedIds.add(msg.id);
-      await msg.ack();
-    }, { groupName: 'concurrent-group', exactlyOnce: true });
+    await manager.subscribe(
+      'race.test',
+      async (msg) => {
+        // Simulate some processing time
+        await delay(100);
+        processedCount++;
+        processedIds.add(msg.id);
+        await msg.ack();
+      },
+      { groupName: 'concurrent-group', exactlyOnce: true }
+    );
 
     await delay(200);
 
@@ -57,20 +65,24 @@ describe('Race Condition Tests', () => {
     let processedCount = 0;
     const processedPayloads: any[] = [];
 
-    await manager.subscribe('race.rapid', async (msg) => {
-      processedCount++;
-      processedPayloads.push(msg.payload);
-      await msg.ack();
-    }, { exactlyOnce: true });
+    await manager.subscribe(
+      'race.rapid',
+      async (msg) => {
+        processedCount++;
+        processedPayloads.push(msg.payload);
+        await msg.ack();
+      },
+      { exactlyOnce: true }
+    );
 
     await delay(100);
 
     const payload = { data: 'rapid-test', id: 1 };
 
     // Publish the same message rapidly in parallel
-    const publishPromises = Array(10).fill(null).map(() =>
-      manager.publish('race.rapid', payload, { exactlyOnce: true })
-    );
+    const publishPromises = Array(10)
+      .fill(null)
+      .map(() => manager.publish('race.rapid', payload, { exactlyOnce: true }));
 
     await Promise.all(publishPromises);
     await delay(500);
@@ -85,12 +97,16 @@ describe('Race Condition Tests', () => {
     let processedCount = 0;
     const processedPayloads: any[] = [];
 
-    await manager.subscribe('race.interleaved', async (msg) => {
-      await delay(50); // Simulate processing time
-      processedCount++;
-      processedPayloads.push(msg.payload);
-      await msg.ack();
-    }, { exactlyOnce: true });
+    await manager.subscribe(
+      'race.interleaved',
+      async (msg) => {
+        await delay(50); // Simulate processing time
+        processedCount++;
+        processedPayloads.push(msg.payload);
+        await msg.ack();
+      },
+      { exactlyOnce: true }
+    );
 
     await delay(100);
 
@@ -110,7 +126,7 @@ describe('Race Condition Tests', () => {
     // Should process each unique payload only once
     expect(processedCount).toBe(2);
     expect(processedPayloads).toHaveLength(2);
-    expect(processedPayloads.map(p => p.data).sort()).toEqual(['interleaved-1', 'interleaved-2']);
+    expect(processedPayloads.map((p) => p.data).sort()).toEqual(['interleaved-1', 'interleaved-2']);
   });
 
   it('should handle exactly-once with message failures and retries', async () => {
@@ -118,28 +134,32 @@ describe('Race Condition Tests', () => {
     let successCount = 0;
     const processedAttempts = new Map<string, number[]>();
 
-    await manager.subscribe('race.retry', async (msg) => {
-      attemptCount++;
+    await manager.subscribe(
+      'race.retry',
+      async (msg) => {
+        attemptCount++;
 
-      // Track attempts for each unique payload
-      const payloadKey = JSON.stringify(msg.payload);
-      if (!processedAttempts.has(payloadKey)) {
-        processedAttempts.set(payloadKey, []);
+        // Track attempts for each unique payload
+        const payloadKey = JSON.stringify(msg.payload);
+        if (!processedAttempts.has(payloadKey)) {
+          processedAttempts.set(payloadKey, []);
+        }
+        processedAttempts.get(payloadKey)!.push(msg.attempt);
+
+        // Fail on first attempt, succeed on retry
+        if (msg.attempt === 1) {
+          throw new Error('Simulated failure');
+        }
+
+        successCount++;
+        await msg.ack();
+      },
+      {
+        exactlyOnce: true,
+        maxRetries: 3,
+        retryDelay: 100,
       }
-      processedAttempts.get(payloadKey)!.push(msg.attempt);
-
-      // Fail on first attempt, succeed on retry
-      if (msg.attempt === 1) {
-        throw new Error('Simulated failure');
-      }
-
-      successCount++;
-      await msg.ack();
-    }, {
-      exactlyOnce: true,
-      maxRetries: 3,
-      retryDelay: 100,
-    });
+    );
 
     await delay(100);
 
@@ -164,11 +184,15 @@ describe('Race Condition Tests', () => {
     let processedCount = 0;
     const processedChannels: string[] = [];
 
-    await manager.subscribe('race.wildcard.*', async (msg) => {
-      processedCount++;
-      processedChannels.push(msg.channel);
-      await msg.ack();
-    }, { exactlyOnce: true });
+    await manager.subscribe(
+      'race.wildcard.*',
+      async (msg) => {
+        processedCount++;
+        processedChannels.push(msg.channel);
+        await msg.ack();
+      },
+      { exactlyOnce: true }
+    );
 
     await delay(100);
 
@@ -201,14 +225,18 @@ describe('Race Condition Tests', () => {
     // Give DLQ subscription time to initialize
     await delay(100);
 
-    await manager.subscribe('race.dlq', async (msg) => {
-      attemptCount++;
-      throw new Error('Always fail');
-    }, {
-      exactlyOnce: true,
-      maxRetries: 2,
-      retryDelay: 200,
-    });
+    await manager.subscribe(
+      'race.dlq',
+      async (msg) => {
+        attemptCount++;
+        throw new Error('Always fail');
+      },
+      {
+        exactlyOnce: true,
+        maxRetries: 2,
+        retryDelay: 200,
+      }
+    );
 
     await delay(200);
 
@@ -242,11 +270,15 @@ describe('Race Condition Tests', () => {
     let processedCount = 0;
     const uniquePayloads = new Set<string>();
 
-    await manager.subscribe('race.stress', async (msg) => {
-      processedCount++;
-      uniquePayloads.add(JSON.stringify(msg.payload));
-      await msg.ack();
-    }, { exactlyOnce: true });
+    await manager.subscribe(
+      'race.stress',
+      async (msg) => {
+        processedCount++;
+        uniquePayloads.add(JSON.stringify(msg.payload));
+        await msg.ack();
+      },
+      { exactlyOnce: true }
+    );
 
     await delay(100);
 
@@ -256,9 +288,7 @@ describe('Race Condition Tests', () => {
     for (let i = 0; i < 10; i++) {
       const payload = { data: 'stress-test', id: i % 3 }; // Only 3 unique payloads
       for (let j = 0; j < 5; j++) {
-        publishPromises.push(
-          manager.publish('race.stress', payload, { exactlyOnce: true })
-        );
+        publishPromises.push(manager.publish('race.stress', payload, { exactlyOnce: true }));
       }
     }
 
@@ -279,19 +309,22 @@ describe('Race Condition Tests', () => {
       redis: getTestRedisUrl(1),
       deduplicationTTL: 3600,
       blockInterval: 50,
-      generateDedupKey: ({ payload }) => 
+      generateDedupKey: ({ payload }) =>
         // Use only the 'id' field for deduplication
-         `custom:${(payload as any).id}`
-      ,
+        `custom:${(payload as any).id}`,
     });
 
     await customManager.redis.flushdb();
 
-    await customManager.subscribe('race.custom', async (msg) => {
-      processedCount++;
-      processedIds.push((msg.payload as any).id);
-      await msg.ack();
-    }, { exactlyOnce: true });
+    await customManager.subscribe(
+      'race.custom',
+      async (msg) => {
+        processedCount++;
+        processedIds.push((msg.payload as any).id);
+        await msg.ack();
+      },
+      { exactlyOnce: true }
+    );
 
     await delay(100);
 
@@ -312,10 +345,14 @@ describe('Race Condition Tests', () => {
   it('should handle exactly-once with per-message TTL override', async () => {
     let processedCount = 0;
 
-    await manager.subscribe('race.ttl', async (msg) => {
-      processedCount++;
-      await msg.ack();
-    }, { exactlyOnce: true });
+    await manager.subscribe(
+      'race.ttl',
+      async (msg) => {
+        processedCount++;
+        await msg.ack();
+      },
+      { exactlyOnce: true }
+    );
 
     await delay(100);
 

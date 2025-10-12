@@ -20,9 +20,9 @@ describe('TemplateEngine Basic', () => {
           email: {
             subject: 'Welcome to {{appName}}!',
             html: '<h1>Hello {{userName}}</h1>',
-            text: 'Hello {{userName}}'
-          }
-        }
+            text: 'Hello {{userName}}',
+          },
+        },
       };
 
       await templateEngine.registerTemplate(template);
@@ -42,9 +42,9 @@ describe('TemplateEngine Basic', () => {
         content: {
           email: {
             subject: 'Subject 1',
-            html: 'Body 1'
-          }
-        }
+            html: 'Body 1',
+          },
+        },
       };
 
       const template2 = {
@@ -54,9 +54,9 @@ describe('TemplateEngine Basic', () => {
         channels: ['sms'],
         content: {
           sms: {
-            message: 'SMS Message'
-          }
-        }
+            message: 'SMS Message',
+          },
+        },
       };
 
       await templateEngine.registerTemplate(template1);
@@ -64,8 +64,8 @@ describe('TemplateEngine Basic', () => {
 
       const templates = templateEngine.listTemplates();
       expect(templates).toHaveLength(3); // 2 + 1 default template
-      expect(templates.some(t => t.id === 'template1')).toBe(true);
-      expect(templates.some(t => t.id === 'template2')).toBe(true);
+      expect(templates.some((t) => t.id === 'template1')).toBe(true);
+      expect(templates.some((t) => t.id === 'template2')).toBe(true);
     });
 
     it('should remove templates', async () => {
@@ -77,9 +77,9 @@ describe('TemplateEngine Basic', () => {
         content: {
           email: {
             subject: 'Subject',
-            html: 'Body'
-          }
-        }
+            html: 'Body',
+          },
+        },
       };
 
       await templateEngine.registerTemplate(template);
@@ -95,7 +95,7 @@ describe('TemplateEngine Basic', () => {
         name: 'Invalid',
         engine: 'plain' as const,
         channels: ['email'],
-        content: {}
+        content: {},
       };
 
       await expect(templateEngine.registerTemplate(invalidTemplate)).rejects.toThrow('Template ID is required');
@@ -107,10 +107,12 @@ describe('TemplateEngine Basic', () => {
         name: 'No Channels',
         engine: 'plain' as const,
         channels: [],
-        content: {}
+        content: {},
       };
 
-      await expect(templateEngine.registerTemplate(invalidTemplate)).rejects.toThrow('At least one channel is required');
+      await expect(templateEngine.registerTemplate(invalidTemplate)).rejects.toThrow(
+        'At least one channel is required'
+      );
     });
   });
 
@@ -125,12 +127,12 @@ describe('TemplateEngine Basic', () => {
           email: {
             subject: 'Hello {{name}}!',
             html: '<p>Your code is {{code}}</p>',
-            text: 'Your code is {{code}}'
+            text: 'Your code is {{code}}',
           },
           sms: {
-            message: 'Code: {{code}}'
-          }
-        }
+            message: 'Code: {{code}}',
+          },
+        },
       };
       await templateEngine.registerTemplate(template);
     });
@@ -138,7 +140,7 @@ describe('TemplateEngine Basic', () => {
     it('should render template with provided data', async () => {
       const data = {
         name: 'Alice',
-        code: 'ABC123'
+        code: 'ABC123',
       };
 
       const result = await templateEngine.render('test-template', data);
@@ -179,7 +181,7 @@ describe('TemplateEngine Basic', () => {
     it('should render default welcome template', async () => {
       const data = {
         userName: 'John',
-        appName: 'MyApp'
+        appName: 'MyApp',
       };
 
       const result = await templateEngine.render('welcome', data);
@@ -201,9 +203,9 @@ describe('TemplateEngine Basic', () => {
           email: {
             subject: '{{type}}: {{title}}',
             html: '<div>{{body}}</div>',
-            text: '{{body}}'
-          }
-        }
+            text: '{{body}}',
+          },
+        },
       };
 
       await templateEngine.registerTemplate(template);
@@ -214,7 +216,7 @@ describe('TemplateEngine Basic', () => {
         title: 'System Alert',
         body: 'System maintenance scheduled',
         templateId: 'notification-template',
-        data: {}
+        data: {},
       };
 
       const processed = await templateEngine.processNotification(notification);
@@ -230,7 +232,7 @@ describe('TemplateEngine Basic', () => {
         type: 'info',
         title: 'Direct Message',
         body: 'This is a direct message',
-        data: {}
+        data: {},
       };
 
       const processed = await templateEngine.processNotification(notification);
@@ -285,8 +287,8 @@ describe('TemplateEngine Basic', () => {
       const data = {
         order: {
           id: '12345',
-          total: '$99.99'
-        }
+          total: '$99.99',
+        },
       };
       const result = templateEngine.replaceVariables(content, data);
 
@@ -306,7 +308,7 @@ describe('TemplateEngine Basic', () => {
       const data = {
         value: 'test',
         nullValue: null,
-        undefinedValue: undefined
+        undefinedValue: undefined,
       };
       const result = templateEngine.replaceVariables(content, data);
 
@@ -330,9 +332,9 @@ describe('TemplateEngine Basic', () => {
           email: {
             subject: 'Welcome {{name}}!',
             html: '<p>Welcome!</p>',
-            text: 'Welcome!'
-          }
-        }
+            text: 'Welcome!',
+          },
+        },
       };
 
       await templateEngine.registerTemplate(template);

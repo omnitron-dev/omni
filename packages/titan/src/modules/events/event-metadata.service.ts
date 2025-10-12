@@ -1,6 +1,6 @@
 /**
  * Event Metadata Service
- * 
+ *
  * Manages event metadata and context for events
  */
 
@@ -20,7 +20,7 @@ export class EventMetadataService {
   private destroyed = false;
   private logger: any = null;
 
-  constructor() { }
+  constructor() {}
 
   /**
    * Initialize the service
@@ -55,8 +55,8 @@ export class EventMetadataService {
         initialized: this.initialized,
         destroyed: this.destroyed,
         registeredEvents: this.eventMetadata.size,
-        correlationIdCounter: this.correlationIdCounter
-      }
+        correlationIdCounter: this.correlationIdCounter,
+      },
     };
   }
 
@@ -124,7 +124,7 @@ export class EventMetadataService {
       timestamp: Date.now(),
       correlationId: this.generateCorrelationId(),
       ...this.defaultMetadata,
-      ...partial
+      ...partial,
     } as EventMetadata;
   }
 
@@ -163,10 +163,7 @@ export class EventMetadataService {
    * Merge metadata objects
    */
   mergeMetadata(...metadatas: Partial<EventMetadata>[]): EventMetadata {
-    const merged = metadatas.reduce(
-      (acc, metadata) => ({ ...acc, ...metadata }),
-      {}
-    );
+    const merged = metadatas.reduce((acc, metadata) => ({ ...acc, ...metadata }), {});
 
     // Ensure required fields
     if (!merged.id) merged.id = this.generateEventId();
@@ -196,7 +193,7 @@ export class EventMetadataService {
 
     return {
       ...metadata,
-      tags: uniqueTags
+      tags: uniqueTags,
     };
   }
 
@@ -207,7 +204,7 @@ export class EventMetadataService {
     return {
       ...metadata,
       ttl,
-      expiresAt: Date.now() + ttl
+      expiresAt: Date.now() + ttl,
     };
   }
 
@@ -240,17 +237,14 @@ export class EventMetadataService {
   /**
    * Create child metadata for nested events
    */
-  createChildMetadata(
-    parent: EventMetadata,
-    partial?: Partial<EventMetadata>
-  ): EventMetadata {
+  createChildMetadata(parent: EventMetadata, partial?: Partial<EventMetadata>): EventMetadata {
     return {
       ...parent,
       ...partial,
       id: this.generateEventId(),
       timestamp: Date.now(),
       parentId: parent.id,
-      correlationId: parent.correlationId // Keep same correlation ID
+      correlationId: parent.correlationId, // Keep same correlation ID
     } as EventMetadata;
   }
 }

@@ -4,27 +4,12 @@
  * Provides common database operations for all repositories
  */
 
-import {
-  Kysely,
-  Transaction,
-  sql,
-} from 'kysely';
+import { Kysely, Transaction, sql } from 'kysely';
 import { z } from 'zod';
-import {
-  paginate,
-  paginateCursor,
-  parseDatabaseError,
-} from '@kysera/core';
+import { paginate, paginateCursor, parseDatabaseError } from '@kysera/core';
 import { Errors } from '../../../errors/index.js';
-import type {
-  IBaseRepository,
-  RepositoryConfig,
-  FindOptions,
-} from './repository.types.js';
-import type {
-  PaginatedResult,
-  PaginationOptions,
-} from '../database.types.js';
+import type { IBaseRepository, RepositoryConfig, FindOptions } from './repository.types.js';
+import type { PaginatedResult, PaginationOptions } from '../database.types.js';
 
 /**
  * Base repository class implementing common database operations
@@ -34,8 +19,9 @@ export class BaseRepository<
   TableName extends string = string,
   Entity = any,
   CreateInput = any,
-  UpdateInput = any
-> implements IBaseRepository<Entity, CreateInput, UpdateInput> {
+  UpdateInput = any,
+> implements IBaseRepository<Entity, CreateInput, UpdateInput>
+{
   public readonly tableName: TableName;
   public readonly connectionName: string;
 
@@ -43,10 +29,7 @@ export class BaseRepository<
   protected trx?: Transaction<any>;
   protected config: RepositoryConfig<any, any, any>;
 
-  constructor(
-    db: Kysely<any> | Transaction<any>,
-    config: RepositoryConfig<any, any, any>
-  ) {
+  constructor(db: Kysely<any> | Transaction<any>, config: RepositoryConfig<any, any, any>) {
     this.tableName = config.tableName;
     this.connectionName = config.connectionName || 'default';
     this.config = config;
@@ -102,7 +85,7 @@ export class BaseRepository<
         const fieldErrors = error.issues.map((e: any) => ({
           field: e.path.join('.'),
           message: e.message,
-          code: e.code
+          code: e.code,
         }));
         throw Errors.validation(fieldErrors);
       }
@@ -125,7 +108,7 @@ export class BaseRepository<
         const fieldErrors = error.issues.map((e: any) => ({
           field: e.path.join('.'),
           message: e.message,
-          code: e.code
+          code: e.code,
         }));
         throw Errors.validation(fieldErrors);
       }
@@ -165,9 +148,7 @@ export class BaseRepository<
 
     // Select specific columns
     if (options.select && options.select.length > 0) {
-      query = (this.qb
-        .selectFrom(this.tableName) as any)
-        .select(options.select);
+      query = (this.qb.selectFrom(this.tableName) as any).select(options.select);
 
       // Re-apply conditions after changing select
       if (options.where) {
@@ -178,10 +159,10 @@ export class BaseRepository<
     }
 
     const rows = await query.execute();
-    const entities = rows.map(row => this.mapRow(row));
+    const entities = rows.map((row) => this.mapRow(row));
 
     if (this.config.validateDbResults) {
-      return entities.map(entity => this.validateResult(entity));
+      return entities.map((entity) => this.validateResult(entity));
     }
 
     return entities;
@@ -191,11 +172,7 @@ export class BaseRepository<
    * Find record by ID
    */
   async findById(id: number | string): Promise<Entity | null> {
-    const row = await (this.qb
-      .selectFrom(this.tableName)
-      .selectAll() as any)
-      .where('id', '=', id)
-      .executeTakeFirst();
+    const row = await (this.qb.selectFrom(this.tableName).selectAll() as any).where('id', '=', id).executeTakeFirst();
 
     if (!row) {
       return null;
@@ -240,11 +217,7 @@ export class BaseRepository<
     const dbData = this.mapEntity(validatedData);
 
     try {
-      const result = await this.qb
-        .insertInto(this.tableName)
-        .values(dbData)
-        .returningAll()
-        .executeTakeFirstOrThrow();
+      const result = await this.qb.insertInto(this.tableName).values(dbData).returningAll().executeTakeFirstOrThrow();
 
       const entity = this.mapRow(result);
       return this.config.validateDbResults ? this.validateResult(entity) : entity;
@@ -261,22 +234,16 @@ export class BaseRepository<
       return [];
     }
 
-    const validatedData = data.map(item =>
-      this.validateInput(item, this.config.schemas?.create)
-    );
-    const dbData = validatedData.map(item => this.mapEntity(item));
+    const validatedData = data.map((item) => this.validateInput(item, this.config.schemas?.create));
+    const dbData = validatedData.map((item) => this.mapEntity(item));
 
     try {
-      const results = await this.qb
-        .insertInto(this.tableName)
-        .values(dbData)
-        .returningAll()
-        .execute();
+      const results = await this.qb.insertInto(this.tableName).values(dbData).returningAll().execute();
 
-      const entities = results.map(row => this.mapRow(row));
+      const entities = results.map((row) => this.mapRow(row));
 
       if (this.config.validateDbResults) {
-        return entities.map(entity => this.validateResult(entity));
+        return entities.map((entity) => this.validateResult(entity));
       }
 
       return entities;
@@ -301,9 +268,7 @@ export class BaseRepository<
     }, {} as any);
 
     try {
-      const result = await (this.qb
-        .updateTable(this.tableName)
-        .set(cleanData) as any)
+      const result = await (this.qb.updateTable(this.tableName).set(cleanData) as any)
         .where('id', '=', id)
         .returningAll()
         .executeTakeFirstOrThrow();
@@ -349,10 +314,7 @@ export class BaseRepository<
    */
   async delete(id: number | string): Promise<void> {
     try {
-      await (this.qb
-        .deleteFrom(this.tableName) as any)
-        .where('id', '=', id)
-        .execute();
+      await (this.qb.deleteFrom(this.tableName) as any).where('id', '=', id).execute();
     } catch (error) {
       throw parseDatabaseError(error);
     }
@@ -380,9 +342,7 @@ export class BaseRepository<
    * Count records
    */
   async count(conditions?: Partial<Entity>): Promise<number> {
-    let query = (this.qb
-      .selectFrom(this.tableName) as any)
-      .select(sql<number>`count(*)`.as('count'));
+    let query = (this.qb.selectFrom(this.tableName) as any).select(sql<number>`count(*)`.as('count'));
 
     if (conditions) {
       for (const [key, value] of Object.entries(conditions)) {
@@ -410,14 +370,14 @@ export class BaseRepository<
 
     if (options.cursor) {
       // Cursor-based pagination
-      const result = await paginateCursor(query as any, {
+      const result = (await paginateCursor(query as any, {
         limit: options.limit || 20,
         cursor: options.cursor,
-        orderBy: (options.orderBy?.map(o => ({
+        orderBy: (options.orderBy?.map((o) => ({
           column: o.column,
           direction: o.direction,
         })) || [{ column: 'id', direction: 'asc' }]) as any,
-      }) as any;
+      })) as any;
 
       const entities = result.data.map((row: any) => this.mapRow(row));
 
@@ -432,10 +392,10 @@ export class BaseRepository<
       };
     } else {
       // Offset-based pagination
-      const result = await paginate(query as any, {
+      const result = (await paginate(query as any, {
         page: options.page || 1,
         limit: options.limit || 20,
-      }) as any;
+      })) as any;
 
       const entities = result.data.map((row: any) => this.mapRow(row));
 

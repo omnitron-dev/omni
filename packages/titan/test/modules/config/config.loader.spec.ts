@@ -35,14 +35,14 @@ describe('ConfigLoaderService', () => {
       const configFile = path.join(tempDir, 'config.json');
       const configData = {
         app: { name: 'test-app', version: '1.0.0' },
-        server: { port: 3000 }
+        server: { port: 3000 },
       };
       fs.writeFileSync(configFile, JSON.stringify(configData));
 
       const source: FileConfigSource = {
         type: 'file',
         path: configFile,
-        format: 'json'
+        format: 'json',
       };
 
       const result = await loader.load([source]);
@@ -56,7 +56,7 @@ describe('ConfigLoaderService', () => {
 
       const source: FileConfigSource = {
         type: 'file',
-        path: configFile
+        path: configFile,
         // format not specified
       };
 
@@ -79,7 +79,7 @@ EMPTY_VALUE=
       const source: FileConfigSource = {
         type: 'file',
         path: envFile,
-        format: 'env'
+        format: 'env',
       };
 
       const result = await loader.load([source]);
@@ -105,7 +105,7 @@ database.port=5432
       const source: FileConfigSource = {
         type: 'file',
         path: propsFile,
-        format: 'properties'
+        format: 'properties',
       };
 
       const result = await loader.load([source]);
@@ -120,7 +120,7 @@ database.port=5432
       const source: FileConfigSource = {
         type: 'file',
         path: '/non/existent/file.json',
-        optional: true
+        optional: true,
       };
 
       const result = await loader.load([source]);
@@ -131,7 +131,7 @@ database.port=5432
       const source: FileConfigSource = {
         type: 'file',
         path: '/non/existent/file.json',
-        optional: false
+        optional: false,
       };
 
       await expect(loader.load([source])).rejects.toThrow();
@@ -147,8 +147,8 @@ database.port=5432
         transform: (data) => ({
           ...data,
           port: parseInt(data.port, 10),
-          debug: data.debug === 'true'
-        })
+          debug: data.debug === 'true',
+        }),
       };
 
       const result = await loader.load([source]);
@@ -163,7 +163,7 @@ database.port=5432
       const source: FileConfigSource = {
         type: 'file',
         path: configFile,
-        format: 'json'
+        format: 'json',
       };
 
       await expect(loader.load([source])).rejects.toThrow();
@@ -189,7 +189,7 @@ database.port=5432
 
       const source: EnvironmentConfigSource = {
         type: 'env',
-        prefix: 'APP_'
+        prefix: 'APP_',
       };
 
       const result = await loader.load([source]);
@@ -207,7 +207,7 @@ database.port=5432
       const source: EnvironmentConfigSource = {
         type: 'env',
         prefix: 'APP_',
-        separator: '__'
+        separator: '__',
       };
 
       const result = await loader.load([source]);
@@ -229,7 +229,7 @@ database.port=5432
           }
           // Return undefined to keep parsed value for other keys
           return undefined;
-        }
+        },
       };
 
       const result = await loader.load([source]);
@@ -248,7 +248,7 @@ database.port=5432
 
       const source: EnvironmentConfigSource = {
         type: 'env',
-        prefix: 'TEST_'
+        prefix: 'TEST_',
       };
 
       const result = await loader.load([source]);
@@ -266,12 +266,12 @@ database.port=5432
     it('should load object source directly', async () => {
       const data = {
         app: { name: 'object-app', port: 3000 },
-        features: { cache: true, rateLimit: 100 }
+        features: { cache: true, rateLimit: 100 },
       };
 
       const source: ObjectConfigSource = {
         type: 'object',
-        data
+        data,
       };
 
       const result = await loader.load([source]);
@@ -282,7 +282,7 @@ database.port=5432
       const source: ObjectConfigSource = {
         type: 'object',
         data: { test: 'value' },
-        priority: 10
+        priority: 10,
       };
 
       const result = await loader.load([source]);
@@ -293,10 +293,13 @@ database.port=5432
   describe('Multiple source loading', () => {
     it('should load and merge multiple sources', async () => {
       const jsonFile = path.join(tempDir, 'base.json');
-      fs.writeFileSync(jsonFile, JSON.stringify({
-        app: { name: 'base-app', version: '1.0.0' },
-        server: { port: 3000 }
-      }));
+      fs.writeFileSync(
+        jsonFile,
+        JSON.stringify({
+          app: { name: 'base-app', version: '1.0.0' },
+          server: { port: 3000 },
+        })
+      );
 
       process.env.OVERRIDE_SERVER__PORT = '4000';
 
@@ -304,17 +307,17 @@ database.port=5432
         {
           type: 'file',
           path: jsonFile,
-          format: 'json'
+          format: 'json',
         } as FileConfigSource,
         {
           type: 'env',
           prefix: 'OVERRIDE_',
-          separator: '__'
+          separator: '__',
         } as EnvironmentConfigSource,
         {
           type: 'object',
-          data: { app: { name: 'final-app' } }
-        } as ObjectConfigSource
+          data: { app: { name: 'final-app' } },
+        } as ObjectConfigSource,
       ];
 
       const result = await loader.load(sources);
@@ -330,18 +333,18 @@ database.port=5432
         {
           type: 'object',
           data: { value: 'low' },
-          priority: 1
+          priority: 1,
         } as ObjectConfigSource,
         {
           type: 'object',
           data: { value: 'high' },
-          priority: 10
+          priority: 10,
         } as ObjectConfigSource,
         {
           type: 'object',
           data: { value: 'medium' },
-          priority: 5
-        } as ObjectConfigSource
+          priority: 5,
+        } as ObjectConfigSource,
       ];
 
       const result = await loader.load(sources);
@@ -356,12 +359,12 @@ database.port=5432
         {
           type: 'file',
           path: '/non/existent/optional.json',
-          optional: true
+          optional: true,
         } as FileConfigSource,
         {
           type: 'file',
-          path: validFile
-        } as FileConfigSource
+          path: validFile,
+        } as FileConfigSource,
       ];
 
       const result = await loader.load(sources);
@@ -373,8 +376,8 @@ database.port=5432
         {
           type: 'file',
           path: '/non/existent/required.json',
-          optional: false
-        } as FileConfigSource
+          optional: false,
+        } as FileConfigSource,
       ];
 
       await expect(loader.load(sources)).rejects.toThrow();
@@ -392,10 +395,10 @@ database.port=5432
               port: 5432,
               credentials: {
                 username: 'admin',
-                password: 'secret'
-              }
-            }
-          }
+                password: 'secret',
+              },
+            },
+          },
         } as ObjectConfigSource,
         {
           type: 'object',
@@ -403,12 +406,12 @@ database.port=5432
             database: {
               port: 3306,
               credentials: {
-                password: 'new-secret'
+                password: 'new-secret',
               },
-              ssl: true
-            }
-          }
-        } as ObjectConfigSource
+              ssl: true,
+            },
+          },
+        } as ObjectConfigSource,
       ];
 
       const result = await loader.load(sources);
@@ -425,16 +428,16 @@ database.port=5432
           type: 'object',
           data: {
             features: ['feature1', 'feature2'],
-            settings: { timeout: 30 }
-          }
+            settings: { timeout: 30 },
+          },
         } as ObjectConfigSource,
         {
           type: 'object',
           data: {
             features: ['feature3', 'feature4'],
-            settings: { retries: 3 }
-          }
-        } as ObjectConfigSource
+            settings: { retries: 3 },
+          },
+        } as ObjectConfigSource,
       ];
 
       const result = await loader.load(sources);
@@ -448,7 +451,7 @@ database.port=5432
     it('should provide meaningful error for unsupported format', async () => {
       const source = {
         type: 'unsupported' as any,
-        data: {}
+        data: {},
       };
 
       await expect(loader.load(source as any)).rejects.toThrow(/Failed to load required config source/);
@@ -458,7 +461,7 @@ database.port=5432
       const source: FileConfigSource = {
         type: 'file',
         path: tempDir, // Directory, not a file
-        format: 'json'
+        format: 'json',
       };
 
       await expect(loader.load([source])).rejects.toThrow();

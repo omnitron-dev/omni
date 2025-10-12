@@ -12,11 +12,7 @@ import type { PaginatedResult, PaginationOptions } from '../database.types.js';
 /**
  * Base repository interface
  */
-export interface IBaseRepository<
-  Entity,
-  CreateInput = Partial<Entity>,
-  UpdateInput = Partial<Entity>
-> {
+export interface IBaseRepository<Entity, CreateInput = Partial<Entity>, UpdateInput = Partial<Entity>> {
   // Table information
   readonly tableName: string;
   readonly connectionName: string;
@@ -51,11 +47,7 @@ export interface IBaseRepository<
 /**
  * Repository configuration
  */
-export interface RepositoryConfig<
-  DB = any,
-  TableName extends keyof DB = any,
-  Entity = any
-> {
+export interface RepositoryConfig<DB = any, TableName extends keyof DB = any, Entity = any> {
   /**
    * Table name in the database
    */
@@ -98,27 +90,33 @@ export interface RepositoryConfig<
   /**
    * Soft delete configuration
    */
-  softDelete?: boolean | {
-    column?: string;
-    includeDeleted?: boolean;
-  };
+  softDelete?:
+    | boolean
+    | {
+        column?: string;
+        includeDeleted?: boolean;
+      };
 
   /**
    * Timestamps configuration
    */
-  timestamps?: boolean | {
-    createdAt?: string;
-    updatedAt?: string;
-  };
+  timestamps?:
+    | boolean
+    | {
+        createdAt?: string;
+        updatedAt?: string;
+      };
 
   /**
    * Audit configuration
    */
-  audit?: boolean | {
-    table?: string;
-    captureOldValues?: boolean;
-    captureNewValues?: boolean;
-  };
+  audit?:
+    | boolean
+    | {
+        table?: string;
+        captureOldValues?: boolean;
+        captureNewValues?: boolean;
+      };
 }
 
 /**
@@ -236,37 +234,40 @@ export interface RepositoryMetadata<Entity = any> {
   /**
    * Soft delete configuration
    */
-  softDelete?: boolean | {
-    column?: string;
-    includeDeleted?: boolean;
-  };
+  softDelete?:
+    | boolean
+    | {
+        column?: string;
+        includeDeleted?: boolean;
+      };
 
   /**
    * Timestamps configuration
    */
-  timestamps?: boolean | {
-    createdAt?: string;
-    updatedAt?: string;
-  };
+  timestamps?:
+    | boolean
+    | {
+        createdAt?: string;
+        updatedAt?: string;
+      };
 
   /**
    * Audit configuration
    */
-  audit?: boolean | {
-    table?: string;
-    captureOldValues?: boolean;
-    captureNewValues?: boolean;
-  };
+  audit?:
+    | boolean
+    | {
+        table?: string;
+        captureOldValues?: boolean;
+        captureNewValues?: boolean;
+      };
 }
 
 /**
  * Repository instance with full functionality
  */
-export interface Repository<
-  Entity,
-  CreateInput = Partial<Entity>,
-  UpdateInput = Partial<Entity>
-> extends IBaseRepository<Entity, CreateInput, UpdateInput> {
+export interface Repository<Entity, CreateInput = Partial<Entity>, UpdateInput = Partial<Entity>>
+  extends IBaseRepository<Entity, CreateInput, UpdateInput> {
   // Soft delete methods (if enabled)
   softDelete?(id: number | string): Promise<Entity>;
   restore?(id: number | string): Promise<Entity>;

@@ -49,7 +49,7 @@ export class NetronBuiltinMiddleware {
       if (record.count >= maxRequests) {
         throw new TitanError({
           code: ErrorCode.TOO_MANY_REQUESTS,
-          message: 'Rate limit exceeded'
+          message: 'Rate limit exceeded',
         });
       }
 
@@ -61,11 +61,13 @@ export class NetronBuiltinMiddleware {
   /**
    * Circuit breaker middleware
    */
-  static circuitBreaker(options: {
-    threshold?: number;
-    timeout?: number;
-    resetTimeout?: number
-  } = {}): MiddlewareFunction {
+  static circuitBreaker(
+    options: {
+      threshold?: number;
+      timeout?: number;
+      resetTimeout?: number;
+    } = {}
+  ): MiddlewareFunction {
     const { threshold = 5, timeout = 60000, resetTimeout = 30000 } = options;
     let failures = 0;
     let state: 'closed' | 'open' | 'half-open' = 'closed';
@@ -76,7 +78,7 @@ export class NetronBuiltinMiddleware {
         if (Date.now() < nextAttempt) {
           throw new TitanError({
             code: ErrorCode.SERVICE_UNAVAILABLE,
-            message: 'Circuit breaker is open'
+            message: 'Circuit breaker is open',
           });
         }
         state = 'half-open';
@@ -117,7 +119,7 @@ export class NetronBuiltinMiddleware {
           method: ctx.methodName,
           duration,
           success,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         };
 
         if (metricsCollector) {
@@ -141,29 +143,38 @@ export class NetronBuiltinMiddleware {
     return async (ctx, next) => {
       const start = Date.now();
 
-      logger.info({
-        service: ctx.serviceName,
-        method: ctx.methodName,
-        input: ctx.input
-      }, 'Netron request');
+      logger.info(
+        {
+          service: ctx.serviceName,
+          method: ctx.methodName,
+          input: ctx.input,
+        },
+        'Netron request'
+      );
 
       try {
         await next();
 
         const duration = Date.now() - start;
-        logger.info({
-          service: ctx.serviceName,
-          method: ctx.methodName,
-          duration,
-          result: ctx.result
-        }, 'Netron response');
+        logger.info(
+          {
+            service: ctx.serviceName,
+            method: ctx.methodName,
+            duration,
+            result: ctx.result,
+          },
+          'Netron response'
+        );
       } catch (error: any) {
-        logger.error({
-          service: ctx.serviceName,
-          method: ctx.methodName,
-          error: error.message,
-          duration: Date.now() - start
-        }, 'Netron error');
+        logger.error(
+          {
+            service: ctx.serviceName,
+            method: ctx.methodName,
+            error: error.message,
+            duration: Date.now() - start,
+          },
+          'Netron error'
+        );
         throw error;
       }
     };
@@ -212,7 +223,7 @@ export class NetronBuiltinMiddleware {
       if (!authHeader || typeof authHeader !== 'string') {
         throw new TitanError({
           code: ErrorCode.UNAUTHORIZED,
-          message: 'No authorization token provided'
+          message: 'No authorization token provided',
         });
       }
 
@@ -226,7 +237,7 @@ export class NetronBuiltinMiddleware {
         throw new TitanError({
           code: ErrorCode.UNAUTHORIZED,
           message: 'Invalid authentication token',
-          cause: error
+          cause: error,
         });
       }
     };
@@ -242,7 +253,7 @@ export class NetronBuiltinMiddleware {
       if (!user) {
         throw new TitanError({
           code: ErrorCode.UNAUTHORIZED,
-          message: 'User not authenticated'
+          message: 'User not authenticated',
         });
       }
 
@@ -251,7 +262,7 @@ export class NetronBuiltinMiddleware {
       if (!requiredRoles.includes(userRole)) {
         throw new TitanError({
           code: ErrorCode.FORBIDDEN,
-          message: 'Insufficient permissions'
+          message: 'Insufficient permissions',
         });
       }
 
@@ -263,7 +274,7 @@ export class NetronBuiltinMiddleware {
    * Rate limiting middleware
    */
   static rateLimitMiddleware(limiter: {
-    check: (params: any) => Promise<{ allowed: boolean; retryAfter?: number }>
+    check: (params: any) => Promise<{ allowed: boolean; retryAfter?: number }>;
   }): MiddlewareFunction {
     return async (ctx, next) => {
       const key = `${ctx.serviceName}.${ctx.methodName}`;
@@ -273,7 +284,7 @@ export class NetronBuiltinMiddleware {
         throw new TitanError({
           code: ErrorCode.TOO_MANY_REQUESTS,
           message: 'Rate limit exceeded',
-          details: { retryAfter: result.retryAfter || 60 }
+          details: { retryAfter: result.retryAfter || 60 },
         });
       }
 
@@ -295,7 +306,7 @@ export class NetronBuiltinMiddleware {
       if (breaker.isOpen(key)) {
         throw new TitanError({
           code: ErrorCode.SERVICE_UNAVAILABLE,
-          message: 'Circuit breaker is open'
+          message: 'Circuit breaker is open',
         });
       }
 
@@ -316,10 +327,12 @@ export class NetronBuiltinMiddleware {
     return async (ctx, next) => {
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => {
-          reject(new TitanError({
-            code: ErrorCode.REQUEST_TIMEOUT,
-            message: `Request timed out after ${timeoutMs}ms`
-          }));
+          reject(
+            new TitanError({
+              code: ErrorCode.REQUEST_TIMEOUT,
+              message: `Request timed out after ${timeoutMs}ms`,
+            })
+          );
         }, timeoutMs);
       });
 
@@ -336,9 +349,8 @@ export class NetronBuiltinMiddleware {
     keyGenerator?: (ctx: NetronMiddlewareContext) => string;
   }): MiddlewareFunction {
     const { cache, ttl } = options;
-    const keyGenerator = options.keyGenerator || ((ctx) =>
-      `${ctx.serviceName}.${ctx.methodName}:${JSON.stringify(ctx.input)}`
-    );
+    const keyGenerator =
+      options.keyGenerator || ((ctx) => `${ctx.serviceName}.${ctx.methodName}:${JSON.stringify(ctx.input)}`);
 
     return async (ctx, next) => {
       const cacheKey = keyGenerator(ctx);
@@ -389,7 +401,7 @@ export class NetronBuiltinMiddleware {
           }
 
           if (attempt < options.maxAttempts) {
-            await new Promise(resolve => setTimeout(resolve, delay));
+            await new Promise((resolve) => setTimeout(resolve, delay));
 
             if (options.backoffMultiplier) {
               delay *= options.backoffMultiplier;
@@ -405,9 +417,11 @@ export class NetronBuiltinMiddleware {
   /**
    * Compression middleware
    */
-  static compressionMiddleware(options: {
-    threshold?: number;
-  } = {}): MiddlewareFunction {
+  static compressionMiddleware(
+    options: {
+      threshold?: number;
+    } = {}
+  ): MiddlewareFunction {
     const threshold = options.threshold || 1024; // 1KB default
 
     return async (ctx, next) => {
@@ -415,9 +429,7 @@ export class NetronBuiltinMiddleware {
 
       if (!ctx.result) return;
 
-      const data = typeof ctx.result === 'string'
-        ? ctx.result
-        : JSON.stringify(ctx.result);
+      const data = typeof ctx.result === 'string' ? ctx.result : JSON.stringify(ctx.result);
 
       if (data.length < threshold) return;
 
@@ -433,19 +445,19 @@ export class NetronBuiltinMiddleware {
    * Validation middleware
    */
   static validationMiddleware(validator: {
-    validate: (input: any, context: any) => { valid: boolean; errors?: string[] }
+    validate: (input: any, context: any) => { valid: boolean; errors?: string[] };
   }): MiddlewareFunction {
     return async (ctx, next) => {
       const result = validator.validate(ctx.input, {
         service: ctx.serviceName,
-        method: ctx.methodName
+        method: ctx.methodName,
       });
 
       if (!result.valid) {
         throw new TitanError({
           code: ErrorCode.BAD_REQUEST,
           message: 'Validation failed',
-          details: { errors: result.errors || [] }
+          details: { errors: result.errors || [] },
         });
       }
 

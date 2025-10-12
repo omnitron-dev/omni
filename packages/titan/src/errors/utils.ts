@@ -29,10 +29,7 @@ export type ErrorRecovery<T> = (error: TitanError) => T | Promise<T>;
 /**
  * Try-catch wrapper with TitanError conversion
  */
-export async function tryAsync<T>(
-  fn: () => Promise<T>,
-  errorCode: ErrorCode = ErrorCode.INTERNAL_ERROR
-): Promise<T> {
+export async function tryAsync<T>(fn: () => Promise<T>, errorCode: ErrorCode = ErrorCode.INTERNAL_ERROR): Promise<T> {
   try {
     return await fn();
   } catch (error) {
@@ -43,7 +40,7 @@ export async function tryAsync<T>(
     throw new TitanError({
       code: errorCode,
       message: error instanceof Error ? error.message : String(error),
-      cause: error
+      cause: error,
     });
   }
 }
@@ -51,10 +48,7 @@ export async function tryAsync<T>(
 /**
  * Try-catch wrapper for sync functions
  */
-export function trySync<T>(
-  fn: () => T,
-  errorCode: ErrorCode = ErrorCode.INTERNAL_ERROR
-): T {
+export function trySync<T>(fn: () => T, errorCode: ErrorCode = ErrorCode.INTERNAL_ERROR): T {
   try {
     return fn();
   } catch (error) {
@@ -65,7 +59,7 @@ export function trySync<T>(
     throw new TitanError({
       code: errorCode,
       message: error instanceof Error ? error.message : String(error),
-      cause: error
+      cause: error,
     });
   }
 }
@@ -89,7 +83,7 @@ export async function handleError<T>(
       : new TitanError({
           code: ErrorCode.INTERNAL_ERROR,
           message: error instanceof Error ? error.message : String(error),
-          cause: error
+          cause: error,
         });
 
     const handler = handlers[titanError.code as ErrorCode] || handlers.default;
@@ -123,14 +117,14 @@ export class ErrorHandlerChain {
    * Add a handler for specific error code
    */
   addForCode(code: ErrorCode, handler: ErrorHandlerFunction): this {
-    return this.add(handler, error => error.code === code);
+    return this.add(handler, (error) => error.code === code);
   }
 
   /**
    * Add a handler for error category
    */
   addForCategory(category: string, handler: ErrorHandlerFunction): this {
-    return this.add(handler, error => error.category === category);
+    return this.add(handler, (error) => error.category === category);
   }
 
   /**
@@ -161,7 +155,7 @@ export function createErrorBoundary<T>(
         : new TitanError({
             code: ErrorCode.INTERNAL_ERROR,
             message: error instanceof Error ? error.message : String(error),
-            cause: error
+            cause: error,
           });
 
       if (onError) {
@@ -193,7 +187,7 @@ export async function retryWithBackoff<T>(
     maxDelay = 30000,
     backoffFactor = 2,
     shouldRetry = (error) => error.isRetryable(),
-    onRetry
+    onRetry,
   } = options;
 
   let lastError: TitanError;
@@ -208,7 +202,7 @@ export async function retryWithBackoff<T>(
         : new TitanError({
             code: ErrorCode.INTERNAL_ERROR,
             message: error instanceof Error ? error.message : String(error),
-            cause: error
+            cause: error,
           });
 
       if (attempt === maxAttempts || !shouldRetry(lastError, attempt)) {
@@ -219,7 +213,7 @@ export async function retryWithBackoff<T>(
         onRetry(lastError, attempt, delay);
       }
 
-      await new Promise(resolve => setTimeout(resolve, delay));
+      await new Promise((resolve) => setTimeout(resolve, delay));
       delay = Math.min(delay * backoffFactor, maxDelay);
     }
   }
@@ -245,10 +239,7 @@ export class CircuitBreaker<T> {
 
   async execute(fn: () => Promise<T>): Promise<T> {
     // Check if circuit should be reset
-    if (
-      this.state === 'open' &&
-      Date.now() - this.lastFailureTime > this.options.resetTimeout
-    ) {
+    if (this.state === 'open' && Date.now() - this.lastFailureTime > this.options.resetTimeout) {
       this.state = 'half-open';
     }
 
@@ -257,7 +248,7 @@ export class CircuitBreaker<T> {
       throw new TitanError({
         code: ErrorCode.SERVICE_UNAVAILABLE,
         message: 'Circuit breaker is open',
-        details: { failures: this.failures }
+        details: { failures: this.failures },
       });
     }
 
@@ -289,7 +280,7 @@ export class CircuitBreaker<T> {
   getState(): { state: string; failures: number } {
     return {
       state: this.state,
-      failures: this.failures
+      failures: this.failures,
     };
   }
 
@@ -333,7 +324,7 @@ export class ErrorLogger {
       ...(this.options.includeContext && { context: error.context }),
       ...(this.options.includeStack && { stack: error.stack }),
       ...(error.requestId && { requestId: error.requestId }),
-      ...(error.correlationId && { correlationId: error.correlationId })
+      ...(error.correlationId && { correlationId: error.correlationId }),
     };
 
     if (error.category === 'server') {
@@ -388,7 +379,7 @@ export class ErrorMatcher {
    * Match error code
    */
   withCode(code: ErrorCode): this {
-    this.conditions.push(error => error.code === code);
+    this.conditions.push((error) => error.code === code);
     return this;
   }
 
@@ -396,10 +387,8 @@ export class ErrorMatcher {
    * Match error message
    */
   withMessage(message: string | RegExp): this {
-    this.conditions.push(error =>
-      typeof message === 'string'
-        ? error.message === message
-        : message.test(error.message)
+    this.conditions.push((error) =>
+      typeof message === 'string' ? error.message === message : message.test(error.message)
     );
     return this;
   }
@@ -408,7 +397,7 @@ export class ErrorMatcher {
    * Match error details
    */
   withDetails(matcher: (details: any) => boolean): this {
-    this.conditions.push(error => matcher(error.details));
+    this.conditions.push((error) => matcher(error.details));
     return this;
   }
 
@@ -416,7 +405,7 @@ export class ErrorMatcher {
    * Check if error matches
    */
   matches(error: TitanError): boolean {
-    return this.conditions.every(condition => condition(error));
+    return this.conditions.every((condition) => condition(error));
   }
 
   /**
@@ -427,7 +416,7 @@ export class ErrorMatcher {
       if (!TitanError.isTitanError(received)) {
         return {
           pass: false,
-          message: () => 'Expected TitanError'
+          message: () => 'Expected TitanError',
         };
       }
 
@@ -435,10 +424,7 @@ export class ErrorMatcher {
 
       return {
         pass,
-        message: () =>
-          pass
-            ? `Expected error not to match conditions`
-            : `Expected error to match conditions`
+        message: () => (pass ? `Expected error not to match conditions` : `Expected error to match conditions`),
       };
     };
   }

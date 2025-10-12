@@ -4,11 +4,7 @@
  */
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import type {
-  HttpRequestMessage,
-  HttpBatchRequest,
-  HttpBatchResponse
-} from './types.js';
+import type { HttpRequestMessage, HttpBatchRequest, HttpBatchResponse } from './types.js';
 import { NetronErrors, Errors } from '../../../errors/index.js';
 
 /**
@@ -85,13 +81,16 @@ export class RequestBatcher extends EventEmitter {
     averageBatchSize: 0,
     averageLatency: 0,
     currentQueueSize: 0,
-    retriedRequests: 0
+    retriedRequests: 0,
   };
 
   private latencies: number[] = [];
   private batchSizes: number[] = [];
 
-  constructor(private baseUrl: string, options: BatchOptions = {}) {
+  constructor(
+    private baseUrl: string,
+    options: BatchOptions = {}
+  ) {
     super();
 
     this.maxBatchSize = options.maxBatchSize || 10;
@@ -103,7 +102,7 @@ export class RequestBatcher extends EventEmitter {
     this.headers = {
       'Content-Type': 'application/json',
       'X-Netron-Version': '2.0',
-      ...options.headers
+      ...options.headers,
     };
 
     // Start age checking timer
@@ -120,7 +119,7 @@ export class RequestBatcher extends EventEmitter {
         resolve,
         reject,
         timestamp: Date.now(),
-        retries: 0
+        retries: 0,
       };
 
       this.queue.push(entry);
@@ -128,7 +127,7 @@ export class RequestBatcher extends EventEmitter {
 
       this.emit('request-queued', {
         requestId: request.id,
-        queueSize: this.queue.length
+        queueSize: this.queue.length,
       });
 
       // Check if we should flush immediately
@@ -187,7 +186,7 @@ export class RequestBatcher extends EventEmitter {
     this.emit('batch-start', {
       batchId,
       size: batch.length,
-      reason
+      reason,
     });
 
     try {
@@ -196,36 +195,39 @@ export class RequestBatcher extends EventEmitter {
         id: batchId,
         version: '2.0',
         timestamp: Date.now(),
-        requests: batch.map(entry => ({
+        requests: batch.map((entry) => ({
           id: entry.request.id,
           service: entry.request.service,
           method: entry.request.method,
           input: entry.request.input,
           context: entry.request.context,
-          hints: entry.request.hints
+          hints: entry.request.hints,
         })),
         options: {
           parallel: true,
-          stopOnError: false
-        }
+          stopOnError: false,
+        },
       };
 
       // Send batch request
       const response = await fetch(`${this.baseUrl}${this.batchEndpoint}`, {
         method: 'POST',
         headers: this.headers,
-        body: JSON.stringify(batchRequest)
+        body: JSON.stringify(batchRequest),
       });
 
       if (!response.ok) {
-        throw NetronErrors.invalidRequest(`Batch request failed: ${response.status} ${response.statusText}`, { status: response.status, statusText: response.statusText });
+        throw NetronErrors.invalidRequest(`Batch request failed: ${response.status} ${response.statusText}`, {
+          status: response.status,
+          statusText: response.statusText,
+        });
       }
 
       const batchResponse: HttpBatchResponse = await response.json();
 
       // Process individual responses
       for (const result of batchResponse.responses) {
-        const entry = batch.find(e => e.request.id === result.id);
+        const entry = batch.find((e) => e.request.id === result.id);
         if (!entry) continue;
 
         if (result.success) {
@@ -234,7 +236,7 @@ export class RequestBatcher extends EventEmitter {
 
           this.emit('request-success', {
             requestId: result.id,
-            latency: Date.now() - entry.timestamp
+            latency: Date.now() - entry.timestamp,
           });
         } else {
           // Handle failure with potential retry
@@ -248,7 +250,7 @@ export class RequestBatcher extends EventEmitter {
             this.emit('request-retry', {
               requestId: result.id,
               attempt: entry.retries,
-              error: result.error
+              error: result.error,
             });
           } else {
             entry.reject(Errors.internal(result.error?.message || 'Request failed'));
@@ -256,7 +258,7 @@ export class RequestBatcher extends EventEmitter {
 
             this.emit('request-failure', {
               requestId: result.id,
-              error: result.error
+              error: result.error,
             });
           }
         }
@@ -271,9 +273,8 @@ export class RequestBatcher extends EventEmitter {
         size: batch.length,
         latency,
         successCount: batchResponse.hints?.successCount || 0,
-        failureCount: batchResponse.hints?.failureCount || 0
+        failureCount: batchResponse.hints?.failureCount || 0,
       });
-
     } catch (error: any) {
       // Network or other errors - reject all promises in batch
       for (const entry of batch) {
@@ -292,7 +293,7 @@ export class RequestBatcher extends EventEmitter {
       this.emit('batch-error', {
         batchId,
         size: batch.length,
-        error: error.message
+        error: error.message,
       });
     }
   }
@@ -301,18 +302,21 @@ export class RequestBatcher extends EventEmitter {
    * Check for aged requests that should be sent
    */
   private startAgeChecker(): void {
-    this.ageTimer = setInterval(() => {
-      if (this.queue.length === 0 || this.processing) {
-        return;
-      }
+    this.ageTimer = setInterval(
+      () => {
+        if (this.queue.length === 0 || this.processing) {
+          return;
+        }
 
-      const now = Date.now();
-      const oldestRequest = this.queue[0];
+        const now = Date.now();
+        const oldestRequest = this.queue[0];
 
-      if (oldestRequest && (now - oldestRequest.timestamp) >= this.maxRequestAge) {
-        this.flush('age');
-      }
-    }, Math.min(this.maxRequestAge / 2, 10));
+        if (oldestRequest && now - oldestRequest.timestamp >= this.maxRequestAge) {
+          this.flush('age');
+        }
+      },
+      Math.min(this.maxRequestAge / 2, 10)
+    );
   }
 
   /**
@@ -335,11 +339,9 @@ export class RequestBatcher extends EventEmitter {
     }
 
     // Calculate averages
-    this.stats.averageBatchSize =
-      this.batchSizes.reduce((a, b) => a + b, 0) / this.batchSizes.length;
+    this.stats.averageBatchSize = this.batchSizes.reduce((a, b) => a + b, 0) / this.batchSizes.length;
 
-    this.stats.averageLatency =
-      this.latencies.reduce((a, b) => a + b, 0) / this.latencies.length;
+    this.stats.averageLatency = this.latencies.reduce((a, b) => a + b, 0) / this.latencies.length;
   }
 
   /**
@@ -361,7 +363,7 @@ export class RequestBatcher extends EventEmitter {
       averageBatchSize: 0,
       averageLatency: 0,
       currentQueueSize: this.queue.length,
-      retriedRequests: 0
+      retriedRequests: 0,
     };
 
     this.latencies = [];

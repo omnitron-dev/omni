@@ -49,13 +49,7 @@ describe('Class Utilities', () => {
     });
 
     it('should handle mixed inputs', () => {
-      const result = classNames(
-        'base',
-        ['foo', 'bar'],
-        { active: true, disabled: false },
-        undefined,
-        'baz'
-      );
+      const result = classNames('base', ['foo', 'bar'], { active: true, disabled: false }, undefined, 'baz');
       expect(result).toBe('base foo bar active baz');
     });
   });
@@ -94,9 +88,7 @@ describe('Class Utilities', () => {
   describe('reactiveClasses', () => {
     it('should evaluate function to get class string', () => {
       const isActive = signal(true);
-      const result = reactiveClasses(() =>
-        classNames('base', { active: isActive() })
-      );
+      const result = reactiveClasses(() => classNames('base', { active: isActive() }));
       expect(result).toBe('base active');
     });
 

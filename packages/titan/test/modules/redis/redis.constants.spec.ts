@@ -21,12 +21,7 @@ describe('Redis Constants', () => {
     });
 
     it('should be unique values', () => {
-      const tokens = new Set([
-        REDIS_MODULE_OPTIONS,
-        REDIS_MANAGER,
-        REDIS_CLIENT,
-        REDIS_DEFAULT_NAMESPACE,
-      ]);
+      const tokens = new Set([REDIS_MODULE_OPTIONS, REDIS_MANAGER, REDIS_CLIENT, REDIS_DEFAULT_NAMESPACE]);
       expect(tokens.size).toBe(4);
     });
   });
@@ -96,7 +91,6 @@ describe('Redis Constants', () => {
       expect(getRedisClientToken(undefined)).toBe('REDIS_CLIENT:default');
       expect(getRedisClientToken()).toBe('REDIS_CLIENT:default');
     });
-
   });
 
   describe('getRedisOptionsToken', () => {
@@ -182,8 +176,8 @@ describe('Redis Constants', () => {
 
     it('should maintain independence across multiple namespaces', () => {
       const namespaces = ['cache', 'pubsub', 'session', 'metrics', 'default'];
-      const clientTokens = namespaces.map(ns => getRedisClientToken(ns));
-      const optionsTokens = namespaces.map(ns => getRedisOptionsToken(ns));
+      const clientTokens = namespaces.map((ns) => getRedisClientToken(ns));
+      const optionsTokens = namespaces.map((ns) => getRedisOptionsToken(ns));
 
       // All tokens should be unique
       const allTokens = [...clientTokens, ...optionsTokens];
@@ -256,7 +250,7 @@ describe('Redis Constants', () => {
         );
       }
 
-      return Promise.all(promises).then(results => {
+      return Promise.all(promises).then((results) => {
         const uniqueResults = new Set(results);
         expect(uniqueResults.size).toBe(2000); // All should be unique
       });

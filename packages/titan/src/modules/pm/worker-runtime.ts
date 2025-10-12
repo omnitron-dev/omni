@@ -13,7 +13,7 @@ import { Errors } from '../../errors/index.js';
 // Worker configuration from parent
 interface WorkerConfig {
   processId: string;
-  processPath: string;  // Path to the process file
+  processPath: string; // Path to the process file
   transport: {
     type: 'tcp' | 'unix' | 'ws' | 'ipc';
     host?: string;
@@ -60,7 +60,7 @@ async function initialize() {
     // Initialize Netron for this process
     const netronOptions: any = {
       id: config.processId,
-      allowServiceEvents: true
+      allowServiceEvents: true,
     };
 
     const netron = new Netron(console as any, netronOptions);
@@ -70,7 +70,7 @@ async function initialize() {
 
     // Create service wrapper with public methods
     const serviceWrapper: any = {
-      __instance: processInstance
+      __instance: processInstance,
     };
 
     // Get process method metadata and expose public methods
@@ -119,8 +119,8 @@ async function initialize() {
         errors: (processInstance as any).__errorCount || 0,
         uptime: process.uptime(),
         latency: {
-          last: (processInstance as any).__lastLatency || 0
-        }
+          last: (processInstance as any).__lastLatency || 0,
+        },
       };
     };
 
@@ -154,7 +154,7 @@ async function initialize() {
           checks.push({
             name: methodName,
             status: 'fail' as const,
-            message: error.message
+            message: error.message,
           });
         }
       }
@@ -162,7 +162,7 @@ async function initialize() {
       return {
         status: overallStatus,
         checks,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
     };
 
@@ -184,10 +184,14 @@ async function initialize() {
     };
 
     // Apply service metadata to wrapper for Netron
-    Reflect.defineMetadata('netron:service', {
-      name: serviceName,
-      version: serviceVersion
-    }, serviceWrapper);
+    Reflect.defineMetadata(
+      'netron:service',
+      {
+        name: serviceName,
+        version: serviceVersion,
+      },
+      serviceWrapper
+    );
 
     // Expose the service via Netron
     await netron.peer.exposeService(serviceWrapper);
@@ -228,7 +232,7 @@ async function initialize() {
       processId: config.processId,
       transportUrl,
       serviceName,
-      serviceVersion
+      serviceVersion,
     });
 
     // Listen for parent messages
@@ -249,7 +253,6 @@ async function initialize() {
 
     // Log successful initialization
     console.log(`Process ${config.processId} (${serviceName}@${serviceVersion}) initialized at ${transportUrl}`);
-
   } catch (error: any) {
     console.error('Worker initialization failed:', error);
 
@@ -259,8 +262,8 @@ async function initialize() {
       processId: config.processId,
       error: {
         message: error.message,
-        stack: error.stack
-      }
+        stack: error.stack,
+      },
     });
 
     // Exit with error code
@@ -269,7 +272,7 @@ async function initialize() {
 }
 
 // Start initialization
-initialize().catch(error => {
+initialize().catch((error) => {
   console.error('Failed to initialize worker:', error);
   process.exit(1);
 });

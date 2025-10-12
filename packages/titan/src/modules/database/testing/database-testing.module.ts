@@ -215,7 +215,7 @@ export class DatabaseTestingService {
    * Insert seed data
    */
   private async insertSeeds(seeds: any[]): Promise<void> {
-    const db = this.currentTransaction || await this.manager.getConnection();
+    const db = this.currentTransaction || (await this.manager.getConnection());
 
     for (const seed of seeds) {
       if (!seed.table || !seed.data) continue;
@@ -224,10 +224,7 @@ export class DatabaseTestingService {
         const records = Array.isArray(seed.data) ? seed.data : [seed.data];
 
         for (const record of records) {
-          await (db as Kysely<any>)
-            .insertInto(seed.table)
-            .values(record)
-            .execute();
+          await (db as Kysely<any>).insertInto(seed.table).values(record).execute();
         }
       } catch (error) {
         if (this.options.verbose) {
@@ -344,7 +341,7 @@ export class DatabaseTestingService {
    * Execute a query in test context
    */
   async execute<T>(query: (db: Kysely<any>) => Promise<T>): Promise<T> {
-    const db = this.currentTransaction || await this.manager.getConnection();
+    const db = this.currentTransaction || (await this.manager.getConnection());
     return query(db as Kysely<any>);
   }
 
@@ -358,21 +355,13 @@ export class DatabaseTestingService {
   /**
    * Factory method to create test data
    */
-  async factory<T>(
-    table: string,
-    generator: () => Partial<T> | Promise<Partial<T>>,
-    count: number = 1
-  ): Promise<T[]> {
+  async factory<T>(table: string, generator: () => Partial<T> | Promise<Partial<T>>, count: number = 1): Promise<T[]> {
     const db = this.getTestConnection();
     const results: T[] = [];
 
     for (let i = 0; i < count; i++) {
       const data = await generator();
-      const result = await (db as Kysely<any>)
-        .insertInto(table)
-        .values(data)
-        .returningAll()
-        .executeTakeFirst();
+      const result = await (db as Kysely<any>).insertInto(table).values(data).returningAll().executeTakeFirst();
 
       if (result) {
         results.push(result as T);
@@ -453,11 +442,12 @@ export class DatabaseTestingModule {
       },
       {
         provide: DATABASE_TESTING_SERVICE,
-        useFactory: async (manager: DatabaseManager) => new DatabaseTestingService(
+        useFactory: async (manager: DatabaseManager) =>
+          new DatabaseTestingService(
             manager,
             defaultOptions,
-            undefined,  // migrationRunner (optional)
-            undefined   // transactionManager (optional)
+            undefined, // migrationRunner (optional)
+            undefined // transactionManager (optional)
           ),
         inject: [DATABASE_MANAGER],
         async: true,

@@ -301,7 +301,7 @@ describe('authenticate core-task', () => {
           userId: 'user123',
           roles: ['admin', 'user'],
         }),
-        'Peer authenticated successfully',
+        'Peer authenticated successfully'
       );
     });
 
@@ -322,7 +322,7 @@ describe('authenticate core-task', () => {
         expect.objectContaining({
           error: 'Invalid credentials',
         }),
-        'Authentication failed',
+        'Authentication failed'
       );
     });
 
@@ -341,7 +341,7 @@ describe('authenticate core-task', () => {
         expect.objectContaining({
           error: expect.any(Error),
         }),
-        'Authentication error',
+        'Authentication error'
       );
     });
   });

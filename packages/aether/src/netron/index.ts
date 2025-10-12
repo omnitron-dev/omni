@@ -14,11 +14,7 @@
  * to the naming conventions expected by Aether applications.
  */
 
-import {
-  WebSocketPeer,
-  HttpClient,
-  WebSocketConnection,
-} from '@omnitron-dev/netron-browser';
+import { WebSocketPeer, HttpClient, WebSocketConnection } from '@omnitron-dev/netron-browser';
 import type {
   WebSocketPeerOptions,
   WebSocketConnectionOptions,
@@ -99,7 +95,8 @@ export class NetronClient {
       reconnect: this.options.reconnect ?? this.options.websocket?.reconnect,
       reconnectDelay: this.options.reconnectDelay ?? this.options.websocket?.reconnectDelay,
       maxReconnectDelay: this.options.maxReconnectDelay ?? this.options.websocket?.maxReconnectDelay,
-      reconnectBackoffMultiplier: this.options.reconnectBackoffMultiplier ?? this.options.websocket?.reconnectBackoffMultiplier,
+      reconnectBackoffMultiplier:
+        this.options.reconnectBackoffMultiplier ?? this.options.websocket?.reconnectBackoffMultiplier,
       maxReconnectAttempts: this.options.maxReconnectAttempts ?? this.options.websocket?.maxReconnectAttempts,
       protocols: this.options.protocols ?? this.options.websocket?.protocols,
       debug: this.options.debug,
@@ -252,7 +249,10 @@ export class HttpNetronClient {
 
     // Create a service proxy that calls httpClient.invoke for each method
     return new Proxy({} as any, {
-      get: (_target, prop: string) => async (...args: any[]) => await this.httpClient!.invoke(serviceName, prop, args)
+      get:
+        (_target, prop: string) =>
+        async (...args: any[]) =>
+          await this.httpClient!.invoke(serviceName, prop, args),
     }) as T;
   }
 
@@ -371,16 +371,9 @@ export { createClient } from '@omnitron-dev/netron-browser';
 // ============================================================================
 // Transport Layer
 // ============================================================================
-export {
-  WebSocketPeer,
-  WebSocketConnection,
-  WebSocketState,
-} from '@omnitron-dev/netron-browser';
+export { WebSocketPeer, WebSocketConnection, WebSocketState } from '@omnitron-dev/netron-browser';
 
-export type {
-  WebSocketPeerOptions,
-  WebSocketConnectionOptions,
-} from '@omnitron-dev/netron-browser';
+export type { WebSocketPeerOptions, WebSocketConnectionOptions } from '@omnitron-dev/netron-browser';
 
 // ============================================================================
 // Type System
@@ -562,7 +555,7 @@ export const Method = () => (_target: any, _propertyKey: string) => {
 
 // BrowserLogger for backward compatibility
 export class BrowserLogger {
-  constructor(private context?: any) { }
+  constructor(private context?: any) {}
 
   debug(...args: any[]) {
     console.debug('[BrowserLogger]', ...args);
@@ -597,7 +590,6 @@ export const BrowserRemotePeer = WebSocketPeer;
 
 // Export BrowserWebSocketConnection alias
 export const BrowserWebSocketConnection = WebSocketConnection;
-
 
 /**
  * Usage Examples:

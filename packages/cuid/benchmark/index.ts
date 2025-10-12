@@ -56,7 +56,7 @@ const calculateRelativePerformance = (results: Map<string, number>): Map<string,
   const relative = new Map<string, string>();
 
   results.forEach((value, key) => {
-    const percentage = (value / max * 100).toFixed(1);
+    const percentage = ((value / max) * 100).toFixed(1);
     relative.set(key, `${percentage}%`);
   });
 
@@ -95,10 +95,14 @@ suite1
   .on('cycle', (event: any) => {
     const bench = event.target;
     results1.set(bench.name, bench.hz);
-    console.log(`  ${colors.green}✓${colors.reset} ${bench.name}: ${colors.bright}${formatNumber(bench.hz)}${colors.reset} ops/sec`);
+    console.log(
+      `  ${colors.green}✓${colors.reset} ${bench.name}: ${colors.bright}${formatNumber(bench.hz)}${colors.reset} ops/sec`
+    );
   })
   .on('complete', function (this: any) {
-    console.log(`\n${colors.bright}${colors.blue}Fastest:${colors.reset} ${colors.green}${this.filter('fastest').map('name')}${colors.reset}`);
+    console.log(
+      `\n${colors.bright}${colors.blue}Fastest:${colors.reset} ${colors.green}${this.filter('fastest').map('name')}${colors.reset}`
+    );
 
     // Show relative performance
     const relative = calculateRelativePerformance(results1);
@@ -143,10 +147,14 @@ function runSuite2() {
     .on('cycle', (event: any) => {
       const bench = event.target;
       results2.set(bench.name, bench.hz);
-      console.log(`  ${colors.green}✓${colors.reset} ${bench.name}: ${colors.bright}${formatNumber(bench.hz)}${colors.reset} ops/sec`);
+      console.log(
+        `  ${colors.green}✓${colors.reset} ${bench.name}: ${colors.bright}${formatNumber(bench.hz)}${colors.reset} ops/sec`
+      );
     })
     .on('complete', function (this: any) {
-      console.log(`\n${colors.bright}${colors.blue}Fastest:${colors.reset} ${colors.green}${this.filter('fastest').map('name')}${colors.reset}`);
+      console.log(
+        `\n${colors.bright}${colors.blue}Fastest:${colors.reset} ${colors.green}${this.filter('fastest').map('name')}${colors.reset}`
+      );
 
       // Show relative performance
       const relative = calculateRelativePerformance(results2);
@@ -197,10 +205,14 @@ function runSuite3() {
     .on('cycle', (event: any) => {
       const bench = event.target;
       results3.set(bench.name, bench.hz);
-      console.log(`  ${colors.green}✓${colors.reset} ${bench.name}: ${colors.bright}${formatNumber(bench.hz)}${colors.reset} ops/sec`);
+      console.log(
+        `  ${colors.green}✓${colors.reset} ${bench.name}: ${colors.bright}${formatNumber(bench.hz)}${colors.reset} ops/sec`
+      );
     })
     .on('complete', function (this: any) {
-      console.log(`\n${colors.bright}${colors.blue}Fastest:${colors.reset} ${colors.green}${this.filter('fastest').map('name')}${colors.reset}`);
+      console.log(
+        `\n${colors.bright}${colors.blue}Fastest:${colors.reset} ${colors.green}${this.filter('fastest').map('name')}${colors.reset}`
+      );
 
       // Show relative performance
       const relative = calculateRelativePerformance(results3);
@@ -239,9 +251,13 @@ function runCollisionTest() {
     const rate = Math.round(count / (time / 1000));
 
     if (collisions === 0) {
-      console.log(`  ${colors.green}✓${colors.reset} ${name}: ${colors.green}No collisions${colors.reset} (${formatNumber(rate)} IDs/sec)`);
+      console.log(
+        `  ${colors.green}✓${colors.reset} ${name}: ${colors.green}No collisions${colors.reset} (${formatNumber(rate)} IDs/sec)`
+      );
     } else {
-      console.log(`  ${colors.red}✗${colors.reset} ${name}: ${colors.red}${collisions} collisions${colors.reset} (${formatNumber(rate)} IDs/sec)`);
+      console.log(
+        `  ${colors.red}✗${colors.reset} ${name}: ${colors.red}${collisions} collisions${colors.reset} (${formatNumber(rate)} IDs/sec)`
+      );
     }
 
     return { collisions, time, rate };

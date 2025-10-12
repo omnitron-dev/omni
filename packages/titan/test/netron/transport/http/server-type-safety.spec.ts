@@ -24,25 +24,25 @@ describe('HttpServer Type Safety (Phase 2)', () => {
           methods: {
             echo: { name: 'echo' },
             validate: { name: 'validate' },
-            throwError: { name: 'throwError' }
+            throwError: { name: 'throwError' },
           },
           contract: {
             echo: {
               input: z.object({ message: z.string() }),
-              output: z.object({ message: z.string(), timestamp: z.number() })
+              output: z.object({ message: z.string(), timestamp: z.number() }),
             } as MethodContract,
             validate: {
               input: z.object({ value: z.number().min(0).max(100) }),
-              output: z.object({ valid: z.boolean() })
-            } as MethodContract
-          }
-        }
+              output: z.object({ valid: z.boolean() }),
+            } as MethodContract,
+          },
+        },
       },
-      call: jest.fn()
+      call: jest.fn(),
     };
 
     mockPeer = {
-      stubs: new Map([['stub-typed', typedStub]])
+      stubs: new Map([['stub-typed', typedStub]]),
     };
 
     server = new HttpServer({ port: 3457 });
@@ -54,9 +54,9 @@ describe('HttpServer Type Safety (Phase 2)', () => {
       const typedStub = mockPeer.stubs.get('stub-typed');
       let capturedContext: MethodHandlerContext | undefined;
 
-      typedStub.call.mockImplementation(async (method: string, args: any[], peer: any) => 
+      typedStub.call.mockImplementation(async (method: string, args: any[], peer: any) =>
         // Handler receives MethodHandlerContext
-         ({ message: args[0].message, timestamp: Date.now() })
+        ({ message: args[0].message, timestamp: Date.now() })
       );
 
       const request = new Request('http://localhost:3457/netron/invoke', {
@@ -71,12 +71,12 @@ describe('HttpServer Type Safety (Phase 2)', () => {
           input: { message: 'Hello Type Safety!' },
           context: {
             traceId: 'trace-123',
-            userId: 'user-456'
+            userId: 'user-456',
           },
           hints: {
-            cache: { maxAge: 60000 }
-          }
-        })
+            cache: { maxAge: 60000 },
+          },
+        }),
       });
 
       const response = await server.handleRequest(request);
@@ -95,7 +95,7 @@ describe('HttpServer Type Safety (Phase 2)', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Custom-Header': 'test-value'
+          'X-Custom-Header': 'test-value',
         },
         body: JSON.stringify({
           id: 'req-test-1',
@@ -103,8 +103,8 @@ describe('HttpServer Type Safety (Phase 2)', () => {
           timestamp: Date.now(),
           service: 'TypedService@1.0.0',
           method: 'echo',
-          input: { message: 'test' }
-        })
+          input: { message: 'test' },
+        }),
       });
 
       const response = await server.handleRequest(request);
@@ -129,8 +129,8 @@ describe('HttpServer Type Safety (Phase 2)', () => {
           service: 'TypedService@1.0.0',
           method: 'echo',
           input: { message: 'test' },
-          context: { customField: 'customValue' }
-        })
+          context: { customField: 'customValue' },
+        }),
       });
 
       const response = await server.handleRequest(request);
@@ -149,7 +149,7 @@ describe('HttpServer Type Safety (Phase 2)', () => {
         new TitanError({
           code: ErrorCode.INVALID_ARGUMENT,
           message: 'Invalid input provided',
-          details: { field: 'value', reason: 'out of range' }
+          details: { field: 'value', reason: 'out of range' },
         })
       );
 
@@ -162,8 +162,8 @@ describe('HttpServer Type Safety (Phase 2)', () => {
           timestamp: Date.now(),
           service: 'TypedService@1.0.0',
           method: 'throwError',
-          input: {}
-        })
+          input: {},
+        }),
       });
 
       const response = await server.handleRequest(request);
@@ -190,8 +190,8 @@ describe('HttpServer Type Safety (Phase 2)', () => {
           timestamp: Date.now(),
           service: 'TypedService@1.0.0',
           method: 'throwError',
-          input: {}
-        })
+          input: {},
+        }),
       });
 
       const response = await server.handleRequest(request);
@@ -217,8 +217,8 @@ describe('HttpServer Type Safety (Phase 2)', () => {
           timestamp: Date.now(),
           service: 'TypedService@1.0.0',
           method: 'throwError',
-          input: {}
-        })
+          input: {},
+        }),
       });
 
       const response = await server.handleRequest(request);
@@ -237,7 +237,7 @@ describe('HttpServer Type Safety (Phase 2)', () => {
       typedStub.call.mockRejectedValue(
         new TitanError({
           code: ErrorCode.NOT_FOUND,
-          message: 'Resource not found'
+          message: 'Resource not found',
         })
       );
 
@@ -250,8 +250,8 @@ describe('HttpServer Type Safety (Phase 2)', () => {
           timestamp: Date.now(),
           service: 'TypedService@1.0.0',
           method: 'throwError',
-          input: {}
-        })
+          input: {},
+        }),
       });
 
       const response = await server.handleRequest(request);
@@ -273,7 +273,7 @@ describe('HttpServer Type Safety (Phase 2)', () => {
       typedStub.call.mockRejectedValueOnce(
         new TitanError({
           code: ErrorCode.INVALID_ARGUMENT,
-          message: 'Validation failed'
+          message: 'Validation failed',
         })
       );
 
@@ -289,16 +289,16 @@ describe('HttpServer Type Safety (Phase 2)', () => {
               id: 'req-1',
               service: 'TypedService@1.0.0',
               method: 'echo',
-              input: { message: 'test1' }
+              input: { message: 'test1' },
             },
             {
               id: 'req-2',
               service: 'TypedService@1.0.0',
               method: 'throwError',
-              input: {}
-            }
-          ]
-        })
+              input: {},
+            },
+          ],
+        }),
       });
 
       const response = await server.handleRequest(request);
@@ -334,10 +334,10 @@ describe('HttpServer Type Safety (Phase 2)', () => {
               id: 'req-1',
               service: 'TypedService@1.0.0',
               method: 'echo',
-              input: { message: 'test' }
-            }
-          ]
-        })
+              input: { message: 'test' },
+            },
+          ],
+        }),
       });
 
       const response = await server.handleRequest(request);
@@ -368,9 +368,9 @@ describe('HttpServer Type Safety (Phase 2)', () => {
           context: {
             traceId: 'trace-123',
             userId: 'user-456',
-            customData: { nested: 'value' }
-          }
-        })
+            customData: { nested: 'value' },
+          },
+        }),
       });
 
       const response = await server.handleRequest(request);
@@ -392,8 +392,8 @@ describe('HttpServer Type Safety (Phase 2)', () => {
           timestamp: Date.now(),
           service: 'TypedService@1.0.0',
           method: 'validate',
-          input: { value: 150 } // Out of range (max 100)
-        })
+          input: { value: 150 }, // Out of range (max 100)
+        }),
       });
 
       const response = await server.handleRequest(request);
@@ -419,8 +419,8 @@ describe('HttpServer Type Safety (Phase 2)', () => {
           timestamp: Date.now(),
           service: 'TypedService@1.0.0',
           method: 'validate',
-          input: { value: 50 } // Valid (0-100)
-        })
+          input: { value: 50 }, // Valid (0-100)
+        }),
       });
 
       const response = await server.handleRequest(request);

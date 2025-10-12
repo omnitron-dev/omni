@@ -1,7 +1,16 @@
 import { TestContainer } from './test-container.js';
 import { Container } from '../container.js';
 import { createToken, getTokenName } from '../token.js';
-import { Scope, IModule, Provider, ProviderDefinition, Constructor, InjectionToken, InjectionToken as Token, RegistrationOptions } from '../types.js';
+import {
+  Scope,
+  IModule,
+  Provider,
+  ProviderDefinition,
+  Constructor,
+  InjectionToken,
+  InjectionToken as Token,
+  RegistrationOptions,
+} from '../types.js';
 
 /**
  * Test utility functions for Nexus testing
@@ -145,10 +154,21 @@ export class SnapshotContainer extends Container {
     optionsArg?: RegistrationOptions
   ): this {
     // Check if it's an override registration
-    const options = optionsArg || (typeof providerOrOptions === 'object' && !('useValue' in providerOrOptions) && !('useClass' in providerOrOptions) && !('useFactory' in providerOrOptions) && !('useToken' in providerOrOptions) ? providerOrOptions as RegistrationOptions : undefined);
+    const options =
+      optionsArg ||
+      (typeof providerOrOptions === 'object' &&
+      !('useValue' in providerOrOptions) &&
+      !('useClass' in providerOrOptions) &&
+      !('useFactory' in providerOrOptions) &&
+      !('useToken' in providerOrOptions)
+        ? (providerOrOptions as RegistrationOptions)
+        : undefined);
     if (options?.override && 'instances' in this) {
       // Clear cached instance when overriding
-      const token = typeof tokenOrProvider === 'object' && 'provide' in tokenOrProvider ? tokenOrProvider.provide : tokenOrProvider as InjectionToken<T>;
+      const token =
+        typeof tokenOrProvider === 'object' && 'provide' in tokenOrProvider
+          ? tokenOrProvider.provide
+          : (tokenOrProvider as InjectionToken<T>);
       (this as any).instances.delete(token);
     }
     return super.register(tokenOrProvider, providerOrOptions as any, optionsArg);
@@ -188,34 +208,34 @@ export class TestModule implements IModule {
     public readonly providers: Provider<any>[] = [],
     public readonly imports: IModule[] = [],
     public readonly exports: Token<any>[] = []
-  ) { }
+  ) {}
 
-  static override(original: IModule, overrides: { providers?: Array<Provider<any> | [InjectionToken<any>, Provider<any>]> }): TestModule {
+  static override(
+    original: IModule,
+    overrides: { providers?: Array<Provider<any> | [InjectionToken<any>, Provider<any>]> }
+  ): TestModule {
     const providers = overrides.providers || original.providers || [];
 
     // Extract tokens from providers for export
-    const exports = providers.map(p => {
-      if (Array.isArray(p)) {
-        return p[0]; // Token is first element of tuple
-      }
-      // For TestProvider format with 'provide' property
-      if (typeof p === 'object' && p && 'provide' in p) {
-        return (p as any).provide;
-      }
-      // For plain providers, we can't extract a token, so skip
-      return undefined;
-    }).filter(Boolean) as Token<any>[];
+    const exports = providers
+      .map((p) => {
+        if (Array.isArray(p)) {
+          return p[0]; // Token is first element of tuple
+        }
+        // For TestProvider format with 'provide' property
+        if (typeof p === 'object' && p && 'provide' in p) {
+          return (p as any).provide;
+        }
+        // For plain providers, we can't extract a token, so skip
+        return undefined;
+      })
+      .filter(Boolean) as Token<any>[];
 
     // Combine with original exports
     const originalExports = original.exports || [];
     const allExports = [...new Set([...originalExports, ...exports])];
 
-    return new TestModule(
-      original.name,
-      providers as any,
-      original.imports || [],
-      allExports
-    );
+    return new TestModule(original.name, providers as any, original.imports || [], allExports);
   }
 }
 
@@ -333,7 +353,10 @@ class ResolutionExpectationImpl<T> implements ResolutionExpectation<T> {
   private shouldResolve = false;
   private maxTime?: number;
 
-  constructor(private container: Container, private token: Token<T>) { }
+  constructor(
+    private container: Container,
+    private token: Token<T>
+  ) {}
 
   toResolve(): ResolutionExpectation<T> {
     this.shouldResolve = true;
@@ -378,7 +401,10 @@ class RejectionExpectationImpl implements RejectionExpectation {
   private expectedMessage?: string;
   private expectedErrorType?: Constructor<Error>;
 
-  constructor(private container: Container, private token: Token<any>) { }
+  constructor(
+    private container: Container,
+    private token: Token<any>
+  ) {}
 
   toThrow(message?: string): RejectionExpectation {
     this.expectedMessage = message;
@@ -410,7 +436,10 @@ class DependencyExpectationImpl implements DependencyExpectation {
   private expectedToken?: Token<any>;
   private expectedCardinality?: number;
 
-  constructor(private container: Container, private token: Token<any>) { }
+  constructor(
+    private container: Container,
+    private token: Token<any>
+  ) {}
 
   toHaveDependency(token: Token<any>): DependencyExpectation {
     this.expectedToken = token;
@@ -438,7 +467,10 @@ class LifecycleExpectationImpl implements LifecycleExpectation {
   private shouldCallOnInit = false;
   private shouldCallOnDestroy = false;
 
-  constructor(private container: Container, private token: Token<any>) { }
+  constructor(
+    private container: Container,
+    private token: Token<any>
+  ) {}
 
   toCallOnInit(): LifecycleExpectation {
     this.shouldCallOnInit = true;
@@ -471,7 +503,7 @@ export async function waitFor(
     if (result) {
       return;
     }
-    await new Promise(resolve => setTimeout(resolve, interval));
+    await new Promise((resolve) => setTimeout(resolve, interval));
   }
 
   throw new Error(`Timeout waiting for condition after ${timeout}ms`);
@@ -496,7 +528,7 @@ export function createDeferred<T>(): {
   return {
     promise,
     resolve: resolve!,
-    reject: reject!
+    reject: reject!,
   };
 }
 
@@ -512,7 +544,7 @@ export function createTestProvider<T>(
 ): ProviderDefinition<T> {
   return {
     useValue: value,
-    scope: options?.scope
+    scope: options?.scope,
   };
 }
 
@@ -530,7 +562,7 @@ export function createTestFactoryProvider<T>(
   return {
     useFactory: factory,
     inject: options?.inject,
-    scope: options?.scope
+    scope: options?.scope,
   };
 }
 
@@ -548,7 +580,7 @@ export function createTestClassProvider<T>(
   return {
     useClass: cls,
     inject: options?.inject,
-    scope: options?.scope
+    scope: options?.scope,
   };
 }
 
@@ -588,10 +620,7 @@ export async function assertThrows<E extends Error>(
 /**
  * Create a test token with metadata
  */
-export function createTestToken<T>(
-  name: string,
-  metadata?: Record<string, any>
-): Token<T> {
+export function createTestToken<T>(name: string, metadata?: Record<string, any>): Token<T> {
   return createToken<T>(name, metadata);
 }
 
@@ -687,7 +716,7 @@ export function createTestSuite(
       if (container) {
         cleanupTest(container);
       }
-    }
+    },
   };
 }
 
@@ -737,12 +766,7 @@ export function createTestModule(config: TestModuleConfig): TestModule {
   const exports = config.exports || tokens;
 
   // Create the module with providers in tuple format
-  return new TestModule(
-    config.name,
-    allProviders as any,
-    config.imports,
-    exports as Token<any>[]
-  );
+  return new TestModule(config.name, allProviders as any, config.imports, exports as Token<any>[]);
 }
 
 /**

@@ -93,7 +93,7 @@ describe('emit core task', () => {
     const complexData = {
       id: 123,
       nested: { key: 'value' },
-      array: [1, 2, 3]
+      array: [1, 2, 3],
     };
 
     remotePeer.eventSubscribers.set(eventName, new Set([handler]));

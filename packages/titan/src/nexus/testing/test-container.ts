@@ -3,14 +3,7 @@
  */
 
 import { Container } from '../container.js';
-import {
-  IModule,
-  Provider,
-  ProviderDefinition,
-  Constructor,
-  InjectionToken,
-  RegistrationOptions
-} from '../types.js';
+import { IModule, Provider, ProviderDefinition, Constructor, InjectionToken, RegistrationOptions } from '../types.js';
 
 /**
  * Mock provider configuration
@@ -169,14 +162,14 @@ export class TestContainer extends Container {
             const result = originalFn(...args);
             this.recordInteraction(token, {
               method: key,
-              args
+              args,
             });
             return result;
           } catch (error) {
             this.recordInteraction(token, {
               method: key,
               args,
-              error: error as Error
+              error: error as Error,
             });
             throw error;
           }
@@ -269,7 +262,7 @@ export class TestContainer extends Container {
       useFactory: (factory: (...args: any[]) => T) => {
         this.register(token, { useFactory: factory }, { override: true, tags: ['override'] });
         return this;
-      }
+      },
     };
   }
 
@@ -429,7 +422,6 @@ export class TestContainer extends Container {
     }
   }
 
-
   /**
    * Verify no unexpected calls
    */
@@ -457,7 +449,11 @@ export class TestContainer extends Container {
     if (this.detectLeaks || this.trackMemory) {
       // Extract token from various formats
       let token: InjectionToken<T> | undefined;
-      if (typeof tokenOrProvider === 'function' || typeof tokenOrProvider === 'string' || typeof tokenOrProvider === 'symbol') {
+      if (
+        typeof tokenOrProvider === 'function' ||
+        typeof tokenOrProvider === 'string' ||
+        typeof tokenOrProvider === 'symbol'
+      ) {
         token = tokenOrProvider as InjectionToken<T>;
       } else if (tokenOrProvider && typeof tokenOrProvider === 'object' && 'id' in tokenOrProvider) {
         token = tokenOrProvider as InjectionToken<T>;
@@ -513,9 +509,12 @@ export class TestContainer extends Container {
    * Create automatic mock
    */
   private createAutoMock<T>(token: InjectionToken<any>): T {
-    const name = typeof token === 'string' ? token :
-      typeof token === 'symbol' ? String(token) :
-        (token as any).constructor?.name || 'Unknown';
+    const name =
+      typeof token === 'string'
+        ? token
+        : typeof token === 'symbol'
+          ? String(token)
+          : (token as any).constructor?.name || 'Unknown';
 
     // Create a proxy that records all property access and method calls
     return new Proxy({} as any, {
@@ -527,12 +526,12 @@ export class TestContainer extends Container {
               method: prop,
               args,
               result: undefined,
-              timestamp: Date.now()
+              timestamp: Date.now(),
             });
           });
         }
         return undefined;
-      }
+      },
     });
   }
 
@@ -581,10 +580,9 @@ export class TestContainer extends Container {
     return {
       heapUsed: memUsage.heapUsed,
       heapTotal: memUsage.heapTotal,
-      objectCount: currentObjectCount
+      objectCount: currentObjectCount,
     };
   }
-
 
   /**
    * Stub with partial mocking and proper method creation
@@ -639,7 +637,7 @@ export class TestContainer extends Container {
       registeredTokens: new Set(this.registeredTokens),
       resolvedTokens: new Set(this.resolvedTokens),
       mocks: new Map(this.mocks),
-      spies: new Map(this.spies)
+      spies: new Map(this.spies),
     };
   }
 }
@@ -647,13 +645,11 @@ export class TestContainer extends Container {
 /**
  * Create a test container
  */
-export function createTestContainer(
-  moduleOrOptions?: IModule | TestContainerOptions
-): TestContainer {
+export function createTestContainer(moduleOrOptions?: IModule | TestContainerOptions): TestContainer {
   if (moduleOrOptions && 'name' in moduleOrOptions) {
     // It's a module
     return new TestContainer({
-      modules: [moduleOrOptions]
+      modules: [moduleOrOptions],
     });
   }
 
@@ -663,12 +659,10 @@ export function createTestContainer(
 /**
  * Create an isolated test container
  */
-export function createIsolatedTestContainer(
-  options: TestContainerOptions = {}
-): TestContainer {
+export function createIsolatedTestContainer(options: TestContainerOptions = {}): TestContainer {
   return new TestContainer({
     ...options,
-    isolate: true
+    isolate: true,
   });
 }
 
@@ -699,7 +693,7 @@ export class TestModuleBuilder {
     return new TestContainer({
       modules: this.imports,
       providers: this.providers,
-      mocks: this.mocks
+      mocks: this.mocks,
     });
   }
 }

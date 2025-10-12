@@ -122,9 +122,7 @@ describe('MiddlewarePipeline', () => {
         throw new Error('Middleware error');
       });
 
-      await expect(
-        pipeline.execute(ctx, MiddlewareStage.PRE_REQUEST)
-      ).rejects.toThrow('Middleware error');
+      await expect(pipeline.execute(ctx, MiddlewareStage.PRE_REQUEST)).rejects.toThrow('Middleware error');
     });
   });
 
@@ -472,12 +470,9 @@ describe('Timing Middleware', () => {
 
     // Execute multiple times
     for (let i = 0; i < 3; i++) {
-      await middleware(
-        { ...ctx },
-        async () => {
-          await new Promise((resolve) => setTimeout(resolve, 10));
-        }
-      );
+      await middleware({ ...ctx }, async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
     }
 
     const avgDuration = collector.getAverageDuration('TestService', 'testMethod');

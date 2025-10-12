@@ -7,7 +7,7 @@ const { cuid } = require('@bugsnag/cuid');
 const uuidRandom = require('uuid-random');
 const { v4: uuidv4Secure } = require('uuid-with-v6');
 
-const suite = new Benchmark.Suite;
+const suite = new Benchmark.Suite();
 
 // Add tests
 suite
@@ -35,4 +35,4 @@ suite
   .on('cycle', (event) => {
     console.log(String(event.target));
   })
-  .run({ 'async': true });
+  .run({ async: true });

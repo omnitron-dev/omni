@@ -57,9 +57,7 @@ export function stop<T extends Event>(handler: (e: T) => void): (e: T) => void {
  * </button>
  * ```
  */
-export function stopImmediate<T extends Event>(
-  handler: (e: T) => void
-): (e: T) => void {
+export function stopImmediate<T extends Event>(handler: (e: T) => void): (e: T) => void {
   return (e: T) => {
     e.stopImmediatePropagation();
     handler(e);
@@ -79,9 +77,7 @@ export function stopImmediate<T extends Event>(
  * </button>
  * ```
  */
-export function preventStop<T extends Event>(
-  handler: (e: T) => void
-): (e: T) => void {
+export function preventStop<T extends Event>(handler: (e: T) => void): (e: T) => void {
   return (e: T) => {
     e.preventDefault();
     e.stopPropagation();
@@ -104,10 +100,7 @@ export function preventStop<T extends Event>(
  * </div>
  * ```
  */
-export function self<T extends Event>(
-  selector: string,
-  handler: (e: T) => void
-): (e: T) => void {
+export function self<T extends Event>(selector: string, handler: (e: T) => void): (e: T) => void {
   return (e: T) => {
     const target = e.target as Element;
     if (target && target.matches(selector)) {
@@ -129,9 +122,7 @@ export function self<T extends Event>(
  * </button>
  * ```
  */
-export function trusted<T extends Event>(
-  handler: (e: T) => void
-): (e: T) => void {
+export function trusted<T extends Event>(handler: (e: T) => void): (e: T) => void {
   return (e: T) => {
     if (e.isTrusted) {
       handler(e);
@@ -151,10 +142,7 @@ export function trusted<T extends Event>(
  * <input onInput={debounce(handleSearch, 500)} />
  * ```
  */
-export function debounce<T extends Event>(
-  handler: (e: T) => void,
-  delay: number
-): (e: T) => void {
+export function debounce<T extends Event>(handler: (e: T) => void, delay: number): (e: T) => void {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
   return (e: T) => {
@@ -183,10 +171,7 @@ export function debounce<T extends Event>(
  * </div>
  * ```
  */
-export function throttle<T extends Event>(
-  handler: (e: T) => void,
-  limit: number
-): (e: T) => void {
+export function throttle<T extends Event>(handler: (e: T) => void, limit: number): (e: T) => void {
   let inThrottle = false;
 
   return (e: T) => {
@@ -293,8 +278,5 @@ export function once<T extends Event>(
 export function compose<T extends Event>(
   modifiers: Array<(handler: (e: T) => void) => (e: T) => void>
 ): (handler: (e: T) => void) => (e: T) => void {
-  return (handler: (e: T) => void) => modifiers.reduceRight(
-      (acc, modifier) => modifier(acc),
-      handler
-    );
+  return (handler: (e: T) => void) => modifiers.reduceRight((acc, modifier) => modifier(acc), handler);
 }

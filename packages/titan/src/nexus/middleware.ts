@@ -23,17 +23,14 @@ export type MiddlewareNext<T = any> = () => T | Promise<T>;
 /**
  * Middleware function
  */
-export type MiddlewareFunction<T = any> = (
-  context: MiddlewareContext,
-  next: MiddlewareNext<T>
-) => T | Promise<T>;
+export type MiddlewareFunction<T = any> = (context: MiddlewareContext, next: MiddlewareNext<T>) => T | Promise<T>;
 
 /**
  * Middleware context
  */
 export interface MiddlewareContext extends ResolutionContext {
   token: InjectionToken<any>;
-  container: any;  // Required in ResolutionContext
+  container: any; // Required in ResolutionContext
   attempt?: number;
   startTime?: number;
   [key: string]: any;
@@ -89,7 +86,7 @@ export class MiddlewarePipeline {
    * Remove middleware from pipeline
    */
   remove(name: string): this {
-    this.middlewares = this.middlewares.filter(m => m.name !== name);
+    this.middlewares = this.middlewares.filter((m) => m.name !== name);
     return this;
   }
 
@@ -104,14 +101,9 @@ export class MiddlewarePipeline {
   /**
    * Execute the middleware pipeline
    */
-  async execute<T>(
-    context: MiddlewareContext,
-    finalHandler: () => T | Promise<T>
-  ): Promise<T> {
+  async execute<T>(context: MiddlewareContext, finalHandler: () => T | Promise<T>): Promise<T> {
     // Filter applicable middleware
-    const applicable = this.middlewares.filter(m =>
-      !m.condition || m.condition(context)
-    );
+    const applicable = this.middlewares.filter((m) => !m.condition || m.condition(context));
 
     // Build the chain
     let index = -1;
@@ -120,12 +112,12 @@ export class MiddlewarePipeline {
     const dispatch = async (i: number): Promise<T> => {
       // Check if we're in a retry context - detect if current middleware is retry
       const currentMiddleware = applicable[i];
-      const isRetryMiddleware = currentMiddleware && (
-        currentMiddleware.name?.includes('Retry') ||
-        currentMiddleware.name?.includes('retry') ||
-        (currentMiddleware as any)?.isRetryMiddleware ||
-        currentMiddleware.constructor?.name?.includes('Retry')
-      );
+      const isRetryMiddleware =
+        currentMiddleware &&
+        (currentMiddleware.name?.includes('Retry') ||
+          currentMiddleware.name?.includes('retry') ||
+          (currentMiddleware as any)?.isRetryMiddleware ||
+          currentMiddleware.constructor?.name?.includes('Retry'));
 
       if (isRetryMiddleware) {
         retryContext = true;
@@ -167,14 +159,9 @@ export class MiddlewarePipeline {
   /**
    * Execute synchronously (for sync operations)
    */
-  executeSync<T>(
-    context: MiddlewareContext,
-    finalHandler: () => T
-  ): T {
+  executeSync<T>(context: MiddlewareContext, finalHandler: () => T): T {
     // Filter applicable middleware
-    const applicable = this.middlewares.filter(m =>
-      !m.condition || m.condition(context)
-    );
+    const applicable = this.middlewares.filter((m) => !m.condition || m.condition(context));
 
     // Build the chain
     let index = -1;
@@ -203,7 +190,7 @@ export class MiddlewarePipeline {
           throw new TitanError({
             code: ErrorCode.INTERNAL_ERROR,
             message: 'Middleware async/sync mismatch: ' + middleware.name,
-            details: { middleware: middleware.name }
+            details: { middleware: middleware.name },
           });
         }
         return result as T;
@@ -222,14 +209,14 @@ export class MiddlewarePipeline {
    * Get middleware by name
    */
   get(name: string): Middleware | undefined {
-    return this.middlewares.find(m => m.name === name);
+    return this.middlewares.find((m) => m.name === name);
   }
 
   /**
    * Check if middleware exists
    */
   has(name: string): boolean {
-    return this.middlewares.some(m => m.name === name);
+    return this.middlewares.some((m) => m.name === name);
   }
 
   /**
@@ -255,9 +242,12 @@ export const LoggingMiddleware = createMiddleware({
   priority: 100,
 
   execute: (context, next) => {
-    const name = typeof context.token === 'string' ? context.token :
-      typeof context.token === 'symbol' ? context.token.toString() :
-        context.token?.name || 'unknown';
+    const name =
+      typeof context.token === 'string'
+        ? context.token
+        : typeof context.token === 'symbol'
+          ? context.token.toString()
+          : context.token?.name || 'unknown';
 
     console.log(`[Middleware] Resolving: ${name}`);
     const start = Date.now();
@@ -285,7 +275,7 @@ export const LoggingMiddleware = createMiddleware({
       console.error(`[Middleware] Failed: ${name} after ${Date.now() - start}ms`, error);
       throw error;
     }
-  }
+  },
 });
 
 /**
@@ -302,9 +292,12 @@ export const CachingMiddleware = createMiddleware({
       return next();
     }
 
-    const key = typeof context.token === 'string' ? context.token :
-      typeof context.token === 'symbol' ? context.token.toString() :
-        context.token?.name || 'unknown';
+    const key =
+      typeof context.token === 'string'
+        ? context.token
+        : typeof context.token === 'symbol'
+          ? context.token.toString()
+          : context.token?.name || 'unknown';
 
     // Check cache
     if (cache.has(key)) {
@@ -328,7 +321,7 @@ export const CachingMiddleware = createMiddleware({
     cache.set(key, result);
     console.log(`[Cache] Miss: ${key}`);
     return result;
-  }
+  },
 });
 
 /**
@@ -365,7 +358,7 @@ export const RetryMiddleware = createMiddleware({
 
             if (attempt < maxRetries) {
               console.log(`[Retry] Attempt ${attempt} failed, retrying in ${retryDelay}ms...`);
-              await new Promise(resolve => setTimeout(resolve, retryDelay));
+              await new Promise((resolve) => setTimeout(resolve, retryDelay));
             }
           }
         }
@@ -375,7 +368,7 @@ export const RetryMiddleware = createMiddleware({
     }
 
     return result;
-  }
+  },
 });
 
 /**
@@ -419,7 +412,7 @@ export const ValidationMiddleware = createMiddleware({
     }
 
     return result;
-  }
+  },
 });
 
 /**
@@ -470,7 +463,7 @@ export const TransactionMiddleware = createMiddleware({
       if (tx.rollback) tx.rollback();
       throw error;
     }
-  }
+  },
 });
 
 /**
@@ -496,9 +489,12 @@ export class CircuitBreakerMiddleware implements Middleware {
   private resetTimeout: number;
 
   execute: MiddlewareFunction = (context, next) => {
-    const key = typeof context.token === 'string' ? context.token :
-      typeof context.token === 'symbol' ? context.token.toString() :
-        context.token?.name || 'unknown';
+    const key =
+      typeof context.token === 'string'
+        ? context.token
+        : typeof context.token === 'symbol'
+          ? context.token.toString()
+          : context.token?.name || 'unknown';
 
     const currentState = this.state.get(key) || 'closed';
     const lastFailure = this.lastFailureTime.get(key) || 0;
@@ -518,18 +514,20 @@ export class CircuitBreakerMiddleware implements Middleware {
 
       // Handle both sync and async results
       if (result instanceof Promise) {
-        return result.then(res => {
-          // Success - reset failures if in half-open state
-          if (this.state.get(key) === 'half-open') {
-            this.state.set(key, 'closed');
-            this.failures.delete(key);
-            this.lastFailureTime.delete(key);
-          }
-          return res;
-        }).catch(error => {
-          this.handleFailure(key);
-          throw error;
-        });
+        return result
+          .then((res) => {
+            // Success - reset failures if in half-open state
+            if (this.state.get(key) === 'half-open') {
+              this.state.set(key, 'closed');
+              this.failures.delete(key);
+              this.lastFailureTime.delete(key);
+            }
+            return res;
+          })
+          .catch((error) => {
+            this.handleFailure(key);
+            throw error;
+          });
       } else {
         // Synchronous success - reset failures if in half-open state
         if (this.state.get(key) === 'half-open') {
@@ -576,7 +574,7 @@ export class RateLimitMiddleware implements Middleware {
   constructor(
     private limit = 100,
     private window = 60000 // 1 minute
-  ) { }
+  ) {}
 
   execute: MiddlewareFunction = async (context, next) => {
     const key = context['rateLimitKey'] || 'global';
@@ -586,7 +584,7 @@ export class RateLimitMiddleware implements Middleware {
     let timestamps = this.requests.get(key) || [];
 
     // Remove old timestamps outside the window
-    timestamps = timestamps.filter(t => now - t < this.window);
+    timestamps = timestamps.filter((t) => now - t < this.window);
 
     // Check rate limit
     if (timestamps && timestamps.length >= this.limit) {
@@ -612,7 +610,7 @@ export class RetryMiddlewareClass implements Middleware {
   version = '1.0.0';
   isRetryMiddleware = true;
 
-  constructor(private options: { maxAttempts: number; delay: number }) { }
+  constructor(private options: { maxAttempts: number; delay: number }) {}
 
   execute: MiddlewareFunction = async (context, next) => {
     let lastError: Error | null = null;
@@ -625,7 +623,7 @@ export class RetryMiddlewareClass implements Middleware {
         lastError = error as Error;
 
         if (attempt < this.options.maxAttempts) {
-          await new Promise(resolve => setTimeout(resolve, this.options.delay));
+          await new Promise((resolve) => setTimeout(resolve, this.options.delay));
         }
       }
     }
@@ -649,7 +647,7 @@ export class CacheMiddleware implements Middleware {
 
   private cache = new Map<string, { value: any; expires: number }>();
 
-  constructor(private options: { ttl: number; keyGenerator: (context: MiddlewareContext) => string }) { }
+  constructor(private options: { ttl: number; keyGenerator: (context: MiddlewareContext) => string }) {}
 
   execute: MiddlewareFunction = (context, next) => {
     const key = this.options.keyGenerator(context);
@@ -666,17 +664,17 @@ export class CacheMiddleware implements Middleware {
 
     // Handle both sync and async results
     if (result instanceof Promise) {
-      return result.then(value => {
+      return result.then((value) => {
         this.cache.set(key, {
           value,
-          expires: now + this.options.ttl
+          expires: now + this.options.ttl,
         });
         return value;
       });
     } else {
       this.cache.set(key, {
         value: result,
-        expires: now + this.options.ttl
+        expires: now + this.options.ttl,
       });
       return result;
     }
@@ -696,7 +694,7 @@ export class ValidationMiddlewareClass implements Middleware {
   priority = 95;
   version = '1.0.0';
 
-  constructor(private options: { validators: Record<string, (value: any) => boolean> }) { }
+  constructor(private options: { validators: Record<string, (value: any) => boolean> }) {}
 
   execute: MiddlewareFunction = (context, next) => {
     const result = next();
@@ -737,8 +735,8 @@ export function composeMiddleware(...middlewares: Middleware[]): Middleware {
     name: 'composed',
     execute: async (context, next) => {
       const pipeline = new MiddlewarePipeline();
-      middlewares.forEach(m => pipeline.use(m));
+      middlewares.forEach((m) => pipeline.use(m));
       return pipeline.execute(context, next);
-    }
+    },
   };
 }

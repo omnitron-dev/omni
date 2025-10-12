@@ -26,14 +26,14 @@ describe('Error Contract Validation', () => {
             409: z.object({
               code: z.literal('USER_EXISTS'),
               message: z.string(),
-              email: z.string().email()
+              email: z.string().email(),
             }),
             422: z.object({
               code: z.literal('VALIDATION_ERROR'),
-              errors: z.array(z.string())
-            })
-          }
-        }
+              errors: z.array(z.string()),
+            }),
+          },
+        },
       });
 
       const method = userContract.getMethod('createUser');
@@ -48,7 +48,7 @@ describe('Error Contract Validation', () => {
       const validError409 = {
         code: 'USER_EXISTS',
         message: 'User already exists',
-        email: 'test@example.com'
+        email: 'test@example.com',
       };
 
       expect(() => validator409.validate(validError409)).not.toThrow();
@@ -57,7 +57,7 @@ describe('Error Contract Validation', () => {
       const invalidError409 = {
         code: 'WRONG_CODE',
         message: 'User already exists',
-        email: 'test@example.com'
+        email: 'test@example.com',
       };
 
       expect(() => validator409.validate(invalidError409)).toThrow();
@@ -68,7 +68,7 @@ describe('Error Contract Validation', () => {
 
       const validError422 = {
         code: 'VALIDATION_ERROR',
-        errors: ['Field email is invalid', 'Field age is required']
+        errors: ['Field email is invalid', 'Field age is required'],
       };
 
       expect(() => validator422.validate(validError422)).not.toThrow();
@@ -79,31 +79,31 @@ describe('Error Contract Validation', () => {
         processPayment: {
           input: z.object({
             amount: z.number().positive(),
-            currency: z.string()
+            currency: z.string(),
           }),
           output: z.object({
             transactionId: z.string(),
-            status: z.enum(['success', 'pending'])
+            status: z.enum(['success', 'pending']),
           }),
           errors: {
             400: z.object({
               code: z.literal('INVALID_AMOUNT'),
               message: z.string(),
-              amount: z.number()
+              amount: z.number(),
             }),
             402: z.object({
               code: z.literal('INSUFFICIENT_FUNDS'),
               message: z.string(),
               required: z.number(),
-              available: z.number()
+              available: z.number(),
             }),
             429: z.object({
               code: z.literal('RATE_LIMIT'),
               message: z.string(),
-              retryAfter: z.number()
-            })
-          }
-        }
+              retryAfter: z.number(),
+            }),
+          },
+        },
       });
 
       const method = apiContract.getMethod('processPayment');
@@ -119,33 +119,39 @@ describe('Error Contract Validation', () => {
       const validator429 = engine.compile(error429Schema);
 
       // 400 error
-      expect(() => validator400.validate({
-        code: 'INVALID_AMOUNT',
-        message: 'Amount must be positive',
-        amount: -100
-      })).not.toThrow();
+      expect(() =>
+        validator400.validate({
+          code: 'INVALID_AMOUNT',
+          message: 'Amount must be positive',
+          amount: -100,
+        })
+      ).not.toThrow();
 
       // 402 error
-      expect(() => validator402.validate({
-        code: 'INSUFFICIENT_FUNDS',
-        message: 'Not enough funds',
-        required: 1000,
-        available: 500
-      })).not.toThrow();
+      expect(() =>
+        validator402.validate({
+          code: 'INSUFFICIENT_FUNDS',
+          message: 'Not enough funds',
+          required: 1000,
+          available: 500,
+        })
+      ).not.toThrow();
 
       // 429 error
-      expect(() => validator429.validate({
-        code: 'RATE_LIMIT',
-        message: 'Too many requests',
-        retryAfter: 60
-      })).not.toThrow();
+      expect(() =>
+        validator429.validate({
+          code: 'RATE_LIMIT',
+          message: 'Too many requests',
+          retryAfter: 60,
+        })
+      ).not.toThrow();
     });
 
     it('should handle ServiceError with contract validation', () => {
       const errorData = {
         code: 'NOT_FOUND',
         message: 'Resource not found',
-        resourceId: '123'
+        resourceId: '123',
       };
 
       const error = new ServiceError(404, errorData);
@@ -158,7 +164,7 @@ describe('Error Contract Validation', () => {
       const errorSchema = z.object({
         code: z.string(),
         message: z.string(),
-        resourceId: z.string()
+        resourceId: z.string(),
       });
 
       const validator = engine.compile(errorSchema);
@@ -175,7 +181,7 @@ describe('Error Contract Validation', () => {
 
       // Validate both against same schema
       const errorSchema = z.object({
-        message: z.string()
+        message: z.string(),
       });
 
       const validator = engine.compile(errorSchema);
@@ -198,7 +204,7 @@ describe('Error Contract Validation', () => {
 
       const schema = z.object({
         age: z.number().min(18),
-        name: z.string()
+        name: z.string(),
       });
 
       const validator = engine.compile(schema, { errorMap: customErrorMap });
@@ -238,7 +244,7 @@ describe('Error Contract Validation', () => {
       const schema = z.object({
         email: z.string().email(),
         age: z.number().max(100),
-        role: z.enum(['admin', 'user', 'guest'])
+        role: z.enum(['admin', 'user', 'guest']),
       });
 
       const validator = engine.compile(schema, { errorMap });
@@ -286,7 +292,7 @@ describe('Error Contract Validation', () => {
       };
 
       const schema = z.object({
-        value: z.number()
+        value: z.number(),
       });
 
       const validator = engine.compile(schema, { errorMap: throwingErrorMap });
@@ -308,7 +314,7 @@ describe('Error Contract Validation', () => {
 
       const schema = z.string().refine(
         async (val) => {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           return val.length > 5;
         },
         { message: 'Async validation failed' }
@@ -331,7 +337,7 @@ describe('Error Contract Validation', () => {
       const userSchema = z.object({
         id: z.string().uuid(),
         email: z.string().email(),
-        name: z.string()
+        name: z.string(),
       });
 
       const crudContract = contract({
@@ -342,23 +348,23 @@ describe('Error Contract Validation', () => {
             409: z.object({
               code: z.literal('ALREADY_EXISTS'),
               message: z.string(),
-              email: z.string()
-            })
-          }
+              email: z.string(),
+            }),
+          },
         },
         update: {
           input: z.object({
             id: z.string().uuid(),
-            data: userSchema.partial()
+            data: userSchema.partial(),
           }),
           output: userSchema,
           errors: {
             404: z.object({
               code: z.literal('NOT_FOUND'),
               message: z.string(),
-              id: z.string()
-            })
-          }
+              id: z.string(),
+            }),
+          },
         },
         delete: {
           input: z.string().uuid(),
@@ -367,10 +373,10 @@ describe('Error Contract Validation', () => {
             404: z.object({
               code: z.literal('NOT_FOUND'),
               message: z.string(),
-              id: z.string()
-            })
-          }
-        }
+              id: z.string(),
+            }),
+          },
+        },
       });
 
       // Validate create error
@@ -378,33 +384,39 @@ describe('Error Contract Validation', () => {
       const createErrorSchema = createMethod?.errors?.[409]!;
       const createErrorValidator = engine.compile(createErrorSchema);
 
-      expect(() => createErrorValidator.validate({
-        code: 'ALREADY_EXISTS',
-        message: 'User already exists',
-        email: 'test@example.com'
-      })).not.toThrow();
+      expect(() =>
+        createErrorValidator.validate({
+          code: 'ALREADY_EXISTS',
+          message: 'User already exists',
+          email: 'test@example.com',
+        })
+      ).not.toThrow();
 
       // Validate update error
       const updateMethod = crudContract.getMethod('update');
       const updateErrorSchema = updateMethod?.errors?.[404]!;
       const updateErrorValidator = engine.compile(updateErrorSchema);
 
-      expect(() => updateErrorValidator.validate({
-        code: 'NOT_FOUND',
-        message: 'User not found',
-        id: '123e4567-e89b-12d3-a456-426614174000'
-      })).not.toThrow();
+      expect(() =>
+        updateErrorValidator.validate({
+          code: 'NOT_FOUND',
+          message: 'User not found',
+          id: '123e4567-e89b-12d3-a456-426614174000',
+        })
+      ).not.toThrow();
 
       // Validate delete error (same schema as update)
       const deleteMethod = crudContract.getMethod('delete');
       const deleteErrorSchema = deleteMethod?.errors?.[404]!;
       const deleteErrorValidator = engine.compile(deleteErrorSchema);
 
-      expect(() => deleteErrorValidator.validate({
-        code: 'NOT_FOUND',
-        message: 'User not found',
-        id: '123e4567-e89b-12d3-a456-426614174000'
-      })).not.toThrow();
+      expect(() =>
+        deleteErrorValidator.validate({
+          code: 'NOT_FOUND',
+          message: 'User not found',
+          id: '123e4567-e89b-12d3-a456-426614174000',
+        })
+      ).not.toThrow();
     });
 
     it('should handle complex error schemas with nested objects', () => {
@@ -412,24 +424,28 @@ describe('Error Contract Validation', () => {
         processOrder: {
           input: z.object({
             orderId: z.string(),
-            items: z.array(z.object({
-              productId: z.string(),
-              quantity: z.number()
-            }))
+            items: z.array(
+              z.object({
+                productId: z.string(),
+                quantity: z.number(),
+              })
+            ),
           }),
           output: z.object({
             orderId: z.string(),
-            status: z.string()
+            status: z.string(),
           }),
           errors: {
             400: z.object({
               code: z.literal('INVALID_ORDER'),
               message: z.string(),
-              errors: z.array(z.object({
-                field: z.string(),
-                issue: z.string(),
-                value: z.any()
-              }))
+              errors: z.array(
+                z.object({
+                  field: z.string(),
+                  issue: z.string(),
+                  value: z.any(),
+                })
+              ),
             }),
             402: z.object({
               code: z.literal('PAYMENT_FAILED'),
@@ -437,11 +453,11 @@ describe('Error Contract Validation', () => {
               payment: z.object({
                 method: z.string(),
                 reason: z.string(),
-                details: z.record(z.string(), z.any())
-              })
-            })
-          }
-        }
+                details: z.record(z.string(), z.any()),
+              }),
+            }),
+          },
+        },
       });
 
       const method = complexContract.getMethod('processOrder');
@@ -450,31 +466,35 @@ describe('Error Contract Validation', () => {
       const error400Schema = method?.errors?.[400]!;
       const validator400 = engine.compile(error400Schema);
 
-      expect(() => validator400.validate({
-        code: 'INVALID_ORDER',
-        message: 'Order validation failed',
-        errors: [
-          { field: 'items.0.quantity', issue: 'Must be positive', value: -1 },
-          { field: 'items.1.productId', issue: 'Product not found', value: 'invalid-id' }
-        ]
-      })).not.toThrow();
+      expect(() =>
+        validator400.validate({
+          code: 'INVALID_ORDER',
+          message: 'Order validation failed',
+          errors: [
+            { field: 'items.0.quantity', issue: 'Must be positive', value: -1 },
+            { field: 'items.1.productId', issue: 'Product not found', value: 'invalid-id' },
+          ],
+        })
+      ).not.toThrow();
 
       // Validate complex 402 error
       const error402Schema = method?.errors?.[402]!;
       const validator402 = engine.compile(error402Schema);
 
-      expect(() => validator402.validate({
-        code: 'PAYMENT_FAILED',
-        message: 'Payment processing failed',
-        payment: {
-          method: 'credit_card',
-          reason: 'insufficient_funds',
-          details: {
-            cardLast4: '1234',
-            attemptId: 'attempt_123'
-          }
-        }
-      })).not.toThrow();
+      expect(() =>
+        validator402.validate({
+          code: 'PAYMENT_FAILED',
+          message: 'Payment processing failed',
+          payment: {
+            method: 'credit_card',
+            reason: 'insufficient_funds',
+            details: {
+              cardLast4: '1234',
+              attemptId: 'attempt_123',
+            },
+          },
+        })
+      ).not.toThrow();
     });
   });
 
@@ -484,8 +504,8 @@ describe('Error Contract Validation', () => {
         method: {
           input: z.string(),
           output: z.string(),
-          errors: {}
-        }
+          errors: {},
+        },
       });
 
       const method = emptyContract.getMethod('method');
@@ -496,8 +516,8 @@ describe('Error Contract Validation', () => {
       const noErrorsContract = contract({
         method: {
           input: z.string(),
-          output: z.string()
-        }
+          output: z.string(),
+        },
       });
 
       const method = noErrorsContract.getMethod('method');
@@ -508,69 +528,81 @@ describe('Error Contract Validation', () => {
       const errorSchema = z.object({
         code: z.string(),
         message: z.string(),
-        details: z.object({
-          field: z.string(),
-          value: z.any()
-        }).optional(),
-        trace: z.array(z.string()).optional()
+        details: z
+          .object({
+            field: z.string(),
+            value: z.any(),
+          })
+          .optional(),
+        trace: z.array(z.string()).optional(),
       });
 
       const validator = engine.compile(errorSchema);
 
       // Without optional fields
-      expect(() => validator.validate({
-        code: 'ERROR',
-        message: 'An error occurred'
-      })).not.toThrow();
+      expect(() =>
+        validator.validate({
+          code: 'ERROR',
+          message: 'An error occurred',
+        })
+      ).not.toThrow();
 
       // With optional fields
-      expect(() => validator.validate({
-        code: 'ERROR',
-        message: 'An error occurred',
-        details: { field: 'email', value: 'invalid' },
-        trace: ['line 1', 'line 2']
-      })).not.toThrow();
+      expect(() =>
+        validator.validate({
+          code: 'ERROR',
+          message: 'An error occurred',
+          details: { field: 'email', value: 'invalid' },
+          trace: ['line 1', 'line 2'],
+        })
+      ).not.toThrow();
     });
 
     it('should handle union error schemas', () => {
       const unionErrorSchema = z.discriminatedUnion('type', [
         z.object({
           type: z.literal('validation'),
-          errors: z.array(z.string())
+          errors: z.array(z.string()),
         }),
         z.object({
           type: z.literal('system'),
           code: z.string(),
-          message: z.string()
+          message: z.string(),
         }),
         z.object({
           type: z.literal('network'),
           statusCode: z.number(),
-          endpoint: z.string()
-        })
+          endpoint: z.string(),
+        }),
       ]);
 
       const validator = engine.compile(unionErrorSchema);
 
       // Validation error
-      expect(() => validator.validate({
-        type: 'validation',
-        errors: ['Field is required']
-      })).not.toThrow();
+      expect(() =>
+        validator.validate({
+          type: 'validation',
+          errors: ['Field is required'],
+        })
+      ).not.toThrow();
 
       // System error
-      expect(() => validator.validate({
-        type: 'system',
-        code: 'INTERNAL_ERROR',
-        message: 'Something went wrong'
-      })).not.toThrow();
+      expect(() =>
+        validator.validate({
+          type: 'system',
+          code: 'INTERNAL_ERROR',
+          message: 'Something went wrong',
+        })
+      ).not.toThrow();
 
       // Network error
-      expect(() => validator.validate({
-        type: 'network',
-        statusCode: 503,
-        endpoint: '/api/users'
-      })).not.toThrow();
+      expect(() =>
+        validator.validate({
+          type: 'network',
+          statusCode: 503,
+          endpoint: '/api/users',
+        })
+      ).not.toThrow();
     });
   });
 });

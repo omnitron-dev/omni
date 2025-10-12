@@ -14,10 +14,7 @@ describe('Stack', () => {
     it('should render stack with default props', () => {
       const component = () =>
         Stack({
-          children: [
-            document.createTextNode('Item 1'),
-            document.createTextNode('Item 2'),
-          ],
+          children: [document.createTextNode('Item 1'), document.createTextNode('Item 2')],
         });
 
       const { container } = renderComponent(component);
@@ -31,9 +28,7 @@ describe('Stack', () => {
     it('should render with vertical direction by default', () => {
       const component = () =>
         Stack({
-          children: [
-            document.createTextNode('Item 1'),
-          ],
+          children: [document.createTextNode('Item 1')],
         });
 
       const { container } = renderComponent(component);
@@ -47,9 +42,7 @@ describe('Stack', () => {
       const component = () =>
         Stack({
           direction: 'horizontal',
-          children: [
-            document.createTextNode('Item 1'),
-          ],
+          children: [document.createTextNode('Item 1')],
         });
 
       const { container } = renderComponent(component);
@@ -62,9 +55,7 @@ describe('Stack', () => {
       const component = () =>
         Stack({
           class: 'custom-stack',
-          children: [
-            document.createTextNode('Item'),
-          ],
+          children: [document.createTextNode('Item')],
         });
 
       const { container } = renderComponent(component);
@@ -77,9 +68,7 @@ describe('Stack', () => {
       const component = () =>
         Stack({
           style: { backgroundColor: 'red', padding: '10px' },
-          children: [
-            document.createTextNode('Item'),
-          ],
+          children: [document.createTextNode('Item')],
         });
 
       const { container } = renderComponent(component);
@@ -95,9 +84,7 @@ describe('Stack', () => {
         Stack({
           'data-testid': 'test-stack',
           'aria-label': 'Test stack',
-          children: [
-            document.createTextNode('Item'),
-          ],
+          children: [document.createTextNode('Item')],
         });
 
       const { container } = renderComponent(component);
@@ -113,10 +100,7 @@ describe('Stack', () => {
       const component = () =>
         Stack({
           spacing: 16,
-          children: [
-            document.createTextNode('Item 1'),
-            document.createTextNode('Item 2'),
-          ],
+          children: [document.createTextNode('Item 1'), document.createTextNode('Item 2')],
         });
 
       const { container } = renderComponent(component);
@@ -129,10 +113,7 @@ describe('Stack', () => {
       const component = () =>
         Stack({
           spacing: '2rem',
-          children: [
-            document.createTextNode('Item 1'),
-            document.createTextNode('Item 2'),
-          ],
+          children: [document.createTextNode('Item 1'), document.createTextNode('Item 2')],
         });
 
       const { container } = renderComponent(component);
@@ -144,9 +125,7 @@ describe('Stack', () => {
     it('should use 0 spacing by default', () => {
       const component = () =>
         Stack({
-          children: [
-            document.createTextNode('Item 1'),
-          ],
+          children: [document.createTextNode('Item 1')],
         });
 
       const { container } = renderComponent(component);
@@ -161,9 +140,7 @@ describe('Stack', () => {
       const component = () =>
         Stack({
           align: 'start',
-          children: [
-            document.createTextNode('Item'),
-          ],
+          children: [document.createTextNode('Item')],
         });
 
       const { container } = renderComponent(component);
@@ -176,9 +153,7 @@ describe('Stack', () => {
       const component = () =>
         Stack({
           align: 'center',
-          children: [
-            document.createTextNode('Item'),
-          ],
+          children: [document.createTextNode('Item')],
         });
 
       const { container } = renderComponent(component);
@@ -191,9 +166,7 @@ describe('Stack', () => {
       const component = () =>
         Stack({
           align: 'end',
-          children: [
-            document.createTextNode('Item'),
-          ],
+          children: [document.createTextNode('Item')],
         });
 
       const { container } = renderComponent(component);
@@ -206,9 +179,7 @@ describe('Stack', () => {
       const component = () =>
         Stack({
           align: 'stretch',
-          children: [
-            document.createTextNode('Item'),
-          ],
+          children: [document.createTextNode('Item')],
         });
 
       const { container } = renderComponent(component);
@@ -221,9 +192,7 @@ describe('Stack', () => {
       const component = () =>
         Stack({
           align: 'baseline',
-          children: [
-            document.createTextNode('Item'),
-          ],
+          children: [document.createTextNode('Item')],
         });
 
       const { container } = renderComponent(component);
@@ -238,9 +207,7 @@ describe('Stack', () => {
       const component = () =>
         Stack({
           justify: 'start',
-          children: [
-            document.createTextNode('Item'),
-          ],
+          children: [document.createTextNode('Item')],
         });
 
       const { container } = renderComponent(component);
@@ -253,9 +220,7 @@ describe('Stack', () => {
       const component = () =>
         Stack({
           justify: 'center',
-          children: [
-            document.createTextNode('Item'),
-          ],
+          children: [document.createTextNode('Item')],
         });
 
       const { container } = renderComponent(component);
@@ -268,9 +233,7 @@ describe('Stack', () => {
       const component = () =>
         Stack({
           justify: 'end',
-          children: [
-            document.createTextNode('Item'),
-          ],
+          children: [document.createTextNode('Item')],
         });
 
       const { container } = renderComponent(component);
@@ -283,9 +246,7 @@ describe('Stack', () => {
       const component = () =>
         Stack({
           justify: 'space-between',
-          children: [
-            document.createTextNode('Item'),
-          ],
+          children: [document.createTextNode('Item')],
         });
 
       const { container } = renderComponent(component);
@@ -298,9 +259,7 @@ describe('Stack', () => {
       const component = () =>
         Stack({
           justify: 'space-around',
-          children: [
-            document.createTextNode('Item'),
-          ],
+          children: [document.createTextNode('Item')],
         });
 
       const { container } = renderComponent(component);
@@ -313,9 +272,7 @@ describe('Stack', () => {
       const component = () =>
         Stack({
           justify: 'space-evenly',
-          children: [
-            document.createTextNode('Item'),
-          ],
+          children: [document.createTextNode('Item')],
         });
 
       const { container } = renderComponent(component);
@@ -330,9 +287,7 @@ describe('Stack', () => {
       const component = () =>
         Stack({
           wrap: true,
-          children: [
-            document.createTextNode('Item'),
-          ],
+          children: [document.createTextNode('Item')],
         });
 
       const { container } = renderComponent(component);
@@ -345,9 +300,7 @@ describe('Stack', () => {
       const component = () =>
         Stack({
           wrap: false,
-          children: [
-            document.createTextNode('Item'),
-          ],
+          children: [document.createTextNode('Item')],
         });
 
       const { container } = renderComponent(component);
@@ -359,9 +312,7 @@ describe('Stack', () => {
     it('should not set flexWrap by default', () => {
       const component = () =>
         Stack({
-          children: [
-            document.createTextNode('Item'),
-          ],
+          children: [document.createTextNode('Item')],
         });
 
       const { container } = renderComponent(component);
@@ -482,10 +433,7 @@ describe('Stack', () => {
           align: 'center',
           justify: 'space-between',
           wrap: true,
-          children: [
-            document.createTextNode('Item 1'),
-            document.createTextNode('Item 2'),
-          ],
+          children: [document.createTextNode('Item 1'), document.createTextNode('Item 2')],
         });
 
       const { container } = renderComponent(component);
@@ -509,10 +457,7 @@ describe('VStack', () => {
     const component = () =>
       VStack({
         spacing: 16,
-        children: [
-          document.createTextNode('Item 1'),
-          document.createTextNode('Item 2'),
-        ],
+        children: [document.createTextNode('Item 1'), document.createTextNode('Item 2')],
       });
 
     const { container } = renderComponent(component);
@@ -529,9 +474,7 @@ describe('VStack', () => {
         align: 'center',
         justify: 'center',
         class: 'vstack-test',
-        children: [
-          document.createTextNode('Item'),
-        ],
+        children: [document.createTextNode('Item')],
       });
 
     const { container } = renderComponent(component);
@@ -553,10 +496,7 @@ describe('HStack', () => {
     const component = () =>
       HStack({
         spacing: 8,
-        children: [
-          document.createTextNode('Item 1'),
-          document.createTextNode('Item 2'),
-        ],
+        children: [document.createTextNode('Item 1'), document.createTextNode('Item 2')],
       });
 
     const { container } = renderComponent(component);
@@ -574,9 +514,7 @@ describe('HStack', () => {
         justify: 'end',
         wrap: true,
         class: 'hstack-test',
-        children: [
-          document.createTextNode('Item'),
-        ],
+        children: [document.createTextNode('Item')],
       });
 
     const { container } = renderComponent(component);
@@ -600,9 +538,7 @@ describe('Accessibility', () => {
       Stack({
         'aria-label': 'Navigation menu',
         role: 'navigation',
-        children: [
-          document.createTextNode('Item'),
-        ],
+        children: [document.createTextNode('Item')],
       });
 
     const { container } = renderComponent(component);

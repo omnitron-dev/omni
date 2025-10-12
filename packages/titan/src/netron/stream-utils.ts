@@ -13,4 +13,5 @@ import { NetronWritableStream } from './writable-stream.js';
  * @param obj - The object to check
  * @returns true if the object is a NetronReadableStream or NetronWritableStream
  */
-export const isNetronStream = (obj: any): boolean => obj instanceof NetronReadableStream || obj instanceof NetronWritableStream;
+export const isNetronStream = (obj: any): boolean =>
+  obj instanceof NetronReadableStream || obj instanceof NetronWritableStream;

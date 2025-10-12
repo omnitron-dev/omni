@@ -87,7 +87,7 @@ export class MultiTenancyManager {
       processes: 0,
       memory: 0,
       cpu: 0,
-      requests: 0
+      requests: 0,
     });
   }
 
@@ -137,11 +137,7 @@ export class MultiTenancyManager {
     }
 
     // Create process with tenant isolation
-    const proxy = await this.createIsolatedProcess(
-      tenant,
-      ProcessClass,
-      processManager
-    );
+    const proxy = await this.createIsolatedProcess(tenant, ProcessClass, processManager);
 
     // Track process
     const processes = this.tenantProcesses.get(tenantId)!;
@@ -172,23 +168,23 @@ export class MultiTenancyManager {
           TENANT_ID: tenant.id,
           TENANT_NAME: tenant.name,
           TENANT_TIER: tenant.tier,
-          DATA_PARTITION: tenant.dataPartition
+          DATA_PARTITION: tenant.dataPartition,
         },
         security: {
           isolation: 'vm',
           permissions: {
             network: true,
-            filesystem: 'read-only'
-          }
+            filesystem: 'read-only',
+          },
         },
         memory: {
-          limit: tenant.resourceQuota?.maxMemory || '256MB'
-        }
+          limit: tenant.resourceQuota?.maxMemory || '256MB',
+        },
       });
     } else {
       // Shared process with tenant context
       const proxy = await processManager.spawn(ProcessClass, {
-        name: `${ProcessClass.name}-shared`
+        name: `${ProcessClass.name}-shared`,
       });
 
       // Wrap proxy with tenant context
@@ -199,10 +195,7 @@ export class MultiTenancyManager {
   /**
    * Wrap proxy with tenant context
    */
-  private wrapWithTenantContext<T>(
-    proxy: ServiceProxy<T>,
-    tenant: ITenantContext
-  ): ServiceProxy<T> {
+  private wrapWithTenantContext<T>(proxy: ServiceProxy<T>, tenant: ITenantContext): ServiceProxy<T> {
     return new Proxy(proxy as any, {
       get: (target: any, prop: string | symbol) => {
         const value = target[prop];
@@ -214,17 +207,14 @@ export class MultiTenancyManager {
           };
         }
         return value;
-      }
+      },
     }) as ServiceProxy<T>;
   }
 
   /**
    * Check resource quota
    */
-  private async checkQuota(
-    tenantId: string,
-    resource: 'process' | 'memory' | 'cpu' | 'requests'
-  ): Promise<void> {
+  private async checkQuota(tenantId: string, resource: 'process' | 'memory' | 'cpu' | 'requests'): Promise<void> {
     const quota = this.tenantQuotas.get(tenantId);
     if (!quota) return;
 
@@ -279,11 +269,16 @@ export class MultiTenancyManager {
     const num = parseInt(value, 10);
 
     switch (unit?.toUpperCase()) {
-      case 'K': return num * 1024;
-      case 'M': return num * 1024 * 1024;
-      case 'G': return num * 1024 * 1024 * 1024;
-      case 'T': return num * 1024 * 1024 * 1024 * 1024;
-      default: return num;
+      case 'K':
+        return num * 1024;
+      case 'M':
+        return num * 1024 * 1024;
+      case 'G':
+        return num * 1024 * 1024 * 1024;
+      case 'T':
+        return num * 1024 * 1024 * 1024 * 1024;
+      default:
+        return num;
     }
   }
 
@@ -308,7 +303,7 @@ export class MultiTenancyManager {
         tenant,
         usage,
         processCount: processes?.size || 0,
-        quota: this.tenantQuotas.get(tenantId)
+        quota: this.tenantQuotas.get(tenantId),
       });
     }
 
@@ -356,7 +351,7 @@ export class TenantProcessPool<T> implements ITenantProcessPool<T> {
     // Create pool with tenant isolation
     return await this.processManager.pool(this.ProcessClass, {
       size: this.getPoolSizeForTenant(tenant),
-      name: `${this.ProcessClass.name}-${tenantId}`
+      name: `${this.ProcessClass.name}-${tenantId}`,
     });
   }
 
@@ -365,11 +360,16 @@ export class TenantProcessPool<T> implements ITenantProcessPool<T> {
    */
   private getPoolSizeForTenant(tenant: ITenantContext): number {
     switch (tenant.tier) {
-      case 'enterprise': return 10;
-      case 'premium': return 5;
-      case 'standard': return 2;
-      case 'free': return 1;
-      default: return 1;
+      case 'enterprise':
+        return 10;
+      case 'premium':
+        return 5;
+      case 'standard':
+        return 2;
+      case 'free':
+        return 1;
+      default:
+        return 1;
     }
   }
 
@@ -411,7 +411,7 @@ export function TenantAware(): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     const originalMethod = descriptor.value;
 
-    descriptor.value = async function(this: any, ...args: any[]) {
+    descriptor.value = async function (this: any, ...args: any[]) {
       // Extract tenant context from first argument
       const [context, ...restArgs] = args;
 

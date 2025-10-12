@@ -5,22 +5,13 @@
  * as a core service in Titan applications.
  */
 
-import {
-  Application,
-  Module,
-  Injectable,
-  Inject,
-  NETRON_TOKEN,
-  PostConstruct
-} from '../src/index.js';
+import { Application, Module, Injectable, Inject, NETRON_TOKEN, PostConstruct } from '../src/index.js';
 import type { Netron } from '@omnitron-dev/netron';
 
 // Service that uses Netron
 @Injectable()
 class DistributedService {
-  constructor(
-    @Inject(NETRON_TOKEN) private netron: Netron
-  ) {}
+  constructor(@Inject(NETRON_TOKEN) private netron: Netron) {}
 
   @PostConstruct()
   async onInit(): Promise<void> {
@@ -51,7 +42,7 @@ class DistributedService {
 // Module that provides the service
 @Module({
   providers: [DistributedService],
-  exports: [DistributedService]
+  exports: [DistributedService],
 })
 class NetworkModule {
   constructor(private service: DistributedService) {}
@@ -68,21 +59,21 @@ async function main() {
   const app = await Application.create(NetworkModule, {
     name: 'netron-example',
     version: '1.0.0',
-    
+
     // Configure Netron through application config
     config: {
       netron: {
         id: 'example-node',
         port: 9000,
         discovery: {
-          enabled: false // Set to true to enable Redis discovery
-        }
+          enabled: false, // Set to true to enable Redis discovery
+        },
       },
       logging: {
         level: 'info',
-        pretty: true
-      }
-    }
+        pretty: true,
+      },
+    },
   });
 
   // Start the application

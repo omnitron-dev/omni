@@ -15,7 +15,7 @@ import {
   SCHEDULER_REGISTRY_TOKEN,
   SCHEDULER_EXECUTOR_TOKEN,
   SCHEDULER_DISCOVERY_TOKEN,
-  SCHEDULER_PERSISTENCE_TOKEN
+  SCHEDULER_PERSISTENCE_TOKEN,
 } from './scheduler.constants.js';
 import {
   JobStatus,
@@ -29,7 +29,7 @@ import {
   type IJobFilterOptions,
   type ISchedulerMetrics,
   type IJobExecutionResult,
-  type IJobExecutionContext
+  type IJobExecutionContext,
 } from './scheduler.interfaces.js';
 
 import type { SchedulerRegistry } from './scheduler.registry.js';
@@ -55,7 +55,7 @@ export class SchedulerService {
     @Optional() @Inject(SCHEDULER_PERSISTENCE_TOKEN) private readonly persistence?: SchedulerPersistence,
     @Optional() @Inject(SCHEDULER_METRICS_TOKEN) private readonly metrics?: SchedulerMetricsService,
     @Optional() @Inject(SCHEDULER_DISCOVERY_TOKEN) private readonly discovery?: SchedulerDiscovery
-  ) { }
+  ) {}
 
   /**
    * Initialize scheduler
@@ -65,14 +65,7 @@ export class SchedulerService {
     if (this.persistence) {
       const jobs = await this.persistence.loadAllJobs();
       for (const job of jobs) {
-        this.registry.registerJob(
-          job.name,
-          job.type,
-          job.pattern!,
-          job.target,
-          job.method,
-          job.options
-        );
+        this.registry.registerJob(job.name, job.type, job.pattern!, job.target, job.method, job.options);
       }
     }
 
@@ -194,7 +187,7 @@ export class SchedulerService {
         }
       },
       {
-        timezone: options.timezone || this.config?.timezone
+        timezone: options.timezone || this.config?.timezone,
       }
     );
 
@@ -234,7 +227,7 @@ export class SchedulerService {
 
     // Calculate next execution
     this.registry.updateJobExecution(job.name, {
-      nextExecution: new Date(Date.now() + interval)
+      nextExecution: new Date(Date.now() + interval),
     });
   }
 
@@ -259,7 +252,7 @@ export class SchedulerService {
 
     // Calculate execution time
     this.registry.updateJobExecution(job.name, {
-      nextExecution: new Date(Date.now() + timeout)
+      nextExecution: new Date(Date.now() + timeout),
     });
   }
 
@@ -279,7 +272,7 @@ export class SchedulerService {
       this.registry.updateJobExecution(job.name, {
         lastExecution: new Date(),
         lastResult: result.result,
-        executionTime: result.duration
+        executionTime: result.duration,
       });
 
       // Update status based on result
@@ -302,7 +295,7 @@ export class SchedulerService {
       // Update job error info
       this.registry.updateJobExecution(job.name, {
         lastExecution: new Date(),
-        lastError: error
+        lastError: error,
       });
       this.registry.updateJobStatus(job.name, JobStatus.FAILED);
     } finally {
@@ -342,7 +335,7 @@ export class SchedulerService {
   ): IScheduledJob {
     // Create a wrapper object for the handler
     const wrapper = {
-      [name]: handler
+      [name]: handler,
     };
 
     // Register the job
@@ -374,7 +367,7 @@ export class SchedulerService {
   ): IScheduledJob {
     // Create a wrapper object for the handler
     const wrapper = {
-      [name]: handler
+      [name]: handler,
     };
 
     // Register the job
@@ -406,7 +399,7 @@ export class SchedulerService {
   ): IScheduledJob {
     // Create a wrapper object for the handler
     const wrapper = {
-      [name]: handler
+      [name]: handler,
     };
 
     // Register the job
@@ -537,7 +530,7 @@ export class SchedulerService {
         // Timeout waiting for jobs to complete, forcing shutdown
         break;
       }
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }
 

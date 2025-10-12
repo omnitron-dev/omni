@@ -10,13 +10,7 @@ import type { EventSubscriber } from '../../core/types.js';
 import { Definition } from '../../core/definition.js';
 import { NetronErrors } from '../../errors/index.js';
 import { WebSocketConnection, type WebSocketConnectionOptions, ConnectionState } from './connection.js';
-import {
-  Packet,
-  TYPE_GET,
-  TYPE_SET,
-  TYPE_CALL,
-  TYPE_TASK,
-} from '../../packet/index.js';
+import { Packet, TYPE_GET, TYPE_SET, TYPE_CALL, TYPE_TASK } from '../../packet/index.js';
 
 /**
  * Simple logger interface for browser console
@@ -322,9 +316,7 @@ export class WebSocketPeer extends AbstractPeer {
     const isFiltered = result.filtered === true;
 
     if (isFiltered) {
-      this.logger.debug(
-        `Received filtered definition for '${resolvedName}' based on user permissions`
-      );
+      this.logger.debug(`Received filtered definition for '${resolvedName}' based on user permissions`);
     }
 
     // Create Definition from result
@@ -469,8 +461,7 @@ export class WebSocketPeer extends AbstractPeer {
     localCount = this.invalidateDefinitionCache(pattern);
 
     this.logger.info(
-      `Invalidated ${localCount} service definition cache entries` +
-        (pattern ? ` matching pattern: ${pattern}` : '')
+      `Invalidated ${localCount} service definition cache entries` + (pattern ? ` matching pattern: ${pattern}` : '')
     );
 
     // Request server-side invalidation if requested
@@ -481,15 +472,14 @@ export class WebSocketPeer extends AbstractPeer {
         packet.setType(TYPE_TASK);
         packet.data = {
           task: 'invalidate_cache',
-          pattern
+          pattern,
         };
 
         const response = await this.sendRequest(packet);
 
         if (response && typeof response.count === 'number') {
           this.logger.info(
-            `Server invalidated ${response.count} cache entries` +
-              (pattern ? ` matching pattern: ${pattern}` : '')
+            `Server invalidated ${response.count} cache entries` + (pattern ? ` matching pattern: ${pattern}` : '')
           );
         }
       } catch (error) {

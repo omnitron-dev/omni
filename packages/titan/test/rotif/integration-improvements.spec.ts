@@ -13,7 +13,7 @@ describe('Rotif Improvements Integration', () => {
       port: 6379,
       db: 0,
       retryStrategy: () => null,
-      maxRetriesPerRequest: 1
+      maxRetriesPerRequest: 1,
     });
 
     // Clean up test data
@@ -58,9 +58,9 @@ describe('Rotif Improvements Integration', () => {
           strategy: 'exponential',
           baseDelay: 50,
           multiplier: 2,
-          jitter: 0
+          jitter: 0,
         },
-        maxRetries: 3
+        maxRetries: 3,
       });
 
       const sub = await manager.subscribe('test:retry:exponential', async (msg) => {
@@ -111,9 +111,9 @@ describe('Rotif Improvements Integration', () => {
         retryStrategy: {
           strategy: 'linear',
           baseDelay: 30,
-          jitter: 0
+          jitter: 0,
         },
-        maxRetries: 3
+        maxRetries: 3,
       });
 
       const sub = await manager.subscribe('test:retry:linear', async (msg) => {
@@ -161,7 +161,7 @@ describe('Rotif Improvements Integration', () => {
         blockInterval: 100, // Short block time for tests
         scheduledBatchSize: 100, // Process all messages at once
         retryStrategy: NotificationManager.RetryStrategies.aggressive(),
-        maxRetries: 2
+        maxRetries: 2,
       });
 
       const sub = await manager.subscribe('test:retry:preset', async (msg) => {
@@ -197,9 +197,9 @@ describe('Rotif Improvements Integration', () => {
         retryStrategy: {
           strategy: 'exponential',
           baseDelay: 100,
-          jitter: 0
+          jitter: 0,
         },
-        maxRetries: 2
+        maxRetries: 2,
       });
 
       // Use fixed strategy at subscription level
@@ -216,16 +216,16 @@ describe('Rotif Improvements Integration', () => {
           retryStrategy: {
             strategy: 'fixed',
             baseDelay: 25,
-            jitter: 0
+            jitter: 0,
           },
-          maxRetries: 2
+          maxRetries: 2,
         }
       );
 
       await manager.publish('test:retry:override', { test: 'data' });
 
       // Wait for completion
-      const maxWait = 1000;  // Increased wait time
+      const maxWait = 1000; // Increased wait time
       const waitStart = Date.now();
       while (!completed && Date.now() - waitStart < maxWait) {
         await delay(10);
@@ -255,8 +255,8 @@ describe('Rotif Improvements Integration', () => {
         retryStrategy: {
           strategy: 'fixed',
           baseDelay: 20,
-          jitter: 0
-        }
+          jitter: 0,
+        },
       });
 
       const sub = await manager.subscribe('test:dlq:basic', async () => {
@@ -277,7 +277,7 @@ describe('Rotif Improvements Integration', () => {
         redis: { host: 'localhost', port: 6379, db: 0 },
         checkDelayInterval: 20, // Fast scheduler for tests
         blockInterval: 100, // Short block time for tests
-        maxRetries: 0
+        maxRetries: 0,
       });
 
       const sub = await manager.subscribe('test:dlq:metadata', async () => {
@@ -306,8 +306,8 @@ describe('Rotif Improvements Integration', () => {
         maxRetries: 0,
         dlqCleanup: {
           enabled: false,
-          maxAge: 300  // 300ms for testing
-        }
+          maxAge: 300, // 300ms for testing
+        },
       });
 
       const sub = await manager.subscribe('test:dlq:cleanup', async () => {
@@ -338,7 +338,7 @@ describe('Rotif Improvements Integration', () => {
         redis: { host: 'localhost', port: 6379, db: 0 },
         checkDelayInterval: 20, // Fast scheduler for tests
         blockInterval: 100, // Short block time for tests
-        maxRetries: 0
+        maxRetries: 0,
       });
 
       const sub = await manager.subscribe('test:dlq:clear', async () => {
@@ -366,7 +366,7 @@ describe('Rotif Improvements Integration', () => {
         redis: { host: 'localhost', port: 6379, db: 0 },
         checkDelayInterval: 20, // Fast scheduler for tests
         blockInterval: 100, // Short block time for tests
-        maxRetries: 0
+        maxRetries: 0,
       });
 
       const sub1 = await manager.subscribe('test:channel1', async () => {
@@ -402,7 +402,7 @@ describe('Rotif Improvements Integration', () => {
         blockInterval: 100, // Short block time for tests
         scheduledBatchSize: 100, // Process all messages at once
         retryStrategy: NotificationManager.RetryStrategies.fibonacci(20),
-        maxRetries: 2  // Reduced to 2 so message goes to DLQ after 3rd attempt
+        maxRetries: 2, // Reduced to 2 so message goes to DLQ after 3rd attempt
       });
 
       const sub = await manager.subscribe('test:combined', async (msg) => {

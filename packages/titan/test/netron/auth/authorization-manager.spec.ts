@@ -198,11 +198,7 @@ describe('AuthorizationManager', () => {
         permissions: [],
       };
 
-      const result = authzManager.canAccessMethod(
-        'testService',
-        'testMethod',
-        authContext,
-      );
+      const result = authzManager.canAccessMethod('testService', 'testMethod', authContext);
       expect(result).toBe(true);
     });
 
@@ -218,11 +214,7 @@ describe('AuthorizationManager', () => {
         permissions: [],
       };
 
-      const result = authzManager.canAccessMethod(
-        'testService',
-        'testMethod',
-        authContext,
-      );
+      const result = authzManager.canAccessMethod('testService', 'testMethod', authContext);
       expect(result).toBe(false);
     });
 
@@ -238,11 +230,7 @@ describe('AuthorizationManager', () => {
         permissions: [],
       };
 
-      const result = authzManager.canAccessMethod(
-        'testService',
-        'testMethod',
-        authContext,
-      );
+      const result = authzManager.canAccessMethod('testService', 'testMethod', authContext);
       expect(result).toBe(true);
     });
 
@@ -265,12 +253,8 @@ describe('AuthorizationManager', () => {
       };
 
       // User can access service but not delete method
-      expect(authzManager.canAccessMethod('testService', 'readMethod', userContext)).toBe(
-        true,
-      );
-      expect(authzManager.canAccessMethod('testService', 'deleteMethod', userContext)).toBe(
-        false,
-      );
+      expect(authzManager.canAccessMethod('testService', 'readMethod', userContext)).toBe(true);
+      expect(authzManager.canAccessMethod('testService', 'deleteMethod', userContext)).toBe(false);
 
       const adminContext: AuthContext = {
         userId: 'admin123',
@@ -279,9 +263,7 @@ describe('AuthorizationManager', () => {
       };
 
       // Admin can access both
-      expect(authzManager.canAccessMethod('testService', 'deleteMethod', adminContext)).toBe(
-        true,
-      );
+      expect(authzManager.canAccessMethod('testService', 'deleteMethod', adminContext)).toBe(true);
     });
 
     it('should check method-specific permissions', () => {
@@ -300,11 +282,7 @@ describe('AuthorizationManager', () => {
         permissions: ['test:delete'],
       };
 
-      const result = authzManager.canAccessMethod(
-        'testService',
-        'deleteMethod',
-        authContext,
-      );
+      const result = authzManager.canAccessMethod('testService', 'deleteMethod', authContext);
       expect(result).toBe(true);
     });
   });
@@ -567,9 +545,7 @@ describe('AuthorizationManager', () => {
         permissions: [],
       };
 
-      expect(
-        authzManager.canAccessMethod('restrictedService', 'deleteAll', superAdminContext),
-      ).toBe(true);
+      expect(authzManager.canAccessMethod('restrictedService', 'deleteAll', superAdminContext)).toBe(true);
     });
 
     it('should allow configuring super admin role', () => {
@@ -755,17 +731,11 @@ describe('AuthorizationManager', () => {
       };
 
       // User no longer has method access - method ACL replaces service ACL
-      expect(authzManager.canAccessMethod('testService', 'restrictedMethod', userContext)).toBe(
-        false,
-      );
+      expect(authzManager.canAccessMethod('testService', 'restrictedMethod', userContext)).toBe(false);
       // Admin with both roles can access
-      expect(authzManager.canAccessMethod('testService', 'restrictedMethod', adminContext)).toBe(
-        true,
-      );
+      expect(authzManager.canAccessMethod('testService', 'restrictedMethod', adminContext)).toBe(true);
       // Admin with only admin role can access (method ACL replaced service ACL)
-      expect(
-        authzManager.canAccessMethod('testService', 'restrictedMethod', justAdminContext),
-      ).toBe(true);
+      expect(authzManager.canAccessMethod('testService', 'restrictedMethod', justAdminContext)).toBe(true);
     });
 
     it('should override service ACL when __override flag is set', () => {
@@ -793,12 +763,8 @@ describe('AuthorizationManager', () => {
       };
 
       // With override, only admin role is required (service role ignored)
-      expect(authzManager.canAccessMethod('testService', 'adminOnlyMethod', userContext)).toBe(
-        false,
-      );
-      expect(authzManager.canAccessMethod('testService', 'adminOnlyMethod', adminContext)).toBe(
-        true,
-      );
+      expect(authzManager.canAccessMethod('testService', 'adminOnlyMethod', userContext)).toBe(false);
+      expect(authzManager.canAccessMethod('testService', 'adminOnlyMethod', adminContext)).toBe(true);
     });
 
     it('should work with method ACL without service ACL', () => {
@@ -825,12 +791,8 @@ describe('AuthorizationManager', () => {
 
       // Anyone can access service, but only admin can access method
       expect(authzManager.canAccessMethod('testService', 'publicMethod', userContext)).toBe(true);
-      expect(authzManager.canAccessMethod('testService', 'restrictedMethod', userContext)).toBe(
-        false,
-      );
-      expect(authzManager.canAccessMethod('testService', 'restrictedMethod', adminContext)).toBe(
-        true,
-      );
+      expect(authzManager.canAccessMethod('testService', 'restrictedMethod', userContext)).toBe(false);
+      expect(authzManager.canAccessMethod('testService', 'restrictedMethod', adminContext)).toBe(true);
     });
   });
 
@@ -1096,9 +1058,7 @@ describe('AuthorizationManager', () => {
 
       // Without override, needs both service and method perms
       // With override, only method perms needed
-      expect(authzManager.canAccessMethod('testService', 'writeMethod', hasServicePerms)).toBe(
-        false,
-      );
+      expect(authzManager.canAccessMethod('testService', 'writeMethod', hasServicePerms)).toBe(false);
       expect(authzManager.canAccessMethod('testService', 'writeMethod', hasMethodPerms)).toBe(true);
     });
 
@@ -1134,13 +1094,9 @@ describe('AuthorizationManager', () => {
       };
 
       // Method ACL replaces service ACL - user role no longer works
-      expect(authzManager.canAccessMethod('testService', 'writeMethod', userWithReadOnly)).toBe(
-        false,
-      );
+      expect(authzManager.canAccessMethod('testService', 'writeMethod', userWithReadOnly)).toBe(false);
       // Admin with write permission can access (method ACL replaces service ACL)
-      expect(authzManager.canAccessMethod('testService', 'writeMethod', adminWithWriteOnly)).toBe(
-        true,
-      );
+      expect(authzManager.canAccessMethod('testService', 'writeMethod', adminWithWriteOnly)).toBe(true);
       // User with both roles and permissions can access
       expect(authzManager.canAccessMethod('testService', 'writeMethod', userWithBoth)).toBe(true);
     });
@@ -1209,15 +1165,13 @@ describe('AuthorizationManager', () => {
             {
               allowedRoles: i % 2 === 0 ? ['user'] : ['admin'],
             },
-          ]),
+          ])
         ),
       });
 
       const definition = {
         id: 'large',
-        methods: Object.fromEntries(
-          Array.from({ length: 100 }, (_, i) => [`method${i}`, { type: 'function' }]),
-        ),
+        methods: Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`method${i}`, { type: 'function' }])),
       };
 
       const userContext: AuthContext = {

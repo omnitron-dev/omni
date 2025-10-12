@@ -17,7 +17,7 @@ import type {
   IWorkerHandle,
   IProcessManagerConfig,
   IProcessMetrics,
-  IHealthStatus
+  IHealthStatus,
 } from './types.js';
 import { ProcessStatus } from './types.js';
 import { PROCESS_METHOD_METADATA_KEY } from './decorators.js';
@@ -35,7 +35,7 @@ export class MockWorker extends EventEmitter {
     cpu: 0,
     memory: 0,
     requests: 0,
-    errors: 0
+    errors: 0,
   };
 
   constructor(
@@ -109,14 +109,12 @@ export class MockWorker extends EventEmitter {
    * Setup internal process management methods
    */
   private setupInternalMethods(): void {
-    
-
     this.publicMethods.set('__getProcessMetrics', async (): Promise<IProcessMetrics> => {
       if (this.metrics) this.metrics.requests = (this.metrics.requests || 0) + 1;
       return {
         ...(this.metrics || { cpu: 0, memory: 0, requests: 0, errors: 0 }),
         cpu: Math.random() * 100,
-        memory: process.memoryUsage().heapUsed
+        memory: process.memoryUsage().heapUsed,
       };
     });
 
@@ -132,24 +130,28 @@ export class MockWorker extends EventEmitter {
           // Convert from test format to IHealthStatus
           return {
             status: result.status || (this._status === ProcessStatus.RUNNING ? 'healthy' : 'unhealthy'),
-            checks: result.checks || [{
-              name: 'checkHealth',
-              status: result.status === 'healthy' ? 'pass' : 'fail',
-              message: result.message,
-              details: result.details
-            }],
-            timestamp: result.timestamp || Date.now()
+            checks: result.checks || [
+              {
+                name: 'checkHealth',
+                status: result.status === 'healthy' ? 'pass' : 'fail',
+                message: result.message,
+                details: result.details,
+              },
+            ],
+            timestamp: result.timestamp || Date.now(),
           };
         }
       }
 
       return {
         status: this._status === ProcessStatus.RUNNING ? 'healthy' : 'unhealthy',
-        checks: [{
-          name: 'mock',
-          status: 'pass'
-        }],
-        timestamp: Date.now()
+        checks: [
+          {
+            name: 'mock',
+            status: 'pass',
+          },
+        ],
+        timestamp: Date.now(),
       };
     });
 
@@ -284,74 +286,78 @@ export class MockWorkerHandle implements IWorkerHandle {
     this.netronClient = new MockNetronClient(id, logger, worker);
 
     // Create proxy for method calls
-    this.proxy = new Proxy({}, {
-      get: (target, property: string | symbol) => {
-        // Handle control methods
-        if (property === '__processId') {
-          return this.id;
-        }
+    this.proxy = new Proxy(
+      {},
+      {
+        get: (target, property: string | symbol) => {
+          // Handle control methods
+          if (property === '__processId') {
+            return this.id;
+          }
 
-        if (property === '__destroy') {
-          return () => this.terminate();
-        }
+          if (property === '__destroy') {
+            return () => this.terminate();
+          }
 
-        if (property === '__getMetrics') {
-          return () => this.worker.callMethod('__getProcessMetrics', []);
-        }
+          if (property === '__getMetrics') {
+            return () => this.worker.callMethod('__getProcessMetrics', []);
+          }
 
-        if (property === '__getHealth') {
-          return () => this.worker.callMethod('__getProcessHealth', []);
-        }
+          if (property === '__getHealth') {
+            return () => this.worker.callMethod('__getProcessHealth', []);
+          }
 
-        // Handle Promise-like properties
-        if (property === 'then' || property === 'catch' || property === 'finally') {
-          return undefined;
-        }
+          // Handle Promise-like properties
+          if (property === 'then' || property === 'catch' || property === 'finally') {
+            return undefined;
+          }
 
-        // Handle symbols
-        if (typeof property === 'symbol') {
-          return undefined;
-        }
+          // Handle symbols
+          if (typeof property === 'symbol') {
+            return undefined;
+          }
 
-        // Convert property to string
-        const methodName = String(property);
+          // Convert property to string
+          const methodName = String(property);
 
-        // Check if this should be a streaming method
-        // Methods that include 'Stream' or start with 'stream' may return AsyncIterables
-        const isStreamMethod = methodName.startsWith('stream') ||
-                               methodName.toLowerCase().includes('stream');
+          // Check if this should be a streaming method
+          // Methods that include 'Stream' or start with 'stream' may return AsyncIterables
+          const isStreamMethod = methodName.startsWith('stream') || methodName.toLowerCase().includes('stream');
 
-        if (isStreamMethod) {
-          const workerInstance = this.worker;
-          return async (...args: any[]) => {
-            const result = await workerInstance.callMethod(methodName, args);
-            // If result is already an async iterable, return it directly
-            if (result && typeof result[Symbol.asyncIterator] === 'function') {
+          if (isStreamMethod) {
+            const workerInstance = this.worker;
+            return async (...args: any[]) => {
+              const result = await workerInstance.callMethod(methodName, args);
+              // If result is already an async iterable, return it directly
+              if (result && typeof result[Symbol.asyncIterator] === 'function') {
+                return result;
+              }
+              // If result is a sync iterable, convert to async
+              if (result && typeof result[Symbol.iterator] === 'function') {
+                return (async function* () {
+                  yield* result;
+                })();
+              }
+              // Otherwise return as normal async result
               return result;
-            }
-            // If result is a sync iterable, convert to async
-            if (result && typeof result[Symbol.iterator] === 'function') {
-              return (async function* () { yield* result; })();
-            }
-            // Otherwise return as normal async result
-            return result;
-          };
-        }
+            };
+          }
 
-        // Return async method wrapper
-        return async (...args: any[]) => this.worker.callMethod(methodName, args);
-      },
+          // Return async method wrapper
+          return async (...args: any[]) => this.worker.callMethod(methodName, args);
+        },
 
-      has: (target, property) => {
-        // Report that we have the special control methods
-        const controlMethods = ['__processId', '__destroy', '__getMetrics', '__getHealth'];
-        if (typeof property === 'string' && controlMethods.includes(property)) {
-          return true;
-        }
-        // All other methods are assumed to be available
-        return typeof property === 'string';
+        has: (target, property) => {
+          // Report that we have the special control methods
+          const controlMethods = ['__processId', '__destroy', '__getMetrics', '__getHealth'];
+          if (typeof property === 'string' && controlMethods.includes(property)) {
+            return true;
+          }
+          // All other methods are assumed to be available
+          return typeof property === 'string';
+        },
       }
-    });
+    );
   }
 
   get status(): ProcessStatus {
@@ -395,7 +401,7 @@ export class MockProcessSpawner implements IProcessSpawner {
   ): Promise<IWorkerHandle> {
     const processId = options.processId || uuidv4();
 
-    let ProcessClass: (new (...args: any[]) => T);
+    let ProcessClass: new (...args: any[]) => T;
     let serviceName: string;
 
     if (typeof processPathOrClass === 'string') {
@@ -435,14 +441,7 @@ export class MockProcessSpawner implements IProcessSpawner {
     this.workers.set(processId, worker);
 
     // Create handle
-    const handle = new MockWorkerHandle(
-      processId,
-      worker,
-      transportUrl,
-      serviceName,
-      serviceVersion,
-      this.logger
-    );
+    const handle = new MockWorkerHandle(processId, worker, transportUrl, serviceName, serviceVersion, this.logger);
 
     // Wait for ready
     await new Promise<void>((resolve) => {

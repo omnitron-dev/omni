@@ -42,9 +42,7 @@ export interface RedisTestFixture {
 /**
  * Create a Redis test fixture with proper cleanup
  */
-export async function createRedisTestFixture(
-  options: RedisTestFixtureOptions = {}
-): Promise<RedisTestFixture> {
+export async function createRedisTestFixture(options: RedisTestFixtureOptions = {}): Promise<RedisTestFixture> {
   const {
     withManager = false,
     withService = false,
@@ -114,11 +112,15 @@ export async function createRedisTestFixture(
           ...redisOptions,
           db: redisOptions.db, // Use the test DB
         },
-        ...(namespace !== 'cache' ? [{
-          namespace: 'cache',
-          ...redisOptions,
-          db: 14, // Use different DB for cache namespace
-        }] : []),
+        ...(namespace !== 'cache'
+          ? [
+              {
+                namespace: 'cache',
+                ...redisOptions,
+                db: 14, // Use different DB for cache namespace
+              },
+            ]
+          : []),
       ],
     });
     await manager.onModuleInit();
@@ -171,15 +173,10 @@ export async function cleanupRedisTestFixture(fixture: RedisTestFixture): Promis
 /**
  * Wait for Redis operation to complete
  */
-export async function waitForRedis(
-  operation: () => Promise<any>,
-  timeout = 5000
-): Promise<any> {
+export async function waitForRedis(operation: () => Promise<any>, timeout = 5000): Promise<any> {
   return Promise.race([
     operation(),
-    new Promise((_, reject) =>
-      setTimeout(() => reject(Errors.timeout('Redis operation', timeout)), timeout)
-    ),
+    new Promise((_, reject) => setTimeout(() => reject(Errors.timeout('Redis operation', timeout)), timeout)),
   ]);
 }
 
@@ -230,7 +227,7 @@ export function createMockRedis(): any {
       return count;
     }),
 
-    exists: jest.fn().mockImplementation(async (...keys: string[]) => keys.filter(k => data.has(k)).length),
+    exists: jest.fn().mockImplementation(async (...keys: string[]) => keys.filter((k) => data.has(k)).length),
 
     expire: jest.fn().mockImplementation(async (key: string, ttl: number) => {
       if (data.has(key)) {
@@ -240,12 +237,12 @@ export function createMockRedis(): any {
       return 0;
     }),
 
-    ttl: jest.fn().mockImplementation(async (key: string) => data.has(key) ? -1 : -2),
+    ttl: jest.fn().mockImplementation(async (key: string) => (data.has(key) ? -1 : -2)),
 
     keys: jest.fn().mockImplementation(async (pattern: string) => {
       if (pattern === '*') return Array.from(data.keys());
       const regex = new RegExp(pattern.replace('*', '.*'));
-      return Array.from(data.keys()).filter(k => regex.test(k));
+      return Array.from(data.keys()).filter((k) => regex.test(k));
     }),
 
     // Hash operations

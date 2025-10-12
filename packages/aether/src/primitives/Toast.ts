@@ -105,7 +105,7 @@ export interface ToastContextValue {
 }
 
 const noopGetter = () => [];
-const noop = () => { };
+const noop = () => {};
 const noopAdd = () => '';
 
 export const ToastContext = createContext<ToastContextValue>(
@@ -271,25 +271,25 @@ export const Toast = defineComponent<ToastProps>((props) => {
       'aria-atomic': 'true',
       children: [
         toast.title &&
-        jsx('div', {
-          'data-toast-title': '',
-          children: toast.title,
-        }),
+          jsx('div', {
+            'data-toast-title': '',
+            children: toast.title,
+          }),
         toast.description &&
-        jsx('div', {
-          'data-toast-description': '',
-          children: toast.description,
-        }),
+          jsx('div', {
+            'data-toast-description': '',
+            children: toast.description,
+          }),
         toast.action &&
-        jsx('button', {
-          'data-toast-action': '',
-          onClick: (e: Event) => {
-            e.preventDefault();
-            toast.action!.onClick();
-            handleDismiss();
-          },
-          children: toast.action.label,
-        }),
+          jsx('button', {
+            'data-toast-action': '',
+            onClick: (e: Event) => {
+              e.preventDefault();
+              toast.action!.onClick();
+              handleDismiss();
+            },
+            children: toast.action.label,
+          }),
         jsx('button', {
           'data-toast-close': '',
           'aria-label': 'Close',

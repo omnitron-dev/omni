@@ -67,7 +67,7 @@ test.describe('WebSocket Streams - Basic Operations', () => {
           controller.enqueue({ index: 0, data: 'hello' });
           controller.enqueue({ index: 1, data: 'world' });
           controller.close();
-        }
+        },
       });
 
       // Get echo stream
@@ -103,7 +103,7 @@ test.describe('WebSocket Streams - Basic Operations', () => {
           controller.enqueue({ index: 0, data: 'hello' });
           controller.enqueue({ index: 1, data: 'world' });
           controller.close();
-        }
+        },
       });
 
       // Transform to uppercase
@@ -137,7 +137,7 @@ test.describe('WebSocket Streams - Basic Operations', () => {
       const writableStream = new WritableStream({
         write(chunk) {
           chunks.push(chunk);
-        }
+        },
       });
 
       // Write some data
@@ -194,7 +194,7 @@ test.describe('WebSocket Streams - Advanced Operations', () => {
           controller.enqueue('stream1-chunk1');
           controller.enqueue('stream1-chunk2');
           controller.close();
-        }
+        },
       });
 
       const stream2 = new ReadableStream({
@@ -202,7 +202,7 @@ test.describe('WebSocket Streams - Advanced Operations', () => {
           controller.enqueue('stream2-chunk1');
           controller.enqueue('stream2-chunk2');
           controller.close();
-        }
+        },
       });
 
       // Merge streams
@@ -309,7 +309,7 @@ test.describe('WebSocket Streams - Advanced Operations', () => {
         start(controller) {
           controller.enqueue({ data: 'chunk1' });
           controller.error(new Error('Stream error'));
-        }
+        },
       });
 
       try {
@@ -383,7 +383,7 @@ test.describe('WebSocket Streams - Transformation Patterns', () => {
           controller.enqueue({ index: 0, data: 'hello world' });
           controller.enqueue({ index: 1, data: 'foo bar' });
           controller.close();
-        }
+        },
       });
 
       const transformed = await streamService.transformStream(inputStream, 'uppercase');
@@ -411,7 +411,7 @@ test.describe('WebSocket Streams - Transformation Patterns', () => {
           controller.enqueue({ index: 0, data: 'HELLO WORLD' });
           controller.enqueue({ index: 1, data: 'FOO BAR' });
           controller.close();
-        }
+        },
       });
 
       const transformed = await streamService.transformStream(inputStream, 'lowercase');
@@ -439,7 +439,7 @@ test.describe('WebSocket Streams - Transformation Patterns', () => {
           controller.enqueue({ index: 0, data: 'hello' });
           controller.enqueue({ index: 1, data: 'world' });
           controller.close();
-        }
+        },
       });
 
       const transformed = await streamService.transformStream(inputStream, 'reverse');
@@ -466,7 +466,7 @@ test.describe('WebSocket Streams - Transformation Patterns', () => {
         start(controller) {
           controller.enqueue({ index: 0, data: 'hello' });
           controller.close();
-        }
+        },
       });
 
       // First transform to uppercase
@@ -497,7 +497,7 @@ test.describe('WebSocket Streams - Transformation Patterns', () => {
       const emptyStream = new ReadableStream({
         start(controller) {
           controller.close();
-        }
+        },
       });
 
       const transformed = await streamService.transformStream(emptyStream, 'uppercase');
@@ -595,7 +595,7 @@ test.describe('WebSocket Streams - Performance', () => {
       }
 
       const duration = performance.now() - startTime;
-      const mbps = (totalBytes / (1024 * 1024)) / (duration / 1000);
+      const mbps = totalBytes / (1024 * 1024) / (duration / 1000);
 
       return { size: totalBytes, duration, mbps };
     });

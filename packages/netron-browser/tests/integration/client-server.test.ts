@@ -54,9 +54,7 @@ describe('HTTP Client Integration', () => {
     });
 
     it('should handle division by zero', async () => {
-      await expect(
-        client.invoke('calculator@1.0.0', 'divide', [10, 0])
-      ).rejects.toThrow('Division by zero');
+      await expect(client.invoke('calculator@1.0.0', 'divide', [10, 0])).rejects.toThrow('Division by zero');
     });
 
     it('should handle async operations', async () => {
@@ -98,10 +96,7 @@ describe('HTTP Client Integration', () => {
     });
 
     it('should update a user', async () => {
-      const updated = await client.invoke('user@1.0.0', 'updateUser', [
-        '1',
-        { name: 'Alice Updated' },
-      ]);
+      const updated = await client.invoke('user@1.0.0', 'updateUser', ['1', { name: 'Alice Updated' }]);
       expect(updated.name).toBe('Alice Updated');
       expect(updated.id).toBe('1');
     });
@@ -112,9 +107,7 @@ describe('HTTP Client Integration', () => {
     });
 
     it('should handle non-existent user', async () => {
-      await expect(
-        client.invoke('user@1.0.0', 'getUser', ['999'])
-      ).rejects.toThrow('User not found');
+      await expect(client.invoke('user@1.0.0', 'getUser', ['999'])).rejects.toThrow('User not found');
     });
   });
 
@@ -152,9 +145,7 @@ describe('HTTP Client Integration', () => {
     });
 
     it('should handle thrown errors', async () => {
-      await expect(
-        client.invoke('echo@1.0.0', 'throwError', ['Test error'])
-      ).rejects.toThrow('Test error');
+      await expect(client.invoke('echo@1.0.0', 'throwError', ['Test error'])).rejects.toThrow('Test error');
     });
   });
 
@@ -189,9 +180,7 @@ describe('HTTP Client Integration', () => {
     it('should handle parallel calls efficiently', async () => {
       const startTime = Date.now();
 
-      const promises = Array.from({ length: 10 }, (_, i) =>
-        client.invoke('calculator@1.0.0', 'add', [i, i + 1])
-      );
+      const promises = Array.from({ length: 10 }, (_, i) => client.invoke('calculator@1.0.0', 'add', [i, i + 1]));
 
       const results = await Promise.all(promises);
 
@@ -213,9 +202,7 @@ describe('HTTP Client Integration', () => {
 
     it('should handle high concurrency loads', async () => {
       const concurrency = 100;
-      const promises = Array.from({ length: concurrency }, (_, i) =>
-        client.invoke('calculator@1.0.0', 'add', [i, 1])
-      );
+      const promises = Array.from({ length: concurrency }, (_, i) => client.invoke('calculator@1.0.0', 'add', [i, 1]));
 
       const start = Date.now();
       const results = await Promise.all(promises);
@@ -232,15 +219,11 @@ describe('HTTP Client Integration', () => {
 
   describe('Error Handling', () => {
     it('should handle non-existent service', async () => {
-      await expect(
-        client.invoke('nonexistent@1.0.0', 'someMethod', [])
-      ).rejects.toThrow();
+      await expect(client.invoke('nonexistent@1.0.0', 'someMethod', [])).rejects.toThrow();
     });
 
     it('should handle non-existent method', async () => {
-      await expect(
-        client.invoke('calculator@1.0.0', 'nonExistentMethod', [])
-      ).rejects.toThrow();
+      await expect(client.invoke('calculator@1.0.0', 'nonExistentMethod', [])).rejects.toThrow();
     });
 
     it('should handle invalid arguments', async () => {
@@ -431,18 +414,11 @@ describe('Mixed Transport Tests', () => {
   });
 
   it('should handle high load on both transports simultaneously', async () => {
-    const httpOps = Array.from({ length: 50 }, (_, i) =>
-      httpClient.invoke('calculator@1.0.0', 'add', [i, 100])
-    );
+    const httpOps = Array.from({ length: 50 }, (_, i) => httpClient.invoke('calculator@1.0.0', 'add', [i, 100]));
 
-    const wsOps = Array.from({ length: 50 }, (_, i) =>
-      wsClient.invoke('calculator@1.0.0', 'add', [i, 200])
-    );
+    const wsOps = Array.from({ length: 50 }, (_, i) => wsClient.invoke('calculator@1.0.0', 'add', [i, 200]));
 
-    const [httpResults, wsResults] = await Promise.all([
-      Promise.all(httpOps),
-      Promise.all(wsOps),
-    ]);
+    const [httpResults, wsResults] = await Promise.all([Promise.all(httpOps), Promise.all(wsOps)]);
 
     expect(httpResults.length).toBe(50);
     expect(wsResults.length).toBe(50);
@@ -484,20 +460,19 @@ describe('Advanced Integration Scenarios', () => {
   describe('Complex Service Interactions', () => {
     it('should handle multi-step workflows', async () => {
       // Create user
-      const newUser = await client.invoke('user@1.0.0', 'createUser', [{
-        name: 'Workflow User',
-        email: 'workflow@test.com',
-        role: 'user',
-      }]);
+      const newUser = await client.invoke('user@1.0.0', 'createUser', [
+        {
+          name: 'Workflow User',
+          email: 'workflow@test.com',
+          role: 'user',
+        },
+      ]);
 
       expect(newUser).toHaveProperty('id');
       const userId = newUser.id;
 
       // Update user
-      const updated = await client.invoke('user@1.0.0', 'updateUser', [
-        userId,
-        { name: 'Updated Workflow User' },
-      ]);
+      const updated = await client.invoke('user@1.0.0', 'updateUser', [userId, { name: 'Updated Workflow User' }]);
 
       expect(updated.name).toBe('Updated Workflow User');
 
@@ -532,11 +507,13 @@ describe('Advanced Integration Scenarios', () => {
 
       // Create multiple users
       const createOps = Array.from({ length: 3 }, (_, i) =>
-        client.invoke('user@1.0.0', 'createUser', [{
-          name: `Batch User ${i}`,
-          email: `batch${i}@test.com`,
-          role: 'user',
-        }])
+        client.invoke('user@1.0.0', 'createUser', [
+          {
+            name: `Batch User ${i}`,
+            email: `batch${i}@test.com`,
+            role: 'user',
+          },
+        ])
       );
 
       await Promise.all(createOps);
@@ -555,14 +532,7 @@ describe('Advanced Integration Scenarios', () => {
     });
 
     it('should handle special numeric values', async () => {
-      const specialNumbers = [
-        0,
-        -0,
-        Infinity,
-        -Infinity,
-        Number.MAX_SAFE_INTEGER,
-        Number.MIN_SAFE_INTEGER,
-      ];
+      const specialNumbers = [0, -0, Infinity, -Infinity, Number.MAX_SAFE_INTEGER, Number.MIN_SAFE_INTEGER];
 
       for (const num of specialNumbers) {
         const result = await client.invoke('echo@1.0.0', 'echoNumber', [num]);
@@ -579,7 +549,10 @@ describe('Advanced Integration Scenarios', () => {
         [1, 2, 3],
         [4, 5, 6],
         [7, 8, 9],
-        [[10, 11], [12, 13]],
+        [
+          [10, 11],
+          [12, 13],
+        ],
       ];
 
       const result = await client.invoke('echo@1.0.0', 'echoArray', [nestedArray]);
@@ -587,14 +560,7 @@ describe('Advanced Integration Scenarios', () => {
     });
 
     it('should handle mixed type arrays', async () => {
-      const mixedArray = [
-        1,
-        'two',
-        true,
-        null,
-        { key: 'value' },
-        [5, 6],
-      ];
+      const mixedArray = [1, 'two', true, null, { key: 'value' }, [5, 6]];
 
       const result = await client.invoke('echo@1.0.0', 'echoArray', [mixedArray]);
       expect(result).toEqual(mixedArray);

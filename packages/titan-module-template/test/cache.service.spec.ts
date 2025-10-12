@@ -6,10 +6,7 @@ import { describe, it, expect, beforeEach } from '@jest/globals';
 import { Container } from '@omnitron-dev/nexus';
 import { CacheService } from '../src/services/cache.service.js';
 import { LoggerService } from '../src/services/logger.service.js';
-import {
-  TEMPLATE_MODULE_OPTIONS,
-  TEMPLATE_LOGGER
-} from '../src/constants.js';
+import { TEMPLATE_MODULE_OPTIONS, TEMPLATE_LOGGER } from '../src/constants.js';
 import type { TemplateModuleOptions } from '../src/types.js';
 import { delay } from '../src/utils.js';
 
@@ -27,7 +24,7 @@ describe('CacheService', () => {
       debug: false,
       prefix: 'test',
       enableCache: true,
-      cacheTTL: 1 // 1 second for testing
+      cacheTTL: 1, // 1 second for testing
     };
 
     // Register dependencies

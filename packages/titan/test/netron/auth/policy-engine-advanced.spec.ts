@@ -5,10 +5,7 @@
 
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { PolicyEngine } from '../../../src/netron/auth/policy-engine.js';
-import type {
-  ExecutionContext,
-  PolicyDefinition,
-} from '../../../src/netron/auth/types.js';
+import type { ExecutionContext, PolicyDefinition } from '../../../src/netron/auth/types.js';
 
 describe('PolicyEngine Advanced Tests', () => {
   let policyEngine: PolicyEngine;
@@ -138,9 +135,7 @@ describe('PolicyEngine Advanced Tests', () => {
         environment: {},
       }));
 
-      const results = await Promise.all(
-        contexts.map((ctx) => policyEngine.evaluate('concurrentPolicy', ctx)),
-      );
+      const results = await Promise.all(contexts.map((ctx) => policyEngine.evaluate('concurrentPolicy', ctx)));
 
       expect(results).toHaveLength(10);
       expect(results.every((r) => r.allowed)).toBe(true);
@@ -168,9 +163,7 @@ describe('PolicyEngine Advanced Tests', () => {
 
       // Multiple concurrent evaluations with same context should use cache
       const results = await Promise.all(
-        Array.from({ length: 20 }, () =>
-          policyEngine.evaluate('cacheTestPolicy', context),
-        ),
+        Array.from({ length: 20 }, () => policyEngine.evaluate('cacheTestPolicy', context))
       );
 
       expect(results).toHaveLength(20);
@@ -211,12 +204,9 @@ describe('PolicyEngine Advanced Tests', () => {
       // (policy1 AND policy2) OR policy3
       const result = await policyEngine.evaluateExpression(
         {
-          or: [
-            { and: ['policy1', 'policy2'] },
-            'policy3',
-          ],
+          or: [{ and: ['policy1', 'policy2'] }, 'policy3'],
         },
-        context,
+        context
       );
 
       expect(result.allowed).toBe(true); // First part passes
@@ -237,10 +227,7 @@ describe('PolicyEngine Advanced Tests', () => {
       };
 
       // NOT denyPolicy = allow
-      const result = await policyEngine.evaluateExpression(
-        { not: 'denyPolicy' },
-        context,
-      );
+      const result = await policyEngine.evaluateExpression({ not: 'denyPolicy' }, context);
 
       expect(result.allowed).toBe(true);
     });
@@ -270,10 +257,7 @@ describe('PolicyEngine Advanced Tests', () => {
         environment: {},
       };
 
-      await policyEngine.evaluateAny(
-        ['alwaysAllow', 'shouldNotBeCalled'],
-        context,
-      );
+      await policyEngine.evaluateAny(['alwaysAllow', 'shouldNotBeCalled'], context);
 
       // Second policy should not be called due to short-circuit
       expect(policy2Called).toBe(false);
@@ -514,9 +498,9 @@ describe('PolicyEngine Advanced Tests', () => {
       };
 
       // Missing policy throws an error
-      await expect(
-        policyEngine.evaluate('nonExistentPolicy', context),
-      ).rejects.toThrow('Policy with id nonExistentPolicy not found');
+      await expect(policyEngine.evaluate('nonExistentPolicy', context)).rejects.toThrow(
+        'Policy with id nonExistentPolicy not found'
+      );
     });
   });
 

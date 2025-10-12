@@ -14,7 +14,7 @@ import type { IHealthStatus } from '../../../src/modules/pm/types.js';
 @Process({
   name: 'calculator-service',
   version: '1.0.0',
-  description: 'Basic arithmetic calculator'
+  description: 'Basic arithmetic calculator',
 })
 export default class CalculatorProcess {
   private operationCount = 0;
@@ -81,7 +81,7 @@ export default class CalculatorProcess {
   async getStats(): Promise<{ operationCount: number; lastOperation?: string }> {
     return {
       operationCount: this.operationCount,
-      lastOperation: this.lastOperation
+      lastOperation: this.lastOperation,
     };
   }
 
@@ -93,10 +93,10 @@ export default class CalculatorProcess {
         {
           name: 'calculator',
           status: 'pass',
-          message: `Operations performed: ${this.operationCount}`
-        }
+          message: `Operations performed: ${this.operationCount}`,
+        },
       ],
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 }

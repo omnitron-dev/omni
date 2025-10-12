@@ -3,7 +3,16 @@
  * Provides compatibility layer for Jest API
  */
 
-import { mock, test as bunTest, expect as bunExpect, describe as bunDescribe, afterAll as bunAfterAll, afterEach as bunAfterEach, beforeAll as bunBeforeAll, beforeEach as bunBeforeEach } from "bun:test";
+import {
+  mock,
+  test as bunTest,
+  expect as bunExpect,
+  describe as bunDescribe,
+  afterAll as bunAfterAll,
+  afterEach as bunAfterEach,
+  beforeAll as bunBeforeAll,
+  beforeEach as bunBeforeEach,
+} from 'bun:test';
 
 import { timerUtils } from './test-adapter.js';
 
@@ -35,7 +44,7 @@ const fakeTimers = {
   },
   clearAllTimers: () => {
     timerUtils.clearAllTimers();
-  }
+  },
 };
 
 // Mock Jest APIs
@@ -46,7 +55,7 @@ const fakeTimers = {
   useRealTimers: fakeTimers.useRealTimers,
   advanceTimersByTime: fakeTimers.advanceTimersByTime,
   runAllTimers: fakeTimers.runAllTimers,
-  clearAllTimers: fakeTimers.clearAllTimers
+  clearAllTimers: fakeTimers.clearAllTimers,
 };
 
 // Add missing expect matchers if needed
@@ -57,11 +66,12 @@ if (!originalExpect.toBeInstanceOf) {
       const pass = received instanceof constructor;
       return {
         pass,
-        message: () => pass
-          ? `expected ${received} not to be instance of ${constructor.name}`
-          : `expected ${received} to be instance of ${constructor.name}`
+        message: () =>
+          pass
+            ? `expected ${received} not to be instance of ${constructor.name}`
+            : `expected ${received} to be instance of ${constructor.name}`,
       };
-    }
+    },
   });
 }
 
@@ -97,10 +107,11 @@ if (!originalExpect.toThrowError) {
 
       return {
         pass,
-        message: () => pass
-          ? `expected function not to throw${expected ? ` ${expected}` : ''}`
-          : `expected function to throw${expected ? ` ${expected}` : ''}`
+        message: () =>
+          pass
+            ? `expected function not to throw${expected ? ` ${expected}` : ''}`
+            : `expected function to throw${expected ? ` ${expected}` : ''}`,
       };
-    }
+    },
   });
 }

@@ -11,5 +11,5 @@ export {
   advanceTimersByTime,
   clearAllTimers,
   expectAsync,
-  sleep
+  sleep,
 } from '@omnitron-dev/testing';

@@ -35,7 +35,7 @@ describe('Advanced Coercion Edge Cases', () => {
       const schema = z.object({
         age: z.number().nullable(),
         name: z.string().nullable(),
-        count: z.number().nullable()
+        count: z.number().nullable(),
       });
 
       const validator = engine.compile(schema, { coerce: true });
@@ -44,7 +44,7 @@ describe('Advanced Coercion Edge Cases', () => {
       const result1 = validator.validate({
         age: '25',
         name: 'John',
-        count: '100'
+        count: '100',
       });
       expect(result1.age).toBe(25);
       expect(result1.name).toBe('John');
@@ -54,7 +54,7 @@ describe('Advanced Coercion Edge Cases', () => {
       const result2 = validator.validate({
         age: null,
         name: null,
-        count: null
+        count: null,
       });
       expect(result2.age).toBeNull();
       expect(result2.name).toBeNull();
@@ -64,7 +64,7 @@ describe('Advanced Coercion Edge Cases', () => {
       const result3 = validator.validate({
         age: '0',
         name: null,
-        count: '999'
+        count: '999',
       });
       expect(result3.age).toBe(0);
       expect(result3.name).toBeNull();
@@ -74,14 +74,14 @@ describe('Advanced Coercion Edge Cases', () => {
     it('should handle nullable booleans with coercion', () => {
       const schema = z.object({
         active: z.boolean().nullable(),
-        verified: z.boolean().nullable()
+        verified: z.boolean().nullable(),
       });
 
       const validator = engine.compile(schema, { coerce: true });
 
       const result = validator.validate({
         active: 'true',
-        verified: null
+        verified: null,
       });
 
       expect(result.active).toBe(true);
@@ -90,12 +90,16 @@ describe('Advanced Coercion Edge Cases', () => {
 
     it('should handle deeply nested nullable fields', () => {
       const schema = z.object({
-        user: z.object({
-          profile: z.object({
-            age: z.number().nullable(),
-            bio: z.string().nullable()
-          }).nullable()
-        }).nullable()
+        user: z
+          .object({
+            profile: z
+              .object({
+                age: z.number().nullable(),
+                bio: z.string().nullable(),
+              })
+              .nullable(),
+          })
+          .nullable(),
       });
 
       const validator = engine.compile(schema, { coerce: true });
@@ -106,20 +110,20 @@ describe('Advanced Coercion Edge Cases', () => {
 
       // Profile is null
       const result2 = validator.validate({
-        user: { profile: null }
+        user: { profile: null },
       });
       expect(result2.user.profile).toBeNull();
 
       // Fields are null
       const result3 = validator.validate({
-        user: { profile: { age: null, bio: null } }
+        user: { profile: { age: null, bio: null } },
       });
       expect(result3.user!.profile!.age).toBeNull();
       expect(result3.user!.profile!.bio).toBeNull();
 
       // Fields are coerced
       const result4 = validator.validate({
-        user: { profile: { age: '30', bio: 'Test' } }
+        user: { profile: { age: '30', bio: 'Test' } },
       });
       expect(result4.user!.profile!.age).toBe(30);
       expect(result4.user!.profile!.bio).toBe('Test');
@@ -130,9 +134,10 @@ describe('Advanced Coercion Edge Cases', () => {
     // KNOWN LIMITATION: Refinements are lost during coercion (validation-engine.ts:319-325)
     // These tests document expected behavior once the limitation is fixed
     it.skip('should preserve number refinements when coercion is applied', () => {
-      const schema = z.number()
-        .refine(n => n > 0, { message: 'Must be positive' })
-        .refine(n => n < 100, { message: 'Must be less than 100' });
+      const schema = z
+        .number()
+        .refine((n) => n > 0, { message: 'Must be positive' })
+        .refine((n) => n < 100, { message: 'Must be less than 100' });
 
       const validator = engine.compile(schema, { coerce: true });
 
@@ -181,12 +186,10 @@ describe('Advanced Coercion Edge Cases', () => {
     });
 
     it.skip('should preserve string refinements with transforms', () => {
-      const schema = z.string()
+      const schema = z
+        .string()
         .email()
-        .refine(
-          s => !s.endsWith('@blocked.com'),
-          { message: 'Blocked domain' }
-        );
+        .refine((s) => !s.endsWith('@blocked.com'), { message: 'Blocked domain' });
 
       const validator = engine.compile(schema);
 
@@ -208,30 +211,31 @@ describe('Advanced Coercion Edge Cases', () => {
     });
 
     it.skip('should preserve object refinements', () => {
-      const schema = z.object({
-        password: z.string(),
-        confirmPassword: z.string()
-      }).refine(
-        data => data.password === data.confirmPassword,
-        { message: 'Passwords must match' }
-      );
+      const schema = z
+        .object({
+          password: z.string(),
+          confirmPassword: z.string(),
+        })
+        .refine((data) => data.password === data.confirmPassword, { message: 'Passwords must match' });
 
       const validator = engine.compile(schema);
 
       // Valid - passwords match
-      expect(validator.validate({
+      expect(
+        validator.validate({
+          password: 'secret123',
+          confirmPassword: 'secret123',
+        })
+      ).toEqual({
         password: 'secret123',
-        confirmPassword: 'secret123'
-      })).toEqual({
-        password: 'secret123',
-        confirmPassword: 'secret123'
+        confirmPassword: 'secret123',
       });
 
       // Invalid - passwords don't match
       try {
         validator.validate({
           password: 'secret123',
-          confirmPassword: 'different'
+          confirmPassword: 'different',
         });
         fail('Should have thrown');
       } catch (error: any) {
@@ -246,22 +250,24 @@ describe('Advanced Coercion Edge Cases', () => {
     it('should reject null when coercing to number', () => {
       const schema = z.object({
         count: z.number(),
-        score: z.number()
+        score: z.number(),
       });
 
       const validator = engine.compile(schema, { coerce: true });
 
       // null should throw
-      expect(() => validator.validate({
-        count: null,
-        score: 100
-      })).toThrow('Cannot coerce null to number');
+      expect(() =>
+        validator.validate({
+          count: null,
+          score: 100,
+        })
+      ).toThrow('Cannot coerce null to number');
     });
 
     it('should handle undefined in optional fields', () => {
       const schema = z.object({
         count: z.number().optional(),
-        flag: z.boolean()
+        flag: z.boolean(),
       });
 
       const validator = engine.compile(schema, { coerce: true });
@@ -274,7 +280,7 @@ describe('Advanced Coercion Edge Cases', () => {
       // Explicit undefined
       const result2 = validator.validate({
         count: undefined,
-        flag: '1'
+        flag: '1',
       });
       expect(result2.count).toBeUndefined();
       expect(result2.flag).toBe(true);
@@ -401,8 +407,7 @@ describe('Advanced Coercion Edge Cases', () => {
 
     // KNOWN LIMITATION: Refinements are lost during coercion
     it.skip('should handle bigint with validation', () => {
-      const schema = z.bigint()
-        .refine(n => n > 0n, { message: 'Must be positive' });
+      const schema = z.bigint().refine((n) => n > 0n, { message: 'Must be positive' });
 
       const validator = engine.compile(schema, { coerce: true });
 
@@ -436,9 +441,9 @@ describe('Advanced Coercion Edge Cases', () => {
       const schema = z.object({
         outer: z.object({
           inner: z.object({
-            value: z.number()
-          })
-        })
+            value: z.number(),
+          }),
+        }),
       });
 
       // No mode specified - should default to strip
@@ -448,11 +453,11 @@ describe('Advanced Coercion Edge Cases', () => {
         outer: {
           inner: {
             value: '123',
-            extra1: 'strip me'
+            extra1: 'strip me',
           },
-          extra2: 'strip me'
+          extra2: 'strip me',
         },
-        extra3: 'strip me'
+        extra3: 'strip me',
       };
 
       const result = validator.validate(input);
@@ -471,37 +476,41 @@ describe('Advanced Coercion Edge Cases', () => {
         level1: z.object({
           level2: z.object({
             level3: z.object({
-              value: z.number()
-            })
-          })
-        })
+              value: z.number(),
+            }),
+          }),
+        }),
       });
 
       // Strict mode should be inherited
       const strictValidator = engine.compile(schema, { mode: 'strict', coerce: true });
 
       // Valid - no extra fields
-      expect(() => strictValidator.validate({
-        level1: {
-          level2: {
-            level3: {
-              value: '100'
-            }
-          }
-        }
-      })).not.toThrow();
+      expect(() =>
+        strictValidator.validate({
+          level1: {
+            level2: {
+              level3: {
+                value: '100',
+              },
+            },
+          },
+        })
+      ).not.toThrow();
 
       // Invalid - extra field at any level should fail
-      expect(() => strictValidator.validate({
-        level1: {
-          level2: {
-            level3: {
-              value: '100',
-              extra: 'field'
-            }
-          }
-        }
-      })).toThrow();
+      expect(() =>
+        strictValidator.validate({
+          level1: {
+            level2: {
+              level3: {
+                value: '100',
+                extra: 'field',
+              },
+            },
+          },
+        })
+      ).toThrow();
 
       // Passthrough mode should be inherited
       const passthroughValidator = engine.compile(schema, { mode: 'passthrough', coerce: true });
@@ -511,10 +520,10 @@ describe('Advanced Coercion Edge Cases', () => {
           level2: {
             level3: {
               value: '200',
-              extra: 'preserved'
-            }
-          }
-        }
+              extra: 'preserved',
+            },
+          },
+        },
       });
 
       expect(result.level1.level2.level3.value).toBe(200);
@@ -528,25 +537,29 @@ describe('Advanced Coercion Edge Cases', () => {
     it('should not coerce primitives inside arrays (Zod v4 limitation)', () => {
       const schema = z.object({
         numbers: z.array(z.number()),
-        booleans: z.array(z.boolean())
+        booleans: z.array(z.boolean()),
       });
 
       const validator = engine.compile(schema, { coerce: true });
 
       // Coercion doesn't work inside arrays - this is intentional
       // to avoid Zod v4 z.preprocess() inside arrays causing internal errors
-      expect(() => validator.validate({
-        numbers: ['1', '2', '3'],
-        booleans: ['true', 'false']
-      })).toThrow();
+      expect(() =>
+        validator.validate({
+          numbers: ['1', '2', '3'],
+          booleans: ['true', 'false'],
+        })
+      ).toThrow();
 
       // Should work with actual typed values
-      expect(validator.validate({
+      expect(
+        validator.validate({
+          numbers: [1, 2, 3],
+          booleans: [true, false],
+        })
+      ).toEqual({
         numbers: [1, 2, 3],
-        booleans: [true, false]
-      })).toEqual({
-        numbers: [1, 2, 3],
-        booleans: [true, false]
+        booleans: [true, false],
       });
     });
 
@@ -554,7 +567,7 @@ describe('Advanced Coercion Edge Cases', () => {
       // Workaround: use explicit z.coerce.* in schema
       const schema = z.object({
         numbers: z.array(z.coerce.number()),
-        booleans: z.array(z.coerce.boolean())
+        booleans: z.array(z.coerce.boolean()),
       });
 
       const validator = engine.compile(schema, { mode: 'strip' });
@@ -563,7 +576,7 @@ describe('Advanced Coercion Edge Cases', () => {
       const result = validator.validate({
         numbers: ['1', '2', '3'],
         booleans: [1, 0, true, false],
-        extra: 'strip'
+        extra: 'strip',
       });
 
       expect(result.numbers).toEqual([1, 2, 3]);
@@ -575,9 +588,11 @@ describe('Advanced Coercion Edge Cases', () => {
   describe('MEDIUM: Transform Preservation with Mode Options', () => {
     // CRITICAL: Line 240 in validation-engine.ts - ZodEffects protection
     it('should not modify object schemas with transforms during optimization', () => {
-      const schema = z.object({
-        email: z.string().email()
-      }).transform(obj => ({ ...obj, normalized: true }));
+      const schema = z
+        .object({
+          email: z.string().email(),
+        })
+        .transform((obj) => ({ ...obj, normalized: true }));
 
       const validator = engine.compile(schema, { mode: 'strict' });
 
@@ -591,23 +606,28 @@ describe('Advanced Coercion Edge Cases', () => {
 
     it('should not modify transforms when applying mode options', () => {
       const schema = z.object({
-        email: z.string().email().transform(s => s.toLowerCase()),
-        age: z.number()
+        email: z
+          .string()
+          .email()
+          .transform((s) => s.toLowerCase()),
+        age: z.number(),
       });
 
       const strictValidator = engine.compile(schema, { mode: 'strict' });
 
       // Should fail due to extra field (strict mode)
-      expect(() => strictValidator.validate({
-        email: 'TEST@EXAMPLE.COM',
-        age: 25,
-        extra: 'field'
-      })).toThrow();
+      expect(() =>
+        strictValidator.validate({
+          email: 'TEST@EXAMPLE.COM',
+          age: 25,
+          extra: 'field',
+        })
+      ).toThrow();
 
       // Should work with transform (no extra fields)
       const result = strictValidator.validate({
         email: 'TEST@EXAMPLE.COM',
-        age: 25
+        age: 25,
       });
 
       expect(result.email).toBe('test@example.com'); // Transform should work
@@ -617,9 +637,12 @@ describe('Advanced Coercion Edge Cases', () => {
     it('should preserve transforms in nested objects', () => {
       const schema = z.object({
         user: z.object({
-          name: z.string().transform(s => s.trim()),
-          email: z.string().email().transform(s => s.toLowerCase())
-        })
+          name: z.string().transform((s) => s.trim()),
+          email: z
+            .string()
+            .email()
+            .transform((s) => s.toLowerCase()),
+        }),
       });
 
       const validator = engine.compile(schema, { mode: 'strip' });
@@ -628,9 +651,9 @@ describe('Advanced Coercion Edge Cases', () => {
         user: {
           name: '  John Doe  ',
           email: 'JOHN@EXAMPLE.COM',
-          extra: 'strip'
+          extra: 'strip',
         },
-        topExtra: 'strip'
+        topExtra: 'strip',
       });
 
       expect(result.user.name).toBe('John Doe');

@@ -13,15 +13,12 @@ import {
   Stage,
   Compensate,
   SUPERVISOR_METADATA_KEY,
-  WORKFLOW_METADATA_KEY
+  WORKFLOW_METADATA_KEY,
 } from '../../../src/modules/pm/decorators.js';
 import { ProcessManager } from '../../../src/modules/pm/process-manager.js';
 import { ProcessSupervisor } from '../../../src/modules/pm/process-supervisor.js';
 import { ProcessWorkflow } from '../../../src/modules/pm/process-workflow.js';
-import {
-  SupervisionStrategy,
-  RestartDecision
-} from '../../../src/modules/pm/types.js';
+import { SupervisionStrategy, RestartDecision } from '../../../src/modules/pm/types.js';
 
 // Mock logger
 const mockLogger = {
@@ -29,7 +26,7 @@ const mockLogger = {
   error: jest.fn(),
   warn: jest.fn(),
   debug: jest.fn(),
-  child: jest.fn(() => mockLogger)
+  child: jest.fn(() => mockLogger),
 } as any;
 
 // Test processes for supervisor
@@ -89,7 +86,7 @@ describe('ProcessSupervisor', () => {
       @Supervisor({
         strategy: SupervisionStrategy.ONE_FOR_ONE,
         maxRestarts: 5,
-        window: 60000
+        window: 60000,
       })
       class TestSupervisor {
         @Child({ critical: true })
@@ -116,12 +113,7 @@ describe('ProcessSupervisor', () => {
     }
 
     it('should start child processes', async () => {
-      const supervisor = new ProcessSupervisor(
-        processManager,
-        SimpleSupervisor,
-        {},
-        mockLogger as any
-      );
+      const supervisor = new ProcessSupervisor(processManager, SimpleSupervisor, {}, mockLogger as any);
 
       await supervisor.start();
 
@@ -136,7 +128,7 @@ describe('ProcessSupervisor', () => {
 
       @Supervisor({
         strategy: SupervisionStrategy.ONE_FOR_ONE,
-        maxRestarts: 3
+        maxRestarts: 3,
       })
       class RestartSupervisor {
         @Child()
@@ -165,7 +157,7 @@ describe('ProcessSupervisor', () => {
       }
 
       // Wait for restart handling
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(restartCount).toBeGreaterThan(0);
 
@@ -176,7 +168,7 @@ describe('ProcessSupervisor', () => {
   describe('Supervision Strategies', () => {
     it('should implement one-for-one strategy', async () => {
       @Supervisor({
-        strategy: SupervisionStrategy.ONE_FOR_ONE
+        strategy: SupervisionStrategy.ONE_FOR_ONE,
       })
       class OneForOneSupervisor {
         @Child()
@@ -206,7 +198,7 @@ describe('ProcessSupervisor', () => {
 
     it('should implement one-for-all strategy', async () => {
       @Supervisor({
-        strategy: SupervisionStrategy.ONE_FOR_ALL
+        strategy: SupervisionStrategy.ONE_FOR_ALL,
       })
       class OneForAllSupervisor {
         @Child()
@@ -243,12 +235,7 @@ describe('ProcessSupervisor', () => {
         optional = StableService;
       }
 
-      const supervisor = new ProcessSupervisor(
-        processManager,
-        CriticalSupervisor,
-        {},
-        mockLogger as any
-      );
+      const supervisor = new ProcessSupervisor(processManager, CriticalSupervisor, {}, mockLogger as any);
 
       // Critical child failure should be handled differently
       await supervisor.start();
@@ -316,11 +303,7 @@ describe('ProcessWorkflow', () => {
     }
 
     it('should execute stages in dependency order', async () => {
-      const workflow = new ProcessWorkflow(
-        processManager,
-        SimpleWorkflow,
-        mockLogger as any
-      );
+      const workflow = new ProcessWorkflow(processManager, SimpleWorkflow, mockLogger as any);
 
       const instance = workflow.create();
       const result = await (instance as any).run();
@@ -340,7 +323,7 @@ describe('ProcessWorkflow', () => {
 
         @Stage({ dependsOn: 'fetchData' })
         async transformData(input: { data: string[] }): Promise<string[]> {
-          return input.data.map(item => item.toUpperCase());
+          return input.data.map((item) => item.toUpperCase());
         }
 
         @Stage({ dependsOn: 'transformData' })
@@ -349,11 +332,7 @@ describe('ProcessWorkflow', () => {
         }
       }
 
-      const workflow = new ProcessWorkflow(
-        processManager,
-        DataFlowWorkflow,
-        mockLogger as any
-      );
+      const workflow = new ProcessWorkflow(processManager, DataFlowWorkflow, mockLogger as any);
 
       const instance = workflow.create();
       const result = await (instance as any).run();
@@ -368,7 +347,7 @@ describe('ProcessWorkflow', () => {
     class ParallelWorkflow {
       @Stage({ parallel: true })
       async task1(): Promise<string> {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         return 'task1';
       }
 
@@ -384,11 +363,7 @@ describe('ProcessWorkflow', () => {
     }
 
     it('should execute parallel stages concurrently', async () => {
-      const workflow = new ProcessWorkflow(
-        processManager,
-        ParallelWorkflow,
-        mockLogger as any
-      );
+      const workflow = new ProcessWorkflow(processManager, ParallelWorkflow, mockLogger as any);
 
       const instance = workflow.create();
       const startTime = Date.now();
@@ -428,11 +403,7 @@ describe('ProcessWorkflow', () => {
     }
 
     it('should run compensation on failure', async () => {
-      const workflow = new ProcessWorkflow(
-        processManager,
-        CompensatingWorkflow,
-        mockLogger as any
-      );
+      const workflow = new ProcessWorkflow(processManager, CompensatingWorkflow, mockLogger as any);
 
       const instance = workflow.create();
 
@@ -459,11 +430,7 @@ describe('ProcessWorkflow', () => {
     }
 
     it('should retry failed stages', async () => {
-      const workflow = new ProcessWorkflow(
-        processManager,
-        RetryWorkflow,
-        mockLogger as any
-      );
+      const workflow = new ProcessWorkflow(processManager, RetryWorkflow, mockLogger as any);
 
       const instance = workflow.create();
       const result = await (instance as any).run();
@@ -480,7 +447,7 @@ describe('ProcessWorkflow', () => {
       async extractFromAPI(): Promise<any[]> {
         return [
           { id: 1, value: 10 },
-          { id: 2, value: 20 }
+          { id: 2, value: 20 },
         ];
       }
 
@@ -488,7 +455,7 @@ describe('ProcessWorkflow', () => {
       async extractFromDB(): Promise<any[]> {
         return [
           { id: 3, value: 30 },
-          { id: 4, value: 40 }
+          { id: 4, value: 40 },
         ];
       }
 
@@ -499,16 +466,16 @@ describe('ProcessWorkflow', () => {
 
       @Stage({ dependsOn: 'merge' })
       async transform(data: any[]): Promise<any[]> {
-        return data.map(item => ({
+        return data.map((item) => ({
           ...item,
           value: item.value * 2,
-          transformed: true
+          transformed: true,
         }));
       }
 
       @Stage({ dependsOn: 'transform' })
       async validate(data: any[]): Promise<{ valid: boolean; count: number }> {
-        const valid = data.every(item => item.transformed);
+        const valid = data.every((item) => item.transformed);
         return { valid, count: data.length };
       }
 
@@ -522,11 +489,7 @@ describe('ProcessWorkflow', () => {
     }
 
     it('should handle complex ETL workflow', async () => {
-      const workflow = new ProcessWorkflow(
-        processManager,
-        ETLWorkflow,
-        mockLogger as any
-      );
+      const workflow = new ProcessWorkflow(processManager, ETLWorkflow, mockLogger as any);
 
       const instance = workflow.create();
       const result = await (instance as any).run();
@@ -555,11 +518,7 @@ describe('ProcessWorkflow', () => {
     }
 
     it('should maintain workflow context', async () => {
-      const workflow = new ProcessWorkflow(
-        processManager,
-        ContextWorkflow,
-        mockLogger as any
-      );
+      const workflow = new ProcessWorkflow(processManager, ContextWorkflow, mockLogger as any);
 
       const instance = workflow.create();
       const context = (instance as any).getContext();
@@ -582,12 +541,7 @@ describe('ProcessWorkflow', () => {
         @Supervisor()
         class EmptySupervisor {}
 
-        const supervisor = new ProcessSupervisor(
-          processManager,
-          EmptySupervisor,
-          {},
-          mockLogger as any
-        );
+        const supervisor = new ProcessSupervisor(processManager, EmptySupervisor, {}, mockLogger as any);
 
         await supervisor.start();
         const processes = processManager.listProcesses();
@@ -601,7 +555,7 @@ describe('ProcessWorkflow', () => {
         @Supervisor({
           strategy: SupervisionStrategy.ONE_FOR_ONE,
           maxRestarts: 3,
-          window: 1000
+          window: 1000,
         })
         class RestartWindowSupervisor {
           @Child()
@@ -627,7 +581,7 @@ describe('ProcessWorkflow', () => {
           const processes = processManager.listProcesses();
           if (processes[0]) {
             processManager.emit('process:crash', processes[0], new Error('Test crash'));
-            await new Promise(resolve => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 50));
           }
         }
 
@@ -637,7 +591,7 @@ describe('ProcessWorkflow', () => {
 
       it('should handle rest-for-one strategy', async () => {
         @Supervisor({
-          strategy: SupervisionStrategy.REST_FOR_ONE
+          strategy: SupervisionStrategy.REST_FOR_ONE,
         })
         class RestForOneSupervisor {
           @Child({ order: 1 })
@@ -669,11 +623,7 @@ describe('ProcessWorkflow', () => {
         @Workflow()
         class EmptyWorkflow {}
 
-        const workflow = new ProcessWorkflow(
-          processManager,
-          EmptyWorkflow,
-          mockLogger as any
-        );
+        const workflow = new ProcessWorkflow(processManager, EmptyWorkflow, mockLogger as any);
 
         const instance = workflow.create();
         const result = await (instance as any).run();
@@ -693,11 +643,7 @@ describe('ProcessWorkflow', () => {
           async stage3(): Promise<void> {}
         }
 
-        const workflow = new ProcessWorkflow(
-          processManager,
-          CircularWorkflow,
-          mockLogger as any
-        );
+        const workflow = new ProcessWorkflow(processManager, CircularWorkflow, mockLogger as any);
 
         const instance = workflow.create();
         await expect((instance as any).run()).rejects.toThrow('Circular dependency detected');
@@ -708,16 +654,12 @@ describe('ProcessWorkflow', () => {
         class TimeoutWorkflow {
           @Stage({ timeout: 100 })
           async slowStage(): Promise<string> {
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await new Promise((resolve) => setTimeout(resolve, 200));
             return 'should-not-reach';
           }
         }
 
-        const workflow = new ProcessWorkflow(
-          processManager,
-          TimeoutWorkflow,
-          mockLogger as any
-        );
+        const workflow = new ProcessWorkflow(processManager, TimeoutWorkflow, mockLogger as any);
 
         const instance = workflow.create();
         await expect((instance as any).run()).rejects.toThrow();
@@ -744,16 +686,12 @@ describe('ProcessWorkflow', () => {
           async finalStage(): Promise<{ final: number; message: string }> {
             return {
               final: this.counter * 2,
-              message: `Processed ${this.counter} items`
+              message: `Processed ${this.counter} items`,
             };
           }
         }
 
-        const workflow = new ProcessWorkflow(
-          processManager,
-          DynamicWorkflow,
-          mockLogger as any
-        );
+        const workflow = new ProcessWorkflow(processManager, DynamicWorkflow, mockLogger as any);
 
         const instance = workflow.create();
         const result = await (instance as any).run();
@@ -763,7 +701,7 @@ describe('ProcessWorkflow', () => {
         expect(result.incrementStage).toBe(11);
         expect(result.finalStage).toEqual({
           final: 22,
-          message: 'Processed 11 items'
+          message: 'Processed 11 items',
         });
       });
 
@@ -777,13 +715,13 @@ describe('ProcessWorkflow', () => {
 
           @Stage({ parallel: true })
           async medium(): Promise<string> {
-            await new Promise(resolve => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 50));
             return 'medium-done';
           }
 
           @Stage({ parallel: true })
           async slow(): Promise<string> {
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise((resolve) => setTimeout(resolve, 100));
             return 'slow-done';
           }
 
@@ -793,11 +731,7 @@ describe('ProcessWorkflow', () => {
           }
         }
 
-        const workflow = new ProcessWorkflow(
-          processManager,
-          ParallelDurationWorkflow,
-          mockLogger as any
-        );
+        const workflow = new ProcessWorkflow(processManager, ParallelDurationWorkflow, mockLogger as any);
 
         const instance = workflow.create();
         const start = Date.now();
@@ -844,21 +778,14 @@ describe('ProcessWorkflow', () => {
           }
         }
 
-        const workflow = new ProcessWorkflow(
-          processManager,
-          MultiCompensationWorkflow,
-          mockLogger as any
-        );
+        const workflow = new ProcessWorkflow(processManager, MultiCompensationWorkflow, mockLogger as any);
 
         const instance = workflow.create();
 
         await expect((instance as any).run()).rejects.toThrow('Stage 3 failed');
 
         // Both compensations should have run in reverse order
-        expect((instance as any).compensations).toEqual([
-          'stage2-compensated',
-          'stage1-compensated'
-        ]);
+        expect((instance as any).compensations).toEqual(['stage2-compensated', 'stage1-compensated']);
       });
 
       it('should handle stage with no return value', async () => {
@@ -878,11 +805,7 @@ describe('ProcessWorkflow', () => {
           }
         }
 
-        const workflow = new ProcessWorkflow(
-          processManager,
-          VoidStageWorkflow,
-          mockLogger as any
-        );
+        const workflow = new ProcessWorkflow(processManager, VoidStageWorkflow, mockLogger as any);
 
         const instance = workflow.create();
         const result = await (instance as any).run();
@@ -910,11 +833,7 @@ describe('ProcessWorkflow', () => {
           }
         }
 
-        const workflow = new ProcessWorkflow(
-          processManager,
-          ExponentialBackoffWorkflow,
-          mockLogger as any
-        );
+        const workflow = new ProcessWorkflow(processManager, ExponentialBackoffWorkflow, mockLogger as any);
 
         const instance = workflow.create();
         const result = await (instance as any).run();

@@ -250,9 +250,7 @@ describe('createForm', () => {
           if (value.password && value.password.length < 8) {
             errors.push({ path: ['password'], message: 'Password too short' });
           }
-          return errors.length > 0
-            ? { success: false, error: { issues: errors } }
-            : { success: true, data: value };
+          return errors.length > 0 ? { success: false, error: { issues: errors } } : { success: true, data: value };
         },
       };
 

@@ -30,11 +30,11 @@ describe('Method-Level Transport Filtering', () => {
 
     server.registerTransportServer('ws', {
       name: 'ws',
-      options: { host: 'localhost', port: wsPort }
+      options: { host: 'localhost', port: wsPort },
     });
     server.registerTransportServer('tcp', {
       name: 'tcp',
-      options: { host: 'localhost', port: tcpPort }
+      options: { host: 'localhost', port: tcpPort },
     });
 
     await server.start();

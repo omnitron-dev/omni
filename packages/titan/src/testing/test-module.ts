@@ -30,7 +30,7 @@ export class TestModule {
       modules: options.modules || [],
       providers: options.providers || [],
       mocks: options.mocks || [],
-      autoMock: options.autoMock || false
+      autoMock: options.autoMock || false,
     });
   }
 
@@ -52,7 +52,7 @@ export class TestModule {
     const config: IApplicationConfig = {
       name: 'test-app',
       version: '0.0.0-test',
-      ...this.options.config
+      ...this.options.config,
     };
 
     this.app = new Application(config);
@@ -106,7 +106,7 @@ export class TestModule {
       useFactory: (factory: (...args: any[]) => T) => {
         this.container.override(token).useFactory(factory);
         return this;
-      }
+      },
     };
   }
 
@@ -172,7 +172,7 @@ export class TestModuleBuilder {
     modules: [],
     providers: [],
     mocks: [],
-    config: {}
+    config: {},
   };
 
   /**

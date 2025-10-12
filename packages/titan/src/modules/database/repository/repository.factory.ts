@@ -18,9 +18,7 @@ import { DatabaseManager } from '../database.manager.js';
 import { BaseRepository } from './base.repository.js';
 import { PluginManager } from '../plugins/plugin.manager.js';
 import { Errors } from '../../../errors/index.js';
-import {
-  BUILT_IN_PLUGINS,
-} from '../database.constants.js';
+import { BUILT_IN_PLUGINS } from '../database.constants.js';
 import type {
   IRepositoryFactory,
   Repository,
@@ -106,9 +104,7 @@ export class RepositoryFactory implements IRepositoryFactory {
     const pluginsToApply: KyseraPlugin[] = [];
 
     if (config.softDelete) {
-      const softDeleteConfig = typeof config.softDelete === 'object'
-        ? config.softDelete
-        : { column: 'deleted_at' };
+      const softDeleteConfig = typeof config.softDelete === 'object' ? config.softDelete : { column: 'deleted_at' };
 
       pluginsToApply.push(
         softDeletePlugin({
@@ -119,9 +115,10 @@ export class RepositoryFactory implements IRepositoryFactory {
     }
 
     if (config.timestamps) {
-      const timestampsConfig = typeof config.timestamps === 'object'
-        ? config.timestamps
-        : { createdAt: 'created_at', updatedAt: 'updated_at' };
+      const timestampsConfig =
+        typeof config.timestamps === 'object'
+          ? config.timestamps
+          : { createdAt: 'created_at', updatedAt: 'updated_at' };
 
       pluginsToApply.push(
         timestampsPlugin({
@@ -132,9 +129,7 @@ export class RepositoryFactory implements IRepositoryFactory {
     }
 
     if (config.audit) {
-      const auditConfig = typeof config.audit === 'object'
-        ? config.audit
-        : { table: 'audit_logs' };
+      const auditConfig = typeof config.audit === 'object' ? config.audit : { table: 'audit_logs' };
 
       pluginsToApply.push(
         auditPlugin({
@@ -165,10 +160,7 @@ export class RepositoryFactory implements IRepositoryFactory {
   /**
    * Create and cache a repository instance
    */
-  private async createAndCacheRepository(
-    target: any,
-    metadata: RepositoryMetadata
-  ): Promise<void> {
+  private async createAndCacheRepository(target: any, metadata: RepositoryMetadata): Promise<void> {
     const config: RepositoryConfig = {
       tableName: metadata.table,
       connectionName: metadata.connection,
@@ -263,9 +255,7 @@ export class RepositoryFactory implements IRepositoryFactory {
   applyPlugins(repository: any, plugins: Array<string | KyseraPlugin>): any {
     // Use plugin manager if available
     if (this.pluginManager) {
-      const pluginNames = plugins
-        .filter(p => typeof p === 'string')
-        .map(p => p as string);
+      const pluginNames = plugins.filter((p) => typeof p === 'string').map((p) => p as string);
 
       // Apply string-based plugins through plugin manager
       if (pluginNames.length > 0) {
@@ -273,7 +263,7 @@ export class RepositoryFactory implements IRepositoryFactory {
       }
 
       // Apply direct plugin instances
-      const directPlugins = plugins.filter(p => typeof p !== 'string');
+      const directPlugins = plugins.filter((p) => typeof p !== 'string');
       for (const plugin of directPlugins) {
         const pluginInstance = plugin as KyseraPlugin;
         if (pluginInstance.extendRepository) {
@@ -288,9 +278,7 @@ export class RepositoryFactory implements IRepositoryFactory {
     let enhancedRepo = repository;
 
     for (const plugin of plugins) {
-      const pluginInstance = typeof plugin === 'string'
-        ? this.plugins.get(plugin)
-        : plugin;
+      const pluginInstance = typeof plugin === 'string' ? this.plugins.get(plugin) : plugin;
 
       if (!pluginInstance) {
         console.warn(`Plugin "${plugin}" not found`);
@@ -316,9 +304,7 @@ export class RepositoryFactory implements IRepositoryFactory {
   /**
    * Create a transaction scope for repositories
    */
-  async createTransactionScope(
-    fn: (scope: RepositoryTransactionScope) => Promise<any>
-  ): Promise<any> {
+  async createTransactionScope(fn: (scope: RepositoryTransactionScope) => Promise<any>): Promise<any> {
     const connectionName = this.config.connectionName || 'default';
     const db = await this.manager.getConnection(connectionName);
 
@@ -367,7 +353,7 @@ export class RepositoryFactory implements IRepositoryFactory {
     connectionName?: string
   ): Promise<ReturnType<typeof createKyseraRepositoryFactory<DB>>['create']> {
     const connName = connectionName || this.config.connectionName || 'default';
-    const db = await this.manager.getConnection(connName) as Kysely<DB>;
+    const db = (await this.manager.getConnection(connName)) as Kysely<DB>;
 
     const factory = createKyseraRepositoryFactory<DB>(db);
     return factory.create as any;

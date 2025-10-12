@@ -34,7 +34,7 @@ describe('RemotePeer', () => {
     netron.registerTransport('ws', () => new WebSocketTransport());
     netron.registerTransportServer('ws', {
       name: 'ws',
-      options: { host: 'localhost', port: testPort }
+      options: { host: 'localhost', port: testPort },
     });
 
     await netron.start();
@@ -98,7 +98,7 @@ describe('RemotePeer', () => {
     expect(peer1.id).toBe(netron.id);
 
     // Wait for server to receive client ID (async handshake)
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
     expect(netron.peers.has(n2.id)).toBe(true);
 
     peer1.disconnect();
@@ -160,7 +160,7 @@ describe('RemotePeer', () => {
     const peer1 = await n2.connect(`ws://localhost:${testPort}`);
 
     // Wait for server to receive client ID (async handshake)
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     const peer2 = netron.peers.get('n2');
 

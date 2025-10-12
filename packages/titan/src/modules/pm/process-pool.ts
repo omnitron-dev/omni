@@ -16,7 +16,7 @@ import type {
   ServiceProxy,
   IPoolMetrics,
   IProcessManager,
-  IProcessMetrics
+  IProcessMetrics,
 } from './types.js';
 import { PoolStrategy } from './types.js';
 
@@ -94,7 +94,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
     isOpen: false,
     failures: 0,
     lastFailTime: 0,
-    successAfterOpen: 0
+    successAfterOpen: 0,
   };
 
   // Event emitter for monitoring
@@ -137,7 +137,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
       healthCheck: options.healthCheck ?? {
         enabled: true,
         interval: 30000,
-        unhealthyThreshold: 3
+        unhealthyThreshold: 3,
       },
       autoScale: options.autoScale ?? {
         enabled: false,
@@ -147,14 +147,14 @@ export class ProcessPool<T> implements IProcessPool<T> {
         targetMemory: 80,
         scaleUpThreshold: 0.8,
         scaleDownThreshold: 0.3,
-        cooldownPeriod: 60000
+        cooldownPeriod: 60000,
       },
       circuitBreaker: options.circuitBreaker ?? {
         enabled: false,
         threshold: 5,
         timeout: 60000,
-        halfOpenRequests: 3
-      }
+        halfOpenRequests: 3,
+      },
     };
 
     return { ...defaults, ...options };
@@ -167,11 +167,14 @@ export class ProcessPool<T> implements IProcessPool<T> {
     if (this.isInitialized) return;
 
     const size = this.getPoolSize();
-    this.logger.info({
-      size,
-      class: this.processName,
-      strategy: this.poolOptions.strategy
-    }, 'Initializing process pool');
+    this.logger.info(
+      {
+        size,
+        class: this.processName,
+        strategy: this.poolOptions.strategy,
+      },
+      'Initializing process pool'
+    );
 
     // Spawn initial workers
     const spawnPromises = [];
@@ -214,7 +217,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
    */
   get active(): number {
     let activeCount = 0;
-    this.workers.forEach(worker => {
+    this.workers.forEach((worker) => {
       if (worker.processing.size > 0) activeCount++;
     });
     return activeCount;
@@ -231,20 +234,16 @@ export class ProcessPool<T> implements IProcessPool<T> {
    * Get pool metrics
    */
   get metrics(): IPoolMetrics {
-    const avgResponseTime = this.totalRequests > 0
-      ? this.totalResponseTime / this.totalRequests
-      : 0;
+    const avgResponseTime = this.totalRequests > 0 ? this.totalResponseTime / this.totalRequests : 0;
 
-    const errorRate = this.totalRequests > 0
-      ? this.totalErrors / this.totalRequests
-      : 0;
+    const errorRate = this.totalRequests > 0 ? this.totalErrors / this.totalRequests : 0;
 
     // Aggregate worker metrics
     let totalCpu = 0;
     let totalMemory = 0;
     let healthyWorkers = 0;
 
-    this.workers.forEach(worker => {
+    this.workers.forEach((worker) => {
       if (worker.metrics) {
         totalCpu += worker.metrics.cpu;
         totalMemory += worker.metrics.memory;
@@ -270,7 +269,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
       avgResponseTime,
       errorRate,
       throughput: this.calculateThroughput(),
-      saturation: this.calculateSaturation()
+      saturation: this.calculateSaturation(),
     };
   }
 
@@ -285,18 +284,21 @@ export class ProcessPool<T> implements IProcessPool<T> {
     const currentSize = this.workers.size;
     if (newSize === currentSize) return;
 
-    this.logger.info({
-      currentSize,
-      newSize,
-      class: this.processName
-    }, 'Scaling process pool');
+    this.logger.info(
+      {
+        currentSize,
+        newSize,
+        class: this.processName,
+      },
+      'Scaling process pool'
+    );
 
     // Record scale action
     this.scaleHistory.push({
       timestamp: Date.now(),
       action: newSize > currentSize ? 'up' : 'down',
       from: currentSize,
-      to: newSize
+      to: newSize,
     });
 
     if (newSize > currentSize) {
@@ -310,7 +312,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
     this.emit('pool:scaled', {
       from: currentSize,
       to: newSize,
-      class: this.processName
+      class: this.processName,
     });
   }
 
@@ -354,9 +356,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
     await this.drain();
 
     // Shutdown all workers
-    const shutdownPromises = Array.from(this.workers.values()).map(worker =>
-      this.shutdownWorker(worker.id)
-    );
+    const shutdownPromises = Array.from(this.workers.values()).map((worker) => this.shutdownWorker(worker.id));
 
     await Promise.all(shutdownPromises);
 
@@ -385,8 +385,10 @@ export class ProcessPool<T> implements IProcessPool<T> {
     }
 
     // Queue if no workers available
-    if (this.workers.size === 0 ||
-        (this.active >= this.workers.size && this.queue.length < (this.poolOptions.maxQueueSize || 100))) {
+    if (
+      this.workers.size === 0 ||
+      (this.active >= this.workers.size && this.queue.length < (this.poolOptions.maxQueueSize || 100))
+    ) {
       return this.queueRequest(method, args);
     }
 
@@ -413,7 +415,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
   private async spawnWorker(): Promise<void> {
     try {
       const proxy = await this.manager.spawn(this.processPathOrClass, {
-        name: `${this.processName}-pool-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        name: `${this.processName}-pool-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       });
 
       const workerId = (proxy as any).__processId;
@@ -429,15 +431,18 @@ export class ProcessPool<T> implements IProcessPool<T> {
         currentLoad: 0,
         processing: new Set(),
         errors: 0,
-        restarts: 0
+        restarts: 0,
       };
 
       this.workers.set(workerId, worker);
 
-      this.logger.debug({
-        workerId,
-        totalWorkers: this.workers.size
-      }, 'Spawned pool worker');
+      this.logger.debug(
+        {
+          workerId,
+          totalWorkers: this.workers.size,
+        },
+        'Spawned pool worker'
+      );
 
       this.emit('worker:spawned', { workerId, class: this.processName });
     } catch (error) {
@@ -456,13 +461,16 @@ export class ProcessPool<T> implements IProcessPool<T> {
     try {
       // Wait for active requests
       if (worker.processing.size > 0) {
-        this.logger.debug({
-          workerId,
-          activeRequests: worker.processing.size
-        }, 'Waiting for worker to finish active requests');
+        this.logger.debug(
+          {
+            workerId,
+            activeRequests: worker.processing.size,
+          },
+          'Waiting for worker to finish active requests'
+        );
 
         // Give it some time to finish
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        await new Promise((resolve) => setTimeout(resolve, 5000));
       }
 
       // Destroy the worker proxy
@@ -484,9 +492,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
    * Private: Select a worker based on the strategy
    */
   private async selectWorker(): Promise<WorkerInfo<T>> {
-    const healthyWorkers = Array.from(this.workers.values()).filter(
-      w => w.health === 'healthy'
-    );
+    const healthyWorkers = Array.from(this.workers.values()).filter((w) => w.health === 'healthy');
 
     if (healthyWorkers.length === 0) {
       // Fallback to any worker if no healthy ones
@@ -545,9 +551,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
    * Private: Select least loaded worker
    */
   private selectLeastLoaded(workers: WorkerInfo<T>[]): WorkerInfo<T> {
-    return workers.reduce((min, worker) =>
-      worker.currentLoad < min.currentLoad ? worker : min
-    );
+    return workers.reduce((min, worker) => (worker.currentLoad < min.currentLoad ? worker : min));
   }
 
   /**
@@ -569,7 +573,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
       throw Errors.conflict('No workers available');
     }
 
-    const weights = workers.map(w => 1 / (w.currentLoad + 1));
+    const weights = workers.map((w) => 1 / (w.currentLoad + 1));
     const totalWeight = weights.reduce((sum, w) => sum + w, 0);
 
     let random = Math.random() * totalWeight;
@@ -588,16 +592,12 @@ export class ProcessPool<T> implements IProcessPool<T> {
    */
   private selectAdaptive(workers: WorkerInfo<T>[]): WorkerInfo<T> {
     // Score each worker based on multiple factors
-    const scored = workers.map(w => {
+    const scored = workers.map((w) => {
       const avgResponseTime = w.requests > 0 ? w.totalRequestTime / w.requests : 0;
       const errorRate = w.requests > 0 ? w.errors / w.requests : 0;
 
       // Lower score is better
-      const score =
-        w.currentLoad * 0.3 +
-        avgResponseTime * 0.3 +
-        errorRate * 0.2 +
-        w.processing.size * 0.2;
+      const score = w.currentLoad * 0.3 + avgResponseTime * 0.3 + errorRate * 0.2 + w.processing.size * 0.2;
 
       return { worker: w, score };
     });
@@ -633,11 +633,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
   /**
    * Private: Execute method on specific worker
    */
-  private async executeOnWorker(
-    worker: WorkerInfo<T>,
-    method: string,
-    args: any[]
-  ): Promise<any> {
+  private async executeOnWorker(worker: WorkerInfo<T>, method: string, args: any[]): Promise<any> {
     const requestId = `req-${++this.requestIdCounter}`;
     const startTime = Date.now();
 
@@ -653,9 +649,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
       if (timeout) {
         result = await Promise.race([
           (worker.proxy as any)[method](...args),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(Errors.timeout('Request', timeout)), timeout)
-          )
+          new Promise((_, reject) => setTimeout(() => reject(Errors.timeout('Request', timeout)), timeout)),
         ]);
       } else {
         result = await (worker.proxy as any)[method](...args);
@@ -717,7 +711,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
         resolve,
         reject,
         timestamp: Date.now(),
-        retries: 0
+        retries: 0,
       };
 
       // Add timeout if configured
@@ -734,7 +728,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
       this.queue.push(request);
       this.emit('request:queued', {
         queueSize: this.queue.length,
-        method
+        method,
       });
 
       // Try to process queue
@@ -750,7 +744,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
 
     // Find available workers
     const availableWorkers = Array.from(this.workers.values()).filter(
-      w => w.health === 'healthy' && w.currentLoad < 2
+      (w) => w.health === 'healthy' && w.currentLoad < 2
     );
 
     while (this.queue.length > 0 && availableWorkers.length > 0) {
@@ -770,9 +764,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
       }
 
       // Execute request
-      this.executeOnWorker(worker, request.method, request.args)
-        .then(request.resolve)
-        .catch(request.reject);
+      this.executeOnWorker(worker, request.method, request.args).then(request.resolve).catch(request.reject);
     }
   }
 
@@ -788,8 +780,8 @@ export class ProcessPool<T> implements IProcessPool<T> {
           // Try to get health status
           if ('__getHealth' in worker.proxy) {
             const health = await (worker.proxy as any).__getHealth();
-            worker.health = health.status === 'healthy' ? 'healthy' :
-                          health.status === 'degraded' ? 'degraded' : 'unhealthy';
+            worker.health =
+              health.status === 'healthy' ? 'healthy' : health.status === 'degraded' ? 'degraded' : 'unhealthy';
           }
 
           // Also get metrics
@@ -838,9 +830,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
 
       // Check if we need to scale down
       const shouldScaleDown =
-        metrics.cpu < 30 &&
-        metrics.memory < 40 &&
-        (metrics.saturation || 0) < (config.scaleDownThreshold || 0.3);
+        metrics.cpu < 30 && metrics.memory < 40 && (metrics.saturation || 0) < (config.scaleDownThreshold || 0.3);
 
       if (shouldScaleUp && this.workers.size < (config.max || 10)) {
         const newSize = Math.min(this.workers.size + 1, config.max || 10);
@@ -866,9 +856,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
       const recycleAfter = this.poolOptions.recycleAfter || 10000;
 
       for (const worker of this.workers.values()) {
-        const shouldRecycle =
-          (now - worker.created > maxLifetime) ||
-          (worker.requests > recycleAfter);
+        const shouldRecycle = now - worker.created > maxLifetime || worker.requests > recycleAfter;
 
         if (shouldRecycle) {
           await this.replaceWorker(worker.id);
@@ -899,7 +887,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
     this.logger.info('Warming up process pool');
 
     // Execute a simple method on each worker
-    const warmupPromises = Array.from(this.workers.values()).map(async worker => {
+    const warmupPromises = Array.from(this.workers.values()).map(async (worker) => {
       try {
         if ('__getHealth' in worker.proxy) {
           await (worker.proxy as any).__getHealth();
@@ -928,8 +916,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
    */
   private async scaleDown(count: number): Promise<void> {
     // Select workers to remove (prefer idle ones)
-    const sortedWorkers = Array.from(this.workers.values())
-      .sort((a, b) => a.currentLoad - b.currentLoad);
+    const sortedWorkers = Array.from(this.workers.values()).sort((a, b) => a.currentLoad - b.currentLoad);
 
     const toRemove = sortedWorkers.slice(0, count);
 
@@ -946,7 +933,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
     const startTime = Date.now();
 
     while (this.active > 0 && Date.now() - startTime < maxWait) {
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
 
     if (this.active > 0) {
@@ -959,9 +946,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
    */
   private calculateThroughput(): number {
     // Requests per second over last minute
-    const recentHistory = this.scaleHistory.filter(
-      h => Date.now() - h.timestamp < 60000
-    );
+    const recentHistory = this.scaleHistory.filter((h) => Date.now() - h.timestamp < 60000);
 
     if (recentHistory.length === 0) return 0;
 

@@ -21,9 +21,7 @@ import type { CreateOrderInput, OrderWithItems } from './order.repository.js';
  */
 @Injectable()
 export class UserService {
-  constructor(
-    @InjectRepository(UserRepository) private userRepo: UserRepository
-  ) {}
+  constructor(@InjectRepository(UserRepository) private userRepo: UserRepository) {}
 
   async registerUser(input: CreateUserInput): Promise<User> {
     // Check if email is available
@@ -77,9 +75,7 @@ export class UserService {
  */
 @Injectable()
 export class ProductService {
-  constructor(
-    @InjectRepository(ProductRepository) private productRepo: ProductRepository
-  ) {}
+  constructor(@InjectRepository(ProductRepository) private productRepo: ProductRepository) {}
 
   async createProduct(input: CreateProductInput): Promise<Product> {
     // Check if SKU is unique
@@ -228,23 +224,9 @@ export class OrderService {
  * E-commerce Module
  */
 @Module({
-  imports: [
-    TitanDatabaseModule.forFeature([
-      UserRepository,
-      ProductRepository,
-      OrderRepository,
-    ]),
-  ],
-  providers: [
-    UserService,
-    ProductService,
-    OrderService,
-  ],
-  exports: [
-    UserService,
-    ProductService,
-    OrderService,
-  ],
+  imports: [TitanDatabaseModule.forFeature([UserRepository, ProductRepository, OrderRepository])],
+  providers: [UserService, ProductService, OrderService],
+  exports: [UserService, ProductService, OrderService],
 })
 export class EcommerceModule {}
 
@@ -356,7 +338,6 @@ async function main() {
       new Date()
     );
     console.log('Dashboard stats:', stats);
-
   } catch (error) {
     console.error('Error:', error);
   }

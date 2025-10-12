@@ -19,7 +19,7 @@ import {
   RetryMiddlewareClass,
   CircuitBreakerMiddleware,
   CacheMiddleware,
-  ValidationMiddlewareClass
+  ValidationMiddlewareClass,
 } from '../../../src/nexus/index.js';
 
 describe('Plugin System', () => {
@@ -42,7 +42,7 @@ describe('Plugin System', () => {
         version: '1.0.0',
         install: (container) => {
           installed(container);
-        }
+        },
       });
 
       container.use(plugin);
@@ -53,7 +53,7 @@ describe('Plugin System', () => {
       const plugin = createPlugin({
         name: 'UniquePlugin',
         version: '1.0.0',
-        install: jest.fn()
+        install: jest.fn(),
       });
 
       container.use(plugin);
@@ -65,7 +65,7 @@ describe('Plugin System', () => {
         name: 'IncompatiblePlugin',
         version: '1.0.0',
         requires: { nexus: '^3.0.0' }, // Incompatible version
-        install: jest.fn()
+        install: jest.fn(),
       });
 
       expect(() => container.use(plugin)).toThrow('Plugin IncompatiblePlugin requires');
@@ -75,14 +75,14 @@ describe('Plugin System', () => {
       const basePlugin = createPlugin({
         name: 'BasePlugin',
         version: '1.0.0',
-        install: jest.fn()
+        install: jest.fn(),
       });
 
       const dependentPlugin = createPlugin({
         name: 'DependentPlugin',
         version: '1.0.0',
         dependencies: ['BasePlugin'],
-        install: jest.fn()
+        install: jest.fn(),
       });
 
       // Should fail without base plugin
@@ -108,7 +108,7 @@ describe('Plugin System', () => {
         install: (container) => {
           container.addHook('beforeResolve', beforeResolve);
           container.addHook('afterResolve', afterResolve);
-        }
+        },
       });
 
       container.use(plugin);
@@ -124,7 +124,7 @@ describe('Plugin System', () => {
 
     it('should handle async hooks', async () => {
       const asyncHook = jest.fn(async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
       });
 
       const plugin = createPlugin({
@@ -132,7 +132,7 @@ describe('Plugin System', () => {
         version: '1.0.0',
         install: (container) => {
           container.addHook('beforeResolve', asyncHook);
-        }
+        },
       });
 
       container.use(plugin);
@@ -155,7 +155,7 @@ describe('Plugin System', () => {
             }
             return instance;
           });
-        }
+        },
       });
 
       container.use(plugin);
@@ -213,7 +213,7 @@ describe('Plugin System', () => {
             // Busy wait
           }
           return 'slow';
-        }
+        },
       });
 
       container.resolve(token);
@@ -242,7 +242,7 @@ describe('Plugin System', () => {
       const token = createToken<User>('User');
       container.register(token, {
         useValue: { name: 'ab', age: 30 }, // Invalid name
-        validate: validateUser
+        validate: validateUser,
       });
 
       expect(() => container.resolve(token)).toThrow('Name must be at least 3 characters');
@@ -257,7 +257,7 @@ describe('Plugin System', () => {
       const token = createToken<number>('Cached');
       container.register(token, {
         useFactory: () => ++counter,
-        scope: 'singleton' // Use singleton scope for caching behavior
+        scope: 'singleton', // Use singleton scope for caching behavior
       });
 
       const first = container.resolve(token);
@@ -293,7 +293,7 @@ describe('Middleware System', () => {
           const result = next();
           afterExecute(result);
           return result;
-        }
+        },
       });
 
       container.addMiddleware(middleware);
@@ -318,7 +318,7 @@ describe('Middleware System', () => {
           const result = next();
           executionOrder.push('first-after');
           return result;
-        }
+        },
       });
 
       const middleware2 = createMiddleware({
@@ -328,7 +328,7 @@ describe('Middleware System', () => {
           const result = next();
           executionOrder.push('second-after');
           return result;
-        }
+        },
       });
 
       container.addMiddleware(middleware1);
@@ -338,12 +338,7 @@ describe('Middleware System', () => {
       container.register(token, { useValue: 'test' });
       container.resolve(token);
 
-      expect(executionOrder).toEqual([
-        'first-before',
-        'second-before',
-        'second-after',
-        'first-after'
-      ]);
+      expect(executionOrder).toEqual(['first-before', 'second-before', 'second-after', 'first-after']);
     });
 
     it('should allow middleware to modify result', async () => {
@@ -355,7 +350,7 @@ describe('Middleware System', () => {
             return result.toUpperCase();
           }
           return result;
-        }
+        },
       });
 
       container.addMiddleware(transformMiddleware);
@@ -372,7 +367,7 @@ describe('Middleware System', () => {
         name: 'Error',
         async execute(context, next) {
           throw new Error('Middleware error');
-        }
+        },
       });
 
       container.addMiddleware(errorMiddleware);
@@ -402,7 +397,7 @@ describe('Middleware System', () => {
       let attempts = 0;
       const retryMiddleware = new RetryMiddlewareClass({
         maxAttempts: 3,
-        delay: 10
+        delay: 10,
       });
 
       container.addMiddleware(retryMiddleware);
@@ -415,7 +410,7 @@ describe('Middleware System', () => {
             throw new Error('Temporary failure');
           }
           return 'success';
-        }
+        },
       });
 
       const result = await container.resolveAsync(token);
@@ -426,7 +421,7 @@ describe('Middleware System', () => {
     it('should use CircuitBreakerMiddleware', () => {
       const circuitBreaker = new CircuitBreakerMiddleware({
         threshold: 2,
-        resetTimeout: 100
+        resetTimeout: 100,
       });
 
       container.addMiddleware(circuitBreaker);
@@ -440,7 +435,7 @@ describe('Middleware System', () => {
             throw new Error('Service unavailable');
           }
           return 'success';
-        }
+        },
       });
 
       // First two attempts should fail and open the circuit
@@ -464,14 +459,14 @@ describe('Middleware System', () => {
       let counter = 0;
       const cacheMiddleware = new CacheMiddleware({
         ttl: 100,
-        keyGenerator: (context) => context.token.name
+        keyGenerator: (context) => context.token.name,
       });
 
       container.addMiddleware(cacheMiddleware);
 
       const token = createToken<number>('Cached');
       container.register(token, {
-        useFactory: () => ++counter
+        useFactory: () => ++counter,
       });
 
       const first = container.resolve(token);
@@ -496,8 +491,8 @@ describe('Middleware System', () => {
             if (value < 0 || value > 150) {
               throw new Error('Invalid age');
             }
-          }
-        }
+          },
+        },
       });
 
       container.addMiddleware(validationMiddleware);
@@ -505,7 +500,7 @@ describe('Middleware System', () => {
       const emailToken = createToken<string>('Email');
       container.register(emailToken, {
         useValue: 'invalid-email',
-        validate: 'email'
+        validate: 'email',
       });
 
       expect(() => container.resolve(emailToken)).toThrow('Invalid email');
@@ -513,7 +508,7 @@ describe('Middleware System', () => {
       const ageToken = createToken<number>('Age');
       container.register(ageToken, {
         useValue: 200,
-        validate: 'age'
+        validate: 'age',
       });
 
       expect(() => container.resolve(ageToken)).toThrow('Invalid age');
@@ -529,7 +524,7 @@ describe('Middleware System', () => {
         execute(context, next) {
           capturedContext = context;
           return next();
-        }
+        },
       });
 
       container.addMiddleware(contextMiddleware);
@@ -551,7 +546,7 @@ describe('Middleware System', () => {
           context.metadata.enriched = true;
           context.metadata.timestamp = Date.now();
           return next();
-        }
+        },
       });
 
       const validateMiddleware = createMiddleware({
@@ -561,7 +556,7 @@ describe('Middleware System', () => {
             throw new Error('Context not enriched');
           }
           return next();
-        }
+        },
       });
 
       container.addMiddleware(enrichMiddleware);
@@ -582,7 +577,7 @@ describe('Middleware System', () => {
         execute(context, next) {
           const result = next();
           return `[SPECIAL] ${result}`;
-        }
+        },
       });
 
       container.addMiddleware(conditionalMiddleware);
@@ -608,7 +603,7 @@ describe('Middleware System', () => {
         execute(context, next) {
           executionOrder.push('high');
           return next();
-        }
+        },
       });
 
       const lowPriority = createMiddleware({
@@ -617,7 +612,7 @@ describe('Middleware System', () => {
         execute(context, next) {
           executionOrder.push('low');
           return next();
-        }
+        },
       });
 
       const mediumPriority = createMiddleware({
@@ -626,7 +621,7 @@ describe('Middleware System', () => {
         execute(context, next) {
           executionOrder.push('medium');
           return next();
-        }
+        },
       });
 
       // Add in random order

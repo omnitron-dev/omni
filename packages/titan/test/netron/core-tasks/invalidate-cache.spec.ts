@@ -65,7 +65,7 @@ describe('invalidate_cache core-task', () => {
       expect(servicesMap.size).toBe(0);
       expect(mockLogger.info).toHaveBeenCalledWith(
         expect.objectContaining({ count: 2 }),
-        'All cached service definitions invalidated',
+        'All cached service definitions invalidated'
       );
     });
 
@@ -193,7 +193,7 @@ describe('invalidate_cache core-task', () => {
 
       expect(mockLogger.info).toHaveBeenCalledWith(
         expect.objectContaining({ count: 2 }),
-        'All cached service definitions invalidated',
+        'All cached service definitions invalidated'
       );
     });
 
@@ -209,7 +209,7 @@ describe('invalidate_cache core-task', () => {
           count: 2,
           services: expect.arrayContaining(['userService@1.0.0', 'userAuth@1.0.0']),
         }),
-        'Cached service definitions invalidated',
+        'Cached service definitions invalidated'
       );
     });
 
@@ -224,7 +224,7 @@ describe('invalidate_cache core-task', () => {
           count: 0,
           services: [],
         }),
-        'Cached service definitions invalidated',
+        'Cached service definitions invalidated'
       );
     });
   });

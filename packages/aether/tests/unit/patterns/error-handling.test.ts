@@ -11,11 +11,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { defineComponent } from '../../../src/core/component/define.js';
 import { signal } from '../../../src/core/reactivity/signal.js';
-import {
-  ErrorBoundary,
-  useErrorBoundary,
-  withErrorBoundary,
-} from '../../../src/core/component/error-boundary.js';
+import { ErrorBoundary, useErrorBoundary, withErrorBoundary } from '../../../src/core/component/error-boundary.js';
 import { onMount } from '../../../src/core/component/lifecycle.js';
 
 describe('Error Handling Patterns', () => {
@@ -507,9 +503,7 @@ describe('Error Handling Patterns', () => {
     });
 
     it('should gracefully handle errors in error handlers', () => {
-      const consoleErrorSpy = vi
-        .spyOn(console, 'error')
-        .mockImplementation(() => {});
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       const Component = defineComponent(() => {
         throw new Error('Original error');

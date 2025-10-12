@@ -116,9 +116,9 @@ describe('Interface Edge Cases', () => {
       await netron.peer.exposeService(service);
 
       // Mock the set method to simulate delay
-      const setSpy = jest.spyOn(netron.peer, 'set').mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve(undefined), 50))
-      );
+      const setSpy = jest
+        .spyOn(netron.peer, 'set')
+        .mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve(undefined), 50)));
 
       const iface = await netron.peer.queryInterface('TestService@1.0.0');
 

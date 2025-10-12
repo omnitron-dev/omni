@@ -45,11 +45,11 @@ export interface BoxProps {
  * ```
  */
 export const Box = defineComponent<BoxProps>((props) => () => {
-    const { as, children, ...restProps } = props;
-    const element = as ?? 'div';
+  const { as, children, ...restProps } = props;
+  const element = as ?? 'div';
 
-    return jsx(element as any, {
-      ...restProps,
-      children,
-    });
+  return jsx(element as any, {
+    ...restProps,
+    children,
   });
+});

@@ -19,7 +19,7 @@ export async function waitForCondition(
     if (result) {
       return;
     }
-    await new Promise(resolve => setTimeout(resolve, interval));
+    await new Promise((resolve) => setTimeout(resolve, interval));
   }
 
   throw Errors.timeout('waitForCondition', timeout);
@@ -76,7 +76,7 @@ export async function retry<T>(
         }
 
         const waitTime = delay * Math.pow(backoff, i);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
       }
     }
   }
@@ -180,11 +180,7 @@ export class DeferredPromise<T> {
 /**
  * Wait for multiple events
  */
-export async function waitForEvents(
-  target: any,
-  events: string[],
-  timeout = 5000
-): Promise<any[]> {
+export async function waitForEvents(target: any, events: string[], timeout = 5000): Promise<any[]> {
   const promises: Promise<any>[] = [];
 
   for (const event of events) {
@@ -264,15 +260,15 @@ export async function safeCleanup(cleanupFns: Array<() => Promise<void> | void>)
  * Wait for next tick
  */
 export function nextTick(): Promise<void> {
-  return new Promise(resolve => setImmediate(resolve));
+  return new Promise((resolve) => setImmediate(resolve));
 }
 
 /**
  * Flush promises in the event loop
  */
 export async function flushPromises(): Promise<void> {
-  await new Promise(resolve => setImmediate(resolve));
-  await new Promise(resolve => process.nextTick(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => process.nextTick(resolve));
 }
 
 /**

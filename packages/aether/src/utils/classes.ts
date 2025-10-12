@@ -8,13 +8,7 @@
 /**
  * Class value type - string, array of strings, or undefined
  */
-export type ClassValue =
-  | string
-  | string[]
-  | undefined
-  | null
-  | false
-  | Record<string, boolean | (() => boolean)>;
+export type ClassValue = string | string[] | undefined | null | false | Record<string, boolean | (() => boolean)>;
 
 /**
  * Combine multiple class values into a single string
@@ -41,8 +35,7 @@ export function classNames(...values: ClassValue[]): string {
       classes.push(...value);
     } else if (typeof value === 'object') {
       for (const [className, condition] of Object.entries(value)) {
-        const isActive =
-          typeof condition === 'function' ? condition() : condition;
+        const isActive = typeof condition === 'function' ? condition() : condition;
         if (isActive) {
           classes.push(className);
         }
@@ -78,10 +71,7 @@ export const cx = classNames;
  * // Returns: 'base active'
  * ```
  */
-export function classes(
-  base: string | string[],
-  conditional: Record<string, boolean | (() => boolean)>
-): string {
+export function classes(base: string | string[], conditional: Record<string, boolean | (() => boolean)>): string {
   const baseClasses = Array.isArray(base) ? base.join(' ') : base;
   const conditionalClasses: string[] = [];
 
@@ -92,9 +82,7 @@ export function classes(
     }
   }
 
-  const allClasses = [baseClasses, ...conditionalClasses]
-    .filter(Boolean)
-    .join(' ');
+  const allClasses = [baseClasses, ...conditionalClasses].filter(Boolean).join(' ');
 
   return allClasses;
 }
@@ -142,10 +130,7 @@ export function reactiveClasses(fn: () => ClassValue): string {
  * </div>
  * ```
  */
-export function toggleClass(
-  className: string,
-  condition: boolean | (() => boolean)
-): string {
+export function toggleClass(className: string, condition: boolean | (() => boolean)): string {
   const isActive = typeof condition === 'function' ? condition() : condition;
   return isActive ? className : '';
 }
@@ -171,9 +156,7 @@ export function toggleClass(
  * </div>
  * ```
  */
-export function conditionalClasses(
-  conditions: Record<string, boolean | (() => boolean)>
-): string {
+export function conditionalClasses(conditions: Record<string, boolean | (() => boolean)>): string {
   const classes: string[] = [];
 
   for (const [className, condition] of Object.entries(conditions)) {
@@ -223,13 +206,10 @@ export function variantClasses(
   activeVariant: string | string[] | (() => string | string[])
 ): string {
   const baseClasses = Array.isArray(base) ? base.join(' ') : base;
-  const active =
-    typeof activeVariant === 'function' ? activeVariant() : activeVariant;
+  const active = typeof activeVariant === 'function' ? activeVariant() : activeVariant;
   const activeVariants = Array.isArray(active) ? active : [active];
 
-  const variantClasses = activeVariants
-    .map((v) => variants[v])
-    .filter(Boolean);
+  const variantClasses = activeVariants.map((v) => variants[v]).filter(Boolean);
 
   return [baseClasses, ...variantClasses].join(' ');
 }

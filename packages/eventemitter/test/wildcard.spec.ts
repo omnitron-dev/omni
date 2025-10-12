@@ -32,11 +32,11 @@ describe('WildcardMatcher', () => {
         expect(matcher.match('user.created', 'user.*')).toBe(true);
         expect(matcher.match('user.updated', 'user.*')).toBe(true);
         expect(matcher.match('user.profile.updated', 'user.*')).toBe(false);
-        
+
         expect(matcher.match('user.created', '*.created')).toBe(true);
         expect(matcher.match('post.created', '*.created')).toBe(true);
         expect(matcher.match('created', '*.created')).toBe(false);
-        
+
         expect(matcher.match('app.db.error', 'app.*.error')).toBe(true);
         expect(matcher.match('app.api.error', 'app.*.error')).toBe(true);
         expect(matcher.match('app.error', 'app.*.error')).toBe(false);
@@ -48,12 +48,12 @@ describe('WildcardMatcher', () => {
         expect(matcher.match('userController', 'user*')).toBe(true);
         expect(matcher.match('user', 'user*')).toBe(true);
         expect(matcher.match('adminService', 'user*')).toBe(false);
-        
+
         expect(matcher.match('userService', '*Service')).toBe(true);
         expect(matcher.match('adminService', '*Service')).toBe(true);
         expect(matcher.match('Service', '*Service')).toBe(true);
         expect(matcher.match('userController', '*Service')).toBe(false);
-        
+
         expect(matcher.match('userService', 'user*Service')).toBe(true);
         expect(matcher.match('userAuthService', 'user*Service')).toBe(true);
         expect(matcher.match('adminService', 'user*Service')).toBe(false);
@@ -88,10 +88,10 @@ describe('WildcardMatcher', () => {
       it('should match combined wildcard patterns', () => {
         expect(matcher.match('app.user.created', 'app.*.*')).toBe(true);
         expect(matcher.match('app.user.profile.created', 'app.*.*')).toBe(false);
-        
+
         expect(matcher.match('app.db.connection.error', 'app.**.error')).toBe(true);
         expect(matcher.match('app.api.v1.users.error', 'app.**.error')).toBe(true);
-        
+
         expect(matcher.match('service.user.auth.login', 'service.*.auth.*')).toBe(true);
         expect(matcher.match('service.admin.auth.logout', 'service.*.auth.*')).toBe(true);
         expect(matcher.match('service.user.login', 'service.*.auth.*')).toBe(false);
@@ -101,11 +101,11 @@ describe('WildcardMatcher', () => {
     describe('custom delimiters', () => {
       it('should work with custom delimiters', () => {
         const customMatcher = new WildcardMatcher('/', '*', '**');
-        
+
         expect(customMatcher.match('user/created', 'user/*')).toBe(true);
         expect(customMatcher.match('user/profile/updated', 'user/**')).toBe(true);
         expect(customMatcher.match('app/db/error', 'app/*/error')).toBe(true);
-        
+
         const colonMatcher = new WildcardMatcher(':', '*', '**');
         expect(colonMatcher.match('user:created', 'user:*')).toBe(true);
         expect(colonMatcher.match('user:profile:updated', 'user:**')).toBe(true);
@@ -115,24 +115,10 @@ describe('WildcardMatcher', () => {
 
   describe('findMatchingPatterns', () => {
     it('should find all matching patterns for an event', () => {
-      const patterns = [
-        'user.created',
-        'user.*',
-        '*.created',
-        'user.**',
-        '**.created',
-        'admin.*',
-        'post.created'
-      ];
+      const patterns = ['user.created', 'user.*', '*.created', 'user.**', '**.created', 'admin.*', 'post.created'];
 
       const matches = matcher.findMatchingPatterns('user.created', patterns);
-      expect(matches).toEqual([
-        'user.created',
-        'user.*',
-        '*.created',
-        'user.**',
-        '**.created'
-      ]);
+      expect(matches).toEqual(['user.created', 'user.*', '*.created', 'user.**', '**.created']);
     });
 
     it('should return empty array when no patterns match', () => {

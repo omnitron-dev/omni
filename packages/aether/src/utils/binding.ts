@@ -39,10 +39,7 @@ export interface CheckboxBinding {
  * <input {...bindValue(text, (v) => v.toUpperCase())} />
  * ```
  */
-export function bindValue<T>(
-  signal: WritableSignal<T>,
-  transform?: (value: string) => T
-): InputBinding {
+export function bindValue<T>(signal: WritableSignal<T>, transform?: (value: string) => T): InputBinding {
   return {
     value: signal() as string | number,
     onInput: (e: Event) => {
@@ -274,10 +271,7 @@ export function bindChecked(signal: WritableSignal<boolean>): CheckboxBinding {
  * />
  * ```
  */
-export function bindGroup<T>(
-  signal: WritableSignal<T>,
-  value: T
-): CheckboxBinding {
+export function bindGroup<T>(signal: WritableSignal<T>, value: T): CheckboxBinding {
   return {
     checked: signal() === value,
     onChange: (e: Event) => {

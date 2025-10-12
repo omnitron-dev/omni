@@ -133,23 +133,29 @@ export interface RadioGroupItemContextValue {
 const noop = () => {};
 const noopGetter = () => undefined;
 
-export const RadioGroupContext = createContext<RadioGroupContextValue>({
-  value: noopGetter,
-  setValue: noop,
-  disabled: false,
-  required: false,
-  name: undefined,
-  orientation: 'vertical',
-  loop: true,
-  groupId: '',
-}, 'RadioGroup');
+export const RadioGroupContext = createContext<RadioGroupContextValue>(
+  {
+    value: noopGetter,
+    setValue: noop,
+    disabled: false,
+    required: false,
+    name: undefined,
+    orientation: 'vertical',
+    loop: true,
+    groupId: '',
+  },
+  'RadioGroup'
+);
 
-export const RadioGroupItemContext = createContext<RadioGroupItemContextValue>({
-  value: '',
-  checked: () => false,
-  disabled: false,
-  itemId: '',
-}, 'RadioGroupItem');
+export const RadioGroupItemContext = createContext<RadioGroupItemContextValue>(
+  {
+    value: '',
+    checked: () => false,
+    disabled: false,
+    itemId: '',
+  },
+  'RadioGroupItem'
+);
 
 // ============================================================================
 // Components
@@ -217,9 +223,7 @@ export const RadioGroup = defineComponent<RadioGroupProps>((props) => {
     e.preventDefault();
 
     const target = e.currentTarget as HTMLElement;
-    const items = Array.from(
-      target.querySelectorAll<HTMLElement>('[role="radio"]:not([disabled])')
-    );
+    const items = Array.from(target.querySelectorAll<HTMLElement>('[role="radio"]:not([disabled])'));
 
     if (items.length === 0) return;
 
@@ -463,13 +467,12 @@ export const RadioGroupIndicator = defineComponent<RadioGroupIndicatorProps>((pr
     });
   };
 
-  return () => 
+  return () =>
     // Return a container span that will hold the indicator or placeholder
-     jsx('span', {
+    jsx('span', {
       ref: refCallback,
       style: { display: 'contents' }, // Don't affect layout
-    })
-  ;
+    });
 });
 
 // ============================================================================

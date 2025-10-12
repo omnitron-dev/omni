@@ -87,7 +87,7 @@ describe('omit', () => {
 
   it('should return really empty object for props=true', () => {
     class A {
-      constructor(public sec: any) { }
+      constructor(public sec: any) {}
     }
 
     expect(omit(A, true)).toEqual({});
@@ -97,7 +97,7 @@ describe('omit', () => {
     class A {
       static prop1 = 12;
 
-      constructor(public sec: any) { }
+      constructor(public sec: any) {}
     }
 
     const originalDescrs: any[] = [];

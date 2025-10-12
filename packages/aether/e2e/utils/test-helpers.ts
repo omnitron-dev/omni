@@ -82,39 +82,39 @@ export async function disconnectAllPeers(page: Page) {
  * Get HTTP interface
  */
 export async function getHttpInterface<T>(page: Page, serviceName: string): Promise<T> {
-  return await page.evaluate(async (name) => {
+  return (await page.evaluate(async (name) => {
     if (!window.testState.httpPeer) {
       throw new Error('HTTP peer not connected');
     }
     const service = await window.testState.httpPeer.queryInterface(name);
     return service;
-  }, serviceName) as T;
+  }, serviceName)) as T;
 }
 
 /**
  * Get HTTP fluent interface
  */
 export async function getHttpFluentInterface<T>(page: Page, serviceName: string): Promise<T> {
-  return await page.evaluate(async (name) => {
+  return (await page.evaluate(async (name) => {
     if (!window.testState.httpPeer) {
       throw new Error('HTTP peer not connected');
     }
     const service = await window.testState.httpPeer.queryFluentInterface(name);
     return service;
-  }, serviceName) as T;
+  }, serviceName)) as T;
 }
 
 /**
  * Get WebSocket interface
  */
 export async function getWebSocketInterface<T>(page: Page, serviceName: string): Promise<T> {
-  return await page.evaluate(async (name) => {
+  return (await page.evaluate(async (name) => {
     if (!window.testState.wsPeer) {
       throw new Error('WebSocket peer not connected');
     }
     const service = await window.testState.wsPeer.queryInterface(name);
     return service;
-  }, serviceName) as T;
+  }, serviceName)) as T;
 }
 
 /**
@@ -131,7 +131,7 @@ export async function waitFor(
   while (Date.now() - startTime < timeout) {
     const result = await page.evaluate(condition);
     if (result) return;
-    await new Promise(resolve => setTimeout(resolve, interval));
+    await new Promise((resolve) => setTimeout(resolve, interval));
   }
 
   throw new Error(`Condition not met within ${timeout}ms`);
@@ -140,10 +140,7 @@ export async function waitFor(
 /**
  * Measure execution time
  */
-export async function measureTime<T>(
-  page: Page,
-  fn: () => Promise<T>
-): Promise<{ result: T; duration: number }> {
+export async function measureTime<T>(page: Page, fn: () => Promise<T>): Promise<{ result: T; duration: number }> {
   return await page.evaluate(async (serializedFn) => {
     const fn = eval(`(${serializedFn})`);
     const start = performance.now();
@@ -179,10 +176,7 @@ export async function clearAllCaches(page: Page) {
 /**
  * Create test user
  */
-export async function createTestUser(
-  page: Page,
-  data: { name: string; email: string; age: number }
-) {
+export async function createTestUser(page: Page, data: { name: string; email: string; age: number }) {
   return await page.evaluate(async (userData) => {
     const userService = await window.testState.httpPeer.queryInterface('UserService@1.0.0');
     return await userService.createUser(userData);
@@ -192,10 +186,7 @@ export async function createTestUser(
 /**
  * Subscribe to messages with callback
  */
-export async function subscribeToMessages(
-  page: Page,
-  callback: (message: any) => void
-): Promise<() => void> {
+export async function subscribeToMessages(page: Page, callback: (message: any) => void): Promise<() => void> {
   // Store callback in window for access
   await page.exposeFunction('__messageCallback', callback);
 
@@ -258,7 +249,7 @@ export async function assertEventually<T>(
   while (Date.now() - startTime < timeout) {
     const value = await fn();
     if (predicate(value)) return;
-    await new Promise(resolve => setTimeout(resolve, interval));
+    await new Promise((resolve) => setTimeout(resolve, interval));
   }
 
   throw new Error(`${message} (timeout after ${timeout}ms)`);
@@ -268,7 +259,7 @@ export async function assertEventually<T>(
  * Parallel test execution
  */
 export async function parallel<T>(tasks: (() => Promise<T>)[]): Promise<T[]> {
-  return await Promise.all(tasks.map(task => task()));
+  return await Promise.all(tasks.map((task) => task()));
 }
 
 /**
@@ -300,7 +291,7 @@ export async function retryWithBackoff<T>(
     } catch (error) {
       lastError = error as Error;
       if (attempt < maxAttempts - 1) {
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
         delay = Math.min(delay * 2, maxDelay);
       }
     }

@@ -40,9 +40,7 @@ describe('unexpose-service core task', () => {
   it('should delegate to peer.netron.peer.unexposeRemoteService', async () => {
     const serviceName = 'TestService@1.0.0';
 
-    const unexposeRemoteServiceSpy = jest
-      .spyOn(netron.peer, 'unexposeRemoteService')
-      .mockResolvedValue(undefined);
+    const unexposeRemoteServiceSpy = jest.spyOn(netron.peer, 'unexposeRemoteService').mockResolvedValue(undefined);
 
     await unexpose_service(remotePeer, serviceName);
 
@@ -70,9 +68,7 @@ describe('unexpose-service core task', () => {
   });
 
   it('should handle different service names', async () => {
-    const unexposeRemoteServiceSpy = jest
-      .spyOn(netron.peer, 'unexposeRemoteService')
-      .mockResolvedValue(undefined);
+    const unexposeRemoteServiceSpy = jest.spyOn(netron.peer, 'unexposeRemoteService').mockResolvedValue(undefined);
 
     const service1 = 'AuthService@2.0.0';
     const service2 = 'DataService@1.5.0';
@@ -88,9 +84,7 @@ describe('unexpose-service core task', () => {
   it('should be idempotent when called multiple times for the same service', async () => {
     const serviceName = 'TestService@1.0.0';
 
-    const unexposeRemoteServiceSpy = jest
-      .spyOn(netron.peer, 'unexposeRemoteService')
-      .mockResolvedValue(undefined);
+    const unexposeRemoteServiceSpy = jest.spyOn(netron.peer, 'unexposeRemoteService').mockResolvedValue(undefined);
 
     await unexpose_service(remotePeer, serviceName);
     await unexpose_service(remotePeer, serviceName);

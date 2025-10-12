@@ -32,7 +32,9 @@ export function Config(path?: string, defaultValue?: any): any {
     if (parameterIndex !== undefined) {
       // Constructor parameter decorator
       const existingTokens = Reflect.getMetadata('design:paramtokens', target, propertyKey!) || [];
-      existingTokens[parameterIndex] = createConfigToken(path || (propertyKey ? propertyKey.toString() : `param_${parameterIndex}`));
+      existingTokens[parameterIndex] = createConfigToken(
+        path || (propertyKey ? propertyKey.toString() : `param_${parameterIndex}`)
+      );
       Reflect.defineMetadata('design:paramtokens', existingTokens, target, propertyKey!);
 
       // Store config metadata
@@ -62,7 +64,7 @@ export function Config(path?: string, defaultValue?: any): any {
           this[configKey] = value;
         },
         enumerable: true,
-        configurable: true
+        configurable: true,
       });
     }
   };
@@ -172,13 +174,13 @@ export function ConfigValidate(schema: ZodType) {
         const result = schema.safeParse(value);
         if (!result.success) {
           throw Errors.badRequest(`Validation failed for ${String(propertyKey)}`, {
-            errors: result.error.issues
+            errors: result.error.issues,
           });
         }
         this[originalKey] = result.data;
       },
       enumerable: true,
-      configurable: true
+      configurable: true,
     });
   };
 }
@@ -202,7 +204,7 @@ export function ConfigWatch(path: string) {
     watchMetadata.push({
       path,
       method: propertyKey,
-      handler: descriptor.value
+      handler: descriptor.value,
     });
     Reflect.defineMetadata('titan:config:watch', watchMetadata, target);
 
@@ -283,7 +285,7 @@ export function ConfigTransform(transformer: (value: any) => any) {
         this[originalKey] = transformer(value);
       },
       enumerable: true,
-      configurable: true
+      configurable: true,
     });
   };
 }

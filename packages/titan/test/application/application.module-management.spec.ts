@@ -8,12 +8,7 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 
 import { Application, createApp } from '../../src/application.js';
 import { createToken } from '../../src/nexus/index.js';
-import {
-  SimpleModule,
-  DatabaseModule,
-  CacheModule,
-  DependentModule
-} from '../fixtures/test-modules.js';
+import { SimpleModule, DatabaseModule, CacheModule, DependentModule } from '../fixtures/test-modules.js';
 import { Module, Injectable, Inject } from '../../src/decorators/index.js';
 import { IModule, IHealthStatus } from '../../src/types.js';
 
@@ -24,7 +19,7 @@ describe('Application Module Management', () => {
     app = createApp({
       name: 'module-test',
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
   });
 
@@ -128,7 +123,7 @@ describe('Application Module Management', () => {
       await app.start();
 
       const modules = app.getModules();
-      const names = modules.map(m => m.name);
+      const names = modules.map((m) => m.name);
 
       // Should be sorted: C -> B -> A
       const cIndex = names.indexOf('module-c');
@@ -182,14 +177,14 @@ describe('Application Module Management', () => {
       }
 
       // Register in reverse order
-      modules.reverse().forEach(m => app.use(m));
+      modules.reverse().forEach((m) => app.use(m));
 
       await app.start();
 
       const registered = app.getModules();
       for (let i = 0; i < 4; i++) {
-        const current = registered.findIndex(m => m.name === `module-${i}`);
-        const next = registered.findIndex(m => m.name === `module-${i + 1}`);
+        const current = registered.findIndex((m) => m.name === `module-${i}`);
+        const next = registered.findIndex((m) => m.name === `module-${i + 1}`);
         expect(current).toBeLessThan(next);
       }
     });
@@ -208,7 +203,7 @@ describe('Application Module Management', () => {
       app.configure('database', {
         host: 'custom-host',
         port: 3306,
-        poolSize: 20
+        poolSize: 20,
       });
 
       await app.start();
@@ -216,7 +211,7 @@ describe('Application Module Management', () => {
       const health = await module.health();
       expect(health.details?.config).toMatchObject({
         host: 'custom-host',
-        port: 3306
+        port: 3306,
       });
     });
 
@@ -227,9 +222,9 @@ describe('Application Module Management', () => {
         config: {
           database: {
             host: 'global-host',
-            port: 5432
-          }
-        }
+            port: 5432,
+          },
+        },
       });
 
       // Create a module without dependencies for testing configuration
@@ -250,8 +245,8 @@ describe('Application Module Management', () => {
         disableGracefulShutdown: true,
         disableCoreModules: true,
         config: {
-          database: { host: 'initial' }
-        }
+          database: { host: 'initial' },
+        },
       });
 
       // Create a module without dependencies for testing configuration
@@ -264,7 +259,7 @@ describe('Application Module Management', () => {
 
       app.configure('database', {
         port: 3306,
-        poolSize: 10
+        poolSize: 10,
       });
 
       await app.start();
@@ -272,7 +267,7 @@ describe('Application Module Management', () => {
       const health = await module.health();
       expect(health.details?.config).toMatchObject({
         host: 'initial',
-        port: 3306
+        port: 3306,
       });
     });
   });
@@ -319,7 +314,7 @@ describe('Application Module Management', () => {
           return {
             status: 'unhealthy',
             message: 'Module is not healthy',
-            error: 'Database connection lost'
+            error: 'Database connection lost',
           };
         }
       }
@@ -362,13 +357,12 @@ describe('Application Module Management', () => {
 
       @Module({
         providers: [TestService],
-        exports: [TestService]
+        exports: [TestService],
       })
       class TestModule implements IModule {
         readonly name = 'decorated-module';
 
-        constructor(private testService: TestService) {
-        }
+        constructor(private testService: TestService) {}
 
         getService() {
           return this.testService;
@@ -396,7 +390,7 @@ describe('Application Module Management', () => {
         constructor(
           @Inject(LoggerToken) private logger: any,
           @Inject(ConfigToken) private config: any
-        ) { }
+        ) {}
 
         doSomething() {
           this.logger.log('Doing something');
@@ -408,15 +402,14 @@ describe('Application Module Management', () => {
         providers: [
           { provide: LoggerToken, useValue: { log: jest.fn() } },
           { provide: ConfigToken, useValue: { get: () => 'config-value' } },
-          ComplexService
+          ComplexService,
         ],
-        exports: [ComplexService]
+        exports: [ComplexService],
       })
       class ComplexModule implements IModule {
         readonly name = 'complex-module';
 
-        constructor(private service: ComplexService) {
-        }
+        constructor(private service: ComplexService) {}
 
         execute() {
           return this.service.doSomething();

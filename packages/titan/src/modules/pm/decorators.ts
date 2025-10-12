@@ -18,7 +18,7 @@ import type {
   ICacheOptions,
   IValidationOptions,
   ICircuitBreakerOptions,
-  ISelfHealAction
+  ISelfHealAction,
 } from './types.js';
 
 // ============================================================================
@@ -44,7 +44,7 @@ export function Process(options: IProcessOptions = {}): ClassDecorator {
       ...options,
       target,
       isProcess: true,
-      methods: new Map()
+      methods: new Map(),
     };
 
     // Store metadata
@@ -60,11 +60,7 @@ export function Process(options: IProcessOptions = {}): ClassDecorator {
       const descriptor = Object.getOwnPropertyDescriptor(prototype, propertyName);
       if (!descriptor || typeof descriptor.value !== 'function') continue;
 
-      const methodMetadata = Reflect.getMetadata(
-        PROCESS_METHOD_METADATA_KEY,
-        prototype,
-        propertyName
-      );
+      const methodMetadata = Reflect.getMetadata(PROCESS_METHOD_METADATA_KEY, prototype, propertyName);
 
       if (methodMetadata) {
         metadata.methods!.set(propertyName, methodMetadata);
@@ -80,11 +76,7 @@ export function Process(options: IProcessOptions = {}): ClassDecorator {
  */
 export function Public(): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const metadata: IProcessMethodMetadata = getOrCreateMethodMetadata(
-      target,
-      propertyKey,
-      descriptor
-    );
+    const metadata: IProcessMethodMetadata = getOrCreateMethodMetadata(target, propertyKey, descriptor);
     metadata.public = true;
   };
 }
@@ -94,11 +86,7 @@ export function Public(): MethodDecorator {
  */
 export function RateLimit(options: IRateLimitOptions): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const metadata: IProcessMethodMetadata = getOrCreateMethodMetadata(
-      target,
-      propertyKey,
-      descriptor
-    );
+    const metadata: IProcessMethodMetadata = getOrCreateMethodMetadata(target, propertyKey, descriptor);
     metadata.rateLimit = options;
   };
 }
@@ -108,11 +96,7 @@ export function RateLimit(options: IRateLimitOptions): MethodDecorator {
  */
 export function Cache(options: ICacheOptions = {}): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const metadata: IProcessMethodMetadata = getOrCreateMethodMetadata(
-      target,
-      propertyKey,
-      descriptor
-    );
+    const metadata: IProcessMethodMetadata = getOrCreateMethodMetadata(target, propertyKey, descriptor);
     metadata.cache = options;
   };
 }
@@ -122,11 +106,7 @@ export function Cache(options: ICacheOptions = {}): MethodDecorator {
  */
 export function Validate(options: IValidationOptions): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const metadata: IProcessMethodMetadata = getOrCreateMethodMetadata(
-      target,
-      propertyKey,
-      descriptor
-    );
+    const metadata: IProcessMethodMetadata = getOrCreateMethodMetadata(target, propertyKey, descriptor);
     metadata.validate = options;
   };
 }
@@ -136,11 +116,7 @@ export function Validate(options: IValidationOptions): MethodDecorator {
  */
 export function Trace(): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const metadata: IProcessMethodMetadata = getOrCreateMethodMetadata(
-      target,
-      propertyKey,
-      descriptor
-    );
+    const metadata: IProcessMethodMetadata = getOrCreateMethodMetadata(target, propertyKey, descriptor);
     metadata.trace = true;
   };
 }
@@ -150,11 +126,7 @@ export function Trace(): MethodDecorator {
  */
 export function Metric(name?: string): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const metadata: IProcessMethodMetadata = getOrCreateMethodMetadata(
-      target,
-      propertyKey,
-      descriptor
-    );
+    const metadata: IProcessMethodMetadata = getOrCreateMethodMetadata(target, propertyKey, descriptor);
     metadata.metrics = true;
   };
 }
@@ -176,7 +148,7 @@ export function Supervisor(options: ISupervisorOptions = {}): ClassDecorator {
       ...existingMetadata,
       ...options,
       target,
-      children: existingMetadata.children || new Map<string, ISupervisorChild>()
+      children: existingMetadata.children || new Map<string, ISupervisorChild>(),
     };
 
     Reflect.defineMetadata(SUPERVISOR_METADATA_KEY, metadata, target);
@@ -203,7 +175,7 @@ export function Child(options: Partial<ISupervisorChild> = {}): PropertyDecorato
       name: String(propertyKey),
       processClass: null, // Will be resolved from property value at runtime
       propertyKey: String(propertyKey), // Store property key for resolution
-      ...options
+      ...options,
     };
 
     metadata.children.set(String(propertyKey), childDef);
@@ -227,7 +199,7 @@ export function Workflow(): ClassDecorator {
     const metadata = {
       ...existingMetadata,
       target,
-      stages: existingMetadata.stages || new Map<string, IWorkflowStage>()
+      stages: existingMetadata.stages || new Map<string, IWorkflowStage>(),
     };
 
     Reflect.defineMetadata(WORKFLOW_METADATA_KEY, metadata, target);
@@ -241,7 +213,7 @@ export function Workflow(): ClassDecorator {
 export function Stage(options: Partial<IWorkflowStage> = {}): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     const metadata = Reflect.getMetadata(WORKFLOW_METADATA_KEY, target.constructor) || {
-      stages: new Map()
+      stages: new Map(),
     };
 
     // Normalize dependsOn to always be an array
@@ -253,7 +225,7 @@ export function Stage(options: Partial<IWorkflowStage> = {}): MethodDecorator {
     const stage: IWorkflowStage = {
       name: String(propertyKey),
       handler: descriptor.value,
-      ...normalizedOptions
+      ...normalizedOptions,
     };
 
     metadata.stages.set(String(propertyKey), stage);
@@ -267,7 +239,7 @@ export function Stage(options: Partial<IWorkflowStage> = {}): MethodDecorator {
 export function Compensate(stageName: string): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     const metadata = Reflect.getMetadata(WORKFLOW_METADATA_KEY, target.constructor) || {
-      stages: new Map()
+      stages: new Map(),
     };
 
     const stage = metadata.stages.get(stageName);
@@ -291,7 +263,7 @@ export function Actor(options: any = {}): ClassDecorator {
     const metadata = {
       ...options,
       target,
-      isActor: true
+      isActor: true,
     };
     Reflect.defineMetadata(ACTOR_METADATA_KEY, metadata, target);
     return target;
@@ -366,7 +338,7 @@ export function SelfHeal(options: ISelfHealAction): MethodDecorator {
     // Store self-healing metadata for runtime processing
     const metadata = {
       method: propertyKey,
-      ...options
+      ...options,
     };
 
     const existing = Reflect.getMetadata('self-heal', target) || [];
@@ -429,7 +401,7 @@ export function Compose(...services: any[]): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     const metadata = {
       services,
-      method: propertyKey
+      method: propertyKey,
     };
 
     const existing = Reflect.getMetadata('compose', target) || [];
@@ -460,7 +432,7 @@ export function HealthCheck(options: { interval?: number } = {}): MethodDecorato
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     const metadata = {
       method: propertyKey,
-      ...options
+      ...options,
     };
     Reflect.defineMetadata('health-check', metadata, target);
   };
@@ -482,7 +454,7 @@ export function AdaptiveBitrate(options: any): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     const metadata = {
       method: propertyKey,
-      ...options
+      ...options,
     };
     Reflect.defineMetadata('adaptive-bitrate', metadata, target);
   };
@@ -495,7 +467,7 @@ export function GraphQLService(options: any): ClassDecorator {
   return (target: any) => {
     const metadata = {
       ...options,
-      target
+      target,
     };
     Reflect.defineMetadata('graphql-service', metadata, target);
     return target;
@@ -520,7 +492,7 @@ export function Saga(options: any = {}): ClassDecorator {
     const metadata = {
       ...options,
       target,
-      steps: new Map()
+      steps: new Map(),
     };
     Reflect.defineMetadata('saga', metadata, target);
     return target;
@@ -555,7 +527,7 @@ function getOrCreateMethodMetadata(
   if (!metadata) {
     metadata = {
       name: String(propertyKey),
-      descriptor
+      descriptor,
     };
     Reflect.defineMetadata(PROCESS_METHOD_METADATA_KEY, metadata, target, propertyKey);
   }
@@ -575,10 +547,15 @@ function parseDuration(duration: string): number {
   const num = parseInt(value, 10);
 
   switch (unit) {
-    case 's': return num * 1000;
-    case 'm': return num * 60 * 1000;
-    case 'h': return num * 60 * 60 * 1000;
-    case 'd': return num * 24 * 60 * 60 * 1000;
-    default: return 0;
+    case 's':
+      return num * 1000;
+    case 'm':
+      return num * 60 * 1000;
+    case 'h':
+      return num * 60 * 60 * 1000;
+    case 'd':
+      return num * 24 * 60 * 60 * 1000;
+    default:
+      return 0;
   }
 }

@@ -19,7 +19,7 @@ import {
   TransportType,
   retryWithBackoff,
   HttpError,
-  RestError
+  RestError,
 } from '../src/errors/index.js';
 import type { inferErrorTypes } from '../src/errors/contract.js';
 
@@ -33,14 +33,14 @@ console.log('\n=== 1. BASIC ERROR CREATION ===\n');
 const notFoundError = createError({
   code: ErrorCode.NOT_FOUND,
   message: 'User not found',
-  details: { userId: '123' }
+  details: { userId: '123' },
 });
 
 console.log('Not Found Error:', {
   code: notFoundError.code,
   category: notFoundError.category,
   message: notFoundError.message,
-  isRetryable: notFoundError.isRetryable()
+  isRetryable: notFoundError.isRetryable(),
 });
 
 // Error with cause chain
@@ -48,7 +48,7 @@ const dbError = new Error('Connection timeout');
 const serviceError = createError({
   code: ErrorCode.SERVICE_UNAVAILABLE,
   message: 'Database unavailable',
-  cause: dbError
+  cause: dbError,
 });
 
 console.log('\nService Error with Cause:');
@@ -68,45 +68,47 @@ const userContract = contract({
     output: z.object({
       id: z.string(),
       name: z.string(),
-      email: z.string().email()
+      email: z.string().email(),
     }),
     errors: {
       404: z.object({
         code: z.literal('USER_NOT_FOUND'),
         message: z.string(),
-        userId: z.string()
+        userId: z.string(),
       }),
       403: z.object({
         code: z.literal('ACCESS_DENIED'),
-        reason: z.enum(['inactive', 'banned', 'unverified'])
-      })
-    }
+        reason: z.enum(['inactive', 'banned', 'unverified']),
+      }),
+    },
   },
   createUser: {
     input: z.object({
       name: z.string().min(2),
       email: z.string().email(),
-      age: z.number().min(18)
+      age: z.number().min(18),
     }),
     output: z.object({
       id: z.string(),
       name: z.string(),
-      email: z.string()
+      email: z.string(),
     }),
     errors: {
       409: z.object({
         code: z.literal('USER_EXISTS'),
-        email: z.string()
+        email: z.string(),
       }),
       422: z.object({
         code: z.literal('VALIDATION_ERROR'),
-        fields: z.array(z.object({
-          field: z.string(),
-          error: z.string()
-        }))
-      })
-    }
-  }
+        fields: z.array(
+          z.object({
+            field: z.string(),
+            error: z.string(),
+          })
+        ),
+      }),
+    },
+  },
 });
 
 // Type-safe service implementation
@@ -121,14 +123,14 @@ class UserService extends ContractService<typeof userContract> {
       this.throwError('getUser', 404, {
         code: 'USER_NOT_FOUND',
         message: 'User not found in database',
-        userId: input.id
+        userId: input.id,
       });
     }
 
     if (user.status === 'banned') {
       this.throwError('getUser', 403, {
         code: 'ACCESS_DENIED',
-        reason: 'banned'
+        reason: 'banned',
       });
     }
 
@@ -136,20 +138,22 @@ class UserService extends ContractService<typeof userContract> {
   }
 
   async createUser(input: { name: string; email: string; age: number }) {
-    if (Array.from(this.users.values()).some(u => u.email === input.email)) {
+    if (Array.from(this.users.values()).some((u) => u.email === input.email)) {
       this.throwError('createUser', 409, {
         code: 'USER_EXISTS',
-        email: input.email
+        email: input.email,
       });
     }
 
     if (input.age < 18) {
       this.throwError('createUser', 422, {
         code: 'VALIDATION_ERROR',
-        fields: [{
-          field: 'age',
-          error: 'Must be 18 or older'
-        }]
+        fields: [
+          {
+            field: 'age',
+            error: 'Must be 18 or older',
+          },
+        ],
       });
     }
 
@@ -167,7 +171,7 @@ type GetUserErrors = inferErrorTypes<typeof userContract, 'getUser'>;
 const validError: GetUserErrors[404] = {
   code: 'USER_NOT_FOUND',
   message: 'Not found',
-  userId: '123'
+  userId: '123',
 };
 
 // This would not compile if uncommented - wrong structure
@@ -187,13 +191,13 @@ console.log('\n=== 3. VALIDATION ERRORS ===\n');
 const userSchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
-  age: z.number().min(18)
+  age: z.number().min(18),
 });
 
 const invalidData = {
   name: 'A', // Too short
   email: 'not-an-email',
-  age: 16 // Too young
+  age: 16, // Too young
 };
 
 const validationResult = userSchema.safeParse(invalidData);
@@ -220,7 +224,7 @@ console.log('\n=== 4. TRANSPORT MAPPING ===\n');
 const sampleError = createError({
   code: ErrorCode.NOT_FOUND,
   message: 'Resource not found',
-  requestId: 'req-123'
+  requestId: 'req-123',
 });
 
 // Map to HTTP
@@ -228,12 +232,12 @@ const httpResponse = mapToTransport(sampleError, TransportType.HTTP);
 console.log('HTTP Mapping:', {
   status: httpResponse.status,
   headers: httpResponse.headers,
-  body: httpResponse.body
+  body: httpResponse.body,
 });
 
 // Map to WebSocket
 const wsMessage = mapToTransport(sampleError, TransportType.WEBSOCKET, {
-  requestId: 'req-123'
+  requestId: 'req-123',
 });
 console.log('\nWebSocket Mapping:', wsMessage);
 
@@ -241,7 +245,7 @@ console.log('\nWebSocket Mapping:', wsMessage);
 const grpcError = mapToTransport(sampleError, TransportType.GRPC);
 console.log('\ngRPC Mapping:', {
   code: grpcError.code,
-  message: grpcError.message
+  message: grpcError.message,
 });
 
 // =============================================================================
@@ -256,7 +260,7 @@ async function unreliableOperation() {
   if (attempts < 3) {
     throw createError({
       code: ErrorCode.SERVICE_UNAVAILABLE,
-      message: `Attempt ${attempts} failed`
+      message: `Attempt ${attempts} failed`,
     });
   }
   return 'Success!';
@@ -264,17 +268,14 @@ async function unreliableOperation() {
 
 async function demonstrateRetry() {
   try {
-    const result = await retryWithBackoff(
-      unreliableOperation,
-      {
-        maxAttempts: 5,
-        initialDelay: 100,
-        backoffFactor: 2,
-        onRetry: (error, attempt, delay) => {
-          console.log(`Retry attempt ${attempt} after ${delay}ms delay`);
-        }
-      }
-    );
+    const result = await retryWithBackoff(unreliableOperation, {
+      maxAttempts: 5,
+      initialDelay: 100,
+      backoffFactor: 2,
+      onRetry: (error, attempt, delay) => {
+        console.log(`Retry attempt ${attempt} after ${delay}ms delay`);
+      },
+    });
     console.log('Final result:', result);
   } catch (error) {
     console.log('Failed after all retries:', error);
@@ -294,17 +295,17 @@ const userNotFound = RestError.resourceNotFound('User', '123');
 console.log('REST Not Found:', {
   status: userNotFound.httpStatus,
   resource: userNotFound.resource,
-  resourceId: userNotFound.resourceId
+  resourceId: userNotFound.resourceId,
 });
 
 // API errors
 const apiError = HttpError.tooManyRequests('Rate limit exceeded', {
-  retryAfter: 60
+  retryAfter: 60,
 });
 console.log('Rate Limit Error:', {
   status: apiError.httpStatus,
   message: apiError.message,
-  details: apiError.details
+  details: apiError.details,
 });
 
 // =============================================================================
@@ -330,7 +331,7 @@ console.log('- By Category:', stats.byCategory);
 
 const metrics = TitanError.getMetrics({
   window: '1m',
-  groupBy: ['code', 'category']
+  groupBy: ['code', 'category'],
 });
 console.log('\nError Metrics:');
 console.log('- Error Rate:', metrics.rate.toFixed(2), 'errors/sec');
@@ -346,20 +347,20 @@ const multipleErrors = [
   createError({ code: ErrorCode.VALIDATION_ERROR, message: 'Invalid email' }),
   createError({ code: ErrorCode.VALIDATION_ERROR, message: 'Invalid email' }), // Duplicate
   createError({ code: ErrorCode.VALIDATION_ERROR, message: 'Invalid password' }),
-  createError({ code: ErrorCode.BAD_REQUEST, message: 'Missing field' })
+  createError({ code: ErrorCode.BAD_REQUEST, message: 'Missing field' }),
 ];
 
 const aggregated = TitanError.aggregate(multipleErrors);
 console.log('Aggregated Errors:', {
   code: aggregated.code,
   summary: aggregated.summary,
-  errorCount: aggregated.errors.length
+  errorCount: aggregated.errors.length,
 });
 
 const deduplicated = TitanError.aggregate(multipleErrors, { deduplicate: true });
 console.log('Deduplicated:', {
   originalCount: multipleErrors.length,
-  deduplicatedCount: deduplicated.errors.length
+  deduplicatedCount: deduplicated.errors.length,
 });
 
 // =============================================================================

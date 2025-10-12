@@ -31,7 +31,7 @@ export class ContractError extends TitanError {
   static create<
     TContract extends Contract,
     TMethod extends keyof TContract['definition'],
-    TCode extends keyof NonNullable<TContract['definition'][TMethod]['errors']>
+    TCode extends keyof NonNullable<TContract['definition'][TMethod]['errors']>,
   >(
     contract: TContract,
     method: TMethod,
@@ -64,7 +64,7 @@ export class ContractError extends TitanError {
       message: payload.message || `Error ${String(code)}`,
       details: payload,
       contractMethod: String(method),
-      payload: result.data
+      payload: result.data,
     });
   }
 
@@ -86,37 +86,31 @@ export type ErrorContract<TErrors extends Record<number, z.ZodSchema<any>>> = {
 /**
  * Infer error types from a contract method
  */
-export type inferErrorTypes<
-  TContract extends Contract,
-  TMethod extends keyof TContract['definition']
-> = TContract['definition'][TMethod]['errors'] extends Record<number, z.ZodSchema<any>>
-  ? {
-      [K in keyof TContract['definition'][TMethod]['errors']]: z.infer<
-        TContract['definition'][TMethod]['errors'][K]
-      >;
-    }
-  : never;
+export type inferErrorTypes<TContract extends Contract, TMethod extends keyof TContract['definition']> =
+  TContract['definition'][TMethod]['errors'] extends Record<number, z.ZodSchema<any>>
+    ? {
+        [K in keyof TContract['definition'][TMethod]['errors']]: z.infer<TContract['definition'][TMethod]['errors'][K]>;
+      }
+    : never;
 
 /**
  * Type-safe error handler for contract methods
  */
-export type ErrorHandler<
-  TContract extends Contract,
-  TMethod extends keyof TContract['definition']
-> = TContract['definition'][TMethod]['errors'] extends Record<number, z.ZodSchema<any>>
-  ? (
-      code: keyof TContract['definition'][TMethod]['errors'],
-      payload: inferErrorTypes<TContract, TMethod>[keyof inferErrorTypes<TContract, TMethod>]
-    ) => never
-  : never;
+export type ErrorHandler<TContract extends Contract, TMethod extends keyof TContract['definition']> =
+  TContract['definition'][TMethod]['errors'] extends Record<number, z.ZodSchema<any>>
+    ? (
+        code: keyof TContract['definition'][TMethod]['errors'],
+        payload: inferErrorTypes<TContract, TMethod>[keyof inferErrorTypes<TContract, TMethod>]
+      ) => never
+    : never;
 
 /**
  * Create a type-safe error handler for a contract method
  */
-export function createErrorHandler<
-  TContract extends Contract,
-  TMethod extends keyof TContract['definition']
->(contract: TContract, method: TMethod): ErrorHandler<TContract, TMethod> {
+export function createErrorHandler<TContract extends Contract, TMethod extends keyof TContract['definition']>(
+  contract: TContract,
+  method: TMethod
+): ErrorHandler<TContract, TMethod> {
   return ((code: any, payload: any) => {
     throw ContractError.create(contract, method, code, payload);
   }) as ErrorHandler<TContract, TMethod>;
@@ -133,7 +127,7 @@ export abstract class ContractService<TContract extends Contract> {
    */
   protected throwError<
     TMethod extends keyof TContract['definition'],
-    TCode extends keyof NonNullable<TContract['definition'][TMethod]['errors']>
+    TCode extends keyof NonNullable<TContract['definition'][TMethod]['errors']>,
   >(
     method: TMethod,
     code: TCode,
@@ -155,15 +149,11 @@ export abstract class ContractService<TContract extends Contract> {
 /**
  * Decorator for contract-based error handling
  */
-export function ContractMethod<
-  TContract extends Contract,
-  TMethod extends keyof TContract['definition']
->(contract: TContract, method: TMethod) {
-  return function (
-    target: any,
-    propertyKey: string,
-    descriptor: PropertyDescriptor
-  ) {
+export function ContractMethod<TContract extends Contract, TMethod extends keyof TContract['definition']>(
+  contract: TContract,
+  method: TMethod
+) {
+  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
     const originalMethod = descriptor.value;
 
     descriptor.value = async function (...args: any[]) {
@@ -184,7 +174,7 @@ export function ContractMethod<
               message: error.message,
               details: error.details,
               contractMethod: String(method),
-              payload: error.details
+              payload: error.details,
             });
           }
         }
@@ -201,10 +191,7 @@ export function ContractMethod<
 /**
  * Validate error response against contract
  */
-export function validateErrorResponse<
-  TContract extends Contract,
-  TMethod extends keyof TContract['definition']
->(
+export function validateErrorResponse<TContract extends Contract, TMethod extends keyof TContract['definition']>(
   contract: TContract,
   method: TMethod,
   code: number,
@@ -228,9 +215,7 @@ export function validateErrorResponse<
 /**
  * Extract all possible error codes from a contract
  */
-export function extractErrorCodes<TContract extends Contract>(
-  contract: TContract
-): Set<number> {
+export function extractErrorCodes<TContract extends Contract>(contract: TContract): Set<number> {
   const codes = new Set<number>();
 
   for (const method of contract.getMethods()) {
@@ -258,7 +243,7 @@ export function generateErrorDocs<TContract extends Contract>(
     if (methodContract?.errors) {
       docs[method] = Object.entries(methodContract.errors).map(([code, schema]) => ({
         code: parseInt(code),
-        schema: schema as z.ZodSchema<any>
+        schema: schema as z.ZodSchema<any>,
       }));
     }
   }

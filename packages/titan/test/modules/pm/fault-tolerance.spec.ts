@@ -17,7 +17,7 @@ import {
   TestProcessManager,
   ProcessStatus,
   SupervisionStrategy,
-  type IHealthStatus
+  type IHealthStatus,
 } from '../../../src/modules/pm/index.js';
 
 // ============================================================================
@@ -32,7 +32,7 @@ class DatabaseService {
 
   @Public()
   async connect(): Promise<boolean> {
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
     this.isConnected = true;
     return true;
   }
@@ -49,11 +49,11 @@ class DatabaseService {
     }
 
     this.queryCount++;
-    await new Promise(resolve => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 20));
 
     return {
       rows: [{ id: 1, data: 'test' }],
-      count: this.queryCount
+      count: this.queryCount,
     };
   }
 
@@ -81,10 +81,10 @@ class DatabaseService {
         {
           name: 'connection',
           status: this.isConnected ? 'pass' : 'fail',
-          message: this.isConnected ? 'Connected' : 'Disconnected'
-        }
+          message: this.isConnected ? 'Connected' : 'Disconnected',
+        },
       ],
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 
@@ -139,10 +139,10 @@ class CacheService {
         {
           name: 'service-status',
           status: this.isHealthy ? 'pass' : 'fail',
-          message: this.isHealthy ? 'Operational' : 'Failed'
-        }
+          message: this.isHealthy ? 'Operational' : 'Failed',
+        },
       ],
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 }
@@ -161,11 +161,11 @@ class WorkerService {
       throw new Error(`Job processing failed: ${job.id}`);
     }
 
-    await new Promise(resolve => setTimeout(resolve, 30));
+    await new Promise((resolve) => setTimeout(resolve, 30));
 
     return {
       success: true,
-      jobId: job.id
+      jobId: job.id,
     };
   }
 
@@ -187,10 +187,10 @@ class WorkerService {
         {
           name: 'job-processing',
           status: 'pass',
-          message: `${this.jobCount} jobs processed`
-        }
+          message: `${this.jobCount} jobs processed`,
+        },
       ],
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 }
@@ -202,7 +202,7 @@ class WorkerService {
 @Supervisor({
   strategy: SupervisionStrategy.ONE_FOR_ONE,
   maxRestarts: 3,
-  window: 60000
+  window: 60000,
 })
 class DatabaseSupervisor {
   @Child({ critical: true })
@@ -215,7 +215,7 @@ class DatabaseSupervisor {
 @Supervisor({
   strategy: SupervisionStrategy.ONE_FOR_ALL,
   maxRestarts: 5,
-  window: 60000
+  window: 60000,
 })
 class ApplicationSupervisor {
   @Child({ critical: true })
@@ -228,7 +228,7 @@ class ApplicationSupervisor {
 @Supervisor({
   strategy: SupervisionStrategy.REST_FOR_ONE,
   maxRestarts: 3,
-  window: 60000
+  window: 60000,
 })
 class PipelineSupervisor {
   @Child({ critical: true })
@@ -272,7 +272,11 @@ class HealthMonitorService {
   }
 
   @Public()
-  async getOverallHealth(): Promise<{ status: 'healthy' | 'degraded' | 'unhealthy'; totalServices: number; unhealthyCount: number }> {
+  async getOverallHealth(): Promise<{
+    status: 'healthy' | 'degraded' | 'unhealthy';
+    totalServices: number;
+    unhealthyCount: number;
+  }> {
     const unhealthyCount = this.unhealthyServices.size;
     const totalServices = this.healthChecks.size;
 
@@ -299,21 +303,24 @@ class ApiService {
   private fallbackUsed = 0;
 
   @Public()
-  async fetchData(endpoint: string, useFallback: boolean = false): Promise<{ data: any; source: 'primary' | 'fallback' }> {
+  async fetchData(
+    endpoint: string,
+    useFallback: boolean = false
+  ): Promise<{ data: any; source: 'primary' | 'fallback' }> {
     if (!this.primaryAvailable || useFallback) {
       this.fallbackUsed++;
       return {
         data: { cached: true, endpoint },
-        source: 'fallback'
+        source: 'fallback',
       };
     }
 
     // Simulate primary data source
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     return {
       data: { fresh: true, endpoint },
-      source: 'primary'
+      source: 'primary',
     };
   }
 
@@ -335,10 +342,10 @@ class ApiService {
         {
           name: 'primary-source',
           status: this.primaryAvailable ? 'pass' : 'warn',
-          message: this.primaryAvailable ? 'Available' : 'Using fallback'
-        }
+          message: this.primaryAvailable ? 'Available' : 'Using fallback',
+        },
       ],
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 }
@@ -373,7 +380,7 @@ describe('Fault Tolerance - Basic Supervision', () => {
 
     // Get process list
     const initialProcesses = pm.listProcesses();
-    const dbProcess = initialProcesses.find(p => p.name.includes('database'));
+    const dbProcess = initialProcesses.find((p) => p.name.includes('database'));
 
     expect(dbProcess).toBeDefined();
 
@@ -382,7 +389,7 @@ describe('Fault Tolerance - Basic Supervision', () => {
       await pm.simulateCrash({ __processId: dbProcess.id } as any);
 
       // Wait for restart
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Process should be restarted or marked for restart
       const updatedProcess = pm.getProcess(dbProcess.id);
@@ -406,7 +413,7 @@ describe('Fault Tolerance - Supervision Strategies', () => {
     const supervisor = await pm.supervisor(DatabaseSupervisor, {
       strategy: SupervisionStrategy.ONE_FOR_ONE,
       maxRestarts: 3,
-      window: 60000
+      window: 60000,
     });
 
     expect(supervisor).toBeDefined();
@@ -420,7 +427,7 @@ describe('Fault Tolerance - Supervision Strategies', () => {
     const supervisor = await pm.supervisor(ApplicationSupervisor, {
       strategy: SupervisionStrategy.ONE_FOR_ALL,
       maxRestarts: 5,
-      window: 60000
+      window: 60000,
     });
 
     expect(supervisor).toBeDefined();
@@ -434,7 +441,7 @@ describe('Fault Tolerance - Supervision Strategies', () => {
     const supervisor = await pm.supervisor(PipelineSupervisor, {
       strategy: SupervisionStrategy.REST_FOR_ONE,
       maxRestarts: 3,
-      window: 60000
+      window: 60000,
     });
 
     expect(supervisor).toBeDefined();
@@ -589,21 +596,21 @@ describe('Fault Tolerance - Process Restart Limits', () => {
   it('should limit restart attempts', async () => {
     const supervisor = await pm.supervisor(DatabaseSupervisor, {
       maxRestarts: 3,
-      window: 60000
+      window: 60000,
     });
 
     expect(supervisor).toBeDefined();
 
     // Simulate multiple crashes
     const processes = pm.listProcesses();
-    const dbProcess = processes.find(p => p.name.includes('database'));
+    const dbProcess = processes.find((p) => p.name.includes('database'));
 
     if (dbProcess) {
       // Simulate crashes
       for (let i = 0; i < 5; i++) {
         try {
           await pm.simulateCrash({ __processId: dbProcess.id } as any);
-          await new Promise(resolve => setTimeout(resolve, 50));
+          await new Promise((resolve) => setTimeout(resolve, 50));
         } catch {}
       }
 
@@ -616,20 +623,20 @@ describe('Fault Tolerance - Process Restart Limits', () => {
   it('should reset restart count after window expires', async () => {
     const supervisor = await pm.supervisor(DatabaseSupervisor, {
       maxRestarts: 2,
-      window: 100 // 100ms window
+      window: 100, // 100ms window
     });
 
     expect(supervisor).toBeDefined();
 
     // First crash
     const processes = pm.listProcesses();
-    const dbProcess = processes.find(p => p.name.includes('database'));
+    const dbProcess = processes.find((p) => p.name.includes('database'));
 
     if (dbProcess) {
       await pm.simulateCrash({ __processId: dbProcess.id } as any);
 
       // Wait for window to expire
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       // Should be able to restart again
       await pm.simulateCrash({ __processId: dbProcess.id } as any);
@@ -678,7 +685,7 @@ describe('Fault Tolerance - Cleanup and Shutdown', () => {
     await pm.shutdown({ timeout: 5000 });
 
     const remainingProcesses = pm.listProcesses();
-    expect(remainingProcesses.every(p => p.status === ProcessStatus.STOPPED)).toBe(true);
+    expect(remainingProcesses.every((p) => p.status === ProcessStatus.STOPPED)).toBe(true);
   });
 
   it('should handle partial failures during shutdown', async () => {
@@ -713,7 +720,7 @@ describe('Fault Tolerance - Worker Pool Resilience', () => {
   it('should continue processing with remaining workers after failure', async () => {
     const workerPool = await pm.pool(WorkerService, {
       size: 3,
-      replaceUnhealthy: true
+      replaceUnhealthy: true,
     });
 
     // Set moderate failure rate
@@ -722,12 +729,10 @@ describe('Fault Tolerance - Worker Pool Resilience', () => {
     // Process multiple jobs
     const jobs = Array.from({ length: 10 }, (_, i) => ({ id: `job_${i}` }));
 
-    const results = await Promise.allSettled(
-      jobs.map(job => workerPool.processJob(job))
-    );
+    const results = await Promise.allSettled(jobs.map((job) => workerPool.processJob(job)));
 
     // Some jobs should succeed despite failures
-    const successful = results.filter(r => r.status === 'fulfilled');
+    const successful = results.filter((r) => r.status === 'fulfilled');
     expect(successful.length).toBeGreaterThan(0);
 
     // Pool should maintain workers
@@ -741,8 +746,8 @@ describe('Fault Tolerance - Worker Pool Resilience', () => {
       healthCheck: {
         enabled: true,
         interval: 100,
-        unhealthyThreshold: 2
-      }
+        unhealthyThreshold: 2,
+      },
     });
 
     // Set high failure rate to make workers unhealthy
@@ -751,9 +756,7 @@ describe('Fault Tolerance - Worker Pool Resilience', () => {
     // Try to process jobs
     const jobs = Array.from({ length: 5 }, (_, i) => ({ id: `job_${i}` }));
 
-    await Promise.allSettled(
-      jobs.map(job => workerPool.processJob(job).catch(() => null))
-    );
+    await Promise.allSettled(jobs.map((job) => workerPool.processJob(job).catch(() => null)));
 
     // Pool should still maintain target size
     expect(workerPool.size).toBe(2);

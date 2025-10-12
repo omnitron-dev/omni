@@ -19,7 +19,7 @@ describe('EventDiscoveryService', () => {
       once: jest.fn(),
       removeAllListeners: jest.fn(),
       listeners: jest.fn().mockReturnValue([]),
-      eventNames: jest.fn().mockReturnValue([])
+      eventNames: jest.fn().mockReturnValue([]),
     };
 
     mockContainer = {
@@ -27,7 +27,7 @@ describe('EventDiscoveryService', () => {
       register: jest.fn(),
       registerType: jest.fn(),
       has: jest.fn().mockReturnValue(false),
-      get: jest.fn()
+      get: jest.fn(),
     };
 
     discoveryService = new EventDiscoveryService(mockContainer, mockEmitter);
@@ -73,10 +73,7 @@ describe('EventDiscoveryService', () => {
 
   it('should scan module for event providers', async () => {
     const module = {
-      providers: [
-        class Handler1 {},
-        class Handler2 {},
-      ]
+      providers: [class Handler1 {}, class Handler2 {}],
     };
 
     const result = await discoveryService.scanModule(module);

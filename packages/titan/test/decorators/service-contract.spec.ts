@@ -11,13 +11,13 @@ describe('@Service decorator with contract', () => {
     const mockContract = {
       getUser: {
         input: { type: 'object' },
-        output: { type: 'object' }
-      }
+        output: { type: 'object' },
+      },
     };
 
     @Service({
       name: 'UserService@1.0.0',
-      contract: mockContract
+      contract: mockContract,
     })
     class UserService {}
 
@@ -45,8 +45,8 @@ describe('@Service decorator with contract', () => {
     @Service({
       name: 'TestService@1.0.0',
       transportConfig: {
-        timeout: 5000
-      }
+        timeout: 5000,
+      },
     })
     class TestService {}
 

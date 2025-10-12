@@ -86,7 +86,7 @@ export class AdaptiveScalingController extends EventEmitter {
           scaleUpBy: 2,
           scaleDownBy: 1,
           cooldownUp: 60000,
-          cooldownDown: 300000
+          cooldownDown: 300000,
         },
         {
           name: 'memory-policy',
@@ -96,7 +96,7 @@ export class AdaptiveScalingController extends EventEmitter {
           scaleUpBy: 1,
           scaleDownBy: 1,
           cooldownUp: 60000,
-          cooldownDown: 300000
+          cooldownDown: 300000,
         },
         {
           name: 'response-time-policy',
@@ -106,8 +106,8 @@ export class AdaptiveScalingController extends EventEmitter {
           scaleUpBy: 3,
           scaleDownBy: 1,
           cooldownUp: 30000,
-          cooldownDown: 180000
-        }
+          cooldownDown: 180000,
+        },
       ];
     }
   }
@@ -118,7 +118,7 @@ export class AdaptiveScalingController extends EventEmitter {
   async updateMetrics(metrics: ScalingMetrics): Promise<ScalingDecision> {
     this.metricsHistory.push({
       ...metrics,
-      customMetrics: { ...metrics.customMetrics }
+      customMetrics: { ...metrics.customMetrics },
     });
 
     // Keep history bounded
@@ -134,9 +134,7 @@ export class AdaptiveScalingController extends EventEmitter {
     }
 
     // Evaluate all policies
-    const decisions = this.policies.map(policy =>
-      this.evaluatePolicy(policy, metrics, predictedMetrics)
-    );
+    const decisions = this.policies.map((policy) => this.evaluatePolicy(policy, metrics, predictedMetrics));
 
     // Combine decisions
     const finalDecision = this.combineDecisions(decisions);
@@ -155,11 +153,7 @@ export class AdaptiveScalingController extends EventEmitter {
   /**
    * Evaluate a single policy
    */
-  private evaluatePolicy(
-    policy: ScalingPolicy,
-    current: ScalingMetrics,
-    predicted?: ScalingMetrics
-  ): ScalingDecision {
+  private evaluatePolicy(policy: ScalingPolicy, current: ScalingMetrics, predicted?: ScalingMetrics): ScalingDecision {
     // Check cooldown
     const lastScale = this.lastScaleTime.get(policy.name) || 0;
     const now = Date.now();
@@ -205,7 +199,7 @@ export class AdaptiveScalingController extends EventEmitter {
           action: 'maintain',
           amount: 0,
           reason: `Cooling down (${Math.ceil((cooldown - now) / 1000)}s remaining)`,
-          confidence: 0.5
+          confidence: 0.5,
         };
       }
 
@@ -213,7 +207,7 @@ export class AdaptiveScalingController extends EventEmitter {
         action: 'scale-up',
         amount: policy.scaleUpBy,
         reason: `${policy.type} at ${value.toFixed(2)} > ${policy.thresholdUp}`,
-        confidence: Math.min(1, (value - policy.thresholdUp) / policy.thresholdUp)
+        confidence: Math.min(1, (value - policy.thresholdUp) / policy.thresholdUp),
       };
     }
 
@@ -224,7 +218,7 @@ export class AdaptiveScalingController extends EventEmitter {
           action: 'maintain',
           amount: 0,
           reason: `Cooling down (${Math.ceil((cooldown - now) / 1000)}s remaining)`,
-          confidence: 0.5
+          confidence: 0.5,
         };
       }
 
@@ -232,7 +226,7 @@ export class AdaptiveScalingController extends EventEmitter {
         action: 'scale-down',
         amount: policy.scaleDownBy,
         reason: `${policy.type} at ${value.toFixed(2)} < ${policy.thresholdDown}`,
-        confidence: Math.min(1, (policy.thresholdDown - value) / policy.thresholdDown)
+        confidence: Math.min(1, (policy.thresholdDown - value) / policy.thresholdDown),
       };
     }
 
@@ -240,7 +234,7 @@ export class AdaptiveScalingController extends EventEmitter {
       action: 'maintain',
       amount: 0,
       reason: `${policy.type} at ${value.toFixed(2)} within thresholds`,
-      confidence: 0.8
+      confidence: 0.8,
     };
   }
 
@@ -249,45 +243,45 @@ export class AdaptiveScalingController extends EventEmitter {
    */
   private combineDecisions(decisions: ScalingDecision[]): ScalingDecision {
     // Filter out maintain decisions
-    const activeDecisions = decisions.filter(d => d.action !== 'maintain');
+    const activeDecisions = decisions.filter((d) => d.action !== 'maintain');
 
     if (activeDecisions.length === 0) {
       return {
         action: 'maintain',
         amount: 0,
         reason: 'All metrics within thresholds',
-        confidence: 0.9
+        confidence: 0.9,
       };
     }
 
     // Separate scale up and down decisions
-    const scaleUpDecisions = activeDecisions.filter(d => d.action === 'scale-up');
-    const scaleDownDecisions = activeDecisions.filter(d => d.action === 'scale-down');
+    const scaleUpDecisions = activeDecisions.filter((d) => d.action === 'scale-up');
+    const scaleDownDecisions = activeDecisions.filter((d) => d.action === 'scale-down');
 
     // Prioritize scale up (safety first)
     if (scaleUpDecisions.length > 0) {
-      const maxAmount = Math.max(...scaleUpDecisions.map(d => d.amount));
+      const maxAmount = Math.max(...scaleUpDecisions.map((d) => d.amount));
       const avgConfidence = scaleUpDecisions.reduce((sum, d) => sum + d.confidence, 0) / scaleUpDecisions.length;
-      const reasons = scaleUpDecisions.map(d => d.reason).join('; ');
+      const reasons = scaleUpDecisions.map((d) => d.reason).join('; ');
 
       return {
         action: 'scale-up',
         amount: maxAmount,
         reason: reasons,
-        confidence: avgConfidence
+        confidence: avgConfidence,
       };
     }
 
     // All are scale down
-    const minAmount = Math.min(...scaleDownDecisions.map(d => d.amount));
+    const minAmount = Math.min(...scaleDownDecisions.map((d) => d.amount));
     const avgConfidence = scaleDownDecisions.reduce((sum, d) => sum + d.confidence, 0) / scaleDownDecisions.length;
-    const reasons = scaleDownDecisions.map(d => d.reason).join('; ');
+    const reasons = scaleDownDecisions.map((d) => d.reason).join('; ');
 
     return {
       action: 'scale-down',
       amount: minAmount,
       reason: reasons,
-      confidence: avgConfidence
+      confidence: avgConfidence,
     };
   }
 
@@ -298,20 +292,14 @@ export class AdaptiveScalingController extends EventEmitter {
     const previousInstances = this.currentInstances;
 
     if (decision.action === 'scale-up') {
-      this.targetInstances = Math.min(
-        this.currentInstances + decision.amount,
-        this.maxInstances
-      );
+      this.targetInstances = Math.min(this.currentInstances + decision.amount, this.maxInstances);
     } else if (decision.action === 'scale-down') {
-      this.targetInstances = Math.max(
-        this.currentInstances - decision.amount,
-        this.minInstances
-      );
+      this.targetInstances = Math.max(this.currentInstances - decision.amount, this.minInstances);
     }
 
     // Update last scale time for all policies
     const now = Date.now();
-    this.policies.forEach(policy => {
+    this.policies.forEach((policy) => {
       this.lastScaleTime.set(policy.name, now);
     });
 
@@ -319,7 +307,7 @@ export class AdaptiveScalingController extends EventEmitter {
     this.emit('scaling', {
       from: previousInstances,
       to: this.targetInstances,
-      decision
+      decision,
     });
 
     // Simulate scaling (in real implementation, this would trigger actual scaling)
@@ -337,7 +325,7 @@ export class AdaptiveScalingController extends EventEmitter {
       maxInstances: this.maxInstances,
       metricsCount: this.metricsHistory.length,
       lastMetrics: this.metricsHistory[this.metricsHistory.length - 1],
-      lastDecision: this.scalingHistory[this.scalingHistory.length - 1]
+      lastDecision: this.scalingHistory[this.scalingHistory.length - 1],
     };
   }
 
@@ -362,7 +350,7 @@ export class AdaptiveScalingController extends EventEmitter {
    * Add or update policy
    */
   addPolicy(policy: ScalingPolicy): void {
-    const index = this.policies.findIndex(p => p.name === policy.name);
+    const index = this.policies.findIndex((p) => p.name === policy.name);
     if (index !== -1) {
       this.policies[index] = policy;
     } else {
@@ -374,7 +362,7 @@ export class AdaptiveScalingController extends EventEmitter {
    * Remove policy
    */
   removePolicy(name: string): void {
-    this.policies = this.policies.filter(p => p.name !== name);
+    this.policies = this.policies.filter((p) => p.name !== name);
     this.lastScaleTime.delete(name);
   }
 
@@ -399,15 +387,17 @@ export class MovingAveragePredictionModel implements PredictionModel {
     if (history.length < this.windowSize) {
       // Not enough data, return last known values
       const last = history[history.length - 1];
-      return Array(horizon).fill(null).map(() => ({
-        cpu: last?.cpu ?? 0,
-        memory: last?.memory ?? 0,
-        requestRate: last?.requestRate ?? 0,
-        responseTime: last?.responseTime ?? 0,
-        errorRate: last?.errorRate ?? 0,
-        queueDepth: last?.queueDepth ?? 0,
-        customMetrics: last?.customMetrics ?? {}
-      }));
+      return Array(horizon)
+        .fill(null)
+        .map(() => ({
+          cpu: last?.cpu ?? 0,
+          memory: last?.memory ?? 0,
+          requestRate: last?.requestRate ?? 0,
+          responseTime: last?.responseTime ?? 0,
+          errorRate: last?.errorRate ?? 0,
+          queueDepth: last?.queueDepth ?? 0,
+          customMetrics: last?.customMetrics ?? {},
+        }));
     }
 
     const predictions: ScalingMetrics[] = [];
@@ -415,13 +405,13 @@ export class MovingAveragePredictionModel implements PredictionModel {
 
     for (let i = 0; i < horizon; i++) {
       const prediction: ScalingMetrics = {
-        cpu: this.average(window.map(m => m.cpu)),
-        memory: this.average(window.map(m => m.memory)),
-        requestRate: this.average(window.map(m => m.requestRate)),
-        responseTime: this.average(window.map(m => m.responseTime)),
-        errorRate: this.average(window.map(m => m.errorRate)),
-        queueDepth: this.average(window.map(m => m.queueDepth)),
-        customMetrics: {}
+        cpu: this.average(window.map((m) => m.cpu)),
+        memory: this.average(window.map((m) => m.memory)),
+        requestRate: this.average(window.map((m) => m.requestRate)),
+        responseTime: this.average(window.map((m) => m.responseTime)),
+        errorRate: this.average(window.map((m) => m.errorRate)),
+        queueDepth: this.average(window.map((m) => m.queueDepth)),
+        customMetrics: {},
       };
 
       predictions.push(prediction);
@@ -450,22 +440,24 @@ export class MovingAveragePredictionModel implements PredictionModel {
  */
 export class ExponentialSmoothingModel implements PredictionModel {
   private alpha = 0.3; // Smoothing factor
-  private beta = 0.1;  // Trend smoothing factor
+  private beta = 0.1; // Trend smoothing factor
   private level: ScalingMetrics | null = null;
   private trend: ScalingMetrics | null = null;
 
   predict(history: ScalingMetrics[], horizon: number): ScalingMetrics[] {
     if (history.length < 2) {
       const last = history[history.length - 1];
-      return Array(horizon).fill(null).map(() => ({
-        cpu: last?.cpu ?? 0,
-        memory: last?.memory ?? 0,
-        requestRate: last?.requestRate ?? 0,
-        responseTime: last?.responseTime ?? 0,
-        errorRate: last?.errorRate ?? 0,
-        queueDepth: last?.queueDepth ?? 0,
-        customMetrics: last?.customMetrics ?? {}
-      }));
+      return Array(horizon)
+        .fill(null)
+        .map(() => ({
+          cpu: last?.cpu ?? 0,
+          memory: last?.memory ?? 0,
+          requestRate: last?.requestRate ?? 0,
+          responseTime: last?.responseTime ?? 0,
+          errorRate: last?.errorRate ?? 0,
+          queueDepth: last?.queueDepth ?? 0,
+          customMetrics: last?.customMetrics ?? {},
+        }));
     }
 
     // Initialize if needed
@@ -483,7 +475,7 @@ export class ExponentialSmoothingModel implements PredictionModel {
         responseTime: this.level!.responseTime + h * this.trend!.responseTime,
         errorRate: this.level!.errorRate + h * this.trend!.errorRate,
         queueDepth: this.level!.queueDepth + h * this.trend!.queueDepth,
-        customMetrics: {}
+        customMetrics: {},
       };
 
       predictions.push(prediction);
@@ -546,7 +538,7 @@ export class ExponentialSmoothingModel implements PredictionModel {
       responseTime: first?.responseTime ?? 0,
       errorRate: first?.errorRate ?? 0,
       queueDepth: first?.queueDepth ?? 0,
-      customMetrics: first?.customMetrics ?? {}
+      customMetrics: first?.customMetrics ?? {},
     };
 
     // Initialize trend as difference between first two observations
@@ -557,7 +549,7 @@ export class ExponentialSmoothingModel implements PredictionModel {
       responseTime: (second?.responseTime ?? 0) - (first?.responseTime ?? 0),
       errorRate: (second?.errorRate ?? 0) - (first?.errorRate ?? 0),
       queueDepth: (second?.queueDepth ?? 0) - (first?.queueDepth ?? 0),
-      customMetrics: {}
+      customMetrics: {},
     };
 
     // Apply exponential smoothing to rest of data
@@ -575,21 +567,26 @@ export class ExponentialSmoothingModel implements PredictionModel {
     const newLevel: ScalingMetrics = {
       cpu: this.alpha * observation.cpu + (1 - this.alpha) * (this.level.cpu + this.trend.cpu),
       memory: this.alpha * observation.memory + (1 - this.alpha) * (this.level.memory + this.trend.memory),
-      requestRate: this.alpha * observation.requestRate + (1 - this.alpha) * (this.level.requestRate + this.trend.requestRate),
-      responseTime: this.alpha * observation.responseTime + (1 - this.alpha) * (this.level.responseTime + this.trend.responseTime),
+      requestRate:
+        this.alpha * observation.requestRate + (1 - this.alpha) * (this.level.requestRate + this.trend.requestRate),
+      responseTime:
+        this.alpha * observation.responseTime + (1 - this.alpha) * (this.level.responseTime + this.trend.responseTime),
       errorRate: this.alpha * observation.errorRate + (1 - this.alpha) * (this.level.errorRate + this.trend.errorRate),
-      queueDepth: this.alpha * observation.queueDepth + (1 - this.alpha) * (this.level.queueDepth + this.trend.queueDepth),
-      customMetrics: {}
+      queueDepth:
+        this.alpha * observation.queueDepth + (1 - this.alpha) * (this.level.queueDepth + this.trend.queueDepth),
+      customMetrics: {},
     };
 
     const newTrend: ScalingMetrics = {
       cpu: this.beta * (newLevel.cpu - this.level.cpu) + (1 - this.beta) * this.trend.cpu,
       memory: this.beta * (newLevel.memory - this.level.memory) + (1 - this.beta) * this.trend.memory,
-      requestRate: this.beta * (newLevel.requestRate - this.level.requestRate) + (1 - this.beta) * this.trend.requestRate,
-      responseTime: this.beta * (newLevel.responseTime - this.level.responseTime) + (1 - this.beta) * this.trend.responseTime,
+      requestRate:
+        this.beta * (newLevel.requestRate - this.level.requestRate) + (1 - this.beta) * this.trend.requestRate,
+      responseTime:
+        this.beta * (newLevel.responseTime - this.level.responseTime) + (1 - this.beta) * this.trend.responseTime,
       errorRate: this.beta * (newLevel.errorRate - this.level.errorRate) + (1 - this.beta) * this.trend.errorRate,
       queueDepth: this.beta * (newLevel.queueDepth - this.level.queueDepth) + (1 - this.beta) * this.trend.queueDepth,
-      customMetrics: {}
+      customMetrics: {},
     };
 
     this.level = newLevel;

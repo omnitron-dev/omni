@@ -10,11 +10,7 @@ import {
   type AuthMiddlewareOptions,
 } from '../../../src/netron/middleware/auth.js';
 import { PolicyEngine } from '../../../src/netron/auth/policy-engine.js';
-import type {
-  NetronMiddlewareContext,
-  AuthContext,
-  MethodOptions,
-} from '../../../src/netron/auth/types.js';
+import type { NetronMiddlewareContext, AuthContext, MethodOptions } from '../../../src/netron/auth/types.js';
 import { METADATA_KEYS } from '../../../src/decorators/core.js';
 import { ErrorCode } from '../../../src/errors/index.js';
 import 'reflect-metadata';
@@ -104,12 +100,7 @@ describe('Auth Middleware', () => {
         testMethod() {}
       }
 
-      Reflect.defineMetadata(
-        METADATA_KEYS.METHOD_OPTIONS,
-        options,
-        TestService.prototype,
-        'testMethod',
-      );
+      Reflect.defineMetadata(METADATA_KEYS.METHOD_OPTIONS, options, TestService.prototype, 'testMethod');
 
       const result = readMethodMetadata(new TestService(), 'testMethod');
 
@@ -121,12 +112,7 @@ describe('Auth Middleware', () => {
         testMethod() {}
       }
 
-      Reflect.defineMetadata(
-        METADATA_KEYS.METHOD_AUTH,
-        { roles: ['user'] },
-        TestService.prototype,
-        'testMethod',
-      );
+      Reflect.defineMetadata(METADATA_KEYS.METHOD_AUTH, { roles: ['user'] }, TestService.prototype, 'testMethod');
 
       const result = readMethodMetadata(new TestService(), 'testMethod');
 
@@ -205,12 +191,7 @@ describe('Auth Middleware', () => {
         testMethod() {}
       }
 
-      Reflect.defineMetadata(
-        METADATA_KEYS.METHOD_AUTH,
-        true,
-        TestService.prototype,
-        'testMethod',
-      );
+      Reflect.defineMetadata(METADATA_KEYS.METHOD_AUTH, true, TestService.prototype, 'testMethod');
 
       mockContext.metadata?.set('serviceInstance', new TestService());
       (mockContext.peer as any).getAuthContext = jest.fn().mockReturnValue(undefined);
@@ -223,12 +204,7 @@ describe('Auth Middleware', () => {
         testMethod() {}
       }
 
-      Reflect.defineMetadata(
-        METADATA_KEYS.METHOD_AUTH,
-        true,
-        TestService.prototype,
-        'testMethod',
-      );
+      Reflect.defineMetadata(METADATA_KEYS.METHOD_AUTH, true, TestService.prototype, 'testMethod');
 
       mockContext.metadata?.set('serviceInstance', new TestService());
 
@@ -242,12 +218,7 @@ describe('Auth Middleware', () => {
         testMethod() {}
       }
 
-      Reflect.defineMetadata(
-        METADATA_KEYS.METHOD_AUTH,
-        { allowAnonymous: true },
-        TestService.prototype,
-        'testMethod',
-      );
+      Reflect.defineMetadata(METADATA_KEYS.METHOD_AUTH, { allowAnonymous: true }, TestService.prototype, 'testMethod');
 
       mockContext.metadata?.set('serviceInstance', new TestService());
       (mockContext.peer as any).getAuthContext = jest.fn().mockReturnValue(undefined);
@@ -262,12 +233,7 @@ describe('Auth Middleware', () => {
         testMethod() {}
       }
 
-      Reflect.defineMetadata(
-        METADATA_KEYS.METHOD_AUTH,
-        { roles: ['user'] },
-        TestService.prototype,
-        'testMethod',
-      );
+      Reflect.defineMetadata(METADATA_KEYS.METHOD_AUTH, { roles: ['user'] }, TestService.prototype, 'testMethod');
 
       mockContext.metadata?.set('serviceInstance', new TestService());
 
@@ -281,12 +247,7 @@ describe('Auth Middleware', () => {
         testMethod() {}
       }
 
-      Reflect.defineMetadata(
-        METADATA_KEYS.METHOD_AUTH,
-        { roles: ['admin'] },
-        TestService.prototype,
-        'testMethod',
-      );
+      Reflect.defineMetadata(METADATA_KEYS.METHOD_AUTH, { roles: ['admin'] }, TestService.prototype, 'testMethod');
 
       mockContext.metadata?.set('serviceInstance', new TestService());
 
@@ -304,7 +265,7 @@ describe('Auth Middleware', () => {
         METADATA_KEYS.METHOD_AUTH,
         { permissions: ['read:documents'] },
         TestService.prototype,
-        'testMethod',
+        'testMethod'
       );
 
       mockContext.metadata?.set('serviceInstance', new TestService());
@@ -323,7 +284,7 @@ describe('Auth Middleware', () => {
         METADATA_KEYS.METHOD_AUTH,
         { permissions: ['write:documents', 'delete:documents'] },
         TestService.prototype,
-        'testMethod',
+        'testMethod'
       );
 
       mockContext.metadata?.set('serviceInstance', new TestService());
@@ -342,7 +303,7 @@ describe('Auth Middleware', () => {
         METADATA_KEYS.METHOD_AUTH,
         { scopes: ['read:documents'] },
         TestService.prototype,
-        'testMethod',
+        'testMethod'
       );
 
       mockContext.metadata?.set('serviceInstance', new TestService());
@@ -361,7 +322,7 @@ describe('Auth Middleware', () => {
         METADATA_KEYS.METHOD_AUTH,
         { scopes: ['write:documents'] },
         TestService.prototype,
-        'testMethod',
+        'testMethod'
       );
 
       mockContext.metadata?.set('serviceInstance', new TestService());
@@ -380,17 +341,14 @@ describe('Auth Middleware', () => {
         METADATA_KEYS.METHOD_AUTH,
         { policies: ['policy1', 'policy2'] },
         TestService.prototype,
-        'testMethod',
+        'testMethod'
       );
 
       mockContext.metadata?.set('serviceInstance', new TestService());
 
       await middleware(mockContext, next);
 
-      expect(mockPolicyEngine.evaluateAll).toHaveBeenCalledWith(
-        ['policy1', 'policy2'],
-        expect.any(Object),
-      );
+      expect(mockPolicyEngine.evaluateAll).toHaveBeenCalledWith(['policy1', 'policy2'], expect.any(Object));
       expect(next).toHaveBeenCalled();
     });
 
@@ -403,17 +361,14 @@ describe('Auth Middleware', () => {
         METADATA_KEYS.METHOD_AUTH,
         { policies: { all: ['policy1', 'policy2'] } },
         TestService.prototype,
-        'testMethod',
+        'testMethod'
       );
 
       mockContext.metadata?.set('serviceInstance', new TestService());
 
       await middleware(mockContext, next);
 
-      expect(mockPolicyEngine.evaluateAll).toHaveBeenCalledWith(
-        ['policy1', 'policy2'],
-        expect.any(Object),
-      );
+      expect(mockPolicyEngine.evaluateAll).toHaveBeenCalledWith(['policy1', 'policy2'], expect.any(Object));
       expect(next).toHaveBeenCalled();
     });
 
@@ -426,17 +381,14 @@ describe('Auth Middleware', () => {
         METADATA_KEYS.METHOD_AUTH,
         { policies: { any: ['resource:owner', 'role:admin'] } },
         TestService.prototype,
-        'testMethod',
+        'testMethod'
       );
 
       mockContext.metadata?.set('serviceInstance', new TestService());
 
       await middleware(mockContext, next);
 
-      expect(mockPolicyEngine.evaluateAny).toHaveBeenCalledWith(
-        ['resource:owner', 'role:admin'],
-        expect.any(Object),
-      );
+      expect(mockPolicyEngine.evaluateAny).toHaveBeenCalledWith(['resource:owner', 'role:admin'], expect.any(Object));
       expect(next).toHaveBeenCalled();
     });
 
@@ -449,21 +401,13 @@ describe('Auth Middleware', () => {
         and: ['policy1', { or: ['policy2', 'policy3'] }],
       };
 
-      Reflect.defineMetadata(
-        METADATA_KEYS.METHOD_AUTH,
-        { policies: expression },
-        TestService.prototype,
-        'testMethod',
-      );
+      Reflect.defineMetadata(METADATA_KEYS.METHOD_AUTH, { policies: expression }, TestService.prototype, 'testMethod');
 
       mockContext.metadata?.set('serviceInstance', new TestService());
 
       await middleware(mockContext, next);
 
-      expect(mockPolicyEngine.evaluateExpression).toHaveBeenCalledWith(
-        expression,
-        expect.any(Object),
-      );
+      expect(mockPolicyEngine.evaluateExpression).toHaveBeenCalledWith(expression, expect.any(Object));
       expect(next).toHaveBeenCalled();
     });
 
@@ -472,12 +416,7 @@ describe('Auth Middleware', () => {
         testMethod() {}
       }
 
-      Reflect.defineMetadata(
-        METADATA_KEYS.METHOD_AUTH,
-        { policies: ['policy1'] },
-        TestService.prototype,
-        'testMethod',
-      );
+      Reflect.defineMetadata(METADATA_KEYS.METHOD_AUTH, { policies: ['policy1'] }, TestService.prototype, 'testMethod');
 
       mockContext.metadata?.set('serviceInstance', new TestService());
       mockPolicyEngine.evaluateAll.mockResolvedValue({
@@ -505,7 +444,7 @@ describe('Auth Middleware', () => {
           policies: ['policy1'],
         },
         TestService.prototype,
-        'testMethod',
+        'testMethod'
       );
 
       mockContext.metadata?.set('serviceInstance', new TestService());
@@ -521,12 +460,7 @@ describe('Auth Middleware', () => {
         testMethod() {}
       }
 
-      Reflect.defineMetadata(
-        METADATA_KEYS.METHOD_AUTH,
-        { roles: ['user'] },
-        TestService.prototype,
-        'testMethod',
-      );
+      Reflect.defineMetadata(METADATA_KEYS.METHOD_AUTH, { roles: ['user'] }, TestService.prototype, 'testMethod');
 
       mockContext.metadata?.set('serviceInstance', new TestService());
       (mockContext.peer as any).getAuthContext = jest.fn().mockReturnValue(undefined);

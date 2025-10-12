@@ -44,14 +44,14 @@ class NotificationService {
   async sendEmail(to: string, subject: string, body: string) {
     console.log(`Sending email to ${to}: ${subject}`);
     // Simulate email sending
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
     return { success: true, messageId: `msg_${Date.now()}` };
   }
 
   async sendSMS(to: string, message: string) {
     console.log(`Sending SMS to ${to}: ${message}`);
     // Simulate SMS sending
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
     return { success: true, messageId: `sms_${Date.now()}` };
   }
 }
@@ -68,18 +68,11 @@ class BusinessLogicService {
     const user = await this.userService.createUser(data);
 
     // Send welcome email
-    await this.notificationService.sendEmail(
-      data.email,
-      'Welcome!',
-      `Welcome to our platform, ${data.name}!`
-    );
+    await this.notificationService.sendEmail(data.email, 'Welcome!', `Welcome to our platform, ${data.name}!`);
 
     // Send SMS if phone provided
     if (data.phone) {
-      await this.notificationService.sendSMS(
-        data.phone,
-        'Welcome! Your account has been created.'
-      );
+      await this.notificationService.sendSMS(data.phone, 'Welcome! Your account has been created.');
     }
 
     return user;
@@ -96,13 +89,9 @@ class BusinessLogicService {
       stats: {
         loginCount: Math.floor(Math.random() * 100),
         lastLogin: new Date(),
-        accountAge: Math.floor((Date.now() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60 * 24))
+        accountAge: Math.floor((Date.now() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60 * 24)),
       },
-      recommendations: [
-        'Complete your profile',
-        'Verify your email',
-        'Enable two-factor authentication'
-      ]
+      recommendations: ['Complete your profile', 'Verify your email', 'Enable two-factor authentication'],
     };
   }
 }
@@ -112,12 +101,8 @@ class BusinessLogicService {
 // ============================================================================
 
 @Module({
-  providers: [
-    UserService,
-    NotificationService,
-    BusinessLogicService
-  ],
-  exports: [BusinessLogicService]
+  providers: [UserService, NotificationService, BusinessLogicService],
+  exports: [BusinessLogicService],
 })
 class BusinessModule {}
 
@@ -135,7 +120,7 @@ class BusinessModule {}
 @Process({
   name: 'titan-app-process',
   version: '1.0.0',
-  description: 'A process that is itself a full Titan application'
+  description: 'A process that is itself a full Titan application',
 })
 export default class TitanAppProcess {
   private app?: Application;
@@ -163,30 +148,32 @@ export default class TitanAppProcess {
               app: {
                 name: 'titan-app-process',
                 version: '1.0.0',
-                environment: process.env['NODE_ENV'] || 'development'
-              }
-            })
-          ]
+                environment: process.env['NODE_ENV'] || 'development',
+              },
+            }),
+          ],
         }),
 
         // Discovery module for service discovery
-        config?.discovery && DiscoveryModule.forRoot({
-          serviceName: 'titan-app-process',
-          serviceVersion: '1.0.0',
-          healthCheck: {
-            enabled: true,
-            interval: 30000
-          }
-        }),
+        config?.discovery &&
+          DiscoveryModule.forRoot({
+            serviceName: 'titan-app-process',
+            serviceVersion: '1.0.0',
+            healthCheck: {
+              enabled: true,
+              interval: 30000,
+            },
+          }),
 
         // Redis module if configured
-        config?.redis && RedisModule.forRoot({
-          connection: config.redis
-        }),
+        config?.redis &&
+          RedisModule.forRoot({
+            connection: config.redis,
+          }),
 
         // Business module
-        BusinessModule
-      ].filter(Boolean) // Remove undefined modules
+        BusinessModule,
+      ].filter(Boolean), // Remove undefined modules
     });
 
     // Start the application
@@ -241,7 +228,7 @@ export default class TitanAppProcess {
       appName: this.app?.name,
       modules: this.app ? Object.keys(this.app['modules'] || {}) : [],
       uptime: process.uptime(),
-      memory: process.memoryUsage()
+      memory: process.memoryUsage(),
     };
   }
 
@@ -257,7 +244,7 @@ export default class TitanAppProcess {
     checks.push({
       name: 'app-initialized',
       status: this.isReady ? ('pass' as const) : ('fail' as const),
-      message: this.isReady ? 'Application is ready' : 'Application not initialized'
+      message: this.isReady ? 'Application is ready' : 'Application not initialized',
     });
 
     // Check if app is running
@@ -265,7 +252,7 @@ export default class TitanAppProcess {
       checks.push({
         name: 'app-running',
         status: this.app['state'] === 'started' ? ('pass' as const) : ('warn' as const),
-        message: `Application state: ${this.app['state']}`
+        message: `Application state: ${this.app['state']}`,
       });
     }
 
@@ -275,16 +262,16 @@ export default class TitanAppProcess {
     checks.push({
       name: 'memory',
       status: memoryMB < 200 ? ('pass' as const) : ('warn' as const),
-      message: `Memory usage: ${memoryMB.toFixed(2)}MB`
+      message: `Memory usage: ${memoryMB.toFixed(2)}MB`,
     });
 
-    const hasFailure = checks.some(c => c.status === 'fail');
-    const hasWarning = checks.some(c => c.status === 'warn');
+    const hasFailure = checks.some((c) => c.status === 'fail');
+    const hasWarning = checks.some((c) => c.status === 'warn');
 
     return {
       status: hasFailure ? 'unhealthy' : hasWarning ? 'degraded' : 'healthy',
       checks,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 

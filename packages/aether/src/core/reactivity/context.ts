@@ -5,23 +5,17 @@
 
 import { DependencyGraph } from './dependency-graph.js';
 
-import type {
-  Owner,
-  Signal,
-  Computation,
-  TrackingContext,
-  ReactiveContext
-} from './types.js';
+import type { Owner, Signal, Computation, TrackingContext, ReactiveContext } from './types.js';
 
 /**
  * Update priority levels for deterministic execution order
  */
 export enum UpdatePriority {
-  SYNC = 0,      // Synchronous updates (computed)
-  HIGH = 1,      // Important effects (UI updates)
-  NORMAL = 2,    // Normal effects
-  LOW = 3,       // Background tasks
-  IDLE = 4       // Can be deferred
+  SYNC = 0, // Synchronous updates (computed)
+  HIGH = 1, // Important effects (UI updates)
+  NORMAL = 2, // Normal effects
+  LOW = 3, // Background tasks
+  IDLE = 4, // Can be deferred
 }
 
 /**
@@ -31,7 +25,7 @@ export enum ComputationType {
   SIGNAL = 'signal',
   COMPUTED = 'computed',
   EFFECT = 'effect',
-  RESOURCE = 'resource'
+  RESOURCE = 'resource',
 }
 
 /**
@@ -57,11 +51,14 @@ for (let i = 0; i <= UpdatePriority.IDLE; i++) {
 const globalDependencyGraph = new DependencyGraph();
 
 // Update deduplication
-const pendingUpdates = new Map<Computation, { 
-  priority: UpdatePriority; 
-  timestamp: number;
-  version: number;
-}>();
+const pendingUpdates = new Map<
+  Computation,
+  {
+    priority: UpdatePriority;
+    timestamp: number;
+    version: number;
+  }
+>();
 
 // let scheduledFlush: Promise<void> | null = null;
 let updateVersion = 0;
@@ -100,7 +97,7 @@ export class ComputationImpl implements Computation {
   private isRunning = false;
   private isDisposed = false;
   private dependencies = new Set<Signal<any>>();
-  
+
   // Getter for dependencies (needed for sorting computeds)
   getDependencies(): Set<Signal<any>> {
     return this.dependencies;
@@ -113,8 +110,8 @@ export class ComputationImpl implements Computation {
   private errorHandler?: (error: Error) => void;
 
   constructor(
-    fn: () => void, 
-    owner: Owner | null = currentOwner, 
+    fn: () => void,
+    owner: Owner | null = currentOwner,
     synchronous: boolean = false,
     priority: UpdatePriority = UpdatePriority.NORMAL,
     type: ComputationType = ComputationType.EFFECT
@@ -195,7 +192,7 @@ export class ComputationImpl implements Computation {
       }
       return;
     }
-    
+
     // For async computations (effects), mark as stale
     // When not in a batch, run immediately to capture all updates
     if (batchDepth === 0) {
@@ -257,7 +254,7 @@ export class ComputationImpl implements Computation {
     // Unregister from dependency graph - disabled for debugging
     for (const signal of this.dependencies) {
       globalDependencyGraph.removeDependency(this, signal);
-      
+
       // Unregister from signal - signal is already a SignalImpl instance
       if (signal && typeof (signal as any).removeComputation === 'function') {
         (signal as any).removeComputation(this);
@@ -364,7 +361,7 @@ export class OwnerImpl implements Owner {
 //   // Phase 2: Computed values in topological order
 //   executionPhase = 'computed';
 //   const computeds: Computation[] = [];
-//   
+//
 //   for (const [, queue] of priorityQueues) {
 //     for (const comp of queue) {
 //       if ((comp as ComputationImpl).type === ComputationType.COMPUTED) {
@@ -383,13 +380,13 @@ export class OwnerImpl implements Owner {
 //
 //   // Phase 3: Effects by priority
 //   executionPhase = 'effects';
-//   
+//
 //   for (let priority = UpdatePriority.SYNC; priority <= UpdatePriority.IDLE; priority++) {
 //     const queue = priorityQueues.get(priority);
 //     if (queue && queue.size > 0) {
 //       const effects = Array.from(queue);
 //       queue.clear();
-//       
+//
 //       for (const effect of effects) {
 //         if ((effect as ComputationImpl).type === ComputationType.EFFECT) {
 //           (effect as ComputationImpl).run();
@@ -473,7 +470,7 @@ class ReactiveContextImpl implements ReactiveContext {
       const prevSyncContext = inSyncContext;
       inSyncContext = false;
       batchDepth++;
-      
+
       try {
         fn();
       } finally {
@@ -520,7 +517,7 @@ class ReactiveContextImpl implements ReactiveContext {
         case ComputationType.RESOURCE:
           effects.push(update);
           break;
-        
+
         default:
           // Unknown computation type, treat as effect
           effects.push(update);
@@ -552,9 +549,7 @@ class ReactiveContextImpl implements ReactiveContext {
 
     executionPhase = 'effects';
     // Sort effects by priority
-    effects.sort((a, b) => 
-      (a as ComputationImpl).priority - (b as ComputationImpl).priority
-    );
+    effects.sort((a, b) => (a as ComputationImpl).priority - (b as ComputationImpl).priority);
     for (const effect of effects) {
       (effect as ComputationImpl).run();
     }
@@ -572,7 +567,7 @@ class ReactiveContextImpl implements ReactiveContext {
 
     executionPhase = 'idle';
   }
-  
+
   /**
    * Sort computeds in dependency order (topological sort)
    */
@@ -581,17 +576,17 @@ class ReactiveContextImpl implements ReactiveContext {
     const computedSet = new Set(computeds);
     const inDegree = new Map<Computation, number>();
     const dependents = new Map<Computation, Set<Computation>>();
-    
+
     // Initialize
     for (const comp of computeds) {
       inDegree.set(comp, 0);
       dependents.set(comp, new Set());
     }
-    
+
     // Build dependency graph
     for (const comp of computeds) {
       const compImpl = comp as ComputationImpl;
-      
+
       // Check each dependency
       for (const dep of compImpl.getDependencies()) {
         // The dependency might be a ComputedImpl directly (when stored internally)
@@ -619,23 +614,23 @@ class ReactiveContextImpl implements ReactiveContext {
         }
       }
     }
-    
+
     // Topological sort using Kahn's algorithm
     const queue: Computation[] = [];
     const result: Computation[] = [];
-    
+
     // Find all nodes with no dependencies
     for (const [comp, degree] of inDegree) {
       if (degree === 0) {
         queue.push(comp);
       }
     }
-    
+
     // Process queue
     while (queue.length > 0) {
       const current = queue.shift()!;
       result.push(current);
-      
+
       // Reduce in-degree for dependents
       const currentDependents = dependents.get(current) || new Set();
       for (const dependent of currentDependents) {
@@ -646,12 +641,12 @@ class ReactiveContextImpl implements ReactiveContext {
         }
       }
     }
-    
+
     // If we couldn't sort all (cycle), return original order
     if (result.length !== computeds.length) {
       return computeds;
     }
-    
+
     return result;
   }
 }
@@ -713,20 +708,20 @@ export const debug = {
   getDependencyGraph(): DependencyGraph {
     return globalDependencyGraph;
   },
-  
+
   getPendingUpdates(): Map<Computation, any> {
     return pendingUpdates;
   },
-  
+
   getUpdateVersion(): number {
     return updateVersion;
   },
-  
-  visualizeDependencies(): { nodes: any[], edges: any[], depth: number } {
+
+  visualizeDependencies(): { nodes: any[]; edges: any[]; depth: number } {
     return globalDependencyGraph.visualize();
   },
-  
+
   detectCycles(): any[][] {
     return globalDependencyGraph.detectCycles();
-  }
+  },
 };

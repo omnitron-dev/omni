@@ -6,11 +6,7 @@ import os from 'node:os';
 import pino, { Logger as PinoLogger } from 'pino';
 import { Injectable, Inject, Optional } from '../../decorators/index.js';
 
-import {
-  LOGGER_OPTIONS_TOKEN,
-  LOGGER_TRANSPORTS_TOKEN,
-  LOGGER_PROCESSORS_TOKEN
-} from './logger.tokens.js';
+import { LOGGER_OPTIONS_TOKEN, LOGGER_TRANSPORTS_TOKEN, LOGGER_PROCESSORS_TOKEN } from './logger.tokens.js';
 
 import { CONFIG_SERVICE_TOKEN } from '../config/config.tokens.js';
 
@@ -21,14 +17,14 @@ import type {
   ILoggerModuleOptions,
   ITransport,
   ILogProcessor,
-  LogLevel
+  LogLevel,
 } from './logger.types.js';
 
 /**
  * Logger implementation wrapping Pino
  */
 class LoggerImpl implements ILogger {
-  constructor(public readonly _pino: PinoLogger) { }
+  constructor(public readonly _pino: PinoLogger) {}
 
   trace(objOrMsg: object | string, ...args: any[]): void {
     if (typeof objOrMsg === 'object') {
@@ -143,7 +139,7 @@ export class LoggerService implements ILoggerModule {
       base: {
         pid: process.pid,
         hostname: os.hostname(),
-        ...config.base
+        ...config.base,
       },
       timestamp: (() => {
         const timestampConfig = config.timestamp ?? true;
@@ -151,12 +147,11 @@ export class LoggerService implements ILoggerModule {
       })(),
       messageKey: config.messageKey || 'msg',
       nestedKey: config.nestedKey,
-      enabled: config.enabled !== false
+      enabled: config.enabled !== false,
     };
 
     // Check if pretty print is enabled (for development)
-    const prettyPrint = config.prettyPrint ||
-      (config.environment === 'development' && config.prettyPrint !== false);
+    const prettyPrint = config.prettyPrint || (config.environment === 'development' && config.prettyPrint !== false);
 
     if (prettyPrint) {
       // Try to use pino-pretty for development (synchronously)
@@ -220,7 +215,7 @@ export class LoggerService implements ILoggerModule {
 
     const childLogger = this.rootLogger.child({
       name,
-      ...this.context
+      ...this.context,
     });
 
     const logger = new LoggerImpl(childLogger);
@@ -233,10 +228,12 @@ export class LoggerService implements ILoggerModule {
    * Create a child logger with additional bindings
    */
   child(bindings: object): ILogger {
-    return new LoggerImpl(this.rootLogger.child({
-      ...this.context,
-      ...bindings
-    }));
+    return new LoggerImpl(
+      this.rootLogger.child({
+        ...this.context,
+        ...bindings,
+      })
+    );
   }
 
   /**
@@ -282,28 +279,20 @@ export class LoggerService implements ILoggerModule {
     this.context = { ...this.context, ...context };
 
     // Update global logger
-    this.globalLogger = new LoggerImpl(
-      this.rootLogger.child(this.context)
-    );
+    this.globalLogger = new LoggerImpl(this.rootLogger.child(this.context));
   }
 
   /**
    * Create logger with additional context
    */
   withContext(context: object): ILogger {
-    return new LoggerImpl(
-      this.rootLogger.child({ ...this.context, ...context })
-    );
+    return new LoggerImpl(this.rootLogger.child({ ...this.context, ...context }));
   }
 
   /**
    * Flush all transports
    */
   async flush(): Promise<void> {
-    await Promise.all(
-      this.transports
-        .filter(t => t.flush)
-        .map(t => t.flush!())
-    );
+    await Promise.all(this.transports.filter((t) => t.flush).map((t) => t.flush!()));
   }
 }

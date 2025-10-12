@@ -26,12 +26,14 @@ export interface ConnectionConfig {
   database: string;
   user?: string;
   password?: string;
-  ssl?: boolean | {
-    rejectUnauthorized?: boolean;
-    ca?: string;
-    cert?: string;
-    key?: string;
-  };
+  ssl?:
+    | boolean
+    | {
+        rejectUnauthorized?: boolean;
+        ca?: string;
+        cert?: string;
+        key?: string;
+      };
 }
 
 /**
@@ -365,11 +367,7 @@ export interface DatabaseOptionsFactory {
 /**
  * Transaction isolation levels
  */
-export type TransactionIsolationLevel =
-  | 'read uncommitted'
-  | 'read committed'
-  | 'repeatable read'
-  | 'serializable';
+export type TransactionIsolationLevel = 'read uncommitted' | 'read committed' | 'repeatable read' | 'serializable';
 
 /**
  * Transaction options
@@ -452,27 +450,33 @@ export interface RepositoryConfig<Entity = any> {
   /**
    * Soft delete configuration
    */
-  softDelete?: boolean | {
-    column?: string;
-    includeDeleted?: boolean;
-  };
+  softDelete?:
+    | boolean
+    | {
+        column?: string;
+        includeDeleted?: boolean;
+      };
 
   /**
    * Timestamps configuration
    */
-  timestamps?: boolean | {
-    createdAt?: string;
-    updatedAt?: string;
-  };
+  timestamps?:
+    | boolean
+    | {
+        createdAt?: string;
+        updatedAt?: string;
+      };
 
   /**
    * Audit configuration
    */
-  audit?: boolean | {
-    table?: string;
-    captureOldValues?: boolean;
-    captureNewValues?: boolean;
-  };
+  audit?:
+    | boolean
+    | {
+        table?: string;
+        captureOldValues?: boolean;
+        captureNewValues?: boolean;
+      };
 }
 
 /**

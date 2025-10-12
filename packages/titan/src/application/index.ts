@@ -6,13 +6,7 @@
  */
 
 // Export main Application class and related types
-export {
-  Application,
-  APPLICATION_TOKEN,
-  NETRON_TOKEN,
-  startApp,
-  createApp
-} from './application.js';
+export { Application, APPLICATION_TOKEN, NETRON_TOKEN, startApp, createApp } from './application.js';
 
 // Export simplified API
 export {
@@ -32,7 +26,7 @@ export {
   type OnStart,
   type OnStop,
   type OnInit,
-  type OnDestroy
+  type OnDestroy,
 } from './simple.js';
 
 // Default export

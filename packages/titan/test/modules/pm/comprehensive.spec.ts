@@ -24,7 +24,7 @@ import {
   RealtimeMatch,
   MessageBus,
   ResourcePool,
-  ProcessStatus
+  ProcessStatus,
 } from '../../../src/modules/pm/index.js';
 
 // ============================================================================
@@ -34,7 +34,7 @@ import {
 @Process({
   name: 'test-service',
   version: '1.0.0',
-  health: { enabled: true, interval: 1000 }
+  health: { enabled: true, interval: 1000 },
 })
 class TestService {
   private data = new Map<string, any>();
@@ -53,7 +53,7 @@ class TestService {
   async checkHealth() {
     return {
       status: 'healthy',
-      details: { dataSize: this.data.size }
+      details: { dataSize: this.data.size },
     };
   }
 
@@ -69,7 +69,7 @@ class StreamingService {
   async *streamData(count: number): AsyncGenerator<number> {
     for (let i = 0; i < count; i++) {
       yield i;
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
     }
   }
 
@@ -95,14 +95,14 @@ class TestWorkflow {
 
   @Stage({ dependsOn: 'initialization', parallel: true })
   async processA() {
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
     this.results.set('processA', true);
     return { data: 'A' };
   }
 
   @Stage({ dependsOn: 'initialization', parallel: true })
   async processB() {
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
     this.results.set('processB', true);
     return { data: 'B' };
   }
@@ -117,7 +117,7 @@ class TestWorkflow {
 @Supervisor({
   strategy: 'one-for-one',
   maxRestarts: 3,
-  window: 60000
+  window: 60000,
 })
 class TestSupervisor {
   @Child({ critical: true })
@@ -183,7 +183,7 @@ describe('Process Manager - Core Features', () => {
     it('should handle graceful shutdown', async () => {
       const service = await pm.spawn(TestService);
       await service.setData('test', 'value');
-      
+
       await pm.kill(service.__processId);
       const process = pm.getProcess(service.__processId);
       expect(process?.status).toBe(ProcessStatus.STOPPED);
@@ -194,7 +194,7 @@ describe('Process Manager - Core Features', () => {
     it('should create and use process pools', async () => {
       const pool = await pm.pool(TestService, {
         size: 3,
-        strategy: 'round-robin' as any
+        strategy: 'round-robin' as any,
       });
 
       expect(pool.size).toBe(3);
@@ -227,7 +227,7 @@ describe('Process Manager - Core Features', () => {
     it('should scale pool dynamically', async () => {
       const pool = await pm.pool(TestService, {
         size: 2,
-        strategy: 'least-loaded' as any
+        strategy: 'least-loaded' as any,
       });
 
       expect(pool.size).toBe(2);
@@ -311,7 +311,7 @@ describe('Process Manager - Workflows', () => {
 
   it('should execute parallel stages concurrently', async () => {
     const workflow = await pm.workflow(TestWorkflow);
-    
+
     const startTime = Date.now();
     await (workflow as any).run();
     const duration = Date.now() - startTime;
@@ -337,7 +337,7 @@ describe('Process Manager - Test Utilities', () => {
 
   it('should simulate process crashes', async () => {
     const service = await pm.spawn(TestService);
-    
+
     await pm.simulateCrash(service);
     const process = pm.getProcess(service.__processId);
     expect(process?.status).toBe(ProcessStatus.CRASHED);
@@ -345,27 +345,27 @@ describe('Process Manager - Test Utilities', () => {
 
   it('should wait for process recovery', async () => {
     const service = await pm.spawn(TestService);
-    
+
     // Simulate crash and recovery
     await pm.simulateCrash(service);
-    
+
     // Simulate recovery by changing status
     const process = pm.getProcess(service.__processId);
     if (process) {
       process.status = ProcessStatus.RUNNING;
       pm.emit('process:ready', process);
     }
-    
+
     const recovered = await pm.waitForRecovery(service, 1000);
     expect(recovered).toBe(true);
   });
 
   it('should record and verify operations', async () => {
     await pm.spawn(TestService);
-    
+
     expect(pm.verifyOperation('spawn')).toBe(true);
-    expect(pm.verifyOperation('spawn', op => op.processClass === 'TestService')).toBe(true);
-    
+    expect(pm.verifyOperation('spawn', (op) => op.processClass === 'TestService')).toBe(true);
+
     const operations = pm.getOperations();
     expect(operations.length).toBeGreaterThan(0);
     expect(operations[0].type).toBe('spawn');
@@ -374,26 +374,26 @@ describe('Process Manager - Test Utilities', () => {
   it('should simulate metrics and health', async () => {
     const service = await pm.spawn(TestService);
     const processId = service.__processId;
-    
+
     // Set simulated metrics
     pm.setMetrics(processId, {
       cpu: 75,
       memory: 1024,
       requests: 100,
-      errors: 2
+      errors: 2,
     });
-    
+
     const metrics = await pm.getMetrics(processId);
     expect(metrics?.cpu).toBe(75);
     expect(metrics?.requests).toBe(100);
-    
+
     // Set simulated health
     pm.setHealth(processId, {
       status: 'degraded',
       checks: [{ name: 'test', status: 'warn' }],
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
-    
+
     const health = await pm.getHealth(processId);
     expect(health?.status).toBe('degraded');
   });
@@ -435,13 +435,13 @@ describe('Process Manager - Enterprise Features', () => {
       const driver3 = { id: '3', name: 'Driver 3' };
 
       // Index with lower precision for better neighbor matching
-      await geoManager.index(driver1, { lat: 40.7128, lng: -74.0060 }); // New York
-      await geoManager.index(driver2, { lat: 40.7130, lng: -74.0062 }); // Near NY
+      await geoManager.index(driver1, { lat: 40.7128, lng: -74.006 }); // New York
+      await geoManager.index(driver2, { lat: 40.713, lng: -74.0062 }); // Near NY
       await geoManager.index(driver3, { lat: 34.0522, lng: -118.2437 }); // Los Angeles
 
       // Query should find nearby drivers
       // With precision 3, the hash will be less specific
-      const nearby = await geoManager.nearby({ lat: 40.7128, lng: -74.0060 }, 1000);
+      const nearby = await geoManager.nearby({ lat: 40.7128, lng: -74.006 }, 1000);
       expect(nearby).toContain(driver1);
       // driver2 is very close so should be in same or neighboring cell
       expect(nearby).toContain(driver2);
@@ -453,18 +453,18 @@ describe('Process Manager - Enterprise Features', () => {
   describe('Real-time Matching', () => {
     it('should match items optimally', async () => {
       const matcher = new RealtimeMatch({ algorithm: 'hungarian' });
-      
+
       const riders = [
-        { id: 'r1', location: { lat: 40.7128, lng: -74.0060 } },
-        { id: 'r2', location: { lat: 40.7500, lng: -73.9900 } }
+        { id: 'r1', location: { lat: 40.7128, lng: -74.006 } },
+        { id: 'r2', location: { lat: 40.75, lng: -73.99 } },
       ];
-      
+
       const drivers = [
-        { id: 'd1', location: { lat: 40.7130, lng: -74.0058 } },
-        { id: 'd2', location: { lat: 40.7490, lng: -73.9910 } },
-        { id: 'd3', location: { lat: 40.8000, lng: -73.9500 } }
+        { id: 'd1', location: { lat: 40.713, lng: -74.0058 } },
+        { id: 'd2', location: { lat: 40.749, lng: -73.991 } },
+        { id: 'd3', location: { lat: 40.8, lng: -73.95 } },
       ];
-      
+
       // Simple distance-based scorer
       const scorer = (rider: any, driver: any) => {
         const dlat = Math.abs(rider.location.lat - driver.location.lat);
@@ -472,7 +472,7 @@ describe('Process Manager - Enterprise Features', () => {
         const distance = Math.sqrt(dlat * dlat + dlng * dlng);
         return 1 / (1 + distance); // Higher score for closer distance
       };
-      
+
       const matches = await matcher.match(riders, drivers, scorer);
       expect(matches).toHaveLength(2);
       expect(matches[0].item1.id).toBe('r1');
@@ -484,29 +484,29 @@ describe('Process Manager - Enterprise Features', () => {
     it('should maintain total order of messages', async () => {
       const bus = new MessageBus({ order: 'total', history: 10 });
       const received: number[] = [];
-      
+
       // Subscribe to channel
       const unsubscribe = bus.subscribe('test-channel', (msg) => {
         received.push(msg.payload);
       });
-      
+
       // Publish messages
       for (let i = 0; i < 5; i++) {
         await bus.publish('test-channel', i);
       }
-      
+
       // Wait for async processing
-      await new Promise(resolve => setTimeout(resolve, 10));
-      
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
       // Check order is maintained
       expect(received).toEqual([0, 1, 2, 3, 4]);
-      
+
       // Check history
       const history = bus.getHistory('test-channel');
       expect(history).toHaveLength(5);
       expect(history[0].payload).toBe(0);
       expect(history[4].payload).toBe(4);
-      
+
       unsubscribe();
     });
   });
@@ -517,27 +517,27 @@ describe('Process Manager - Enterprise Features', () => {
         type: 'container',
         min: 1,
         max: 3,
-        recycleAfter: 3
+        recycleAfter: 3,
       });
-      
+
       // Acquire resources
       const resource1 = await pool.acquire();
       expect(resource1).toBeDefined();
       expect(resource1.inUse).toBe(true);
-      
+
       const resource2 = await pool.acquire();
       expect(resource2).toBeDefined();
       expect(resource2.id).not.toBe(resource1.id);
-      
+
       // Release resource
       await pool.release(resource1);
       expect(resource1.inUse).toBe(false);
-      
+
       // Reacquire - should get same resource
       const resource3 = await pool.acquire();
       expect(resource3.id).toBe(resource1.id);
       expect(resource3.usageCount).toBe(2);
-      
+
       // Release all
       await pool.release(resource2);
       await pool.release(resource3);
@@ -613,7 +613,7 @@ describe('Process Manager - Edge Cases', () => {
       const [lock1, lock2, lock3] = await Promise.all([
         lockManager.acquire('resource1', 5000),
         lockManager.acquire('resource2', 5000),
-        lockManager.acquire('resource3', 5000)
+        lockManager.acquire('resource3', 5000),
       ]);
 
       expect(lock1.acquired).toBe(true);
@@ -621,11 +621,7 @@ describe('Process Manager - Edge Cases', () => {
       expect(lock3.acquired).toBe(true);
 
       // Release all locks
-      await Promise.all([
-        lock1.release(),
-        lock2.release(),
-        lock3.release()
-      ]);
+      await Promise.all([lock1.release(), lock2.release(), lock3.release()]);
     });
 
     it('should queue multiple waiters for the same resource', async () => {
@@ -638,12 +634,26 @@ describe('Process Manager - Edge Cases', () => {
       // Multiple waiters try to acquire
       const waiterResults: boolean[] = [];
       const waiters = [
-        lockManager.acquire('shared', 100)
-          .then(lock => { waiterResults.push(true); return lock; })
-          .catch(() => { waiterResults.push(false); return null; }),
-        lockManager.acquire('shared', 100)
-          .then(lock => { waiterResults.push(true); return lock; })
-          .catch(() => { waiterResults.push(false); return null; })
+        lockManager
+          .acquire('shared', 100)
+          .then((lock) => {
+            waiterResults.push(true);
+            return lock;
+          })
+          .catch(() => {
+            waiterResults.push(false);
+            return null;
+          }),
+        lockManager
+          .acquire('shared', 100)
+          .then((lock) => {
+            waiterResults.push(true);
+            return lock;
+          })
+          .catch(() => {
+            waiterResults.push(false);
+            return null;
+          }),
       ];
 
       // Release the first lock after a delay
@@ -653,7 +663,7 @@ describe('Process Manager - Edge Cases', () => {
       const results = await Promise.all(waiters);
 
       // At least one waiter should have gotten the lock
-      const successCount = waiterResults.filter(r => r).length;
+      const successCount = waiterResults.filter((r) => r).length;
       expect(successCount).toBeGreaterThanOrEqual(1);
 
       // Clean up any acquired locks
@@ -693,8 +703,8 @@ describe('Process Manager - Edge Cases', () => {
       }
 
       // Should have mix of successes and failures
-      const successes = results.filter(r => r !== null).length;
-      const failures = results.filter(r => r === null).length;
+      const successes = results.filter((r) => r !== null).length;
+      const failures = results.filter((r) => r === null).length;
       expect(successes).toBeGreaterThan(0);
       expect(failures).toBeGreaterThan(0);
     });
@@ -741,7 +751,7 @@ describe('Process Manager - Edge Cases', () => {
         type: 'connection',
         min: 1,
         max: 2,
-        recycleAfter: 2  // Recycle after 2 uses
+        recycleAfter: 2, // Recycle after 2 uses
       });
 
       const resource1 = await pool.acquire();
@@ -768,7 +778,7 @@ describe('Process Manager - Edge Cases', () => {
 
       const entity1 = { id: '1', type: 'store' };
       const entity2 = { id: '2', type: 'store' };
-      const sameLocation = { lat: 40.7128, lng: -74.0060 };
+      const sameLocation = { lat: 40.7128, lng: -74.006 };
 
       await geoManager.index(entity1, sameLocation);
       await geoManager.index(entity2, sameLocation);
@@ -796,7 +806,7 @@ describe('Process Manager - Edge Cases', () => {
       await Promise.all(publishPromises);
 
       // Wait for processing
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       // All messages should be received in order
       expect(received.length).toBe(20);
@@ -821,7 +831,7 @@ describe('Process Manager - Edge Cases', () => {
       });
 
       await bus.publish('multi-channel', 'test-message');
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       // Both subscribers should receive the message
       expect(received1).toEqual(['test-message']);

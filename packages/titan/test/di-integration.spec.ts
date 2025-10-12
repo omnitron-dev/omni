@@ -14,7 +14,7 @@ import {
   OnInit,
   OnDestroy,
   Module,
-  type Provider
+  type Provider,
 } from '../src/index.js';
 
 describe('DI Integration Tests', () => {
@@ -42,9 +42,7 @@ describe('DI Integration Tests', () => {
       // Level 2: Service depending on Level 1
       @Injectable()
       class CacheService {
-        constructor(
-          @Inject(DatabaseToken) private db: DatabaseService
-        ) { }
+        constructor(@Inject(DatabaseToken) private db: DatabaseService) {}
 
         getCached(key: string) {
           return this.db.query(`SELECT * FROM cache WHERE key='${key}'`);
@@ -61,7 +59,7 @@ describe('DI Integration Tests', () => {
         constructor(
           @Inject(DatabaseToken) private db: DatabaseService,
           @Inject(CacheToken) private cache: CacheService
-        ) { }
+        ) {}
 
         async onInit() {
           this.initialized = true;
@@ -84,7 +82,7 @@ describe('DI Integration Tests', () => {
         constructor(
           @Inject(ApiToken) private api: ApiService,
           @Inject(CacheToken) private cache: CacheService
-        ) { }
+        ) {}
 
         async process(id: string) {
           const data = this.api.getData(id);
@@ -99,9 +97,9 @@ describe('DI Integration Tests', () => {
           { provide: DatabaseToken, useClass: DatabaseService },
           { provide: CacheToken, useClass: CacheService },
           { provide: ApiToken, useClass: ApiService },
-          { provide: AppToken, useClass: AppService }
+          { provide: AppToken, useClass: AppService },
         ],
-        exports: [DatabaseToken, CacheToken, ApiToken, AppToken]
+        exports: [DatabaseToken, CacheToken, ApiToken, AppToken],
       })
       class TestModule {}
 
@@ -170,15 +168,15 @@ describe('DI Integration Tests', () => {
             name: 'CircularModule',
             providers: [
               { provide: ServiceAToken, useClass: ServiceA },
-              { provide: ServiceBToken, useClass: ServiceB }
-            ]
+              { provide: ServiceBToken, useClass: ServiceB },
+            ],
           });
         }
       }
 
       const app = await Application.create({
         name: 'CircularTest',
-        modules: [CircularModule]
+        modules: [CircularModule],
       });
 
       await app.start();
@@ -208,11 +206,11 @@ describe('DI Integration Tests', () => {
       }
 
       class AsyncService {
-        constructor(public config: TestConfig) { }
+        constructor(public config: TestConfig) {}
 
         async fetchData() {
           // Simulate async operation
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           return `Data from ${this.config.apiUrl}`;
         }
       }
@@ -227,30 +225,30 @@ describe('DI Integration Tests', () => {
                 provide: TestConfigToken,
                 useFactory: async () => {
                   // Simulate async config loading
-                  await new Promise(resolve => setTimeout(resolve, 10));
+                  await new Promise((resolve) => setTimeout(resolve, 10));
                   return {
                     apiUrl: 'https://api.example.com',
-                    timeout: 5000
+                    timeout: 5000,
                   };
-                }
+                },
               },
               {
                 provide: ServiceToken,
                 useFactory: async (config: TestConfig) => {
                   // Simulate async service initialization
-                  await new Promise(resolve => setTimeout(resolve, 10));
+                  await new Promise((resolve) => setTimeout(resolve, 10));
                   return new AsyncService(config);
                 },
-                inject: [TestConfigToken]
-              }
-            ]
+                inject: [TestConfigToken],
+              },
+            ],
           });
         }
       }
 
       const app = await Application.create({
         name: 'FactoryTest',
-        modules: [FactoryModule]
+        modules: [FactoryModule],
       });
 
       await app.start();
@@ -278,9 +276,7 @@ describe('DI Integration Tests', () => {
 
       @Injectable()
       class ModuleAService {
-        constructor(
-          @Inject(SharedServiceToken) private shared: SharedService
-        ) { }
+        constructor(@Inject(SharedServiceToken) private shared: SharedService) {}
 
         processA() {
           return `A: ${this.shared.getValue()}`;
@@ -292,7 +288,7 @@ describe('DI Integration Tests', () => {
         constructor(
           @Inject(SharedServiceToken) private shared: SharedService,
           @Inject(ModuleAServiceToken) private serviceA: ModuleAService
-        ) { }
+        ) {}
 
         processB() {
           return `B: ${this.shared.getValue()} + ${this.serviceA.processA()}`;
@@ -304,10 +300,8 @@ describe('DI Integration Tests', () => {
         constructor() {
           super({
             name: 'SharedModule',
-            providers: [
-              { provide: SharedServiceToken, useClass: SharedService }
-            ],
-            exports: [SharedServiceToken]
+            providers: [{ provide: SharedServiceToken, useClass: SharedService }],
+            exports: [SharedServiceToken],
           });
         }
       }
@@ -318,10 +312,8 @@ describe('DI Integration Tests', () => {
           super({
             name: 'ModuleA',
             imports: [SharedModule],
-            providers: [
-              { provide: ModuleAServiceToken, useClass: ModuleAService }
-            ],
-            exports: [ModuleAServiceToken]
+            providers: [{ provide: ModuleAServiceToken, useClass: ModuleAService }],
+            exports: [ModuleAServiceToken],
           });
         }
       }
@@ -332,16 +324,14 @@ describe('DI Integration Tests', () => {
           super({
             name: 'ModuleB',
             imports: [SharedModule, ModuleA],
-            providers: [
-              { provide: ModuleBServiceToken, useClass: ModuleBService }
-            ]
+            providers: [{ provide: ModuleBServiceToken, useClass: ModuleBService }],
           });
         }
       }
 
       const app = await Application.create({
         name: 'MultiModuleApp',
-        modules: [SharedModule, ModuleA, ModuleB]
+        modules: [SharedModule, ModuleA, ModuleB],
       });
 
       await app.start();
@@ -392,15 +382,15 @@ describe('DI Integration Tests', () => {
             name: 'ScopeModule',
             providers: [
               { provide: SingletonToken, useClass: CounterService, scope: 'singleton' },
-              { provide: TransientToken, useClass: CounterService, scope: 'transient' }
-            ]
+              { provide: TransientToken, useClass: CounterService, scope: 'transient' },
+            ],
           });
         }
       }
 
       const app = await Application.create({
         name: 'ScopeTest',
-        modules: [ScopeModule]
+        modules: [ScopeModule],
       });
 
       await app.start();
@@ -452,9 +442,7 @@ describe('DI Integration Tests', () => {
       class ConsumerService {
         public optional?: OptionalService;
 
-        constructor(
-          @Inject(RequiredToken) private required: RequiredService
-        ) {
+        constructor(@Inject(RequiredToken) private required: RequiredService) {
           // Handle optional dependency manually
         }
 
@@ -473,15 +461,15 @@ describe('DI Integration Tests', () => {
             providers: [
               { provide: RequiredToken, useClass: RequiredService },
               // OptionalToken is not provided
-              { provide: ConsumerToken, useClass: ConsumerService }
-            ]
+              { provide: ConsumerToken, useClass: ConsumerService },
+            ],
           });
         }
       }
 
       const app = await Application.create({
         name: 'OptionalTest',
-        modules: [OptionalModule]
+        modules: [OptionalModule],
       });
 
       await app.start();
@@ -530,7 +518,7 @@ describe('DI Integration Tests', () => {
 
         providers.push({
           provide: token,
-          useClass: TestService
+          useClass: TestService,
         });
       }
 
@@ -539,21 +527,21 @@ describe('DI Integration Tests', () => {
         constructor() {
           super({
             name: 'PerformanceModule',
-            providers
+            providers,
           });
         }
       }
 
       const app = await Application.create({
         name: 'PerformanceTest',
-        modules: [PerformanceModule]
+        modules: [PerformanceModule],
       });
 
       await app.start();
 
       // Resolve all services
       const resolveStart = Date.now();
-      const services = tokens.map(token => app.resolve(token));
+      const services = tokens.map((token) => app.resolve(token));
       const resolveTime = Date.now() - resolveStart;
 
       expect(services).toHaveLength(serviceCount);
@@ -577,9 +565,7 @@ describe('DI Integration Tests', () => {
 
       @Injectable()
       class ConsumerService {
-        constructor(
-          @Inject(MissingToken) private missing: any
-        ) { }
+        constructor(@Inject(MissingToken) private missing: any) {}
       }
 
       // Use a module for proper provider registration
@@ -587,16 +573,14 @@ describe('DI Integration Tests', () => {
         constructor() {
           super({
             name: 'ErrorModule',
-            providers: [
-              { provide: ConsumerToken, useClass: ConsumerService }
-            ]
+            providers: [{ provide: ConsumerToken, useClass: ConsumerService }],
           });
         }
       }
 
       const app = await Application.create({
         name: 'ErrorTest',
-        modules: [ErrorModule]
+        modules: [ErrorModule],
       });
 
       await app.start();
@@ -623,16 +607,14 @@ describe('DI Integration Tests', () => {
         constructor() {
           super({
             name: 'InitErrorModule',
-            providers: [
-              { provide: ServiceToken, useClass: FailingService }
-            ]
+            providers: [{ provide: ServiceToken, useClass: FailingService }],
           });
         }
       }
 
       const app = await Application.create({
         name: 'InitErrorTest',
-        modules: [InitErrorModule]
+        modules: [InitErrorModule],
       });
 
       // Start should succeed even if individual service init fails

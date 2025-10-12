@@ -145,18 +145,13 @@ export class HttpClient {
       }
 
       // Create request message with middleware-modified data
-      const message = createRequestMessage(
-        service,
-        method,
-        args,
-        {
-          context: ctx.request?.metadata as any,
-          hints: {
-            ...options?.hints,
-            timeout: ctx.request?.timeout,
-          },
-        }
-      );
+      const message = createRequestMessage(service, method, args, {
+        context: ctx.request?.metadata as any,
+        hints: {
+          ...options?.hints,
+          timeout: ctx.request?.timeout,
+        },
+      });
 
       // Send request
       const response = await this.sendRequest(message, 0, ctx.request?.headers);
@@ -317,8 +312,7 @@ export class HttpClient {
   getMetrics(): ConnectionMetrics {
     const avgLatency =
       this.metrics.latencies.length > 0
-        ? this.metrics.latencies.reduce((a, b) => a + b, 0) /
-          this.metrics.latencies.length
+        ? this.metrics.latencies.reduce((a, b) => a + b, 0) / this.metrics.latencies.length
         : undefined;
 
     return {
@@ -343,11 +337,7 @@ export class HttpClient {
   /**
    * Use middleware
    */
-  use(
-    middleware: MiddlewareFunction,
-    config?: Partial<MiddlewareConfig>,
-    stage?: MiddlewareStage
-  ): this {
+  use(middleware: MiddlewareFunction, config?: Partial<MiddlewareConfig>, stage?: MiddlewareStage): this {
     this.middleware.use(middleware, config, stage);
     return this;
   }

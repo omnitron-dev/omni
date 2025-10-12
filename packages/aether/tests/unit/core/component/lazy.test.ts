@@ -12,7 +12,7 @@ describe('lazy', () => {
     it('should create a lazy component', () => {
       const LazyComponent = lazy(() =>
         Promise.resolve({
-          default: defineComponent(() => () => 'Hello')
+          default: defineComponent(() => () => 'Hello'),
         })
       );
 
@@ -22,7 +22,7 @@ describe('lazy', () => {
     it('should have displayName set to "Lazy"', () => {
       const LazyComponent = lazy(() =>
         Promise.resolve({
-          default: defineComponent(() => () => 'Hello')
+          default: defineComponent(() => () => 'Hello'),
         })
       );
 
@@ -42,7 +42,7 @@ describe('lazy', () => {
 
       // Resolve the loader
       resolveLoader({
-        default: defineComponent(() => () => 'Loaded')
+        default: defineComponent(() => () => 'Loaded'),
       });
 
       // Wait for promise to resolve
@@ -56,7 +56,7 @@ describe('lazy', () => {
     it('should cache loaded component', async () => {
       const loaderSpy = vi.fn(() =>
         Promise.resolve({
-          default: defineComponent(() => () => 'Component')
+          default: defineComponent(() => () => 'Component'),
         })
       );
 
@@ -88,9 +88,7 @@ describe('lazy', () => {
         return () => `Hello ${props.name}`;
       });
 
-      const LazyComponent = lazy<TestProps>(() =>
-        Promise.resolve({ default: TestComponent })
-      );
+      const LazyComponent = lazy<TestProps>(() => Promise.resolve({ default: TestComponent }));
 
       try {
         LazyComponent({ name: 'Alice' });
@@ -153,7 +151,7 @@ describe('lazy', () => {
       // would be tested in integration tests with real DOM
       const LazyComponent = lazy(() =>
         Promise.resolve({
-          default: defineComponent(() => () => 'Loaded Content')
+          default: defineComponent(() => () => 'Loaded Content'),
         })
       );
 
@@ -180,7 +178,7 @@ describe('lazy', () => {
       // Simulate dynamic import
       const LazyComponent = lazy(() =>
         Promise.resolve({
-          default: defineComponent(() => () => 'Dynamic Import')
+          default: defineComponent(() => () => 'Dynamic Import'),
         })
       );
 
@@ -201,7 +199,7 @@ describe('preloadComponent', () => {
   it('should preload a lazy component', async () => {
     const loaderSpy = vi.fn(() =>
       Promise.resolve({
-        default: defineComponent(() => () => 'Preloaded')
+        default: defineComponent(() => () => 'Preloaded'),
       })
     );
 
@@ -220,7 +218,7 @@ describe('preloadComponent', () => {
   it('should return immediately if component is already loaded', async () => {
     const LazyComponent = lazy(() =>
       Promise.resolve({
-        default: defineComponent(() => () => 'Already Loaded')
+        default: defineComponent(() => () => 'Already Loaded'),
       })
     );
 
@@ -251,7 +249,7 @@ describe('preloadComponent', () => {
   it('should be useful for route preloading', async () => {
     const loaderSpy = vi.fn(() =>
       Promise.resolve({
-        default: defineComponent(() => () => 'Route Component')
+        default: defineComponent(() => () => 'Route Component'),
       })
     );
 
@@ -275,7 +273,7 @@ describe('preloadComponent', () => {
   it('should be useful for hover preloading', async () => {
     const loaderSpy = vi.fn(() =>
       Promise.resolve({
-        default: defineComponent(() => () => 'Hover Component')
+        default: defineComponent(() => () => 'Hover Component'),
       })
     );
 
@@ -290,7 +288,7 @@ describe('preloadComponent', () => {
     onMouseEnter();
 
     // Wait a bit for preload to complete
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     // Component should be loaded
     const result = HoverComponent({});
@@ -309,9 +307,7 @@ describe('Lazy component with state', () => {
       };
     });
 
-    const LazyCounter = lazy(() =>
-      Promise.resolve({ default: Counter })
-    );
+    const LazyCounter = lazy(() => Promise.resolve({ default: Counter }));
 
     try {
       LazyCounter({});
@@ -330,9 +326,7 @@ describe('Lazy component with state', () => {
 
 describe('Edge cases', () => {
   it('should handle loader returning module without default export', async () => {
-    const LazyComponent = lazy(() =>
-      Promise.resolve({} as any)
-    );
+    const LazyComponent = lazy(() => Promise.resolve({} as any));
 
     try {
       LazyComponent({});
@@ -345,13 +339,14 @@ describe('Edge cases', () => {
   });
 
   it('should handle very slow loaders', async () => {
-    const slowLoader = () => new Promise<{ default: any }>((resolve) => {
-      setTimeout(() => {
-        resolve({
-          default: defineComponent(() => () => 'Slow Component')
-        });
-      }, 100);
-    });
+    const slowLoader = () =>
+      new Promise<{ default: any }>((resolve) => {
+        setTimeout(() => {
+          resolve({
+            default: defineComponent(() => () => 'Slow Component'),
+          });
+        }, 100);
+      });
 
     const LazyComponent = lazy(slowLoader);
 
@@ -382,15 +377,11 @@ describe('Edge cases', () => {
     const LazyComponent = lazy(loaderSpy);
 
     // Call component multiple times before it loads
-    const calls = [
-      () => LazyComponent({}),
-      () => LazyComponent({}),
-      () => LazyComponent({}),
-    ];
+    const calls = [() => LazyComponent({}), () => LazyComponent({}), () => LazyComponent({})];
 
     const promises: any[] = [];
 
-    calls.forEach(call => {
+    calls.forEach((call) => {
       try {
         call();
       } catch (promise) {
@@ -408,7 +399,7 @@ describe('Edge cases', () => {
 
     // Resolve the loader
     resolveLoader({
-      default: defineComponent(() => () => 'Multi-call Component')
+      default: defineComponent(() => () => 'Multi-call Component'),
     });
 
     await loaderPromise;

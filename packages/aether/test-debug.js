@@ -20,10 +20,10 @@ const Parent = defineComponent((props) => {
     value: computed(() => 50),
     min: 10,
   };
-  
+
   console.log('Parent setup: setting global signal');
   globalSignal.set(contextValue);
-  
+
   return () => {
     console.log('Parent render');
     return jsx(TestContext.Provider, {
@@ -35,7 +35,7 @@ const Parent = defineComponent((props) => {
 
 const Child = defineComponent(() => {
   console.log('Child setup');
-  
+
   return () => {
     console.log('Child render: getting context');
     const ctx = useContext(TestContext);

@@ -5,7 +5,7 @@ import {
   RedisLock,
   RedisRateLimit,
   InjectRedis,
-  InjectRedisManager
+  InjectRedisManager,
 } from '../../../src/modules/redis/redis.decorators.js';
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
 import { REDIS_MANAGER } from '../../../src/modules/redis/redis.constants.js';
@@ -23,19 +23,24 @@ describe('Redis Decorators', () => {
       host: 'localhost',
       port: 6379,
       db: 15,
-      keyPrefix: namespace + ':'
+      keyPrefix: namespace + ':',
     });
     await testClient.ping();
 
     // Create real Redis manager
-    redisManager = new RedisManager({
-      clients: [{
-        namespace: 'default',
-        host: 'localhost',
-        port: 6379,
-        db: 15,
-      }]
-    }, null as any);
+    redisManager = new RedisManager(
+      {
+        clients: [
+          {
+            namespace: 'default',
+            host: 'localhost',
+            port: 6379,
+            db: 15,
+          },
+        ],
+      },
+      null as any
+    );
 
     await redisManager.init();
 
@@ -100,7 +105,7 @@ describe('Redis Decorators', () => {
       expect(result1).toBe(1);
 
       // Wait for cache to expire
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      await new Promise((resolve) => setTimeout(resolve, 1100));
 
       const result2 = await service.getData();
       expect(result2).toBe(2); // Should call method again
@@ -110,7 +115,7 @@ describe('Redis Decorators', () => {
       class TestService {
         @RedisCache({
           ttl: 60,
-          keyFn: (id: number, type: string) => `custom:${type}:${id}`
+          keyFn: (id: number, type: string) => `custom:${type}:${id}`,
         })
         async getData(id: number, type: string): Promise<string> {
           return `${type}-${id}`;
@@ -136,7 +141,7 @@ describe('Redis Decorators', () => {
         async getComplexData(): Promise<{ id: number; items: string[] }> {
           return {
             id: 1,
-            items: ['a', 'b', 'c']
+            items: ['a', 'b', 'c'],
           };
         }
 
@@ -203,7 +208,7 @@ describe('Redis Decorators', () => {
         @RedisLock({ key: 'test-lock', ttl: 2 })
         async process(id: number): Promise<string> {
           this.executionCount++;
-          await new Promise(resolve => setTimeout(resolve, 50));
+          await new Promise((resolve) => setTimeout(resolve, 50));
           return `processed-${id}`;
         }
 
@@ -230,7 +235,7 @@ describe('Redis Decorators', () => {
         @RedisLock({ key: 'concurrent-lock', ttl: 2, retries: 0 })
         async process(id: number): Promise<void> {
           this.executionOrder.push(id);
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
           this.counter++;
         }
 
@@ -246,8 +251,8 @@ describe('Redis Decorators', () => {
       const results = await Promise.allSettled([promise1, promise2]);
 
       // One should succeed, one should fail
-      const succeeded = results.filter(r => r.status === 'fulfilled').length;
-      const failed = results.filter(r => r.status === 'rejected').length;
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+      const failed = results.filter((r) => r.status === 'rejected').length;
 
       expect(succeeded).toBe(1);
       expect(failed).toBe(1);
@@ -283,7 +288,7 @@ describe('Redis Decorators', () => {
       class TestService {
         @RedisLock({
           keyFn: (user: string, action: string) => `${user}:${action}`,
-          ttl: 2
+          ttl: 2,
         })
         async perform(user: string, action: string): Promise<string> {
           return `${user}-${action}`;
@@ -415,7 +420,7 @@ describe('Redis Decorators', () => {
       await expect(service.windowApi(1)).rejects.toThrow('Too many requests');
 
       // Wait for window to expire
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      await new Promise((resolve) => setTimeout(resolve, 1100));
 
       // Should work again
       const result = await service.windowApi(1);
@@ -428,7 +433,7 @@ describe('Redis Decorators', () => {
         @RedisRateLimit({
           keyFn: (userId: number, endpoint: string) => `${endpoint}:${userId}`,
           limit: 2,
-          window: 60
+          window: 60,
         })
         async apiCall(userId: number, endpoint: string): Promise<string> {
           return `${endpoint}-${userId}`;
@@ -508,7 +513,7 @@ describe('Redis Decorators', () => {
         @RedisCache({ ttl: 60, key: 'multi' })
         async complexOperation(id: number): Promise<string> {
           this.callCount++;
-          await new Promise(resolve => setTimeout(resolve, 50));
+          await new Promise((resolve) => setTimeout(resolve, 50));
           return `complex-${id}`;
         }
 
@@ -557,10 +562,7 @@ describe('Redis Decorators', () => {
   describe('Injection Decorators', () => {
     it('should inject Redis client with @InjectRedis', () => {
       class TestService {
-        constructor(
-          @InjectRedis() redis: Redis,
-          @InjectRedis('cache') cacheRedis: Redis,
-        ) {}
+        constructor(@InjectRedis() redis: Redis, @InjectRedis('cache') cacheRedis: Redis) {}
       }
 
       const metadata = Reflect.getMetadata('inject:tokens', TestService, 'constructor');
@@ -571,9 +573,7 @@ describe('Redis Decorators', () => {
 
     it('should inject RedisManager with @InjectRedisManager', () => {
       class TestService {
-        constructor(
-          @InjectRedisManager() manager: RedisManager,
-        ) {}
+        constructor(@InjectRedisManager() manager: RedisManager) {}
       }
 
       const metadata = Reflect.getMetadata('inject:tokens', TestService, 'constructor');
@@ -628,7 +628,7 @@ describe('Redis Decorators', () => {
       await service.cleanupOperation();
 
       // Wait for TTL to expire
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      await new Promise((resolve) => setTimeout(resolve, 1100));
 
       // Check that keys are cleaned up
       const cacheKey = await client.get('cache:cleanup');

@@ -50,9 +50,7 @@ describe('Combobox', () => {
     });
 
     it('should render with disabled state', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Combobox({ disabled: true })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Combobox({ disabled: true }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-combobox]');
@@ -60,9 +58,7 @@ describe('Combobox', () => {
     });
 
     it('should not have data-disabled when not disabled', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Combobox({ disabled: false })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Combobox({ disabled: false }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-combobox]');
@@ -130,9 +126,7 @@ describe('Combobox', () => {
     });
 
     it('should render with empty children', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Combobox({ children: () => null })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Combobox({ children: () => null }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-combobox]');
@@ -149,9 +143,7 @@ describe('Combobox', () => {
     });
 
     it('should render with open state when defaultOpen is true', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Combobox({ defaultOpen: true })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Combobox({ defaultOpen: true }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-combobox]');
@@ -159,9 +151,7 @@ describe('Combobox', () => {
     });
 
     it('should render with custom className', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Combobox({ class: 'custom-combobox' })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Combobox({ class: 'custom-combobox' }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-combobox]');
@@ -286,10 +276,7 @@ describe('Combobox', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         Combobox({
           defaultOpen: true,
-          children: () => [
-            ComboboxTrigger({ children: ComboboxInput({}) }),
-            ComboboxContent({ portal: false }),
-          ],
+          children: () => [ComboboxTrigger({ children: ComboboxInput({}) }), ComboboxContent({ portal: false })],
         })
       );
       cleanup = dispose;
@@ -854,8 +841,7 @@ describe('Combobox', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         Combobox({
           defaultOpen: true,
-          children: () =>
-            ComboboxContent({ portal: false, children: ComboboxItem({ value: 'test' }) }),
+          children: () => ComboboxContent({ portal: false, children: ComboboxItem({ value: 'test' }) }),
         })
       );
       cleanup = dispose;
@@ -868,8 +854,7 @@ describe('Combobox', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         Combobox({
           defaultOpen: true,
-          children: () =>
-            ComboboxContent({ portal: false, children: ComboboxItem({ value: 'test' }) }),
+          children: () => ComboboxContent({ portal: false, children: ComboboxItem({ value: 'test' }) }),
         })
       );
       cleanup = dispose;
@@ -883,8 +868,7 @@ describe('Combobox', () => {
         Combobox({
           defaultValue: 'test',
           defaultOpen: true,
-          children: () =>
-            ComboboxContent({ portal: false, children: ComboboxItem({ value: 'test' }) }),
+          children: () => ComboboxContent({ portal: false, children: ComboboxItem({ value: 'test' }) }),
         })
       );
       cleanup = dispose;
@@ -898,8 +882,7 @@ describe('Combobox', () => {
         Combobox({
           defaultValue: 'test',
           defaultOpen: true,
-          children: () =>
-            ComboboxContent({ portal: false, children: ComboboxItem({ value: 'test' }) }),
+          children: () => ComboboxContent({ portal: false, children: ComboboxItem({ value: 'test' }) }),
         })
       );
       cleanup = dispose;
@@ -912,8 +895,7 @@ describe('Combobox', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         Combobox({
           defaultOpen: true,
-          children: () =>
-            ComboboxContent({ portal: false, children: ComboboxItem({ value: 'test' }) }),
+          children: () => ComboboxContent({ portal: false, children: ComboboxItem({ value: 'test' }) }),
         })
       );
       cleanup = dispose;
@@ -1032,8 +1014,7 @@ describe('Combobox', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         Combobox({
           defaultOpen: true,
-          children: () =>
-            ComboboxContent({ portal: false, children: ComboboxEmpty({}) }),
+          children: () => ComboboxContent({ portal: false, children: ComboboxEmpty({}) }),
         })
       );
       cleanup = dispose;
@@ -1046,8 +1027,7 @@ describe('Combobox', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         Combobox({
           defaultOpen: true,
-          children: () =>
-            ComboboxContent({ portal: false, children: ComboboxEmpty({}) }),
+          children: () => ComboboxContent({ portal: false, children: ComboboxEmpty({}) }),
         })
       );
       cleanup = dispose;
@@ -1296,9 +1276,7 @@ describe('Combobox', () => {
 
   describe('Edge Cases', () => {
     it('should handle empty children', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Combobox({ children: undefined })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Combobox({ children: undefined }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-combobox]');
@@ -1376,10 +1354,7 @@ describe('Combobox', () => {
             ComboboxTrigger({ children: ComboboxInput({}) }),
             ComboboxContent({
               portal: false,
-              children: [
-                ComboboxItem({ value: 'item1' }),
-                ComboboxItem({ value: 'item2' }),
-              ],
+              children: [ComboboxItem({ value: 'item1' }), ComboboxItem({ value: 'item2' })],
             }),
           ],
         })
@@ -1397,7 +1372,7 @@ describe('Combobox', () => {
 
       // Highlighted index should be reset (no items should be highlighted)
       const items = container.querySelectorAll('[data-combobox-item]');
-      items.forEach(item => {
+      items.forEach((item) => {
         expect(item.hasAttribute('data-highlighted')).toBe(false);
       });
     });

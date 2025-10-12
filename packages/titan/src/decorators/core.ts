@@ -305,16 +305,15 @@ export function Request() {
  */
 export const Service = (options?: string | ServiceOptions) => (target: any) => {
   // Normalize options to ensure we always have an object
-  const serviceOptions: ServiceOptions = typeof options === 'string'
-    ? { name: options }
-    : options || { name: target.name };
+  const serviceOptions: ServiceOptions =
+    typeof options === 'string' ? { name: options } : options || { name: target.name };
 
   const qualifiedName = serviceOptions.name || target.name;
   // Parse the qualified name into name and version components
   const [name, versionFromName] = qualifiedName.split('@');
 
   // Use explicit version from options if provided, otherwise from qualified name
-  const version = (typeof options === 'object' && 'version' in options) ? options.version : versionFromName;
+  const version = typeof options === 'object' && 'version' in options ? options.version : versionFromName;
 
   // Regular expression to validate service names
   // Allows alphanumeric characters and dots for namespacing
@@ -337,7 +336,7 @@ export const Service = (options?: string | ServiceOptions) => (target: any) => {
     properties: {},
     methods: {},
     contract: serviceOptions.contract,
-    transports: serviceOptions.transports?.map(t => t.name),
+    transports: serviceOptions.transports?.map((t) => t.name),
     _transports: serviceOptions.transports,
     transportConfig: serviceOptions.transportConfig,
   };
@@ -348,7 +347,8 @@ export const Service = (options?: string | ServiceOptions) => (target: any) => {
     if (!descriptor) continue;
 
     // Skip non-public methods (check for Method decorator metadata)
-    const isPublic = Reflect.getMetadata('public', target.prototype, key) ||
+    const isPublic =
+      Reflect.getMetadata('public', target.prototype, key) ||
       Reflect.getMetadata(METADATA_KEYS.METHOD_ANNOTATION, target.prototype, key);
     if (!isPublic) continue;
 
@@ -372,7 +372,8 @@ export const Service = (options?: string | ServiceOptions) => (target: any) => {
     const instance = new target();
     for (const key of Object.keys(instance)) {
       // Skip non-public properties
-      const isPublic = Reflect.getMetadata('public', target.prototype, key) ||
+      const isPublic =
+        Reflect.getMetadata('public', target.prototype, key) ||
         Reflect.getMetadata(METADATA_KEYS.METHOD_ANNOTATION, target.prototype, key);
       if (!isPublic) continue;
 
@@ -523,47 +524,46 @@ export function Factory(name: string) {
  * public readonly value: string;
  */
 export const Method =
-  (options?: MethodOptions) =>
-    (target: any, propertyKey: string | symbol, descriptor?: PropertyDescriptor) => {
-      // Mark the member as public/method
-      Reflect.defineMetadata('public', true, target, propertyKey);
-      Reflect.defineMetadata(METADATA_KEYS.METHOD_ANNOTATION, true, target, propertyKey);
+  (options?: MethodOptions) => (target: any, propertyKey: string | symbol, descriptor?: PropertyDescriptor) => {
+    // Mark the member as public/method
+    Reflect.defineMetadata('public', true, target, propertyKey);
+    Reflect.defineMetadata(METADATA_KEYS.METHOD_ANNOTATION, true, target, propertyKey);
 
-      // For properties (when descriptor is undefined), handle readonly flag
-      if (!descriptor) {
-        Reflect.defineMetadata('readonly', options?.readonly, target, propertyKey);
-      }
+    // For properties (when descriptor is undefined), handle readonly flag
+    if (!descriptor) {
+      Reflect.defineMetadata('readonly', options?.readonly, target, propertyKey);
+    }
 
-      // Store all method options for later retrieval
-      if (options) {
-        Reflect.defineMetadata(METADATA_KEYS.METHOD_OPTIONS, options, target, propertyKey);
-      }
+    // Store all method options for later retrieval
+    if (options) {
+      Reflect.defineMetadata(METADATA_KEYS.METHOD_OPTIONS, options, target, propertyKey);
+    }
 
-      // Store auth metadata
-      if (options?.auth !== undefined) {
-        Reflect.defineMetadata(METADATA_KEYS.METHOD_AUTH, options.auth, target, propertyKey);
-      }
+    // Store auth metadata
+    if (options?.auth !== undefined) {
+      Reflect.defineMetadata(METADATA_KEYS.METHOD_AUTH, options.auth, target, propertyKey);
+    }
 
-      // Store rate limit metadata
-      if (options?.rateLimit) {
-        Reflect.defineMetadata(METADATA_KEYS.METHOD_RATE_LIMIT, options.rateLimit, target, propertyKey);
-      }
+    // Store rate limit metadata
+    if (options?.rateLimit) {
+      Reflect.defineMetadata(METADATA_KEYS.METHOD_RATE_LIMIT, options.rateLimit, target, propertyKey);
+    }
 
-      // Store cache metadata
-      if (options?.cache) {
-        Reflect.defineMetadata(METADATA_KEYS.METHOD_CACHE, options.cache, target, propertyKey);
-      }
+    // Store cache metadata
+    if (options?.cache) {
+      Reflect.defineMetadata(METADATA_KEYS.METHOD_CACHE, options.cache, target, propertyKey);
+    }
 
-      // Store prefetch metadata
-      if (options?.prefetch) {
-        Reflect.defineMetadata(METADATA_KEYS.METHOD_PREFETCH, options.prefetch, target, propertyKey);
-      }
+    // Store prefetch metadata
+    if (options?.prefetch) {
+      Reflect.defineMetadata(METADATA_KEYS.METHOD_PREFETCH, options.prefetch, target, propertyKey);
+    }
 
-      // Store audit metadata
-      if (options?.audit) {
-        Reflect.defineMetadata(METADATA_KEYS.METHOD_AUDIT, options.audit, target, propertyKey);
-      }
-    };
+    // Store audit metadata
+    if (options?.audit) {
+      Reflect.defineMetadata(METADATA_KEYS.METHOD_AUDIT, options.audit, target, propertyKey);
+    }
+  };
 
 /**
  * Public decorator - alias for Method decorator for backward compatibility

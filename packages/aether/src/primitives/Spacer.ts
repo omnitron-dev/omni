@@ -66,29 +66,22 @@ export interface SpacerProps {
  * ```
  */
 export const Spacer = defineComponent<SpacerProps>((props) => () => {
-    const grow = props.grow ?? 1;
-    const shrink = props.shrink ?? 0;
+  const grow = props.grow ?? 1;
+  const shrink = props.shrink ?? 0;
 
-    const {
-      grow: _grow,
-      shrink: _shrink,
-      basis,
-      class: className,
-      style,
-      ...restProps
-    } = props;
+  const { grow: _grow, shrink: _shrink, basis, class: className, style, ...restProps } = props;
 
-    const spacerStyles: Record<string, any> = {
-      flex: `${grow} ${shrink} ${basis !== undefined ? (typeof basis === 'number' ? `${basis}px` : basis) : 'auto'}`,
-      alignSelf: 'stretch',
-      justifySelf: 'stretch',
-      ...style,
-    };
+  const spacerStyles: Record<string, any> = {
+    flex: `${grow} ${shrink} ${basis !== undefined ? (typeof basis === 'number' ? `${basis}px` : basis) : 'auto'}`,
+    alignSelf: 'stretch',
+    justifySelf: 'stretch',
+    ...style,
+  };
 
-    return jsx('div', {
-      class: className,
-      style: spacerStyles,
-      ...restProps,
-      'aria-hidden': 'true',
-    });
+  return jsx('div', {
+    class: className,
+    style: spacerStyles,
+    ...restProps,
+    'aria-hidden': 'true',
   });
+});

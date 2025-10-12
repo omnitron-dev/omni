@@ -95,8 +95,7 @@ describe('Netron Streams Simple Tests', () => {
     beforeEach(() => {
       // Create a peer with mocked sendStreamChunk
       mockPeer = new RemotePeer({} as WebSocket, netron, 'mock-write-peer');
-      mockPeer.sendStreamChunk = jest.fn<typeof mockPeer.sendStreamChunk>()
-        .mockResolvedValue(undefined);
+      mockPeer.sendStreamChunk = jest.fn<typeof mockPeer.sendStreamChunk>().mockResolvedValue(undefined);
     });
 
     it('should send data correctly', async () => {
@@ -145,7 +144,7 @@ describe('Netron Streams Simple Tests', () => {
       stream.onPacket(packet);
 
       // Wait longer than default timeout
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
       // Stream should still be active (live streams don't timeout)
       expect(stream.destroyed).toBe(false);
@@ -167,8 +166,7 @@ describe('Netron Streams Simple Tests', () => {
 
     it('should handle async generator piping', async () => {
       const mockPeer = new RemotePeer({} as WebSocket, netron, 'async-peer');
-      mockPeer.sendStreamChunk = jest.fn<typeof mockPeer.sendStreamChunk>()
-        .mockResolvedValue(undefined);
+      mockPeer.sendStreamChunk = jest.fn<typeof mockPeer.sendStreamChunk>().mockResolvedValue(undefined);
 
       const stream = new NetronWritableStream({ peer: mockPeer, isLive: false });
 

@@ -11,106 +11,74 @@ import { Migration, IMigration } from '@omnitron-dev/titan/module/database';
 @Migration({
   version: '002',
   description: 'Create products and categories tables',
-  dependencies: ['001'] // Depends on users table
+  dependencies: ['001'], // Depends on users table
 })
 export class CreateProductsTableMigration implements IMigration {
   async up(db: Kysely<any>): Promise<void> {
     // Create categories table
     await db.schema
       .createTable('categories')
-      .addColumn('id', 'serial', col => col.primaryKey())
-      .addColumn('name', 'varchar(100)', col => col.notNull().unique())
-      .addColumn('slug', 'varchar(100)', col => col.notNull().unique())
+      .addColumn('id', 'serial', (col) => col.primaryKey())
+      .addColumn('name', 'varchar(100)', (col) => col.notNull().unique())
+      .addColumn('slug', 'varchar(100)', (col) => col.notNull().unique())
       .addColumn('description', 'text')
-      .addColumn('parent_id', 'integer', col =>
-        col.references('categories.id').onDelete('cascade')
-      )
-      .addColumn('display_order', 'integer', col => col.defaultTo(0))
-      .addColumn('is_active', 'boolean', col => col.defaultTo(true))
-      .addColumn('created_at', 'timestamp', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
-      .addColumn('updated_at', 'timestamp', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+      .addColumn('parent_id', 'integer', (col) => col.references('categories.id').onDelete('cascade'))
+      .addColumn('display_order', 'integer', (col) => col.defaultTo(0))
+      .addColumn('is_active', 'boolean', (col) => col.defaultTo(true))
+      .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+      .addColumn('updated_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
       .execute();
 
     // Create products table
     await db.schema
       .createTable('products')
-      .addColumn('id', 'serial', col => col.primaryKey())
-      .addColumn('sku', 'varchar(100)', col => col.notNull().unique())
-      .addColumn('name', 'varchar(255)', col => col.notNull())
+      .addColumn('id', 'serial', (col) => col.primaryKey())
+      .addColumn('sku', 'varchar(100)', (col) => col.notNull().unique())
+      .addColumn('name', 'varchar(255)', (col) => col.notNull())
       .addColumn('description', 'text')
-      .addColumn('category_id', 'integer', col =>
-        col.references('categories.id').onDelete('set null')
-      )
-      .addColumn('price', 'decimal(10,2)', col => col.notNull())
+      .addColumn('category_id', 'integer', (col) => col.references('categories.id').onDelete('set null'))
+      .addColumn('price', 'decimal(10,2)', (col) => col.notNull())
       .addColumn('cost', 'decimal(10,2)')
-      .addColumn('currency', 'varchar(3)', col => col.defaultTo('USD'))
-      .addColumn('stock', 'integer', col => col.defaultTo(0).notNull())
-      .addColumn('low_stock_threshold', 'integer', col => col.defaultTo(10))
+      .addColumn('currency', 'varchar(3)', (col) => col.defaultTo('USD'))
+      .addColumn('stock', 'integer', (col) => col.defaultTo(0).notNull())
+      .addColumn('low_stock_threshold', 'integer', (col) => col.defaultTo(10))
       .addColumn('weight', 'decimal(10,3)') // in kg
       .addColumn('dimensions', 'jsonb') // {length, width, height}
-      .addColumn('tags', 'jsonb', col => col.defaultTo('[]'))
+      .addColumn('tags', 'jsonb', (col) => col.defaultTo('[]'))
       .addColumn('metadata', 'jsonb')
-      .addColumn('status', 'varchar(20)', col => col.defaultTo('draft'))
+      .addColumn('status', 'varchar(20)', (col) => col.defaultTo('draft'))
       .addColumn('published_at', 'timestamp')
-      .addColumn('created_by', 'integer', col =>
-        col.references('users.id').onDelete('set null')
-      )
-      .addColumn('updated_by', 'integer', col =>
-        col.references('users.id').onDelete('set null')
-      )
-      .addColumn('created_at', 'timestamp', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
-      .addColumn('updated_at', 'timestamp', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+      .addColumn('created_by', 'integer', (col) => col.references('users.id').onDelete('set null'))
+      .addColumn('updated_by', 'integer', (col) => col.references('users.id').onDelete('set null'))
+      .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+      .addColumn('updated_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
       .execute();
 
     // Create inventory movements table for tracking stock changes
     await db.schema
       .createTable('inventory_movements')
-      .addColumn('id', 'serial', col => col.primaryKey())
-      .addColumn('product_id', 'integer', col =>
-        col.references('products.id').onDelete('cascade').notNull()
-      )
-      .addColumn('type', 'varchar(20)', col => col.notNull()) // in, out, adjustment
-      .addColumn('quantity', 'integer', col => col.notNull())
-      .addColumn('reason', 'varchar(255)', col => col.notNull())
+      .addColumn('id', 'serial', (col) => col.primaryKey())
+      .addColumn('product_id', 'integer', (col) => col.references('products.id').onDelete('cascade').notNull())
+      .addColumn('type', 'varchar(20)', (col) => col.notNull()) // in, out, adjustment
+      .addColumn('quantity', 'integer', (col) => col.notNull())
+      .addColumn('reason', 'varchar(255)', (col) => col.notNull())
       .addColumn('reference_type', 'varchar(50)') // order, return, adjustment, etc.
       .addColumn('reference_id', 'varchar(100)') // order ID, return ID, etc.
       .addColumn('notes', 'text')
-      .addColumn('created_by', 'integer', col =>
-        col.references('users.id').onDelete('set null')
-      )
-      .addColumn('created_at', 'timestamp', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+      .addColumn('created_by', 'integer', (col) => col.references('users.id').onDelete('set null'))
+      .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
       .execute();
 
     // Create indexes
-    await db.schema
-      .createIndex('idx_categories_slug')
-      .on('categories')
-      .column('slug')
-      .execute();
+    await db.schema.createIndex('idx_categories_slug').on('categories').column('slug').execute();
 
-    await db.schema
-      .createIndex('idx_categories_parent')
-      .on('categories')
-      .column('parent_id')
-      .execute();
+    await db.schema.createIndex('idx_categories_parent').on('categories').column('parent_id').execute();
 
-    await db.schema
-      .createIndex('idx_products_sku')
-      .on('products')
-      .column('sku')
-      .execute();
+    await db.schema.createIndex('idx_products_sku').on('products').column('sku').execute();
 
-    await db.schema
-      .createIndex('idx_products_category')
-      .on('products')
-      .column('category_id')
-      .execute();
+    await db.schema.createIndex('idx_products_category').on('products').column('category_id').execute();
 
-    await db.schema
-      .createIndex('idx_products_status')
-      .on('products')
-      .column('status')
-      .execute();
+    await db.schema.createIndex('idx_products_status').on('products').column('status').execute();
 
     await db.schema
       .createIndex('idx_products_low_stock')
@@ -119,17 +87,9 @@ export class CreateProductsTableMigration implements IMigration {
       .where('stock', '<=', sql`low_stock_threshold`)
       .execute();
 
-    await db.schema
-      .createIndex('idx_inventory_product')
-      .on('inventory_movements')
-      .column('product_id')
-      .execute();
+    await db.schema.createIndex('idx_inventory_product').on('inventory_movements').column('product_id').execute();
 
-    await db.schema
-      .createIndex('idx_inventory_created')
-      .on('inventory_movements')
-      .column('created_at')
-      .execute();
+    await db.schema.createIndex('idx_inventory_created').on('inventory_movements').column('created_at').execute();
 
     // Create updated_at triggers for PostgreSQL
     if (db.dialect.name === 'postgres') {

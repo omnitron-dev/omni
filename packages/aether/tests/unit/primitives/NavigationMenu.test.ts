@@ -169,9 +169,7 @@ describe('NavigationMenu', () => {
 
       const { container } = renderComponent(component);
 
-      const trigger = container.querySelector(
-        '[data-navigation-menu-trigger]'
-      ) as HTMLButtonElement;
+      const trigger = container.querySelector('[data-navigation-menu-trigger]') as HTMLButtonElement;
       trigger.click();
 
       const item = container.querySelector('[data-navigation-menu-item]');
@@ -239,9 +237,7 @@ describe('NavigationMenu', () => {
 
       const { container } = renderComponent(component);
 
-      const trigger = container.querySelector(
-        '[data-navigation-menu-trigger]'
-      ) as HTMLButtonElement;
+      const trigger = container.querySelector('[data-navigation-menu-trigger]') as HTMLButtonElement;
 
       // Click to open
       trigger.click();
@@ -272,9 +268,7 @@ describe('NavigationMenu', () => {
 
       const { container } = renderComponent(component);
 
-      const trigger = container.querySelector(
-        '[data-navigation-menu-trigger]'
-      ) as HTMLButtonElement;
+      const trigger = container.querySelector('[data-navigation-menu-trigger]') as HTMLButtonElement;
 
       trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 
@@ -299,9 +293,7 @@ describe('NavigationMenu', () => {
 
       const { container } = renderComponent(component);
 
-      const trigger = container.querySelector(
-        '[data-navigation-menu-trigger]'
-      ) as HTMLButtonElement;
+      const trigger = container.querySelector('[data-navigation-menu-trigger]') as HTMLButtonElement;
 
       trigger.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
 
@@ -353,9 +345,7 @@ describe('NavigationMenu', () => {
 
       const { container } = renderComponent(component);
 
-      const trigger = container.querySelector(
-        '[data-navigation-menu-trigger]'
-      ) as HTMLButtonElement;
+      const trigger = container.querySelector('[data-navigation-menu-trigger]') as HTMLButtonElement;
       trigger.click();
 
       const content = container.querySelector('[data-navigation-menu-content]');
@@ -374,8 +364,7 @@ describe('NavigationMenu', () => {
               children: () =>
                 NavigationMenuItem({
                   value: 'products',
-                  children: () =>
-                    NavigationMenuLink({ href: '/products', children: 'Products' }),
+                  children: () => NavigationMenuLink({ href: '/products', children: 'Products' }),
                 }),
             }),
         });
@@ -396,13 +385,11 @@ describe('NavigationMenu', () => {
               children: () => [
                 NavigationMenuItem({
                   value: 'home',
-                  children: () =>
-                    NavigationMenuLink({ href: '/', active: true, children: 'Home' }),
+                  children: () => NavigationMenuLink({ href: '/', active: true, children: 'Home' }),
                 }),
                 NavigationMenuItem({
                   value: 'about',
-                  children: () =>
-                    NavigationMenuLink({ href: '/about', active: false, children: 'About' }),
+                  children: () => NavigationMenuLink({ href: '/about', active: false, children: 'About' }),
                 }),
               ],
             }),
@@ -539,9 +526,7 @@ describe('NavigationMenu', () => {
 
       const { container } = renderComponent(component);
 
-      const trigger = container.querySelector(
-        '[data-navigation-menu-trigger]'
-      ) as HTMLButtonElement;
+      const trigger = container.querySelector('[data-navigation-menu-trigger]') as HTMLButtonElement;
       trigger.click();
 
       expect(changedValue).toBe('products');
@@ -605,9 +590,7 @@ describe('NavigationMenu', () => {
 
       const { container } = renderComponent(component);
 
-      const trigger = container.querySelector(
-        '[data-navigation-menu-trigger]'
-      ) as HTMLButtonElement;
+      const trigger = container.querySelector('[data-navigation-menu-trigger]') as HTMLButtonElement;
 
       // Open
       trigger.click();
@@ -651,9 +634,7 @@ describe('NavigationMenu', () => {
 
       const { container } = renderComponent(component);
 
-      const triggers = container.querySelectorAll(
-        '[data-navigation-menu-trigger]'
-      ) as NodeListOf<HTMLButtonElement>;
+      const triggers = container.querySelectorAll('[data-navigation-menu-trigger]') as NodeListOf<HTMLButtonElement>;
 
       // Open first
       triggers[0]?.click();
@@ -726,8 +707,7 @@ describe('NavigationMenu', () => {
                 }),
                 NavigationMenuItem({
                   value: 'company',
-                  children: () =>
-                    NavigationMenuLink({ href: '/company', children: 'Company' }),
+                  children: () => NavigationMenuLink({ href: '/company', children: 'Company' }),
                 }),
               ],
             }),
@@ -740,9 +720,7 @@ describe('NavigationMenu', () => {
       expect(items.length).toBe(2);
 
       // Open first item
-      const trigger = container.querySelector(
-        '[data-navigation-menu-trigger]'
-      ) as HTMLButtonElement;
+      const trigger = container.querySelector('[data-navigation-menu-trigger]') as HTMLButtonElement;
       trigger.click();
 
       // Verify content with links

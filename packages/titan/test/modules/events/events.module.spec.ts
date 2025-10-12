@@ -4,11 +4,7 @@
 import { describe, it, expect, jest } from '@jest/globals';
 
 import 'reflect-metadata';
-import {
-  EventsModule,
-  EVENTS_SERVICE_TOKEN,
-  EVENT_BUS_SERVICE_TOKEN
-} from '../../../src/modules/events/events.module';
+import { EventsModule, EVENTS_SERVICE_TOKEN, EVENT_BUS_SERVICE_TOKEN } from '../../../src/modules/events/events.module';
 
 describe('EventsModule', () => {
   it('should configure event module', () => {
@@ -16,7 +12,7 @@ describe('EventsModule', () => {
       enableHistory: true,
       maxHistorySize: 100,
       enableValidation: true,
-      enableScheduler: true
+      enableScheduler: true,
     });
 
     expect(config.module).toBe(EventsModule);
@@ -27,11 +23,11 @@ describe('EventsModule', () => {
   it('should configure async module', async () => {
     const configFactory = jest.fn().mockResolvedValue({
       enableHistory: true,
-      maxHistorySize: 200
+      maxHistorySize: 200,
     });
 
     const config = EventsModule.forRootAsync({
-      useFactory: configFactory
+      useFactory: configFactory,
     });
 
     expect(config.module).toBe(EventsModule);

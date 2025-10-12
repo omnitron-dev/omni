@@ -18,9 +18,9 @@ jest.unstable_mockModule('../../../../src/netron/transport/http/connection.js', 
     getMetrics: jest.fn().mockReturnValue({
       requestCount: 0,
       errorCount: 0,
-      avgResponseTime: 0
-    })
-  }))
+      avgResponseTime: 0,
+    }),
+  })),
 }));
 
 jest.unstable_mockModule('../../../../src/netron/transport/http/peer.js', () => ({
@@ -28,8 +28,8 @@ jest.unstable_mockModule('../../../../src/netron/transport/http/peer.js', () => 
     id: 'mock-peer-id',
     init: jest.fn().mockResolvedValue(undefined),
     queryInterface: jest.fn().mockResolvedValue(null),
-    close: jest.fn().mockResolvedValue(undefined)
-  }))
+    close: jest.fn().mockResolvedValue(undefined),
+  })),
 }));
 
 // Now import after mocks are set up
@@ -60,8 +60,8 @@ describe('HttpTransportClient - Mocked Tests', () => {
         version: '2.0',
         timestamp: Date.now(),
         success: true,
-        data: 'test-result'
-      })
+        data: 'test-result',
+      }),
     } as any);
   });
 
@@ -95,8 +95,8 @@ describe('HttpTransportClient - Mocked Tests', () => {
           info: jest.fn(),
           warn: jest.fn(),
           error: jest.fn(),
-          debug: jest.fn()
-        }
+          debug: jest.fn(),
+        },
       } as unknown as INetron;
 
       const options = { timeout: 5000 };
@@ -142,8 +142,8 @@ describe('HttpTransportClient - Mocked Tests', () => {
           info: jest.fn(),
           warn: jest.fn(),
           error: jest.fn(),
-          debug: jest.fn()
-        }
+          debug: jest.fn(),
+        },
       } as unknown as INetron;
 
       const client = new HttpTransportClient('http://localhost:3000', mockNetron);
@@ -174,8 +174,8 @@ describe('HttpTransportClient - Mocked Tests', () => {
           info: jest.fn(),
           warn: jest.fn(),
           error: jest.fn(),
-          debug: jest.fn()
-        }
+          debug: jest.fn(),
+        },
       } as unknown as INetron;
 
       const client = new HttpTransportClient('http://localhost:3000', mockNetron);
@@ -199,8 +199,8 @@ describe('HttpTransportClient - Mocked Tests', () => {
           info: jest.fn(),
           warn: jest.fn(),
           error: jest.fn(),
-          debug: jest.fn()
-        }
+          debug: jest.fn(),
+        },
       } as unknown as INetron;
 
       const client = new HttpTransportClient('http://localhost:3000', mockNetron);
@@ -210,7 +210,7 @@ describe('HttpTransportClient - Mocked Tests', () => {
       const mockMethod = jest.fn().mockResolvedValue('peer-result');
       const mockPeerInstance = (HttpRemotePeer as jest.Mock).mock.results[0].value;
       mockPeerInstance.queryInterface.mockResolvedValue({
-        testMethod: mockMethod
+        testMethod: mockMethod,
       });
 
       const result = await client.invoke('TestService@1.0.0', 'testMethod', [{ arg: 'value' }]);
@@ -227,8 +227,8 @@ describe('HttpTransportClient - Mocked Tests', () => {
           info: jest.fn(),
           warn: jest.fn(),
           error: jest.fn(),
-          debug: jest.fn()
-        }
+          debug: jest.fn(),
+        },
       } as unknown as INetron;
 
       const client = new HttpTransportClient('http://localhost:3000', mockNetron);
@@ -242,7 +242,7 @@ describe('HttpTransportClient - Mocked Tests', () => {
       const mockMethod = jest.fn().mockResolvedValue('connection-result');
       const mockConnectionInstance = (HttpConnection as jest.Mock).mock.results[0].value;
       mockConnectionInstance.queryInterface.mockResolvedValue({
-        testMethod: mockMethod
+        testMethod: mockMethod,
       });
 
       const result = await client.invoke('TestService@1.0.0', 'testMethod', [{ arg: 'value' }]);
@@ -259,8 +259,8 @@ describe('HttpTransportClient - Mocked Tests', () => {
           info: jest.fn(),
           warn: jest.fn(),
           error: jest.fn(),
-          debug: jest.fn()
-        }
+          debug: jest.fn(),
+        },
       } as unknown as INetron;
 
       const client = new HttpTransportClient('http://localhost:3000', mockNetron);
@@ -269,14 +269,14 @@ describe('HttpTransportClient - Mocked Tests', () => {
       // Peer returns service without the method
       const mockPeerInstance = (HttpRemotePeer as jest.Mock).mock.results[0].value;
       mockPeerInstance.queryInterface.mockResolvedValue({
-        otherMethod: jest.fn()
+        otherMethod: jest.fn(),
       });
 
       // Connection returns service
       const mockMethod = jest.fn().mockResolvedValue('connection-result');
       const mockConnectionInstance = (HttpConnection as jest.Mock).mock.results[0].value;
       mockConnectionInstance.queryInterface.mockResolvedValue({
-        testMethod: mockMethod
+        testMethod: mockMethod,
       });
 
       const result = await client.invoke('TestService@1.0.0', 'testMethod', [{ arg: 'value' }]);
@@ -294,7 +294,7 @@ describe('HttpTransportClient - Mocked Tests', () => {
       const mockMethod = jest.fn().mockResolvedValue('connection-result');
       const mockConnectionInstance = (HttpConnection as jest.Mock).mock.results[0].value;
       mockConnectionInstance.queryInterface.mockResolvedValue({
-        testMethod: mockMethod
+        testMethod: mockMethod,
       });
 
       const result = await client.invoke('TestService@1.0.0', 'testMethod', [{ arg: 'value' }]);
@@ -319,8 +319,8 @@ describe('HttpTransportClient - Mocked Tests', () => {
           version: '2.0',
           timestamp: Date.now(),
           success: true,
-          data: 'http-result'
-        })
+          data: 'http-result',
+        }),
       } as any);
 
       const result = await client.invoke('TestService@1.0.0', 'testMethod', [{ arg: 'value' }]);
@@ -328,7 +328,7 @@ describe('HttpTransportClient - Mocked Tests', () => {
       expect(mockFetch).toHaveBeenCalledWith(
         'http://localhost:3000/netron/invoke',
         expect.objectContaining({
-          method: 'POST'
+          method: 'POST',
         })
       );
       expect(result).toBe('http-result');
@@ -340,7 +340,7 @@ describe('HttpTransportClient - Mocked Tests', () => {
 
       const mockConnectionInstance = (HttpConnection as jest.Mock).mock.results[0].value;
       mockConnectionInstance.queryInterface.mockResolvedValue({
-        otherMethod: jest.fn()
+        otherMethod: jest.fn(),
       });
 
       mockFetch.mockResolvedValueOnce({
@@ -351,8 +351,8 @@ describe('HttpTransportClient - Mocked Tests', () => {
           version: '2.0',
           timestamp: Date.now(),
           success: true,
-          data: 'http-result'
-        })
+          data: 'http-result',
+        }),
       } as any);
 
       const result = await client.invoke('TestService@1.0.0', 'testMethod', [{ arg: 'value' }]);
@@ -370,7 +370,7 @@ describe('HttpTransportClient - Mocked Tests', () => {
 
       await client.invoke('TestService@1.0.0', 'testMethod', [{ arg: 'value' }], {
         context: { traceId: 'trace-123', userId: 'user-456' },
-        hints: { timeout: 5000, priority: 'high' }
+        hints: { timeout: 5000, priority: 'high' },
       });
 
       expect(mockFetch).toHaveBeenCalled();
@@ -398,14 +398,12 @@ describe('HttpTransportClient - Mocked Tests', () => {
           success: false,
           error: {
             code: 'TEST_ERROR',
-            message: 'Test error message'
-          }
-        })
+            message: 'Test error message',
+          },
+        }),
       } as any);
 
-      await expect(
-        client.invoke('TestService@1.0.0', 'testMethod', [{ arg: 'value' }])
-      ).rejects.toThrow();
+      await expect(client.invoke('TestService@1.0.0', 'testMethod', [{ arg: 'value' }])).rejects.toThrow();
     });
 
     it('should use default error message when error message missing', async () => {
@@ -424,15 +422,13 @@ describe('HttpTransportClient - Mocked Tests', () => {
           timestamp: Date.now(),
           success: false,
           error: {
-            code: 'TEST_ERROR'
+            code: 'TEST_ERROR',
             // No message
-          }
-        })
+          },
+        }),
       } as any);
 
-      await expect(
-        client.invoke('TestService@1.0.0', 'testMethod', [{ arg: 'value' }])
-      ).rejects.toThrow(); // Just check that it throws, don't check exact message
+      await expect(client.invoke('TestService@1.0.0', 'testMethod', [{ arg: 'value' }])).rejects.toThrow(); // Just check that it throws, don't check exact message
     });
   });
 
@@ -449,10 +445,10 @@ describe('HttpTransportClient - Mocked Tests', () => {
         id: 'mock-connection-id',
         state: 'connected',
         queryInterface: jest.fn().mockResolvedValue({
-          testMethod: jest.fn().mockResolvedValue('result')
+          testMethod: jest.fn().mockResolvedValue('result'),
         }),
         close: jest.fn().mockResolvedValue(undefined),
-        getMetrics: jest.fn().mockReturnValue({})
+        getMetrics: jest.fn().mockReturnValue({}),
       }));
 
       await client.invoke('TestService@1.0.0', 'testMethod', [{}]);

@@ -2,12 +2,7 @@
  * @vitest-environment happy-dom
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import {
-  Transfer,
-  TransferList,
-  TransferControls,
-  type TransferItem,
-} from '../../../src/primitives/Transfer.js';
+import { Transfer, TransferList, TransferControls, type TransferItem } from '../../../src/primitives/Transfer.js';
 import { renderComponent, nextTick } from '../../helpers/test-utils.js';
 
 describe('Transfer', () => {
@@ -74,7 +69,8 @@ describe('Transfer', () => {
     it('should provide context to children', () => {
       const component = () =>
         Transfer({
-          dataSource: mockDataSource, children: () => TransferList({ type: 'source' }),
+          dataSource: mockDataSource,
+          children: () => TransferList({ type: 'source' }),
         });
 
       const { container } = renderComponent(component);
@@ -88,7 +84,8 @@ describe('Transfer', () => {
     it('should handle empty dataSource', () => {
       const component = () =>
         Transfer({
-          dataSource: [], children: () => TransferList({ type: 'source' }),
+          dataSource: [],
+          children: () => TransferList({ type: 'source' }),
         });
 
       const { container } = renderComponent(component);
@@ -113,7 +110,8 @@ describe('Transfer', () => {
     it('should render all items in source list initially', () => {
       const component = () =>
         Transfer({
-          dataSource: mockDataSource, children: () => TransferList({ type: 'source' }),
+          dataSource: mockDataSource,
+          children: () => TransferList({ type: 'source' }),
         });
 
       const { container } = renderComponent(component);
@@ -125,7 +123,8 @@ describe('Transfer', () => {
     it('should display item titles', () => {
       const component = () =>
         Transfer({
-          dataSource: mockDataSource, children: () => TransferList({ type: 'source' }),
+          dataSource: mockDataSource,
+          children: () => TransferList({ type: 'source' }),
         });
 
       const { container } = renderComponent(component);
@@ -143,7 +142,8 @@ describe('Transfer', () => {
 
       const component = () =>
         Transfer({
-          dataSource: specialData, children: () => TransferList({ type: 'source' }),
+          dataSource: specialData,
+          children: () => TransferList({ type: 'source' }),
         });
 
       const { container } = renderComponent(component);
@@ -160,7 +160,8 @@ describe('Transfer', () => {
 
       const component = () =>
         Transfer({
-          dataSource: largeData, children: () => TransferList({ type: 'source' }),
+          dataSource: largeData,
+          children: () => TransferList({ type: 'source' }),
         });
 
       const { container } = renderComponent(component);
@@ -197,7 +198,8 @@ describe('Transfer', () => {
       const component = () =>
         Transfer({
           dataSource: mockDataSource,
-          targetKeys, children: () => TransferList({ type: 'target' }),
+          targetKeys,
+          children: () => TransferList({ type: 'target' }),
         });
 
       const { container } = renderComponent(component);
@@ -268,7 +270,8 @@ describe('Transfer', () => {
       const component = () =>
         Transfer({
           dataSource: mockDataSource,
-          defaultTargetKeys: [], children: () => TransferList({ type: 'target' }),
+          defaultTargetKeys: [],
+          children: () => TransferList({ type: 'target' }),
         });
 
       const { container } = renderComponent(component);
@@ -301,11 +304,7 @@ describe('Transfer', () => {
         Transfer({
           dataSource: mockDataSource,
           onTargetKeysChange: onChange,
-          children: () => [
-            TransferList({ type: 'source' }),
-            TransferControls({}),
-            TransferList({ type: 'target' }),
-          ],
+          children: () => [TransferList({ type: 'source' }), TransferControls({}), TransferList({ type: 'target' })],
         });
 
       const { container } = renderComponent(component);
@@ -334,11 +333,7 @@ describe('Transfer', () => {
         Transfer({
           dataSource: mockDataSource,
           onTargetKeysChange: onChange,
-          children: () => [
-            TransferList({ type: 'source' }),
-            TransferControls({}),
-            TransferList({ type: 'target' }),
-          ],
+          children: () => [TransferList({ type: 'source' }), TransferControls({}), TransferList({ type: 'target' })],
         });
 
       const { container } = renderComponent(component);
@@ -362,11 +357,7 @@ describe('Transfer', () => {
       const component = () =>
         Transfer({
           dataSource: mockDataSource,
-          children: () => [
-            TransferList({ type: 'source' }),
-            TransferControls({}),
-            TransferList({ type: 'target' }),
-          ],
+          children: () => [TransferList({ type: 'source' }), TransferControls({}), TransferList({ type: 'target' })],
         });
 
       const { container } = renderComponent(component);
@@ -388,7 +379,8 @@ describe('Transfer', () => {
     it('should render with data-transfer-list attribute', () => {
       const component = () =>
         Transfer({
-          dataSource: mockDataSource, children: () => TransferList({ type: 'source' }),
+          dataSource: mockDataSource,
+          children: () => TransferList({ type: 'source' }),
         });
 
       const { container } = renderComponent(component);
@@ -400,7 +392,8 @@ describe('Transfer', () => {
     it('should have data-type attribute', () => {
       const component = () =>
         Transfer({
-          dataSource: mockDataSource, children: () => TransferList({ type: 'source' }),
+          dataSource: mockDataSource,
+          children: () => TransferList({ type: 'source' }),
         });
 
       const { container } = renderComponent(component);
@@ -412,7 +405,8 @@ describe('Transfer', () => {
     it('should render source list', () => {
       const component = () =>
         Transfer({
-          dataSource: mockDataSource, children: () => TransferList({ type: 'source' }),
+          dataSource: mockDataSource,
+          children: () => TransferList({ type: 'source' }),
         });
 
       const { container } = renderComponent(component);
@@ -425,7 +419,8 @@ describe('Transfer', () => {
       const component = () =>
         Transfer({
           dataSource: mockDataSource,
-          targetKeys: ['1'], children: () => TransferList({ type: 'target' }),
+          targetKeys: ['1'],
+          children: () => TransferList({ type: 'target' }),
         });
 
       const { container } = renderComponent(component);
@@ -437,7 +432,8 @@ describe('Transfer', () => {
     it('should render items in source list', () => {
       const component = () =>
         Transfer({
-          dataSource: mockDataSource, children: () => TransferList({ type: 'source' }),
+          dataSource: mockDataSource,
+          children: () => TransferList({ type: 'source' }),
         });
 
       const { container } = renderComponent(component);
@@ -450,7 +446,8 @@ describe('Transfer', () => {
       const component = () =>
         Transfer({
           dataSource: mockDataSource,
-          targetKeys: ['1', '2'], children: () => TransferList({ type: 'target' }),
+          targetKeys: ['1', '2'],
+          children: () => TransferList({ type: 'target' }),
         });
 
       const { container } = renderComponent(component);
@@ -476,7 +473,8 @@ describe('Transfer', () => {
     it('should render with data-transfer-controls attribute', () => {
       const component = () =>
         Transfer({
-          dataSource: mockDataSource, children: () => TransferControls({}),
+          dataSource: mockDataSource,
+          children: () => TransferControls({}),
         });
 
       const { container } = renderComponent(component);
@@ -488,7 +486,8 @@ describe('Transfer', () => {
     it('should render two buttons', () => {
       const component = () =>
         Transfer({
-          dataSource: mockDataSource, children: () => TransferControls({}),
+          dataSource: mockDataSource,
+          children: () => TransferControls({}),
         });
 
       const { container } = renderComponent(component);
@@ -500,7 +499,8 @@ describe('Transfer', () => {
     it('should render transfer to target button', () => {
       const component = () =>
         Transfer({
-          dataSource: mockDataSource, children: () => TransferControls({}),
+          dataSource: mockDataSource,
+          children: () => TransferControls({}),
         });
 
       const { container } = renderComponent(component);
@@ -512,7 +512,8 @@ describe('Transfer', () => {
     it('should render transfer to source button', () => {
       const component = () =>
         Transfer({
-          dataSource: mockDataSource, children: () => TransferControls({}),
+          dataSource: mockDataSource,
+          children: () => TransferControls({}),
         });
 
       const { container } = renderComponent(component);
@@ -524,7 +525,8 @@ describe('Transfer', () => {
     it('should disable buttons when no selection', () => {
       const component = () =>
         Transfer({
-          dataSource: mockDataSource, children: () => TransferControls({}),
+          dataSource: mockDataSource,
+          children: () => TransferControls({}),
         });
 
       const { container } = renderComponent(component);
@@ -549,7 +551,8 @@ describe('Transfer', () => {
     it('should select item on click', async () => {
       const component = () =>
         Transfer({
-          dataSource: mockDataSource, children: () => TransferList({ type: 'source' }),
+          dataSource: mockDataSource,
+          children: () => TransferList({ type: 'source' }),
         });
 
       const { container } = renderComponent(component);
@@ -565,7 +568,8 @@ describe('Transfer', () => {
     it('should deselect item on second click', async () => {
       const component = () =>
         Transfer({
-          dataSource: mockDataSource, children: () => TransferList({ type: 'source' }),
+          dataSource: mockDataSource,
+          children: () => TransferList({ type: 'source' }),
         });
 
       const { container } = renderComponent(component);
@@ -584,7 +588,8 @@ describe('Transfer', () => {
     it('should allow multiple selections', async () => {
       const component = () =>
         Transfer({
-          dataSource: mockDataSource, children: () => TransferList({ type: 'source' }),
+          dataSource: mockDataSource,
+          children: () => TransferList({ type: 'source' }),
         });
 
       const { container } = renderComponent(component);
@@ -631,11 +636,7 @@ describe('Transfer', () => {
       const component = () =>
         Transfer({
           dataSource: mockDataSource,
-          children: () => [
-            TransferList({ type: 'source' }),
-            TransferControls({}),
-            TransferList({ type: 'target' }),
-          ],
+          children: () => [TransferList({ type: 'source' }), TransferControls({}), TransferList({ type: 'target' })],
         });
 
       const { container } = renderComponent(component);
@@ -662,11 +663,7 @@ describe('Transfer', () => {
         Transfer({
           dataSource: mockDataSource,
           defaultTargetKeys: ['1', '2'],
-          children: () => [
-            TransferList({ type: 'source' }),
-            TransferControls({}),
-            TransferList({ type: 'target' }),
-          ],
+          children: () => [TransferList({ type: 'source' }), TransferControls({}), TransferList({ type: 'target' })],
         });
 
       const { container } = renderComponent(component);
@@ -693,11 +690,7 @@ describe('Transfer', () => {
       const component = () =>
         Transfer({
           dataSource: mockDataSource,
-          children: () => [
-            TransferList({ type: 'source' }),
-            TransferControls({}),
-            TransferList({ type: 'target' }),
-          ],
+          children: () => [TransferList({ type: 'source' }), TransferControls({}), TransferList({ type: 'target' })],
         });
 
       const { container } = renderComponent(component);
@@ -722,19 +715,13 @@ describe('Transfer', () => {
       const component = () =>
         Transfer({
           dataSource: mockDataSource,
-          children: () => [
-            TransferList({ type: 'source' }),
-            TransferControls({}),
-            TransferList({ type: 'target' }),
-          ],
+          children: () => [TransferList({ type: 'source' }), TransferControls({}), TransferList({ type: 'target' })],
         });
 
       const { container } = renderComponent(component);
 
       const sourceList = container.querySelector('[data-type="source"]');
-      const items = Array.from(
-        sourceList?.querySelectorAll('[data-transfer-item]') || [],
-      ) as HTMLElement[];
+      const items = Array.from(sourceList?.querySelectorAll('[data-transfer-item]') || []) as HTMLElement[];
 
       items[0].click();
       items[1].click();
@@ -757,19 +744,13 @@ describe('Transfer', () => {
       const component = () =>
         Transfer({
           dataSource: mockDataSource,
-          children: () => [
-            TransferList({ type: 'source' }),
-            TransferControls({}),
-            TransferList({ type: 'target' }),
-          ],
+          children: () => [TransferList({ type: 'source' }), TransferControls({}), TransferList({ type: 'target' })],
         });
 
       const { container } = renderComponent(component);
 
       const sourceList = container.querySelector('[data-type="source"]');
-      const items = Array.from(
-        sourceList?.querySelectorAll('[data-transfer-item]') || [],
-      ) as HTMLElement[];
+      const items = Array.from(sourceList?.querySelectorAll('[data-transfer-item]') || []) as HTMLElement[];
 
       items[0].click();
       items[2].click();
@@ -783,9 +764,7 @@ describe('Transfer', () => {
       await nextTick();
 
       const targetList = container.querySelector('[data-type="target"]');
-      const targetItems = Array.from(
-        targetList?.querySelectorAll('[data-transfer-item]') || [],
-      ) as HTMLElement[];
+      const targetItems = Array.from(targetList?.querySelectorAll('[data-transfer-item]') || []) as HTMLElement[];
 
       expect(targetItems[0].textContent).toBe('Item 1');
       expect(targetItems[1].textContent).toBe('Item 3');
@@ -798,11 +777,7 @@ describe('Transfer', () => {
         Transfer({
           dataSource: mockDataSource,
           defaultTargetKeys: ['1'],
-          children: () => [
-            TransferList({ type: 'source' }),
-            TransferControls({}),
-            TransferList({ type: 'target' }),
-          ],
+          children: () => [TransferList({ type: 'source' }), TransferControls({}), TransferList({ type: 'target' })],
         });
 
       const { container } = renderComponent(component);
@@ -820,11 +795,7 @@ describe('Transfer', () => {
           dataSource: mockDataSource,
           targetKeys: ['1'],
           onTargetKeysChange: onChange,
-          children: () => [
-            TransferList({ type: 'source' }),
-            TransferControls({}),
-            TransferList({ type: 'target' }),
-          ],
+          children: () => [TransferList({ type: 'source' }), TransferControls({}), TransferList({ type: 'target' })],
         });
 
       const { container } = renderComponent(component);
@@ -849,7 +820,8 @@ describe('Transfer', () => {
         Transfer({
           dataSource: mockDataSource,
           targetKeys: ['1', '2'],
-          defaultTargetKeys: ['3', '4'], children: () => TransferList({ type: 'target' }),
+          defaultTargetKeys: ['3', '4'],
+          children: () => TransferList({ type: 'target' }),
         });
 
       const { container } = renderComponent(component);
@@ -870,7 +842,8 @@ describe('Transfer', () => {
 
       const component = () =>
         Transfer({
-          dataSource: dataWithDisabled, children: () => TransferList({ type: 'source' }),
+          dataSource: dataWithDisabled,
+          children: () => TransferList({ type: 'source' }),
         });
 
       const { container } = renderComponent(component);
@@ -884,7 +857,8 @@ describe('Transfer', () => {
 
       const component = () =>
         Transfer({
-          dataSource: dataWithEmpty, children: () => TransferList({ type: 'source' }),
+          dataSource: dataWithEmpty,
+          children: () => TransferList({ type: 'source' }),
         });
 
       const { container } = renderComponent(component);
@@ -901,7 +875,8 @@ describe('Transfer', () => {
 
       const component = () =>
         Transfer({
-          dataSource: dataWithDupes, children: () => TransferList({ type: 'source' }),
+          dataSource: dataWithDupes,
+          children: () => TransferList({ type: 'source' }),
         });
 
       const { container } = renderComponent(component);
@@ -934,11 +909,7 @@ describe('Transfer', () => {
       const component = () =>
         Transfer({
           dataSource: mockDataSource,
-          children: () => [
-            TransferList({ type: 'source' }),
-            TransferControls({}),
-            TransferList({ type: 'target' }),
-          ],
+          children: () => [TransferList({ type: 'source' }), TransferControls({}), TransferList({ type: 'target' })],
         });
 
       const { container } = renderComponent(component);
@@ -964,11 +935,7 @@ describe('Transfer', () => {
         Transfer({
           dataSource: permissions,
           defaultTargetKeys: ['read'],
-          children: () => [
-            TransferList({ type: 'source' }),
-            TransferControls({}),
-            TransferList({ type: 'target' }),
-          ],
+          children: () => [TransferList({ type: 'source' }), TransferControls({}), TransferList({ type: 'target' })],
         });
 
       const { container } = renderComponent(component);
@@ -992,11 +959,7 @@ describe('Transfer', () => {
         Transfer({
           dataSource: roles,
           onTargetKeysChange: onChange,
-          children: () => [
-            TransferList({ type: 'source' }),
-            TransferControls({}),
-            TransferList({ type: 'target' }),
-          ],
+          children: () => [TransferList({ type: 'source' }), TransferControls({}), TransferList({ type: 'target' })],
         });
 
       const { container } = renderComponent(component);
@@ -1029,11 +992,7 @@ describe('Transfer', () => {
         Transfer({
           dataSource: tags,
           defaultTargetKeys: ['bug', 'urgent'],
-          children: () => [
-            TransferList({ type: 'source' }),
-            TransferControls({}),
-            TransferList({ type: 'target' }),
-          ],
+          children: () => [TransferList({ type: 'source' }), TransferControls({}), TransferList({ type: 'target' })],
         });
 
       const { container } = renderComponent(component);
@@ -1057,11 +1016,7 @@ describe('Transfer', () => {
         Transfer({
           dataSource: columns,
           defaultTargetKeys: ['name', 'email', 'status'],
-          children: () => [
-            TransferList({ type: 'source' }),
-            TransferControls({}),
-            TransferList({ type: 'target' }),
-          ],
+          children: () => [TransferList({ type: 'source' }), TransferControls({}), TransferList({ type: 'target' })],
         });
 
       const { container } = renderComponent(component);
@@ -1076,7 +1031,8 @@ describe('Transfer', () => {
     it('should support clicking items', async () => {
       const component = () =>
         Transfer({
-          dataSource: mockDataSource, children: () => TransferList({ type: 'source' }),
+          dataSource: mockDataSource,
+          children: () => TransferList({ type: 'source' }),
         });
 
       const { container } = renderComponent(component);
@@ -1092,7 +1048,8 @@ describe('Transfer', () => {
     it('should support keyboard navigation on buttons', () => {
       const component = () =>
         Transfer({
-          dataSource: mockDataSource, children: () => TransferControls({}),
+          dataSource: mockDataSource,
+          children: () => TransferControls({}),
         });
 
       const { container } = renderComponent(component);
@@ -1106,7 +1063,8 @@ describe('Transfer', () => {
       const component = () =>
         Transfer({
           dataSource: mockDataSource,
-          'aria-label': 'Item transfer', children: () => TransferList({ type: 'source' }),
+          'aria-label': 'Item transfer',
+          children: () => TransferList({ type: 'source' }),
         });
 
       const { container } = renderComponent(component);
@@ -1121,11 +1079,7 @@ describe('Transfer', () => {
       const component = () =>
         Transfer({
           dataSource: mockDataSource,
-          children: () => [
-            TransferList({ type: 'source' }),
-            TransferControls({}),
-            TransferList({ type: 'target' }),
-          ],
+          children: () => [TransferList({ type: 'source' }), TransferControls({}), TransferList({ type: 'target' })],
         });
 
       const { container } = renderComponent(component);
@@ -1148,20 +1102,14 @@ describe('Transfer', () => {
         Transfer({
           dataSource: mockDataSource,
           onTargetKeysChange: onChange,
-          children: () => [
-            TransferList({ type: 'source' }),
-            TransferControls({}),
-            TransferList({ type: 'target' }),
-          ],
+          children: () => [TransferList({ type: 'source' }), TransferControls({}), TransferList({ type: 'target' })],
         });
 
       const { container } = renderComponent(component);
 
       // Select items from source
       const sourceList = container.querySelector('[data-type="source"]');
-      const sourceItems = Array.from(
-        sourceList?.querySelectorAll('[data-transfer-item]') || [],
-      ) as HTMLElement[];
+      const sourceItems = Array.from(sourceList?.querySelectorAll('[data-transfer-item]') || []) as HTMLElement[];
 
       sourceItems[0].click();
       sourceItems[1].click();
@@ -1205,19 +1153,13 @@ describe('Transfer', () => {
       const component = () =>
         Transfer({
           dataSource: mockDataSource,
-          children: () => [
-            TransferList({ type: 'source' }),
-            TransferControls({}),
-            TransferList({ type: 'target' }),
-          ],
+          children: () => [TransferList({ type: 'source' }), TransferControls({}), TransferList({ type: 'target' })],
         });
 
       const { container } = renderComponent(component);
 
       const sourceList = container.querySelector('[data-type="source"]');
-      const items = Array.from(
-        sourceList?.querySelectorAll('[data-transfer-item]') || [],
-      ) as HTMLElement[];
+      const items = Array.from(sourceList?.querySelectorAll('[data-transfer-item]') || []) as HTMLElement[];
 
       // Rapid clicks
       items[0].click();
@@ -1244,7 +1186,8 @@ describe('Transfer', () => {
       const component = () =>
         Transfer({
           dataSource: mockDataSource,
-          render: renderItem, children: () => TransferList({ type: 'source' }),
+          render: renderItem,
+          children: () => TransferList({ type: 'source' }),
         });
 
       const { container } = renderComponent(component);
@@ -1260,11 +1203,7 @@ describe('Transfer', () => {
         Transfer({
           dataSource: mockDataSource,
           disabled: true,
-          children: () => [
-            TransferList({ type: 'source' }),
-            TransferControls({}),
-            TransferList({ type: 'target' }),
-          ],
+          children: () => [TransferList({ type: 'source' }), TransferControls({}), TransferList({ type: 'target' })],
         });
 
       const { container } = renderComponent(component);
@@ -1285,7 +1224,8 @@ describe('Transfer', () => {
 
       const component = () =>
         Transfer({
-          dataSource: largeData, children: () => TransferList({ type: 'source' }),
+          dataSource: largeData,
+          children: () => TransferList({ type: 'source' }),
         });
 
       const { container } = renderComponent(component);
@@ -1298,11 +1238,7 @@ describe('Transfer', () => {
       const component = () =>
         Transfer({
           dataSource: mockDataSource,
-          children: () => [
-            TransferList({ type: 'source' }),
-            TransferControls({}),
-            TransferList({ type: 'target' }),
-          ],
+          children: () => [TransferList({ type: 'source' }), TransferControls({}), TransferList({ type: 'target' })],
         });
 
       const { container } = renderComponent(component);
@@ -1313,9 +1249,7 @@ describe('Transfer', () => {
 
       // Transfer all items one by one
       for (let i = 0; i < 5; i++) {
-        const items = Array.from(
-          sourceList?.querySelectorAll('[data-transfer-item]') || [],
-        ) as HTMLElement[];
+        const items = Array.from(sourceList?.querySelectorAll('[data-transfer-item]') || []) as HTMLElement[];
 
         if (items.length > 0) {
           items[0].click();

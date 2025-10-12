@@ -10,7 +10,7 @@ import {
   ValidateInput,
   ValidateOutput,
   Validate,
-  createValidationMiddleware
+  createValidationMiddleware,
 } from '../../src/errors/validation.js';
 import { ErrorCode } from '../../src/errors/codes.js';
 
@@ -23,8 +23,8 @@ describe('Validation Errors', () => {
           expected: 'string',
           received: 'number',
           path: ['email'],
-          message: 'Expected string, received number'
-        }
+          message: 'Expected string, received number',
+        },
       ]);
 
       const error = ValidationError.fromZodError(zodError);
@@ -39,7 +39,7 @@ describe('Validation Errors', () => {
     it('should create from field errors', () => {
       const errors = [
         { field: 'email', message: 'Invalid email format', code: 'invalid_email' },
-        { field: 'password', message: 'Password too short', code: 'min_length' }
+        { field: 'password', message: 'Password too short', code: 'min_length' },
       ];
 
       const error = ValidationError.fromFieldErrors(errors);
@@ -53,7 +53,7 @@ describe('Validation Errors', () => {
     it('should get simple format', () => {
       const error = ValidationError.fromFieldErrors([
         { field: 'email', message: 'Invalid email' },
-        { field: 'password', message: 'Too short' }
+        { field: 'password', message: 'Too short' },
       ]);
 
       const simple = error.getSimpleFormat();
@@ -61,15 +61,14 @@ describe('Validation Errors', () => {
       expect(simple).toEqual({
         code: 'VALIDATION_ERROR',
         message: 'Validation failed',
-        errors: ['Invalid email', 'Too short']
+        errors: ['Invalid email', 'Too short'],
       });
     });
 
     it('should get detailed format', () => {
-      const error = ValidationError.fromFieldErrors(
-        [{ field: 'email', message: 'Invalid email', code: 'invalid' }],
-        { message: 'Custom message' }
-      );
+      const error = ValidationError.fromFieldErrors([{ field: 'email', message: 'Invalid email', code: 'invalid' }], {
+        message: 'Custom message',
+      });
 
       const detailed = error.getDetailedFormat();
 
@@ -80,16 +79,16 @@ describe('Validation Errors', () => {
           {
             path: 'email',
             message: 'Invalid email',
-            code: 'invalid'
-          }
-        ]
+            code: 'invalid',
+          },
+        ],
       });
     });
 
     it('should check if field has errors', () => {
       const error = ValidationError.fromFieldErrors([
         { field: 'email', message: 'Invalid' },
-        { field: 'password', message: 'Too short' }
+        { field: 'password', message: 'Too short' },
       ]);
 
       expect(error.hasFieldError('email')).toBe(true);
@@ -101,7 +100,7 @@ describe('Validation Errors', () => {
       const error = ValidationError.fromFieldErrors([
         { field: 'email', message: 'Invalid format', code: 'format' },
         { field: 'email', message: 'Already exists', code: 'unique' },
-        { field: 'password', message: 'Too short', code: 'min' }
+        { field: 'password', message: 'Too short', code: 'min' },
       ]);
 
       const emailErrors = error.getFieldErrors('email');
@@ -112,9 +111,7 @@ describe('Validation Errors', () => {
     });
 
     it('should serialize to JSON correctly', () => {
-      const error = ValidationError.fromFieldErrors([
-        { field: 'email', message: 'Invalid' }
-      ]);
+      const error = ValidationError.fromFieldErrors([{ field: 'email', message: 'Invalid' }]);
 
       const json = error.toJSON();
 
@@ -131,8 +128,8 @@ describe('Validation Errors', () => {
           expected: 'string',
           received: 'number',
           path: ['age'],
-          message: 'Expected string'
-        }
+          message: 'Expected string',
+        },
       ]);
 
       const error = ValidationError.fromZodError(zodError);
@@ -160,12 +157,12 @@ describe('Validation Errors', () => {
     it('should create with validation', () => {
       const schema = z.object({
         field: z.string(),
-        value: z.number()
+        value: z.number(),
       });
 
       const error = ServiceError.withValidation(400, schema, {
         field: 'email',
-        value: 123
+        value: 123,
       });
 
       expect(error.code).toBe(400);
@@ -174,12 +171,12 @@ describe('Validation Errors', () => {
 
     it('should throw ValidationError for invalid data', () => {
       const schema = z.object({
-        field: z.string()
+        field: z.string(),
       });
 
       expect(() => {
         ServiceError.withValidation(400, schema, {
-          field: 123 // Wrong type
+          field: 123, // Wrong type
         });
       }).toThrow(ValidationError);
     });
@@ -189,7 +186,7 @@ describe('Validation Errors', () => {
     it('should validate input successfully', async () => {
       const schema = z.object({
         email: z.string().email(),
-        age: z.number().min(18)
+        age: z.number().min(18),
       });
 
       class TestService {
@@ -202,18 +199,18 @@ describe('Validation Errors', () => {
       const service = new TestService();
       const result = await service.createUser({
         email: 'test@example.com',
-        age: 25
+        age: 25,
       });
 
       expect(result).toEqual({
         email: 'test@example.com',
-        age: 25
+        age: 25,
       });
     });
 
     it('should throw ValidationError for invalid input', async () => {
       const schema = z.object({
-        email: z.string().email()
+        email: z.string().email(),
       });
 
       class TestService {
@@ -225,14 +222,12 @@ describe('Validation Errors', () => {
 
       const service = new TestService();
 
-      await expect(
-        service.createUser({ email: 'invalid-email' })
-      ).rejects.toThrow(ValidationError);
+      await expect(service.createUser({ email: 'invalid-email' })).rejects.toThrow(ValidationError);
     });
 
     it('should pass validated data to method', async () => {
       const schema = z.object({
-        value: z.number()
+        value: z.number(),
       });
 
       class TestService {
@@ -253,7 +248,7 @@ describe('Validation Errors', () => {
     it('should validate output successfully', async () => {
       const schema = z.object({
         id: z.string(),
-        name: z.string()
+        name: z.string(),
       });
 
       class TestService {
@@ -271,7 +266,7 @@ describe('Validation Errors', () => {
 
     it('should throw error for invalid output', async () => {
       const schema = z.object({
-        id: z.string()
+        id: z.string(),
       });
 
       class TestService {
@@ -287,9 +282,11 @@ describe('Validation Errors', () => {
     });
 
     it('should strip extra fields when schema is strict', async () => {
-      const schema = z.object({
-        name: z.string()
-      }).strict();
+      const schema = z
+        .object({
+          name: z.string(),
+        })
+        .strict();
 
       class TestService {
         @ValidateOutput(schema)
@@ -308,12 +305,12 @@ describe('Validation Errors', () => {
   describe('Validate decorator (input + output)', () => {
     it('should validate both input and output', async () => {
       const inputSchema = z.object({
-        id: z.string()
+        id: z.string(),
       });
 
       const outputSchema = z.object({
         id: z.string(),
-        name: z.string()
+        name: z.string(),
       });
 
       class TestService {
@@ -331,11 +328,11 @@ describe('Validation Errors', () => {
 
     it('should throw for invalid input', async () => {
       const inputSchema = z.object({
-        id: z.number()
+        id: z.number(),
       });
 
       const outputSchema = z.object({
-        result: z.boolean()
+        result: z.boolean(),
       });
 
       class TestService {
@@ -347,18 +344,16 @@ describe('Validation Errors', () => {
 
       const service = new TestService();
 
-      await expect(
-        service.process({ id: 'not-a-number' })
-      ).rejects.toThrow(ValidationError);
+      await expect(service.process({ id: 'not-a-number' })).rejects.toThrow(ValidationError);
     });
 
     it('should throw for invalid output', async () => {
       const inputSchema = z.object({
-        value: z.number()
+        value: z.number(),
       });
 
       const outputSchema = z.object({
-        result: z.string()
+        result: z.string(),
       });
 
       class TestService {
@@ -370,16 +365,14 @@ describe('Validation Errors', () => {
 
       const service = new TestService();
 
-      await expect(
-        service.process({ value: 10 })
-      ).rejects.toThrow();
+      await expect(service.process({ value: 10 })).rejects.toThrow();
     });
   });
 
   describe('createValidationMiddleware()', () => {
     it('should create validation middleware', () => {
       const schema = z.object({
-        email: z.string().email()
+        email: z.string().email(),
       });
 
       const middleware = createValidationMiddleware(schema);
@@ -390,7 +383,7 @@ describe('Validation Errors', () => {
 
     it('should throw ValidationError for invalid data', () => {
       const schema = z.object({
-        age: z.number()
+        age: z.number(),
       });
 
       const middleware = createValidationMiddleware(schema);
@@ -402,11 +395,11 @@ describe('Validation Errors', () => {
 
     it('should support stripUnknown option', () => {
       const schema = z.object({
-        name: z.string()
+        name: z.string(),
       });
 
       const middleware = createValidationMiddleware(schema, {
-        stripUnknown: true
+        stripUnknown: true,
       });
 
       const result = middleware({ name: 'test', extra: 'field' });
@@ -417,11 +410,11 @@ describe('Validation Errors', () => {
     it('should support abortEarly option', () => {
       const schema = z.object({
         email: z.string().email(),
-        age: z.number().min(18)
+        age: z.number().min(18),
       });
 
       const middleware = createValidationMiddleware(schema, {
-        abortEarly: true
+        abortEarly: true,
       });
 
       try {
@@ -438,16 +431,16 @@ describe('Validation Errors', () => {
       const schema = z.object({
         user: z.object({
           name: z.string(),
-          email: z.string().email()
-        })
+          email: z.string().email(),
+        }),
       });
 
       const middleware = createValidationMiddleware(schema);
       const result = middleware({
         user: {
           name: 'John',
-          email: 'john@example.com'
-        }
+          email: 'john@example.com',
+        },
       });
 
       expect(result.user.name).toBe('John');
@@ -456,12 +449,12 @@ describe('Validation Errors', () => {
 
     it('should handle arrays', () => {
       const schema = z.object({
-        items: z.array(z.string())
+        items: z.array(z.string()),
       });
 
       const middleware = createValidationMiddleware(schema);
       const result = middleware({
-        items: ['a', 'b', 'c']
+        items: ['a', 'b', 'c'],
       });
 
       expect(result.items).toEqual(['a', 'b', 'c']);

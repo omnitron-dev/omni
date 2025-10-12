@@ -277,7 +277,20 @@ declare global {
       accentHeight?: number | string;
       accumulate?: 'none' | 'sum';
       additive?: 'replace' | 'sum';
-      alignmentBaseline?: 'auto' | 'baseline' | 'before-edge' | 'text-before-edge' | 'middle' | 'central' | 'after-edge' | 'text-after-edge' | 'ideographic' | 'alphabetic' | 'hanging' | 'mathematical' | 'inherit';
+      alignmentBaseline?:
+        | 'auto'
+        | 'baseline'
+        | 'before-edge'
+        | 'text-before-edge'
+        | 'middle'
+        | 'central'
+        | 'after-edge'
+        | 'text-after-edge'
+        | 'ideographic'
+        | 'alphabetic'
+        | 'hanging'
+        | 'mathematical'
+        | 'inherit';
       allowReorder?: 'no' | 'yes';
       alphabetic?: number | string;
       amplitude?: number | string;

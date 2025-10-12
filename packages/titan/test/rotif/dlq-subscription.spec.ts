@@ -37,9 +37,12 @@ describe('NotificationManager - DLQ Subscription', () => {
     await manager.redis.xadd(
       'rotif:dlq',
       '*',
-      'channel', 'test.channel',
-      'payload', JSON.stringify({ failedData: 42 }),
-      'attempt', '3'
+      'channel',
+      'test.channel',
+      'payload',
+      JSON.stringify({ failedData: 42 }),
+      'attempt',
+      '3'
     );
 
     await delay(500);

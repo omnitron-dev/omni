@@ -3,7 +3,7 @@ export { TitanNotificationsModule } from './notifications.module.js';
 export type {
   NotificationModuleOptions,
   NotificationOptionsFactory,
-  NotificationModuleAsyncOptions
+  NotificationModuleAsyncOptions,
 } from './notifications.module.js';
 
 // Service exports
@@ -18,7 +18,7 @@ export type {
   BroadcastOptions,
   BroadcastResult,
   ScheduleOptions,
-  ScheduleResult
+  ScheduleResult,
 } from './notifications.service.js';
 
 // Channel manager exports
@@ -31,7 +31,7 @@ export type {
   DeliveryRecord,
   FailureRecord,
   DeliveryResults,
-  ProcessedNotification
+  ProcessedNotification,
 } from './channel-manager.js';
 
 // Preference manager exports
@@ -41,15 +41,12 @@ export type {
   ChannelPreference,
   CategoryPreference,
   FrequencyLimit,
-  QuietHours
+  QuietHours,
 } from './preference-manager.js';
 
 // Rate limiter exports
 export { RateLimiter } from './rate-limiter.js';
-export type {
-  RateLimitConfig,
-  RateLimitResult
-} from './rate-limiter.js';
+export type { RateLimitConfig, RateLimitResult } from './rate-limiter.js';
 
 // Template engine exports
 export { TemplateEngine } from './template-engine.js';
@@ -58,7 +55,7 @@ export type {
   RenderOptions,
   RenderedContent,
   NotificationTemplate,
-  TemplateVariable
+  TemplateVariable,
 } from './template-engine.js';
 
 // Workflow engine exports
@@ -72,7 +69,7 @@ export type {
   WorkflowContext,
   WorkflowInstance,
   StepResult,
-  WorkflowResult
+  WorkflowResult,
 } from './workflow-engine.js';
 
 // Analytics exports
@@ -88,7 +85,7 @@ export type {
   ReportPeriod,
   TopPerformer,
   Issue,
-  PeriodComparison
+  PeriodComparison,
 } from './analytics.js';
 
 // Constants exports
@@ -111,7 +108,7 @@ export {
   DEFAULT_BATCH_SIZE,
   DEFAULT_RETRY_ATTEMPTS,
   DEFAULT_TIMEOUT,
-  REDIS_KEY_PREFIXES
+  REDIS_KEY_PREFIXES,
 } from './constants.js';
 
 // Utility exports
@@ -126,5 +123,5 @@ export {
   sleep,
   chunk,
   retry,
-  createDeferred
+  createDeferred,
 } from './utils.js';

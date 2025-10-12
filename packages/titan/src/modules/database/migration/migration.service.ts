@@ -143,7 +143,7 @@ export class MigrationService extends EventEmitter {
       // Filter migrations to run
       let toRun = status.pending;
       if (opts.versions) {
-        toRun = toRun.filter(m => opts.versions!.includes(m.version));
+        toRun = toRun.filter((m) => opts.versions!.includes(m.version));
       }
 
       if (toRun.length === 0) {
@@ -159,12 +159,7 @@ export class MigrationService extends EventEmitter {
           throw Errors.notFound('Migration', metadata.version);
         }
 
-        const migrationResult = await this.runMigration(
-          migration,
-          metadata,
-          'up',
-          opts
-        );
+        const migrationResult = await this.runMigration(migration, metadata, 'up', opts);
 
         result.migrations.push(migrationResult);
 
@@ -173,7 +168,7 @@ export class MigrationService extends EventEmitter {
         }
       }
 
-      result.success = result.migrations.every(m => m.status === 'success');
+      result.success = result.migrations.every((m) => m.status === 'success');
       result.totalTime = Date.now() - startTime;
 
       return result;
@@ -227,7 +222,7 @@ export class MigrationService extends EventEmitter {
 
       // Determine what to rollback
       if (opts.targetVersion) {
-        const targetIndex = toRollback.findIndex(m => m.version === opts.targetVersion);
+        const targetIndex = toRollback.findIndex((m) => m.version === opts.targetVersion);
         if (targetIndex === -1) {
           throw Errors.notFound('Target version', opts.targetVersion);
         }
@@ -254,12 +249,7 @@ export class MigrationService extends EventEmitter {
           throw Errors.notFound('Migration', applied.version);
         }
 
-        const migrationResult = await this.runMigration(
-          migration,
-          metadata,
-          'down',
-          opts
-        );
+        const migrationResult = await this.runMigration(migration, metadata, 'down', opts);
 
         result.migrations.push(migrationResult);
 
@@ -268,7 +258,7 @@ export class MigrationService extends EventEmitter {
         }
       }
 
-      result.success = result.migrations.every(m => m.status === 'success');
+      result.success = result.migrations.every((m) => m.status === 'success');
       result.totalTime = Date.now() - startTime;
 
       return result;
@@ -311,11 +301,11 @@ export class MigrationService extends EventEmitter {
 
     // Get all available migrations
     const allMetadata = await this.provider.getAllMetadata();
-    const appliedVersions = new Set(applied.map(m => m.version));
+    const appliedVersions = new Set(applied.map((m) => m.version));
 
     // Get pending migrations
     const pending = allMetadata
-      .filter(m => !appliedVersions.has(m.version))
+      .filter((m) => !appliedVersions.has(m.version))
       .sort((a, b) => a.version.localeCompare(b.version));
 
     // Determine current and latest versions
@@ -329,7 +319,7 @@ export class MigrationService extends EventEmitter {
 
     // Check for missing migrations (applied but not available)
     for (const appliedMigration of applied) {
-      if (!allMetadata.find(m => m.version === appliedMigration.version)) {
+      if (!allMetadata.find((m) => m.version === appliedMigration.version)) {
         issues.push(`Applied migration ${appliedMigration.version} not found in available migrations`);
       }
     }
@@ -338,7 +328,7 @@ export class MigrationService extends EventEmitter {
     if (this.config.validateChecksums) {
       for (const appliedMigration of applied) {
         if (appliedMigration.checksum) {
-          const metadata = allMetadata.find(m => m.version === appliedMigration.version);
+          const metadata = allMetadata.find((m) => m.version === appliedMigration.version);
           if (metadata) {
             const migration = await this.provider.getMigration(metadata.version);
             if (migration) {
@@ -432,9 +422,8 @@ export class ${this.toPascalCase(name)}Migration implements IMigration {
     options: MigrationRunOptions
   ): Promise<any> {
     const startTime = Date.now();
-    const eventType = direction === 'up'
-      ? 'migration.starting' as MigrationEventType
-      : 'rollback.starting' as MigrationEventType;
+    const eventType =
+      direction === 'up' ? ('migration.starting' as MigrationEventType) : ('rollback.starting' as MigrationEventType);
 
     this.emitEvent({
       type: eventType,
@@ -476,9 +465,10 @@ export class ${this.toPascalCase(name)}Migration implements IMigration {
         await this.removeMigrationRecord(metadata.version, options.connection);
       }
 
-      const completedEventType = direction === 'up'
-        ? 'migration.completed' as MigrationEventType
-        : 'rollback.completed' as MigrationEventType;
+      const completedEventType =
+        direction === 'up'
+          ? ('migration.completed' as MigrationEventType)
+          : ('rollback.completed' as MigrationEventType);
 
       this.emitEvent({
         type: completedEventType,
@@ -488,7 +478,9 @@ export class ${this.toPascalCase(name)}Migration implements IMigration {
         executionTime,
       });
 
-      this.logger.info(`✓ ${direction === 'up' ? 'Applied' : 'Rolled back'} migration ${metadata.version}: ${metadata.name} (${executionTime}ms)`);
+      this.logger.info(
+        `✓ ${direction === 'up' ? 'Applied' : 'Rolled back'} migration ${metadata.version}: ${metadata.name} (${executionTime}ms)`
+      );
 
       return {
         version: metadata.version,
@@ -498,9 +490,8 @@ export class ${this.toPascalCase(name)}Migration implements IMigration {
         status: 'success',
       };
     } catch (error) {
-      const failedEventType = direction === 'up'
-        ? 'migration.failed' as MigrationEventType
-        : 'rollback.failed' as MigrationEventType;
+      const failedEventType =
+        direction === 'up' ? ('migration.failed' as MigrationEventType) : ('rollback.failed' as MigrationEventType);
 
       this.emitEvent({
         type: failedEventType,
@@ -536,9 +527,7 @@ export class ${this.toPascalCase(name)}Migration implements IMigration {
 
     await Promise.race([
       migration[direction](db),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(Errors.timeout('database migration', timeoutMs)), timeoutMs)
-      ),
+      new Promise((_, reject) => setTimeout(() => reject(Errors.timeout('database migration', timeoutMs)), timeoutMs)),
     ]);
   }
 
@@ -601,9 +590,7 @@ export class ${this.toPascalCase(name)}Migration implements IMigration {
    * Convert string to PascalCase
    */
   private toPascalCase(str: string): string {
-    return str
-      .replace(/[-_\s]+(.)?/g, (_, c) => c ? c.toUpperCase() : '')
-      .replace(/^./, c => c.toUpperCase());
+    return str.replace(/[-_\s]+(.)?/g, (_, c) => (c ? c.toUpperCase() : '')).replace(/^./, (c) => c.toUpperCase());
   }
 
   /**

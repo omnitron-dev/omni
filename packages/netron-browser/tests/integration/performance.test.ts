@@ -187,9 +187,7 @@ describe('Performance Benchmarks - WebSocket', () => {
       const count = 500;
       const start = performance.now();
 
-      const promises = Array.from({ length: count }, (_, i) =>
-        client.invoke('calculator@1.0.0', 'add', [i, 1])
-      );
+      const promises = Array.from({ length: count }, (_, i) => client.invoke('calculator@1.0.0', 'add', [i, 1]));
 
       await Promise.all(promises);
 
@@ -210,15 +208,9 @@ describe('Performance Benchmarks - WebSocket', () => {
       const start = performance.now();
 
       const operations = [
-        ...Array.from({ length: operationsPerType }, (_, i) =>
-          client.invoke('calculator@1.0.0', 'add', [i, 1])
-        ),
-        ...Array.from({ length: operationsPerType }, (_, i) =>
-          client.invoke('calculator@1.0.0', 'multiply', [i, 2])
-        ),
-        ...Array.from({ length: operationsPerType }, (_, i) =>
-          client.invoke('echo@1.0.0', 'echoNumber', [i])
-        ),
+        ...Array.from({ length: operationsPerType }, (_, i) => client.invoke('calculator@1.0.0', 'add', [i, 1])),
+        ...Array.from({ length: operationsPerType }, (_, i) => client.invoke('calculator@1.0.0', 'multiply', [i, 2])),
+        ...Array.from({ length: operationsPerType }, (_, i) => client.invoke('echo@1.0.0', 'echoNumber', [i])),
       ];
 
       await Promise.all(operations);
@@ -300,9 +292,7 @@ describe('Performance Benchmarks - WebSocket', () => {
       while (Date.now() - startTime < duration) {
         const batchStart = performance.now();
 
-        const batch = Array.from({ length: batchSize }, (_, i) =>
-          client.invoke('calculator@1.0.0', 'add', [i, 1])
-        );
+        const batch = Array.from({ length: batchSize }, (_, i) => client.invoke('calculator@1.0.0', 'add', [i, 1]));
 
         await Promise.all(batch);
 
@@ -427,18 +417,14 @@ describe('Performance Benchmarks - HTTP vs WebSocket', () => {
 
       // HTTP throughput
       const httpStart = performance.now();
-      const httpOps = Array.from({ length: count }, (_, i) =>
-        httpClient.invoke('calculator@1.0.0', 'add', [i, 1])
-      );
+      const httpOps = Array.from({ length: count }, (_, i) => httpClient.invoke('calculator@1.0.0', 'add', [i, 1]));
       await Promise.all(httpOps);
       const httpDuration = performance.now() - httpStart;
       const httpThroughput = (count / httpDuration) * 1000;
 
       // WebSocket throughput
       const wsStart = performance.now();
-      const wsOps = Array.from({ length: count }, (_, i) =>
-        wsClient.invoke('calculator@1.0.0', 'add', [i, 1])
-      );
+      const wsOps = Array.from({ length: count }, (_, i) => wsClient.invoke('calculator@1.0.0', 'add', [i, 1]));
       await Promise.all(wsOps);
       const wsDuration = performance.now() - wsStart;
       const wsThroughput = (count / wsDuration) * 1000;

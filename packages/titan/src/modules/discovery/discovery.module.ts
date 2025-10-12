@@ -1,6 +1,6 @@
 /**
  * Discovery Module for Titan Framework
- * 
+ *
  * Provides service discovery capabilities as a Titan module.
  */
 
@@ -16,7 +16,7 @@ import {
   LOGGER_TOKEN,
   DISCOVERY_OPTIONS_TOKEN,
   DiscoveryOptions,
-  IDiscoveryService
+  IDiscoveryService,
 } from './types.js';
 
 // Module configuration interface
@@ -38,10 +38,10 @@ export const DiscoveryModuleToken: Token<DiscoveryModule> = createToken<Discover
     DiscoveryService,
     {
       provide: DISCOVERY_SERVICE_TOKEN,
-      useExisting: DiscoveryService
-    }
+      useExisting: DiscoveryService,
+    },
   ],
-  exports: [DISCOVERY_SERVICE_TOKEN]
+  exports: [DISCOVERY_SERVICE_TOKEN],
 })
 export class DiscoveryModule implements IModule {
   name = 'discovery';

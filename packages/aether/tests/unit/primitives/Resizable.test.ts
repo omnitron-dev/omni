@@ -234,7 +234,8 @@ describe('Resizable', () => {
     });
 
     it('should have data-panel-id attribute', () => {
-      const component = () => Resizable({ children: () => ResizablePanel({ id: 'custom-panel', children: 'Content' }) });
+      const component = () =>
+        Resizable({ children: () => ResizablePanel({ id: 'custom-panel', children: 'Content' }) });
       const { container, cleanup } = renderComponent(component);
 
       const panel = container.querySelector('[data-resizable-panel]');
@@ -443,11 +444,14 @@ describe('Resizable', () => {
   // Composition tests
   describe('Composition', () => {
     it('should render complete resizable structure', () => {
-      const component = () => Resizable({ children: () => [
-          ResizablePanel({ children: 'Panel 1' }),
-          ResizableHandle({}),
-          ResizablePanel({ children: 'Panel 2' }),
-        ] });
+      const component = () =>
+        Resizable({
+          children: () => [
+            ResizablePanel({ children: 'Panel 1' }),
+            ResizableHandle({}),
+            ResizablePanel({ children: 'Panel 2' }),
+          ],
+        });
       const { container, cleanup } = renderComponent(component);
 
       const resizable = container.querySelector('[data-resizable-container]');
@@ -462,13 +466,16 @@ describe('Resizable', () => {
     });
 
     it('should render multiple panels with handles', () => {
-      const component = () => Resizable({ children: () => [
-          ResizablePanel({ children: 'Panel 1' }),
-          ResizableHandle({}),
-          ResizablePanel({ children: 'Panel 2' }),
-          ResizableHandle({}),
-          ResizablePanel({ children: 'Panel 3' }),
-        ] });
+      const component = () =>
+        Resizable({
+          children: () => [
+            ResizablePanel({ children: 'Panel 1' }),
+            ResizableHandle({}),
+            ResizablePanel({ children: 'Panel 2' }),
+            ResizableHandle({}),
+            ResizablePanel({ children: 'Panel 3' }),
+          ],
+        });
       const { container, cleanup } = renderComponent(component);
 
       const panels = container.querySelectorAll('[data-resizable-panel]');
@@ -729,15 +736,16 @@ describe('Resizable', () => {
   // Integration tests
   describe('Integration', () => {
     it('should work with horizontal layout', () => {
-      const component = () => Resizable({
-        orientation: 'horizontal',
-        defaultSizes: [40, 60],
-        children: () => [
-          ResizablePanel({ id: 'left', children: 'Left Panel' }),
-          ResizableHandle({}),
-          ResizablePanel({ id: 'right', children: 'Right Panel' }),
-        ]
-      });
+      const component = () =>
+        Resizable({
+          orientation: 'horizontal',
+          defaultSizes: [40, 60],
+          children: () => [
+            ResizablePanel({ id: 'left', children: 'Left Panel' }),
+            ResizableHandle({}),
+            ResizablePanel({ id: 'right', children: 'Right Panel' }),
+          ],
+        });
       const { container, cleanup } = renderComponent(component);
 
       const resizable = container.querySelector('[data-resizable-container]');
@@ -752,15 +760,16 @@ describe('Resizable', () => {
     });
 
     it('should work with vertical layout', () => {
-      const component = () => Resizable({
-        orientation: 'vertical',
-        defaultSizes: [30, 70],
-        children: () => [
-          ResizablePanel({ id: 'top', children: 'Top Panel' }),
-          ResizableHandle({}),
-          ResizablePanel({ id: 'bottom', children: 'Bottom Panel' }),
-        ]
-      });
+      const component = () =>
+        Resizable({
+          orientation: 'vertical',
+          defaultSizes: [30, 70],
+          children: () => [
+            ResizablePanel({ id: 'top', children: 'Top Panel' }),
+            ResizableHandle({}),
+            ResizablePanel({ id: 'bottom', children: 'Bottom Panel' }),
+          ],
+        });
       const { container, cleanup } = renderComponent(component);
 
       const resizable = container.querySelector('[data-resizable-container]');
@@ -775,11 +784,14 @@ describe('Resizable', () => {
     });
 
     it('should maintain correct structure hierarchy', () => {
-      const component = () => Resizable({ children: () => [
-          ResizablePanel({ children: 'Panel 1' }),
-          ResizableHandle({}),
-          ResizablePanel({ children: 'Panel 2' }),
-        ] });
+      const component = () =>
+        Resizable({
+          children: () => [
+            ResizablePanel({ children: 'Panel 1' }),
+            ResizableHandle({}),
+            ResizablePanel({ children: 'Panel 2' }),
+          ],
+        });
       const { container, cleanup } = renderComponent(component);
 
       const resizable = container.querySelector('[data-resizable-container]');

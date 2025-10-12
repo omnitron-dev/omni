@@ -28,7 +28,8 @@ export const Affix = defineComponent<AffixProps>((props) => {
     if (!el) return;
 
     const rect = el.getBoundingClientRect();
-    const shouldAffix = offsetTop !== undefined ? rect.top <= offsetTop : rect.bottom >= (window.innerHeight - (offsetBottom ?? 0));
+    const shouldAffix =
+      offsetTop !== undefined ? rect.top <= offsetTop : rect.bottom >= window.innerHeight - (offsetBottom ?? 0);
 
     if (shouldAffix !== affixed()) {
       affixed.set(shouldAffix);

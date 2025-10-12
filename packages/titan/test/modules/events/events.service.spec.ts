@@ -23,9 +23,9 @@ describe('EventsService', () => {
 
     container.register(EVENT_EMITTER_TOKEN, { useValue: emitter });
     container.register(EVENT_METADATA_SERVICE_TOKEN, { useValue: metadataService });
-    container.register(EventsService, { 
+    container.register(EventsService, {
       useClass: EventsService,
-      inject: [EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN]
+      inject: [EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN],
     });
 
     service = container.resolve(EventsService);
@@ -47,7 +47,7 @@ describe('EventsService', () => {
         { foo: 'bar' },
         expect.objectContaining({
           id: expect.any(String),
-          timestamp: expect.any(Number)
+          timestamp: expect.any(Number),
         })
       );
     });
@@ -56,14 +56,18 @@ describe('EventsService', () => {
       const handler = jest.fn();
       service.subscribe('test.event', handler);
 
-      await service.emit('test.event', { data: 'test' }, {
-        metadata: { userId: 'user123' }
-      });
+      await service.emit(
+        'test.event',
+        { data: 'test' },
+        {
+          metadata: { userId: 'user123' },
+        }
+      );
 
       expect(handler).toHaveBeenCalledWith(
         { data: 'test' },
         expect.objectContaining({
-          userId: 'user123'
+          userId: 'user123',
         })
       );
     });
@@ -96,13 +100,13 @@ describe('EventsService', () => {
       const results: any[] = [];
 
       service.subscribe('async.event', async (data) => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         results.push({ handler: 1, data });
         return 'result1';
       });
 
       service.subscribe('async.event', async (data) => {
-        await new Promise(resolve => setTimeout(resolve, 5));
+        await new Promise((resolve) => setTimeout(resolve, 5));
         results.push({ handler: 2, data });
         return 'result2';
       });
@@ -121,13 +125,13 @@ describe('EventsService', () => {
       const results: any[] = [];
 
       service.subscribe('serial.event', async (data) => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         results.push({ handler: 1, timestamp: Date.now() });
         return 'result1';
       });
 
       service.subscribe('serial.event', async (data) => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         results.push({ handler: 2, timestamp: Date.now() });
         return 'result2';
       });
@@ -147,11 +151,7 @@ describe('EventsService', () => {
 
       service.subscribe('reduce.event', (data, metadata, acc) => acc * 2);
 
-      const result = await service.emitReduce(
-        'reduce.event',
-        { value: 5 },
-        10
-      );
+      const result = await service.emitReduce('reduce.event', { value: 5 }, 10);
 
       expect(result).toBe(30); // (10 + 5) * 2
     });
@@ -172,7 +172,7 @@ describe('EventsService', () => {
       const handler = jest.fn();
 
       service.subscribe('filter.event', handler, {
-        filter: (data) => data.pass === true
+        filter: (data) => data.pass === true,
       });
 
       await service.emit('filter.event', { pass: false });
@@ -185,7 +185,7 @@ describe('EventsService', () => {
       const handler = jest.fn();
 
       service.subscribe('transform.event', handler, {
-        transform: (data) => ({ ...data, transformed: true })
+        transform: (data) => ({ ...data, transformed: true }),
       });
 
       await service.emit('transform.event', { original: true });
@@ -193,7 +193,7 @@ describe('EventsService', () => {
       expect(handler).toHaveBeenCalledWith(
         expect.objectContaining({
           original: true,
-          transformed: true
+          transformed: true,
         }),
         expect.any(Object)
       );
@@ -201,23 +201,23 @@ describe('EventsService', () => {
 
     it('should handle timeout option', async () => {
       const handler = jest.fn(async () => {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
         return 'completed';
       });
 
       const errorHandler = jest.fn();
-      
+
       service.subscribe('timeout.event', handler, {
         timeout: 50,
         errorBoundary: true,
-        onError: errorHandler
+        onError: errorHandler,
       });
 
       await service.emit('timeout.event', {});
-      
+
       // Give some time for the timeout to trigger
-      await new Promise(resolve => setTimeout(resolve, 60));
-      
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
       expect(errorHandler).toHaveBeenCalledWith(
         expect.objectContaining({ message: expect.stringContaining('timed out after') }),
         {},
@@ -238,14 +238,14 @@ describe('EventsService', () => {
       service.subscribe('retry.event', handler, {
         retry: {
           attempts: 3,
-          delay: 10
-        }
+          delay: 10,
+        },
       });
 
       await service.emit('retry.event', {});
-      
+
       // Give time for retries to complete
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(attempts).toBe(3);
     });
@@ -258,7 +258,7 @@ describe('EventsService', () => {
 
       service.subscribe('error.event', handler, {
         errorBoundary: true,
-        onError: errorHandler
+        onError: errorHandler,
       });
 
       await service.emit('error.event', {});
@@ -280,20 +280,14 @@ describe('EventsService', () => {
       await service.emit('once.event', { second: true });
 
       expect(handler).toHaveBeenCalledTimes(1);
-      expect(handler).toHaveBeenCalledWith(
-        { first: true },
-        expect.any(Object)
-      );
+      expect(handler).toHaveBeenCalledWith({ first: true }, expect.any(Object));
     });
   });
 
   describe('subscribeMany', () => {
     it('should subscribe to multiple events', async () => {
       const handler = jest.fn();
-      const subscriptions = service.subscribeMany(
-        ['event1', 'event2', 'event3'],
-        handler
-      );
+      const subscriptions = service.subscribeMany(['event1', 'event2', 'event3'], handler);
 
       expect(subscriptions).toHaveLength(3);
 
@@ -357,9 +351,7 @@ describe('EventsService', () => {
     });
 
     it('should timeout if event does not occur', async () => {
-      await expect(
-        service.waitFor('never.event', 100)
-      ).rejects.toThrow(/timed out after/);
+      await expect(service.waitFor('never.event', 100)).rejects.toThrow(/timed out after/);
     });
 
     it('should filter events when waiting', async () => {
@@ -368,11 +360,7 @@ describe('EventsService', () => {
         service.emit('filtered.event', { pass: true });
       }, 50);
 
-      const data = await service.waitFor(
-        'filtered.event',
-        1000,
-        (data) => data.pass === true
-      );
+      const data = await service.waitFor('filtered.event', 1000, (data) => data.pass === true);
 
       expect(data).toEqual({ pass: true });
     });
@@ -388,12 +376,9 @@ describe('EventsService', () => {
       expect(jobId).toBeDefined();
       expect(handler).not.toHaveBeenCalled();
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
-      expect(handler).toHaveBeenCalledWith(
-        { data: 'test' },
-        expect.any(Object)
-      );
+      expect(handler).toHaveBeenCalledWith({ data: 'test' }, expect.any(Object));
     });
 
     it('should cancel a scheduled event', async () => {
@@ -405,7 +390,7 @@ describe('EventsService', () => {
 
       expect(cancelled).toBe(true);
 
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       expect(handler).not.toHaveBeenCalled();
     });
@@ -427,7 +412,7 @@ describe('EventsService', () => {
         expect.arrayContaining([
           expect.objectContaining({ data: { metric: 1 } }),
           expect.objectContaining({ data: { metric: 2 } }),
-          expect.objectContaining({ data: { metric: 3 } })
+          expect.objectContaining({ data: { metric: 3 } }),
         ])
       );
     });
@@ -446,7 +431,7 @@ describe('EventsService', () => {
 
       expect(handler).toHaveBeenCalledTimes(1);
 
-      await new Promise(resolve => setTimeout(resolve, 60));
+      await new Promise((resolve) => setTimeout(resolve, 60));
 
       await service.emit('throttled.event', { data: 4 });
 
@@ -467,13 +452,10 @@ describe('EventsService', () => {
 
       expect(handler).not.toHaveBeenCalled();
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(handler).toHaveBeenCalledTimes(1);
-      expect(handler).toHaveBeenCalledWith(
-        { data: 3 },
-        expect.any(Object)
-      );
+      expect(handler).toHaveBeenCalledWith({ data: 3 }, expect.any(Object));
     });
   });
 
@@ -506,28 +488,32 @@ describe('EventsService', () => {
 
   describe('context creation', () => {
     it('should create event context', () => {
-      const context = service.createContext('test.event', { data: 'test' }, {
-        userId: 'user123',
-        sessionId: 'session456'
-      });
+      const context = service.createContext(
+        'test.event',
+        { data: 'test' },
+        {
+          userId: 'user123',
+          sessionId: 'session456',
+        }
+      );
 
       expect(context).toMatchObject({
         event: 'test.event',
         data: { data: 'test' },
         metadata: expect.objectContaining({
           userId: 'user123',
-          sessionId: 'session456'
+          sessionId: 'session456',
         }),
         userId: 'user123',
-        sessionId: 'session456'
+        sessionId: 'session456',
       });
     });
   });
 
   describe('lifecycle methods', () => {
     it('should get listener count for an event', () => {
-      service.subscribe('test.event', () => { });
-      service.subscribe('test.event', () => { });
+      service.subscribe('test.event', () => {});
+      service.subscribe('test.event', () => {});
 
       const count = service.getListenerCount('test.event');
 
@@ -535,9 +521,9 @@ describe('EventsService', () => {
     });
 
     it('should get all event names', () => {
-      service.subscribe('event1', () => { });
-      service.subscribe('event2', () => { });
-      service.subscribe('event3', () => { });
+      service.subscribe('event1', () => {});
+      service.subscribe('event2', () => {});
+      service.subscribe('event3', () => {});
 
       const names = service.getEventNames();
 
@@ -549,7 +535,7 @@ describe('EventsService', () => {
     it('should check if event has listeners', () => {
       expect(service.hasListeners('test.event')).toBe(false);
 
-      service.subscribe('test.event', () => { });
+      service.subscribe('test.event', () => {});
 
       expect(service.hasListeners('test.event')).toBe(true);
     });
@@ -566,24 +552,24 @@ describe('EventsService', () => {
 
     it('should timeout handler execution when configured', async () => {
       const handler = jest.fn(async () => {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       });
 
       // Note: Without error boundary, timeout errors in event handlers
       // are not propagated, but the handler execution is cancelled
       service.subscribe('timeout.event', handler, {
-        timeout: 100
+        timeout: 100,
       });
 
       const startTime = Date.now();
-      
+
       // Emit should succeed but handler should timeout internally
       const result = await service.emit('timeout.event', {});
-      
+
       const elapsed = Date.now() - startTime;
       expect(result).toBe(true); // Event emission succeeds
       expect(elapsed).toBeLessThan(200); // Should return quickly due to timeout
-      
+
       // Verify the handler was called but didn't complete
       expect(handler).toHaveBeenCalled();
     });
@@ -593,10 +579,10 @@ describe('EventsService', () => {
       // rejections from the timeout mechanism even though errors are properly caught
       // by the error boundary. This is a known issue with async event handlers and Jest.
       // The functionality works correctly in production.
-      
+
       const errors: Error[] = [];
       const handler = jest.fn().mockImplementation(async () => {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       });
 
       const onError = jest.fn((error: Error) => {
@@ -606,15 +592,15 @@ describe('EventsService', () => {
       service.subscribe('timeout.event.boundary', handler, {
         timeout: 100,
         errorBoundary: true,
-        onError
+        onError,
       });
 
       const result = await service.emit('timeout.event.boundary', {});
       expect(result).toBe(true);
-      
+
       // Give time for the async error handler to be called
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
       // The onError callback should have been called with the timeout error
       expect(onError).toHaveBeenCalled();
       expect(errors).toHaveLength(1);

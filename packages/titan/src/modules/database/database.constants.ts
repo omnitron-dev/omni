@@ -30,9 +30,7 @@ export const DATABASE_TESTING_SERVICE = Symbol('DATABASE_TESTING_SERVICE');
  * Get injection token for a specific database connection
  */
 export function getDatabaseConnectionToken(name: string = DATABASE_DEFAULT_CONNECTION): string | symbol {
-  return name === DATABASE_DEFAULT_CONNECTION
-    ? DATABASE_CONNECTION
-    : `DATABASE_CONNECTION:${name}`;
+  return name === DATABASE_DEFAULT_CONNECTION ? DATABASE_CONNECTION : `DATABASE_CONNECTION:${name}`;
 }
 
 /**
@@ -149,34 +147,20 @@ export const DIALECT_SETTINGS = {
     supportsReturning: true,
     supportsOnConflict: true,
     supportsJsonb: true,
-    transactionIsolationLevels: [
-      'read uncommitted',
-      'read committed',
-      'repeatable read',
-      'serializable',
-    ],
+    transactionIsolationLevels: ['read uncommitted', 'read committed', 'repeatable read', 'serializable'],
   },
   mysql: {
     defaultPort: 3306,
     supportsReturning: false,
     supportsOnConflict: true, // ON DUPLICATE KEY UPDATE
     supportsJsonb: true, // JSON type
-    transactionIsolationLevels: [
-      'read uncommitted',
-      'read committed',
-      'repeatable read',
-      'serializable',
-    ],
+    transactionIsolationLevels: ['read uncommitted', 'read committed', 'repeatable read', 'serializable'],
   },
   sqlite: {
     defaultPort: null,
     supportsReturning: true,
     supportsOnConflict: true, // ON CONFLICT
     supportsJsonb: true, // JSON functions
-    transactionIsolationLevels: [
-      'deferred',
-      'immediate',
-      'exclusive',
-    ],
+    transactionIsolationLevels: ['deferred', 'immediate', 'exclusive'],
   },
 } as const;

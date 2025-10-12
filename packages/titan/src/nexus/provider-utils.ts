@@ -4,14 +4,7 @@
  * Utility functions for working with providers
  */
 
-import type {
-  Provider,
-  InjectionToken,
-  Constructor,
-  Factory,
-  AsyncFactory,
-  Scope
-} from './types.js';
+import type { Provider, InjectionToken, Constructor, Factory, AsyncFactory, Scope } from './types.js';
 
 /**
  * Check if a value is a constructor
@@ -29,8 +22,10 @@ export function isAsyncProvider(provider: Provider): boolean {
   }
   if ('useFactory' in provider && provider.useFactory) {
     const factory = provider.useFactory as any;
-    return factory.constructor.name === 'AsyncFunction' ||
-      (typeof factory === 'function' && factory.toString().includes('__awaiter'));
+    return (
+      factory.constructor.name === 'AsyncFunction' ||
+      (typeof factory === 'function' && factory.toString().includes('__awaiter'))
+    );
   }
   return false;
 }
@@ -44,10 +39,13 @@ export function createValueProvider<T>(
   value: T,
   options?: { validate?: string | ((value: T) => void) }
 ): [InjectionToken<T>, Provider<T>] {
-  return [token, {
-    useValue: value,
-    ...(options?.validate && { validate: options.validate })
-  }];
+  return [
+    token,
+    {
+      useValue: value,
+      ...(options?.validate && { validate: options.validate }),
+    },
+  ];
 }
 
 /**
@@ -65,14 +63,17 @@ export function createFactoryProvider<T>(
     retry?: { maxAttempts: number; delay: number };
   }
 ): [InjectionToken<T>, Provider<T>] {
-  return [token, {
-    useFactory: factory as Factory<T> | AsyncFactory<T>,
-    ...(options?.inject && { inject: options.inject }),
-    ...(options?.scope && { scope: options.scope }),
-    ...(options?.async && { async: options.async }),
-    ...(options?.timeout && { timeout: options.timeout }),
-    ...(options?.retry && { retry: options.retry })
-  }];
+  return [
+    token,
+    {
+      useFactory: factory as Factory<T> | AsyncFactory<T>,
+      ...(options?.inject && { inject: options.inject }),
+      ...(options?.scope && { scope: options.scope }),
+      ...(options?.async && { async: options.async }),
+      ...(options?.timeout && { timeout: options.timeout }),
+      ...(options?.retry && { retry: options.retry }),
+    },
+  ];
 }
 
 /**
@@ -87,11 +88,14 @@ export function createClassProvider<T>(
     inject?: InjectionToken[];
   }
 ): [InjectionToken<T>, Provider<T>] {
-  return [token, {
-    useClass,
-    ...(options?.scope && { scope: options.scope }),
-    ...(options?.inject && { inject: options.inject })
-  }];
+  return [
+    token,
+    {
+      useClass,
+      ...(options?.scope && { scope: options.scope }),
+      ...(options?.inject && { inject: options.inject }),
+    },
+  ];
 }
 
 /**
@@ -102,9 +106,12 @@ export function createTokenProvider<T>(
   token: InjectionToken<T>,
   useToken: InjectionToken<T>
 ): [InjectionToken<T>, Provider<T>] {
-  return [token, {
-    useToken
-  }];
+  return [
+    token,
+    {
+      useToken,
+    },
+  ];
 }
 
 /**
@@ -115,7 +122,7 @@ export function createMultiProvider<T>(
   token: InjectionToken<T>,
   providers: Array<Provider<T>>
 ): Array<[InjectionToken<T>, Provider<T>]> {
-  return providers.map(provider => {
+  return providers.map((provider) => {
     if (typeof provider === 'object' && provider !== null) {
       return [token, { ...provider, multi: true }];
     }
@@ -148,19 +155,25 @@ export function createConditionalProvider<T>(
   fallback?: Provider<T>
 ): [InjectionToken<T>, Provider<T>] {
   if (typeof provider === 'object' && provider !== null && typeof provider !== 'function') {
-    return [token, {
-      ...provider,
-      condition,
-      ...(fallback && { fallback })
-    }];
+    return [
+      token,
+      {
+        ...provider,
+        condition,
+        ...(fallback && { fallback }),
+      },
+    ];
   }
   // For constructor providers, create a class provider with condition
   if (typeof provider === 'function') {
-    return [token, {
-      useClass: provider as Constructor<T>,
-      condition,
-      ...(fallback && { fallback })
-    }];
+    return [
+      token,
+      {
+        useClass: provider as Constructor<T>,
+        condition,
+        ...(fallback && { fallback }),
+      },
+    ];
   }
   return [token, provider];
 }

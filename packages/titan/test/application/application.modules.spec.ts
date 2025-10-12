@@ -12,11 +12,7 @@ import { describe, it, expect, afterEach, jest } from '@jest/globals';
 
 import { Application, createApp } from '../../src/application.js';
 import { createToken } from '../../src/nexus/index.js';
-import {
-  ApplicationState,
-  ApplicationEvent,
-  IModule
-} from '../../src/types.js';
+import { ApplicationState, ApplicationEvent, IModule } from '../../src/types.js';
 import {
   SimpleModule,
   DatabaseModule,
@@ -26,7 +22,7 @@ import {
   createCustomModule,
   createApplicationWithDependencies,
   createApplicationWithCircularDeps,
-  createFullStackApplication
+  createFullStackApplication,
 } from '../fixtures/test-modules.js';
 import { Module } from '../../src/decorators/index.js';
 
@@ -85,7 +81,7 @@ describe('Application Module Management', () => {
       app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
 
       @Module({
-        providers: [{ provide: 'test', useValue: 'value' }]
+        providers: [{ provide: 'test', useValue: 'value' }],
       })
       class TestModule extends SimpleModule {
         override readonly name = 'test-module';
@@ -110,7 +106,7 @@ describe('Application Module Management', () => {
         name: 'plain-module',
         version: '1.0.0',
         onStart: jest.fn(),
-        onStop: jest.fn()
+        onStop: jest.fn(),
       };
 
       await app.registerModule(module);
@@ -165,7 +161,7 @@ describe('Application Module Management', () => {
       const module: IModule = {
         name: 'partial',
         version: '1.0.0',
-        onStart: jest.fn()
+        onStart: jest.fn(),
         // No onStop, onRegister, onDestroy
       };
 
@@ -182,7 +178,7 @@ describe('Application Module Management', () => {
 
       const module: IModule = {
         name: 'empty',
-        version: '1.0.0'
+        version: '1.0.0',
         // No lifecycle methods at all
       };
 
@@ -199,9 +195,15 @@ describe('Application Module Management', () => {
       const module: IModule = {
         name: 'check-app',
         version: '1.0.0',
-        onRegister: async (a) => { registerApp = a; },
-        onStart: async (a) => { startApp = a; },
-        onStop: async (a) => { stopApp = a; }
+        onRegister: async (a) => {
+          registerApp = a;
+        },
+        onStart: async (a) => {
+          startApp = a;
+        },
+        onStop: async (a) => {
+          stopApp = a;
+        },
       };
 
       app.use(module);
@@ -267,7 +269,7 @@ describe('Application Module Management', () => {
       const module: IModule = {
         name: 'dependent',
         version: '1.0.0',
-        dependencies: ['missing-module']
+        dependencies: ['missing-module'],
       };
 
       app.use(module);
@@ -309,7 +311,7 @@ describe('Application Module Management', () => {
       const module: IModule = {
         name: 'no-deps',
         version: '1.0.0',
-        dependencies: []
+        dependencies: [],
       };
 
       app.use(module);
@@ -327,8 +329,8 @@ describe('Application Module Management', () => {
         disableGracefulShutdown: true,
         disableCoreModules: true,
         config: {
-          simple: { key: 'value', nested: { prop: 'data' } }
-        }
+          simple: { key: 'value', nested: { prop: 'data' } },
+        },
       });
 
       const module = new SimpleModule();
@@ -345,8 +347,8 @@ describe('Application Module Management', () => {
         config: {
           database: { host: 'db-server', port: 5432 },
           cache: { ttl: 30000 },
-          http: { port: 8080 }
-        }
+          http: { port: 8080 },
+        },
       });
 
       const dbModule = new DatabaseModule();
@@ -370,9 +372,9 @@ describe('Application Module Management', () => {
         disableGracefulShutdown: true,
         disableCoreModules: true,
         config: {
-          global: { setting: 'value' }
+          global: { setting: 'value' },
           // No module-specific config
-        }
+        },
       });
 
       const module = new SimpleModule();
@@ -391,13 +393,13 @@ describe('Application Module Management', () => {
       app.use(module);
 
       app.configure({
-        simple: { initial: 'value' }
+        simple: { initial: 'value' },
       });
 
       expect(module.configValue).toEqual({ initial: 'value' });
 
       app.configure({
-        simple: { updated: 'new-value' }
+        simple: { updated: 'new-value' },
       });
 
       // Configuration should be deep merged
@@ -421,8 +423,8 @@ describe('Application Module Management', () => {
         message: 'Simple module health check',
         details: {
           started: true,
-          config: null
-        }
+          config: null,
+        },
       });
 
       await app.stop();
@@ -436,8 +438,8 @@ describe('Application Module Management', () => {
         health: async () => ({
           status: 'unhealthy',
           message: 'Service is down',
-          details: { error: 'Connection refused' }
-        })
+          details: { error: 'Connection refused' },
+        }),
       });
 
       app.use(unhealthyModule);
@@ -456,7 +458,7 @@ describe('Application Module Management', () => {
 
       const module: IModule = {
         name: 'no-health',
-        version: '1.0.0'
+        version: '1.0.0',
         // No health method
       };
 
@@ -495,7 +497,7 @@ describe('Application Module Management', () => {
         name: 'error-health',
         health: async () => {
           throw new Error('Health check failed');
-        }
+        },
       });
 
       app.use(errorModule);
@@ -517,17 +519,23 @@ describe('Application Module Management', () => {
 
       const module1 = createCustomModule({
         name: 'module1',
-        onStop: async () => { stopOrder.push('module1'); }
+        onStop: async () => {
+          stopOrder.push('module1');
+        },
       });
 
       const module2 = createCustomModule({
         name: 'module2',
-        onStop: async () => { stopOrder.push('module2'); }
+        onStop: async () => {
+          stopOrder.push('module2');
+        },
       });
 
       const module3 = createCustomModule({
         name: 'module3',
-        onStop: async () => { stopOrder.push('module3'); }
+        onStop: async () => {
+          stopOrder.push('module3');
+        },
       });
 
       app.use(module1);
@@ -546,8 +554,8 @@ describe('Application Module Management', () => {
       const slowModule = createCustomModule({
         name: 'slow-stop',
         onStop: async () => {
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        }
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        },
       });
 
       app.use(slowModule);
@@ -563,7 +571,7 @@ describe('Application Module Management', () => {
 
       const module = createCustomModule({
         name: 'normal-stop',
-        onStop: jest.fn()
+        onStop: jest.fn(),
       });
 
       app.use(module);
@@ -580,12 +588,18 @@ describe('Application Module Management', () => {
 
       const module = createCustomModule({
         name: 'lifecycle',
-        onStop: async () => { calls.push('stop'); },
-        onStart: async () => { calls.push('start'); }
+        onStop: async () => {
+          calls.push('stop');
+        },
+        onStart: async () => {
+          calls.push('start');
+        },
       });
 
       // Add destroy separately since it's not in the options
-      (module as any).onDestroy = async () => { calls.push('destroy'); };
+      (module as any).onDestroy = async () => {
+        calls.push('destroy');
+      };
 
       app.use(module);
 

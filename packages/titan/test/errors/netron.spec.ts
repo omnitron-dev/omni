@@ -11,7 +11,7 @@ import {
   PeerError,
   RpcError,
   StreamError,
-  SerializationError
+  SerializationError,
 } from '../../src/errors/netron.js';
 import { ErrorCode } from '../../src/errors/codes.js';
 
@@ -23,7 +23,7 @@ describe('Netron Errors', () => {
         message: 'Service not found',
         serviceId: 'calculator@1.0.0',
         methodName: 'add',
-        peerId: 'peer-123'
+        peerId: 'peer-123',
       });
 
       expect(error.code).toBe(ErrorCode.NOT_FOUND);
@@ -37,7 +37,7 @@ describe('Netron Errors', () => {
         code: ErrorCode.BAD_REQUEST,
         message: 'Invalid RPC',
         serviceId: 'test@1.0.0',
-        methodName: 'test'
+        methodName: 'test',
       });
 
       const json = error.toJSON();
@@ -95,7 +95,7 @@ describe('Netron Errors', () => {
         code: ErrorCode.SERVICE_UNAVAILABLE,
         message: 'Connection failed',
         transport: 'websocket',
-        address: 'ws://localhost:3000'
+        address: 'ws://localhost:3000',
       });
 
       expect(error.transport).toBe('websocket');
@@ -143,7 +143,7 @@ describe('Netron Errors', () => {
         code: ErrorCode.BAD_GATEWAY,
         message: 'Gateway error',
         transport: 'http',
-        address: 'http://gateway.local'
+        address: 'http://gateway.local',
       });
 
       const json = error.toJSON();
@@ -158,7 +158,7 @@ describe('Netron Errors', () => {
       const error = new PeerError({
         code: ErrorCode.NOT_FOUND,
         message: 'Peer not found',
-        peerId: 'peer-abc'
+        peerId: 'peer-abc',
       });
 
       expect(error.peerId).toBe('peer-abc');
@@ -203,7 +203,7 @@ describe('Netron Errors', () => {
         message: 'Invalid RPC call',
         rpcId: 12345,
         serviceId: 'test@1.0.0',
-        methodName: 'test'
+        methodName: 'test',
       });
 
       expect(error.rpcId).toBe(12345);
@@ -243,7 +243,7 @@ describe('Netron Errors', () => {
       const error = new RpcError({
         code: ErrorCode.NOT_FOUND,
         message: 'RPC error',
-        rpcId: 999
+        rpcId: 999,
       });
 
       const json = error.toJSON();
@@ -257,7 +257,7 @@ describe('Netron Errors', () => {
       const error = new StreamError({
         code: ErrorCode.GONE,
         message: 'Stream closed',
-        streamId: 'stream-123'
+        streamId: 'stream-123',
       });
 
       expect(error.streamId).toBe('stream-123');
@@ -301,7 +301,7 @@ describe('Netron Errors', () => {
       const error = new StreamError({
         code: ErrorCode.GONE,
         message: 'Stream error',
-        streamId: 'test-stream'
+        streamId: 'test-stream',
       });
 
       const json = error.toJSON();
@@ -315,7 +315,7 @@ describe('Netron Errors', () => {
       const error = new SerializationError({
         code: ErrorCode.INTERNAL_ERROR,
         message: 'Serialization failed',
-        serializationType: 'encode'
+        serializationType: 'encode',
       });
 
       expect(error.serializationType).toBe('encode');
@@ -364,7 +364,7 @@ describe('Netron Errors', () => {
       const error = new SerializationError({
         code: ErrorCode.BAD_REQUEST,
         message: 'Decode error',
-        serializationType: 'decode'
+        serializationType: 'decode',
       });
 
       const json = error.toJSON();

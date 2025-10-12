@@ -16,7 +16,7 @@ describe('RemotePeer Edge Cases', () => {
   beforeEach(async () => {
     netron = await createNetronServer({
       port: 8081,
-      logger: createMockLogger()
+      logger: createMockLogger(),
     });
     await netron.start();
   });
@@ -65,7 +65,9 @@ describe('RemotePeer Edge Cases', () => {
       const n2 = await createNetronClient();
       const peer = await n2.connect('ws://localhost:8081');
 
-      expect(() => peer.set('unknown-def-id', 'someProperty', 'value')).toThrow(/Definition with id unknown-def-id not found/);
+      expect(() => peer.set('unknown-def-id', 'someProperty', 'value')).toThrow(
+        /Definition with id unknown-def-id not found/
+      );
 
       await peer.disconnect();
       await n2.stop();
@@ -75,7 +77,9 @@ describe('RemotePeer Edge Cases', () => {
       const n2 = await createNetronClient();
       const peer = await n2.connect('ws://localhost:8081');
 
-      expect(() => peer.call('unknown-def-id', 'someMethod', [])).toThrow(/Definition with id unknown-def-id not found/);
+      expect(() => peer.call('unknown-def-id', 'someMethod', [])).toThrow(
+        /Definition with id unknown-def-id not found/
+      );
 
       await peer.disconnect();
       await n2.stop();
@@ -98,9 +102,7 @@ describe('RemotePeer Edge Cases', () => {
       // Initialize the peer to set up message handler
       await remotePeer.init(false);
 
-      const messageHandler = (mockSocket.on as jest.Mock<any>).mock.calls.find(
-        (call) => call[0] === 'message'
-      )?.[1];
+      const messageHandler = (mockSocket.on as jest.Mock<any>).mock.calls.find((call) => call[0] === 'message')?.[1];
 
       expect(messageHandler).toBeDefined();
 
@@ -128,9 +130,7 @@ describe('RemotePeer Edge Cases', () => {
       // Initialize the peer to set up message handler
       await remotePeer.init(false);
 
-      const messageHandler = (mockSocket.on as jest.Mock<any>).mock.calls.find(
-        (call) => call[0] === 'message'
-      )?.[1];
+      const messageHandler = (mockSocket.on as jest.Mock<any>).mock.calls.find((call) => call[0] === 'message')?.[1];
 
       expect(messageHandler).toBeDefined();
 

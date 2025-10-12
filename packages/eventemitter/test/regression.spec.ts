@@ -50,7 +50,7 @@ describe('Regression Tests', () => {
 
       emitter.onEnhanced('test-event', errorListener, {
         errorBoundary: true,
-        onError
+        onError,
       });
 
       // Should not throw when error boundary is enabled
@@ -76,7 +76,7 @@ describe('Regression Tests', () => {
 
       // Add a timeout listener
       const timeoutListener = jest.fn(async () => {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
       });
       localEmitter.onEnhanced('timeout-event', timeoutListener, { timeout: 10 });
 
@@ -113,7 +113,7 @@ describe('Regression Tests', () => {
     it('should handle errors without unhandled rejections', async () => {
       // Use real timers for this test since we're dealing with async operations
       jest.useRealTimers();
-      
+
       const failingEmitFn = jest.fn<(event: string, data: any) => Promise<void>>(async () => {
         throw new Error('Scheduled error');
       });
@@ -122,7 +122,7 @@ describe('Regression Tests', () => {
       scheduler.schedule('fail-event', { data: 'test' }, { delay: 0 }, failingEmitFn);
 
       // Wait a bit for the async operation to complete
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       // Should have called the failing function
       expect(failingEmitFn).toHaveBeenCalled();
@@ -130,7 +130,7 @@ describe('Regression Tests', () => {
       // Event should be removed even if it failed
       const events = scheduler.getScheduledEvents();
       expect(events).toHaveLength(0);
-      
+
       // Restore fake timers for other tests
       jest.useFakeTimers();
     });
@@ -153,15 +153,15 @@ describe('Regression Tests', () => {
           delay: 10,
           backoff: 'exponential',
           factor: 10,
-          maxDelay: 50
-        }
+          maxDelay: 50,
+        },
       };
 
       const startTime = Date.now();
       scheduler.schedule('retry-event', { data: 'test' }, options, retryEmitFn);
 
       // Wait for retries
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
       const totalTime = Date.now() - startTime;
 

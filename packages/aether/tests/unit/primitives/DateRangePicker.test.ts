@@ -48,9 +48,7 @@ describe('DateRangePicker', () => {
     });
 
     it('should render with disabled state', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        DateRangePicker({ disabled: true })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => DateRangePicker({ disabled: true }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-date-range-picker]');
@@ -58,9 +56,7 @@ describe('DateRangePicker', () => {
     });
 
     it('should not have data-disabled when not disabled', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        DateRangePicker({ disabled: false })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => DateRangePicker({ disabled: false }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-date-range-picker]');
@@ -82,10 +78,7 @@ describe('DateRangePicker', () => {
     it('should render multiple children using function (Pattern 17)', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         DateRangePicker({
-          children: () => [
-            DateRangePickerTrigger({}),
-            DateRangePickerContent({}),
-          ],
+          children: () => [DateRangePickerTrigger({}), DateRangePickerContent({})],
         })
       );
       cleanup = dispose;
@@ -103,10 +96,7 @@ describe('DateRangePicker', () => {
           children: () => [
             DateRangePickerTrigger({}),
             DateRangePickerContent({
-              children: [
-                DateRangePickerCalendar({ monthOffset: 0 }),
-                DateRangePickerCalendar({ monthOffset: 1 }),
-              ],
+              children: [DateRangePickerCalendar({ monthOffset: 0 }), DateRangePickerCalendar({ monthOffset: 1 })],
             }),
           ],
         })
@@ -119,9 +109,7 @@ describe('DateRangePicker', () => {
     });
 
     it('should render with empty children', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        DateRangePicker({ children: () => null })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => DateRangePicker({ children: () => null }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-date-range-picker]');
@@ -274,11 +262,7 @@ describe('DateRangePicker', () => {
     it('should allow sub-components to access context', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         DateRangePicker({
-          children: () => [
-            DateRangePickerTrigger({}),
-            DateRangePickerContent({}),
-            DateRangePickerCalendar({}),
-          ],
+          children: () => [DateRangePickerTrigger({}), DateRangePickerContent({}), DateRangePickerCalendar({})],
         })
       );
       cleanup = dispose;
@@ -708,10 +692,7 @@ describe('DateRangePicker', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         DateRangePicker({
           numberOfMonths: 2,
-          children: () => [
-            DateRangePickerCalendar({ monthOffset: 0 }),
-            DateRangePickerCalendar({ monthOffset: 1 }),
-          ],
+          children: () => [DateRangePickerCalendar({ monthOffset: 0 }), DateRangePickerCalendar({ monthOffset: 1 })],
         })
       );
       cleanup = dispose;
@@ -1188,10 +1169,7 @@ describe('DateRangePicker', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         DateRangePicker({
           onValueChange,
-          children: () => [
-            DateRangePickerTrigger({}),
-            DateRangePickerPreset({ range: todayRange, children: 'Today' }),
-          ],
+          children: () => [DateRangePickerTrigger({}), DateRangePickerPreset({ range: todayRange, children: 'Today' })],
         })
       );
       cleanup = dispose;
@@ -1213,9 +1191,7 @@ describe('DateRangePicker', () => {
         DateRangePicker({
           children: () => [
             DateRangePickerTrigger({}),
-            ...presets.map((p) =>
-              DateRangePickerPreset({ range: p.range, children: p.label })
-            ),
+            ...presets.map((p) => DateRangePickerPreset({ range: p.range, children: p.label })),
           ],
         })
       );
@@ -1231,10 +1207,7 @@ describe('DateRangePicker', () => {
           numberOfMonths: 2,
           children: () =>
             DateRangePickerContent({
-              children: [
-                DateRangePickerCalendar({ monthOffset: 0 }),
-                DateRangePickerCalendar({ monthOffset: 1 }),
-              ],
+              children: [DateRangePickerCalendar({ monthOffset: 0 }), DateRangePickerCalendar({ monthOffset: 1 })],
             }),
         })
       );
@@ -1302,9 +1275,7 @@ describe('DateRangePicker', () => {
 
   describe('Edge Cases', () => {
     it('should handle empty children', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        DateRangePicker({ children: undefined })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => DateRangePicker({ children: undefined }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-date-range-picker]');

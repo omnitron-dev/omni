@@ -1,15 +1,10 @@
 /**
  * Core Events Service
- * 
+ *
  * Main service for event handling in Titan applications
  */
 
-import type {
-  EmitOptions,
-  EventRecord,
-  EventFilter,
-  EventMetadata
-} from '@omnitron-dev/eventemitter';
+import type { EmitOptions, EventRecord, EventFilter, EventMetadata } from '@omnitron-dev/eventemitter';
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
 import { Inject, Injectable } from '../../decorators/index.js';
@@ -23,7 +18,7 @@ import type {
   IEventStatistics,
   IEventSubscription,
   IEventListenerOptions,
-  IEventValidationResult
+  IEventValidationResult,
 } from './types.js';
 
 /**
@@ -33,7 +28,9 @@ import type {
 export class EventsService {
   private subscriptions: Map<string, Array<{ subscription: IEventSubscription; priority: number }>> = new Map();
   private eventStats: Map<string, IEventStatistics> = new Map();
-  private wildcardSubscriptions: Map<string, { pattern: RegExp; handler: (...args: any[]) => any; originalHandler: (...args: any[]) => any }> | undefined;
+  private wildcardSubscriptions:
+    | Map<string, { pattern: RegExp; handler: (...args: any[]) => any; originalHandler: (...args: any[]) => any }>
+    | undefined;
   private initialized = false;
   private destroyed = false;
   private logger: any = null;
@@ -41,9 +38,8 @@ export class EventsService {
 
   constructor(
     @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
-    @Inject(EVENT_METADATA_SERVICE_TOKEN) private readonly metadataService: EventMetadataService,
-
-  ) { }
+    @Inject(EVENT_METADATA_SERVICE_TOKEN) private readonly metadataService: EventMetadataService
+  ) {}
 
   /**
    * Initialize the service
@@ -74,10 +70,8 @@ export class EventsService {
    */
   async health(): Promise<{ status: 'healthy' | 'degraded' | 'unhealthy'; details?: any }> {
     const totalEvents = this.eventStats.size;
-    const totalSubscriptions = Array.from(this.subscriptions.values())
-      .reduce((acc, arr) => acc + arr.length, 0);
-    const totalEmissions = Array.from(this.eventStats.values())
-      .reduce((acc, stats) => acc + stats.emitCount, 0);
+    const totalSubscriptions = Array.from(this.subscriptions.values()).reduce((acc, arr) => acc + arr.length, 0);
+    const totalEmissions = Array.from(this.eventStats.values()).reduce((acc, stats) => acc + stats.emitCount, 0);
 
     return {
       status: this.initialized && !this.destroyed ? 'healthy' : 'unhealthy',
@@ -86,26 +80,22 @@ export class EventsService {
         destroyed: this.destroyed,
         totalEvents,
         totalSubscriptions,
-        totalEmissions
-      }
+        totalEmissions,
+      },
     };
   }
 
   /**
    * Emit an event with data and options
    */
-  emit<T = any>(
-    event: string,
-    data?: T,
-    options?: EmitOptions
-  ): boolean {
+  emit<T = any>(event: string, data?: T, options?: EmitOptions): boolean {
     const startTime = Date.now();
 
     try {
       // Add context metadata
       const metadata = this.metadataService.createMetadata({
         ...options?.metadata,
-        source: this.constructor.name
+        source: this.constructor.name,
       });
 
       // Emit the event
@@ -113,7 +103,7 @@ export class EventsService {
 
       // Check if we have any subscriptions with priority
       const subs = this.subscriptions.get(event);
-      const hasAnyPriority = subs && subs.some(s => s.priority !== 0);
+      const hasAnyPriority = subs && subs.some((s) => s.priority !== 0);
 
       if (hasAnyPriority && subs) {
         // We have prioritized handlers - call all handlers from subscriptions in priority order
@@ -199,14 +189,10 @@ export class EventsService {
   /**
    * Emit an event asynchronously in parallel
    */
-  async emitAsync<T = any>(
-    event: string,
-    data?: T,
-    options?: EmitOptions
-  ): Promise<any[]> {
+  async emitAsync<T = any>(event: string, data?: T, options?: EmitOptions): Promise<any[]> {
     const metadata = this.metadataService.createMetadata({
       ...options?.metadata,
-      async: true
+      async: true,
     });
 
     const results: any[] = [];
@@ -217,13 +203,14 @@ export class EventsService {
       for (const [pattern, subscription] of this.wildcardSubscriptions) {
         if (subscription.pattern.test(event)) {
           wildcardPromises.push(
-            Promise.resolve(subscription.handler(data))
-              .catch(error => this.logger?.error(`Error in wildcard async handler for pattern ${pattern}:`, error))
+            Promise.resolve(subscription.handler(data)).catch((error) =>
+              this.logger?.error(`Error in wildcard async handler for pattern ${pattern}:`, error)
+            )
           );
         }
       }
       const wildcardResults = await Promise.all(wildcardPromises);
-      results.push(...wildcardResults.filter(r => r !== undefined));
+      results.push(...wildcardResults.filter((r) => r !== undefined));
     }
 
     // Handle regular event handlers via the emitter
@@ -236,15 +223,11 @@ export class EventsService {
   /**
    * Emit an event asynchronously in series
    */
-  async emitSerial<T = any>(
-    event: string,
-    data?: T,
-    options?: EmitOptions
-  ): Promise<any[]> {
+  async emitSerial<T = any>(event: string, data?: T, options?: EmitOptions): Promise<any[]> {
     const metadata = this.metadataService.createMetadata({
       ...options?.metadata,
       async: true,
-      serial: true
+      serial: true,
     });
 
     return this.emitter.emitSerial(event, data, metadata);
@@ -253,15 +236,10 @@ export class EventsService {
   /**
    * Emit an event with reduce pattern
    */
-  async emitReduce<T = any, R = any>(
-    event: string,
-    data: T,
-    initialValue: R,
-    options?: EmitOptions
-  ): Promise<R> {
+  async emitReduce<T = any, R = any>(event: string, data: T, initialValue: R, options?: EmitOptions): Promise<R> {
     const metadata = this.metadataService.createMetadata({
       ...options?.metadata,
-      pattern: 'reduce'
+      pattern: 'reduce',
     });
 
     return this.emitter.emitReduce(event, data, initialValue, metadata);
@@ -270,11 +248,7 @@ export class EventsService {
   /**
    * Subscribe to an event
    */
-  subscribe(
-    event: string,
-    handler: (...args: any[]) => any,
-    options?: IEventListenerOptions
-  ): IEventSubscription {
+  subscribe(event: string, handler: (...args: any[]) => any, options?: IEventListenerOptions): IEventSubscription {
     // Wrap handler with options
     const wrappedHandler = this.wrapHandler(handler, options);
 
@@ -298,7 +272,7 @@ export class EventsService {
         isActive: () => this.wildcardSubscriptions?.has(event) || false,
         event,
         handler,
-        wrappedHandler
+        wrappedHandler,
       };
 
       // Track subscription
@@ -314,21 +288,21 @@ export class EventsService {
     // but avoid double execution in sync emit
     // Check if this event already has any handlers with priority
     const existingSubs = this.subscriptions.get(event);
-    const hasAnyPriority = existingSubs && existingSubs.some(s => s.priority !== 0);
+    const hasAnyPriority = existingSubs && existingSubs.some((s) => s.priority !== 0);
     const thisHasPriority = options?.priority !== undefined && options.priority !== 0;
 
     // If this event has any prioritized handlers (including this one),
     // don't register with emitter - we'll handle all handlers manually
     if (hasAnyPriority || thisHasPriority) {
       // Don't register with emitter, we'll call manually from subscriptions
-      unsubscribe = () => { };
+      unsubscribe = () => {};
     } else if (this.emitter.subscribe) {
       unsubscribe = this.emitter.subscribe(event, wrappedHandler);
     } else if (this.emitter.on) {
       this.emitter.on(event, wrappedHandler);
       unsubscribe = () => this.emitter.off(event, wrappedHandler);
     } else {
-      unsubscribe = () => { };
+      unsubscribe = () => {};
     }
 
     // Create subscription object
@@ -339,11 +313,11 @@ export class EventsService {
       },
       isActive: () => {
         const subs = this.subscriptions.get(event);
-        return subs ? subs.some(s => s.subscription === subscription) : false;
+        return subs ? subs.some((s) => s.subscription === subscription) : false;
       },
       event,
       handler,
-      wrappedHandler // Store wrapped handler for unsubscribe
+      wrappedHandler, // Store wrapped handler for unsubscribe
     };
 
     // Track subscription
@@ -355,11 +329,7 @@ export class EventsService {
   /**
    * Subscribe to an event once
    */
-  once(
-    event: string,
-    handler: (...args: any[]) => any,
-    options?: IEventListenerOptions
-  ): IEventSubscription {
+  once(event: string, handler: (...args: any[]) => any, options?: IEventListenerOptions): IEventSubscription {
     const wrappedHandler = this.wrapHandler(handler, options);
 
     // Create a special once wrapper
@@ -380,21 +350,21 @@ export class EventsService {
 
     // Check if this event already has any handlers with priority
     const existingSubs = this.subscriptions.get(event);
-    const hasAnyPriority = existingSubs && existingSubs.some(s => s.priority !== 0);
+    const hasAnyPriority = existingSubs && existingSubs.some((s) => s.priority !== 0);
     const thisHasPriority = options?.priority !== undefined && options.priority !== 0;
 
     // If this event has any prioritized handlers (including this one),
     // don't register with emitter - we'll handle all handlers manually
     if (hasAnyPriority || thisHasPriority) {
       // Don't register with emitter, we'll call manually from subscriptions
-      unsubscribe = () => { };
+      unsubscribe = () => {};
     } else if (this.emitter.subscribe) {
       unsubscribe = this.emitter.subscribe(event, onceWrapper);
     } else if (this.emitter.on) {
       this.emitter.on(event, onceWrapper);
       unsubscribe = () => this.emitter.off(event, onceWrapper);
     } else {
-      unsubscribe = () => { };
+      unsubscribe = () => {};
     }
 
     const subscription: IEventSubscription = {
@@ -405,7 +375,7 @@ export class EventsService {
       isActive: () => !executed,
       event,
       handler,
-      wrappedHandler: onceWrapper
+      wrappedHandler: onceWrapper,
     };
 
     this.addSubscription(event, subscription, options?.priority || 0);
@@ -421,27 +391,20 @@ export class EventsService {
     handler: (...args: any[]) => void,
     options?: IEventListenerOptions
   ): IEventSubscription[] {
-    return events.map(event => this.subscribe(event, handler, options));
+    return events.map((event) => this.subscribe(event, handler, options));
   }
 
   /**
    * Subscribe to all events
    */
-  subscribeAll(
-    handler: (...args: any[]) => void,
-    options?: IEventListenerOptions
-  ): IEventSubscription {
+  subscribeAll(handler: (...args: any[]) => void, options?: IEventListenerOptions): IEventSubscription {
     return this.subscribe('**', handler, options);
   }
 
   /**
    * Alias for subscribe (EventEmitter compatibility)
    */
-  on(
-    event: string,
-    handler: (...args: any[]) => any,
-    options?: IEventListenerOptions
-  ): IEventSubscription {
+  on(event: string, handler: (...args: any[]) => any, options?: IEventListenerOptions): IEventSubscription {
     return this.subscribe(event, handler, options);
   }
 
@@ -497,17 +460,13 @@ export class EventsService {
   /**
    * Emit event directly without bubbling (internal use)
    */
-  private emitDirect<T = any>(
-    event: string,
-    data?: T,
-    options?: EmitOptions
-  ): boolean {
+  private emitDirect<T = any>(event: string, data?: T, options?: EmitOptions): boolean {
     let result = false;
 
     // Add context metadata
     const metadata = this.metadataService.createMetadata({
       ...options?.metadata,
-      source: this.constructor.name
+      source: this.constructor.name,
     });
 
     // Check if we have any subscriptions with priority
@@ -575,7 +534,7 @@ export class EventsService {
       rollback: async () => {
         // Clear buffered events
         events.length = 0;
-      }
+      },
     };
   }
 
@@ -622,17 +581,13 @@ export class EventsService {
   /**
    * Wait for an event
    */
-  async waitFor<T = any>(
-    event: string,
-    timeout?: number,
-    filter?: (data: T) => boolean
-  ): Promise<T> {
+  async waitFor<T = any>(event: string, timeout?: number, filter?: (data: T) => boolean): Promise<T> {
     return new Promise((resolve, reject) => {
       const timer = timeout
         ? setTimeout(() => {
-          reject(Errors.timeout('event emission', timeout));
-          unsubscribe();
-        }, timeout)
+            reject(Errors.timeout('event emission', timeout));
+            unsubscribe();
+          }, timeout)
         : null;
 
       const unsubscribe = this.emitter.subscribe(event, (data: T) => {
@@ -648,11 +603,7 @@ export class EventsService {
   /**
    * Schedule an event
    */
-  scheduleEvent(
-    event: string,
-    data: any,
-    delay: number
-  ): string {
+  scheduleEvent(event: string, data: any, delay: number): string {
     return this.emitter.schedule(event, data, { delay });
   }
 
@@ -713,11 +664,7 @@ export class EventsService {
   /**
    * Create event context
    */
-  createContext<T = any>(
-    event: string,
-    data: T,
-    metadata?: Partial<EventMetadata>
-  ): IEventContext<T> {
+  createContext<T = any>(event: string, data: T, metadata?: Partial<EventMetadata>): IEventContext<T> {
     const fullMetadata = this.metadataService.createMetadata(metadata);
 
     return {
@@ -726,7 +673,7 @@ export class EventsService {
       metadata: fullMetadata,
       correlationId: fullMetadata.correlationId,
       userId: fullMetadata.userId,
-      sessionId: fullMetadata.sessionId
+      sessionId: fullMetadata.sessionId,
     };
   }
 
@@ -741,11 +688,7 @@ export class EventsService {
   /**
    * Configure event batching
    */
-  configureBatching(
-    event: string,
-    maxSize: number,
-    maxWait: number
-  ): void {
+  configureBatching(event: string, maxSize: number, maxWait: number): void {
     this.emitter.batch(event, { maxSize, maxWait });
   }
 
@@ -788,10 +731,7 @@ export class EventsService {
   /**
    * Wrap event handler with options
    */
-  private wrapHandler(
-    handler: (...args: any[]) => any,
-    options?: IEventListenerOptions
-  ): (...args: any[]) => any {
+  private wrapHandler(handler: (...args: any[]) => any, options?: IEventListenerOptions): (...args: any[]) => any {
     // If no options, return a simple wrapper that passes all arguments
     if (!options) {
       // Pass all arguments through to support both regular and wildcard handlers
@@ -832,7 +772,7 @@ export class EventsService {
               // Wait before retry
               const delay = options.retry.delay || 100;
               const backoff = options.retry.backoff || 1;
-              await new Promise(resolve => setTimeout(resolve, delay * Math.pow(backoff, attempts - 1)));
+              await new Promise((resolve) => setTimeout(resolve, delay * Math.pow(backoff, attempts - 1)));
             }
           }
           // Should not reach here, but TypeScript needs this
@@ -851,10 +791,7 @@ export class EventsService {
           let timeoutId: NodeJS.Timeout | undefined;
           const handlerPromise = originalExecution();
           const timeoutPromise = new Promise<void>((_, reject) => {
-            timeoutId = setTimeout(
-              () => reject(Errors.timeout('event handler', timeoutMs)),
-              timeoutMs
-            );
+            timeoutId = setTimeout(() => reject(Errors.timeout('event handler', timeoutMs)), timeoutMs);
           });
 
           try {
@@ -917,7 +854,7 @@ export class EventsService {
         lastError = error;
 
         if (attempt < retryConfig.attempts) {
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise((resolve) => setTimeout(resolve, delay));
           delay *= retryConfig.backoff || 2;
         }
       }
@@ -945,7 +882,7 @@ export class EventsService {
   private removeSubscription(event: string, subscription: IEventSubscription): void {
     const subs = this.subscriptions.get(event);
     if (subs) {
-      const index = subs.findIndex(s => s.subscription === subscription);
+      const index = subs.findIndex((s) => s.subscription === subscription);
       if (index !== -1) {
         subs.splice(index, 1);
       }
@@ -958,12 +895,7 @@ export class EventsService {
   /**
    * Update event statistics
    */
-  private updateStats(
-    event: string,
-    success: boolean,
-    duration: number,
-    error?: Error
-  ): void {
+  private updateStats(event: string, success: boolean, duration: number, error?: Error): void {
     const stats = this.eventStats.get(event) || this.createEmptyStats(event);
 
     stats.emitCount++;
@@ -996,7 +928,7 @@ export class EventsService {
       avgProcessingTime: 0,
       maxProcessingTime: 0,
       minProcessingTime: Infinity,
-      errorCount: 0
+      errorCount: 0,
     };
   }
 }

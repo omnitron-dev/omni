@@ -134,7 +134,11 @@ describe('Error Serialization', () => {
     });
 
     it('should create TransportError for connection failures', () => {
-      const error = TransportError.connectionFailed('websocket', 'ws://localhost:3000', new Error('Connection refused'));
+      const error = TransportError.connectionFailed(
+        'websocket',
+        'ws://localhost:3000',
+        new Error('Connection refused')
+      );
 
       expect(error).toBeInstanceOf(TransportError);
       expect(error.code).toBe(ErrorCode.SERVICE_UNAVAILABLE);

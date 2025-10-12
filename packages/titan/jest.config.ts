@@ -13,7 +13,7 @@ const config: JestConfigWithTsJest = {
     '!src/**/*.d.ts',
     '!src/**/index.ts',
     '!src/**/__tests__/**',
-    '!src/**/__mocks__/**'
+    '!src/**/__mocks__/**',
   ],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html', 'json-summary'],
@@ -27,15 +27,8 @@ const config: JestConfigWithTsJest = {
   //   }
   // },
   moduleFileExtensions: ['ts', 'js', 'json'],
-  testMatch: [
-    '<rootDir>/test/**/*.spec.ts',
-    '<rootDir>/src/**/*.spec.ts',
-    '<rootDir>/e2e/**/*.e2e.spec.ts'
-  ],
-  testPathIgnorePatterns: [
-    '/node_modules/',
-    '/test/runtime/'
-  ],
+  testMatch: ['<rootDir>/test/**/*.spec.ts', '<rootDir>/src/**/*.spec.ts', '<rootDir>/e2e/**/*.e2e.spec.ts'],
+  testPathIgnorePatterns: ['/node_modules/', '/test/runtime/'],
   transform: {
     '^.+\\.ts$': [
       'ts-jest',
@@ -48,15 +41,13 @@ const config: JestConfigWithTsJest = {
           esModuleInterop: true,
           allowSyntheticDefaultImports: true,
           experimentalDecorators: true,
-          emitDecoratorMetadata: true
+          emitDecoratorMetadata: true,
         },
-        useESM: true
-      }
-    ]
+        useESM: true,
+      },
+    ],
   },
-  transformIgnorePatterns: [
-    'node_modules/(?!(@omnitron-dev|long)/)'
-  ],
+  transformIgnorePatterns: ['node_modules/(?!(@omnitron-dev|long)/)'],
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
@@ -71,9 +62,9 @@ const config: JestConfigWithTsJest = {
     '^@omnitron-dev/eventemitter$': '<rootDir>/../eventemitter/src/index.ts',
     '^@omnitron-dev/common$': '<rootDir>/../common/src/index.ts',
     '^@omnitron-dev/msgpack$': '<rootDir>/../msgpack/src/index.ts',
-    '^@omnitron-dev/msgpack/smart-buffer$': '<rootDir>/../msgpack/src/smart-buffer.ts'
+    '^@omnitron-dev/msgpack/smart-buffer$': '<rootDir>/../msgpack/src/smart-buffer.ts',
   },
-  resolver: 'ts-jest-resolver'
+  resolver: 'ts-jest-resolver',
 };
 
 export default config;

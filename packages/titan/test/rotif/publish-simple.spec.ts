@@ -14,8 +14,8 @@ describe('Lua Script - Atomic Publish', () => {
     await redis.flushdb();
 
     // Фиктивный обработчик для активации паттерна
-    await manager.subscribe('test.channel', async () => { }, { startFrom: '0' });
-    await manager.subscribe('test.delayed', async () => { }, { startFrom: '0' });
+    await manager.subscribe('test.channel', async () => {}, { startFrom: '0' });
+    await manager.subscribe('test.delayed', async () => {}, { startFrom: '0' });
 
     // Ждём, пока паттерны гарантированно появятся
     await waitForActivePatterns(manager, ['test.channel', 'test.delayed']);
@@ -53,7 +53,7 @@ describe('Lua Script - Atomic Publish', () => {
 async function waitForActivePatterns(manager: NotificationManager, patterns: string[], timeout = 5000) {
   const start = Date.now();
   while (Date.now() - start < timeout) {
-    const allActive = patterns.every(pattern => manager['activePatterns'].has(pattern));
+    const allActive = patterns.every((pattern) => manager['activePatterns'].has(pattern));
     if (allActive) {
       return;
     }

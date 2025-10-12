@@ -68,9 +68,7 @@ describe('HttpRemotePeer - Unsupported Methods', () => {
 
   describe('Property Access Methods', () => {
     it('should throw NOT_IMPLEMENTED for set() with descriptive message', async () => {
-      await expect(peer.set('test@1.0.0', 'someProp', 'value'))
-        .rejects
-        .toThrow(TitanError);
+      await expect(peer.set('test@1.0.0', 'someProp', 'value')).rejects.toThrow(TitanError);
 
       try {
         await peer.set('test@1.0.0', 'someProp', 'value');
@@ -86,9 +84,7 @@ describe('HttpRemotePeer - Unsupported Methods', () => {
     });
 
     it('should throw NOT_IMPLEMENTED for get() with descriptive message', async () => {
-      await expect(peer.get('test@1.0.0', 'someProp'))
-        .rejects
-        .toThrow(TitanError);
+      await expect(peer.get('test@1.0.0', 'someProp')).rejects.toThrow(TitanError);
 
       try {
         await peer.get('test@1.0.0', 'someProp');
@@ -108,9 +104,7 @@ describe('HttpRemotePeer - Unsupported Methods', () => {
     it('should throw NOT_IMPLEMENTED for subscribe() with descriptive message', async () => {
       const handler = async () => {};
 
-      await expect(peer.subscribe('some.event', handler))
-        .rejects
-        .toThrow(TitanError);
+      await expect(peer.subscribe('some.event', handler)).rejects.toThrow(TitanError);
 
       try {
         await peer.subscribe('some.event', handler);
@@ -128,9 +122,7 @@ describe('HttpRemotePeer - Unsupported Methods', () => {
     it('should throw NOT_IMPLEMENTED for unsubscribe() with descriptive message', async () => {
       const handler = async () => {};
 
-      await expect(peer.unsubscribe('some.event', handler))
-        .rejects
-        .toThrow(TitanError);
+      await expect(peer.unsubscribe('some.event', handler)).rejects.toThrow(TitanError);
 
       try {
         await peer.unsubscribe('some.event', handler);
@@ -148,9 +140,7 @@ describe('HttpRemotePeer - Unsupported Methods', () => {
 
   describe('Service Management Methods', () => {
     it('should throw NOT_IMPLEMENTED for unexposeService() with descriptive message', async () => {
-      await expect(peer.unexposeService('test@1.0.0'))
-        .rejects
-        .toThrow(TitanError);
+      await expect(peer.unexposeService('test@1.0.0')).rejects.toThrow(TitanError);
 
       try {
         await peer.unexposeService('test@1.0.0');

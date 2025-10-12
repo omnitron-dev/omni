@@ -89,11 +89,7 @@ describe('Masonry', () => {
     });
 
     it('should render with multiple children', async () => {
-      const children = [
-        document.createElement('div'),
-        document.createElement('div'),
-        document.createElement('div'),
-      ];
+      const children = [document.createElement('div'), document.createElement('div'), document.createElement('div')];
 
       const component = () => Masonry({ children });
       const { container } = renderComponent(component);
@@ -107,11 +103,7 @@ describe('Masonry', () => {
 
   describe('Props - columns', () => {
     it('should default to 3 columns', async () => {
-      const children = [
-        document.createElement('div'),
-        document.createElement('div'),
-        document.createElement('div'),
-      ];
+      const children = [document.createElement('div'), document.createElement('div'), document.createElement('div')];
       children.forEach((child, i) => {
         child.textContent = `Item ${i + 1}`;
         setMockedHeight(child, 100);
@@ -130,10 +122,7 @@ describe('Masonry', () => {
     });
 
     it('should support columns=2', async () => {
-      const children = [
-        document.createElement('div'),
-        document.createElement('div'),
-      ];
+      const children = [document.createElement('div'), document.createElement('div')];
       children.forEach((child, i) => {
         child.textContent = `Item ${i + 1}`;
         setMockedHeight(child, 100);
@@ -177,10 +166,7 @@ describe('Masonry', () => {
     });
 
     it('should support columns=1', async () => {
-      const children = [
-        document.createElement('div'),
-        document.createElement('div'),
-      ];
+      const children = [document.createElement('div'), document.createElement('div')];
       children.forEach((child, i) => {
         child.textContent = `Item ${i + 1}`;
         setMockedHeight(child, 100);
@@ -219,10 +205,7 @@ describe('Masonry', () => {
 
   describe('Props - gap', () => {
     it('should default to 16px gap', async () => {
-      const children = [
-        document.createElement('div'),
-        document.createElement('div'),
-      ];
+      const children = [document.createElement('div'), document.createElement('div')];
       children.forEach((child) => {
         setMockedHeight(child, 100);
       });
@@ -240,10 +223,7 @@ describe('Masonry', () => {
     });
 
     it('should support custom gap value', async () => {
-      const children = [
-        document.createElement('div'),
-        document.createElement('div'),
-      ];
+      const children = [document.createElement('div'), document.createElement('div')];
       children.forEach((child) => {
         setMockedHeight(child, 100);
       });
@@ -260,10 +240,7 @@ describe('Masonry', () => {
     });
 
     it('should support gap=0', async () => {
-      const children = [
-        document.createElement('div'),
-        document.createElement('div'),
-      ];
+      const children = [document.createElement('div'), document.createElement('div')];
       children.forEach((child) => {
         setMockedHeight(child, 100);
       });
@@ -280,10 +257,7 @@ describe('Masonry', () => {
     });
 
     it('should support large gap values', async () => {
-      const children = [
-        document.createElement('div'),
-        document.createElement('div'),
-      ];
+      const children = [document.createElement('div'), document.createElement('div')];
       children.forEach((child) => {
         setMockedHeight(child, 100);
       });
@@ -369,11 +343,7 @@ describe('Masonry', () => {
     });
 
     it('should handle variable item heights', async () => {
-      const children = [
-        document.createElement('div'),
-        document.createElement('div'),
-        document.createElement('div'),
-      ];
+      const children = [document.createElement('div'), document.createElement('div'), document.createElement('div')];
       setMockedHeight(children[0], 100);
       setMockedHeight(children[1], 200);
       setMockedHeight(children[2], 150);
@@ -851,17 +821,13 @@ describe('Masonry', () => {
       await nextTick();
       vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
-      const items = Array.from(
-        container.querySelector('[data-masonry]')?.children || [],
-      ) as HTMLElement[];
+      const items = Array.from(container.querySelector('[data-masonry]')?.children || []) as HTMLElement[];
 
       // Items 0, 3 should be in column 0
       // Items 1, 4 should be in column 1
       // Items 2, 5 should be in column 2
       const col0Items = items.filter((item) => parseFloat(item.style.left) < 1);
-      const col1Items = items.filter(
-        (item) => parseFloat(item.style.left) > 30 && parseFloat(item.style.left) < 40,
-      );
+      const col1Items = items.filter((item) => parseFloat(item.style.left) > 30 && parseFloat(item.style.left) < 40);
       const col2Items = items.filter((item) => parseFloat(item.style.left) > 60);
 
       expect(col0Items.length).toBe(2);

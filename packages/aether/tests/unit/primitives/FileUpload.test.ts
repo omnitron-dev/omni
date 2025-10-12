@@ -48,9 +48,7 @@ describe('FileUpload', () => {
     });
 
     it('should render with disabled state', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        FileUpload({ disabled: true })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => FileUpload({ disabled: true }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-file-upload]');
@@ -58,9 +56,7 @@ describe('FileUpload', () => {
     });
 
     it('should not have data-disabled when not disabled', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        FileUpload({ disabled: false })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => FileUpload({ disabled: false }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-file-upload]');
@@ -117,9 +113,7 @@ describe('FileUpload', () => {
     });
 
     it('should render with empty children', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        FileUpload({ children: () => null })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => FileUpload({ children: () => null }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-file-upload]');
@@ -258,11 +252,7 @@ describe('FileUpload', () => {
 
       const { container, cleanup: dispose } = renderComponent(() =>
         FileUpload({
-          children: () => [
-            FileUploadTrigger({}),
-            FileUploadDropzone({}),
-            FileUploadItem({ file: fileWithPreview }),
-          ],
+          children: () => [FileUploadTrigger({}), FileUploadDropzone({}), FileUploadItem({ file: fileWithPreview })],
         })
       );
       cleanup = dispose;
@@ -534,7 +524,7 @@ describe('FileUpload', () => {
 
   describe('Drag and Drop Tests', () => {
     it('should handle drag enter event', async () => {
-      const { container, cleanup: dispose} = renderComponent(() =>
+      const { container, cleanup: dispose } = renderComponent(() =>
         FileUpload({
           children: () => FileUploadDropzone({}),
         })
@@ -1265,9 +1255,7 @@ describe('FileUpload', () => {
 
   describe('Edge Cases', () => {
     it('should handle empty children', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        FileUpload({ children: undefined })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => FileUpload({ children: undefined }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-file-upload]');

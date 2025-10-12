@@ -110,19 +110,34 @@ interface RangeSliderContextValue {
 const globalRangeSliderContextSignal = signal<RangeSliderContextValue | null>(null);
 
 // Create context with default implementation that delegates to global signal
-const RangeSliderContext = createContext<RangeSliderContextValue>({
-  value: computed(() => globalRangeSliderContextSignal()?.value() ?? { min: 0, max: 100 }),
-  get min() { return globalRangeSliderContextSignal()?.min ?? 0; },
-  get max() { return globalRangeSliderContextSignal()?.max ?? 100; },
-  get step() { return globalRangeSliderContextSignal()?.step ?? 1; },
-  get orientation() { return globalRangeSliderContextSignal()?.orientation ?? 'horizontal'; },
-  get disabled() { return globalRangeSliderContextSignal()?.disabled ?? false; },
-  get minDistance() { return globalRangeSliderContextSignal()?.minDistance ?? 0; },
-  setMinValue: (value) => globalRangeSliderContextSignal()?.setMinValue(value),
-  setMaxValue: (value) => globalRangeSliderContextSignal()?.setMaxValue(value),
-  getPercentage: (value) => globalRangeSliderContextSignal()?.getPercentage(value) ?? 0,
-  getValueFromPercentage: (percentage) => globalRangeSliderContextSignal()?.getValueFromPercentage(percentage) ?? 0,
-}, 'RangeSlider');
+const RangeSliderContext = createContext<RangeSliderContextValue>(
+  {
+    value: computed(() => globalRangeSliderContextSignal()?.value() ?? { min: 0, max: 100 }),
+    get min() {
+      return globalRangeSliderContextSignal()?.min ?? 0;
+    },
+    get max() {
+      return globalRangeSliderContextSignal()?.max ?? 100;
+    },
+    get step() {
+      return globalRangeSliderContextSignal()?.step ?? 1;
+    },
+    get orientation() {
+      return globalRangeSliderContextSignal()?.orientation ?? 'horizontal';
+    },
+    get disabled() {
+      return globalRangeSliderContextSignal()?.disabled ?? false;
+    },
+    get minDistance() {
+      return globalRangeSliderContextSignal()?.minDistance ?? 0;
+    },
+    setMinValue: (value) => globalRangeSliderContextSignal()?.setMinValue(value),
+    setMaxValue: (value) => globalRangeSliderContextSignal()?.setMaxValue(value),
+    getPercentage: (value) => globalRangeSliderContextSignal()?.getPercentage(value) ?? 0,
+    getValueFromPercentage: (percentage) => globalRangeSliderContextSignal()?.getValueFromPercentage(percentage) ?? 0,
+  },
+  'RangeSlider'
+);
 
 const useRangeSliderContext = (): RangeSliderContextValue => useContext(RangeSliderContext);
 
@@ -163,21 +178,13 @@ export const RangeSlider = defineComponent<RangeSliderProps>((props) => {
 
   const setMinValue = (value: number) => {
     const current = valueSignal();
-    const clampedValue = clamp(
-      roundToStep(value, step),
-      min,
-      current.max - minDistance,
-    );
+    const clampedValue = clamp(roundToStep(value, step), min, current.max - minDistance);
     setValue({ min: clampedValue, max: current.max });
   };
 
   const setMaxValue = (value: number) => {
     const current = valueSignal();
-    const clampedValue = clamp(
-      roundToStep(value, step),
-      current.min + minDistance,
-      max,
-    );
+    const clampedValue = clamp(roundToStep(value, step), current.min + minDistance, max);
     setValue({ min: current.min, max: clampedValue });
   };
 
@@ -222,63 +229,63 @@ export const RangeSlider = defineComponent<RangeSliderProps>((props) => {
 // ============================================================================
 
 export const RangeSliderTrack = defineComponent<RangeSliderTrackProps>((props) => () => {
-    // ✅ CORRECT: Access context in render phase
-    const context = useRangeSliderContext();
-    const { children, ...rest } = props;
+  // ✅ CORRECT: Access context in render phase
+  const context = useRangeSliderContext();
+  const { children, ...rest } = props;
 
-    return jsx('div', {
-      'data-range-slider-track': '',
-      'data-orientation': context.orientation,
-      role: 'presentation',
-      ...rest,
-      children,
-    });
+  return jsx('div', {
+    'data-range-slider-track': '',
+    'data-orientation': context.orientation,
+    role: 'presentation',
+    ...rest,
+    children,
   });
+});
 
 // ============================================================================
 // RangeSlider Range
 // ============================================================================
 
 export const RangeSliderRange = defineComponent<RangeSliderRangeProps>((props) => () => {
-    // ✅ CORRECT: Access context in render phase
-    const context = useRangeSliderContext();
-    const { children, ...rest } = props;
+  // ✅ CORRECT: Access context in render phase
+  const context = useRangeSliderContext();
+  const { children, ...rest } = props;
 
-    const calculateStyle = () => {
-      const value = context.value();
-      const minPercent = context.getPercentage(value.min);
-      const maxPercent = context.getPercentage(value.max);
+  const calculateStyle = () => {
+    const value = context.value();
+    const minPercent = context.getPercentage(value.min);
+    const maxPercent = context.getPercentage(value.max);
 
-      return context.orientation === 'horizontal'
-        ? {
-            left: `${minPercent}%`,
-            width: `${maxPercent - minPercent}%`,
-          }
-        : {
-            bottom: `${minPercent}%`,
-            height: `${maxPercent - minPercent}%`,
-          };
-    };
+    return context.orientation === 'horizontal'
+      ? {
+          left: `${minPercent}%`,
+          width: `${maxPercent - minPercent}%`,
+        }
+      : {
+          bottom: `${minPercent}%`,
+          height: `${maxPercent - minPercent}%`,
+        };
+  };
 
-    const initialStyle = calculateStyle();
+  const initialStyle = calculateStyle();
 
-    const div = jsx('div', {
-      'data-range-slider-range': '',
-      'data-orientation': context.orientation,
-      role: 'presentation',
-      style: initialStyle,
-      ...rest,
-      children,
-    }) as HTMLElement;
+  const div = jsx('div', {
+    'data-range-slider-range': '',
+    'data-orientation': context.orientation,
+    role: 'presentation',
+    style: initialStyle,
+    ...rest,
+    children,
+  }) as HTMLElement;
 
-    // Set up reactive effect to update style
-    effect(() => {
-      const newStyle = calculateStyle();
-      Object.assign(div.style, newStyle);
-    });
-
-    return div;
+  // Set up reactive effect to update style
+  effect(() => {
+    const newStyle = calculateStyle();
+    Object.assign(div.style, newStyle);
   });
+
+  return div;
+});
 
 // ============================================================================
 // RangeSlider Thumb
@@ -377,9 +384,7 @@ export const RangeSliderThumb = defineComponent<RangeSliderThumbProps>((props) =
       const currentValue = position === 'min' ? value.min : value.max;
       const percentage = context.getPercentage(currentValue);
 
-      return context.orientation === 'horizontal'
-        ? { left: `${percentage}%` }
-        : { bottom: `${percentage}%` };
+      return context.orientation === 'horizontal' ? { left: `${percentage}%` } : { bottom: `${percentage}%` };
     };
 
     const value = context.value();

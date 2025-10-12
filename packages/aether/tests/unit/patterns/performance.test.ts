@@ -631,10 +631,7 @@ describe('Performance Patterns', () => {
       const expensiveSpy = vi.fn();
       const searchQuery = signal('');
 
-      function debounce<T extends (...args: any[]) => any>(
-        fn: T,
-        delay: number
-      ) {
+      function debounce<T extends (...args: any[]) => any>(fn: T, delay: number) {
         let timeoutId: any;
         return (...args: Parameters<T>) => {
           clearTimeout(timeoutId);
@@ -668,10 +665,7 @@ describe('Performance Patterns', () => {
     it('should throttle high-frequency updates', async () => {
       const updateSpy = vi.fn();
 
-      function throttle<T extends (...args: any[]) => any>(
-        fn: T,
-        delay: number
-      ) {
+      function throttle<T extends (...args: any[]) => any>(fn: T, delay: number) {
         let lastCall = 0;
         return (...args: Parameters<T>) => {
           const now = Date.now();

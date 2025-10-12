@@ -5,7 +5,7 @@ describe('Test Emit', () => {
   it('should pass arguments correctly', () => {
     const app = createApp({
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
 
     const handler = jest.fn();
@@ -22,7 +22,7 @@ describe('Test Emit', () => {
     expect(handler.mock.calls[0][0]).toEqual(testData);
     expect(handler.mock.calls[0][1]).toMatchObject({
       event: 'custom',
-      source: 'application'
+      source: 'application',
     });
   });
 });

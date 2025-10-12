@@ -46,11 +46,7 @@ export async function getFreeHttpPort(): Promise<number> {
  * @param timeout - Timeout in milliseconds (default: 5000)
  * @returns Promise resolving with the event data
  */
-export function waitForEvent<T = any>(
-  emitter: EventEmitter,
-  event: string,
-  timeout = 5000
-): Promise<T> {
+export function waitForEvent<T = any>(emitter: EventEmitter, event: string, timeout = 5000): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       reject(new Error(`Timeout waiting for event: ${event}`));
@@ -71,12 +67,8 @@ export function waitForEvent<T = any>(
  * @param timeout - Timeout in milliseconds (default: 5000)
  * @returns Promise resolving when all events have been emitted
  */
-export async function waitForEvents(
-  emitter: EventEmitter,
-  events: string[],
-  timeout = 5000
-): Promise<void> {
-  const promises = events.map(event => waitForEvent(emitter, event, timeout));
+export async function waitForEvents(emitter: EventEmitter, events: string[], timeout = 5000): Promise<void> {
+  const promises = events.map((event) => waitForEvent(emitter, event, timeout));
   await Promise.all(promises);
 }
 
@@ -88,11 +80,7 @@ export async function waitForEvents(
  * @param interval - Check interval in milliseconds (default: 100)
  * @returns Promise resolving when condition is true
  */
-export function waitForCondition(
-  condition: () => boolean,
-  timeout = 5000,
-  interval = 100
-): Promise<void> {
+export function waitForCondition(condition: () => boolean, timeout = 5000, interval = 100): Promise<void> {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
 
@@ -121,7 +109,7 @@ export function waitForCondition(
  * @returns Promise that resolves after the delay
  */
 export function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -172,7 +160,7 @@ export async function retryOperation<T>(
       lastError = error instanceof Error ? error : new Error(String(error));
 
       if (attempt < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, currentDelay));
+        await new Promise((resolve) => setTimeout(resolve, currentDelay));
         currentDelay *= backoffFactor;
       }
     }
@@ -196,8 +184,6 @@ export function withTimeout<T>(
 ): Promise<T> {
   return Promise.race([
     operation,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(errorMessage)), timeout)
-    )
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(errorMessage)), timeout)),
   ]);
 }

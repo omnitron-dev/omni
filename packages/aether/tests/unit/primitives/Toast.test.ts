@@ -3,13 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import {
-  Toast,
-  ToastProvider,
-  ToastViewport,
-  ToastContext,
-  type ToastData,
-} from '../../../src/primitives/Toast.js';
+import { Toast, ToastProvider, ToastViewport, ToastContext, type ToastData } from '../../../src/primitives/Toast.js';
 import { renderComponent } from '../../helpers/test-utils.js';
 import { useContext } from '../../../src/core/component/context.js';
 import { defineComponent } from '../../../src/core/component/define.js';
@@ -102,9 +96,10 @@ describe('ToastProvider', () => {
       });
 
       const App = defineComponent(() => {
-        return () => ToastProvider({
-          children: () => TestComponent({}),
-        });
+        return () =>
+          ToastProvider({
+            children: () => TestComponent({}),
+          });
       });
 
       const { cleanup: dispose } = renderComponent(() => App({}));
@@ -208,7 +203,7 @@ describe('ToastProvider', () => {
         };
       });
 
-      const {  cleanup: dispose } = renderComponent(() =>
+      const { cleanup: dispose } = renderComponent(() =>
         ToastProvider({
           children: () => TestComponent({}),
         })
@@ -231,10 +226,11 @@ describe('ToastProvider', () => {
       });
 
       const App = defineComponent(() => {
-        return () => ToastProvider({
-          duration: 3000,
-          children: () => TestComponent({}),
-        });
+        return () =>
+          ToastProvider({
+            duration: 3000,
+            children: () => TestComponent({}),
+          });
       });
 
       const { cleanup: dispose } = renderComponent(() => App({}));
@@ -253,10 +249,11 @@ describe('ToastProvider', () => {
       });
 
       const App = defineComponent(() => {
-        return () => ToastProvider({
-          duration: 3000,
-          children: () => TestComponent({}),
-        });
+        return () =>
+          ToastProvider({
+            duration: 3000,
+            children: () => TestComponent({}),
+          });
       });
 
       const { cleanup: dispose } = renderComponent(() => App({}));
@@ -386,10 +383,11 @@ describe('ToastProvider', () => {
       });
 
       const App = defineComponent(() => {
-        return () => ToastProvider({
-          maxToasts: 1,
-          children: () => TestComponent({}),
-        });
+        return () =>
+          ToastProvider({
+            maxToasts: 1,
+            children: () => TestComponent({}),
+          });
       });
 
       const { cleanup: dispose } = renderComponent(() => App({}));
@@ -767,9 +765,7 @@ describe('Toast', () => {
         title: 'Test',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const li = container.querySelector('li[data-toast]');
@@ -783,9 +779,7 @@ describe('Toast', () => {
         title: 'Test',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const li = container.querySelector('li');
@@ -798,9 +792,7 @@ describe('Toast', () => {
         title: 'Test',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const li = container.querySelector('li');
@@ -813,9 +805,7 @@ describe('Toast', () => {
         title: 'Test',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const li = container.querySelector('li');
@@ -828,9 +818,7 @@ describe('Toast', () => {
         title: 'Test',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const li = container.querySelector('li');
@@ -845,9 +833,7 @@ describe('Toast', () => {
         title: 'Test',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const li = container.querySelector('li');
@@ -861,9 +847,7 @@ describe('Toast', () => {
         variant: 'success',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const li = container.querySelector('li');
@@ -877,9 +861,7 @@ describe('Toast', () => {
         variant: 'error',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const li = container.querySelector('li');
@@ -893,9 +875,7 @@ describe('Toast', () => {
         variant: 'warning',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const li = container.querySelector('li');
@@ -909,9 +889,7 @@ describe('Toast', () => {
         variant: 'info',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const li = container.querySelector('li');
@@ -926,9 +904,7 @@ describe('Toast', () => {
         title: 'Toast Title',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const title = container.querySelector('[data-toast-title]');
@@ -942,9 +918,7 @@ describe('Toast', () => {
         description: 'Only description',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const title = container.querySelector('[data-toast-title]');
@@ -957,9 +931,7 @@ describe('Toast', () => {
         title: 'Title',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const title = container.querySelector('[data-toast-title]');
@@ -975,9 +947,7 @@ describe('Toast', () => {
         description: 'This is the description',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const description = container.querySelector('[data-toast-description]');
@@ -991,9 +961,7 @@ describe('Toast', () => {
         title: 'Only title',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const description = container.querySelector('[data-toast-description]');
@@ -1006,9 +974,7 @@ describe('Toast', () => {
         description: 'Description',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const description = container.querySelector('[data-toast-description]');
@@ -1022,9 +988,7 @@ describe('Toast', () => {
         description: 'Description',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const title = container.querySelector('[data-toast-title]');
@@ -1045,9 +1009,7 @@ describe('Toast', () => {
         },
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const action = container.querySelector('[data-toast-action]');
@@ -1061,9 +1023,7 @@ describe('Toast', () => {
         title: 'Title',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const action = container.querySelector('[data-toast-action]');
@@ -1080,9 +1040,7 @@ describe('Toast', () => {
         },
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const action = container.querySelector('[data-toast-action]');
@@ -1100,9 +1058,7 @@ describe('Toast', () => {
         },
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const action = container.querySelector('[data-toast-action]') as HTMLButtonElement;
@@ -1122,9 +1078,7 @@ describe('Toast', () => {
         },
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast, onDismiss })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast, onDismiss }));
       cleanup = dispose;
 
       const action = container.querySelector('[data-toast-action]') as HTMLButtonElement;
@@ -1145,9 +1099,7 @@ describe('Toast', () => {
         },
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast, onDismiss })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast, onDismiss }));
       cleanup = dispose;
 
       const action = container.querySelector('[data-toast-action]') as HTMLButtonElement;
@@ -1167,9 +1119,7 @@ describe('Toast', () => {
         },
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const action = container.querySelector('[data-toast-action]') as HTMLButtonElement;
@@ -1189,9 +1139,7 @@ describe('Toast', () => {
         title: 'Title',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const close = container.querySelector('[data-toast-close]');
@@ -1204,9 +1152,7 @@ describe('Toast', () => {
         title: 'Title',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const close = container.querySelector('[data-toast-close]');
@@ -1219,9 +1165,7 @@ describe('Toast', () => {
         title: 'Title',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const close = container.querySelector('[data-toast-close]');
@@ -1234,9 +1178,7 @@ describe('Toast', () => {
         title: 'Title',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const close = container.querySelector('[data-toast-close]');
@@ -1250,9 +1192,7 @@ describe('Toast', () => {
         title: 'Title',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast, onDismiss })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast, onDismiss }));
       cleanup = dispose;
 
       const close = container.querySelector('[data-toast-close]') as HTMLButtonElement;
@@ -1267,9 +1207,7 @@ describe('Toast', () => {
         title: 'Title',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       const close = container.querySelector('[data-toast-close]') as HTMLButtonElement;
@@ -1291,9 +1229,7 @@ describe('Toast', () => {
         },
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       expect(container.querySelector('[data-toast]')).toBeTruthy();
@@ -1309,9 +1245,7 @@ describe('Toast', () => {
         title: 'Simple toast',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       expect(container.querySelector('[data-toast]')).toBeTruthy();
@@ -1327,9 +1261,7 @@ describe('Toast', () => {
         description: 'Just a description',
       };
 
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Toast({ toast })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Toast({ toast }));
       cleanup = dispose;
 
       expect(container.querySelector('[data-toast]')).toBeTruthy();

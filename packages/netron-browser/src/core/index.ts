@@ -30,29 +30,13 @@ export {
 } from './constants.js';
 
 // Predicates
-export {
-  isServiceDefinition,
-  isServiceReference,
-  isNetronStreamReference,
-  isNetronService,
-} from './predicates.js';
+export { isServiceDefinition, isServiceReference, isNetronStreamReference, isNetronService } from './predicates.js';
 
 // Stream utilities
-export {
-  isNetronStream,
-  isNetronReadableStream,
-  isNetronWritableStream,
-} from './stream-utils.js';
+export { isNetronStream, isNetronReadableStream, isNetronWritableStream } from './stream-utils.js';
 
 // Types
-export type {
-  IPeer,
-  EventSubscriber,
-  ArgumentInfo,
-  MethodInfo,
-  PropertyInfo,
-  ServiceMetadata,
-} from './types.js';
+export type { IPeer, EventSubscriber, ArgumentInfo, MethodInfo, PropertyInfo, ServiceMetadata } from './types.js';
 
 // Utilities
 export {

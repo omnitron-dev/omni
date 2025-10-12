@@ -12,7 +12,7 @@ import {
   isMultiToken,
   isOptionalToken,
   TokenMetadata,
-  Container
+  Container,
 } from '../../../src/nexus/index.js';
 
 describe('Token System', () => {
@@ -29,7 +29,7 @@ describe('Token System', () => {
       const metadata: TokenMetadata = {
         scope: 'singleton',
         tags: ['service', 'critical'],
-        description: 'Test service token'
+        description: 'Test service token',
       };
 
       const token = createToken<string>('TestToken', metadata);
@@ -77,7 +77,7 @@ describe('Token System', () => {
       const container = new Container();
 
       container.register(token, {
-        useValue: { id: '1', name: 'Test' }
+        useValue: { id: '1', name: 'Test' },
       });
 
       const user = container.resolve(token);
@@ -129,12 +129,16 @@ describe('Token System', () => {
 
       container.register(token, { useClass: ServiceA }, { multi: true });
       container.register(token, { useValue: { type: 'B' } }, { multi: true });
-      container.register(token, {
-        useFactory: () => ({ type: 'C' }),
-      }, { multi: true });
+      container.register(
+        token,
+        {
+          useFactory: () => ({ type: 'C' }),
+        },
+        { multi: true }
+      );
 
       const services = container.resolveMany(token);
-      expect(services.map(s => s.type)).toEqual(['A', 'B', 'C']);
+      expect(services.map((s) => s.type)).toEqual(['A', 'B', 'C']);
     });
   });
 
@@ -172,7 +176,7 @@ describe('Token System', () => {
 
       container.register(serviceToken, {
         useFactory: (dep?: string) => ({ dep }),
-        inject: [{ token: optToken, optional: true }]
+        inject: [{ token: optToken, optional: true }],
       });
 
       const service = container.resolve(serviceToken);
@@ -218,7 +222,7 @@ describe('Token System', () => {
           if (!config.username) throw new Error('Username is required');
           if (!config.password) throw new Error('Password is required');
           return true;
-        }
+        },
       });
 
       const container = new Container();
@@ -230,8 +234,8 @@ describe('Token System', () => {
             host: 'localhost',
             port: 99999, // Invalid port
             username: 'user',
-            password: 'pass'
-          }
+            password: 'pass',
+          },
         });
       }).toThrow('Invalid port');
 
@@ -241,8 +245,8 @@ describe('Token System', () => {
           host: 'localhost',
           port: 5432,
           username: 'user',
-          password: 'pass'
-        }
+          password: 'pass',
+        },
       });
 
       const config = container.resolve(token);
@@ -260,13 +264,13 @@ describe('Token System', () => {
         defaults: {
           port: 3000,
           host: 'localhost',
-          workers: 4
-        }
+          workers: 4,
+        },
       });
 
       const container = new Container();
       container.register(token, {
-        useValue: { port: 8080 } // Partial config
+        useValue: { port: 8080 }, // Partial config
       });
 
       const config = container.resolve(token);
@@ -312,13 +316,13 @@ describe('Token System', () => {
     it('should support token cloning with new metadata', () => {
       const original = createToken<string>('Original', {
         scope: 'singleton',
-        tags: ['original']
+        tags: ['original'],
       });
 
       const cloned = original.withMetadata({
         scope: 'transient',
         tags: ['cloned'],
-        description: 'Cloned token'
+        description: 'Cloned token',
       });
 
       expect(cloned.name).toBe(original.name);
@@ -331,7 +335,7 @@ describe('Token System', () => {
     it('should support token serialization for debugging', () => {
       const token = createToken<string>('DebugToken', {
         description: 'Token for debugging',
-        tags: ['debug', 'test']
+        tags: ['debug', 'test'],
       });
 
       const json = token.toJSON();
@@ -340,8 +344,8 @@ describe('Token System', () => {
         type: 'Token',
         metadata: {
           description: 'Token for debugging',
-          tags: ['debug', 'test']
-        }
+          tags: ['debug', 'test'],
+        },
       });
     });
   });
@@ -350,18 +354,18 @@ describe('Token System', () => {
     it('should support hierarchical tokens', () => {
       const parentToken = createToken<{ name: string }>('Parent');
       const childToken = createToken<{ name: string; age: number }>('Child', {
-        parent: parentToken
+        parent: parentToken,
       });
 
       const container = new Container();
 
       // Child can fulfill parent requirement
       container.register(childToken, {
-        useValue: { name: 'John', age: 30 }
+        useValue: { name: 'John', age: 30 },
       });
 
       container.register(parentToken, {
-        useToken: childToken // Alias to child
+        useToken: childToken, // Alias to child
       });
 
       const parent = container.resolve(parentToken);
@@ -384,7 +388,7 @@ describe('Token System', () => {
           const token = context.environment === 'production' ? prodToken : devToken;
           return container.resolve(token);
         },
-        inject: [{ token: 'CONTEXT', type: 'context' }]
+        inject: [{ token: 'CONTEXT', type: 'context' }],
       });
 
       const service = container.resolve(serviceToken);
@@ -398,7 +402,7 @@ describe('Token System', () => {
         createToken('Service1', { tags: ['http', 'public'] }),
         createToken('Service2', { tags: ['grpc', 'internal'] }),
         createToken('Service3', { tags: ['http', 'internal'] }),
-        createToken('Service4', { tags: ['websocket', 'public'] })
+        createToken('Service4', { tags: ['websocket', 'public'] }),
       ];
 
       tokens.forEach((token, i) => {
@@ -406,8 +410,8 @@ describe('Token System', () => {
       });
 
       // Filter tokens by tag
-      const httpTokens = tokens.filter(t => t.metadata?.tags?.includes('http'));
-      const httpServices = httpTokens.map(t => container.resolve(t));
+      const httpTokens = tokens.filter((t) => t.metadata?.tags?.includes('http'));
+      const httpServices = httpTokens.map((t) => container.resolve(t));
 
       expect(httpServices).toEqual(['service1', 'service3']);
     });

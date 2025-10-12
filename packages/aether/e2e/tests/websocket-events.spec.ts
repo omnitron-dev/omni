@@ -54,7 +54,7 @@ test.describe('WebSocket Events - Subscriptions', () => {
       await eventService.sendMessage('user2', 'Bob', 'Hi Alice!');
 
       // Wait for messages to arrive
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       return receivedMessages;
     });
@@ -63,12 +63,12 @@ test.describe('WebSocket Events - Subscriptions', () => {
     expect(messages[0]).toMatchObject({
       userId: 'user1',
       userName: 'Alice',
-      message: 'Hello World'
+      message: 'Hello World',
     });
     expect(messages[1]).toMatchObject({
       userId: 'user2',
       userName: 'Bob',
-      message: 'Hi Alice!'
+      message: 'Hi Alice!',
     });
   });
 
@@ -89,7 +89,7 @@ test.describe('WebSocket Events - Subscriptions', () => {
       await eventService.sendNotification('error', 'Error Title', 'This is an error message');
 
       // Wait for notifications to arrive
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       return receivedNotifications;
     });
@@ -98,12 +98,12 @@ test.describe('WebSocket Events - Subscriptions', () => {
     expect(notifications[0]).toMatchObject({
       type: 'info',
       title: 'Info Title',
-      message: 'This is an info message'
+      message: 'This is an info message',
     });
     expect(notifications[1]).toMatchObject({
       type: 'error',
       title: 'Error Title',
-      message: 'This is an error message'
+      message: 'This is an error message',
     });
   });
 
@@ -124,7 +124,7 @@ test.describe('WebSocket Events - Subscriptions', () => {
       await eventService.startTask(taskId, 500);
 
       // Wait for task to complete
-      await new Promise(resolve => setTimeout(resolve, 700));
+      await new Promise((resolve) => setTimeout(resolve, 700));
 
       return progressUpdates;
     });
@@ -134,7 +134,7 @@ test.describe('WebSocket Events - Subscriptions', () => {
     // First event should be pending/running
     expect(progressEvents[0]).toMatchObject({
       taskId: 'task-123',
-      progress: expect.any(Number)
+      progress: expect.any(Number),
     });
 
     // Last event should be completed
@@ -142,7 +142,7 @@ test.describe('WebSocket Events - Subscriptions', () => {
     expect(lastEvent).toMatchObject({
       taskId: 'task-123',
       progress: 100,
-      status: 'completed'
+      status: 'completed',
     });
   });
 
@@ -159,14 +159,14 @@ test.describe('WebSocket Events - Subscriptions', () => {
 
       // Send message while subscribed
       await eventService.sendMessage('user1', 'Alice', 'Message 1');
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       // Unsubscribe
       unsubscribe();
 
       // Send message after unsubscribe
       await eventService.sendMessage('user2', 'Bob', 'Message 2');
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       return receivedMessages;
     });
@@ -174,7 +174,7 @@ test.describe('WebSocket Events - Subscriptions', () => {
     // Should only receive first message
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
-      message: 'Message 1'
+      message: 'Message 1',
     });
   });
 
@@ -197,7 +197,7 @@ test.describe('WebSocket Events - Subscriptions', () => {
     expect(counts).toMatchObject({
       messages: 2,
       notifications: 1,
-      taskProgress: 0
+      taskProgress: 0,
     });
   });
 });
@@ -247,7 +247,7 @@ test.describe('WebSocket Events - Real-time Updates', () => {
       window.testState.subscriptions.push(unsubscribe);
 
       // Wait for at least one periodic notification (5+ seconds)
-      await new Promise(resolve => setTimeout(resolve, 6000));
+      await new Promise((resolve) => setTimeout(resolve, 6000));
 
       return receivedNotifications;
     });
@@ -257,7 +257,7 @@ test.describe('WebSocket Events - Real-time Updates', () => {
       expect(notif).toMatchObject({
         type: 'info',
         title: 'Periodic Update',
-        message: expect.stringContaining('Server time:')
+        message: expect.stringContaining('Server time:'),
       });
     });
   });
@@ -278,14 +278,15 @@ test.describe('WebSocket Events - Real-time Updates', () => {
 
       // Send message
       await eventService.sendMessage('user1', 'Alice', 'Broadcast message');
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       return {
         count1: messages1.length,
         count2: messages2.length,
         count3: messages3.length,
-        allSame: JSON.stringify(messages1[0]) === JSON.stringify(messages2[0]) &&
-                 JSON.stringify(messages2[0]) === JSON.stringify(messages3[0])
+        allSame:
+          JSON.stringify(messages1[0]) === JSON.stringify(messages2[0]) &&
+          JSON.stringify(messages2[0]) === JSON.stringify(messages3[0]),
       };
     });
 
@@ -311,7 +312,7 @@ test.describe('WebSocket Events - Real-time Updates', () => {
       await eventService.startTask(taskId, 2000);
 
       // Wait for completion
-      await new Promise(resolve => setTimeout(resolve, 2500));
+      await new Promise((resolve) => setTimeout(resolve, 2500));
 
       return progressUpdates;
     });
@@ -379,12 +380,12 @@ test.describe('WebSocket Events - High Frequency', () => {
       const duration = performance.now() - startTime;
 
       // Wait for all events to arrive
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       return {
         count: notifications.length,
         duration,
-        eventsPerSecond: (notifications.length / duration) * 1000
+        eventsPerSecond: (notifications.length / duration) * 1000,
       };
     });
 
@@ -413,11 +414,11 @@ test.describe('WebSocket Events - High Frequency', () => {
 
       // Send notification
       await eventService.sendNotification('info', 'Test', 'Message');
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       return {
         notificationCount: notifications.length,
-        activeSubscriptions: window.testState.subscriptions.length
+        activeSubscriptions: window.testState.subscriptions.length,
       };
     });
 
@@ -444,7 +445,7 @@ test.describe('WebSocket Events - High Frequency', () => {
       }
 
       // Wait for all messages
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       return receivedMessages;
     });
@@ -456,7 +457,7 @@ test.describe('WebSocket Events - High Frequency', () => {
       expect(messages[i]).toMatchObject({
         userId: `user${i}`,
         userName: `User ${i}`,
-        message: `Message ${i}`
+        message: `Message ${i}`,
       });
     }
   });
@@ -486,7 +487,7 @@ test.describe('WebSocket Events - High Frequency', () => {
       const emitDuration = performance.now() - startTime;
 
       // Wait for all events
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       const avgGap = gaps.length > 0 ? gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length : 0;
       const maxGap = gaps.length > 0 ? Math.max(...gaps) : 0;
@@ -496,7 +497,7 @@ test.describe('WebSocket Events - High Frequency', () => {
         emitDuration,
         avgGap,
         maxGap,
-        throughput: (notifications.length / emitDuration) * 1000
+        throughput: (notifications.length / emitDuration) * 1000,
       };
     });
 
@@ -558,7 +559,7 @@ test.describe('WebSocket Events - Error Handling', () => {
       await eventService.sendMessage('user2', 'Bob', 'error');
       await eventService.sendMessage('user3', 'Charlie', 'Message 2');
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       return { errorThrown, successCount };
     });
@@ -580,7 +581,7 @@ test.describe('WebSocket Events - Error Handling', () => {
 
       // Send message
       await eventService.sendMessage('user1', 'Alice', 'Before disconnect');
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Disconnect and reconnect
       await window.testState.wsPeer.disconnect();
@@ -595,7 +596,7 @@ test.describe('WebSocket Events - Error Handling', () => {
 
       // Send message after reconnect
       await eventService2.sendMessage('user2', 'Bob', 'After reconnect');
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       return messages;
     });

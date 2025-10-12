@@ -6,15 +6,9 @@
 
 import { Inject, Optional, Injectable } from '../../decorators/index.js';
 
-import {
-  SCHEDULER_CONFIG_TOKEN
-} from './scheduler.constants.js';
+import { SCHEDULER_CONFIG_TOKEN } from './scheduler.constants.js';
 
-import type {
-  IScheduledJob,
-  ISchedulerConfig,
-  IJobExecutionResult
-} from './scheduler.interfaces.js';
+import type { IScheduledJob, ISchedulerConfig, IJobExecutionResult } from './scheduler.interfaces.js';
 
 /**
  * Interface for persistence providers
@@ -82,9 +76,7 @@ export class SchedulerPersistence {
   private provider: IPersistenceProvider;
   private autosaveInterval?: any;
 
-  constructor(
-    @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: ISchedulerConfig
-  ) {
+  constructor(@Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: ISchedulerConfig) {
     // Initialize persistence provider based on config
     this.provider = this.initializeProvider();
 
@@ -114,7 +106,7 @@ export class SchedulerPersistence {
     // Autosave every 5 minutes by default
     const interval = 5 * 60 * 1000;
     this.autosaveInterval = setInterval(() => {
-      this.flush().catch(error => {
+      this.flush().catch((error) => {
         // Failed to autosave scheduler state
       });
     }, interval);
@@ -252,16 +244,14 @@ export class SchedulerPersistence {
     const jobs = await this.provider.loadAllJobs();
     return {
       jobs,
-      timestamp: new Date()
+      timestamp: new Date(),
     };
   }
 
   /**
    * Import job state
    */
-  async importState(state: {
-    jobs: IScheduledJob[];
-  }): Promise<void> {
+  async importState(state: { jobs: IScheduledJob[] }): Promise<void> {
     for (const job of state.jobs) {
       await this.provider.saveJob(job);
     }

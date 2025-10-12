@@ -11,16 +11,12 @@ import {
   LOGGER_SERVICE_TOKEN,
   LOGGER_OPTIONS_TOKEN,
   LOGGER_TRANSPORTS_TOKEN,
-  LOGGER_PROCESSORS_TOKEN
+  LOGGER_PROCESSORS_TOKEN,
 } from './logger.tokens.js';
 
 import { CONFIG_SERVICE_TOKEN } from '../config/config.tokens.js';
 
-import type {
-  ILoggerModuleOptions,
-  ITransport,
-  ILogProcessor
-} from './logger.types.js';
+import type { ILoggerModuleOptions, ITransport, ILogProcessor } from './logger.types.js';
 
 // Re-export types for convenience
 export type {
@@ -30,7 +26,7 @@ export type {
   ILoggerModuleOptions,
   ITransport,
   ILogProcessor,
-  LogLevel
+  LogLevel,
 } from './logger.types.js';
 
 // Re-export tokens
@@ -38,7 +34,7 @@ export {
   LOGGER_SERVICE_TOKEN,
   LOGGER_OPTIONS_TOKEN,
   LOGGER_TRANSPORTS_TOKEN,
-  LOGGER_PROCESSORS_TOKEN
+  LOGGER_PROCESSORS_TOKEN,
 } from './logger.tokens.js';
 
 /**
@@ -51,20 +47,21 @@ export {
 @Module({
   providers: [
     // Main Logger Service
-    [LOGGER_SERVICE_TOKEN, {
-      useClass: LoggerService,
-      inject: [
-        [LOGGER_OPTIONS_TOKEN, { optional: true }],
-        [LOGGER_TRANSPORTS_TOKEN, { optional: true }],
-        [LOGGER_PROCESSORS_TOKEN, { optional: true }],
-        [CONFIG_SERVICE_TOKEN, { optional: true }]
-      ],
-      scope: 'singleton'
-    }] as any
+    [
+      LOGGER_SERVICE_TOKEN,
+      {
+        useClass: LoggerService,
+        inject: [
+          [LOGGER_OPTIONS_TOKEN, { optional: true }],
+          [LOGGER_TRANSPORTS_TOKEN, { optional: true }],
+          [LOGGER_PROCESSORS_TOKEN, { optional: true }],
+          [CONFIG_SERVICE_TOKEN, { optional: true }],
+        ],
+        scope: 'singleton',
+      },
+    ] as any,
   ],
-  exports: [
-    LOGGER_SERVICE_TOKEN
-  ]
+  exports: [LOGGER_SERVICE_TOKEN],
 })
 export class LoggerModule {
   /**
@@ -75,36 +72,49 @@ export class LoggerModule {
       module: LoggerModule,
       providers: [
         // Provide options
-        [LOGGER_OPTIONS_TOKEN, {
-          useValue: options
-        }] as any,
+        [
+          LOGGER_OPTIONS_TOKEN,
+          {
+            useValue: options,
+          },
+        ] as any,
 
         // Provide transports if specified
-        ...(options.transports ? [
-          [LOGGER_TRANSPORTS_TOKEN, {
-            useValue: options.transports
-          }] as any
-        ] : []),
+        ...(options.transports
+          ? [
+              [
+                LOGGER_TRANSPORTS_TOKEN,
+                {
+                  useValue: options.transports,
+                },
+              ] as any,
+            ]
+          : []),
 
         // Provide processors if specified
-        ...(options.processors ? [
-          [LOGGER_PROCESSORS_TOKEN, {
-            useValue: options.processors
-          }] as any
-        ] : []),
+        ...(options.processors
+          ? [
+              [
+                LOGGER_PROCESSORS_TOKEN,
+                {
+                  useValue: options.processors,
+                },
+              ] as any,
+            ]
+          : []),
 
         // Main Logger Service
-        [LOGGER_SERVICE_TOKEN, {
-          useFactory: () =>
-            // Pass the options directly from closure
-            new LoggerService(options, options.transports, options.processors)
-          ,
-          scope: 'singleton'
-        }] as any
+        [
+          LOGGER_SERVICE_TOKEN,
+          {
+            useFactory: () =>
+              // Pass the options directly from closure
+              new LoggerService(options, options.transports, options.processors),
+            scope: 'singleton',
+          },
+        ] as any,
       ],
-      exports: [
-        LOGGER_SERVICE_TOKEN
-      ]
+      exports: [LOGGER_SERVICE_TOKEN],
     };
   }
 
@@ -119,30 +129,38 @@ export class LoggerModule {
       module: LoggerModule,
       providers: [
         // Provide options asynchronously
-        [LOGGER_OPTIONS_TOKEN, {
-          useFactory: options.useFactory,
-          inject: options.inject || []
-        }] as any,
+        [
+          LOGGER_OPTIONS_TOKEN,
+          {
+            useFactory: options.useFactory,
+            inject: options.inject || [],
+          },
+        ] as any,
 
         // Main Logger Service
-        [LOGGER_SERVICE_TOKEN, {
-          useFactory: (options_?: ILoggerModuleOptions, transports?: ITransport[], processors?: ILogProcessor[], configService?: any) => new LoggerService(options_ || {}, transports, processors, configService),
-          inject: [
-            { token: LOGGER_OPTIONS_TOKEN, optional: true },
-            { token: LOGGER_TRANSPORTS_TOKEN, optional: true },
-            { token: LOGGER_PROCESSORS_TOKEN, optional: true },
-            { token: CONFIG_SERVICE_TOKEN, optional: true }
-          ],
-          scope: 'singleton'
-        }] as any
+        [
+          LOGGER_SERVICE_TOKEN,
+          {
+            useFactory: (
+              options_?: ILoggerModuleOptions,
+              transports?: ITransport[],
+              processors?: ILogProcessor[],
+              configService?: any
+            ) => new LoggerService(options_ || {}, transports, processors, configService),
+            inject: [
+              { token: LOGGER_OPTIONS_TOKEN, optional: true },
+              { token: LOGGER_TRANSPORTS_TOKEN, optional: true },
+              { token: LOGGER_PROCESSORS_TOKEN, optional: true },
+              { token: CONFIG_SERVICE_TOKEN, optional: true },
+            ],
+            scope: 'singleton',
+          },
+        ] as any,
       ],
-      exports: [
-        LOGGER_SERVICE_TOKEN
-      ]
+      exports: [LOGGER_SERVICE_TOKEN],
     };
   }
 }
-
 
 /**
  * Console transport for testing
@@ -159,7 +177,7 @@ export class ConsoleTransport implements ITransport {
  * Redaction processor
  */
 export class RedactionProcessor implements ILogProcessor {
-  constructor(private paths: string[]) { }
+  constructor(private paths: string[]) {}
 
   process(log: any): any {
     const processed = { ...log };

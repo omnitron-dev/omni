@@ -38,10 +38,7 @@ export function setupRedisTests(): void {
 }
 
 // Helper to skip tests if real Redis is not available
-export function describeWithRedis(
-  name: string,
-  fn: () => void
-): void {
+export function describeWithRedis(name: string, fn: () => void): void {
   if (!redisTestConfig.useRealRedis) {
     describe.skip(name, fn);
   } else {
@@ -50,11 +47,7 @@ export function describeWithRedis(
 }
 
 // Helper to conditionally run tests with real Redis
-export function itWithRedis(
-  name: string,
-  fn: () => void | Promise<void>,
-  timeout?: number
-): void {
+export function itWithRedis(name: string, fn: () => void | Promise<void>, timeout?: number): void {
   if (!redisTestConfig.useRealRedis) {
     it.skip(name, fn, timeout);
   } else {

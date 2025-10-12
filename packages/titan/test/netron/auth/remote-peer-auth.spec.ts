@@ -84,7 +84,7 @@ describe('RemotePeer Authentication', () => {
           userId: 'user123',
           roles: ['user'],
         }),
-        'Authentication context set for peer',
+        'Authentication context set for peer'
       );
     });
 

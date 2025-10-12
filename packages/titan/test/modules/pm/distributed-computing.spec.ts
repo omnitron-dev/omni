@@ -11,7 +11,7 @@ import {
   Public,
   createTestProcessManager,
   TestProcessManager,
-  PoolStrategy
+  PoolStrategy,
 } from '../../../src/modules/pm/index.js';
 
 // ============================================================================
@@ -43,13 +43,13 @@ class MapWorkerService {
     const mapperFn = this.getMapperFunction(mapper);
 
     // Process data
-    const results = data.map(item => mapperFn(item));
+    const results = data.map((item) => mapperFn(item));
 
     this.processingTime = Date.now() - startTime;
 
     return {
       results,
-      processingTime: this.processingTime
+      processingTime: this.processingTime,
     };
   }
 
@@ -60,12 +60,12 @@ class MapWorkerService {
 
   private getMapperFunction(name: string): (item: any) => any {
     const mappers: Record<string, (item: any) => any> = {
-      'square': (x: number) => x * x,
-      'double': (x: number) => x * 2,
-      'uppercase': (x: string) => x.toUpperCase(),
+      square: (x: number) => x * x,
+      double: (x: number) => x * 2,
+      uppercase: (x: string) => x.toUpperCase(),
       'parse-word': (line: string) => line.split(' '),
       'extract-value': (obj: any) => obj.value,
-      'count-words': (text: string) => ({ text, wordCount: text.split(' ').length })
+      'count-words': (text: string) => ({ text, wordCount: text.split(' ').length }),
     };
 
     return mappers[name] || ((x) => x);
@@ -82,16 +82,16 @@ class ReduceWorkerService {
 
   private getReducerFunction(name: string): (acc: any, item: any) => any {
     const reducers: Record<string, (acc: any, item: any) => any> = {
-      'sum': (acc: number, x: number) => acc + x,
-      'product': (acc: number, x: number) => acc * x,
-      'concat': (acc: string, x: string) => acc + x,
+      sum: (acc: number, x: number) => acc + x,
+      product: (acc: number, x: number) => acc * x,
+      concat: (acc: string, x: string) => acc + x,
       'merge-arrays': (acc: any[], x: any[]) => [...acc, ...x],
-      'count': (acc: number) => acc + 1,
-      'max': (acc: number, x: number) => Math.max(acc, x),
+      count: (acc: number) => acc + 1,
+      max: (acc: number, x: number) => Math.max(acc, x),
       'word-count': (acc: Record<string, number>, word: string) => {
         acc[word] = (acc[word] || 0) + 1;
         return acc;
-      }
+      },
     };
 
     return reducers[name] || ((acc, x) => acc);
@@ -116,9 +116,9 @@ class DataProcessorService {
   @Public()
   async processChunk(chunk: DataChunk): Promise<{ chunkId: string; result: any; itemsProcessed: number }> {
     // Simulate data processing
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
-    const result = chunk.data.map(item => {
+    const result = chunk.data.map((item) => {
       if (typeof item === 'number') {
         return item * 2;
       }
@@ -130,7 +130,7 @@ class DataProcessorService {
     return {
       chunkId: chunk.id,
       result,
-      itemsProcessed: chunk.data.length
+      itemsProcessed: chunk.data.length,
     };
   }
 
@@ -173,7 +173,7 @@ class CacheNodeService<T = any> {
       value,
       timestamp: Date.now(),
       ttl,
-      hits: 0
+      hits: 0,
     });
 
     return true;
@@ -219,7 +219,7 @@ class CacheNodeService<T = any> {
     return {
       size: this.cache.size,
       nodeId: this.nodeId,
-      totalHits
+      totalHits,
     };
   }
 
@@ -258,7 +258,7 @@ class TaskWorkerService {
   @Public()
   async processTask(task: Task): Promise<{ success: boolean; workerId: string; result?: any; error?: string }> {
     // Simulate task processing
-    await new Promise(resolve => setTimeout(resolve, 30 + Math.random() * 70));
+    await new Promise((resolve) => setTimeout(resolve, 30 + Math.random() * 70));
 
     // Simulate occasional failures (10% failure rate)
     if (Math.random() < 0.1 && task.retries < task.maxRetries) {
@@ -266,7 +266,7 @@ class TaskWorkerService {
       return {
         success: false,
         workerId: this.workerId,
-        error: 'Task processing failed'
+        error: 'Task processing failed',
       };
     }
 
@@ -275,7 +275,7 @@ class TaskWorkerService {
     return {
       success: true,
       workerId: this.workerId,
-      result: { taskId: task.id, processedBy: this.workerId }
+      result: { taskId: task.id, processedBy: this.workerId },
     };
   }
 
@@ -284,7 +284,7 @@ class TaskWorkerService {
     return {
       workerId: this.workerId,
       completed: this.completedTasks,
-      failed: this.failedTasks
+      failed: this.failedTasks,
     };
   }
 
@@ -303,7 +303,11 @@ type Matrix = number[][];
 @Process({ name: 'matrix-worker', version: '1.0.0' })
 class MatrixWorkerService {
   @Public()
-  async multiplyRow(rowA: number[], matrixB: Matrix, rowIndex: number): Promise<{ rowIndex: number; result: number[] }> {
+  async multiplyRow(
+    rowA: number[],
+    matrixB: Matrix,
+    rowIndex: number
+  ): Promise<{ rowIndex: number; result: number[] }> {
     const result: number[] = [];
 
     for (let col = 0; col < matrixB[0].length; col++) {
@@ -315,7 +319,7 @@ class MatrixWorkerService {
     }
 
     // Simulate computation time
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     return { rowIndex, result };
   }
@@ -371,7 +375,7 @@ describe('Distributed Computing - Map-Reduce', () => {
   it('should perform distributed map operation', async () => {
     const mapPool = await pm.pool(MapWorkerService, {
       size: 4,
-      strategy: PoolStrategy.ROUND_ROBIN
+      strategy: PoolStrategy.ROUND_ROBIN,
     });
 
     const dataset = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
@@ -384,16 +388,14 @@ describe('Distributed Computing - Map-Reduce', () => {
     }
 
     // Map chunks in parallel
-    const mapResults = await Promise.all(
-      chunks.map(chunk => mapPool.map(chunk, 'square'))
-    );
+    const mapResults = await Promise.all(chunks.map((chunk) => mapPool.map(chunk, 'square')));
 
     // Flatten results
-    const allResults = mapResults.flatMap(r => r.results);
+    const allResults = mapResults.flatMap((r) => r.results);
 
     expect(allResults).toHaveLength(10);
-    expect(allResults[0]).toBe(1);   // 1^2
-    expect(allResults[1]).toBe(4);   // 2^2
+    expect(allResults[0]).toBe(1); // 1^2
+    expect(allResults[1]).toBe(4); // 2^2
     expect(allResults[9]).toBe(100); // 10^2
   });
 
@@ -401,20 +403,13 @@ describe('Distributed Computing - Map-Reduce', () => {
     const mapPool = await pm.pool(MapWorkerService, { size: 3 });
     const reduceService = await pm.spawn(ReduceWorkerService);
 
-    const documents = [
-      'hello world',
-      'hello everyone',
-      'world of programming',
-      'programming is fun'
-    ];
+    const documents = ['hello world', 'hello everyone', 'world of programming', 'programming is fun'];
 
     // Map: split documents into words
-    const mapResults = await Promise.all(
-      documents.map(doc => mapPool.map([doc], 'parse-word'))
-    );
+    const mapResults = await Promise.all(documents.map((doc) => mapPool.map([doc], 'parse-word')));
 
     // Flatten word arrays
-    const allWords = mapResults.flatMap(r => r.results).flat();
+    const allWords = mapResults.flatMap((r) => r.results).flat();
 
     // Reduce: count words
     const wordCounts = await reduceService.reduce(allWords, 'word-count', {});
@@ -455,7 +450,7 @@ describe('Distributed Computing - Parallel Processing', () => {
   it('should process large dataset in parallel chunks', async () => {
     const pool = await pm.pool(DataProcessorService, {
       size: 4,
-      strategy: PoolStrategy.LEAST_LOADED
+      strategy: PoolStrategy.LEAST_LOADED,
     });
 
     // Create large dataset
@@ -469,20 +464,18 @@ describe('Distributed Computing - Parallel Processing', () => {
         id: `chunk_${i / chunkSize}`,
         data: dataset.slice(i, i + chunkSize),
         startIndex: i,
-        endIndex: Math.min(i + chunkSize, dataset.length)
+        endIndex: Math.min(i + chunkSize, dataset.length),
       });
     }
 
     // Process all chunks in parallel
     const startTime = Date.now();
-    const results = await Promise.all(
-      chunks.map(chunk => pool.processChunk(chunk))
-    );
+    const results = await Promise.all(chunks.map((chunk) => pool.processChunk(chunk)));
     const parallelTime = Date.now() - startTime;
 
     // Verify all chunks processed
     expect(results).toHaveLength(4);
-    expect(results.every(r => r.itemsProcessed === 25)).toBe(true);
+    expect(results.every((r) => r.itemsProcessed === 25)).toBe(true);
 
     // Parallel processing should be faster than sequential
     // With 4 workers and 4 chunks (50ms each), should complete in ~100ms
@@ -490,27 +483,25 @@ describe('Distributed Computing - Parallel Processing', () => {
     expect(parallelTime).toBeLessThan(300);
 
     // Flatten results
-    const processedData = results.flatMap(r => r.result);
+    const processedData = results.flatMap((r) => r.result);
     expect(processedData).toHaveLength(100);
   });
 
   it('should balance load across workers', async () => {
     const pool = await pm.pool(DataProcessorService, {
       size: 3,
-      strategy: PoolStrategy.ROUND_ROBIN
+      strategy: PoolStrategy.ROUND_ROBIN,
     });
 
     const chunks: DataChunk[] = Array.from({ length: 9 }, (_, i) => ({
       id: `chunk_${i}`,
       data: [i],
       startIndex: i,
-      endIndex: i + 1
+      endIndex: i + 1,
     }));
 
     // Process chunks
-    await Promise.all(
-      chunks.map(chunk => pool.processChunk(chunk))
-    );
+    await Promise.all(chunks.map((chunk) => pool.processChunk(chunk)));
 
     // With round-robin and 3 workers, each should process 3 chunks
     const metrics = pool.metrics;
@@ -572,7 +563,7 @@ describe('Distributed Computing - Distributed Cache', () => {
     expect(hit.hit).toBe(true);
 
     // Wait for expiration
-    await new Promise(resolve => setTimeout(resolve, 150));
+    await new Promise((resolve) => setTimeout(resolve, 150));
 
     // Should be expired
     const miss = await cacheNode.get('temp-key');
@@ -613,7 +604,7 @@ describe('Distributed Computing - Task Queue', () => {
   it('should distribute tasks across worker pool', async () => {
     const workerPool = await pm.pool(TaskWorkerService, {
       size: 4,
-      strategy: PoolStrategy.LEAST_CONNECTIONS
+      strategy: PoolStrategy.LEAST_CONNECTIONS,
     });
 
     // Create tasks
@@ -625,21 +616,19 @@ describe('Distributed Computing - Task Queue', () => {
       retries: 0,
       maxRetries: 3,
       status: 'pending' as const,
-      createdAt: Date.now()
+      createdAt: Date.now(),
     }));
 
     // Process tasks
-    const results = await Promise.all(
-      tasks.map(task => workerPool.processTask(task))
-    );
+    const results = await Promise.all(tasks.map((task) => workerPool.processTask(task)));
 
     // Verify all tasks processed
     expect(results).toHaveLength(20);
-    const successful = results.filter(r => r.success);
+    const successful = results.filter((r) => r.success);
     expect(successful.length).toBeGreaterThan(15); // Allow for some failures
 
     // Verify work distribution
-    const workerIds = new Set(results.map(r => r.workerId));
+    const workerIds = new Set(results.map((r) => r.workerId));
     expect(workerIds.size).toBeGreaterThan(1); // Multiple workers used
   });
 
@@ -654,7 +643,7 @@ describe('Distributed Computing - Task Queue', () => {
       retries: 0,
       maxRetries: 3,
       status: 'pending',
-      createdAt: Date.now()
+      createdAt: Date.now(),
     };
 
     // Attempt processing with retries
@@ -686,25 +675,21 @@ describe('Distributed Computing - Matrix Operations', () => {
     const matrixA: Matrix = [
       [1, 2, 3],
       [4, 5, 6],
-      [7, 8, 9]
+      [7, 8, 9],
     ];
 
     const matrixB: Matrix = [
       [9, 8, 7],
       [6, 5, 4],
-      [3, 2, 1]
+      [3, 2, 1],
     ];
 
     // Multiply each row in parallel
-    const rowResults = await Promise.all(
-      matrixA.map((row, index) =>
-        workerPool.multiplyRow(row, matrixB, index)
-      )
-    );
+    const rowResults = await Promise.all(matrixA.map((row, index) => workerPool.multiplyRow(row, matrixB, index)));
 
     // Sort by row index and extract results
     rowResults.sort((a, b) => a.rowIndex - b.rowIndex);
-    const resultMatrix = rowResults.map(r => r.result);
+    const resultMatrix = rowResults.map((r) => r.result);
 
     // Verify result dimensions
     expect(resultMatrix).toHaveLength(3);
@@ -722,12 +707,12 @@ describe('Distributed Computing - Matrix Operations', () => {
 
     const matrixA: Matrix = [
       [1, 2],
-      [3, 4]
+      [3, 4],
     ];
 
     const matrixB: Matrix = [
       [5, 6],
-      [7, 8]
+      [7, 8],
     ];
 
     // Test addition
@@ -758,7 +743,7 @@ describe('Distributed Computing - Load Balancing Strategies', () => {
   it('should use round-robin load balancing', async () => {
     const pool = await pm.pool(TaskWorkerService, {
       size: 3,
-      strategy: PoolStrategy.ROUND_ROBIN
+      strategy: PoolStrategy.ROUND_ROBIN,
     });
 
     const tasks: Task[] = Array.from({ length: 6 }, (_, i) => ({
@@ -769,15 +754,13 @@ describe('Distributed Computing - Load Balancing Strategies', () => {
       retries: 0,
       maxRetries: 1,
       status: 'pending' as const,
-      createdAt: Date.now()
+      createdAt: Date.now(),
     }));
 
-    const results = await Promise.all(
-      tasks.map(task => pool.processTask(task))
-    );
+    const results = await Promise.all(tasks.map((task) => pool.processTask(task)));
 
     // With 3 workers and round-robin, each worker should process 2 tasks
-    const workerIds = results.map(r => r.workerId);
+    const workerIds = results.map((r) => r.workerId);
     const workerCounts = new Map<string, number>();
 
     for (const id of workerIds) {
@@ -791,21 +774,19 @@ describe('Distributed Computing - Load Balancing Strategies', () => {
   it('should use least-loaded strategy', async () => {
     const pool = await pm.pool(DataProcessorService, {
       size: 3,
-      strategy: PoolStrategy.LEAST_LOADED
+      strategy: PoolStrategy.LEAST_LOADED,
     });
 
     const chunks: DataChunk[] = Array.from({ length: 10 }, (_, i) => ({
       id: `chunk_${i}`,
       data: [i],
       startIndex: i,
-      endIndex: i + 1
+      endIndex: i + 1,
     }));
 
-    const results = await Promise.all(
-      chunks.map(chunk => pool.processChunk(chunk))
-    );
+    const results = await Promise.all(chunks.map((chunk) => pool.processChunk(chunk)));
 
     expect(results).toHaveLength(10);
-    expect(results.every(r => r.itemsProcessed > 0)).toBe(true);
+    expect(results.every((r) => r.itemsProcessed > 0)).toBe(true);
   });
 });

@@ -93,11 +93,7 @@ export class GraphQLService {
   /**
    * Execute query
    */
-  async execute(
-    query: string,
-    variables?: Record<string, any>,
-    context?: any
-  ): Promise<any> {
+  async execute(query: string, variables?: Record<string, any>, context?: any): Promise<any> {
     // Parse query
     const operation = this.parseQuery(query);
 
@@ -118,7 +114,7 @@ export class GraphQLService {
 
     return {
       type: isSubscription ? 'subscription' : isMutation ? 'mutation' : 'query',
-      fields: this.extractFields(query)
+      fields: this.extractFields(query),
     };
   }
 
@@ -128,19 +124,13 @@ export class GraphQLService {
   private extractFields(query: string): string[] {
     // Simplified field extraction
     const matches = query.match(/\w+(?=\s*\(|\s*\{|\s*$)/g) || [];
-    return matches.filter(m =>
-      !['query', 'mutation', 'subscription'].includes(m.toLowerCase())
-    );
+    return matches.filter((m) => !['query', 'mutation', 'subscription'].includes(m.toLowerCase()));
   }
 
   /**
    * Resolve query/mutation
    */
-  private async resolve(
-    operation: any,
-    variables?: Record<string, any>,
-    context?: any
-  ): Promise<any> {
+  private async resolve(operation: any, variables?: Record<string, any>, context?: any): Promise<any> {
     const type = operation.type === 'mutation' ? 'Mutation' : 'Query';
     const resolvers = this.resolvers.get(type);
 
@@ -163,11 +153,7 @@ export class GraphQLService {
   /**
    * Subscribe to subscription
    */
-  private async subscribe(
-    operation: any,
-    variables?: Record<string, any>,
-    context?: any
-  ): Promise<AsyncIterator<any>> {
+  private async subscribe(operation: any, variables?: Record<string, any>, context?: any): Promise<AsyncIterator<any>> {
     const subscriptions = this.subscriptions.get('Subscription');
 
     if (!subscriptions) {
@@ -229,7 +215,7 @@ export class GraphQLFederationGateway extends EventEmitter {
   private buildFederatedSchema(): void {
     // In production, would use Apollo Federation to stitch schemas
     // For now, combine schemas manually
-    const schemas = Array.from(this.services.values()).map(s => s.getSchema());
+    const schemas = Array.from(this.services.values()).map((s) => s.getSchema());
     this.schema = schemas.join('\n');
 
     this.emit('schema:built', { services: this.services.size });
@@ -238,11 +224,7 @@ export class GraphQLFederationGateway extends EventEmitter {
   /**
    * Execute federated query
    */
-  async execute(
-    query: string,
-    variables?: Record<string, any>,
-    context?: any
-  ): Promise<any> {
+  async execute(query: string, variables?: Record<string, any>, context?: any): Promise<any> {
     // Parse query to determine which services to query
     const plan = this.createQueryPlan(query);
 
@@ -261,22 +243,18 @@ export class GraphQLFederationGateway extends EventEmitter {
     const services = Array.from(this.services.keys());
 
     return {
-      steps: services.map(service => ({
+      steps: services.map((service) => ({
         service,
         query,
-        dependencies: []
-      }))
+        dependencies: [],
+      })),
     };
   }
 
   /**
    * Execute query plan
    */
-  private async executePlan(
-    plan: QueryPlan,
-    variables?: Record<string, any>,
-    context?: any
-  ): Promise<any[]> {
+  private async executePlan(plan: QueryPlan, variables?: Record<string, any>, context?: any): Promise<any[]> {
     const results = [];
 
     for (const step of plan.steps) {
@@ -384,7 +362,7 @@ export class APIGateway extends EventEmitter {
 
     if (config.graphql) {
       this.graphqlGateway = new GraphQLFederationGateway({
-        services: config.graphql
+        services: config.graphql,
       });
     }
   }
@@ -399,7 +377,7 @@ export class APIGateway extends EventEmitter {
         this.routes.set(fullPath, {
           ...route,
           service: service.name,
-          upstream: service.upstream
+          upstream: service.upstream,
         });
       }
     }
@@ -446,7 +424,7 @@ export class APIGateway extends EventEmitter {
     if (!route) {
       return {
         status: 404,
-        body: { error: 'Route not found' }
+        body: { error: 'Route not found' },
       };
     }
 
@@ -460,7 +438,7 @@ export class APIGateway extends EventEmitter {
     if (!this.graphqlGateway) {
       return {
         status: 500,
-        body: { error: 'GraphQL not configured' }
+        body: { error: 'GraphQL not configured' },
       };
     }
 
@@ -470,12 +448,12 @@ export class APIGateway extends EventEmitter {
 
       return {
         status: 200,
-        body: result
+        body: result,
       };
     } catch (error) {
       return {
         status: 500,
-        body: { errors: [{ message: (error as Error).message }] }
+        body: { errors: [{ message: (error as Error).message }] },
       };
     }
   }
@@ -511,17 +489,17 @@ export class APIGateway extends EventEmitter {
       this.emit('request:forwarded', {
         service: route.service,
         upstream: route.upstream,
-        path: request.path
+        path: request.path,
       });
 
       return {
         status: 200,
-        body: { message: 'Request forwarded', service: route.service }
+        body: { message: 'Request forwarded', service: route.service },
       };
     } catch (error) {
       return {
         status: 500,
-        body: { error: 'Failed to forward request' }
+        body: { error: 'Failed to forward request' },
       };
     }
   }
@@ -534,7 +512,7 @@ export class APIGateway extends EventEmitter {
       if (!request.headers?.['authorization']) {
         return {
           status: 401,
-          body: { error: 'Unauthorized' }
+          body: { error: 'Unauthorized' },
         };
       }
       // Validate token
@@ -556,7 +534,7 @@ export class APIGateway extends EventEmitter {
       if (count >= 100) {
         return {
           status: 429,
-          body: { error: 'Too many requests' }
+          body: { error: 'Too many requests' },
         };
       }
 
@@ -583,7 +561,7 @@ export class APIGateway extends EventEmitter {
         return {
           status: 200,
           body: cached,
-          headers: { 'X-Cache': 'HIT' }
+          headers: { 'X-Cache': 'HIT' },
         };
       }
 
@@ -603,8 +581,8 @@ export class APIGateway extends EventEmitter {
           headers: {
             'Access-Control-Allow-Origin': this.config.cors?.origin || '*',
             'Access-Control-Allow-Methods': this.config.cors?.methods || 'GET,POST,PUT,DELETE',
-            'Access-Control-Allow-Headers': this.config.cors?.headers || 'Content-Type,Authorization'
-          }
+            'Access-Control-Allow-Headers': this.config.cors?.headers || 'Content-Type,Authorization',
+          },
         };
       }
       return null;
@@ -690,7 +668,7 @@ interface CORSConfig {
  * GraphQL Service decorator
  */
 export function GraphQLServiceDecorator(config: GraphQLServiceConfig) {
-  return function(target: any) {
+  return function (target: any) {
     Reflect.defineMetadata('graphql:service', config, target);
   };
 }
@@ -699,7 +677,7 @@ export function GraphQLServiceDecorator(config: GraphQLServiceConfig) {
  * Query decorator
  */
 export function Query(name?: string) {
-  return function(target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
     const resolverName = name || propertyKey;
     Reflect.defineMetadata('graphql:query', resolverName, target, propertyKey);
   };
@@ -709,7 +687,7 @@ export function Query(name?: string) {
  * Mutation decorator
  */
 export function Mutation(name?: string) {
-  return function(target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
     const resolverName = name || propertyKey;
     Reflect.defineMetadata('graphql:mutation', resolverName, target, propertyKey);
   };
@@ -719,7 +697,7 @@ export function Mutation(name?: string) {
  * Subscription decorator
  */
 export function Subscription(name?: string) {
-  return function(target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
     const resolverName = name || propertyKey;
     Reflect.defineMetadata('graphql:subscription', resolverName, target, propertyKey);
   };
@@ -729,7 +707,7 @@ export function Subscription(name?: string) {
  * Field resolver decorator
  */
 export function FieldResolver(typeName: string, fieldName: string) {
-  return function(target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
     Reflect.defineMetadata('graphql:field', { typeName, fieldName }, target, propertyKey);
   };
 }

@@ -277,12 +277,7 @@ describe('query-interface core-task', () => {
     });
 
     it('should allow service names with dots, dashes, and underscores', () => {
-      const validNames = [
-        'user.service@1.0.0',
-        'user-service@1.0.0',
-        'user_service@1.0.0',
-        'my.user-service_v2@1.0.0',
-      ];
+      const validNames = ['user.service@1.0.0', 'user-service@1.0.0', 'user_service@1.0.0', 'my.user-service_v2@1.0.0'];
 
       for (const serviceName of validNames) {
         const request: QueryInterfaceRequest = { serviceName };

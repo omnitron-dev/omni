@@ -17,7 +17,7 @@ test.describe('Unified Netron Client - HTTP Transport', () => {
 
         const client = new Netron({
           transport: 'http',
-          url: 'http://localhost:3333'
+          url: 'http://localhost:3333',
         });
 
         await client.connect();
@@ -25,7 +25,7 @@ test.describe('Unified Netron Client - HTTP Transport', () => {
         return {
           success: true,
           connected: client.isConnected(),
-          transport: client.getTransport()
+          transport: client.getTransport(),
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -44,7 +44,7 @@ test.describe('Unified Netron Client - HTTP Transport', () => {
 
         const client = new Netron({
           transport: 'http',
-          url: 'http://localhost:3333'
+          url: 'http://localhost:3333',
         });
 
         await client.connect();
@@ -57,7 +57,7 @@ test.describe('Unified Netron Client - HTTP Transport', () => {
         return {
           success: true,
           users,
-          count: users.length
+          count: users.length,
         };
       } catch (error: any) {
         return { success: false, error: error.message, stack: error.stack };
@@ -77,7 +77,7 @@ test.describe('Unified Netron Client - HTTP Transport', () => {
 
         const client = new Netron({
           transport: 'http',
-          url: 'http://localhost:3333'
+          url: 'http://localhost:3333',
         });
 
         await client.connect();
@@ -91,7 +91,7 @@ test.describe('Unified Netron Client - HTTP Transport', () => {
           name: 'Test User',
           email: 'test@example.com',
           age: 25,
-          active: true
+          active: true,
         });
 
         await client.disconnect();
@@ -100,7 +100,7 @@ test.describe('Unified Netron Client - HTTP Transport', () => {
           success: true,
           allUsers: users.length,
           firstUser: firstUser !== null,
-          newUser: newUser.name === 'Test User'
+          newUser: newUser.name === 'Test User',
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -120,7 +120,7 @@ test.describe('Unified Netron Client - HTTP Transport', () => {
 
         const client = new Netron({
           transport: 'http',
-          url: 'http://localhost:3333'
+          url: 'http://localhost:3333',
         });
 
         await client.connect();
@@ -134,7 +134,7 @@ test.describe('Unified Netron Client - HTTP Transport', () => {
 
         return {
           success: true,
-          user: user === null
+          user: user === null,
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -153,7 +153,7 @@ test.describe('Unified Netron Client - HTTP Transport', () => {
         const client = new Netron({
           transport: 'http',
           url: 'http://localhost:3333',
-          timeout: 10000
+          timeout: 10000,
         });
 
         await client.connect();
@@ -165,7 +165,7 @@ test.describe('Unified Netron Client - HTTP Transport', () => {
           name: 'CRUD Test',
           email: 'crud@test.com',
           age: 30,
-          active: true
+          active: true,
         });
 
         // Read
@@ -173,7 +173,7 @@ test.describe('Unified Netron Client - HTTP Transport', () => {
 
         // Update
         const updatedUser = await userService.updateUser(newUser.id, {
-          age: 31
+          age: 31,
         });
 
         // Delete
@@ -190,7 +190,7 @@ test.describe('Unified Netron Client - HTTP Transport', () => {
           fetched: fetchedUser?.name === 'CRUD Test',
           updated: updatedUser?.age === 31,
           deleted: deleted === true,
-          verifyDeleted: deletedUser === null
+          verifyDeleted: deletedUser === null,
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -212,7 +212,7 @@ test.describe('Unified Netron Client - HTTP Transport', () => {
 
         const client = new Netron({
           transport: 'http',
-          url: 'http://localhost:3333'
+          url: 'http://localhost:3333',
         });
 
         await client.connect();
@@ -224,7 +224,7 @@ test.describe('Unified Netron Client - HTTP Transport', () => {
         return {
           success: true,
           metrics: metrics !== null,
-          hasId: 'id' in metrics
+          hasId: 'id' in metrics,
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -243,7 +243,7 @@ test.describe('Unified Netron Client - HTTP Transport', () => {
 
         const client = new Netron({
           transport: 'http',
-          url: 'http://localhost:3333'
+          url: 'http://localhost:3333',
         });
 
         await client.connect();
@@ -256,7 +256,7 @@ test.describe('Unified Netron Client - HTTP Transport', () => {
           await client.disconnect();
           return {
             success: true,
-            errorMessage: error.message.includes('not supported')
+            errorMessage: error.message.includes('not supported'),
           };
         }
       } catch (error: any) {
@@ -281,7 +281,7 @@ test.describe('Unified Netron Client - Advanced Scenarios', () => {
 
         const client = new Netron({
           transport: 'http',
-          url: 'http://localhost:3333'
+          url: 'http://localhost:3333',
         });
 
         await client.connect();
@@ -301,7 +301,7 @@ test.describe('Unified Netron Client - Advanced Scenarios', () => {
         return {
           success: true,
           count: results.length,
-          allValid: results.every(r => Array.isArray(r) && r.length > 0)
+          allValid: results.every((r) => Array.isArray(r) && r.length > 0),
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -324,7 +324,7 @@ test.describe('Unified Netron Client - Advanced Scenarios', () => {
         const client = new Netron({
           transport: 'http',
           url: 'http://localhost:3333',
-          timeout: 100 // Very short timeout
+          timeout: 100, // Very short timeout
         });
 
         await client.connect();
@@ -340,7 +340,8 @@ test.describe('Unified Netron Client - Advanced Scenarios', () => {
           await client.disconnect();
           return {
             success: true,
-            timedOut: error.message.includes('timeout') || error.message.includes('abort') || error.message.includes('Timeout')
+            timedOut:
+              error.message.includes('timeout') || error.message.includes('abort') || error.message.includes('Timeout'),
           };
         }
       } catch (error: any) {
@@ -364,8 +365,8 @@ test.describe('Unified Netron Client - Advanced Scenarios', () => {
           transport: 'http',
           url: 'http://localhost:3333',
           headers: {
-            'X-Custom-Header': 'test-value'
-          }
+            'X-Custom-Header': 'test-value',
+          },
         });
 
         await client.connect();
@@ -377,7 +378,7 @@ test.describe('Unified Netron Client - Advanced Scenarios', () => {
 
         return {
           success: true,
-          users: users.length > 0
+          users: users.length > 0,
         };
       } catch (error: any) {
         return { success: false, error: error.message };

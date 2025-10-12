@@ -55,10 +55,7 @@ export function setNavigationState(state: 'idle' | 'loading' | 'submitting', loc
  * @param context - Loader context
  * @returns Loader result
  */
-export async function executeLoader(
-  loader: RouteLoader,
-  context: LoaderContext
-): Promise<any> {
+export async function executeLoader(loader: RouteLoader, context: LoaderContext): Promise<any> {
   try {
     return await loader(context);
   } catch (error) {
@@ -74,10 +71,7 @@ export async function executeLoader(
  * @param context - Action context
  * @returns Action result
  */
-export async function executeAction(
-  action: RouteAction,
-  context: ActionContext
-): Promise<any> {
+export async function executeAction(action: RouteAction, context: ActionContext): Promise<any> {
   try {
     return await action(context);
   } catch (error) {
@@ -241,7 +235,7 @@ export function useFetcher(): Fetcher {
         console.debug('Fetcher submit:', { data, method, actionPath });
 
         // Simulate action call
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         dataSignal.set({ success: true });
       } catch (error) {
@@ -259,7 +253,7 @@ export function useFetcher(): Fetcher {
         console.debug('Fetcher load:', href);
 
         // Simulate loader call
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         dataSignal.set({ loaded: true });
       } catch (error) {

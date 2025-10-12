@@ -66,7 +66,7 @@ export const RouterView = defineComponent<RouterProps>((props) => {
       const ErrorBoundaryComponent = routeContext.errorBoundary;
       rendered = ErrorBoundary({
         fallback: ErrorBoundaryComponent,
-        children: rendered
+        children: rendered,
       });
     }
 

@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { Container } from '../../../src/nexus/index.js';
-import { NotificationService, NotificationPayload, Recipient, SendOptions } from '../../../src/modules/notifications/index.js';
+import {
+  NotificationService,
+  NotificationPayload,
+  Recipient,
+  SendOptions,
+} from '../../../src/modules/notifications/index.js';
 import { NotificationManager } from '../../../src/rotif/rotif.js';
 import { ChannelManager, ChannelType } from '../../../src/modules/notifications/channel-manager.js';
 import { PreferenceManager } from '../../../src/modules/notifications/preference-manager.js';
@@ -36,9 +41,7 @@ describe('NotificationService', () => {
       addChannel: jest.fn(),
       removeChannel: jest.fn(),
       getChannels: jest.fn().mockReturnValue(['in-app', 'email']),
-      planDelivery: jest.fn().mockResolvedValue(
-        new Map([['in-app', { recipients: [{ id: 'user-1' }] }]])
-      ),
+      planDelivery: jest.fn().mockResolvedValue(new Map([['in-app', { recipients: [{ id: 'user-1' }] }]])),
     } as any;
 
     preferenceManager = {
@@ -62,12 +65,7 @@ describe('NotificationService', () => {
     } as any;
 
     // Create service instance
-    service = new NotificationService(
-      rotifManager,
-      channelManager,
-      preferenceManager,
-      rateLimiter
-    );
+    service = new NotificationService(rotifManager, channelManager, preferenceManager, rateLimiter);
   });
 
   afterEach(() => {
@@ -306,7 +304,7 @@ describe('NotificationService', () => {
         new Map([
           ['push', { recipients: [recipient] }],
           ['sms', { recipients: [recipient] }],
-          ['email', { recipients: [recipient] }]
+          ['email', { recipients: [recipient] }],
         ])
       );
 
@@ -362,7 +360,7 @@ describe('NotificationService', () => {
       const payload: NotificationPayload = {
         type: 'info',
         title: 'Reminder',
-        body: 'Don\'t forget!',
+        body: "Don't forget!",
       };
 
       const recipient: Recipient = {
@@ -428,5 +426,4 @@ describe('NotificationService', () => {
       expect(cancelResult).toBe(true);
     });
   });
-
 });

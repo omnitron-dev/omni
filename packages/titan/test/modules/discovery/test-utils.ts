@@ -69,7 +69,7 @@ export async function waitFor(
     if (await condition()) {
       return;
     }
-    await new Promise(resolve => setTimeout(resolve, interval));
+    await new Promise((resolve) => setTimeout(resolve, interval));
   }
   throw new Error('Timeout waiting for condition');
 }
@@ -124,14 +124,12 @@ export function createTestNodeInfo(overrides?: Partial<NodeInfo>): NodeInfo {
   return {
     nodeId: 'test-node-1',
     address: '127.0.0.1:8080',
-    services: [
-      { name: 'TestService', version: '1.0.0' }
-    ],
+    services: [{ name: 'TestService', version: '1.0.0' }],
     registeredAt: Date.now(),
     lastHeartbeat: Date.now(),
     active: true,
     metadata: {},
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -142,7 +140,7 @@ export function createTestServiceInfo(overrides?: Partial<ServiceInfo>): Service
   return {
     name: 'TestService',
     version: '1.0.0',
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -194,7 +192,7 @@ export async function getNodeData(
     registeredAt: parseInt(data.timestamp || '0'),
     lastHeartbeat: parseInt(data.timestamp || '0'),
     active: heartbeatExists === 1,
-    metadata: {}
+    metadata: {},
   };
 }
 
@@ -215,7 +213,7 @@ export async function setNodeData(
   await redis.hmset(nodeKey, {
     address: nodeInfo.address,
     services: JSON.stringify(nodeInfo.services),
-    timestamp: nodeInfo.lastHeartbeat.toString()
+    timestamp: nodeInfo.lastHeartbeat.toString(),
   });
 
   await redis.expire(nodeKey, Math.round(ttl / 1000));
@@ -247,13 +245,10 @@ export async function waitForNodeInactive(
   timeout: number = 20000,
   prefix: string = 'titan:discovery'
 ): Promise<void> {
-  await waitFor(
-    async () => {
-      const data = await getNodeData(redis, nodeId, prefix);
-      return !data || !data.active;
-    },
-    timeout
-  );
+  await waitFor(async () => {
+    const data = await getNodeData(redis, nodeId, prefix);
+    return !data || !data.active;
+  }, timeout);
 }
 
 /**
@@ -271,9 +266,7 @@ export async function createTestNodes(
     const nodeInfo = createTestNodeInfo({
       nodeId: `test-node-${i}`,
       address: `127.0.0.1:${8080 + i}`,
-      services: [
-        { name: `${servicePrefix}${i}`, version: '1.0.0' }
-      ]
+      services: [{ name: `${servicePrefix}${i}`, version: '1.0.0' }],
     });
 
     await setNodeData(redis, nodeInfo.nodeId, nodeInfo, 15000, prefix);
@@ -292,7 +285,7 @@ export function subscribeToEvents(
 ): { [key: string]: jest.Mock } {
   const handlers: { [key: string]: jest.Mock } = {};
 
-  events.forEach(event => {
+  events.forEach((event) => {
     handlers[event] = jest.fn();
     service.on(event as any, handlers[event]);
   });
@@ -318,7 +311,7 @@ export function mockRedisPubSub(redis: Redis): {
   const mocks = {
     publish: jest.fn().mockResolvedValue(1),
     subscribe: jest.fn().mockResolvedValue('OK'),
-    on: jest.fn()
+    on: jest.fn(),
   };
 
   Object.assign(redis, mocks);
@@ -329,28 +322,15 @@ export function mockRedisPubSub(redis: Redis): {
 /**
  * Wait for discovery service to be ready
  */
-export async function waitForDiscoveryReady(
-  service: DiscoveryService,
-  timeout: number = 5000
-): Promise<void> {
-  await waitFor(
-    () => (service as any).registered === true,
-    timeout
-  );
+export async function waitForDiscoveryReady(service: DiscoveryService, timeout: number = 5000): Promise<void> {
+  await waitFor(() => (service as any).registered === true, timeout);
 }
 
 /**
  * Assert service list contains expected services
  */
-export function assertServicesContain(
-  services: ServiceInfo[],
-  expectedName: string,
-  expectedVersion?: string
-): void {
-  const found = services.find(s =>
-    s.name === expectedName &&
-    (!expectedVersion || s.version === expectedVersion)
-  );
+export function assertServicesContain(services: ServiceInfo[], expectedName: string, expectedVersion?: string): void {
+  const found = services.find((s) => s.name === expectedName && (!expectedVersion || s.version === expectedVersion));
   expect(found).toBeTruthy();
 }
 

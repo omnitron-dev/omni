@@ -34,9 +34,7 @@ describe('LocalPeer Edge Cases', () => {
       await netron.peer.exposeService(service);
 
       // Try to expose same instance again
-      await expect(netron.peer.exposeService(service)).rejects.toThrow(
-        'Service instance already exposed: TestService'
-      );
+      await expect(netron.peer.exposeService(service)).rejects.toThrow('Service instance already exposed: TestService');
     });
 
     it('should throw error when exposing service with same qualified name', async () => {
@@ -131,7 +129,7 @@ describe('LocalPeer Edge Cases', () => {
           name: 'EventService',
           version: '1.0.0',
           qualifiedName: 'EventService@1.0.0',
-          peerId: netron.peer.id
+          peerId: netron.peer.id,
         })
       );
     });

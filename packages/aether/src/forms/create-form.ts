@@ -92,9 +92,7 @@ export function createForm<T extends Record<string, any>>(config: FormConfig<T>)
         // Schema-based validation
         const result = validate.safeParse(values());
         if (!result.success) {
-          const fieldError = result.error.issues.find(
-            (issue) => issue.path[0] === field
-          );
+          const fieldError = result.error.issues.find((issue) => issue.path[0] === field);
           error = fieldError?.message;
         }
       } else {

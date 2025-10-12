@@ -9,7 +9,7 @@ import type {
   ITransportServer,
   TransportCapabilities,
   TransportOptions,
-  TransportAddress
+  TransportAddress,
 } from '../types.js';
 import { HttpServer } from './server.js';
 import { HttpConnection } from './connection.js';
@@ -31,12 +31,12 @@ export class HttpTransport implements ITransport {
    * Transport capabilities
    */
   readonly capabilities: TransportCapabilities = {
-    streaming: true,      // Via Server-Sent Events (SSE) or chunked encoding
+    streaming: true, // Via Server-Sent Events (SSE) or chunked encoding
     bidirectional: false, // HTTP is request-response
-    binary: false,        // HTTP is a text protocol (headers + status line), even though it can carry binary payloads
-    reconnection: false,  // HTTP is stateless
-    multiplexing: true,   // Multiple requests over same connection (HTTP/1.1 keep-alive, HTTP/2)
-    server: true          // Can create HTTP servers
+    binary: false, // HTTP is a text protocol (headers + status line), even though it can carry binary payloads
+    reconnection: false, // HTTP is stateless
+    multiplexing: true, // Multiple requests over same connection (HTTP/1.1 keep-alive, HTTP/2)
+    server: true, // Can create HTTP servers
   };
 
   /**
@@ -49,9 +49,7 @@ export class HttpTransport implements ITransport {
     }
 
     // Feature flag for using new direct HTTP connection without packet protocol
-    const useDirectHttp = (options as any)?.useDirectHttp ||
-      process.env['NETRON_HTTP_DIRECT'] === 'true' ||
-      false;
+    const useDirectHttp = (options as any)?.useDirectHttp || process.env['NETRON_HTTP_DIRECT'] === 'true' || false;
 
     // Always use direct HTTP connection (v2.0) as packet-based is removed
     const connection = new HttpConnection(address, options);
@@ -111,7 +109,7 @@ export class HttpTransport implements ITransport {
       host: url.hostname,
       port,
       path: url.pathname,
-      params: Object.keys(params).length > 0 ? params : undefined
+      params: Object.keys(params).length > 0 ? params : undefined,
     };
   }
 
@@ -152,7 +150,7 @@ export class HttpTransport implements ITransport {
     return {
       transport: 'http',
       runtime: detectRuntime(),
-      capabilities: this.capabilities
+      capabilities: this.capabilities,
     };
   }
 }

@@ -22,7 +22,7 @@ describe('EventHistoryService', () => {
       enableHistory: jest.fn(),
       disableHistory: jest.fn(),
       getHistory: jest.fn().mockReturnValue([]),
-      clearHistory: jest.fn()
+      clearHistory: jest.fn(),
     };
 
     historyService = new EventHistoryService(mockEmitter);
@@ -41,7 +41,7 @@ describe('EventHistoryService', () => {
     historyService.record({
       event: 'test.event',
       data: { test: true },
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
 
     const history = historyService.getHistorySync('test.event');
@@ -58,7 +58,7 @@ describe('EventHistoryService', () => {
       historyService.record({
         event: 'limited.event',
         data: { id: i },
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
     }
 
@@ -74,7 +74,7 @@ describe('EventHistoryService', () => {
     historyService.record({
       event: 'clear.event',
       data: {},
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
 
     // Use the correct method name for clearing history

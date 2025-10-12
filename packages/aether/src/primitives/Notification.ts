@@ -73,9 +73,14 @@ export const Notification = defineComponent<NotificationProps>((props) => {
           children: [
             jsx('div', { 'data-notification-title': '', children: item.title }),
             item.description && jsx('div', { 'data-notification-description': '', children: item.description }),
-            item.closable !== false && jsx('button', { 'data-notification-close': '', onClick: () => closeNotification(item.id), children: '×' }),
+            item.closable !== false &&
+              jsx('button', {
+                'data-notification-close': '',
+                onClick: () => closeNotification(item.id),
+                children: '×',
+              }),
           ],
-        }),
+        })
       ),
     });
   };

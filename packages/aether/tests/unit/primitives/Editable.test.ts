@@ -73,10 +73,7 @@ describe('Editable', () => {
     it('should render preview in display mode', () => {
       const component = () =>
         Editable({
-          children: () => [
-            EditablePreview({ children: 'Click to edit' }),
-            EditableInput({}),
-          ],
+          children: () => [EditablePreview({ children: 'Click to edit' }), EditableInput({})],
         });
       const { container } = renderComponent(component);
 
@@ -88,10 +85,7 @@ describe('Editable', () => {
     it('should not render input in display mode', () => {
       const component = () =>
         Editable({
-          children: () => [
-            EditablePreview({ children: 'Click to edit' }),
-            EditableInput({}),
-          ],
+          children: () => [EditablePreview({ children: 'Click to edit' }), EditableInput({})],
         });
       const { container } = renderComponent(component);
 
@@ -866,9 +860,7 @@ describe('Editable', () => {
         });
       const { container } = renderComponent(component);
 
-      const submitBtn = container.querySelector(
-        '[data-editable-submit]',
-      ) as HTMLButtonElement;
+      const submitBtn = container.querySelector('[data-editable-submit]') as HTMLButtonElement;
       expect(submitBtn.disabled).toBe(true);
     });
   });
@@ -930,9 +922,7 @@ describe('Editable', () => {
         });
       const { container } = renderComponent(component);
 
-      const cancelBtn = container.querySelector(
-        '[data-editable-cancel]',
-      ) as HTMLButtonElement;
+      const cancelBtn = container.querySelector('[data-editable-cancel]') as HTMLButtonElement;
       expect(cancelBtn.disabled).toBe(true);
     });
   });
@@ -1122,10 +1112,7 @@ describe('Editable', () => {
             EditablePreview({ children: value() }),
             EditableInput({}),
             EditableControls({
-              children: [
-                EditableSubmit({ children: 'Save' }),
-                EditableCancel({ children: 'Cancel' }),
-              ],
+              children: [EditableSubmit({ children: 'Save' }), EditableCancel({ children: 'Cancel' })],
             }),
           ],
         });

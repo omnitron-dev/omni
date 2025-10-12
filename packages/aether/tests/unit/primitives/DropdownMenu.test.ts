@@ -445,10 +445,7 @@ describe('Dropdown Menu Primitive', () => {
               align: 'start' as const,
               children: [
                 DropdownMenuItem({
-                  children: [
-                    'New',
-                    DropdownMenuShortcut({ children: '⌘N' }),
-                  ],
+                  children: ['New', DropdownMenuShortcut({ children: '⌘N' })],
                 }),
                 DropdownMenuItem({
                   children: 'Open',
@@ -456,10 +453,7 @@ describe('Dropdown Menu Primitive', () => {
                 }),
                 DropdownMenuSeparator({}),
                 DropdownMenuCheckboxItem({
-                  children: [
-                    DropdownMenuItemIndicator({ children: '✓' }),
-                    'Show Bookmarks',
-                  ],
+                  children: [DropdownMenuItemIndicator({ children: '✓' }), 'Show Bookmarks'],
                   defaultChecked: true,
                 }),
               ],

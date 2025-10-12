@@ -100,7 +100,7 @@ describe('predicates', () => {
     });
 
     it('should check functions', () => {
-      expect(isFunction(() => { })).toBe(true);
+      expect(isFunction(() => {})).toBe(true);
       expect(isFunction({})).toBe(false);
     });
 
@@ -163,15 +163,15 @@ describe('predicates', () => {
       expect(isPlainObject(Promise.resolve({}))).toBe(false);
 
       // NOT plain objects - Functions and classes
-      expect(isPlainObject(() => { })).toBe(false);
-      expect(isPlainObject(function () { })).toBe(false);
-      expect(isPlainObject(async () => { })).toBe(false);
-      expect(isPlainObject(function* () { })).toBe(false);
-      expect(isPlainObject(async function* () { })).toBe(false);
-      class Test { }
+      expect(isPlainObject(() => {})).toBe(false);
+      expect(isPlainObject(function () {})).toBe(false);
+      expect(isPlainObject(async () => {})).toBe(false);
+      expect(isPlainObject(function* () {})).toBe(false);
+      expect(isPlainObject(async function* () {})).toBe(false);
+      class Test {}
       expect(isPlainObject(Test)).toBe(false);
       expect(isPlainObject(new Test())).toBe(false);
-      expect(isPlainObject(new (class Cls { })())).toBe(false);
+      expect(isPlainObject(new (class Cls {})())).toBe(false);
 
       // NOT plain objects - Primitives
       expect(isPlainObject(null)).toBe(false);
@@ -238,9 +238,9 @@ describe('predicates', () => {
     });
 
     it('should check classes', () => {
-      class Test { }
+      class Test {}
       expect(isClass(Test)).toBe(true);
-      expect(isClass(() => { })).toBe(false);
+      expect(isClass(() => {})).toBe(false);
     });
 
     it('should check numeric types', () => {
@@ -421,8 +421,8 @@ describe('predicates', () => {
     });
 
     it('should check async functions', () => {
-      expect(isAsyncFunction(async () => { })).toBe(true);
-      expect(isAsyncFunction(() => { })).toBe(false);
+      expect(isAsyncFunction(async () => {})).toBe(true);
+      expect(isAsyncFunction(() => {})).toBe(false);
     });
 
     it('should check async generators', () => {
@@ -448,27 +448,27 @@ describe('predicates', () => {
       expect(isAsyncGenerator(regularGen())).toBe(false);
 
       // Async function should return false
-      expect(isAsyncGenerator(async () => { })).toBe(false);
+      expect(isAsyncGenerator(async () => {})).toBe(false);
 
       // Regular function should return false
-      expect(isAsyncGenerator(() => { })).toBe(false);
+      expect(isAsyncGenerator(() => {})).toBe(false);
 
       // Promise should return false
       expect(isAsyncGenerator(Promise.resolve())).toBe(false);
 
       // Objects that look like async generators but aren't
       const fakeAsyncGen = {
-        next: () => { },
-        return: () => { },
-        throw: () => { },
+        next: () => {},
+        return: () => {},
+        throw: () => {},
         // Missing Symbol.asyncIterator
       };
       expect(isAsyncGenerator(fakeAsyncGen)).toBe(false);
 
       const anotherFakeAsyncGen = {
-        next: () => { },
-        return: () => { },
-        throw: () => { },
+        next: () => {},
+        return: () => {},
+        throw: () => {},
         [Symbol.asyncIterator]: 'not a function', // Wrong type
       };
       expect(isAsyncGenerator(anotherFakeAsyncGen)).toBe(false);
@@ -600,7 +600,7 @@ describe('predicates', () => {
       expect(isObject(weakMap)).toBe(true);
       expect(isObject(weakSet)).toBe(true);
       expect(isObject(Object.create(null))).toBe(true);
-      expect(isObject(new (class Custom { })())).toBe(true);
+      expect(isObject(new (class Custom {})())).toBe(true);
     });
 
     it('should handle special numbers', () => {

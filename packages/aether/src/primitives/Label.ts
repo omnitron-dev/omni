@@ -42,15 +42,15 @@ export interface LabelProps {
  * - Works with any form control
  */
 export const Label = defineComponent<LabelProps>((props) => () => {
-    const { for: htmlFor, children, ...restProps } = props;
+  const { for: htmlFor, children, ...restProps } = props;
 
-    return jsx('label', {
-      ...restProps,
-      htmlFor,
-      'data-label': '',
-      children,
-    });
+  return jsx('label', {
+    ...restProps,
+    htmlFor,
+    'data-label': '',
+    children,
   });
+});
 
 // Attach sub-components for dot notation
 Label.displayName = 'Label';

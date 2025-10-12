@@ -4,11 +4,11 @@
  */
 
 // @ts-expect-error - Deno specific imports
-import { FakeTime } from "https://deno.land/std@0.208.0/testing/time.ts";
+import { FakeTime } from 'https://deno.land/std@0.208.0/testing/time.ts';
 // @ts-expect-error - Deno specific imports
-import { expect as denoExpect } from "https://deno.land/x/expect@v0.3.0/mod.ts";
+import { expect as denoExpect } from 'https://deno.land/x/expect@v0.3.0/mod.ts';
 // @ts-expect-error - Deno specific imports
-import { it as denoIt, describe as denoDescribe } from "https://deno.land/std@0.208.0/testing/bdd.ts";
+import { it as denoIt, describe as denoDescribe } from 'https://deno.land/std@0.208.0/testing/bdd.ts';
 
 // Polyfill for node:util inherits
 function inherits(ctor: any, superCtor: any) {
@@ -180,7 +180,7 @@ const fakeTimers = {
       fakeTime.restore();
       fakeTime = new FakeTime();
     }
-  }
+  },
 };
 
 // Custom expect wrapper that adds missing methods
@@ -258,14 +258,14 @@ expect.extend = (matchers: Record<string, any>) => {
   useRealTimers: fakeTimers.useRealTimers,
   advanceTimersByTime: fakeTimers.advanceTimersByTime,
   runAllTimers: fakeTimers.runAllTimers,
-  clearAllTimers: fakeTimers.clearAllTimers
+  clearAllTimers: fakeTimers.clearAllTimers,
 };
 
 // Make Node.js APIs available globally for tests
 (globalThis as any).node = {
   util: {
-    inherits
-  }
+    inherits,
+  },
 };
 
 // Export everything

@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import {
   HttpMiddlewareAdapter,
   HttpBuiltinMiddleware,
-  type HttpMiddlewareContext
+  type HttpMiddlewareContext,
 } from '../../../src/netron/middleware/index.js';
 import { TitanError, ErrorCode } from '../../../src/errors/index.js';
 import type { IncomingMessage, ServerResponse } from 'http';
@@ -25,19 +25,19 @@ describe('HttpMiddlewareAdapter', () => {
       url: '/api/users/create',
       headers: {
         'content-type': 'application/json',
-        'authorization': 'Bearer token123',
-        'x-request-id': 'req-123'
+        authorization: 'Bearer token123',
+        'x-request-id': 'req-123',
       },
       socket: {
-        remoteAddress: '127.0.0.1'
-      } as any
+        remoteAddress: '127.0.0.1',
+      } as any,
     };
 
     mockResponse = {
       statusCode: 200,
       setHeader: jest.fn(),
       writeHead: jest.fn(),
-      end: jest.fn()
+      end: jest.fn(),
     };
 
     mockNext = jest.fn().mockResolvedValue(undefined);
@@ -56,8 +56,8 @@ describe('HttpMiddlewareAdapter', () => {
         metadata: new Map(),
         timing: {
           start: Date.now(),
-          middlewareTimes: new Map()
-        }
+          middlewareTimes: new Map(),
+        },
       };
 
       const netronCtx = adapter.toNetronContext(httpCtx);
@@ -79,8 +79,8 @@ describe('HttpMiddlewareAdapter', () => {
         metadata: new Map(),
         timing: {
           start: Date.now(),
-          middlewareTimes: new Map()
-        }
+          middlewareTimes: new Map(),
+        },
       };
 
       const netronCtx = adapter.toNetronContext(httpCtx);
@@ -110,8 +110,8 @@ describe('HttpMiddlewareAdapter', () => {
       const adapterWithCors = new HttpMiddlewareAdapter({
         cors: {
           origin: '*',
-          methods: ['GET', 'POST']
-        }
+          methods: ['GET', 'POST'],
+        },
       });
 
       const middleware = adapterWithCors.getTransportMiddleware();
@@ -132,20 +132,20 @@ describe('HttpBuiltinMiddleware', () => {
       request: {
         method: 'POST',
         url: '/api/test',
-        headers: {}
+        headers: {},
       } as IncomingMessage,
       response: {
         statusCode: 200,
         setHeader: jest.fn(),
         writeHead: jest.fn(),
-        end: jest.fn()
+        end: jest.fn(),
       } as any,
       route: '/api/test',
       metadata: new Map(),
       timing: {
         start: Date.now(),
-        middlewareTimes: new Map()
-      }
+        middlewareTimes: new Map(),
+      },
     };
 
     mockNext = jest.fn().mockResolvedValue(undefined);
@@ -158,7 +158,7 @@ describe('HttpBuiltinMiddleware', () => {
         methods: ['GET', 'POST', 'PUT', 'DELETE'],
         headers: ['Content-Type', 'Authorization'],
         credentials: true,
-        maxAge: 86400
+        maxAge: 86400,
       });
 
       mockContext.request.method = 'OPTIONS';
@@ -167,10 +167,7 @@ describe('HttpBuiltinMiddleware', () => {
 
       await middleware(mockContext, mockNext);
 
-      expect(mockContext.response.setHeader).toHaveBeenCalledWith(
-        'Access-Control-Allow-Origin',
-        '*'
-      );
+      expect(mockContext.response.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Origin', '*');
       expect(mockContext.response.setHeader).toHaveBeenCalledWith(
         'Access-Control-Allow-Methods',
         'GET, POST, PUT, DELETE'
@@ -179,14 +176,8 @@ describe('HttpBuiltinMiddleware', () => {
         'Access-Control-Allow-Headers',
         'Content-Type, Authorization'
       );
-      expect(mockContext.response.setHeader).toHaveBeenCalledWith(
-        'Access-Control-Allow-Credentials',
-        'true'
-      );
-      expect(mockContext.response.setHeader).toHaveBeenCalledWith(
-        'Access-Control-Max-Age',
-        '86400'
-      );
+      expect(mockContext.response.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Credentials', 'true');
+      expect(mockContext.response.setHeader).toHaveBeenCalledWith('Access-Control-Max-Age', '86400');
       expect(mockContext.response.statusCode).toBe(204);
       expect(mockContext.response.end).toHaveBeenCalled();
       expect(mockContext.skipRemaining).toBe(true);
@@ -194,33 +185,27 @@ describe('HttpBuiltinMiddleware', () => {
 
     it('should add CORS headers to regular requests', async () => {
       const middleware = HttpBuiltinMiddleware.corsMiddleware({
-        origin: 'https://trusted.com'
+        origin: 'https://trusted.com',
       });
 
       mockContext.request.headers['origin'] = 'https://trusted.com';
 
       await middleware(mockContext, mockNext);
 
-      expect(mockContext.response.setHeader).toHaveBeenCalledWith(
-        'Access-Control-Allow-Origin',
-        'https://trusted.com'
-      );
+      expect(mockContext.response.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Origin', 'https://trusted.com');
       expect(mockNext).toHaveBeenCalled();
     });
 
     it('should validate origin against allowed list', async () => {
       const middleware = HttpBuiltinMiddleware.corsMiddleware({
-        origin: ['https://app1.com', 'https://app2.com']
+        origin: ['https://app1.com', 'https://app2.com'],
       });
 
       mockContext.request.headers['origin'] = 'https://app1.com';
 
       await middleware(mockContext, mockNext);
 
-      expect(mockContext.response.setHeader).toHaveBeenCalledWith(
-        'Access-Control-Allow-Origin',
-        'https://app1.com'
-      );
+      expect(mockContext.response.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Origin', 'https://app1.com');
 
       // Test with disallowed origin
       mockContext.request.headers['origin'] = 'https://evil.com';
@@ -236,7 +221,7 @@ describe('HttpBuiltinMiddleware', () => {
 
     it('should use function to determine origin', async () => {
       const middleware = HttpBuiltinMiddleware.corsMiddleware({
-        origin: (origin) => origin?.endsWith('.trusted.com') || false
+        origin: (origin) => origin?.endsWith('.trusted.com') || false,
       });
 
       mockContext.request.headers['origin'] = 'https://app.trusted.com';
@@ -253,14 +238,14 @@ describe('HttpBuiltinMiddleware', () => {
   describe('bodyParserMiddleware', () => {
     it('should parse JSON body', async () => {
       const middleware = HttpBuiltinMiddleware.bodyParserMiddleware({
-        maxSize: 1024 * 1024 // 1MB
+        maxSize: 1024 * 1024, // 1MB
       });
 
       const chunks: any[] = [];
       mockContext.request = {
         ...mockContext.request,
         headers: {
-          'content-type': 'application/json'
+          'content-type': 'application/json',
         },
         on: jest.fn((event, handler) => {
           if (event === 'data') {
@@ -271,7 +256,7 @@ describe('HttpBuiltinMiddleware', () => {
           if (event === 'end') {
             handler();
           }
-        })
+        }),
       } as any;
 
       await middleware(mockContext, mockNext);
@@ -286,7 +271,7 @@ describe('HttpBuiltinMiddleware', () => {
       mockContext.request = {
         ...mockContext.request,
         headers: {
-          'content-type': 'application/json'
+          'content-type': 'application/json',
         },
         on: jest.fn((event, handler) => {
           if (event === 'data') {
@@ -295,12 +280,12 @@ describe('HttpBuiltinMiddleware', () => {
           if (event === 'end') {
             handler();
           }
-        })
+        }),
       } as any;
 
       await expect(middleware(mockContext, mockNext)).rejects.toThrow(TitanError);
       await expect(middleware(mockContext, mockNext)).rejects.toMatchObject({
-        code: ErrorCode.BAD_REQUEST
+        code: ErrorCode.BAD_REQUEST,
       });
 
       expect(mockNext).not.toHaveBeenCalled();
@@ -308,13 +293,13 @@ describe('HttpBuiltinMiddleware', () => {
 
     it('should reject oversized bodies', async () => {
       const middleware = HttpBuiltinMiddleware.bodyParserMiddleware({
-        maxSize: 10 // Very small limit
+        maxSize: 10, // Very small limit
       });
 
       mockContext.request = {
         ...mockContext.request,
         headers: {
-          'content-type': 'application/json'
+          'content-type': 'application/json',
         },
         on: jest.fn((event, handler) => {
           if (event === 'data') {
@@ -323,12 +308,12 @@ describe('HttpBuiltinMiddleware', () => {
           if (event === 'end') {
             handler();
           }
-        })
+        }),
       } as any;
 
       await expect(middleware(mockContext, mockNext)).rejects.toThrow(TitanError);
       await expect(middleware(mockContext, mockNext)).rejects.toMatchObject({
-        code: ErrorCode.PAYLOAD_TOO_LARGE
+        code: ErrorCode.PAYLOAD_TOO_LARGE,
       });
     });
   });
@@ -336,7 +321,7 @@ describe('HttpBuiltinMiddleware', () => {
   describe('compressionMiddleware', () => {
     it('should compress response with gzip', async () => {
       const middleware = HttpBuiltinMiddleware.compressionMiddleware({
-        threshold: 10
+        threshold: 10,
       });
 
       mockContext.request.headers['accept-encoding'] = 'gzip, deflate';
@@ -345,10 +330,7 @@ describe('HttpBuiltinMiddleware', () => {
       await middleware(mockContext, mockNext);
 
       // Verify compression was applied
-      expect(mockContext.response.setHeader).toHaveBeenCalledWith(
-        'Content-Encoding',
-        'gzip'
-      );
+      expect(mockContext.response.setHeader).toHaveBeenCalledWith('Content-Encoding', 'gzip');
       expect(mockContext.body).toBeInstanceOf(Buffer);
       // Compressed size should be smaller than original
       expect((mockContext.body as Buffer).length).toBeLessThan(100);
@@ -356,7 +338,7 @@ describe('HttpBuiltinMiddleware', () => {
 
     it('should not compress small responses', async () => {
       const middleware = HttpBuiltinMiddleware.compressionMiddleware({
-        threshold: 100
+        threshold: 100,
       });
 
       mockContext.request.headers['accept-encoding'] = 'gzip';
@@ -364,10 +346,7 @@ describe('HttpBuiltinMiddleware', () => {
 
       await middleware(mockContext, mockNext);
 
-      expect(mockContext.response.setHeader).not.toHaveBeenCalledWith(
-        'Content-Encoding',
-        expect.anything()
-      );
+      expect(mockContext.response.setHeader).not.toHaveBeenCalledWith('Content-Encoding', expect.anything());
       expect(mockContext.body).toBe('small');
     });
 
@@ -379,10 +358,7 @@ describe('HttpBuiltinMiddleware', () => {
 
       await middleware(mockContext, mockNext);
 
-      expect(mockContext.response.setHeader).not.toHaveBeenCalledWith(
-        'Content-Encoding',
-        expect.anything()
-      );
+      expect(mockContext.response.setHeader).not.toHaveBeenCalledWith('Content-Encoding', expect.anything());
       expect(mockContext.body).toBe('x'.repeat(100));
     });
   });
@@ -397,28 +373,16 @@ describe('HttpBuiltinMiddleware', () => {
         strictTransportSecurity: {
           maxAge: 31536000,
           includeSubDomains: true,
-          preload: true
-        }
+          preload: true,
+        },
       });
 
       await middleware(mockContext, mockNext);
 
-      expect(mockContext.response.setHeader).toHaveBeenCalledWith(
-        'Content-Security-Policy',
-        "default-src 'self'"
-      );
-      expect(mockContext.response.setHeader).toHaveBeenCalledWith(
-        'X-Frame-Options',
-        'DENY'
-      );
-      expect(mockContext.response.setHeader).toHaveBeenCalledWith(
-        'X-Content-Type-Options',
-        'nosniff'
-      );
-      expect(mockContext.response.setHeader).toHaveBeenCalledWith(
-        'X-XSS-Protection',
-        '1; mode=block'
-      );
+      expect(mockContext.response.setHeader).toHaveBeenCalledWith('Content-Security-Policy', "default-src 'self'");
+      expect(mockContext.response.setHeader).toHaveBeenCalledWith('X-Frame-Options', 'DENY');
+      expect(mockContext.response.setHeader).toHaveBeenCalledWith('X-Content-Type-Options', 'nosniff');
+      expect(mockContext.response.setHeader).toHaveBeenCalledWith('X-XSS-Protection', '1; mode=block');
       expect(mockContext.response.setHeader).toHaveBeenCalledWith(
         'Strict-Transport-Security',
         'max-age=31536000; includeSubDomains; preload'
@@ -432,14 +396,8 @@ describe('HttpBuiltinMiddleware', () => {
 
       await middleware(mockContext, mockNext);
 
-      expect(mockContext.response.setHeader).toHaveBeenCalledWith(
-        'X-Content-Type-Options',
-        'nosniff'
-      );
-      expect(mockContext.response.setHeader).toHaveBeenCalledWith(
-        'X-Frame-Options',
-        'SAMEORIGIN'
-      );
+      expect(mockContext.response.setHeader).toHaveBeenCalledWith('X-Content-Type-Options', 'nosniff');
+      expect(mockContext.response.setHeader).toHaveBeenCalledWith('X-Frame-Options', 'SAMEORIGIN');
     });
   });
 
@@ -452,16 +410,13 @@ describe('HttpBuiltinMiddleware', () => {
       await middleware(mockContext, mockNext);
 
       expect(mockContext.metadata.get('requestId')).toBe('existing-id');
-      expect(mockContext.response.setHeader).toHaveBeenCalledWith(
-        'X-Request-Id',
-        'existing-id'
-      );
+      expect(mockContext.response.setHeader).toHaveBeenCalledWith('X-Request-Id', 'existing-id');
       expect(mockNext).toHaveBeenCalled();
     });
 
     it('should generate new request ID', async () => {
       const middleware = HttpBuiltinMiddleware.requestIdMiddleware({
-        header: 'X-Trace-Id'
+        header: 'X-Trace-Id',
       });
 
       await middleware(mockContext, mockNext);
@@ -469,17 +424,14 @@ describe('HttpBuiltinMiddleware', () => {
       const requestId = mockContext.metadata.get('requestId');
       expect(requestId).toBeDefined();
       expect(typeof requestId).toBe('string');
-      expect(mockContext.response.setHeader).toHaveBeenCalledWith(
-        'X-Trace-Id',
-        requestId
-      );
+      expect(mockContext.response.setHeader).toHaveBeenCalledWith('X-Trace-Id', requestId);
     });
   });
 
   describe('requestLoggingMiddleware', () => {
     it('should log requests and responses', async () => {
       const logger = {
-        info: jest.fn()
+        info: jest.fn(),
       };
 
       const middleware = HttpBuiltinMiddleware.requestLoggingMiddleware(logger);
@@ -497,7 +449,7 @@ describe('HttpBuiltinMiddleware', () => {
         expect.objectContaining({
           method: 'POST',
           url: '/api/test',
-          userAgent: 'TestAgent/1.0'
+          userAgent: 'TestAgent/1.0',
         }),
         'HTTP Request'
       );
@@ -508,7 +460,7 @@ describe('HttpBuiltinMiddleware', () => {
           method: 'POST',
           url: '/api/test',
           statusCode: 201,
-          duration: expect.any(Number)
+          duration: expect.any(Number),
         }),
         'HTTP Response'
       );
@@ -517,7 +469,7 @@ describe('HttpBuiltinMiddleware', () => {
     it('should log errors', async () => {
       const logger = {
         info: jest.fn(),
-        error: jest.fn()
+        error: jest.fn(),
       };
 
       const middleware = HttpBuiltinMiddleware.requestLoggingMiddleware(logger);
@@ -532,7 +484,7 @@ describe('HttpBuiltinMiddleware', () => {
           method: 'POST',
           url: '/api/test',
           error: error.message,
-          code: error.code
+          code: error.code,
         }),
         'HTTP Error'
       );

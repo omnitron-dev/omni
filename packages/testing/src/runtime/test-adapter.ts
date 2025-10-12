@@ -47,7 +47,7 @@ export const timerUtils = {
 
   canUseFakeTimers(): boolean {
     return RUNTIME === 'node';
-  }
+  },
 };
 
 // Helper to skip tests that require features not available in current runtime
@@ -71,7 +71,10 @@ export function normalizeGlobalChecks(value: any): boolean {
 export const isBun = RUNTIME === 'bun';
 export const isDeno = RUNTIME === 'deno';
 export const isNode = RUNTIME === 'node';
-export const isJest = isNode && typeof (globalThis as any).jest !== 'undefined' && typeof (globalThis as any).jest.useFakeTimers === 'function';
+export const isJest =
+  isNode &&
+  typeof (globalThis as any).jest !== 'undefined' &&
+  typeof (globalThis as any).jest.useFakeTimers === 'function';
 
 // Check if fake timers are supported
 export const supportsFakeTimers = () => isJest;

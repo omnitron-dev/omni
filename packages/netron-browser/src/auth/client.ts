@@ -3,12 +3,7 @@
  * Handles authentication, token management, and auto-refresh
  */
 
-import type {
-  AuthContext,
-  AuthResult,
-  AuthOptions,
-  AuthState,
-} from './types.js';
+import type { AuthContext, AuthResult, AuthOptions, AuthState } from './types.js';
 import { LocalTokenStorage } from './storage.js';
 
 /**
@@ -96,9 +91,7 @@ export class AuthenticationClient {
     this.state = {
       authenticated: true,
       context: result.context,
-      token: result.context.token?.type === 'bearer'
-        ? this.extractTokenValue(result)
-        : undefined,
+      token: result.context.token?.type === 'bearer' ? this.extractTokenValue(result) : undefined,
       expiresAt: result.context.token?.expiresAt,
     };
 
@@ -260,10 +253,7 @@ export class AuthenticationClient {
       return;
     }
 
-    const timeUntilRefresh = Math.max(
-      0,
-      this.state.expiresAt.getTime() - Date.now() - this.options.refreshThreshold
-    );
+    const timeUntilRefresh = Math.max(0, this.state.expiresAt.getTime() - Date.now() - this.options.refreshThreshold);
 
     this.refreshTimer = window.setTimeout(() => {
       this.emit('token-refreshed', { needsRefresh: true });

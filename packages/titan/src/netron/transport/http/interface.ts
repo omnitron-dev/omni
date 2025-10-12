@@ -91,15 +91,11 @@ export class HttpInterface<T = any> {
         return async (...args: any[]) => {
           // Call remote method directly via peer.call()
           // Pass serviceName instead of defId
-          const result = await target.peer.call(
-            target.serviceName,
-            prop,
-            args
-          );
+          const result = await target.peer.call(target.serviceName, prop, args);
 
           return result;
         };
-      }
+      },
     }) as any;
   }
 }

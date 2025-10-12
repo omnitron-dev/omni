@@ -17,7 +17,7 @@ import {
   type ICommandHandler,
   type IQueryHandler,
   type IDomainEvent,
-  type IProjection
+  type IProjection,
 } from '../../../../src/modules/pm/enterprise/cqrs.js';
 
 // Mock logger
@@ -26,7 +26,7 @@ const mockLogger = {
   error: jest.fn(),
   warn: jest.fn(),
   debug: jest.fn(),
-  child: jest.fn(() => mockLogger)
+  child: jest.fn(() => mockLogger),
 } as any;
 
 // Test aggregate
@@ -106,7 +106,7 @@ class UserProjection implements IProjection {
         id: event.aggregateId,
         lastEventId: event.id,
         lastUpdated: Date.now(),
-        ...event.payload
+        ...event.payload,
       });
     }
   }
@@ -141,7 +141,7 @@ describe('CQRS', () => {
         aggregateId: 'user-1',
         type: 'CreateUser',
         payload: { name: 'John', email: 'john@example.com' },
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       const userId = await commandBus.send<string>(command);
@@ -159,12 +159,10 @@ describe('CQRS', () => {
         aggregateId: 'user-1',
         type: 'UnknownCommand',
         payload: {},
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
-      await expect(commandBus.send(command)).rejects.toThrow(
-        'No handler registered for command type: UnknownCommand'
-      );
+      await expect(commandBus.send(command)).rejects.toThrow('No handler registered for command type: UnknownCommand');
     });
 
     it('should run middleware before handling', async () => {
@@ -179,7 +177,7 @@ describe('CQRS', () => {
         aggregateId: 'user-1',
         type: 'CreateUser',
         payload: { name: 'John', email: 'john@example.com' },
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       await commandBus.send(command);
@@ -199,7 +197,7 @@ describe('CQRS', () => {
         aggregateId: 'user-1',
         type: 'CreateUser',
         payload: { name: 'John', email: 'john@example.com' },
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       await commandBus.send(command);
@@ -222,7 +220,7 @@ describe('CQRS', () => {
         id: 'user-1',
         lastUpdated: Date.now(),
         name: 'John',
-        email: 'john@example.com'
+        email: 'john@example.com',
       });
 
       // Register handler
@@ -233,13 +231,13 @@ describe('CQRS', () => {
       const query: IQuery = {
         id: 'query-1',
         type: 'GetUser',
-        parameters: { userId: 'user-1' }
+        parameters: { userId: 'user-1' },
       };
 
       const result = await queryBus.execute(query);
       expect(result).toMatchObject({
         name: 'John',
-        email: 'john@example.com'
+        email: 'john@example.com',
       });
     });
 
@@ -247,7 +245,7 @@ describe('CQRS', () => {
       await readModelStore.save({
         id: 'user-1',
         lastUpdated: Date.now(),
-        name: 'John'
+        name: 'John',
       });
 
       const handler = new GetUserQueryHandler(readModelStore);
@@ -259,8 +257,8 @@ describe('CQRS', () => {
         parameters: { userId: 'user-1' },
         metadata: {
           cacheKey: 'user-1',
-          ttl: 5000
-        }
+          ttl: 5000,
+        },
       };
 
       // First call
@@ -270,7 +268,7 @@ describe('CQRS', () => {
       await readModelStore.save({
         id: 'user-1',
         lastUpdated: Date.now(),
-        name: 'Jane'
+        name: 'Jane',
       });
 
       // Second call should return cached result
@@ -317,7 +315,7 @@ describe('CQRS', () => {
           type: 'UserCreated',
           payload: { name: 'John', email: 'john@example.com' },
           version: 1,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         },
         {
           id: 'event-2',
@@ -325,8 +323,8 @@ describe('CQRS', () => {
           type: 'UserUpdated',
           payload: { name: 'Jane' },
           version: 2,
-          timestamp: Date.now()
-        }
+          timestamp: Date.now(),
+        },
       ];
 
       const aggregate = new UserAggregate('user-1');
@@ -367,8 +365,8 @@ describe('CQRS', () => {
           type: 'UserCreated',
           payload: { name: 'John', email: 'john@example.com' },
           version: 1,
-          timestamp: Date.now()
-        }
+          timestamp: Date.now(),
+        },
       ];
       await eventStore.saveEvents(events);
 
@@ -382,7 +380,7 @@ describe('CQRS', () => {
       await projectionManager.start();
 
       // Allow time for async processing
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Stop processing
       projectionManager.stop();
@@ -391,7 +389,7 @@ describe('CQRS', () => {
       const readModel = await readModelStore.get('user-1');
       expect(readModel).toMatchObject({
         name: 'John',
-        email: 'john@example.com'
+        email: 'john@example.com',
       });
     });
   });
@@ -407,7 +405,7 @@ describe('CQRS', () => {
           type: 'TestEvent',
           payload: { data: 'test' },
           version: 1,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         },
         {
           id: 'event-2',
@@ -415,8 +413,8 @@ describe('CQRS', () => {
           type: 'TestEvent2',
           payload: { data: 'test2' },
           version: 2,
-          timestamp: Date.now()
-        }
+          timestamp: Date.now(),
+        },
       ];
 
       await eventStore.saveEvents(events);
@@ -437,7 +435,7 @@ describe('CQRS', () => {
           type: 'Event1',
           payload: {},
           version: 1,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         },
         {
           id: 'event-2',
@@ -445,7 +443,7 @@ describe('CQRS', () => {
           type: 'Event2',
           payload: {},
           version: 2,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         },
         {
           id: 'event-3',
@@ -453,8 +451,8 @@ describe('CQRS', () => {
           type: 'Event3',
           payload: {},
           version: 3,
-          timestamp: Date.now()
-        }
+          timestamp: Date.now(),
+        },
       ];
 
       await eventStore.saveEvents(events);
@@ -474,7 +472,7 @@ describe('CQRS', () => {
           type: 'Event1',
           payload: {},
           version: 1,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         },
         {
           id: 'event-2',
@@ -482,8 +480,8 @@ describe('CQRS', () => {
           type: 'Event2',
           payload: {},
           version: 1,
-          timestamp: Date.now()
-        }
+          timestamp: Date.now(),
+        },
       ];
 
       await eventStore.saveEvents(events);
@@ -502,7 +500,7 @@ describe('CQRS', () => {
       const snapshotStore = new InMemorySnapshotStore();
 
       const snapshot = {
-        state: { name: 'John', email: 'john@example.com' }
+        state: { name: 'John', email: 'john@example.com' },
       };
 
       await snapshotStore.save('agg-1', snapshot, 5);
@@ -528,7 +526,7 @@ describe('CQRS', () => {
         id: 'model-1',
         lastUpdated: Date.now(),
         name: 'Test Model',
-        type: 'user'
+        type: 'user',
       };
 
       await store.save(model);
@@ -544,21 +542,21 @@ describe('CQRS', () => {
         id: 'user-1',
         lastUpdated: Date.now(),
         type: 'user',
-        name: 'John'
+        name: 'John',
       });
 
       await store.save({
         id: 'user-2',
         lastUpdated: Date.now(),
         type: 'user',
-        name: 'Jane'
+        name: 'Jane',
       });
 
       await store.save({
         id: 'product-1',
         lastUpdated: Date.now(),
         type: 'product',
-        name: 'Widget'
+        name: 'Widget',
       });
 
       const users = await store.query({ type: 'user' });

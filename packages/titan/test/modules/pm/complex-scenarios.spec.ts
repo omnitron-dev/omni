@@ -18,7 +18,7 @@ const mockLogger = {
   error: jest.fn(),
   warn: jest.fn(),
   debug: jest.fn(),
-  child: jest.fn(() => mockLogger)
+  child: jest.fn(() => mockLogger),
 } as any;
 
 describe('Complex PM Scenarios', () => {
@@ -38,7 +38,7 @@ describe('Complex PM Scenarios', () => {
       class DataService {
         @Public()
         async fetchData(id: number): Promise<{ id: number; data: string }> {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           return { id, data: `data-${id}` };
         }
       }
@@ -114,14 +114,14 @@ describe('Complex PM Scenarios', () => {
         async performOperation(name: string): Promise<number> {
           // Simulate acquiring a lock
           while (this.lock) {
-            await new Promise(resolve => setTimeout(resolve, 5));
+            await new Promise((resolve) => setTimeout(resolve, 5));
           }
           this.lock = true;
 
           try {
             this.state.operations.push(name);
             this.state.counter++;
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
             return this.state.counter;
           } finally {
             this.lock = false;
@@ -142,7 +142,7 @@ describe('Complex PM Scenarios', () => {
         service.performOperation('op2'),
         service.performOperation('op3'),
         service.performOperation('op4'),
-        service.performOperation('op5')
+        service.performOperation('op5'),
       ]);
 
       const results = await operations;
@@ -168,31 +168,23 @@ describe('Complex PM Scenarios', () => {
           this.requestCount++;
           return {
             age: Date.now() - this.startTime,
-            requests: this.requestCount
+            requests: this.requestCount,
           };
         }
       }
 
       const pool = await pm.pool(LifetimeService, {
-        size: 3
+        size: 3,
       });
 
       // First batch of requests
-      const batch1 = await Promise.all([
-        pool.process(),
-        pool.process(),
-        pool.process()
-      ]);
+      const batch1 = await Promise.all([pool.process(), pool.process(), pool.process()]);
 
       // Each worker handles one request
-      expect(batch1.every(r => r.requests === 1)).toBe(true);
+      expect(batch1.every((r) => r.requests === 1)).toBe(true);
 
       // Second batch
-      const batch2 = await Promise.all([
-        pool.process(),
-        pool.process(),
-        pool.process()
-      ]);
+      const batch2 = await Promise.all([pool.process(), pool.process(), pool.process()]);
 
       // Workers should handle more requests
       const totalRequests = batch2.reduce((sum, r) => sum + r.requests, 0);
@@ -207,7 +199,7 @@ describe('Complex PM Scenarios', () => {
       class LoadService {
         @Public()
         async handleRequest(duration: number): Promise<number> {
-          await new Promise(resolve => setTimeout(resolve, duration));
+          await new Promise((resolve) => setTimeout(resolve, duration));
           return duration;
         }
       }
@@ -215,8 +207,8 @@ describe('Complex PM Scenarios', () => {
       const pool = await pm.pool(LoadService, {
         size: 2,
         autoScale: {
-          enabled: false // Disable auto-scaling for test stability
-        }
+          enabled: false, // Disable auto-scaling for test stability
+        },
       });
 
       // Simulate varying load with shorter durations
@@ -333,7 +325,7 @@ describe('Complex PM Scenarios', () => {
       // Only one path should have processed
       const pathAResult = result.processPathA;
       const pathBResult = result.processPathB;
-      expect([pathAResult, pathBResult].filter(r => r !== null)).toHaveLength(1);
+      expect([pathAResult, pathBResult].filter((r) => r !== null)).toHaveLength(1);
     });
   });
 
@@ -370,7 +362,7 @@ describe('Complex PM Scenarios', () => {
       @Supervisor({
         strategy: SupervisionStrategy.ONE_FOR_ALL,
         maxRestarts: 5,
-        window: 1000
+        window: 1000,
       })
       class DependentSupervisor {
         @Child({ order: 1 })
@@ -383,10 +375,10 @@ describe('Complex PM Scenarios', () => {
       const supervisor = await pm.supervisor(DependentSupervisor);
 
       // Let the supervisor stabilize after restarts
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
       const processes = pm.listProcesses();
-      const runningProcesses = processes.filter(p => p.status === ProcessStatus.RUNNING);
+      const runningProcesses = processes.filter((p) => p.status === ProcessStatus.RUNNING);
 
       // Both services should eventually be running
       expect(runningProcesses.length).toBeGreaterThanOrEqual(1);
@@ -416,7 +408,7 @@ describe('Complex PM Scenarios', () => {
       @Supervisor({
         strategy: SupervisionStrategy.ONE_FOR_ONE,
         maxRestarts: 3,
-        window: 500
+        window: 500,
       })
       class TimedSupervisor {
         @Child()
@@ -428,14 +420,20 @@ describe('Complex PM Scenarios', () => {
 
       if (service) {
         // Trigger crashes with different timing
-        try { await service.crash(); } catch {}
-        await new Promise(resolve => setTimeout(resolve, 100));
+        try {
+          await service.crash();
+        } catch {}
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
-        try { await service.crash(); } catch {}
-        await new Promise(resolve => setTimeout(resolve, 100));
+        try {
+          await service.crash();
+        } catch {}
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
-        try { await service.crash(); } catch {}
-        await new Promise(resolve => setTimeout(resolve, 100));
+        try {
+          await service.crash();
+        } catch {}
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         // Verify restart pattern
         expect(restartCount).toBeLessThanOrEqual(3);
@@ -469,13 +467,13 @@ describe('Complex PM Scenarios', () => {
         private setupHandlers() {
           this.on('start', async (data) => {
             eventLog.push('start');
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
             this.emit('middle', { ...data, processed: true });
           });
 
           this.on('middle', async (data) => {
             eventLog.push('middle');
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
             this.emit('end', { ...data, completed: true });
           });
 
@@ -494,7 +492,7 @@ describe('Complex PM Scenarios', () => {
       await service.triggerChain({ value: 1 });
 
       // Allow event chain to complete
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       const log = await service.getEventLog();
       expect(log).toEqual(['trigger', 'start', 'middle', 'end']);
@@ -511,7 +509,7 @@ describe('Complex PM Scenarios', () => {
         async doWork(taskId: string): Promise<string> {
           this.emit('work:started', { workerId: this.workerId, taskId });
 
-          await new Promise(resolve => setTimeout(resolve, 20));
+          await new Promise((resolve) => setTimeout(resolve, 20));
 
           this.emit('work:completed', { workerId: this.workerId, taskId });
           coordinationCount++;
@@ -524,16 +522,14 @@ describe('Complex PM Scenarios', () => {
 
       // Launch coordinated work
       const tasks = Array.from({ length: 9 }, (_, i) => `task-${i}`);
-      const results = await Promise.all(
-        tasks.map(taskId => pool.doWork(taskId))
-      );
+      const results = await Promise.all(tasks.map((taskId) => pool.doWork(taskId)));
 
       // All tasks should complete
       expect(results).toHaveLength(9);
       expect(coordinationCount).toBe(9);
 
       // Results should show distribution across workers
-      const workerIds = new Set(results.map(r => r.split('-')[0]));
+      const workerIds = new Set(results.map((r) => r.split('-')[0]));
       expect(workerIds.size).toBeLessThanOrEqual(3);
     });
   });
@@ -600,10 +596,9 @@ describe('Complex PM Scenarios', () => {
         ids.add(id);
 
         // Immediately destroy
-        const processInfo = pm.listProcesses().find(p =>
-          p.metadata?.class === 'EphemeralService' &&
-          p.status === ProcessStatus.RUNNING
-        );
+        const processInfo = pm
+          .listProcesses()
+          .find((p) => p.metadata?.class === 'EphemeralService' && p.status === ProcessStatus.RUNNING);
 
         if (processInfo) {
           await pm.stop(processInfo.id);
@@ -614,10 +609,9 @@ describe('Complex PM Scenarios', () => {
       expect(ids.size).toBe(10);
 
       // No services should be running
-      const runningServices = pm.listProcesses().filter(p =>
-        p.metadata?.class === 'EphemeralService' &&
-        p.status === ProcessStatus.RUNNING
-      );
+      const runningServices = pm
+        .listProcesses()
+        .filter((p) => p.metadata?.class === 'EphemeralService' && p.status === ProcessStatus.RUNNING);
       expect(runningServices).toHaveLength(0);
     });
   });

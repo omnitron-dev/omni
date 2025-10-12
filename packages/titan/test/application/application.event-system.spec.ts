@@ -18,7 +18,7 @@ describe('Application Event System', () => {
     app = createApp({
       name: 'event-test',
       disableGracefulShutdown: true,
-      disableCoreModules: true
+      disableCoreModules: true,
     });
   });
 
@@ -36,11 +36,14 @@ describe('Application Event System', () => {
       const eventData = { type: 'test', value: 123 };
       app.emit(ApplicationEvent.Custom, eventData);
 
-      expect(handler).toHaveBeenCalledWith(eventData, expect.objectContaining({
-        event: ApplicationEvent.Custom,
-        source: 'application',
-        timestamp: expect.any(Number)
-      }));
+      expect(handler).toHaveBeenCalledWith(
+        eventData,
+        expect.objectContaining({
+          event: ApplicationEvent.Custom,
+          source: 'application',
+          timestamp: expect.any(Number),
+        })
+      );
     });
 
     it('should emit events with metadata', () => {
@@ -93,11 +96,14 @@ describe('Application Event System', () => {
       app.emit(ApplicationEvent.Custom, { second: true });
 
       expect(handler).toHaveBeenCalledTimes(1);
-      expect(handler).toHaveBeenCalledWith({ first: true }, expect.objectContaining({
-        event: ApplicationEvent.Custom,
-        source: 'application',
-        timestamp: expect.any(Number)
-      }));
+      expect(handler).toHaveBeenCalledWith(
+        { first: true },
+        expect.objectContaining({
+          event: ApplicationEvent.Custom,
+          source: 'application',
+          timestamp: expect.any(Number),
+        })
+      );
     });
 
     it('should unsubscribe from events', () => {
@@ -191,8 +197,8 @@ describe('Application Event System', () => {
       expect(errorHandler).toHaveBeenCalled();
       expect(errorHandler.mock.calls[0][0]).toMatchObject({
         error: expect.objectContaining({
-          message: 'Async handler error'
-        })
+          message: 'Async handler error',
+        }),
       });
     });
   });
@@ -209,12 +215,7 @@ describe('Application Event System', () => {
       await app.start();
       await app.stop();
 
-      expect(events).toEqual([
-        'starting',
-        'started',
-        'stopping',
-        'stopped'
-      ]);
+      expect(events).toEqual(['starting', 'started', 'stopping', 'stopped']);
     });
 
     it('should emit module lifecycle events', async () => {
@@ -235,12 +236,12 @@ describe('Application Event System', () => {
 
       expect(events).toContainEqual({
         type: 'registered',
-        module: 'simple'
+        module: 'simple',
       });
 
       expect(events).toContainEqual({
         type: 'started',
-        module: 'simple'
+        module: 'simple',
       });
     });
 
@@ -253,12 +254,12 @@ describe('Application Event System', () => {
       expect(handler).toHaveBeenCalledWith(
         expect.objectContaining({
           key: 'test.value',
-          value: 123
+          value: 123,
         }),
         expect.objectContaining({
           event: ApplicationEvent.ConfigChanged,
           source: 'application',
-          timestamp: expect.any(Number)
+          timestamp: expect.any(Number),
         })
       );
     });
@@ -272,11 +273,14 @@ describe('Application Event System', () => {
       const error = new Error('Test error');
       app.emit('error', { error });
 
-      expect(errorHandler).toHaveBeenCalledWith({ error }, expect.objectContaining({
-        event: 'error',
-        source: 'application',
-        timestamp: expect.any(Number)
-      }));
+      expect(errorHandler).toHaveBeenCalledWith(
+        { error },
+        expect.objectContaining({
+          event: 'error',
+          source: 'application',
+          timestamp: expect.any(Number),
+        })
+      );
     });
 
     it('should not throw on handler errors by default', () => {
@@ -333,7 +337,7 @@ describe('Application Event System', () => {
           await super.onStart(app);
           app.emit(ApplicationEvent.Custom, {
             source: 'module',
-            name: this.name
+            name: this.name,
           });
         }
       }
@@ -349,12 +353,12 @@ describe('Application Event System', () => {
       expect(handler).toHaveBeenCalledWith(
         expect.objectContaining({
           source: 'module',
-          name: 'simple'
+          name: 'simple',
         }),
         expect.objectContaining({
           event: ApplicationEvent.Custom,
           source: 'application',
-          timestamp: expect.any(Number)
+          timestamp: expect.any(Number),
         })
       );
     });
@@ -438,12 +442,15 @@ describe('Application Event System', () => {
 
       app.emit(ApplicationEvent.Custom, { test: true });
 
-      handlers.forEach(handler => {
-        expect(handler).toHaveBeenCalledWith({ test: true }, expect.objectContaining({
-          event: ApplicationEvent.Custom,
-          source: 'application',
-          timestamp: expect.any(Number)
-        }));
+      handlers.forEach((handler) => {
+        expect(handler).toHaveBeenCalledWith(
+          { test: true },
+          expect.objectContaining({
+            event: ApplicationEvent.Custom,
+            source: 'application',
+            timestamp: expect.any(Number),
+          })
+        );
       });
     });
   });

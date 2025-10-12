@@ -37,7 +37,7 @@ export class EventScheduler {
       options,
       scheduledAt: now,
       executeAt,
-      status: 'pending'
+      status: 'pending',
     };
 
     this.scheduledEvents.set(id, scheduledEvent);
@@ -105,8 +105,7 @@ export class EventScheduler {
    * Get pending events
    */
   getPendingEvents(): ScheduledEvent[] {
-    return Array.from(this.scheduledEvents.values())
-      .filter(event => event.status === 'pending');
+    return Array.from(this.scheduledEvents.values()).filter((event) => event.status === 'pending');
   }
 
   /**
@@ -141,10 +140,7 @@ export class EventScheduler {
   /**
    * Execute with retry logic
    */
-  private async executeWithRetry(
-    fn: () => void | Promise<void>,
-    retryOptions?: any
-  ): Promise<void> {
+  private async executeWithRetry(fn: () => void | Promise<void>, retryOptions?: any): Promise<void> {
     if (!retryOptions) {
       return fn();
     }
@@ -233,7 +229,7 @@ export class EventScheduler {
    * Sleep helper
    */
   private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**

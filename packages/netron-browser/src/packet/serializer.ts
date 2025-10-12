@@ -63,7 +63,7 @@ serializer.register(
             __errorType: 'Error',
             name: cause.name,
             message: cause.message,
-            stack: cause.stack
+            stack: cause.stack,
           })
         );
       } else {
@@ -125,7 +125,7 @@ serializer.register(
       correlationId,
       spanId,
       traceId,
-      cause
+      cause,
     });
 
     // Restore the error name (for subclass identification)

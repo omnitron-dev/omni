@@ -36,12 +36,12 @@ interface ProcessedImage {
   version: '1.0.0',
   memory: {
     limit: '512MB',
-    alert: '400MB'
+    alert: '400MB',
   },
   observability: {
     metrics: true,
-    tracing: true
-  }
+    tracing: true,
+  },
 })
 export default class ImageProcessorProcess {
   private processedCount = 0;
@@ -85,7 +85,7 @@ export default class ImageProcessorProcess {
         processedUrl: `processed/${job.id}.jpg`,
         operations: job.operations,
         processingTime,
-        size: processedData.size
+        size: processedData.size,
       };
     } catch (error) {
       this.errors++;
@@ -103,9 +103,7 @@ export default class ImageProcessorProcess {
 
     for (let i = 0; i < jobs.length; i += concurrency) {
       const batch = jobs.slice(i, i + concurrency);
-      const batchResults = await Promise.all(
-        batch.map(job => this.processImage(job))
-      );
+      const batchResults = await Promise.all(batch.map((job) => this.processImage(job)));
       results.push(...batchResults);
     }
 
@@ -113,24 +111,20 @@ export default class ImageProcessorProcess {
   }
 
   @Public()
-  async generateThumbnail(
-    url: string,
-    width: number = 150,
-    height: number = 150
-  ): Promise<ProcessedImage> {
+  async generateThumbnail(url: string, width: number = 150, height: number = 150): Promise<ProcessedImage> {
     const job: ImageJob = {
       id: `thumb_${Date.now()}`,
       url,
       operations: [
         {
           type: 'resize',
-          params: { width, height, maintainAspectRatio: true }
+          params: { width, height, maintainAspectRatio: true },
         },
         {
           type: 'compress',
-          params: { quality: 85 }
-        }
-      ]
+          params: { quality: 85 },
+        },
+      ],
     };
 
     return this.processImage(job);
@@ -144,9 +138,9 @@ export default class ImageProcessorProcess {
       operations: [
         {
           type: 'filter',
-          params: { type: filterType }
-        }
-      ]
+          params: { type: filterType },
+        },
+      ],
     };
 
     return this.processImage(job);
@@ -161,10 +155,9 @@ export default class ImageProcessorProcess {
   }> {
     return {
       processedCount: this.processedCount,
-      averageProcessingTime:
-        this.processedCount > 0 ? this.totalProcessingTime / this.processedCount : 0,
+      averageProcessingTime: this.processedCount > 0 ? this.totalProcessingTime / this.processedCount : 0,
       currentLoad: this.currentLoad,
-      errorRate: this.processedCount > 0 ? this.errors / (this.processedCount + this.errors) : 0
+      errorRate: this.processedCount > 0 ? this.errors / (this.processedCount + this.errors) : 0,
     };
   }
 
@@ -174,7 +167,7 @@ export default class ImageProcessorProcess {
 
     return {
       data: { url, loaded: true },
-      size: { width: 1920, height: 1080 }
+      size: { width: 1920, height: 1080 },
     };
   }
 
@@ -190,8 +183,8 @@ export default class ImageProcessorProcess {
           data: { ...imageData.data, resized: true },
           size: {
             width: operation.params.width || imageData.size.width,
-            height: operation.params.height || imageData.size.height
-          }
+            height: operation.params.height || imageData.size.height,
+          },
         };
 
       case 'crop':
@@ -200,29 +193,29 @@ export default class ImageProcessorProcess {
           data: { ...imageData.data, cropped: true },
           size: {
             width: operation.params.width || imageData.size.width,
-            height: operation.params.height || imageData.size.height
-          }
+            height: operation.params.height || imageData.size.height,
+          },
         };
 
       case 'rotate':
         await this.simulateWork(120);
         return {
           data: { ...imageData.data, rotated: operation.params.angle },
-          size: imageData.size
+          size: imageData.size,
         };
 
       case 'filter':
         await this.simulateWork(200);
         return {
           data: { ...imageData.data, filter: operation.params.type },
-          size: imageData.size
+          size: imageData.size,
         };
 
       case 'compress':
         await this.simulateWork(80);
         return {
           data: { ...imageData.data, compressed: operation.params.quality },
-          size: imageData.size
+          size: imageData.size,
         };
 
       default:
@@ -252,13 +245,13 @@ export default class ImageProcessorProcess {
       checks.push({
         name: 'memory',
         status: 'warn' as const,
-        message: `High memory usage: ${memoryMB.toFixed(2)}MB`
+        message: `High memory usage: ${memoryMB.toFixed(2)}MB`,
       });
     } else {
       checks.push({
         name: 'memory',
         status: 'pass' as const,
-        message: `Memory usage: ${memoryMB.toFixed(2)}MB`
+        message: `Memory usage: ${memoryMB.toFixed(2)}MB`,
       });
     }
 
@@ -267,13 +260,13 @@ export default class ImageProcessorProcess {
       checks.push({
         name: 'load',
         status: 'warn' as const,
-        message: `High load: ${this.currentLoad} concurrent operations`
+        message: `High load: ${this.currentLoad} concurrent operations`,
       });
     } else {
       checks.push({
         name: 'load',
         status: 'pass' as const,
-        message: `Current load: ${this.currentLoad}`
+        message: `Current load: ${this.currentLoad}`,
       });
     }
 
@@ -282,16 +275,16 @@ export default class ImageProcessorProcess {
       checks.push({
         name: 'errors',
         status: 'warn' as const,
-        message: `High error rate: ${(stats.errorRate * 100).toFixed(2)}%`
+        message: `High error rate: ${(stats.errorRate * 100).toFixed(2)}%`,
       });
     }
 
-    const hasWarning = checks.some(c => c.status === 'warn');
+    const hasWarning = checks.some((c) => c.status === 'warn');
 
     return {
       status: hasWarning ? 'degraded' : 'healthy',
       checks,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 }

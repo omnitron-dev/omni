@@ -31,12 +31,12 @@ async function bootstrap() {
   // Create WebSocket server
   const wss = new WebSocketServer({
     port: 3334,
-    host: '0.0.0.0'
+    host: '0.0.0.0',
   });
 
   const wsServer = new WebSocketServerAdapter(wss, {
     port: 3334,
-    host: '0.0.0.0'
+    host: '0.0.0.0',
   });
 
   // Set peer
@@ -54,12 +54,14 @@ async function bootstrap() {
   const healthServer = http.createServer((req, res) => {
     if (req.url === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({
-        status: 'ok',
-        timestamp: new Date().toISOString(),
-        services: ['UserService@1.0.0'],
-        transports: { websocket: 3334 }
-      }));
+      res.end(
+        JSON.stringify({
+          status: 'ok',
+          timestamp: new Date().toISOString(),
+          services: ['UserService@1.0.0'],
+          transports: { websocket: 3334 },
+        })
+      );
     } else {
       res.writeHead(404);
       res.end('Not Found');

@@ -1,6 +1,6 @@
 /**
  * Signal - Basic reactive primitive
- * 
+ *
  * Implements fine-grained reactivity for optimal terminal rendering
  */
 
@@ -27,15 +27,12 @@ class SignalImpl<T> {
   private version = 0;
   private equals: (a: T, b: T) => boolean;
 
-  constructor(
-    initial: T,
-    options?: { equals?: (a: T, b: T) => boolean }
-  ) {
+  constructor(initial: T, options?: { equals?: (a: T, b: T) => boolean }) {
     this.value = initial;
     this.equals = options?.equals || defaultEquals;
   }
 
-  // Getter - tracks dependencies  
+  // Getter - tracks dependencies
   call(): T {
     // Track dependency if we're in a computation
     context.tracking.track(this as any);
@@ -73,9 +70,7 @@ class SignalImpl<T> {
 
   // Set value
   set(value: T | ((prev: T) => T)): void {
-    const newValue = typeof value === 'function'
-      ? (value as (prev: T) => T)(this.value)
-      : value;
+    const newValue = typeof value === 'function' ? (value as (prev: T) => T)(this.value) : value;
 
     if (!this.equals(this.value, newValue)) {
       this.value = newValue;
@@ -126,30 +121,24 @@ class SignalImpl<T> {
 /**
  * Create a writable signal
  */
-export function signal<T>(
-  initial: T,
-  options?: { equals?: (a: T, b: T) => boolean }
-): WritableSignal<T> {
+export function signal<T>(initial: T, options?: { equals?: (a: T, b: T) => boolean }): WritableSignal<T> {
   const s = new SignalImpl(initial, options);
 
   // Create callable interface
-  const callable = Object.assign(
-    () => s.call(),
-    {
-      peek: () => s.peek(),
-      subscribe: (fn: (value: T) => void) => s.subscribe(fn),
-      set: (value: T | ((prev: T) => T)) => s.set(value),
-      update: (fn: (prev: T) => T) => s.update(fn),
-      mutate: (fn: (value: T) => void) => s.mutate(fn)
-    }
-  );
+  const callable = Object.assign(() => s.call(), {
+    peek: () => s.peek(),
+    subscribe: (fn: (value: T) => void) => s.subscribe(fn),
+    set: (value: T | ((prev: T) => T)) => s.set(value),
+    update: (fn: (prev: T) => T) => s.update(fn),
+    mutate: (fn: (value: T) => void) => s.mutate(fn),
+  });
 
   // Store the internal signal instance for cleanup purposes
   (callable as any).__internal = s;
 
   // Add debug representation
   Object.defineProperty(callable, Symbol.for('nodejs.util.inspect.custom'), {
-    value: () => `Signal(${JSON.stringify(s.peek())})`
+    value: () => `Signal(${JSON.stringify(s.peek())})`,
   });
 
   return callable as WritableSignal<T>;
@@ -159,13 +148,10 @@ export function signal<T>(
  * Create a read-only signal from a writable signal
  */
 export function readonly<T>(writable: WritableSignal<T>): Signal<T> {
-  const readonlySignal = Object.assign(
-    () => writable(),
-    {
-      peek: () => writable.peek(),
-      subscribe: (fn: (value: T) => void) => writable.subscribe(fn)
-    }
-  );
+  const readonlySignal = Object.assign(() => writable(), {
+    peek: () => writable.peek(),
+    subscribe: (fn: (value: T) => void) => writable.subscribe(fn),
+  });
 
   return readonlySignal as Signal<T>;
 }
@@ -174,10 +160,12 @@ export function readonly<T>(writable: WritableSignal<T>): Signal<T> {
  * Check if a value is a Signal
  */
 export function isSignal<T = any>(value: any): value is Signal<T> {
-  return value != null && 
-    typeof value === 'function' && 
+  return (
+    value != null &&
+    typeof value === 'function' &&
     typeof value.peek === 'function' &&
-    typeof value.subscribe === 'function';
+    typeof value.subscribe === 'function'
+  );
 }
 
 // Export for internal use by other reactive primitives

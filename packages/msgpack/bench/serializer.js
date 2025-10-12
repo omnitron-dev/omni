@@ -12,12 +12,12 @@ const testData = {
   array: [1, 2, 3, 4, 5],
   object: {
     nested: {
-      value: 'nested value'
-    }
+      value: 'nested value',
+    },
   },
   date: new Date(),
   null: null,
-  undefined
+  undefined,
 };
 
 // Function to measure performance
@@ -30,7 +30,7 @@ function measurePerformance(name, operation) {
   return {
     name,
     time: end - start,
-    opsPerSec: 100000 / ((end - start) / 1000)
+    opsPerSec: 100000 / ((end - start) / 1000),
   };
 }
 
@@ -51,8 +51,8 @@ const bsonSerialize = () => bson.serialize(testData);
 const bsonDeserialize = () => bson.deserialize(bson.serialize(testData));
 
 // CBOR (temporarily disabled due to API differences)
-const cborSerialize = () => { }; // cbor.encode(testData);
-const cborDeserialize = () => { }; // cbor.decode(cbor.encode(testData));
+const cborSerialize = () => {}; // cbor.encode(testData);
+const cborDeserialize = () => {}; // cbor.decode(cbor.encode(testData));
 
 // Omnitron MessagePack
 const omniSerialize = () => encode(testData);
@@ -77,7 +77,7 @@ const results = [
 // Output results
 console.log('\nBenchmark Results:');
 console.log('------------------');
-results.forEach(result => {
+results.forEach((result) => {
   console.log(`${result.name}:`);
   console.log(`  Time: ${result.time.toFixed(2)}ms`);
   console.log(`  Ops/sec: ${result.opsPerSec.toFixed(2)}`);

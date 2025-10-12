@@ -17,7 +17,13 @@ import { ensureStreamReferenceRegistered } from './packet/serializer.js';
 // Import transport layer
 import { TransportRegistry } from './transport/transport-registry.js';
 import { TransportConnectionFactory } from './transport/transport-adapter.js';
-import type { ITransport, ITransportServer, ITransportConnection, TransportFactory, TransportOptions } from './transport/types.js';
+import type {
+  ITransport,
+  ITransportServer,
+  ITransportConnection,
+  TransportFactory,
+  TransportOptions,
+} from './transport/types.js';
 
 // Import core tasks
 import { emit } from './core-tasks/emit.js';
@@ -209,7 +215,7 @@ export class Netron extends EventEmitter implements INetron {
     this.logger = logger.child({
       module: 'netron',
       netronId: this.id,
-      ...(options.loggerContext || {})
+      ...(options.loggerContext || {}),
     });
 
     this.taskManager = new TaskManager({
@@ -410,7 +416,7 @@ export class Netron extends EventEmitter implements INetron {
 
       const server = await transport.createServer!({
         ...config.options,
-        headers: { 'x-netron-id': this.id }
+        headers: { 'x-netron-id': this.id },
       } as any);
 
       // Store the server
@@ -607,9 +613,8 @@ export class Netron extends EventEmitter implements INetron {
 
     if (isHttp) {
       // Check if we should use the new direct HTTP implementation
-      const useDirectHttp = (this.options as any)?.useDirectHttp ||
-        process.env['NETRON_HTTP_DIRECT'] === 'true' ||
-        false;
+      const useDirectHttp =
+        (this.options as any)?.useDirectHttp || process.env['NETRON_HTTP_DIRECT'] === 'true' || false;
 
       // Use optimized HTTP-specific connection flow
       return this.connectHttp(address, useDirectHttp);
@@ -643,7 +648,7 @@ export class Netron extends EventEmitter implements INetron {
             // Connect using transport with transport-specific options
             const connection = await transport.connect(`${address}?id=${this.id}`, {
               ...transportOpts,
-              headers: { 'x-netron-id': this.id }
+              headers: { 'x-netron-id': this.id },
             });
 
             // Create RemotePeer with transport adapter
@@ -745,9 +750,7 @@ export class Netron extends EventEmitter implements INetron {
           await connectPeer();
           this.logger.info(`Successfully reconnected to ${address}.`);
         } catch {
-          this.logger.warn(
-            `Reconnect failed (${reconnectAttempts}/${maxAttempts ?? 'unlimited'}):`
-          );
+          this.logger.warn(`Reconnect failed (${reconnectAttempts}/${maxAttempts ?? 'unlimited'}):`);
           attemptReconnect();
         }
       }, delay);
@@ -765,10 +768,7 @@ export class Netron extends EventEmitter implements INetron {
    * @returns HttpRemotePeer configured for stateless operation
    */
   private async connectHttp(address: string, useDirectHttp = true): Promise<HttpRemotePeer> {
-    this.logger.info(
-      { address },
-      `Connecting to HTTP server (v2.0 native mode)`
-    );
+    this.logger.info({ address }, `Connecting to HTTP server (v2.0 native mode)`);
 
     try {
       // Get HTTP transport
@@ -784,7 +784,7 @@ export class Netron extends EventEmitter implements INetron {
       const connection = await transport.connect(address, {
         ...transportOpts,
         useDirectHttp: true,
-        headers: { 'x-netron-id': this.id }
+        headers: { 'x-netron-id': this.id },
       } as any);
 
       // Create HTTP direct peer (v2.0)
@@ -798,10 +798,7 @@ export class Netron extends EventEmitter implements INetron {
 
       // Emit connection event
       this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId: peer.id });
-      this.logger.info(
-        { peerId: peer.id, address },
-        'HTTP peer connected (v2.0 stateless)'
-      );
+      this.logger.info({ peerId: peer.id, address }, 'HTTP peer connected (v2.0 stateless)');
 
       return peer;
     } catch (error) {
@@ -919,7 +916,10 @@ export class Netron extends EventEmitter implements INetron {
     // Parse protocol from address
     const protocolMatch = address.match(/^(\w+):\/\//);
     if (!protocolMatch) {
-      throw Errors.badRequest(`Invalid address format: ${address}. Must include protocol (e.g., ws://, http://, tcp://)`, { address });
+      throw Errors.badRequest(
+        `Invalid address format: ${address}. Must include protocol (e.g., ws://, http://, tcp://)`,
+        { address }
+      );
     }
 
     const protocol = protocolMatch[1]!; // Protocol is guaranteed to exist if regex matches

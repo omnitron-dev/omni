@@ -18,7 +18,7 @@ import {
   Child,
   Workflow,
   Stage,
-  InjectProcess
+  InjectProcess,
 } from '@omnitron-dev/titan/module/pm';
 
 // ============================================================================
@@ -28,7 +28,7 @@ import {
 @Process({
   name: 'user-service',
   version: '1.0.0',
-  health: { enabled: true, interval: 30000 }
+  health: { enabled: true, interval: 30000 },
 })
 class UserService {
   private users = new Map<string, any>();
@@ -38,7 +38,7 @@ class UserService {
     const user = {
       id: Math.random().toString(36).substr(2, 9),
       ...data,
-      createdAt: Date.now()
+      createdAt: Date.now(),
     };
     this.users.set(user.id, user);
     return user;
@@ -60,11 +60,13 @@ class UserService {
   async checkHealth() {
     return {
       status: 'healthy' as const,
-      checks: [{
-        name: 'memory',
-        status: 'pass' as const,
-        details: { userCount: this.users.size }
-      }]
+      checks: [
+        {
+          name: 'memory',
+          status: 'pass' as const,
+          details: { userCount: this.users.size },
+        },
+      ],
     };
   }
 }
@@ -75,7 +77,7 @@ class UserService {
 
 @Process({
   name: 'compute-service',
-  memory: { limit: '256MB' }
+  memory: { limit: '256MB' },
 })
 class ComputeService {
   @Public()
@@ -97,7 +99,7 @@ class ComputeService {
   @Public()
   async fibonacci(n: number): Promise<number> {
     if (n <= 1) return n;
-    return await this.fibonacci(n - 1) + await this.fibonacci(n - 2);
+    return (await this.fibonacci(n - 1)) + (await this.fibonacci(n - 2));
   }
 }
 
@@ -113,7 +115,7 @@ class PaymentService {
     // Simulate payment processing
     console.log(`Processing payment of $${payment.amount}`);
     return {
-      transactionId: `tx_${Date.now()}`
+      transactionId: `tx_${Date.now()}`,
     };
   }
 
@@ -127,7 +129,7 @@ class PaymentService {
 class InventoryService {
   private inventory = new Map<string, number>([
     ['item1', 100],
-    ['item2', 50]
+    ['item2', 50],
   ]);
 
   @Public()
@@ -177,7 +179,7 @@ class OrderService {
 
     return {
       orderId: `order_${Date.now()}`,
-      status: 'completed'
+      status: 'completed',
     };
   }
 }
@@ -189,7 +191,7 @@ class OrderService {
 @Supervisor({
   strategy: 'one-for-one',
   maxRestarts: 3,
-  window: 60000
+  window: 60000,
 })
 class ApplicationSupervisor {
   @Child({ critical: true })
@@ -223,17 +225,17 @@ class DataProcessingWorkflow {
     console.log('Extracting data from multiple sources...');
     return [
       { source: 'api', data: [1, 2, 3] },
-      { source: 'database', data: [4, 5, 6] }
+      { source: 'database', data: [4, 5, 6] },
     ];
   }
 
   @Stage({ dependsOn: 'extractData' })
   async transformData(data: any[]): Promise<any[]> {
     console.log('Transforming data...');
-    return data.map(item => ({
+    return data.map((item) => ({
       ...item,
       transformed: true,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     }));
   }
 
@@ -253,11 +255,7 @@ class StreamProcessor {
   @Public()
   async *processLargeFile(filePath: string): AsyncGenerator<string> {
     // Simulate reading large file line by line
-    const lines = [
-      'line 1: data',
-      'line 2: more data',
-      'line 3: even more data'
-    ];
+    const lines = ['line 1: data', 'line 2: more data', 'line 3: even more data'];
 
     for (const line of lines) {
       // Process each line
@@ -265,7 +263,7 @@ class StreamProcessor {
       yield processed;
 
       // Simulate processing time
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }
 
@@ -274,7 +272,7 @@ class StreamProcessor {
     for (let i = 0; i < count; i++) {
       yield {
         id: i,
-        report: `Report #${i}: Generated at ${new Date().toISOString()}`
+        report: `Report #${i}: Generated at ${new Date().toISOString()}`,
       };
     }
   }
@@ -292,14 +290,14 @@ async function main() {
       ProcessManagerModule.forRoot({
         netron: {
           transport: 'tcp',
-          discovery: 'redis'
+          discovery: 'redis',
         },
         monitoring: {
           metrics: true,
-          tracing: true
-        }
-      })
-    ]
+          tracing: true,
+        },
+      }),
+    ],
   });
 
   // Get Process Manager
@@ -319,14 +317,14 @@ async function main() {
   console.log('\n=== Example 2: Process Pool ===');
   const computePool = await pm.pool(ComputeService, {
     size: 4,
-    strategy: 'least-loaded'
+    strategy: 'least-loaded',
   });
 
   // Parallel computation across pool
   const results = await Promise.all([
     computePool.calculatePrimes(100),
     computePool.calculatePrimes(200),
-    computePool.calculatePrimes(300)
+    computePool.calculatePrimes(300),
   ]);
   console.log('Prime calculations distributed across pool');
 
@@ -339,7 +337,7 @@ async function main() {
   const order = await orderService.createOrder({
     itemId: 'item1',
     quantity: 2,
-    payment: { amount: 99.99, card: '4242424242424242' }
+    payment: { amount: 99.99, card: '4242424242424242' },
   });
   console.log('Order created:', order);
 

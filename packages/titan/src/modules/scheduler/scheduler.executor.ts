@@ -8,11 +8,7 @@ import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { Inject, Optional, Injectable } from '../../decorators/index.js';
 import { Errors, TitanError, ErrorCode } from '../../errors/index.js';
 
-import {
-  SCHEDULER_EVENTS,
-  SCHEDULER_CONFIG_TOKEN,
-  SCHEDULER_LISTENERS_TOKEN
-} from './scheduler.constants.js';
+import { SCHEDULER_EVENTS, SCHEDULER_CONFIG_TOKEN, SCHEDULER_LISTENERS_TOKEN } from './scheduler.constants.js';
 
 import type {
   IJobListener,
@@ -20,7 +16,7 @@ import type {
   IRetryOptions,
   ISchedulerConfig,
   IJobExecutionResult,
-  IJobExecutionContext
+  IJobExecutionContext,
 } from './scheduler.interfaces.js';
 
 /**
@@ -37,15 +33,12 @@ export class SchedulerExecutor {
   constructor(
     @Optional() @Inject(SCHEDULER_CONFIG_TOKEN) private readonly config?: ISchedulerConfig,
     @Optional() @Inject(SCHEDULER_LISTENERS_TOKEN) private readonly listeners?: IJobListener[]
-  ) { }
+  ) {}
 
   /**
    * Execute a job
    */
-  async executeJob(
-    job: IScheduledJob,
-    context?: Partial<IJobExecutionContext>
-  ): Promise<IJobExecutionResult> {
+  async executeJob(job: IScheduledJob, context?: Partial<IJobExecutionContext>): Promise<IJobExecutionResult> {
     const executionId = this.generateExecutionId();
     const abortController = new AbortController();
 
@@ -57,7 +50,7 @@ export class SchedulerExecutor {
       attempt: context?.attempt || 1,
       metadata: { ...job.options.metadata, ...context?.metadata },
       previousResult: job.lastResult,
-      signal: abortController.signal
+      signal: abortController.signal,
     };
 
     // Store abort controller for cancellation
@@ -94,12 +87,7 @@ export class SchedulerExecutor {
       const timeout = job.options.timeout || this.config?.shutdownTimeout || 30000;
 
       this.concurrentJobs++;
-      const result = await this.executeWithTimeout(
-        job,
-        fullContext,
-        timeout,
-        abortController.signal
-      );
+      const result = await this.executeWithTimeout(job, fullContext, timeout, abortController.signal);
 
       const duration = Date.now() - startTime;
 
@@ -153,11 +141,13 @@ export class SchedulerExecutor {
         if (!completed) {
           completed = true;
           clearTimeout(timeoutId);
-          reject(new TitanError({
-            code: ErrorCode.INTERNAL_ERROR,
-            message: 'Job execution cancelled',
-            details: { jobId: job.id }
-          }));
+          reject(
+            new TitanError({
+              code: ErrorCode.INTERNAL_ERROR,
+              message: 'Job execution cancelled',
+              details: { jobId: job.id },
+            })
+          );
         }
       });
 
@@ -220,7 +210,7 @@ export class SchedulerExecutor {
         // Retry execution
         return this.executeJob(job, {
           ...context,
-          attempt: context.attempt + 1
+          attempt: context.attempt + 1,
         });
       }
     }
@@ -267,22 +257,17 @@ export class SchedulerExecutor {
   /**
    * Queue a job for later execution
    */
-  private async queueJob(
-    job: IScheduledJob,
-    context: IJobExecutionContext
-  ): Promise<IJobExecutionResult> {
+  private async queueJob(job: IScheduledJob, context: IJobExecutionContext): Promise<IJobExecutionResult> {
     return new Promise((resolve) => {
       this.jobQueue.push({
         job,
-        context: { ...context, metadata: { ...context.metadata, queued: true } }
+        context: { ...context, metadata: { ...context.metadata, queued: true } },
       });
 
       // Store resolver for later
       const executionId = context.executionId;
       const checkQueue = setInterval(() => {
-        const queuedJob = this.jobQueue.find(
-          (q) => q.context.executionId === executionId
-        );
+        const queuedJob = this.jobQueue.find((q) => q.context.executionId === executionId);
         if (!queuedJob) {
           clearInterval(checkQueue);
           // Job has been processed
@@ -324,10 +309,7 @@ export class SchedulerExecutor {
     const maxConcurrent = this.config?.maxConcurrent || 10;
     const queueSize = this.config?.queueSize || 100;
 
-    return (
-      this.concurrentJobs >= maxConcurrent &&
-      this.jobQueue.length < queueSize
-    );
+    return this.concurrentJobs >= maxConcurrent && this.jobQueue.length < queueSize;
   }
 
   /**
@@ -401,7 +383,7 @@ export class SchedulerExecutor {
       error,
       duration,
       timestamp: new Date(),
-      attempt
+      attempt,
     };
   }
 
@@ -462,11 +444,7 @@ export class SchedulerExecutor {
   /**
    * Notify job error
    */
-  private async notifyJobError(
-    job: IScheduledJob,
-    error: Error,
-    context: IJobExecutionContext
-  ): Promise<void> {
+  private async notifyJobError(job: IScheduledJob, error: Error, context: IJobExecutionContext): Promise<void> {
     this.eventEmitter.emit(SCHEDULER_EVENTS.JOB_FAILED, { job, error, context });
 
     if (this.listeners) {

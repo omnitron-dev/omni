@@ -18,7 +18,7 @@ import { createMockRedisClient } from '../../../src/testing/test-helpers.js';
 // Mock redis.utils to use mock clients
 jest.mock('../../../src/modules/redis/redis.utils.js', () => ({
   createRedisClient: jest.fn(() => createMockRedisClient()),
-  waitForConnection: jest.fn(async () => { }),
+  waitForConnection: jest.fn(async () => {}),
 }));
 
 describe('TitanRedisModule', () => {
@@ -30,9 +30,7 @@ describe('TitanRedisModule', () => {
 
   afterEach(async () => {
     // Clean up any resources
-    const manager = container.has(REDIS_MANAGER)
-      ? await container.resolveAsync<RedisManager>(REDIS_MANAGER)
-      : null;
+    const manager = container.has(REDIS_MANAGER) ? await container.resolveAsync<RedisManager>(REDIS_MANAGER) : null;
 
     if (manager) {
       await manager.destroy();

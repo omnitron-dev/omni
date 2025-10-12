@@ -16,7 +16,7 @@ describe('TitanError Serialization', () => {
     it('should serialize and deserialize a simple TitanError', () => {
       const original = new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
-        message: 'Test error message'
+        message: 'Test error message',
       });
 
       const buffer = new SmartBuffer();
@@ -39,7 +39,7 @@ describe('TitanError Serialization', () => {
         requestId: 'req-001',
         correlationId: 'corr-001',
         spanId: 'span-001',
-        traceId: 'trace-001'
+        traceId: 'trace-001',
       });
 
       const buffer = new SmartBuffer();
@@ -61,7 +61,7 @@ describe('TitanError Serialization', () => {
     it('should preserve stack trace', () => {
       const original = new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
-        message: 'Test error'
+        message: 'Test error',
       });
 
       const buffer = new SmartBuffer();
@@ -81,7 +81,7 @@ describe('TitanError Serialization', () => {
         message: 'Service not found',
         serviceId: 'auth@1.0.0',
         methodName: 'login',
-        peerId: 'peer-123'
+        peerId: 'peer-123',
       });
 
       const buffer = new SmartBuffer();
@@ -129,7 +129,7 @@ describe('TitanError Serialization', () => {
       const original = ValidationError.fromFieldErrors(
         [
           { field: 'email', message: 'Invalid email format', code: 'invalid_email' },
-          { field: 'password', message: 'Password too short', code: 'min_length' }
+          { field: 'password', message: 'Password too short', code: 'min_length' },
         ],
         { message: 'Validation failed' }
       );
@@ -152,13 +152,13 @@ describe('TitanError Serialization', () => {
     it('should serialize error with TitanError cause', () => {
       const cause = new TitanError({
         code: ErrorCode.SERVICE_UNAVAILABLE,
-        message: 'Database connection failed'
+        message: 'Database connection failed',
       });
 
       const original = new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
         message: 'Failed to save user',
-        cause
+        cause,
       });
 
       const buffer = new SmartBuffer();
@@ -180,7 +180,7 @@ describe('TitanError Serialization', () => {
       const original = new TitanError({
         code: ErrorCode.REQUEST_TIMEOUT,
         message: 'Request failed',
-        cause
+        cause,
       });
 
       const buffer = new SmartBuffer();
@@ -200,12 +200,12 @@ describe('TitanError Serialization', () => {
       const middleCause = new TitanError({
         code: ErrorCode.SERVICE_UNAVAILABLE,
         message: 'Connection lost',
-        cause: rootCause
+        cause: rootCause,
       });
       const original = new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
         message: 'Operation failed',
-        cause: middleCause
+        cause: middleCause,
       });
 
       const buffer = new SmartBuffer();
@@ -223,7 +223,7 @@ describe('TitanError Serialization', () => {
     it('should handle error without cause', () => {
       const original = new TitanError({
         code: ErrorCode.NOT_FOUND,
-        message: 'Resource not found'
+        message: 'Resource not found',
       });
 
       const buffer = new SmartBuffer();
@@ -244,7 +244,7 @@ describe('TitanError Serialization', () => {
         message: 'Invalid request',
         details: { reason: 'test' },
         context: { service: 'api' },
-        requestId: 'req-123'
+        requestId: 'req-123',
       });
 
       // First cycle
@@ -275,9 +275,7 @@ describe('TitanError Serialization', () => {
 
   describe('Error serialization in arrays and objects', () => {
     it('should serialize single error in array', () => {
-      const errors = [
-        new TitanError({ code: ErrorCode.BAD_REQUEST, message: 'Error 1' })
-      ];
+      const errors = [new TitanError({ code: ErrorCode.BAD_REQUEST, message: 'Error 1' })];
 
       const encoded = serializer.encode(errors);
       const decoded = serializer.decode(encoded);

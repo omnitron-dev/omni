@@ -170,10 +170,7 @@ export class ProductRepository extends BaseRepository<
    * Find product by SKU
    */
   async findBySku(sku: string): Promise<Product | null> {
-    const result = await this.query()
-      .where('sku', '=', sku)
-      .selectAll()
-      .executeTakeFirst();
+    const result = await this.query().where('sku', '=', sku).selectAll().executeTakeFirst();
 
     return result ? this.mapRow(result) : null;
   }
@@ -189,7 +186,7 @@ export class ProductRepository extends BaseRepository<
       .selectAll()
       .execute();
 
-    return results.map(row => this.mapRow(row));
+    return results.map((row) => this.mapRow(row));
   }
 
   /**
@@ -204,7 +201,7 @@ export class ProductRepository extends BaseRepository<
       .orderBy('stock', 'asc')
       .execute();
 
-    return results.map(row => this.mapRow(row));
+    return results.map((row) => this.mapRow(row));
   }
 
   /**
@@ -227,9 +224,7 @@ export class ProductRepository extends BaseRepository<
     if (options.query) {
       const term = `%${options.query}%`;
       query = query.where((qb) =>
-        qb.where('name', 'like', term)
-          .or('description', 'like', term)
-          .or('sku', 'like', term)
+        qb.where('name', 'like', term).or('description', 'like', term).or('sku', 'like', term)
       );
     }
 
@@ -268,9 +263,12 @@ export class ProductRepository extends BaseRepository<
     // Order by relevance (name matches first)
     if (options.query) {
       query = query.orderBy(
-        this.qb.case()
-          .when('name', 'like', `${options.query}%`).then(1)
-          .when('name', 'like', `%${options.query}%`).then(2)
+        this.qb
+          .case()
+          .when('name', 'like', `${options.query}%`)
+          .then(1)
+          .when('name', 'like', `%${options.query}%`)
+          .then(2)
           .else(3)
           .end(),
         'asc'
@@ -374,7 +372,7 @@ export class ProductRepository extends BaseRepository<
       .groupBy('category')
       .execute();
 
-    return results.map(row => ({
+    return results.map((row) => ({
       category: row.category as ProductCategory,
       count: Number(row.count),
       avgPrice: Number(row.avgPrice),
@@ -393,14 +391,11 @@ export class ProductRepository extends BaseRepository<
       .selectFrom('products')
       .selectAll()
       .where('status', '=', ProductStatus.PUBLISHED)
-      .orderBy(
-        this.qb.fn('price', '*', this.qb.fn('low_stock_threshold', '-', 'stock')),
-        'desc'
-      )
+      .orderBy(this.qb.fn('price', '*', this.qb.fn('low_stock_threshold', '-', 'stock')), 'desc')
       .limit(limit)
       .execute();
 
-    return results.map(row => this.mapRow(row));
+    return results.map((row) => this.mapRow(row));
   }
 
   /**

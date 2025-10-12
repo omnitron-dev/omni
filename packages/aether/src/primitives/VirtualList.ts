@@ -148,8 +148,7 @@ export const VirtualList = defineComponent<VirtualListProps>((props) => {
     }
 
     const currentScroll = scrollOffset();
-    const viewportSize =
-      direction === 'vertical' ? container.clientHeight : container.clientWidth;
+    const viewportSize = direction === 'vertical' ? container.clientHeight : container.clientWidth;
 
     // Find start index
     let startIndex = 0;
@@ -227,7 +226,19 @@ export const VirtualList = defineComponent<VirtualListProps>((props) => {
     // Force re-render by reading the signal
     forceUpdate();
 
-    const { children, count, height, width, onScroll, itemSize, direction: _, overscan: __, scrollToIndex, scrollBehavior, ...rest } = props;
+    const {
+      children,
+      count,
+      height,
+      width,
+      onScroll,
+      itemSize,
+      direction: _,
+      overscan: __,
+      scrollToIndex,
+      scrollBehavior,
+      ...rest
+    } = props;
 
     const [startIndex, endIndex] = getVisibleRange();
     const totalSize = getTotalSize();
@@ -281,7 +292,7 @@ export const VirtualList = defineComponent<VirtualListProps>((props) => {
           'data-index': i,
           style: itemStyle,
           children: children(i),
-        }),
+        })
       );
     }
 

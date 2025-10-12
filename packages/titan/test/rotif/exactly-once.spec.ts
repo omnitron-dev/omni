@@ -1,4 +1,3 @@
-
 import { delay } from '@omnitron-dev/common';
 
 import { NotificationManager } from '../../src/rotif/rotif.js';
@@ -20,7 +19,6 @@ afterEach(async () => {
 });
 
 describe('Exactly-once Deduplication', () => {
-
   it('should process unique messages only once', async () => {
     let received = 0;
 
@@ -96,15 +94,23 @@ describe('Exactly-once Deduplication', () => {
     let sub1Received = 0;
     let sub2Received = 0;
 
-    await manager.subscribe('exact.multi', async (msg) => {
-      sub1Received++;
-      await msg.ack();
-    }, { groupName: 'group1' });
+    await manager.subscribe(
+      'exact.multi',
+      async (msg) => {
+        sub1Received++;
+        await msg.ack();
+      },
+      { groupName: 'group1' }
+    );
 
-    await manager.subscribe('exact.multi', async (msg) => {
-      sub2Received++;
-      await msg.ack();
-    }, { groupName: 'group2' });
+    await manager.subscribe(
+      'exact.multi',
+      async (msg) => {
+        sub2Received++;
+        await msg.ack();
+      },
+      { groupName: 'group2' }
+    );
 
     await delay(100);
 

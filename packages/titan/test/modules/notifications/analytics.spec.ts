@@ -9,7 +9,7 @@ import { RedisDockerTestHelper } from './test-redis-docker.js';
 import type {
   NotificationEvent,
   NotificationStatistics,
-  ReportPeriod
+  ReportPeriod,
 } from '../../../src/modules/notifications/analytics.js';
 
 describe('NotificationAnalytics', () => {
@@ -31,7 +31,7 @@ describe('NotificationAnalytics', () => {
       enabled: true,
       storage: 'redis',
       retention: 30,
-      realtime: true
+      realtime: true,
     });
   }, 30000);
 
@@ -55,22 +55,22 @@ describe('NotificationAnalytics', () => {
         category: 'transactional',
         timestamp: Date.now(),
         metadata: {
-          subject: 'Test Email'
-        }
+          subject: 'Test Email',
+        },
       };
 
       await analytics.track(event);
 
       // Query the event
       const events = await analytics.queryEvents({
-        notificationId: 'notif-1'
+        notificationId: 'notif-1',
       });
 
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({
         id: 'event-1',
         type: 'sent',
-        notificationId: 'notif-1'
+        notificationId: 'notif-1',
       });
     });
 
@@ -87,7 +87,7 @@ describe('NotificationAnalytics', () => {
           notificationId,
           recipientId,
           channel: 'email',
-          timestamp: baseTime
+          timestamp: baseTime,
         },
         {
           id: 'evt-2',
@@ -95,7 +95,7 @@ describe('NotificationAnalytics', () => {
           notificationId,
           recipientId,
           channel: 'email',
-          timestamp: baseTime + 1000
+          timestamp: baseTime + 1000,
         },
         {
           id: 'evt-3',
@@ -103,7 +103,7 @@ describe('NotificationAnalytics', () => {
           notificationId,
           recipientId,
           channel: 'email',
-          timestamp: baseTime + 5000
+          timestamp: baseTime + 5000,
         },
         {
           id: 'evt-4',
@@ -111,8 +111,8 @@ describe('NotificationAnalytics', () => {
           notificationId,
           recipientId,
           channel: 'email',
-          timestamp: baseTime + 10000
-        }
+          timestamp: baseTime + 10000,
+        },
       ];
 
       // Track all events
@@ -122,11 +122,11 @@ describe('NotificationAnalytics', () => {
 
       // Query events
       const queriedEvents = await analytics.queryEvents({
-        notificationId
+        notificationId,
       });
 
       expect(queriedEvents).toHaveLength(4);
-      expect(queriedEvents.map(e => e.type)).toEqual(['sent', 'delivered', 'opened', 'clicked']);
+      expect(queriedEvents.map((e) => e.type)).toEqual(['sent', 'delivered', 'opened', 'clicked']);
     });
 
     it('should track events across multiple channels', async () => {
@@ -140,13 +140,13 @@ describe('NotificationAnalytics', () => {
           notificationId: `notif-${channel}`,
           recipientId: 'user-multi',
           channel,
-          timestamp: baseTime
+          timestamp: baseTime,
         });
       }
 
       // Query by channel
       const emailEvents = await analytics.queryEvents({
-        channel: 'email'
+        channel: 'email',
       });
 
       expect(emailEvents).toHaveLength(1);
@@ -164,14 +164,14 @@ describe('NotificationAnalytics', () => {
         metadata: {
           linkUrl: 'https://example.com/promo',
           buttonText: 'Learn More',
-          campaignId: 'summer-2024'
-        }
+          campaignId: 'summer-2024',
+        },
       };
 
       await analytics.track(event);
 
       const events = await analytics.queryEvents({
-        notificationId: 'meta-notif'
+        notificationId: 'meta-notif',
       });
 
       expect(events[0].metadata).toEqual(event.metadata);
@@ -196,7 +196,7 @@ describe('NotificationAnalytics', () => {
         notificationId: 'past-notif',
         recipientId: 'user',
         channel: 'email',
-        timestamp: yesterday
+        timestamp: yesterday,
       });
 
       await analytics.track({
@@ -205,13 +205,13 @@ describe('NotificationAnalytics', () => {
         notificationId: 'current-notif',
         recipientId: 'user',
         channel: 'email',
-        timestamp: now
+        timestamp: now,
       });
 
       // Query events for today only
       const todayEvents = await analytics.queryEvents({
         startDate: now - 3600000, // Last hour
-        endDate: tomorrow
+        endDate: tomorrow,
       });
 
       expect(todayEvents).toHaveLength(1);
@@ -228,12 +228,12 @@ describe('NotificationAnalytics', () => {
           notificationId: 'broadcast',
           recipientId,
           channel: 'email',
-          timestamp: Date.now()
+          timestamp: Date.now(),
         });
       }
 
       const user2Events = await analytics.queryEvents({
-        recipientId: 'user-2'
+        recipientId: 'user-2',
       });
 
       expect(user2Events).toHaveLength(1);
@@ -251,12 +251,12 @@ describe('NotificationAnalytics', () => {
           recipientId: 'user',
           channel: 'email',
           category,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         });
       }
 
       const marketingEvents = await analytics.queryEvents({
-        category: 'marketing'
+        category: 'marketing',
       });
 
       expect(marketingEvents).toHaveLength(1);
@@ -272,12 +272,12 @@ describe('NotificationAnalytics', () => {
           notificationId: `notif-${i}`,
           recipientId: 'user',
           channel: 'email',
-          timestamp: Date.now() + i
+          timestamp: Date.now() + i,
         });
       }
 
       const limitedEvents = await analytics.queryEvents({
-        limit: 5
+        limit: 5,
       });
 
       expect(limitedEvents.length).toBeLessThanOrEqual(5);
@@ -300,7 +300,7 @@ describe('NotificationAnalytics', () => {
         notificationId,
         recipientId: 'user-1',
         channel: 'email',
-        timestamp: baseTime
+        timestamp: baseTime,
       });
 
       await analytics.track({
@@ -309,7 +309,7 @@ describe('NotificationAnalytics', () => {
         notificationId,
         recipientId: 'user-1',
         channel: 'email',
-        timestamp: baseTime + 1000
+        timestamp: baseTime + 1000,
       });
 
       await analytics.track({
@@ -318,11 +318,11 @@ describe('NotificationAnalytics', () => {
         notificationId,
         recipientId: 'user-1',
         channel: 'email',
-        timestamp: baseTime + 5000
+        timestamp: baseTime + 5000,
       });
 
       const stats = await analytics.getStatistics({
-        notificationId
+        notificationId,
       });
 
       expect(stats.sent).toBe(1);
@@ -335,7 +335,7 @@ describe('NotificationAnalytics', () => {
       const channels = [
         { name: 'email', sent: 10, delivered: 9, opened: 5, clicked: 2 },
         { name: 'sms', sent: 5, delivered: 5, opened: 0, clicked: 0 },
-        { name: 'push', sent: 8, delivered: 7, opened: 4, clicked: 1 }
+        { name: 'push', sent: 8, delivered: 7, opened: 4, clicked: 1 },
       ];
 
       // Track events for each channel
@@ -347,7 +347,7 @@ describe('NotificationAnalytics', () => {
             notificationId: `notif-${i}`,
             recipientId: `user-${i}`,
             channel: channel.name,
-            timestamp: Date.now()
+            timestamp: Date.now(),
           });
         }
 
@@ -358,7 +358,7 @@ describe('NotificationAnalytics', () => {
             notificationId: `notif-${i}`,
             recipientId: `user-${i}`,
             channel: channel.name,
-            timestamp: Date.now() + 1000
+            timestamp: Date.now() + 1000,
           });
         }
 
@@ -369,7 +369,7 @@ describe('NotificationAnalytics', () => {
             notificationId: `notif-${i}`,
             recipientId: `user-${i}`,
             channel: channel.name,
-            timestamp: Date.now() + 5000
+            timestamp: Date.now() + 5000,
           });
         }
 
@@ -380,7 +380,7 @@ describe('NotificationAnalytics', () => {
             notificationId: `notif-${i}`,
             recipientId: `user-${i}`,
             channel: channel.name,
-            timestamp: Date.now() + 10000
+            timestamp: Date.now() + 10000,
           });
         }
       }
@@ -409,7 +409,7 @@ describe('NotificationAnalytics', () => {
         notificationId: 'ts-notif-1',
         recipientId: 'user',
         channel: 'email',
-        timestamp: twoHoursAgo
+        timestamp: twoHoursAgo,
       });
 
       await analytics.track({
@@ -418,7 +418,7 @@ describe('NotificationAnalytics', () => {
         notificationId: 'ts-notif-2',
         recipientId: 'user',
         channel: 'email',
-        timestamp: hourAgo
+        timestamp: hourAgo,
       });
 
       await analytics.track({
@@ -427,12 +427,12 @@ describe('NotificationAnalytics', () => {
         notificationId: 'ts-notif-3',
         recipientId: 'user',
         channel: 'email',
-        timestamp: now
+        timestamp: now,
       });
 
       const stats = await analytics.getStatistics({
         startDate: twoHoursAgo,
-        endDate: now
+        endDate: now,
       });
 
       expect(stats.timeSeries).toBeDefined();
@@ -441,7 +441,7 @@ describe('NotificationAnalytics', () => {
 
     it('should handle empty statistics', async () => {
       const stats = await analytics.getStatistics({
-        notificationId: 'non-existent'
+        notificationId: 'non-existent',
       });
 
       expect(stats.sent).toBe(0);
@@ -471,7 +471,7 @@ describe('NotificationAnalytics', () => {
           notificationId: `notif-${i}`,
           recipientId: 'user',
           channel: 'email',
-          timestamp: today.getTime() + i * 1000
+          timestamp: today.getTime() + i * 1000,
         });
       }
 
@@ -482,14 +482,14 @@ describe('NotificationAnalytics', () => {
           notificationId: `notif-${i}`,
           recipientId: 'user',
           channel: 'email',
-          timestamp: today.getTime() + i * 2000
+          timestamp: today.getTime() + i * 2000,
         });
       }
 
       const period: ReportPeriod = {
         start: today,
         end: tomorrow,
-        type: 'daily'
+        type: 'daily',
       };
 
       const report = await analytics.generateReport(period);
@@ -504,7 +504,7 @@ describe('NotificationAnalytics', () => {
       const notifications = [
         { id: 'top-1', sent: 100, opened: 80, clicked: 50 },
         { id: 'top-2', sent: 150, opened: 90, clicked: 30 },
-        { id: 'top-3', sent: 50, opened: 10, clicked: 2 }
+        { id: 'top-3', sent: 50, opened: 10, clicked: 2 },
       ];
 
       for (const notif of notifications) {
@@ -516,7 +516,7 @@ describe('NotificationAnalytics', () => {
             notificationId: notif.id,
             recipientId: `user-${i}`,
             channel: 'email',
-            timestamp: Date.now()
+            timestamp: Date.now(),
           });
         }
 
@@ -528,7 +528,7 @@ describe('NotificationAnalytics', () => {
             notificationId: notif.id,
             recipientId: `user-${i}`,
             channel: 'email',
-            timestamp: Date.now() + 1000
+            timestamp: Date.now() + 1000,
           });
         }
 
@@ -540,7 +540,7 @@ describe('NotificationAnalytics', () => {
             notificationId: notif.id,
             recipientId: `user-${i}`,
             channel: 'email',
-            timestamp: Date.now() + 2000
+            timestamp: Date.now() + 2000,
           });
         }
       }
@@ -548,7 +548,7 @@ describe('NotificationAnalytics', () => {
       const report = await analytics.generateReport({
         start: new Date(Date.now() - 86400000),
         end: new Date(),
-        type: 'daily'
+        type: 'daily',
       });
 
       expect(report.topPerformers).toBeDefined();
@@ -568,7 +568,7 @@ describe('NotificationAnalytics', () => {
           notificationId: `bounce-notif-${i}`,
           recipientId: 'user',
           channel: 'email',
-          timestamp: Date.now()
+          timestamp: Date.now(),
         });
 
         await analytics.track({
@@ -577,20 +577,20 @@ describe('NotificationAnalytics', () => {
           notificationId: `bounce-notif-${i}`,
           recipientId: 'user',
           channel: 'email',
-          timestamp: Date.now() + 1000
+          timestamp: Date.now() + 1000,
         });
       }
 
       const report = await analytics.generateReport({
         start: new Date(Date.now() - 86400000),
         end: new Date(),
-        type: 'daily'
+        type: 'daily',
       });
 
       expect(report.issues).toBeDefined();
       expect(report.issues?.length).toBeGreaterThan(0);
 
-      const bounceIssue = report.issues?.find(i => i.type === 'high_bounce');
+      const bounceIssue = report.issues?.find((i) => i.type === 'high_bounce');
       expect(bounceIssue).toBeDefined();
     });
 
@@ -607,7 +607,7 @@ describe('NotificationAnalytics', () => {
           notificationId: `notif-${i}`,
           recipientId: 'user',
           channel: 'email',
-          timestamp: lastWeek + i * 1000
+          timestamp: lastWeek + i * 1000,
         });
       }
 
@@ -619,17 +619,20 @@ describe('NotificationAnalytics', () => {
           notificationId: `old-notif-${i}`,
           recipientId: 'user',
           channel: 'email',
-          timestamp: twoWeeksAgo + i * 1000
+          timestamp: twoWeeksAgo + i * 1000,
         });
       }
 
-      const report = await analytics.generateReport({
-        start: new Date(lastWeek),
-        end: new Date(now),
-        type: 'weekly'
-      }, {
-        comparison: true
-      });
+      const report = await analytics.generateReport(
+        {
+          start: new Date(lastWeek),
+          end: new Date(now),
+          type: 'weekly',
+        },
+        {
+          comparison: true,
+        }
+      );
 
       expect(report.comparison).toBeDefined();
       expect(report.comparison?.current.sent).toBe(100);
@@ -654,7 +657,7 @@ describe('NotificationAnalytics', () => {
         notificationId: 'rt-notif',
         recipientId: 'user',
         channel: 'email',
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
 
       await analytics.track({
@@ -663,11 +666,11 @@ describe('NotificationAnalytics', () => {
         notificationId: 'rt-notif',
         recipientId: 'user',
         channel: 'email',
-        timestamp: Date.now() + 1000
+        timestamp: Date.now() + 1000,
       });
 
       // Wait for events to be processed
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(events).toHaveLength(2);
       expect(events[0].id).toBe('realtime-1');
@@ -692,11 +695,11 @@ describe('NotificationAnalytics', () => {
         notificationId: 'rt-stat-notif',
         recipientId: 'user',
         channel: 'email',
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
 
       // Wait for stats update
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(latestStats).toBeDefined();
       expect(latestStats?.sent).toBeGreaterThan(0);
@@ -717,7 +720,7 @@ describe('NotificationAnalytics', () => {
         notificationId: 'old-notif',
         recipientId: 'user',
         channel: 'email',
-        timestamp: oldTimestamp
+        timestamp: oldTimestamp,
       });
 
       // Trigger cleanup
@@ -726,7 +729,7 @@ describe('NotificationAnalytics', () => {
       // Try to query old event
       const events = await analytics.queryEvents({
         startDate: oldTimestamp - 86400000,
-        endDate: oldTimestamp + 86400000
+        endDate: oldTimestamp + 86400000,
       });
 
       expect(events).toHaveLength(0); // Should be deleted
@@ -742,7 +745,7 @@ describe('NotificationAnalytics', () => {
         notificationId: 'recent-notif',
         recipientId: 'user',
         channel: 'email',
-        timestamp: recentTimestamp
+        timestamp: recentTimestamp,
       });
 
       // Trigger cleanup
@@ -751,7 +754,7 @@ describe('NotificationAnalytics', () => {
       // Query recent event
       const events = await analytics.queryEvents({
         startDate: recentTimestamp - 86400000,
-        endDate: Date.now()
+        endDate: Date.now(),
       });
 
       expect(events).toHaveLength(1); // Should still exist

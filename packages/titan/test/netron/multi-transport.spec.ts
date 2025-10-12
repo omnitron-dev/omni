@@ -33,11 +33,11 @@ describe('Multi-Transport Integration', () => {
     // Register transport servers
     server.registerTransportServer('ws', {
       name: 'ws',
-      options: { host: 'localhost', port: wsPort }
+      options: { host: 'localhost', port: wsPort },
     });
     server.registerTransportServer('tcp', {
       name: 'tcp',
-      options: { host: 'localhost', port: tcpPort }
+      options: { host: 'localhost', port: tcpPort },
     });
 
     await server.start();
@@ -121,7 +121,7 @@ describe('Multi-Transport Integration', () => {
 
       for (const [transport, port] of [
         ['ws', wsPort],
-        ['tcp', tcpPort]
+        ['tcp', tcpPort],
       ] as const) {
         const client = new NetronClass(createMockLogger(), {});
         if (transport === 'ws') client.registerTransport('ws', () => new WebSocketTransport());
@@ -135,16 +135,14 @@ describe('Multi-Transport Integration', () => {
 
       try {
         // Get interfaces
-        const interfaces = await Promise.all(
-          peers.map(peer => peer.queryInterface<IMathService>('mathService'))
-        );
+        const interfaces = await Promise.all(peers.map((peer) => peer.queryInterface<IMathService>('mathService')));
 
         // Make concurrent requests
         const results = await Promise.all([
           interfaces[0].add(1, 1),
           interfaces[1].add(2, 2),
           interfaces[0].multiply(2, 3),
-          interfaces[1].multiply(4, 5)
+          interfaces[1].multiply(4, 5),
         ]);
 
         expect(results).toEqual([2, 4, 6, 20]);
@@ -235,11 +233,11 @@ describe('Multi-Transport Integration', () => {
 
       testServer.registerTransportServer('ws', {
         name: 'ws',
-        options: { host: 'localhost', port: wsTestPort }
+        options: { host: 'localhost', port: wsTestPort },
       });
       testServer.registerTransportServer('tcp', {
         name: 'tcp',
-        options: { host: 'localhost', port: tcpTestPort }
+        options: { host: 'localhost', port: tcpTestPort },
       });
 
       // Start server - should start both transports

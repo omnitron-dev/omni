@@ -144,12 +144,8 @@ export const Editable = defineComponent<EditableProps>((props) => {
   const placeholder = props.placeholder ?? 'Enter text...';
 
   // State
-  const internalValue: WritableSignal<string> = signal<string>(
-    props.defaultValue ?? '',
-  );
-  const isEditing: WritableSignal<boolean> = signal<boolean>(
-    props.startWithEditView ?? false,
-  );
+  const internalValue: WritableSignal<string> = signal<string>(props.defaultValue ?? '');
+  const isEditing: WritableSignal<boolean> = signal<boolean>(props.startWithEditView ?? false);
   const inputValue: WritableSignal<string> = signal<string>('');
 
   const inputRef: { current: HTMLInputElement | HTMLTextAreaElement | null } = {

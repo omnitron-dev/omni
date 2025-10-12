@@ -157,7 +157,7 @@ describe('Netron Streams Integration Tests', () => {
     // Wait for error event with timeout
     await Promise.race([
       errorPromise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Error event timeout')), 5000))
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Error event timeout')), 5000)),
     ]);
 
     // Small delay for completion of all async operations
@@ -167,7 +167,6 @@ describe('Netron Streams Integration Tests', () => {
     expect(readableEnded).toBe(true);
     expect(receivedChunks).toEqual(['chunk-1']);
   }, 40000);
-
 
   it('should correctly send and receive a large amount of data', async () => {
     const receivedChunks: string[] = [];

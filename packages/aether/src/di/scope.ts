@@ -18,12 +18,7 @@ export class ScopeManager {
   /**
    * Get instance for a given scope
    */
-  getInstance<T>(
-    token: any,
-    scope: ProviderScope,
-    moduleId?: string,
-    requestId?: string
-  ): T | undefined {
+  getInstance<T>(token: any, scope: ProviderScope, moduleId?: string, requestId?: string): T | undefined {
     switch (scope) {
       case 'singleton':
         return this.singletons.get(token);
@@ -47,13 +42,7 @@ export class ScopeManager {
   /**
    * Set instance for a given scope
    */
-  setInstance<T>(
-    token: any,
-    instance: T,
-    scope: ProviderScope,
-    moduleId?: string,
-    requestId?: string
-  ): void {
+  setInstance<T>(token: any, instance: T, scope: ProviderScope, moduleId?: string, requestId?: string): void {
     switch (scope) {
       case 'singleton':
         this.singletons.set(token, instance);

@@ -24,14 +24,14 @@ const result = await esbuild.build({
   inject: [join(__dirname, './stubs/process-shim.js')],
   define: {
     'process.env.NODE_ENV': '"production"',
-    'global': 'globalThis',
-    'Buffer': 'globalThis.Buffer'
+    global: 'globalThis',
+    Buffer: 'globalThis.Buffer',
   },
   alias: {
-    'stream': join(__dirname, './stubs/stream.js'),
-    'events': join(__dirname, './stubs/events.js'),
-    'buffer': 'buffer/'
-  }
+    stream: join(__dirname, './stubs/stream.js'),
+    events: join(__dirname, './stubs/events.js'),
+    buffer: 'buffer/',
+  },
 });
 
 if (result.errors.length > 0) {

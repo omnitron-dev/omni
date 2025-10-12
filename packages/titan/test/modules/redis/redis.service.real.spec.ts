@@ -41,7 +41,7 @@ describeWithRedis('RedisService with Real Redis', () => {
                     return Math.min(times * 100, 2000);
                   },
                   enableOfflineQueue: false,
-                }
+                },
               },
               cache: {
                 type: 'standalone',
@@ -50,12 +50,12 @@ describeWithRedis('RedisService with Real Redis', () => {
                   port: testContainer.port,
                   db: 1,
                   keyPrefix: 'cache:',
-                }
-              }
-            }
-          }
-        }
-      ]
+                },
+              },
+            },
+          },
+        },
+      ],
     });
 
     // Create manager and service with real Redis
@@ -249,20 +249,25 @@ describeWithRedis('RedisService with Real Redis', () => {
 
     it('should run named scripts', async () => {
       // This requires scripts to be loaded via manager
-      const managerWithScripts = new RedisManager({
-        clients: [{
-          namespace: 'default',
-          host: 'localhost',
-          port: 6379,
-          db: 15,
-        }],
-        scripts: [
-          {
-            name: 'multiply',
-            content: 'return ARGV[1] * ARGV[2]',
-          },
-        ],
-      }, null as any);
+      const managerWithScripts = new RedisManager(
+        {
+          clients: [
+            {
+              namespace: 'default',
+              host: 'localhost',
+              port: 6379,
+              db: 15,
+            },
+          ],
+          scripts: [
+            {
+              name: 'multiply',
+              content: 'return ARGV[1] * ARGV[2]',
+            },
+          ],
+        },
+        null as any
+      );
 
       await managerWithScripts.init();
       const serviceWithScripts = new RedisService(managerWithScripts);
@@ -322,13 +327,7 @@ describeWithRedis('RedisService with Real Redis', () => {
     it('should execute pipeline operations', async () => {
       const pipeline = await service.pipeline();
 
-      pipeline
-        .set('p1', 'v1')
-        .set('p2', 'v2')
-        .set('p3', 'v3')
-        .get('p1')
-        .get('p2')
-        .get('p3');
+      pipeline.set('p1', 'v1').set('p2', 'v2').set('p3', 'v3').get('p1').get('p2').get('p3');
 
       const results = await pipeline.exec();
       expect(results).toHaveLength(6);
@@ -363,11 +362,7 @@ describeWithRedis('RedisService with Real Redis', () => {
     it('should execute transactions', async () => {
       const multi = await service.multi();
 
-      multi
-        .set('tx1', 'val1')
-        .set('tx2', 'val2')
-        .incr('tx-counter')
-        .get('tx1');
+      multi.set('tx1', 'val1').set('tx2', 'val2').incr('tx-counter').get('tx1');
 
       const results = await multi.exec();
       expect(results).toHaveLength(4);

@@ -32,12 +32,7 @@ export interface CacheOptions {
 export function Cached(options: CacheOptions = {}): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     // Store metadata
-    Reflect.defineMetadata(
-      TEMPLATE_METADATA.CACHED_METHOD,
-      options,
-      target,
-      propertyKey
-    );
+    Reflect.defineMetadata(TEMPLATE_METADATA.CACHED_METHOD, options, target, propertyKey);
 
     const originalMethod = descriptor.value;
     const methodName = String(propertyKey);
@@ -66,7 +61,7 @@ export function Cached(options: CacheOptions = {}): MethodDecorator {
       const result = await originalMethod.apply(this, args);
 
       // Cache the result if not null/undefined (or if cacheNull is true)
-      if (result !== null && result !== undefined || options.cacheNull) {
+      if ((result !== null && result !== undefined) || options.cacheNull) {
         await cacheService.set(cacheKey, result, options.ttl);
       }
 

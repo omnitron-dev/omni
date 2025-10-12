@@ -34,7 +34,7 @@ describe('TcpTransport', () => {
         binary: true,
         reconnection: true,
         multiplexing: false,
-        server: true
+        server: true,
       });
     });
 
@@ -52,7 +52,7 @@ describe('TcpTransport', () => {
         protocol: 'tcp',
         host: 'localhost',
         port: 8080,
-        params: {}
+        params: {},
       });
 
       const addr2 = transport.parseAddress('tcp://192.168.1.1:3000');
@@ -60,7 +60,7 @@ describe('TcpTransport', () => {
         protocol: 'tcp',
         host: '192.168.1.1',
         port: 3000,
-        params: {}
+        params: {},
       });
     });
   });
@@ -153,7 +153,7 @@ describe('TcpTransport', () => {
 
       try {
         await transport.connect(`tcp://127.0.0.1:${fakePort}`, {
-          connectTimeout: 1000
+          connectTimeout: 1000,
         });
         fail('Should have thrown connection error');
       } catch (error: any) {
@@ -166,7 +166,7 @@ describe('TcpTransport', () => {
       // 10.255.255.1 is typically non-routable and will timeout
       try {
         await transport.connect(`tcp://10.255.255.1:8080`, {
-          connectTimeout: 100
+          connectTimeout: 100,
         });
         throw new Error('Should have timed out');
       } catch (error: any) {
@@ -336,11 +336,7 @@ describe('TcpTransport', () => {
       await server.broadcastPacket(broadcastPacket);
 
       // All clients should receive the packet
-      const [packet1, packet2, packet3] = await Promise.all([
-        packet1Promise,
-        packet2Promise,
-        packet3Promise
-      ]);
+      const [packet1, packet2, packet3] = await Promise.all([packet1Promise, packet2Promise, packet3Promise]);
 
       expect(packet1.id).toBe(broadcastPacket.id);
       expect(packet2.id).toBe(broadcastPacket.id);
@@ -363,8 +359,8 @@ describe('TcpTransport', () => {
         keepAlive: {
           enabled: true,
           interval: 1000,
-          timeout: 3000
-        }
+          timeout: 3000,
+        },
       });
 
       // Check that the socket has keep-alive enabled
@@ -430,7 +426,7 @@ describe('TcpTransport', () => {
 
       // Create connection with short timeout
       const shortTimeoutClient = await transport.connect(`tcp://127.0.0.1:${testPort}`, {
-        requestTimeout: 100
+        requestTimeout: 100,
       });
 
       const newServerConn = await newConnPromise;
@@ -455,7 +451,7 @@ describe('TcpTransport', () => {
       await clientConnection.close();
 
       // Wait for disconnect
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Ping should fail
       await expect(clientConnection.ping()).rejects.toThrow('not established');
@@ -463,17 +459,13 @@ describe('TcpTransport', () => {
 
     it('should handle multiple concurrent pings', async () => {
       // Send multiple pings concurrently
-      const pingPromises = [
-        clientConnection.ping(),
-        clientConnection.ping(),
-        clientConnection.ping()
-      ];
+      const pingPromises = [clientConnection.ping(), clientConnection.ping(), clientConnection.ping()];
 
       const rtts = await Promise.all(pingPromises);
 
       // All pings should succeed (can be 0ms on fast systems)
       expect(rtts.length).toBe(3);
-      rtts.forEach(rtt => {
+      rtts.forEach((rtt) => {
         expect(typeof rtt).toBe('number');
         expect(rtt).toBeGreaterThanOrEqual(0);
       });
@@ -481,10 +473,7 @@ describe('TcpTransport', () => {
 
     it('should handle bidirectional pings', async () => {
       // Both client and server send pings simultaneously
-      const [clientRtt, serverRtt] = await Promise.all([
-        clientConnection.ping(),
-        serverConnection.ping()
-      ]);
+      const [clientRtt, serverRtt] = await Promise.all([clientConnection.ping(), serverConnection.ping()]);
 
       // Can be 0ms on fast systems
       expect(typeof clientRtt).toBe('number');
@@ -507,7 +496,7 @@ describe('TcpTransport', () => {
     it('should handle connection to non-existent host', async () => {
       try {
         await transport.connect('tcp://non.existent.host:8080', {
-          connectTimeout: 1000
+          connectTimeout: 1000,
         });
         fail('Should have thrown error');
       } catch (error: any) {
@@ -560,7 +549,7 @@ describe('TcpTransport', () => {
 
     it('should set noDelay option on socket', async () => {
       const client = await transport.connect(`tcp://127.0.0.1:${testPort}`, {
-        noDelay: true
+        noDelay: true,
       });
 
       const socket = (client as any).socket as Socket;
@@ -572,7 +561,7 @@ describe('TcpTransport', () => {
 
     it('should set timeout option on socket', async () => {
       const client = await transport.connect(`tcp://127.0.0.1:${testPort}`, {
-        timeout: 5000
+        timeout: 5000,
       });
 
       const socket = (client as any).socket as Socket;
@@ -584,7 +573,7 @@ describe('TcpTransport', () => {
 
     it('should emit timeout event when socket times out', async () => {
       const client = await transport.connect(`tcp://127.0.0.1:${testPort}`, {
-        timeout: 100
+        timeout: 100,
       });
 
       const errorPromise = waitForEvent(client, 'error');
@@ -599,7 +588,7 @@ describe('TcpTransport', () => {
 
     it('should set keepAliveDelay option on socket', async () => {
       const client = await transport.connect(`tcp://127.0.0.1:${testPort}`, {
-        keepAliveDelay: 2000
+        keepAliveDelay: 2000,
       });
 
       const socket = (client as any).socket as Socket;
@@ -692,8 +681,8 @@ describe('TcpTransport', () => {
         reconnect: {
           enabled: true,
           maxAttempts: 3,
-          delay: 100
-        }
+          delay: 100,
+        },
       });
       await serverConnPromise;
 
@@ -741,7 +730,7 @@ describe('TcpTransport', () => {
     it('should timeout during doReconnect', async () => {
       const serverConnPromise = waitForEvent(server, 'connection');
       const client = await transport.connect(`tcp://127.0.0.1:${testPort}`, {
-        connectTimeout: 100
+        connectTimeout: 100,
       });
       await serverConnPromise;
 
@@ -772,7 +761,7 @@ describe('TcpTransport', () => {
       const originalEnd = socket.end.bind(socket);
       let endCalled = false;
 
-      socket.end = function(this: Socket) {
+      socket.end = function (this: Socket) {
         endCalled = true;
         // Don't actually call end to test timeout path
         return this;

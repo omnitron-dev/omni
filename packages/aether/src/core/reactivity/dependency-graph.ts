@@ -29,7 +29,7 @@ export class DependencyGraph {
       dependencies: new Set(),
       dependents: new Set(),
       computation: signal,
-      type: 'signal'
+      type: 'signal',
     };
     this.nodes.set(signal, node);
     this.nodesByName.set(name, node);
@@ -47,7 +47,7 @@ export class DependencyGraph {
       dependencies: new Set(),
       dependents: new Set(),
       computation: computed,
-      type: 'computed'
+      type: 'computed',
     };
     this.nodes.set(computed, node);
     this.nodesByName.set(name, node);
@@ -64,7 +64,7 @@ export class DependencyGraph {
         id: this.nodes.size,
         dependencies: new Set(),
         dependents: new Set(),
-        computation
+        computation,
       };
       this.nodes.set(computation, node);
       this.dirty = true;
@@ -78,20 +78,20 @@ export class DependencyGraph {
   addDependency(dependent: any, dependency: any): void {
     let dependentNode: GraphNode | undefined;
     let dependencyNode: GraphNode | undefined;
-    
+
     // Handle string IDs
     if (typeof dependent === 'string') {
-      dependentNode = Array.from(this.nodes.values()).find(n => n.id === dependent);
+      dependentNode = Array.from(this.nodes.values()).find((n) => n.id === dependent);
     } else {
       dependentNode = this.nodes.get(dependent) || this.addNode(dependent);
     }
-    
+
     if (typeof dependency === 'string') {
-      dependencyNode = Array.from(this.nodes.values()).find(n => n.id === dependency);
+      dependencyNode = Array.from(this.nodes.values()).find((n) => n.id === dependency);
     } else {
       dependencyNode = this.nodes.get(dependency) || this.addNode(dependency);
     }
-    
+
     if (dependentNode && dependencyNode) {
       dependentNode.dependencies.add(dependencyNode);
       dependencyNode.dependents.add(dependentNode);
@@ -105,7 +105,7 @@ export class DependencyGraph {
   removeDependency(dependent: any, dependency: any): void {
     const dependentNode = this.nodes.get(dependent);
     const dependencyNode = this.nodes.get(dependency);
-    
+
     if (dependentNode && dependencyNode) {
       dependentNode.dependencies.delete(dependencyNode);
       dependencyNode.dependents.delete(dependentNode);
@@ -164,7 +164,7 @@ export class DependencyGraph {
       for (const dependent of node.dependents) {
         const degree = inDegree.get(dependent)! - 1;
         inDegree.set(dependent, degree);
-        
+
         if (degree === 0) {
           queue.push(dependent);
         }
@@ -180,7 +180,7 @@ export class DependencyGraph {
 
     this.executionOrder = result;
     this.dirty = false;
-    
+
     return result;
   }
 
@@ -189,28 +189,28 @@ export class DependencyGraph {
    */
   getDependencies(computation: any): any[] {
     let node: GraphNode | undefined;
-    
+
     if (typeof computation === 'string') {
-      node = Array.from(this.nodes.values()).find(n => n.id === computation);
+      node = Array.from(this.nodes.values()).find((n) => n.id === computation);
     } else {
       node = this.nodes.get(computation);
     }
-    
+
     if (!node) return [];
-    
+
     const result: GraphNode[] = [];
     const visited = new Set<GraphNode>();
-    
+
     const traverse = (n: GraphNode) => {
       if (visited.has(n)) return;
       visited.add(n);
-      
+
       for (const dep of n.dependencies) {
         result.push(dep);
         traverse(dep);
       }
     };
-    
+
     traverse(node);
     return result;
   }
@@ -220,28 +220,28 @@ export class DependencyGraph {
    */
   getDependents(computation: any): any[] {
     let node: GraphNode | undefined;
-    
+
     if (typeof computation === 'string') {
-      node = Array.from(this.nodes.values()).find(n => n.id === computation);
+      node = Array.from(this.nodes.values()).find((n) => n.id === computation);
     } else {
       node = this.nodes.get(computation);
     }
-    
+
     if (!node) return [];
-    
+
     const result: GraphNode[] = [];
     const visited = new Set<GraphNode>();
-    
+
     const traverse = (n: GraphNode) => {
       if (visited.has(n)) return;
       visited.add(n);
-      
+
       for (const dependent of n.dependents) {
         result.push(dependent);
         traverse(dependent);
       }
     };
-    
+
     traverse(node);
     return result;
   }
@@ -266,7 +266,7 @@ export class DependencyGraph {
         } else if (recursionStack.has(dep)) {
           // Cycle detected
           const cycleStart = path.indexOf(dep);
-          const cycle = path.slice(cycleStart).map(n => n.computation);
+          const cycle = path.slice(cycleStart).map((n) => n.computation);
           cycles.push(cycle);
           return true;
         }
@@ -307,32 +307,31 @@ export class DependencyGraph {
    */
   toDot(): string {
     let dot = 'digraph DependencyGraph {\n';
-    
+
     // Add nodes
     for (const [, node] of this.nodes) {
       const label = node.name || node.id.toString();
-      const shape = node.type === 'signal' ? 'box' : 
-                    node.type === 'computed' ? 'ellipse' : 'diamond';
+      const shape = node.type === 'signal' ? 'box' : node.type === 'computed' ? 'ellipse' : 'diamond';
       dot += `  "${node.id}" [label="${label}", shape=${shape}];\n`;
     }
-    
+
     // Add edges
     for (const [, node] of this.nodes) {
       for (const dep of node.dependencies) {
         dot += `  "${node.id}" -> "${dep.id}";\n`;
       }
     }
-    
+
     dot += '}';
     return dot;
   }
-  
+
   /**
    * Get graph statistics
    */
-  getStats(): { 
-    nodes: number; 
-    edges: number; 
+  getStats(): {
+    nodes: number;
+    edges: number;
     depth: number;
     signals: number;
     computeds: number;
@@ -342,101 +341,101 @@ export class DependencyGraph {
     let signals = 0;
     let computeds = 0;
     let effects = 0;
-    
+
     for (const [, node] of this.nodes) {
       edges += node.dependencies.size;
-      
+
       if (node.type === 'signal') signals++;
       else if (node.type === 'computed') computeds++;
       else if (node.type === 'effect') effects++;
     }
-    
+
     // Calculate depth
     const depths = new Map<GraphNode, number>();
     const calculateDepth = (node: GraphNode): number => {
       if (depths.has(node)) return depths.get(node)!;
-      
+
       if (node.dependencies.size === 0) {
         depths.set(node, 0);
         return 0;
       }
-      
+
       let maxDepth = 0;
       for (const dep of node.dependencies) {
         maxDepth = Math.max(maxDepth, calculateDepth(dep) + 1);
       }
-      
+
       depths.set(node, maxDepth);
       return maxDepth;
     };
-    
+
     let maxDepth = 0;
     for (const [, node] of this.nodes) {
       maxDepth = Math.max(maxDepth, calculateDepth(node));
     }
-    
+
     return {
       nodes: this.nodes.size,
       edges,
       depth: maxDepth,
       signals,
       computeds,
-      effects
+      effects,
     };
   }
 
   /**
    * Debug: visualize the graph
    */
-  visualize(): { nodes: any[], edges: any[], depth: number } {
+  visualize(): { nodes: any[]; edges: any[]; depth: number } {
     const nodes: any[] = [];
     const edges: any[] = [];
-    
+
     // Collect nodes
     for (const [, node] of this.nodes) {
       nodes.push({
         id: node.id,
         name: node.name || node.id,
-        type: node.type || 'unknown'
+        type: node.type || 'unknown',
       });
-      
+
       // Collect edges
       for (const dep of node.dependencies) {
         edges.push({
           from: node.id,
-          to: dep.id
+          to: dep.id,
         });
       }
     }
-    
+
     // Calculate depth
     const depths = new Map<GraphNode, number>();
     const calculateDepth = (node: GraphNode): number => {
       if (depths.has(node)) return depths.get(node)!;
-      
+
       if (node.dependencies.size === 0) {
         depths.set(node, 0);
         return 0;
       }
-      
+
       let maxDepth = 0;
       for (const dep of node.dependencies) {
         maxDepth = Math.max(maxDepth, calculateDepth(dep) + 1);
       }
-      
+
       depths.set(node, maxDepth);
       return maxDepth;
     };
-    
+
     let maxDepth = 0;
     for (const [, node] of this.nodes) {
       maxDepth = Math.max(maxDepth, calculateDepth(node));
     }
-    
+
     return {
       nodes,
       edges,
-      depth: maxDepth
+      depth: maxDepth,
     };
   }
 }

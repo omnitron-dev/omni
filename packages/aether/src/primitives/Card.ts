@@ -71,14 +71,14 @@ export interface CardFooterProps {
  * Container for card content.
  */
 export const Card = defineComponent<CardProps>((props) => () => {
-    const { children, ...restProps } = props;
+  const { children, ...restProps } = props;
 
-    return jsx('div', {
-      ...restProps,
-      'data-card': '',
-      children,
-    });
+  return jsx('div', {
+    ...restProps,
+    'data-card': '',
+    children,
   });
+});
 
 /**
  * Card Header
@@ -86,14 +86,14 @@ export const Card = defineComponent<CardProps>((props) => () => {
  * Top section of the card, typically containing title and description.
  */
 export const CardHeader = defineComponent<CardHeaderProps>((props) => () => {
-    const { children, ...restProps } = props;
+  const { children, ...restProps } = props;
 
-    return jsx('div', {
-      ...restProps,
-      'data-card-header': '',
-      children,
-    });
+  return jsx('div', {
+    ...restProps,
+    'data-card-header': '',
+    children,
   });
+});
 
 /**
  * Card Title
@@ -101,14 +101,14 @@ export const CardHeader = defineComponent<CardHeaderProps>((props) => () => {
  * Card heading.
  */
 export const CardTitle = defineComponent<CardTitleProps>((props) => () => {
-    const { as = 'h3', children, ...restProps } = props;
+  const { as = 'h3', children, ...restProps } = props;
 
-    return jsx(as, {
-      ...restProps,
-      'data-card-title': '',
-      children,
-    });
+  return jsx(as, {
+    ...restProps,
+    'data-card-title': '',
+    children,
   });
+});
 
 /**
  * Card Description
@@ -116,14 +116,14 @@ export const CardTitle = defineComponent<CardTitleProps>((props) => () => {
  * Card subtitle or description.
  */
 export const CardDescription = defineComponent<CardDescriptionProps>((props) => () => {
-    const { children, ...restProps } = props;
+  const { children, ...restProps } = props;
 
-    return jsx('p', {
-      ...restProps,
-      'data-card-description': '',
-      children,
-    });
+  return jsx('p', {
+    ...restProps,
+    'data-card-description': '',
+    children,
   });
+});
 
 /**
  * Card Content
@@ -131,14 +131,14 @@ export const CardDescription = defineComponent<CardDescriptionProps>((props) => 
  * Main content area of the card.
  */
 export const CardContent = defineComponent<CardContentProps>((props) => () => {
-    const { children, ...restProps } = props;
+  const { children, ...restProps } = props;
 
-    return jsx('div', {
-      ...restProps,
-      'data-card-content': '',
-      children,
-    });
+  return jsx('div', {
+    ...restProps,
+    'data-card-content': '',
+    children,
   });
+});
 
 /**
  * Card Footer
@@ -146,14 +146,14 @@ export const CardContent = defineComponent<CardContentProps>((props) => () => {
  * Bottom section of the card, typically containing actions.
  */
 export const CardFooter = defineComponent<CardFooterProps>((props) => () => {
-    const { children, ...restProps } = props;
+  const { children, ...restProps } = props;
 
-    return jsx('div', {
-      ...restProps,
-      'data-card-footer': '',
-      children,
-    });
+  return jsx('div', {
+    ...restProps,
+    'data-card-footer': '',
+    children,
   });
+});
 
 // Attach sub-components
 (Card as any).Header = CardHeader;

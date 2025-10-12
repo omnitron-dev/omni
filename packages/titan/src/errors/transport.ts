@@ -16,7 +16,7 @@ export enum TransportType {
   GRPC = 'grpc',
   TCP = 'tcp',
   GRAPHQL = 'graphql',
-  JSONRPC = 'jsonrpc'
+  JSONRPC = 'jsonrpc',
 }
 
 /**
@@ -147,39 +147,35 @@ const httpStatusMap: Record<number, number> = {
 
   // Custom error codes (600+) - map to 500 Internal Server Error
   [ErrorCode.MULTIPLE_ERRORS]: 500,
-  [ErrorCode.UNKNOWN_ERROR]: 500
+  [ErrorCode.UNKNOWN_ERROR]: 500,
 };
 
 /**
  * Map TitanError to gRPC status codes
  */
 const grpcStatusMap: Record<number, number> = {
-  [ErrorCode.BAD_REQUEST]: 3,         // INVALID_ARGUMENT
-  [ErrorCode.UNAUTHORIZED]: 16,       // UNAUTHENTICATED
-  [ErrorCode.FORBIDDEN]: 7,           // PERMISSION_DENIED
-  [ErrorCode.NOT_FOUND]: 5,          // NOT_FOUND
-  [ErrorCode.CONFLICT]: 6,           // ALREADY_EXISTS
-  [ErrorCode.REQUEST_TIMEOUT]: 4,    // DEADLINE_EXCEEDED
+  [ErrorCode.BAD_REQUEST]: 3, // INVALID_ARGUMENT
+  [ErrorCode.UNAUTHORIZED]: 16, // UNAUTHENTICATED
+  [ErrorCode.FORBIDDEN]: 7, // PERMISSION_DENIED
+  [ErrorCode.NOT_FOUND]: 5, // NOT_FOUND
+  [ErrorCode.CONFLICT]: 6, // ALREADY_EXISTS
+  [ErrorCode.REQUEST_TIMEOUT]: 4, // DEADLINE_EXCEEDED
   [ErrorCode.UNPROCESSABLE_ENTITY]: 3, // INVALID_ARGUMENT
-  [ErrorCode.TOO_MANY_REQUESTS]: 8,  // RESOURCE_EXHAUSTED
+  [ErrorCode.TOO_MANY_REQUESTS]: 8, // RESOURCE_EXHAUSTED
   [ErrorCode.INTERNAL_SERVER_ERROR]: 13, // INTERNAL
-  [ErrorCode.NOT_IMPLEMENTED]: 12,   // UNIMPLEMENTED
+  [ErrorCode.NOT_IMPLEMENTED]: 12, // UNIMPLEMENTED
   [ErrorCode.SERVICE_UNAVAILABLE]: 14, // UNAVAILABLE
-  [ErrorCode.GATEWAY_TIMEOUT]: 4,    // DEADLINE_EXCEEDED
+  [ErrorCode.GATEWAY_TIMEOUT]: 4, // DEADLINE_EXCEEDED
 
   // Custom error codes
-  [ErrorCode.MULTIPLE_ERRORS]: 13,    // INTERNAL
-  [ErrorCode.UNKNOWN_ERROR]: 2        // UNKNOWN
+  [ErrorCode.MULTIPLE_ERRORS]: 13, // INTERNAL
+  [ErrorCode.UNKNOWN_ERROR]: 2, // UNKNOWN
 };
 
 /**
  * Map error to transport-specific format
  */
-export function mapToTransport(
-  error: TitanError,
-  transport: TransportType,
-  options?: TransportMappingOptions
-): any {
+export function mapToTransport(error: TitanError, transport: TransportType, options?: TransportMappingOptions): any {
   switch (transport) {
     case TransportType.HTTP:
       return mapToHttp(error, options);
@@ -213,43 +209,39 @@ export { mapToHttp };
  * Map error name to ErrorCode
  */
 const errorNameToCodeMap: Record<string, ErrorCode> = {
-  'OK': ErrorCode.OK,
-  'CREATED': ErrorCode.CREATED,
-  'NO_CONTENT': ErrorCode.NO_CONTENT,
-  'BAD_REQUEST': ErrorCode.BAD_REQUEST,
-  'UNAUTHORIZED': ErrorCode.UNAUTHORIZED,
-  'FORBIDDEN': ErrorCode.FORBIDDEN,
-  'NOT_FOUND': ErrorCode.NOT_FOUND,
-  'METHOD_NOT_ALLOWED': ErrorCode.METHOD_NOT_ALLOWED,
-  'REQUEST_TIMEOUT': ErrorCode.REQUEST_TIMEOUT,
-  'CONFLICT': ErrorCode.CONFLICT,
-  'GONE': ErrorCode.GONE,
-  'PAYLOAD_TOO_LARGE': ErrorCode.PAYLOAD_TOO_LARGE,
-  'URI_TOO_LONG': ErrorCode.URI_TOO_LONG,
-  'UNSUPPORTED_MEDIA_TYPE': ErrorCode.UNSUPPORTED_MEDIA_TYPE,
-  'IM_A_TEAPOT': ErrorCode.IM_A_TEAPOT,
-  'UNPROCESSABLE_ENTITY': ErrorCode.UNPROCESSABLE_ENTITY,
-  'VALIDATION_ERROR': ErrorCode.VALIDATION_ERROR,
-  'TOO_MANY_REQUESTS': ErrorCode.TOO_MANY_REQUESTS,
-  'INTERNAL_SERVER_ERROR': ErrorCode.INTERNAL_SERVER_ERROR,
-  'NOT_IMPLEMENTED': ErrorCode.NOT_IMPLEMENTED,
-  'BAD_GATEWAY': ErrorCode.BAD_GATEWAY,
-  'SERVICE_UNAVAILABLE': ErrorCode.SERVICE_UNAVAILABLE,
-  'GATEWAY_TIMEOUT': ErrorCode.GATEWAY_TIMEOUT,
-  'INSUFFICIENT_STORAGE': ErrorCode.INSUFFICIENT_STORAGE,
-  'MULTIPLE_ERRORS': ErrorCode.MULTIPLE_ERRORS,
-  'UNKNOWN_ERROR': ErrorCode.UNKNOWN_ERROR
+  OK: ErrorCode.OK,
+  CREATED: ErrorCode.CREATED,
+  NO_CONTENT: ErrorCode.NO_CONTENT,
+  BAD_REQUEST: ErrorCode.BAD_REQUEST,
+  UNAUTHORIZED: ErrorCode.UNAUTHORIZED,
+  FORBIDDEN: ErrorCode.FORBIDDEN,
+  NOT_FOUND: ErrorCode.NOT_FOUND,
+  METHOD_NOT_ALLOWED: ErrorCode.METHOD_NOT_ALLOWED,
+  REQUEST_TIMEOUT: ErrorCode.REQUEST_TIMEOUT,
+  CONFLICT: ErrorCode.CONFLICT,
+  GONE: ErrorCode.GONE,
+  PAYLOAD_TOO_LARGE: ErrorCode.PAYLOAD_TOO_LARGE,
+  URI_TOO_LONG: ErrorCode.URI_TOO_LONG,
+  UNSUPPORTED_MEDIA_TYPE: ErrorCode.UNSUPPORTED_MEDIA_TYPE,
+  IM_A_TEAPOT: ErrorCode.IM_A_TEAPOT,
+  UNPROCESSABLE_ENTITY: ErrorCode.UNPROCESSABLE_ENTITY,
+  VALIDATION_ERROR: ErrorCode.VALIDATION_ERROR,
+  TOO_MANY_REQUESTS: ErrorCode.TOO_MANY_REQUESTS,
+  INTERNAL_SERVER_ERROR: ErrorCode.INTERNAL_SERVER_ERROR,
+  NOT_IMPLEMENTED: ErrorCode.NOT_IMPLEMENTED,
+  BAD_GATEWAY: ErrorCode.BAD_GATEWAY,
+  SERVICE_UNAVAILABLE: ErrorCode.SERVICE_UNAVAILABLE,
+  GATEWAY_TIMEOUT: ErrorCode.GATEWAY_TIMEOUT,
+  INSUFFICIENT_STORAGE: ErrorCode.INSUFFICIENT_STORAGE,
+  MULTIPLE_ERRORS: ErrorCode.MULTIPLE_ERRORS,
+  UNKNOWN_ERROR: ErrorCode.UNKNOWN_ERROR,
 };
 
 /**
  * Parse HTTP error response back to TitanError
  * Enables clients to reconstruct typed errors from HTTP responses
  */
-export function parseHttpError(
-  status: number,
-  body: any,
-  headers?: Record<string, string>
-): TitanError {
+export function parseHttpError(status: number, body: any, headers?: Record<string, string>): TitanError {
   // Extract error information from body
   const errorData = body?.error || body;
   const errorCode = errorData.code;
@@ -281,7 +273,7 @@ export function parseHttpError(
       retryAfter: retryAfter ? parseInt(retryAfter) : undefined,
       limit: limit ? parseInt(limit) : undefined,
       remaining: remaining ? parseInt(remaining) : undefined,
-      resetTime: reset ? new Date(parseInt(reset) * 1000) : undefined
+      resetTime: reset ? new Date(parseInt(reset) * 1000) : undefined,
     });
   }
 
@@ -310,7 +302,7 @@ export function parseHttpError(
     requestId,
     correlationId,
     traceId,
-    spanId
+    spanId,
   });
 }
 
@@ -321,7 +313,7 @@ function mapToHttp(error: TitanError, options?: TransportMappingOptions): HttpEr
   const status = httpStatusMap[error.code] || error.httpStatus || 500;
 
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
   };
 
   // Add context headers if present
@@ -360,9 +352,9 @@ function mapToHttp(error: TitanError, options?: TransportMappingOptions): HttpEr
         message: error.message,
         details: error.details,
         ...(options?.includeContext && { context: error.context }),
-        ...(options?.includeStack && { stack: error.stack })
-      }
-    }
+        ...(options?.includeStack && { stack: error.stack }),
+      },
+    },
   };
 }
 
@@ -378,8 +370,8 @@ function mapToWebSocket(error: TitanError, options?: TransportMappingOptions): W
       code: error.code,
       name: getErrorName(error.code),
       message: error.message,
-      details: error.details
-    }
+      details: error.details,
+    },
   };
 }
 
@@ -394,8 +386,8 @@ function mapToGrpc(error: TitanError, options?: TransportMappingOptions): GrpcEr
     message: error.message,
     details: {
       ...error.details,
-      ...(options?.includeContext && { context: error.context })
-    }
+      ...(options?.includeContext && { context: error.context }),
+    },
   };
 }
 
@@ -437,8 +429,8 @@ function mapToGraphQL(error: TitanError, options?: TransportMappingOptions): Gra
       statusCode: error.code,
       details: error.details,
       ...(error.requestId && { requestId: error.requestId }),
-      ...(options?.includeContext && { context: error.context })
-    }
+      ...(options?.includeContext && { context: error.context }),
+    },
   };
 }
 
@@ -483,8 +475,8 @@ function mapToJsonRpc(error: TitanError, options?: TransportMappingOptions): Jso
     error: {
       code: jsonRpcCode,
       message: error.message,
-      data: error.details
-    }
+      data: error.details,
+    },
   };
 }
 
@@ -539,7 +531,7 @@ export class HttpTransportAdapter extends TransportAdapter {
     return new TitanError({
       code: data.error.statusCode || ErrorCode.INTERNAL_ERROR,
       message: data.error.message,
-      details: data.error.details
+      details: data.error.details,
     });
   }
 }
@@ -567,7 +559,7 @@ export class WebSocketTransportAdapter extends TransportAdapter {
     return new TitanError({
       code: data.error.code || ErrorCode.INTERNAL_ERROR,
       message: data.error.message,
-      details: data.error.details
+      details: data.error.details,
     });
   }
 }

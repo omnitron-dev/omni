@@ -4,7 +4,7 @@
  */
 
 import '@omnitron-dev/testing/runtime/bun';
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect } from 'bun:test';
 
 // Import all test files
 import '../entries.spec';

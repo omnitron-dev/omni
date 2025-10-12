@@ -1,6 +1,6 @@
 /**
  * Basic Titan Application Example
- * 
+ *
  * This example demonstrates a minimal Titan application with:
  * - Configuration management
  * - Logging
@@ -16,7 +16,7 @@ import {
   defineModule,
   HealthStatus,
   CONFIG_SERVICE_TOKEN,
-  LOGGER_SERVICE_TOKEN
+  LOGGER_SERVICE_TOKEN,
 } from '../src/index.js';
 
 /**
@@ -29,7 +29,7 @@ interface GreeterService {
 /**
  * Complete module interface combining Module and custom service
  */
-interface GreeterModuleInterface extends Module, GreeterService { }
+interface GreeterModuleInterface extends Module, GreeterService {}
 
 /**
  * Custom service module with strongly typed service methods
@@ -54,14 +54,14 @@ const GreeterModule = defineModule<GreeterService>({
   async health(): Promise<HealthStatus> {
     return {
       status: 'healthy',
-      message: 'Greeter is ready to greet!'
+      message: 'Greeter is ready to greet!',
     };
   },
 
   // Service methods
   greet(name: string): string {
     return `Hello, ${name}!`;
-  }
+  },
 });
 
 /**
@@ -80,12 +80,12 @@ async function main() {
     config: {
       logger: {
         level: 'debug',
-        prettyPrint: true
+        prettyPrint: true,
       },
       greeter: {
-        message: 'Welcome to Titan!'
-      }
-    }
+        message: 'Welcome to Titan!',
+      },
+    },
   });
 
   // Register custom module directly
@@ -125,12 +125,15 @@ async function main() {
   const greeter = app.get(GreeterModuleToken);
 
   // Log some information
-  logger.info({
-    environment: config.getEnvironment(),
-    uptime: app.uptime,
-    state: app.state,
-    metrics: app.metrics
-  }, 'Application status');
+  logger.info(
+    {
+      environment: config.getEnvironment(),
+      uptime: app.uptime,
+      state: app.state,
+      metrics: app.metrics,
+    },
+    'Application status'
+  );
 
   // Use the greeter
   const greeting = greeter.greet('Titan User');
@@ -144,7 +147,7 @@ async function main() {
 
   // Simulate running for a while
   logger.info('Application will run for 5 seconds...');
-  await new Promise(resolve => setTimeout(resolve, 5000));
+  await new Promise((resolve) => setTimeout(resolve, 5000));
 
   // Graceful shutdown
   logger.info('Initiating graceful shutdown...');

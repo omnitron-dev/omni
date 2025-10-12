@@ -11,7 +11,7 @@ describe('Contract System', () => {
       const UserSchema = z.object({
         id: z.string().uuid(),
         email: z.string().email(),
-        name: z.string().min(2).max(100)
+        name: z.string().min(2).max(100),
       });
 
       const UserServiceContract = contract({
@@ -19,14 +19,14 @@ describe('Contract System', () => {
           input: z.object({
             email: z.string().email(),
             name: z.string().min(2),
-            password: z.string().min(8)
+            password: z.string().min(8),
           }),
-          output: UserSchema
+          output: UserSchema,
         },
         getUser: {
           input: z.string().uuid(),
-          output: UserSchema.nullable()
-        }
+          output: UserSchema.nullable(),
+        },
       });
 
       expect(UserServiceContract).toBeDefined();
@@ -42,9 +42,9 @@ describe('Contract System', () => {
           output: z.object({ id: z.string() }),
           errors: {
             409: z.object({ code: z.literal('USER_EXISTS'), email: z.string() }),
-            422: z.object({ code: z.literal('VALIDATION_ERROR'), errors: z.array(z.string()) })
-          }
-        }
+            422: z.object({ code: z.literal('VALIDATION_ERROR'), errors: z.array(z.string()) }),
+          },
+        },
       });
 
       const methodContract = ContractWithErrors.definition.createUser;
@@ -57,11 +57,11 @@ describe('Contract System', () => {
       const StreamingContract = contract({
         listUsers: {
           input: z.object({
-            limit: z.number().optional()
+            limit: z.number().optional(),
           }),
           output: z.object({ id: z.string(), name: z.string() }),
-          stream: true
-        }
+          stream: true,
+        },
       });
 
       const methodContract = StreamingContract.definition.listUsers;
@@ -76,9 +76,9 @@ describe('Contract System', () => {
           options: {
             mode: 'strip',
             abortEarly: false,
-            coerce: true
-          }
-        }
+            coerce: true,
+          },
+        },
       });
 
       const methodContract = ContractWithOptions.definition.processData;
@@ -95,14 +95,14 @@ describe('Contract System', () => {
         createUser: {
           input: z.object({
             email: z.string().email(),
-            name: z.string()
+            name: z.string(),
           }),
           output: z.object({
             id: z.string(),
             email: z.string(),
-            name: z.string()
-          })
-        }
+            name: z.string(),
+          }),
+        },
       });
 
       type CreateUserInput = z.infer<typeof UserContract.definition.createUser.input>;
@@ -111,13 +111,13 @@ describe('Contract System', () => {
       // TypeScript compile-time checks
       const input: CreateUserInput = {
         email: 'test@example.com',
-        name: 'Test User'
+        name: 'Test User',
       };
 
       const output: CreateUserOutput = {
         id: '123',
         email: 'test@example.com',
-        name: 'Test User'
+        name: 'Test User',
       };
 
       expect(input).toBeDefined();
@@ -129,7 +129,7 @@ describe('Contract System', () => {
     it('should validate method exists in contract', () => {
       const TestContract = contract({
         method1: { input: z.string(), output: z.string() },
-        method2: { input: z.number(), output: z.number() }
+        method2: { input: z.number(), output: z.number() },
       });
 
       expect(TestContract.hasMethod('method1')).toBe(true);
@@ -142,8 +142,8 @@ describe('Contract System', () => {
         testMethod: {
           input: z.string(),
           output: z.string(),
-          stream: false
-        }
+          stream: false,
+        },
       });
 
       const methodContract = TestContract.getMethod('testMethod');
@@ -159,16 +159,16 @@ describe('Contract System', () => {
       const BaseContract = contract({
         getUser: {
           input: z.string(),
-          output: z.object({ id: z.string(), name: z.string() })
-        }
+          output: z.object({ id: z.string(), name: z.string() }),
+        },
       });
 
       const ExtendedContract = contract({
         ...BaseContract.definition,
         createUser: {
           input: z.object({ name: z.string() }),
-          output: z.object({ id: z.string() })
-        }
+          output: z.object({ id: z.string() }),
+        },
       });
 
       expect(ExtendedContract.hasMethod('getUser')).toBe(true);
@@ -177,16 +177,16 @@ describe('Contract System', () => {
 
     it('should support merging contracts', () => {
       const Contract1 = contract({
-        method1: { input: z.string(), output: z.string() }
+        method1: { input: z.string(), output: z.string() },
       });
 
       const Contract2 = contract({
-        method2: { input: z.number(), output: z.number() }
+        method2: { input: z.number(), output: z.number() },
       });
 
       const MergedContract = contract({
         ...Contract1.definition,
-        ...Contract2.definition
+        ...Contract2.definition,
       });
 
       expect(MergedContract.hasMethod('method1')).toBe(true);
@@ -200,13 +200,13 @@ describe('Contract System', () => {
         {
           testMethod: {
             input: z.string(),
-            output: z.string()
-          }
+            output: z.string(),
+          },
         },
         {
           name: 'TestContract',
           version: '1.0.0',
-          description: 'Test contract for validation'
+          description: 'Test contract for validation',
         }
       );
 
@@ -228,11 +228,11 @@ describe('Contract System', () => {
       const PartialContract = contract({
         noValidation: {},
         inputOnly: {
-          input: z.string()
+          input: z.string(),
         },
         outputOnly: {
-          output: z.string()
-        }
+          output: z.string(),
+        },
       });
 
       expect(PartialContract.definition.noValidation).toEqual({});
@@ -248,19 +248,19 @@ describe('Contract System', () => {
       const baseContract = contract({
         getUser: {
           input: z.string(),
-          output: z.object({ id: z.string(), name: z.string() })
-        }
+          output: z.object({ id: z.string(), name: z.string() }),
+        },
       });
 
       const extendedContract = baseContract.extend({
         createUser: {
           input: z.object({ name: z.string() }),
-          output: z.object({ id: z.string(), name: z.string() })
+          output: z.object({ id: z.string(), name: z.string() }),
         },
         deleteUser: {
           input: z.string(),
-          output: z.boolean()
-        }
+          output: z.boolean(),
+        },
       });
 
       expect(extendedContract.hasMethod('getUser')).toBe(true);
@@ -270,19 +270,22 @@ describe('Contract System', () => {
     });
 
     it('should update metadata with withMetadata', () => {
-      const userContract = contract({
-        getUser: {
-          input: z.string(),
-          output: z.object({ id: z.string(), name: z.string() })
+      const userContract = contract(
+        {
+          getUser: {
+            input: z.string(),
+            output: z.object({ id: z.string(), name: z.string() }),
+          },
+        },
+        {
+          name: 'UserService',
+          version: '1.0.0',
         }
-      }, {
-        name: 'UserService',
-        version: '1.0.0'
-      });
+      );
 
       const updatedContract = userContract.withMetadata({
         version: '2.0.0',
-        description: 'Updated service'
+        description: 'Updated service',
       });
 
       expect(updatedContract.metadata.name).toBe('UserService');
@@ -295,16 +298,16 @@ describe('Contract System', () => {
       const userContract = contract({
         createUser: {
           input: z.object({ name: z.string() }),
-          output: z.object({ id: z.string(), name: z.string() })
+          output: z.object({ id: z.string(), name: z.string() }),
         },
         getUser: {
           input: z.string(),
-          output: z.object({ id: z.string(), name: z.string() })
+          output: z.object({ id: z.string(), name: z.string() }),
         },
         deleteUser: {
           input: z.string(),
-          output: z.boolean()
-        }
+          output: z.boolean(),
+        },
       });
 
       const methods = userContract.getMethods();
@@ -319,21 +322,21 @@ describe('Contract System', () => {
       const userContract = contract({
         createUser: {
           input: z.object({ name: z.string() }),
-          output: z.object({ id: z.string(), name: z.string() })
+          output: z.object({ id: z.string(), name: z.string() }),
         },
         getUser: {
           input: z.string(),
-          output: z.object({ id: z.string(), name: z.string() })
-        }
+          output: z.object({ id: z.string(), name: z.string() }),
+        },
       });
 
       const validService = {
         createUser: async (input: any) => ({ id: '123', ...input }),
-        getUser: async (id: string) => ({ id, name: 'Test' })
+        getUser: async (id: string) => ({ id, name: 'Test' }),
       };
 
       const invalidService = {
-        createUser: async (input: any) => ({ id: '123', ...input })
+        createUser: async (input: any) => ({ id: '123', ...input }),
         // Missing getUser
       };
 
@@ -345,12 +348,12 @@ describe('Contract System', () => {
       const userContract = contract({
         createUser: {
           input: z.object({ name: z.string() }),
-          output: z.object({ id: z.string(), name: z.string() })
-        }
+          output: z.object({ id: z.string(), name: z.string() }),
+        },
       });
 
       const invalidService = {
-        createUser: 'not-a-function'
+        createUser: 'not-a-function',
       };
 
       expect(userContract.validateImplementation(invalidService)).toBe(false);
@@ -367,16 +370,16 @@ describe('Contract System', () => {
             status: 201,
             contentType: 'application/json',
             responseHeaders: {
-              'X-Created-By': 'API'
+              'X-Created-By': 'API',
             },
             openapi: {
               summary: 'Create a new user',
               description: 'Creates a new user account',
               tags: ['users'],
-              deprecated: false
-            }
-          }
-        }
+              deprecated: false,
+            },
+          },
+        },
       });
 
       const method = userContract.getMethod('createUser');
@@ -394,9 +397,9 @@ describe('Contract System', () => {
           stream: true,
           http: {
             streaming: true,
-            contentType: 'text/event-stream'
-          }
-        }
+            contentType: 'text/event-stream',
+          },
+        },
       });
 
       const method = streamContract.getMethod('subscribe');
@@ -412,7 +415,7 @@ describe('Contract System', () => {
         id: z.string().uuid(),
         name: z.string(),
         email: z.string().email(),
-        age: z.number().int().min(0)
+        age: z.number().int().min(0),
       });
 
       const crudContract = Contracts.crud(userSchema);
@@ -427,7 +430,7 @@ describe('Contract System', () => {
     it('should use custom ID schema', () => {
       const entitySchema = z.object({
         id: z.number(),
-        name: z.string()
+        name: z.string(),
       });
 
       const crudContract = Contracts.crud(entitySchema, z.number().int());
@@ -439,7 +442,7 @@ describe('Contract System', () => {
     it('should include error schemas', () => {
       const entitySchema = z.object({
         id: z.string(),
-        name: z.string()
+        name: z.string(),
       });
 
       const crudContract = Contracts.crud(entitySchema);
@@ -463,7 +466,7 @@ describe('Contract System', () => {
       const eventSchema = z.object({
         type: z.string(),
         data: z.any(),
-        timestamp: z.number()
+        timestamp: z.number(),
       });
 
       const streamContract = Contracts.streaming(eventSchema);
@@ -485,7 +488,7 @@ describe('Contract System', () => {
       const itemSchema = z.object({ value: z.number() });
       const filterSchema = z.object({
         minValue: z.number(),
-        maxValue: z.number()
+        maxValue: z.number(),
       });
 
       const streamContract = Contracts.streaming(itemSchema, filterSchema);
@@ -499,11 +502,11 @@ describe('Contract System', () => {
     it('should create RPC contract', () => {
       const inputSchema = z.object({
         a: z.number(),
-        b: z.number()
+        b: z.number(),
       });
 
       const outputSchema = z.object({
-        result: z.number()
+        result: z.number(),
       });
 
       const rpcContract = Contracts.rpc(inputSchema, outputSchema);
@@ -523,11 +526,11 @@ describe('Contract System', () => {
       const userContract = builder
         .method('createUser', {
           input: z.object({ name: z.string() }),
-          output: z.object({ id: z.string(), name: z.string() })
+          output: z.object({ id: z.string(), name: z.string() }),
         })
         .method('getUser', {
           input: z.string(),
-          output: z.object({ id: z.string(), name: z.string() })
+          output: z.object({ id: z.string(), name: z.string() }),
         })
         .build();
 
@@ -541,11 +544,11 @@ describe('Contract System', () => {
       const userContract = builder
         .method('getUser', {
           input: z.string(),
-          output: z.object({ id: z.string(), name: z.string() })
+          output: z.object({ id: z.string(), name: z.string() }),
         })
         .withMetadata({
           name: 'UserService',
-          version: '1.0.0'
+          version: '1.0.0',
         })
         .build();
 
@@ -561,13 +564,13 @@ describe('Contract System', () => {
         .withMetadata({ version: '1.0.0' })
         .method('getUser', {
           input: z.string(),
-          output: z.object({ id: z.string(), name: z.string() })
+          output: z.object({ id: z.string(), name: z.string() }),
         })
         .build();
 
       expect(userContract.metadata).toEqual({
         name: 'UserService',
-        version: '1.0.0'
+        version: '1.0.0',
       });
     });
   });
@@ -583,7 +586,7 @@ describe('Contract System', () => {
       const userContract = contractBuilder()
         .method('createUser', {
           input: z.object({ name: z.string() }),
-          output: z.object({ id: z.string(), name: z.string() })
+          output: z.object({ id: z.string(), name: z.string() }),
         })
         .withMetadata({ name: 'UserService' })
         .build();
@@ -596,45 +599,48 @@ describe('Contract System', () => {
 
   describe('Real-world contract scenarios', () => {
     it('should create authentication service contract', () => {
-      const authContract = contract({
-        login: {
-          input: z.object({
-            email: z.string().email(),
-            password: z.string().min(8)
-          }),
-          output: z.object({
-            token: z.string(),
-            refreshToken: z.string(),
-            expiresAt: z.number()
-          }),
-          errors: {
-            401: z.object({ code: z.literal('INVALID_CREDENTIALS'), message: z.string() }),
-            429: z.object({ code: z.literal('TOO_MANY_ATTEMPTS'), message: z.string() })
-          }
+      const authContract = contract(
+        {
+          login: {
+            input: z.object({
+              email: z.string().email(),
+              password: z.string().min(8),
+            }),
+            output: z.object({
+              token: z.string(),
+              refreshToken: z.string(),
+              expiresAt: z.number(),
+            }),
+            errors: {
+              401: z.object({ code: z.literal('INVALID_CREDENTIALS'), message: z.string() }),
+              429: z.object({ code: z.literal('TOO_MANY_ATTEMPTS'), message: z.string() }),
+            },
+          },
+          logout: {
+            input: z.object({
+              token: z.string(),
+            }),
+            output: z.boolean(),
+          },
+          refreshToken: {
+            input: z.object({
+              refreshToken: z.string(),
+            }),
+            output: z.object({
+              token: z.string(),
+              expiresAt: z.number(),
+            }),
+            errors: {
+              401: z.object({ code: z.literal('INVALID_TOKEN'), message: z.string() }),
+            },
+          },
         },
-        logout: {
-          input: z.object({
-            token: z.string()
-          }),
-          output: z.boolean()
-        },
-        refreshToken: {
-          input: z.object({
-            refreshToken: z.string()
-          }),
-          output: z.object({
-            token: z.string(),
-            expiresAt: z.number()
-          }),
-          errors: {
-            401: z.object({ code: z.literal('INVALID_TOKEN'), message: z.string() })
-          }
+        {
+          name: 'AuthService',
+          version: '1.0.0',
+          description: 'Authentication and authorization service',
         }
-      }, {
-        name: 'AuthService',
-        version: '1.0.0',
-        description: 'Authentication and authorization service'
-      });
+      );
 
       expect(authContract.hasMethod('login')).toBe(true);
       expect(authContract.hasMethod('logout')).toBe(true);

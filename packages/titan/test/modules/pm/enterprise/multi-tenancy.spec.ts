@@ -9,7 +9,7 @@ import {
   TenantProcessPool,
   TenantAware,
   TenantContext,
-  type ITenantContext
+  type ITenantContext,
 } from '../../../../src/modules/pm/enterprise/multi-tenancy.js';
 import { Process, Public } from '../../../../src/modules/pm/decorators.js';
 import { ProcessManager } from '../../../../src/modules/pm/process-manager.js';
@@ -20,7 +20,7 @@ const mockLogger = {
   error: jest.fn(),
   warn: jest.fn(),
   debug: jest.fn(),
-  child: jest.fn(() => mockLogger)
+  child: jest.fn(() => mockLogger),
 } as any;
 
 // Test tenant-aware service
@@ -66,7 +66,7 @@ describe('MultiTenancyManager', () => {
       enabled: true,
       isolation: 'shared',
       dataPartitioning: true,
-      quotaEnforcement: true
+      quotaEnforcement: true,
     });
 
     processManager = new ProcessManager(mockLogger as any);
@@ -84,8 +84,8 @@ describe('MultiTenancyManager', () => {
         tier: 'standard',
         resourceQuota: {
           maxProcesses: 5,
-          maxMemory: '1GB'
-        }
+          maxMemory: '1GB',
+        },
       };
 
       await manager.registerTenant(tenant);
@@ -99,7 +99,7 @@ describe('MultiTenancyManager', () => {
     it('should unregister a tenant', async () => {
       const tenant: ITenantContext = {
         id: 'tenant-2',
-        name: 'Temp Tenant'
+        name: 'Temp Tenant',
       };
 
       await manager.registerTenant(tenant);
@@ -115,30 +115,22 @@ describe('MultiTenancyManager', () => {
       const tenant1: ITenantContext = {
         id: 'tenant-a',
         name: 'Tenant A',
-        tier: 'premium'
+        tier: 'premium',
       };
 
       const tenant2: ITenantContext = {
         id: 'tenant-b',
         name: 'Tenant B',
-        tier: 'standard'
+        tier: 'standard',
       };
 
       await manager.registerTenant(tenant1);
       await manager.registerTenant(tenant2);
 
       // Create tenant-isolated processes
-      const service1 = await manager.createTenantProcess(
-        'tenant-a',
-        TenantDataService,
-        processManager
-      );
+      const service1 = await manager.createTenantProcess('tenant-a', TenantDataService, processManager);
 
-      const service2 = await manager.createTenantProcess(
-        'tenant-b',
-        TenantDataService,
-        processManager
-      );
+      const service2 = await manager.createTenantProcess('tenant-b', TenantDataService, processManager);
 
       // Store data for each tenant
       await service1.store('key1', 'value-a');
@@ -158,8 +150,8 @@ describe('MultiTenancyManager', () => {
         name: 'Limited Tenant',
         tier: 'free',
         resourceQuota: {
-          maxProcesses: 2
-        }
+          maxProcesses: 2,
+        },
       };
 
       await manager.registerTenant(tenant);
@@ -169,9 +161,9 @@ describe('MultiTenancyManager', () => {
       await manager.createTenantProcess('limited-tenant', TenantDataService, processManager);
 
       // Should throw when exceeding quota
-      await expect(
-        manager.createTenantProcess('limited-tenant', TenantDataService, processManager)
-      ).rejects.toThrow('exceeded process quota');
+      await expect(manager.createTenantProcess('limited-tenant', TenantDataService, processManager)).rejects.toThrow(
+        'exceeded process quota'
+      );
     });
   });
 
@@ -179,7 +171,7 @@ describe('MultiTenancyManager', () => {
     it('should track tenant usage', async () => {
       const tenant: ITenantContext = {
         id: 'tracked-tenant',
-        name: 'Tracked Tenant'
+        name: 'Tracked Tenant',
       };
 
       await manager.registerTenant(tenant);
@@ -216,16 +208,11 @@ describe('TenantProcessPool', () => {
     manager = new MultiTenancyManager(mockLogger as any, {
       enabled: true,
       isolation: 'shared',
-      dataPartitioning: true
+      dataPartitioning: true,
     });
 
     processManager = new ProcessManager(mockLogger as any);
-    pool = new TenantProcessPool(
-      TenantDataService,
-      processManager,
-      manager,
-      mockLogger as any
-    );
+    pool = new TenantProcessPool(TenantDataService, processManager, manager, mockLogger as any);
   });
 
   afterEach(async () => {
@@ -237,13 +224,13 @@ describe('TenantProcessPool', () => {
       await manager.registerTenant({
         id: 'pool-tenant-1',
         name: 'Pool Tenant 1',
-        tier: 'premium'
+        tier: 'premium',
       });
 
       await manager.registerTenant({
         id: 'pool-tenant-2',
         name: 'Pool Tenant 2',
-        tier: 'standard'
+        tier: 'standard',
       });
 
       const proxy1 = await pool.getTenantProxy('pool-tenant-1');
@@ -258,13 +245,13 @@ describe('TenantProcessPool', () => {
       await manager.registerTenant({
         id: 'enterprise-tenant',
         name: 'Enterprise',
-        tier: 'enterprise'
+        tier: 'enterprise',
       });
 
       await manager.registerTenant({
         id: 'free-tenant',
         name: 'Free',
-        tier: 'free'
+        tier: 'free',
       });
 
       // Pools should have different sizes based on tier
@@ -278,7 +265,7 @@ describe('TenantProcessPool', () => {
     it('should evict tenant from pool', async () => {
       await manager.registerTenant({
         id: 'evict-tenant',
-        name: 'To Evict'
+        name: 'To Evict',
       });
 
       const proxy = await pool.getTenantProxy('evict-tenant');
@@ -310,10 +297,7 @@ describe('Tenant Decorators', () => {
     const service = new DecoratedService();
 
     // Call with tenant context
-    const result = await (service as any).tenantMethod(
-      { __tenant: { id: 'test-tenant', name: 'Test' } },
-      'hello'
-    );
+    const result = await (service as any).tenantMethod({ __tenant: { id: 'test-tenant', name: 'Test' } }, 'hello');
 
     expect(result).toContain('test-tenant');
   });

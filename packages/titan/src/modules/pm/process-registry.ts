@@ -78,7 +78,7 @@ export class ProcessRegistry {
     if (!processIds) return [];
 
     return Array.from(processIds)
-      .map(id => this.processes.get(id))
+      .map((id) => this.processes.get(id))
       .filter(Boolean) as IProcessInfo[];
   }
 

@@ -43,11 +43,7 @@ describe('NumberInput', () => {
     it('should render root container with children', () => {
       const component = () =>
         NumberInput({
-          children: [
-            NumberInputField({}),
-            NumberInputIncrement({}),
-            NumberInputDecrement({}),
-          ],
+          children: [NumberInputField({}), NumberInputIncrement({}), NumberInputDecrement({})],
         });
 
       const { container } = render(component);
@@ -101,11 +97,7 @@ describe('NumberInput', () => {
     it('should render all sub-components together', () => {
       const component = () =>
         NumberInput({
-          children: [
-            NumberInputField({}),
-            NumberInputIncrement({}),
-            NumberInputDecrement({}),
-          ],
+          children: [NumberInputField({}), NumberInputIncrement({}), NumberInputDecrement({})],
         });
 
       const { container } = render(component);
@@ -257,10 +249,7 @@ describe('NumberInput', () => {
         NumberInput({
           defaultValue: 10,
           onValueChange,
-          children: [
-            NumberInputField({}),
-            NumberInputIncrement({}),
-          ],
+          children: [NumberInputField({}), NumberInputIncrement({})],
         });
 
       const { container } = render(component);
@@ -280,10 +269,7 @@ describe('NumberInput', () => {
         NumberInput({
           value: value as any, // Pass signal directly, not value()
           onValueChange,
-          children: [
-            NumberInputField({}),
-            NumberInputIncrement({}),
-          ],
+          children: [NumberInputField({}), NumberInputIncrement({})],
         });
 
       const { container } = render(component);
@@ -397,10 +383,7 @@ describe('NumberInput', () => {
       const component = () =>
         NumberInput({
           defaultValue: 10,
-          children: [
-            NumberInputField({}),
-            NumberInputIncrement({}),
-          ],
+          children: [NumberInputField({}), NumberInputIncrement({})],
         });
 
       const { container } = render(component);
@@ -417,10 +400,7 @@ describe('NumberInput', () => {
         NumberInput({
           defaultValue: 10,
           step: 5,
-          children: [
-            NumberInputField({}),
-            NumberInputIncrement({}),
-          ],
+          children: [NumberInputField({}), NumberInputIncrement({})],
         });
 
       const { container } = render(component);
@@ -437,10 +417,7 @@ describe('NumberInput', () => {
         NumberInput({
           defaultValue: 10,
           step: 5,
-          children: [
-            NumberInputField({}),
-            NumberInputDecrement({}),
-          ],
+          children: [NumberInputField({}), NumberInputDecrement({})],
         });
 
       const { container } = render(component);
@@ -458,10 +435,7 @@ describe('NumberInput', () => {
           defaultValue: 1.0,
           step: 0.1,
           precision: 1,
-          children: [
-            NumberInputField({}),
-            NumberInputIncrement({}),
-          ],
+          children: [NumberInputField({}), NumberInputIncrement({})],
         });
 
       const { container } = render(component);
@@ -522,10 +496,7 @@ describe('NumberInput', () => {
           defaultValue: 0,
           step: 0.01,
           precision: 2,
-          children: [
-            NumberInputField({}),
-            NumberInputIncrement({}),
-          ],
+          children: [NumberInputField({}), NumberInputIncrement({})],
         });
 
       const { container } = render(component);
@@ -543,10 +514,7 @@ describe('NumberInput', () => {
       const component = () =>
         NumberInput({
           defaultValue: 5,
-          children: [
-            NumberInputField({}),
-            NumberInputIncrement({}),
-          ],
+          children: [NumberInputField({}), NumberInputIncrement({})],
         });
 
       const { container } = render(component);
@@ -592,10 +560,7 @@ describe('NumberInput', () => {
           defaultValue: 99,
           max: 100,
           step: 5,
-          children: [
-            NumberInputField({}),
-            NumberInputIncrement({}),
-          ],
+          children: [NumberInputField({}), NumberInputIncrement({})],
         });
 
       const { container } = render(component);
@@ -626,10 +591,7 @@ describe('NumberInput', () => {
       const component = () =>
         NumberInput({
           defaultValue: 5,
-          children: [
-            NumberInputField({}),
-            NumberInputDecrement({}),
-          ],
+          children: [NumberInputField({}), NumberInputDecrement({})],
         });
 
       const { container } = render(component);
@@ -675,10 +637,7 @@ describe('NumberInput', () => {
           defaultValue: 5,
           min: 0,
           step: 10,
-          children: [
-            NumberInputField({}),
-            NumberInputDecrement({}),
-          ],
+          children: [NumberInputField({}), NumberInputDecrement({})],
         });
 
       const { container } = render(component);
@@ -762,10 +721,7 @@ describe('NumberInput', () => {
         NumberInput({
           disabled: true,
           defaultValue: 5,
-          children: [
-            NumberInputField({}),
-            NumberInputIncrement({}),
-          ],
+          children: [NumberInputField({}), NumberInputIncrement({})],
         });
 
       const { container } = render(component);
@@ -782,10 +738,7 @@ describe('NumberInput', () => {
         NumberInput({
           disabled: true,
           defaultValue: 5,
-          children: [
-            NumberInputField({}),
-            NumberInputDecrement({}),
-          ],
+          children: [NumberInputField({}), NumberInputDecrement({})],
         });
 
       const { container } = render(component);
@@ -856,10 +809,7 @@ describe('NumberInput', () => {
         NumberInput({
           readonly: true,
           defaultValue: 5,
-          children: [
-            NumberInputField({}),
-            NumberInputIncrement({}),
-          ],
+          children: [NumberInputField({}), NumberInputIncrement({})],
         });
 
       const { container } = render(component);
@@ -876,10 +826,7 @@ describe('NumberInput', () => {
         NumberInput({
           readonly: true,
           defaultValue: 5,
-          children: [
-            NumberInputField({}),
-            NumberInputDecrement({}),
-          ],
+          children: [NumberInputField({}), NumberInputDecrement({})],
         });
 
       const { container } = render(component);
@@ -1455,11 +1402,7 @@ describe('NumberInput', () => {
           min: 50,
           max: 50,
           defaultValue: 50,
-          children: [
-            NumberInputField({}),
-            NumberInputIncrement({}),
-            NumberInputDecrement({}),
-          ],
+          children: [NumberInputField({}), NumberInputIncrement({}), NumberInputDecrement({})],
         });
 
       const { container } = render(component);
@@ -1496,10 +1439,7 @@ describe('NumberInput', () => {
           defaultValue: 0.1,
           step: 0.1,
           precision: 1,
-          children: [
-            NumberInputField({}),
-            NumberInputIncrement({}),
-          ],
+          children: [NumberInputField({}), NumberInputIncrement({})],
         });
 
       const { container } = render(component);
@@ -1603,11 +1543,7 @@ describe('NumberInput', () => {
           precision: 2,
           format: 'currency',
           defaultValue: 19.99,
-          children: [
-            NumberInputField({ placeholder: '$0.00' }),
-            NumberInputIncrement({}),
-            NumberInputDecrement({}),
-          ],
+          children: [NumberInputField({ placeholder: '$0.00' }), NumberInputIncrement({}), NumberInputDecrement({})],
         });
 
       const { container } = render(component);
@@ -1624,11 +1560,7 @@ describe('NumberInput', () => {
           step: 1,
           format: 'percentage',
           defaultValue: 50,
-          children: [
-            NumberInputField({}),
-            NumberInputIncrement({}),
-            NumberInputDecrement({}),
-          ],
+          children: [NumberInputField({}), NumberInputIncrement({}), NumberInputDecrement({})],
         });
 
       const { container } = render(component);

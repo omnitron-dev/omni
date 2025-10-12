@@ -24,12 +24,12 @@ async function main() {
 
   // Create PM with minimal config - let processes handle their own complexity
   const pm = createProcessManager({
-    isolation: 'worker',  // Use worker threads for speed
-    transport: 'ipc',     // Fast local communication
+    isolation: 'worker', // Use worker threads for speed
+    transport: 'ipc', // Fast local communication
     monitoring: {
       healthCheck: true,
-      metrics: true
-    }
+      metrics: true,
+    },
   } as any);
 
   // ============================================================================
@@ -38,9 +38,7 @@ async function main() {
   console.log('\n1. SIMPLE STATELESS SERVICE');
   console.log('-'.repeat(40));
 
-  const calculator = await pm.spawn<CalculatorProcess>(
-    resolve(__dirname, './processes/calculator.process.js')
-  );
+  const calculator = await pm.spawn<CalculatorProcess>(resolve(__dirname, './processes/calculator.process.js'));
 
   console.log('✓ Calculator service started');
   const result = await calculator.add(10, 20);
@@ -52,23 +50,20 @@ async function main() {
   console.log('\n2. STATEFUL SERVICE WITH DEPENDENCIES');
   console.log('-'.repeat(40));
 
-  const database = await pm.spawn<DatabaseProcess>(
-    resolve(__dirname, './processes/database.process.js'),
-    {
-      dependencies: {
-        config: {
-          host: 'localhost',
-          port: 5432,
-          database: 'example'
-        }
-      }
-    }
-  );
+  const database = await pm.spawn<DatabaseProcess>(resolve(__dirname, './processes/database.process.js'), {
+    dependencies: {
+      config: {
+        host: 'localhost',
+        port: 5432,
+        database: 'example',
+      },
+    },
+  });
 
   console.log('✓ Database service started with configuration');
   const user = await database.createUser({
     name: 'Alice',
-    email: 'alice@example.com'
+    email: 'alice@example.com',
   });
   console.log(`  Created user: ${user.name} (${user.id})`);
 
@@ -78,17 +73,14 @@ async function main() {
   console.log('\n3. PROCESS AS FULL TITAN APPLICATION');
   console.log('-'.repeat(40));
 
-  const titanApp = await pm.spawn<TitanAppProcess>(
-    resolve(__dirname, './processes/titan-app.process.js'),
-    {
-      dependencies: {
-        config: {
-          // Could pass Redis config, Discovery config, etc.
-          // The process will create its own Titan app with these configs
-        }
-      }
-    }
-  );
+  const titanApp = await pm.spawn<TitanAppProcess>(resolve(__dirname, './processes/titan-app.process.js'), {
+    dependencies: {
+      config: {
+        // Could pass Redis config, Discovery config, etc.
+        // The process will create its own Titan app with these configs
+      },
+    },
+  });
 
   console.log('✓ Titan application process started');
 
@@ -96,7 +88,7 @@ async function main() {
   const newUser = await titanApp.onboardUser({
     name: 'Bob Smith',
     email: 'bob@example.com',
-    phone: '+1234567890'
+    phone: '+1234567890',
   });
   console.log(`  Onboarded user: ${newUser.name}`);
 
@@ -130,13 +122,10 @@ async function main() {
   console.log('-'.repeat(40));
 
   // Create a pool of calculator processes
-  const calcPool = await pm.pool<CalculatorProcess>(
-    resolve(__dirname, './processes/calculator.process.js'),
-    {
-      size: 3,
-      strategy: 'round-robin' as any
-    }
-  );
+  const calcPool = await pm.pool<CalculatorProcess>(resolve(__dirname, './processes/calculator.process.js'), {
+    size: 3,
+    strategy: 'round-robin' as any,
+  });
 
   console.log(`✓ Created pool with ${calcPool.size} calculator workers`);
 
@@ -146,7 +135,7 @@ async function main() {
     calcPool['add'](2, 2),
     calcPool['add'](3, 3),
     calcPool['add'](4, 4),
-    calcPool['add'](5, 5)
+    calcPool['add'](5, 5),
   ]);
 
   console.log(`  Pool results: ${poolResults.join(', ')}`);

@@ -91,7 +91,7 @@ describe('query_interface core-task', () => {
         await query_interface(remotePeer, serviceName);
       } catch (error: any) {
         expect(error.code).toBe(ErrorCode.NOT_FOUND);
-        expect(error.message).toContain('Service \'nonexistent@1.0.0\' not found');
+        expect(error.message).toContain("Service 'nonexistent@1.0.0' not found");
         // availableServices removed from error details for security (commit 2d3767b)
         expect(error.details.serviceName).toBe(serviceName);
       }
@@ -240,11 +240,7 @@ describe('query_interface core-task', () => {
       const result = await query_interface(remotePeer, serviceName);
 
       expect(result?.meta).toEqual(filteredMeta);
-      expect(mockAuthzManager.filterDefinition).toHaveBeenCalledWith(
-        serviceName,
-        fullDefinition.meta,
-        authContext,
-      );
+      expect(mockAuthzManager.filterDefinition).toHaveBeenCalledWith(serviceName, fullDefinition.meta, authContext);
     });
 
     it('should throw error when filtering results in null (no access)', async () => {
@@ -317,7 +313,7 @@ describe('query_interface core-task', () => {
       expect(result).toEqual(definition);
       expect(mockLogger.debug).toHaveBeenCalledWith(
         expect.objectContaining({ serviceName }),
-        expect.stringContaining('No authorization configured'),
+        expect.stringContaining('No authorization configured')
       );
     });
   });
@@ -370,7 +366,7 @@ describe('query_interface core-task', () => {
           methodCount: 2,
           originalMethodCount: 3,
         }),
-        'Service interface queried successfully',
+        'Service interface queried successfully'
       );
     });
 
@@ -411,7 +407,7 @@ describe('query_interface core-task', () => {
           userId: 'user123',
           roles: ['guest'],
         }),
-        'Access denied to service',
+        'Access denied to service'
       );
     });
   });

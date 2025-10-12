@@ -164,10 +164,7 @@ describe('BuiltInPolicies', () => {
 
     describe('requireAnyPermission', () => {
       it('should allow user with any required permission', async () => {
-        const policy = BuiltInPolicies.requireAnyPermission([
-          'user:write',
-          'user:delete',
-        ]);
+        const policy = BuiltInPolicies.requireAnyPermission(['user:write', 'user:delete']);
         const context: ExecutionContext = {
           auth: {
             userId: 'user1',
@@ -183,10 +180,7 @@ describe('BuiltInPolicies', () => {
       });
 
       it('should deny user without any required permission', async () => {
-        const policy = BuiltInPolicies.requireAnyPermission([
-          'user:write',
-          'user:delete',
-        ]);
+        const policy = BuiltInPolicies.requireAnyPermission(['user:write', 'user:delete']);
         const context: ExecutionContext = {
           auth: {
             userId: 'user1',
@@ -402,10 +396,7 @@ describe('BuiltInPolicies', () => {
 
     describe('requireAttribute', () => {
       it('should allow when attribute matches', async () => {
-        const policy = BuiltInPolicies.requireAttribute(
-          'auth.metadata.tier',
-          'premium',
-        );
+        const policy = BuiltInPolicies.requireAttribute('auth.metadata.tier', 'premium');
         const context: ExecutionContext = {
           auth: {
             userId: 'user1',
@@ -423,10 +414,7 @@ describe('BuiltInPolicies', () => {
       });
 
       it('should deny when attribute does not match', async () => {
-        const policy = BuiltInPolicies.requireAttribute(
-          'auth.metadata.tier',
-          'premium',
-        );
+        const policy = BuiltInPolicies.requireAttribute('auth.metadata.tier', 'premium');
         const context: ExecutionContext = {
           auth: {
             userId: 'user1',
@@ -550,10 +538,7 @@ describe('BuiltInPolicies', () => {
 
     describe('requireAnyScope', () => {
       it('should allow user with any required scope', async () => {
-        const policy = BuiltInPolicies.requireAnyScope([
-          'read:documents',
-          'write:documents',
-        ]);
+        const policy = BuiltInPolicies.requireAnyScope(['read:documents', 'write:documents']);
         const context: ExecutionContext = {
           auth: {
             userId: 'user1',
@@ -570,10 +555,7 @@ describe('BuiltInPolicies', () => {
       });
 
       it('should deny user without any required scope', async () => {
-        const policy = BuiltInPolicies.requireAnyScope([
-          'read:documents',
-          'write:documents',
-        ]);
+        const policy = BuiltInPolicies.requireAnyScope(['read:documents', 'write:documents']);
         const context: ExecutionContext = {
           auth: {
             userId: 'user1',
@@ -974,9 +956,7 @@ describe('BuiltInPolicies', () => {
         };
 
         // Make concurrent requests
-        const promises = Array.from({ length: 5 }, () =>
-          policy.evaluate(context),
-        );
+        const promises = Array.from({ length: 5 }, () => policy.evaluate(context));
 
         const results = await Promise.all(promises);
 
@@ -1146,11 +1126,7 @@ describe('BuiltInPolicies', () => {
   describe('Enhanced RBAC Policies', () => {
     describe('Role Hierarchies', () => {
       it('should support role hierarchies with admin > moderator > user', async () => {
-        const policy = BuiltInPolicies.requireAnyRole([
-          'admin',
-          'moderator',
-          'user',
-        ]);
+        const policy = BuiltInPolicies.requireAnyRole(['admin', 'moderator', 'user']);
 
         // Admin should have access
         const adminContext: ExecutionContext = {
@@ -1254,8 +1230,7 @@ describe('BuiltInPolicies', () => {
       });
 
       it('should support permission patterns with multiple segments', async () => {
-        const policy =
-          BuiltInPolicies.requirePermissionPattern('documents:*:read');
+        const policy = BuiltInPolicies.requirePermissionPattern('documents:*:read');
         const context: ExecutionContext = {
           auth: {
             userId: 'user1',
@@ -1306,11 +1281,7 @@ describe('BuiltInPolicies', () => {
       });
 
       it('should support OAuth2 scope hierarchies', async () => {
-        const policy = BuiltInPolicies.requireAnyScope([
-          'openid',
-          'profile',
-          'email',
-        ]);
+        const policy = BuiltInPolicies.requireAnyScope(['openid', 'profile', 'email']);
         const context: ExecutionContext = {
           auth: {
             userId: 'user1',
@@ -1330,10 +1301,7 @@ describe('BuiltInPolicies', () => {
   describe('Enhanced Resource Policies', () => {
     describe('Complex Resource Attributes', () => {
       it('should check nested object attributes', async () => {
-        const policy = BuiltInPolicies.requireAttribute(
-          'resource.attributes.status',
-          'published',
-        );
+        const policy = BuiltInPolicies.requireAttribute('resource.attributes.status', 'published');
         const context: ExecutionContext = {
           service: { name: 'testService', version: '1.0.0' },
           resource: {
@@ -1371,11 +1339,7 @@ describe('BuiltInPolicies', () => {
   describe('Enhanced Time-based Policies', () => {
     describe('Timezone Handling', () => {
       it('should handle UTC timezone', async () => {
-        const policy = BuiltInPolicies.requireTimeWindow(
-          '09:00',
-          '17:00',
-          'UTC',
-        );
+        const policy = BuiltInPolicies.requireTimeWindow('09:00', '17:00', 'UTC');
         const now = new Date();
         now.setUTCHours(12, 0, 0, 0);
 
@@ -1389,11 +1353,7 @@ describe('BuiltInPolicies', () => {
       });
 
       it('should handle EST timezone', async () => {
-        const policy = BuiltInPolicies.requireTimeWindow(
-          '09:00',
-          '17:00',
-          'America/New_York',
-        );
+        const policy = BuiltInPolicies.requireTimeWindow('09:00', '17:00', 'America/New_York');
         // Create a time that's 12:00 EST
         const now = new Date('2025-01-15T17:00:00Z'); // 12:00 EST
 
@@ -1407,11 +1367,7 @@ describe('BuiltInPolicies', () => {
       });
 
       it('should handle PST timezone', async () => {
-        const policy = BuiltInPolicies.requireTimeWindow(
-          '09:00',
-          '17:00',
-          'America/Los_Angeles',
-        );
+        const policy = BuiltInPolicies.requireTimeWindow('09:00', '17:00', 'America/Los_Angeles');
         // Create a time that's 12:00 PST
         const now = new Date('2025-01-15T20:00:00Z'); // 12:00 PST
 

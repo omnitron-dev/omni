@@ -23,7 +23,7 @@ export interface FrequencyLimit {
 export interface QuietHours {
   enabled: boolean;
   start: string; // HH:mm format
-  end: string;   // HH:mm format
+  end: string; // HH:mm format
   timezone: string;
   exceptions?: string[]; // Category exceptions
 }
@@ -78,10 +78,7 @@ export class PreferenceManager {
   /**
    * Update user preferences
    */
-  async updatePreferences(
-    userId: string,
-    updates: Partial<UserPreferences>
-  ): Promise<UserPreferences> {
+  async updatePreferences(userId: string, updates: Partial<UserPreferences>): Promise<UserPreferences> {
     const current = await this.getPreferences(userId);
     const updated = this.mergePreferences(current, updates);
 
@@ -121,8 +118,7 @@ export class PreferenceManager {
       if (typeof categoryPref === 'object' && !categoryPref.enabled) {
         return false;
       }
-      if (typeof categoryPref === 'object' && categoryPref.channels &&
-        !categoryPref.channels.includes(channelType)) {
+      if (typeof categoryPref === 'object' && categoryPref.channels && !categoryPref.channels.includes(channelType)) {
         return false;
       }
     }
@@ -149,10 +145,7 @@ export class PreferenceManager {
   /**
    * Check frequency limits
    */
-  private async checkFrequencyLimit(
-    userId: string,
-    limit: FrequencyLimit
-  ): Promise<boolean> {
+  private async checkFrequencyLimit(userId: string, limit: FrequencyLimit): Promise<boolean> {
     const now = Date.now();
 
     // Check per-minute limit
@@ -188,10 +181,7 @@ export class PreferenceManager {
   /**
    * Get and increment counter with TTL
    */
-  private async getAndIncrementCounter(
-    key: string,
-    ttl: number
-  ): Promise<number> {
+  private async getAndIncrementCounter(key: string, ttl: number): Promise<number> {
     const multi = this.redis.multi();
     multi.incr(key);
     multi.expire(key, ttl);
@@ -241,10 +231,7 @@ export class PreferenceManager {
   /**
    * Check if notification is an exception to quiet hours
    */
-  private isException(
-    notification: NotificationPayload,
-    quietHours: QuietHours
-  ): boolean {
+  private isException(notification: NotificationPayload, quietHours: QuietHours): boolean {
     if (!quietHours.exceptions || !notification.metadata?.category) {
       return false;
     }
@@ -255,21 +242,18 @@ export class PreferenceManager {
   /**
    * Merge preference updates with current preferences
    */
-  private mergePreferences(
-    current: UserPreferences,
-    updates: Partial<UserPreferences>
-  ): UserPreferences {
+  private mergePreferences(current: UserPreferences, updates: Partial<UserPreferences>): UserPreferences {
     return {
       ...current,
       ...updates,
       channels: {
         ...current.channels,
-        ...(updates.channels || {})
+        ...(updates.channels || {}),
       },
       categories: {
         ...current.categories,
-        ...(updates.categories || {})
-      }
+        ...(updates.categories || {}),
+      },
     };
   }
 
@@ -284,22 +268,22 @@ export class PreferenceManager {
         [ChannelType.Push]: { enabled: true },
         [ChannelType.SMS]: { enabled: false },
         [ChannelType.InApp]: { enabled: true },
-        [ChannelType.Webhook]: { enabled: false }
+        [ChannelType.Webhook]: { enabled: false },
       },
       categories: {},
       frequency: {
         maxPerDay: 50,
         maxPerHour: 10,
-        maxPerMinute: 3
+        maxPerMinute: 3,
       },
       quietHours: {
         enabled: false,
         start: '22:00',
         end: '08:00',
         timezone: 'UTC',
-        exceptions: []
+        exceptions: [],
       },
-      locale: 'en'
+      locale: 'en',
     };
   }
 
@@ -314,7 +298,7 @@ export class PreferenceManager {
     const frequencyKeys = [
       `${this.FREQUENCY_KEY_PREFIX}${userId}:minute`,
       `${this.FREQUENCY_KEY_PREFIX}${userId}:hour`,
-      `${this.FREQUENCY_KEY_PREFIX}${userId}:day`
+      `${this.FREQUENCY_KEY_PREFIX}${userId}:day`,
     ];
     await this.redis.del(...frequencyKeys);
 

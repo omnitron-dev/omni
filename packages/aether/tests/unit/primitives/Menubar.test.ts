@@ -391,7 +391,7 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      const separator = document.querySelector('[data-menubar-separator]);
+      const separator = document.querySelector('[data-menubar-separator]');
       expect(separator).toBeTruthy();
       expect(separator?.getAttribute('role')).toBe('separator');
       expect(separator?.getAttribute('aria-orientation')).toBe('horizontal');
@@ -421,7 +421,7 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      const label = document.querySelector('[data-menubar-label]);
+      const label = document.querySelector('[data-menubar-label]');
       expect(label).toBeTruthy();
       expect(label?.textContent).toBe('Actions');
     });
@@ -905,10 +905,10 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      const labels = document.querySelectorAll('[data-menubar-label]);
+      const labels = document.querySelectorAll('[data-menubar-label]');
       expect(labels.length).toBe(2);
 
-      const separators = document.querySelectorAll('[data-menubar-separator]);
+      const separators = document.querySelectorAll('[data-menubar-separator]');
       expect(separators.length).toBe(2);
 
       const items = document.querySelectorAll('[data-menubar-item]');

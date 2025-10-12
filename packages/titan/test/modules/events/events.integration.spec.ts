@@ -137,17 +137,17 @@ describe('Event System Integration', () => {
 
     // Create async handlers with different delays
     eventsService.on('order.test', async () => {
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
       order.push(1);
     });
 
     eventsService.on('order.test', async () => {
-      await new Promise(resolve => setTimeout(resolve, 25));
+      await new Promise((resolve) => setTimeout(resolve, 25));
       order.push(2);
     });
 
     eventsService.on('order.test', async () => {
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
       order.push(3);
     });
 

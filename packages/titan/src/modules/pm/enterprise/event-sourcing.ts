@@ -88,7 +88,7 @@ export abstract class AggregateRoot extends EventEmitter {
       eventVersion: ++this.version,
       eventData,
       metadata,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
 
     // Apply to current state
@@ -152,7 +152,7 @@ export abstract class AggregateRoot extends EventEmitter {
       aggregateType: this.aggregateType,
       version: this.version,
       state: this.getState(),
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 
@@ -251,14 +251,12 @@ export class InMemoryEventStore implements IEventStore {
 
   async getEvents(aggregateId: string, fromVersion = 0): Promise<IDomainEvent[]> {
     return this.events
-      .filter(e => e.aggregateId === aggregateId && e.eventVersion > fromVersion)
+      .filter((e) => e.aggregateId === aggregateId && e.eventVersion > fromVersion)
       .sort((a, b) => a.eventVersion - b.eventVersion);
   }
 
   async getEventsByType(eventType: string, limit = 100): Promise<IDomainEvent[]> {
-    return this.events
-      .filter(e => e.eventType === eventType)
-      .slice(-limit);
+    return this.events.filter((e) => e.eventType === eventType).slice(-limit);
   }
 
   async getSnapshot(aggregateId: string): Promise<ISnapshot | null> {
@@ -316,10 +314,7 @@ export class CommandBus {
   /**
    * Register command handler
    */
-  register<TCommand, TResult>(
-    commandType: string,
-    handler: ICommandHandler<TCommand, TResult>
-  ): void {
+  register<TCommand, TResult>(commandType: string, handler: ICommandHandler<TCommand, TResult>): void {
     this.handlers.set(commandType, handler);
   }
 
@@ -345,10 +340,7 @@ export class QueryBus {
   /**
    * Register query handler
    */
-  register<TQuery, TResult>(
-    queryType: string,
-    handler: IQueryHandler<TQuery, TResult>
-  ): void {
+  register<TQuery, TResult>(queryType: string, handler: IQueryHandler<TQuery, TResult>): void {
     this.handlers.set(queryType, handler);
   }
 
@@ -399,10 +391,12 @@ export interface IQueryHandler<TQuery, TResult> {
 /**
  * Event Sourced Process decorator
  */
-export function EventSourced(options: {
-  snapshots?: { every: number };
-  retention?: string;
-} = {}): ClassDecorator {
+export function EventSourced(
+  options: {
+    snapshots?: { every: number };
+    retention?: string;
+  } = {}
+): ClassDecorator {
   return (target: any) => {
     Reflect.defineMetadata('event-sourced', options, target);
     return target;
@@ -445,10 +439,7 @@ export function Query(options?: { model?: string }): MethodDecorator {
 /**
  * Read Model decorator
  */
-export function ReadModel(options: {
-  source: any;
-  storage?: string;
-}): ClassDecorator {
+export function ReadModel(options: { source: any; storage?: string }): ClassDecorator {
   return (target: any) => {
     Reflect.defineMetadata('read-model', options, target);
     return target;

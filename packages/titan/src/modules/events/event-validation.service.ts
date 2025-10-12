@@ -1,16 +1,12 @@
 /**
  * Event Validation Service
- * 
+ *
  * Validates event data against schemas
  */
 
 import { Injectable } from '../../decorators/index.js';
 
-import type {
-  EventData,
-  EventValidator,
-  EventTransformer
-} from './event.types.js';
+import type { EventData, EventValidator, EventTransformer } from './event.types.js';
 import type { IEventValidationResult } from './types.js';
 import type { ILogger } from '../logger/logger.types.js';
 
@@ -32,9 +28,7 @@ export class EventValidationService {
   private destroyed = false;
   private logger: ILogger | null = null;
 
-  constructor(
-
-  ) { }
+  constructor() {}
 
   /**
    * Initialize the service
@@ -69,8 +63,8 @@ export class EventValidationService {
         initialized: this.initialized,
         destroyed: this.destroyed,
         registeredSchemas: this.schemas.size,
-        registeredValidators: this.validators.size
-      }
+        registeredValidators: this.validators.size,
+      },
     };
   }
 
@@ -178,7 +172,7 @@ export class EventValidationService {
       } catch (error) {
         return {
           valid: false,
-          errors: [(error as Error).message]
+          errors: [(error as Error).message],
         };
       }
     }
@@ -212,7 +206,7 @@ export class EventValidationService {
 
       return {
         valid: errors.length === 0,
-        errors: errors.length > 0 ? errors : undefined
+        errors: errors.length > 0 ? errors : undefined,
       };
     }
 
@@ -223,10 +217,7 @@ export class EventValidationService {
   /**
    * Validate and transform event data
    */
-  validateAndTransform(
-    event: string,
-    data: EventData
-  ): IEventValidationResult {
+  validateAndTransform(event: string, data: EventData): IEventValidationResult {
     const validation = this.validate(event, data);
 
     if (!validation.valid) {
@@ -240,12 +231,12 @@ export class EventValidationService {
         const transformed = transformer(data);
         return {
           valid: true,
-          data: transformed
+          data: transformed,
         };
       } catch (error) {
         return {
           valid: false,
-          errors: [`Transformation failed: ${(error as Error).message}`]
+          errors: [`Transformation failed: ${(error as Error).message}`],
         };
       }
     }
@@ -272,10 +263,7 @@ export class EventValidationService {
    * Get all registered validations
    */
   getRegisteredValidations(): string[] {
-    return [
-      ...Array.from(this.schemas.keys()),
-      ...Array.from(this.validators.keys())
-    ];
+    return [...Array.from(this.schemas.keys()), ...Array.from(this.validators.keys())];
   }
 
   /**
@@ -309,9 +297,9 @@ export class EventValidationService {
 
         return {
           valid: errors.length === 0,
-          errors: errors.length > 0 ? errors : undefined
+          errors: errors.length > 0 ? errors : undefined,
         };
-      }
+      },
     };
   }
 
@@ -319,7 +307,12 @@ export class EventValidationService {
    * Create validator from schema
    */
   private createValidator(schema: unknown): ISchemaValidator {
-    if (schema && typeof schema === 'object' && 'validate' in schema && typeof (schema as any).validate === 'function') {
+    if (
+      schema &&
+      typeof schema === 'object' &&
+      'validate' in schema &&
+      typeof (schema as any).validate === 'function'
+    ) {
       return schema as ISchemaValidator;
     }
 
@@ -337,7 +330,7 @@ export class EventValidationService {
           if (expectedType !== actualType) {
             return {
               valid: false,
-              errors: [`Expected type ${expectedType}, got ${actualType}`]
+              errors: [`Expected type ${expectedType}, got ${actualType}`],
             };
           }
         }
@@ -367,9 +360,9 @@ export class EventValidationService {
 
         return {
           valid: errors.length === 0,
-          errors: errors.length > 0 ? errors : undefined
+          errors: errors.length > 0 ? errors : undefined,
         };
-      }
+      },
     };
   }
 
@@ -397,9 +390,7 @@ export class EventValidationService {
 
     // Simple wildcard matching
     if (pattern.includes('*')) {
-      const regex = new RegExp(
-        '^' + pattern.replace(/\*/g, '.*').replace(/\./g, '\\.') + '$'
-      );
+      const regex = new RegExp('^' + pattern.replace(/\*/g, '.*').replace(/\./g, '\\.') + '$');
       return regex.test(event);
     }
 

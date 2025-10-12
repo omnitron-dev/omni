@@ -104,7 +104,7 @@ export class SagaOrchestrator extends EventEmitter {
       state: 'pending',
       steps: new Map(),
       data: input,
-      startTime: Date.now()
+      startTime: Date.now(),
     };
 
     this.sagas.set(sagaId, context);
@@ -143,10 +143,7 @@ export class SagaOrchestrator extends EventEmitter {
   /**
    * Execute saga in orchestration mode
    */
-  private async executeOrchestration(
-    context: ISagaContext,
-    steps: Map<string, ISagaStep>
-  ): Promise<any> {
+  private async executeOrchestration(context: ISagaContext, steps: Map<string, ISagaStep>): Promise<any> {
     const executionPlan = this.buildExecutionPlan(steps);
     const results = new Map<string, any>();
 
@@ -164,10 +161,7 @@ export class SagaOrchestrator extends EventEmitter {
   /**
    * Execute saga in choreography mode
    */
-  private async executeChoreography(
-    context: ISagaContext,
-    steps: Map<string, ISagaStep>
-  ): Promise<any> {
+  private async executeChoreography(context: ISagaContext, steps: Map<string, ISagaStep>): Promise<any> {
     // In choreography mode, steps communicate via events
     const eventBus = new EventEmitter();
     const results = new Map<string, any>();
@@ -220,7 +214,7 @@ export class SagaOrchestrator extends EventEmitter {
         if (completed.has(stepName)) continue;
 
         const deps = step.dependsOn || [];
-        if (deps.every(dep => completed.has(dep))) {
+        if (deps.every((dep) => completed.has(dep))) {
           batch.push(step);
         }
       }
@@ -231,7 +225,7 @@ export class SagaOrchestrator extends EventEmitter {
 
       if (batch.length > 0) {
         plan.push(batch);
-        batch.forEach(step => completed.add(step.name));
+        batch.forEach((step) => completed.add(step.name));
       }
     }
 
@@ -248,7 +242,7 @@ export class SagaOrchestrator extends EventEmitter {
   ): Promise<Map<string, any>> {
     const results = new Map<string, any>();
 
-    const promises = batch.map(async step => {
+    const promises = batch.map(async (step) => {
       const result = await this.executeStep(context, step, previousResults);
       results.set(step.name, result);
       return { step: step.name, result };
@@ -261,16 +255,12 @@ export class SagaOrchestrator extends EventEmitter {
   /**
    * Execute a single step
    */
-  private async executeStep(
-    context: ISagaContext,
-    step: ISagaStep,
-    previousResults: Map<string, any>
-  ): Promise<any> {
+  private async executeStep(context: ISagaContext, step: ISagaStep, previousResults: Map<string, any>): Promise<any> {
     const stepResult: ISagaStepResult = {
       name: step.name,
       state: 'pending',
       startTime: Date.now(),
-      attempts: 0
+      attempts: 0,
     };
 
     context.steps.set(step.name, stepResult);
@@ -312,10 +302,7 @@ export class SagaOrchestrator extends EventEmitter {
   /**
    * Compensate failed saga
    */
-  private async compensate(
-    context: ISagaContext,
-    steps: Map<string, ISagaStep>
-  ): Promise<void> {
+  private async compensate(context: ISagaContext, steps: Map<string, ISagaStep>): Promise<void> {
     this.logger.info({ sagaId: context.id }, 'Running saga compensation');
 
     const completedSteps = Array.from(context.steps.entries())
@@ -334,10 +321,7 @@ export class SagaOrchestrator extends EventEmitter {
         stepResult.state = 'compensated';
         this.emit('step:compensated', stepName, context);
       } catch (error) {
-        this.logger.error(
-          { error, stepName, sagaId: context.id },
-          'Failed to compensate step'
-        );
+        this.logger.error({ error, stepName, sagaId: context.id }, 'Failed to compensate step');
       }
     }
   }
@@ -345,11 +329,7 @@ export class SagaOrchestrator extends EventEmitter {
   /**
    * Prepare step input
    */
-  private prepareStepInput(
-    step: ISagaStep,
-    previousResults: Map<string, any>,
-    initialData: any
-  ): any {
+  private prepareStepInput(step: ISagaStep, previousResults: Map<string, any>, initialData: any): any {
     if (!step.dependsOn || step.dependsOn.length === 0) {
       return initialData;
     }
@@ -370,11 +350,7 @@ export class SagaOrchestrator extends EventEmitter {
   /**
    * Execute with retries
    */
-  private async executeWithRetries(
-    fn: () => Promise<any>,
-    retries: number,
-    timeout?: number
-  ): Promise<any> {
+  private async executeWithRetries(fn: () => Promise<any>, retries: number, timeout?: number): Promise<any> {
     let lastError: Error | undefined;
 
     for (let attempt = 0; attempt <= retries; attempt++) {
@@ -400,25 +376,19 @@ export class SagaOrchestrator extends EventEmitter {
   private withTimeout<T>(promise: Promise<T>, timeout: number): Promise<T> {
     return Promise.race([
       promise,
-      new Promise<T>((_, reject) =>
-        setTimeout(() => reject(Errors.timeout('saga step', timeout)), timeout)
-      )
+      new Promise<T>((_, reject) => setTimeout(() => reject(Errors.timeout('saga step', timeout)), timeout)),
     ]);
   }
 
   /**
    * Check step readiness
    */
-  private checkStepReadiness(
-    steps: Map<string, ISagaStep>,
-    completedSteps: Set<string>,
-    eventBus: EventEmitter
-  ): void {
+  private checkStepReadiness(steps: Map<string, ISagaStep>, completedSteps: Set<string>, eventBus: EventEmitter): void {
     for (const [stepName, step] of steps) {
       if (completedSteps.has(stepName)) continue;
 
       const deps = step.dependsOn || [];
-      if (deps.every(dep => completedSteps.has(dep))) {
+      if (deps.every((dep) => completedSteps.has(dep))) {
         eventBus.emit(`step:${stepName}:ready`);
       }
     }
@@ -427,10 +397,7 @@ export class SagaOrchestrator extends EventEmitter {
   /**
    * Wait for completion
    */
-  private async waitForCompletion(
-    steps: Map<string, ISagaStep>,
-    completedSteps: Set<string>
-  ): Promise<void> {
+  private async waitForCompletion(steps: Map<string, ISagaStep>, completedSteps: Set<string>): Promise<void> {
     const timeout = this.config.timeout || 60000;
     const startTime = Date.now();
 
@@ -445,12 +412,7 @@ export class SagaOrchestrator extends EventEmitter {
   /**
    * Log for compensation
    */
-  private logForCompensation(
-    sagaId: string,
-    step: ISagaStep,
-    input: any,
-    result: any
-  ): void {
+  private logForCompensation(sagaId: string, step: ISagaStep, input: any, result: any): void {
     if (!this.compensationLog.has(sagaId)) {
       this.compensationLog.set(sagaId, []);
     }
@@ -459,7 +421,7 @@ export class SagaOrchestrator extends EventEmitter {
       step: step.name,
       input,
       result,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
   }
 
@@ -485,7 +447,7 @@ export class SagaOrchestrator extends EventEmitter {
    * Delay helper
    */
   private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
@@ -522,7 +484,7 @@ export class DistributedTransactionManager {
       id: txId,
       state: 'active',
       participants: new Set(),
-      startTime: Date.now()
+      startTime: Date.now(),
     };
 
     this.transactions.set(txId, transaction);
@@ -551,7 +513,7 @@ export class DistributedTransactionManager {
     }
 
     const results = await Promise.all(preparePromises);
-    const allPrepared = results.every(r => r === true);
+    const allPrepared = results.every((r) => r === true);
 
     if (allPrepared) {
       transaction.state = 'prepared';
@@ -617,10 +579,7 @@ export class DistributedTransactionManager {
   /**
    * Register a participant
    */
-  registerParticipant(
-    participantId: string,
-    participant: ITransactionParticipant
-  ): void {
+  registerParticipant(participantId: string, participant: ITransactionParticipant): void {
     this.participants.set(participantId, participant);
   }
 

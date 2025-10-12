@@ -8,7 +8,7 @@ import {
   debug,
   incrementUpdateVersion,
   ComputationImpl,
-  OwnerImpl
+  OwnerImpl,
 } from '../../../../src/core/reactivity/context.js';
 import { signal } from '../../../../src/core/reactivity/signal.js';
 import { batch, createRoot } from '../../../../src/core/reactivity/batch.js';
@@ -152,7 +152,9 @@ describe('Context', () => {
 
     it('should handle error in computation', () => {
       const error = new Error('Test error');
-      const fn = vi.fn(() => { throw error; });
+      const fn = vi.fn(() => {
+        throw error;
+      });
       const errorHandler = vi.fn();
       const computation = new ComputationImpl(fn, null);
       computation.setErrorHandler(errorHandler);
@@ -222,7 +224,7 @@ describe('Context', () => {
       const childCleanup = vi.fn();
 
       // Create a computation as a child
-      const computation = new ComputationImpl(() => { }, parent);
+      const computation = new ComputationImpl(() => {}, parent);
       parent.children.add(computation);
 
       // Add cleanup to verify disposal
@@ -265,10 +267,12 @@ describe('Context', () => {
     it('should handle errors in cleanup', () => {
       const owner = new OwnerImpl(null);
       const error = new Error('Cleanup error');
-      const cleanup = vi.fn(() => { throw error; });
+      const cleanup = vi.fn(() => {
+        throw error;
+      });
 
       // Capture console.error
-      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => { });
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       owner.cleanups.push(cleanup);
       owner.dispose();

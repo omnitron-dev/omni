@@ -104,9 +104,7 @@ interface NavigationMenuItemContextValue {
 // ============================================================================
 
 const NavigationMenuContext = createContext<NavigationMenuContextValue | undefined>(undefined);
-const NavigationMenuItemContext = createContext<NavigationMenuItemContextValue | undefined>(
-  undefined,
-);
+const NavigationMenuItemContext = createContext<NavigationMenuItemContextValue | undefined>(undefined);
 
 function useNavigationMenuContext(): NavigationMenuContextValue {
   const context = useContext(NavigationMenuContext);
@@ -144,7 +142,7 @@ export const NavigationMenu = defineComponent<NavigationMenuProps>((props) => {
   const internalValue: WritableSignal<string> = signal<string>(props.defaultValue ?? '');
 
   const isControlled = () => props.value !== undefined;
-  const currentValue = () => (isControlled() ? props.value ?? '' : internalValue());
+  const currentValue = () => (isControlled() ? (props.value ?? '') : internalValue());
 
   const setValue = (value: string) => {
     if (!isControlled()) {

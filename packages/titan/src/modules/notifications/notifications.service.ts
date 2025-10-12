@@ -93,7 +93,7 @@ export class NotificationService {
     private channelManager: ChannelManager,
     private preferenceManager: PreferenceManager,
     private rateLimiter: RateLimiter
-  ) { }
+  ) {}
 
   /**
    * Send a notification to specified recipients
@@ -117,7 +117,7 @@ export class NotificationService {
           id: notificationId,
           sent: 0,
           failed: 0,
-          filtered: Array.isArray(recipients) ? recipients.length : 1
+          filtered: Array.isArray(recipients) ? recipients.length : 1,
         };
       }
       this.deduplicationCache.set(dedupKey, Date.now());
@@ -127,11 +127,7 @@ export class NotificationService {
     const recipientList = Array.isArray(recipients) ? recipients : [recipients];
 
     // Filter by preferences
-    const filteredRecipients = await this.filterByPreferences(
-      recipientList,
-      notification,
-      options
-    );
+    const filteredRecipients = await this.filterByPreferences(recipientList, notification, options);
 
     // Apply rate limiting
     const allowedRecipients: Recipient[] = [];
@@ -143,25 +139,17 @@ export class NotificationService {
     }
 
     // Determine delivery channels
-    const deliveryPlan = await this.channelManager.planDelivery(
-      allowedRecipients,
-      notification,
-      options
-    );
+    const deliveryPlan = await this.channelManager.planDelivery(allowedRecipients, notification, options);
 
     // Send through Rotif
-    const results = await this.sendViaRotif(
-      deliveryPlan,
-      notification,
-      options
-    );
+    const results = await this.sendViaRotif(deliveryPlan, notification, options);
 
     return {
       id: notificationId,
       sent: results.successful.length,
       failed: results.failed.length,
       filtered: recipientList.length - allowedRecipients.length,
-      details: results
+      details: results,
     };
   }
 
@@ -200,7 +188,7 @@ export class NotificationService {
   ): Promise<DeliveryResults> {
     const results: DeliveryResults = {
       successful: [],
-      failed: []
+      failed: [],
     };
 
     for (const [channel, group] of deliveryPlan) {
@@ -208,28 +196,32 @@ export class NotificationService {
         const channelName = `notifications.${channel}.${recipient.id}`;
 
         try {
-          await this.rotif.publish(channelName, {
-            ...notification,
-            recipientId: recipient.id,
-            channel
-          }, {
-            delayMs: options.delay,
-            deliverAt: options.scheduledTime,
-            exactlyOnce: options.exactlyOnce ?? true
-          });
+          await this.rotif.publish(
+            channelName,
+            {
+              ...notification,
+              recipientId: recipient.id,
+              channel,
+            },
+            {
+              delayMs: options.delay,
+              deliverAt: options.scheduledTime,
+              exactlyOnce: options.exactlyOnce ?? true,
+            }
+          );
 
           results.successful.push({
             recipientId: recipient.id,
             channel: channel as ChannelType,
             messageId: notification.id || generateUuid(),
-            timestamp: Date.now()
+            timestamp: Date.now(),
           });
         } catch (error: any) {
           results.failed.push({
             recipientId: recipient.id,
             channel: channel as ChannelType,
             error: error.message,
-            timestamp: Date.now()
+            timestamp: Date.now(),
           });
         }
       }
@@ -260,7 +252,7 @@ export class NotificationService {
 
     return {
       recipients: recipients.length,
-      results: [result]
+      results: [result],
     };
   }
 
@@ -283,14 +275,14 @@ export class NotificationService {
 
       // Add delay between batches to avoid overwhelming the system
       if (i < batches - 1) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
     }
 
     return {
       recipients: recipients.length,
       batches,
-      results
+      results,
     };
   }
 
@@ -299,7 +291,7 @@ export class NotificationService {
    */
   private async resolveAudience(target: BroadcastTarget): Promise<Recipient[]> {
     if (target.userIds) {
-      return target.userIds.map(id => ({ id }));
+      return target.userIds.map((id) => ({ id }));
     }
 
     // In real implementation, would resolve from segment service
@@ -326,19 +318,19 @@ export class NotificationService {
       deliveryTime: timestamp,
       options,
       status: 'scheduled',
-      createdAt: Date.now()
+      createdAt: Date.now(),
     });
 
     // Schedule through send with scheduledTime
     await this.send(recipients, notification, {
       ...options,
-      scheduledTime: timestamp
+      scheduledTime: timestamp,
     });
 
     return {
       scheduleId,
       scheduled: true,
-      deliveryTime: timestamp
+      deliveryTime: timestamp,
     };
   }
 

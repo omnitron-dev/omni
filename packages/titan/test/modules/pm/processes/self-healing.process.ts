@@ -18,13 +18,16 @@ export default class SelfHealingService {
     healStrategy: async (error: any, context: any) => {
       // Custom healing logic
       if (error.message.includes('temporary')) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
         return true; // Healed, can retry
       }
       return false; // Cannot heal
-    }
+    },
   })
-  async processTask(taskId: string, simulateError: boolean = false): Promise<{ success: boolean; taskId: string; recoveryAttempts: number }> {
+  async processTask(
+    taskId: string,
+    simulateError: boolean = false
+  ): Promise<{ success: boolean; taskId: string; recoveryAttempts: number }> {
     if (simulateError && this.autoRecoveryAttempts < 2) {
       this.errorCount++;
       this.autoRecoveryAttempts++;
@@ -32,7 +35,7 @@ export default class SelfHealingService {
     }
 
     // Process task successfully
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     const recoveryAttempts = this.autoRecoveryAttempts;
     this.autoRecoveryAttempts = 0; // Reset after success
@@ -40,14 +43,14 @@ export default class SelfHealingService {
     return {
       success: true,
       taskId,
-      recoveryAttempts
+      recoveryAttempts,
     };
   }
 
   @Public()
   async triggerRecovery(): Promise<{ recovered: boolean }> {
     // Simulate self-recovery mechanism
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     this.isHealthy = true;
     this.errorCount = 0;
@@ -68,10 +71,10 @@ export default class SelfHealingService {
         {
           name: 'error-rate',
           status: this.errorCount < 5 ? 'pass' : 'warn',
-          message: `${this.errorCount} errors recorded`
-        }
+          message: `${this.errorCount} errors recorded`,
+        },
       ],
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 }

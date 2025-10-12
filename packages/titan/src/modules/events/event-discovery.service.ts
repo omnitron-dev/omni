@@ -1,21 +1,17 @@
 /**
  * Event Discovery Service
- * 
+ *
  * Discovers and registers event handlers from decorated classes
  */
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
-import { Container, } from '../../nexus/index.js';
+import { Container } from '../../nexus/index.js';
 import { Inject, Injectable } from '../../decorators/index.js';
 
 import { EventMetadataService } from './event-metadata.service.js';
 import { EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN } from './tokens.js';
 
-import type {
-  IEventHandlerMetadata,
-  IEventDiscoveryResult,
-  IEventListenerOptions
-} from './types.js';
+import type { IEventHandlerMetadata, IEventDiscoveryResult, IEventListenerOptions } from './types.js';
 
 /**
  * Metadata keys for event decorators
@@ -38,9 +34,8 @@ export class EventDiscoveryService {
   constructor(
     @Inject(Container) private readonly container: Container,
     @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
-    @Inject(EVENT_METADATA_SERVICE_TOKEN) private readonly metadataService: EventMetadataService,
-
-  ) { }
+    @Inject(EVENT_METADATA_SERVICE_TOKEN) private readonly metadataService: EventMetadataService
+  ) {}
 
   /**
    * Initialize the service
@@ -60,12 +55,13 @@ export class EventDiscoveryService {
 
     // Get all method names
     const methodNames = Object.getOwnPropertyNames(prototype).filter(
-      name => name !== 'constructor' && typeof prototype[name] === 'function'
+      (name) => name !== 'constructor' && typeof prototype[name] === 'function'
     );
 
     for (const methodName of methodNames) {
       // Check for event handler metadata
-      const handlerMetadata = Reflect.getMetadata(EVENT_HANDLER_METADATA, prototype, methodName) ||
+      const handlerMetadata =
+        Reflect.getMetadata(EVENT_HANDLER_METADATA, prototype, methodName) ||
         Reflect.getMetadata('event:handler', prototype, methodName);
 
       if (handlerMetadata) {
@@ -73,12 +69,13 @@ export class EventDiscoveryService {
           method: methodName,
           event: handlerMetadata.event || methodName,
           options: handlerMetadata.options || {},
-          target
+          target,
         });
       }
 
       // Check for once handler metadata
-      const onceMetadata = Reflect.getMetadata(EVENT_ONCE_METADATA, prototype, methodName) ||
+      const onceMetadata =
+        Reflect.getMetadata(EVENT_ONCE_METADATA, prototype, methodName) ||
         Reflect.getMetadata('event:once', prototype, methodName);
 
       if (onceMetadata) {
@@ -87,7 +84,7 @@ export class EventDiscoveryService {
           event: onceMetadata.event || methodName,
           options: { ...onceMetadata.options, once: true },
           target,
-          once: true
+          once: true,
         });
       }
     }
@@ -104,18 +101,19 @@ export class EventDiscoveryService {
 
     // Get all method names
     const methodNames = Object.getOwnPropertyNames(prototype).filter(
-      name => name !== 'constructor' && typeof prototype[name] === 'function'
+      (name) => name !== 'constructor' && typeof prototype[name] === 'function'
     );
 
     for (const methodName of methodNames) {
       // Check for event emitter metadata
-      const emitterMetadata = Reflect.getMetadata(EVENT_EMITTER_METADATA, prototype, methodName) ||
+      const emitterMetadata =
+        Reflect.getMetadata(EVENT_EMITTER_METADATA, prototype, methodName) ||
         Reflect.getMetadata('event:emitter', prototype, methodName);
 
       if (emitterMetadata) {
         emitters.push({
           methodName,
-          events: emitterMetadata.events || []
+          events: emitterMetadata.events || [],
         });
       }
     }
@@ -135,8 +133,8 @@ export class EventDiscoveryService {
         totalHandlers: 0,
         totalEmitters: 0,
         totalEvents: 0,
-        wildcardHandlers: 0
-      }
+        wildcardHandlers: 0,
+      },
     };
 
     // Get module metadata
@@ -158,7 +156,7 @@ export class EventDiscoveryService {
             result.emitters.push({
               class: target.name,
               method: emitter.methodName,
-              event
+              event,
             });
           }
         }
@@ -169,10 +167,10 @@ export class EventDiscoveryService {
     result.stats.totalHandlers = result.handlers.length;
     result.stats.totalEmitters = result.emitters.length;
     result.stats.totalEvents = new Set([
-      ...result.handlers.map(h => h.event),
-      ...result.emitters.map(e => e.event)
+      ...result.handlers.map((h) => h.event),
+      ...result.emitters.map((e) => e.event),
     ]).size;
-    result.stats.wildcardHandlers = result.handlers.filter(h => h.event.includes('*')).length;
+    result.stats.wildcardHandlers = result.handlers.filter((h) => h.event.includes('*')).length;
 
     return result;
   }
@@ -195,10 +193,14 @@ export class EventDiscoveryService {
    * Get health status
    */
   async health(): Promise<{ status: 'healthy' | 'degraded' | 'unhealthy'; details?: any }> {
-    const totalHandlers = Array.from(this.discoveredHandlers.values())
-      .reduce((acc, handlers) => acc + handlers.length, 0);
-    const totalRegistered = Array.from(this.registeredHandlers.values())
-      .reduce((acc, handlerMap) => acc + handlerMap.size, 0);
+    const totalHandlers = Array.from(this.discoveredHandlers.values()).reduce(
+      (acc, handlers) => acc + handlers.length,
+      0
+    );
+    const totalRegistered = Array.from(this.registeredHandlers.values()).reduce(
+      (acc, handlerMap) => acc + handlerMap.size,
+      0
+    );
 
     return {
       status: this.initialized && !this.destroyed ? 'healthy' : 'unhealthy',
@@ -208,8 +210,8 @@ export class EventDiscoveryService {
         discoveredEvents: this.discoveredHandlers.size,
         totalHandlers,
         registeredTargets: this.registeredHandlers.size,
-        totalRegistered
-      }
+        totalRegistered,
+      },
     };
   }
 
@@ -237,11 +239,7 @@ export class EventDiscoveryService {
         if (typeof prototype[propertyName] !== 'function') continue;
 
         // Check for @OnEvent decorator metadata
-        const handlerMetadata = Reflect.getMetadata(
-          EVENT_HANDLER_METADATA,
-          prototype,
-          propertyName
-        );
+        const handlerMetadata = Reflect.getMetadata(EVENT_HANDLER_METADATA, prototype, propertyName);
 
         if (handlerMetadata) {
           const metadata: IEventHandlerMetadata = {
@@ -250,7 +248,7 @@ export class EventDiscoveryService {
             target: provider,
             options: handlerMetadata.options,
             once: false,
-            priority: handlerMetadata.options?.priority
+            priority: handlerMetadata.options?.priority,
           };
 
           handlers.push(metadata);
@@ -258,11 +256,7 @@ export class EventDiscoveryService {
         }
 
         // Check for @OnceEvent decorator metadata
-        const onceMetadata = Reflect.getMetadata(
-          EVENT_ONCE_METADATA,
-          prototype,
-          propertyName
-        );
+        const onceMetadata = Reflect.getMetadata(EVENT_ONCE_METADATA, prototype, propertyName);
 
         if (onceMetadata) {
           const metadata: IEventHandlerMetadata = {
@@ -271,7 +265,7 @@ export class EventDiscoveryService {
             target: provider,
             options: onceMetadata.options,
             once: true,
-            priority: onceMetadata.options?.priority
+            priority: onceMetadata.options?.priority,
           };
 
           handlers.push(metadata);
@@ -279,24 +273,20 @@ export class EventDiscoveryService {
         }
 
         // Check for @EmitEvent decorator metadata
-        const emitterMetadata = Reflect.getMetadata(
-          EVENT_EMITTER_METADATA,
-          prototype,
-          propertyName
-        );
+        const emitterMetadata = Reflect.getMetadata(EVENT_EMITTER_METADATA, prototype, propertyName);
 
         if (emitterMetadata) {
           emitters.push({
             class: provider.constructor.name,
             method: propertyName,
-            event: emitterMetadata.event
+            event: emitterMetadata.event,
           });
 
           // Track dependencies
           const deps = dependencies.get(emitterMetadata.event) || [];
           handlers
-            .filter(h => h.event === emitterMetadata.event)
-            .forEach(h => {
+            .filter((h) => h.event === emitterMetadata.event)
+            .forEach((h) => {
               if (!deps.includes(h.target.constructor.name)) {
                 deps.push(h.target.constructor.name);
               }
@@ -316,15 +306,15 @@ export class EventDiscoveryService {
     const stats = {
       totalHandlers: handlers.length,
       totalEmitters: emitters.length,
-      totalEvents: new Set([...handlers.map(h => h.event), ...emitters.map(e => e.event)]).size,
-      wildcardHandlers: handlers.filter(h => h.event.includes('*') || h.event.includes('**')).length
+      totalEvents: new Set([...handlers.map((h) => h.event), ...emitters.map((e) => e.event)]).size,
+      wildcardHandlers: handlers.filter((h) => h.event.includes('*') || h.event.includes('**')).length,
     };
 
     return {
       handlers,
       emitters,
       dependencies,
-      stats
+      stats,
     };
   }
 
@@ -421,7 +411,7 @@ export class EventDiscoveryService {
       priority: options.priority,
       errorBoundary: options.errorBoundary,
       onError: options.onError,
-      timeout: options.timeout
+      timeout: options.timeout,
     };
 
     // Convert retry options if present
@@ -430,7 +420,7 @@ export class EventDiscoveryService {
         maxAttempts: options.retry.attempts,
         delay: options.retry.delay,
         backoff: typeof options.retry.backoff === 'number' ? 'exponential' : undefined,
-        factor: typeof options.retry.backoff === 'number' ? options.retry.backoff : undefined
+        factor: typeof options.retry.backoff === 'number' ? options.retry.backoff : undefined,
       };
     }
 
@@ -440,11 +430,7 @@ export class EventDiscoveryService {
   /**
    * Create a wrapped handler function
    */
-  private createHandler(
-    target: any,
-    method: string,
-    options?: IEventListenerOptions
-  ): (...args: any[]) => any {
+  private createHandler(target: any, method: string, options?: IEventListenerOptions): (...args: any[]) => any {
     const originalMethod = target[method];
 
     return async (data: any, metadata: any): Promise<any> => {
@@ -464,7 +450,7 @@ export class EventDiscoveryService {
           event: metadata?.event,
           metadata,
           target,
-          method
+          method,
         };
 
         // Call handler with proper context
@@ -524,7 +510,7 @@ export class EventDiscoveryService {
     const props: Set<string> = new Set();
 
     do {
-      Object.getOwnPropertyNames(obj).forEach(prop => props.add(prop));
+      Object.getOwnPropertyNames(obj).forEach((prop) => props.add(prop));
       obj = Object.getPrototypeOf(obj);
     } while (obj && obj !== Object.prototype);
 

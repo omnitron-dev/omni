@@ -6,11 +6,7 @@
 
 import { EventEmitter } from 'events';
 import type { ILogger } from '../logger/logger.types.js';
-import type {
-  IHealthStatus,
-  ServiceProxy,
-  IProcessOptions
-} from './types.js';
+import type { IHealthStatus, ServiceProxy, IProcessOptions } from './types.js';
 import { Errors } from '../../errors/factories.js';
 
 /**
@@ -28,20 +24,12 @@ export class ProcessHealthChecker extends EventEmitter {
   /**
    * Start monitoring health for a process
    */
-  startMonitoring(
-    processId: string,
-    proxy: ServiceProxy<any>,
-    options: IProcessOptions['health']
-  ): void {
+  startMonitoring(processId: string, proxy: ServiceProxy<any>, options: IProcessOptions['health']): void {
     if (this.checkers.has(processId)) {
       return; // Already monitoring
     }
 
-    const {
-      interval = 30000,
-      timeout = 5000,
-      retries = 3
-    } = options || {};
+    const { interval = 30000, timeout = 5000, retries = 3 } = options || {};
 
     this.logger.debug({ processId }, 'Starting health monitoring');
 
@@ -55,19 +43,18 @@ export class ProcessHealthChecker extends EventEmitter {
         const health = await this.checkHealth(proxy, timeout, retries);
         this.recordHealth(processId, health);
       } catch (error) {
-        this.logger.error(
-          { error, processId },
-          'Health check failed'
-        );
+        this.logger.error({ error, processId }, 'Health check failed');
 
         this.recordHealth(processId, {
           status: 'unhealthy',
-          checks: [{
-            name: 'general',
-            status: 'fail',
-            message: error instanceof Error ? error.message : 'Unknown error'
-          }],
-          timestamp: Date.now()
+          checks: [
+            {
+              name: 'general',
+              status: 'fail',
+              message: error instanceof Error ? error.message : 'Unknown error',
+            },
+          ],
+          timestamp: Date.now(),
         });
       }
     }, interval);
@@ -137,41 +124,28 @@ export class ProcessHealthChecker extends EventEmitter {
       const health = await this.checkHealth(proxy, timeout, retries);
       this.recordHealth(processId, health);
     } catch (error) {
-      this.logger.error(
-        { error, processId },
-        'Initial health check failed'
-      );
+      this.logger.error({ error, processId }, 'Initial health check failed');
     }
   }
 
   /**
    * Check process health
    */
-  private async checkHealth(
-    proxy: ServiceProxy<any>,
-    timeout: number,
-    retries: number
-  ): Promise<IHealthStatus> {
+  private async checkHealth(proxy: ServiceProxy<any>, timeout: number, retries: number): Promise<IHealthStatus> {
     let lastError: Error | undefined;
 
     for (let attempt = 0; attempt < retries; attempt++) {
       try {
         // Try to get health from the process
         if ('__getHealth' in proxy) {
-          return await this.withTimeout(
-            proxy.__getHealth(),
-            timeout
-          );
+          return await this.withTimeout(proxy.__getHealth(), timeout);
         }
 
         // Fallback to basic connectivity check
         return await this.basicHealthCheck(proxy, timeout);
       } catch (error) {
         lastError = error as Error;
-        this.logger.debug(
-          { error, attempt },
-          'Health check attempt failed'
-        );
+        this.logger.debug({ error, attempt }, 'Health check attempt failed');
 
         if (attempt < retries - 1) {
           await this.delay(1000); // Wait before retry
@@ -185,10 +159,7 @@ export class ProcessHealthChecker extends EventEmitter {
   /**
    * Perform basic health check
    */
-  private async basicHealthCheck(
-    proxy: ServiceProxy<any>,
-    timeout: number
-  ): Promise<IHealthStatus> {
+  private async basicHealthCheck(proxy: ServiceProxy<any>, timeout: number): Promise<IHealthStatus> {
     try {
       // Try to get metrics as a basic check
       if ('__getMetrics' in proxy) {
@@ -197,21 +168,25 @@ export class ProcessHealthChecker extends EventEmitter {
 
       return {
         status: 'healthy',
-        checks: [{
-          name: 'connectivity',
-          status: 'pass'
-        }],
-        timestamp: Date.now()
+        checks: [
+          {
+            name: 'connectivity',
+            status: 'pass',
+          },
+        ],
+        timestamp: Date.now(),
       };
     } catch (error) {
       return {
         status: 'unhealthy',
-        checks: [{
-          name: 'connectivity',
-          status: 'fail',
-          message: 'Failed to connect to process'
-        }],
-        timestamp: Date.now()
+        checks: [
+          {
+            name: 'connectivity',
+            status: 'fail',
+            message: 'Failed to connect to process',
+          },
+        ],
+        timestamp: Date.now(),
       };
     }
   }
@@ -241,7 +216,7 @@ export class ProcessHealthChecker extends EventEmitter {
         {
           processId,
           oldStatus: previousHealth.status,
-          newStatus: health.status
+          newStatus: health.status,
         },
         'Process health status changed'
       );
@@ -267,9 +242,7 @@ export class ProcessHealthChecker extends EventEmitter {
   private async withTimeout<T>(promise: Promise<T>, timeout: number): Promise<T> {
     return Promise.race([
       promise,
-      new Promise<T>((_, reject) =>
-        setTimeout(() => reject(Errors.timeout('health check', timeout)), timeout)
-      )
+      new Promise<T>((_, reject) => setTimeout(() => reject(Errors.timeout('health check', timeout)), timeout)),
     ]);
   }
 
@@ -277,7 +250,7 @@ export class ProcessHealthChecker extends EventEmitter {
    * Delay helper
    */
   private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
@@ -293,19 +266,19 @@ export class ProcessHealthChecker extends EventEmitter {
     if (history.length < 2) {
       return {
         trend: 'stable',
-        availability: history.length > 0 && history[0]?.status === 'healthy' ? 1 : 0
+        availability: history.length > 0 && history[0]?.status === 'healthy' ? 1 : 0,
       };
     }
 
     // Calculate availability
-    const healthyCount = history.filter(h => h.status === 'healthy').length;
+    const healthyCount = history.filter((h) => h.status === 'healthy').length;
     const availability = healthyCount / history.length;
 
     // Determine trend
     const recentHistory = history.slice(-10);
-    const recentHealthy = recentHistory.filter(h => h.status === 'healthy').length;
+    const recentHealthy = recentHistory.filter((h) => h.status === 'healthy').length;
     const olderHistory = history.slice(-20, -10);
-    const olderHealthy = olderHistory.filter(h => h.status === 'healthy').length;
+    const olderHealthy = olderHistory.filter((h) => h.status === 'healthy').length;
 
     let trend: 'improving' | 'degrading' | 'stable' = 'stable';
 
@@ -322,7 +295,7 @@ export class ProcessHealthChecker extends EventEmitter {
 
     return {
       trend,
-      availability
+      availability,
     };
   }
 }

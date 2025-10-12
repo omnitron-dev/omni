@@ -32,9 +32,7 @@ import { TitanError, ErrorCode } from '../errors/index.js';
  * });
  * ```
  */
-export async function titan(
-  input?: any | IApplicationOptions
-): Promise<Application> {
+export async function titan(input?: any | IApplicationOptions): Promise<Application> {
   let options: IApplicationOptions = {};
   let rootModule: any = null;
 
@@ -69,7 +67,7 @@ export async function titan(
     gracefulShutdown: options['gracefulShutdown'] ?? true,
     gracefulShutdownTimeout: options['gracefulShutdownTimeout'] ?? 30000,
 
-    ...options
+    ...options,
   });
 
   // Auto-start the application
@@ -104,7 +102,7 @@ function normalizeOptions(input: any): IApplicationOptions {
     normalized.http = {
       port: input.port,
       host: input.host || '0.0.0.0',
-      ...input.http
+      ...input.http,
     };
   }
 
@@ -115,8 +113,8 @@ function normalizeOptions(input: any): IApplicationOptions {
       normalized.redis = {
         default: {
           host,
-          port: parseInt(port) || 6379
-        }
+          port: parseInt(port) || 6379,
+        },
       };
     }
   }
@@ -155,7 +153,7 @@ export function service<T extends object>(
 
   // Apply decorators
   Injectable({
-    scope: options?.scope || 'singleton'
+    scope: options?.scope || 'singleton',
   })(ServiceClass);
 
   // Auto-register if application exists
@@ -193,7 +191,7 @@ export function module(definition: {
   @Module({
     imports: definition.imports,
     providers: definition.services,
-    exports: definition.exports || definition.services
+    exports: definition.exports || definition.services,
   })
   class DynamicModule {
     async onStart?() {
@@ -211,7 +209,7 @@ export function module(definition: {
 
   // Set name for debugging
   Object.defineProperty(DynamicModule, 'name', {
-    value: definition.name || 'DynamicModule'
+    value: definition.name || 'DynamicModule',
   });
 
   return DynamicModule;
@@ -244,10 +242,7 @@ export function configure<T extends object>(config: T): T {
  * const name = env('APP_NAME', 'myapp'); // string
  * ```
  */
-export function env<T>(
-  key: string,
-  defaultValue: T
-): T {
+export function env<T>(key: string, defaultValue: T): T {
   const value = process.env[key];
 
   if (value === undefined) {
@@ -285,9 +280,9 @@ export function inject<T = any>(token: Token<T> | string): T {
       throw new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
         message: `Dependency ${String(token)} not injected. Make sure the service is registered and the application is started.`,
-        details: { token: String(token) }
+        details: { token: String(token) },
       });
-    }
+    },
   }) as T;
 }
 
@@ -307,10 +302,7 @@ export function inject<T = any>(token: Token<T> | string): T {
  * });
  * ```
  */
-export function controller(
-  basePath: string,
-  handlers: Record<string, (req: any, res: any) => any>
-): any {
+export function controller(basePath: string, handlers: Record<string, (req: any, res: any) => any>): any {
   // This will be implemented when HTTP module is added
   console.warn('HTTP controllers are not yet implemented in Titan');
   return handlers;
@@ -340,7 +332,7 @@ export function createModule(config: {
   // Convert to the format expected by module()
   const moduleConfig = {
     ...config,
-    services: config.providers
+    services: config.providers,
   };
   return module(moduleConfig);
 }
@@ -348,9 +340,7 @@ export function createModule(config: {
 /**
  * Define a module with type-safe service methods
  */
-export function defineModule<TService = {}>(
-  definition: IModule & TService
-): IModule & TService {
+export function defineModule<TService = {}>(definition: IModule & TService): IModule & TService {
   return definition;
 }
 

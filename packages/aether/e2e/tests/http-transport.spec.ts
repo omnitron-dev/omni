@@ -65,7 +65,7 @@ test.describe('HTTP Transport - Basic RPC', () => {
       return await userService.createUser({
         name: 'Test User',
         email: 'test@example.com',
-        age: 25
+        age: 25,
       });
     });
 
@@ -81,7 +81,7 @@ test.describe('HTTP Transport - Basic RPC', () => {
     const result = await page.evaluate(async () => {
       const userService = await window.testState.httpPeer.queryInterface('UserService@1.0.0');
       return await userService.updateUser('user-1', {
-        name: 'Updated Name'
+        name: 'Updated Name',
       });
     });
 
@@ -97,7 +97,7 @@ test.describe('HTTP Transport - Basic RPC', () => {
       const created = await userService.createUser({
         name: 'To Delete',
         email: 'delete@example.com',
-        age: 30
+        age: 30,
       });
       // Then delete it
       return await userService.deleteUser(created.id);
@@ -187,7 +187,7 @@ test.describe('HTTP Transport - Fluent API', () => {
         firstDuration: duration1,
         secondDuration: duration2,
         firstResult: result1,
-        secondResult: result2
+        secondResult: result2,
       };
     });
 
@@ -247,7 +247,7 @@ test.describe('HTTP Transport - Fluent API', () => {
 
       return {
         optimisticValue: cached,
-        finalValue: created
+        finalValue: created,
       };
     });
 
@@ -266,9 +266,9 @@ test.describe('HTTP Transport - Fluent API', () => {
       };
 
       // Make 5 concurrent identical requests
-      const promises = Array(5).fill(null).map(() =>
-        service.dedupe().getUsers()
-      );
+      const promises = Array(5)
+        .fill(null)
+        .map(() => service.dedupe().getUsers());
 
       const results = await Promise.all(promises);
       window.fetch = originalFetch;
@@ -288,9 +288,7 @@ test.describe('HTTP Transport - Fluent API', () => {
     const result = await page.evaluate(async () => {
       const service = await window.testState.httpPeer.queryFluentInterface('UserService@1.0.0');
 
-      return await service
-        .transform((users: any[]) => users.map(u => u.name))
-        .getUsers();
+      return await service.transform((users: any[]) => users.map((u) => u.name)).getUsers();
     });
 
     expect(Array.isArray(result)).toBe(true);
@@ -323,9 +321,7 @@ test.describe('HTTP Transport - Fluent API', () => {
       const service = await window.testState.httpPeer.queryFluentInterface('UserService@1.0.0');
 
       try {
-        await service
-          .timeout(100)
-          .slowMethod(5000); // Method takes 5s, timeout is 100ms
+        await service.timeout(100).slowMethod(5000); // Method takes 5s, timeout is 100ms
         return { success: false };
       } catch (err) {
         return { success: true, error: err.message };
@@ -342,9 +338,7 @@ test.describe('HTTP Transport - Fluent API', () => {
 
       const abortController = new AbortController();
 
-      const promise = service
-        .signal(abortController.signal)
-        .slowMethod(5000);
+      const promise = service.signal(abortController.signal).slowMethod(5000);
 
       // Cancel after 100ms
       setTimeout(() => abortController.abort(), 100);
@@ -439,7 +433,7 @@ test.describe('HTTP Transport - Advanced Features', () => {
       return await service
         .cache(30000)
         .retry({ maxAttempts: 3, delay: 100 })
-        .transform((users: any[]) => users.filter(u => u.active))
+        .transform((users: any[]) => users.filter((u) => u.active))
         .timeout(5000)
         .getUsers();
     });

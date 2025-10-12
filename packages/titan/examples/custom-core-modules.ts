@@ -11,7 +11,7 @@ import {
   LOGGER_SERVICE_TOKEN,
   createConfigModule,
   createLoggerModule,
-  type IApplication
+  type IApplication,
 } from '../src/index';
 
 /**
@@ -66,7 +66,7 @@ async function exampleWithFactories() {
     version: '1.0.0',
     config: {
       app: { environment: 'production' },
-      logging: { level: 'info', prettyPrint: false }
+      logging: { level: 'info', prettyPrint: false },
     },
     // Replace core modules using factory functions
     replaceConfig: (config) => {
@@ -82,7 +82,7 @@ async function exampleWithFactories() {
         module.configure(config);
       }
       return module;
-    }
+    },
   });
 
   await app.start();
@@ -103,22 +103,20 @@ async function exampleWithDirectInstances() {
 
   // Create and configure custom modules manually
   const customConfig = createConfigModule({
-    sources: [
-      { type: 'object', data: { app: { name: 'DirectApp' } } }
-    ]
+    sources: [{ type: 'object', data: { app: { name: 'DirectApp' } } }],
   });
 
   const customLogger = createLoggerModule({
     level: 'debug',
     prettyPrint: true,
-    context: { service: 'DirectApp' }
+    context: { service: 'DirectApp' },
   });
 
   const app = await TitanApplication.create({
     name: 'AppWithDirectInstances',
     version: '1.0.0',
     // Pass modules array - they will replace core modules by name
-    modules: [customConfig, customLogger]
+    modules: [customConfig, customLogger],
   });
 
   await app.start();
@@ -139,13 +137,13 @@ async function exampleWithAutomaticInit() {
     // These trigger automatic core module initialization
     config: {
       database: {
-        url: 'postgres://localhost/mydb'
-      }
+        url: 'postgres://localhost/mydb',
+      },
     },
     logging: {
       level: 'warn',
-      prettyPrint: false
-    }
+      prettyPrint: false,
+    },
   });
 
   await app.start();
@@ -166,7 +164,7 @@ async function exampleWithNoAutoInit() {
   // No config provided, so no automatic core modules
   const app = await TitanApplication.create({
     name: 'MinimalApp',
-    version: '1.0.0'
+    version: '1.0.0',
     // No config or logging - core modules won't be auto-initialized
   });
 

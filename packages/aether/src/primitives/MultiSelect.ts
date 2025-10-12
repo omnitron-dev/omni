@@ -152,9 +152,7 @@ export const MultiSelect = defineComponent<MultiSelectProps>((props) => {
   const searchable = props.searchable ?? false;
 
   // State
-  const internalValue: WritableSignal<string[]> = signal<string[]>(
-    props.defaultValue ?? [],
-  );
+  const internalValue: WritableSignal<string[]> = signal<string[]>(props.defaultValue ?? []);
   const isOpen: WritableSignal<boolean> = signal<boolean>(false);
   const searchQuery: WritableSignal<string> = signal<string>('');
   const allValues: WritableSignal<string[]> = signal<string[]>([]);
@@ -485,16 +483,14 @@ export const MultiSelectItem = defineComponent<MultiSelectItemProps>((props) => 
 // MultiSelect Item Indicator
 // ============================================================================
 
-export const MultiSelectItemIndicator = defineComponent<MultiSelectItemIndicatorProps>(
-  (props) => () => {
-      const { children = '✓' } = props;
+export const MultiSelectItemIndicator = defineComponent<MultiSelectItemIndicatorProps>((props) => () => {
+  const { children = '✓' } = props;
 
-      return jsx('span', {
-        'data-multi-select-item-indicator': '',
-        children,
-      });
-    },
-);
+  return jsx('span', {
+    'data-multi-select-item-indicator': '',
+    children,
+  });
+});
 
 // ============================================================================
 // MultiSelect Actions

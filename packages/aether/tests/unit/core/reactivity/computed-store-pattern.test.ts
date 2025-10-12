@@ -15,14 +15,14 @@ describe('Computed with Store Pattern', () => {
 
   describe('Problem: computed not tracking store signals', () => {
     it('SHOULD FAIL: computed with function returning signal value does not track changes', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
 
         // Create a store with a signal inside
         const store = {
           _signal: signal({ focused: false }),
           // This returns the VALUE, not the signal itself
-          sidebarComponent: () => store._signal()
+          sidebarComponent: () => store._signal(),
         };
 
         // Computed that uses the store pattern
@@ -43,13 +43,13 @@ describe('Computed with Store Pattern', () => {
     });
 
     it('SHOULD FAIL: effect with function returning signal value does not track changes', async () => {
-      await new Promise<void>(resolve => {
-        createRoot(d => {
+      await new Promise<void>((resolve) => {
+        createRoot((d) => {
           dispose = d;
 
           const store = {
             _signal: signal({ focused: false }),
-            sidebarComponent: () => store._signal()
+            sidebarComponent: () => store._signal(),
           };
 
           const results: string[] = [];
@@ -75,12 +75,12 @@ describe('Computed with Store Pattern', () => {
 
   describe('Solution 1: Return signal itself, not its value', () => {
     it('computed correctly tracks when store returns signal', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
 
         // Store returns the signal itself
         const store = {
-          sidebarComponent: signal<{ focused: boolean } | undefined>({ focused: false })
+          sidebarComponent: signal<{ focused: boolean } | undefined>({ focused: false }),
         };
 
         // Computed calls the signal
@@ -99,12 +99,12 @@ describe('Computed with Store Pattern', () => {
     });
 
     it('effect correctly tracks when store returns signal', async () => {
-      await new Promise<void>(resolve => {
-        createRoot(d => {
+      await new Promise<void>((resolve) => {
+        createRoot((d) => {
           dispose = d;
 
           const store = {
-            sidebarComponent: signal<{ focused: boolean } | undefined>({ focused: false })
+            sidebarComponent: signal<{ focused: boolean } | undefined>({ focused: false }),
           };
 
           const results: string[] = [];
@@ -128,7 +128,7 @@ describe('Computed with Store Pattern', () => {
 
   describe('Solution 2: Make store methods call signals internally', () => {
     it('computed tracks when store method calls signal internally', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
 
         class Store {
@@ -164,7 +164,7 @@ describe('Computed with Store Pattern', () => {
 
   describe('Solution 3: Use computed in store', () => {
     it('nested computed values track correctly', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
 
         class Store {
@@ -195,7 +195,7 @@ describe('Computed with Store Pattern', () => {
 
   describe('Complex nested store patterns', () => {
     it('tracks changes through multiple levels of nesting', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
 
         // Multi-level store structure
@@ -204,9 +204,9 @@ describe('Computed with Store Pattern', () => {
 
         const store = {
           user: computed(() => ({
-            preferences: userPrefs()
+            preferences: userPrefs(),
           })),
-          sidebar: computed(() => sidebarState())
+          sidebar: computed(() => sidebarState()),
         };
 
         // Complex computed with multiple dependencies
@@ -237,7 +237,7 @@ describe('Computed with Store Pattern', () => {
     });
 
     it('handles optional chaining with nested signals', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
 
         const dataSignal = signal<{
@@ -251,7 +251,7 @@ describe('Computed with Store Pattern', () => {
         }>({});
 
         const store = {
-          data: () => dataSignal()
+          data: () => dataSignal(),
         };
 
         const theme = computed(() => {
@@ -265,10 +265,10 @@ describe('Computed with Store Pattern', () => {
           user: {
             profile: {
               settings: {
-                theme: 'dark'
-              }
-            }
-          }
+                theme: 'dark',
+              },
+            },
+          },
         });
 
         expect(theme()).toBe('dark');
@@ -276,8 +276,8 @@ describe('Computed with Store Pattern', () => {
         // Partial update
         dataSignal.set({
           user: {
-            profile: undefined
-          }
+            profile: undefined,
+          },
         });
 
         expect(theme()).toBe('default');
@@ -285,27 +285,25 @@ describe('Computed with Store Pattern', () => {
     });
 
     it('tracks array operations in store', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
 
         const itemsSignal = signal<Array<{ id: number; active: boolean }>>([
           { id: 1, active: false },
-          { id: 2, active: false }
+          { id: 2, active: false },
         ]);
 
         const store = {
           items: () => itemsSignal(),
           setItemActive: (id: number, active: boolean) => {
             const items = itemsSignal();
-            const updated = items.map(item =>
-              item.id === id ? { ...item, active } : item
-            );
+            const updated = items.map((item) => (item.id === id ? { ...item, active } : item));
             itemsSignal.set(updated);
-          }
+          },
         };
 
         const activeCount = computed(() => {
-          return store.items().filter(item => item.active).length;
+          return store.items().filter((item) => item.active).length;
         });
 
         expect(activeCount()).toBe(0);
@@ -324,7 +322,7 @@ describe('Computed with Store Pattern', () => {
 
   describe('Performance and memoization with store pattern', () => {
     it('only recomputes when relevant store values change', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
 
         const sidebarSignal = signal({ focused: false, width: 300 });
@@ -334,7 +332,7 @@ describe('Computed with Store Pattern', () => {
         const store = {
           sidebar: () => sidebarSignal(),
           theme: () => themeSignal(),
-          user: () => userSignal()
+          user: () => userSignal(),
         };
 
         const computeFn = vi.fn(() => {
@@ -365,13 +363,13 @@ describe('Computed with Store Pattern', () => {
 
   describe('Error handling in store computeds', () => {
     it('handles errors in computed with store access', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
 
         const dataSignal = signal<any>(null);
 
         const store = {
-          data: () => dataSignal()
+          data: () => dataSignal(),
         };
 
         const safeComputed = computed(() => {
@@ -396,7 +394,7 @@ describe('Computed with Store Pattern', () => {
 
   describe('Subscription patterns with stores', () => {
     it('subscriptions work with store-based computeds', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
 
         const stateSignal = signal({ count: 0 });
@@ -405,13 +403,13 @@ describe('Computed with Store Pattern', () => {
           state: () => stateSignal(),
           increment: () => {
             stateSignal.set({ count: stateSignal().count + 1 });
-          }
+          },
         };
 
         const doubled = computed(() => store.state().count * 2);
 
         const results: number[] = [];
-        const unsubscribe = doubled.subscribe(value => {
+        const unsubscribe = doubled.subscribe((value) => {
           results.push(value);
         });
 
@@ -440,7 +438,7 @@ describe('Computed with Store Pattern', () => {
 
   describe('Getter-based store patterns', () => {
     it('computed tracks changes when store returns object with getters', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
 
         // Internal signal for focused state
@@ -449,8 +447,10 @@ describe('Computed with Store Pattern', () => {
         // Store where sidebarComponent returns object with getter
         const appStore = {
           sidebarComponent: () => ({
-            get focused() { return focusedSignal(); }
-          })
+            get focused() {
+              return focusedSignal();
+            },
+          }),
         };
 
         // Computed with optional chaining and getter
@@ -472,7 +472,7 @@ describe('Computed with Store Pattern', () => {
     });
 
     it('handles nested getters with optional chaining', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
 
         const darkModeSignal = signal(false);
@@ -481,13 +481,17 @@ describe('Computed with Store Pattern', () => {
         // Store with nested getters
         const appStore = {
           sidebarComponent: () => ({
-            get focused() { return focusedSignal(); }
+            get focused() {
+              return focusedSignal();
+            },
           }),
           user: {
             preferences: {
-              get darkMode() { return darkModeSignal(); }
-            }
-          }
+              get darkMode() {
+                return darkModeSignal();
+              },
+            },
+          },
         };
 
         // Complex computed with multiple getters
@@ -515,7 +519,7 @@ describe('Computed with Store Pattern', () => {
     });
 
     it('tracks lazy getter evaluation correctly', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
 
         const focusedSignal = signal(false);
@@ -526,8 +530,8 @@ describe('Computed with Store Pattern', () => {
             get focused() {
               getterCallCount++;
               return focusedSignal();
-            }
-          })
+            },
+          }),
         };
 
         const theme = computed(() => {
@@ -553,7 +557,7 @@ describe('Computed with Store Pattern', () => {
     });
 
     it('handles getter returning undefined correctly', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
 
         const componentSignal = signal<{ focused?: boolean } | undefined>(undefined);
@@ -563,9 +567,11 @@ describe('Computed with Store Pattern', () => {
             const component = componentSignal();
             if (!component) return undefined;
             return {
-              get focused() { return component.focused; }
+              get focused() {
+                return component.focused;
+              },
             };
-          }
+          },
         };
 
         const theme = computed(() => {
@@ -594,7 +600,7 @@ describe('Computed with Store Pattern', () => {
     });
 
     it('tracks changes with mixed getter and method patterns', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
 
         const activeSignal = signal(false);
@@ -604,11 +610,13 @@ describe('Computed with Store Pattern', () => {
         // Mix of getters, methods, and properties
         const appStore = {
           sidebarComponent: () => ({
-            get focused() { return activeSignal(); },
+            get focused() {
+              return activeSignal();
+            },
             theme: computed(() => modeSignal()),
             version: '1.0.0',
-            getCount: () => countSignal()
-          })
+            getCount: () => countSignal(),
+          }),
         };
 
         const summary = computed(() => {
@@ -635,7 +643,7 @@ describe('Computed with Store Pattern', () => {
     });
 
     it('only evaluates needed getters for performance', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
 
         const focusedSignal = signal(false);
@@ -653,8 +661,8 @@ describe('Computed with Store Pattern', () => {
             get width() {
               widthGetterCalls++;
               return widthSignal();
-            }
-          })
+            },
+          }),
         };
 
         const theme = computed(() => {
@@ -684,7 +692,7 @@ describe('Computed with Store Pattern', () => {
     });
 
     it('handles getter throwing errors gracefully', () => {
-      createRoot(d => {
+      createRoot((d) => {
         dispose = d;
 
         const shouldThrowSignal = signal(false);
@@ -696,8 +704,8 @@ describe('Computed with Store Pattern', () => {
                 throw new Error('Getter error');
               }
               return false;
-            }
-          })
+            },
+          }),
         };
 
         const theme = computed(() => {
@@ -719,8 +727,8 @@ describe('Computed with Store Pattern', () => {
     });
 
     it('effect tracks getter changes correctly', async () => {
-      await new Promise<void>(resolve => {
-        createRoot(d => {
+      await new Promise<void>((resolve) => {
+        createRoot((d) => {
           dispose = d;
 
           const focusedSignal = signal(false);
@@ -728,8 +736,10 @@ describe('Computed with Store Pattern', () => {
 
           const appStore = {
             sidebarComponent: () => ({
-              get focused() { return focusedSignal(); }
-            })
+              get focused() {
+                return focusedSignal();
+              },
+            }),
           };
 
           effect(() => {

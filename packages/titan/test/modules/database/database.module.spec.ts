@@ -35,8 +35,8 @@ describe('TitanDatabaseModule', () => {
 
       await app.start();
 
-      databaseService = await app.resolveAsync(DATABASE_SERVICE) as DatabaseService;
-      healthIndicator = await app.resolveAsync(DATABASE_HEALTH_INDICATOR) as DatabaseHealthIndicator;
+      databaseService = (await app.resolveAsync(DATABASE_SERVICE)) as DatabaseService;
+      healthIndicator = (await app.resolveAsync(DATABASE_HEALTH_INDICATOR)) as DatabaseHealthIndicator;
     });
 
     afterAll(async () => {
@@ -55,20 +55,13 @@ describe('TitanDatabaseModule', () => {
 
     it('should execute raw queries', async () => {
       // Create a test table
-      await databaseService.raw(
-        'CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)'
-      );
+      await databaseService.raw('CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)');
 
       // Insert data
-      await databaseService.raw(
-        'INSERT INTO users (name) VALUES (?)',
-        ['John Doe']
-      );
+      await databaseService.raw('INSERT INTO users (name) VALUES (?)', ['John Doe']);
 
       // Query data
-      const result = await databaseService.raw<{ rows: any[] }>(
-        'SELECT * FROM users'
-      );
+      const result = await databaseService.raw<{ rows: any[] }>('SELECT * FROM users');
 
       expect(result.rows).toHaveLength(1);
       expect(result.rows[0].name).toBe('John Doe');
@@ -76,14 +69,10 @@ describe('TitanDatabaseModule', () => {
 
     it('should handle transactions', async () => {
       // Create test table
-      await databaseService.raw(
-        'CREATE TABLE accounts (id INTEGER PRIMARY KEY, balance INTEGER)'
-      );
+      await databaseService.raw('CREATE TABLE accounts (id INTEGER PRIMARY KEY, balance INTEGER)');
 
       // Insert initial data
-      await databaseService.raw(
-        'INSERT INTO accounts (id, balance) VALUES (1, 100), (2, 50)'
-      );
+      await databaseService.raw('INSERT INTO accounts (id, balance) VALUES (1, 100), (2, 50)');
 
       // Successful transaction
       await databaseService.transaction(async (trx) => {
@@ -91,9 +80,7 @@ describe('TitanDatabaseModule', () => {
         await sql.raw('UPDATE accounts SET balance = balance + 30 WHERE id = 2').execute(trx);
       });
 
-      const result = await databaseService.raw<{ rows: any[] }>(
-        'SELECT * FROM accounts ORDER BY id'
-      );
+      const result = await databaseService.raw<{ rows: any[] }>('SELECT * FROM accounts ORDER BY id');
 
       expect(result.rows[0].balance).toBe(70);
       expect(result.rows[1].balance).toBe(80);
@@ -108,9 +95,7 @@ describe('TitanDatabaseModule', () => {
         // Expected error
       }
 
-      const resultAfterRollback = await databaseService.raw<{ rows: any[] }>(
-        'SELECT * FROM accounts WHERE id = 1'
-      );
+      const resultAfterRollback = await databaseService.raw<{ rows: any[] }>('SELECT * FROM accounts WHERE id = 1');
 
       expect(resultAfterRollback.rows[0].balance).toBe(70); // Should remain unchanged
     });
@@ -143,7 +128,7 @@ describe('TitanDatabaseModule', () => {
 
       await multiApp.start();
 
-      const multiDbService = await multiApp.resolveAsync(DATABASE_SERVICE) as DatabaseService;
+      const multiDbService = (await multiApp.resolveAsync(DATABASE_SERVICE)) as DatabaseService;
 
       // Test both connections
       const mainDb = await multiDbService.getConnection('main');
@@ -177,7 +162,7 @@ describe('TitanDatabaseModule', () => {
         container = await DatabaseTestManager.createPostgresContainer({
           database: 'testdb',
           user: 'testuser',
-          password: 'testpass'
+          password: 'testpass',
         });
 
         const port = container.ports.get(5432)!;
@@ -196,7 +181,7 @@ describe('TitanDatabaseModule', () => {
 
         await app.start();
 
-        databaseService = await app.resolveAsync(DATABASE_SERVICE) as DatabaseService;
+        databaseService = (await app.resolveAsync(DATABASE_SERVICE)) as DatabaseService;
       }, 60000);
 
       afterAll(async () => {
@@ -220,15 +205,10 @@ describe('TitanDatabaseModule', () => {
         `);
 
         // Insert data
-        await databaseService.raw(
-          'INSERT INTO products (name, price) VALUES ($1, $2)',
-          ['Widget', 19.99]
-        );
+        await databaseService.raw('INSERT INTO products (name, price) VALUES ($1, $2)', ['Widget', 19.99]);
 
         // Query data
-        const result = await databaseService.raw<{ rows: any[] }>(
-          'SELECT * FROM products'
-        );
+        const result = await databaseService.raw<{ rows: any[] }>('SELECT * FROM products');
 
         expect(result.rows).toHaveLength(1);
         expect(result.rows[0].name).toBe('Widget');
@@ -245,10 +225,9 @@ describe('TitanDatabaseModule', () => {
           )
         `);
 
-        const result = await databaseService.raw<{ rows: any[] }>(
-          'INSERT INTO items (name) VALUES ($1) RETURNING *',
-          ['Test Item']
-        );
+        const result = await databaseService.raw<{ rows: any[] }>('INSERT INTO items (name) VALUES ($1) RETURNING *', [
+          'Test Item',
+        ]);
 
         expect(result.rows).toHaveLength(1);
         expect(result.rows[0].id).toBeDefined();
@@ -275,7 +254,7 @@ describe('TitanDatabaseModule', () => {
           database: 'testdb',
           user: 'testuser',
           password: 'testpass',
-          rootPassword: 'rootpass'
+          rootPassword: 'rootpass',
         });
 
         const port = container.ports.get(3306)!;
@@ -297,7 +276,7 @@ describe('TitanDatabaseModule', () => {
 
         await app.start();
 
-        databaseService = await app.resolveAsync(DATABASE_SERVICE) as DatabaseService;
+        databaseService = (await app.resolveAsync(DATABASE_SERVICE)) as DatabaseService;
       }, 60000);
 
       afterAll(async () => {
@@ -321,15 +300,10 @@ describe('TitanDatabaseModule', () => {
         `);
 
         // Insert data
-        await databaseService.raw(
-          'INSERT INTO orders (customer_name, total) VALUES (?, ?)',
-          ['Alice', 99.99]
-        );
+        await databaseService.raw('INSERT INTO orders (customer_name, total) VALUES (?, ?)', ['Alice', 99.99]);
 
         // Query data
-        const result = await databaseService.raw<{ rows: any[] }>(
-          'SELECT * FROM orders'
-        );
+        const result = await databaseService.raw<{ rows: any[] }>('SELECT * FROM orders');
 
         expect(result).toBeDefined();
         // MySQL returns array directly, not { rows: [...] }

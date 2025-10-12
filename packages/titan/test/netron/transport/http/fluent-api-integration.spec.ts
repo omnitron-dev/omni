@@ -8,7 +8,7 @@ import { HttpRemotePeer } from '../../../../src/netron/transport/http/peer.js';
 import {
   FluentInterface,
   HttpCacheManager,
-  RetryManager
+  RetryManager,
 } from '../../../../src/netron/transport/http/fluent-interface/index.js';
 import { HttpTransportClient } from '../../../../src/netron/transport/http/client.js';
 import type { INetron } from '../../../../src/netron/types.js';
@@ -34,8 +34,8 @@ describe('Fluent API Integration', () => {
         info: jest.fn(),
         warn: jest.fn(),
         error: jest.fn(),
-        child: jest.fn().mockReturnThis()
-      }
+        child: jest.fn().mockReturnThis(),
+      },
     } as any;
 
     // Create mock connection
@@ -43,7 +43,7 @@ describe('Fluent API Integration', () => {
       on: jest.fn(),
       off: jest.fn(),
       send: jest.fn(),
-      close: jest.fn()
+      close: jest.fn(),
     };
 
     // Create managers
@@ -51,11 +51,7 @@ describe('Fluent API Integration', () => {
     retryManager = new RetryManager();
 
     // Create peer
-    peer = new HttpRemotePeer(
-      mockConnection as any,
-      mockNetron,
-      'http://localhost:3000'
-    );
+    peer = new HttpRemotePeer(mockConnection as any, mockNetron, 'http://localhost:3000');
 
     // Configure peer with managers
     peer.setCacheManager(cacheManager);
@@ -123,10 +119,10 @@ describe('Fluent API Integration', () => {
       const invokeSpy = jest.spyOn(mockTransport, 'invoke').mockResolvedValue({
         id: '123',
         name: 'John',
-        email: 'john@example.com'
+        email: 'john@example.com',
       });
 
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0') as any;
+      const service = (await peer.queryFluentInterface<IUserService>('UserService@1.0.0')) as any;
 
       // Execute with configuration
       const user = await service.cache(60000).retry(3).getUser('123');
@@ -154,7 +150,7 @@ describe('Fluent API Integration', () => {
 
   describe('Cache Integration', () => {
     it('should cache results with fluent API', async () => {
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0') as any;
+      const service = (await peer.queryFluentInterface<IUserService>('UserService@1.0.0')) as any;
 
       const transport = new HttpTransportClient('http://localhost:3000');
       (service as any).transport = transport;
@@ -198,7 +194,7 @@ describe('Fluent API Integration', () => {
 
   describe('Retry Integration', () => {
     it('should retry failed requests', async () => {
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0') as any;
+      const service = (await peer.queryFluentInterface<IUserService>('UserService@1.0.0')) as any;
 
       const transport = new HttpTransportClient('http://localhost:3000');
       (service as any).transport = transport;
@@ -222,26 +218,24 @@ describe('Fluent API Integration', () => {
 
   describe('Transform and Validate', () => {
     it('should transform response data', async () => {
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0') as any;
+      const service = (await peer.queryFluentInterface<IUserService>('UserService@1.0.0')) as any;
 
       const transport = new HttpTransportClient('http://localhost:3000');
       (service as any).transport = transport;
 
       jest.spyOn(transport, 'invoke').mockResolvedValue([
         { id: '1', name: 'John' },
-        { id: '2', name: 'Jane' }
+        { id: '2', name: 'Jane' },
       ]);
 
       // Transform to just names
-      const names = await service
-        .transform((users: any[]) => users.map(u => u.name))
-        .getUsers();
+      const names = await service.transform((users: any[]) => users.map((u) => u.name)).getUsers();
 
       expect(names).toEqual(['John', 'Jane']);
     });
 
     it('should validate response data', async () => {
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0') as any;
+      const service = (await peer.queryFluentInterface<IUserService>('UserService@1.0.0')) as any;
 
       const transport = new HttpTransportClient('http://localhost:3000');
       (service as any).transport = transport;
@@ -249,15 +243,13 @@ describe('Fluent API Integration', () => {
       jest.spyOn(transport, 'invoke').mockResolvedValue([]);
 
       // Validate that result is an array
-      const users = await service
-        .validate((data: any) => Array.isArray(data))
-        .getUsers();
+      const users = await service.validate((data: any) => Array.isArray(data)).getUsers();
 
       expect(users).toEqual([]);
     });
 
     it('should use fallback on error', async () => {
-      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0') as any;
+      const service = (await peer.queryFluentInterface<IUserService>('UserService@1.0.0')) as any;
 
       const transport = new HttpTransportClient('http://localhost:3000');
       (service as any).transport = transport;

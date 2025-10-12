@@ -25,16 +25,16 @@ const describeOrSkip = SKIP_DOCKER_TESTS ? describe.skip : describe;
 // Test migrations
 @Migration({
   version: '001',
-  description: 'Create test table'
+  description: 'Create test table',
 })
 class CreateTestTableMigration implements IMigration {
   async up(db: Kysely<any>): Promise<void> {
     await db.schema
       .createTable('test_table')
-      .addColumn('id', 'serial', col => col.primaryKey())
-      .addColumn('name', 'varchar(100)', col => col.notNull())
-      .addColumn('value', 'integer', col => col.defaultTo(0))
-      .addColumn('created_at', 'timestamp', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+      .addColumn('id', 'serial', (col) => col.primaryKey())
+      .addColumn('name', 'varchar(100)', (col) => col.notNull())
+      .addColumn('value', 'integer', (col) => col.defaultTo(0))
+      .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
       .execute();
   }
 
@@ -46,50 +46,36 @@ class CreateTestTableMigration implements IMigration {
 @Migration({
   version: '002',
   description: 'Add column to test table',
-  dependencies: ['001']
+  dependencies: ['001'],
 })
 class AddColumnMigration implements IMigration {
   async up(db: Kysely<any>): Promise<void> {
-    await db.schema
-      .alterTable('test_table')
-      .addColumn('description', 'text')
-      .execute();
+    await db.schema.alterTable('test_table').addColumn('description', 'text').execute();
   }
 
   async down(db: Kysely<any>): Promise<void> {
-    await db.schema
-      .alterTable('test_table')
-      .dropColumn('description')
-      .execute();
+    await db.schema.alterTable('test_table').dropColumn('description').execute();
   }
 }
 
 @Migration({
   version: '003',
   description: 'Create index',
-  dependencies: ['001', '002']
+  dependencies: ['001', '002'],
 })
 class CreateIndexMigration implements IMigration {
   async up(db: Kysely<any>): Promise<void> {
-    await db.schema
-      .createIndex('idx_test_name')
-      .on('test_table')
-      .column('name')
-      .execute();
+    await db.schema.createIndex('idx_test_name').on('test_table').column('name').execute();
   }
 
   async down(db: Kysely<any>): Promise<void> {
-    await db.schema
-      .dropIndex('idx_test_name')
-      .execute();
+    await db.schema.dropIndex('idx_test_name').execute();
   }
 }
 
 // Test module with migrations
 @Module({
-  imports: [
-    TitanDatabaseModule.forFeature([])
-  ]
+  imports: [TitanDatabaseModule.forFeature([])],
 })
 class TestModule {}
 
@@ -104,11 +90,34 @@ describe('Migration System', () => {
       Reflect.deleteMetadata('database:migrations', global);
 
       // Register test migrations
-      Reflect.defineMetadata('database:migrations', [
-        { target: CreateTestTableMigration, metadata: { version: '001', name: 'CreateTestTableMigration', description: 'Create test table' } },
-        { target: AddColumnMigration, metadata: { version: '002', name: 'AddColumnMigration', description: 'Add column to test table', dependencies: ['001'] } },
-        { target: CreateIndexMigration, metadata: { version: '003', name: 'CreateIndexMigration', description: 'Create index', dependencies: ['001', '002'] } },
-      ], global);
+      Reflect.defineMetadata(
+        'database:migrations',
+        [
+          {
+            target: CreateTestTableMigration,
+            metadata: { version: '001', name: 'CreateTestTableMigration', description: 'Create test table' },
+          },
+          {
+            target: AddColumnMigration,
+            metadata: {
+              version: '002',
+              name: 'AddColumnMigration',
+              description: 'Add column to test table',
+              dependencies: ['001'],
+            },
+          },
+          {
+            target: CreateIndexMigration,
+            metadata: {
+              version: '003',
+              name: 'CreateIndexMigration',
+              description: 'Create index',
+              dependencies: ['001', '002'],
+            },
+          },
+        ],
+        global
+      );
 
       // Create application with SQLite
       app = await Application.create({
@@ -284,11 +293,34 @@ describe('Migration System', () => {
 
         // Clear and register migrations
         Reflect.deleteMetadata('database:migrations', global);
-        Reflect.defineMetadata('database:migrations', [
-          { target: CreateTestTableMigration, metadata: { version: '001', name: 'CreateTestTableMigration', description: 'Create test table' } },
-          { target: AddColumnMigration, metadata: { version: '002', name: 'AddColumnMigration', description: 'Add column to test table', dependencies: ['001'] } },
-          { target: CreateIndexMigration, metadata: { version: '003', name: 'CreateIndexMigration', description: 'Create index', dependencies: ['001', '002'] } },
-        ], global);
+        Reflect.defineMetadata(
+          'database:migrations',
+          [
+            {
+              target: CreateTestTableMigration,
+              metadata: { version: '001', name: 'CreateTestTableMigration', description: 'Create test table' },
+            },
+            {
+              target: AddColumnMigration,
+              metadata: {
+                version: '002',
+                name: 'AddColumnMigration',
+                description: 'Add column to test table',
+                dependencies: ['001'],
+              },
+            },
+            {
+              target: CreateIndexMigration,
+              metadata: {
+                version: '003',
+                name: 'CreateIndexMigration',
+                description: 'Create index',
+                dependencies: ['001', '002'],
+              },
+            },
+          ],
+          global
+        );
 
         // Create application with PostgreSQL
         app = await Application.create({
@@ -340,7 +372,7 @@ describe('Migration System', () => {
       ]);
 
       // At least one should succeed
-      const succeeded = results.filter(r => r.status === 'fulfilled');
+      const succeeded = results.filter((r) => r.status === 'fulfilled');
       expect(succeeded.length).toBeGreaterThanOrEqual(1);
 
       // Check final status
@@ -353,14 +385,14 @@ describe('Migration System', () => {
       // Register a failing migration
       @Migration({
         version: '004',
-        description: 'Failing migration'
+        description: 'Failing migration',
       })
       class FailingMigration implements IMigration {
         async up(db: Kysely<any>): Promise<void> {
           // Create a table
           await db.schema
             .createTable('will_be_rolled_back')
-            .addColumn('id', 'serial', col => col.primaryKey())
+            .addColumn('id', 'serial', (col) => col.primaryKey())
             .execute();
 
           // Then fail
@@ -376,7 +408,7 @@ describe('Migration System', () => {
       const migrations = Reflect.getMetadata('database:migrations', global) || [];
       migrations.push({
         target: FailingMigration,
-        metadata: { version: '004', name: 'FailingMigration', description: 'Failing migration' }
+        metadata: { version: '004', name: 'FailingMigration', description: 'Failing migration' },
       });
       Reflect.defineMetadata('database:migrations', migrations, global);
 

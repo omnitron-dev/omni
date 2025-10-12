@@ -208,13 +208,10 @@ export class CommandBus extends EventEmitter {
 
     // Execute command
     this.emit('command:executing', command);
-    
+
     try {
-      const result = await this.withTimeout(
-        handler.handle(command),
-        this.config.commandTimeout || 30000
-      );
-      
+      const result = await this.withTimeout(handler.handle(command), this.config.commandTimeout || 30000);
+
       this.emit('command:executed', command, result);
       return result;
     } catch (error) {
@@ -229,9 +226,7 @@ export class CommandBus extends EventEmitter {
   private async withTimeout<T>(promise: Promise<T>, timeout: number): Promise<T> {
     return Promise.race([
       promise,
-      new Promise<T>((_, reject) =>
-        setTimeout(() => reject(Errors.timeout('CQRS command', timeout)), timeout)
-      )
+      new Promise<T>((_, reject) => setTimeout(() => reject(Errors.timeout('CQRS command', timeout)), timeout)),
     ]);
   }
 }
@@ -279,21 +274,18 @@ export class QueryBus extends EventEmitter {
 
     // Execute query
     this.emit('query:executing', query);
-    
+
     try {
-      const result = await this.withTimeout(
-        handler.handle(query),
-        this.config.queryTimeout || 5000
-      );
-      
+      const result = await this.withTimeout(handler.handle(query), this.config.queryTimeout || 5000);
+
       // Cache result
       if (query.metadata?.cacheKey && query.metadata?.ttl) {
         this.cache.set(query.metadata.cacheKey, {
           result,
-          expiry: Date.now() + query.metadata.ttl
+          expiry: Date.now() + query.metadata.ttl,
         });
       }
-      
+
       this.emit('query:executed', query, result);
       return result;
     } catch (error) {
@@ -323,9 +315,7 @@ export class QueryBus extends EventEmitter {
   private async withTimeout<T>(promise: Promise<T>, timeout: number): Promise<T> {
     return Promise.race([
       promise,
-      new Promise<T>((_, reject) =>
-        setTimeout(() => reject(Errors.timeout('CQRS query', timeout)), timeout)
-      )
+      new Promise<T>((_, reject) => setTimeout(() => reject(Errors.timeout('CQRS query', timeout)), timeout)),
     ]);
   }
 }
@@ -361,7 +351,7 @@ export abstract class AggregateRoot implements IAggregateRoot {
       payload,
       version: ++this._version,
       timestamp: Date.now(),
-      metadata
+      metadata,
     };
 
     this._uncommittedEvents.push(event);
@@ -425,13 +415,13 @@ export class ProjectionManager extends EventEmitter {
    */
   async start(): Promise<void> {
     if (this.running) return;
-    
+
     this.running = true;
     this.logger.info('Starting projections');
 
     // Start processing events for each projection
     for (const [name, projection] of this.projections) {
-      this.processProjection(projection).catch(error => {
+      this.processProjection(projection).catch((error) => {
         this.logger.error({ error, projection: name }, 'Projection failed');
       });
     }
@@ -450,21 +440,18 @@ export class ProjectionManager extends EventEmitter {
    */
   private async processProjection(projection: IProjection): Promise<void> {
     const position = await projection.getPosition();
-    
+
     for await (const event of this.eventStore.getAllEvents(position || undefined)) {
       if (!this.running) break;
-      
+
       try {
         await projection.handle(event);
         await projection.setPosition(event.id);
-        
+
         this.emit('projection:processed', projection.name, event);
       } catch (error) {
-        this.logger.error(
-          { error, projection: projection.name, event },
-          'Failed to process event in projection'
-        );
-        
+        this.logger.error({ error, projection: projection.name, event }, 'Failed to process event in projection');
+
         // Optionally retry or continue
         this.emit('projection:error', projection.name, event, error);
       }
@@ -483,16 +470,14 @@ export class InMemoryEventStore implements IEventStore {
   }
 
   async getEvents(aggregateId: string, fromVersion: number = 0): Promise<IDomainEvent[]> {
-    return this.events.filter(
-      e => e.aggregateId === aggregateId && e.version > fromVersion
-    );
+    return this.events.filter((e) => e.aggregateId === aggregateId && e.version > fromVersion);
   }
 
   async *getAllEvents(fromPosition?: string): AsyncIterable<IDomainEvent> {
     let startIndex = 0;
-    
+
     if (fromPosition) {
-      const index = this.events.findIndex(e => e.id === fromPosition);
+      const index = this.events.findIndex((e) => e.id === fromPosition);
       if (index >= 0) {
         startIndex = index + 1;
       }
@@ -539,22 +524,22 @@ export class InMemoryReadModelStore implements IReadModelStore {
   async query(criteria: any): Promise<IReadModel[]> {
     // Simple implementation - in production would use proper query engine
     const results: IReadModel[] = [];
-    
+
     for (const model of this.models.values()) {
       let matches = true;
-      
+
       for (const [key, value] of Object.entries(criteria)) {
         if ((model as any)[key] !== value) {
           matches = false;
           break;
         }
       }
-      
+
       if (matches) {
         results.push(model);
       }
     }
-    
+
     return results;
   }
 }

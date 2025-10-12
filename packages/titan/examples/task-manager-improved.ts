@@ -22,7 +22,7 @@ import {
   type DynamicModule,
   type Provider,
   type IOnInit as OnInit,
-  type IOnDestroy as OnDestroy
+  type IOnDestroy as OnDestroy,
 } from '../src/index';
 
 interface Logger {
@@ -103,7 +103,7 @@ class TaskService implements OnInit, OnDestroy {
         status: 'completed',
         priority: 'high',
         createdAt: new Date('2024-01-01'),
-        updatedAt: new Date('2024-01-02')
+        updatedAt: new Date('2024-01-02'),
       },
       {
         id: '2',
@@ -112,11 +112,11 @@ class TaskService implements OnInit, OnDestroy {
         status: 'in-progress',
         priority: 'high',
         createdAt: new Date('2024-01-03'),
-        updatedAt: new Date('2024-01-10')
-      }
+        updatedAt: new Date('2024-01-10'),
+      },
     ];
 
-    mockTasks.forEach(task => this.tasks.set(task.id, task));
+    mockTasks.forEach((task) => this.tasks.set(task.id, task));
     this.logger.debug(`Loaded ${this.tasks.size} tasks`);
   }
 
@@ -130,7 +130,7 @@ class TaskService implements OnInit, OnDestroy {
       id: this.generateId(),
       priority: taskData.priority || this.defaultPriority,
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
     };
 
     this.tasks.set(task.id, task);
@@ -155,7 +155,7 @@ class TaskService implements OnInit, OnDestroy {
       ...updates,
       id: task.id,
       createdAt: task.createdAt,
-      updatedAt: new Date()
+      updatedAt: new Date(),
     };
 
     this.tasks.set(id, updatedTask);
@@ -188,16 +188,16 @@ class TaskService implements OnInit, OnDestroy {
       byStatus: {
         pending: 0,
         'in-progress': 0,
-        completed: 0
+        completed: 0,
       },
       byPriority: {
         low: 0,
         medium: 0,
-        high: 0
-      }
+        high: 0,
+      },
     };
 
-    tasks.forEach(task => {
+    tasks.forEach((task) => {
       stats.byStatus[task.status]++;
       stats.byPriority[task.priority]++;
     });
@@ -229,7 +229,7 @@ class NotificationService implements OnInit {
   async onInit(): Promise<void> {
     this.logger.info('NotificationService initialized', {
       enabled: this.enabled,
-      channels: this.channels
+      channels: this.channels,
     });
   }
 
@@ -241,20 +241,20 @@ class NotificationService implements OnInit {
 
     this.logger.info(`Sending ${type} notification`, data);
     // In a real app, this would send emails, push notifications, etc.
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
 
   async notifyTaskCreated(task: Task): Promise<void> {
     await this.sendNotification('task-created', {
       taskId: task.id,
-      title: task.title
+      title: task.title,
     });
   }
 
   async notifyTaskCompleted(task: Task): Promise<void> {
     await this.sendNotification('task-completed', {
       taskId: task.id,
-      title: task.title
+      title: task.title,
     });
   }
 }
@@ -292,7 +292,7 @@ class TaskCoordinator implements OnInit {
     this.logger.debug(`Completing task ${taskId}`);
 
     const task = await this.taskService.update(taskId, {
-      status: 'completed'
+      status: 'completed',
     });
 
     if (task) {
@@ -332,18 +332,21 @@ class TaskManagerModule extends AbstractModule {
   static forRoot(config?: TaskManagerConfig): DynamicModule {
     const providers: Provider[] = [
       // Configuration provider
-      [TaskConfigToken, {
-        useValue: config || {
-          enableNotifications: true,
-          notificationChannels: ['email', 'push', 'sms'],
-          maxTasksPerUser: 100,
-          defaultPriority: 'medium'
-        }
-      }],
+      [
+        TaskConfigToken,
+        {
+          useValue: config || {
+            enableNotifications: true,
+            notificationChannels: ['email', 'push', 'sms'],
+            maxTasksPerUser: 100,
+            defaultPriority: 'medium',
+          },
+        },
+      ],
       // Service providers
       [TaskServiceToken, { useClass: TaskService }],
       [NotificationServiceToken, { useClass: NotificationService }],
-      [TaskCoordinatorToken, { useClass: TaskCoordinator }]
+      [TaskCoordinatorToken, { useClass: TaskCoordinator }],
     ];
 
     return {
@@ -352,7 +355,7 @@ class TaskManagerModule extends AbstractModule {
       version: '1.0.0',
       providers,
       exports: [TaskServiceToken, TaskCoordinatorToken],
-      global: false
+      global: false,
     };
   }
 
@@ -365,14 +368,17 @@ class TaskManagerModule extends AbstractModule {
   }): DynamicModule {
     const providers: Provider[] = [
       // Async configuration provider
-      [TaskConfigToken, {
-        useFactory: options.useFactory,
-        inject: options.inject || []
-      }],
+      [
+        TaskConfigToken,
+        {
+          useFactory: options.useFactory,
+          inject: options.inject || [],
+        },
+      ],
       // Service providers
       [TaskServiceToken, { useClass: TaskService }],
       [NotificationServiceToken, { useClass: NotificationService }],
-      [TaskCoordinatorToken, { useClass: TaskCoordinator }]
+      [TaskCoordinatorToken, { useClass: TaskCoordinator }],
     ];
 
     return {
@@ -380,7 +386,7 @@ class TaskManagerModule extends AbstractModule {
       name: 'task-manager',
       version: '1.0.0',
       providers,
-      exports: [TaskServiceToken, TaskCoordinatorToken]
+      exports: [TaskServiceToken, TaskCoordinatorToken],
     };
   }
 
@@ -435,13 +441,13 @@ const appConfig = {
   config: {
     app: {
       name: 'TaskManager',
-      environment: process.env['NODE_ENV'] || 'development'
-    }
+      environment: process.env['NODE_ENV'] || 'development',
+    },
   },
   logging: {
     level: 'debug',
-    prettyPrint: true
-  }
+    prettyPrint: true,
+  },
 };
 
 // ============================
@@ -461,9 +467,9 @@ async function bootstrapWithForRoot() {
         enableNotifications: true,
         notificationChannels: ['email', 'webhook'],
         maxTasksPerUser: 50,
-        defaultPriority: 'high'
-      })
-    ]
+        defaultPriority: 'high',
+      }),
+    ],
   });
 
   // Setup error handling
@@ -486,14 +492,14 @@ async function bootstrapWithForRoot() {
     title: 'Test forRoot pattern',
     description: 'Verify the new module API works',
     status: 'pending',
-    priority: 'high'
+    priority: 'high',
   });
   console.log('Task created:', newTask);
 
   // Get all tasks
   console.log('\nAll tasks:');
   const allTasks = await taskService.findAll();
-  allTasks.forEach(task => {
+  allTasks.forEach((task) => {
     console.log(`  - ${task.title} (${task.status})`);
   });
 
@@ -507,7 +513,7 @@ async function bootstrapWithClassReference() {
   // This shows backward compatibility - the module will use default config
   const app = await TitanApplication.create({
     ...appConfig,
-    modules: [TaskManagerModule] // Just pass the class, not an instance!
+    modules: [TaskManagerModule], // Just pass the class, not an instance!
   });
 
   await app.start();
@@ -520,8 +526,8 @@ async function bootstrapWithClassReference() {
     useValue: {
       enableNotifications: false,
       maxTasksPerUser: 10,
-      defaultPriority: 'low'
-    }
+      defaultPriority: 'low',
+    },
   });
 
   // Then register our services
@@ -538,7 +544,7 @@ async function bootstrapWithClassReference() {
     title: 'Test class reference',
     description: 'Verify class reference pattern works',
     status: 'pending',
-    priority: 'low'
+    priority: 'low',
   });
   console.log('Task created:', task);
 
@@ -555,19 +561,19 @@ async function bootstrapWithAsyncConfig() {
       TaskManagerModule.forRootAsync({
         useFactory: async (configModule: any) => {
           // Simulate async config loading
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
 
           const config = configModule.get('taskManager', {});
           return {
             enableNotifications: config.enableNotifications ?? true,
             notificationChannels: config.channels ?? ['email'],
             maxTasksPerUser: config.maxTasks ?? 25,
-            defaultPriority: config.defaultPriority ?? 'medium'
+            defaultPriority: config.defaultPriority ?? 'medium',
           };
         },
-        inject: [CONFIG_SERVICE_TOKEN]
-      })
-    ]
+        inject: [CONFIG_SERVICE_TOKEN],
+      }),
+    ],
   });
 
   await app.start();
@@ -581,7 +587,7 @@ async function bootstrapWithAsyncConfig() {
     title: 'Test async config',
     description: 'Verify async configuration works',
     status: 'pending',
-    priority: 'medium'
+    priority: 'medium',
   });
 
   console.log('Task created:', task);
@@ -631,7 +637,7 @@ async function main() {
 
 // Run when executed directly
 if (require.main === module) {
-  main().catch(error => {
+  main().catch((error) => {
     console.error('Failed to run demo:', error);
     process.exit(1);
   });
@@ -646,5 +652,5 @@ export {
   TaskServiceToken,
   NotificationServiceToken,
   TaskCoordinatorToken,
-  TaskConfigToken
+  TaskConfigToken,
 };

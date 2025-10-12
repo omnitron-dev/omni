@@ -20,13 +20,13 @@ describe('TemplateEngine', () => {
           email: {
             subject: 'Welcome to {{appName}}!',
             html: '<h1>Hello {{userName}}</h1><p>Welcome to our platform!</p>',
-            text: 'Hello {{userName}}, welcome to our platform!'
-          }
+            text: 'Hello {{userName}}, welcome to our platform!',
+          },
         },
         variables: [
           { name: 'appName', type: 'string' as const },
-          { name: 'userName', type: 'string' as const }
-        ]
+          { name: 'userName', type: 'string' as const },
+        ],
       };
 
       templateEngine.registerTemplate(template);
@@ -45,10 +45,10 @@ describe('TemplateEngine', () => {
           email: {
             subject: 'Subject 1',
             html: 'Body 1',
-            text: 'Body 1'
-          }
+            text: 'Body 1',
+          },
         },
-        variables: []
+        variables: [],
       };
 
       const template2 = {
@@ -58,10 +58,10 @@ describe('TemplateEngine', () => {
         channels: ['sms'],
         content: {
           sms: {
-            message: 'Body 2'
-          }
+            message: 'Body 2',
+          },
         },
-        variables: []
+        variables: [],
       };
 
       templateEngine.registerTemplate(template1);
@@ -69,8 +69,8 @@ describe('TemplateEngine', () => {
 
       const templates = templateEngine.listTemplates();
       expect(templates).toHaveLength(2);
-      expect(templates.map(t => t.id)).toContain('template1');
-      expect(templates.map(t => t.id)).toContain('template2');
+      expect(templates.map((t) => t.id)).toContain('template1');
+      expect(templates.map((t) => t.id)).toContain('template2');
     });
 
     it('should remove templates', () => {
@@ -83,10 +83,10 @@ describe('TemplateEngine', () => {
           email: {
             subject: 'Subject',
             html: 'Body',
-            text: 'Body'
-          }
+            text: 'Body',
+          },
         },
-        variables: []
+        variables: [],
       };
 
       templateEngine.registerTemplate(template);
@@ -102,7 +102,7 @@ describe('TemplateEngine', () => {
         name: 'Validation Test',
         subject: 'Hello {{name}}',
         body: 'Your code is {{code}} and expires at {{expiry}}',
-        variables: ['name', 'code', 'expiry']
+        variables: ['name', 'code', 'expiry'],
       };
 
       templateEngine.registerTemplate(template);
@@ -123,7 +123,7 @@ describe('TemplateEngine', () => {
         subject: 'Hello {{recipient.name}}!',
         body: 'Your verification code is {{code}}. It expires in {{expiry}} minutes.',
         html: '<p>Hello <b>{{recipient.name}}</b>!</p><p>Your code: <code>{{code}}</code></p>',
-        variables: ['recipient.name', 'code', 'expiry']
+        variables: ['recipient.name', 'code', 'expiry'],
       };
       templateEngine.registerTemplate(template);
     });
@@ -132,7 +132,7 @@ describe('TemplateEngine', () => {
       const data = {
         recipient: { name: 'Alice' },
         code: 'ABC123',
-        expiry: 30
+        expiry: 30,
       };
 
       const result = templateEngine.render('test-template', data);
@@ -163,14 +163,14 @@ describe('TemplateEngine', () => {
         subject: {
           en: 'Welcome {{name}}!',
           es: '¡Bienvenido {{name}}!',
-          fr: 'Bienvenue {{name}}!'
+          fr: 'Bienvenue {{name}}!',
         },
         body: {
           en: 'Thank you for joining us.',
           es: 'Gracias por unirte a nosotros.',
-          fr: 'Merci de nous avoir rejoint.'
+          fr: 'Merci de nous avoir rejoint.',
         },
-        variables: ['name']
+        variables: ['name'],
       };
 
       templateEngine.registerTemplate(localizedTemplate);
@@ -178,7 +178,7 @@ describe('TemplateEngine', () => {
       const recipient: Recipient = {
         id: 'user1',
         email: 'user@example.com',
-        locale: 'es'
+        locale: 'es',
       };
 
       const result = templateEngine.renderForRecipient('localized', { name: 'Carlos' }, recipient);
@@ -193,13 +193,13 @@ describe('TemplateEngine', () => {
         name: 'Fallback Test',
         subject: {
           en: 'English Subject',
-          fr: 'French Subject'
+          fr: 'French Subject',
         },
         body: {
           en: 'English Body',
-          fr: 'French Body'
+          fr: 'French Body',
         },
-        variables: []
+        variables: [],
       };
 
       templateEngine.registerTemplate(template);
@@ -207,7 +207,7 @@ describe('TemplateEngine', () => {
       const recipient: Recipient = {
         id: 'user1',
         email: 'user@example.com',
-        locale: 'de' // German not available
+        locale: 'de', // German not available
       };
 
       const result = templateEngine.renderForRecipient('fallback-test', {}, recipient);
@@ -225,7 +225,7 @@ describe('TemplateEngine', () => {
         subject: '{{type}}: {{title}}',
         body: '{{body}}',
         html: '<div class="{{type}}"><h2>{{title}}</h2><p>{{body}}</p></div>',
-        variables: ['type', 'title', 'body']
+        variables: ['type', 'title', 'body'],
       };
 
       templateEngine.registerTemplate(template);
@@ -236,7 +236,7 @@ describe('TemplateEngine', () => {
         title: 'System Maintenance',
         body: 'The system will be down for maintenance.',
         data: {},
-        templateId: 'notification-template'
+        templateId: 'notification-template',
       };
 
       const processed = templateEngine.processNotification(notification);
@@ -253,7 +253,7 @@ describe('TemplateEngine', () => {
         type: 'info',
         title: 'Direct Message',
         body: 'This is a direct message without template.',
-        data: {}
+        data: {},
       };
 
       const processed = templateEngine.processNotification(notification);
@@ -271,15 +271,15 @@ describe('TemplateEngine', () => {
         name: 'Valid',
         subject: 'Hello {{name}}',
         body: 'Welcome {{name}}!',
-        variables: ['name']
+        variables: ['name'],
       };
 
       const invalidTemplate = {
         id: 'invalid',
         name: 'Invalid',
-        subject: 'Hello {{name',  // Unclosed placeholder
+        subject: 'Hello {{name', // Unclosed placeholder
         body: 'Welcome!',
-        variables: ['name']
+        variables: ['name'],
       };
 
       expect(templateEngine.validateTemplate(validTemplate)).toBe(true);
@@ -293,7 +293,7 @@ describe('TemplateEngine', () => {
         subject: '{{greeting}} {{user.name}}!',
         body: 'Your order {{order.id}} total is {{order.total}} {{currency}}.',
         html: '<p>{{greeting}} <b>{{user.name}}</b></p>',
-        variables: []
+        variables: [],
       };
 
       const extracted = templateEngine.extractVariables(template);
@@ -311,7 +311,7 @@ describe('TemplateEngine', () => {
         name: 'Original Template',
         subject: 'Subject',
         body: 'Body',
-        variables: ['var1', 'var2']
+        variables: ['var1', 'var2'],
       };
 
       templateEngine.registerTemplate(original);
@@ -334,7 +334,7 @@ describe('TemplateEngine', () => {
           subject: 'Welcome',
           body: 'Welcome to our app',
           category: 'onboarding',
-          variables: []
+          variables: [],
         },
         {
           id: 'password-reset',
@@ -342,7 +342,7 @@ describe('TemplateEngine', () => {
           subject: 'Reset Password',
           body: 'Click to reset',
           category: 'security',
-          variables: []
+          variables: [],
         },
         {
           id: 'welcome-2',
@@ -350,16 +350,16 @@ describe('TemplateEngine', () => {
           subject: 'Welcome',
           body: 'Welcome!',
           category: 'onboarding',
-          variables: []
-        }
+          variables: [],
+        },
       ];
 
-      templates.forEach(t => templateEngine.registerTemplate(t));
+      templates.forEach((t) => templateEngine.registerTemplate(t));
 
       const onboardingTemplates = templateEngine.getTemplatesByCategory('onboarding');
       expect(onboardingTemplates).toHaveLength(2);
-      expect(onboardingTemplates.map(t => t.id)).toContain('welcome-1');
-      expect(onboardingTemplates.map(t => t.id)).toContain('welcome-2');
+      expect(onboardingTemplates.map((t) => t.id)).toContain('welcome-1');
+      expect(onboardingTemplates.map((t) => t.id)).toContain('welcome-2');
 
       const securityTemplates = templateEngine.getTemplatesByCategory('security');
       expect(securityTemplates).toHaveLength(1);
@@ -379,8 +379,8 @@ describe('TemplateEngine', () => {
           updatedAt: new Date('2024-01-15'),
           version: '1.0.0',
           tags: ['test', 'example'],
-          active: true
-        }
+          active: true,
+        },
       };
 
       templateEngine.registerTemplate(template);
@@ -400,7 +400,7 @@ describe('TemplateEngine', () => {
         name: 'Cached Template',
         subject: 'Hello {{name}}',
         body: 'Welcome {{name}}!',
-        variables: ['name']
+        variables: ['name'],
       };
 
       templateEngine.registerTemplate(template);
@@ -425,7 +425,7 @@ describe('TemplateEngine', () => {
         name: 'Cache Test',
         subject: 'Original: {{name}}',
         body: 'Original body',
-        variables: ['name']
+        variables: ['name'],
       };
 
       templateEngine.registerTemplate(template);
@@ -434,7 +434,7 @@ describe('TemplateEngine', () => {
       // Update template
       const updatedTemplate = {
         ...template,
-        subject: 'Updated: {{name}}'
+        subject: 'Updated: {{name}}',
       };
       templateEngine.registerTemplate(updatedTemplate);
 

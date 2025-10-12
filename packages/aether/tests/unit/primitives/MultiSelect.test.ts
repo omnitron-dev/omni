@@ -50,9 +50,7 @@ describe('MultiSelect', () => {
     });
 
     it('should render with disabled state', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        MultiSelect({ disabled: true })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => MultiSelect({ disabled: true }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-multi-select]');
@@ -60,9 +58,7 @@ describe('MultiSelect', () => {
     });
 
     it('should not have data-disabled when not disabled', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        MultiSelect({ disabled: false })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => MultiSelect({ disabled: false }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-multi-select]');
@@ -126,9 +122,7 @@ describe('MultiSelect', () => {
     });
 
     it('should render with empty children', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        MultiSelect({ children: () => null })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => MultiSelect({ children: () => null }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-multi-select]');
@@ -182,10 +176,7 @@ describe('MultiSelect', () => {
           children: () => [
             MultiSelectTrigger({ children: MultiSelectValue({}) }),
             MultiSelectContent({
-              children: [
-                MultiSelectItem({ value: 'item1' }),
-                MultiSelectItem({ value: 'item2' }),
-              ],
+              children: [MultiSelectItem({ value: 'item1' }), MultiSelectItem({ value: 'item2' })],
             }),
           ],
         })
@@ -248,9 +239,7 @@ describe('MultiSelect', () => {
       );
       cleanup = dispose;
 
-      const trigger = container.querySelector(
-        'button[data-multi-select-trigger]'
-      ) as HTMLButtonElement;
+      const trigger = container.querySelector('button[data-multi-select-trigger]') as HTMLButtonElement;
       expect(trigger.disabled).toBe(true);
     });
 
@@ -287,10 +276,7 @@ describe('MultiSelect', () => {
           children: () => [
             MultiSelectTrigger({ children: MultiSelectValue({}) }),
             MultiSelectContent({
-              children: [
-                MultiSelectItem({ value: 'test', children: 'Test' }),
-                MultiSelectActions({}),
-              ],
+              children: [MultiSelectItem({ value: 'test', children: 'Test' }), MultiSelectActions({})],
             }),
           ],
         })
@@ -352,10 +338,7 @@ describe('MultiSelect', () => {
           defaultValue: ['test1', 'test2'],
           children: () =>
             MultiSelectContent({
-              children: [
-                MultiSelectItem({ value: 'test1' }),
-                MultiSelectItem({ value: 'test2' }),
-              ],
+              children: [MultiSelectItem({ value: 'test1' }), MultiSelectItem({ value: 'test2' })],
             }),
         })
       );
@@ -407,10 +390,7 @@ describe('MultiSelect', () => {
           defaultValue: ['default'],
           children: () =>
             MultiSelectContent({
-              children: [
-                MultiSelectItem({ value: 'controlled' }),
-                MultiSelectItem({ value: 'default' }),
-              ],
+              children: [MultiSelectItem({ value: 'controlled' }), MultiSelectItem({ value: 'default' })],
             }),
         })
       );
@@ -695,10 +675,7 @@ describe('MultiSelect', () => {
     it('should render when open', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         MultiSelect({
-          children: () => [
-            MultiSelectTrigger({}),
-            MultiSelectContent({ children: 'Content' }),
-          ],
+          children: () => [MultiSelectTrigger({}), MultiSelectContent({ children: 'Content' })],
         })
       );
       cleanup = dispose;
@@ -728,10 +705,7 @@ describe('MultiSelect', () => {
     it('should have role="listbox"', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         MultiSelect({
-          children: () => [
-            MultiSelectTrigger({}),
-            MultiSelectContent({}),
-          ],
+          children: () => [MultiSelectTrigger({}), MultiSelectContent({})],
         })
       );
       cleanup = dispose;
@@ -746,10 +720,7 @@ describe('MultiSelect', () => {
     it('should have aria-multiselectable="true"', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         MultiSelect({
-          children: () => [
-            MultiSelectTrigger({}),
-            MultiSelectContent({}),
-          ],
+          children: () => [MultiSelectTrigger({}), MultiSelectContent({})],
         })
       );
       cleanup = dispose;
@@ -764,10 +735,7 @@ describe('MultiSelect', () => {
     it('should render children', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         MultiSelect({
-          children: () => [
-            MultiSelectTrigger({}),
-            MultiSelectContent({ children: 'Test content' }),
-          ],
+          children: () => [MultiSelectTrigger({}), MultiSelectContent({ children: 'Test content' })],
         })
       );
       cleanup = dispose;
@@ -789,10 +757,7 @@ describe('MultiSelect', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         MultiSelect({
           searchable: true,
-          children: () => [
-            MultiSelectTrigger({}),
-            MultiSelectContent({ children: MultiSelectSearch({}) }),
-          ],
+          children: () => [MultiSelectTrigger({}), MultiSelectContent({ children: MultiSelectSearch({}) })],
         })
       );
       cleanup = dispose;
@@ -808,10 +773,7 @@ describe('MultiSelect', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         MultiSelect({
           searchable: false,
-          children: () => [
-            MultiSelectTrigger({}),
-            MultiSelectContent({ children: MultiSelectSearch({}) }),
-          ],
+          children: () => [MultiSelectTrigger({}), MultiSelectContent({ children: MultiSelectSearch({}) })],
         })
       );
       cleanup = dispose;
@@ -827,10 +789,7 @@ describe('MultiSelect', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         MultiSelect({
           searchable: true,
-          children: () => [
-            MultiSelectTrigger({}),
-            MultiSelectContent({ children: MultiSelectSearch({}) }),
-          ],
+          children: () => [MultiSelectTrigger({}), MultiSelectContent({ children: MultiSelectSearch({}) })],
         })
       );
       cleanup = dispose;
@@ -846,10 +805,7 @@ describe('MultiSelect', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         MultiSelect({
           searchable: true,
-          children: () => [
-            MultiSelectTrigger({}),
-            MultiSelectContent({ children: MultiSelectSearch({}) }),
-          ],
+          children: () => [MultiSelectTrigger({}), MultiSelectContent({ children: MultiSelectSearch({}) })],
         })
       );
       cleanup = dispose;
@@ -906,12 +862,12 @@ describe('MultiSelect', () => {
       search.dispatchEvent(new Event('input', { bubbles: true }));
 
       // Wait for effects to run (Pattern 18)
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       // With Pattern 18, filter by visible items (not display: none)
-      const visibleItems = Array.from(
-        container.querySelectorAll('[data-multi-select-item]')
-      ).filter(item => (item as HTMLElement).style.display !== 'none');
+      const visibleItems = Array.from(container.querySelectorAll('[data-multi-select-item]')).filter(
+        (item) => (item as HTMLElement).style.display !== 'none'
+      );
 
       expect(visibleItems.length).toBe(1);
       expect(visibleItems[0]?.textContent).toBe('Apple');
@@ -926,8 +882,7 @@ describe('MultiSelect', () => {
     it('should render as div', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         MultiSelect({
-          children: () =>
-            MultiSelectContent({ children: MultiSelectItem({ value: 'test' }) }),
+          children: () => MultiSelectContent({ children: MultiSelectItem({ value: 'test' }) }),
         })
       );
       cleanup = dispose;
@@ -939,8 +894,7 @@ describe('MultiSelect', () => {
     it('should have role="option"', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         MultiSelect({
-          children: () =>
-            MultiSelectContent({ children: MultiSelectItem({ value: 'test' }) }),
+          children: () => MultiSelectContent({ children: MultiSelectItem({ value: 'test' }) }),
         })
       );
       cleanup = dispose;
@@ -952,8 +906,7 @@ describe('MultiSelect', () => {
     it('should have data-value attribute', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         MultiSelect({
-          children: () =>
-            MultiSelectContent({ children: MultiSelectItem({ value: 'test-value' }) }),
+          children: () => MultiSelectContent({ children: MultiSelectItem({ value: 'test-value' }) }),
         })
       );
       cleanup = dispose;
@@ -966,8 +919,7 @@ describe('MultiSelect', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         MultiSelect({
           defaultValue: ['test'],
-          children: () =>
-            MultiSelectContent({ children: MultiSelectItem({ value: 'test' }) }),
+          children: () => MultiSelectContent({ children: MultiSelectItem({ value: 'test' }) }),
         })
       );
       cleanup = dispose;
@@ -980,8 +932,7 @@ describe('MultiSelect', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         MultiSelect({
           defaultValue: ['test'],
-          children: () =>
-            MultiSelectContent({ children: MultiSelectItem({ value: 'test' }) }),
+          children: () => MultiSelectContent({ children: MultiSelectItem({ value: 'test' }) }),
         })
       );
       cleanup = dispose;
@@ -995,8 +946,7 @@ describe('MultiSelect', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         MultiSelect({
           onValueChange,
-          children: () =>
-            MultiSelectContent({ children: MultiSelectItem({ value: 'test' }) }),
+          children: () => MultiSelectContent({ children: MultiSelectItem({ value: 'test' }) }),
         })
       );
       cleanup = dispose;
@@ -1015,8 +965,7 @@ describe('MultiSelect', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         MultiSelect({
           onValueChange,
-          children: () =>
-            MultiSelectContent({ children: MultiSelectItem({ value: 'test', disabled: true }) }),
+          children: () => MultiSelectContent({ children: MultiSelectItem({ value: 'test', disabled: true }) }),
         })
       );
       cleanup = dispose;
@@ -1030,8 +979,7 @@ describe('MultiSelect', () => {
     it('should have data-disabled when disabled', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         MultiSelect({
-          children: () =>
-            MultiSelectContent({ children: MultiSelectItem({ value: 'test', disabled: true }) }),
+          children: () => MultiSelectContent({ children: MultiSelectItem({ value: 'test', disabled: true }) }),
         })
       );
       cleanup = dispose;
@@ -1081,12 +1029,12 @@ describe('MultiSelect', () => {
       search.dispatchEvent(new Event('input', { bubbles: true }));
 
       // Wait for effects to run (Pattern 18)
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       // With Pattern 18, filter by visible items (not display: none)
-      const visibleItems = Array.from(
-        container.querySelectorAll('[data-multi-select-item]')
-      ).filter(item => (item as HTMLElement).style.display !== 'none');
+      const visibleItems = Array.from(container.querySelectorAll('[data-multi-select-item]')).filter(
+        (item) => (item as HTMLElement).style.display !== 'none'
+      );
 
       expect(visibleItems.length).toBe(1);
       expect(visibleItems[0]?.textContent).toBe('Banana');
@@ -1374,10 +1322,7 @@ describe('MultiSelect', () => {
           onValueChange,
           children: () =>
             MultiSelectContent({
-              children: [
-                MultiSelectItem({ value: 'item1' }),
-                MultiSelectItem({ value: 'item2' }),
-              ],
+              children: [MultiSelectItem({ value: 'item1' }), MultiSelectItem({ value: 'item2' })],
             }),
         })
       );
@@ -1396,9 +1341,7 @@ describe('MultiSelect', () => {
 
   describe('Edge Cases', () => {
     it('should handle empty children', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        MultiSelect({ children: undefined })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => MultiSelect({ children: undefined }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-multi-select]');
@@ -1411,8 +1354,7 @@ describe('MultiSelect', () => {
         MultiSelect({
           disabled: true,
           onValueChange,
-          children: () =>
-            MultiSelectContent({ children: MultiSelectItem({ value: 'test' }) }),
+          children: () => MultiSelectContent({ children: MultiSelectItem({ value: 'test' }) }),
         })
       );
       cleanup = dispose;
@@ -1427,10 +1369,7 @@ describe('MultiSelect', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         MultiSelect({
           searchable: true,
-          children: () => [
-            MultiSelectTrigger({}),
-            MultiSelectContent({ children: MultiSelectSearch({}) }),
-          ],
+          children: () => [MultiSelectTrigger({}), MultiSelectContent({ children: MultiSelectSearch({}) })],
         })
       );
       cleanup = dispose;

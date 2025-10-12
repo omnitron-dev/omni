@@ -15,10 +15,7 @@ import type { RouteDefinition, RouteMatch, RouteComponent, RouteContext } from '
  * @param routes - All route definitions
  * @returns Array of layouts in order (root → leaf)
  */
-export function buildLayoutChain(
-  match: RouteMatch,
-  routes: RouteDefinition[]
-): RouteComponent[] {
+export function buildLayoutChain(match: RouteMatch, routes: RouteDefinition[]): RouteComponent[] {
   const layouts: RouteComponent[] = [];
 
   // Helper to find route definition by path
@@ -61,10 +58,7 @@ export function buildLayoutChain(
  * @param routes - All route definitions
  * @returns Error boundary component or undefined
  */
-export function findErrorBoundary(
-  match: RouteMatch,
-  routes: RouteDefinition[]
-): RouteComponent | undefined {
+export function findErrorBoundary(match: RouteMatch, routes: RouteDefinition[]): RouteComponent | undefined {
   // Helper to find route definition by path
   function findRouteByPath(path: string, routeList: RouteDefinition[]): RouteDefinition | null {
     for (const route of routeList) {
@@ -95,10 +89,7 @@ export function findErrorBoundary(
  * @param routes - All route definitions
  * @returns Loading component or undefined
  */
-export function findLoadingComponent(
-  match: RouteMatch,
-  routes: RouteDefinition[]
-): RouteComponent | undefined {
+export function findLoadingComponent(match: RouteMatch, routes: RouteDefinition[]): RouteComponent | undefined {
   // Helper to find route definition by path
   function findRouteByPath(path: string, routeList: RouteDefinition[]): RouteDefinition | null {
     for (const route of routeList) {
@@ -127,10 +118,7 @@ export function findLoadingComponent(
  * @param routes - All route definitions
  * @returns Route context with layouts, error boundary, and loading
  */
-export function createRouteContext(
-  match: RouteMatch,
-  routes: RouteDefinition[]
-): RouteContext {
+export function createRouteContext(match: RouteMatch, routes: RouteDefinition[]): RouteContext {
   return {
     route: match,
     layouts: buildLayoutChain(match, routes),

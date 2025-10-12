@@ -8,10 +8,7 @@
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import {
-  createTestProcessManager,
-  TestProcessManager
-} from '../../../src/modules/pm/index.js';
+import { createTestProcessManager, TestProcessManager } from '../../../src/modules/pm/index.js';
 
 // Import actual classes for mock spawning
 import ExternalApiService from './processes/external-api.process.js';
@@ -41,9 +38,7 @@ describe('Resilience Patterns - Circuit Breaker', () => {
   });
 
   it('should open circuit after threshold failures and use fallback', async () => {
-    const service = await pm.spawn<ExternalApiService>(
-      ExternalApiService
-    );
+    const service = await pm.spawn<ExternalApiService>(ExternalApiService);
 
     // Set high failure rate to trigger circuit breaker
     await service.setFailureRate(0.9);
@@ -73,9 +68,7 @@ describe('Resilience Patterns - Circuit Breaker', () => {
   });
 
   it.skip('should close circuit after successful calls during half-open state [MockSpawner: circuit breaker decorator execution]', async () => {
-    const service = await pm.spawn<ExternalApiService>(
-      ExternalApiService
-    );
+    const service = await pm.spawn<ExternalApiService>(ExternalApiService);
 
     // Note: In mock environment, decorators like @CircuitBreaker aren't fully executed
     // We test the basic service behavior instead
@@ -111,7 +104,7 @@ describe('Resilience Patterns - Circuit Breaker', () => {
     }
 
     // With 0% failure rate, all calls should succeed
-    const primaryCalls = results.filter(r => r?.source === 'primary');
+    const primaryCalls = results.filter((r) => r?.source === 'primary');
     expect(primaryCalls.length).toBe(5);
   });
 });
@@ -128,9 +121,7 @@ describe('Resilience Patterns - Rate Limiting', () => {
   });
 
   it('should limit requests per second', async () => {
-    const service = await pm.spawn<ApiGatewayService>(
-      ApiGatewayService
-    );
+    const service = await pm.spawn<ApiGatewayService>(ApiGatewayService);
 
     // Note: In mock environment, rate limiting decorator isn't executed
     // We test that the service can handle requests
@@ -138,15 +129,13 @@ describe('Resilience Patterns - Rate Limiting', () => {
     const userId = 'user123';
     const requests = Array.from({ length: 5 }, (_, i) => ({
       id: `req_${i}`,
-      data: `request ${i}`
+      data: `request ${i}`,
     }));
 
     // Send requests
-    const results = await Promise.allSettled(
-      requests.map(req => service.handleRequest(userId, req))
-    );
+    const results = await Promise.allSettled(requests.map((req) => service.handleRequest(userId, req)));
 
-    const successful = results.filter(r => r.status === 'fulfilled');
+    const successful = results.filter((r) => r.status === 'fulfilled');
 
     // All requests should succeed in mock environment
     expect(successful.length).toBe(5);
@@ -157,9 +146,7 @@ describe('Resilience Patterns - Rate Limiting', () => {
   });
 
   it('should track requests per user independently', async () => {
-    const service = await pm.spawn<ApiGatewayService>(
-      ApiGatewayService
-    );
+    const service = await pm.spawn<ApiGatewayService>(ApiGatewayService);
 
     // Make requests for different users
     await service.handleRequest('user1', { data: 'test1' });
@@ -186,9 +173,7 @@ describe('Resilience Patterns - Retry with Backoff', () => {
   });
 
   it('should retry failed operations with exponential backoff', async () => {
-    const service = await pm.spawn<DatabaseClientService>(
-      DatabaseClientService
-    );
+    const service = await pm.spawn<DatabaseClientService>(DatabaseClientService);
 
     // Execute query with retries
     const startTime = Date.now();
@@ -208,9 +193,7 @@ describe('Resilience Patterns - Retry with Backoff', () => {
   });
 
   it('should fail after max retries exceeded', async () => {
-    const service = await pm.spawn<DatabaseClientService>(
-      DatabaseClientService
-    );
+    const service = await pm.spawn<DatabaseClientService>(DatabaseClientService);
 
     // Force failures by making many rapid queries
     const promises = Array.from({ length: 10 }, (_, i) =>
@@ -220,7 +203,7 @@ describe('Resilience Patterns - Retry with Backoff', () => {
     const results = await Promise.allSettled(promises);
 
     // At least some should succeed
-    const successful = results.filter(r => r.status === 'fulfilled');
+    const successful = results.filter((r) => r.status === 'fulfilled');
     expect(successful.length).toBeGreaterThan(0);
   });
 });
@@ -237,9 +220,7 @@ describe('Resilience Patterns - Bulkhead', () => {
   });
 
   it('should isolate resources in separate pools', async () => {
-    const service = await pm.spawn<ResourceManagerService>(
-      ResourceManagerService
-    );
+    const service = await pm.spawn<ResourceManagerService>(ResourceManagerService);
 
     // Create resource pools with different concurrency limits
     await service.createPool('critical', 5);
@@ -249,10 +230,10 @@ describe('Resilience Patterns - Bulkhead', () => {
     const criticalAcquisitions = await Promise.all([
       service.acquireResource('critical', 'req1', 10),
       service.acquireResource('critical', 'req2', 10),
-      service.acquireResource('critical', 'req3', 10)
+      service.acquireResource('critical', 'req3', 10),
     ]);
 
-    expect(criticalAcquisitions.every(a => a.acquired)).toBe(true);
+    expect(criticalAcquisitions.every((a) => a.acquired)).toBe(true);
 
     const criticalStats = await service.getPoolStats('critical');
     expect(criticalStats?.currentActive).toBe(3);
@@ -264,9 +245,7 @@ describe('Resilience Patterns - Bulkhead', () => {
   });
 
   it('should enforce concurrency limits per pool', async () => {
-    const service = await pm.spawn<ResourceManagerService>(
-      ResourceManagerService
-    );
+    const service = await pm.spawn<ResourceManagerService>(ResourceManagerService);
 
     await service.createPool('limited', 2); // Only 2 concurrent
 
@@ -274,10 +253,10 @@ describe('Resilience Patterns - Bulkhead', () => {
     const acquisitions = await Promise.all([
       service.acquireResource('limited', 'req1'),
       service.acquireResource('limited', 'req2'),
-      service.acquireResource('limited', 'req3')
+      service.acquireResource('limited', 'req3'),
     ]);
 
-    const acquired = acquisitions.filter(a => a.acquired);
+    const acquired = acquisitions.filter((a) => a.acquired);
     expect(acquired.length).toBeLessThanOrEqual(2);
 
     // Release one resource
@@ -289,9 +268,7 @@ describe('Resilience Patterns - Bulkhead', () => {
   });
 
   it('should prioritize high-priority requests in queue', async () => {
-    const service = await pm.spawn<ResourceManagerService>(
-      ResourceManagerService
-    );
+    const service = await pm.spawn<ResourceManagerService>(ResourceManagerService);
 
     await service.createPool('priority-pool', 1); // Only 1 concurrent
 
@@ -321,9 +298,7 @@ describe('Resilience Patterns - Caching', () => {
   });
 
   it('should cache results and improve performance', async () => {
-    const service = await pm.spawn<CachingService>(
-      CachingService
-    );
+    const service = await pm.spawn<CachingService>(CachingService);
 
     // Note: In mock environment, caching decorator isn't executed
     // We test basic functionality
@@ -347,9 +322,7 @@ describe('Resilience Patterns - Caching', () => {
   });
 
   it('should expire cache after TTL', async () => {
-    const service = await pm.spawn<CachingService>(
-      CachingService
-    );
+    const service = await pm.spawn<CachingService>(CachingService);
 
     const input = 100;
 
@@ -357,7 +330,7 @@ describe('Resilience Patterns - Caching', () => {
     await service.expensiveComputation(input);
 
     // Wait for cache to expire (TTL is 1000ms)
-    await new Promise(resolve => setTimeout(resolve, 1100));
+    await new Promise((resolve) => setTimeout(resolve, 1100));
 
     // Second call - should recompute after expiration
     const result2 = await service.expensiveComputation(input);
@@ -377,9 +350,7 @@ describe('Resilience Patterns - Self-Healing', () => {
   });
 
   it('should automatically recover from temporary failures', async () => {
-    const service = await pm.spawn<SelfHealingService>(
-      SelfHealingService
-    );
+    const service = await pm.spawn<SelfHealingService>(SelfHealingService);
 
     // In mock environment, we need to manually retry to simulate recovery
     let result;
@@ -405,9 +376,7 @@ describe('Resilience Patterns - Self-Healing', () => {
   });
 
   it('should track and respond to error rates', async () => {
-    const service = await pm.spawn<SelfHealingService>(
-      SelfHealingService
-    );
+    const service = await pm.spawn<SelfHealingService>(SelfHealingService);
 
     const initialHealth = await service.__getHealth();
     expect(initialHealth.status).toBe('healthy');
@@ -424,9 +393,7 @@ describe('Resilience Patterns - Self-Healing', () => {
   });
 
   it('should trigger manual recovery when needed', async () => {
-    const service = await pm.spawn<SelfHealingService>(
-      SelfHealingService
-    );
+    const service = await pm.spawn<SelfHealingService>(SelfHealingService);
 
     // Trigger recovery
     const recovery = await service.triggerRecovery();
@@ -453,12 +420,8 @@ describe('Resilience Patterns - Combined Patterns', () => {
 
   it('should combine circuit breaker with retry and cache', async () => {
     // This test demonstrates using multiple resilience patterns together
-    const apiService = await pm.spawn<ExternalApiService>(
-      ExternalApiService
-    );
-    const dbService = await pm.spawn<DatabaseClientService>(
-      DatabaseClientService
-    );
+    const apiService = await pm.spawn<ExternalApiService>(ExternalApiService);
+    const dbService = await pm.spawn<DatabaseClientService>(DatabaseClientService);
 
     // API call with circuit breaker
     await apiService.setFailureRate(0.2); // 20% failure rate
@@ -481,15 +444,9 @@ describe('Resilience Patterns - Combined Patterns', () => {
   });
 
   it('should handle cascading failures with multiple services', async () => {
-    const apiService = await pm.spawn<ExternalApiService>(
-      ExternalApiService
-    );
-    const dbService = await pm.spawn<DatabaseClientService>(
-      DatabaseClientService
-    );
-    const gatewayService = await pm.spawn<ApiGatewayService>(
-      ApiGatewayService
-    );
+    const apiService = await pm.spawn<ExternalApiService>(ExternalApiService);
+    const dbService = await pm.spawn<DatabaseClientService>(DatabaseClientService);
+    const gatewayService = await pm.spawn<ApiGatewayService>(ApiGatewayService);
 
     // Set up failure scenarios
     await apiService.setFailureRate(0.5);
@@ -497,14 +454,12 @@ describe('Resilience Patterns - Combined Patterns', () => {
     // Process requests through gateway
     const requests = Array.from({ length: 10 }, (_, i) => ({
       id: `req_${i}`,
-      apiEndpoint: `/api/data/${i}`
+      apiEndpoint: `/api/data/${i}`,
     }));
 
-    const results = await Promise.allSettled(
-      requests.map(req => gatewayService.handleRequest('user1', req))
-    );
+    const results = await Promise.allSettled(requests.map((req) => gatewayService.handleRequest('user1', req)));
 
-    const successful = results.filter(r => r.status === 'fulfilled');
+    const successful = results.filter((r) => r.status === 'fulfilled');
 
     // Despite API failures, gateway should handle some requests
     expect(successful.length).toBeGreaterThan(0);

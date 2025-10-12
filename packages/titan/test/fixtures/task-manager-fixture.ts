@@ -5,15 +5,7 @@
  */
 
 import { createToken } from '@nexus';
-import {
-  Injectable,
-  Inject,
-  Singleton,
-  OnInit,
-  OnDestroy,
-  IApplication,
-  HealthStatus
-} from '../../src/index';
+import { Injectable, Inject, Singleton, OnInit, OnDestroy, IApplication, HealthStatus } from '../../src/index';
 import { LOGGER_SERVICE_TOKEN, ILogger as Logger } from '../../src/modules/logger.module';
 const CONFIG_SERVICE_TOKEN = createToken('ConfigModule');
 import { Module } from '../../src/enhanced-module';
@@ -51,9 +43,7 @@ export class TaskRepository implements OnInit, OnDestroy {
   private tasks: Map<string, Task> = new Map();
   private logger!: Logger;
 
-  constructor(
-    @Inject(LOGGER_SERVICE_TOKEN) private loggerModule: any
-  ) {
+  constructor(@Inject(LOGGER_SERVICE_TOKEN) private loggerModule: any) {
     // Add safety check for tests
     if (this.loggerModule && typeof this.loggerModule.child === 'function') {
       this.logger = this.loggerModule.child({ service: 'TaskRepository' });
@@ -64,7 +54,7 @@ export class TaskRepository implements OnInit, OnDestroy {
         info: (msg: string) => console.log(`[TaskRepository] ${msg}`),
         debug: (msg: string) => console.debug(`[TaskRepository] ${msg}`),
         warn: (msg: string) => console.warn(`[TaskRepository] ${msg}`),
-        error: (msg: string) => console.error(`[TaskRepository] ${msg}`)
+        error: (msg: string) => console.error(`[TaskRepository] ${msg}`),
       } as any;
     }
   }
@@ -88,7 +78,7 @@ export class TaskRepository implements OnInit, OnDestroy {
         status: 'completed',
         priority: 'high',
         createdAt: new Date('2024-01-01'),
-        updatedAt: new Date('2024-01-02')
+        updatedAt: new Date('2024-01-02'),
       },
       {
         id: '2',
@@ -97,11 +87,11 @@ export class TaskRepository implements OnInit, OnDestroy {
         status: 'in-progress',
         priority: 'high',
         createdAt: new Date('2024-01-03'),
-        updatedAt: new Date('2024-01-10')
-      }
+        updatedAt: new Date('2024-01-10'),
+      },
     ];
 
-    seedTasks.forEach(task => this.tasks.set(task.id, task));
+    seedTasks.forEach((task) => this.tasks.set(task.id, task));
     this.logger.debug(`Seeded ${this.tasks.size} tasks`);
   }
 
@@ -125,7 +115,7 @@ export class TaskRepository implements OnInit, OnDestroy {
     return {
       status: 'healthy',
       message: 'Repository is operational',
-      details: { taskCount: this.tasks.size }
+      details: { taskCount: this.tasks.size },
     };
   }
 }
@@ -152,7 +142,7 @@ export class TaskService implements OnInit {
         info: (msg: string) => console.log(`[TaskService] ${msg}`),
         debug: (msg: string) => console.debug(`[TaskService] ${msg}`),
         warn: (msg: string) => console.warn(`[TaskService] ${msg}`),
-        error: (msg: string) => console.error(`[TaskService] ${msg}`)
+        error: (msg: string) => console.error(`[TaskService] ${msg}`),
       } as any;
     }
   }
@@ -166,7 +156,7 @@ export class TaskService implements OnInit {
       ...taskData,
       id: this.generateId(),
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
     };
 
     await this.repository.save(task);
@@ -191,7 +181,7 @@ export class TaskService implements OnInit {
       ...updates,
       id: task.id,
       createdAt: task.createdAt,
-      updatedAt: new Date()
+      updatedAt: new Date(),
     };
 
     await this.repository.save(updatedTask);
@@ -226,16 +216,16 @@ export class TaskService implements OnInit {
       byStatus: {
         pending: 0,
         'in-progress': 0,
-        completed: 0
+        completed: 0,
       },
       byPriority: {
         low: 0,
         medium: 0,
-        high: 0
-      }
+        high: 0,
+      },
     };
 
-    tasks.forEach(task => {
+    tasks.forEach((task) => {
       stats.byStatus[task.status]++;
       stats.byPriority[task.priority]++;
     });
@@ -248,7 +238,7 @@ export class TaskService implements OnInit {
     return {
       status: 'healthy',
       message: 'TaskService is operational',
-      details: stats
+      details: stats,
     };
   }
 }
@@ -276,7 +266,7 @@ export class NotificationService implements OnInit {
         info: (msg: string) => console.log(`[NotificationService] ${msg}`),
         debug: (msg: string) => console.debug(`[NotificationService] ${msg}`),
         warn: (msg: string) => console.warn(`[NotificationService] ${msg}`),
-        error: (msg: string) => console.error(`[NotificationService] ${msg}`)
+        error: (msg: string) => console.error(`[NotificationService] ${msg}`),
       } as any;
     }
   }
@@ -285,13 +275,13 @@ export class NotificationService implements OnInit {
     if (this.configModule && typeof this.configModule.get === 'function') {
       this.config = this.configModule.get('notifications', {
         enabled: true,
-        channels: ['email', 'push']
+        channels: ['email', 'push'],
       });
     } else {
       console.warn('ConfigModule not properly injected in NotificationService');
       this.config = {
         enabled: true,
-        channels: ['email', 'push']
+        channels: ['email', 'push'],
       };
     }
     this.logger.info('NotificationService initialized', this.config);
@@ -305,30 +295,28 @@ export class NotificationService implements OnInit {
 
     this.logger.info(`Sending ${type} notification`, data);
     // Simulate async operation
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
 
   async notifyTaskCreated(task: Task): Promise<void> {
     await this.sendNotification('task-created', {
       taskId: task.id,
-      title: task.title
+      title: task.title,
     });
   }
 
   async notifyTaskCompleted(task: Task): Promise<void> {
     await this.sendNotification('task-completed', {
       taskId: task.id,
-      title: task.title
+      title: task.title,
     });
   }
 
   async health(): Promise<HealthStatus> {
     return {
       status: this.config.enabled ? 'healthy' : 'degraded',
-      message: this.config.enabled ?
-        'NotificationService is operational' :
-        'NotificationService is disabled',
-      details: this.config
+      message: this.config.enabled ? 'NotificationService is operational' : 'NotificationService is disabled',
+      details: this.config,
     };
   }
 }
@@ -356,7 +344,7 @@ export class TaskCoordinator implements OnInit {
         info: (msg: string) => console.log(`[TaskCoordinator] ${msg}`),
         debug: (msg: string) => console.debug(`[TaskCoordinator] ${msg}`),
         warn: (msg: string) => console.warn(`[TaskCoordinator] ${msg}`),
-        error: (msg: string) => console.error(`[TaskCoordinator] ${msg}`)
+        error: (msg: string) => console.error(`[TaskCoordinator] ${msg}`),
       } as any;
     }
   }
@@ -378,7 +366,7 @@ export class TaskCoordinator implements OnInit {
     this.logger.debug(`Completing task ${taskId}`);
 
     const task = await this.taskService.update(taskId, {
-      status: 'completed'
+      status: 'completed',
     });
 
     if (task) {
@@ -401,7 +389,7 @@ export class TaskCoordinator implements OnInit {
   async health(): Promise<HealthStatus> {
     return {
       status: 'healthy',
-      message: 'TaskCoordinator is operational'
+      message: 'TaskCoordinator is operational',
     };
   }
 }
@@ -415,29 +403,41 @@ export class TaskCoordinator implements OnInit {
   version: '2.0.0',
   dependencies: [LOGGER_SERVICE_TOKEN, CONFIG_SERVICE_TOKEN],
   providers: [
-    [TaskRepositoryToken, {
-      useFactory: (loggerModule: any) => new TaskRepository(loggerModule),
-      inject: [LOGGER_SERVICE_TOKEN],
-      scope: 'singleton'
-    }],
-    [TaskServiceToken, {
-      useFactory: (repository: TaskRepository, loggerModule: any) => new TaskService(repository, loggerModule),
-      inject: [TaskRepositoryToken, LOGGER_SERVICE_TOKEN],
-      scope: 'singleton'
-    }],
-    [NotificationServiceToken, {
-      useFactory: (loggerModule: any, configModule: any) => new NotificationService(loggerModule, configModule),
-      inject: [LOGGER_SERVICE_TOKEN, CONFIG_SERVICE_TOKEN],
-      scope: 'singleton'
-    }],
-    [TaskCoordinatorToken, {
-      useFactory: (taskService: TaskService, notificationService: NotificationService, loggerModule: any) =>
-        new TaskCoordinator(taskService, notificationService, loggerModule),
-      inject: [TaskServiceToken, NotificationServiceToken, LOGGER_SERVICE_TOKEN],
-      scope: 'singleton'
-    }]
+    [
+      TaskRepositoryToken,
+      {
+        useFactory: (loggerModule: any) => new TaskRepository(loggerModule),
+        inject: [LOGGER_SERVICE_TOKEN],
+        scope: 'singleton',
+      },
+    ],
+    [
+      TaskServiceToken,
+      {
+        useFactory: (repository: TaskRepository, loggerModule: any) => new TaskService(repository, loggerModule),
+        inject: [TaskRepositoryToken, LOGGER_SERVICE_TOKEN],
+        scope: 'singleton',
+      },
+    ],
+    [
+      NotificationServiceToken,
+      {
+        useFactory: (loggerModule: any, configModule: any) => new NotificationService(loggerModule, configModule),
+        inject: [LOGGER_SERVICE_TOKEN, CONFIG_SERVICE_TOKEN],
+        scope: 'singleton',
+      },
+    ],
+    [
+      TaskCoordinatorToken,
+      {
+        useFactory: (taskService: TaskService, notificationService: NotificationService, loggerModule: any) =>
+          new TaskCoordinator(taskService, notificationService, loggerModule),
+        inject: [TaskServiceToken, NotificationServiceToken, LOGGER_SERVICE_TOKEN],
+        scope: 'singleton',
+      },
+    ],
   ],
-  exports: [TaskCoordinatorToken, TaskServiceToken] // Only expose public API
+  exports: [TaskCoordinatorToken, TaskServiceToken], // Only expose public API
 })
 export class TaskManagerModule {
   private logger?: Logger;

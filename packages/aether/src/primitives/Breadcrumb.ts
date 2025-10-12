@@ -91,15 +91,15 @@ export interface BreadcrumbSeparatorProps {
  * Container for breadcrumb navigation.
  */
 export const Breadcrumb = defineComponent<BreadcrumbProps>((props) => () => {
-    const { 'aria-label': ariaLabel = 'Breadcrumb', children, ...restProps } = props;
+  const { 'aria-label': ariaLabel = 'Breadcrumb', children, ...restProps } = props;
 
-    return jsx('nav', {
-      ...restProps,
-      'data-breadcrumb': '',
-      'aria-label': ariaLabel,
-      children,
-    });
+  return jsx('nav', {
+    ...restProps,
+    'data-breadcrumb': '',
+    'aria-label': ariaLabel,
+    children,
   });
+});
 
 /**
  * Breadcrumb List
@@ -107,14 +107,14 @@ export const Breadcrumb = defineComponent<BreadcrumbProps>((props) => () => {
  * Ordered list of breadcrumb items.
  */
 export const BreadcrumbList = defineComponent<BreadcrumbListProps>((props) => () => {
-    const { children, ...restProps } = props;
+  const { children, ...restProps } = props;
 
-    return jsx('ol', {
-      ...restProps,
-      'data-breadcrumb-list': '',
-      children,
-    });
+  return jsx('ol', {
+    ...restProps,
+    'data-breadcrumb-list': '',
+    children,
   });
+});
 
 /**
  * Breadcrumb Item
@@ -122,16 +122,16 @@ export const BreadcrumbList = defineComponent<BreadcrumbListProps>((props) => ()
  * Individual breadcrumb item.
  */
 export const BreadcrumbItem = defineComponent<BreadcrumbItemProps>((props) => () => {
-    const { currentPage, children, ...restProps } = props;
+  const { currentPage, children, ...restProps } = props;
 
-    return jsx('li', {
-      ...restProps,
-      'data-breadcrumb-item': '',
-      'data-current': currentPage ? '' : undefined,
-      'aria-current': currentPage ? 'page' : undefined,
-      children,
-    });
+  return jsx('li', {
+    ...restProps,
+    'data-breadcrumb-item': '',
+    'data-current': currentPage ? '' : undefined,
+    'aria-current': currentPage ? 'page' : undefined,
+    children,
   });
+});
 
 /**
  * Breadcrumb Link
@@ -168,15 +168,15 @@ export const BreadcrumbLink = defineComponent<BreadcrumbLinkProps>((props) => {
  * Current page text (not a link).
  */
 export const BreadcrumbPage = defineComponent<BreadcrumbPageProps>((props) => () => {
-    const { children, ...restProps } = props;
+  const { children, ...restProps } = props;
 
-    return jsx('span', {
-      ...restProps,
-      'data-breadcrumb-page': '',
-      'aria-current': 'page',
-      children,
-    });
+  return jsx('span', {
+    ...restProps,
+    'data-breadcrumb-page': '',
+    'aria-current': 'page',
+    children,
   });
+});
 
 /**
  * Breadcrumb Separator
@@ -184,16 +184,16 @@ export const BreadcrumbPage = defineComponent<BreadcrumbPageProps>((props) => ()
  * Visual separator between breadcrumb items.
  */
 export const BreadcrumbSeparator = defineComponent<BreadcrumbSeparatorProps>((props) => () => {
-    const { children = '/', ...restProps } = props;
+  const { children = '/', ...restProps } = props;
 
-    return jsx('li', {
-      ...restProps,
-      'data-breadcrumb-separator': '',
-      role: 'presentation',
-      'aria-hidden': 'true',
-      children,
-    });
+  return jsx('li', {
+    ...restProps,
+    'data-breadcrumb-separator': '',
+    role: 'presentation',
+    'aria-hidden': 'true',
+    children,
   });
+});
 
 // Attach sub-components
 (Breadcrumb as any).List = BreadcrumbList;

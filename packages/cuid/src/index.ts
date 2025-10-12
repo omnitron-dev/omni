@@ -22,7 +22,8 @@ const createEntropy = (length: number): string => {
 
   // Unroll loop for common lengths
   if (length === 4) {
-    result = BASE36_CHARS.charAt(Math.floor(random() * 36)) +
+    result =
+      BASE36_CHARS.charAt(Math.floor(random() * 36)) +
       BASE36_CHARS.charAt(Math.floor(random() * 36)) +
       BASE36_CHARS.charAt(Math.floor(random() * 36)) +
       BASE36_CHARS.charAt(Math.floor(random() * 36));
@@ -77,7 +78,8 @@ const bufToBigInt = (buf: Uint8Array): bigint => {
     const b6 = BIGINT_CACHE[buf[i + 6] as number]!;
     const b7 = BIGINT_CACHE[buf[i + 7] as number]!;
 
-    const chunk = (b0 << BIGINT_SHIFT_56) |
+    const chunk =
+      (b0 << BIGINT_SHIFT_56) |
       (b1 << BIGINT_SHIFT_48) |
       (b2 << BIGINT_SHIFT_40) |
       (b3 << BIGINT_SHIFT_32) |
@@ -112,14 +114,17 @@ const hash = (input: string): string => {
 const createFingerprint = (): string => {
   if (cachedFingerprint) return cachedFingerprint;
 
-  const globalObj = typeof globalThis !== 'undefined' ? globalThis :
-    typeof window !== 'undefined' ? window :
-      typeof global !== 'undefined' ? global : {};
+  const globalObj =
+    typeof globalThis !== 'undefined'
+      ? globalThis
+      : typeof window !== 'undefined'
+        ? window
+        : typeof global !== 'undefined'
+          ? global
+          : {};
 
   const globals = Object.keys(globalObj);
-  const sourceString = globals.length ?
-    globals.join('') + createEntropy(BIG_LENGTH) :
-    createEntropy(BIG_LENGTH);
+  const sourceString = globals.length ? globals.join('') + createEntropy(BIG_LENGTH) : createEntropy(BIG_LENGTH);
 
   cachedFingerprint = hash(sourceString).substring(0, BIG_LENGTH);
   return cachedFingerprint;

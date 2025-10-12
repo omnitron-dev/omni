@@ -112,18 +112,18 @@ export class WorkflowEngine {
             notification: {
               type: 'info',
               title: 'Welcome!',
-              body: 'Thank you for joining us!'
+              body: 'Thank you for joining us!',
             },
-            channels: ['email', 'inApp']
-          }
+            channels: ['email', 'inApp'],
+          },
         },
         {
           id: 'wait-1-day',
           name: 'Wait 1 day',
           type: 'wait',
           config: {
-            duration: 86400000 // 24 hours
-          }
+            duration: 86400000, // 24 hours
+          },
         },
         {
           id: 'tips',
@@ -133,23 +133,19 @@ export class WorkflowEngine {
             notification: {
               type: 'info',
               title: 'Getting Started Tips',
-              body: 'Here are some tips to help you get started...'
+              body: 'Here are some tips to help you get started...',
             },
-            channels: ['email']
-          }
-        }
-      ]
+            channels: ['email'],
+          },
+        },
+      ],
     });
   }
-
 
   /**
    * Execute a notification workflow
    */
-  async execute(
-    workflowId: string,
-    context: WorkflowContext
-  ): Promise<WorkflowResult> {
+  async execute(workflowId: string, context: WorkflowContext): Promise<WorkflowResult> {
     const workflow = this.workflows.get(workflowId);
     if (!workflow) {
       throw Errors.notFound('Workflow', workflowId);
@@ -173,17 +169,14 @@ export class WorkflowEngine {
   /**
    * Create workflow instance
    */
-  private createInstance(
-    workflow: NotificationWorkflow,
-    context: WorkflowContext
-  ): WorkflowInstance {
+  private createInstance(workflow: NotificationWorkflow, context: WorkflowContext): WorkflowInstance {
     return {
       id: generateUuid(),
       workflowId: workflow.id,
       workflow,
       context,
       state: 'pending',
-      startedAt: Date.now()
+      startedAt: Date.now(),
     };
   }
 
@@ -206,7 +199,7 @@ export class WorkflowEngine {
             stepId: step.id,
             success: true,
             data: { skipped: true },
-            timestamp: Date.now()
+            timestamp: Date.now(),
           });
           continue;
         }
@@ -243,7 +236,7 @@ export class WorkflowEngine {
           stepId: step.id,
           success: false,
           error: error.message,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         });
 
         if (step.onError === 'stop' || !step.onError) {
@@ -262,17 +255,14 @@ export class WorkflowEngine {
       steps: results,
       errors: errors.length > 0 ? errors : undefined,
       startedAt: instance.startedAt,
-      completedAt: instance.completedAt
+      completedAt: instance.completedAt,
     };
   }
 
   /**
    * Execute a single workflow step
    */
-  private async executeStep(
-    step: WorkflowStep,
-    instance: WorkflowInstance
-  ): Promise<StepResult> {
+  private async executeStep(step: WorkflowStep, instance: WorkflowInstance): Promise<StepResult> {
     switch (step.type) {
       case 'notification':
         return this.executeNotificationStep(step, instance);
@@ -297,16 +287,13 @@ export class WorkflowEngine {
   /**
    * Execute notification step
    */
-  private async executeNotificationStep(
-    step: WorkflowStep,
-    instance: WorkflowInstance
-  ): Promise<StepResult> {
+  private async executeNotificationStep(step: WorkflowStep, instance: WorkflowInstance): Promise<StepResult> {
     const config = step.config;
     const recipients = this.resolveRecipients(config.recipients, instance.context);
     const notification = this.resolveNotification(config.notification, instance.context);
     const options: SendOptions = {
       channels: config.channels,
-      ...config.options
+      ...config.options,
     };
 
     try {
@@ -316,28 +303,24 @@ export class WorkflowEngine {
           stepId: step.id,
           success: true,
           data: { skipped: true, reason: 'No recipients' },
-          timestamp: Date.now()
+          timestamp: Date.now(),
         };
       }
 
-      const result = await this.notificationService.send(
-        recipients,
-        notification,
-        options
-      );
+      const result = await this.notificationService.send(recipients, notification, options);
 
       return {
         stepId: step.id,
         success: result.failed === 0,
         data: result,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
     } catch (error: any) {
       return {
         stepId: step.id,
         success: false,
         error: error.message,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
     }
   }
@@ -345,10 +328,7 @@ export class WorkflowEngine {
   /**
    * Execute wait step
    */
-  private async executeWaitStep(
-    step: WorkflowStep,
-    instance: WorkflowInstance
-  ): Promise<StepResult> {
+  private async executeWaitStep(step: WorkflowStep, instance: WorkflowInstance): Promise<StepResult> {
     const config = step.config;
 
     if (config.duration) {
@@ -362,17 +342,14 @@ export class WorkflowEngine {
     return {
       stepId: step.id,
       success: true,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 
   /**
    * Execute condition step
    */
-  private async executeConditionStep(
-    step: WorkflowStep,
-    instance: WorkflowInstance
-  ): Promise<StepResult> {
+  private async executeConditionStep(step: WorkflowStep, instance: WorkflowInstance): Promise<StepResult> {
     const config = step.config;
 
     // Support different config formats
@@ -398,9 +375,7 @@ export class WorkflowEngine {
     }
 
     // Execute sub-steps based on condition result
-    const subSteps = config.then || config.onTrue
-      ? (conditionMet ? (config.then || []) : (config.else || []))
-      : [];
+    const subSteps = config.then || config.onTrue ? (conditionMet ? config.then || [] : config.else || []) : [];
 
     if (subSteps.length > 0) {
       for (const subStep of subSteps) {
@@ -412,17 +387,14 @@ export class WorkflowEngine {
       stepId: step.id,
       success: true,
       data: { conditionMet },
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 
   /**
    * Evaluate condition object
    */
-  private evaluateConditionObject(
-    condition: any,
-    context: WorkflowContext
-  ): boolean {
+  private evaluateConditionObject(condition: any, context: WorkflowContext): boolean {
     const field = condition.field;
     const value = this.getNestedValue(context, field);
     const expected = condition.value;
@@ -458,10 +430,7 @@ export class WorkflowEngine {
   /**
    * Execute parallel steps
    */
-  private async executeParallelStep(
-    step: WorkflowStep,
-    instance: WorkflowInstance
-  ): Promise<StepResult> {
+  private async executeParallelStep(step: WorkflowStep, instance: WorkflowInstance): Promise<StepResult> {
     const config = step.config;
     const parallelSteps = config.steps || [];
 
@@ -471,19 +440,16 @@ export class WorkflowEngine {
 
     return {
       stepId: step.id,
-      success: results.every(r => r.success),
+      success: results.every((r) => r.success),
       data: results,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 
   /**
    * Execute batch step
    */
-  private async executeBatchStep(
-    step: WorkflowStep,
-    instance: WorkflowInstance
-  ): Promise<StepResult> {
+  private async executeBatchStep(step: WorkflowStep, instance: WorkflowInstance): Promise<StepResult> {
     const config = step.config;
     const items = config.items || [];
     const batchSize = config.batchSize || 10;
@@ -491,9 +457,7 @@ export class WorkflowEngine {
     const results: any[] = [];
     for (let i = 0; i < items.length; i += batchSize) {
       const batch = items.slice(i, i + batchSize);
-      const batchResults = await Promise.all(
-        batch.map((item: any) => this.processBatchItem(item, step, instance))
-      );
+      const batchResults = await Promise.all(batch.map((item: any) => this.processBatchItem(item, step, instance)));
       results.push(...batchResults);
 
       // Add delay between batches
@@ -506,18 +470,14 @@ export class WorkflowEngine {
       stepId: step.id,
       success: true,
       data: results,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 
   /**
    * Process individual batch item
    */
-  private async processBatchItem(
-    item: any,
-    step: WorkflowStep,
-    instance: WorkflowInstance
-  ): Promise<any> {
+  private async processBatchItem(item: any, step: WorkflowStep, instance: WorkflowInstance): Promise<any> {
     // Implementation depends on batch item type
     return item;
   }
@@ -525,10 +485,7 @@ export class WorkflowEngine {
   /**
    * Retry a failed step
    */
-  private async retryStep(
-    step: WorkflowStep,
-    instance: WorkflowInstance
-  ): Promise<StepResult> {
+  private async retryStep(step: WorkflowStep, instance: WorkflowInstance): Promise<StepResult> {
     const maxAttempts = step.retryAttempts || 3;
     const retryDelay = step.retryDelay || 1000;
 
@@ -545,27 +502,21 @@ export class WorkflowEngine {
       stepId: step.id,
       success: false,
       error: 'Max retry attempts reached',
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 
   /**
    * Evaluate conditions
    */
-  private evaluateConditions(
-    conditions: StepCondition[],
-    context: WorkflowContext
-  ): boolean {
-    return conditions.every(condition => this.evaluateCondition(condition, context));
+  private evaluateConditions(conditions: StepCondition[], context: WorkflowContext): boolean {
+    return conditions.every((condition) => this.evaluateCondition(condition, context));
   }
 
   /**
    * Evaluate a single condition
    */
-  private evaluateCondition(
-    condition: StepCondition | any,
-    context: WorkflowContext
-  ): boolean {
+  private evaluateCondition(condition: StepCondition | any, context: WorkflowContext): boolean {
     const value = context[condition.field];
 
     switch (condition.operator) {
@@ -587,10 +538,7 @@ export class WorkflowEngine {
   /**
    * Resolve recipients from config
    */
-  private resolveRecipients(
-    recipientConfig: any,
-    context: WorkflowContext
-  ): Recipient | Recipient[] {
+  private resolveRecipients(recipientConfig: any, context: WorkflowContext): Recipient | Recipient[] {
     if (typeof recipientConfig === 'function') {
       return recipientConfig(context);
     }
@@ -605,10 +553,7 @@ export class WorkflowEngine {
   /**
    * Resolve notification from config
    */
-  private resolveNotification(
-    notificationConfig: any,
-    context: WorkflowContext
-  ): NotificationPayload {
+  private resolveNotification(notificationConfig: any, context: WorkflowContext): NotificationPayload {
     if (typeof notificationConfig === 'function') {
       return notificationConfig(context);
     }
@@ -635,15 +580,12 @@ export class WorkflowEngine {
   /**
    * Store workflow execution
    */
-  private async storeExecution(
-    instance: WorkflowInstance,
-    result: WorkflowResult
-  ): Promise<void> {
+  private async storeExecution(instance: WorkflowInstance, result: WorkflowResult): Promise<void> {
     const key = `${this.storageKeyPrefix}execution:${instance.id}`;
     const data = {
       instance,
       result,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
 
     await this.redis.setex(key, 7 * 86400, JSON.stringify(data)); // Store for 7 days
@@ -712,16 +654,14 @@ export class WorkflowEngine {
             success: execution.result.success,
             startedAt: execution.instance.startedAt,
             completedAt: execution.result.completedAt,
-            steps: execution.result.steps
+            steps: execution.result.steps,
           });
         }
       }
     }
 
     // Sort by startedAt descending and limit
-    return executions
-      .sort((a, b) => b.startedAt - a.startedAt)
-      .slice(0, limit);
+    return executions.sort((a, b) => b.startedAt - a.startedAt).slice(0, limit);
   }
 
   /**
@@ -740,7 +680,7 @@ export class WorkflowEngine {
         startedAt: execution.instance.startedAt,
         completedAt: execution.result.completedAt,
         steps: execution.result.steps,
-        context: execution.instance.context
+        context: execution.instance.context,
       };
     }
 

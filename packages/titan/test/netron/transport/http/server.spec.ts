@@ -8,10 +8,7 @@ import { LocalPeer } from '../../../../src/netron/local-peer.js';
 import { Definition } from '../../../../src/netron/definition.js';
 import { contract } from '../../../../src/validation/contract.js';
 import { z } from 'zod';
-import type {
-  HttpRequestMessage,
-  HttpBatchRequest
-} from '../../../../src/netron/transport/http/types.js';
+import type { HttpRequestMessage, HttpBatchRequest } from '../../../../src/netron/transport/http/types.js';
 
 describe('HttpServer (Legacy Tests)', () => {
   let server: HttpServer;
@@ -24,7 +21,7 @@ describe('HttpServer (Legacy Tests)', () => {
 
     server = new HttpServer({
       port: testPort,
-      host: 'localhost'
+      host: 'localhost',
     });
 
     // Create mock peer
@@ -32,7 +29,7 @@ describe('HttpServer (Legacy Tests)', () => {
       stubs: new Map(),
       on: jest.fn(),
       off: jest.fn(),
-      emit: jest.fn()
+      emit: jest.fn(),
     } as any;
   });
 
@@ -59,7 +56,7 @@ describe('HttpServer (Legacy Tests)', () => {
 
       expect(listener).toHaveBeenCalledWith({
         port: testPort,
-        host: 'localhost'
+        host: 'localhost',
       });
     });
 
@@ -72,23 +69,19 @@ describe('HttpServer (Legacy Tests)', () => {
 
   describe('Service Registration', () => {
     it('should register services from Netron peer', () => {
-      const testDefinition = new Definition(
-        'test-service-id',
-        'test-peer-id',
-        {
-          name: 'TestService',
-          version: '1.0.0',
-          description: 'Test service',
-          methods: {
-            testMethod: {}
-          },
-          properties: {}
-        }
-      );
+      const testDefinition = new Definition('test-service-id', 'test-peer-id', {
+        name: 'TestService',
+        version: '1.0.0',
+        description: 'Test service',
+        methods: {
+          testMethod: {},
+        },
+        properties: {},
+      });
 
       const stub = {
         definition: testDefinition,
-        call: jest.fn().mockResolvedValue({ result: 'test' })
+        call: jest.fn().mockResolvedValue({ result: 'test' }),
       };
 
       mockPeer.stubs.set('test-service', stub);
@@ -112,28 +105,24 @@ describe('HttpServer (Legacy Tests)', () => {
           output: z.object({ name: z.string(), email: z.string() }),
           http: {
             method: 'GET',
-            path: '/users/:id'
-          }
-        }
+            path: '/users/:id',
+          },
+        },
       });
 
-      const definition = new Definition(
-        'user-service-id',
-        'test-peer-id',
-        {
-          name: 'UserService',
-          version: '1.0.0',
-          contract: userContract,
-          methods: {
-            getUser: {}
-          },
-          properties: {}
-        }
-      );
+      const definition = new Definition('user-service-id', 'test-peer-id', {
+        name: 'UserService',
+        version: '1.0.0',
+        contract: userContract,
+        methods: {
+          getUser: {},
+        },
+        properties: {},
+      });
 
       const stub = {
         definition,
-        call: jest.fn()
+        call: jest.fn(),
       };
 
       mockPeer.stubs.set('user-service', stub);
@@ -146,7 +135,7 @@ describe('HttpServer (Legacy Tests)', () => {
       expect(method.contract).toBeDefined();
       expect(method.contract.http).toEqual({
         method: 'GET',
-        path: '/users/:id'
+        path: '/users/:id',
       });
     });
   });
@@ -154,19 +143,15 @@ describe('HttpServer (Legacy Tests)', () => {
   describe('Request Handling', () => {
     beforeEach(async () => {
       // Setup test service
-      const definition = new Definition(
-        'math-service-id',
-        'test-peer-id',
-        {
-          name: 'MathService',
-          version: '1.0.0',
-          methods: {
-            add: {},
-            multiply: {}
-          },
-          properties: {}
-        }
-      );
+      const definition = new Definition('math-service-id', 'test-peer-id', {
+        name: 'MathService',
+        version: '1.0.0',
+        methods: {
+          add: {},
+          multiply: {},
+        },
+        properties: {},
+      });
 
       const stub = {
         definition,
@@ -180,7 +165,7 @@ describe('HttpServer (Legacy Tests)', () => {
             return Promise.resolve(a * b);
           }
           throw new Error(`Unknown method: ${method}`);
-        })
+        }),
       };
 
       mockPeer.stubs.set('math-service', stub);
@@ -195,16 +180,16 @@ describe('HttpServer (Legacy Tests)', () => {
         timestamp: Date.now(),
         service: 'MathService',
         method: 'add',
-        input: { a: 5, b: 3 }
+        input: { a: 5, b: 3 },
       };
 
       const response = await fetch(`http://localhost:${testPort}/netron/invoke`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Netron-Version': '2.0'
+          'X-Netron-Version': '2.0',
         },
-        body: JSON.stringify(request)
+        body: JSON.stringify(request),
       });
 
       expect(response.status).toBe(200);
@@ -226,24 +211,24 @@ describe('HttpServer (Legacy Tests)', () => {
             id: 'req-1',
             service: 'MathService',
             method: 'add',
-            input: { a: 2, b: 3 }
+            input: { a: 2, b: 3 },
           },
           {
             id: 'req-2',
             service: 'MathService',
             method: 'multiply',
-            input: { a: 4, b: 5 }
-          }
-        ]
+            input: { a: 4, b: 5 },
+          },
+        ],
       };
 
       const response = await fetch(`http://localhost:${testPort}/netron/batch`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Netron-Version': '2.0'
+          'X-Netron-Version': '2.0',
         },
-        body: JSON.stringify(batchRequest)
+        body: JSON.stringify(batchRequest),
       });
 
       expect(response.status).toBe(200);
@@ -256,7 +241,6 @@ describe('HttpServer (Legacy Tests)', () => {
       expect(result.responses[1].success).toBe(true);
       expect(result.responses[1].data).toBe(20);
     });
-
   });
 
   describe('OpenAPI Generation', () => {
@@ -267,52 +251,48 @@ describe('HttpServer (Legacy Tests)', () => {
           output: z.object({
             id: z.string(),
             name: z.string(),
-            email: z.string().email()
+            email: z.string().email(),
           }),
           http: {
             openapi: {
               summary: 'Get user by ID',
-              tags: ['Users']
-            }
-          }
+              tags: ['Users'],
+            },
+          },
         },
         createUser: {
           input: z.object({
             name: z.string(),
-            email: z.string().email()
+            email: z.string().email(),
           }),
           output: z.object({
             id: z.string(),
             name: z.string(),
-            email: z.string()
+            email: z.string(),
           }),
           http: {
             openapi: {
               summary: 'Create new user',
-              tags: ['Users']
-            }
-          }
-        }
+              tags: ['Users'],
+            },
+          },
+        },
       });
 
-      const definition = new Definition(
-        'user-service-id',
-        'test-peer-id',
-        {
-          name: 'UserService',
-          version: '1.0.0',
-          contract: userContract,
-          methods: {
-            getUser: {},
-            createUser: {}
-          },
-          properties: {}
-        }
-      );
+      const definition = new Definition('user-service-id', 'test-peer-id', {
+        name: 'UserService',
+        version: '1.0.0',
+        contract: userContract,
+        methods: {
+          getUser: {},
+          createUser: {},
+        },
+        properties: {},
+      });
 
       const stub = {
         definition,
-        call: jest.fn()
+        call: jest.fn(),
       };
 
       mockPeer.stubs.set('user-service', stub);
@@ -325,8 +305,8 @@ describe('HttpServer (Legacy Tests)', () => {
       const response = await fetch(`http://localhost:${testPort}/openapi.json`, {
         method: 'GET',
         headers: {
-          'Authorization': 'Bearer test-token'
-        }
+          Authorization: 'Bearer test-token',
+        },
       });
 
       expect(response.status).toBe(200);
@@ -347,7 +327,7 @@ describe('HttpServer (Legacy Tests)', () => {
 
     it('should require authentication for OpenAPI spec', async () => {
       const response = await fetch(`http://localhost:${testPort}/openapi.json`, {
-        method: 'GET'
+        method: 'GET',
       });
 
       expect(response.status).toBe(401);
@@ -360,22 +340,18 @@ describe('HttpServer (Legacy Tests)', () => {
 
   describe('Error Handling', () => {
     beforeEach(async () => {
-      const errorDefinition = new Definition(
-        'error-service-id',
-        'test-peer-id',
-        {
-          name: 'ErrorService',
-          version: '1.0.0',
-          methods: {
-            throwError: {}
-          },
-          properties: {}
-        }
-      );
+      const errorDefinition = new Definition('error-service-id', 'test-peer-id', {
+        name: 'ErrorService',
+        version: '1.0.0',
+        methods: {
+          throwError: {},
+        },
+        properties: {},
+      });
 
       const stub = {
         definition: errorDefinition,
-        call: jest.fn().mockRejectedValue(new Error('Test error'))
+        call: jest.fn().mockRejectedValue(new Error('Test error')),
       };
 
       mockPeer.stubs.set('error-service', stub);
@@ -390,15 +366,15 @@ describe('HttpServer (Legacy Tests)', () => {
         timestamp: Date.now(),
         service: 'ErrorService',
         method: 'throwError',
-        input: {}
+        input: {},
       };
 
       const response = await fetch(`http://localhost:${testPort}/netron/invoke`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(request)
+        body: JSON.stringify(request),
       });
 
       expect(response.status).toBe(500);
@@ -412,9 +388,9 @@ describe('HttpServer (Legacy Tests)', () => {
       const response = await fetch(`http://localhost:${testPort}/netron/invoke`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: 'invalid json'
+        body: 'invalid json',
       });
 
       expect(response.status).toBe(400);
@@ -432,15 +408,15 @@ describe('HttpServer (Legacy Tests)', () => {
         timestamp: Date.now(),
         service: 'NonExistentService',
         method: 'someMethod',
-        input: {}
+        input: {},
       };
 
       const response = await fetch(`http://localhost:${testPort}/netron/invoke`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(request)
+        body: JSON.stringify(request),
       });
 
       expect(response.status).toBe(404);
@@ -475,8 +451,8 @@ describe('HttpServer (Legacy Tests)', () => {
       // Metrics endpoint now requires authentication
       const response = await fetch(`http://localhost:${testPort}/metrics`, {
         headers: {
-          'Authorization': 'Bearer test-token'
-        }
+          Authorization: 'Bearer test-token',
+        },
       });
 
       expect(response.status).toBe(200);
@@ -507,8 +483,8 @@ describe('HttpServer (Legacy Tests)', () => {
         host: 'localhost',
         cors: {
           origin: '*',
-          credentials: true
-        }
+          credentials: true,
+        },
       });
       await server.listen();
     });
@@ -517,9 +493,9 @@ describe('HttpServer (Legacy Tests)', () => {
       const response = await fetch(`http://localhost:${testPort}/netron/invoke`, {
         method: 'OPTIONS',
         headers: {
-          'Origin': 'http://example.com',
-          'Access-Control-Request-Method': 'POST'
-        }
+          Origin: 'http://example.com',
+          'Access-Control-Request-Method': 'POST',
+        },
       });
 
       expect(response.status).toBe(204);
@@ -530,8 +506,8 @@ describe('HttpServer (Legacy Tests)', () => {
     it('should add CORS headers to responses', async () => {
       const response = await fetch(`http://localhost:${testPort}/health`, {
         headers: {
-          'Origin': 'http://example.com'
-        }
+          Origin: 'http://example.com',
+        },
       });
 
       // Note: fetch in Node.js doesn't automatically expose CORS headers
@@ -539,5 +515,4 @@ describe('HttpServer (Legacy Tests)', () => {
       expect(response.status).toBe(200);
     });
   });
-
 });

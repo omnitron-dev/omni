@@ -184,9 +184,9 @@ describe('DependencyGraph', () => {
 
       expect(sorted).toHaveLength(3);
       // node1 should come before node2
-      const index1 = sorted.findIndex(n => n.computation === node1);
-      const index2 = sorted.findIndex(n => n.computation === node2);
-      const index3 = sorted.findIndex(n => n.computation === node3);
+      const index1 = sorted.findIndex((n) => n.computation === node1);
+      const index2 = sorted.findIndex((n) => n.computation === node2);
+      const index3 = sorted.findIndex((n) => n.computation === node3);
 
       expect(index1).toBeLessThan(index2);
       expect(index2).toBeLessThan(index3);
@@ -212,10 +212,10 @@ describe('DependencyGraph', () => {
 
       expect(sorted).toHaveLength(4);
 
-      const index1 = sorted.findIndex(n => n.computation === node1);
-      const index2 = sorted.findIndex(n => n.computation === node2);
-      const index3 = sorted.findIndex(n => n.computation === node3);
-      const index4 = sorted.findIndex(n => n.computation === node4);
+      const index1 = sorted.findIndex((n) => n.computation === node1);
+      const index2 = sorted.findIndex((n) => n.computation === node2);
+      const index3 = sorted.findIndex((n) => n.computation === node3);
+      const index4 = sorted.findIndex((n) => n.computation === node4);
 
       // node1 should come before node2 and node3
       expect(index1).toBeLessThan(index2);
@@ -252,10 +252,10 @@ describe('DependencyGraph', () => {
       const sorted = graph.topologicalSort();
 
       expect(sorted).toHaveLength(3);
-      expect(sorted.some(n => n.computation === isolated)).toBe(true);
+      expect(sorted.some((n) => n.computation === isolated)).toBe(true);
 
-      const index1 = sorted.findIndex(n => n.computation === node1);
-      const index2 = sorted.findIndex(n => n.computation === node2);
+      const index1 = sorted.findIndex((n) => n.computation === node1);
+      const index2 = sorted.findIndex((n) => n.computation === node2);
       expect(index1).toBeLessThan(index2);
     });
   });

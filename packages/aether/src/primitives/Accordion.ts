@@ -34,20 +34,23 @@ const globalAccordionContextSignal = signal<AccordionContextValue | null>(null);
 
 // Create context with default implementation that delegates to global signal
 const noopGetter = () => globalAccordionContextSignal()?.value() ?? undefined;
-const typeGetter = () => globalAccordionContextSignal()?.type() ?? 'single' as const;
+const typeGetter = () => globalAccordionContextSignal()?.type() ?? ('single' as const);
 const booleanGetter = () => globalAccordionContextSignal()?.collapsible() ?? false;
 const disabledGetter = () => globalAccordionContextSignal()?.disabled() ?? false;
-const orientationGetter = () => globalAccordionContextSignal()?.orientation() ?? 'vertical' as const;
+const orientationGetter = () => globalAccordionContextSignal()?.orientation() ?? ('vertical' as const);
 
-export const AccordionContext = createContext<AccordionContextValue>({
-  type: typeGetter,
-  value: noopGetter,
-  setValue: (value) => globalAccordionContextSignal()?.setValue(value),
-  collapsible: booleanGetter,
-  disabled: disabledGetter,
-  orientation: orientationGetter,
-  accordionId: globalAccordionContextSignal()?.accordionId ?? '',
-}, 'Accordion');
+export const AccordionContext = createContext<AccordionContextValue>(
+  {
+    type: typeGetter,
+    value: noopGetter,
+    setValue: (value) => globalAccordionContextSignal()?.setValue(value),
+    collapsible: booleanGetter,
+    disabled: disabledGetter,
+    orientation: orientationGetter,
+    accordionId: globalAccordionContextSignal()?.accordionId ?? '',
+  },
+  'Accordion'
+);
 
 /**
  * Accordion item context
@@ -64,14 +67,17 @@ export interface AccordionItemContextValue {
 // Global reactive signal for item context (same pattern as accordion context)
 const globalAccordionItemContextSignal = signal<AccordionItemContextValue | null>(null);
 
-export const AccordionItemContext = createContext<AccordionItemContextValue>({
-  value: globalAccordionItemContextSignal()?.value ?? '',
-  isOpen: () => globalAccordionItemContextSignal()?.isOpen() ?? false,
-  toggle: () => globalAccordionItemContextSignal()?.toggle(),
-  disabled: () => globalAccordionItemContextSignal()?.disabled() ?? false,
-  triggerId: globalAccordionItemContextSignal()?.triggerId ?? '',
-  contentId: globalAccordionItemContextSignal()?.contentId ?? '',
-}, 'AccordionItem');
+export const AccordionItemContext = createContext<AccordionItemContextValue>(
+  {
+    value: globalAccordionItemContextSignal()?.value ?? '',
+    isOpen: () => globalAccordionItemContextSignal()?.isOpen() ?? false,
+    toggle: () => globalAccordionItemContextSignal()?.toggle(),
+    disabled: () => globalAccordionItemContextSignal()?.disabled() ?? false,
+    triggerId: globalAccordionItemContextSignal()?.triggerId ?? '',
+    contentId: globalAccordionItemContextSignal()?.contentId ?? '',
+  },
+  'AccordionItem'
+);
 
 /**
  * Accordion props for single type
@@ -192,12 +198,12 @@ export type AccordionProps = AccordionSingleProps | AccordionMultipleProps;
  */
 export const Accordion = defineComponent<AccordionProps>((props) => {
   // CRITICAL: Create valueSignal FIRST, before accessing children
-  const defaultValForSignal = props.type === 'single'
-    ? (props as AccordionSingleProps).defaultValue
-    : (props as AccordionMultipleProps).defaultValue ?? [];
+  const defaultValForSignal =
+    props.type === 'single'
+      ? (props as AccordionSingleProps).defaultValue
+      : ((props as AccordionMultipleProps).defaultValue ?? []);
 
   const valueSignal = props.value || signal<string | string[] | undefined>(defaultValForSignal);
-
 
   const type = signal(props.type);
   const collapsible = signal((props as AccordionSingleProps).collapsible ?? false);
@@ -233,7 +239,17 @@ export const Accordion = defineComponent<AccordionProps>((props) => {
   provideContext(AccordionContext, contextValue);
 
   return () => {
-    const { children: childrenProp, type: _, value: __, defaultValue: ___, onValueChange: ____, collapsible: _____, disabled: ______, orientation: _______, ...restProps } = props;
+    const {
+      children: childrenProp,
+      type: _,
+      value: __,
+      defaultValue: ___,
+      onValueChange: ____,
+      collapsible: _____,
+      disabled: ______,
+      orientation: _______,
+      ...restProps
+    } = props;
 
     // Support function children
     const children = typeof childrenProp === 'function' ? childrenProp() : childrenProp;
@@ -276,7 +292,6 @@ export interface AccordionItemProps {
  * Accordion item component
  */
 export const AccordionItem = defineComponent<AccordionItemProps>((props) => {
-
   // Access context during setup to prepare item context
   const ctx = useContext(AccordionContext);
 
@@ -301,7 +316,7 @@ export const AccordionItem = defineComponent<AccordionItemProps>((props) => {
     } else {
       const currentArray = Array.isArray(currentValue) ? currentValue : [];
       if (currentArray.includes(itemValue)) {
-        ctx.setValue(currentArray.filter(v => v !== itemValue));
+        ctx.setValue(currentArray.filter((v) => v !== itemValue));
       } else {
         ctx.setValue([...currentArray, itemValue]);
       }
@@ -339,9 +354,10 @@ export const AccordionItem = defineComponent<AccordionItemProps>((props) => {
     effect(() => {
       const currentValue = ctx.value();
       const type = ctx.type();
-      const isOpen = type === 'single'
-        ? currentValue === itemValue
-        : Array.isArray(currentValue) && currentValue.includes(itemValue);
+      const isOpen =
+        type === 'single'
+          ? currentValue === itemValue
+          : Array.isArray(currentValue) && currentValue.includes(itemValue);
 
       element.setAttribute('data-state', isOpen ? 'open' : 'closed');
 
@@ -354,7 +370,6 @@ export const AccordionItem = defineComponent<AccordionItemProps>((props) => {
   };
 
   return () => {
-
     const { value, disabled, children: childrenProp, ...restProps } = props;
 
     // Support function children
@@ -363,9 +378,8 @@ export const AccordionItem = defineComponent<AccordionItemProps>((props) => {
     // Compute initial isOpen state
     const currentValue = ctx.value();
     const type = ctx.type();
-    const initialIsOpen = type === 'single'
-      ? currentValue === itemValue
-      : Array.isArray(currentValue) && currentValue.includes(itemValue);
+    const initialIsOpen =
+      type === 'single' ? currentValue === itemValue : Array.isArray(currentValue) && currentValue.includes(itemValue);
 
     // Create the div element with ref callback for reactivity
     return jsx('div', {
@@ -421,7 +435,7 @@ export const AccordionTrigger = defineComponent<AccordionTriggerProps>((props) =
       if (!triggers) return;
 
       const triggerArray = Array.from(triggers) as HTMLElement[];
-      const currentIndex = triggerArray.findIndex(el => el === event.target);
+      const currentIndex = triggerArray.findIndex((el) => el === event.target);
       if (currentIndex === -1) return;
 
       let nextIndex = currentIndex;
@@ -461,9 +475,10 @@ export const AccordionTrigger = defineComponent<AccordionTriggerProps>((props) =
       const itemValue = itemCtx.value;
 
       // Compute isOpen based on current accordion value
-      const isOpen = type === 'single'
-        ? accordionValue === itemValue
-        : Array.isArray(accordionValue) && accordionValue.includes(itemValue);
+      const isOpen =
+        type === 'single'
+          ? accordionValue === itemValue
+          : Array.isArray(accordionValue) && accordionValue.includes(itemValue);
 
       element.setAttribute('aria-expanded', String(isOpen));
       element.setAttribute('data-state', isOpen ? 'open' : 'closed');
@@ -487,10 +502,11 @@ export const AccordionTrigger = defineComponent<AccordionTriggerProps>((props) =
     // Compute initial isOpen state directly from accordion context
     const accordionValue = ctx.value();
     const type = ctx.type();
-    const itemValue = itemCtx.value || props.value;  // Fallback to props if itemCtx not set
-    const initialIsOpen = type === 'single'
-      ? accordionValue === itemValue
-      : Array.isArray(accordionValue) && accordionValue.includes(itemValue);
+    const itemValue = itemCtx.value || props.value; // Fallback to props if itemCtx not set
+    const initialIsOpen =
+      type === 'single'
+        ? accordionValue === itemValue
+        : Array.isArray(accordionValue) && accordionValue.includes(itemValue);
 
     // Create button element with ref callback for reactivity
     return jsx('button', {

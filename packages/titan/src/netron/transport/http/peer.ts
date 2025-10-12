@@ -107,8 +107,8 @@ export class HttpRemotePeer extends AbstractPeer {
       this.logger.debug('HTTP peer initialized in client mode - using auth-aware on-demand service discovery');
       this.logger.debug(
         'Services will be discovered on-demand via queryInterface(). ' +
-        'Use POST /netron/authenticate for user authentication. ' +
-        'Service definitions are resolved internally by the server during POST /netron/invoke calls.'
+          'Use POST /netron/authenticate for user authentication. ' +
+          'Service definitions are resolved internally by the server during POST /netron/invoke calls.'
       );
     }
   }
@@ -119,8 +119,8 @@ export class HttpRemotePeer extends AbstractPeer {
   override async set(defId: string, name: string, value: any): Promise<void> {
     throw Errors.notImplemented(
       'Property setters are not supported in HTTP transport. ' +
-      'HTTP transport is stateless and does not support remote property access. ' +
-      'Consider using a dedicated method to update server state instead.'
+        'HTTP transport is stateless and does not support remote property access. ' +
+        'Consider using a dedicated method to update server state instead.'
     );
   }
 
@@ -130,8 +130,8 @@ export class HttpRemotePeer extends AbstractPeer {
   override async get(defId: string, name: string): Promise<any> {
     throw Errors.notImplemented(
       'Property getters are not supported in HTTP transport. ' +
-      'HTTP transport is stateless and does not support remote property access. ' +
-      'Consider using a dedicated method to retrieve server state instead.'
+        'HTTP transport is stateless and does not support remote property access. ' +
+        'Consider using a dedicated method to retrieve server state instead.'
     );
   }
 
@@ -174,8 +174,8 @@ export class HttpRemotePeer extends AbstractPeer {
   override async subscribe(eventName: string, handler: EventSubscriber): Promise<void> {
     throw Errors.notImplemented(
       'Event subscriptions are not supported in HTTP transport. ' +
-      'HTTP transport is request-response based and does not support real-time event streaming. ' +
-      'Consider using WebSocket transport for event subscriptions, or implement polling via regular method calls.'
+        'HTTP transport is request-response based and does not support real-time event streaming. ' +
+        'Consider using WebSocket transport for event subscriptions, or implement polling via regular method calls.'
     );
   }
 
@@ -185,8 +185,8 @@ export class HttpRemotePeer extends AbstractPeer {
   override async unsubscribe(eventName: string, handler: EventSubscriber): Promise<void> {
     throw Errors.notImplemented(
       'Event unsubscription is not supported in HTTP transport. ' +
-      'HTTP transport is request-response based and does not support real-time event streaming. ' +
-      'Consider using WebSocket transport for event subscriptions.'
+        'HTTP transport is request-response based and does not support real-time event streaming. ' +
+        'Consider using WebSocket transport for event subscriptions.'
     );
   }
 
@@ -203,8 +203,8 @@ export class HttpRemotePeer extends AbstractPeer {
   override async unexposeService(ctxId: string, releaseOriginated?: boolean): Promise<void> {
     throw Errors.notImplemented(
       'Service unexposing is not supported from HTTP client. ' +
-      'HTTP transport clients are consumers only and cannot expose services to the server. ' +
-      'Services should be managed on the server side.'
+        'HTTP transport clients are consumers only and cannot expose services to the server. ' +
+        'Services should be managed on the server side.'
     );
   }
 
@@ -714,8 +714,8 @@ export class HttpRemotePeer extends AbstractPeer {
   protected async queryInterfaceRemote(qualifiedName: string): Promise<Definition> {
     throw Errors.notImplemented(
       'HTTP transport does not fetch service definitions. ' +
-      'Services are resolved on-demand during method invocation. ' +
-      'Use queryInterface() to create a service proxy.'
+        'Services are resolved on-demand during method invocation. ' +
+        'Use queryInterface() to create a service proxy.'
     );
   }
 
@@ -728,7 +728,7 @@ export class HttpRemotePeer extends AbstractPeer {
   protected getDefinitionById(defId: string): Definition {
     throw Errors.notImplemented(
       'HTTP transport does not use definitions on the client side. ' +
-      'Service methods are invoked directly via HTTP requests without definition metadata.'
+        'Service methods are invoked directly via HTTP requests without definition metadata.'
     );
   }
 
@@ -741,7 +741,7 @@ export class HttpRemotePeer extends AbstractPeer {
   protected getDefinitionByServiceName(name: string): Definition {
     throw Errors.notImplemented(
       'HTTP transport does not use definitions on the client side. ' +
-      'Service methods are invoked directly via HTTP requests without definition metadata.'
+        'Service methods are invoked directly via HTTP requests without definition metadata.'
     );
   }
 

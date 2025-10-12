@@ -12,10 +12,7 @@ const config: Config = {
   coverageDirectory: 'coverage',
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   testMatch: ['<rootDir>/test/**/*.spec.ts', '<rootDir>/test/**/*.test.ts'],
-  testPathIgnorePatterns: [
-    '/node_modules/',
-    '/dist/',
-  ],
+  testPathIgnorePatterns: ['/node_modules/', '/dist/'],
   transform: {
     '^.+\\.ts$': [
       'ts-jest',
@@ -36,9 +33,7 @@ const config: Config = {
       },
     ],
   },
-  transformIgnorePatterns: [
-    'node_modules/(?!(@omnitron-dev)/)',
-  ],
+  transformIgnorePatterns: ['node_modules/(?!(@omnitron-dev)/)'],
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',

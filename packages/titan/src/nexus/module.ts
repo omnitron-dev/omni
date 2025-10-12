@@ -12,7 +12,7 @@ import {
   DynamicModule,
   InjectionToken,
   ServiceIdentifier,
-  ModuleMetadata
+  ModuleMetadata,
 } from './types.js';
 import { Errors, ValidationError } from '../errors/index.js';
 
@@ -133,7 +133,7 @@ export class ModuleCompiler {
       return {
         ...baseMetadata,
         ...dynamic,
-        name: baseMetadata.name
+        name: baseMetadata.name,
       } as ModuleMetadata & { name: string };
     }
 
@@ -161,7 +161,7 @@ export class ModuleCompiler {
     return {
       name: this.generateModuleName(module),
       providers: [],
-      exports: []
+      exports: [],
     };
   }
 
@@ -228,7 +228,7 @@ export class ModuleCompiler {
           throw Errors.internal('Module container not initialized');
         }
         return this.container.resolveAsync(token);
-      }
+      },
     };
   }
 
@@ -342,10 +342,10 @@ export function createModule(metadata: ModuleMetadata & { name: string }): IModu
       version: (metadata as any).version,
       description: (metadata as any).description,
       author: (metadata as any).author,
-      tags: (metadata as any).tags
+      tags: (metadata as any).tags,
     },
     onModuleInit: (metadata as any).onModuleInit,
-    onModuleDestroy: (metadata as any).onModuleDestroy
+    onModuleDestroy: (metadata as any).onModuleDestroy,
   };
 
   return module;
@@ -354,16 +354,14 @@ export function createModule(metadata: ModuleMetadata & { name: string }): IModu
 /**
  * Create a dynamic module
  */
-export function createDynamicModule(
-  metadata: ModuleMetadata & { name: string }
-): DynamicModule {
+export function createDynamicModule(metadata: ModuleMetadata & { name: string }): DynamicModule {
   const module = createModule(metadata);
   return {
     module,
     providers: metadata.providers,
     imports: metadata.imports as IModule[] | undefined,
     exports: metadata.exports as ServiceIdentifier<any>[] | undefined,
-    global: metadata.global
+    global: metadata.global,
   };
 }
 
@@ -373,7 +371,7 @@ export function createDynamicModule(
 export class ModuleBuilder {
   private metadata: ModuleMetadata = {};
 
-  constructor(private name: string) { }
+  constructor(private name: string) {}
 
   /**
    * Add imports
@@ -386,11 +384,14 @@ export class ModuleBuilder {
   /**
    * Add providers
    */
-  providers(...providers: Array<Provider<any> | Constructor<any> | [InjectionToken<any>, ProviderDefinition<any>]>): this {
-    const processedProviders = providers.map((p): Provider<any> | Constructor<any> | [InjectionToken<any>, ProviderDefinition<any>] =>
-      // Provider format is already valid, return as-is
-      // (Provider objects with 'provide' field and other formats are all valid)
-      p
+  providers(
+    ...providers: Array<Provider<any> | Constructor<any> | [InjectionToken<any>, ProviderDefinition<any>]>
+  ): this {
+    const processedProviders = providers.map(
+      (p): Provider<any> | Constructor<any> | [InjectionToken<any>, ProviderDefinition<any>] =>
+        // Provider format is already valid, return as-is
+        // (Provider objects with 'provide' field and other formats are all valid)
+        p
     );
 
     this.metadata.providers = [...(this.metadata.providers || []), ...processedProviders];
@@ -452,8 +453,12 @@ export class ModuleBuilder {
       ...('provide' in provider ? { ...provider, provide: token } : provider),
       conditional: true,
       condition,
-      originalProvider: provider
-    } as Provider<T> & { conditional?: boolean; condition?: (container?: unknown) => boolean; originalProvider?: Provider<T> | ProviderDefinition<T> };
+      originalProvider: provider,
+    } as Provider<T> & {
+      conditional?: boolean;
+      condition?: (container?: unknown) => boolean;
+      originalProvider?: Provider<T> | ProviderDefinition<T>;
+    };
 
     this.metadata.providers.push(conditionalProvider);
     return this;
@@ -504,7 +509,9 @@ export function createConfigModule<T = any>(options: {
         try {
           const isValid = options.validate(config);
           if (isValid === false) {
-            throw ValidationError.fromFieldErrors([{ field: 'config', message: `Validation failed for ${options.name}` }]);
+            throw ValidationError.fromFieldErrors([
+              { field: 'config', message: `Validation failed for ${options.name}` },
+            ]);
           }
         } catch (error) {
           throw ValidationError.fromFieldErrors([{ field: 'config', message: `Validation failed: ${error}` }]);
@@ -513,7 +520,7 @@ export function createConfigModule<T = any>(options: {
 
       // Update the config property
       this.config = config;
-    }
+    },
   };
 
   return module;
@@ -534,25 +541,28 @@ export function createFeatureModule(
         module: { name },
         providers: providers.map(([token, provider]) => {
           if (typeof provider === 'object' && 'useFactory' in provider) {
-            return [token, {
-              ...provider,
-              useFactory: ((...args: any[]) => {
-                const instance = (provider as any).useFactory(...args);
-                if (typeof instance === 'object' && instance !== null) {
-                  Object.assign(instance, options);
-                }
-                return instance;
-              }) as any
-            }] as [InjectionToken<any>, ProviderDefinition<any>];
+            return [
+              token,
+              {
+                ...provider,
+                useFactory: ((...args: any[]) => {
+                  const instance = (provider as any).useFactory(...args);
+                  if (typeof instance === 'object' && instance !== null) {
+                    Object.assign(instance, options);
+                  }
+                  return instance;
+                }) as any,
+              },
+            ] as [InjectionToken<any>, ProviderDefinition<any>];
           }
           return [token, provider] as [InjectionToken<any>, ProviderDefinition<any>];
         }),
-        exports: providers.map(p => extractToken(p))
+        exports: providers.map((p) => extractToken(p)),
       };
     },
 
     forFeature(options: ModuleOptions): DynamicModule {
-      const filteredProviders = providers.filter(p => {
+      const filteredProviders = providers.filter((p) => {
         const token = extractToken(p);
         return !options['exclude'] || !options['exclude'].includes(token);
       });
@@ -560,9 +570,9 @@ export function createFeatureModule(
       return {
         module: { name: `${name}:feature` },
         providers: filteredProviders,
-        exports: filteredProviders.map(p => extractToken(p))
+        exports: filteredProviders.map((p) => extractToken(p)),
       };
-    }
+    },
   };
 }
 

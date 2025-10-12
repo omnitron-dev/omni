@@ -48,9 +48,7 @@ describe('TimePicker', () => {
     });
 
     it('should render with disabled state', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        TimePicker({ disabled: true })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => TimePicker({ disabled: true }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-time-picker]');
@@ -58,9 +56,7 @@ describe('TimePicker', () => {
     });
 
     it('should not have data-disabled when not disabled', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        TimePicker({ disabled: false })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => TimePicker({ disabled: false }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-time-picker]');
@@ -82,10 +78,7 @@ describe('TimePicker', () => {
     it('should render multiple children using function (Pattern 17)', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         TimePicker({
-          children: () => [
-            TimePickerTrigger({}),
-            TimePickerContent({}),
-          ],
+          children: () => [TimePickerTrigger({}), TimePickerContent({})],
         })
       );
       cleanup = dispose;
@@ -102,10 +95,7 @@ describe('TimePicker', () => {
           children: () => [
             TimePickerTrigger({}),
             TimePickerContent({
-              children: [
-                TimePickerColumn({ type: 'hours' }),
-                TimePickerColumn({ type: 'minutes' }),
-              ],
+              children: [TimePickerColumn({ type: 'hours' }), TimePickerColumn({ type: 'minutes' })],
             }),
           ],
         })
@@ -118,9 +108,7 @@ describe('TimePicker', () => {
     });
 
     it('should render with empty children', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        TimePicker({ children: () => null })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => TimePicker({ children: () => null }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-time-picker]');
@@ -281,11 +269,7 @@ describe('TimePicker', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         TimePicker({
           value: { hours: 10, minutes: 30, seconds: 0 },
-          children: () => [
-            TimePickerTrigger({}),
-            TimePickerContent({}),
-            TimePickerColumn({ type: 'hours' }),
-          ],
+          children: () => [TimePickerTrigger({}), TimePickerContent({}), TimePickerColumn({ type: 'hours' })],
         })
       );
       cleanup = dispose;
@@ -1045,10 +1029,7 @@ describe('TimePicker', () => {
     it('should default steps to 1', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         TimePicker({
-          children: () => [
-            TimePickerColumn({ type: 'hours' }),
-            TimePickerColumn({ type: 'minutes' }),
-          ],
+          children: () => [TimePickerColumn({ type: 'hours' }), TimePickerColumn({ type: 'minutes' })],
         })
       );
       cleanup = dispose;
@@ -1152,10 +1133,7 @@ describe('TimePicker', () => {
         TimePicker({
           hourStep: 3,
           minuteStep: 15,
-          children: () => [
-            TimePickerColumn({ type: 'hours' }),
-            TimePickerColumn({ type: 'minutes' }),
-          ],
+          children: () => [TimePickerColumn({ type: 'hours' }), TimePickerColumn({ type: 'minutes' })],
         })
       );
       cleanup = dispose;
@@ -1169,10 +1147,7 @@ describe('TimePicker', () => {
         TimePicker({
           value: { hours: 12, minutes: 30, seconds: 15 },
           showSeconds: true,
-          children: () => [
-            TimePickerTrigger({}),
-            TimePickerColumn({ type: 'seconds' }),
-          ],
+          children: () => [TimePickerTrigger({}), TimePickerColumn({ type: 'seconds' })],
         })
       );
       cleanup = dispose;
@@ -1215,9 +1190,7 @@ describe('TimePicker', () => {
 
   describe('Edge Cases', () => {
     it('should handle empty children', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        TimePicker({ children: undefined })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => TimePicker({ children: undefined }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-time-picker]');

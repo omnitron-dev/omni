@@ -41,12 +41,10 @@ describe('expose-service core task', () => {
   it('should delegate to peer.netron.peer.exposeRemoteService', async () => {
     const mockMeta: ServiceMetadata = {
       name: 'TestService',
-      version: '1.0.0'
+      version: '1.0.0',
     };
 
-    const exposeRemoteServiceSpy = jest
-      .spyOn(netron.peer, 'exposeRemoteService')
-      .mockResolvedValue(undefined);
+    const exposeRemoteServiceSpy = jest.spyOn(netron.peer, 'exposeRemoteService').mockResolvedValue(undefined);
 
     await expose_service(remotePeer, mockMeta);
 
@@ -57,7 +55,7 @@ describe('expose-service core task', () => {
   it('should pass through the return value from exposeRemoteService', async () => {
     const mockMeta: ServiceMetadata = {
       name: 'TestService',
-      version: '1.0.0'
+      version: '1.0.0',
     };
 
     jest.spyOn(netron.peer, 'exposeRemoteService').mockResolvedValue(undefined);
@@ -70,7 +68,7 @@ describe('expose-service core task', () => {
   it('should propagate errors from exposeRemoteService', async () => {
     const mockMeta: ServiceMetadata = {
       name: 'TestService',
-      version: '1.0.0'
+      version: '1.0.0',
     };
 
     const testError = new Error('Failed to expose service');
@@ -80,18 +78,16 @@ describe('expose-service core task', () => {
   });
 
   it('should handle different service metadata', async () => {
-    const exposeRemoteServiceSpy = jest
-      .spyOn(netron.peer, 'exposeRemoteService')
-      .mockResolvedValue(undefined);
+    const exposeRemoteServiceSpy = jest.spyOn(netron.peer, 'exposeRemoteService').mockResolvedValue(undefined);
 
     const metadata1: ServiceMetadata = {
       name: 'AuthService',
-      version: '2.0.0'
+      version: '2.0.0',
     };
 
     const metadata2: ServiceMetadata = {
       name: 'DataService',
-      version: '1.5.0'
+      version: '1.5.0',
     };
 
     await expose_service(remotePeer, metadata1);

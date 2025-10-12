@@ -8,10 +8,12 @@ describe('Middleware - hooks', () => {
   let manager: NotificationManager;
 
   beforeAll(async () => {
-    manager = new NotificationManager(createTestConfig(1, {
-      checkDelayInterval: 100,
-      blockInterval: 100,
-    }));
+    manager = new NotificationManager(
+      createTestConfig(1, {
+        checkDelayInterval: 100,
+        blockInterval: 100,
+      })
+    );
 
     await manager.redis.flushdb();
   });
@@ -26,8 +28,8 @@ describe('Middleware - hooks', () => {
     let resolveTest: () => void;
     let resolveError: () => void;
 
-    const testProcessed = new Promise<void>(resolve => resolveTest = resolve);
-    const errorProcessed = new Promise<void>(resolve => resolveError = resolve);
+    const testProcessed = new Promise<void>((resolve) => (resolveTest = resolve));
+    const errorProcessed = new Promise<void>((resolve) => (resolveError = resolve));
 
     const middleware: Middleware = {
       beforePublish: async (channel, payload) => {
@@ -51,9 +53,13 @@ describe('Middleware - hooks', () => {
 
     manager.use(middleware);
 
-    await manager.subscribe('test.middleware', async (msg) => {
-      if (msg.payload.data === 'error') throw new Error('test error');
-    }, { startFrom: '0' });
+    await manager.subscribe(
+      'test.middleware',
+      async (msg) => {
+        if (msg.payload.data === 'error') throw new Error('test error');
+      },
+      { startFrom: '0' }
+    );
 
     await delay(400);
 

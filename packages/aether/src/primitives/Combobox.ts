@@ -150,9 +150,7 @@ function generateId(prefix: string): string {
  * Container for the combobox with state management
  */
 export const Combobox = defineComponent<ComboboxProps>((props) => {
-  const internalValue: WritableSignal<string | null> = signal<string | null>(
-    props.value ?? props.defaultValue ?? null,
-  );
+  const internalValue: WritableSignal<string | null> = signal<string | null>(props.value ?? props.defaultValue ?? null);
   const internalOpen: WritableSignal<boolean> = signal<boolean>(props.defaultOpen ?? false);
   const inputValue: WritableSignal<string> = signal<string>('');
   const inputRef: WritableSignal<HTMLInputElement | null> = signal<HTMLInputElement | null>(null);
@@ -164,10 +162,10 @@ export const Combobox = defineComponent<ComboboxProps>((props) => {
   const contentId = generateId('combobox-content');
 
   const isControlled = () => props.value !== undefined;
-  const currentValue = () => (isControlled() ? props.value ?? null : internalValue());
+  const currentValue = () => (isControlled() ? (props.value ?? null) : internalValue());
 
   const isOpenControlled = () => props.open !== undefined;
-  const currentOpen = () => (isOpenControlled() ? props.open ?? false : internalOpen());
+  const currentOpen = () => (isOpenControlled() ? (props.open ?? false) : internalOpen());
 
   const setValue = (value: string | null) => {
     if (!isControlled()) {

@@ -1,4 +1,3 @@
-
 import { delay } from '@omnitron-dev/common';
 
 import { NotificationManager } from '../../src/rotif/rotif.js';
@@ -26,9 +25,13 @@ describe('Rotif Wildcard Subscriptions', () => {
     it('should automatically subscribe to new channels matching wildcard', async () => {
       const received: string[] = [];
 
-      await manager.subscribe('orders.*', async (msg) => {
-        received.push(msg.channel);
-      }, { startFrom: '0' });
+      await manager.subscribe(
+        'orders.*',
+        async (msg) => {
+          received.push(msg.channel);
+        },
+        { startFrom: '0' }
+      );
 
       await delay(500);
 
@@ -46,10 +49,14 @@ describe('Rotif Wildcard Subscriptions', () => {
     it('should process retries correctly for wildcard subscriptions', async () => {
       let attempts = 0;
 
-      await manager.subscribe('events.*', async (msg) => {
-        attempts++;
-        if (attempts < 2) throw new Error('Forced retry');
-      }, { maxRetries: 2 });
+      await manager.subscribe(
+        'events.*',
+        async (msg) => {
+          attempts++;
+          if (attempts < 2) throw new Error('Forced retry');
+        },
+        { maxRetries: 2 }
+      );
 
       await delay(100);
 
@@ -147,14 +154,17 @@ describe('Rotif Wildcard Subscriptions', () => {
     });
   });
 
-
   describe('Wildcard DLQ Handling', () => {
     it('should correctly move failed wildcard subscription messages to DLQ', async () => {
       const dlqMessages: string[] = [];
 
-      await manager.subscribe('alerts.*', async (msg) => {
-        throw new Error('Force DLQ');
-      }, { maxRetries: 1 });
+      await manager.subscribe(
+        'alerts.*',
+        async (msg) => {
+          throw new Error('Force DLQ');
+        },
+        { maxRetries: 1 }
+      );
 
       await delay(100);
 
@@ -174,7 +184,6 @@ describe('Rotif Wildcard Subscriptions', () => {
     });
   });
 
-
   describe('DLQ - Requeue from DLQ', () => {
     it('should requeue messages from DLQ back to the original stream', async () => {
       const received: any[] = [];
@@ -182,13 +191,17 @@ describe('Rotif Wildcard Subscriptions', () => {
       let failOnce = true;
 
       // Subscribe to channel and fail once to put msg in DLQ
-      await manager.subscribe('dlq.*', async (msg) => {
-        if (failOnce) {
-          failOnce = false;
-          throw new Error('forced failure');
-        }
-        received.push(msg.payload);
-      }, { maxRetries: 0 });
+      await manager.subscribe(
+        'dlq.*',
+        async (msg) => {
+          if (failOnce) {
+            failOnce = false;
+            throw new Error('forced failure');
+          }
+          received.push(msg.payload);
+        },
+        { maxRetries: 0 }
+      );
 
       await delay(100);
 
@@ -241,7 +254,6 @@ describe('Rotif Wildcard Subscriptions', () => {
       expect(received).toEqual(['sessions.start', 'sessions.end']);
     });
   });
-
 
   describe('Wildcard Exactly-Once Deduplication', () => {
     it('should deduplicate exactly-once messages across wildcard subscriptions', async () => {

@@ -21,7 +21,11 @@ export type ValidationSchema<T> = {
  */
 export interface SchemaValidator<T> {
   parse(value: unknown): T;
-  safeParse(value: unknown): { success: true; data: T } | { success: false; error: { issues: Array<{ path: (string | number)[]; message: string }> } };
+  safeParse(
+    value: unknown
+  ):
+    | { success: true; data: T }
+    | { success: false; error: { issues: Array<{ path: (string | number)[]; message: string }> } };
 }
 
 /**

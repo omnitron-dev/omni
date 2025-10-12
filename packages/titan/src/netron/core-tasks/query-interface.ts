@@ -30,10 +30,7 @@ import { TitanError, ErrorCode } from '../../errors/index.js';
  * // Returns filtered definition based on user's roles/permissions
  * // If user lacks permissions for some methods, those methods are excluded
  */
-export async function query_interface(
-  peer: RemotePeer,
-  serviceName: string,
-): Promise<Definition | null> {
+export async function query_interface(peer: RemotePeer, serviceName: string): Promise<Definition | null> {
   // Get the Netron services registry
   // netron.services is Map<string, ServiceStub> where key is qualified name
   const servicesMap = peer.netron.services;
@@ -62,7 +59,7 @@ export async function query_interface(
 
       peer.logger.debug(
         { serviceName, resolvedTo: latestKey, candidateCount: candidates.length },
-        'Resolved service name to latest version',
+        'Resolved service name to latest version'
       );
     }
   }
@@ -72,7 +69,7 @@ export async function query_interface(
       code: ErrorCode.NOT_FOUND,
       message: `Service '${serviceName}' not found`,
       details: {
-        serviceName
+        serviceName,
         // Removed availableServices - security issue
       },
     });
@@ -86,10 +83,7 @@ export async function query_interface(
 
   // If no authorization manager configured, return full definition
   if (!authzManager) {
-    peer.logger.debug(
-      { serviceName },
-      'No authorization configured, returning full definition',
-    );
+    peer.logger.debug({ serviceName }, 'No authorization configured, returning full definition');
     return definition;
   }
 
@@ -106,7 +100,7 @@ export async function query_interface(
         userId: authContext?.userId,
         roles: authContext?.roles,
       },
-      'Access denied to service',
+      'Access denied to service'
     );
 
     throw new TitanError({
@@ -120,11 +114,7 @@ export async function query_interface(
   }
 
   // Filter the definition based on user permissions
-  const filteredMeta = authzManager.filterDefinition(
-    serviceName,
-    definition.meta,
-    authContext,
-  );
+  const filteredMeta = authzManager.filterDefinition(serviceName, definition.meta, authContext);
 
   // If filtering resulted in null (no access at all), throw error
   if (filteredMeta === null) {
@@ -145,7 +135,7 @@ export async function query_interface(
       methodCount: Object.keys(filteredMeta.methods || {}).length,
       originalMethodCount: Object.keys(definition.meta.methods || {}).length,
     },
-    'Service interface queried successfully',
+    'Service interface queried successfully'
   );
 
   // Return a new Definition with filtered metadata

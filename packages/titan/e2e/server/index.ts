@@ -19,7 +19,7 @@ const logger: any = {
   fatal: (msg: any) => console.error('[FATAL]', typeof msg === 'string' ? msg : msg),
   child: () => logger,
   time: () => () => {},
-  isLevelEnabled: () => true
+  isLevelEnabled: () => true,
 };
 
 async function bootstrap() {
@@ -40,7 +40,7 @@ async function bootstrap() {
     const httpServer = new HttpNativeServer({
       port: 3400,
       host: '0.0.0.0',
-      cors: true
+      cors: true,
     });
 
     httpServer.setPeer(netron.peer);
@@ -61,15 +61,17 @@ async function bootstrap() {
     const healthServer = http.createServer((req, res) => {
       if (req.url === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          status: 'ok',
-          timestamp: new Date().toISOString(),
-          services: ['TestService@1.0.0'],
-          transports: {
-            http: 3400,
-            // ws: 3401
-          }
-        }));
+        res.end(
+          JSON.stringify({
+            status: 'ok',
+            timestamp: new Date().toISOString(),
+            services: ['TestService@1.0.0'],
+            transports: {
+              http: 3400,
+              // ws: 3401
+            },
+          })
+        );
       } else {
         res.writeHead(404);
         res.end('Not Found');
@@ -93,12 +95,14 @@ async function bootstrap() {
     process.on('SIGTERM', shutdown);
     process.on('SIGINT', shutdown);
 
-    logger.info({
-      http: 'http://0.0.0.0:3400',
-      // ws: 'ws://0.0.0.0:3401',
-      health: 'http://0.0.0.0:3402/health'
-    }, 'E2E test server ready');
-
+    logger.info(
+      {
+        http: 'http://0.0.0.0:3400',
+        // ws: 'ws://0.0.0.0:3401',
+        health: 'http://0.0.0.0:3402/health',
+      },
+      'E2E test server ready'
+    );
   } catch (error) {
     logger.error({ error }, 'Failed to start server');
     process.exit(1);

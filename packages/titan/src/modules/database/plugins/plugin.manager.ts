@@ -19,11 +19,7 @@ import { DATABASE_MANAGER, DATABASE_MODULE_OPTIONS } from '../database.constants
 import type { DatabaseManager } from '../database.manager.js';
 import type { DatabaseModuleOptions } from '../database.types.js';
 
-import {
-  BuiltInPlugin,
-  PluginState,
-  PluginEventType,
-} from './plugin.types.js';
+import { BuiltInPlugin, PluginState, PluginEventType } from './plugin.types.js';
 import type {
   ITitanPlugin,
   IPluginManager,
@@ -70,25 +66,13 @@ export class PluginManager extends EventEmitter implements IPluginManager {
    */
   private registerBuiltInPlugins(): void {
     // Register soft delete plugin
-    this.registerPlugin(
-      BuiltInPlugin.SOFT_DELETE,
-      this.createSoftDeletePlugin(),
-      { enabled: false }
-    );
+    this.registerPlugin(BuiltInPlugin.SOFT_DELETE, this.createSoftDeletePlugin(), { enabled: false });
 
     // Register timestamps plugin
-    this.registerPlugin(
-      BuiltInPlugin.TIMESTAMPS,
-      this.createTimestampsPlugin(),
-      { enabled: false }
-    );
+    this.registerPlugin(BuiltInPlugin.TIMESTAMPS, this.createTimestampsPlugin(), { enabled: false });
 
     // Register audit plugin
-    this.registerPlugin(
-      BuiltInPlugin.AUDIT,
-      this.createAuditPlugin(),
-      { enabled: false }
-    );
+    this.registerPlugin(BuiltInPlugin.AUDIT, this.createAuditPlugin(), { enabled: false });
   }
 
   /**
@@ -164,11 +148,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
   /**
    * Register a plugin
    */
-  registerPlugin(
-    name: string,
-    plugin: ITitanPlugin | KyseraPlugin,
-    config?: Partial<PluginConfig>
-  ): void {
+  registerPlugin(name: string, plugin: ITitanPlugin | KyseraPlugin, config?: Partial<PluginConfig>): void {
     // Check if already registered
     if (this.registry.has(name)) {
       throw Errors.conflict(`Plugin "${name}" is already registered`);
@@ -225,10 +205,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
   /**
    * Convert Kysera plugin to Titan plugin
    */
-  private toTitanPlugin(
-    plugin: ITitanPlugin | KyseraPlugin,
-    name: string
-  ): ITitanPlugin {
+  private toTitanPlugin(plugin: ITitanPlugin | KyseraPlugin, name: string): ITitanPlugin {
     // If already a Titan plugin, return as is
     if ('name' in plugin && plugin.name) {
       return plugin as ITitanPlugin;
@@ -251,24 +228,17 @@ export class PluginManager extends EventEmitter implements IPluginManager {
     }
 
     // Check for required methods (at least one extension method)
-    const hasExtension =
-      plugin.extendRepository ||
-      plugin.extendDatabase ||
-      plugin.extendTransaction;
+    const hasExtension = plugin.extendRepository || plugin.extendDatabase || plugin.extendTransaction;
 
     if (!hasExtension) {
-      throw Errors.badRequest(
-        `Plugin "${plugin.name}" must implement at least one extension method`
-      );
+      throw Errors.badRequest(`Plugin "${plugin.name}" must implement at least one extension method`);
     }
 
     // Validate dependencies
     if (plugin.dependencies) {
       for (const dep of plugin.dependencies) {
         if (!this.registry.has(dep)) {
-          throw Errors.badRequest(
-            `Plugin "${plugin.name}" depends on unregistered plugin "${dep}"`
-          );
+          throw Errors.badRequest(`Plugin "${plugin.name}" depends on unregistered plugin "${dep}"`);
         }
       }
     }
@@ -452,8 +422,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
           const executionTime = Date.now() - startTime;
           entry.metrics.invocations++;
           entry.metrics.totalTime += executionTime;
-          entry.metrics.averageTime =
-            entry.metrics.totalTime / entry.metrics.invocations;
+          entry.metrics.averageTime = entry.metrics.totalTime / entry.metrics.invocations;
           entry.metrics.lastExecutionTime = executionTime;
         }
       } catch (error) {
@@ -482,11 +451,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
       }
 
       // Check if plugin applies to this connection
-      if (
-        entry.config?.connections &&
-        connectionName &&
-        !entry.config.connections.includes(connectionName)
-      ) {
+      if (entry.config?.connections && connectionName && !entry.config.connections.includes(connectionName)) {
         continue;
       }
 
@@ -505,10 +470,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
   /**
    * Apply plugins to transaction
    */
-  applyTransactionPlugins(
-    trx: Transaction<any>,
-    connectionName?: string
-  ): Transaction<any> {
+  applyTransactionPlugins(trx: Transaction<any>, connectionName?: string): Transaction<any> {
     let enhancedTrx = trx;
 
     for (const [name, entry] of this.getSortedPlugins()) {
@@ -517,11 +479,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
       }
 
       // Check if plugin applies to this connection
-      if (
-        entry.config?.connections &&
-        connectionName &&
-        !entry.config.connections.includes(connectionName)
-      ) {
+      if (entry.config?.connections && connectionName && !entry.config.connections.includes(connectionName)) {
         continue;
       }
 
@@ -699,11 +657,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
   /**
    * Helper to run operation with timeout
    */
-  private async withTimeout<T>(
-    promise: Promise<T>,
-    timeout: number,
-    message: string
-  ): Promise<T> {
+  private async withTimeout<T>(promise: Promise<T>, timeout: number, message: string): Promise<T> {
     return Promise.race([
       promise,
       new Promise<T>((_, reject) =>
@@ -741,10 +695,6 @@ export class PluginManager extends EventEmitter implements IPluginManager {
    */
   isPluginActive(name: string): boolean {
     const entry = this.registry.get(name);
-    return (
-      entry !== undefined &&
-      entry.state === PluginState.ACTIVE &&
-      entry.config?.enabled !== false
-    );
+    return entry !== undefined && entry.state === PluginState.ACTIVE && entry.config?.enabled !== false;
   }
 }

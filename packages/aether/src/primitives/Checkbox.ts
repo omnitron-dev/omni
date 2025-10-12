@@ -102,11 +102,14 @@ export interface CheckboxContextValue {
 
 const noop = () => false as CheckedState;
 
-export const CheckboxContext = createContext<CheckboxContextValue>({
-  checked: noop,
-  disabled: false,
-  checkboxId: '',
-}, 'Checkbox');
+export const CheckboxContext = createContext<CheckboxContextValue>(
+  {
+    checked: noop,
+    disabled: false,
+    checkboxId: '',
+  },
+  'Checkbox'
+);
 
 // ============================================================================
 // Components
@@ -318,7 +321,7 @@ export const CheckboxIndicator = defineComponent<CheckboxIndicatorProps>((props)
       'data-state': dataState,
       style: {
         ...((props.style as any) || {}),
-        display: (shouldRender || props.forceMount) ? ((props.style as any)?.display || '') : 'none',
+        display: shouldRender || props.forceMount ? (props.style as any)?.display || '' : 'none',
       },
     });
   };

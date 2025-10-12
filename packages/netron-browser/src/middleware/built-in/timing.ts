@@ -59,8 +59,7 @@ export class InMemoryMetricsCollector implements MetricsCollector {
    */
   getAverageDuration(service?: string, method?: string): number {
     const filtered = this.metrics.filter(
-      (m) =>
-        (!service || m.service === service) && (!method || m.method === method)
+      (m) => (!service || m.service === service) && (!method || m.method === method)
     );
 
     if (filtered.length === 0) return 0;
@@ -122,24 +121,12 @@ export interface TimingMiddlewareOptions {
 /**
  * Create timing middleware
  */
-export function createTimingMiddleware(
-  options: TimingMiddlewareOptions = {}
-): MiddlewareFunction {
-  const {
-    collector,
-    onMeasure,
-    slowThreshold,
-    onSlowRequest,
-    skipServices = [],
-    skipMethods = [],
-  } = options;
+export function createTimingMiddleware(options: TimingMiddlewareOptions = {}): MiddlewareFunction {
+  const { collector, onMeasure, slowThreshold, onSlowRequest, skipServices = [], skipMethods = [] } = options;
 
   return async (ctx, next) => {
     // Skip if service or method is in skip list
-    if (
-      skipServices.includes(ctx.service) ||
-      skipMethods.includes(`${ctx.service}.${ctx.method}`)
-    ) {
+    if (skipServices.includes(ctx.service) || skipMethods.includes(`${ctx.service}.${ctx.method}`)) {
       return next();
     }
 
@@ -199,9 +186,7 @@ export function createTimingMiddleware(
         if (onSlowRequest) {
           onSlowRequest(metrics);
         } else {
-          console.warn(
-            `[Netron] Slow request detected: ${ctx.service}.${ctx.method} took ${duration.toFixed(2)}ms`
-          );
+          console.warn(`[Netron] Slow request detected: ${ctx.service}.${ctx.method} took ${duration.toFixed(2)}ms`);
         }
       }
     }
@@ -211,21 +196,14 @@ export function createTimingMiddleware(
 /**
  * Create performance observer for Netron RPC calls
  */
-export function createPerformanceObserver(
-  callback: (entries: PerformanceEntry[]) => void
-): PerformanceObserver | null {
-  if (
-    typeof PerformanceObserver === 'undefined' ||
-    typeof performance === 'undefined'
-  ) {
+export function createPerformanceObserver(callback: (entries: PerformanceEntry[]) => void): PerformanceObserver | null {
+  if (typeof PerformanceObserver === 'undefined' || typeof performance === 'undefined') {
     return null;
   }
 
   try {
     const observer = new PerformanceObserver((list) => {
-      const entries = list
-        .getEntries()
-        .filter((entry) => entry.name.startsWith('netron-'));
+      const entries = list.getEntries().filter((entry) => entry.name.startsWith('netron-'));
       if (entries.length > 0) {
         callback(entries);
       }

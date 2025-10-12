@@ -3,12 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import {
-  TagsInput,
-  TagsInputField,
-  TagsInputTag,
-  TagsInputTagRemove,
-} from '../../../src/primitives/TagsInput.js';
+import { TagsInput, TagsInputField, TagsInputTag, TagsInputTagRemove } from '../../../src/primitives/TagsInput.js';
 import { renderComponent, nextTick } from '../../helpers/test-utils.js';
 
 describe('TagsInput', () => {
@@ -62,9 +57,7 @@ describe('TagsInput', () => {
     });
 
     it('should render with disabled state', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        TagsInput({ disabled: true })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => TagsInput({ disabled: true }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-tags-input]');
@@ -72,9 +65,7 @@ describe('TagsInput', () => {
     });
 
     it('should not have data-disabled when not disabled', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        TagsInput({ disabled: false })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => TagsInput({ disabled: false }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-tags-input]');
@@ -96,11 +87,7 @@ describe('TagsInput', () => {
     it('should render multiple children using function (Pattern 17)', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         TagsInput({
-          children: () => [
-            TagsInputField({}),
-            TagsInputTag({ value: 'test' }),
-            TagsInputTagRemove({ value: 'test' }),
-          ],
+          children: () => [TagsInputField({}), TagsInputTag({ value: 'test' }), TagsInputTagRemove({ value: 'test' })],
         })
       );
       cleanup = dispose;
@@ -114,9 +101,7 @@ describe('TagsInput', () => {
     });
 
     it('should render with empty children', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        TagsInput({ children: () => null })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => TagsInput({ children: () => null }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-tags-input]');
@@ -239,11 +224,7 @@ describe('TagsInput', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         TagsInput({
           defaultValue: ['tag1'],
-          children: () => [
-            TagsInputField({}),
-            TagsInputTag({ value: 'tag1' }),
-            TagsInputTagRemove({ value: 'tag1' }),
-          ],
+          children: () => [TagsInputField({}), TagsInputTag({ value: 'tag1' }), TagsInputTagRemove({ value: 'tag1' })],
         })
       );
       cleanup = dispose;
@@ -277,8 +258,7 @@ describe('TagsInput', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         TagsInput({
           value: controlledTags,
-          children: () =>
-            controlledTags.map((tag) => TagsInputTag({ value: tag })),
+          children: () => controlledTags.map((tag) => TagsInputTag({ value: tag })),
         })
       );
       cleanup = dispose;
@@ -1002,10 +982,7 @@ describe('TagsInput', () => {
           children: () =>
             TagsInputTag({
               value: 'mytag',
-              children: [
-                'mytag ',
-                TagsInputTagRemove({ value: 'mytag' }),
-              ],
+              children: ['mytag ', TagsInputTagRemove({ value: 'mytag' })],
             }),
         })
       );
@@ -1244,9 +1221,7 @@ describe('TagsInput', () => {
 
   describe('Edge Cases', () => {
     it('should handle empty children', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        TagsInput({ children: undefined })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => TagsInput({ children: undefined }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-tags-input]');
@@ -1335,17 +1310,11 @@ describe('TagsInput', () => {
             TagsInputField({ placeholder: 'Add tag' }),
             TagsInputTag({
               value: 'tag1',
-              children: [
-                'tag1 ',
-                TagsInputTagRemove({ value: 'tag1' }),
-              ],
+              children: ['tag1 ', TagsInputTagRemove({ value: 'tag1' })],
             }),
             TagsInputTag({
               value: 'tag2',
-              children: [
-                'tag2 ',
-                TagsInputTagRemove({ value: 'tag2' }),
-              ],
+              children: ['tag2 ', TagsInputTagRemove({ value: 'tag2' })],
             }),
           ],
         })
@@ -1369,10 +1338,7 @@ describe('TagsInput', () => {
           onValueChange,
           onTagAdd,
           onTagRemove,
-          children: () => [
-            TagsInputField({}),
-            TagsInputTagRemove({ value: 'existing' }),
-          ],
+          children: () => [TagsInputField({}), TagsInputTagRemove({ value: 'existing' })],
         })
       );
       cleanup = dispose;
@@ -1481,17 +1447,11 @@ describe('TagsInput', () => {
             TagsInputField({ placeholder: 'Enter tags...' }),
             TagsInputTag({
               value: 'javascript',
-              children: [
-                'javascript ',
-                TagsInputTagRemove({ value: 'javascript' }),
-              ],
+              children: ['javascript ', TagsInputTagRemove({ value: 'javascript' })],
             }),
             TagsInputTag({
               value: 'typescript',
-              children: [
-                'typescript ',
-                TagsInputTagRemove({ value: 'typescript' }),
-              ],
+              children: ['typescript ', TagsInputTagRemove({ value: 'typescript' })],
             }),
           ],
         })

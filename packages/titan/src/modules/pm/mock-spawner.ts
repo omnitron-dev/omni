@@ -56,7 +56,7 @@ class MockWorker extends EventEmitter {
       memory: process.memoryUsage().heapUsed,
       requests: 0,
       errors: 0,
-      uptime: process.uptime()
+      uptime: process.uptime(),
     }));
 
     this.publicMethods.set('__getProcessHealth', async () => {
@@ -66,7 +66,7 @@ class MockWorker extends EventEmitter {
       return {
         status: 'healthy' as const,
         checks: [],
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
     });
 
@@ -121,7 +121,7 @@ export class MockProcessSpawner {
 
     // Create mock Netron that directly calls the worker
     const netron = new Netron(this.logger as any, {
-      id: `mock-${processId}`
+      id: `mock-${processId}`,
     });
 
     // Override Netron's call method to directly call the worker
@@ -135,7 +135,7 @@ export class MockProcessSpawner {
       stop: async () => {},
       connect: async () => {},
       disconnect: async () => {},
-      listen: async () => {}
+      listen: async () => {},
     };
 
     const transportUrl = `mock://${processId}`;

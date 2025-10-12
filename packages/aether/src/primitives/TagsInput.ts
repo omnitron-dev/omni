@@ -123,9 +123,7 @@ export const TagsInput = defineComponent<TagsInputProps>((props) => {
   const allowDuplicates = props.allowDuplicates ?? false;
 
   // State
-  const internalTags: WritableSignal<string[]> = signal<string[]>(
-    props.defaultValue ?? [],
-  );
+  const internalTags: WritableSignal<string[]> = signal<string[]>(props.defaultValue ?? []);
   const inputValue: WritableSignal<string> = signal<string>('');
 
   const inputRef: { current: HTMLInputElement | null } = { current: null };
@@ -351,14 +349,14 @@ export const TagsInputField = defineComponent<TagsInputFieldProps>((props) => {
 // ============================================================================
 
 export const TagsInputTag = defineComponent<TagsInputTagProps>((props) => () => {
-    const { value, children } = props;
+  const { value, children } = props;
 
-    return jsx('div', {
-      'data-tags-input-tag': '',
-      'data-value': value,
-      children: children ?? value,
-    });
+  return jsx('div', {
+    'data-tags-input-tag': '',
+    'data-value': value,
+    children: children ?? value,
   });
+});
 
 // ============================================================================
 // TagsInput Tag Remove

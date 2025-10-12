@@ -3,14 +3,7 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
-import {
-  HttpError,
-  ApiError,
-  RestError,
-  AuthError,
-  PermissionError,
-  RateLimitError
-} from '../../src/errors/http.js';
+import { HttpError, ApiError, RestError, AuthError, PermissionError, RateLimitError } from '../../src/errors/http.js';
 
 describe('HTTP Errors', () => {
   describe('HttpError', () => {
@@ -153,7 +146,7 @@ describe('HTTP Errors', () => {
       const error = new ApiError(404, 'Resource not found', undefined, {
         endpoint: '/api/users/123',
         method: 'GET',
-        apiVersion: 'v1'
+        apiVersion: 'v1',
       });
 
       expect(error.code).toBe(404);
@@ -165,7 +158,7 @@ describe('HTTP Errors', () => {
     it('should serialize with API-specific fields', () => {
       const error = new ApiError(400, 'Bad request', undefined, {
         endpoint: '/api/create',
-        method: 'POST'
+        method: 'POST',
       });
 
       const json = error.toJSON();
@@ -188,7 +181,7 @@ describe('HTTP Errors', () => {
       const error = new RestError(404, 'Not found', undefined, {
         resource: 'users',
         resourceId: '123',
-        action: 'get'
+        action: 'get',
       });
 
       expect(error.code).toBe(404);
@@ -223,9 +216,7 @@ describe('HTTP Errors', () => {
     });
 
     it('should create invalidResource error', () => {
-      const validationErrors = [
-        { field: 'email', message: 'Invalid email' }
-      ];
+      const validationErrors = [{ field: 'email', message: 'Invalid email' }];
       const error = RestError.invalidResource('User', validationErrors);
 
       expect(error.code).toBe(422);
@@ -237,7 +228,7 @@ describe('HTTP Errors', () => {
     it('should serialize with REST-specific fields', () => {
       const error = new RestError(404, 'Not found', undefined, {
         resource: 'posts',
-        resourceId: '456'
+        resourceId: '456',
       });
 
       const json = error.toJSON();
@@ -299,7 +290,7 @@ describe('HTTP Errors', () => {
     it('should get authenticate header for Bearer', () => {
       const error = new AuthError('Auth required', undefined, {
         authType: 'Bearer',
-        realm: 'api'
+        realm: 'api',
       });
 
       const header = error.getAuthenticateHeader();
@@ -310,7 +301,7 @@ describe('HTTP Errors', () => {
     it('should get authenticate header for Basic', () => {
       const error = new AuthError('Auth required', undefined, {
         authType: 'Basic',
-        realm: 'admin'
+        realm: 'admin',
       });
 
       const header = error.getAuthenticateHeader();
@@ -328,7 +319,7 @@ describe('HTTP Errors', () => {
 
     it('should get authenticate header with authType only', () => {
       const error = new AuthError('Auth required', undefined, {
-        authType: 'Custom'
+        authType: 'Custom',
       });
 
       const header = error.getAuthenticateHeader();
@@ -371,7 +362,7 @@ describe('HTTP Errors', () => {
     it('should serialize with permission fields', () => {
       const error = new PermissionError('No access', undefined, {
         requiredPermission: 'delete',
-        userPermissions: ['read']
+        userPermissions: ['read'],
       });
 
       const json = error.toJSON();
@@ -395,7 +386,7 @@ describe('HTTP Errors', () => {
         limit: 100,
         remaining: 0,
         resetTime,
-        retryAfter: 3600
+        retryAfter: 3600,
       });
 
       expect(error.limit).toBe(100);
@@ -410,7 +401,7 @@ describe('HTTP Errors', () => {
         limit: 1000,
         remaining: 10,
         resetTime,
-        retryAfter: 60
+        retryAfter: 60,
       });
 
       const headers = error.getRateLimitHeaders();
@@ -438,7 +429,7 @@ describe('HTTP Errors', () => {
         limit: 100,
         remaining: 0,
         resetTime,
-        retryAfter: 60
+        retryAfter: 60,
       });
 
       const json = error.toJSON();
@@ -451,7 +442,7 @@ describe('HTTP Errors', () => {
 
     it('should include retryAfter in details', () => {
       const error = new RateLimitError('Too many requests', undefined, {
-        retryAfter: 120
+        retryAfter: 120,
       });
 
       expect(error.details.retryAfter).toBe(120);

@@ -37,16 +37,16 @@ export class StreamService {
         }
 
         // Wait before sending next chunk
-        await new Promise(resolve => setTimeout(resolve, intervalMs));
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
 
         const chunk: DataChunk = {
           index: index++,
           data: `Chunk ${index}`,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         };
 
         this.push(chunk);
-      }
+      },
     });
 
     return readable;
@@ -68,7 +68,7 @@ export class StreamService {
       stream.on('end', () => {
         resolve({
           received: chunks.length,
-          summary: `Received ${chunks.length} chunks`
+          summary: `Received ${chunks.length} chunks`,
         });
       });
 
@@ -84,7 +84,7 @@ export class StreamService {
   async echoStream(inputStream: Readable): Promise<Readable> {
     const outputStream = new Readable({
       objectMode: true,
-      read() {}
+      read() {},
     });
 
     inputStream.on('data', (chunk) => {
@@ -92,7 +92,7 @@ export class StreamService {
       const echoed = {
         ...chunk,
         echoed: true,
-        echoedAt: new Date().toISOString()
+        echoedAt: new Date().toISOString(),
       };
       outputStream.push(echoed);
     });
@@ -113,13 +113,10 @@ export class StreamService {
    * Tests stream transformation
    */
   @Public()
-  async transformStream(
-    inputStream: Readable,
-    operation: 'uppercase' | 'lowercase' | 'reverse'
-  ): Promise<Readable> {
+  async transformStream(inputStream: Readable, operation: 'uppercase' | 'lowercase' | 'reverse'): Promise<Readable> {
     const outputStream = new Readable({
       objectMode: true,
-      read() {}
+      read() {},
     });
 
     inputStream.on('data', (chunk) => {
@@ -177,7 +174,7 @@ export class StreamService {
   async mergeStreams(streams: Readable[]): Promise<Readable> {
     const outputStream = new Readable({
       objectMode: true,
-      read() {}
+      read() {},
     });
 
     let activeStreams = streams.length;
@@ -186,7 +183,7 @@ export class StreamService {
       stream.on('data', (chunk) => {
         outputStream.push({
           streamIndex: index,
-          chunk
+          chunk,
         });
       });
 
@@ -233,7 +230,7 @@ export class StreamService {
 
         bytesStreamed += currentChunkSize;
         this.push(buffer);
-      }
+      },
     });
 
     return readable;
@@ -256,14 +253,14 @@ export class StreamService {
           return;
         }
 
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
 
         this.push({
           index: index++,
           data: `Item ${index}`,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         });
-      }
+      },
     });
 
     return readable;

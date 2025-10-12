@@ -22,7 +22,7 @@ describe('Security Validation Tests', () => {
     it('should prevent SQL injection in string validation', () => {
       const schema = z.object({
         username: z.string().min(3).max(50),
-        query: z.string()
+        query: z.string(),
       });
 
       const validator = engine.compile(schema);
@@ -30,7 +30,7 @@ describe('Security Validation Tests', () => {
       // SQL injection attempt
       const sqlInjection = {
         username: "admin' OR '1'='1",
-        query: "SELECT * FROM users WHERE id = 1; DROP TABLE users; --"
+        query: 'SELECT * FROM users WHERE id = 1; DROP TABLE users; --',
       };
 
       // Validation should accept it (validation doesn't prevent SQL injection - that's the app's job)
@@ -41,14 +41,14 @@ describe('Security Validation Tests', () => {
 
     it('should sanitize SQL injection attempts in error messages', () => {
       const schema = z.object({
-        id: z.number().int().positive()
+        id: z.number().int().positive(),
       });
 
       const validator = engine.compile(schema);
 
       try {
         validator.validate({
-          id: "1 OR 1=1; DROP TABLE users--"
+          id: '1 OR 1=1; DROP TABLE users--',
         });
         fail('Should have thrown');
       } catch (error: any) {
@@ -67,15 +67,12 @@ describe('Security Validation Tests', () => {
     });
 
     it('should handle SQL injection in refinement error messages', () => {
-      const schema = z.string().refine(
-        (val) => !val.includes('DROP TABLE'),
-        { message: 'Invalid input detected' }
-      );
+      const schema = z.string().refine((val) => !val.includes('DROP TABLE'), { message: 'Invalid input detected' });
 
       const validator = engine.compile(schema);
 
       try {
-        validator.validate("test; DROP TABLE users--");
+        validator.validate('test; DROP TABLE users--');
         fail('Should have thrown');
       } catch (error: any) {
         const json = error.toJSON();
@@ -88,7 +85,7 @@ describe('Security Validation Tests', () => {
     it('should prevent XSS in error messages', () => {
       const schema = z.object({
         name: z.string().min(2).max(50),
-        bio: z.string().min(10).max(500)
+        bio: z.string().min(10).max(500),
       });
 
       const validator = engine.compile(schema);
@@ -96,7 +93,7 @@ describe('Security Validation Tests', () => {
       try {
         validator.validate({
           name: '<script>alert("XSS")</script>',
-          bio: 'a' // too short - triggers min length error
+          bio: 'a', // too short - triggers min length error
         });
         fail('Should have thrown');
       } catch (error: any) {
@@ -115,7 +112,7 @@ describe('Security Validation Tests', () => {
 
     it('should handle XSS in various formats', () => {
       const schema = z.object({
-        content: z.string().min(5)
+        content: z.string().min(5),
       });
 
       const validator = engine.compile(schema);
@@ -125,11 +122,11 @@ describe('Security Validation Tests', () => {
         '<svg onload="alert(1)">',
         'javascript:alert(1)',
         '<iframe src="javascript:alert(1)"></iframe>',
-        '"><script>alert(String.fromCharCode(88,83,83))</script>'
+        '"><script>alert(String.fromCharCode(88,83,83))</script>',
       ];
 
       // All should fail min length, but errors should be safe
-      xssAttempts.forEach(xss => {
+      xssAttempts.forEach((xss) => {
         try {
           validator.validate({ content: 'a' }); // Trigger error
           fail('Should have thrown');
@@ -148,10 +145,7 @@ describe('Security Validation Tests', () => {
     it('should sanitize user input in custom error messages', () => {
       const maliciousInput = '<script>';
 
-      const schema = z.string().refine(
-        (val) => val.length > 10,
-        { message: 'Input too short' }
-      );
+      const schema = z.string().refine((val) => val.length > 10, { message: 'Input too short' });
 
       const validator = engine.compile(schema);
 
@@ -171,7 +165,7 @@ describe('Security Validation Tests', () => {
   describe('DoS Prevention', () => {
     it('should handle extremely long strings without hanging', () => {
       const schema = z.object({
-        text: z.string().max(1000)
+        text: z.string().max(1000),
       });
 
       const validator = engine.compile(schema);
@@ -203,7 +197,7 @@ describe('Security Validation Tests', () => {
         field2: z.string().min(10),
         field3: z.string().min(10),
         field4: z.string().min(10),
-        field5: z.string().min(10)
+        field5: z.string().min(10),
       });
 
       const validator = engine.compile(schema, { abortEarly: false });
@@ -214,7 +208,7 @@ describe('Security Validation Tests', () => {
           field2: 'b',
           field3: 'c',
           field4: 'd',
-          field5: 'e'
+          field5: 'e',
         });
         fail('Should have thrown');
       } catch (error: any) {
@@ -241,16 +235,16 @@ describe('Security Validation Tests', () => {
                     level7: z.object({
                       level8: z.object({
                         level9: z.object({
-                          level10: z.string()
-                        })
-                      })
-                    })
-                  })
-                })
-              })
-            })
-          })
-        })
+                          level10: z.string(),
+                        }),
+                      }),
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          }),
+        }),
       });
 
       const validator = engine.compile(deepSchema);
@@ -265,16 +259,16 @@ describe('Security Validation Tests', () => {
                     level7: {
                       level8: {
                         level9: {
-                          level10: 'value'
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+                          level10: 'value',
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       };
 
       const startTime = Date.now();
@@ -288,10 +282,14 @@ describe('Security Validation Tests', () => {
 
     it('should handle large arrays efficiently', () => {
       const schema = z.object({
-        items: z.array(z.object({
-          id: z.number(),
-          name: z.string()
-        })).max(1000)
+        items: z
+          .array(
+            z.object({
+              id: z.number(),
+              name: z.string(),
+            })
+          )
+          .max(1000),
       });
 
       const validator = engine.compile(schema);
@@ -299,7 +297,7 @@ describe('Security Validation Tests', () => {
       // 10,000 items (exceeds max)
       const largeArray = Array.from({ length: 10_000 }, (_, i) => ({
         id: i,
-        name: `Item ${i}`
+        name: `Item ${i}`,
       }));
 
       const startTime = Date.now();
@@ -321,7 +319,7 @@ describe('Security Validation Tests', () => {
       // Zod doesn't use regex by default for strings, but we can test custom regex
       const schema = z.object({
         email: z.string().email(), // Built-in email validation
-        phone: z.string().regex(/^\d{3}-\d{3}-\d{4}$/)
+        phone: z.string().regex(/^\d{3}-\d{3}-\d{4}$/),
       });
 
       const validator = engine.compile(schema);
@@ -329,7 +327,7 @@ describe('Security Validation Tests', () => {
       // Malicious input designed to trigger validation failure
       const maliciousInput = {
         email: 'a'.repeat(1000) + '@example.com',
-        phone: '123-456-7890'
+        phone: '123-456-7890',
       };
 
       const startTime = Date.now();
@@ -378,14 +376,14 @@ describe('Security Validation Tests', () => {
     it('should handle very large individual field values', () => {
       const schema = z.object({
         smallField: z.string().max(100),
-        largeField: z.string().max(1_000_000) // Allow up to 1MB
+        largeField: z.string().max(1_000_000), // Allow up to 1MB
       });
 
       const validator = engine.compile(schema);
 
       const data = {
         smallField: 'small',
-        largeField: 'x'.repeat(500_000) // 500KB
+        largeField: 'x'.repeat(500_000), // 500KB
       };
 
       const startTime = Date.now();
@@ -403,7 +401,7 @@ describe('Security Validation Tests', () => {
         title: z.string().max(200),
         content: z.string().max(100_000),
         metadata: z.record(z.string(), z.any()),
-        tags: z.array(z.string()).max(50)
+        tags: z.array(z.string()).max(50),
       });
 
       const validator = engine.compile(schema);
@@ -415,9 +413,9 @@ describe('Security Validation Tests', () => {
         metadata: {
           author: 'John Doe',
           created: '2024-01-01',
-          views: 1000
+          views: 1000,
         },
-        tags: Array.from({ length: 30 }, (_, i) => `tag${i}`)
+        tags: Array.from({ length: 30 }, (_, i) => `tag${i}`),
       };
 
       const startTime = Date.now();
@@ -432,13 +430,13 @@ describe('Security Validation Tests', () => {
   describe('Malicious Input Handling', () => {
     it('should handle null bytes in strings', () => {
       const schema = z.object({
-        text: z.string()
+        text: z.string(),
       });
 
       const validator = engine.compile(schema);
 
       const data = {
-        text: 'hello\x00world'
+        text: 'hello\x00world',
       };
 
       const result = validator.validate(data);
@@ -447,7 +445,7 @@ describe('Security Validation Tests', () => {
 
     it('should handle Unicode and special characters', () => {
       const schema = z.object({
-        text: z.string().min(1).max(100)
+        text: z.string().min(1).max(100),
       });
 
       const validator = engine.compile(schema);
@@ -459,10 +457,10 @@ describe('Security Validation Tests', () => {
         '🔥'.repeat(10), // Emojis count as multiple bytes
         '\u{1F600}\u{1F601}\u{1F602}', // Unicode escapes
         'test\u200Btest', // Zero-width space
-        'test\uFEFFtest' // Zero-width no-break space
+        'test\uFEFFtest', // Zero-width no-break space
       ];
 
-      specialInputs.forEach(input => {
+      specialInputs.forEach((input) => {
         const result = validator.validate({ text: input });
         expect(result.text).toBe(input);
       });
@@ -471,7 +469,7 @@ describe('Security Validation Tests', () => {
     it('should handle prototype pollution attempts', () => {
       const schema = z.object({
         name: z.string(),
-        value: z.any()
+        value: z.any(),
       });
 
       const validator = engine.compile(schema, { mode: 'strip' });
@@ -480,7 +478,7 @@ describe('Security Validation Tests', () => {
         name: 'test',
         value: 'value',
         __proto__: { polluted: true },
-        constructor: { prototype: { polluted: true } }
+        constructor: { prototype: { polluted: true } },
       };
 
       const result = validator.validate(maliciousInput);
@@ -497,7 +495,7 @@ describe('Security Validation Tests', () => {
     it('should handle circular references safely', () => {
       const schema = z.object({
         name: z.string(),
-        data: z.any()
+        data: z.any(),
       });
 
       const validator = engine.compile(schema);
@@ -516,14 +514,14 @@ describe('Security Validation Tests', () => {
     it('should handle buffer/binary data', () => {
       const schema = z.object({
         name: z.string(),
-        data: z.any()
+        data: z.any(),
       });
 
       const validator = engine.compile(schema);
 
       const data = {
         name: 'test',
-        data: Buffer.from('binary data')
+        data: Buffer.from('binary data'),
       };
 
       const result = validator.validate(data);
@@ -533,7 +531,7 @@ describe('Security Validation Tests', () => {
 
     it('should handle extremely nested malicious objects', () => {
       const schema = z.object({
-        data: z.any()
+        data: z.any(),
       });
 
       const validator = engine.compile(schema);
@@ -555,26 +553,13 @@ describe('Security Validation Tests', () => {
 
     it('should handle arrays with mixed types', () => {
       const schema = z.object({
-        items: z.array(z.union([
-          z.string(),
-          z.number(),
-          z.boolean(),
-          z.null()
-        ]))
+        items: z.array(z.union([z.string(), z.number(), z.boolean(), z.null()])),
       });
 
       const validator = engine.compile(schema);
 
       const data = {
-        items: [
-          'string',
-          123,
-          true,
-          null,
-          'another string',
-          456,
-          false
-        ]
+        items: ['string', 123, true, null, 'another string', 456, false],
       };
 
       const result = validator.validate(data);
@@ -584,7 +569,7 @@ describe('Security Validation Tests', () => {
     it('should handle symbol keys safely', () => {
       const schema = z.object({
         name: z.string(),
-        value: z.number()
+        value: z.number(),
       });
 
       const validator = engine.compile(schema, { mode: 'strip' });
@@ -593,7 +578,7 @@ describe('Security Validation Tests', () => {
       const data: any = {
         name: 'test',
         value: 123,
-        [sym]: 'symbol value'
+        [sym]: 'symbol value',
       };
 
       const result = validator.validate(data);
@@ -609,7 +594,7 @@ describe('Security Validation Tests', () => {
       const schema = z.object({
         id: z.number(),
         name: z.string(),
-        data: z.array(z.number())
+        data: z.array(z.number()),
       });
 
       const validator = engine.compile(schema);
@@ -621,7 +606,7 @@ describe('Security Validation Tests', () => {
         validator.validate({
           id: i,
           name: `Item ${i}`,
-          data: [1, 2, 3, 4, 5]
+          data: [1, 2, 3, 4, 5],
         });
       }
 
@@ -633,15 +618,13 @@ describe('Security Validation Tests', () => {
     });
 
     it('should cache validators without memory leaks', () => {
-      const schemas = Array.from({ length: 1000 }, (_, i) =>
-        z.object({ [`field${i}`]: z.string() })
-      );
+      const schemas = Array.from({ length: 1000 }, (_, i) => z.object({ [`field${i}`]: z.string() }));
 
       const initialSize = engine.getCacheSize();
       const initialMemory = process.memoryUsage().heapUsed;
 
       // Compile all schemas
-      schemas.forEach(schema => engine.compile(schema));
+      schemas.forEach((schema) => engine.compile(schema));
 
       const finalSize = engine.getCacheSize();
       const finalMemory = process.memoryUsage().heapUsed;

@@ -63,10 +63,7 @@ export function withProviders(module: Module, providers: Provider[]): ModuleWith
  * @param parentContainer - Parent container (optional)
  * @returns DI container with all providers registered
  */
-export function compileModule(
-  rootModule: Module | ModuleWithProviders,
-  parentContainer?: DIContainer
-): DIContainer {
+export function compileModule(rootModule: Module | ModuleWithProviders, parentContainer?: DIContainer): DIContainer {
   const container = new DIContainer({ parent: parentContainer });
 
   // Extract module and providers
@@ -75,24 +72,24 @@ export function compileModule(
 
   // Register module's own providers
   if (module.definition.providers) {
-    module.definition.providers.forEach(provider => {
+    module.definition.providers.forEach((provider) => {
       container.register(getProviderToken(provider), provider);
     });
   }
 
   // Register additional providers
-  additionalProviders?.forEach(provider => {
+  additionalProviders?.forEach((provider) => {
     container.register(getProviderToken(provider), provider);
   });
 
   // Process imported modules
   if (module.definition.imports) {
-    module.definition.imports.forEach(importedModule => {
+    module.definition.imports.forEach((importedModule) => {
       const importedContainer = compileModule(importedModule, container);
 
       // Re-export providers from imported modules
       if (importedModule.definition.exportProviders) {
-        importedModule.definition.exportProviders.forEach(exportedProvider => {
+        importedModule.definition.exportProviders.forEach((exportedProvider) => {
           const token = getProviderToken(exportedProvider);
           if (importedContainer.has(token)) {
             const instance = importedContainer.get(token);

@@ -144,7 +144,7 @@ export const Stepper = defineComponent<StepperProps>((props) => {
   const registeredSteps: WritableSignal<Set<number>> = signal<Set<number>>(new Set());
 
   const isControlled = () => props.value !== undefined;
-  const currentStep = () => (isControlled() ? props.value ?? 0 : internalValue());
+  const currentStep = () => (isControlled() ? (props.value ?? 0) : internalValue());
 
   const goToStep = (step: number) => {
     if (!isControlled()) {
@@ -360,11 +360,14 @@ export const StepperContent = defineComponent<StepperContentProps>((props) => ()
  * Stepper Separator
  * Visual separator between steps
  */
-export const StepperSeparator = defineComponent<StepperSeparatorProps>((props) => () => jsx('div', {
-    ...props,
-    'data-stepper-separator': '',
-    'aria-hidden': 'true',
-  }));
+export const StepperSeparator = defineComponent<StepperSeparatorProps>(
+  (props) => () =>
+    jsx('div', {
+      ...props,
+      'data-stepper-separator': '',
+      'aria-hidden': 'true',
+    })
+);
 
 // ============================================================================
 // Attach sub-components

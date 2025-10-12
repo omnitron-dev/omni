@@ -15,7 +15,7 @@ import {
   DynamicModule,
   ModuleMetadata,
   ForwardRef,
-  forwardRef
+  forwardRef,
 } from '../../../src/nexus/index.js';
 
 describe('Module System', () => {
@@ -36,9 +36,9 @@ describe('Module System', () => {
         providers: [
           {
             provide: createToken('TestService'),
-            useValue: 'test-value'
-          }
-        ]
+            useValue: 'test-value',
+          },
+        ],
       });
 
       expect(module.name).toBe('TestModule');
@@ -53,10 +53,10 @@ describe('Module System', () => {
         providers: [
           {
             provide: serviceToken,
-            useValue: 'module-service'
-          }
+            useValue: 'module-service',
+          },
         ],
-        exports: [serviceToken]
+        exports: [serviceToken],
       });
 
       await container.loadModule(module);
@@ -74,10 +74,10 @@ describe('Module System', () => {
         providers: [
           {
             provide: sharedToken,
-            useValue: 'shared-value'
-          }
+            useValue: 'shared-value',
+          },
         ],
-        exports: [sharedToken]
+        exports: [sharedToken],
       });
 
       const appModule = createModule({
@@ -87,9 +87,9 @@ describe('Module System', () => {
           {
             provide: appToken,
             useFactory: (shared: string) => `app-${shared}`,
-            inject: [sharedToken]
-          }
-        ]
+            inject: [sharedToken],
+          },
+        ],
       });
 
       await container.loadModule(appModule);
@@ -106,9 +106,9 @@ describe('Module System', () => {
         name: 'RestrictedModule',
         providers: [
           { provide: privateToken, useValue: 'private' },
-          { provide: publicToken, useValue: 'public' }
+          { provide: publicToken, useValue: 'public' },
         ],
-        exports: [publicToken] // Only export public
+        exports: [publicToken], // Only export public
       });
 
       await container.loadModule(module);
@@ -134,17 +134,17 @@ describe('Module System', () => {
             providers: [
               {
                 provide: DatabaseToken,
-                useValue: { config }
-              }
+                useValue: { config },
+              },
             ],
-            exports: [DatabaseToken]
+            exports: [DatabaseToken],
           });
-        }
+        },
       };
 
       const module = DatabaseModule.forRoot({
         host: 'localhost',
-        port: 5432
+        port: 5432,
       });
 
       await container.loadModule(module);
@@ -161,13 +161,13 @@ describe('Module System', () => {
         forFeature(entities: string[]): DynamicModule {
           return createDynamicModule({
             name: 'RepositoryModule',
-            providers: entities.map(entity => ({
+            providers: entities.map((entity) => ({
               provide: createToken(`${entity}Repository`),
-              useValue: { entity }
+              useValue: { entity },
             })),
-            exports: entities.map(entity => createToken(`${entity}Repository`))
+            exports: entities.map((entity) => createToken(`${entity}Repository`)),
           });
-        }
+        },
       };
 
       const module = RepositoryModule.forFeature(['User', 'Post', 'Comment']);
@@ -181,29 +181,27 @@ describe('Module System', () => {
       const ConfigToken = createToken<{ apiKey: string }>('Config');
 
       const ConfigModule = {
-        forRootAsync(options: {
-          useFactory: () => Promise<{ apiKey: string }>;
-        }): DynamicModule {
+        forRootAsync(options: { useFactory: () => Promise<{ apiKey: string }> }): DynamicModule {
           return createDynamicModule({
             name: 'ConfigModule',
             providers: [
               {
                 provide: ConfigToken,
                 useFactory: options.useFactory,
-                async: true
-              }
+                async: true,
+              },
             ],
-            exports: [ConfigToken]
+            exports: [ConfigToken],
           });
-        }
+        },
       };
 
       const module = ConfigModule.forRootAsync({
         useFactory: async () => {
           // Simulate async config loading
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           return { apiKey: 'secret-key' };
-        }
+        },
       });
 
       await container.loadModule(module);
@@ -221,8 +219,8 @@ describe('Module System', () => {
       const module = moduleBuilder('FluentModule')
         .provide(configToken, { useValue: { enabled: true } })
         .provide(serviceToken, {
-          useFactory: (config) => config.enabled ? 'enabled' : 'disabled',
-          inject: [configToken]
+          useFactory: (config) => (config.enabled ? 'enabled' : 'disabled'),
+          inject: [configToken],
         })
         .exports([serviceToken])
         .build();
@@ -239,11 +237,9 @@ describe('Module System', () => {
 
       const module = moduleBuilder('ConditionalModule')
         .provide(envToken, { useValue: 'production' })
-        .provideIf(
-          (container) => container.resolve(envToken) === 'production',
-          serviceToken,
-          { useValue: 'prod-service' }
-        )
+        .provideIf((container) => container.resolve(envToken) === 'production', serviceToken, {
+          useValue: 'prod-service',
+        })
         .exports([serviceToken])
         .build();
 
@@ -259,7 +255,7 @@ describe('Module System', () => {
 
       const LoggerModule = moduleBuilder('LoggerModule')
         .provide(loggerToken, {
-          useValue: { log: jest.fn() }
+          useValue: { log: jest.fn() },
         })
         .exports([loggerToken])
         .build();
@@ -271,9 +267,9 @@ describe('Module System', () => {
             logger.log('Service created');
             return { name: 'TestService' };
           },
-          inject: [loggerToken]
+          inject: [loggerToken],
         })
-        .exports([serviceToken, loggerToken])  // Export both for external access
+        .exports([serviceToken, loggerToken]) // Export both for external access
         .build();
 
       await container.loadModule(ServiceModule);
@@ -298,14 +294,14 @@ describe('Module System', () => {
         load: async () => ({
           port: 3000,
           host: 'localhost',
-          ssl: false
+          ssl: false,
         }),
         validate: (config) => {
           if (config.port < 1 || config.port > 65535) {
             throw new Error('Invalid port');
           }
           return true;
-        }
+        },
       });
 
       await container.loadModule(configModule);
@@ -313,7 +309,7 @@ describe('Module System', () => {
 
       // Register the config token
       container.register(ConfigToken, {
-        useFactory: () => configModule.config!
+        useFactory: () => configModule.config!,
       });
 
       const config = container.resolve(ConfigToken);
@@ -334,8 +330,8 @@ describe('Module System', () => {
         name: 'EnvConfigModule',
         load: async () => ({
           env: process.env.NODE_ENV || 'development',
-          apiKey: process.env.API_KEY || ''
-        })
+          apiKey: process.env.API_KEY || '',
+        }),
       });
 
       await container.loadModule(configModule);
@@ -351,7 +347,7 @@ describe('Module System', () => {
       const module = createModule({
         name: 'LifecycleModule',
         providers: [],
-        onModuleInit: onInit
+        onModuleInit: onInit,
       });
 
       await container.loadModule(module);
@@ -364,7 +360,7 @@ describe('Module System', () => {
       const module = createModule({
         name: 'LifecycleModule',
         providers: [],
-        onModuleDestroy: onDestroy
+        onModuleDestroy: onDestroy,
       });
 
       await container.loadModule(module);
@@ -380,7 +376,7 @@ describe('Module System', () => {
         name: 'ModuleA',
         onModuleInit: async () => {
           initOrder.push('A');
-        }
+        },
       });
 
       const moduleB = createModule({
@@ -388,7 +384,7 @@ describe('Module System', () => {
         imports: [moduleA],
         onModuleInit: async () => {
           initOrder.push('B');
-        }
+        },
       });
 
       const moduleC = createModule({
@@ -396,7 +392,7 @@ describe('Module System', () => {
         imports: [moduleB],
         onModuleInit: async () => {
           initOrder.push('C');
-        }
+        },
       });
 
       await container.loadModule(moduleC);
@@ -410,7 +406,7 @@ describe('Module System', () => {
         name: 'ModuleA',
         onModuleDestroy: async () => {
           destroyOrder.push('A');
-        }
+        },
       });
 
       const moduleB = createModule({
@@ -418,7 +414,7 @@ describe('Module System', () => {
         imports: [moduleA],
         onModuleDestroy: async () => {
           destroyOrder.push('B');
-        }
+        },
       });
 
       const moduleC = createModule({
@@ -426,7 +422,7 @@ describe('Module System', () => {
         imports: [moduleB],
         onModuleDestroy: async () => {
           destroyOrder.push('C');
-        }
+        },
       });
 
       await container.loadModule(moduleC);
@@ -441,17 +437,19 @@ describe('Module System', () => {
       const tokenA = createToken<{ name: string }>('A');
       const tokenB = createToken<{ name: string }>('B');
 
-      const moduleA: ForwardRef<IModule> = forwardRef(() => createModule({
-        name: 'ModuleA',
-        imports: [moduleB],
-        providers: [
-          {
-            provide: tokenA,
-            useValue: { name: 'A' }
-          }
-        ],
-        exports: [tokenA]
-      }));
+      const moduleA: ForwardRef<IModule> = forwardRef(() =>
+        createModule({
+          name: 'ModuleA',
+          imports: [moduleB],
+          providers: [
+            {
+              provide: tokenA,
+              useValue: { name: 'A' },
+            },
+          ],
+          exports: [tokenA],
+        })
+      );
 
       const moduleB = createModule({
         name: 'ModuleB',
@@ -459,10 +457,10 @@ describe('Module System', () => {
         providers: [
           {
             provide: tokenB,
-            useValue: { name: 'B' }
-          }
+            useValue: { name: 'B' },
+          },
         ],
-        exports: [tokenB]
+        exports: [tokenB],
       });
 
       await container.loadModule(moduleB);
@@ -477,12 +475,12 @@ describe('Module System', () => {
     it('should detect circular module imports', async () => {
       const moduleA: any = createModule({
         name: 'ModuleA',
-        imports: [] // Will be set to moduleB
+        imports: [], // Will be set to moduleB
       });
 
       const moduleB = createModule({
         name: 'ModuleB',
-        imports: [moduleA]
+        imports: [moduleA],
       });
 
       // Create circular dependency
@@ -501,11 +499,11 @@ describe('Module System', () => {
         providers: [
           {
             provide: globalToken,
-            useValue: 'global-service'
-          }
+            useValue: 'global-service',
+          },
         ],
         exports: [globalToken],
-        global: true
+        global: true,
       });
 
       const consumerModule = createModule({
@@ -515,9 +513,9 @@ describe('Module System', () => {
           {
             provide: createToken('Consumer'),
             useFactory: (global: string) => `consumer-${global}`,
-            inject: [globalToken]
-          }
-        ]
+            inject: [globalToken],
+          },
+        ],
       });
 
       await container.loadModule(globalModule);
@@ -535,12 +533,12 @@ describe('Module System', () => {
         version: '1.0.0',
         description: 'Test module with metadata',
         author: 'Test Author',
-        tags: ['test', 'example']
+        tags: ['test', 'example'],
       };
 
       const module = createModule({
         ...metadata,
-        providers: []
+        providers: [],
       });
 
       expect(module.name).toBe('MetadataModule');
@@ -553,7 +551,7 @@ describe('Module System', () => {
       const module = createModule({
         name: 'DependentModule',
         requires: ['DatabaseModule', 'CacheModule'],
-        providers: []
+        providers: [],
       });
 
       // Should throw when required modules are not loaded

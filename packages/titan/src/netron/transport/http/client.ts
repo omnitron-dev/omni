@@ -14,7 +14,7 @@ import {
   type HttpRequestMessage,
   type HttpResponseMessage,
   type HttpRequestContext,
-  type HttpRequestHints
+  type HttpRequestHints,
 } from './types.js';
 import { NetronErrors } from '../../../errors/index.js';
 import { parseHttpError } from '../../../errors/transport.js';
@@ -85,7 +85,7 @@ export class HttpTransportClient {
     // Ultimate fallback - direct HTTP request
     const message = createRequestMessage(service, method, args, {
       context: options?.context,
-      hints: options?.hints
+      hints: options?.hints,
     });
 
     const response = await this.sendRequest(message);
@@ -113,12 +113,12 @@ export class HttpTransportClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
+          Accept: 'application/json',
           'X-Netron-Version': '2.0',
-          ...this.options?.headers
+          ...this.options?.headers,
         },
         body: JSON.stringify(message),
-        signal: controller.signal
+        signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
@@ -142,14 +142,18 @@ export class HttpTransportClient {
             error: {
               code: getErrorName(titanError.code),
               message: titanError.message,
-              details: titanError.details
-            }
+              details: titanError.details,
+            },
           };
         } catch {
           // Fallback if body parsing fails
-          const titanError = parseHttpError(response.status, {
-            error: { message: response.statusText }
-          }, headers);
+          const titanError = parseHttpError(
+            response.status,
+            {
+              error: { message: response.statusText },
+            },
+            headers
+          );
 
           return {
             id: message.id,
@@ -158,8 +162,8 @@ export class HttpTransportClient {
             success: false,
             error: {
               code: getErrorName(titanError.code),
-              message: titanError.message
-            }
+              message: titanError.message,
+            },
           };
         }
       }
@@ -176,8 +180,8 @@ export class HttpTransportClient {
           success: false,
           error: {
             code: getErrorName(ErrorCode.REQUEST_TIMEOUT),
-            message: `Request timeout after ${timeout}ms`
-          }
+            message: `Request timeout after ${timeout}ms`,
+          },
         };
       }
 
@@ -188,8 +192,8 @@ export class HttpTransportClient {
         success: false,
         error: {
           code: getErrorName(ErrorCode.INTERNAL_ERROR),
-          message: error.message
-        }
+          message: error.message,
+        },
       };
     }
   }
@@ -214,7 +218,7 @@ export class HttpTransportClient {
       baseUrl: this.baseUrl,
       connected: !!this.connection,
       hasPeer: !!this.peer,
-      connectionMetrics: this.connection?.getMetrics()
+      connectionMetrics: this.connection?.getMetrics(),
     };
   }
 }

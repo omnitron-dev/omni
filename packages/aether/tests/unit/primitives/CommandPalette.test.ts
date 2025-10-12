@@ -71,8 +71,7 @@ describe('CommandPalette', () => {
               children: () => [
                 CommandPaletteInput({ placeholder: 'Type a command...' }),
                 CommandPaletteList({
-                  children: () =>
-                    CommandPaletteItem({ children: 'New File' }),
+                  children: () => CommandPaletteItem({ children: 'New File' }),
                 }),
               ],
             }),
@@ -693,10 +692,7 @@ describe('CommandPalette', () => {
                 CommandPaletteList({
                   children: () =>
                     CommandPaletteItem({
-                      children: () => [
-                        'New File',
-                        CommandPaletteShortcut({ children: '⌘N' }),
-                      ],
+                      children: () => ['New File', CommandPaletteShortcut({ children: '⌘N' })],
                     }),
                 }),
               ],
@@ -724,10 +720,7 @@ describe('CommandPalette', () => {
                 CommandPaletteList({
                   children: () =>
                     CommandPaletteItem({
-                      children: () => [
-                        'New File',
-                        CommandPaletteShortcut({ children: '⌘N' }),
-                      ],
+                      children: () => ['New File', CommandPaletteShortcut({ children: '⌘N' })],
                     }),
                 }),
               ],

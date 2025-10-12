@@ -61,7 +61,7 @@ export enum LifecycleEvent {
   PluginInstalling = 'plugin:installing',
   PluginInstalled = 'plugin:installed',
   PluginUninstalling = 'plugin:uninstalling',
-  PluginUninstalled = 'plugin:uninstalled'
+  PluginUninstalled = 'plugin:uninstalled',
 }
 
 /**
@@ -149,7 +149,7 @@ export class LifecycleManager {
     const eventData: LifecycleEventData = {
       event,
       timestamp: Date.now(),
-      ...data
+      ...data,
     };
 
     // Store in history
@@ -188,7 +188,7 @@ export class LifecycleManager {
     const eventData: LifecycleEventData = {
       event,
       timestamp: Date.now(),
-      ...data
+      ...data,
     };
 
     // Store in history
@@ -201,7 +201,7 @@ export class LifecycleManager {
         try {
           const result = hook(eventData);
           if (result instanceof Promise) {
-            result.catch(error => {
+            result.catch((error) => {
               console.error(`Async lifecycle hook error for ${event}:`, error);
             });
           }
@@ -217,7 +217,7 @@ export class LifecycleManager {
         try {
           const result = observer.onEvent(eventData);
           if (result instanceof Promise) {
-            result.catch(error => {
+            result.catch((error) => {
               console.error(`Async lifecycle observer error for ${event}:`, error);
             });
           }
@@ -247,7 +247,7 @@ export class LifecycleManager {
    */
   getHistory(event?: LifecycleEvent): LifecycleEventData[] {
     if (event) {
-      return this.eventHistory.filter(e => e.event === event);
+      return this.eventHistory.filter((e) => e.event === event);
     }
     return [...this.eventHistory];
   }
@@ -319,11 +319,7 @@ export class PerformanceObserver implements LifecycleObserver {
   private metrics = new Map<string, { count: number; totalTime: number; avgTime: number }>();
   private activeTimers = new Map<string, number>();
 
-  events = [
-    LifecycleEvent.BeforeResolve,
-    LifecycleEvent.AfterResolve,
-    LifecycleEvent.ResolveFailed
-  ];
+  events = [LifecycleEvent.BeforeResolve, LifecycleEvent.AfterResolve, LifecycleEvent.ResolveFailed];
 
   onEvent(data: LifecycleEventData): void {
     const key = this.getKey(data.token);
@@ -379,10 +375,7 @@ export class MemoryObserver implements LifecycleObserver {
   private lastGC = Date.now();
   private gcInterval = 60000; // 1 minute
 
-  events = [
-    LifecycleEvent.InstanceCreated,
-    LifecycleEvent.InstanceDisposed
-  ];
+  events = [LifecycleEvent.InstanceCreated, LifecycleEvent.InstanceDisposed];
 
   onEvent(data: LifecycleEventData): void {
     const key = this.getKey(data.token);
@@ -440,9 +433,7 @@ export class AuditObserver implements LifecycleObserver {
     metadata?: any;
   }> = [];
 
-  constructor(
-    private getUserContext?: () => { user?: string;[key: string]: any }
-  ) { }
+  constructor(private getUserContext?: () => { user?: string; [key: string]: any }) {}
 
   async onEvent(data: LifecycleEventData): Promise<void> {
     const userContext = this.getUserContext ? this.getUserContext() : {};
@@ -454,8 +445,8 @@ export class AuditObserver implements LifecycleObserver {
       user: userContext.user,
       metadata: {
         ...data.metadata,
-        ...userContext
-      }
+        ...userContext,
+      },
     };
 
     this.auditLog.push(entry);

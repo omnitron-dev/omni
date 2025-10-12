@@ -92,21 +92,21 @@ export enum ConnectionState {
   DISCONNECTING = 'disconnecting',
   DISCONNECTED = 'disconnected',
   RECONNECTING = 'reconnecting',
-  ERROR = 'error'
+  ERROR = 'error',
 }
 
 /**
  * Connection events
  */
 export interface ConnectionEvents {
-  'connect': () => void;
-  'disconnect': (reason?: string) => void;
-  'error': (error: Error) => void;
-  'data': (data: Buffer | ArrayBuffer) => void;
-  'packet': (packet: Packet) => void;
-  'state': (state: ConnectionState) => void;
-  'reconnect': (attempt: number) => void;
-  'reconnect_failed': () => void;
+  connect: () => void;
+  disconnect: (reason?: string) => void;
+  error: (error: Error) => void;
+  data: (data: Buffer | ArrayBuffer) => void;
+  packet: (packet: Packet) => void;
+  state: (state: ConnectionState) => void;
+  reconnect: (attempt: number) => void;
+  reconnect_failed: () => void;
 }
 
 /**
@@ -145,10 +145,10 @@ export interface ITransportConnection extends EventEmitter {
  * Server events
  */
 export interface ServerEvents {
-  'connection': (connection: ITransportConnection) => void;
-  'error': (error: Error) => void;
-  'listening': () => void;
-  'close': () => void;
+  connection: (connection: ITransportConnection) => void;
+  error: (error: Error) => void;
+  listening: () => void;
+  close: () => void;
 }
 
 /**

@@ -5,12 +5,7 @@
  */
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import type {
-  ConnectionMetrics,
-  ConnectionState,
-  RequestContext,
-  RequestHints,
-} from '../types/index.js';
+import type { ConnectionMetrics, ConnectionState, RequestContext, RequestHints } from '../types/index.js';
 import type { AuthenticationClient } from '../auth/client.js';
 import { generateRequestId, calculateBackoff, httpToWsUrl } from '../utils/index.js';
 import { ConnectionError, TimeoutError } from '../errors/index.js';
@@ -112,9 +107,7 @@ export class WebSocketClient extends EventEmitter {
     super();
 
     // Convert HTTP URL to WebSocket URL if needed
-    this.wsUrl = options.url.startsWith('http')
-      ? httpToWsUrl(options.url)
-      : options.url;
+    this.wsUrl = options.url.startsWith('http') ? httpToWsUrl(options.url) : options.url;
 
     this.protocols = options.protocols;
     this.timeout = options.timeout ?? 30000;
@@ -135,11 +128,12 @@ export class WebSocketClient extends EventEmitter {
         this.state = 'connecting' as ConnectionState;
 
         // Create WebSocket connection (detect environment)
-        const WebSocketImpl = typeof WebSocket !== 'undefined'
-          ? WebSocket
-          : typeof globalThis !== 'undefined' && (globalThis as any).WebSocket
-          ? (globalThis as any).WebSocket
-          : null;
+        const WebSocketImpl =
+          typeof WebSocket !== 'undefined'
+            ? WebSocket
+            : typeof globalThis !== 'undefined' && (globalThis as any).WebSocket
+              ? (globalThis as any).WebSocket
+              : null;
 
         if (!WebSocketImpl) {
           throw new Error('WebSocket is not available in this environment');
@@ -356,7 +350,8 @@ export class WebSocketClient extends EventEmitter {
    * Send a packet through WebSocket
    */
   private sendPacket(packet: any): void {
-    if (!this.ws || this.ws.readyState !== 1) { // OPEN state
+    if (!this.ws || this.ws.readyState !== 1) {
+      // OPEN state
       throw new ConnectionError('WebSocket is not connected');
     }
 
@@ -378,7 +373,7 @@ export class WebSocketClient extends EventEmitter {
     if (this.ws) {
       if (
         this.ws.readyState === 1 || // OPEN
-        this.ws.readyState === 0    // CONNECTING
+        this.ws.readyState === 0 // CONNECTING
       ) {
         this.ws.close(1000, 'Manual disconnect');
       }
@@ -432,8 +427,7 @@ export class WebSocketClient extends EventEmitter {
   getMetrics(): ConnectionMetrics {
     const avgLatency =
       this.metrics.latencies.length > 0
-        ? this.metrics.latencies.reduce((a, b) => a + b, 0) /
-          this.metrics.latencies.length
+        ? this.metrics.latencies.reduce((a, b) => a + b, 0) / this.metrics.latencies.length
         : undefined;
 
     return {
@@ -460,11 +454,7 @@ export class WebSocketClient extends EventEmitter {
   /**
    * Use middleware
    */
-  use(
-    middleware: MiddlewareFunction,
-    config?: Partial<MiddlewareConfig>,
-    stage?: MiddlewareStage
-  ): this {
+  use(middleware: MiddlewareFunction, config?: Partial<MiddlewareConfig>, stage?: MiddlewareStage): this {
     this.middleware.use(middleware, config, stage);
     return this;
   }

@@ -27,18 +27,14 @@ export class RateLimiter {
       perMinute: 10,
       perHour: 100,
       perDay: 1000,
-      burstLimit: 5
+      burstLimit: 5,
     };
   }
 
   /**
    * Check if an action is allowed under rate limits
    */
-  async checkLimit(
-    identifier: string,
-    action: string = 'default',
-    customLimits?: RateLimitConfig
-  ): Promise<boolean> {
+  async checkLimit(identifier: string, action: string = 'default', customLimits?: RateLimitConfig): Promise<boolean> {
     const limits = customLimits || this.defaultLimits;
     const results: boolean[] = [];
 
@@ -52,42 +48,24 @@ export class RateLimiter {
 
     // Check per-minute limit
     if (limits.perMinute) {
-      const minuteAllowed = await this.checkWindowLimit(
-        identifier,
-        action,
-        'minute',
-        60,
-        limits.perMinute
-      );
+      const minuteAllowed = await this.checkWindowLimit(identifier, action, 'minute', 60, limits.perMinute);
       results.push(minuteAllowed);
     }
 
     // Check per-hour limit
     if (limits.perHour) {
-      const hourAllowed = await this.checkWindowLimit(
-        identifier,
-        action,
-        'hour',
-        3600,
-        limits.perHour
-      );
+      const hourAllowed = await this.checkWindowLimit(identifier, action, 'hour', 3600, limits.perHour);
       results.push(hourAllowed);
     }
 
     // Check per-day limit
     if (limits.perDay) {
-      const dayAllowed = await this.checkWindowLimit(
-        identifier,
-        action,
-        'day',
-        86400,
-        limits.perDay
-      );
+      const dayAllowed = await this.checkWindowLimit(identifier, action, 'day', 86400, limits.perDay);
       results.push(dayAllowed);
     }
 
     // All checks must pass
-    return results.length === 0 || results.every(r => r);
+    return results.length === 0 || results.every((r) => r);
   }
 
   /**
@@ -114,11 +92,7 @@ export class RateLimiter {
   /**
    * Check burst limit using sliding window
    */
-  private async checkBurstLimit(
-    identifier: string,
-    action: string,
-    limit: number
-  ): Promise<boolean> {
+  private async checkBurstLimit(identifier: string, action: string, limit: number): Promise<boolean> {
     const key = `${this.RATE_LIMIT_KEY_PREFIX}burst:${identifier}:${action}`;
     const now = Date.now();
     const windowStart = now - 1000; // 1 second window for burst
@@ -181,33 +155,15 @@ export class RateLimiter {
     const status: any = {};
 
     if (limits.perMinute) {
-      status.minute = await this.getWindowStatus(
-        identifier,
-        action,
-        'minute',
-        60,
-        limits.perMinute
-      );
+      status.minute = await this.getWindowStatus(identifier, action, 'minute', 60, limits.perMinute);
     }
 
     if (limits.perHour) {
-      status.hour = await this.getWindowStatus(
-        identifier,
-        action,
-        'hour',
-        3600,
-        limits.perHour
-      );
+      status.hour = await this.getWindowStatus(identifier, action, 'hour', 3600, limits.perHour);
     }
 
     if (limits.perDay) {
-      status.day = await this.getWindowStatus(
-        identifier,
-        action,
-        'day',
-        86400,
-        limits.perDay
-      );
+      status.day = await this.getWindowStatus(identifier, action, 'day', 86400, limits.perDay);
     }
 
     return status;
@@ -234,17 +190,17 @@ export class RateLimiter {
       return {
         allowed: true,
         remaining: limit,
-        resetAt: Date.now() + (ttl * 1000)
+        resetAt: Date.now() + ttl * 1000,
       };
     }
 
-    const count = parseInt(results[0][1] as string || '0', 10);
-    const ttlRemaining = results[1]?.[1] as number || ttl;
+    const count = parseInt((results[0][1] as string) || '0', 10);
+    const ttlRemaining = (results[1]?.[1] as number) || ttl;
 
     return {
       allowed: count < limit,
       remaining: Math.max(0, limit - count),
-      resetAt: Date.now() + (ttlRemaining * 1000)
+      resetAt: Date.now() + ttlRemaining * 1000,
     };
   }
 
@@ -266,10 +222,7 @@ export class RateLimiter {
   /**
    * Set custom limits for a specific identifier
    */
-  async setCustomLimits(
-    identifier: string,
-    limits: RateLimitConfig
-  ): Promise<void> {
+  async setCustomLimits(identifier: string, limits: RateLimitConfig): Promise<void> {
     const key = `${this.RATE_LIMIT_KEY_PREFIX}config:${identifier}`;
     await this.redis.set(key, JSON.stringify(limits));
   }

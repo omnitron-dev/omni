@@ -6,19 +6,10 @@
  */
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import {
-  type ITransportConnection,
-  ConnectionState,
-  type TransportOptions
-} from '../types.js';
+import { type ITransportConnection, ConnectionState, type TransportOptions } from '../types.js';
 import type { Definition } from '../../definition.js';
 import { TitanError, ErrorCode, NetronErrors } from '../../../errors/index.js';
-import {
-  HttpRequestMessage,
-  HttpResponseMessage,
-  createRequestMessage,
-  isHttpResponseMessage
-} from './types.js';
+import { HttpRequestMessage, HttpResponseMessage, createRequestMessage, isHttpResponseMessage } from './types.js';
 
 /**
  * HTTP Direct Connection
@@ -35,11 +26,14 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
   private services = new Map<string, Definition>();
 
   // Request tracking
-  private pendingRequests = new Map<string, {
-    resolve: (value: any) => void;
-    reject: (error: any) => void;
-    timeout: NodeJS.Timeout;
-  }>();
+  private pendingRequests = new Map<
+    string,
+    {
+      resolve: (value: any) => void;
+      reject: (error: any) => void;
+      timeout: NodeJS.Timeout;
+    }
+  >();
 
   get state(): ConnectionState {
     return this._state;
@@ -83,15 +77,12 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
     return `http-direct-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   }
 
-
   /**
    * Send data using native HTTP messaging
    */
   async send(data: Buffer | ArrayBuffer | Uint8Array): Promise<void> {
     // For compatibility with existing code, try to parse as JSON
-    const buffer = Buffer.isBuffer(data) ? data :
-      data instanceof Uint8Array ? Buffer.from(data) :
-        Buffer.from(data);
+    const buffer = Buffer.isBuffer(data) ? data : data instanceof Uint8Array ? Buffer.from(data) : Buffer.from(data);
 
     try {
       const str = buffer.toString();
@@ -100,11 +91,7 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
       // Handle different message types
       if (msg.type === 'request' || msg.service) {
         // Convert to new message format
-        const request = createRequestMessage(
-          msg.service || '__system',
-          msg.method || msg.type,
-          msg.input || msg.data
-        );
+        const request = createRequestMessage(msg.service || '__system', msg.method || msg.type, msg.input || msg.data);
 
         const response = await this.sendRequestMessage(request);
 
@@ -129,11 +116,7 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
     if (data && typeof data === 'object') {
       if (data.service && data.method) {
         // This is a service invocation
-        const request = createRequestMessage(
-          data.service,
-          data.method,
-          data.input || data.args || data.params
-        );
+        const request = createRequestMessage(data.service, data.method, data.input || data.args || data.params);
 
         const response = await this.sendRequestMessage(request);
 
@@ -141,7 +124,7 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
         this.emit('packet', {
           id: packet.id,
           flags: 0,
-          data: response
+          data: response,
         });
       } else {
         // Try to send as raw JSON data
@@ -149,9 +132,11 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
       }
     } else {
       // Send raw data
-      const buffer = Buffer.isBuffer(data) ? data :
-        typeof data === 'string' ? Buffer.from(data) :
-          Buffer.from(JSON.stringify(data));
+      const buffer = Buffer.isBuffer(data)
+        ? data
+        : typeof data === 'string'
+          ? Buffer.from(data)
+          : Buffer.from(JSON.stringify(data));
       await this.send(buffer);
     }
   }
@@ -160,16 +145,12 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
    * Send HTTP request message
    */
   private async sendRequestMessage(message: HttpRequestMessage): Promise<HttpResponseMessage> {
-    const response = await this.sendHttpRequest<HttpResponseMessage>(
-      'POST',
-      '/netron/invoke',
-      message
-    );
+    const response = await this.sendHttpRequest<HttpResponseMessage>('POST', '/netron/invoke', message);
 
     if (!isHttpResponseMessage(response)) {
       throw new TitanError({
         code: ErrorCode.UNPROCESSABLE_ENTITY,
-        message: 'Invalid response format from server'
+        message: 'Invalid response format from server',
       });
     }
 
@@ -179,17 +160,13 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
   /**
    * Send HTTP request
    */
-  private async sendHttpRequest<T>(
-    method: string,
-    path: string,
-    body?: any
-  ): Promise<T> {
+  private async sendHttpRequest<T>(method: string, path: string, body?: any): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'Accept': 'application/json',
+      Accept: 'application/json',
       'X-Netron-Version': '2.0',
-      ...this.options?.headers
+      ...this.options?.headers,
     };
 
     const timeout = this.options?.timeout || 30000;
@@ -204,7 +181,7 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
         method,
         headers,
         body: body ? JSON.stringify(body) : undefined,
-        signal: this.abortController.signal
+        signal: this.abortController.signal,
       });
 
       clearTimeout(timeoutId);
@@ -215,9 +192,11 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
           const errorData = await response.json();
           if (errorData.error) {
             throw new TitanError({
-              code: (typeof errorData.error.code === 'number' ? errorData.error.code : ErrorCode.INTERNAL_ERROR) as ErrorCode,
+              code: (typeof errorData.error.code === 'number'
+                ? errorData.error.code
+                : ErrorCode.INTERNAL_ERROR) as ErrorCode,
               message: errorData.error.message,
-              details: errorData.error.details
+              details: errorData.error.details,
             });
           }
         } catch {
@@ -226,7 +205,7 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
 
         throw new TitanError({
           code: ErrorCode.INTERNAL_ERROR,
-          message: `HTTP ${response.status}: ${response.statusText}`
+          message: `HTTP ${response.status}: ${response.statusText}`,
         });
       }
 
@@ -237,7 +216,7 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
       if (error.name === 'AbortError') {
         throw new TitanError({
           code: ErrorCode.REQUEST_TIMEOUT,
-          message: `Request timeout after ${timeout}ms`
+          message: `Request timeout after ${timeout}ms`,
         });
       }
 
@@ -267,13 +246,21 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
       });
 
       if (!response.ok) {
-        throw NetronErrors.connectionFailed('http', this.baseUrl, new Error(`Ping failed with status ${response.status}`));
+        throw NetronErrors.connectionFailed(
+          'http',
+          this.baseUrl,
+          new Error(`Ping failed with status ${response.status}`)
+        );
       }
 
       const rtt = Date.now() - startTime;
       return rtt;
     } catch (error) {
-      throw NetronErrors.connectionFailed('http', this.baseUrl, error instanceof Error ? error : new Error(String(error)));
+      throw NetronErrors.connectionFailed(
+        'http',
+        this.baseUrl,
+        error instanceof Error ? error : new Error(String(error))
+      );
     }
   }
 
@@ -309,7 +296,7 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
     this._state = ConnectionState.CONNECTING;
 
     // HTTP doesn't really need to reconnect, just update state
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     this._state = ConnectionState.CONNECTED;
     this.emit('connect');
@@ -331,7 +318,7 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
       state: this._state,
       baseUrl: this.baseUrl,
       services: Array.from(this.services.keys()),
-      pendingRequests: this.pendingRequests.size
+      pendingRequests: this.pendingRequests.size,
     };
   }
 
@@ -349,10 +336,10 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
           name: serviceName,
           version: '1.0.0',
           methods: {},
-          properties: {}
+          properties: {},
         },
         parentId: '',
-        peerId: this.id
+        peerId: this.id,
       };
 
       return this.createServiceProxy(minimalDef);
@@ -367,34 +354,39 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
   private createServiceProxy(definition: Definition): any {
     const self = this;
 
-    return new Proxy({}, {
-      get(target: any, prop: string) {
-        // Special properties
-        if (prop === '$def') {
-          return definition;
-        }
-
-        // Create method proxy
-        return async (...args: any[]) => {
-          const request = createRequestMessage(
-            definition.meta.name,
-            prop,
-            args[0] // Netron uses single argument
-          );
-
-          const response = await self.sendRequestMessage(request);
-
-          if (!response.success) {
-            throw new TitanError({
-              code: (typeof response.error?.code === 'number' ? response.error.code : ErrorCode.INTERNAL_ERROR) as ErrorCode,
-              message: response.error?.message || 'Method call failed',
-              details: response.error?.details
-            });
+    return new Proxy(
+      {},
+      {
+        get(target: any, prop: string) {
+          // Special properties
+          if (prop === '$def') {
+            return definition;
           }
 
-          return response.data;
-        };
+          // Create method proxy
+          return async (...args: any[]) => {
+            const request = createRequestMessage(
+              definition.meta.name,
+              prop,
+              args[0] // Netron uses single argument
+            );
+
+            const response = await self.sendRequestMessage(request);
+
+            if (!response.success) {
+              throw new TitanError({
+                code: (typeof response.error?.code === 'number'
+                  ? response.error.code
+                  : ErrorCode.INTERNAL_ERROR) as ErrorCode,
+                message: response.error?.message || 'Method call failed',
+                details: response.error?.details,
+              });
+            }
+
+            return response.data;
+          };
+        },
       }
-    });
+    );
   }
 }

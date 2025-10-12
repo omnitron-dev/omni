@@ -186,7 +186,7 @@ export const TestModules = {
   createSimple: (name: string, providers: any[] = []) => {
     @Module({
       providers,
-      exports: providers.map(p => (Array.isArray(p) ? p[0] : p)),
+      exports: providers.map((p) => (Array.isArray(p) ? p[0] : p)),
     })
     class TestModule {
       static __name = name;

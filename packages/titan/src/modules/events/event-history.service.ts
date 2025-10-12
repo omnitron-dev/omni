@@ -1,6 +1,6 @@
 /**
  * Event History Service
- * 
+ *
  * Manages event history and replay functionality
  */
 
@@ -28,10 +28,7 @@ export class EventHistoryService {
   private destroyed = false;
   private logger: any = null;
 
-  constructor(
-    @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
-
-  ) { }
+  constructor(@Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter) {}
 
   /**
    * Initialize the service
@@ -60,8 +57,7 @@ export class EventHistoryService {
    * Get health status
    */
   async health(): Promise<{ status: 'healthy' | 'degraded' | 'unhealthy'; details?: any }> {
-    const totalRecords = Array.from(this.historyStore.values())
-      .reduce((acc, records) => acc + records.length, 0);
+    const totalRecords = Array.from(this.historyStore.values()).reduce((acc, records) => acc + records.length, 0);
 
     return {
       status: this.initialized && !this.destroyed ? 'healthy' : 'unhealthy',
@@ -72,8 +68,8 @@ export class EventHistoryService {
         isPaused: this.isPaused,
         totalRecords,
         maxHistorySize: this.maxHistorySize,
-        eventCount: this.historyStore.size
-      }
+        eventCount: this.historyStore.size,
+      },
     };
   }
 
@@ -96,7 +92,7 @@ export class EventHistoryService {
       timestamp: record.timestamp,
       metadata: record.metadata,
       duration: record.duration,
-      error: record.error
+      error: record.error,
     };
 
     // Get or create event history array
@@ -128,7 +124,6 @@ export class EventHistoryService {
     // Sort by timestamp
     return allHistory.sort((a, b) => a.timestamp - b.timestamp);
   }
-
 
   /**
    * Clear event history (synchronous)
@@ -179,15 +174,11 @@ export class EventHistoryService {
   /**
    * Start recording events
    */
-  startRecording(options?: {
-    filter?: (event: string) => boolean;
-    maxSize?: number;
-    ttl?: number;
-  }): void {
+  startRecording(options?: { filter?: (event: string) => boolean; maxSize?: number; ttl?: number }): void {
     this.emitter.enableHistory({
       maxSize: options?.maxSize || this.maxHistorySize,
       ttl: options?.ttl,
-      filter: options?.filter
+      filter: options?.filter,
     });
     this.isRecording = true;
   }
@@ -259,7 +250,7 @@ export class EventHistoryService {
         }
         if (eventOrFilter.tags && eventOrFilter.tags.length > 0) {
           const recordTags = record.metadata?.tags || [];
-          if (!eventOrFilter.tags.some(tag => recordTags.includes(tag))) {
+          if (!eventOrFilter.tags.some((tag) => recordTags.includes(tag))) {
             return false;
           }
         }
@@ -295,19 +286,16 @@ export class EventHistoryService {
     if (records.length === 0) return '';
 
     const headers = ['timestamp', 'event', 'data', 'metadata', 'duration', 'error'];
-    const rows = records.map(record => [
+    const rows = records.map((record) => [
       record.timestamp,
       record.event,
       JSON.stringify(record.data),
       JSON.stringify(record.metadata),
       record.duration || '',
-      record.error?.message || ''
+      record.error?.message || '',
     ]);
 
-    return [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-    ].join('\n');
+    return [headers.join(','), ...rows.map((row) => row.map((cell) => `"${cell}"`).join(','))].join('\n');
   }
 
   /**
@@ -323,8 +311,8 @@ export class EventHistoryService {
       const lines = data.split('\n');
       const headers = lines[0]?.split(',') || [];
 
-      records = lines.slice(1).map(line => {
-        const values = line.split(',').map(v => v.replace(/^"|"$/g, ''));
+      records = lines.slice(1).map((line) => {
+        const values = line.split(',').map((v) => v.replace(/^"|"$/g, ''));
         const record: any = {};
 
         headers?.forEach((header, index) => {
@@ -350,13 +338,15 @@ export class EventHistoryService {
    */
   async replay(options?: IEventReplayOptions): Promise<void> {
     // Convert filter to EventFilter format
-    const filter: EventFilter | undefined = options?.filter ? {
-      event: Array.isArray(options.filter.event)
-        ? new RegExp(options.filter.event.join('|'))
-        : options.filter.event,
-      from: options.filter.from,
-      to: options.filter.to
-    } : undefined;
+    const filter: EventFilter | undefined = options?.filter
+      ? {
+          event: Array.isArray(options.filter.event)
+            ? new RegExp(options.filter.event.join('|'))
+            : options.filter.event,
+          from: options.filter.from,
+          to: options.filter.to,
+        }
+      : undefined;
 
     const records = await this.getFilteredHistory(filter);
 
@@ -388,8 +378,8 @@ export class EventHistoryService {
           ...record.metadata,
           replayed: true,
           originalTimestamp: record.timestamp,
-          replayedAt: Date.now()
-        }
+          replayedAt: Date.now(),
+        },
       });
     }
   }
@@ -402,17 +392,17 @@ export class EventHistoryService {
     to?: Date;
     events?: string[];
     groupBy?: 'minute' | 'hour' | 'day';
-  }): Promise<Array<{
-    time: string;
-    count: number;
-    events: string[];
-  }>> {
+  }): Promise<
+    Array<{
+      time: string;
+      count: number;
+      events: string[];
+    }>
+  > {
     const records = await this.getFilteredHistory({
       from: options?.from,
       to: options?.to,
-      event: options?.events
-        ? new RegExp(options.events.join('|'))
-        : undefined
+      event: options?.events ? new RegExp(options.events.join('|')) : undefined,
     });
 
     const timeline = new Map<string, { count: number; events: Set<string> }>();
@@ -432,7 +422,7 @@ export class EventHistoryService {
     return Array.from(timeline.entries()).map(([time, data]) => ({
       time,
       count: data.count,
-      events: Array.from(data.events)
+      events: Array.from(data.events),
     }));
   }
 
@@ -449,10 +439,10 @@ export class EventHistoryService {
     const records = await this.getFilteredHistory({
       event: query.event,
       from: query.from,
-      to: query.to
+      to: query.to,
     });
 
-    return records.filter(record => {
+    return records.filter((record) => {
       if (query.hasError !== undefined) {
         const hasError = !!record.error;
         if (hasError !== query.hasError) return false;
@@ -486,10 +476,7 @@ export class EventHistoryService {
 
     for (const record of records) {
       // Count events
-      eventCounts.set(
-        record.event,
-        (eventCounts.get(record.event) || 0) + 1
-      );
+      eventCounts.set(record.event, (eventCounts.get(record.event) || 0) + 1);
 
       // Sum durations
       if (record.duration) {
@@ -513,7 +500,7 @@ export class EventHistoryService {
       uniqueEvents: eventCounts.size,
       errorRate: records.length > 0 ? errorCount / records.length : 0,
       avgDuration: records.length > 0 ? totalDuration / records.length : 0,
-      topEvents
+      topEvents,
     };
   }
 
@@ -525,7 +512,7 @@ export class EventHistoryService {
     const snapshot = {
       name,
       timestamp: Date.now(),
-      records
+      records,
     };
 
     // Store snapshot (would use actual storage in production)
@@ -568,6 +555,6 @@ export class EventHistoryService {
    * Delay helper
    */
   private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

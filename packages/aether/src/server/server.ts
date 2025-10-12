@@ -31,10 +31,7 @@ import { renderToString, renderDocument } from './renderer.js';
  * ```
  */
 export function createServer(config: ServerConfig): Server {
-  const {
-    port = 3000,
-    host = '0.0.0.0',
-  } = config;
+  const { port = 3000, host = '0.0.0.0' } = config;
 
   let serverInstance: any = null;
 

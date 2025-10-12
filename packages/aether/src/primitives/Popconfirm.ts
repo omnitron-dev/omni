@@ -53,12 +53,17 @@ export const Popconfirm = defineComponent<PopconfirmProps>((props) => {
     cancel,
   };
 
-  return () => jsx(PopconfirmContext.Provider, { value: contextValue, children: jsx('div', { 'data-popconfirm': '', children: props.children }) });
+  return () =>
+    jsx(PopconfirmContext.Provider, {
+      value: contextValue,
+      children: jsx('div', { 'data-popconfirm': '', children: props.children }),
+    });
 });
 
 export const PopconfirmTrigger = defineComponent<any>((props) => {
   const context = usePopconfirmContext();
-  return () => jsx('div', { 'data-popconfirm-trigger': '', onClick: () => context.setOpen(true), children: props.children });
+  return () =>
+    jsx('div', { 'data-popconfirm-trigger': '', onClick: () => context.setOpen(true), children: props.children });
 });
 
 export const PopconfirmContent = defineComponent<any>((props) => {

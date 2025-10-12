@@ -32,11 +32,14 @@ export interface ValidationOptions {
   /**
    * Schema registry
    */
-  schemas?: Record<string, {
-    entity?: z.ZodType;
-    create?: z.ZodType;
-    update?: z.ZodType;
-  }>;
+  schemas?: Record<
+    string,
+    {
+      entity?: z.ZodType;
+      create?: z.ZodType;
+      update?: z.ZodType;
+    }
+  >;
 }
 
 /**
@@ -47,10 +50,12 @@ export function validationPlugin(options: ValidationOptions = {}): ITitanPlugin 
   const stripUnknown = options.stripUnknown ?? true;
   const transform = options.transform ?? true;
 
-  const formatError = options.errorFormatter || ((errors: z.ZodIssue[]) => {
-    const messages = errors.map(e => `${e.path.join('.')}: ${e.message}`);
-    return `Validation failed: ${messages.join(', ')}`;
-  });
+  const formatError =
+    options.errorFormatter ||
+    ((errors: z.ZodIssue[]) => {
+      const messages = errors.map((e) => `${e.path.join('.')}: ${e.message}`);
+      return `Validation failed: ${messages.join(', ')}`;
+    });
 
   return {
     name: 'validation',
@@ -92,10 +97,10 @@ export function validationPlugin(options: ValidationOptions = {}): ITitanPlugin 
           }
         } catch (error) {
           if (error instanceof z.ZodError) {
-            const fieldErrors = error.issues.map(e => ({
+            const fieldErrors = error.issues.map((e) => ({
               field: String(e.path.join('.')),
               message: e.message,
-              code: e.code
+              code: e.code,
             }));
             throw Errors.validation(fieldErrors);
           }
@@ -112,7 +117,7 @@ export function validationPlugin(options: ValidationOptions = {}): ITitanPlugin 
       // Override createMany
       repository.createMany = async function (data: any[]) {
         const schema = schemas.create || schemas.entity;
-        const validatedData = data.map(item => validateData(item, schema));
+        const validatedData = data.map((item) => validateData(item, schema));
         return originalCreateMany.call(this, validatedData);
       };
 
@@ -130,11 +135,8 @@ export function validationPlugin(options: ValidationOptions = {}): ITitanPlugin 
 
       // Add validation methods
       repository.validate = function (data: any, type: 'create' | 'update' | 'entity' = 'entity') {
-        const schema = type === 'create'
-          ? (schemas.create || schemas.entity)
-          : type === 'update'
-          ? schemas.update
-          : schemas.entity;
+        const schema =
+          type === 'create' ? schemas.create || schemas.entity : type === 'update' ? schemas.update : schemas.entity;
 
         if (!schema) {
           return { valid: true, data };
@@ -146,7 +148,7 @@ export function validationPlugin(options: ValidationOptions = {}): ITitanPlugin 
         } catch (error: any) {
           return {
             valid: false,
-            errors: error.errors || [{ message: error.message }]
+            errors: error.errors || [{ message: error.message }],
           };
         }
       };
@@ -174,9 +176,7 @@ export function validationPlugin(options: ValidationOptions = {}): ITitanPlugin 
         for (const [table, schemas] of Object.entries(options.schemas)) {
           for (const [type, schema] of Object.entries(schemas)) {
             if (schema && !(schema instanceof z.ZodType)) {
-              throw Errors.badRequest(
-                `Invalid schema for ${table}.${type}: must be a Zod schema`
-              );
+              throw Errors.badRequest(`Invalid schema for ${table}.${type}: must be a Zod schema`);
             }
           }
         }
@@ -189,11 +189,14 @@ export function validationPlugin(options: ValidationOptions = {}): ITitanPlugin 
  * Create validation plugin with predefined schemas
  */
 export function createValidationPlugin(
-  schemas: Record<string, {
-    entity?: z.ZodType;
-    create?: z.ZodType;
-    update?: z.ZodType;
-  }>,
+  schemas: Record<
+    string,
+    {
+      entity?: z.ZodType;
+      create?: z.ZodType;
+      update?: z.ZodType;
+    }
+  >,
   options?: Omit<ValidationOptions, 'schemas'>
 ): ITitanPlugin {
   return validationPlugin({ ...options, schemas });
@@ -205,14 +208,17 @@ export const CommonSchemas = {
   email: z.string().email(),
   url: z.string().url(),
   slug: z.string().regex(/^[a-z0-9-]+$/),
-  username: z.string().min(3).max(30).regex(/^[a-zA-Z0-9_-]+$/),
+  username: z
+    .string()
+    .min(3)
+    .max(30)
+    .regex(/^[a-zA-Z0-9_-]+$/),
   password: z.string().min(8).max(100),
   phone: z.string().regex(/^\+?[1-9]\d{1,14}$/),
   date: z.date(),
   timestamp: z.union([z.date(), z.string().datetime()]),
   json: z.record(z.string(), z.any()),
-  enum: <T extends readonly [string, ...string[]]>(values: T) =>
-    z.enum(values),
+  enum: <T extends readonly [string, ...string[]]>(values: T) => z.enum(values),
 };
 
 // Default export

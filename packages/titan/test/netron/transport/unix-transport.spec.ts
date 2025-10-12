@@ -63,7 +63,7 @@ describe('Unix Domain Socket Transport', () => {
         binary: true,
         reconnection: true,
         multiplexing: false,
-        server: true
+        server: true,
       });
     });
 
@@ -85,28 +85,28 @@ describe('Unix Domain Socket Transport', () => {
         expect(addr1).toEqual({
           protocol: 'pipe',
           path: '\\\\.\\pipe\\test',
-          params: {}
+          params: {},
         });
 
         const addr2 = transport.parseAddress('pipe://test');
         expect(addr2).toEqual({
           protocol: 'pipe',
           path: '\\\\.\\pipe\\test',
-          params: {}
+          params: {},
         });
       } else {
         const addr1 = transport.parseAddress('unix:///tmp/socket');
         expect(addr1).toEqual({
           protocol: 'unix',
           path: '/tmp/socket',
-          params: {}
+          params: {},
         });
 
         const addr2 = transport.parseAddress('/tmp/socket');
         expect(addr2).toEqual({
           protocol: 'unix',
           path: '/tmp/socket',
-          params: {}
+          params: {},
         });
       }
     });
@@ -216,7 +216,7 @@ describe('Unix Domain Socket Transport', () => {
 
       try {
         await transport.connect(fakePath, {
-          connectTimeout: 1000
+          connectTimeout: 1000,
         });
         fail('Should have thrown connection error');
       } catch (error: any) {
@@ -332,7 +332,7 @@ describe('Unix Domain Socket Transport', () => {
       }
 
       // Give some time for all messages to arrive
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(messages.length).toBe(messageCount);
     });
@@ -463,11 +463,7 @@ describe('Unix Domain Socket Transport', () => {
       await server.broadcast(broadcastData);
 
       // All clients should receive the message
-      const [data1, data2, data3] = await Promise.all([
-        data1Promise,
-        data2Promise,
-        data3Promise
-      ]);
+      const [data1, data2, data3] = await Promise.all([data1Promise, data2Promise, data3Promise]);
 
       expect(data1).toBeDefined();
       expect(data2).toBeDefined();
@@ -536,7 +532,7 @@ describe('Unix Domain Socket Transport', () => {
 
       // Create connection with short timeout
       const shortTimeoutClient = await transport.connect(socketPath, {
-        requestTimeout: 100
+        requestTimeout: 100,
       });
 
       const newServerConn = await newConnPromise;
@@ -561,7 +557,7 @@ describe('Unix Domain Socket Transport', () => {
       await clientConnection.close();
 
       // Wait for disconnect
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Ping should fail
       await expect(clientConnection.ping()).rejects.toThrow('not established');
@@ -569,17 +565,13 @@ describe('Unix Domain Socket Transport', () => {
 
     it('should handle multiple concurrent pings', async () => {
       // Send multiple pings concurrently
-      const pingPromises = [
-        clientConnection.ping(),
-        clientConnection.ping(),
-        clientConnection.ping()
-      ];
+      const pingPromises = [clientConnection.ping(), clientConnection.ping(), clientConnection.ping()];
 
       const rtts = await Promise.all(pingPromises);
 
       // All pings should succeed (Unix sockets can be 0ms on fast systems)
       expect(rtts.length).toBe(3);
-      rtts.forEach(rtt => {
+      rtts.forEach((rtt) => {
         expect(typeof rtt).toBe('number');
         expect(rtt).toBeGreaterThanOrEqual(0);
       });
@@ -587,10 +579,7 @@ describe('Unix Domain Socket Transport', () => {
 
     it('should handle bidirectional pings', async () => {
       // Both client and server send pings simultaneously
-      const [clientRtt, serverRtt] = await Promise.all([
-        clientConnection.ping(),
-        serverConnection.ping()
-      ]);
+      const [clientRtt, serverRtt] = await Promise.all([clientConnection.ping(), serverConnection.ping()]);
 
       // Unix sockets can be 0ms on fast systems
       expect(typeof clientRtt).toBe('number');
@@ -770,9 +759,7 @@ describe('Unix Domain Socket Transport', () => {
     skipOnUnix('should reject invalid protocol in connect', async () => {
       const pipeTransport = new NamedPipeTransport();
 
-      await expect(
-        pipeTransport.connect('tcp://localhost:8080')
-      ).rejects.toThrow(/Invalid named pipe address/);
+      await expect(pipeTransport.connect('tcp://localhost:8080')).rejects.toThrow(/Invalid named pipe address/);
     });
 
     skipOnUnix('should connect to named pipe', async () => {
@@ -800,7 +787,7 @@ describe('Unix Domain Socket Transport', () => {
       const pipeName = `test-pipe-${Date.now()}`;
 
       const server = await pipeTransport.createServer({
-        path: pipeName
+        path: pipeName,
       } as any);
 
       await server.listen();
@@ -812,13 +799,9 @@ describe('Unix Domain Socket Transport', () => {
     skipOnUnix('should throw error when creating server without name', async () => {
       const pipeTransport = new NamedPipeTransport();
 
-      await expect(
-        pipeTransport.createServer()
-      ).rejects.toThrow('requires a name');
+      await expect(pipeTransport.createServer()).rejects.toThrow('requires a name');
 
-      await expect(
-        pipeTransport.createServer({} as any)
-      ).rejects.toThrow('requires a name');
+      await expect(pipeTransport.createServer({} as any)).rejects.toThrow('requires a name');
     });
 
     skipOnUnix('should handle connection timeout', async () => {
@@ -827,7 +810,7 @@ describe('Unix Domain Socket Transport', () => {
 
       await expect(
         pipeTransport.connect(nonExistentPipe, {
-          connectTimeout: 100
+          connectTimeout: 100,
         })
       ).rejects.toThrow();
     });
@@ -865,7 +848,7 @@ describe('Unix Domain Socket Transport', () => {
 
           await expect(
             transport.connect(nonExistentSocket, {
-              connectTimeout: 100
+              connectTimeout: 100,
             })
           ).rejects.toThrow();
         }, 10000);
@@ -878,9 +861,7 @@ describe('Unix Domain Socket Transport', () => {
           const transport = new UnixSocketTransport();
 
           try {
-            await expect(
-              transport.connect(regularFile)
-            ).rejects.toThrow('not a Unix socket');
+            await expect(transport.connect(regularFile)).rejects.toThrow('not a Unix socket');
           } finally {
             await fs.unlink(regularFile).catch(() => {});
           }
@@ -889,17 +870,13 @@ describe('Unix Domain Socket Transport', () => {
         it('should throw error when creating server without path', async () => {
           const transport = new UnixSocketTransport();
 
-          await expect(
-            transport.createServer()
-          ).rejects.toThrow('requires a path');
+          await expect(transport.createServer()).rejects.toThrow('requires a path');
         });
 
         it('should throw error when creating server with empty options object', async () => {
           const transport = new UnixSocketTransport();
 
-          await expect(
-            transport.createServer({} as any)
-          ).rejects.toThrow('requires a path');
+          await expect(transport.createServer({} as any)).rejects.toThrow('requires a path');
         });
 
         it('should handle force option to remove existing socket', async () => {
@@ -916,7 +893,7 @@ describe('Unix Domain Socket Transport', () => {
           // Create second server with force option - should succeed
           const server2 = await transport.createServer({
             path: socketPath,
-            force: true
+            force: true,
           } as any);
 
           expect(server2).toBeDefined();
@@ -931,13 +908,13 @@ describe('Unix Domain Socket Transport', () => {
 
           const server = await transport.createServer({
             path: socketPath,
-            mode: 0o600
+            mode: 0o600,
           } as any);
 
           await server.listen();
 
           // Give it time to set permissions
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
 
           // Check that socket exists
           const stats = await fs.stat(socketPath);
@@ -954,7 +931,7 @@ describe('Unix Domain Socket Transport', () => {
           // Create server with invalid mode (should not throw, just log error)
           const server = await transport.createServer({
             path: socketPath,
-            mode: 0o777 // Valid mode, but test that error handling works
+            mode: 0o777, // Valid mode, but test that error handling works
           } as any);
 
           await server.listen();
@@ -987,9 +964,7 @@ describe('Unix Domain Socket Transport', () => {
           const invalidSocketPath = join(regularFile, 'socket.sock');
 
           try {
-            await expect(
-              transport.createServer(invalidSocketPath)
-            ).rejects.toThrow();
+            await expect(transport.createServer(invalidSocketPath)).rejects.toThrow();
           } finally {
             await fs.unlink(regularFile).catch(() => {});
           }
@@ -1007,9 +982,7 @@ describe('Unix Domain Socket Transport', () => {
           await fs.writeFile(socketPath, 'not a socket');
 
           try {
-            await expect(
-              transport.connect(socketPath)
-            ).rejects.toThrow();
+            await expect(transport.connect(socketPath)).rejects.toThrow();
           } finally {
             await fs.unlink(socketPath).catch(() => {});
           }
@@ -1028,7 +1001,7 @@ describe('Unix Domain Socket Transport', () => {
             await expect(
               transport.createServer({
                 path: dirPath,
-                force: true
+                force: true,
               } as any)
             ).rejects.toThrow();
           } finally {
@@ -1069,9 +1042,7 @@ describe('Unix Domain Socket Transport', () => {
           await server.close();
 
           // Clean up
-          const absolutePath = path.isAbsolute(relativePath) ?
-            relativePath :
-            path.join(process.cwd(), relativePath);
+          const absolutePath = path.isAbsolute(relativePath) ? relativePath : path.join(process.cwd(), relativePath);
           await cleanupSocketFile(absolutePath);
         }, 10000);
 
@@ -1082,7 +1053,7 @@ describe('Unix Domain Socket Transport', () => {
           // Connect without server (should fail with connection error)
           await expect(
             transport.connect(socketPath, {
-              connectTimeout: 100
+              connectTimeout: 100,
             })
           ).rejects.toThrow();
         }, 10000);
@@ -1098,7 +1069,7 @@ describe('Unix Domain Socket Transport', () => {
           try {
             await expect(
               transport.connect(socketPath, {
-                connectTimeout: 50 // Very short timeout
+                connectTimeout: 50, // Very short timeout
               })
             ).rejects.toThrow(/timed out|timeout|ECONNREFUSED/i);
           } finally {
@@ -1143,13 +1114,13 @@ describe('Unix Domain Socket Transport', () => {
           try {
             const server = await transport.createServer({
               path: socketPath,
-              mode: 0o600
+              mode: 0o600,
             } as any);
 
             await server.listen();
 
             // Give chmod time to execute (it's async and doesn't block)
-            await new Promise(resolve => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
             // Verify socket exists
             const stats = await fs.stat(socketPath);
@@ -1195,7 +1166,9 @@ describe('Unix Domain Socket Transport', () => {
           const serverConn = await connPromise;
 
           // UnixSocketConnection should return socket path as remoteAddress
-          expect(client.remoteAddress).toBe(path.isAbsolute(socketPath) ? socketPath : path.join(process.cwd(), socketPath));
+          expect(client.remoteAddress).toBe(
+            path.isAbsolute(socketPath) ? socketPath : path.join(process.cwd(), socketPath)
+          );
 
           await client.close();
           await server.close();
@@ -1270,7 +1243,9 @@ describe('Unix Domain Socket Transport', () => {
           const serverConn1 = await conn1Promise;
 
           expect(serverConn1).toBeDefined();
-          expect(serverConn1.remoteAddress).toBe(path.isAbsolute(socketPath) ? socketPath : path.join(process.cwd(), socketPath));
+          expect(serverConn1.remoteAddress).toBe(
+            path.isAbsolute(socketPath) ? socketPath : path.join(process.cwd(), socketPath)
+          );
 
           await client1.close();
           await server.close();
@@ -1320,7 +1295,7 @@ describe('Unix Domain Socket Transport', () => {
 
           const server = await transport.createServer({
             path: socketPath,
-            force: false
+            force: false,
           } as any);
 
           await server.listen();

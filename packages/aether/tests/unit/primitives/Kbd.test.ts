@@ -244,10 +244,7 @@ describe('Kbd', () => {
     it('should support nested kbd elements', () => {
       const component = () => {
         const parent = Kbd({
-          children: [
-            Kbd({ children: 'Ctrl' }),
-            Kbd({ children: 'C' }),
-          ],
+          children: [Kbd({ children: 'Ctrl' }), Kbd({ children: 'C' })],
         });
         return parent;
       };
@@ -262,10 +259,7 @@ describe('Kbd', () => {
       const component = () => {
         const parent = Kbd({
           class: 'combo',
-          children: [
-            Kbd({ children: '⌘' }),
-            Kbd({ children: 'K' }),
-          ],
+          children: [Kbd({ children: '⌘' }), Kbd({ children: 'K' })],
         });
         return parent;
       };
@@ -282,11 +276,7 @@ describe('Kbd', () => {
     it('should render ctrl+shift+key combination', () => {
       const component = () => {
         const parent = Kbd({
-          children: [
-            Kbd({ children: 'Ctrl' }),
-            Kbd({ children: 'Shift' }),
-            Kbd({ children: 'P' }),
-          ],
+          children: [Kbd({ children: 'Ctrl' }), Kbd({ children: 'Shift' }), Kbd({ children: 'P' })],
         });
         return parent;
       };
@@ -300,10 +290,7 @@ describe('Kbd', () => {
     it('should maintain data-kbd on nested elements', () => {
       const component = () => {
         const parent = Kbd({
-          children: [
-            Kbd({ children: 'Ctrl' }),
-            Kbd({ children: 'C' }),
-          ],
+          children: [Kbd({ children: 'Ctrl' }), Kbd({ children: 'C' })],
         });
         return parent;
       };
@@ -737,11 +724,7 @@ describe('Kbd', () => {
       const component = () => {
         const parent = Kbd({
           class: 'combo',
-          children: [
-            Kbd({ children: 'Ctrl' }),
-            Kbd({ children: 'Alt' }),
-            Kbd({ children: 'Delete' }),
-          ],
+          children: [Kbd({ children: 'Ctrl' }), Kbd({ children: 'Alt' }), Kbd({ children: 'Delete' })],
         });
         return parent;
       };
@@ -758,10 +741,7 @@ describe('Kbd', () => {
     it('should render Alt+F4 pattern', () => {
       const component = () => {
         const parent = Kbd({
-          children: [
-            Kbd({ children: 'Alt' }),
-            Kbd({ children: 'F4' }),
-          ],
+          children: [Kbd({ children: 'Alt' }), Kbd({ children: 'F4' })],
         });
         return parent;
       };

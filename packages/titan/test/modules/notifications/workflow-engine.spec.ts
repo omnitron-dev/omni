@@ -10,14 +10,12 @@ import { NotificationManager } from '../../../src/rotif/rotif.js';
 import {
   ChannelManager,
   NotificationChannel,
-  ChannelType
+  ChannelType,
 } from '../../../src/modules/notifications/channel-manager.js';
 import { PreferenceManager } from '../../../src/modules/notifications/preference-manager.js';
 import { RateLimiter } from '../../../src/modules/notifications/rate-limiter.js';
 import { RedisDockerTestHelper } from './test-redis-docker.js';
-import type {
-  NotificationWorkflow
-} from '../../../src/modules/notifications/workflow-engine.js';
+import type { NotificationWorkflow } from '../../../src/modules/notifications/workflow-engine.js';
 
 describe('WorkflowEngine', () => {
   let redis: Redis;
@@ -39,7 +37,7 @@ describe('WorkflowEngine', () => {
     sentMessages: any[] = [];
 
     async validate(recipients: any[]): Promise<any[]> {
-      return recipients.filter(r => r.test);
+      return recipients.filter((r) => r.test);
     }
 
     formatContent(content: any, recipient: any): any {
@@ -76,8 +74,8 @@ describe('WorkflowEngine', () => {
         debug: () => {},
         info: () => {},
         warn: () => {},
-        error: () => {}
-      }
+        error: () => {},
+      },
     });
 
     await rotifManager.waitUntilReady();
@@ -86,17 +84,12 @@ describe('WorkflowEngine', () => {
     channelManager = new ChannelManager();
     preferenceManager = new PreferenceManager(redis);
     rateLimiter = new RateLimiter(redis);
-    notificationService = new NotificationService(
-      rotifManager,
-      channelManager,
-      preferenceManager,
-      rateLimiter
-    );
+    notificationService = new NotificationService(rotifManager, channelManager, preferenceManager, rateLimiter);
 
     workflowEngine = new WorkflowEngine(notificationService, redis, {
       enabled: true,
       storage: 'redis',
-      maxConcurrent: 5
+      maxConcurrent: 5,
     });
   }, 30000);
 
@@ -127,11 +120,11 @@ describe('WorkflowEngine', () => {
             config: {
               notification: {
                 title: 'Test',
-                body: 'Test message'
-              }
-            }
-          }
-        ]
+                body: 'Test message',
+              },
+            },
+          },
+        ],
       };
 
       workflowEngine.defineWorkflow(workflow);
@@ -149,9 +142,9 @@ describe('WorkflowEngine', () => {
             id: 'dummy',
             name: 'Dummy step',
             type: 'wait',
-            config: { duration: 1 }
-          }
-        ]
+            config: { duration: 1 },
+          },
+        ],
       };
 
       const workflow2: NotificationWorkflow = {
@@ -163,9 +156,9 @@ describe('WorkflowEngine', () => {
             id: 'dummy',
             name: 'Dummy step',
             type: 'wait',
-            config: { duration: 1 }
-          }
-        ]
+            config: { duration: 1 },
+          },
+        ],
       };
 
       workflowEngine.defineWorkflow(workflow1);
@@ -180,11 +173,10 @@ describe('WorkflowEngine', () => {
       const invalidWorkflow: any = {
         id: 'invalid',
         // Missing required fields
-        steps: []
+        steps: [],
       };
 
-      expect(() => workflowEngine.defineWorkflow(invalidWorkflow))
-        .toThrow();
+      expect(() => workflowEngine.defineWorkflow(invalidWorkflow)).toThrow();
     });
   });
 
@@ -210,13 +202,13 @@ describe('WorkflowEngine', () => {
               notification: {
                 type: 'info',
                 title: 'Test Notification',
-                body: 'This is a test'
+                body: 'This is a test',
               },
               channels: ['test'],
-              recipients: [{ test: true, id: 'user1' }]
-            }
-          }
-        ]
+              recipients: [{ test: true, id: 'user1' }],
+            },
+          },
+        ],
       };
 
       workflowEngine.defineWorkflow(workflow);
@@ -239,10 +231,10 @@ describe('WorkflowEngine', () => {
             name: 'Wait 100ms',
             type: 'wait',
             config: {
-              duration: 100
-            }
-          }
-        ]
+              duration: 100,
+            },
+          },
+        ],
       };
 
       workflowEngine.defineWorkflow(workflow);
@@ -269,8 +261,8 @@ describe('WorkflowEngine', () => {
               operator: 'equals',
               value: 'premium',
               onTrue: 'premium-notify',
-              onFalse: 'basic-notify'
-            }
+              onFalse: 'basic-notify',
+            },
           },
           {
             id: 'premium-notify',
@@ -279,16 +271,18 @@ describe('WorkflowEngine', () => {
             config: {
               notification: {
                 title: 'Premium Feature',
-                body: 'Exclusive for premium users'
+                body: 'Exclusive for premium users',
               },
               channels: ['test'],
-              recipients: [{ test: true }]
+              recipients: [{ test: true }],
             },
-            conditions: [{
-              field: 'lastStepResult',
-              operator: 'equals',
-              value: true
-            }]
+            conditions: [
+              {
+                field: 'lastStepResult',
+                operator: 'equals',
+                value: true,
+              },
+            ],
           },
           {
             id: 'basic-notify',
@@ -297,30 +291,32 @@ describe('WorkflowEngine', () => {
             config: {
               notification: {
                 title: 'Basic Feature',
-                body: 'Available for all users'
+                body: 'Available for all users',
               },
               channels: ['test'],
-              recipients: [{ test: true }]
+              recipients: [{ test: true }],
             },
-            conditions: [{
-              field: 'lastStepResult',
-              operator: 'equals',
-              value: false
-            }]
-          }
-        ]
+            conditions: [
+              {
+                field: 'lastStepResult',
+                operator: 'equals',
+                value: false,
+              },
+            ],
+          },
+        ],
       };
 
       workflowEngine.defineWorkflow(workflow);
 
       // Test with premium user
       const premiumResult = await workflowEngine.execute('condition-workflow', {
-        userLevel: 'premium'
+        userLevel: 'premium',
       });
       expect(premiumResult.success).toBe(true);
       expect(testChannel.sentMessages).toContainEqual(
         expect.objectContaining({
-          content: expect.objectContaining({ title: 'Premium Feature' })
+          content: expect.objectContaining({ title: 'Premium Feature' }),
         })
       );
 
@@ -329,12 +325,12 @@ describe('WorkflowEngine', () => {
 
       // Test with basic user
       const basicResult = await workflowEngine.execute('condition-workflow', {
-        userLevel: 'basic'
+        userLevel: 'basic',
       });
       expect(basicResult.success).toBe(true);
       expect(testChannel.sentMessages).toContainEqual(
         expect.objectContaining({
-          content: expect.objectContaining({ title: 'Basic Feature' })
+          content: expect.objectContaining({ title: 'Basic Feature' }),
         })
       );
     });
@@ -356,21 +352,21 @@ describe('WorkflowEngine', () => {
                   config: {
                     notification: { title: 'Email', body: 'Email notification' },
                     channels: ['test'],
-                    recipients: [{ test: true, email: 'user@example.com' }]
-                  }
+                    recipients: [{ test: true, email: 'user@example.com' }],
+                  },
                 },
                 {
                   type: 'notification',
                   config: {
                     notification: { title: 'SMS', body: 'SMS notification' },
                     channels: ['test'],
-                    recipients: [{ test: true, phone: '+1234567890' }]
-                  }
-                }
-              ]
-            }
-          }
-        ]
+                    recipients: [{ test: true, phone: '+1234567890' }],
+                  },
+                },
+              ],
+            },
+          },
+        ],
       };
 
       workflowEngine.defineWorkflow(workflow);
@@ -380,12 +376,12 @@ describe('WorkflowEngine', () => {
       expect(testChannel.sentMessages).toHaveLength(2);
       expect(testChannel.sentMessages).toContainEqual(
         expect.objectContaining({
-          content: expect.objectContaining({ title: 'Email' })
+          content: expect.objectContaining({ title: 'Email' }),
         })
       );
       expect(testChannel.sentMessages).toContainEqual(
         expect.objectContaining({
-          content: expect.objectContaining({ title: 'SMS' })
+          content: expect.objectContaining({ title: 'SMS' }),
         })
       );
     });
@@ -405,7 +401,7 @@ describe('WorkflowEngine', () => {
               delay: 50,
               notification: {
                 title: 'Batch notification',
-                body: 'Sent in batches'
+                body: 'Sent in batches',
               },
               channels: ['test'],
               recipients: [
@@ -413,11 +409,11 @@ describe('WorkflowEngine', () => {
                 { test: true, id: 'user2' },
                 { test: true, id: 'user3' },
                 { test: true, id: 'user4' },
-                { test: true, id: 'user5' }
-              ]
-            }
-          }
-        ]
+                { test: true, id: 'user5' },
+              ],
+            },
+          },
+        ],
       };
 
       workflowEngine.defineWorkflow(workflow);
@@ -444,19 +440,19 @@ describe('WorkflowEngine', () => {
               notification: { title: 'Test', body: 'Test' },
               // Invalid config to trigger error
               channels: ['nonexistent'],
-              recipients: []
+              recipients: [],
             },
-            onError: 'stop'
+            onError: 'stop',
           },
           {
             id: 'next',
             name: 'Next step',
             type: 'notification',
             config: {
-              notification: { title: 'Next', body: 'Should not execute' }
-            }
-          }
-        ]
+              notification: { title: 'Next', body: 'Should not execute' },
+            },
+          },
+        ],
       };
 
       workflowEngine.defineWorkflow(workflow);
@@ -482,9 +478,9 @@ describe('WorkflowEngine', () => {
             type: 'notification',
             config: {
               notification: { title: 'Error', body: 'Will fail' },
-              channels: ['nonexistent']
+              channels: ['nonexistent'],
             },
-            onError: 'continue'
+            onError: 'continue',
           },
           {
             id: 'success',
@@ -493,10 +489,10 @@ describe('WorkflowEngine', () => {
             config: {
               notification: { title: 'Success', body: 'Should execute' },
               channels: ['test'],
-              recipients: [{ test: true }]
-            }
-          }
-        ]
+              recipients: [{ test: true }],
+            },
+          },
+        ],
       };
 
       workflowEngine.defineWorkflow(workflow);
@@ -547,13 +543,13 @@ describe('WorkflowEngine', () => {
             config: {
               notification: { title: 'Retry', body: 'Will retry' },
               channels: ['retry-test'],
-              recipients: [{ id: 'user1' }]
+              recipients: [{ id: 'user1' }],
             },
             onError: 'retry',
             retryAttempts: 3,
-            retryDelay: 50
-          }
-        ]
+            retryDelay: 50,
+          },
+        ],
       };
 
       workflowEngine.defineWorkflow(workflow);
@@ -579,8 +575,8 @@ describe('WorkflowEngine', () => {
               field: 'input',
               operator: 'equals',
               value: 'test',
-              setContext: { processedInput: 'TEST' }
-            }
+              setContext: { processedInput: 'TEST' },
+            },
           },
           {
             id: 'use-context',
@@ -589,13 +585,13 @@ describe('WorkflowEngine', () => {
             config: {
               notification: {
                 title: '{{processedInput}}',
-                body: 'Context value: {{processedInput}}'
+                body: 'Context value: {{processedInput}}',
               },
               channels: ['test'],
-              recipients: [{ test: true }]
-            }
-          }
-        ]
+              recipients: [{ test: true }],
+            },
+          },
+        ],
       };
 
       const testChannel = new TestChannel();
@@ -603,7 +599,7 @@ describe('WorkflowEngine', () => {
 
       workflowEngine.defineWorkflow(workflow);
       const result = await workflowEngine.execute('context-workflow', {
-        input: 'test'
+        input: 'test',
       });
 
       expect(result.success).toBe(true);
@@ -623,8 +619,8 @@ describe('WorkflowEngine', () => {
             config: {
               notification: { title: 'First', body: 'First message' },
               channels: ['test'],
-              recipients: [{ test: true }]
-            }
+              recipients: [{ test: true }],
+            },
           },
           {
             id: 'second',
@@ -633,10 +629,10 @@ describe('WorkflowEngine', () => {
             config: {
               field: 'step_first_result.success',
               operator: 'equals',
-              value: true
-            }
-          }
-        ]
+              value: true,
+            },
+          },
+        ],
       };
 
       const testChannel = new TestChannel();
@@ -662,9 +658,9 @@ describe('WorkflowEngine', () => {
             id: 'step1',
             name: 'Step 1',
             type: 'wait',
-            config: { duration: 10 }
-          }
-        ]
+            config: { duration: 10 },
+          },
+        ],
       };
 
       workflowEngine.defineWorkflow(workflow);
@@ -674,7 +670,7 @@ describe('WorkflowEngine', () => {
       expect(history).toHaveLength(1);
       expect(history[0]).toMatchObject({
         workflowId: 'history-workflow',
-        success: true
+        success: true,
       });
     });
 
@@ -688,9 +684,9 @@ describe('WorkflowEngine', () => {
             id: 'step1',
             name: 'Step 1',
             type: 'wait',
-            config: { duration: 10 }
-          }
-        ]
+            config: { duration: 10 },
+          },
+        ],
       };
 
       workflowEngine.defineWorkflow(workflow);
@@ -704,9 +700,9 @@ describe('WorkflowEngine', () => {
         steps: expect.arrayContaining([
           expect.objectContaining({
             stepId: 'step1',
-            success: true
-          })
-        ])
+            success: true,
+          }),
+        ]),
       });
     });
 
@@ -720,9 +716,9 @@ describe('WorkflowEngine', () => {
             id: 'step1',
             name: 'Step 1',
             type: 'wait',
-            config: { duration: 10 }
-          }
-        ]
+            config: { duration: 10 },
+          },
+        ],
       };
 
       workflowEngine.defineWorkflow(workflow);
@@ -754,17 +750,17 @@ describe('WorkflowEngine', () => {
             config: {
               notification: {
                 title: 'Welcome!',
-                body: 'Welcome to our platform'
+                body: 'Welcome to our platform',
               },
               channels: ['test'],
-              recipients: [{ test: true, id: 'newuser' }]
-            }
+              recipients: [{ test: true, id: 'newuser' }],
+            },
           },
           {
             id: 'wait',
             name: 'Wait',
             type: 'wait',
-            config: { duration: 100 }
+            config: { duration: 100 },
           },
           {
             id: 'onboarding',
@@ -773,19 +769,19 @@ describe('WorkflowEngine', () => {
             config: {
               notification: {
                 title: 'Getting Started',
-                body: 'Here are some tips...'
+                body: 'Here are some tips...',
               },
               channels: ['test'],
-              recipients: [{ test: true, id: 'newuser' }]
-            }
-          }
-        ]
+              recipients: [{ test: true, id: 'newuser' }],
+            },
+          },
+        ],
       };
 
       workflowEngine.defineWorkflow(workflow);
       const result = await workflowEngine.execute('welcome-series', {
         userId: 'newuser',
-        email: 'newuser@example.com'
+        email: 'newuser@example.com',
       });
 
       expect(result.success).toBe(true);
@@ -811,11 +807,11 @@ describe('WorkflowEngine', () => {
             config: {
               notification: {
                 title: 'Order Confirmed',
-                body: 'Your order #{{orderId}} has been confirmed'
+                body: 'Your order #{{orderId}} has been confirmed',
               },
               channels: ['test'],
-              recipients: [{ test: true }]
-            }
+              recipients: [{ test: true }],
+            },
           },
           {
             id: 'check-stock',
@@ -824,8 +820,8 @@ describe('WorkflowEngine', () => {
             config: {
               field: 'hasStock',
               operator: 'equals',
-              value: true
-            }
+              value: true,
+            },
           },
           {
             id: 'ship',
@@ -834,16 +830,18 @@ describe('WorkflowEngine', () => {
             config: {
               notification: {
                 title: 'Order Shipped',
-                body: 'Your order has been shipped'
+                body: 'Your order has been shipped',
               },
               channels: ['test'],
-              recipients: [{ test: true }]
+              recipients: [{ test: true }],
             },
-            conditions: [{
-              field: 'step_check-stock_result',
-              operator: 'equals',
-              value: true
-            }]
+            conditions: [
+              {
+                field: 'step_check-stock_result',
+                operator: 'equals',
+                value: true,
+              },
+            ],
           },
           {
             id: 'backorder',
@@ -852,18 +850,20 @@ describe('WorkflowEngine', () => {
             config: {
               notification: {
                 title: 'Item Backordered',
-                body: 'Your item is currently out of stock'
+                body: 'Your item is currently out of stock',
               },
               channels: ['test'],
-              recipients: [{ test: true }]
+              recipients: [{ test: true }],
             },
-            conditions: [{
-              field: 'step_check-stock_result',
-              operator: 'equals',
-              value: false
-            }]
-          }
-        ]
+            conditions: [
+              {
+                field: 'step_check-stock_result',
+                operator: 'equals',
+                value: false,
+              },
+            ],
+          },
+        ],
       };
 
       workflowEngine.defineWorkflow(workflow);
@@ -871,13 +871,13 @@ describe('WorkflowEngine', () => {
       // Test with stock available
       const stockResult = await workflowEngine.execute('order-processing', {
         orderId: '12345',
-        hasStock: true
+        hasStock: true,
       });
 
       expect(stockResult.success).toBe(true);
       expect(testChannel.sentMessages).toContainEqual(
         expect.objectContaining({
-          content: expect.objectContaining({ title: 'Order Shipped' })
+          content: expect.objectContaining({ title: 'Order Shipped' }),
         })
       );
 
@@ -887,13 +887,13 @@ describe('WorkflowEngine', () => {
       // Test without stock
       const noStockResult = await workflowEngine.execute('order-processing', {
         orderId: '12346',
-        hasStock: false
+        hasStock: false,
       });
 
       expect(noStockResult.success).toBe(true);
       expect(testChannel.sentMessages).toContainEqual(
         expect.objectContaining({
-          content: expect.objectContaining({ title: 'Item Backordered' })
+          content: expect.objectContaining({ title: 'Item Backordered' }),
         })
       );
     });

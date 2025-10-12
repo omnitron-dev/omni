@@ -29,10 +29,7 @@ import type { RemotePeer } from '../remote-peer.js';
  * // Clear all cached definitions
  * const count = await peer.runTask('invalidate_cache');
  */
-export async function invalidate_cache(
-  peer: RemotePeer,
-  pattern?: string,
-): Promise<number> {
+export async function invalidate_cache(peer: RemotePeer, pattern?: string): Promise<number> {
   let invalidatedCount = 0;
 
   // If no pattern provided (undefined), clear all cached definitions
@@ -40,10 +37,7 @@ export async function invalidate_cache(
     invalidatedCount = peer.services.size;
     peer.services.clear();
 
-    peer.logger.info(
-      { count: invalidatedCount },
-      'All cached service definitions invalidated',
-    );
+    peer.logger.info({ count: invalidatedCount }, 'All cached service definitions invalidated');
 
     return invalidatedCount;
   }
@@ -69,7 +63,7 @@ export async function invalidate_cache(
       count: invalidatedCount,
       services: servicesToInvalidate,
     },
-    'Cached service definitions invalidated',
+    'Cached service definitions invalidated'
   );
 
   return invalidatedCount;

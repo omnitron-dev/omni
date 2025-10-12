@@ -15,9 +15,7 @@ import { computed } from '../../src/core/reactivity/computed.js';
  * Consumers call methods and read signals directly.
  */
 export function createMethodBasedStore() {
-  const sidebarComponent = signal<{ focused: boolean; visible?: boolean; width?: number } | null>(
-    null,
-  );
+  const sidebarComponent = signal<{ focused: boolean; visible?: boolean; width?: number } | null>(null);
   const user = signal<{
     preferences?: { darkMode: boolean };
   }>({});

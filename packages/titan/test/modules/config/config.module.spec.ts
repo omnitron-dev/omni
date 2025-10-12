@@ -7,13 +7,8 @@ import { z } from 'zod';
 import { Container } from '@nexus';
 import { ConfigModule } from '../../../src/modules/config/config.module.js';
 import { ConfigService } from '../../../src/modules/config/config.service.js';
-import {
-  CONFIG_OPTIONS_TOKEN,
-  CONFIG_SERVICE_TOKEN,
-} from '../../../src/modules/config/config.tokens.js';
-import type {
-  IConfigModuleOptions as ConfigModuleOptions,
-} from '../../../src/modules/config/types.js';
+import { CONFIG_OPTIONS_TOKEN, CONFIG_SERVICE_TOKEN } from '../../../src/modules/config/config.tokens.js';
+import type { IConfigModuleOptions as ConfigModuleOptions } from '../../../src/modules/config/types.js';
 import { createToken } from '@nexus';
 import { registerModuleProviders } from '../../../src/testing/container-utils.js';
 import path from 'node:path';
@@ -50,15 +45,15 @@ describe('ConfigModule', () => {
       const schema = z.object({
         app: z.object({
           name: z.string(),
-          port: z.number()
-        })
+          port: z.number(),
+        }),
       });
 
       const options: ConfigModuleOptions = {
         schema,
         defaults: {
-          app: { name: 'test-app', port: 3000 }
-        }
+          app: { name: 'test-app', port: 3000 },
+        },
       };
 
       const module = ConfigModule.forRoot(options);
@@ -76,8 +71,8 @@ describe('ConfigModule', () => {
     it('should register providers correctly', () => {
       const options: ConfigModuleOptions = {
         defaults: {
-          test: 'value'
-        }
+          test: 'value',
+        },
       };
 
       const module = ConfigModule.forRoot(options);
@@ -92,15 +87,20 @@ describe('ConfigModule', () => {
 
     it('should handle file sources', () => {
       const configFile = path.join(tempDir, 'config.json');
-      fs.writeFileSync(configFile, JSON.stringify({
-        app: { name: 'file-app' }
-      }));
+      fs.writeFileSync(
+        configFile,
+        JSON.stringify({
+          app: { name: 'file-app' },
+        })
+      );
 
       const module = ConfigModule.forRoot({
-        sources: [{
-          type: 'file',
-          path: configFile
-        }]
+        sources: [
+          {
+            type: 'file',
+            path: configFile,
+          },
+        ],
       });
 
       expect(module.providers).toBeDefined();
@@ -113,9 +113,9 @@ describe('ConfigModule', () => {
       const module = ConfigModule.forRootAsync({
         useFactory: async () => ({
           defaults: {
-            app: { name: 'async-app' }
-          }
-        })
+            app: { name: 'async-app' },
+          },
+        }),
       });
 
       expect(module.module).toBe(ConfigModule);
@@ -130,22 +130,20 @@ describe('ConfigModule', () => {
         inject: [DB_TOKEN],
         useFactory: async (db: { host: string }) => ({
           defaults: {
-            database: { host: db.host }
-          }
-        })
+            database: { host: db.host },
+          },
+        }),
       });
 
       expect(module.providers).toBeDefined();
-      const factoryProvider = module.providers?.find(
-        (p: any) => Array.isArray(p) && p[0] === CONFIG_OPTIONS_TOKEN
-      );
+      const factoryProvider = module.providers?.find((p: any) => Array.isArray(p) && p[0] === CONFIG_OPTIONS_TOKEN);
       expect(factoryProvider).toBeDefined();
     });
 
     it('should create global async module', () => {
       const module = ConfigModule.forRootAsync({
         useFactory: async () => ({}),
-        global: true
+        global: true,
       });
 
       expect(module.global).toBe(true);
@@ -157,8 +155,8 @@ describe('ConfigModule', () => {
       const featureSchema = z.object({
         feature: z.object({
           enabled: z.boolean(),
-          config: z.string()
-        })
+          config: z.string(),
+        }),
       });
 
       const module = ConfigModule.forFeature('myFeature', featureSchema);
@@ -171,7 +169,7 @@ describe('ConfigModule', () => {
     it('should provide typed feature config', () => {
       const userSchema = z.object({
         maxUsers: z.number(),
-        allowRegistration: z.boolean()
+        allowRegistration: z.boolean(),
       });
 
       const module = ConfigModule.forFeature('users', userSchema);
@@ -187,12 +185,12 @@ describe('ConfigModule', () => {
     it('should create multiple feature modules', () => {
       const authSchema = z.object({
         jwtSecret: z.string(),
-        expiresIn: z.string()
+        expiresIn: z.string(),
       });
 
       const cacheSchema = z.object({
         ttl: z.number(),
-        maxSize: z.number()
+        maxSize: z.number(),
       });
 
       const authModule = ConfigModule.forFeature('auth', authSchema);
@@ -208,8 +206,8 @@ describe('ConfigModule', () => {
     it('should resolve ConfigService from container', async () => {
       const options: ConfigModuleOptions = {
         defaults: {
-          app: { name: 'di-test' }
-        }
+          app: { name: 'di-test' },
+        },
       };
 
       // Reset the ConfigModule state before test
@@ -232,7 +230,7 @@ describe('ConfigModule', () => {
     it('should share ConfigService in global module', async () => {
       const module = ConfigModule.forRoot({
         defaults: { shared: 'value' },
-        global: true
+        global: true,
       });
 
       // Register providers
@@ -247,7 +245,7 @@ describe('ConfigModule', () => {
     it('should resolve feature configuration', async () => {
       const featureSchema = z.object({
         enabled: z.boolean(),
-        timeout: z.number()
+        timeout: z.number(),
       });
 
       // Reset the ConfigModule state before test
@@ -259,9 +257,9 @@ describe('ConfigModule', () => {
         defaults: {
           myFeature: {
             enabled: true,
-            timeout: 5000
-          }
-        }
+            timeout: 5000,
+          },
+        },
       });
 
       registerModuleProviders(container, mainModule.providers);
@@ -298,7 +296,7 @@ describe('ConfigModule', () => {
       const mockApp = {
         get: jest.fn(),
         resolve: jest.fn().mockReturnValue(configService),
-        on: jest.fn()
+        on: jest.fn(),
       };
 
       // Set up ConfigModule.instance for the test
@@ -322,7 +320,7 @@ describe('ConfigModule', () => {
 
       // Test that onStop can be called without errors
       const mockApp = {
-        resolve: jest.fn()
+        resolve: jest.fn(),
       };
 
       await module.onStop?.(mockApp as any);
@@ -335,15 +333,15 @@ describe('ConfigModule', () => {
       const schema = z.object({
         app: z.object({
           name: z.string().min(3),
-          port: z.number().positive()
-        })
+          port: z.number().positive(),
+        }),
       });
 
       const validModule = ConfigModule.forRoot({
         schema,
         defaults: {
-          app: { name: 'valid', port: 3000 }
-        }
+          app: { name: 'valid', port: 3000 },
+        },
       });
 
       expect(validModule.providers).toBeDefined();
@@ -352,9 +350,9 @@ describe('ConfigModule', () => {
       const invalidModule = ConfigModule.forRoot({
         schema,
         defaults: {
-          app: { name: 'ab', port: -1 } // Invalid values
+          app: { name: 'ab', port: -1 }, // Invalid values
         },
-        validateOnStartup: false // Don't validate immediately
+        validateOnStartup: false, // Don't validate immediately
       });
 
       expect(invalidModule.providers).toBeDefined();
@@ -376,9 +374,9 @@ describe('ConfigModule', () => {
         defaults: {
           app: {
             name: 'prod-app',
-            debug: false
-          }
-        }
+            debug: false,
+          },
+        },
       });
 
       expect(module.providers).toBeDefined();
@@ -388,7 +386,7 @@ describe('ConfigModule', () => {
       process.env.NODE_ENV = 'test';
 
       const module = ConfigModule.forRoot({
-        autoLoad: true
+        autoLoad: true,
       });
 
       expect(module.providers).toBeDefined();
@@ -404,8 +402,8 @@ describe('ConfigModule', () => {
       // Create a module with valid config first
       const module = ConfigModule.forRoot({
         defaults: {
-          test: 'value'
-        }
+          test: 'value',
+        },
       });
 
       registerModuleProviders(container, module.providers);

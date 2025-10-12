@@ -16,12 +16,7 @@ import {
   REDIS_MODULE_OPTIONS,
   REDIS_DEFAULT_NAMESPACE,
 } from './redis.constants.js';
-import {
-  RedisModuleOptions,
-  RedisClientOptions,
-  RedisOptionsFactory,
-  RedisModuleAsyncOptions,
-} from './redis.types.js';
+import { RedisModuleOptions, RedisClientOptions, RedisOptionsFactory, RedisModuleAsyncOptions } from './redis.types.js';
 
 @Module()
 export class TitanRedisModule {
@@ -31,24 +26,33 @@ export class TitanRedisModule {
     // Create providers using correct Nexus format: [token, provider]
     const providers: Array<[InjectionToken<any>, ProviderDefinition<any>] | Provider<any>> = [
       // Manager singleton with initialization
-      [REDIS_MANAGER, {
-        useFactory: async () => {
-          const manager = new RedisManager(options);
-          await manager.init();
-          return manager;
+      [
+        REDIS_MANAGER,
+        {
+          useFactory: async () => {
+            const manager = new RedisManager(options);
+            await manager.init();
+            return manager;
+          },
         },
-      }],
+      ],
 
       // Main services
-      [RedisService, {
-        useFactory: (manager: RedisManager) => new RedisService(manager),
-        inject: [REDIS_MANAGER],
-      }],
+      [
+        RedisService,
+        {
+          useFactory: (manager: RedisManager) => new RedisService(manager),
+          inject: [REDIS_MANAGER],
+        },
+      ],
 
-      [RedisHealthIndicator, {
-        useFactory: (manager: RedisManager) => new RedisHealthIndicator(manager),
-        inject: [REDIS_MANAGER],
-      }],
+      [
+        RedisHealthIndicator,
+        {
+          useFactory: (manager: RedisManager) => new RedisHealthIndicator(manager),
+          inject: [REDIS_MANAGER],
+        },
+      ],
     ];
 
     // Create client providers
@@ -60,7 +64,7 @@ export class TitanRedisModule {
       REDIS_MANAGER,
       RedisService,
       RedisHealthIndicator,
-      ...clientProviders.map(p => Array.isArray(p) ? p[0] : getRedisClientToken(REDIS_DEFAULT_NAMESPACE)),
+      ...clientProviders.map((p) => (Array.isArray(p) ? p[0] : getRedisClientToken(REDIS_DEFAULT_NAMESPACE))),
     ];
 
     const result: DynamicModule = {
@@ -84,41 +88,50 @@ export class TitanRedisModule {
     providers.push(...asyncProviders);
 
     // Manager provider
-    providers.push([REDIS_MANAGER, {
-      useFactory: async (moduleOptions: RedisModuleOptions) => {
-        const manager = new RedisManager(moduleOptions);
-        await manager.init();
-        return manager;
+    providers.push([
+      REDIS_MANAGER,
+      {
+        useFactory: async (moduleOptions: RedisModuleOptions) => {
+          const manager = new RedisManager(moduleOptions);
+          await manager.init();
+          return manager;
+        },
+        inject: [REDIS_MODULE_OPTIONS],
       },
-      inject: [REDIS_MODULE_OPTIONS],
-    }]);
+    ]);
 
     // Service providers
-    providers.push([RedisService, {
-      useFactory: (manager: RedisManager) => new RedisService(manager),
-      inject: [REDIS_MANAGER],
-    }]);
+    providers.push([
+      RedisService,
+      {
+        useFactory: (manager: RedisManager) => new RedisService(manager),
+        inject: [REDIS_MANAGER],
+      },
+    ]);
 
-    providers.push([RedisHealthIndicator, {
-      useFactory: (manager: RedisManager) => new RedisHealthIndicator(manager),
-      inject: [REDIS_MANAGER],
-    }]);
+    providers.push([
+      RedisHealthIndicator,
+      {
+        useFactory: (manager: RedisManager) => new RedisHealthIndicator(manager),
+        inject: [REDIS_MANAGER],
+      },
+    ]);
 
     // Dynamic client providers
-    providers.push(['REDIS_CLIENT_PROVIDERS' as any, {
-      useFactory: async (moduleOptions: RedisModuleOptions, manager: RedisManager) => this.createDynamicClientProviders(moduleOptions, manager),
-      inject: [REDIS_MODULE_OPTIONS, REDIS_MANAGER],
-    }]);
+    providers.push([
+      'REDIS_CLIENT_PROVIDERS' as any,
+      {
+        useFactory: async (moduleOptions: RedisModuleOptions, manager: RedisManager) =>
+          this.createDynamicClientProviders(moduleOptions, manager),
+        inject: [REDIS_MODULE_OPTIONS, REDIS_MANAGER],
+      },
+    ]);
 
-    const exports: InjectionToken<any>[] = [
-      REDIS_MANAGER,
-      RedisService,
-      RedisHealthIndicator,
-    ];
+    const exports: InjectionToken<any>[] = [REDIS_MANAGER, RedisService, RedisHealthIndicator];
 
     const result: DynamicModule = {
       module: TitanRedisModule,
-      imports: options.imports as any || [],
+      imports: (options.imports as any) || [],
       providers,
       exports,
     };
@@ -136,13 +149,13 @@ export class TitanRedisModule {
       {
         useFactory: (manager: RedisManager) => manager.getClient(namespace),
         inject: [REDIS_MANAGER],
-      }
+      },
     ]);
 
     return {
       module: TitanRedisModule,
       providers,
-      exports: providers.map(p => p[0]),
+      exports: providers.map((p) => p[0]),
     };
   }
 
@@ -171,7 +184,7 @@ export class TitanRedisModule {
         {
           useFactory: (manager: RedisManager) => manager.getClient(namespace),
           inject: [REDIS_MANAGER],
-        }
+        },
       ];
     });
   }
@@ -200,7 +213,7 @@ export class TitanRedisModule {
         getRedisClientToken(namespace),
         {
           useFactory: () => manager.getClient(namespace),
-        }
+        },
       ];
     });
   }
@@ -211,30 +224,43 @@ export class TitanRedisModule {
     const providers: Array<[InjectionToken<any>, ProviderDefinition<any>] | Provider<any>> = [];
 
     if (options.useFactory) {
-      providers.push([REDIS_MODULE_OPTIONS, {
-        useFactory: async (...args: any[]) => Promise.resolve(options.useFactory!(...args)),
-        inject: (options.inject || []) as any,
-      }]);
+      providers.push([
+        REDIS_MODULE_OPTIONS,
+        {
+          useFactory: async (...args: any[]) => Promise.resolve(options.useFactory!(...args)),
+          inject: (options.inject || []) as any,
+        },
+      ]);
     } else if (options.useExisting) {
-      providers.push([REDIS_MODULE_OPTIONS, {
-        useFactory: async (optionsFactory: RedisOptionsFactory) =>
-          optionsFactory.createRedisOptions(),
-        inject: [options.useExisting],
-      }]);
+      providers.push([
+        REDIS_MODULE_OPTIONS,
+        {
+          useFactory: async (optionsFactory: RedisOptionsFactory) => optionsFactory.createRedisOptions(),
+          inject: [options.useExisting],
+        },
+      ]);
     } else if (options.useClass) {
-      providers.push([options.useClass as any, {
-        useClass: options.useClass,
-      }]);
+      providers.push([
+        options.useClass as any,
+        {
+          useClass: options.useClass,
+        },
+      ]);
 
-      providers.push([REDIS_MODULE_OPTIONS, {
-        useFactory: async (optionsFactory: RedisOptionsFactory) =>
-          optionsFactory.createRedisOptions(),
-        inject: [options.useClass as any],
-      }]);
+      providers.push([
+        REDIS_MODULE_OPTIONS,
+        {
+          useFactory: async (optionsFactory: RedisOptionsFactory) => optionsFactory.createRedisOptions(),
+          inject: [options.useClass as any],
+        },
+      ]);
     } else {
-      providers.push([REDIS_MODULE_OPTIONS, {
-        useValue: {},
-      }]);
+      providers.push([
+        REDIS_MODULE_OPTIONS,
+        {
+          useValue: {},
+        },
+      ]);
     }
 
     return providers;

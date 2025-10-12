@@ -94,41 +94,41 @@ const SIZE_MAP: Record<Exclude<SpaceSize, number>, number> = {
  * ```
  */
 export const Space = defineComponent<SpaceProps>((props) => () => {
-    const direction = props.direction ?? 'horizontal';
-    const size = props.size ?? 'md';
-    const spacing = props.spacing ?? (typeof size === 'number' ? size : SIZE_MAP[size]);
-    const isVertical = direction === 'vertical';
+  const direction = props.direction ?? 'horizontal';
+  const size = props.size ?? 'md';
+  const spacing = props.spacing ?? (typeof size === 'number' ? size : SIZE_MAP[size]);
+  const isVertical = direction === 'vertical';
 
-    const {
-      direction: _direction,
-      size: _size,
-      spacing: _spacing,
-      align,
-      wrap,
-      split,
-      children,
-      class: className,
-      style,
-      ...restProps
-    } = props;
+  const {
+    direction: _direction,
+    size: _size,
+    spacing: _spacing,
+    align,
+    wrap,
+    split,
+    children,
+    class: className,
+    style,
+    ...restProps
+  } = props;
 
-    // Convert align to flexbox alignment
-    const alignItems = align === 'start' ? 'flex-start' : align === 'end' ? 'flex-end' : align;
+  // Convert align to flexbox alignment
+  const alignItems = align === 'start' ? 'flex-start' : align === 'end' ? 'flex-end' : align;
 
-    const spaceStyles: Record<string, any> = {
-      display: 'inline-flex',
-      flexDirection: isVertical ? 'column' : 'row',
-      gap: `${spacing}px`,
-      ...(alignItems && { alignItems }),
-      ...(wrap && { flexWrap: 'wrap' }),
-      ...(split && { justifyContent: 'space-between', width: '100%' }),
-      ...style,
-    };
+  const spaceStyles: Record<string, any> = {
+    display: 'inline-flex',
+    flexDirection: isVertical ? 'column' : 'row',
+    gap: `${spacing}px`,
+    ...(alignItems && { alignItems }),
+    ...(wrap && { flexWrap: 'wrap' }),
+    ...(split && { justifyContent: 'space-between', width: '100%' }),
+    ...style,
+  };
 
-    return jsx('div', {
-      class: className,
-      style: spaceStyles,
-      ...restProps,
-      children,
-    });
+  return jsx('div', {
+    class: className,
+    style: spaceStyles,
+    ...restProps,
+    children,
   });
+});

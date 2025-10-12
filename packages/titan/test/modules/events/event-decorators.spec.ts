@@ -9,7 +9,11 @@ import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
 import { EventsService } from '../../../src/modules/events/events.service';
 import { EventMetadataService } from '../../../src/modules/events/event-metadata.service';
 import { EventDiscoveryService } from '../../../src/modules/events/event-discovery.service';
-import { EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN, EVENT_DISCOVERY_SERVICE_TOKEN } from '../../../src/modules/events/events.module';
+import {
+  EVENT_EMITTER_TOKEN,
+  EVENT_METADATA_SERVICE_TOKEN,
+  EVENT_DISCOVERY_SERVICE_TOKEN,
+} from '../../../src/modules/events/events.module';
 import {
   OnEvent,
   OnceEvent,
@@ -17,7 +21,7 @@ import {
   EmitEvent,
   EventEmitter,
   ScheduleEvent,
-  BatchEvents
+  BatchEvents,
 } from '../../../src/modules/events/events.decorators';
 import { Injectable } from '../../../src/decorators';
 
@@ -35,65 +39,66 @@ describe('Event Decorators', () => {
 
     container.register(EVENT_EMITTER_TOKEN, { useValue: emitter });
     container.register(EVENT_METADATA_SERVICE_TOKEN, { useValue: metadataService });
-    container.register(EventsService, { 
+    container.register(EventsService, {
       useClass: EventsService,
-      inject: [EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN]
+      inject: [EVENT_EMITTER_TOKEN, EVENT_METADATA_SERVICE_TOKEN],
     });
-    
+
     // Create a mock for EventDiscoveryService that actually registers handlers
     const allEventHandlers: Array<{ handler: Function; options: any }> = [];
-    
+
     discoveryService = {
       discoverHandlers: jest.fn().mockResolvedValue({
         handlers: [],
         emitters: [],
-        dependencies: new Map()
+        dependencies: new Map(),
       }),
       registerHandler: jest.fn().mockImplementation(async (metadata: any) => {
         // Create wrapped handler
         const createWrappedHandler = () => (data: any, eventMetadata?: any) => {
-            const method = metadata.target[metadata.method];
-            if (!method) return;
-            
-            const options = metadata.options || {};
-            
-            // Prepare data and metadata
-            let processedData = data;
-            const fullMetadata = eventMetadata || {};
-            
-            // Apply filter  
-            if (options.filter) {
-              // For OnAnyEvent filter receives (event, data), for others just (data)
-              const filterResult = metadata.event === '*' 
+          const method = metadata.target[metadata.method];
+          if (!method) return;
+
+          const options = metadata.options || {};
+
+          // Prepare data and metadata
+          let processedData = data;
+          const fullMetadata = eventMetadata || {};
+
+          // Apply filter
+          if (options.filter) {
+            // For OnAnyEvent filter receives (event, data), for others just (data)
+            const filterResult =
+              metadata.event === '*'
                 ? options.filter(fullMetadata.event, processedData)
                 : options.filter(processedData, fullMetadata);
-              if (!filterResult) return;
-            }
-            
-            // Apply transformation
-            if (options.transform) {
-              processedData = options.transform(processedData);
-            }
-            
-            // Handle with error boundary
-            if (options.errorBoundary) {
-              try {
-                method.call(metadata.target, processedData, fullMetadata);
-              } catch (error) {
-                if (options.onError) {
-                  options.onError(error, processedData, fullMetadata);
-                }
-                // Don't re-throw when error boundary is enabled
-                return;
-              }
-            } else {
-              // Let errors propagate if no error boundary
+            if (!filterResult) return;
+          }
+
+          // Apply transformation
+          if (options.transform) {
+            processedData = options.transform(processedData);
+          }
+
+          // Handle with error boundary
+          if (options.errorBoundary) {
+            try {
               method.call(metadata.target, processedData, fullMetadata);
+            } catch (error) {
+              if (options.onError) {
+                options.onError(error, processedData, fullMetadata);
+              }
+              // Don't re-throw when error boundary is enabled
+              return;
             }
-          };
-        
+          } else {
+            // Let errors propagate if no error boundary
+            method.call(metadata.target, processedData, fullMetadata);
+          }
+        };
+
         const handler = createWrappedHandler();
-        
+
         // Register with emitter
         if (metadata.event === '*') {
           // Store all-event handler to be called on every emit
@@ -110,16 +115,16 @@ describe('Event Decorators', () => {
       registerEmitter: jest.fn(),
       unregisterHandler: jest.fn(),
       getHandlers: jest.fn().mockReturnValue([]),
-      clearHandlers: jest.fn()
+      clearHandlers: jest.fn(),
     } as any;
-    
+
     container.register(EVENT_DISCOVERY_SERVICE_TOKEN, { useValue: discoveryService });
 
     eventsService = container.resolve(EventsService);
-    
+
     // Intercept emit to handle all-event handlers ('*')
     const originalEmit = eventsService.emit.bind(eventsService);
-    eventsService.emit = async function(event: string, data?: any, options?: any) {
+    eventsService.emit = async function (event: string, data?: any, options?: any) {
       // Call all-event handlers
       for (const { handler } of allEventHandlers) {
         handler(data, { event, ...options?.metadata });
@@ -146,11 +151,7 @@ describe('Event Decorators', () => {
       }
 
       const service = new TestService();
-      const metadata = Reflect.getMetadata(
-        Symbol.for('event:handler'),
-        service,
-        'handleTestCreated'
-      );
+      const metadata = Reflect.getMetadata(Symbol.for('event:handler'), service, 'handleTestCreated');
 
       expect(metadata).toBeDefined();
       expect(metadata.event).toBe('test.created');
@@ -230,7 +231,7 @@ describe('Event Decorators', () => {
       class FilteredHandler {
         @OnEvent({
           event: 'filtered.event',
-          filter: (data) => data.type === 'important'
+          filter: (data) => data.type === 'important',
         })
         handleFiltered(data: any) {
           handled.push(data);
@@ -260,7 +261,7 @@ describe('Event Decorators', () => {
       class TransformHandler {
         @OnEvent({
           event: 'transform.event',
-          transform: (data) => ({ ...data, transformed: true })
+          transform: (data) => ({ ...data, transformed: true }),
         })
         handleTransform(data: any) {
           transformedData = data;
@@ -279,7 +280,7 @@ describe('Event Decorators', () => {
 
       expect(transformedData).toMatchObject({
         original: true,
-        transformed: true
+        transformed: true,
       });
     });
 
@@ -291,7 +292,7 @@ describe('Event Decorators', () => {
         @OnEvent({
           event: 'error.event',
           errorBoundary: true,
-          onError: (error) => errors.push(error)
+          onError: (error) => errors.push(error),
         })
         handleWithError() {
           throw new Error('Test error');
@@ -327,11 +328,7 @@ describe('Event Decorators', () => {
       }
 
       const handler = new OnceHandler();
-      const metadata = Reflect.getMetadata(
-        Symbol.for('event:once'),
-        handler,
-        'handleOnce'
-      );
+      const metadata = Reflect.getMetadata(Symbol.for('event:once'), handler, 'handleOnce');
 
       expect(metadata).toBeDefined();
       expect(metadata.event).toBe('once.event');
@@ -378,11 +375,7 @@ describe('Event Decorators', () => {
       }
 
       const handler = new AnyEventHandler();
-      const metadata = Reflect.getMetadata(
-        Symbol.for('event:handler'),
-        handler,
-        'handleAny'
-      );
+      const metadata = Reflect.getMetadata(Symbol.for('event:handler'), handler, 'handleAny');
 
       expect(metadata).toBeDefined();
       expect(metadata.event).toBe('*');
@@ -421,7 +414,7 @@ describe('Event Decorators', () => {
       @Injectable()
       class FilteredAnyHandler {
         @OnAnyEvent({
-          filter: (event, data) => data.important === true
+          filter: (event, data) => data.important === true,
         })
         handleImportant(data: any, metadata: any) {
           events.push({ event: metadata.event, data });
@@ -522,7 +515,7 @@ describe('Event Decorators', () => {
       @EventEmitter({
         namespace: 'app',
         wildcard: true,
-        delimiter: ':'
+        delimiter: ':',
       })
       @Injectable()
       class AppEventEmitter {
@@ -542,7 +535,7 @@ describe('Event Decorators', () => {
       class ScheduledService {
         @ScheduleEvent({
           event: 'daily.report',
-          cron: '0 0 * * *'
+          cron: '0 0 * * *',
         })
         generateDailyReport() {
           return { date: new Date() };
@@ -565,7 +558,7 @@ describe('Event Decorators', () => {
       class DelayedService {
         @ScheduleEvent({
           event: 'delayed.task',
-          delay: 5000
+          delay: 5000,
         })
         delayedTask() {
           return { executed: true };
@@ -573,7 +566,7 @@ describe('Event Decorators', () => {
 
         @ScheduleEvent({
           event: 'scheduled.task',
-          at: futureDate
+          at: futureDate,
         })
         scheduledTask() {
           return { executed: true };
@@ -596,7 +589,7 @@ describe('Event Decorators', () => {
         @BatchEvents({
           event: 'metrics.track',
           maxSize: 100,
-          maxWait: 1000
+          maxWait: 1000,
         })
         handleMetricsBatch(events: any[]) {
           // Process batch of metrics
@@ -604,11 +597,7 @@ describe('Event Decorators', () => {
       }
 
       const service = new MetricsService();
-      const metadata = Reflect.getMetadata(
-        Symbol.for('event:batch'),
-        service,
-        'handleMetricsBatch'
-      );
+      const metadata = Reflect.getMetadata(Symbol.for('event:batch'), service, 'handleMetricsBatch');
 
       expect(metadata).toBeDefined();
       expect(metadata.event).toBe('metrics.track:batch');
@@ -624,7 +613,7 @@ describe('Event Decorators', () => {
         @BatchEvents({
           event: 'batch.test',
           maxSize: 3,
-          maxWait: 100
+          maxWait: 100,
         })
         handleBatch(events: any[]) {
           batches.push(events);
@@ -707,7 +696,7 @@ describe('Event Decorators', () => {
       expect(results).toContainEqual({ event: 'event1', data: { data: 1 } });
       expect(results).toContainEqual({ event: 'event2', data: { data: 2 } });
       expect(results).toContainEqual({ event: 'once', data: { data: 3 } });
-      expect(results.filter(r => r.event === 'once')).toHaveLength(1);
+      expect(results.filter((r) => r.event === 'once')).toHaveLength(1);
       // @OnAnyEvent handler test - temporarily disabled due to wildcard pattern issues
       // expect(results.filter(r => r.event === 'any').length).toBeGreaterThan(0);
     });

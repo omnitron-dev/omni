@@ -28,7 +28,7 @@ describe('Netron HTTP Transport E2E', () => {
       fatal: () => {},
       child: () => logger,
       time: () => () => {},
-      isLevelEnabled: () => true
+      isLevelEnabled: () => true,
     };
 
     // Create Netron instance
@@ -43,7 +43,7 @@ describe('Netron HTTP Transport E2E', () => {
     server = new HttpNativeServer({
       port: SERVER_PORT,
       host: '0.0.0.0',
-      cors: true
+      cors: true,
     });
 
     server.setPeer(netron.peer);
@@ -71,8 +71,8 @@ describe('Netron HTTP Transport E2E', () => {
         timestamp: Date.now(),
         service,
         method,
-        input: Array.isArray(input) ? input : [input]
-      })
+        input: Array.isArray(input) ? input : [input],
+      }),
     });
 
     const result = await response.json();
@@ -113,7 +113,7 @@ describe('Netron HTTP Transport E2E', () => {
       const newUser = {
         name: 'David',
         email: 'david@test.com',
-        age: 28
+        age: 28,
       };
 
       const created = await invoke('TestService', 'createUser', [newUser]);
@@ -142,9 +142,7 @@ describe('Netron HTTP Transport E2E', () => {
     });
 
     test('should handle errors correctly', async () => {
-      await expect(
-        invoke('TestService', 'throwError', ['Test error message'])
-      ).rejects.toThrow('Test error message');
+      await expect(invoke('TestService', 'throwError', ['Test error message'])).rejects.toThrow('Test error message');
     });
   });
 
@@ -168,8 +166,8 @@ describe('Netron HTTP Transport E2E', () => {
           id: 'test-query-1',
           version: '2.0',
           timestamp: Date.now(),
-          serviceName: 'TestService'
-        })
+          serviceName: 'TestService',
+        }),
       });
 
       expect(response.ok).toBe(true);
@@ -213,22 +211,22 @@ describe('Netron HTTP Transport E2E', () => {
               id: 'req-1',
               service: 'TestService',
               method: 'hello',
-              input: ['Alice']
+              input: ['Alice'],
             },
             {
               id: 'req-2',
               service: 'TestService',
               method: 'hello',
-              input: ['Bob']
+              input: ['Bob'],
             },
             {
               id: 'req-3',
               service: 'TestService',
               method: 'getUsers',
-              input: []
-            }
-          ]
-        })
+              input: [],
+            },
+          ],
+        }),
       });
 
       expect(response.ok).toBe(true);
@@ -260,22 +258,22 @@ describe('Netron HTTP Transport E2E', () => {
               id: 'req-1',
               service: 'TestService',
               method: 'hello',
-              input: ['World']
+              input: ['World'],
             },
             {
               id: 'req-2',
               service: 'TestService',
               method: 'throwError',
-              input: ['Intentional error']
+              input: ['Intentional error'],
             },
             {
               id: 'req-3',
               service: 'TestService',
               method: 'getUser',
-              input: ['1']
-            }
-          ]
-        })
+              input: ['1'],
+            },
+          ],
+        }),
       });
 
       const result = await response.json();
@@ -293,7 +291,7 @@ describe('Netron HTTP Transport E2E', () => {
         id: `req-${i}`,
         service: 'TestService',
         method: 'hello',
-        input: [`User${i}`]
+        input: [`User${i}`],
       }));
 
       const response = await fetch(`${BASE_URL}/netron/batch`, {
@@ -303,8 +301,8 @@ describe('Netron HTTP Transport E2E', () => {
           id: 'batch-order',
           version: '2.0',
           timestamp: Date.now(),
-          requests
-        })
+          requests,
+        }),
       });
 
       const result = await response.json();
@@ -328,8 +326,8 @@ describe('Netron HTTP Transport E2E', () => {
           timestamp: Date.now(),
           service: 'NonExistentService',
           method: 'someMethod',
-          input: []
-        })
+          input: [],
+        }),
       });
 
       const result = await response.json();
@@ -348,8 +346,8 @@ describe('Netron HTTP Transport E2E', () => {
           timestamp: Date.now(),
           service: 'TestService',
           method: 'nonExistentMethod',
-          input: []
-        })
+          input: [],
+        }),
       });
 
       const result = await response.json();
@@ -362,8 +360,8 @@ describe('Netron HTTP Transport E2E', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          invalid: 'request'
-        })
+          invalid: 'request',
+        }),
       });
 
       expect(response.status).toBeGreaterThanOrEqual(400);
@@ -387,7 +385,7 @@ describe('Netron HTTP Transport E2E', () => {
         id: `perf-${i}`,
         service: 'TestService',
         method: 'hello',
-        input: [`User${i}`]
+        input: [`User${i}`],
       }));
 
       const start = Date.now();
@@ -399,8 +397,8 @@ describe('Netron HTTP Transport E2E', () => {
           id: 'perf-batch',
           version: '2.0',
           timestamp: Date.now(),
-          requests
-        })
+          requests,
+        }),
       });
 
       const elapsed = Date.now() - start;

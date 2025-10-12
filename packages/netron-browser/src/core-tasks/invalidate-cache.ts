@@ -81,7 +81,7 @@ export const CORE_TASK_INVALIDATE_CACHE = 'netron.invalidate_cache';
  */
 export function createInvalidateCacheRequest(
   pattern?: string,
-  cacheType: 'service' | 'http' | 'all' = 'all',
+  cacheType: 'service' | 'http' | 'all' = 'all'
 ): InvalidateCacheRequest {
   return { pattern, cacheType };
 }
@@ -91,11 +91,7 @@ export function createInvalidateCacheRequest(
  */
 export function isInvalidateCacheResponse(obj: any): obj is InvalidateCacheResponse {
   return (
-    obj !== null &&
-    obj !== undefined &&
-    typeof obj === 'object' &&
-    'count' in obj &&
-    typeof obj.count === 'number'
+    obj !== null && obj !== undefined && typeof obj === 'object' && 'count' in obj && typeof obj.count === 'number'
   );
 }
 

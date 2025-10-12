@@ -671,7 +671,7 @@ describe('AuditLogger', () => {
           service: 'test',
           method: 'method',
           success: true,
-        }),
+        })
       ).resolves.not.toThrow();
     });
 
@@ -705,7 +705,7 @@ describe('AuditLogger', () => {
             service: 'test',
             method: 'method',
             success: true,
-          }),
+          })
         );
       }
 
@@ -747,7 +747,8 @@ describe('AuditLogger', () => {
         save: async (event) => {
           customEvents.push(event);
         },
-        query: async (filter) => customEvents.filter((e) => {
+        query: async (filter) =>
+          customEvents.filter((e) => {
             if (filter.userId && e.userId !== filter.userId) return false;
             return true;
           }),

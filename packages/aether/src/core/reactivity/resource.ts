@@ -28,20 +28,20 @@ class ResourceImpl<T> {
     this.state = signal<ResourceState<T>>({
       loading: true,
       data: undefined,
-      error: undefined
+      error: undefined,
     });
-    
+
     // Create reactive signals for each property
     this.dataSignal = computed(() => this.state().data);
     this.loadingSignal = computed(() => this.state().loading);
     this.errorSignal = computed(() => this.state().error);
-    
+
     // Track execution count to detect refetches
     let executionCount = 0;
-    
+
     // Create a signal to track when we should fetch
     const fetchTrigger = signal(0);
-    
+
     // Use a computed to track the fetcher's dependencies
     const trackedDeps = computed(() => {
       // Run the fetcher to track dependencies
@@ -62,72 +62,74 @@ class ResourceImpl<T> {
         throw e;
       }
     });
-    
+
     // Use an effect to handle the actual fetching
-    effect(() => {
-      // Track the trigger
-      fetchTrigger();
-      
-      // Increment fetch ID to cancel stale fetches
-      const currentFetchId = ++this.fetchId;
-      
-      // Set loading immediately (except on first run where it's already true)
-      if (executionCount > 0) {
-        this.state.set({
-          loading: true,
-          data: this.state.peek().data,
-          error: undefined
-        });
-      }
-      
-      executionCount++;
-      
-      // Execute the fetcher
-      try {
-        // Access the tracked deps to get the result
-        const result = trackedDeps();
-        
-        // Handle the promise result
-        Promise.resolve(result)
-          .then(data => {
-            // Only update if this is still the latest fetch
-            if (currentFetchId === this.fetchId) {
-              batch(() => {
-                this.state.set({
-                  loading: false,
-                  data,
-                  error: undefined
-                });
-              });
-            }
-          })
-          .catch(error => {
-            // Only update if this is still the latest fetch  
-            if (currentFetchId === this.fetchId) {
-              batch(() => {
-                this.state.set({
-                  loading: false,
-                  data: undefined,
-                  error: error as Error
-                });
-              });
-            }
-          });
-      } catch (error) {
-        // Handle synchronous errors
-        if (currentFetchId === this.fetchId) {
-          batch(() => {
-            this.state.set({
-              loading: false,
-              data: undefined,
-              error: error as Error
-            });
+    effect(
+      () => {
+        // Track the trigger
+        fetchTrigger();
+
+        // Increment fetch ID to cancel stale fetches
+        const currentFetchId = ++this.fetchId;
+
+        // Set loading immediately (except on first run where it's already true)
+        if (executionCount > 0) {
+          this.state.set({
+            loading: true,
+            data: this.state.peek().data,
+            error: undefined,
           });
         }
-      }
-    }, { defer: false }); // Don't defer - run synchronously on dependency changes
-  }
 
+        executionCount++;
+
+        // Execute the fetcher
+        try {
+          // Access the tracked deps to get the result
+          const result = trackedDeps();
+
+          // Handle the promise result
+          Promise.resolve(result)
+            .then((data) => {
+              // Only update if this is still the latest fetch
+              if (currentFetchId === this.fetchId) {
+                batch(() => {
+                  this.state.set({
+                    loading: false,
+                    data,
+                    error: undefined,
+                  });
+                });
+              }
+            })
+            .catch((error) => {
+              // Only update if this is still the latest fetch
+              if (currentFetchId === this.fetchId) {
+                batch(() => {
+                  this.state.set({
+                    loading: false,
+                    data: undefined,
+                    error: error as Error,
+                  });
+                });
+              }
+            });
+        } catch (error) {
+          // Handle synchronous errors
+          if (currentFetchId === this.fetchId) {
+            batch(() => {
+              this.state.set({
+                loading: false,
+                data: undefined,
+                error: error as Error,
+              });
+            });
+          }
+        }
+      },
+      { defer: false }
+    ); // Don't defer - run synchronously on dependency changes
+  }
 
   call(): T | undefined {
     return this.dataSignal();
@@ -146,17 +148,17 @@ class ResourceImpl<T> {
       this.state.set({
         loading: true,
         data: this.state.peek().data,
-        error: undefined
+        error: undefined,
       });
     });
-    
+
     try {
       const data = await this.fetcher();
       batch(() => {
         this.state.set({
           loading: false,
           data,
-          error: undefined
+          error: undefined,
         });
       });
     } catch (error) {
@@ -164,12 +166,11 @@ class ResourceImpl<T> {
         this.state.set({
           loading: false,
           data: undefined,
-          error: error as Error
+          error: error as Error,
         });
       });
     }
   }
-
 }
 
 /**
@@ -179,14 +180,11 @@ export function resource<T>(fetcher: () => Promise<T>): Resource<T> {
   const r = new ResourceImpl(fetcher);
 
   // Create callable interface
-  const callable = Object.assign(
-    () => r.call(),
-    {
-      loading: () => r.loading(),
-      error: () => r.error(),
-      refetch: () => r.refetch()
-    }
-  );
+  const callable = Object.assign(() => r.call(), {
+    loading: () => r.loading(),
+    error: () => r.error(),
+    refetch: () => r.refetch(),
+  });
 
   return callable as Resource<T>;
 }

@@ -6,17 +6,10 @@
 import Redis from 'ioredis';
 import { NotificationService } from '../../../src/modules/notifications/notifications.service.js';
 import { NotificationManager } from '../../../src/rotif/rotif.js';
-import {
-  ChannelManager
-} from '../../../src/modules/notifications/channel-manager.js';
-import {
-  PreferenceManager
-} from '../../../src/modules/notifications/preference-manager.js';
+import { ChannelManager } from '../../../src/modules/notifications/channel-manager.js';
+import { PreferenceManager } from '../../../src/modules/notifications/preference-manager.js';
 import { RateLimiter } from '../../../src/modules/notifications/rate-limiter.js';
-import type {
-  NotificationPayload,
-  NotificationRecipient
-} from '../../../src/modules/notifications/types.js';
+import type { NotificationPayload, NotificationRecipient } from '../../../src/modules/notifications/types.js';
 import { RedisDockerTestHelper } from './test-redis-docker.js';
 
 describe('NotificationService with Real Redis', () => {
@@ -62,13 +55,13 @@ describe('NotificationService with Real Redis', () => {
         debug: () => {},
         info: () => {},
         warn: console.warn,
-        error: console.error
+        error: console.error,
       },
       dlqCleanup: {
         enabled: true,
         interval: 60000,
-        maxAge: 86400000 // 24 hours
-      }
+        maxAge: 86400000, // 24 hours
+      },
     });
 
     await rotifManager.waitUntilReady();
@@ -79,12 +72,7 @@ describe('NotificationService with Real Redis', () => {
     rateLimiter = new RateLimiter(redis);
 
     // Initialize service
-    service = new NotificationService(
-      rotifManager,
-      channelManager,
-      preferenceManager,
-      rateLimiter
-    );
+    service = new NotificationService(rotifManager, channelManager, preferenceManager, rateLimiter);
   }, 30000); // Increase timeout for Docker setup
 
   afterAll(async () => {
@@ -123,14 +111,14 @@ describe('NotificationService with Real Redis', () => {
 
       const recipient: NotificationRecipient = {
         id: 'user-1',
-        email: 'test@example.com'
+        email: 'test@example.com',
       };
 
       const notification: NotificationPayload = {
         title: 'Test Notification',
         message: 'This is a test notification via real Redis',
         type: 'info',
-        metadata: { testId: 'real-redis-1' }
+        metadata: { testId: 'real-redis-1' },
       };
 
       // Send notification
@@ -139,7 +127,7 @@ describe('NotificationService with Real Redis', () => {
       expect(result.id).toBeDefined();
 
       // Wait for processing
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Verify received
       expect(received).toHaveLength(1);
@@ -152,7 +140,7 @@ describe('NotificationService with Real Redis', () => {
       // Subscribe for each recipient
       const recipients = Array.from({ length: 10 }, (_, i) => ({
         id: `user-${i}`,
-        email: `user${i}@example.com`
+        email: `user${i}@example.com`,
       }));
 
       for (const recipient of recipients) {
@@ -166,15 +154,15 @@ describe('NotificationService with Real Redis', () => {
       const notification: NotificationPayload = {
         title: 'Broadcast Test',
         message: 'Testing concurrent delivery',
-        type: 'info'
+        type: 'info',
       };
 
       // Send to all recipients
-      const promises = recipients.map(r => service.send(r, notification));
+      const promises = recipients.map((r) => service.send(r, notification));
       const results = await Promise.all(promises);
 
       // Wait for processing
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
       // Verify all received
       for (const recipient of recipients) {
@@ -184,7 +172,7 @@ describe('NotificationService with Real Redis', () => {
       }
 
       expect(results).toHaveLength(10);
-      results.forEach(result => {
+      results.forEach((result) => {
         expect(result.id).toBeDefined();
       });
     });
@@ -201,13 +189,13 @@ describe('NotificationService with Real Redis', () => {
 
       const recipient: NotificationRecipient = {
         id: 'user-delayed',
-        email: 'delayed@example.com'
+        email: 'delayed@example.com',
       };
 
       const notification: NotificationPayload = {
         title: 'Delayed Notification',
         message: 'This should arrive in the future',
-        type: 'reminder'
+        type: 'reminder',
       };
 
       const scheduledTime = new Date(Date.now() + 2000); // 2 seconds from now
@@ -217,11 +205,11 @@ describe('NotificationService with Real Redis', () => {
       expect(result.scheduledFor).toEqual(scheduledTime);
 
       // Verify not received immediately
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
       expect(received).toHaveLength(0);
 
       // Wait for scheduled time
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // Verify received after delay
       expect(received).toHaveLength(1);
@@ -242,25 +230,21 @@ describe('NotificationService with Real Redis', () => {
         payload: {
           title: `Scheduled ${i}`,
           message: `Message ${i}`,
-          type: 'reminder' as const
+          type: 'reminder' as const,
         },
-        delay: (i + 1) * 500 // 0.5s, 1s, 1.5s, 2s, 2.5s
+        delay: (i + 1) * 500, // 0.5s, 1s, 1.5s, 2s, 2.5s
       }));
 
       // Schedule all notifications
-      const schedulePromises = notifications.map(n =>
-        service.schedule(
-          n.recipient,
-          n.payload,
-          new Date(Date.now() + n.delay)
-        )
+      const schedulePromises = notifications.map((n) =>
+        service.schedule(n.recipient, n.payload, new Date(Date.now() + n.delay))
       );
 
       const results = await Promise.all(schedulePromises);
       expect(results).toHaveLength(5);
 
       // Wait for all to be delivered
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise((resolve) => setTimeout(resolve, 3000));
 
       // Verify all received in correct order
       expect(received).toHaveLength(5);
@@ -288,21 +272,21 @@ describe('NotificationService with Real Redis', () => {
 
       const recipient: NotificationRecipient = {
         id: 'retry-user',
-        email: 'retry@example.com'
+        email: 'retry@example.com',
       };
 
       const notification: NotificationPayload = {
         title: 'Retry Test',
         message: 'This should be retried',
         type: 'alert',
-        priority: 'high'
+        priority: 'high',
       };
 
       const result = await service.send(recipient, notification);
       expect(result).toBeDefined();
 
       // Wait for initial attempt and retry
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // Should have 2 attempts (initial + 1 retry)
       expect(attempts.length).toBeGreaterThanOrEqual(2);
@@ -325,20 +309,20 @@ describe('NotificationService with Real Redis', () => {
 
       const recipient: NotificationRecipient = {
         id: 'dlq-user',
-        email: 'dlq@example.com'
+        email: 'dlq@example.com',
       };
 
       const notification: NotificationPayload = {
         title: 'DLQ Test',
         message: 'This should go to DLQ',
-        type: 'critical'
+        type: 'critical',
       };
 
       const result = await service.send(recipient, notification);
       expect(result).toBeDefined();
 
       // Wait for retries to exhaust (3 retries * 1 second each + processing time)
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      await new Promise((resolve) => setTimeout(resolve, 5000));
 
       // Check DLQ
       const dlqKey = `${TEST_PREFIX}:dlq`;
@@ -364,32 +348,32 @@ describe('NotificationService with Real Redis', () => {
 
       const recipient: NotificationRecipient = {
         id: 'dedup-user',
-        email: 'dedup@example.com'
+        email: 'dedup@example.com',
       };
 
       const notification: NotificationPayload = {
         title: 'Duplicate Test',
         message: 'This should only be sent once',
         type: 'info',
-        deduplicationKey: 'unique-key-123'
+        deduplicationKey: 'unique-key-123',
       };
 
       // Send same notification multiple times
       const results = await Promise.all([
         service.send(recipient, notification),
         service.send(recipient, notification),
-        service.send(recipient, notification)
+        service.send(recipient, notification),
       ]);
 
       // Wait for processing
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       // Should only receive once
       expect(received).toHaveLength(1);
       expect(received[0].payload.title).toBe(notification.title);
 
       // All results should have the same ID (deduplicated)
-      const uniqueIds = new Set(results.map(r => r.id));
+      const uniqueIds = new Set(results.map((r) => r.id));
       expect(uniqueIds.size).toBe(1);
     });
 
@@ -403,29 +387,27 @@ describe('NotificationService with Real Redis', () => {
 
       const recipient: NotificationRecipient = {
         id: 'dedup2-user',
-        email: 'dedup2@example.com'
+        email: 'dedup2@example.com',
       };
 
       const notifications = Array.from({ length: 3 }, (_, i) => ({
         title: `Notification ${i}`,
         message: `Message ${i}`,
         type: 'info' as const,
-        deduplicationKey: `key-${i}`
+        deduplicationKey: `key-${i}`,
       }));
 
       // Send different notifications
-      const results = await Promise.all(
-        notifications.map(n => service.send(recipient, n))
-      );
+      const results = await Promise.all(notifications.map((n) => service.send(recipient, n)));
 
       // Wait for processing
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       // Should receive all three
       expect(received).toHaveLength(3);
 
       // All should have different IDs
-      const uniqueIds = new Set(results.map(r => r.id));
+      const uniqueIds = new Set(results.map((r) => r.id));
       expect(uniqueIds.size).toBe(3);
     });
   });
@@ -447,7 +429,7 @@ describe('NotificationService with Real Redis', () => {
       const notification: NotificationPayload = {
         title: 'Segment Broadcast',
         message: 'Message to all premium users',
-        type: 'announcement'
+        type: 'announcement',
       };
 
       // Broadcast to segment
@@ -456,11 +438,10 @@ describe('NotificationService with Real Redis', () => {
       expect(result.recipients).toBeGreaterThan(0);
 
       // Wait for processing
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       // At least some users should receive it
-      const receivedCount = Array.from(received.values())
-        .filter(messages => messages.length > 0).length;
+      const receivedCount = Array.from(received.values()).filter((messages) => messages.length > 0).length;
       expect(receivedCount).toBeGreaterThan(0);
     });
 
@@ -468,12 +449,12 @@ describe('NotificationService with Real Redis', () => {
       const notification: NotificationPayload = {
         title: 'Large Broadcast',
         message: 'Testing batch processing',
-        type: 'announcement'
+        type: 'announcement',
       };
 
       // Simulate large segment
       const result = await service.broadcast('all-users', notification, {
-        batchSize: 100
+        batchSize: 100,
       });
 
       expect(result).toBeDefined();
@@ -487,19 +468,19 @@ describe('NotificationService with Real Redis', () => {
     it('should enforce rate limits per user', async () => {
       const recipient: NotificationRecipient = {
         id: 'rate-limited-user',
-        email: 'rate@example.com'
+        email: 'rate@example.com',
       };
 
       // Configure tight rate limit
       rateLimiter.setLimit(recipient.id, {
         maxRequests: 2,
-        windowMs: 1000 // 2 requests per second
+        windowMs: 1000, // 2 requests per second
       });
 
       const notifications = Array.from({ length: 5 }, (_, i) => ({
         title: `Rate Test ${i}`,
         message: `Message ${i}`,
-        type: 'info' as const
+        type: 'info' as const,
       }));
 
       const results = [];
@@ -519,47 +500,47 @@ describe('NotificationService with Real Redis', () => {
       expect(errors.length).toBeGreaterThan(0);
 
       // Verify rate limit error
-      const rateLimitError = errors.find(e =>
-        e.message.includes('rate limit') || e.message.includes('Rate limit')
-      );
+      const rateLimitError = errors.find((e) => e.message.includes('rate limit') || e.message.includes('Rate limit'));
       expect(rateLimitError).toBeDefined();
     });
 
     it('should reset rate limit after window', async () => {
       const recipient: NotificationRecipient = {
         id: 'rate-reset-user',
-        email: 'reset@example.com'
+        email: 'reset@example.com',
       };
 
       // Configure rate limit with short window
       rateLimiter.setLimit(recipient.id, {
         maxRequests: 1,
-        windowMs: 500 // 1 request per 500ms
+        windowMs: 500, // 1 request per 500ms
       });
 
       // First request should succeed
       const result1 = await service.send(recipient, {
         title: 'First',
         message: 'Should succeed',
-        type: 'info'
+        type: 'info',
       });
       expect(result1).toBeDefined();
 
       // Second immediate request should fail
-      await expect(service.send(recipient, {
-        title: 'Second',
-        message: 'Should fail',
-        type: 'info'
-      })).rejects.toThrow();
+      await expect(
+        service.send(recipient, {
+          title: 'Second',
+          message: 'Should fail',
+          type: 'info',
+        })
+      ).rejects.toThrow();
 
       // Wait for window to reset
-      await new Promise(resolve => setTimeout(resolve, 600));
+      await new Promise((resolve) => setTimeout(resolve, 600));
 
       // Third request after window should succeed
       const result3 = await service.send(recipient, {
         title: 'Third',
         message: 'Should succeed after reset',
-        type: 'info'
+        type: 'info',
       });
       expect(result3).toBeDefined();
     });
@@ -573,16 +554,16 @@ describe('NotificationService with Real Redis', () => {
         received.push({
           ...msg,
           receivedAt: Date.now(),
-          priority: msg.payload.priority
+          priority: msg.payload.priority,
         });
         // Add delay to simulate processing
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
         return { success: true };
       });
 
       const recipient: NotificationRecipient = {
         id: 'priority-user',
-        email: 'priority@example.com'
+        email: 'priority@example.com',
       };
 
       // Send notifications with different priorities
@@ -591,31 +572,33 @@ describe('NotificationService with Real Redis', () => {
         { title: 'High 1', priority: 'high' as const },
         { title: 'Normal 1', priority: 'normal' as const },
         { title: 'High 2', priority: 'high' as const },
-        { title: 'Low 2', priority: 'low' as const }
+        { title: 'Low 2', priority: 'low' as const },
       ];
 
       // Send all at once
       await Promise.all(
-        notifications.map(n => service.send(recipient, {
-          ...n,
-          message: 'Priority test',
-          type: 'info'
-        }))
+        notifications.map((n) =>
+          service.send(recipient, {
+            ...n,
+            message: 'Priority test',
+            type: 'info',
+          })
+        )
       );
 
       // Wait for all to be processed
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // High priority should be processed first
       const highPriorityIndices = received
         .map((r, i) => ({ priority: r.priority, index: i }))
-        .filter(r => r.priority === 'high')
-        .map(r => r.index);
+        .filter((r) => r.priority === 'high')
+        .map((r) => r.index);
 
       const otherIndices = received
         .map((r, i) => ({ priority: r.priority, index: i }))
-        .filter(r => r.priority !== 'high')
-        .map(r => r.index);
+        .filter((r) => r.priority !== 'high')
+        .map((r) => r.index);
 
       // High priority messages should have lower indices (processed earlier)
       if (highPriorityIndices.length > 0 && otherIndices.length > 0) {
@@ -638,7 +621,7 @@ describe('NotificationService with Real Redis', () => {
       // Simulate connection issues by sending when Redis might be busy
       const recipient: NotificationRecipient = {
         id: 'recovery-user',
-        email: 'recovery@example.com'
+        email: 'recovery@example.com',
       };
 
       const results = [];
@@ -649,7 +632,7 @@ describe('NotificationService with Real Redis', () => {
           const result = await service.send(recipient, {
             title: `Recovery ${i}`,
             message: 'Testing recovery',
-            type: 'info'
+            type: 'info',
           });
           results.push(result);
         } catch (error) {
@@ -657,7 +640,7 @@ describe('NotificationService with Real Redis', () => {
           console.log('Send error (expected):', error);
         }
 
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
 
       // Should have some successful sends
@@ -677,14 +660,14 @@ describe('NotificationService with Real Redis', () => {
 
       const recipient: NotificationRecipient = {
         id: 'metrics-user',
-        email: 'metrics@example.com'
+        email: 'metrics@example.com',
       };
 
       // Send various notifications
       const notifications = [
         { type: 'info' as const, count: 3 },
         { type: 'warning' as const, count: 2 },
-        { type: 'error' as const, count: 1 }
+        { type: 'error' as const, count: 1 },
       ];
 
       for (const { type, count } of notifications) {
@@ -692,13 +675,13 @@ describe('NotificationService with Real Redis', () => {
           await service.send(recipient, {
             title: `${type} ${i}`,
             message: 'Metrics test',
-            type
+            type,
           });
         }
       }
 
       // Wait for metrics to be recorded
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       // Check metrics in Redis
       const metricKeys = await redis.keys(metricsKey);
@@ -725,8 +708,8 @@ describe('NotificationService with Real Redis', () => {
       const oldMessage = {
         id: 'old-msg',
         payload: { title: 'Old', message: 'Should be cleaned' },
-        timestamp: Date.now() - (25 * 60 * 60 * 1000), // 25 hours ago
-        attempt: 5
+        timestamp: Date.now() - 25 * 60 * 60 * 1000, // 25 hours ago
+        attempt: 5,
       };
 
       await redis.zadd(dlqKey, oldMessage.timestamp, JSON.stringify(oldMessage));
@@ -735,8 +718,8 @@ describe('NotificationService with Real Redis', () => {
       const recentMessage = {
         id: 'recent-msg',
         payload: { title: 'Recent', message: 'Should remain' },
-        timestamp: Date.now() - (60 * 60 * 1000), // 1 hour ago
-        attempt: 3
+        timestamp: Date.now() - 60 * 60 * 1000, // 1 hour ago
+        attempt: 3,
       };
 
       await redis.zadd(dlqKey, recentMessage.timestamp, JSON.stringify(recentMessage));
@@ -748,11 +731,11 @@ describe('NotificationService with Real Redis', () => {
 
       // Check DLQ
       const dlqMessages = await redis.zrange(dlqKey, 0, -1);
-      const parsedMessages = dlqMessages.map(m => JSON.parse(m));
+      const parsedMessages = dlqMessages.map((m) => JSON.parse(m));
 
       // Old message should be removed
-      const hasOld = parsedMessages.some(m => m.id === 'old-msg');
-      const hasRecent = parsedMessages.some(m => m.id === 'recent-msg');
+      const hasOld = parsedMessages.some((m) => m.id === 'old-msg');
+      const hasRecent = parsedMessages.some((m) => m.id === 'recent-msg');
 
       expect(hasOld).toBe(false);
       expect(hasRecent).toBe(true);
@@ -760,11 +743,7 @@ describe('NotificationService with Real Redis', () => {
 
     it('should handle cleanup of processed notifications', async () => {
       // Create test keys
-      const testKeys = [
-        `${TEST_PREFIX}:processed:1`,
-        `${TEST_PREFIX}:processed:2`,
-        `${TEST_PREFIX}:temp:data`
-      ];
+      const testKeys = [`${TEST_PREFIX}:processed:1`, `${TEST_PREFIX}:processed:2`, `${TEST_PREFIX}:temp:data`];
 
       for (const key of testKeys) {
         await redis.set(key, 'test-data', 'EX', 3600);
@@ -772,9 +751,7 @@ describe('NotificationService with Real Redis', () => {
 
       // Verify keys exist
       const existingKeys = await redis.keys(`${TEST_PREFIX}:*`);
-      const hasTestKeys = testKeys.every(key =>
-        existingKeys.some(k => k.includes(key.split(':').pop()!))
-      );
+      const hasTestKeys = testKeys.every((key) => existingKeys.some((k) => k.includes(key.split(':').pop()!)));
       expect(hasTestKeys).toBe(true);
 
       // Clean specific pattern
@@ -785,7 +762,7 @@ describe('NotificationService with Real Redis', () => {
 
       // Verify cleanup
       const remainingKeys = await redis.keys(`${TEST_PREFIX}:*`);
-      const hasProcessedKeys = remainingKeys.some(k => k.includes('processed'));
+      const hasProcessedKeys = remainingKeys.some((k) => k.includes('processed'));
       expect(hasProcessedKeys).toBe(false);
     });
   });

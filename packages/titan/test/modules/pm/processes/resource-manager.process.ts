@@ -23,13 +23,17 @@ export default class ResourceManagerService {
       name,
       maxConcurrent,
       currentActive: 0,
-      queue: []
+      queue: [],
     });
     this.activeRequests.set(name, new Set());
   }
 
   @Public()
-  async acquireResource(poolName: string, requestId: string, priority: number = 0): Promise<{ acquired: boolean; waitTime?: number }> {
+  async acquireResource(
+    poolName: string,
+    requestId: string,
+    priority: number = 0
+  ): Promise<{ acquired: boolean; waitTime?: number }> {
     const pool = this.pools.get(poolName);
     if (!pool) {
       throw new Error(`Pool ${poolName} not found`);
@@ -50,13 +54,13 @@ export default class ResourceManagerService {
     pool.queue.sort((a, b) => b.priority - a.priority); // Higher priority first
 
     // Wait for resource to become available
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     // Try to acquire again (simplified for test)
     if (activeSet.size < pool.maxConcurrent) {
       activeSet.add(requestId);
       pool.currentActive = activeSet.size;
-      pool.queue = pool.queue.filter(item => item.id !== requestId);
+      pool.queue = pool.queue.filter((item) => item.id !== requestId);
       return { acquired: true, waitTime: Date.now() - startTime };
     }
 

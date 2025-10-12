@@ -89,47 +89,47 @@ export interface FlexProps {
  * ```
  */
 export const Flex = defineComponent<FlexProps>((props) => () => {
-    const element = props.as ?? 'div';
-    const {
-      as,
-      direction,
-      justify,
-      align,
-      alignContent,
-      wrap,
-      gap,
-      rowGap,
-      columnGap,
-      grow,
-      shrink,
-      basis,
-      inline,
-      children,
-      class: className,
-      style,
-      ...restProps
-    } = props;
+  const element = props.as ?? 'div';
+  const {
+    as,
+    direction,
+    justify,
+    align,
+    alignContent,
+    wrap,
+    gap,
+    rowGap,
+    columnGap,
+    grow,
+    shrink,
+    basis,
+    inline,
+    children,
+    class: className,
+    style,
+    ...restProps
+  } = props;
 
-    const flexStyles: Record<string, any> = {
-      display: inline ? 'inline-flex' : 'flex',
-      ...(direction && { flexDirection: direction }),
-      ...(justify && { justifyContent: justify }),
-      ...(align && { alignItems: align }),
-      ...(alignContent && { alignContent }),
-      ...(wrap && { flexWrap: wrap }),
-      ...(gap !== undefined && { gap: typeof gap === 'number' ? `${gap}px` : gap }),
-      ...(rowGap !== undefined && { rowGap: typeof rowGap === 'number' ? `${rowGap}px` : rowGap }),
-      ...(columnGap !== undefined && { columnGap: typeof columnGap === 'number' ? `${columnGap}px` : columnGap }),
-      ...(grow !== undefined && { flexGrow: grow }),
-      ...(shrink !== undefined && { flexShrink: shrink }),
-      ...(basis !== undefined && { flexBasis: typeof basis === 'number' ? `${basis}px` : basis }),
-      ...style,
-    };
+  const flexStyles: Record<string, any> = {
+    display: inline ? 'inline-flex' : 'flex',
+    ...(direction && { flexDirection: direction }),
+    ...(justify && { justifyContent: justify }),
+    ...(align && { alignItems: align }),
+    ...(alignContent && { alignContent }),
+    ...(wrap && { flexWrap: wrap }),
+    ...(gap !== undefined && { gap: typeof gap === 'number' ? `${gap}px` : gap }),
+    ...(rowGap !== undefined && { rowGap: typeof rowGap === 'number' ? `${rowGap}px` : rowGap }),
+    ...(columnGap !== undefined && { columnGap: typeof columnGap === 'number' ? `${columnGap}px` : columnGap }),
+    ...(grow !== undefined && { flexGrow: grow }),
+    ...(shrink !== undefined && { flexShrink: shrink }),
+    ...(basis !== undefined && { flexBasis: typeof basis === 'number' ? `${basis}px` : basis }),
+    ...style,
+  };
 
-    return jsx(element as any, {
-      class: className,
-      style: flexStyles,
-      ...restProps,
-      children,
-    });
+  return jsx(element as any, {
+    class: className,
+    style: flexStyles,
+    ...restProps,
+    children,
   });
+});

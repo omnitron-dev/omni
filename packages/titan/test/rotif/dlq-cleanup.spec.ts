@@ -8,16 +8,15 @@ import Redis from 'ioredis';
 jest.setTimeout(30000);
 
 // Test helpers
-async function publishAndFail(
-  manager: NotificationManager,
-  channel: string,
-  payload: any,
-  maxRetries: number = 0
-) {
+async function publishAndFail(manager: NotificationManager, channel: string, payload: any, maxRetries: number = 0) {
   // Subscribe with handler that always fails
-  const sub = await manager.subscribe(channel, async () => {
-    throw new Error('Test failure');
-  }, { maxRetries });
+  const sub = await manager.subscribe(
+    channel,
+    async () => {
+      throw new Error('Test failure');
+    },
+    { maxRetries }
+  );
 
   // Wait for subscription to be ready
   await delay(50);
@@ -47,7 +46,7 @@ describe('DLQ Auto-Cleanup', () => {
       port: 6379,
       db: 0,
       retryStrategy: () => null,
-      maxRetriesPerRequest: 1
+      maxRetriesPerRequest: 1,
     });
 
     // Clean up test data
@@ -98,13 +97,21 @@ describe('DLQ Auto-Cleanup', () => {
       await manager.clearDLQ();
 
       // Subscribe with failing handlers
-      const sub1 = await manager.subscribe(testChannel, async () => {
-        throw new Error('Test failure');
-      }, { maxRetries: 0 });
+      const sub1 = await manager.subscribe(
+        testChannel,
+        async () => {
+          throw new Error('Test failure');
+        },
+        { maxRetries: 0 }
+      );
 
-      const sub2 = await manager.subscribe(`${testChannel}:other`, async () => {
-        throw new Error('Test failure');
-      }, { maxRetries: 0 });
+      const sub2 = await manager.subscribe(
+        `${testChannel}:other`,
+        async () => {
+          throw new Error('Test failure');
+        },
+        { maxRetries: 0 }
+      );
 
       // Wait for subscriptions to be ready
       await delay(100);
@@ -149,14 +156,14 @@ describe('DLQ Auto-Cleanup', () => {
 
       // Filter by channel
       const filteredMessages = await manager.getDLQMessages({
-        channel: testChannel
+        channel: testChannel,
       });
       expect(filteredMessages.length).toBe(2);
 
       // Test pagination
       const paginatedMessages = await manager.getDLQMessages({
         limit: 1,
-        offset: 1
+        offset: 1,
       });
       expect(paginatedMessages.length).toBe(1);
     });
@@ -194,7 +201,7 @@ describe('DLQ Auto-Cleanup', () => {
         dlqCleanup: {
           enabled: true,
           cleanupInterval: 100, // Very short for testing
-        }
+        },
       });
 
       await delay(50);
@@ -210,7 +217,7 @@ describe('DLQ Auto-Cleanup', () => {
         blockInterval: 100, // Use short block interval for tests
         dlqCleanup: {
           enabled: false,
-        }
+        },
       });
 
       await delay(50);
@@ -225,7 +232,7 @@ describe('DLQ Auto-Cleanup', () => {
         dlqCleanup: {
           enabled: false,
           maxAge: 1000,
-        }
+        },
       });
 
       // Wait for initialization
@@ -253,7 +260,7 @@ describe('DLQ Auto-Cleanup', () => {
         dlqCleanup: {
           enabled: false, // Manual control for testing
           maxAge: 500, // 500ms
-        }
+        },
       });
 
       // Send message to DLQ
@@ -287,7 +294,7 @@ describe('DLQ Auto-Cleanup', () => {
         dlqCleanup: {
           enabled: false,
           maxSize: 3,
-        }
+        },
       });
 
       // Send messages to exceed max size
@@ -318,7 +325,7 @@ describe('DLQ Auto-Cleanup', () => {
           maxAge: 100,
           archiveBeforeDelete: true,
           archivePrefix: 'test:archive',
-        }
+        },
       });
 
       // Send message to DLQ
@@ -356,7 +363,7 @@ describe('DLQ Auto-Cleanup', () => {
           enabled: false,
           maxAge: 100,
           batchSize: 2,
-        }
+        },
       });
 
       // Send multiple messages
@@ -446,8 +453,8 @@ describe('DLQ Auto-Cleanup', () => {
           retryStrategy: {
             strategy: 'linear',
             baseDelay: 100,
-            jitter: 0
-          }
+            jitter: 0,
+          },
         }
       );
 
@@ -478,16 +485,13 @@ describe('DLQ Auto-Cleanup', () => {
           enabled: true,
           cleanupInterval: 50,
           maxAge: 100,
-        }
+        },
       });
 
       // Send messages continuously while cleanup runs
       const publishPromises = [];
       for (let i = 0; i < 10; i++) {
-        publishPromises.push(
-          publishAndFail(manager, `${testChannel}:${i}`, { msg: i })
-            .then(() => delay(20))
-        );
+        publishPromises.push(publishAndFail(manager, `${testChannel}:${i}`, { msg: i }).then(() => delay(20)));
       }
 
       await Promise.all(publishPromises);

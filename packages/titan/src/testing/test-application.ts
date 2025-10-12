@@ -25,10 +25,7 @@ export class TestApplication {
   /**
    * Create test application with modules
    */
-  static async create(
-    rootModule: any,
-    options: Partial<IApplicationOptions> = {}
-  ): Promise<TestApplication> {
+  static async create(rootModule: any, options: Partial<IApplicationOptions> = {}): Promise<TestApplication> {
     const testApp = new TestApplication(options);
     await testApp.bootstrap(rootModule);
     return testApp;

@@ -11,10 +11,7 @@ import { Container, type InjectionToken, type Provider } from '../nexus/index.js
  *
  * Handles tuple format [token, provider] and direct constructors
  */
-export function registerModuleProviders(
-  container: Container,
-  providers: any[] | undefined
-): void {
+export function registerModuleProviders(container: Container, providers: any[] | undefined): void {
   if (!providers) return;
 
   for (const provider of providers) {
@@ -35,11 +32,7 @@ export function registerModuleProviders(
 /**
  * Register a single provider in the container
  */
-export function registerProvider(
-  container: Container,
-  token: InjectionToken<any>,
-  provider: Provider
-): void {
+export function registerProvider(container: Container, token: InjectionToken<any>, provider: Provider): void {
   // Always use register - Container will handle the provider type
   container.register(token, provider);
 }
@@ -56,10 +49,7 @@ export function createTestContainer(providers?: any[]): Container {
 /**
  * Helper to resolve a service from a module
  */
-export async function resolveFromModule<T>(
-  module: { providers?: any[] },
-  token: InjectionToken<T>
-): Promise<T> {
+export async function resolveFromModule<T>(module: { providers?: any[] }, token: InjectionToken<T>): Promise<T> {
   const container = createTestContainer(module.providers);
   return container.resolveAsync(token);
 }
@@ -67,10 +57,7 @@ export async function resolveFromModule<T>(
 /**
  * Helper to check if a provider exists in a module
  */
-export function hasProvider(
-  module: { providers?: any[] },
-  token: InjectionToken<any>
-): boolean {
+export function hasProvider(module: { providers?: any[] }, token: InjectionToken<any>): boolean {
   if (!module.providers) return false;
 
   for (const provider of module.providers) {

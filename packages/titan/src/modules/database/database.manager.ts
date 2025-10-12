@@ -81,10 +81,7 @@ export class DatabaseManager implements IDatabaseManager {
     // Register shutdown handlers
     this.registerShutdownHandlers();
 
-    this.logger.info(
-      { connectionCount: this.connections.size },
-      'Database manager initialized'
-    );
+    this.logger.info({ connectionCount: this.connections.size }, 'Database manager initialized');
   }
 
   /**
@@ -123,10 +120,7 @@ export class DatabaseManager implements IDatabaseManager {
   /**
    * Create a database connection
    */
-  private async createConnection(
-    name: string,
-    config: DatabaseConnection
-  ): Promise<ConnectionInfo> {
+  private async createConnection(name: string, config: DatabaseConnection): Promise<ConnectionInfo> {
     this.logger.debug({ name, dialect: config.dialect }, 'Creating database connection');
 
     const info: ConnectionInfo = {
@@ -186,7 +180,7 @@ export class DatabaseManager implements IDatabaseManager {
       throw new TitanError({
         code: ErrorCode.SERVICE_UNAVAILABLE,
         message: `Database connection ${name} is unavailable: ${errorMessage}`,
-        details: { connection: name, error: errorMessage }
+        details: { connection: name, error: errorMessage },
       });
     }
   }
@@ -291,9 +285,10 @@ export class DatabaseManager implements IDatabaseManager {
       setTimeout(() => reject(Errors.timeout('database connection test', timeout)), timeout)
     );
 
-    const testQuery = dialect === 'sqlite'
-      ? db.selectFrom('sqlite_master').select('name').limit(1).execute()
-      : sql`SELECT 1`.execute(db);
+    const testQuery =
+      dialect === 'sqlite'
+        ? db.selectFrom('sqlite_master').select('name').limit(1).execute()
+        : sql`SELECT 1`.execute(db);
 
     await Promise.race([testQuery, timeoutPromise]);
   }
@@ -392,9 +387,7 @@ export class DatabaseManager implements IDatabaseManager {
     this.logger.info('Closing all database connections');
 
     const closePromises = Array.from(this.connections.keys()).map((name) =>
-      this.close(name).catch((error) =>
-        this.logger.error({ name, error }, 'Error closing connection')
-      )
+      this.close(name).catch((error) => this.logger.error({ name, error }, 'Error closing connection'))
     );
 
     await Promise.all(closePromises);
@@ -445,9 +438,7 @@ export class DatabaseManager implements IDatabaseManager {
       this.logger.info('Database manager shutdown initiated');
 
       const timeout = this.options.shutdownTimeout || DEFAULT_TIMEOUTS.shutdown;
-      const timeoutPromise = new Promise((resolve) =>
-        setTimeout(resolve, timeout)
-      );
+      const timeoutPromise = new Promise((resolve) => setTimeout(resolve, timeout));
 
       await Promise.race([this.closeAll(), timeoutPromise]);
     };

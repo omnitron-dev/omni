@@ -9,15 +9,11 @@ import { ErrorCode } from './codes.js';
  * HTTP error class for custom HTTP status codes
  */
 export class HttpError extends TitanError {
-  constructor(
-    statusCode: number,
-    message: string,
-    details?: any
-  ) {
+  constructor(statusCode: number, message: string, details?: any) {
     super({
       code: statusCode as ErrorCode,
       message,
-      details
+      details,
     });
 
     this.name = 'HttpError';
@@ -95,14 +91,10 @@ export class HttpError extends TitanError {
       501: 'Not Implemented',
       502: 'Bad Gateway',
       503: 'Service Unavailable',
-      504: 'Gateway Timeout'
+      504: 'Gateway Timeout',
     };
 
-    return new HttpError(
-      statusCode,
-      message || defaultMessages[statusCode] || `HTTP ${statusCode}`,
-      details
-    );
+    return new HttpError(statusCode, message || defaultMessages[statusCode] || `HTTP ${statusCode}`, details);
   }
 }
 
@@ -137,7 +129,7 @@ export class ApiError extends HttpError {
       ...super.toJSON(),
       endpoint: this.endpoint,
       method: this.method,
-      apiVersion: this.apiVersion
+      apiVersion: this.apiVersion,
     };
   }
 }
@@ -172,12 +164,7 @@ export class RestError extends HttpError {
    * Create resource not found error
    */
   static resourceNotFound(resource: string, id: string): RestError {
-    return new RestError(
-      404,
-      `${resource} with id ${id} not found`,
-      { resource, id },
-      { resource, resourceId: id }
-    );
+    return new RestError(404, `${resource} with id ${id} not found`, { resource, id }, { resource, resourceId: id });
   }
 
   /**
@@ -196,12 +183,7 @@ export class RestError extends HttpError {
    * Create invalid resource error
    */
   static invalidResource(resource: string, errors: any): RestError {
-    return new RestError(
-      422,
-      `Invalid ${resource}`,
-      { errors },
-      { resource }
-    );
+    return new RestError(422, `Invalid ${resource}`, { errors }, { resource });
   }
 
   override toJSON(): any {
@@ -209,7 +191,7 @@ export class RestError extends HttpError {
       ...super.toJSON(),
       resource: this.resource,
       resourceId: this.resourceId,
-      action: this.action
+      action: this.action,
     };
   }
 }
@@ -240,31 +222,21 @@ export class AuthError extends HttpError {
    * Create bearer token error
    */
   static bearerTokenRequired(realm = 'api'): AuthError {
-    return new AuthError(
-      'Bearer token required',
-      { type: 'bearer' },
-      { authType: 'Bearer', realm }
-    );
+    return new AuthError('Bearer token required', { type: 'bearer' }, { authType: 'Bearer', realm });
   }
 
   /**
    * Create invalid token error
    */
   static invalidToken(reason?: string): AuthError {
-    return new AuthError(
-      reason || 'Invalid token',
-      { reason }
-    );
+    return new AuthError(reason || 'Invalid token', { reason });
   }
 
   /**
    * Create token expired error
    */
   static tokenExpired(): AuthError {
-    return new AuthError(
-      'Token has expired',
-      { expired: true }
-    );
+    return new AuthError('Token has expired', { expired: true });
   }
 
   /**
@@ -306,19 +278,16 @@ export class PermissionError extends HttpError {
   /**
    * Create insufficient permissions error
    */
-  static insufficientPermissions(
-    required: string,
-    userPermissions?: string[]
-  ): PermissionError {
+  static insufficientPermissions(required: string, userPermissions?: string[]): PermissionError {
     return new PermissionError(
       `Insufficient permissions. Required: ${required}`,
       {
         required,
-        userPermissions
+        userPermissions,
       },
       {
         requiredPermission: required,
-        userPermissions
+        userPermissions,
       }
     );
   }
@@ -327,7 +296,7 @@ export class PermissionError extends HttpError {
     return {
       ...super.toJSON(),
       requiredPermission: this.requiredPermission,
-      userPermissions: this.userPermissions
+      userPermissions: this.userPermissions,
     };
   }
 }
@@ -353,7 +322,7 @@ export class RateLimitError extends HttpError {
   ) {
     super(429, message, {
       ...details,
-      retryAfter: options?.retryAfter
+      retryAfter: options?.retryAfter,
     });
 
     this.name = 'RateLimitError';
@@ -391,7 +360,7 @@ export class RateLimitError extends HttpError {
       limit: this.limit,
       remaining: this.remaining,
       resetTime: this.resetTime?.toISOString(),
-      retryAfter: this.retryAfter
+      retryAfter: this.retryAfter,
     };
   }
 }

@@ -22,7 +22,7 @@ const parentPort = {
     if (event === 'message') {
       process.on('message', handler as any);
     }
-  }
+  },
 };
 
 // Mock workerData

@@ -34,20 +34,31 @@ describe('NotificationManager – Complex Case 1 Tests', () => {
       afterProcess: (msg) => console.log('afterProcess', msg.channel, msg.id),
     });
 
-    await manager.subscribe('orders.created', async (msg) => {
-      if (msg.attempt === 1) throw new Error('Forced retry');
-      results.subscriber2.push(msg.payload);
-    }, { groupName: 'group2', maxRetries: 2 });
+    await manager.subscribe(
+      'orders.created',
+      async (msg) => {
+        if (msg.attempt === 1) throw new Error('Forced retry');
+        results.subscriber2.push(msg.payload);
+      },
+      { groupName: 'group2', maxRetries: 2 }
+    );
 
+    await manager.subscribe(
+      'orders.created',
+      async (msg) => {
+        results.subscriber1.push(msg.payload);
+      },
+      { groupName: 'group1', maxRetries: 2 }
+    );
 
-    await manager.subscribe('orders.created', async (msg) => {
-      results.subscriber1.push(msg.payload);
-    }, { groupName: 'group1', maxRetries: 2 });
-
-    await manager.subscribe('orders.*', async (msg) => {
-      console.error('wildcard', msg.channel);
-      results.wildcard.push(msg.channel);
-    }, { groupName: 'wildcardGroup' });
+    await manager.subscribe(
+      'orders.*',
+      async (msg) => {
+        console.error('wildcard', msg.channel);
+        results.wildcard.push(msg.channel);
+      },
+      { groupName: 'wildcardGroup' }
+    );
 
     manager.subscribeToDLQ(async (msg) => {
       results.dlq.push(msg.payload);

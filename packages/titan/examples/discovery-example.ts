@@ -1,15 +1,15 @@
 /**
  * Example: Using the Discovery Module in a Titan Application
- * 
+ *
  * This example demonstrates how to use the service discovery module
  * to register services and discover other services in a distributed network.
  */
 
 import { Application, createApp } from '../src/application.js';
-import { 
-  createDiscoveryModule, 
+import {
+  createDiscoveryModule,
   DISCOVERY_SERVICE_TOKEN,
-  type IDiscoveryService 
+  type IDiscoveryService,
 } from '../src/modules/discovery/index.js';
 
 /**
@@ -17,7 +17,7 @@ import {
  */
 async function basicDiscoveryExample() {
   console.log('\n=== Basic Discovery Example ==="');
-  
+
   // Create application with discovery module
   const app = await Application.create({
     name: 'discovery-app',
@@ -27,8 +27,8 @@ async function basicDiscoveryExample() {
         heartbeatInterval: 5000,
         heartbeatTTL: 15000,
         pubSubEnabled: true,
-      })
-    ]
+      }),
+    ],
   });
 
   await app.start();
@@ -37,14 +37,10 @@ async function basicDiscoveryExample() {
   const discovery = app.resolve<IDiscoveryService>(DISCOVERY_SERVICE_TOKEN);
 
   // Register this node with some services
-  await discovery.registerNode(
-    'api-gateway-1',
-    'localhost:3000',
-    [
-      { name: 'api-gateway', version: '1.0.0' },
-      { name: 'auth', version: '2.1.0' }
-    ]
-  );
+  await discovery.registerNode('api-gateway-1', 'localhost:3000', [
+    { name: 'api-gateway', version: '1.0.0' },
+    { name: 'auth', version: '2.1.0' },
+  ]);
 
   console.log('Node registered successfully');
 
@@ -57,8 +53,8 @@ async function basicDiscoveryExample() {
   console.log('Active nodes in network:', activeNodes);
 
   // Wait a bit before shutting down
-  await new Promise(resolve => setTimeout(resolve, 10000));
-  
+  await new Promise((resolve) => setTimeout(resolve, 10000));
+
   await app.stop();
 }
 
@@ -67,7 +63,7 @@ async function basicDiscoveryExample() {
  */
 async function eventBasedDiscoveryExample() {
   console.log('\n=== Event-Based Discovery Example ===');
-  
+
   const app = await Application.create({
     name: 'discovery-event-app',
     modules: [
@@ -75,8 +71,8 @@ async function eventBasedDiscoveryExample() {
         redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
         pubSubEnabled: true,
         clientMode: false, // This node will register itself
-      })
-    ]
+      }),
+    ],
   });
 
   await app.start();
@@ -86,7 +82,7 @@ async function eventBasedDiscoveryExample() {
   // Listen for discovery events
   discovery.onEvent((event) => {
     console.log('Discovery event received:', event);
-    
+
     switch (event.type) {
       case 'NODE_REGISTERED':
         console.log(`New node joined: ${event.nodeId} at ${event.address}`);
@@ -101,28 +97,24 @@ async function eventBasedDiscoveryExample() {
   });
 
   // Register this node
-  await discovery.registerNode(
-    'worker-1',
-    'localhost:4000',
-    [
-      { name: 'task-processor', version: '1.0.0' },
-      { name: 'reporting', version: '1.2.0' }
-    ]
-  );
+  await discovery.registerNode('worker-1', 'localhost:4000', [
+    { name: 'task-processor', version: '1.0.0' },
+    { name: 'reporting', version: '1.2.0' },
+  ]);
 
   // Simulate service update
   setTimeout(async () => {
     await discovery.updateNodeServices('worker-1', [
       { name: 'task-processor', version: '1.1.0' }, // Updated version
       { name: 'reporting', version: '1.2.0' },
-      { name: 'analytics', version: '0.9.0' } // New service
+      { name: 'analytics', version: '0.9.0' }, // New service
     ]);
     console.log('Services updated');
   }, 5000);
 
   // Run for 20 seconds
-  await new Promise(resolve => setTimeout(resolve, 20000));
-  
+  await new Promise((resolve) => setTimeout(resolve, 20000));
+
   await app.stop();
 }
 
@@ -131,7 +123,7 @@ async function eventBasedDiscoveryExample() {
  */
 async function clientModeExample() {
   console.log('\n=== Client Mode Discovery Example ===');
-  
+
   const app = await Application.create({
     name: 'discovery-client',
     modules: [
@@ -139,8 +131,8 @@ async function clientModeExample() {
         redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
         clientMode: true, // No heartbeat, just discovery
         pubSubEnabled: true,
-      })
-    ]
+      }),
+    ],
   });
 
   await app.start();
@@ -151,7 +143,7 @@ async function clientModeExample() {
   const monitor = setInterval(async () => {
     const nodes = await discovery.getActiveNodes();
     console.log(`\nActive nodes at ${new Date().toISOString()}:`);
-    
+
     for (const node of nodes) {
       console.log(`- ${node.nodeId} (${node.address}):`);
       for (const service of node.services) {
@@ -167,8 +159,8 @@ async function clientModeExample() {
   }, 3000);
 
   // Run for 30 seconds
-  await new Promise(resolve => setTimeout(resolve, 30000));
-  
+  await new Promise((resolve) => setTimeout(resolve, 30000));
+
   clearInterval(monitor);
   await app.stop();
 }
@@ -178,7 +170,7 @@ async function clientModeExample() {
  */
 async function multiNodeSimulation() {
   console.log('\n=== Multi-Node Simulation ===');
-  
+
   const apps: Application[] = [];
   const services = [
     { id: 'api-1', address: 'localhost:3001', services: [{ name: 'api', version: '1.0' }] },
@@ -197,8 +189,8 @@ async function multiNodeSimulation() {
           heartbeatInterval: 2000,
           heartbeatTTL: 6000,
           pubSubEnabled: true,
-        })
-      ]
+        }),
+      ],
     });
 
     await app.start();
@@ -206,21 +198,21 @@ async function multiNodeSimulation() {
 
     const discovery = app.resolve<IDiscoveryService>(DISCOVERY_SERVICE_TOKEN);
     await discovery.registerNode(svc.id, svc.address, svc.services);
-    
+
     console.log(`Started node: ${svc.id}`);
   }
 
   // Wait for all nodes to register
-  await new Promise(resolve => setTimeout(resolve, 3000));
+  await new Promise((resolve) => setTimeout(resolve, 3000));
 
   // Query from first node
   const discovery = apps[0].resolve<IDiscoveryService>(DISCOVERY_SERVICE_TOKEN);
   const allNodes = await discovery.getActiveNodes();
-  
+
   console.log('\nNetwork topology:');
   console.log(`Total nodes: ${allNodes.length}`);
   for (const node of allNodes) {
-    console.log(`- ${node.nodeId}: ${node.services.map(s => s.name).join(', ')}`);
+    console.log(`- ${node.nodeId}: ${node.services.map((s) => s.name).join(', ')}`);
   }
 
   // Simulate node failure
@@ -229,7 +221,7 @@ async function multiNodeSimulation() {
   apps.splice(1, 1);
 
   // Wait for heartbeat to expire
-  await new Promise(resolve => setTimeout(resolve, 7000));
+  await new Promise((resolve) => setTimeout(resolve, 7000));
 
   // Check network again
   const remainingNodes = await discovery.getActiveNodes();
@@ -249,7 +241,7 @@ async function multiNodeSimulation() {
  */
 async function main() {
   const example = process.argv[2] || 'basic';
-  
+
   try {
     switch (example) {
       case 'basic':

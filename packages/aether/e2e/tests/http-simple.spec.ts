@@ -14,7 +14,7 @@ test('should make fetch request', async ({ page }) => {
       const response = await fetch('http://localhost:3333/netron/invoke', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           id: 'test123',
@@ -22,8 +22,8 @@ test('should make fetch request', async ({ page }) => {
           timestamp: Date.now(),
           service: 'UserService',
           method: 'getUsers',
-          input: []
-        })
+          input: [],
+        }),
       });
 
       console.log('Response received:', response.status);
@@ -33,14 +33,14 @@ test('should make fetch request', async ({ page }) => {
       return {
         success: true,
         status: response.status,
-        data
+        data,
       };
     } catch (error: any) {
       console.error('Fetch error:', error);
       return {
         success: false,
         error: error.message,
-        stack: error.stack
+        stack: error.stack,
       };
     }
   });

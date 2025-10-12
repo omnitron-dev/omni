@@ -4,26 +4,10 @@
 
 import 'reflect-metadata';
 import { Container } from '@nexus';
-import {
-  Injectable,
-  Singleton,
-  Transient,
-  Service,
-  Module
-} from '../../src/decorators/core.js';
-import {
-  Inject,
-  Optional
-} from '../../src/decorators/injection.js';
-import {
-  PostConstruct,
-  PreDestroy
-} from '../../src/decorators/lifecycle.js';
-import {
-  Retryable,
-  Timeout,
-  TimeoutError
-} from '../../src/decorators/utility.js';
+import { Injectable, Singleton, Transient, Service, Module } from '../../src/decorators/core.js';
+import { Inject, Optional } from '../../src/decorators/injection.js';
+import { PostConstruct, PreDestroy } from '../../src/decorators/lifecycle.js';
+import { Retryable, Timeout, TimeoutError } from '../../src/decorators/utility.js';
 
 describe('Minimal Titan Decorators', () => {
   let container: Container;
@@ -75,7 +59,7 @@ describe('Minimal Titan Decorators', () => {
         const serviceMetadata = Reflect.getMetadata('service', UserService);
         expect(serviceMetadata).toEqual({
           name: 'UserService',
-          version: undefined
+          version: undefined,
         });
 
         const nexusServiceName = Reflect.getMetadata('nexus:service:name', UserService);
@@ -89,7 +73,7 @@ describe('Minimal Titan Decorators', () => {
         const serviceMetadata = Reflect.getMetadata('service', ApiService);
         expect(serviceMetadata).toEqual({
           name: 'ApiService',
-          version: '1.0.0'
+          version: '1.0.0',
         });
       });
 
@@ -108,26 +92,26 @@ describe('Minimal Titan Decorators', () => {
       it('should mark class as a module', () => {
         @Module({
           name: 'TestModule',
-          version: '1.0.0'
+          version: '1.0.0',
         })
         class TestModule {}
 
         const metadata = Reflect.getMetadata('module', TestModule);
         expect(metadata).toEqual({
           name: 'TestModule',
-          version: '1.0.0'
+          version: '1.0.0',
         });
       });
 
       it('should set auto-discovery properties', () => {
         @Module({
-          name: 'AutoModule'
+          name: 'AutoModule',
         })
         class AutoModule {}
 
         expect((AutoModule as any).__titanModule).toBe(true);
         expect((AutoModule as any).__titanModuleMetadata).toEqual({
-          name: 'AutoModule'
+          name: 'AutoModule',
         });
       });
 
@@ -136,13 +120,13 @@ describe('Minimal Titan Decorators', () => {
         class TestProvider {}
 
         @Module({
-          providers: [TestProvider]
+          providers: [TestProvider],
         })
         class TestModule {}
 
         const nexusMetadata = Reflect.getMetadata('nexus:module', TestModule);
         expect(nexusMetadata).toEqual({
-          providers: [TestProvider]
+          providers: [TestProvider],
         });
       });
     });
@@ -176,7 +160,7 @@ describe('Minimal Titan Decorators', () => {
           @Retryable({
             attempts: 3,
             delay: 10,
-            retryOn: (error) => error.message !== 'Do not retry'
+            retryOn: (error) => error.message !== 'Do not retry',
           })
           async conditional(shouldRetry: boolean) {
             throw new Error(shouldRetry ? 'Retry me' : 'Do not retry');
@@ -198,7 +182,7 @@ describe('Minimal Titan Decorators', () => {
         class TestService {
           @Timeout({ ms: 100 })
           async slowMethod() {
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await new Promise((resolve) => setTimeout(resolve, 200));
             return 'Done';
           }
         }
@@ -211,7 +195,7 @@ describe('Minimal Titan Decorators', () => {
         class TestService {
           @Timeout({ ms: 100 })
           async fastMethod() {
-            await new Promise(resolve => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 50));
             return 'Done';
           }
         }

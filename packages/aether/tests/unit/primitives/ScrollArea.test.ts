@@ -5,7 +5,12 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { ScrollArea, ScrollAreaViewport, ScrollAreaScrollbar, ScrollAreaThumb } from '../../../src/primitives/ScrollArea.js';
+import {
+  ScrollArea,
+  ScrollAreaViewport,
+  ScrollAreaScrollbar,
+  ScrollAreaThumb,
+} from '../../../src/primitives/ScrollArea.js';
 import { renderComponent, nextTick, createSpy } from '../../helpers/test-utils.js';
 
 describe('ScrollArea', () => {
@@ -296,7 +301,8 @@ describe('ScrollArea', () => {
     });
 
     it('should render with children', () => {
-      const component = () => ScrollAreaScrollbar({ orientation: 'vertical', forceMount: true, children: 'Scrollbar content' });
+      const component = () =>
+        ScrollAreaScrollbar({ orientation: 'vertical', forceMount: true, children: 'Scrollbar content' });
       const { container, cleanup } = renderComponent(component);
 
       const scrollbar = container.querySelector('[data-scroll-area-scrollbar]');
@@ -327,7 +333,8 @@ describe('ScrollArea', () => {
     });
 
     it('should pass through custom attributes', () => {
-      const component = () => ScrollAreaScrollbar({ orientation: 'vertical', forceMount: true, className: 'custom-scrollbar' });
+      const component = () =>
+        ScrollAreaScrollbar({ orientation: 'vertical', forceMount: true, className: 'custom-scrollbar' });
       const { container, cleanup } = renderComponent(component);
 
       const scrollbar = container.querySelector('[data-scroll-area-scrollbar]');
@@ -404,12 +411,13 @@ describe('ScrollArea', () => {
   // Composition tests
   describe('Composition', () => {
     it('should render complete scroll area structure', () => {
-      const component = () => ScrollArea({
-        children: [
-          ScrollAreaViewport({ children: 'Content' }),
-          ScrollAreaScrollbar({ orientation: 'vertical', forceMount: true, children: ScrollAreaThumb({}) }),
-        ]
-      });
+      const component = () =>
+        ScrollArea({
+          children: [
+            ScrollAreaViewport({ children: 'Content' }),
+            ScrollAreaScrollbar({ orientation: 'vertical', forceMount: true, children: ScrollAreaThumb({}) }),
+          ],
+        });
       const { container, cleanup } = renderComponent(component);
 
       const scrollArea = container.querySelector('[data-scroll-area]');
@@ -426,13 +434,14 @@ describe('ScrollArea', () => {
     });
 
     it('should render both vertical and horizontal scrollbars', () => {
-      const component = () => ScrollArea({
-        children: [
-          ScrollAreaViewport({ children: 'Content' }),
-          ScrollAreaScrollbar({ orientation: 'vertical', forceMount: true }),
-          ScrollAreaScrollbar({ orientation: 'horizontal', forceMount: true }),
-        ]
-      });
+      const component = () =>
+        ScrollArea({
+          children: [
+            ScrollAreaViewport({ children: 'Content' }),
+            ScrollAreaScrollbar({ orientation: 'vertical', forceMount: true }),
+            ScrollAreaScrollbar({ orientation: 'horizontal', forceMount: true }),
+          ],
+        });
       const { container, cleanup } = renderComponent(component);
 
       const scrollbars = container.querySelectorAll('[data-scroll-area-scrollbar]');
@@ -447,11 +456,12 @@ describe('ScrollArea', () => {
   // Context tests
   describe('Context', () => {
     it('should provide context to viewport', () => {
-      const component = () => ScrollArea({
-        type: 'auto',
-        dir: 'rtl',
-        children: ScrollAreaViewport({ children: 'Content' })
-      });
+      const component = () =>
+        ScrollArea({
+          type: 'auto',
+          dir: 'rtl',
+          children: ScrollAreaViewport({ children: 'Content' }),
+        });
       const { container, cleanup } = renderComponent(component);
 
       const scrollArea = container.querySelector('[data-scroll-area]');
@@ -462,12 +472,13 @@ describe('ScrollArea', () => {
     });
 
     it('should provide context to scrollbar', () => {
-      const component = () => ScrollArea({
-        children: [
-          ScrollAreaViewport({ children: 'Content' }),
-          ScrollAreaScrollbar({ orientation: 'vertical', forceMount: true })
-        ]
-      });
+      const component = () =>
+        ScrollArea({
+          children: [
+            ScrollAreaViewport({ children: 'Content' }),
+            ScrollAreaScrollbar({ orientation: 'vertical', forceMount: true }),
+          ],
+        });
       const { container, cleanup } = renderComponent(component);
 
       const scrollbar = container.querySelector('[data-scroll-area-scrollbar]');
@@ -554,12 +565,10 @@ describe('ScrollArea', () => {
     });
 
     it('should handle multiple viewports', () => {
-      const component = () => ScrollArea({
-        children: [
-          ScrollAreaViewport({ children: 'Content 1' }),
-          ScrollAreaViewport({ children: 'Content 2' }),
-        ]
-      });
+      const component = () =>
+        ScrollArea({
+          children: [ScrollAreaViewport({ children: 'Content 1' }), ScrollAreaViewport({ children: 'Content 2' })],
+        });
       const { container, cleanup } = renderComponent(component);
 
       const viewports = container.querySelectorAll('[data-scroll-area-viewport]');
@@ -627,7 +636,8 @@ describe('ScrollArea', () => {
     });
 
     it('should pass through class to scrollbar', () => {
-      const component = () => ScrollAreaScrollbar({ orientation: 'vertical', forceMount: true, className: 'scrollbar-class' });
+      const component = () =>
+        ScrollAreaScrollbar({ orientation: 'vertical', forceMount: true, className: 'scrollbar-class' });
       const { container, cleanup } = renderComponent(component);
 
       const scrollbar = container.querySelector('[data-scroll-area-scrollbar]');
@@ -673,26 +683,27 @@ describe('ScrollArea', () => {
   // Integration tests
   describe('Integration', () => {
     it('should work with all components together', () => {
-      const component = () => ScrollArea({
-        type: 'always',
-        dir: 'ltr',
-        children: [
-          ScrollAreaViewport({
-            children: 'Long scrollable content',
-            style: { height: '200px' }
-          }),
-          ScrollAreaScrollbar({
-            orientation: 'vertical',
-            forceMount: true,
-            children: ScrollAreaThumb({ style: { backgroundColor: 'blue' } })
-          }),
-          ScrollAreaScrollbar({
-            orientation: 'horizontal',
-            forceMount: true,
-            children: ScrollAreaThumb({ style: { backgroundColor: 'red' } })
-          })
-        ]
-      });
+      const component = () =>
+        ScrollArea({
+          type: 'always',
+          dir: 'ltr',
+          children: [
+            ScrollAreaViewport({
+              children: 'Long scrollable content',
+              style: { height: '200px' },
+            }),
+            ScrollAreaScrollbar({
+              orientation: 'vertical',
+              forceMount: true,
+              children: ScrollAreaThumb({ style: { backgroundColor: 'blue' } }),
+            }),
+            ScrollAreaScrollbar({
+              orientation: 'horizontal',
+              forceMount: true,
+              children: ScrollAreaThumb({ style: { backgroundColor: 'red' } }),
+            }),
+          ],
+        });
       const { container, cleanup } = renderComponent(component);
 
       const scrollArea = container.querySelector('[data-scroll-area]');
@@ -709,12 +720,13 @@ describe('ScrollArea', () => {
     });
 
     it('should maintain correct structure hierarchy', () => {
-      const component = () => ScrollArea({
-        children: [
-          ScrollAreaViewport({ children: 'Content' }),
-          ScrollAreaScrollbar({ orientation: 'vertical', forceMount: true, children: ScrollAreaThumb({}) })
-        ]
-      });
+      const component = () =>
+        ScrollArea({
+          children: [
+            ScrollAreaViewport({ children: 'Content' }),
+            ScrollAreaScrollbar({ orientation: 'vertical', forceMount: true, children: ScrollAreaThumb({}) }),
+          ],
+        });
       const { container, cleanup } = renderComponent(component);
 
       const scrollArea = container.querySelector('[data-scroll-area]');

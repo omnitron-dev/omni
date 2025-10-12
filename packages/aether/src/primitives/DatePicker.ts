@@ -71,8 +71,7 @@ export interface DatePickerProps {
   [key: string]: any;
 }
 
-export interface DatePickerTriggerProps
-   {
+export interface DatePickerTriggerProps {
   children?: any;
   [key: string]: any;
 }
@@ -89,8 +88,7 @@ export interface DatePickerIconProps {
   [key: string]: any;
 }
 
-export interface DatePickerContentProps
-   {
+export interface DatePickerContentProps {
   children?: any;
   [key: string]: any;
 }
@@ -136,12 +134,10 @@ function useDatePickerContext(): DatePickerContextValue {
  * Container with state management
  */
 export const DatePicker = defineComponent<DatePickerProps>((props) => {
-  const internalValue: WritableSignal<Date | null> = signal(
-    props.value ?? props.defaultValue ?? null,
-  );
+  const internalValue: WritableSignal<Date | null> = signal(props.value ?? props.defaultValue ?? null);
 
   const isControlled = () => props.value !== undefined;
-  const currentValue = () => (isControlled() ? props.value ?? null : internalValue());
+  const currentValue = () => (isControlled() ? (props.value ?? null) : internalValue());
 
   const setValue = (date: Date | null) => {
     if (!isControlled()) {

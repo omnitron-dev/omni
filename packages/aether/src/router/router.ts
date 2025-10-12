@@ -7,25 +7,13 @@
 import { signal } from '../core/reactivity/signal.js';
 import { findBestMatch, normalizePath } from './route-matcher.js';
 import { executeLoader, setLoaderData, setNavigationState } from './data.js';
-import type {
-  Router,
-  RouterConfig,
-  RouteMatch,
-  Location,
-  NavigationOptions,
-  RouteGuard,
-} from './types.js';
+import type { Router, RouterConfig, RouteMatch, Location, NavigationOptions, RouteGuard } from './types.js';
 
 /**
  * Create a new Router instance
  */
 export function createRouter(config: RouterConfig = {}): Router {
-  const {
-    mode = 'history',
-    base = '/',
-    routes = [],
-    scrollBehavior,
-  } = config;
+  const { mode = 'history', base = '/', routes = [], scrollBehavior } = config;
 
   // Current location (reactive)
   const currentLocation = signal<Location>(getCurrentLocation());

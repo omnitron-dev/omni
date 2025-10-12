@@ -82,9 +82,7 @@ describe('Carousel', () => {
     });
 
     it('should render with vertical orientation', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Carousel({ orientation: 'vertical' })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Carousel({ orientation: 'vertical' }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-carousel]');
@@ -107,11 +105,7 @@ describe('Carousel', () => {
     it('should render multiple children using function (Pattern 17)', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         Carousel({
-          children: () => [
-            CarouselViewport({}),
-            CarouselPrevious({}),
-            CarouselNext({}),
-          ],
+          children: () => [CarouselViewport({}), CarouselPrevious({}), CarouselNext({})],
         })
       );
       cleanup = dispose;
@@ -122,9 +116,7 @@ describe('Carousel', () => {
     });
 
     it('should render with empty children', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
-        Carousel({ children: () => null })
-      );
+      const { container, cleanup: dispose } = renderComponent(() => Carousel({ children: () => null }));
       cleanup = dispose;
 
       const root = container.querySelector('[data-carousel]');
@@ -143,10 +135,7 @@ describe('Carousel', () => {
           defaultValue: 1,
           children: () =>
             CarouselViewport({
-              children: () => [
-                CarouselSlide({ children: 'Slide 1' }),
-                CarouselSlide({ children: 'Slide 2' }),
-              ],
+              children: () => [CarouselSlide({ children: 'Slide 1' }), CarouselSlide({ children: 'Slide 2' })],
             }),
         })
       );
@@ -161,11 +150,7 @@ describe('Carousel', () => {
         Carousel({
           children: () =>
             CarouselViewport({
-              children: () => [
-                CarouselSlide({}),
-                CarouselSlide({}),
-                CarouselSlide({}),
-              ],
+              children: () => [CarouselSlide({}), CarouselSlide({}), CarouselSlide({})],
             }),
         })
       );
@@ -283,10 +268,7 @@ describe('Carousel', () => {
           defaultValue: 1,
           children: () =>
             CarouselViewport({
-              children: () => [
-                CarouselSlide({ children: 'Slide 1' }),
-                CarouselSlide({ children: 'Slide 2' }),
-              ],
+              children: () => [CarouselSlide({ children: 'Slide 1' }), CarouselSlide({ children: 'Slide 2' })],
             }),
         })
       );
@@ -302,10 +284,7 @@ describe('Carousel', () => {
           value: 0,
           children: () =>
             CarouselViewport({
-              children: () => [
-                CarouselSlide({ children: 'Slide 1' }),
-                CarouselSlide({ children: 'Slide 2' }),
-              ],
+              children: () => [CarouselSlide({ children: 'Slide 1' }), CarouselSlide({ children: 'Slide 2' })],
             }),
         })
       );
@@ -343,10 +322,7 @@ describe('Carousel', () => {
           defaultValue: 0,
           children: () =>
             CarouselViewport({
-              children: () => [
-                CarouselSlide({ children: 'Slide 1' }),
-                CarouselSlide({ children: 'Slide 2' }),
-              ],
+              children: () => [CarouselSlide({ children: 'Slide 1' }), CarouselSlide({ children: 'Slide 2' })],
             }),
         })
       );
@@ -362,10 +338,7 @@ describe('Carousel', () => {
         Carousel({
           children: () =>
             CarouselViewport({
-              children: () => [
-                CarouselSlide({ children: 'Slide 1' }),
-                CarouselSlide({ children: 'Slide 2' }),
-              ],
+              children: () => [CarouselSlide({ children: 'Slide 1' }), CarouselSlide({ children: 'Slide 2' })],
             }),
         })
       );
@@ -485,10 +458,7 @@ describe('Carousel', () => {
         Carousel({
           children: () =>
             CarouselViewport({
-              children: () => [
-                CarouselSlide({ children: 'Slide 1' }),
-                CarouselSlide({ children: 'Slide 2' }),
-              ],
+              children: () => [CarouselSlide({ children: 'Slide 1' }), CarouselSlide({ children: 'Slide 2' })],
             }),
         })
       );
@@ -600,10 +570,7 @@ describe('Carousel', () => {
           defaultValue: 1,
           children: () =>
             CarouselViewport({
-              children: () => [
-                CarouselSlide({ children: 'Slide 1' }),
-                CarouselSlide({ children: 'Slide 2' }),
-              ],
+              children: () => [CarouselSlide({ children: 'Slide 1' }), CarouselSlide({ children: 'Slide 2' })],
             }),
         })
       );
@@ -754,10 +721,7 @@ describe('Carousel', () => {
           defaultValue: 1,
           children: () => [
             CarouselViewport({
-              children: () => [
-                CarouselSlide({ children: 'Slide 1' }),
-                CarouselSlide({ children: 'Slide 2' }),
-              ],
+              children: () => [CarouselSlide({ children: 'Slide 1' }), CarouselSlide({ children: 'Slide 2' })],
             }),
             CarouselPrevious({}),
           ],
@@ -893,10 +857,7 @@ describe('Carousel', () => {
           defaultValue: 0,
           children: () => [
             CarouselViewport({
-              children: () => [
-                CarouselSlide({ children: 'Slide 1' }),
-                CarouselSlide({ children: 'Slide 2' }),
-              ],
+              children: () => [CarouselSlide({ children: 'Slide 1' }), CarouselSlide({ children: 'Slide 2' })],
             }),
             CarouselNext({}),
           ],
@@ -1031,11 +992,7 @@ describe('Carousel', () => {
         Carousel({
           children: () => [
             CarouselViewport({
-              children: () => [
-                CarouselSlide({}),
-                CarouselSlide({}),
-                CarouselSlide({}),
-              ],
+              children: () => [CarouselSlide({}), CarouselSlide({}), CarouselSlide({})],
             }),
             CarouselIndicators({}),
           ],
@@ -1053,11 +1010,7 @@ describe('Carousel', () => {
           defaultValue: 1,
           children: () => [
             CarouselViewport({
-              children: () => [
-                CarouselSlide({}),
-                CarouselSlide({}),
-                CarouselSlide({}),
-              ],
+              children: () => [CarouselSlide({}), CarouselSlide({}), CarouselSlide({})],
             }),
             CarouselIndicators({}),
           ],
@@ -1075,11 +1028,7 @@ describe('Carousel', () => {
           defaultValue: 2,
           children: () => [
             CarouselViewport({
-              children: () => [
-                CarouselSlide({}),
-                CarouselSlide({}),
-                CarouselSlide({}),
-              ],
+              children: () => [CarouselSlide({}), CarouselSlide({}), CarouselSlide({})],
             }),
             CarouselIndicators({}),
           ],
@@ -1639,12 +1588,7 @@ describe('Carousel', () => {
     it('should handle empty carousel gracefully', () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         Carousel({
-          children: () => [
-            CarouselViewport({}),
-            CarouselPrevious({}),
-            CarouselNext({}),
-            CarouselIndicators({}),
-          ],
+          children: () => [CarouselViewport({}), CarouselPrevious({}), CarouselNext({}), CarouselIndicators({})],
         })
       );
       cleanup = dispose;

@@ -5,14 +5,7 @@
  * using Netron's built-in capabilities.
  */
 
-import {
-  Application,
-  Module,
-  Injectable,
-  Inject,
-  NETRON_TOKEN,
-  PostConstruct
-} from '../src/index.js';
+import { Application, Module, Injectable, Inject, NETRON_TOKEN, PostConstruct } from '../src/index.js';
 import type { Netron } from '@omnitron-dev/netron';
 import { Service as NetronService, Public } from '@omnitron-dev/netron';
 
@@ -42,9 +35,7 @@ class CalculatorService {
 // Client service that can call remote services
 @Injectable()
 class RpcClient {
-  constructor(
-    @Inject(NETRON_TOKEN) private netron: Netron
-  ) {}
+  constructor(@Inject(NETRON_TOKEN) private netron: Netron) {}
 
   async callRemoteCalculator(peerAddress: string): Promise<void> {
     try {
@@ -54,14 +45,14 @@ class RpcClient {
 
       // Get reference to remote service
       const calculator = await peer.getService('calculator@1.0.0');
-      
+
       // Call remote methods
       const sum = await calculator.add(10, 20);
       console.log(`10 + 20 = ${sum}`);
-      
+
       const product = await calculator.multiply(5, 6);
       console.log(`5 * 6 = ${product}`);
-      
+
       const quotient = await calculator.divide(100, 4);
       console.log(`100 / 4 = ${quotient}`);
     } catch (error) {
@@ -72,14 +63,8 @@ class RpcClient {
 
 // Module that provides RPC services
 @Module({
-  providers: [
-    CalculatorService,
-    RpcClient
-  ],
-  exports: [
-    CalculatorService,
-    RpcClient
-  ]
+  providers: [CalculatorService, RpcClient],
+  exports: [CalculatorService, RpcClient],
 })
 class RpcModule {
   constructor(
@@ -98,7 +83,7 @@ class RpcModule {
 
   async onStart(): Promise<void> {
     console.log('RPC module started');
-    
+
     // Example: Connect to another instance and call remote services
     // Uncomment to test with another running instance
     // await this.client.callRemoteCalculator('ws://localhost:9002');
@@ -115,13 +100,13 @@ async function createServer() {
         id: 'server-node',
         port: 9001,
         // Enable WebSocket server
-        server: true
+        server: true,
       },
       logging: {
         level: 'info',
-        pretty: true
-      }
-    }
+        pretty: true,
+      },
+    },
   });
 
   await app.start();
@@ -138,13 +123,13 @@ async function createClient() {
       netron: {
         id: 'client-node',
         port: 9002,
-        server: true
+        server: true,
       },
       logging: {
         level: 'info',
-        pretty: true
-      }
-    }
+        pretty: true,
+      },
+    },
   });
 
   await app.start();
@@ -152,10 +137,10 @@ async function createClient() {
 
   // Get the RPC client service
   const rpcClient = app.container.resolve(RpcClient);
-  
+
   // Connect to server and make RPC calls
   await rpcClient.callRemoteCalculator('ws://localhost:9001');
-  
+
   return app;
 }
 
@@ -163,13 +148,13 @@ async function createClient() {
 async function main() {
   // Start server
   const server = await createServer();
-  
+
   // Wait a bit for server to fully initialize
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+
   // Start client and make RPC calls
   const client = await createClient();
-  
+
   // Keep running for demonstration
   setTimeout(async () => {
     console.log('\nShutting down...');

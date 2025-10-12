@@ -169,27 +169,17 @@ const hslToRgb = (h: number, s: number, l: number): [number, number, number] => 
   return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
 };
 
-const rgbToHex = (r: number, g: number, b: number): string => (
-    '#' +
-    [r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('')
-  );
+const rgbToHex = (r: number, g: number, b: number): string =>
+  '#' + [r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('');
 
 const hexToRgb = (hex: string): [number, number, number] | null => {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return result
-    ? [
-        parseInt(result[1] as string, 16),
-        parseInt(result[2] as string, 16),
-        parseInt(result[3] as string, 16),
-      ]
+    ? [parseInt(result[1] as string, 16), parseInt(result[2] as string, 16), parseInt(result[3] as string, 16)]
     : null;
 };
 
-const rgbToHsl = (
-  r: number,
-  g: number,
-  b: number,
-): [number, number, number] => {
+const rgbToHsl = (r: number, g: number, b: number): [number, number, number] => {
   r /= 255;
   g /= 255;
   b /= 255;
@@ -231,7 +221,7 @@ export const ColorPicker = defineComponent<ColorPickerProps>((props) => {
 
   // State
   const internalValue: WritableSignal<ColorValue> = signal<ColorValue>(
-    props.defaultValue ?? { h: 0, s: 100, l: 50, a: 1 },
+    props.defaultValue ?? { h: 0, s: 100, l: 50, a: 1 }
   );
 
   const currentValue = (): ColorValue => {
@@ -282,23 +272,19 @@ export const ColorPicker = defineComponent<ColorPickerProps>((props) => {
     }
 
     // Try to parse rgb/rgba
-    const rgbMatch = colorString.match(
-      /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/,
-    );
+    const rgbMatch = colorString.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
     if (rgbMatch) {
       const [h, s, l] = rgbToHsl(
         parseInt(rgbMatch[1] as string),
         parseInt(rgbMatch[2] as string),
-        parseInt(rgbMatch[3] as string),
+        parseInt(rgbMatch[3] as string)
       );
       const a = rgbMatch[4] ? parseFloat(rgbMatch[4]) : 1;
       return { h, s, l, a };
     }
 
     // Try to parse hsl/hsla
-    const hslMatch = colorString.match(
-      /hsla?\((\d+),\s*(\d+)%,\s*(\d+)%(?:,\s*([\d.]+))?\)/,
-    );
+    const hslMatch = colorString.match(/hsla?\((\d+),\s*(\d+)%,\s*(\d+)%(?:,\s*([\d.]+))?\)/);
     if (hslMatch) {
       return {
         h: parseInt(hslMatch[1] as string),
@@ -348,11 +334,7 @@ export const ColorPickerTrigger = defineComponent<ColorPickerTriggerProps>((prop
   return () => {
     const { children, ...rest } = props;
     const colorString =
-      context.format === 'hex'
-        ? context.toHex()
-        : context.format === 'rgb'
-          ? context.toRgb()
-          : context.toHsl();
+      context.format === 'hex' ? context.toHex() : context.format === 'rgb' ? context.toRgb() : context.toHsl();
 
     return jsx('button', {
       type: 'button',
@@ -370,16 +352,16 @@ export const ColorPickerTrigger = defineComponent<ColorPickerTriggerProps>((prop
 // ============================================================================
 
 export const ColorPickerContent = defineComponent<ColorPickerContentProps>((props) => () => {
-    const { children, ...rest } = props;
+  const { children, ...rest } = props;
 
-    return jsx('div', {
-      'data-color-picker-content': '',
-      role: 'dialog',
-      'aria-label': 'Color picker',
-      ...rest,
-      children,
-    });
+  return jsx('div', {
+    'data-color-picker-content': '',
+    role: 'dialog',
+    'aria-label': 'Color picker',
+    ...rest,
+    children,
   });
+});
 
 // ============================================================================
 // ColorPicker Area (Saturation/Brightness selector)
@@ -483,7 +465,8 @@ export const ColorPickerHueSlider = defineComponent<ColorPickerHueSliderProps>((
     document.addEventListener('pointerup', handlePointerUp);
   };
 
-  return () => jsx('div', {
+  return () =>
+    jsx('div', {
       ref: sliderRef,
       'data-color-picker-hue-slider': '',
       role: 'slider',
@@ -541,7 +524,8 @@ export const ColorPickerAlphaSlider = defineComponent<ColorPickerAlphaSliderProp
     document.addEventListener('pointerup', handlePointerUp);
   };
 
-  return () => jsx('div', {
+  return () =>
+    jsx('div', {
       ref: sliderRef,
       'data-color-picker-alpha-slider': '',
       role: 'slider',

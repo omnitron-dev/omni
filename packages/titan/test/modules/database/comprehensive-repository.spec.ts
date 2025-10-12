@@ -132,7 +132,7 @@ class PostRepository extends BaseRepository<any, 'posts', Post, Partial<Post>, P
   async findPublished(): Promise<Post[]> {
     return this.findAll({
       where: { status: 'published' },
-      orderBy: [{ column: 'published_at', direction: 'desc' }]
+      orderBy: [{ column: 'published_at', direction: 'desc' }],
     });
   }
 
@@ -155,9 +155,7 @@ class PostRepository extends BaseRepository<any, 'posts', Post, Partial<Post>, P
       .selectFrom('posts')
       .selectAll()
       .where((eb: any) => {
-        const conditions = tags.map(tag =>
-          sql`${sql.ref('tags')} @> ${JSON.stringify([tag])}`
-        );
+        const conditions = tags.map((tag) => sql`${sql.ref('tags')} @> ${JSON.stringify([tag])}`);
         return eb.or(conditions);
       })
       .execute() as Promise<Post[]>;
@@ -187,13 +185,13 @@ class CommentRepository extends BaseRepository<any, 'comments', Comment, Partial
   async findByPostId(postId: number): Promise<Comment[]> {
     return this.findAll({
       where: { post_id: postId },
-      orderBy: [{ column: 'created_at', direction: 'desc' }]
+      orderBy: [{ column: 'created_at', direction: 'desc' }],
     });
   }
 
   async findApprovedComments(postId: number): Promise<Comment[]> {
     return this.findAll({
-      where: { post_id: postId, is_approved: true }
+      where: { post_id: postId, is_approved: true },
     });
   }
 
@@ -292,7 +290,8 @@ class BlogService {
   }
 
   private generateSlug(title: string): string {
-    return title.toLowerCase()
+    return title
+      .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '');
   }
@@ -305,14 +304,9 @@ class BlogService {
       transactional: true,
       autoMigrate: false,
       autoClean: true,
-    })
+    }),
   ],
-  providers: [
-    BlogService,
-    UserRepository,
-    PostRepository,
-    CommentRepository,
-  ],
+  providers: [BlogService, UserRepository, PostRepository, CommentRepository],
 })
 class TestModule {}
 
@@ -461,7 +455,7 @@ describe('Comprehensive Repository Tests', () => {
 
       it('should find all entities matching conditions', async () => {
         const activeUsers = await userRepo.findAll({
-          where: { is_active: true }
+          where: { is_active: true },
         });
         expect(activeUsers).toHaveLength(2);
       });
@@ -488,7 +482,7 @@ describe('Comprehensive Repository Tests', () => {
 
       it('should support ordering', async () => {
         const users = await userRepo.findAll({
-          orderBy: [{ column: 'age', direction: 'desc' }]
+          orderBy: [{ column: 'age', direction: 'desc' }],
         });
 
         expect(users[0].age).toBe(45);
@@ -499,7 +493,7 @@ describe('Comprehensive Repository Tests', () => {
       it('should support limiting results', async () => {
         const users = await userRepo.findAll({
           limit: 2,
-          orderBy: [{ column: 'age', direction: 'asc' }]
+          orderBy: [{ column: 'age', direction: 'asc' }],
         });
 
         expect(users).toHaveLength(2);
@@ -528,10 +522,7 @@ describe('Comprehensive Repository Tests', () => {
           { email: 'batch2@example.com', username: 'batch2', full_name: 'Batch 2', age: 31, is_active: false },
         ]);
 
-        const updated = await userRepo.updateMany(
-          { is_active: false },
-          { is_active: true }
-        );
+        const updated = await userRepo.updateMany({ is_active: false }, { is_active: true });
 
         expect(updated).toBe(2);
 
@@ -721,38 +712,41 @@ describe('Comprehensive Repository Tests', () => {
           is_active: true,
         });
 
-        await expect(userRepo.create({
-          email: 'unique@example.com',
-          username: 'anotheruser',
-          full_name: 'Another User',
-          age: 25,
-          is_active: true,
-        })).rejects.toThrow();
+        await expect(
+          userRepo.create({
+            email: 'unique@example.com',
+            username: 'anotheruser',
+            full_name: 'Another User',
+            age: 25,
+            is_active: true,
+          })
+        ).rejects.toThrow();
       });
 
       it('should handle not found errors', async () => {
         const notFound = await userRepo.findById(999999);
         expect(notFound).toBeNull();
 
-        await expect(userRepo.update(999999, { full_name: 'Test' }))
-          .rejects.toThrow();
+        await expect(userRepo.update(999999, { full_name: 'Test' })).rejects.toThrow();
       });
 
       it('should handle invalid data types', async () => {
-        await expect(userRepo.create({
-          email: 'invalid@example.com',
-          username: 'invaliduser',
-          full_name: 'Invalid User',
-          age: 'not a number' as any,
-          is_active: true,
-        })).rejects.toThrow();
+        await expect(
+          userRepo.create({
+            email: 'invalid@example.com',
+            username: 'invaliduser',
+            full_name: 'Invalid User',
+            age: 'not a number' as any,
+            is_active: true,
+          })
+        ).rejects.toThrow();
       });
     });
 
     describe('Edge Cases', () => {
       it('should handle empty results', async () => {
         const noResults = await userRepo.findAll({
-          where: { email: 'nonexistent@example.com' }
+          where: { email: 'nonexistent@example.com' },
         });
         expect(noResults).toHaveLength(0);
       });
@@ -836,14 +830,9 @@ describe('Comprehensive Repository Tests', () => {
             },
             transactional: true,
             autoClean: true,
-          })
+          }),
         ],
-        providers: [
-          BlogService,
-          UserRepository,
-          PostRepository,
-          CommentRepository,
-        ],
+        providers: [BlogService, UserRepository, PostRepository, CommentRepository],
       })
       class PgTestModule {}
 
@@ -931,9 +920,27 @@ describe('Comprehensive Repository Tests', () => {
 
     it('should handle PostgreSQL text search', async () => {
       await userRepo.createMany([
-        { email: 'search1@example.com', username: 'searchuser1', full_name: 'John Search Smith', age: 30, is_active: true },
-        { email: 'search2@example.com', username: 'searchuser2', full_name: 'Jane Finding Doe', age: 25, is_active: true },
-        { email: 'search3@example.com', username: 'searchuser3', full_name: 'Bob Query Johnson', age: 35, is_active: true },
+        {
+          email: 'search1@example.com',
+          username: 'searchuser1',
+          full_name: 'John Search Smith',
+          age: 30,
+          is_active: true,
+        },
+        {
+          email: 'search2@example.com',
+          username: 'searchuser2',
+          full_name: 'Jane Finding Doe',
+          age: 25,
+          is_active: true,
+        },
+        {
+          email: 'search3@example.com',
+          username: 'searchuser3',
+          full_name: 'Bob Query Johnson',
+          age: 35,
+          is_active: true,
+        },
       ]);
 
       const results = await userRepo.searchUsers('John');
@@ -973,14 +980,9 @@ describe('Comprehensive Repository Tests', () => {
             },
             transactional: true,
             autoClean: true,
-          })
+          }),
         ],
-        providers: [
-          BlogService,
-          UserRepository,
-          PostRepository,
-          CommentRepository,
-        ],
+        providers: [BlogService, UserRepository, PostRepository, CommentRepository],
       })
       class MySQLTestModule {}
 

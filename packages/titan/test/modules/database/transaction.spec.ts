@@ -70,11 +70,7 @@ class AccountRepository extends BaseRepository<any, 'accounts', Account, any, an
   }
 
   async getBalance(id: number): Promise<number> {
-    const result = await this.qb
-      .selectFrom('accounts')
-      .select('balance')
-      .where('id', '=', id)
-      .executeTakeFirst();
+    const result = await this.qb.selectFrom('accounts').select('balance').where('id', '=', id).executeTakeFirst();
 
     return result?.balance || 0;
   }
@@ -117,26 +113,24 @@ class BankingService {
     await this.accountRepo.update(id, { balance: amount });
 
     // This will use a savepoint
-    await this.transactionManager.executeInTransaction(
-      async () => {
-        await this.accountRepo.update(id, { version: 99 });
-        throw new Error('Rollback nested only');
-      },
-      { propagation: TransactionPropagation.NESTED }
-    ).catch(() => {
-      // Ignore error - nested transaction rolled back
-    });
+    await this.transactionManager
+      .executeInTransaction(
+        async () => {
+          await this.accountRepo.update(id, { version: 99 });
+          throw new Error('Rollback nested only');
+        },
+        { propagation: TransactionPropagation.NESTED }
+      )
+      .catch(() => {
+        // Ignore error - nested transaction rolled back
+      });
 
     // This should still be committed
     await this.accountRepo.update(id, { version: 2 });
   }
 
   @RequiresTransactionScope()
-  async operationWithScope(
-    @InjectTransactionScope() scope: any,
-    accountId: number,
-    amount: number
-  ): Promise<void> {
+  async operationWithScope(@InjectTransactionScope() scope: any, accountId: number, amount: number): Promise<void> {
     const repo = scope.getRepository(AccountRepository);
     await repo.update(accountId, { balance: amount });
   }
@@ -280,7 +274,7 @@ describe('Transaction Management', () => {
       await expect(
         transactionManager.executeInTransaction(
           async () => {
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await new Promise((resolve) => setTimeout(resolve, 200));
           },
           { timeout: 100 }
         )
@@ -378,7 +372,7 @@ describe('Transaction Management', () => {
         transactionManager.executeInTransaction(
           async (trx) => {
             await sql`UPDATE accounts SET balance = balance + 10 WHERE id = 1`.execute(trx);
-            await new Promise(resolve => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 50));
             await sql`UPDATE accounts SET balance = balance + 10 WHERE id = 2`.execute(trx);
           },
           { isolationLevel: TransactionIsolationLevel.SERIALIZABLE }
@@ -386,7 +380,7 @@ describe('Transaction Management', () => {
         transactionManager.executeInTransaction(
           async (trx) => {
             await sql`UPDATE accounts SET balance = balance + 20 WHERE id = 2`.execute(trx);
-            await new Promise(resolve => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 50));
             await sql`UPDATE accounts SET balance = balance + 20 WHERE id = 1`.execute(trx);
           },
           { isolationLevel: TransactionIsolationLevel.SERIALIZABLE }
@@ -394,7 +388,7 @@ describe('Transaction Management', () => {
       ]);
 
       // At least one should succeed, possibly one fails due to serialization
-      const succeeded = results.filter(r => r.status === 'fulfilled');
+      const succeeded = results.filter((r) => r.status === 'fulfilled');
       expect(succeeded.length).toBeGreaterThanOrEqual(1);
     });
 
@@ -412,7 +406,7 @@ describe('Transaction Management', () => {
       ]);
 
       // Both should eventually succeed due to retry
-      const succeeded = results.filter(r => r.status === 'fulfilled');
+      const succeeded = results.filter((r) => r.status === 'fulfilled');
       expect(succeeded.length).toBeGreaterThanOrEqual(1);
 
       // Check transaction statistics for retries

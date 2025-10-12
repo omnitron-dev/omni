@@ -187,7 +187,7 @@ export class FileAuditAdapter implements AuditStorageAdapter {
     options?: {
       /** Auto-flush interval in milliseconds (default: 5000) */
       flushInterval?: number;
-    },
+    }
   ) {
     this.filePath = filePath;
 
@@ -350,10 +350,7 @@ export class AuditLogger {
   private config: Required<AuditLoggerConfig>;
   private logger: ILogger;
 
-  constructor(
-    logger: ILogger,
-    @Optional() config?: AuditLoggerConfig,
-  ) {
+  constructor(logger: ILogger, @Optional() config?: AuditLoggerConfig) {
     this.logger = logger.child({ component: 'AuditLogger' });
 
     // Set defaults
@@ -386,10 +383,7 @@ export class AuditLogger {
         try {
           this.config.logger(enhancedEvent);
         } catch (error) {
-          this.logger.error(
-            { error, event: enhancedEvent },
-            'Custom audit logger failed',
-          );
+          this.logger.error({ error, event: enhancedEvent }, 'Custom audit logger failed');
         }
       }
 
@@ -399,10 +393,7 @@ export class AuditLogger {
       if (this.config.async) {
         // Fire and forget (non-blocking)
         savePromise.catch((error) => {
-          this.logger.error(
-            { error, event: enhancedEvent },
-            'Failed to save audit event',
-          );
+          this.logger.error({ error, event: enhancedEvent }, 'Failed to save audit event');
         });
       } else {
         // Wait for completion (blocking)
@@ -416,7 +407,7 @@ export class AuditLogger {
           method: enhancedEvent.method,
           success: enhancedEvent.success,
         },
-        'Audit event logged',
+        'Audit event logged'
       );
     } catch (error) {
       this.logger.error({ error, event }, 'Failed to log audit event');
@@ -511,10 +502,7 @@ export class AuditLogger {
     // Check size and truncate if needed
     const size = this.estimateSize(enhancedEvent);
     if (size > this.config.maxEventSize) {
-      this.logger.warn(
-        { size, maxSize: this.config.maxEventSize },
-        'Audit event exceeds max size, truncating',
-      );
+      this.logger.warn({ size, maxSize: this.config.maxEventSize }, 'Audit event exceeds max size, truncating');
       enhancedEvent.metadata = {
         ...enhancedEvent.metadata,
         truncated: true,

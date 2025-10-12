@@ -16,7 +16,7 @@ import {
   TransportAddress,
   ConnectionState,
   ConnectionMetrics,
-  ServerMetrics
+  ServerMetrics,
 } from './types.js';
 import { Packet, encodePacket, decodePacket, TYPE_PING } from '../packet/index.js';
 import { NetronErrors, Errors } from '../../errors/index.js';
@@ -33,12 +33,15 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
     packetsSent: 0,
     packetsReceived: 0,
     duration: 0,
-    rtt: undefined
+    rtt: undefined,
   };
   protected connectionStartTime?: number;
   protected reconnectAttempts = 0;
   protected reconnectTimer?: NodeJS.Timeout;
-  private pendingPings = new Map<number, { resolve: (rtt: number) => void; reject: (error: Error) => void; startTime: number; }>();
+  private pendingPings = new Map<
+    number,
+    { resolve: (rtt: number) => void; reject: (error: Error) => void; startTime: number }
+  >();
 
   constructor(protected options: TransportOptions = {}) {
     super();
@@ -81,9 +84,10 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
     let isLikelyText = false;
     if (Buffer.isBuffer(data) && data.length > 0) {
       const firstByte = data[0]!;
-      isLikelyText = firstByte === 0x7B || // '{' for JSON
-                     firstByte === 0x22 || // '"' for strings
-                     (firstByte >= 0x20 && firstByte <= 0x7E); // printable ASCII
+      isLikelyText =
+        firstByte === 0x7b || // '{' for JSON
+        firstByte === 0x22 || // '"' for strings
+        (firstByte >= 0x20 && firstByte <= 0x7e); // printable ASCII
     }
 
     if (isLikelyText) {
@@ -119,7 +123,7 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
       pongPacket.setType(TYPE_PING);
       pongPacket.setImpulse(0); // Response
       pongPacket.data = packet.data; // Echo timestamp
-      this.sendPacket(pongPacket).catch(err => {
+      this.sendPacket(pongPacket).catch((err) => {
         console.error('Failed to send pong:', err);
       });
     } else {
@@ -151,8 +155,7 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
     this.setState(ConnectionState.DISCONNECTED);
     this.emit('disconnect', reason);
 
-    if (this.options.reconnect?.enabled &&
-        this.reconnectAttempts < (this.options.reconnect.maxAttempts ?? 5)) {
+    if (this.options.reconnect?.enabled && this.reconnectAttempts < (this.options.reconnect.maxAttempts ?? 5)) {
       this.scheduleReconnect();
     }
   }
@@ -164,8 +167,7 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
     if (this.reconnectTimer) return;
 
     const delay = Math.min(
-      (this.options.reconnect?.delay ?? 1000) *
-      Math.pow(this.options.reconnect?.factor ?? 2, this.reconnectAttempts),
+      (this.options.reconnect?.delay ?? 1000) * Math.pow(this.options.reconnect?.factor ?? 2, this.reconnectAttempts),
       this.options.reconnect?.maxDelay ?? 30000
     );
 
@@ -174,7 +176,7 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
       this.reconnectAttempts++;
       this.setState(ConnectionState.RECONNECTING);
       this.emit('reconnect', this.reconnectAttempts);
-      this.doReconnect().catch(error => {
+      this.doReconnect().catch((error) => {
         if (this.reconnectAttempts >= (this.options.reconnect?.maxAttempts ?? 5)) {
           this.emit('reconnect_failed');
         } else {
@@ -218,10 +220,10 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
           clearTimeout(timeout);
           reject(error);
         },
-        startTime: performance.now()
+        startTime: performance.now(),
       });
 
-      this.sendPacket(pingPacket).catch(err => {
+      this.sendPacket(pingPacket).catch((err) => {
         clearTimeout(timeout);
         this.pendingPings.delete(pingPacket.id);
         reject(err);
@@ -235,7 +237,7 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
   getMetrics(): ConnectionMetrics {
     return {
       ...this.metrics,
-      duration: this.connectionStartTime ? Date.now() - this.connectionStartTime : 0
+      duration: this.connectionStartTime ? Date.now() - this.connectionStartTime : 0,
     };
   }
 
@@ -266,7 +268,7 @@ export abstract class BaseServer extends EventEmitter implements ITransportServe
     activeConnections: 0,
     totalBytesSent: 0,
     totalBytesReceived: 0,
-    uptime: 0
+    uptime: 0,
   };
   protected serverStartTime?: number;
 
@@ -311,8 +313,8 @@ export abstract class BaseServer extends EventEmitter implements ITransportServe
    * Broadcast data to all connections
    */
   async broadcast(data: Buffer | ArrayBuffer): Promise<void> {
-    const promises = Array.from(this.connections.values()).map(conn =>
-      conn.send(data).catch(error => {
+    const promises = Array.from(this.connections.values()).map((conn) =>
+      conn.send(data).catch((error) => {
         console.error(`Failed to broadcast to connection ${conn.id}:`, error);
       })
     );
@@ -323,8 +325,8 @@ export abstract class BaseServer extends EventEmitter implements ITransportServe
    * Broadcast packet to all connected clients
    */
   async broadcastPacket(packet: Packet): Promise<void> {
-    const promises = Array.from(this.connections.values()).map(conn =>
-      conn.sendPacket(packet).catch(error => {
+    const promises = Array.from(this.connections.values()).map((conn) =>
+      conn.sendPacket(packet).catch((error) => {
         console.error(`Failed to broadcast packet to connection ${conn.id}:`, error);
       })
     );
@@ -337,7 +339,7 @@ export abstract class BaseServer extends EventEmitter implements ITransportServe
   getMetrics(): ServerMetrics {
     return {
       ...this.metrics,
-      uptime: this.serverStartTime ? Date.now() - this.serverStartTime : 0
+      uptime: this.serverStartTime ? Date.now() - this.serverStartTime : 0,
     };
   }
 
@@ -410,7 +412,7 @@ export abstract class BaseTransport implements ITransport {
         host,
         port: parsedPort,
         path,
-        params
+        params,
       };
     }
 
@@ -419,7 +421,7 @@ export abstract class BaseTransport implements ITransport {
     if (unixMatch) {
       return {
         protocol: 'unix',
-        path: unixMatch[1]
+        path: unixMatch[1],
       };
     }
 
@@ -428,7 +430,7 @@ export abstract class BaseTransport implements ITransport {
     if (ipcMatch) {
       return {
         protocol: 'ipc',
-        path: ipcMatch[1]
+        path: ipcMatch[1],
       };
     }
 
@@ -438,13 +440,13 @@ export abstract class BaseTransport implements ITransport {
       return {
         protocol: this.name,
         host: parts[0],
-        port: parseInt(parts[1], 10)
+        port: parseInt(parts[1], 10),
       };
     }
 
     return {
       protocol: this.name,
-      host: address
+      host: address,
     };
   }
 
@@ -454,8 +456,9 @@ export abstract class BaseTransport implements ITransport {
   isValidAddress(address: string): boolean {
     try {
       const parsed = this.parseAddress(address);
-      return parsed.protocol === this.name ||
-             (this.name === 'ws' && (parsed.protocol === 'ws' || parsed.protocol === 'wss'));
+      return (
+        parsed.protocol === this.name || (this.name === 'ws' && (parsed.protocol === 'ws' || parsed.protocol === 'wss'))
+      );
     } catch {
       return false;
     }

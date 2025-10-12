@@ -12,16 +12,12 @@ import {
   parseDatabaseError,
   type PaginationOptions as KyseraPaginateOptions,
   type PaginatedResult as KyseraPaginatedResult,
-  type CursorOptions as KyseraCursorOptions
+  type CursorOptions as KyseraCursorOptions,
 } from '@kysera/core';
 import { EventsService } from '../events/index.js';
 import { DatabaseManager } from './database.manager.js';
 import { Errors } from '../../errors/index.js';
-import {
-  DATABASE_MANAGER,
-  DATABASE_DEFAULT_CONNECTION,
-  DATABASE_EVENTS,
-} from './database.constants.js';
+import { DATABASE_MANAGER, DATABASE_DEFAULT_CONNECTION, DATABASE_EVENTS } from './database.constants.js';
 import type {
   PaginationOptions,
   PaginatedResult,
@@ -73,9 +69,7 @@ export class DatabaseService {
 
     try {
       // Execute with optional timeout
-      const result = options.timeout
-        ? await this.withTimeout(queryFn(db), options.timeout)
-        : await queryFn(db);
+      const result = options.timeout ? await this.withTimeout(queryFn(db), options.timeout) : await queryFn(db);
 
       const duration = Date.now() - startTime;
 
@@ -101,10 +95,7 @@ export class DatabaseService {
   /**
    * Execute a transaction
    */
-  async transaction<T>(
-    fn: (trx: Transaction<any>) => Promise<T>,
-    options: TransactionOptions = {}
-  ): Promise<T> {
+  async transaction<T>(fn: (trx: Transaction<any>) => Promise<T>, options: TransactionOptions = {}): Promise<T> {
     const connectionName = options.connection || DATABASE_DEFAULT_CONNECTION;
     const db = await this.getConnection(connectionName);
 
@@ -161,10 +152,7 @@ export class DatabaseService {
         if (this.isDeadlockError(dbError) && retries < maxRetries) {
           retries++;
           const delay = this.calculateRetryDelay(retries, options.retry);
-          this.logger.warn(
-            { error: dbError, retries, delay },
-            'Transaction deadlock detected, retrying'
-          );
+          this.logger.warn({ error: dbError, retries, delay }, 'Transaction deadlock detected, retrying');
           await new Promise((resolve) => setTimeout(resolve, delay));
           continue;
         }
@@ -195,7 +183,7 @@ export class DatabaseService {
       limit: options.limit || 20,
     };
 
-    const result = await kyseraPaginate(query, paginateOptions) as KyseraPaginatedResult<T>;
+    const result = (await kyseraPaginate(query, paginateOptions)) as KyseraPaginatedResult<T>;
 
     return {
       data: result.data,
@@ -219,13 +207,13 @@ export class DatabaseService {
     const cursorOptions: KyseraCursorOptions<any> = {
       limit: options.limit || 20,
       cursor: options.cursor,
-      orderBy: options.orderBy?.map(o => ({
+      orderBy: options.orderBy?.map((o) => ({
         column: o.column as any,
         direction: o.direction,
       })) || [{ column: 'id' as any, direction: 'asc' }],
     };
 
-    const result = await kyseraPaginateCursor(query, cursorOptions) as any;
+    const result = (await kyseraPaginateCursor(query, cursorOptions)) as any;
 
     return {
       data: result.data,
@@ -241,11 +229,7 @@ export class DatabaseService {
   /**
    * Execute raw SQL query
    */
-  async raw<T = any>(
-    sqlString: string,
-    params?: any[],
-    connection?: string
-  ): Promise<T> {
+  async raw<T = any>(sqlString: string, params?: any[], connection?: string): Promise<T> {
     const db = await this.getConnection(connection);
 
     // If no parameters, execute directly
@@ -344,10 +328,7 @@ export class DatabaseService {
   /**
    * Set transaction isolation level
    */
-  private async setTransactionIsolationLevel(
-    trx: Transaction<any>,
-    level: string
-  ): Promise<void> {
+  private async setTransactionIsolationLevel(trx: Transaction<any>, level: string): Promise<void> {
     // This is database-specific
     // PostgreSQL: SET TRANSACTION ISOLATION LEVEL ...
     // MySQL: SET TRANSACTION ISOLATION LEVEL ...
@@ -372,10 +353,7 @@ export class DatabaseService {
   /**
    * Calculate retry delay
    */
-  private calculateRetryDelay(
-    attempt: number,
-    retryConfig?: TransactionOptions['retry']
-  ): number {
+  private calculateRetryDelay(attempt: number, retryConfig?: TransactionOptions['retry']): number {
     const baseDelay = retryConfig?.delay || 100;
     const backoff = retryConfig?.backoff || 'exponential';
 
@@ -423,11 +401,7 @@ export class DatabaseService {
   /**
    * Track query error
    */
-  private async trackQueryError(
-    connection: string,
-    error: any,
-    duration: number
-  ): Promise<void> {
+  private async trackQueryError(connection: string, error: any, duration: number): Promise<void> {
     this.logger.error({ connection, error, duration }, 'Query execution failed');
 
     await this.emitEvent(DATABASE_EVENTS.ERROR as DatabaseEventType, {

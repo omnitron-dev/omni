@@ -64,7 +64,7 @@ export class ConfigurableProxy<TService = any> {
           // Execute and return promise
           return builder.execute();
         };
-      }
+      },
     });
 
     // Return the proxy
@@ -75,9 +75,7 @@ export class ConfigurableProxy<TService = any> {
    * Chain cache configuration
    */
   cache(options: CacheOptions | number): ConfigurableProxy<TService> {
-    this.accumulatedOptions.cache = typeof options === 'number'
-      ? { maxAge: options }
-      : options;
+    this.accumulatedOptions.cache = typeof options === 'number' ? { maxAge: options } : options;
     return this.proxy;
   }
 
@@ -85,9 +83,7 @@ export class ConfigurableProxy<TService = any> {
    * Chain retry configuration
    */
   retry(options: RetryOptions | number): ConfigurableProxy<TService> {
-    this.accumulatedOptions.retry = typeof options === 'number'
-      ? { attempts: options }
-      : options;
+    this.accumulatedOptions.retry = typeof options === 'number' ? { attempts: options } : options;
     return this.proxy;
   }
 

@@ -64,37 +64,37 @@ export interface AspectRatioProps {
  * ```
  */
 export const AspectRatio = defineComponent<AspectRatioProps>((props) => () => {
-    const { ratio, children, style, ...restProps } = props;
+  const { ratio, children, style, ...restProps } = props;
 
-    // Calculate padding-bottom percentage
-    const paddingBottom = `${(1 / ratio) * 100}%`;
+  // Calculate padding-bottom percentage
+  const paddingBottom = `${(1 / ratio) * 100}%`;
 
-    return jsx('div', {
-      ...restProps,
-      'data-aspect-ratio': '',
-      style: {
-        position: 'relative',
-        width: '100%',
-        ...style,
-      },
-      children: [
-        // Padding element to maintain aspect ratio
-        jsx('div', {
-          style: {
-            paddingBottom,
-          },
-        }),
-        // Content container (absolute positioned)
-        jsx('div', {
-          style: {
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-          },
-          children,
-        }),
-      ],
-    });
+  return jsx('div', {
+    ...restProps,
+    'data-aspect-ratio': '',
+    style: {
+      position: 'relative',
+      width: '100%',
+      ...style,
+    },
+    children: [
+      // Padding element to maintain aspect ratio
+      jsx('div', {
+        style: {
+          paddingBottom,
+        },
+      }),
+      // Content container (absolute positioned)
+      jsx('div', {
+        style: {
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+        },
+        children,
+      }),
+    ],
   });
+});

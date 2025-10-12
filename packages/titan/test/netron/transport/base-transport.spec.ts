@@ -4,17 +4,8 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import { EventEmitter } from 'events';
-import {
-  BaseTransport,
-  BaseConnection,
-  BaseServer
-} from '../../../src/netron/transport/base-transport.js';
-import type {
-  IConnection,
-  IServer,
-  TransportOptions,
-  Message
-} from '../../../src/netron/transport/types.js';
+import { BaseTransport, BaseConnection, BaseServer } from '../../../src/netron/transport/base-transport.js';
+import type { IConnection, IServer, TransportOptions, Message } from '../../../src/netron/transport/types.js';
 import { ConnectionState } from '../../../src/netron/transport/types.js';
 
 // Test implementations
@@ -153,7 +144,7 @@ class TestTransport extends BaseTransport {
     binary: true,
     reconnection: true,
     multiplexing: false,
-    server: true
+    server: true,
   };
 
   async connect(address: string, options?: TransportOptions): Promise<IConnection> {
@@ -224,26 +215,25 @@ describe('BaseTransport Classes', () => {
 
       const message: Message = {
         type: 'test',
-        payload: { data: 'hello' }
+        payload: { data: 'hello' },
       };
 
       await connection.send(message);
       expect(sendSpy).toHaveBeenCalledWith(message);
 
       // Wait for echo response
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
       expect(messageSpy).toHaveBeenCalledWith(message);
     });
 
     it('should throw when sending without connection', async () => {
       const message: Message = {
         type: 'test',
-        payload: { data: 'hello' }
+        payload: { data: 'hello' },
       };
 
       await expect(connection.send(message)).rejects.toThrow('Not connected');
     });
-
 
     it('should emit events', async () => {
       const events: string[] = [];
@@ -353,7 +343,6 @@ describe('BaseTransport Classes', () => {
 
       expect(errorSpy).toHaveBeenCalledWith(error);
     });
-
   });
 
   describe('BaseTransport', () => {
@@ -399,7 +388,7 @@ describe('BaseTransport Classes', () => {
       }
 
       // Clean up
-      await Promise.all(connections.map(c => c.close()));
+      await Promise.all(connections.map((c) => c.close()));
     });
 
     it('should handle multiple servers', async () => {
@@ -412,7 +401,7 @@ describe('BaseTransport Classes', () => {
       }
 
       // Clean up
-      await Promise.all(servers.map(s => s.close()));
+      await Promise.all(servers.map((s) => s.close()));
     });
   });
 
@@ -428,7 +417,7 @@ describe('BaseTransport Classes', () => {
 
       await connection.connect();
       await connection.send({ type: 'test', payload: {} });
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
       await connection.disconnect();
 
       expect(events).toEqual(['connect', 'message', 'disconnect']);

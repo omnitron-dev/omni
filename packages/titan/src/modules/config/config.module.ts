@@ -27,7 +27,7 @@ import {
   CONFIG_VALIDATOR_SERVICE_TOKEN,
   CONFIG_WATCHER_SERVICE_TOKEN,
   CONFIG_OPTIONS_TOKEN,
-  CONFIG_SCHEMA_TOKEN
+  CONFIG_SCHEMA_TOKEN,
 } from './config.tokens.js';
 
 import type { IConfigModuleOptions, IConfigAsyncOptions } from './types.js';
@@ -39,7 +39,6 @@ import type { IConfigModuleOptions, IConfigAsyncOptions } from './types.js';
  */
 @Module()
 export class ConfigModule {
-
   /**
    * Configure the Config module with options
    */
@@ -52,10 +51,12 @@ export class ConfigModule {
     // Convert defaults to sources if provided and no sources are specified
     const normalizedOptions = { ...options };
     if (!normalizedOptions.sources && (options as any).defaults) {
-      normalizedOptions.sources = [{
-        type: 'object' as const,
-        data: (options as any).defaults
-      }];
+      normalizedOptions.sources = [
+        {
+          type: 'object' as const,
+          data: (options as any).defaults,
+        },
+      ];
     }
 
     // Create ConfigService instance directly
@@ -72,46 +73,68 @@ export class ConfigModule {
       module: ConfigModule,
       providers: [
         // Provide normalized options
-        [CONFIG_OPTIONS_TOKEN, {
-          useValue: normalizedOptions
-        }] as any,
+        [
+          CONFIG_OPTIONS_TOKEN,
+          {
+            useValue: normalizedOptions,
+          },
+        ] as any,
 
         // Provide global schema if specified
-        ...(options.schema ? [
-          [CONFIG_SCHEMA_TOKEN, {
-            useValue: options.schema
-          }] as any
-        ] : []),
+        ...(options.schema
+          ? [
+              [
+                CONFIG_SCHEMA_TOKEN,
+                {
+                  useValue: options.schema,
+                },
+              ] as any,
+            ]
+          : []),
 
         // Config Loader Service - use value instead of class
-        [CONFIG_LOADER_SERVICE_TOKEN, {
-          useValue: loader
-        }] as any,
+        [
+          CONFIG_LOADER_SERVICE_TOKEN,
+          {
+            useValue: loader,
+          },
+        ] as any,
 
         // Config Validator Service - use value instead of class
-        [CONFIG_VALIDATOR_SERVICE_TOKEN, {
-          useValue: validator
-        }] as any,
+        [
+          CONFIG_VALIDATOR_SERVICE_TOKEN,
+          {
+            useValue: validator,
+          },
+        ] as any,
 
         // Config Watcher Service (only if watching is enabled)
-        ...(watcher ? [
-          [CONFIG_WATCHER_SERVICE_TOKEN, {
-            useValue: watcher
-          }] as any
-        ] : []),
+        ...(watcher
+          ? [
+              [
+                CONFIG_WATCHER_SERVICE_TOKEN,
+                {
+                  useValue: watcher,
+                },
+              ] as any,
+            ]
+          : []),
 
         // Main Config Service - use value instead of factory
-        [CONFIG_SERVICE_TOKEN, {
-          useValue: configService
-        }] as any
+        [
+          CONFIG_SERVICE_TOKEN,
+          {
+            useValue: configService,
+          },
+        ] as any,
       ],
       exports: [
         CONFIG_SERVICE_TOKEN,
         CONFIG_LOADER_SERVICE_TOKEN,
         CONFIG_VALIDATOR_SERVICE_TOKEN,
-        ...(watcher ? [CONFIG_WATCHER_SERVICE_TOKEN] : [])
+        ...(watcher ? [CONFIG_WATCHER_SERVICE_TOKEN] : []),
       ],
-      global: options.global // Propagate global option
+      global: options.global, // Propagate global option
     };
   }
 
@@ -125,27 +148,30 @@ export class ConfigModule {
       module: ConfigModule,
       providers: [
         // Feature-specific configuration provider
-        [featureToken, {
-          useFactory: async (configService: ConfigService) => {
-            const value = configService.get(name);
+        [
+          featureToken,
+          {
+            useFactory: async (configService: ConfigService) => {
+              const value = configService.get(name);
 
-            // Validate if schema provided
-            if (schema) {
-              const result = schema.safeParse(value);
-              if (!result.success) {
-                throw Errors.badRequest(`Configuration validation failed for ${name}`, {
-                  errors: result.error.issues
-                });
+              // Validate if schema provided
+              if (schema) {
+                const result = schema.safeParse(value);
+                if (!result.success) {
+                  throw Errors.badRequest(`Configuration validation failed for ${name}`, {
+                    errors: result.error.issues,
+                  });
+                }
+                return result.data;
               }
-              return result.data;
-            }
 
-            return value;
+              return value;
+            },
+            inject: [CONFIG_SERVICE_TOKEN],
           },
-          inject: [CONFIG_SERVICE_TOKEN]
-        }] as any
+        ] as any,
       ],
-      exports: [featureToken]
+      exports: [featureToken],
     };
   }
 
@@ -162,62 +188,79 @@ export class ConfigModule {
       module: ConfigModule,
       providers: [
         // Provide async options
-        [CONFIG_OPTIONS_TOKEN, {
-          useFactory: options.useFactory,
-          inject: options.inject || []
-        }] as any,
+        [
+          CONFIG_OPTIONS_TOKEN,
+          {
+            useFactory: options.useFactory,
+            inject: options.inject || [],
+          },
+        ] as any,
 
         // Config Loader Service - use value instead of class
-        [CONFIG_LOADER_SERVICE_TOKEN, {
-          useValue: loader
-        }] as any,
+        [
+          CONFIG_LOADER_SERVICE_TOKEN,
+          {
+            useValue: loader,
+          },
+        ] as any,
 
         // Config Validator Service - use value instead of class
-        [CONFIG_VALIDATOR_SERVICE_TOKEN, {
-          useValue: validator
-        }] as any,
+        [
+          CONFIG_VALIDATOR_SERVICE_TOKEN,
+          {
+            useValue: validator,
+          },
+        ] as any,
 
         // Config Watcher Service - use value instead of class
-        [CONFIG_WATCHER_SERVICE_TOKEN, {
-          useValue: watcher
-        }] as any,
+        [
+          CONFIG_WATCHER_SERVICE_TOKEN,
+          {
+            useValue: watcher,
+          },
+        ] as any,
 
         // Main Config Service with async initialization
-        [CONFIG_SERVICE_TOKEN, {
-          useFactory: async (opts: IConfigModuleOptions & { defaults?: Record<string, any> }) => {
-            // Normalize options to handle defaults
-            const normalizedOpts = { ...opts };
-            if (!normalizedOpts.sources && (opts as any).defaults) {
-              normalizedOpts.sources = [{
-                type: 'object' as const,
-                data: (opts as any).defaults
-              }];
-            }
+        [
+          CONFIG_SERVICE_TOKEN,
+          {
+            useFactory: async (opts: IConfigModuleOptions & { defaults?: Record<string, any> }) => {
+              // Normalize options to handle defaults
+              const normalizedOpts = { ...opts };
+              if (!normalizedOpts.sources && (opts as any).defaults) {
+                normalizedOpts.sources = [
+                  {
+                    type: 'object' as const,
+                    data: (opts as any).defaults,
+                  },
+                ];
+              }
 
-            // Provide schema if available in options
-            const schema = opts.schema;
+              // Provide schema if available in options
+              const schema = opts.schema;
 
-            const service = new ConfigService(
-              normalizedOpts,
-              loader,
-              validator,
-              opts.watchForChanges ? watcher : undefined,
-              schema,
-              undefined // Logger will be injected separately if needed
-            );
-            return service;
+              const service = new ConfigService(
+                normalizedOpts,
+                loader,
+                validator,
+                opts.watchForChanges ? watcher : undefined,
+                schema,
+                undefined // Logger will be injected separately if needed
+              );
+              return service;
+            },
+            inject: [CONFIG_OPTIONS_TOKEN],
+            scope: 'singleton',
           },
-          inject: [CONFIG_OPTIONS_TOKEN],
-          scope: 'singleton'
-        }] as any
+        ] as any,
       ],
       exports: [
         CONFIG_SERVICE_TOKEN,
         CONFIG_LOADER_SERVICE_TOKEN,
         CONFIG_VALIDATOR_SERVICE_TOKEN,
-        CONFIG_WATCHER_SERVICE_TOKEN
+        CONFIG_WATCHER_SERVICE_TOKEN,
       ],
-      global: options.global // Propagate global option
+      global: options.global, // Propagate global option
     };
   }
 

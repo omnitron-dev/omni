@@ -43,10 +43,7 @@ export class TransactionScope implements ITransactionScope {
     }
 
     // Create repository with transaction connection
-    const repository = this.repositoryFactory.createWithTransaction(
-      repositoryClass,
-      this.transaction
-    );
+    const repository = this.repositoryFactory.createWithTransaction(repositoryClass, this.transaction);
 
     // Cache for this scope
     this.scopedRepositories.set(repositoryClass, repository);
@@ -148,21 +145,13 @@ export class TransactionScopeFactory {
    * Create new transaction scope
    */
   createScope(transaction: Transaction<any>, context: TransactionContext): TransactionScope {
-    return new TransactionScope(
-      transaction,
-      context,
-      this.repositoryFactory,
-      this.dbManager
-    );
+    return new TransactionScope(transaction, context, this.repositoryFactory, this.dbManager);
   }
 
   /**
    * Execute function with new transaction scope
    */
-  async executeInScope<T>(
-    fn: (scope: TransactionScope) => Promise<T>,
-    options?: any
-  ): Promise<T> {
+  async executeInScope<T>(fn: (scope: TransactionScope) => Promise<T>, options?: any): Promise<T> {
     return this.transactionManager.executeInTransaction(async (trx) => {
       const context = this.transactionManager.getCurrentTransaction();
       if (!context) {

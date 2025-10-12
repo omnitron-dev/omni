@@ -59,11 +59,7 @@ function calculateMetrics(latencies: number[], totalTime: number): PerformanceMe
   };
 }
 
-async function benchmark(
-  name: string,
-  iterations: number,
-  fn: () => Promise<void>,
-): Promise<PerformanceMetrics> {
+async function benchmark(name: string, iterations: number, fn: () => Promise<void>): Promise<PerformanceMetrics> {
   const latencies: number[] = [];
 
   // Warm-up phase
@@ -160,7 +156,7 @@ describe('Auth Performance Tests', () => {
               password: 'pass',
             });
           }
-        }),
+        })
       );
 
       const totalTime = performance.now() - startTime;
@@ -267,7 +263,7 @@ describe('Auth Performance Tests', () => {
             ],
           },
           context,
-          { skipCache: true },
+          { skipCache: true }
         );
       });
 
@@ -393,9 +389,7 @@ describe('Auth Performance Tests', () => {
       const startTime = performance.now();
 
       for (let batch = 0; batch < batches; batch++) {
-        const promises = Array.from({ length: batchSize }, () =>
-          authManager.authenticate(credentials),
-        );
+        const promises = Array.from({ length: batchSize }, () => authManager.authenticate(credentials));
         await Promise.all(promises);
 
         // Periodic GC if available
@@ -507,17 +501,14 @@ describe('Auth Performance Tests', () => {
 
           if (authResult.success && authResult.context) {
             // Create session
-            const session = await sessionManager.createSession(
-              authResult.context.userId,
-              authResult.context,
-            );
+            const session = await sessionManager.createSession(authResult.context.userId, authResult.context);
 
             // Simulate multiple requests per user
             for (let i = 0; i < requestsPerUser; i++) {
               await sessionManager.getSession(session.sessionId);
             }
           }
-        }),
+        })
       );
 
       const totalTime = performance.now() - startTime;

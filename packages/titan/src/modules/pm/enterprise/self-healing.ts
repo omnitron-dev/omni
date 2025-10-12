@@ -235,26 +235,26 @@ export class SelfHealingManager extends EventEmitter {
         name: 'cpu',
         status: this.evaluateMetric('cpu', Math.random() * 100),
         value: Math.random() * 100,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       },
       {
         name: 'memory',
         status: this.evaluateMetric('memory', Math.random() * 100),
         value: Math.random() * 100,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       },
       {
         name: 'disk',
         status: this.evaluateMetric('disk', Math.random() * 100),
         value: Math.random() * 100,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       },
       {
         name: 'network',
         status: this.evaluateMetric('network', Math.random() * 100),
         value: Math.random() * 1000,
-        timestamp: Date.now()
-      }
+        timestamp: Date.now(),
+      },
     ];
   }
 
@@ -321,7 +321,7 @@ export class SelfHealingManager extends EventEmitter {
       type: 'health-degradation',
       description: `${indicator.name} health degraded to ${indicator.status}`,
       affected: [indicator.name],
-      status: 'open'
+      status: 'open',
     };
 
     this.incidents.set(incident.id, incident);
@@ -360,7 +360,7 @@ export class SelfHealingManager extends EventEmitter {
       type: 'anomaly',
       description: `Anomaly detected: ${anomaly.description}`,
       affected: anomaly.metrics || [],
-      status: 'open'
+      status: 'open',
     };
 
     this.incidents.set(incident.id, incident);
@@ -380,10 +380,8 @@ export class SelfHealingManager extends EventEmitter {
   private findHealingAction(indicator: HealthIndicator): HealingAction | undefined {
     if (!this.config.actions) return undefined;
 
-    return this.config.actions.find(action =>
-      action.symptoms.every(symptom =>
-        this.matchSymptom(symptom, indicator)
-      )
+    return this.config.actions.find((action) =>
+      action.symptoms.every((symptom) => this.matchSymptom(symptom, indicator))
     );
   }
 
@@ -397,12 +395,18 @@ export class SelfHealingManager extends EventEmitter {
     if (value === undefined) return false;
 
     switch (symptom.condition) {
-      case 'gt': return value > symptom.value;
-      case 'lt': return value < symptom.value;
-      case 'eq': return value === symptom.value;
-      case 'ne': return value !== symptom.value;
-      case 'contains': return String(value).includes(String(symptom.value));
-      default: return false;
+      case 'gt':
+        return value > symptom.value;
+      case 'lt':
+        return value < symptom.value;
+      case 'eq':
+        return value === symptom.value;
+      case 'ne':
+        return value !== symptom.value;
+      case 'contains':
+        return String(value).includes(String(symptom.value));
+      default:
+        return false;
     }
   }
 
@@ -413,7 +417,7 @@ export class SelfHealingManager extends EventEmitter {
     const remediation: Remediation = {
       action: action.action,
       startTime: Date.now(),
-      status: 'in-progress'
+      status: 'in-progress',
     };
 
     incident.remediation = remediation;
@@ -469,10 +473,8 @@ export class SelfHealingManager extends EventEmitter {
   private findMatchingPlaybook(anomaly: any): Playbook | undefined {
     if (!this.config.playbooks) return undefined;
 
-    return this.config.playbooks.find(playbook =>
-      playbook.triggers.some(trigger =>
-        this.matchTrigger(trigger, anomaly)
-      )
+    return this.config.playbooks.find((playbook) =>
+      playbook.triggers.some((trigger) => this.matchTrigger(trigger, anomaly))
     );
   }
 
@@ -552,7 +554,7 @@ export class SelfHealingManager extends EventEmitter {
 
       // Wait before next level
       if (level.wait) {
-        await new Promise(resolve => setTimeout(resolve, level.wait));
+        await new Promise((resolve) => setTimeout(resolve, level.wait));
       }
 
       // Check if resolved
@@ -569,7 +571,7 @@ export class SelfHealingManager extends EventEmitter {
       this.emit('notification:send', {
         recipients: level.notify,
         incident,
-        level: level.level
+        level: level.level,
       });
     }
 
@@ -590,22 +592,22 @@ export class SelfHealingManager extends EventEmitter {
   // Remediation methods
   private async performRestart(): Promise<void> {
     // Implementation
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 
   private async performScale(): Promise<void> {
     // Implementation
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 
   private async performMigration(): Promise<void> {
     // Implementation
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 
   private async performRollback(): Promise<void> {
     // Implementation
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 
   /**
@@ -619,8 +621,7 @@ export class SelfHealingManager extends EventEmitter {
    * Get active incidents
    */
   getActiveIncidents(): Incident[] {
-    return Array.from(this.incidents.values())
-      .filter(i => i.status !== 'resolved');
+    return Array.from(this.incidents.values()).filter((i) => i.status !== 'resolved');
   }
 
   /**
@@ -669,7 +670,7 @@ export class AnomalyDetector {
           value,
           threshold,
           severity: this.calculateSeverity(value, threshold),
-          description: `${name} value ${value} exceeds threshold ${threshold}`
+          description: `${name} value ${value} exceeds threshold ${threshold}`,
         });
       }
     }
@@ -716,7 +717,7 @@ export class PlaybookExecutor {
         await this.executeStep(step, incident);
       } catch (error) {
         if (step.onFailure) {
-          const failureStep = steps.find(s => s.id === step.onFailure);
+          const failureStep = steps.find((s) => s.id === step.onFailure);
           if (failureStep) {
             await this.executeStep(failureStep, incident);
           }
@@ -732,7 +733,7 @@ export class PlaybookExecutor {
    */
   private async executeStep(step: PlaybookStep, incident: Incident): Promise<void> {
     // Simulate step execution
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     if (step.onSuccess) {
       // Would execute success handler
@@ -773,7 +774,6 @@ export class IncidentResponder {
 
   private async executeAction(action: string, incident: Incident): Promise<void> {
     // Execute determined action
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
 }
-

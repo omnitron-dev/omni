@@ -17,12 +17,7 @@ export type AbstractConstructor<T = {}> = abstract new (...args: any[]) => T;
 /**
  * Service identifier that can be a constructor, string, or symbol
  */
-export type ServiceIdentifier<T = any> =
-  | Constructor<T>
-  | AbstractConstructor<T>
-  | string
-  | symbol
-  | Token<T>;
+export type ServiceIdentifier<T = any> = Constructor<T> | AbstractConstructor<T> | string | symbol | Token<T>;
 
 /**
  * Lifecycle scopes for dependency management
@@ -35,7 +30,7 @@ export enum Scope {
   /** One instance per scope */
   Scoped = 'scoped',
   /** One instance per request */
-  Request = 'request'
+  Request = 'request',
 }
 
 /**
@@ -152,9 +147,9 @@ export type Provider<T = any> =
  * Provider input - what users can provide when registering
  */
 export type ProviderInput<T = any> =
-  | Provider<T>                                         // Provider without 'provide' field
-  | [InjectionToken<T>, Provider<T>]                   // Tuple format [token, provider]
-  | Constructor<T>;                                      // Direct constructor
+  | Provider<T> // Provider without 'provide' field
+  | [InjectionToken<T>, Provider<T>] // Tuple format [token, provider]
+  | Constructor<T>; // Direct constructor
 
 /**
  * Type aliases
@@ -225,7 +220,11 @@ export interface IContainer {
   /**
    * Register a stream provider
    */
-  registerStream<T>(token: InjectionToken<AsyncIterable<T>>, provider: ProviderDefinition<AsyncIterable<T>>, options?: RegistrationOptions): this;
+  registerStream<T>(
+    token: InjectionToken<AsyncIterable<T>>,
+    provider: ProviderDefinition<AsyncIterable<T>>,
+    options?: RegistrationOptions
+  ): this;
 
   /**
    * Resolve a stream dependency
@@ -240,7 +239,9 @@ export interface IContainer {
   /**
    * Resolve multiple tokens with settled results
    */
-  resolveParallelSettled<T>(tokens: InjectionToken<T>[]): Promise<Array<{ status: 'fulfilled', value: T } | { status: 'rejected', reason: any }>>;
+  resolveParallelSettled<T>(
+    tokens: InjectionToken<T>[]
+  ): Promise<Array<{ status: 'fulfilled'; value: T } | { status: 'rejected'; reason: any }>>;
 
   /**
    * Resolve multiple tokens in batch with options
@@ -249,7 +250,11 @@ export interface IContainer {
   resolveBatch<T extends Record<string, InjectionToken<any>> | InjectionToken<any>[]>(
     tokens: T,
     options?: { timeout?: number; failFast?: boolean }
-  ): Promise<T extends InjectionToken<any>[] ? any[] : { [K in keyof T]: T[K] extends InjectionToken<infer V> ? V | undefined : never }>;
+  ): Promise<
+    T extends InjectionToken<any>[]
+      ? any[]
+      : { [K in keyof T]: T[K] extends InjectionToken<infer V> ? V | undefined : never }
+  >;
 
   /**
    * Check if a token is registered
@@ -346,7 +351,7 @@ export interface IModule {
   // Application lifecycle hooks (compatible with Application.ts)
   configure?(config: any): void | Promise<void>;
   health?(): Promise<{ status: 'healthy' | 'degraded' | 'unhealthy'; message?: string; details?: any }>;
-  onRegister?(app: any): void | Promise<void>;  // app is IApplication but we avoid circular deps
+  onRegister?(app: any): void | Promise<void>; // app is IApplication but we avoid circular deps
   onStart?(app: any): void | Promise<void>;
   onStop?(app: any): void | Promise<void>;
   onDestroy?(): void | Promise<void>;

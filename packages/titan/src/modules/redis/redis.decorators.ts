@@ -12,7 +12,8 @@ function createInjectDecorator(token: string | symbol): ParameterDecorator {
   };
 }
 
-export const InjectRedis = (namespace?: string): ParameterDecorator => createInjectDecorator(getRedisClientToken(namespace));
+export const InjectRedis = (namespace?: string): ParameterDecorator =>
+  createInjectDecorator(getRedisClientToken(namespace));
 
 export const InjectRedisManager = (): ParameterDecorator => createInjectDecorator(REDIS_MANAGER);
 
@@ -55,11 +56,11 @@ export function RedisCache(options?: CacheOptions): MethodDecorator {
         key = keyFn(...args);
       } else if (keyFn) {
         // If static key provided, append args to it
-        const argsKey = args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(':');
+        const argsKey = args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : a)).join(':');
         key = argsKey ? `${keyFn}:${argsKey}` : keyFn;
       } else {
         // Default key format
-        key = `${String(propertyKey)}:${args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(':')}`;
+        key = `${String(propertyKey)}:${args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : a)).join(':')}`;
       }
 
       const fullKey = `cache:${key}`;

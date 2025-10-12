@@ -33,23 +33,10 @@ export type {
 export { createRouter, getRouter, setRouter } from './router.js';
 
 // Route Matching
-export {
-  parseRoutePattern,
-  matchRoute,
-  findBestMatch,
-  buildPath,
-  normalizePath,
-} from './route-matcher.js';
+export { parseRoutePattern, matchRoute, findBestMatch, buildPath, normalizePath } from './route-matcher.js';
 
 // Hooks
-export {
-  useRouter,
-  useParams,
-  useNavigate,
-  useLocation,
-  useSearchParams,
-  useIsActive,
-} from './hooks.js';
+export { useRouter, useParams, useNavigate, useLocation, useSearchParams, useIsActive } from './hooks.js';
 
 // Components
 export { Link } from './Link.js';
@@ -68,13 +55,7 @@ export {
 } from './layouts.js';
 
 // Error Boundaries
-export {
-  ErrorBoundary,
-  useRouteError,
-  createRouteError,
-  isRouteError,
-  RouteErrorContext,
-} from './error-boundary.js';
+export { ErrorBoundary, useRouteError, createRouteError, isRouteError, RouteErrorContext } from './error-boundary.js';
 export type { ErrorBoundaryProps } from './error-boundary.js';
 
 // Data Loading
@@ -92,8 +73,4 @@ export {
 export type { Fetcher } from './data.js';
 
 // Prefetching
-export {
-  prefetchRoute,
-  clearPrefetchCache,
-  isPrefetched,
-} from './prefetch.js';
+export { prefetchRoute, clearPrefetchCache, isPrefetched } from './prefetch.js';

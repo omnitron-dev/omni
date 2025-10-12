@@ -91,11 +91,7 @@ export function expectTitanErrorSync(
  * @param message - Optional message matcher (string or regex)
  * @returns True if error matches, false otherwise
  */
-export function isTitanError(
-  error: any,
-  code: ErrorCode | number,
-  message?: string | RegExp
-): boolean {
+export function isTitanError(error: any, code: ErrorCode | number, message?: string | RegExp): boolean {
   if (!TitanError.isTitanError(error)) {
     return false;
   }
@@ -129,9 +125,7 @@ export function createTitanErrorMatcher() {
         return {
           pass: true,
           message: () =>
-            `Expected error not to match TitanError with code ${code}${
-              message ? ` and message ${message}` : ''
-            }`
+            `Expected error not to match TitanError with code ${code}${message ? ` and message ${message}` : ''}`,
         };
       } else {
         const errorInfo = TitanError.isTitanError(received)
@@ -141,12 +135,10 @@ export function createTitanErrorMatcher() {
         return {
           pass: false,
           message: () =>
-            `Expected TitanError with code ${code}${
-              message ? ` and message ${message}` : ''
-            } but got ${errorInfo}`
+            `Expected TitanError with code ${code}${message ? ` and message ${message}` : ''} but got ${errorInfo}`,
         };
       }
-    }
+    },
   };
 }
 
@@ -174,10 +166,7 @@ export function assertErrorDetails(error: TitanError, expectedDetails: Record<st
  * @param error - TitanError to check
  * @param expectedContext - Expected context properties
  */
-export function assertErrorContext(
-  error: TitanError,
-  expectedContext: Record<string, any>
-): void {
+export function assertErrorContext(error: TitanError, expectedContext: Record<string, any>): void {
   for (const [key, expectedValue] of Object.entries(expectedContext)) {
     const actualValue = error.context[key];
 
@@ -225,7 +214,7 @@ export function createMockErrorLogger() {
     },
     get infoCount() {
       return infos.length;
-    }
+    },
   };
 }
 
@@ -235,9 +224,7 @@ export function createMockErrorLogger() {
  * @param operations - Array of operations to run
  * @returns Array of errors thrown
  */
-export async function collectErrors(
-  operations: Array<() => Promise<any>>
-): Promise<TitanError[]> {
+export async function collectErrors(operations: Array<() => Promise<any>>): Promise<TitanError[]> {
   const errors: TitanError[] = [];
 
   for (const operation of operations) {

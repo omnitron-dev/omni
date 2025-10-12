@@ -73,7 +73,7 @@ class AccountRepository extends BaseRepository<any, 'accounts', Account, Partial
       .set((eb: any) => ({
         balance: eb('balance', '+', amount),
         version: eb('version', '+', 1),
-        updated_at: new Date()
+        updated_at: new Date(),
       }))
       .where('id', '=', id)
       .returningAll()
@@ -90,12 +90,7 @@ class AccountRepository extends BaseRepository<any, 'accounts', Account, Partial
   }
 
   async getForUpdate(id: number, trx: Transaction<any>): Promise<Account | null> {
-    const result = await trx
-      .selectFrom('accounts')
-      .selectAll()
-      .where('id', '=', id)
-      .forUpdate()
-      .executeTakeFirst();
+    const result = await trx.selectFrom('accounts').selectAll().where('id', '=', id).forUpdate().executeTakeFirst();
     return result as Account | null;
   }
 
@@ -107,7 +102,13 @@ class AccountRepository extends BaseRepository<any, 'accounts', Account, Partial
 @Repository<Transaction>({
   table: 'transactions',
 })
-class TransactionRepository extends BaseRepository<any, 'transactions', Transaction, Partial<Transaction>, Partial<Transaction>> {
+class TransactionRepository extends BaseRepository<
+  any,
+  'transactions',
+  Transaction,
+  Partial<Transaction>,
+  Partial<Transaction>
+> {
   async findPending(): Promise<Transaction[]> {
     return this.findAll({ where: { status: 'pending' } });
   }
@@ -119,7 +120,7 @@ class TransactionRepository extends BaseRepository<any, 'transactions', Transact
   async markFailed(id: number, error: string): Promise<void> {
     await this.update(id, {
       status: 'failed',
-      error_message: error
+      error_message: error,
     });
   }
 }
@@ -150,56 +151,55 @@ class BankingService {
   /**
    * Transfer funds between accounts using manual transaction management
    */
-  async transferFunds(
-    fromAccountId: number,
-    toAccountId: number,
-    amount: number
-  ): Promise<Transaction> {
-    return this.txManager.executeInTransaction(async (trx) => {
-      // Get accounts with row lock
-      const fromAccount = await this.accountRepo.getForUpdate(fromAccountId, trx);
-      const toAccount = await this.accountRepo.getForUpdate(toAccountId, trx);
+  async transferFunds(fromAccountId: number, toAccountId: number, amount: number): Promise<Transaction> {
+    return this.txManager.executeInTransaction(
+      async (trx) => {
+        // Get accounts with row lock
+        const fromAccount = await this.accountRepo.getForUpdate(fromAccountId, trx);
+        const toAccount = await this.accountRepo.getForUpdate(toAccountId, trx);
 
-      if (!fromAccount || !toAccount) {
-        throw new Error('Account not found');
+        if (!fromAccount || !toAccount) {
+          throw new Error('Account not found');
+        }
+
+        if (fromAccount.is_locked || toAccount.is_locked) {
+          throw new Error('Account is locked');
+        }
+
+        if (fromAccount.balance < amount) {
+          throw new Error('Insufficient funds');
+        }
+
+        // Create transaction record
+        const transaction = await this.transactionRepo.create({
+          from_account_id: fromAccountId,
+          to_account_id: toAccountId,
+          amount,
+          status: 'pending',
+          created_at: new Date(),
+        });
+
+        // Update balances
+        await this.accountRepo.updateBalance(fromAccountId, -amount);
+        await this.accountRepo.updateBalance(toAccountId, amount);
+
+        // Mark transaction as completed
+        await this.transactionRepo.markCompleted(transaction.id);
+
+        // Audit log
+        await this.auditRepo.logAction({
+          entity_type: 'transaction',
+          entity_id: transaction.id,
+          action: 'transfer',
+          changes: { from: fromAccountId, to: toAccountId, amount },
+        });
+
+        return transaction;
+      },
+      {
+        isolation: TransactionIsolationLevel.REPEATABLE_READ,
       }
-
-      if (fromAccount.is_locked || toAccount.is_locked) {
-        throw new Error('Account is locked');
-      }
-
-      if (fromAccount.balance < amount) {
-        throw new Error('Insufficient funds');
-      }
-
-      // Create transaction record
-      const transaction = await this.transactionRepo.create({
-        from_account_id: fromAccountId,
-        to_account_id: toAccountId,
-        amount,
-        status: 'pending',
-        created_at: new Date(),
-      });
-
-      // Update balances
-      await this.accountRepo.updateBalance(fromAccountId, -amount);
-      await this.accountRepo.updateBalance(toAccountId, amount);
-
-      // Mark transaction as completed
-      await this.transactionRepo.markCompleted(transaction.id);
-
-      // Audit log
-      await this.auditRepo.logAction({
-        entity_type: 'transaction',
-        entity_id: transaction.id,
-        action: 'transfer',
-        changes: { from: fromAccountId, to: toAccountId, amount },
-      });
-
-      return transaction;
-    }, {
-      isolation: TransactionIsolationLevel.REPEATABLE_READ,
-    });
+    );
   }
 
   /**
@@ -208,11 +208,7 @@ class BankingService {
   @Transactional({
     isolation: TransactionIsolationLevel.SERIALIZABLE,
   })
-  async secureTransfer(
-    fromAccountNumber: string,
-    toAccountNumber: string,
-    amount: number
-  ): Promise<Transaction> {
+  async secureTransfer(fromAccountNumber: string, toAccountNumber: string, amount: number): Promise<Transaction> {
     const fromAccount = await this.accountRepo.findByAccountNumber(fromAccountNumber);
     const toAccount = await this.accountRepo.findByAccountNumber(toAccountNumber);
 
@@ -272,7 +268,7 @@ class BankingService {
 
     // Simulate some complex processing
     await this.accountRepo.update(accountId, {
-      version: account.version + 1
+      version: account.version + 1,
     });
 
     // This runs in the same transaction
@@ -293,45 +289,38 @@ class BankingService {
    * Deadlock simulation
    */
   async simulateDeadlock(account1Id: number, account2Id: number, reverse: boolean = false): Promise<void> {
-    await this.txManager.executeInTransaction(async (trx) => {
-      const firstId = reverse ? account2Id : account1Id;
-      const secondId = reverse ? account1Id : account2Id;
+    await this.txManager.executeInTransaction(
+      async (trx) => {
+        const firstId = reverse ? account2Id : account1Id;
+        const secondId = reverse ? account1Id : account2Id;
 
-      // Lock first account
-      await trx
-        .selectFrom('accounts')
-        .selectAll()
-        .where('id', '=', firstId)
-        .forUpdate()
-        .execute();
+        // Lock first account
+        await trx.selectFrom('accounts').selectAll().where('id', '=', firstId).forUpdate().execute();
 
-      // Small delay to increase chance of deadlock
-      await new Promise(resolve => setTimeout(resolve, 50));
+        // Small delay to increase chance of deadlock
+        await new Promise((resolve) => setTimeout(resolve, 50));
 
-      // Try to lock second account
-      await trx
-        .selectFrom('accounts')
-        .selectAll()
-        .where('id', '=', secondId)
-        .forUpdate()
-        .execute();
+        // Try to lock second account
+        await trx.selectFrom('accounts').selectAll().where('id', '=', secondId).forUpdate().execute();
 
-      // Update both
-      await trx
-        .updateTable('accounts')
-        .set({ version: sql`version + 1` })
-        .where('id', '=', firstId)
-        .execute();
+        // Update both
+        await trx
+          .updateTable('accounts')
+          .set({ version: sql`version + 1` })
+          .where('id', '=', firstId)
+          .execute();
 
-      await trx
-        .updateTable('accounts')
-        .set({ version: sql`version + 1` })
-        .where('id', '=', secondId)
-        .execute();
-    }, {
-      retryOnDeadlock: true,
-      maxRetries: 3,
-    });
+        await trx
+          .updateTable('accounts')
+          .set({ version: sql`version + 1` })
+          .where('id', '=', secondId)
+          .execute();
+      },
+      {
+        retryOnDeadlock: true,
+        maxRetries: 3,
+      }
+    );
   }
 
   /**
@@ -361,16 +350,19 @@ class BankingService {
    * Transaction with timeout
    */
   async slowOperation(accountId: number): Promise<void> {
-    await this.txManager.executeInTransaction(async (trx) => {
-      await this.accountRepo.findById(accountId);
+    await this.txManager.executeInTransaction(
+      async (trx) => {
+        await this.accountRepo.findById(accountId);
 
-      // Simulate slow operation
-      await new Promise(resolve => setTimeout(resolve, 2000));
+        // Simulate slow operation
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
-      await this.accountRepo.update(accountId, { version: 1 });
-    }, {
-      timeout: 1000, // Will timeout
-    });
+        await this.accountRepo.update(accountId, { version: 1 });
+      },
+      {
+        timeout: 1000, // Will timeout
+      }
+    );
   }
 }
 
@@ -380,14 +372,9 @@ class BankingService {
     DatabaseTestingModule.forTest({
       transactional: false, // We'll manage transactions manually
       autoClean: true,
-    })
+    }),
   ],
-  providers: [
-    BankingService,
-    AccountRepository,
-    TransactionRepository,
-    AuditLogRepository,
-  ],
+  providers: [BankingService, AccountRepository, TransactionRepository, AuditLogRepository],
 })
 class TestModule {}
 
@@ -509,13 +496,11 @@ describe('Comprehensive Transaction Tests', () => {
 
         // Start multiple concurrent transfers
         for (let i = 0; i < 5; i++) {
-          promises.push(
-            bankingService.transferFunds(1, 2, 10).catch(e => e)
-          );
+          promises.push(bankingService.transferFunds(1, 2, 10).catch((e) => e));
         }
 
         const results = await Promise.all(promises);
-        const successful = results.filter(r => !(r instanceof Error));
+        const successful = results.filter((r) => !(r instanceof Error));
 
         // All should succeed with proper locking
         expect(successful.length).toBe(5);
@@ -555,7 +540,7 @@ describe('Comprehensive Transaction Tests', () => {
 
         // Verify audit logs were created
         const logs = await auditRepo.findAll({
-          where: { entity_type: 'account', entity_id: 1 }
+          where: { entity_type: 'account', entity_id: 1 },
         });
 
         expect(logs.length).toBeGreaterThanOrEqual(2);
@@ -591,9 +576,7 @@ describe('Comprehensive Transaction Tests', () => {
 
     describe('Error Handling', () => {
       it('should handle transaction timeouts', async () => {
-        await expect(
-          bankingService.slowOperation(1)
-        ).rejects.toThrow();
+        await expect(bankingService.slowOperation(1)).rejects.toThrow();
       });
 
       it('should handle constraint violations', async () => {
@@ -609,9 +592,7 @@ describe('Comprehensive Transaction Tests', () => {
       });
 
       it('should handle null reference errors', async () => {
-        await expect(
-          bankingService.transferFunds(999, 1, 100)
-        ).rejects.toThrow('Account not found');
+        await expect(bankingService.transferFunds(999, 1, 100)).rejects.toThrow('Account not found');
       });
     });
 
@@ -630,13 +611,19 @@ describe('Comprehensive Transaction Tests', () => {
         await txManager.executeInTransaction(async () => {
           expect(txManager.getTransactionDepth()).toBe(1);
 
-          await txManager.executeInTransaction(async () => {
-            expect(txManager.getTransactionDepth()).toBe(2);
+          await txManager.executeInTransaction(
+            async () => {
+              expect(txManager.getTransactionDepth()).toBe(2);
 
-            await txManager.executeInTransaction(async () => {
-              expect(txManager.getTransactionDepth()).toBe(3);
-            }, { propagation: TransactionPropagation.NESTED });
-          }, { propagation: TransactionPropagation.NESTED });
+              await txManager.executeInTransaction(
+                async () => {
+                  expect(txManager.getTransactionDepth()).toBe(3);
+                },
+                { propagation: TransactionPropagation.NESTED }
+              );
+            },
+            { propagation: TransactionPropagation.NESTED }
+          );
 
           expect(txManager.getTransactionDepth()).toBe(1);
         });
@@ -673,14 +660,9 @@ describe('Comprehensive Transaction Tests', () => {
             },
             transactional: false,
             autoClean: true,
-          })
+          }),
         ],
-        providers: [
-          BankingService,
-          AccountRepository,
-          TransactionRepository,
-          AuditLogRepository,
-        ],
+        providers: [BankingService, AccountRepository, TransactionRepository, AuditLogRepository],
       })
       class PgTestModule {}
 
@@ -736,11 +718,7 @@ describe('Comprehensive Transaction Tests', () => {
         expect(account).toBeDefined();
 
         // Update locked row
-        await trx
-          .updateTable('accounts')
-          .set({ balance: 1500 })
-          .where('id', '=', 1)
-          .execute();
+        await trx.updateTable('accounts').set({ balance: 1500 }).where('id', '=', 1).execute();
       });
 
       const updated = await accountRepo.findById(1);
@@ -756,7 +734,7 @@ describe('Comprehensive Transaction Tests', () => {
       const results = await Promise.allSettled([promise1, promise2]);
 
       // With retry, both should eventually succeed
-      const successes = results.filter(r => r.status === 'fulfilled');
+      const successes = results.filter((r) => r.status === 'fulfilled');
       expect(successes.length).toBeGreaterThanOrEqual(1);
     });
 

@@ -37,7 +37,7 @@ describe('RedisService', () => {
     const maxWait = 10000;
     const startTime = Date.now();
     while (!testContainer && !fallbackConnection && Date.now() - startTime < maxWait) {
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
 
     if (!testContainer && !fallbackConnection) {
@@ -51,13 +51,15 @@ describe('RedisService', () => {
       return;
     }
 
-    const redisConfig = testContainer ? {
-      host: testContainer.host,
-      port: testContainer.port,
-    } : {
-      host: '127.0.0.1',
-      port: 6379,
-    };
+    const redisConfig = testContainer
+      ? {
+          host: testContainer.host,
+          port: testContainer.port,
+        }
+      : {
+          host: '127.0.0.1',
+          port: 6379,
+        };
 
     // Create Redis manager with test Redis
     const redisOptions = {
@@ -81,8 +83,8 @@ describe('RedisService', () => {
           name: 'pubsub',
           ...redisConfig,
           db: 2,
-        }
-      ]
+        },
+      ],
     };
 
     manager = new RedisManager(redisOptions);
@@ -113,13 +115,17 @@ describe('RedisService', () => {
 
   // Helper to conditionally run tests based on Redis availability
   const itWithRedis = (name: string, fn: () => Promise<void>, timeout?: number) => {
-    it(name, async () => {
-      if (!testContainer && !fallbackConnection) {
-        console.log(`Skipping test "${name}" - Redis not available`);
-        return;
-      }
-      await fn();
-    }, timeout);
+    it(
+      name,
+      async () => {
+        if (!testContainer && !fallbackConnection) {
+          console.log(`Skipping test "${name}" - Redis not available`);
+          return;
+        }
+        await fn();
+      },
+      timeout
+    );
   };
 
   describe('String Operations', () => {
@@ -138,7 +144,7 @@ describe('RedisService', () => {
       const value = await service.get('key');
       expect(value).toBe('value');
 
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      await new Promise((resolve) => setTimeout(resolve, 1100));
       const expired = await service.get('key');
       expect(expired).toBeNull();
     });
@@ -196,7 +202,7 @@ describe('RedisService', () => {
       expect(ttl).toBeGreaterThan(-1);
       expect(ttl).toBeLessThanOrEqual(1);
 
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      await new Promise((resolve) => setTimeout(resolve, 1100));
       const expired = await service.exists('key');
       expect(expired).toBe(0);
     });
@@ -329,9 +335,9 @@ describe('RedisService', () => {
         messages.push(message);
       });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
       await service.publish('channel', 'test-message');
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(messages).toContain('test-message');
       await unsubscribe();
@@ -356,12 +362,7 @@ describe('RedisService', () => {
     });
 
     itWithRedis('should use eval for scripts', async () => {
-      const result = await service.eval(
-        "return redis.call('SET', KEYS[1], ARGV[1])",
-        1,
-        'evalKey',
-        'evalValue'
-      );
+      const result = await service.eval("return redis.call('SET', KEYS[1], ARGV[1])", 1, 'evalKey', 'evalValue');
       expect(result).toBe('OK');
 
       const value = await service.get('evalKey');

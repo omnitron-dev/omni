@@ -93,8 +93,7 @@ export function defaultErrorTransformer(
   const { includeStack = true, includeContext = true, errorMessages = {} } = options;
 
   // Extract error code if available
-  const code =
-    (error as any).code || (error as any).errorCode || 'UNKNOWN_ERROR';
+  const code = (error as any).code || (error as any).errorCode || 'UNKNOWN_ERROR';
 
   // Get message (use custom message if available)
   const message = errorMessages[code] || error.message || 'An error occurred';
@@ -127,9 +126,7 @@ export function defaultErrorTransformer(
 /**
  * Create error transformation middleware
  */
-export function createErrorTransformMiddleware(
-  options: ErrorTransformMiddlewareOptions = {}
-): MiddlewareFunction {
+export function createErrorTransformMiddleware(options: ErrorTransformMiddlewareOptions = {}): MiddlewareFunction {
   const {
     transformer,
     onError,
@@ -142,10 +139,7 @@ export function createErrorTransformMiddleware(
 
   return async (ctx, next) => {
     // Skip if service or method is in skip list
-    if (
-      skipServices.includes(ctx.service) ||
-      skipMethods.includes(`${ctx.service}.${ctx.method}`)
-    ) {
+    if (skipServices.includes(ctx.service) || skipMethods.includes(`${ctx.service}.${ctx.method}`)) {
       return next();
     }
 
@@ -205,15 +199,9 @@ export const CommonErrorMessages: Record<string, string> = {
  * Retry-able error checker
  */
 export function isRetryableError(error: NormalizedError | Error): boolean {
-  const code =
-    error instanceof Error ? (error as any).code : error.code;
+  const code = error instanceof Error ? (error as any).code : error.code;
 
-  const retryableCodes = [
-    'TIMEOUT',
-    'NETWORK_ERROR',
-    'SERVICE_UNAVAILABLE',
-    'RATE_LIMIT_EXCEEDED',
-  ];
+  const retryableCodes = ['TIMEOUT', 'NETWORK_ERROR', 'SERVICE_UNAVAILABLE', 'RATE_LIMIT_EXCEEDED'];
 
   return retryableCodes.includes(code);
 }
@@ -222,16 +210,9 @@ export function isRetryableError(error: NormalizedError | Error): boolean {
  * Client error checker (4xx)
  */
 export function isClientError(error: NormalizedError | Error): boolean {
-  const code =
-    error instanceof Error ? (error as any).code : error.code;
+  const code = error instanceof Error ? (error as any).code : error.code;
 
-  const clientErrorCodes = [
-    'BAD_REQUEST',
-    'UNAUTHORIZED',
-    'FORBIDDEN',
-    'NOT_FOUND',
-    'VALIDATION_ERROR',
-  ];
+  const clientErrorCodes = ['BAD_REQUEST', 'UNAUTHORIZED', 'FORBIDDEN', 'NOT_FOUND', 'VALIDATION_ERROR'];
 
   return clientErrorCodes.includes(code);
 }
@@ -240,8 +221,7 @@ export function isClientError(error: NormalizedError | Error): boolean {
  * Server error checker (5xx)
  */
 export function isServerError(error: NormalizedError | Error): boolean {
-  const code =
-    error instanceof Error ? (error as any).code : error.code;
+  const code = error instanceof Error ? (error as any).code : error.code;
 
   const serverErrorCodes = ['INTERNAL_ERROR', 'SERVICE_UNAVAILABLE'];
 

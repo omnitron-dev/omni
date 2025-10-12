@@ -94,7 +94,7 @@ export const Image = defineComponent<ImageProps>((props) => {
             }
           });
         },
-        { rootMargin: '50px' },
+        { rootMargin: '50px' }
       );
 
       observer.observe(img);

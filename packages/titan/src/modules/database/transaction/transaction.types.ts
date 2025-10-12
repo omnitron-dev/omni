@@ -205,10 +205,7 @@ export interface ITransactionManager {
   /**
    * Execute function within transaction
    */
-  executeInTransaction<T>(
-    fn: (trx: Transaction<any>) => Promise<T>,
-    options?: TransactionOptions
-  ): Promise<T>;
+  executeInTransaction<T>(fn: (trx: Transaction<any>) => Promise<T>, options?: TransactionOptions): Promise<T>;
 
   /**
    * Get current transaction context

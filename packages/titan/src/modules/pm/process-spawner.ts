@@ -14,13 +14,7 @@ import { fileURLToPath } from 'url';
 import os from 'os';
 import { Errors } from '../../errors/index.js';
 import type { ILogger } from '../logger/logger.types.js';
-import type {
-  IProcessSpawner,
-  ISpawnOptions,
-  IWorkerHandle,
-  IProcessOptions,
-  IProcessManagerConfig
-} from './types.js';
+import type { IProcessSpawner, ISpawnOptions, IWorkerHandle, IProcessOptions, IProcessManagerConfig } from './types.js';
 import { ProcessStatus } from './types.js';
 import { NetronClient } from './netron-client.js';
 import { ServiceProxyHandler } from './service-proxy.js';
@@ -100,11 +94,11 @@ export class WorkerHandle implements IWorkerHandle {
         }
 
         // Wait for graceful shutdown
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
 
         if (!child.killed) {
           child.kill('SIGTERM');
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise((resolve) => setTimeout(resolve, 1000));
 
           if (!child.killed) {
             child.kill('SIGKILL');
@@ -154,7 +148,7 @@ export class WorkerHandle implements IWorkerHandle {
         if (data && typeof data === 'object' && 'type' in data && data.type === 'ready') {
           this._status = ProcessStatus.RUNNING;
         }
-        this.messageHandlers.forEach(handler => handler(data));
+        this.messageHandlers.forEach((handler) => handler(data));
       });
 
       worker.on('error', (error) => {
@@ -173,7 +167,7 @@ export class WorkerHandle implements IWorkerHandle {
         if (data && typeof data === 'object' && 'type' in data && data.type === 'ready') {
           this._status = ProcessStatus.RUNNING;
         }
-        this.messageHandlers.forEach(handler => handler(data));
+        this.messageHandlers.forEach((handler) => handler(data));
       });
 
       child.on('error', (error) => {
@@ -233,9 +227,7 @@ export class ProcessSpawner implements IProcessSpawner {
     } else {
       // Legacy: class constructor (for backward compatibility)
       // In production, you should migrate to file-based approach
-      this.logger.warn(
-        'Using legacy class-based spawn. Please migrate to file-based approach!'
-      );
+      this.logger.warn('Using legacy class-based spawn. Please migrate to file-based approach!');
 
       // For backward compatibility, we can still support classes
       // by generating a temporary file that imports and exports the class
@@ -261,7 +253,7 @@ export class ProcessSpawner implements IProcessSpawner {
       processPath,
       transport,
       options: options as IProcessOptions,
-      dependencies: options.dependencies
+      dependencies: options.dependencies,
     };
 
     // Determine spawn strategy based on isolation config
@@ -294,12 +286,7 @@ export class ProcessSpawner implements IProcessSpawner {
         await netronClient.connect(transport.url!);
 
         // Create service proxy
-        const proxyHandler = new ServiceProxyHandler(
-          processId,
-          netronClient,
-          serviceName,
-          this.logger
-        );
+        const proxyHandler = new ServiceProxyHandler(processId, netronClient, serviceName, this.logger);
         const proxy = proxyHandler.createProxy();
 
         return new WorkerHandle(
@@ -329,7 +316,7 @@ export class ProcessSpawner implements IProcessSpawner {
     } catch (error) {
       // Cleanup on error
       if (netronClient) {
-        await netronClient.disconnect().catch(() => { });
+        await netronClient.disconnect().catch(() => {});
       }
 
       throw error;
@@ -364,7 +351,7 @@ export class ProcessSpawner implements IProcessSpawner {
           type: transportType,
           host,
           port,
-          url: `${protocol}://${host}:${port}`
+          url: `${protocol}://${host}:${port}`,
         };
       }
 
@@ -374,7 +361,7 @@ export class ProcessSpawner implements IProcessSpawner {
         return {
           type: 'unix',
           path: socketPath,
-          url: `unix://${socketPath}`
+          url: `unix://${socketPath}`,
         };
       }
 
@@ -382,7 +369,7 @@ export class ProcessSpawner implements IProcessSpawner {
       default: {
         return {
           type: 'ipc',
-          url: `ipc://${processId}`
+          url: `ipc://${processId}`,
         };
       }
     }
@@ -392,10 +379,7 @@ export class ProcessSpawner implements IProcessSpawner {
    * Create a temporary module for legacy class-based spawning
    * This is for backward compatibility only!
    */
-  private async createLegacyModule(
-    ProcessClass: new (...args: any[]) => any,
-    processId: string
-  ): Promise<string> {
+  private async createLegacyModule(ProcessClass: new (...args: any[]) => any, processId: string): Promise<string> {
     // This should only be used for backward compatibility
     // In production, use file-based processes
 
@@ -426,7 +410,7 @@ export class ProcessSpawner implements IProcessSpawner {
   private async spawnWorkerThread(context: IWorkerContext): Promise<Worker> {
     const worker = new Worker(this.workerRuntimePath, {
       workerData: context,
-      env: process.env
+      env: process.env,
     });
 
     return worker;
@@ -439,9 +423,9 @@ export class ProcessSpawner implements IProcessSpawner {
     const child = fork(this.forkWorkerPath, [], {
       env: {
         ...process.env,
-        TITAN_WORKER_CONTEXT: JSON.stringify(context)
+        TITAN_WORKER_CONTEXT: JSON.stringify(context),
       },
-      silent: false
+      silent: false,
     });
 
     return child;
@@ -487,10 +471,7 @@ export class ProcessSpawner implements IProcessSpawner {
  * Factory for creating process spawners
  */
 export class ProcessSpawnerFactory {
-  static create(
-    logger: ILogger,
-    config: IProcessManagerConfig = {}
-  ): IProcessSpawner {
+  static create(logger: ILogger, config: IProcessManagerConfig = {}): IProcessSpawner {
     // Use mock spawner in test environment
     if (process.env['NODE_ENV'] === 'test' || config.testing?.useMockSpawner) {
       return new MockProcessSpawner(logger, config);

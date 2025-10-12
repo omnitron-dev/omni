@@ -16,9 +16,9 @@ import { SmartBuffer } from './smart-buffer.js';
 
 export default class Decoder {
   private lastBytesConsumed: number = 0;
-  private view: DataView | null = null;  // Cached DataView
+  private view: DataView | null = null; // Cached DataView
 
-  constructor(private decodingTypes: Map<number, DecodeFunction>) { }
+  constructor(private decodingTypes: Map<number, DecodeFunction>) {}
 
   decode(buf: Buffer): any {
     if (buf.length === 0) {
@@ -51,23 +51,34 @@ export default class Decoder {
   /** Get minimum header size for a given marker byte */
   private getMinHeaderSize(marker: number): number {
     // Fixint, fixstr, fixarray, fixmap, nil, bool - 1 byte
-    if (marker < 0x80 || marker >= 0xe0 || // fixint
+    if (
+      marker < 0x80 ||
+      marker >= 0xe0 || // fixint
       (marker >= 0xa0 && marker <= 0xbf) || // fixstr
       (marker >= 0x90 && marker <= 0x9f) || // fixarray
       (marker >= 0x80 && marker <= 0x8f) || // fixmap
-      marker === 0xc0 || marker === 0xc2 || marker === 0xc3) { // nil, false, true
+      marker === 0xc0 ||
+      marker === 0xc2 ||
+      marker === 0xc3
+    ) {
+      // nil, false, true
       return 1;
     }
 
     // Types with 2-byte headers (marker + 1 byte)
-    if (marker === 0xc4 || marker === 0xc7 || marker === 0xcc || marker === 0xd0 ||
-      marker === 0xd4) {
+    if (marker === 0xc4 || marker === 0xc7 || marker === 0xcc || marker === 0xd0 || marker === 0xd4) {
       return 2;
     }
 
     // Types with 3-byte headers (marker + 2 bytes)
-    if (marker === 0xc5 || marker === 0xc8 || marker === 0xcd || marker === 0xd1 ||
-      marker === 0xd5 || marker === 0xd9) {
+    if (
+      marker === 0xc5 ||
+      marker === 0xc8 ||
+      marker === 0xcd ||
+      marker === 0xd1 ||
+      marker === 0xd5 ||
+      marker === 0xd9
+    ) {
       return 3;
     }
 
@@ -77,8 +88,15 @@ export default class Decoder {
     }
 
     // Types with 5-byte headers (marker + 4 bytes)
-    if (marker === 0xca || marker === 0xc6 || marker === 0xc9 || marker === 0xce ||
-      marker === 0xd6 || marker === 0xda || marker === 0xdc) {
+    if (
+      marker === 0xca ||
+      marker === 0xc6 ||
+      marker === 0xc9 ||
+      marker === 0xce ||
+      marker === 0xd6 ||
+      marker === 0xda ||
+      marker === 0xdc
+    ) {
       return 5;
     }
 

@@ -14,11 +14,7 @@ import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
 import { RedisService } from '../../../src/modules/redis/redis.service.js';
 import { RedisHealthIndicator } from '../../../src/modules/redis/redis.health.js';
 import { REDIS_MANAGER } from '../../../src/modules/redis/redis.constants.js';
-import {
-  RedisCache,
-  RedisLock,
-  RedisRateLimit
-} from '../../../src/modules/redis/redis.decorators.js';
+import { RedisCache, RedisLock, RedisRateLimit } from '../../../src/modules/redis/redis.decorators.js';
 import { TestApplication } from '../../../src/testing/test-application.js';
 import { suppressConsole } from '../../../src/testing/test-helpers.js';
 
@@ -72,7 +68,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
           port: 6379,
           db: 15,
           keyPrefix: `${testNamespace}:default:`,
-          lazyConnect: false,  // Force eager connection for tests
+          lazyConnect: false, // Force eager connection for tests
         },
         {
           namespace: 'cache',
@@ -82,7 +78,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
           keyPrefix: `${testNamespace}:cache:`,
           enableOfflineQueue: true,
           maxRetriesPerRequest: 5,
-          lazyConnect: false,  // Force eager connection for tests
+          lazyConnect: false, // Force eager connection for tests
         },
         {
           namespace: 'pubsub',
@@ -90,7 +86,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
           port: 6379,
           db: 13,
           keyPrefix: `${testNamespace}:pubsub:`,
-          lazyConnect: false,  // Force eager connection for tests
+          lazyConnect: false, // Force eager connection for tests
         },
       ],
       scripts: [
@@ -306,12 +302,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
       await redisService.rpush('list', 'third');
 
       expect(await redisService.llen('list')).toBe(4);
-      expect(await redisService.lrange('list', 0, -1)).toEqual([
-        'zero',
-        'first',
-        'second',
-        'third',
-      ]);
+      expect(await redisService.lrange('list', 0, -1)).toEqual(['zero', 'first', 'second', 'third']);
 
       expect(await redisService.lpop('list')).toBe('zero');
       expect(await redisService.rpop('list')).toBe('third');
@@ -370,7 +361,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
       const multi = await redisService.multi();
       multi
         .set('tx1', 'value1')
-        .incr('not-a-number')  // This will fail
+        .incr('not-a-number') // This will fail
         .set('tx2', 'value2');
 
       const results = await multi.exec();
@@ -398,7 +389,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
       multi.set('watched', '3');
       const results = await multi.exec();
 
-      expect(results).toBeNull();  // Transaction aborted
+      expect(results).toBeNull(); // Transaction aborted
 
       // Verify final value
       expect(await client1.get('watched')).toBe('2');
@@ -419,8 +410,8 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
       const duration = Date.now() - start;
 
       expect(results).toHaveLength(count);
-      expect(results!.every(r => r[1] === 'OK')).toBe(true);
-      expect(duration).toBeLessThan(1000);  // Should complete quickly
+      expect(results!.every((r) => r[1] === 'OK')).toBe(true);
+      expect(duration).toBeLessThan(1000); // Should complete quickly
 
       // Verify sample values
       expect(await redisService.get('pipeline-0')).toBe('value-0');
@@ -482,7 +473,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
       await subscriber.subscribe(channelName);
 
       // Allow subscription to establish
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Publish messages
       await redisService.publish(channelName, 'msg1', 'pubsub');
@@ -492,7 +483,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
       // Wait for messages with timeout
       await Promise.race([
         messagePromise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000)),
       ]);
 
       expect(messages).toEqual(['msg1', 'msg2', 'msg3']);
@@ -520,13 +511,10 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
         });
       });
 
-      await subscriber.psubscribe(
-        `${patternPrefix}:user:*`,
-        `${patternPrefix}:order:*`
-      );
+      await subscriber.psubscribe(`${patternPrefix}:user:*`, `${patternPrefix}:order:*`);
 
       // Allow subscription to establish
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Publish to different channels
       await redisService.publish(`${patternPrefix}:user:1`, 'action1', 'pubsub');
@@ -537,7 +525,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
       // Wait for messages with timeout
       await Promise.race([
         messagePromise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000)),
       ]);
 
       expect(messages).toEqual([
@@ -587,11 +575,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
 
     it('should execute preloaded scripts from module config', async () => {
       // This script was loaded in module configuration
-      const result = await redisManager.runScript(
-        'testScript',
-        ['script-key'],
-        ['script-value']
-      );
+      const result = await redisManager.runScript('testScript', ['script-key'], ['script-value']);
 
       expect(result).toBe('script-value');
 
@@ -611,12 +595,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
         return results
       `;
 
-      const result = await redisService.eval(
-        script,
-        3,
-        'lua1', 'lua2', 'lua3',
-        'val1', 'val2', 'val3'
-      );
+      const result = await redisService.eval(script, 3, 'lua1', 'lua2', 'lua3', 'val1', 'val2', 'val3');
 
       expect(result).toEqual(['val1', 'val2', 'val3']);
     });
@@ -662,7 +641,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
         expect(result.redis.status).toBe('up');
         expect(result.redis.healthy).toBe(true);
         expect(result.redis.latency).toBeGreaterThanOrEqual(0);
-        expect(result.redis.latency).toBeLessThan(50);  // Should be fast on localhost
+        expect(result.redis.latency).toBeLessThan(50); // Should be fast on localhost
       } catch (error: any) {
         // Skip if health check fails
         if (error.message?.includes('not healthy')) {
@@ -699,7 +678,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
   describe('Advanced Features', () => {
     it('should handle binary data', async () => {
       const client = redisManager.getClient() as Redis;
-      const binaryData = Buffer.from([0x00, 0x01, 0x02, 0xFF, 0xFE, 0xFD]);
+      const binaryData = Buffer.from([0x00, 0x01, 0x02, 0xff, 0xfe, 0xfd]);
 
       await client.set('binary', binaryData);
       const retrieved = await client.getBuffer('binary');
@@ -709,7 +688,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
     });
 
     it('should handle large data efficiently', async () => {
-      const largeString = 'x'.repeat(1024 * 1024);  // 1MB string
+      const largeString = 'x'.repeat(1024 * 1024); // 1MB string
 
       const start = Date.now();
       await redisService.set('large', largeString);
@@ -717,7 +696,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
       const duration = Date.now() - start;
 
       expect(retrieved).toBe(largeString);
-      expect(duration).toBeLessThan(500);  // Should be fast even for 1MB
+      expect(duration).toBeLessThan(500); // Should be fast even for 1MB
     });
 
     it('should handle complex JSON data', async () => {
@@ -823,7 +802,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
       expect(callCount).toBe(1);
 
       // Wait for cache to expire
-      await new Promise(resolve => setTimeout(resolve, 2100));
+      await new Promise((resolve) => setTimeout(resolve, 2100));
 
       // Third call - cache expired, should execute method
       const result3 = await service.getData(1);
@@ -840,7 +819,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
         @RedisLock({ key: 'decorator-lock', ttl: 1, retries: 0 })
         async process(id: number): Promise<void> {
           executionOrder.push(id);
-          await new Promise(resolve => setTimeout(resolve, 50));
+          await new Promise((resolve) => setTimeout(resolve, 50));
         }
       }
 
@@ -849,14 +828,14 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
       // Try to execute concurrently with same ID
       const promises = [
         service.process(1),
-        service.process(1).catch(() => { }),  // Should fail due to lock
-        service.process(2),  // Different ID, should work
+        service.process(1).catch(() => {}), // Should fail due to lock
+        service.process(2), // Different ID, should work
       ];
 
       await Promise.allSettled(promises);
 
       // Only one call with ID 1 should succeed
-      const count1 = executionOrder.filter(id => id === 1).length;
+      const count1 = executionOrder.filter((id) => id === 1).length;
       expect(count1).toBe(1);
       expect(executionOrder).toContain(2);
     });
@@ -887,7 +866,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
       expect(successCount).toBe(3);
 
       // Wait for window to expire
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      await new Promise((resolve) => setTimeout(resolve, 1100));
 
       // Should allow again
       await expect(service.callApi(1)).resolves.toBe('called-1');
@@ -919,13 +898,12 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
       // Try to create many keys
       for (let i = 0; i < keyCount; i++) {
         promises.push(
-          redisService.set(`memory-test-${i}`, 'x'.repeat(100))
-            .catch(() => null)  // Ignore errors if memory limit hit
+          redisService.set(`memory-test-${i}`, 'x'.repeat(100)).catch(() => null) // Ignore errors if memory limit hit
         );
       }
 
       const results = await Promise.all(promises);
-      const successCount = results.filter(r => r !== null).length;
+      const successCount = results.filter((r) => r !== null).length;
 
       // Should have created at least some keys
       expect(successCount).toBeGreaterThan(0);
@@ -949,7 +927,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
         host: 'localhost',
         port: 6379,
         db: 12,
-        commandTimeout: 100,  // 100ms timeout - more reasonable but still short
+        commandTimeout: 100, // 100ms timeout - more reasonable but still short
         retryStrategy: () => null,
       });
 
@@ -988,7 +966,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
               port: 6379,
               db: 10,
               keyPrefix: `${testNamespace}:async-default:`,
-              lazyConnect: false,  // Force eager connection for tests
+              lazyConnect: false, // Force eager connection for tests
             },
             {
               namespace: 'async-config',
@@ -996,7 +974,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
               port: 6379,
               db: 10,
               keyPrefix: `${testNamespace}:async:`,
-              lazyConnect: false,  // Force eager connection for tests
+              lazyConnect: false, // Force eager connection for tests
             },
           ],
         }),
@@ -1035,7 +1013,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
             port: 6379,
             db: 9,
             keyPrefix: `${testNamespace}:feature-default:`,
-            lazyConnect: false,  // Force eager connection for tests
+            lazyConnect: false, // Force eager connection for tests
           },
           {
             namespace: 'feature',
@@ -1043,7 +1021,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
             port: 6379,
             db: 9,
             keyPrefix: `${testNamespace}:feature:`,
-            lazyConnect: false,  // Force eager connection for tests
+            lazyConnect: false, // Force eager connection for tests
           },
         ],
       });
@@ -1097,8 +1075,8 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
       expect(results[operations - 1]).toBe(`value-${operations - 1}`);
 
       // Performance expectations
-      expect(writeTime).toBeLessThan(5000);  // 5000 writes in < 5s
-      expect(readTime).toBeLessThan(5000);   // 5000 reads in < 5s
+      expect(writeTime).toBeLessThan(5000); // 5000 writes in < 5s
+      expect(readTime).toBeLessThan(5000); // 5000 reads in < 5s
 
       console.log(`Performance: ${operations} writes in ${writeTime}ms, ${operations} reads in ${readTime}ms`);
     });
@@ -1117,7 +1095,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
       const duration = Date.now() - start;
 
       expect(results).toHaveLength(batchSize * 2);
-      expect(duration).toBeLessThan(500);  // Should be very fast
+      expect(duration).toBeLessThan(500); // Should be very fast
 
       console.log(`Batch performance: ${batchSize * 2} operations in ${duration}ms`);
     });

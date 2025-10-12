@@ -16,13 +16,7 @@ import { Portal } from '../control-flow/Portal.js';
 import { jsx } from '../jsx-runtime.js';
 import { effect } from '../core/reactivity/effect.js';
 import { createRef } from '../core/component/refs.js';
-import {
-  generateId,
-  calculatePosition,
-  applyPosition,
-  type Side,
-  type Align,
-} from './utils/index.js';
+import { generateId, calculatePosition, applyPosition, type Side, type Align } from './utils/index.js';
 
 // ============================================================================
 // Types
@@ -204,83 +198,81 @@ export const HoverCard = defineComponent<HoverCardProps>((props) => {
 /**
  * HoverCard Trigger component
  */
-export const HoverCardTrigger = defineComponent<{ children: any; [key: string]: any }>(
-  (props) => {
-    // Defer context access to render time
-    let ctx: HoverCardContextValue;
+export const HoverCardTrigger = defineComponent<{ children: any; [key: string]: any }>((props) => {
+  // Defer context access to render time
+  let ctx: HoverCardContextValue;
 
-    let openTimeoutId: ReturnType<typeof setTimeout> | null = null;
-    let closeTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  let openTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  let closeTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
-    onMount(() => () => {
-        if (openTimeoutId) clearTimeout(openTimeoutId);
-        if (closeTimeoutId) clearTimeout(closeTimeoutId);
-      });
+  onMount(() => () => {
+    if (openTimeoutId) clearTimeout(openTimeoutId);
+    if (closeTimeoutId) clearTimeout(closeTimeoutId);
+  });
 
-    // Create ref for reactive updates
-    const triggerRef = createRef<HTMLAnchorElement>();
+  // Create ref for reactive updates
+  const triggerRef = createRef<HTMLAnchorElement>();
 
-    return () => {
-      // Get context at render time
-      ctx = useContext(HoverCardContext);
+  return () => {
+    // Get context at render time
+    ctx = useContext(HoverCardContext);
 
-      const handlePointerEnter = () => {
-        if (closeTimeoutId) {
-          clearTimeout(closeTimeoutId);
-          closeTimeoutId = null;
-        }
+    const handlePointerEnter = () => {
+      if (closeTimeoutId) {
+        clearTimeout(closeTimeoutId);
+        closeTimeoutId = null;
+      }
 
-        openTimeoutId = setTimeout(() => {
-          ctx.open();
-        }, ctx.openDelay());
-      };
-
-      const handlePointerLeave = () => {
-        if (openTimeoutId) {
-          clearTimeout(openTimeoutId);
-          openTimeoutId = null;
-        }
-
-        closeTimeoutId = setTimeout(() => {
-          ctx.close();
-        }, ctx.closeDelay());
-      };
-
-      const handleFocus = () => {
+      openTimeoutId = setTimeout(() => {
         ctx.open();
-      };
+      }, ctx.openDelay());
+    };
 
-      const handleBlur = () => {
+    const handlePointerLeave = () => {
+      if (openTimeoutId) {
+        clearTimeout(openTimeoutId);
+        openTimeoutId = null;
+      }
+
+      closeTimeoutId = setTimeout(() => {
         ctx.close();
-      };
+      }, ctx.closeDelay());
+    };
 
-      const refCallback = (element: HTMLAnchorElement | null) => {
-        triggerRef.current = element || undefined;
-        if (!element) return;
+    const handleFocus = () => {
+      ctx.open();
+    };
 
-        // Set up effect to update attributes when isOpen changes
-        effect(() => {
-          const isOpen = ctx.isOpen();
-          element.setAttribute('data-state', isOpen ? 'open' : 'closed');
-          element.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        });
-      };
+    const handleBlur = () => {
+      ctx.close();
+    };
 
-      return jsx('a', {
-        ...props,
-        ref: refCallback,
-        id: ctx.triggerId,
-        'data-state': ctx.isOpen() ? 'open' : 'closed',
-        'aria-expanded': ctx.isOpen() ? 'true' : 'false',
-        'aria-haspopup': 'dialog',
-        onPointerEnter: handlePointerEnter,
-        onPointerLeave: handlePointerLeave,
-        onFocus: handleFocus,
-        onBlur: handleBlur,
+    const refCallback = (element: HTMLAnchorElement | null) => {
+      triggerRef.current = element || undefined;
+      if (!element) return;
+
+      // Set up effect to update attributes when isOpen changes
+      effect(() => {
+        const isOpen = ctx.isOpen();
+        element.setAttribute('data-state', isOpen ? 'open' : 'closed');
+        element.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
       });
     };
-  }
-);
+
+    return jsx('a', {
+      ...props,
+      ref: refCallback,
+      id: ctx.triggerId,
+      'data-state': ctx.isOpen() ? 'open' : 'closed',
+      'aria-expanded': ctx.isOpen() ? 'true' : 'false',
+      'aria-haspopup': 'dialog',
+      onPointerEnter: handlePointerEnter,
+      onPointerLeave: handlePointerLeave,
+      onFocus: handleFocus,
+      onBlur: handleBlur,
+    });
+  };
+});
 
 /**
  * HoverCard Content component

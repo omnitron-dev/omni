@@ -102,7 +102,7 @@ export class SessionManager {
 
   constructor(
     private logger: ILogger,
-    config?: SessionConfig,
+    config?: SessionConfig
   ) {
     this.logger = logger.child({ component: 'SessionManager' });
 
@@ -138,7 +138,7 @@ export class SessionManager {
       ttl?: number;
       device?: Session['device'];
       metadata?: Record<string, any>;
-    },
+    }
   ): Promise<Session> {
     // Generate session ID if not provided
     const sessionId = options?.sessionId ?? this.generateSessionId();
@@ -147,10 +147,7 @@ export class SessionManager {
     if (this.config.maxSessionsPerUser > 0) {
       const userSessionCount = this.userSessions.get(userId)?.size ?? 0;
       if (userSessionCount >= this.config.maxSessionsPerUser) {
-        this.logger.warn(
-          { userId, limit: this.config.maxSessionsPerUser },
-          'Max sessions per user limit reached',
-        );
+        this.logger.warn({ userId, limit: this.config.maxSessionsPerUser }, 'Max sessions per user limit reached');
 
         // Remove oldest session for this user
         await this.removeOldestSession(userId);
@@ -181,10 +178,7 @@ export class SessionManager {
     }
     this.userSessions.get(userId)!.add(sessionId);
 
-    this.logger.info(
-      { sessionId, userId, expiresAt },
-      'Session created',
-    );
+    this.logger.info({ sessionId, userId, expiresAt }, 'Session created');
 
     return session;
   }
@@ -246,7 +240,7 @@ export class SessionManager {
    */
   async updateSession(
     sessionId: string,
-    updates: Partial<Pick<Session, 'context' | 'expiresAt' | 'metadata'>>,
+    updates: Partial<Pick<Session, 'context' | 'expiresAt' | 'metadata'>>
   ): Promise<Session | null> {
     const session = await this.getSession(sessionId);
     if (!session) {
@@ -344,10 +338,7 @@ export class SessionManager {
       }
     }
 
-    this.logger.info(
-      { userId, keepSessionId, count: revokedCount },
-      'Other user sessions revoked',
-    );
+    this.logger.info({ userId, keepSessionId, count: revokedCount }, 'Other user sessions revoked');
 
     return revokedCount;
   }
@@ -483,10 +474,7 @@ export class SessionManager {
 
     if (oldestSessionId) {
       await this.removeSession(oldestSessionId);
-      this.logger.info(
-        { userId, sessionId: oldestSessionId },
-        'Oldest session removed due to max sessions limit',
-      );
+      this.logger.info({ userId, sessionId: oldestSessionId }, 'Oldest session removed due to max sessions limit');
     }
   }
 

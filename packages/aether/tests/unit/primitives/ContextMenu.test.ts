@@ -688,10 +688,7 @@ describe('ContextMenu Primitive', () => {
             children: [
               ContextMenuTrigger({ children: 'Trigger' }),
               ContextMenuContent({
-                children: [
-                  ContextMenuItem({ children: 'Item 1' }),
-                  ContextMenuItem({ children: 'Item 2' }),
-                ],
+                children: [ContextMenuItem({ children: 'Item 1' }), ContextMenuItem({ children: 'Item 2' })],
               }),
             ],
           });
@@ -716,10 +713,7 @@ describe('ContextMenu Primitive', () => {
       expect(() => {
         dispose = createRoot(() => {
           ContextMenu({
-            children: [
-              ContextMenuTrigger({ children: 'Trigger' }),
-              ContextMenuContent({ children: [] }),
-            ],
+            children: [ContextMenuTrigger({ children: 'Trigger' }), ContextMenuContent({ children: [] })],
           });
         });
       }).not.toThrow();

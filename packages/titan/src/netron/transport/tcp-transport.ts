@@ -11,7 +11,7 @@ import {
   TransportOptions,
   ITransportConnection,
   ITransportServer,
-  ConnectionState
+  ConnectionState,
 } from './types.js';
 import { NetronErrors, Errors } from '../../errors/index.js';
 
@@ -64,10 +64,7 @@ export class TcpConnection extends BaseConnection {
 
     // Set keep-alive
     if (options.keepAlive?.enabled || options.keepAliveDelay) {
-      this.socket.setKeepAlive(
-        true,
-        options.keepAliveDelay ?? options.keepAlive?.interval ?? 60000
-      );
+      this.socket.setKeepAlive(true, options.keepAliveDelay ?? options.keepAlive?.interval ?? 60000);
     }
 
     // Set timeout
@@ -220,7 +217,7 @@ export class TcpConnection extends BaseConnection {
 
     const newSocket = net.createConnection({
       host: remoteAddress,
-      port: remotePort
+      port: remotePort,
     });
 
     return new Promise((resolve, reject) => {
@@ -359,7 +356,7 @@ export class TcpTransport extends BaseTransport {
     binary: true,
     reconnection: true,
     multiplexing: false,
-    server: true
+    server: true,
   };
 
   /**
@@ -375,7 +372,7 @@ export class TcpTransport extends BaseTransport {
     const socket = net.createConnection({
       host: parsed.host,
       port: parsed.port,
-      allowHalfOpen: options.allowHalfOpen
+      allowHalfOpen: options.allowHalfOpen,
     });
 
     return new Promise((resolve, reject) => {
@@ -416,7 +413,7 @@ export class TcpTransport extends BaseTransport {
     }
 
     const server = net.createServer({
-      allowHalfOpen: options.allowHalfOpen
+      allowHalfOpen: options.allowHalfOpen,
     });
 
     // Start listening
@@ -437,10 +434,7 @@ export class TcpTransport extends BaseTransport {
   override isValidAddress(address: string): boolean {
     try {
       const parsed = this.parseAddress(address);
-      return parsed.protocol === 'tcp' &&
-        !!parsed.host &&
-        !!parsed.port &&
-        !isNaN(parsed.port);
+      return parsed.protocol === 'tcp' && !!parsed.host && !!parsed.port && !isNaN(parsed.port);
     } catch {
       return false;
     }

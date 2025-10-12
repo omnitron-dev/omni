@@ -120,7 +120,7 @@ describe('ServiceStub', () => {
         _isNetronStream: true,
         streamId: 'test-stream-123',
         peerId: 'test-peer',
-        pipe: jest.fn()
+        pipe: jest.fn(),
       };
 
       @Service('StreamService@1.0.0')
@@ -148,7 +148,7 @@ describe('ServiceStub', () => {
       const streamRef = {
         _isNetronStreamReference: true,
         streamId: 'ref-stream-123',
-        peerId: remotePeer.id
+        peerId: remotePeer.id,
       };
 
       @Service('StreamConsumer@1.0.0')

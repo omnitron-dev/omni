@@ -3,7 +3,13 @@ import Redis from 'ioredis';
 import { Container } from '../../../src/nexus/index.js';
 import { NotificationService, NotificationPayload, Recipient } from '../../../src/modules/notifications/index.js';
 import { NotificationManager } from '../../../src/rotif/rotif.js';
-import { ChannelManager, EmailChannel, SMSChannel, InAppChannel, ChannelType } from '../../../src/modules/notifications/channel-manager.js';
+import {
+  ChannelManager,
+  EmailChannel,
+  SMSChannel,
+  InAppChannel,
+  ChannelType,
+} from '../../../src/modules/notifications/channel-manager.js';
 import { PreferenceManager } from '../../../src/modules/notifications/preference-manager.js';
 import { RateLimiter } from '../../../src/modules/notifications/rate-limiter.js';
 import { TemplateEngine } from '../../../src/modules/notifications/template-engine.js';
@@ -67,26 +73,30 @@ testDescribe('Notifications Integration Tests', () => {
 
     channelManager = new ChannelManager();
     channelManager.addChannel(new InAppChannel());
-    channelManager.addChannel(new EmailChannel({
-      transport: {
-        send: async (options: any) => {
-          // Mock email sending for tests
-          console.log('Mock email sent:', options);
-          return { messageId: 'test-msg-id' };
-        }
-      }
-    }));
-    channelManager.addChannel(new SMSChannel({
-      client: {
-        messages: {
-          create: async (options: any) => {
-            // Mock SMS sending for tests
-            console.log('Mock SMS sent:', options);
-            return { sid: 'test-sms-id' };
-          }
-        }
-      }
-    }));
+    channelManager.addChannel(
+      new EmailChannel({
+        transport: {
+          send: async (options: any) => {
+            // Mock email sending for tests
+            console.log('Mock email sent:', options);
+            return { messageId: 'test-msg-id' };
+          },
+        },
+      })
+    );
+    channelManager.addChannel(
+      new SMSChannel({
+        client: {
+          messages: {
+            create: async (options: any) => {
+              // Mock SMS sending for tests
+              console.log('Mock SMS sent:', options);
+              return { sid: 'test-sms-id' };
+            },
+          },
+        },
+      })
+    );
 
     preferenceManager = new PreferenceManager({ redis, keyPrefix: TEST_PREFIX });
     rateLimiter = new RateLimiter({ redis, keyPrefix: TEST_PREFIX });
@@ -94,12 +104,7 @@ testDescribe('Notifications Integration Tests', () => {
     workflowEngine = new WorkflowEngine({ redis, keyPrefix: TEST_PREFIX });
     analytics = new NotificationAnalytics({ redis, keyPrefix: TEST_PREFIX });
 
-    notificationService = new NotificationService(
-      rotifManager,
-      channelManager,
-      preferenceManager,
-      rateLimiter
-    );
+    notificationService = new NotificationService(rotifManager, channelManager, preferenceManager, rateLimiter);
 
     // Register container services
     container.register('redis', { useValue: redis });
@@ -180,7 +185,7 @@ testDescribe('Notifications Integration Tests', () => {
       expect(result2.sent).toBe(0);
 
       // Wait for TTL and send again
-      await new Promise(resolve => setTimeout(resolve, 5100));
+      await new Promise((resolve) => setTimeout(resolve, 5100));
       const result3 = await notificationService.send(payload, recipient, options);
       expect(result3.sent).toBeGreaterThan(0);
     }, 10000); // Increase timeout for this test
@@ -265,7 +270,7 @@ testDescribe('Notifications Integration Tests', () => {
       expect(result.resetAt).toBeGreaterThan(Date.now());
 
       // Wait for window to reset
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      await new Promise((resolve) => setTimeout(resolve, 1100));
 
       // Should allow again after reset
       const resultAfterReset = await rateLimiter.checkLimit(key, config);
@@ -408,7 +413,7 @@ testDescribe('Notifications Integration Tests', () => {
             notification: {
               type: 'info' as const,
               title: 'How are you doing?',
-              body: 'We hope you\'re enjoying the platform!',
+              body: "We hope you're enjoying the platform!",
             },
             channels: ['email'],
           },

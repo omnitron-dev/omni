@@ -26,11 +26,15 @@ describe('Lua Atomic Ack Script', () => {
 
     let receivedMessageId: string | null = null;
 
-    await manager.subscribe(channel, async (msg) => {
-      expect(msg.payload.message).toEqual(payload.message);
-      receivedMessageId = msg.id;
-      messageProcessedDefer.resolve?.(true);
-    }, { groupName: 'atomicAckGroup', startFrom: '0' });
+    await manager.subscribe(
+      channel,
+      async (msg) => {
+        expect(msg.payload.message).toEqual(payload.message);
+        receivedMessageId = msg.id;
+        messageProcessedDefer.resolve?.(true);
+      },
+      { groupName: 'atomicAckGroup', startFrom: '0' }
+    );
 
     await delay(400);
 

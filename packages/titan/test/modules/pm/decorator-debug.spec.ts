@@ -3,11 +3,7 @@
  */
 import 'reflect-metadata';
 import { describe, it, expect } from '@jest/globals';
-import {
-  Supervisor,
-  Child,
-  SUPERVISOR_METADATA_KEY
-} from '../../../src/modules/pm/decorators.js';
+import { Supervisor, Child, SUPERVISOR_METADATA_KEY } from '../../../src/modules/pm/decorators.js';
 import { SupervisionStrategy } from '../../../src/modules/pm/types.js';
 
 describe('Decorator Debug', () => {
@@ -16,7 +12,7 @@ describe('Decorator Debug', () => {
     @Supervisor({
       strategy: SupervisionStrategy.ONE_FOR_ONE,
       maxRestarts: 5,
-      window: 60000
+      window: 60000,
     })
     class TestSupervisor {
       @Child({ critical: true })
@@ -59,7 +55,7 @@ describe('Decorator Debug', () => {
           name: String(propertyKey),
           processClass: null,
           propertyKey: String(propertyKey),
-          ...options
+          ...options,
         });
 
         console.log(`Applied Child to ${String(propertyKey)}, map size: ${metadata.children.size}`);
@@ -68,7 +64,7 @@ describe('Decorator Debug', () => {
     }
 
     @Supervisor({
-      strategy: SupervisionStrategy.ONE_FOR_ONE
+      strategy: SupervisionStrategy.ONE_FOR_ONE,
     })
     class TestSupervisor2 {
       @TrackedChild({ critical: true })

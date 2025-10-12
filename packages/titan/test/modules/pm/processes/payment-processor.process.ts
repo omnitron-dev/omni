@@ -23,7 +23,7 @@ export default class PaymentProcessorService {
   @CircuitBreaker({ threshold: 3, timeout: 5000 })
   async processPayment(payment: Payment): Promise<{ success: boolean; transactionId?: string }> {
     // Simulate payment processing
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     // Simulate occasional failures for testing resilience
     if (this.failureCount < 2 && Math.random() < 0.3) {
@@ -49,7 +49,7 @@ export default class PaymentProcessorService {
     }
 
     // Simulate refund processing
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
     payment.status = 'pending';
     return true;
   }
@@ -65,9 +65,9 @@ export default class PaymentProcessorService {
       status: 'healthy',
       checks: [
         { name: 'payment-gateway', status: 'pass', message: 'Connected' },
-        { name: 'database', status: 'pass', message: `${this.payments.size} payments processed` }
+        { name: 'database', status: 'pass', message: `${this.payments.size} payments processed` },
       ],
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 }

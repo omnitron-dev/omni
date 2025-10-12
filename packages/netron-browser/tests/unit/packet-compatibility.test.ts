@@ -5,7 +5,7 @@ import {
   TYPE_PING,
   createPacket as createBrowserPacket,
   encodePacket as encodeBrowserPacket,
-  decodePacket as decodeBrowserPacket
+  decodePacket as decodeBrowserPacket,
 } from '../../src/packet/index.js';
 
 // Import Titan's packet system for compatibility testing
@@ -15,7 +15,7 @@ import {
   TYPE_PING as TITAN_TYPE_PING,
   createPacket as createTitanPacket,
   encodePacket as encodeTitanPacket,
-  decodePacket as decodeTitanPacket
+  decodePacket as decodeTitanPacket,
 } from '@omnitron-dev/titan/netron';
 
 describe('Packet Protocol Compatibility', () => {
@@ -30,7 +30,7 @@ describe('Packet Protocol Compatibility', () => {
     it('should decode browser-encoded packet in Titan', () => {
       const browserPacket = createBrowserPacket(1, 1, TYPE_CALL, {
         method: 'test',
-        args: [1, 2, 3]
+        args: [1, 2, 3],
       });
 
       const encoded = encodeBrowserPacket(browserPacket);
@@ -51,9 +51,9 @@ describe('Packet Protocol Compatibility', () => {
         array: [1, 2, 3],
         nested: {
           key: 'value',
-          deep: { deeper: 'value' }
+          deep: { deeper: 'value' },
         },
-        date: new Date('2025-01-01T00:00:00Z')
+        date: new Date('2025-01-01T00:00:00Z'),
       };
 
       const browserPacket = createBrowserPacket(2, 1, TYPE_CALL, complexData);
@@ -69,7 +69,7 @@ describe('Packet Protocol Compatibility', () => {
       const titanPacket = createTitanPacket(3, 1, TITAN_TYPE_CALL, {
         service: 'TestService',
         method: 'testMethod',
-        args: ['arg1', 'arg2']
+        args: ['arg1', 'arg2'],
       });
 
       const encoded = encodeTitanPacket(titanPacket);
@@ -94,7 +94,7 @@ describe('Packet Protocol Compatibility', () => {
       const errorData = {
         code: 500,
         message: 'Internal Server Error',
-        details: { reason: 'test error' }
+        details: { reason: 'test error' },
       };
 
       const titanPacket = createTitanPacket(5, 0, TITAN_TYPE_CALL, errorData);
@@ -113,7 +113,7 @@ describe('Packet Protocol Compatibility', () => {
       const originalData = {
         id: 'test-123',
         values: [1, 2, 3, 4, 5],
-        metadata: { type: 'test', timestamp: Date.now() }
+        metadata: { type: 'test', timestamp: Date.now() },
       };
 
       // Browser encodes
@@ -136,7 +136,7 @@ describe('Packet Protocol Compatibility', () => {
       const originalData = {
         service: 'UserService',
         method: 'getUser',
-        args: [{ id: 123 }]
+        args: [{ id: 123 }],
       };
 
       // Titan encodes

@@ -9,10 +9,7 @@
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { TitanError, ErrorCode, NetronErrors } from '../../errors/index.js';
-import type {
-  HttpRequestMessage,
-  HttpResponseMessage,
-} from './types.js';
+import type { HttpRequestMessage, HttpResponseMessage } from './types.js';
 import { createRequestMessage, isHttpResponseMessage } from './types.js';
 
 /**
@@ -104,8 +101,7 @@ export class HttpConnection extends EventEmitter {
    */
   async send(data: ArrayBuffer | Uint8Array): Promise<void> {
     // For compatibility with existing code, try to parse as JSON
-    const buffer =
-      data instanceof Uint8Array ? data : new Uint8Array(data);
+    const buffer = data instanceof Uint8Array ? data : new Uint8Array(data);
 
     try {
       const str = new TextDecoder().decode(buffer);
@@ -114,11 +110,7 @@ export class HttpConnection extends EventEmitter {
       // Handle different message types
       if (msg.type === 'request' || msg.service) {
         // Convert to new message format
-        const request = createRequestMessage(
-          msg.service || '__system',
-          msg.method || msg.type,
-          msg.input || msg.data,
-        );
+        const request = createRequestMessage(msg.service || '__system', msg.method || msg.type, msg.input || msg.data);
 
         const response = await this.sendRequestMessage(request);
 
@@ -137,11 +129,7 @@ export class HttpConnection extends EventEmitter {
    * Send HTTP request message
    */
   private async sendRequestMessage(message: HttpRequestMessage): Promise<HttpResponseMessage> {
-    const response = await this.sendHttpRequest<HttpResponseMessage>(
-      'POST',
-      '/netron/invoke',
-      message,
-    );
+    const response = await this.sendHttpRequest<HttpResponseMessage>('POST', '/netron/invoke', message);
 
     if (!isHttpResponseMessage(response)) {
       throw new TitanError({
@@ -188,10 +176,9 @@ export class HttpConnection extends EventEmitter {
           const errorData = await response.json();
           if (errorData.error) {
             throw new TitanError({
-              code:
-                (typeof errorData.error.code === 'number'
-                  ? errorData.error.code
-                  : ErrorCode.INTERNAL_ERROR) as ErrorCode,
+              code: (typeof errorData.error.code === 'number'
+                ? errorData.error.code
+                : ErrorCode.INTERNAL_ERROR) as ErrorCode,
               message: errorData.error.message,
               details: errorData.error.details,
             });
@@ -246,7 +233,7 @@ export class HttpConnection extends EventEmitter {
         throw NetronErrors.connectionFailed(
           'http',
           this.baseUrl,
-          new Error(`Ping failed with status ${response.status}`),
+          new Error(`Ping failed with status ${response.status}`)
         );
       }
 
@@ -256,7 +243,7 @@ export class HttpConnection extends EventEmitter {
       throw NetronErrors.connectionFailed(
         'http',
         this.baseUrl,
-        error instanceof Error ? error : new Error(String(error)),
+        error instanceof Error ? error : new Error(String(error))
       );
     }
   }

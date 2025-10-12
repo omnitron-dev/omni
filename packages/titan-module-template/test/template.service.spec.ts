@@ -7,12 +7,7 @@ import { Container } from '@omnitron-dev/nexus';
 import { TemplateService } from '../src/services/template.service.js';
 import { CacheService } from '../src/services/cache.service.js';
 import { LoggerService } from '../src/services/logger.service.js';
-import {
-  TEMPLATE_MODULE_OPTIONS,
-  TEMPLATE_CACHE_SERVICE,
-  TEMPLATE_LOGGER,
-  TEMPLATE_EVENTS
-} from '../src/constants.js';
+import { TEMPLATE_MODULE_OPTIONS, TEMPLATE_CACHE_SERVICE, TEMPLATE_LOGGER, TEMPLATE_EVENTS } from '../src/constants.js';
 import type { TemplateModuleOptions, TemplateData } from '../src/types.js';
 
 describe('TemplateService', () => {
@@ -31,7 +26,7 @@ describe('TemplateService', () => {
       debug: false,
       prefix: 'test',
       enableCache: true,
-      cacheTTL: 60
+      cacheTTL: 60,
     };
 
     // Register dependencies
@@ -299,7 +294,7 @@ describe('TemplateService', () => {
       await service.initialize();
       const result = await service.executeWithRetry(operation, {
         maxAttempts: 3,
-        baseDelay: 10
+        baseDelay: 10,
       });
 
       expect(result).toBe('success');
@@ -316,7 +311,7 @@ describe('TemplateService', () => {
       await expect(
         service.executeWithRetry(operation, {
           maxAttempts: 2,
-          baseDelay: 10
+          baseDelay: 10,
         })
       ).rejects.toThrow('Always fails');
 

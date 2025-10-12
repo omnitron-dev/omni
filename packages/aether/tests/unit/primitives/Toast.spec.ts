@@ -3,13 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import {
-  ToastProvider,
-  ToastViewport,
-  Toast,
-  ToastContext,
-  type ToastData,
-} from '../../../src/primitives/Toast.js';
+import { ToastProvider, ToastViewport, Toast, ToastContext, type ToastData } from '../../../src/primitives/Toast.js';
 import { createRoot } from '../../../src/core/reactivity/batch.js';
 
 describe('Toast Primitive', () => {
@@ -698,10 +692,7 @@ describe('Toast Primitive', () => {
       expect(() => {
         dispose = createRoot(() => {
           ToastProvider({
-            children: [
-              ToastViewport({}),
-              'Other content',
-            ],
+            children: [ToastViewport({}), 'Other content'],
           });
         });
       }).not.toThrow();

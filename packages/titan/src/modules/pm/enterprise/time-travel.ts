@@ -76,7 +76,7 @@ export class TimeTravelDebugger extends EventEmitter {
       recordArguments: true,
       recordResults: true,
       recordErrors: true,
-      ...options
+      ...options,
     };
   }
 
@@ -107,7 +107,7 @@ export class TimeTravelDebugger extends EventEmitter {
       timestamp: Date.now(),
       processId: this.processId,
       state: this.deepClone(state),
-      metadata
+      metadata,
     };
 
     this.snapshots.push(snapshot);
@@ -124,11 +124,7 @@ export class TimeTravelDebugger extends EventEmitter {
   /**
    * Record an action
    */
-  recordAction(
-    action: string,
-    args: any[],
-    execute: () => any
-  ): any {
+  recordAction(action: string, args: any[], execute: () => any): any {
     if (!this.recording) {
       return execute();
     }
@@ -140,7 +136,7 @@ export class TimeTravelDebugger extends EventEmitter {
       processId: this.processId,
       action,
       args: this.options.recordArguments ? this.deepClone(args) : [],
-      duration: 0
+      duration: 0,
     };
 
     try {
@@ -192,9 +188,7 @@ export class TimeTravelDebugger extends EventEmitter {
 
     if (closestSnapshot) {
       // Find index in timeline
-      const index = this.timeline.findIndex(
-        event => event.id === closestSnapshot.id
-      );
+      const index = this.timeline.findIndex((event) => event.id === closestSnapshot.id);
       if (index !== -1) {
         this.currentIndex = index;
       }
@@ -255,15 +249,11 @@ export class TimeTravelDebugger extends EventEmitter {
   /**
    * Start replay
    */
-  async startReplay(
-    fromTimestamp?: number,
-    toTimestamp?: number,
-    speed = 1
-  ): Promise<void> {
+  async startReplay(fromTimestamp?: number, toTimestamp?: number, speed = 1): Promise<void> {
     this.replaying = true;
     this.emit('replay:started');
 
-    const events = this.timeline.filter(event => {
+    const events = this.timeline.filter((event) => {
       if (fromTimestamp && event.timestamp < fromTimestamp) return false;
       if (toTimestamp && event.timestamp > toTimestamp) return false;
       return true;
@@ -300,11 +290,8 @@ export class TimeTravelDebugger extends EventEmitter {
   /**
    * Get snapshots in time range
    */
-  getSnapshots(
-    fromTimestamp?: number,
-    toTimestamp?: number
-  ): StateSnapshot[] {
-    return this.snapshots.filter(snapshot => {
+  getSnapshots(fromTimestamp?: number, toTimestamp?: number): StateSnapshot[] {
+    return this.snapshots.filter((snapshot) => {
       if (fromTimestamp && snapshot.timestamp < fromTimestamp) return false;
       if (toTimestamp && snapshot.timestamp > toTimestamp) return false;
       return true;
@@ -314,11 +301,8 @@ export class TimeTravelDebugger extends EventEmitter {
   /**
    * Get actions in time range
    */
-  getActions(
-    fromTimestamp?: number,
-    toTimestamp?: number
-  ): ActionRecord[] {
-    return this.actions.filter(action => {
+  getActions(fromTimestamp?: number, toTimestamp?: number): ActionRecord[] {
+    return this.actions.filter((action) => {
       if (fromTimestamp && action.timestamp < fromTimestamp) return false;
       if (toTimestamp && action.timestamp > toTimestamp) return false;
       return true;
@@ -336,8 +320,8 @@ export class TimeTravelDebugger extends EventEmitter {
       timeline: this.timeline,
       metadata: {
         recordedAt: Date.now(),
-        options: this.options
-      }
+        options: this.options,
+      },
     };
   }
 
@@ -374,7 +358,7 @@ export class TimeTravelDebugger extends EventEmitter {
       currentIndex: this.currentIndex,
       recording: this.recording,
       replaying: this.replaying,
-      memoryUsage: this.estimateMemoryUsage()
+      memoryUsage: this.estimateMemoryUsage(),
     };
   }
 
@@ -383,7 +367,7 @@ export class TimeTravelDebugger extends EventEmitter {
       id: data.id || this.generateId(),
       timestamp: data.timestamp || Date.now(),
       type,
-      data
+      data,
     };
 
     this.timeline.push(event);
@@ -412,14 +396,14 @@ export class TimeTravelDebugger extends EventEmitter {
   }
 
   private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private estimateMemoryUsage(): number {
     const jsonStr = JSON.stringify({
       snapshots: this.snapshots,
       actions: this.actions,
-      timeline: this.timeline
+      timeline: this.timeline,
     });
     return new Blob([jsonStr]).size;
   }
@@ -439,33 +423,21 @@ export function createTimeTravelProxy<T extends object>(
       const value = Reflect.get(obj, prop, receiver);
 
       if (typeof value === 'function') {
-        return function(this: any, ...args: any[]) {
-          return ttDebugger.recordAction(
-            String(prop),
-            args,
-            () => value.apply(this, args)
-          );
+        return function (this: any, ...args: any[]) {
+          return ttDebugger.recordAction(String(prop), args, () => value.apply(this, args));
         };
       }
 
       if (options.recordGetters) {
-        ttDebugger.recordAction(
-          `get:${String(prop)}`,
-          [],
-          () => value
-        );
+        ttDebugger.recordAction(`get:${String(prop)}`, [], () => value);
       }
 
       return value;
     },
 
     set(obj, prop, value, receiver) {
-      return ttDebugger.recordAction(
-        `set:${String(prop)}`,
-        [value],
-        () => Reflect.set(obj, prop, value, receiver)
-      );
-    }
+      return ttDebugger.recordAction(`set:${String(prop)}`, [value], () => Reflect.set(obj, prop, value, receiver));
+    },
   });
 }
 
@@ -494,17 +466,13 @@ export function TimeTravel(options: TimeTravelOptions = {}) {
     if (descriptor) {
       const originalMethod = descriptor.value;
 
-      descriptor.value = function(...args: any[]) {
+      descriptor.value = function (...args: any[]) {
         const ttDebugger = (this as any).__debugger;
         if (!ttDebugger) {
           return originalMethod.apply(this, args);
         }
 
-        return ttDebugger.recordAction(
-          propertyKey,
-          args,
-          () => originalMethod.apply(this, args)
-        );
+        return ttDebugger.recordAction(propertyKey, args, () => originalMethod.apply(this, args));
       };
 
       return descriptor;
@@ -525,10 +493,7 @@ export class TimeTravelManager {
   /**
    * Create a debugger for a process
    */
-  createDebugger(
-    processId: string,
-    options?: TimeTravelOptions
-  ): TimeTravelDebugger {
+  createDebugger(processId: string, options?: TimeTravelOptions): TimeTravelDebugger {
     const ttDebugger = new TimeTravelDebugger(processId, options);
     this.debuggers.set(processId, ttDebugger);
     return ttDebugger;
@@ -552,39 +517,35 @@ export class TimeTravelManager {
    * Start recording for all debuggers
    */
   startRecordingAll(): void {
-    this.debuggers.forEach(ttDebugger => ttDebugger.startRecording());
+    this.debuggers.forEach((ttDebugger) => ttDebugger.startRecording());
   }
 
   /**
    * Stop recording for all debuggers
    */
   stopRecordingAll(): void {
-    this.debuggers.forEach(ttDebugger => ttDebugger.stopRecording());
+    this.debuggers.forEach((ttDebugger) => ttDebugger.stopRecording());
   }
 
   /**
    * Export all timelines
    */
   exportAll(): any[] {
-    return Array.from(this.debuggers.values()).map(
-      ttDebugger => ttDebugger.exportTimeline()
-    );
+    return Array.from(this.debuggers.values()).map((ttDebugger) => ttDebugger.exportTimeline());
   }
 
   /**
    * Get global statistics
    */
   getGlobalStats(): any {
-    const stats = Array.from(this.debuggers.values()).map(
-      ttDebugger => ttDebugger.getStats()
-    );
+    const stats = Array.from(this.debuggers.values()).map((ttDebugger) => ttDebugger.getStats());
 
     return {
       debuggerCount: this.debuggers.size,
       totalSnapshots: stats.reduce((sum, s) => sum + s.snapshotCount, 0),
       totalActions: stats.reduce((sum, s) => sum + s.actionCount, 0),
       totalMemory: stats.reduce((sum, s) => sum + s.memoryUsage, 0),
-      debuggers: stats
+      debuggers: stats,
     };
   }
 }

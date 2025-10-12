@@ -60,7 +60,7 @@ export enum ChaosType {
   NETWORK_PARTITION = 'network-partition',
   CLOCK_SKEW = 'clock-skew',
   IO_DELAY = 'io-delay',
-  CUSTOM = 'custom'
+  CUSTOM = 'custom',
 }
 
 /**
@@ -111,7 +111,7 @@ export class ChaosMonkey extends EventEmitter {
       minInterval: 60000,
       maxInterval: 300000,
       types: [ChaosType.LATENCY, ChaosType.ERROR],
-      ...config
+      ...config,
     };
   }
 
@@ -133,7 +133,7 @@ export class ChaosMonkey extends EventEmitter {
     this.active = false;
 
     // Clear all active experiments
-    this.activeExperiments.forEach(timer => clearTimeout(timer));
+    this.activeExperiments.forEach((timer) => clearTimeout(timer));
     this.activeExperiments.clear();
 
     this.emit('stopped');
@@ -198,7 +198,7 @@ export class ChaosMonkey extends EventEmitter {
   private async injectLatency(target: any, duration = 5000): Promise<void> {
     // Simulate latency injection
     this.emit('latency:injected', { target, duration });
-    await new Promise(resolve => setTimeout(resolve, duration));
+    await new Promise((resolve) => setTimeout(resolve, duration));
     this.emit('latency:removed', { target });
   }
 
@@ -301,7 +301,7 @@ export class ChaosOrchestrator extends EventEmitter {
       steadyStateAfter: false,
       success: false,
       observations: [],
-      errors: []
+      errors: [],
     };
 
     try {
@@ -310,7 +310,7 @@ export class ChaosOrchestrator extends EventEmitter {
       result.observations.push({
         time: Date.now(),
         type: 'steady-state-before',
-        value: result.steadyStateBefore
+        value: result.steadyStateBefore,
       });
 
       if (!result.steadyStateBefore) {
@@ -330,11 +330,10 @@ export class ChaosOrchestrator extends EventEmitter {
       result.observations.push({
         time: Date.now(),
         type: 'steady-state-after',
-        value: result.steadyStateAfter
+        value: result.steadyStateAfter,
       });
 
       result.success = result.steadyStateAfter;
-
     } catch (error) {
       result.errors.push(error as Error);
 
@@ -345,7 +344,7 @@ export class ChaosOrchestrator extends EventEmitter {
           result.observations.push({
             time: Date.now(),
             type: 'rollback',
-            value: 'success'
+            value: 'success',
           });
         } catch (rollbackError) {
           result.errors.push(rollbackError as Error);
@@ -388,7 +387,7 @@ export class ChaosOrchestrator extends EventEmitter {
         time: Date.now(),
         type: 'method-skipped',
         method: method.type,
-        reason: 'probability'
+        reason: 'probability',
       });
       return;
     }
@@ -397,7 +396,7 @@ export class ChaosOrchestrator extends EventEmitter {
       time: Date.now(),
       type: 'method-start',
       method: method.type,
-      target: method.target
+      target: method.target,
     });
 
     // Apply chaos based on type
@@ -412,7 +411,7 @@ export class ChaosOrchestrator extends EventEmitter {
     result.observations.push({
       time: Date.now(),
       type: 'method-end',
-      method: method.type
+      method: method.type,
     });
   }
 
@@ -449,7 +448,7 @@ export class ChaosOrchestrator extends EventEmitter {
         if (method.parameters.handler) {
           await method.parameters.handler();
         }
-      }
+      },
     };
 
     return handlers[type] || (async () => {});
@@ -481,7 +480,7 @@ export class ChaosOrchestrator extends EventEmitter {
   }
 
   private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 
@@ -509,18 +508,18 @@ export class ChaosTestingFramework {
       steadyState: {
         metrics: [
           { name: 'response-time', operator: 'lt', value: 1000 },
-          { name: 'error-rate', operator: 'lt', value: 0.01 }
+          { name: 'error-rate', operator: 'lt', value: 0.01 },
         ],
-        validate: async () => true // Would check actual metrics
+        validate: async () => true, // Would check actual metrics
       },
       method: [
         {
           type: ChaosType.LATENCY,
           target: { type: 'network', selector: '*' },
           parameters: { delay: 500 },
-          duration: 30000
-        }
-      ]
+          duration: 30000,
+        },
+      ],
     });
 
     // Process failure test
@@ -530,19 +529,17 @@ export class ChaosTestingFramework {
       description: 'Test system recovery from process failures',
       hypothesis: 'System should recover within 10 seconds',
       steadyState: {
-        metrics: [
-          { name: 'availability', operator: 'gte', value: 0.99 }
-        ],
-        validate: async () => true
+        metrics: [{ name: 'availability', operator: 'gte', value: 0.99 }],
+        validate: async () => true,
       },
       method: [
         {
           type: ChaosType.KILL,
           target: { type: 'process', selector: 'worker-*', percentage: 25 },
           parameters: {},
-          probability: 1
-        }
-      ]
+          probability: 1,
+        },
+      ],
     });
 
     // Resource exhaustion test
@@ -554,24 +551,24 @@ export class ChaosTestingFramework {
       steadyState: {
         metrics: [
           { name: 'cpu-usage', operator: 'lt', value: 90 },
-          { name: 'memory-usage', operator: 'lt', value: 90 }
+          { name: 'memory-usage', operator: 'lt', value: 90 },
         ],
-        validate: async () => true
+        validate: async () => true,
       },
       method: [
         {
           type: ChaosType.CPU_SPIKE,
           target: { type: 'node', selector: '*' },
           parameters: { load: 80 },
-          duration: 60000
+          duration: 60000,
         },
         {
           type: ChaosType.MEMORY_LEAK,
           target: { type: 'process', selector: '*' },
           parameters: { size: 100 * 1024 * 1024 },
-          duration: 60000
-        }
-      ]
+          duration: 60000,
+        },
+      ],
     });
   }
 

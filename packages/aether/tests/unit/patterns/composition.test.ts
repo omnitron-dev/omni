@@ -98,10 +98,7 @@ describe('Component Composition Patterns', () => {
   describe('Higher-Order Components (HOC)', () => {
     it('should create HOC that adds functionality to components', () => {
       // HOC that adds loading state
-      function withLoading<P extends object>(
-        Component: (props: P) => any,
-        isLoading: () => boolean
-      ) {
+      function withLoading<P extends object>(Component: (props: P) => any, isLoading: () => boolean) {
         return defineComponent<P>((props) => {
           return () => {
             if (isLoading()) {
@@ -164,9 +161,7 @@ describe('Component Composition Patterns', () => {
     });
 
     it('should preserve props through HOC chain', () => {
-      function withDefaults<P extends { value?: number }>(
-        Component: (props: P) => any
-      ) {
+      function withDefaults<P extends { value?: number }>(Component: (props: P) => any) {
         return defineComponent<P>((props) => {
           const propsWithDefaults = { value: 42, ...props } as P;
           return () => Component(propsWithDefaults);
@@ -326,15 +321,13 @@ describe('Component Composition Patterns', () => {
     it('should provide and consume context across component tree', () => {
       const ThemeContext = createContext({ theme: 'light' });
 
-      const ThemeProvider = defineComponent<{ theme: string; children: any }>(
-        (props) => {
-          return () =>
-            ThemeContext.Provider({
-              value: { theme: props.theme },
-              children: props.children,
-            });
-        }
-      );
+      const ThemeProvider = defineComponent<{ theme: string; children: any }>((props) => {
+        return () =>
+          ThemeContext.Provider({
+            value: { theme: props.theme },
+            children: props.children,
+          });
+      });
 
       const ThemedComponent = defineComponent(() => {
         const context = useContext(ThemeContext);
@@ -460,16 +453,14 @@ describe('Component Composition Patterns', () => {
     it('should combine render props with context', () => {
       const DataContext = createContext({ data: signal([1, 2, 3]) });
 
-      const DataProvider = defineComponent<{ children: any }>(
-        (props) => {
-          const data = signal([1, 2, 3]);
-          return () =>
-            DataContext.Provider({
-              value: { data },
-              children: props.children,
-            });
-        }
-      );
+      const DataProvider = defineComponent<{ children: any }>((props) => {
+        const data = signal([1, 2, 3]);
+        return () =>
+          DataContext.Provider({
+            value: { data },
+            children: props.children,
+          });
+      });
 
       const DataConsumer = defineComponent<{
         render: (data: number[]) => any;

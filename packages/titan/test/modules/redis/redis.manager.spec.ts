@@ -12,7 +12,7 @@ jest.mock('ioredis', () => {
   return {
     Redis: mockRedis,
     Cluster: mockCluster,
-    default: { Redis: mockRedis, Cluster: mockCluster }
+    default: { Redis: mockRedis, Cluster: mockCluster },
   };
 });
 
@@ -94,7 +94,7 @@ describe('RedisManager', () => {
       mockRedisInstance.connect.mockImplementation(async () => {
         (mockRedisInstance.status as any) = 'ready';
         // Simulate the ready event
-        const readyHandler = (mockRedisInstance.on as jest.Mock).mock.calls.find(call => call[0] === 'ready')?.[1];
+        const readyHandler = (mockRedisInstance.on as jest.Mock).mock.calls.find((call) => call[0] === 'ready')?.[1];
         if (readyHandler) {
           setTimeout(() => readyHandler(), 0);
         }
@@ -176,19 +176,14 @@ describe('RedisManager', () => {
       manager = new RedisManager(options);
       await manager.onModuleInit();
 
-      expect(() => manager.getClient('non-existent')).toThrow(
-        'Redis client with namespace "non-existent" not found',
-      );
+      expect(() => manager.getClient('non-existent')).toThrow('Redis client with namespace "non-existent" not found');
     });
   });
 
   describe('hasClient', () => {
     it('should check if client exists', async () => {
       const options: RedisModuleOptions = {
-        clients: [
-          { namespace: 'cache' },
-          { namespace: 'sessions' },
-        ],
+        clients: [{ namespace: 'cache' }, { namespace: 'sessions' }],
       };
 
       manager = new RedisManager(options);
@@ -228,9 +223,9 @@ describe('RedisManager', () => {
       manager = new RedisManager(options);
       await manager.onModuleInit();
 
-      await expect(
-        manager.createClient({ namespace: 'test' }),
-      ).rejects.toThrow('Redis client with namespace "test" already exists');
+      await expect(manager.createClient({ namespace: 'test' })).rejects.toThrow(
+        'Redis client with namespace "test" already exists'
+      );
     });
   });
 
@@ -259,9 +254,7 @@ describe('RedisManager', () => {
       manager = new RedisManager(options);
       await manager.onModuleInit();
 
-      await expect(
-        manager.destroyClient('non-existent'),
-      ).resolves.not.toThrow();
+      await expect(manager.destroyClient('non-existent')).resolves.not.toThrow();
     });
   });
 
@@ -300,10 +293,7 @@ describe('RedisManager', () => {
   describe('healthCheck', () => {
     it('should check all clients health', async () => {
       const options: RedisModuleOptions = {
-        clients: [
-          { namespace: 'cache' },
-          { namespace: 'sessions' },
-        ],
+        clients: [{ namespace: 'cache' }, { namespace: 'sessions' }],
       };
 
       manager = new RedisManager(options);
@@ -352,9 +342,7 @@ describe('RedisManager', () => {
         ],
       };
 
-      mockRedisInstance.script
-        .mockResolvedValueOnce([0])
-        .mockResolvedValueOnce('new-sha');
+      mockRedisInstance.script.mockResolvedValueOnce([0]).mockResolvedValueOnce('new-sha');
       mockRedisInstance.evalsha.mockRejectedValue(new Error('NOSCRIPT'));
       mockRedisInstance.eval.mockResolvedValue('result');
 
@@ -364,11 +352,7 @@ describe('RedisManager', () => {
       const result = await manager.runScript('test-script', ['key1'], []);
 
       expect(result).toBe('result');
-      expect(mockRedisInstance.eval).toHaveBeenCalledWith(
-        'return KEYS[1]',
-        1,
-        'key1',
-      );
+      expect(mockRedisInstance.eval).toHaveBeenCalledWith('return KEYS[1]', 1, 'key1');
     });
 
     it('should throw error for non-existent script', async () => {
@@ -379,19 +363,16 @@ describe('RedisManager', () => {
       manager = new RedisManager(options);
       await manager.onModuleInit();
 
-      await expect(
-        manager.runScript('non-existent', [], []),
-      ).rejects.toThrow('Script "non-existent" not loaded for client "default"');
+      await expect(manager.runScript('non-existent', [], [])).rejects.toThrow(
+        'Script "non-existent" not loaded for client "default"'
+      );
     });
   });
 
   describe('onModuleDestroy', () => {
     it('should close all clients on destroy', async () => {
       const options: RedisModuleOptions = {
-        clients: [
-          { namespace: 'cache' },
-          { namespace: 'sessions' },
-        ],
+        clients: [{ namespace: 'cache' }, { namespace: 'sessions' }],
       };
 
       manager = new RedisManager(options);

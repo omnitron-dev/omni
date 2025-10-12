@@ -23,9 +23,7 @@ export default {
   transform: {
     '^.+\\.(t|j)s$': 'ts-jest', // Transform TypeScript files
   },
-  transformIgnorePatterns: [
-    'node_modules/(?!(@noble)/)',
-  ],
+  transformIgnorePatterns: ['node_modules/(?!(@noble)/)'],
   extensionsToTreatAsEsm: ['.ts'],
   globals: {
     'ts-jest': {

@@ -3,10 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import {
-  NetronBuiltinMiddleware,
-  type NetronMiddlewareContext
-} from '../../../src/netron/middleware/index.js';
+import { NetronBuiltinMiddleware, type NetronMiddlewareContext } from '../../../src/netron/middleware/index.js';
 import { TitanError, ErrorCode } from '../../../src/errors/index.js';
 
 describe('NetronBuiltinMiddleware', () => {
@@ -22,8 +19,8 @@ describe('NetronBuiltinMiddleware', () => {
       metadata: new Map(),
       timing: {
         start: Date.now(),
-        middlewareTimes: new Map()
-      }
+        middlewareTimes: new Map(),
+      },
     };
     mockNext = jest.fn().mockResolvedValue(undefined);
   });
@@ -32,7 +29,7 @@ describe('NetronBuiltinMiddleware', () => {
     it('should log request and response', async () => {
       const logger = {
         info: jest.fn(),
-        error: jest.fn()
+        error: jest.fn(),
       };
 
       const middleware = NetronBuiltinMiddleware.loggingMiddleware(logger);
@@ -43,7 +40,7 @@ describe('NetronBuiltinMiddleware', () => {
       expect(logger.info).toHaveBeenCalledWith(
         expect.objectContaining({
           service: 'TestService',
-          method: 'testMethod'
+          method: 'testMethod',
         }),
         'Netron request'
       );
@@ -52,7 +49,7 @@ describe('NetronBuiltinMiddleware', () => {
         expect.objectContaining({
           service: 'TestService',
           method: 'testMethod',
-          duration: expect.any(Number)
+          duration: expect.any(Number),
         }),
         'Netron response'
       );
@@ -63,7 +60,7 @@ describe('NetronBuiltinMiddleware', () => {
     it('should log errors', async () => {
       const logger = {
         info: jest.fn(),
-        error: jest.fn()
+        error: jest.fn(),
       };
 
       const middleware = NetronBuiltinMiddleware.loggingMiddleware(logger);
@@ -77,7 +74,7 @@ describe('NetronBuiltinMiddleware', () => {
         expect.objectContaining({
           service: 'TestService',
           method: 'testMethod',
-          error: error.message
+          error: error.message,
         }),
         'Netron error'
       );
@@ -89,7 +86,7 @@ describe('NetronBuiltinMiddleware', () => {
       const metrics = {
         recordRequest: jest.fn(),
         recordDuration: jest.fn(),
-        recordError: jest.fn()
+        recordError: jest.fn(),
       };
 
       const middleware = NetronBuiltinMiddleware.metricsMiddleware(metrics);
@@ -97,16 +94,9 @@ describe('NetronBuiltinMiddleware', () => {
       mockContext.result = { success: true };
       await middleware(mockContext, mockNext);
 
-      expect(metrics.recordRequest).toHaveBeenCalledWith(
-        'TestService',
-        'testMethod'
-      );
+      expect(metrics.recordRequest).toHaveBeenCalledWith('TestService', 'testMethod');
 
-      expect(metrics.recordDuration).toHaveBeenCalledWith(
-        'TestService',
-        'testMethod',
-        expect.any(Number)
-      );
+      expect(metrics.recordDuration).toHaveBeenCalledWith('TestService', 'testMethod', expect.any(Number));
 
       expect(mockNext).toHaveBeenCalled();
     });
@@ -115,7 +105,7 @@ describe('NetronBuiltinMiddleware', () => {
       const metrics = {
         recordRequest: jest.fn(),
         recordDuration: jest.fn(),
-        recordError: jest.fn()
+        recordError: jest.fn(),
       };
 
       const middleware = NetronBuiltinMiddleware.metricsMiddleware(metrics);
@@ -125,18 +115,14 @@ describe('NetronBuiltinMiddleware', () => {
 
       await expect(middleware(mockContext, mockNext)).rejects.toThrow('Test error');
 
-      expect(metrics.recordError).toHaveBeenCalledWith(
-        'TestService',
-        'testMethod',
-        error
-      );
+      expect(metrics.recordError).toHaveBeenCalledWith('TestService', 'testMethod', error);
     });
   });
 
   describe('authenticationMiddleware', () => {
     it('should authenticate valid token', async () => {
       const authenticator = {
-        verify: jest.fn().mockResolvedValue({ userId: '123', role: 'admin' })
+        verify: jest.fn().mockResolvedValue({ userId: '123', role: 'admin' }),
       };
 
       const middleware = NetronBuiltinMiddleware.authenticationMiddleware(authenticator);
@@ -148,21 +134,21 @@ describe('NetronBuiltinMiddleware', () => {
       expect(authenticator.verify).toHaveBeenCalledWith('valid-token');
       expect(mockContext.metadata.get('user')).toEqual({
         userId: '123',
-        role: 'admin'
+        role: 'admin',
       });
       expect(mockNext).toHaveBeenCalled();
     });
 
     it('should reject missing token', async () => {
       const authenticator = {
-        verify: jest.fn()
+        verify: jest.fn(),
       };
 
       const middleware = NetronBuiltinMiddleware.authenticationMiddleware(authenticator);
 
       await expect(middleware(mockContext, mockNext)).rejects.toThrow(TitanError);
       await expect(middleware(mockContext, mockNext)).rejects.toMatchObject({
-        code: ErrorCode.UNAUTHORIZED
+        code: ErrorCode.UNAUTHORIZED,
       });
 
       expect(authenticator.verify).not.toHaveBeenCalled();
@@ -171,7 +157,7 @@ describe('NetronBuiltinMiddleware', () => {
 
     it('should reject invalid token', async () => {
       const authenticator = {
-        verify: jest.fn().mockRejectedValue(new Error('Invalid token'))
+        verify: jest.fn().mockRejectedValue(new Error('Invalid token')),
       };
 
       const middleware = NetronBuiltinMiddleware.authenticationMiddleware(authenticator);
@@ -180,7 +166,7 @@ describe('NetronBuiltinMiddleware', () => {
 
       await expect(middleware(mockContext, mockNext)).rejects.toThrow(TitanError);
       await expect(middleware(mockContext, mockNext)).rejects.toMatchObject({
-        code: ErrorCode.UNAUTHORIZED
+        code: ErrorCode.UNAUTHORIZED,
       });
 
       expect(mockNext).not.toHaveBeenCalled();
@@ -205,7 +191,7 @@ describe('NetronBuiltinMiddleware', () => {
 
       await expect(middleware(mockContext, mockNext)).rejects.toThrow(TitanError);
       await expect(middleware(mockContext, mockNext)).rejects.toMatchObject({
-        code: ErrorCode.FORBIDDEN
+        code: ErrorCode.FORBIDDEN,
       });
 
       expect(mockNext).not.toHaveBeenCalled();
@@ -216,7 +202,7 @@ describe('NetronBuiltinMiddleware', () => {
 
       await expect(middleware(mockContext, mockNext)).rejects.toThrow(TitanError);
       await expect(middleware(mockContext, mockNext)).rejects.toMatchObject({
-        code: ErrorCode.UNAUTHORIZED
+        code: ErrorCode.UNAUTHORIZED,
       });
 
       expect(mockNext).not.toHaveBeenCalled();
@@ -226,7 +212,7 @@ describe('NetronBuiltinMiddleware', () => {
   describe('rateLimitMiddleware', () => {
     it('should allow requests within limit', async () => {
       const limiter = {
-        check: jest.fn().mockResolvedValue({ allowed: true })
+        check: jest.fn().mockResolvedValue({ allowed: true }),
       };
 
       const middleware = NetronBuiltinMiddleware.rateLimitMiddleware(limiter);
@@ -236,7 +222,7 @@ describe('NetronBuiltinMiddleware', () => {
       expect(limiter.check).toHaveBeenCalledWith(
         expect.objectContaining({
           key: 'TestService.testMethod',
-          context: mockContext
+          context: mockContext,
         })
       );
       expect(mockNext).toHaveBeenCalled();
@@ -246,8 +232,8 @@ describe('NetronBuiltinMiddleware', () => {
       const limiter = {
         check: jest.fn().mockResolvedValue({
           allowed: false,
-          retryAfter: 60
-        })
+          retryAfter: 60,
+        }),
       };
 
       const middleware = NetronBuiltinMiddleware.rateLimitMiddleware(limiter);
@@ -255,7 +241,7 @@ describe('NetronBuiltinMiddleware', () => {
       await expect(middleware(mockContext, mockNext)).rejects.toThrow(TitanError);
       await expect(middleware(mockContext, mockNext)).rejects.toMatchObject({
         code: ErrorCode.TOO_MANY_REQUESTS,
-        details: { retryAfter: 60 }
+        details: { retryAfter: 60 },
       });
 
       expect(mockNext).not.toHaveBeenCalled();
@@ -267,7 +253,7 @@ describe('NetronBuiltinMiddleware', () => {
       const breaker = {
         isOpen: jest.fn().mockReturnValue(false),
         onSuccess: jest.fn(),
-        onFailure: jest.fn()
+        onFailure: jest.fn(),
       };
 
       const middleware = NetronBuiltinMiddleware.circuitBreakerMiddleware(breaker);
@@ -283,14 +269,14 @@ describe('NetronBuiltinMiddleware', () => {
       const breaker = {
         isOpen: jest.fn().mockReturnValue(true),
         onSuccess: jest.fn(),
-        onFailure: jest.fn()
+        onFailure: jest.fn(),
       };
 
       const middleware = NetronBuiltinMiddleware.circuitBreakerMiddleware(breaker);
 
       await expect(middleware(mockContext, mockNext)).rejects.toThrow(TitanError);
       await expect(middleware(mockContext, mockNext)).rejects.toMatchObject({
-        code: ErrorCode.SERVICE_UNAVAILABLE
+        code: ErrorCode.SERVICE_UNAVAILABLE,
       });
 
       expect(mockNext).not.toHaveBeenCalled();
@@ -300,7 +286,7 @@ describe('NetronBuiltinMiddleware', () => {
       const breaker = {
         isOpen: jest.fn().mockReturnValue(false),
         onSuccess: jest.fn(),
-        onFailure: jest.fn()
+        onFailure: jest.fn(),
       };
 
       const middleware = NetronBuiltinMiddleware.circuitBreakerMiddleware(breaker);
@@ -319,7 +305,7 @@ describe('NetronBuiltinMiddleware', () => {
       const middleware = NetronBuiltinMiddleware.timeoutMiddleware(1000);
 
       mockNext.mockImplementation(async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
       });
 
       await middleware(mockContext, mockNext);
@@ -331,12 +317,12 @@ describe('NetronBuiltinMiddleware', () => {
       const middleware = NetronBuiltinMiddleware.timeoutMiddleware(50);
 
       mockNext.mockImplementation(async () => {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
       });
 
       await expect(middleware(mockContext, mockNext)).rejects.toThrow(TitanError);
       await expect(middleware(mockContext, mockNext)).rejects.toMatchObject({
-        code: ErrorCode.REQUEST_TIMEOUT
+        code: ErrorCode.REQUEST_TIMEOUT,
       });
     });
   });
@@ -348,7 +334,7 @@ describe('NetronBuiltinMiddleware', () => {
       const middleware = NetronBuiltinMiddleware.cachingMiddleware({
         cache,
         ttl: 60000,
-        keyGenerator: (ctx) => `${ctx.serviceName}.${ctx.methodName}:${JSON.stringify(ctx.input)}`
+        keyGenerator: (ctx) => `${ctx.serviceName}.${ctx.methodName}:${JSON.stringify(ctx.input)}`,
       });
 
       mockContext.result = { data: 'cached' };
@@ -372,7 +358,7 @@ describe('NetronBuiltinMiddleware', () => {
 
       const middleware = NetronBuiltinMiddleware.cachingMiddleware({
         cache,
-        ttl: 60000
+        ttl: 60000,
       });
 
       const error = new Error('Test error');
@@ -389,7 +375,7 @@ describe('NetronBuiltinMiddleware', () => {
       const middleware = NetronBuiltinMiddleware.retryMiddleware({
         maxAttempts: 3,
         delay: 10,
-        shouldRetry: () => true
+        shouldRetry: () => true,
       });
 
       let attempts = 0;
@@ -411,7 +397,7 @@ describe('NetronBuiltinMiddleware', () => {
       const middleware = NetronBuiltinMiddleware.retryMiddleware({
         maxAttempts: 3,
         delay: 10,
-        shouldRetry: () => false
+        shouldRetry: () => false,
       });
 
       const error = new Error('Do not retry');
@@ -436,7 +422,7 @@ describe('NetronBuiltinMiddleware', () => {
         maxAttempts: 3,
         delay: 100,
         backoffMultiplier: 2,
-        shouldRetry: () => true
+        shouldRetry: () => true,
       });
 
       mockNext.mockRejectedValue(new Error('Retry me'));
@@ -452,7 +438,7 @@ describe('NetronBuiltinMiddleware', () => {
   describe('compressionMiddleware', () => {
     it('should compress large responses', async () => {
       const middleware = NetronBuiltinMiddleware.compressionMiddleware({
-        threshold: 10
+        threshold: 10,
       });
 
       const largeData = 'x'.repeat(100);
@@ -467,7 +453,7 @@ describe('NetronBuiltinMiddleware', () => {
 
     it('should not compress small responses', async () => {
       const middleware = NetronBuiltinMiddleware.compressionMiddleware({
-        threshold: 100
+        threshold: 100,
       });
 
       const smallData = 'small';
@@ -483,7 +469,7 @@ describe('NetronBuiltinMiddleware', () => {
   describe('validationMiddleware', () => {
     it('should validate input successfully', async () => {
       const validator = {
-        validate: jest.fn().mockReturnValue({ valid: true })
+        validate: jest.fn().mockReturnValue({ valid: true }),
       };
 
       const middleware = NetronBuiltinMiddleware.validationMiddleware(validator);
@@ -494,7 +480,7 @@ describe('NetronBuiltinMiddleware', () => {
         mockContext.input,
         expect.objectContaining({
           service: 'TestService',
-          method: 'testMethod'
+          method: 'testMethod',
         })
       );
       expect(mockNext).toHaveBeenCalled();
@@ -504,8 +490,8 @@ describe('NetronBuiltinMiddleware', () => {
       const validator = {
         validate: jest.fn().mockReturnValue({
           valid: false,
-          errors: ['Field required', 'Invalid format']
-        })
+          errors: ['Field required', 'Invalid format'],
+        }),
       };
 
       const middleware = NetronBuiltinMiddleware.validationMiddleware(validator);
@@ -513,7 +499,7 @@ describe('NetronBuiltinMiddleware', () => {
       await expect(middleware(mockContext, mockNext)).rejects.toThrow(TitanError);
       await expect(middleware(mockContext, mockNext)).rejects.toMatchObject({
         code: ErrorCode.BAD_REQUEST,
-        details: { errors: ['Field required', 'Invalid format'] }
+        details: { errors: ['Field required', 'Invalid format'] },
       });
 
       expect(mockNext).not.toHaveBeenCalled();
@@ -525,9 +511,9 @@ describe('NetronBuiltinMiddleware', () => {
       const tracer = {
         startSpan: jest.fn().mockReturnValue({
           setTag: jest.fn(),
-          finish: jest.fn()
+          finish: jest.fn(),
         }),
-        inject: jest.fn()
+        inject: jest.fn(),
       };
 
       const middleware = NetronBuiltinMiddleware.tracingMiddleware(tracer);
@@ -548,9 +534,9 @@ describe('NetronBuiltinMiddleware', () => {
       const tracer = {
         startSpan: jest.fn().mockReturnValue({
           setTag: jest.fn(),
-          finish: jest.fn()
+          finish: jest.fn(),
         }),
-        inject: jest.fn()
+        inject: jest.fn(),
       };
 
       const middleware = NetronBuiltinMiddleware.tracingMiddleware(tracer);

@@ -20,8 +20,22 @@ import { jsx } from '../jsx-runtime.js';
 export type GridAutoFlow = 'row' | 'column' | 'dense' | 'row dense' | 'column dense';
 export type GridJustifyItems = 'start' | 'end' | 'center' | 'stretch';
 export type GridAlignItems = 'start' | 'end' | 'center' | 'stretch' | 'baseline';
-export type GridJustifyContent = 'start' | 'end' | 'center' | 'stretch' | 'space-around' | 'space-between' | 'space-evenly';
-export type GridAlignContent = 'start' | 'end' | 'center' | 'stretch' | 'space-around' | 'space-between' | 'space-evenly';
+export type GridJustifyContent =
+  | 'start'
+  | 'end'
+  | 'center'
+  | 'stretch'
+  | 'space-around'
+  | 'space-between'
+  | 'space-evenly';
+export type GridAlignContent =
+  | 'start'
+  | 'end'
+  | 'center'
+  | 'stretch'
+  | 'space-around'
+  | 'space-between'
+  | 'space-evenly';
 
 export interface GridProps {
   /** Element to render as (default: 'div') */
@@ -106,54 +120,54 @@ export interface GridProps {
  * ```
  */
 export const Grid = defineComponent<GridProps>((props) => () => {
-    const element = props.as ?? 'div';
-    const {
-      as,
-      templateColumns,
-      templateRows,
-      templateAreas,
-      autoFlow,
-      autoColumns,
-      autoRows,
-      gap,
-      rowGap,
-      columnGap,
-      justifyItems,
-      alignItems,
-      justifyContent,
-      alignContent,
-      inline,
-      children,
-      class: className,
-      style,
-      ...restProps
-    } = props;
+  const element = props.as ?? 'div';
+  const {
+    as,
+    templateColumns,
+    templateRows,
+    templateAreas,
+    autoFlow,
+    autoColumns,
+    autoRows,
+    gap,
+    rowGap,
+    columnGap,
+    justifyItems,
+    alignItems,
+    justifyContent,
+    alignContent,
+    inline,
+    children,
+    class: className,
+    style,
+    ...restProps
+  } = props;
 
-    const gridStyles: Record<string, any> = {
-      display: inline ? 'inline-grid' : 'grid',
-      ...(templateColumns && { gridTemplateColumns: templateColumns }),
-      ...(templateRows && { gridTemplateRows: templateRows }),
-      ...(templateAreas && { gridTemplateAreas: templateAreas }),
-      ...(autoFlow && { gridAutoFlow: autoFlow }),
-      ...(autoColumns && { gridAutoColumns: autoColumns }),
-      ...(autoRows && { gridAutoRows: autoRows }),
-      ...(gap !== undefined && { gap: typeof gap === 'number' ? `${gap}px` : gap }),
-      ...(rowGap !== undefined && { rowGap: typeof rowGap === 'number' ? `${rowGap}px` : rowGap }),
-      ...(columnGap !== undefined && { columnGap: typeof columnGap === 'number' ? `${columnGap}px` : columnGap }),
-      ...(justifyItems && { justifyItems }),
-      ...(alignItems && { alignItems }),
-      ...(justifyContent && { justifyContent }),
-      ...(alignContent && { alignContent }),
-      ...style,
-    };
+  const gridStyles: Record<string, any> = {
+    display: inline ? 'inline-grid' : 'grid',
+    ...(templateColumns && { gridTemplateColumns: templateColumns }),
+    ...(templateRows && { gridTemplateRows: templateRows }),
+    ...(templateAreas && { gridTemplateAreas: templateAreas }),
+    ...(autoFlow && { gridAutoFlow: autoFlow }),
+    ...(autoColumns && { gridAutoColumns: autoColumns }),
+    ...(autoRows && { gridAutoRows: autoRows }),
+    ...(gap !== undefined && { gap: typeof gap === 'number' ? `${gap}px` : gap }),
+    ...(rowGap !== undefined && { rowGap: typeof rowGap === 'number' ? `${rowGap}px` : rowGap }),
+    ...(columnGap !== undefined && { columnGap: typeof columnGap === 'number' ? `${columnGap}px` : columnGap }),
+    ...(justifyItems && { justifyItems }),
+    ...(alignItems && { alignItems }),
+    ...(justifyContent && { justifyContent }),
+    ...(alignContent && { alignContent }),
+    ...style,
+  };
 
-    return jsx(element as any, {
-      class: className,
-      style: gridStyles,
-      ...restProps,
-      children,
-    });
+  return jsx(element as any, {
+    class: className,
+    style: gridStyles,
+    ...restProps,
+    children,
   });
+});
 
 // ============================================================================
 // GridItem Component
@@ -199,37 +213,37 @@ export interface GridItemProps {
  * ```
  */
 export const GridItem = defineComponent<GridItemProps>((props) => () => {
-    const element = props.as ?? 'div';
-    const {
-      as,
-      column,
-      columnStart,
-      columnEnd,
-      row,
-      rowStart,
-      rowEnd,
-      area,
-      children,
-      class: className,
-      style,
-      ...restProps
-    } = props;
+  const element = props.as ?? 'div';
+  const {
+    as,
+    column,
+    columnStart,
+    columnEnd,
+    row,
+    rowStart,
+    rowEnd,
+    area,
+    children,
+    class: className,
+    style,
+    ...restProps
+  } = props;
 
-    const gridItemStyles: Record<string, any> = {
-      ...(column && { gridColumn: column }),
-      ...(columnStart && { gridColumnStart: columnStart }),
-      ...(columnEnd && { gridColumnEnd: columnEnd }),
-      ...(row && { gridRow: row }),
-      ...(rowStart && { gridRowStart: rowStart }),
-      ...(rowEnd && { gridRowEnd: rowEnd }),
-      ...(area && { gridArea: area }),
-      ...style,
-    };
+  const gridItemStyles: Record<string, any> = {
+    ...(column && { gridColumn: column }),
+    ...(columnStart && { gridColumnStart: columnStart }),
+    ...(columnEnd && { gridColumnEnd: columnEnd }),
+    ...(row && { gridRow: row }),
+    ...(rowStart && { gridRowStart: rowStart }),
+    ...(rowEnd && { gridRowEnd: rowEnd }),
+    ...(area && { gridArea: area }),
+    ...style,
+  };
 
-    return jsx(element as any, {
-      class: className,
-      style: gridItemStyles,
-      ...restProps,
-      children,
-    });
+  return jsx(element as any, {
+    class: className,
+    style: gridItemStyles,
+    ...restProps,
+    children,
   });
+});

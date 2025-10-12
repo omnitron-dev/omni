@@ -60,7 +60,7 @@ describe('Redis Module Validation', () => {
         'eval',
         'evalsha',
         'flushdb',
-        'flushall'
+        'flushall',
       ];
 
       const prototype = RedisService.prototype;
@@ -94,7 +94,7 @@ describe('Redis Module Validation', () => {
         'createClient',
         'destroyClient',
         'isHealthy',
-        'ping'
+        'ping',
       ];
 
       const prototype = RedisManager.prototype;
@@ -113,8 +113,8 @@ describe('Redis Module Validation', () => {
             options: {
               host: 'localhost',
               port: 6379,
-              db: 0
-            }
+              db: 0,
+            },
           },
           cache: {
             type: 'standalone',
@@ -122,8 +122,8 @@ describe('Redis Module Validation', () => {
               host: 'localhost',
               port: 6379,
               db: 1,
-              keyPrefix: 'cache:'
-            }
+              keyPrefix: 'cache:',
+            },
           },
           cluster: {
             type: 'cluster',
@@ -131,11 +131,11 @@ describe('Redis Module Validation', () => {
               nodes: [
                 { host: 'localhost', port: 7000 },
                 { host: 'localhost', port: 7001 },
-                { host: 'localhost', port: 7002 }
-              ]
-            }
-          }
-        }
+                { host: 'localhost', port: 7002 },
+              ],
+            },
+          },
+        },
       };
 
       // Validate structure
@@ -146,7 +146,6 @@ describe('Redis Module Validation', () => {
       expect(validConfig.redis.default.options.port).toBe(6379);
     });
   });
-
 
   describe('Lock Implementation Logic', () => {
     it('should generate correct lock keys', () => {
@@ -176,12 +175,7 @@ describe('Redis Module Validation', () => {
 
   describe('Cache Implementation Logic', () => {
     it('should validate cache key format', () => {
-      const validKeys = [
-        'cache:user:123',
-        'cache:session:abc',
-        'temp:data',
-        'api:response:endpoint'
-      ];
+      const validKeys = ['cache:user:123', 'cache:session:abc', 'temp:data', 'api:response:endpoint'];
 
       for (const key of validKeys) {
         expect(typeof key).toBe('string');
@@ -214,7 +208,7 @@ describe('Redis Module Validation', () => {
         ['SET', 'key1', 'value1'],
         ['INCR', 'counter'],
         ['SADD', 'set1', 'member1'],
-        ['HSET', 'hash1', 'field1', 'value1']
+        ['HSET', 'hash1', 'field1', 'value1'],
       ];
 
       for (const cmd of commands) {
@@ -228,12 +222,7 @@ describe('Redis Module Validation', () => {
 
   describe('Pub/Sub Logic', () => {
     it('should validate channel names', () => {
-      const validChannels = [
-        'news',
-        'updates:user:123',
-        'events.system',
-        'notifications_queue'
-      ];
+      const validChannels = ['news', 'updates:user:123', 'events.system', 'notifications_queue'];
 
       const invalidChannels = ['', '  ', null, undefined];
 
@@ -257,7 +246,7 @@ describe('Redis Module Validation', () => {
         { simple: 'object' },
         { nested: { data: { deep: 'value' } } },
         { array: [1, 2, 3] },
-        { mixed: { str: 'text', num: 123, bool: true, nil: null } }
+        { mixed: { str: 'text', num: 123, bool: true, nil: null } },
       ];
 
       for (const data of testData) {
@@ -268,11 +257,7 @@ describe('Redis Module Validation', () => {
     });
 
     it('should handle non-serializable values', () => {
-      const nonSerializable = [
-        { fn: () => {} },
-        { symbol: Symbol('test') },
-        { circular: null as any }
-      ];
+      const nonSerializable = [{ fn: () => {} }, { symbol: Symbol('test') }, { circular: null as any }];
       nonSerializable[2].circular = nonSerializable[2];
 
       expect(() => JSON.stringify(nonSerializable[0])).not.toThrow();
@@ -292,7 +277,7 @@ describe('Redis Module Validation', () => {
           local value = ARGV[1]
           redis.call("SET", key, value)
           return "OK"
-        `
+        `,
       ];
 
       for (const script of validScripts) {
@@ -312,10 +297,10 @@ describe('Redis Module Validation', () => {
   describe('Performance Considerations', () => {
     it('should validate batch size limits', () => {
       const batchSizes = {
-        mget: 1000,      // Max keys for MGET
-        mset: 1000,      // Max key-value pairs for MSET
+        mget: 1000, // Max keys for MGET
+        mset: 1000, // Max key-value pairs for MSET
         pipeline: 10000, // Max commands in pipeline
-        transaction: 1000 // Max commands in transaction
+        transaction: 1000, // Max commands in transaction
       };
 
       for (const [operation, limit] of Object.entries(batchSizes)) {
@@ -328,12 +313,10 @@ describe('Redis Module Validation', () => {
   describe('Module Integration', () => {
     it('should work with Titan DI container', () => {
       // Verify that RedisService and RedisManager can be injected
-      const hasInjectableDecorator = (target: any) => 
-         Reflect.getMetadata('injectable', target) === true ||
-               Reflect.getMetadata('titan:injectable', target) === true ||
-               true // Default to true if no metadata (for basic validation)
-      ;
-
+      const hasInjectableDecorator = (target: any) =>
+        Reflect.getMetadata('injectable', target) === true ||
+        Reflect.getMetadata('titan:injectable', target) === true ||
+        true; // Default to true if no metadata (for basic validation)
       expect(hasInjectableDecorator(RedisService)).toBe(true);
       expect(hasInjectableDecorator(RedisManager)).toBe(true);
     });
@@ -349,7 +332,7 @@ describe('Redis Module Type Safety', () => {
       hashOp: (key: string, field: string, value: string) => Promise<void>;
       setOp: (key: string, members: string[]) => Promise<number>;
       listOp: (key: string, values: string[]) => Promise<number>;
-      sortedSetOp: (key: string, members: Array<{score: number; member: string}>) => Promise<number>;
+      sortedSetOp: (key: string, members: Array<{ score: number; member: string }>) => Promise<number>;
     };
 
     // These should compile without errors (type checking happens at compile time)
@@ -359,7 +342,7 @@ describe('Redis Module Type Safety', () => {
       hashOp: async (k, f, v) => {},
       setOp: async (k, m) => m.length,
       listOp: async (k, v) => v.length,
-      sortedSetOp: async (k, m) => m.length
+      sortedSetOp: async (k, m) => m.length,
     };
 
     expect(validOps).toBeDefined();

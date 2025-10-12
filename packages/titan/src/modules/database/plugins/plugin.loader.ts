@@ -9,11 +9,7 @@ import { join, resolve, basename, extname } from 'path';
 import { pathToFileURL } from 'url';
 import { Injectable } from '../../../decorators/index.js';
 import { Errors } from '../../../errors/index.js';
-import type {
-  IPluginLoader,
-  ITitanPlugin,
-  PluginFactory,
-} from './plugin.types.js';
+import type { IPluginLoader, ITitanPlugin, PluginFactory } from './plugin.types.js';
 
 /**
  * Plugin Loader
@@ -145,10 +141,7 @@ export class PluginLoader implements IPluginLoader {
     return (
       obj &&
       typeof obj === 'object' &&
-      (obj.extendRepository ||
-        obj.extendDatabase ||
-        obj.extendTransaction ||
-        obj.name)
+      (obj.extendRepository || obj.extendDatabase || obj.extendTransaction || obj.name)
     );
   }
 
@@ -240,12 +233,7 @@ export class PluginLoader implements IPluginLoader {
     }
 
     // Check naming patterns
-    return (
-      base.endsWith('.plugin') ||
-      base.endsWith('-plugin') ||
-      base.endsWith('Plugin') ||
-      base.includes('plugin')
-    );
+    return base.endsWith('.plugin') || base.endsWith('-plugin') || base.endsWith('Plugin') || base.includes('plugin');
   }
 
   /**

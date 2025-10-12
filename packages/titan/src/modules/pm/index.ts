@@ -16,7 +16,7 @@ export {
   PM_SPAWNER_TOKEN,
   PM_METRICS_TOKEN,
   PM_HEALTH_TOKEN,
-  DEFAULT_PM_CONFIG
+  DEFAULT_PM_CONFIG,
 } from './pm.module.js';
 
 // ============================================================================
@@ -84,7 +84,7 @@ export {
   PROCESS_METHOD_METADATA_KEY,
   SUPERVISOR_METADATA_KEY,
   WORKFLOW_METADATA_KEY,
-  ACTOR_METADATA_KEY
+  ACTOR_METADATA_KEY,
 } from './decorators.js';
 
 // ============================================================================
@@ -154,7 +154,7 @@ export type {
   IProcessManager,
   IProcessManagerConfig,
   IRestartPolicy,
-  IProcessManagerModule
+  IProcessManagerModule,
 } from './types.js';
 
 // Re-export enums
@@ -174,27 +174,26 @@ export {
   TestProcessManager,
   createTestProcessManager,
   type ITestProcessManagerConfig,
-  type IOperationRecord
+  type IOperationRecord,
 } from './testing/test-process-manager.js';
 
 // ============================================================================
 // Convenience Functions
 // ============================================================================
 
-import type { IProcessOptions as ProcessOptions, IProcessPoolOptions as PoolOptions, ServiceProxy as Proxy, IProcessPool as Pool } from './types.js';
+import type {
+  IProcessOptions as ProcessOptions,
+  IProcessPoolOptions as PoolOptions,
+  ServiceProxy as Proxy,
+  IProcessPool as Pool,
+} from './types.js';
 import { ProcessManager } from './process-manager.js';
 
 /**
  * Create a Process Manager instance with default configuration
  */
-export function createProcessManager(
-  logger?: any,
-  config?: any
-): ProcessManager {
-  return new ProcessManager(
-    logger || console,
-    config || {}
-  );
+export function createProcessManager(logger?: any, config?: any): ProcessManager {
+  return new ProcessManager(logger || console, config || {});
 }
 
 /**

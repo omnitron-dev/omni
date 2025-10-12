@@ -29,10 +29,7 @@ import type { ComponentSetup, Component, RenderFunction } from './types.js';
  * });
  * ```
  */
-export function defineComponent<P = {}>(
-  setup: ComponentSetup<P>,
-  name?: string
-): Component<P> {
+export function defineComponent<P = {}>(setup: ComponentSetup<P>, name?: string): Component<P> {
   // Create component function - each call creates a new instance
   const component: Component<P> = (props: P): any => {
     let render: RenderFunction | undefined;
@@ -129,9 +126,6 @@ export function defineComponent<P = {}>(
  * });
  * ```
  */
-export function component<P = {}>(
-  name: string,
-  setup: ComponentSetup<P>
-): Component<P> {
+export function component<P = {}>(name: string, setup: ComponentSetup<P>): Component<P> {
   return defineComponent(setup, name);
 }

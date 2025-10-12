@@ -99,9 +99,9 @@ export const ErrorBoundary = defineComponent<ErrorBoundaryProps>((props) => {
 
   // Reset error on cleanup
   onMount(() => () => {
-      error.set(null);
-      hasError.set(false);
-    });
+    error.set(null);
+    hasError.set(false);
+  });
 
   return () => {
     if (hasError()) {
@@ -175,10 +175,5 @@ export function createRouteError(message: string, statusCode?: number): RouteErr
  * Check if value is a route error
  */
 export function isRouteError(value: any): value is RouteError {
-  return (
-    value &&
-    typeof value === 'object' &&
-    'message' in value &&
-    typeof value.message === 'string'
-  );
+  return value && typeof value === 'object' && 'message' in value && typeof value.message === 'string';
 }

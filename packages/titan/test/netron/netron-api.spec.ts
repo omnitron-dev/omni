@@ -12,7 +12,7 @@ describe('Netron API', () => {
 
   beforeEach(async () => {
     netron = await Netron.create(createMockLogger(), {
-      id: 'test-netron-api'
+      id: 'test-netron-api',
     });
   });
 
@@ -24,12 +24,20 @@ describe('Netron API', () => {
 
   describe('registerTransport', () => {
     it('should register a transport factory', () => {
-      const mockFactory: TransportFactory = () => ({
-        name: 'custom-transport',
-        capabilities: { server: true, streaming: false, bidirectional: false, binary: false, reconnection: false, multiplexing: false },
-        connect: jest.fn(),
-        createServer: jest.fn()
-      } as any);
+      const mockFactory: TransportFactory = () =>
+        ({
+          name: 'custom-transport',
+          capabilities: {
+            server: true,
+            streaming: false,
+            bidirectional: false,
+            binary: false,
+            reconnection: false,
+            multiplexing: false,
+          },
+          connect: jest.fn(),
+          createServer: jest.fn(),
+        }) as any;
 
       netron.registerTransport('custom-transport', mockFactory);
 
@@ -39,19 +47,35 @@ describe('Netron API', () => {
     });
 
     it('should allow registering multiple transports', () => {
-      const wsFactory: TransportFactory = () => ({
-        name: 'ws',
-        capabilities: { server: true, streaming: true, bidirectional: true, binary: true, reconnection: true, multiplexing: false },
-        connect: jest.fn(),
-        createServer: jest.fn()
-      } as any);
+      const wsFactory: TransportFactory = () =>
+        ({
+          name: 'ws',
+          capabilities: {
+            server: true,
+            streaming: true,
+            bidirectional: true,
+            binary: true,
+            reconnection: true,
+            multiplexing: false,
+          },
+          connect: jest.fn(),
+          createServer: jest.fn(),
+        }) as any;
 
-      const httpFactory: TransportFactory = () => ({
-        name: 'http',
-        capabilities: { server: true, streaming: true, bidirectional: false, binary: false, reconnection: false, multiplexing: true },
-        connect: jest.fn(),
-        createServer: jest.fn()
-      } as any);
+      const httpFactory: TransportFactory = () =>
+        ({
+          name: 'http',
+          capabilities: {
+            server: true,
+            streaming: true,
+            bidirectional: false,
+            binary: false,
+            reconnection: false,
+            multiplexing: true,
+          },
+          connect: jest.fn(),
+          createServer: jest.fn(),
+        }) as any;
 
       netron.registerTransport('ws', wsFactory);
       netron.registerTransport('http', httpFactory);
@@ -68,17 +92,25 @@ describe('Netron API', () => {
 
   describe('registerTransportServer', () => {
     it('should register a transport server configuration', () => {
-      const mockFactory: TransportFactory = () => ({
-        name: 'custom-transport',
-        capabilities: { server: true, streaming: false, bidirectional: false, binary: false, reconnection: false, multiplexing: false },
-        connect: jest.fn(),
-        createServer: jest.fn()
-      } as any);
+      const mockFactory: TransportFactory = () =>
+        ({
+          name: 'custom-transport',
+          capabilities: {
+            server: true,
+            streaming: false,
+            bidirectional: false,
+            binary: false,
+            reconnection: false,
+            multiplexing: false,
+          },
+          connect: jest.fn(),
+          createServer: jest.fn(),
+        }) as any;
 
       netron.registerTransport('custom-transport', mockFactory);
       netron.registerTransportServer('custom-transport', {
         name: 'custom-transport',
-        options: { host: 'localhost', port: 8080 }
+        options: { host: 'localhost', port: 8080 },
       });
 
       const configs = (netron as any).transportServerConfigs;
@@ -91,37 +123,53 @@ describe('Netron API', () => {
       expect(() => {
         netron.registerTransportServer('non-existent-transport', {
           name: 'non-existent-transport',
-          options: { host: 'localhost', port: 8080 }
+          options: { host: 'localhost', port: 8080 },
         });
       }).toThrow(/Transport.*not found/);
     });
 
     it('should allow configuring multiple transport servers', () => {
-      const wsFactory: TransportFactory = () => ({
-        name: 'ws',
-        capabilities: { server: true, streaming: true, bidirectional: true, binary: true, reconnection: true, multiplexing: false },
-        connect: jest.fn(),
-        createServer: jest.fn()
-      } as any);
+      const wsFactory: TransportFactory = () =>
+        ({
+          name: 'ws',
+          capabilities: {
+            server: true,
+            streaming: true,
+            bidirectional: true,
+            binary: true,
+            reconnection: true,
+            multiplexing: false,
+          },
+          connect: jest.fn(),
+          createServer: jest.fn(),
+        }) as any;
 
-      const httpFactory: TransportFactory = () => ({
-        name: 'http',
-        capabilities: { server: true, streaming: true, bidirectional: false, binary: false, reconnection: false, multiplexing: true },
-        connect: jest.fn(),
-        createServer: jest.fn()
-      } as any);
+      const httpFactory: TransportFactory = () =>
+        ({
+          name: 'http',
+          capabilities: {
+            server: true,
+            streaming: true,
+            bidirectional: false,
+            binary: false,
+            reconnection: false,
+            multiplexing: true,
+          },
+          connect: jest.fn(),
+          createServer: jest.fn(),
+        }) as any;
 
       netron.registerTransport('ws', wsFactory);
       netron.registerTransport('http', httpFactory);
 
       netron.registerTransportServer('ws', {
         name: 'ws',
-        options: { host: 'localhost', port: 8080 }
+        options: { host: 'localhost', port: 8080 },
       });
 
       netron.registerTransportServer('http', {
         name: 'http',
-        options: { host: 'localhost', port: 8081 }
+        options: { host: 'localhost', port: 8081 },
       });
 
       const configs = (netron as any).transportServerConfigs;
@@ -160,7 +208,7 @@ describe('Netron API', () => {
       const mockRemotePeer = {
         id: 'remote-peer-123',
         netron,
-        close: jest.fn().mockResolvedValue(undefined)
+        close: jest.fn().mockResolvedValue(undefined),
       } as any;
 
       netron.peers.set('remote-peer-123', mockRemotePeer);
@@ -195,7 +243,7 @@ describe('Netron API', () => {
       const mockResult = { result: 'success' };
 
       const mockTaskManager = {
-        runTask: jest.fn().mockResolvedValue(mockResult)
+        runTask: jest.fn().mockResolvedValue(mockResult),
       };
 
       (netron as any).taskManager = mockTaskManager;

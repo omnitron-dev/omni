@@ -16,20 +16,14 @@ export {
   type ITenantContext,
   type IResourceQuota,
   type IMultiTenancyConfig,
-  type ITenantProcessPool
+  type ITenantProcessPool,
 } from './multi-tenancy.js';
 
 // ============================================================================
 // Saga and Distributed Transactions
 // ============================================================================
 
-export {
-  SagaOrchestrator,
-  type ISagaConfig,
-  type ISagaStep,
-  type ISagaContext,
-  type ISagaStepResult
-} from './saga.js';
+export { SagaOrchestrator, type ISagaConfig, type ISagaStep, type ISagaContext, type ISagaStepResult } from './saga.js';
 
 export {
   DistributedTransactionCoordinator,
@@ -38,7 +32,7 @@ export {
   type ITransactionParticipant,
   type ITransactionContext,
   type IDistributedTransactionConfig,
-  type ITransactionLog
+  type ITransactionLog,
 } from './distributed-transactions.js';
 
 // ============================================================================
@@ -57,7 +51,7 @@ export {
   type IDomainEvent as IEventSourcedDomainEvent,
   type IEventMetadata as IEventSourcedMetadata,
   type IEventStore as IEventSourcedStore,
-  type ISnapshot
+  type ISnapshot,
 } from './event-sourcing.js';
 
 export {
@@ -84,7 +78,7 @@ export {
   type ICQRSConfig,
   type IEventStore,
   type ISnapshotStore,
-  type IReadModelStore
+  type IReadModelStore,
 } from './cqrs.js';
 
 // ============================================================================
@@ -98,7 +92,7 @@ export {
   type ICircuitBreakerConfig,
   type IRetryConfig,
   type IBulkheadConfig,
-  type ILoadBalancingConfig
+  type ILoadBalancingConfig,
 } from './service-mesh.js';
 
 // ============================================================================
@@ -119,7 +113,7 @@ export {
   type ActorRef,
   type ActorContext,
   type ActorBehavior,
-  type SupervisorStrategy
+  type SupervisorStrategy,
 } from './actor-model.js';
 
 // ============================================================================
@@ -134,7 +128,7 @@ export {
   type StateSnapshot,
   type ActionRecord,
   type TimelineEvent,
-  type TimeTravelOptions
+  type TimeTravelOptions,
 } from './time-travel.js';
 
 // ============================================================================
@@ -148,7 +142,7 @@ export {
   type ScalingMetrics,
   type ScalingPolicy,
   type ScalingDecision,
-  type PredictionModel
+  type PredictionModel,
 } from './adaptive-scaling.js';
 
 // ============================================================================
@@ -165,7 +159,7 @@ export {
   type MetricCondition,
   type ChaosMethod,
   type ChaosTarget,
-  type ChaosResult
+  type ChaosResult,
 } from './chaos-engineering.js';
 
 // ============================================================================
@@ -183,7 +177,7 @@ export {
   type RolloutConfig,
   type RolloutStage,
   type EvaluationContext,
-  type EvaluationResult
+  type EvaluationResult,
 } from './feature-flags.js';
 
 // ============================================================================
@@ -205,7 +199,7 @@ export {
   type IMessageBusConfig,
   type IOrderedMessage,
   type IResourcePoolConfig,
-  type IPooledResource
+  type IPooledResource,
 } from './advanced-patterns.js';
 
 // ============================================================================
@@ -227,7 +221,7 @@ export {
   type EdgeCacheConfig,
   type FailoverConfig,
   type HealthCheckConfig,
-  type GeoRequestContext
+  type GeoRequestContext,
 } from './geo-distribution.js';
 
 // ============================================================================
@@ -249,7 +243,7 @@ export {
   type DataSubject,
   type DataSubjectRequest,
   type DataSubjectResponse,
-  type ComplianceReport
+  type ComplianceReport,
 } from './compliance.js';
 
 // ============================================================================
@@ -275,7 +269,7 @@ export {
   type ProcessContext,
   type Window,
   type StreamSource,
-  type StreamSink
+  type StreamSink,
 } from './data-streaming.js';
 
 // ============================================================================
@@ -294,7 +288,7 @@ export {
   type GraphQLServiceConfig,
   type GraphQLDirective,
   type GraphQLResolver,
-  type GraphQLSubscriptionResolver
+  type GraphQLSubscriptionResolver,
 } from './graphql-federation.js';
 
 // ============================================================================
@@ -312,7 +306,7 @@ export {
   type InstanceType,
   type Recommendation,
   type BatchOptimization,
-  type CostReport
+  type CostReport,
 } from './cost-optimization.js';
 
 // ============================================================================
@@ -329,5 +323,5 @@ export {
   type Symptom,
   type Playbook,
   type Incident,
-  type HealthIndicator
+  type HealthIndicator,
 } from './self-healing.js';

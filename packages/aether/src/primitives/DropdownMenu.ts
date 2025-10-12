@@ -306,7 +306,7 @@ export const DropdownMenuContent = defineComponent<DropdownMenuContentProps>((pr
       case 'ArrowDown':
         e.preventDefault();
         if (items.length === 0) break;
-        const nextIndex = currentIndex < items.length - 1 ? currentIndex + 1 : (props.loop ? 0 : currentIndex);
+        const nextIndex = currentIndex < items.length - 1 ? currentIndex + 1 : props.loop ? 0 : currentIndex;
         ctx.setFocusedIndex(nextIndex);
         items[nextIndex]?.focus();
         break;
@@ -314,7 +314,7 @@ export const DropdownMenuContent = defineComponent<DropdownMenuContentProps>((pr
       case 'ArrowUp':
         e.preventDefault();
         if (items.length === 0) break;
-        const prevIndex = currentIndex > 0 ? currentIndex - 1 : (props.loop ? items.length - 1 : currentIndex);
+        const prevIndex = currentIndex > 0 ? currentIndex - 1 : props.loop ? items.length - 1 : currentIndex;
         ctx.setFocusedIndex(prevIndex);
         items[prevIndex]?.focus();
         break;
@@ -368,12 +368,7 @@ export const DropdownMenuContent = defineComponent<DropdownMenuContentProps>((pr
     const content = document.getElementById(ctx.contentId);
     const trigger = document.getElementById(ctx.triggerId);
 
-    if (
-      content &&
-      !content.contains(target) &&
-      trigger &&
-      !trigger.contains(target)
-    ) {
+    if (content && !content.contains(target) && trigger && !trigger.contains(target)) {
       props.onPointerDownOutside?.(e);
       if (!e.defaultPrevented) {
         ctx.close();
@@ -669,24 +664,28 @@ export const DropdownMenuSeparator = defineComponent<DropdownMenuSeparatorProps>
 // ItemIndicator
 // ============================================================================
 
-export const DropdownMenuItemIndicator = defineComponent<DropdownMenuItemIndicatorProps>((props) => () =>
+export const DropdownMenuItemIndicator = defineComponent<DropdownMenuItemIndicatorProps>(
+  (props) => () =>
     jsx('span', {
       ...props,
       'data-item-indicator': 'true',
       children: props.children,
-    }));
+    })
+);
 
 // ============================================================================
 // Shortcut
 // ============================================================================
 
-export const DropdownMenuShortcut = defineComponent<DropdownMenuShortcutProps>((props) => () =>
+export const DropdownMenuShortcut = defineComponent<DropdownMenuShortcutProps>(
+  (props) => () =>
     jsx('span', {
       ...props,
       'data-shortcut': 'true',
       'aria-hidden': 'true',
       children: props.children,
-    }));
+    })
+);
 
 // ============================================================================
 // Sub-component Attachments

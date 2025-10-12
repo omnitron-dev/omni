@@ -44,7 +44,9 @@ export type WorkflowHandler = (input: any) => Promise<any>;
 
 // Type guards
 export function isAsyncGenerator(value: any): value is AsyncGenerator {
-  return value && typeof value.next === 'function' && typeof value.throw === 'function' && typeof value.return === 'function';
+  return (
+    value && typeof value.next === 'function' && typeof value.throw === 'function' && typeof value.return === 'function'
+  );
 }
 
 export function isPromise(value: any): value is Promise<any> {

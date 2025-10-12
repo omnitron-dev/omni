@@ -21,10 +21,10 @@ interface OptimizedEncoderInfo {
  * 7. Pre-allocated large buffers to minimize reallocations
  */
 
-const INITIAL_BUFFER_SIZE = 8192;  // 8KB like msgpackr
+const INITIAL_BUFFER_SIZE = 8192; // 8KB like msgpackr
 const MAX_BUFFER_SIZE = 0x7fffffff;
-const MAX_POOL_SIZE = 16;  // Max buffers in pool
-const MAX_POOLED_BUFFER_SIZE = 0x100000;  // 1MB - don't pool larger buffers
+const MAX_POOL_SIZE = 16; // Max buffers in pool
+const MAX_POOLED_BUFFER_SIZE = 0x100000; // 1MB - don't pool larger buffers
 
 // TextEncoder for optimized UTF-8 encoding (10-15% faster than Buffer.write)
 const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
@@ -57,7 +57,7 @@ class BufferPool {
       const alignedPosition = (position + 7) & 0xfffffff8;
       // If alignment would overflow, reset to 0
       if (alignedPosition >= buffer.length - 1024) {
-        return buffer;  // Position will be set to 0 by encoder
+        return buffer; // Position will be set to 0 by encoder
       }
       return buffer;
     }
@@ -67,10 +67,7 @@ class BufferPool {
   /** Release buffer back to pool */
   static release(buffer: Buffer, position: number): void {
     // Only pool buffers that aren't too large and we haven't hit pool limit
-    if (
-      buffer.length <= MAX_POOLED_BUFFER_SIZE &&
-      this.buffers.length < MAX_POOL_SIZE
-    ) {
+    if (buffer.length <= MAX_POOLED_BUFFER_SIZE && this.buffers.length < MAX_POOL_SIZE) {
       this.buffers.push(buffer);
       this.positions.push(position);
     }
@@ -90,18 +87,14 @@ class BufferPool {
 class EncoderState {
   public buffer: Buffer;
   public position: number;
-  public view: DataView;  // Cached DataView for multi-byte operations
-  public start: number;   // Start position for word-aligned encoding
+  public view: DataView; // Cached DataView for multi-byte operations
+  public start: number; // Start position for word-aligned encoding
 
   constructor() {
     this.buffer = BufferPool.acquire();
     this.position = 0;
     this.start = 0;
-    this.view = new DataView(
-      this.buffer.buffer,
-      this.buffer.byteOffset,
-      this.buffer.byteLength
-    );
+    this.view = new DataView(this.buffer.buffer, this.buffer.byteOffset, this.buffer.byteLength);
   }
 
   /** Release buffer back to pool */
@@ -119,17 +112,13 @@ function ensureBuffer(state: EncoderState, size: number): void {
     state.buffer.copy(newBuffer, 0, 0, state.position);
     state.buffer = newBuffer;
     // Recreate DataView for new buffer
-    state.view = new DataView(
-      state.buffer.buffer,
-      state.buffer.byteOffset,
-      state.buffer.byteLength
-    );
+    state.view = new DataView(state.buffer.buffer, state.buffer.byteOffset, state.buffer.byteLength);
   }
 }
 
 export default class Encoder {
   private state: EncoderState;
-  private encodeDepth: number = 0;  // Track encoding nesting depth
+  private encodeDepth: number = 0; // Track encoding nesting depth
 
   constructor(private encodingTypes: Map<number, OptimizedEncoderInfo>) {
     this.state = new EncoderState();
@@ -263,7 +252,7 @@ export default class Encoder {
     let position = state.position;
 
     // Bitwise check for unsigned integer (10x faster than Number.isInteger)
-    if ((value >>> 0) === value) {
+    if (value >>> 0 === value) {
       // Positive integer
       if (value < 0x80) {
         // Positive fixint - fastest path, most common case
@@ -279,7 +268,7 @@ export default class Encoder {
         // uint16 - use DataView
         ensureBuffer(state, 3);
         state.buffer[position++] = 0xcd;
-        state.view.setUint16(position, value, false);  // false = big endian
+        state.view.setUint16(position, value, false); // false = big endian
         position += 2;
       } else {
         // uint32
@@ -288,7 +277,7 @@ export default class Encoder {
         state.view.setUint32(position, value, false);
         position += 4;
       }
-    } else if ((value >> 0) === value) {
+    } else if (value >> 0 === value) {
       // Signed integer
       if (value >= -0x20) {
         // Negative fixint - hot path
@@ -384,13 +373,13 @@ export default class Encoder {
     // Determine header size
     let headerSize: number;
     if (byteLength < 32) {
-      headerSize = 1;  // fixstr
+      headerSize = 1; // fixstr
     } else if (byteLength <= 0xff) {
-      headerSize = 2;  // str8
+      headerSize = 2; // str8
     } else if (byteLength <= 0xffff) {
-      headerSize = 3;  // str16
+      headerSize = 3; // str16
     } else {
-      headerSize = 5;  // str32
+      headerSize = 5; // str32
     }
 
     // Ensure buffer space
@@ -417,11 +406,7 @@ export default class Encoder {
     // Write UTF-8 content
     if (textEncoder && byteLength > 0) {
       // Use native TextEncoder (10-15% faster)
-      const uint8View = new Uint8Array(
-        buffer.buffer,
-        buffer.byteOffset + pos,
-        byteLength
-      );
+      const uint8View = new Uint8Array(buffer.buffer, buffer.byteOffset + pos, byteLength);
       const result = textEncoder.encodeInto(value, uint8View);
       pos += result.written!;
     } else if (byteLength > 0) {

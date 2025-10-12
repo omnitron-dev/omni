@@ -36,23 +36,14 @@ export class RedisService {
     return client.status === 'ready';
   }
 
-  async loadScript(
-    name: string,
-    content: string,
-    namespace?: string,
-  ): Promise<string> {
+  async loadScript(name: string, content: string, namespace?: string): Promise<string> {
     const client = this.getClient(namespace);
-    const sha = await client.script('LOAD', content) as string;
+    const sha = (await client.script('LOAD', content)) as string;
 
     return sha;
   }
 
-  async runScript<T = any>(
-    name: string,
-    keys: string[],
-    args: (string | number)[],
-    namespace?: string,
-  ): Promise<T> {
+  async runScript<T = any>(name: string, keys: string[], args: (string | number)[], namespace?: string): Promise<T> {
     return this.manager.runScript<T>(name, keys, args, namespace);
   }
 
@@ -67,11 +58,7 @@ export class RedisService {
     return redis.duplicate();
   }
 
-  async publish(
-    channel: string,
-    message: any,
-    namespace?: string,
-  ): Promise<number> {
+  async publish(channel: string, message: any, namespace?: string): Promise<number> {
     const client = this.getClient(namespace);
     const payload = typeof message === 'string' ? message : JSON.stringify(message);
     return client.publish(channel, payload);
@@ -94,12 +81,7 @@ export class RedisService {
     return client.get(key);
   }
 
-  async set(
-    key: string,
-    value: string | number,
-    ttl?: number,
-    namespace?: string,
-  ): Promise<'OK' | null> {
+  async set(key: string, value: string | number, ttl?: number, namespace?: string): Promise<'OK' | null> {
     const client = this.getClient(namespace);
 
     if (ttl) {
@@ -109,21 +91,12 @@ export class RedisService {
     return client.set(key, value);
   }
 
-  async setex(
-    key: string,
-    ttl: number,
-    value: string | number,
-    namespace?: string,
-  ): Promise<'OK'> {
+  async setex(key: string, ttl: number, value: string | number, namespace?: string): Promise<'OK'> {
     const client = this.getClient(namespace);
     return client.setex(key, ttl, value);
   }
 
-  async setnx(
-    key: string,
-    value: string | number,
-    namespace?: string,
-  ): Promise<number> {
+  async setnx(key: string, value: string | number, namespace?: string): Promise<number> {
     const client = this.getClient(namespace);
     return client.setnx(key, value);
   }
@@ -143,11 +116,7 @@ export class RedisService {
     return client.incr(key);
   }
 
-  async incrby(
-    key: string,
-    increment: number,
-    namespace?: string,
-  ): Promise<number> {
+  async incrby(key: string, increment: number, namespace?: string): Promise<number> {
     const client = this.getClient(namespace);
     return client.incrby(key, increment);
   }
@@ -157,20 +126,12 @@ export class RedisService {
     return client.decr(key);
   }
 
-  async decrby(
-    key: string,
-    decrement: number,
-    namespace?: string,
-  ): Promise<number> {
+  async decrby(key: string, decrement: number, namespace?: string): Promise<number> {
     const client = this.getClient(namespace);
     return client.decrby(key, decrement);
   }
 
-  async expire(
-    key: string,
-    seconds: number,
-    namespace?: string,
-  ): Promise<number> {
+  async expire(key: string, seconds: number, namespace?: string): Promise<number> {
     const client = this.getClient(namespace);
     return client.expire(key, seconds);
   }
@@ -180,64 +141,34 @@ export class RedisService {
     return client.ttl(key);
   }
 
-  async hget(
-    key: string,
-    field: string,
-    namespace?: string,
-  ): Promise<string | null> {
+  async hget(key: string, field: string, namespace?: string): Promise<string | null> {
     const client = this.getClient(namespace);
     return client.hget(key, field);
   }
 
-  async hset(
-    key: string,
-    field: string,
-    value: string | number,
-    namespace?: string,
-  ): Promise<number> {
+  async hset(key: string, field: string, value: string | number, namespace?: string): Promise<number> {
     const client = this.getClient(namespace);
     return client.hset(key, field, value);
   }
 
-  async hgetall(
-    key: string,
-    namespace?: string,
-  ): Promise<Record<string, string>> {
+  async hgetall(key: string, namespace?: string): Promise<Record<string, string>> {
     const client = this.getClient(namespace);
     return client.hgetall(key);
   }
 
-  async hdel(
-    key: string,
-    fields: string | string[],
-    namespace?: string,
-  ): Promise<number> {
+  async hdel(key: string, fields: string | string[], namespace?: string): Promise<number> {
     const client = this.getClient(namespace);
-    return Array.isArray(fields)
-      ? client.hdel(key, ...fields)
-      : client.hdel(key, fields);
+    return Array.isArray(fields) ? client.hdel(key, ...fields) : client.hdel(key, fields);
   }
 
-  async sadd(
-    key: string,
-    members: string | string[],
-    namespace?: string,
-  ): Promise<number> {
+  async sadd(key: string, members: string | string[], namespace?: string): Promise<number> {
     const client = this.getClient(namespace);
-    return Array.isArray(members)
-      ? client.sadd(key, ...members)
-      : client.sadd(key, members);
+    return Array.isArray(members) ? client.sadd(key, ...members) : client.sadd(key, members);
   }
 
-  async srem(
-    key: string,
-    members: string | string[],
-    namespace?: string,
-  ): Promise<number> {
+  async srem(key: string, members: string | string[], namespace?: string): Promise<number> {
     const client = this.getClient(namespace);
-    return Array.isArray(members)
-      ? client.srem(key, ...members)
-      : client.srem(key, members);
+    return Array.isArray(members) ? client.srem(key, ...members) : client.srem(key, members);
   }
 
   async smembers(key: string, namespace?: string): Promise<string[]> {
@@ -245,35 +176,19 @@ export class RedisService {
     return client.smembers(key);
   }
 
-  async sismember(
-    key: string,
-    member: string,
-    namespace?: string,
-  ): Promise<number> {
+  async sismember(key: string, member: string, namespace?: string): Promise<number> {
     const client = this.getClient(namespace);
     return client.sismember(key, member);
   }
 
-  async lpush(
-    key: string,
-    values: string | string[],
-    namespace?: string,
-  ): Promise<number> {
+  async lpush(key: string, values: string | string[], namespace?: string): Promise<number> {
     const client = this.getClient(namespace);
-    return Array.isArray(values)
-      ? client.lpush(key, ...values)
-      : client.lpush(key, values);
+    return Array.isArray(values) ? client.lpush(key, ...values) : client.lpush(key, values);
   }
 
-  async rpush(
-    key: string,
-    values: string | string[],
-    namespace?: string,
-  ): Promise<number> {
+  async rpush(key: string, values: string | string[], namespace?: string): Promise<number> {
     const client = this.getClient(namespace);
-    return Array.isArray(values)
-      ? client.rpush(key, ...values)
-      : client.rpush(key, values);
+    return Array.isArray(values) ? client.rpush(key, ...values) : client.rpush(key, values);
   }
 
   async lpop(key: string, namespace?: string): Promise<string | null> {
@@ -286,12 +201,7 @@ export class RedisService {
     return client.rpop(key);
   }
 
-  async lrange(
-    key: string,
-    start: number,
-    stop: number,
-    namespace?: string,
-  ): Promise<string[]> {
+  async lrange(key: string, start: number, stop: number, namespace?: string): Promise<string[]> {
     const client = this.getClient(namespace);
     return client.lrange(key, start, stop);
   }
@@ -301,10 +211,7 @@ export class RedisService {
     return client.llen(key);
   }
 
-  async zadd(
-    key: string,
-    ...args: (string | number)[]
-  ): Promise<number> {
+  async zadd(key: string, ...args: (string | number)[]): Promise<number> {
     // Parse namespace from last argument if it's a string and not part of score-member pairs
     let namespace: string | undefined;
     let scoreMembers = args;
@@ -319,33 +226,17 @@ export class RedisService {
     return client.zadd(key, ...scoreMembers);
   }
 
-  async zrem(
-    key: string,
-    members: string | string[],
-    namespace?: string,
-  ): Promise<number> {
+  async zrem(key: string, members: string | string[], namespace?: string): Promise<number> {
     const client = this.getClient(namespace);
-    return Array.isArray(members)
-      ? client.zrem(key, ...members)
-      : client.zrem(key, members);
+    return Array.isArray(members) ? client.zrem(key, ...members) : client.zrem(key, members);
   }
 
-  async zrange(
-    key: string,
-    start: number,
-    stop: number,
-    namespace?: string,
-  ): Promise<string[]> {
+  async zrange(key: string, start: number, stop: number, namespace?: string): Promise<string[]> {
     const client = this.getClient(namespace);
     return client.zrange(key, start, stop);
   }
 
-  async zrevrange(
-    key: string,
-    start: number,
-    stop: number,
-    namespace?: string,
-  ): Promise<string[]> {
+  async zrevrange(key: string, start: number, stop: number, namespace?: string): Promise<string[]> {
     const client = this.getClient(namespace);
     return client.zrevrange(key, start, stop);
   }
@@ -355,29 +246,17 @@ export class RedisService {
     return client.zcard(key);
   }
 
-  async zscore(
-    key: string,
-    member: string,
-    namespace?: string,
-  ): Promise<string | null> {
+  async zscore(key: string, member: string, namespace?: string): Promise<string | null> {
     const client = this.getClient(namespace);
     return client.zscore(key, member);
   }
 
-  async eval(
-    script: string,
-    numkeys: number,
-    ...args: (string | number)[]
-  ): Promise<any> {
+  async eval(script: string, numkeys: number, ...args: (string | number)[]): Promise<any> {
     const client = this.getClient();
     return client.eval(script, numkeys, ...args);
   }
 
-  async evalsha(
-    sha: string,
-    numkeys: number,
-    ...args: (string | number)[]
-  ): Promise<any> {
+  async evalsha(sha: string, numkeys: number, ...args: (string | number)[]): Promise<any> {
     const client = this.getClient();
     return client.evalsha(sha, numkeys, ...args);
   }

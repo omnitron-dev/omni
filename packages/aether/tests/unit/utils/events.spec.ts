@@ -237,14 +237,18 @@ describe('Event Utilities', () => {
 
     it('should apply modifiers in right-to-left order', () => {
       const calls: string[] = [];
-      const modifier1 = <T extends Event>(h: (e: T) => void) => (e: T) => {
-        calls.push('modifier1');
-        h(e);
-      };
-      const modifier2 = <T extends Event>(h: (e: T) => void) => (e: T) => {
-        calls.push('modifier2');
-        h(e);
-      };
+      const modifier1 =
+        <T extends Event>(h: (e: T) => void) =>
+        (e: T) => {
+          calls.push('modifier1');
+          h(e);
+        };
+      const modifier2 =
+        <T extends Event>(h: (e: T) => void) =>
+        (e: T) => {
+          calls.push('modifier2');
+          h(e);
+        };
 
       const handler = vi.fn(() => calls.push('handler'));
       const event = new Event('click');

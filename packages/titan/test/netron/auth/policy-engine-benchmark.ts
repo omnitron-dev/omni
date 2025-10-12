@@ -27,11 +27,7 @@ interface BenchmarkResult {
   cacheHitRate?: number;
 }
 
-async function benchmark(
-  name: string,
-  iterations: number,
-  fn: () => Promise<void>,
-): Promise<BenchmarkResult> {
+async function benchmark(name: string, iterations: number, fn: () => Promise<void>): Promise<BenchmarkResult> {
   const latencies: number[] = [];
 
   // Warm-up
@@ -159,7 +155,9 @@ async function runBenchmarks() {
 
   // Check performance targets
   console.log('\n=== Performance Targets ===');
-  console.log(`${result1.opsPerSecond > 10000 ? '✓' : '✗'} > 10K ops/sec with cache: ${result1.opsPerSecond.toFixed(0)}`);
+  console.log(
+    `${result1.opsPerSecond > 10000 ? '✓' : '✗'} > 10K ops/sec with cache: ${result1.opsPerSecond.toFixed(0)}`
+  );
   console.log(`${result2.p95Latency! < 5 ? '✓' : '✗'} < 5ms P95 latency: ${result2.p95Latency!.toFixed(3)}ms`);
   console.log(`${stats1.hitRate > 0.9 ? '✓' : '✗'} > 90% cache hit rate: ${(stats1.hitRate * 100).toFixed(2)}%`);
 

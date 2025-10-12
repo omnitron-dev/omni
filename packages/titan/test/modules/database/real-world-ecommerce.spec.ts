@@ -309,7 +309,13 @@ class OrderRepository extends BaseRepository<any, 'orders', Order, Partial<Order
 @Repository<OrderItem>({
   table: 'order_items',
 })
-class OrderItemRepository extends BaseRepository<any, 'order_items', OrderItem, Partial<OrderItem>, Partial<OrderItem>> {
+class OrderItemRepository extends BaseRepository<
+  any,
+  'order_items',
+  OrderItem,
+  Partial<OrderItem>,
+  Partial<OrderItem>
+> {
   async findByOrderId(orderId: number): Promise<OrderItem[]> {
     return this.findAll({ where: { order_id: orderId } });
   }
@@ -449,11 +455,7 @@ class EcommerceService {
   @Transactional({
     isolation: TransactionIsolationLevel.SERIALIZABLE,
   })
-  async checkout(
-    userId: number,
-    paymentDetails: any,
-    shippingAddress: any
-  ): Promise<Order> {
+  async checkout(userId: number, paymentDetails: any, shippingAddress: any): Promise<Order> {
     // Get active cart
     const cart = await this.cartRepo.findActiveCart(userId);
     if (!cart) {
@@ -642,9 +644,7 @@ class EcommerceService {
     query = query.orderBy(sortBy, sortOrder);
 
     // Count total
-    const countQuery = this.db
-      .selectFrom('products')
-      .select(sql<number>`COUNT(*)`.as('count'));
+    const countQuery = this.db.selectFrom('products').select(sql<number>`COUNT(*)`.as('count'));
     // Apply same filters to count query...
     const totalResult = await countQuery.executeTakeFirst();
     const total = (totalResult as any)?.count || 0;
@@ -669,7 +669,7 @@ class EcommerceService {
   async getRecommendations(userId: number, limit: number = 10): Promise<Product[]> {
     // Get user's order history
     const orders = await this.orderRepo.findUserOrders(userId);
-    const orderIds = orders.map(o => o.id);
+    const orderIds = orders.map((o) => o.id);
 
     if (orderIds.length === 0) {
       // Return popular products for new users
@@ -696,10 +696,7 @@ class EcommerceService {
       .selectAll()
       .where('category_id', 'in', preferredCategories)
       .where('id', 'not in', (qb) =>
-        qb
-          .selectFrom('order_items')
-          .select('product_id')
-          .where('order_id', 'in', orderIds)
+        qb.selectFrom('order_items').select('product_id').where('order_id', 'in', orderIds)
       )
       .where('is_active', '=', true)
       .where('stock_quantity', '>', 0)
@@ -784,10 +781,7 @@ class EcommerceService {
       .innerJoin('products', 'order_items.product_id', 'products.id')
       .innerJoin('categories', 'products.category_id', 'categories.id')
       .innerJoin('orders', 'order_items.order_id', 'orders.id')
-      .select([
-        'categories.name',
-        sql<number>`SUM(order_items.total_price)`.as('revenue'),
-      ])
+      .select(['categories.name', sql<number>`SUM(order_items.total_price)`.as('revenue')])
       .where('orders.created_at', '>=', startDate)
       .where('orders.created_at', '<=', endDate)
       .where('orders.status', '!=', 'cancelled')
@@ -801,7 +795,7 @@ class EcommerceService {
    */
   private async processPayment(paymentDetails: any, amount: number): Promise<boolean> {
     // Simulate payment processing delay
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
     // Mock 95% success rate
     return Math.random() < 0.95;
   }
@@ -971,9 +965,7 @@ describe('Real-World E-Commerce Application', () => {
       // Try to add more than available stock
       const user = await userRepo.findByEmail('customer1@example.com');
 
-      await expect(
-        ecommerceService.addToCart(user!.id, product!.id, 1000)
-      ).rejects.toThrow('Insufficient stock');
+      await expect(ecommerceService.addToCart(user!.id, product!.id, 1000)).rejects.toThrow('Insufficient stock');
     });
 
     it('should update stock on purchase', async () => {
@@ -1003,15 +995,17 @@ describe('Real-World E-Commerce Application', () => {
       const checkoutPromises = users.slice(0, 3).map(async (user) => {
         const product = products[Math.floor(Math.random() * products.length)];
         await ecommerceService.addToCart(user.id, product.id, 1);
-        return ecommerceService.checkout(
-          user.id,
-          { method: 'stripe' },
-          { street: '789 Elm St', city: 'Chicago', state: 'IL', zip: '60601', country: 'USA' }
-        ).catch(e => e);
+        return ecommerceService
+          .checkout(
+            user.id,
+            { method: 'stripe' },
+            { street: '789 Elm St', city: 'Chicago', state: 'IL', zip: '60601', country: 'USA' }
+          )
+          .catch((e) => e);
       });
 
       const results = await Promise.allSettled(checkoutPromises);
-      const successful = results.filter(r => r.status === 'fulfilled');
+      const successful = results.filter((r) => r.status === 'fulfilled');
 
       expect(successful.length).toBeGreaterThan(0);
     });
@@ -1086,11 +1080,7 @@ describe('Real-World E-Commerce Application', () => {
       expect(notFound).toBeNull();
 
       // Should find in database with deleted_at set
-      const result = await db
-        .selectFrom('products')
-        .selectAll()
-        .where('id', '=', product.id)
-        .executeTakeFirst();
+      const result = await db.selectFrom('products').selectAll().where('id', '=', product.id).executeTakeFirst();
 
       expect(result).toBeDefined();
       expect((result as any).deleted_at).toBeDefined();
@@ -1269,10 +1259,7 @@ async function createEcommerceSchema(db: Kysely<any>) {
   `.execute(db);
 }
 
-async function seedEcommerceData(
-  userRepo: UserRepository,
-  productRepo: ProductRepository
-) {
+async function seedEcommerceData(userRepo: UserRepository, productRepo: ProductRepository) {
   // Create users
   await userRepo.createMany([
     {
@@ -1306,11 +1293,14 @@ async function seedEcommerceData(
 
   // Create categories
   const db = userRepo['db'] || userRepo['qb'];
-  await db.insertInto('categories').values([
-    { name: 'Electronics', slug: 'electronics', display_order: 1 },
-    { name: 'Computers', slug: 'computers', parent_id: 1, display_order: 1 },
-    { name: 'Accessories', slug: 'accessories', parent_id: 1, display_order: 2 },
-  ]).execute();
+  await db
+    .insertInto('categories')
+    .values([
+      { name: 'Electronics', slug: 'electronics', display_order: 1 },
+      { name: 'Computers', slug: 'computers', parent_id: 1, display_order: 1 },
+      { name: 'Accessories', slug: 'accessories', parent_id: 1, display_order: 2 },
+    ])
+    .execute();
 
   // Create products
   await productRepo.createMany([
@@ -1350,9 +1340,12 @@ async function seedEcommerceData(
   ]);
 
   // Create inventory records
-  await db.insertInto('inventory').values([
-    { product_id: 1, warehouse_id: 1, quantity: 50, reserved_quantity: 0 },
-    { product_id: 2, warehouse_id: 1, quantity: 200, reserved_quantity: 0 },
-    { product_id: 3, warehouse_id: 1, quantity: 100, reserved_quantity: 0 },
-  ]).execute();
+  await db
+    .insertInto('inventory')
+    .values([
+      { product_id: 1, warehouse_id: 1, quantity: 50, reserved_quantity: 0 },
+      { product_id: 2, warehouse_id: 1, quantity: 200, reserved_quantity: 0 },
+      { product_id: 3, warehouse_id: 1, quantity: 100, reserved_quantity: 0 },
+    ])
+    .execute();
 }

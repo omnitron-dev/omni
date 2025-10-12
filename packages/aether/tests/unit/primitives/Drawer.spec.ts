@@ -302,11 +302,7 @@ describe('Drawer Primitive', () => {
       expect(() => {
         dispose = createRoot(() => {
           Drawer({
-            children: [
-              DrawerTrigger({ children: 'Open' }),
-              DrawerOverlay({}),
-              DrawerContent({ children: 'Content' }),
-            ],
+            children: [DrawerTrigger({ children: 'Open' }), DrawerOverlay({}), DrawerContent({ children: 'Content' })],
           });
         });
       }).not.toThrow();
@@ -837,10 +833,7 @@ describe('Drawer Primitive', () => {
         dispose = createRoot(() => {
           Drawer({
             modal: true,
-            children: [
-              DrawerOverlay({}),
-              DrawerContent({ children: 'Content' }),
-            ],
+            children: [DrawerOverlay({}), DrawerContent({ children: 'Content' })],
           });
         });
       }).not.toThrow();
@@ -1223,10 +1216,7 @@ describe('Drawer Primitive', () => {
               defaultOpen: true,
               modal: true,
               side,
-              children: [
-                DrawerOverlay({}),
-                DrawerContent({ children: 'Content' }),
-              ],
+              children: [DrawerOverlay({}), DrawerContent({ children: 'Content' })],
             });
           });
         }).not.toThrow();
@@ -1267,10 +1257,7 @@ describe('Drawer Primitive', () => {
           Drawer({
             defaultOpen: true,
             closeOnOutsideClick: true,
-            children: [
-              DrawerOverlay({}),
-              DrawerContent({ children: 'Content' }),
-            ],
+            children: [DrawerOverlay({}), DrawerContent({ children: 'Content' })],
           });
         });
       }).not.toThrow();
@@ -1282,10 +1269,7 @@ describe('Drawer Primitive', () => {
           Drawer({
             defaultOpen: true,
             closeOnOutsideClick: false,
-            children: [
-              DrawerOverlay({}),
-              DrawerContent({ children: 'Content' }),
-            ],
+            children: [DrawerOverlay({}), DrawerContent({ children: 'Content' })],
           });
         });
       }).not.toThrow();
@@ -1310,10 +1294,7 @@ describe('Drawer Primitive', () => {
         dispose = createRoot(() => {
           Drawer({
             defaultOpen: true,
-            children: [
-              DrawerTrigger({ children: 'Open' }),
-              DrawerContent({ children: 'Content' }),
-            ],
+            children: [DrawerTrigger({ children: 'Open' }), DrawerContent({ children: 'Content' })],
           });
         });
       }).not.toThrow();
@@ -1376,10 +1357,7 @@ describe('Drawer Primitive', () => {
           Drawer({
             defaultOpen: true,
             children: DrawerContent({
-              children: [
-                DrawerClose({ children: 'Close 1' }),
-                DrawerClose({ children: 'Close 2' }),
-              ],
+              children: [DrawerClose({ children: 'Close 1' }), DrawerClose({ children: 'Close 2' })],
             }),
           });
         });
@@ -1459,10 +1437,7 @@ describe('Drawer Primitive', () => {
           Drawer({
             defaultOpen: true,
             children: DrawerContent({
-              children: [
-                DrawerTitle({ children: 'Title' }),
-                DrawerClose({ children: 'Close' }),
-              ],
+              children: [DrawerTitle({ children: 'Title' }), DrawerClose({ children: 'Close' })],
             }),
           });
         });

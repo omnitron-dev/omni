@@ -25,7 +25,7 @@ test.describe('Cross-runtime Compatibility', () => {
         hasQueryFluentInterface: typeof peer.queryFluentInterface === 'function',
         hasSetCacheManager: typeof peer.setCacheManager === 'function',
         hasSetRetryManager: typeof peer.setRetryManager === 'function',
-        hasSetGlobalOptions: typeof peer.setGlobalOptions === 'function'
+        hasSetGlobalOptions: typeof peer.setGlobalOptions === 'function',
       };
     });
 
@@ -49,7 +49,7 @@ test.describe('Cross-runtime Compatibility', () => {
         hasDisconnect: typeof peer.disconnect === 'function',
         hasQueryInterface: typeof peer.queryInterface === 'function',
         hasSubscribe: typeof peer.subscribe === 'function',
-        hasUnsubscribe: typeof peer.unsubscribe === 'function'
+        hasUnsubscribe: typeof peer.unsubscribe === 'function',
       };
     });
 
@@ -74,14 +74,14 @@ test.describe('Cross-runtime Compatibility', () => {
       array: [1, 2, 3],
       nested: {
         deep: {
-          value: 'nested'
-        }
+          value: 'nested',
+        },
       },
       date: new Date().toISOString(),
       special: {
         unicode: '你好世界 🌍',
-        emoji: '🚀🎉✨'
-      }
+        emoji: '🚀🎉✨',
+      },
     };
 
     const result = await page.evaluate(async (data) => {
@@ -91,7 +91,7 @@ test.describe('Cross-runtime Compatibility', () => {
       const created = await userService.createUser({
         name: JSON.stringify(data),
         email: 'test@example.com',
-        age: 25
+        age: 25,
       });
 
       // Verify serialization
@@ -99,7 +99,7 @@ test.describe('Cross-runtime Compatibility', () => {
 
       return {
         matches: JSON.stringify(deserialized) === JSON.stringify(data),
-        created
+        created,
       };
     }, testData);
 
@@ -134,7 +134,7 @@ test.describe('Cross-runtime Compatibility', () => {
         chunks.push({
           isArrayBuffer: value instanceof ArrayBuffer,
           isUint8Array: value instanceof Uint8Array,
-          size: value.byteLength || value.length
+          size: value.byteLength || value.length,
         });
       }
 
@@ -142,7 +142,7 @@ test.describe('Cross-runtime Compatibility', () => {
     });
 
     // Verify binary data types
-    result.forEach(chunk => {
+    result.forEach((chunk) => {
       expect(chunk.isArrayBuffer || chunk.isUint8Array).toBe(true);
       expect(chunk.size).toBeGreaterThan(0);
     });
@@ -171,7 +171,7 @@ test.describe('Cross-runtime Compatibility', () => {
         return {
           success: true,
           errorMessage: err.message,
-          hasStack: !!err.stack
+          hasStack: !!err.stack,
         };
       }
     });
@@ -216,9 +216,7 @@ test.describe('Browser-specific Features', () => {
       // Verify AbortController is native browser API
       const isNative = controller.constructor.name === 'AbortController';
 
-      const promise = service
-        .signal(controller.signal)
-        .slowMethod(5000);
+      const promise = service.signal(controller.signal).slowMethod(5000);
 
       setTimeout(() => controller.abort(), 100);
 
@@ -229,7 +227,7 @@ test.describe('Browser-specific Features', () => {
         return {
           success: true,
           isNative,
-          error: err.message
+          error: err.message,
         };
       }
     });
@@ -271,7 +269,7 @@ test.describe('Browser-specific Features', () => {
         hasPerformance,
         hasNow,
         duration,
-        durationIsNumber: typeof duration === 'number'
+        durationIsNumber: typeof duration === 'number',
       };
     });
 
@@ -307,7 +305,7 @@ test.describe('Browser-specific Features', () => {
         start(controller) {
           controller.enqueue({ data: 'browser stream' });
           controller.close();
-        }
+        },
       });
 
       const isBrowserStream = browserStream instanceof ReadableStream;
@@ -328,7 +326,7 @@ test.describe('Browser-specific Features', () => {
         hasWritableStream,
         hasTransformStream,
         isBrowserStream,
-        transformed: chunks[0]?.data
+        transformed: chunks[0]?.data,
       };
     });
 

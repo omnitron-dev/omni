@@ -5,15 +5,12 @@
  */
 
 // @ts-ignore - Deno specific imports
-import { describe, it } from "https://deno.land/std@0.218.0/testing/bdd.ts";
-import {
-  assertEquals,
-  assertExists,
-} from "https://deno.land/std@0.218.0/assert/mod.ts";
+import { describe, it } from 'https://deno.land/std@0.218.0/testing/bdd.ts';
+import { assertEquals, assertExists } from 'https://deno.land/std@0.218.0/assert/mod.ts';
 
 // Create global mocks for Deno compatibility
 (globalThis as any).process = {
-  platform: Deno.build.os === "windows" ? "win32" : Deno.build.os,
+  platform: Deno.build.os === 'windows' ? 'win32' : Deno.build.os,
 };
 
 // Create NodeJS namespace for timer types

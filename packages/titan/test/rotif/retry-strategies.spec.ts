@@ -12,7 +12,7 @@ describe('Retry Strategies', () => {
       payload: { test: 'data' },
       timestamp: Date.now(),
       attempt: 1,
-      ack: async () => { }
+      ack: async () => {},
     };
   });
 
@@ -24,7 +24,7 @@ describe('Retry Strategies', () => {
           baseDelay: 100,
           maxDelay: 5000,
           multiplier: 2,
-          jitter: 0
+          jitter: 0,
         });
 
         expect(retryFn(1, mockMessage)).toBe(100);
@@ -41,13 +41,13 @@ describe('Retry Strategies', () => {
         const retryFn = createRetryDelayFn({
           strategy: 'exponential',
           baseDelay: 1000,
-          jitter: 0.2
+          jitter: 0.2,
         });
 
         const delays = Array.from({ length: 10 }, () => retryFn(3, mockMessage));
 
         // All delays should be within 20% of base value (4000 for attempt 3)
-        delays.forEach(delay => {
+        delays.forEach((delay) => {
           expect(delay).toBeGreaterThanOrEqual(3200); // 4000 * 0.8
           expect(delay).toBeLessThanOrEqual(4800); // 4000 * 1.2
         });
@@ -64,7 +64,7 @@ describe('Retry Strategies', () => {
           strategy: 'linear',
           baseDelay: 500,
           maxDelay: 3000,
-          jitter: 0
+          jitter: 0,
         });
 
         expect(retryFn(1, mockMessage)).toBe(500);
@@ -82,7 +82,7 @@ describe('Retry Strategies', () => {
         const retryFn = createRetryDelayFn({
           strategy: 'fixed',
           baseDelay: 750,
-          jitter: 0
+          jitter: 0,
         });
 
         expect(retryFn(1, mockMessage)).toBe(750);
@@ -98,16 +98,16 @@ describe('Retry Strategies', () => {
           strategy: 'fibonacci',
           baseDelay: 100,
           maxDelay: 10000,
-          jitter: 0
+          jitter: 0,
         });
 
-        expect(retryFn(1, mockMessage)).toBe(100);   // 1 * 100
-        expect(retryFn(2, mockMessage)).toBe(200);   // 2 * 100
-        expect(retryFn(3, mockMessage)).toBe(300);   // 3 * 100
-        expect(retryFn(4, mockMessage)).toBe(500);   // 5 * 100
-        expect(retryFn(5, mockMessage)).toBe(800);   // 8 * 100
-        expect(retryFn(6, mockMessage)).toBe(1300);  // 13 * 100
-        expect(retryFn(7, mockMessage)).toBe(2100);  // 21 * 100
+        expect(retryFn(1, mockMessage)).toBe(100); // 1 * 100
+        expect(retryFn(2, mockMessage)).toBe(200); // 2 * 100
+        expect(retryFn(3, mockMessage)).toBe(300); // 3 * 100
+        expect(retryFn(4, mockMessage)).toBe(500); // 5 * 100
+        expect(retryFn(5, mockMessage)).toBe(800); // 8 * 100
+        expect(retryFn(6, mockMessage)).toBe(1300); // 13 * 100
+        expect(retryFn(7, mockMessage)).toBe(2100); // 21 * 100
       });
     });
 
@@ -116,7 +116,7 @@ describe('Retry Strategies', () => {
         const customDelayFn = (attempt: number, msg: RotifMessage) => attempt * 333 + msg.channel.length;
 
         const retryFn = createRetryDelayFn({
-          customDelayFn
+          customDelayFn,
         });
 
         mockMessage.channel = 'test'; // length = 4
@@ -189,7 +189,7 @@ describe('Retry Strategies', () => {
       const retryFn = createRetryDelayFn({
         strategy: 'exponential',
         baseDelay: 1000,
-        jitter: 0
+        jitter: 0,
       });
 
       const delay1 = retryFn(2, mockMessage);
@@ -202,7 +202,7 @@ describe('Retry Strategies', () => {
       const retryFn = createRetryDelayFn({
         strategy: 'fixed',
         baseDelay: 10,
-        jitter: 2.0 // Very high jitter
+        jitter: 2.0, // Very high jitter
       });
 
       // Even with high jitter, should never return negative
@@ -215,7 +215,7 @@ describe('Retry Strategies', () => {
       const retryFn = createRetryDelayFn({
         baseDelay: 100,
         multiplier: 2,
-        jitter: 0
+        jitter: 0,
       });
 
       expect(retryFn(1, mockMessage)).toBe(100);
@@ -227,7 +227,7 @@ describe('Retry Strategies', () => {
       const retryFn = createRetryDelayFn({
         strategy: 'unknown' as RetryStrategy,
         baseDelay: 100,
-        jitter: 0
+        jitter: 0,
       });
 
       expect(retryFn(1, mockMessage)).toBe(100);

@@ -21,7 +21,7 @@ test.describe('Unified Netron Client - WebSocket Transport', () => {
         return {
           success: true,
           connected: client.isConnected(),
-          metrics: client.getMetrics()
+          metrics: client.getMetrics(),
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -53,7 +53,7 @@ test.describe('Unified Netron Client - WebSocket Transport', () => {
           success: true,
           usersCount: users.length,
           hasUsers: users.length > 0,
-          firstUser: users[0]
+          firstUser: users[0],
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -86,7 +86,7 @@ test.describe('Unified Netron Client - WebSocket Transport', () => {
         return {
           success: true,
           userId: user?.id,
-          userName: user?.name
+          userName: user?.name,
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -119,7 +119,7 @@ test.describe('Unified Netron Client - WebSocket Transport', () => {
           return {
             success: true,
             errorMessage: error.message,
-            hasError: true
+            hasError: true,
           };
         }
       } catch (error: any) {
@@ -149,7 +149,7 @@ test.describe('Unified Netron Client - WebSocket Transport', () => {
         const newUser = await userService.createUser({
           name: 'Test User WS',
           email: 'testws@example.com',
-          age: 25
+          age: 25,
         });
 
         // Read
@@ -157,7 +157,7 @@ test.describe('Unified Netron Client - WebSocket Transport', () => {
 
         // Update
         const updatedUser = await userService.updateUser(newUser.id, {
-          age: 26
+          age: 26,
         });
 
         // Delete
@@ -170,7 +170,7 @@ test.describe('Unified Netron Client - WebSocket Transport', () => {
           created: newUser.name === 'Test User WS',
           read: readUser?.id === newUser.id,
           updated: updatedUser?.age === 26,
-          deleted: deleted === true
+          deleted: deleted === true,
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -210,7 +210,7 @@ test.describe('Unified Netron Client - WebSocket Transport', () => {
         return {
           success: true,
           count: results.length,
-          allValid: results.every(r => Array.isArray(r) && r.length > 0)
+          allValid: results.every((r) => Array.isArray(r) && r.length > 0),
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -243,7 +243,7 @@ test.describe('Unified Netron Client - WebSocket Transport', () => {
           await client.disconnect();
           return {
             success: true,
-            timedOut: error.message.includes('timeout') || error.message.includes('Timeout')
+            timedOut: error.message.includes('timeout') || error.message.includes('Timeout'),
           };
         }
       } catch (error: any) {
@@ -277,7 +277,7 @@ test.describe('Unified Netron Client - WebSocket Transport', () => {
           activeUsersCount: activeUsers.length,
           olderUsersCount: olderUsers.length,
           allActive: activeUsers.every((u: any) => u.active === true),
-          allOlder: olderUsers.every((u: any) => u.age >= 30)
+          allOlder: olderUsers.every((u: any) => u.age >= 30),
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -323,7 +323,7 @@ test.describe('Unified Netron Client - WebSocket Transport', () => {
           connected1,
           connected2,
           connected3,
-          usersCount: users.length
+          usersCount: users.length,
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -363,7 +363,7 @@ test.describe('Unified Netron Client - WebSocket Transport', () => {
           success: true,
           isObject,
           hasGetUsers,
-          gotUsers: users.length > 0
+          gotUsers: users.length > 0,
         };
       } catch (error: any) {
         return { success: false, error: error.message };

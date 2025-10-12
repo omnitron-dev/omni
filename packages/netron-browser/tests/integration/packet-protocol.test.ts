@@ -142,15 +142,7 @@ describe('Packet Protocol Compatibility', () => {
 
   describe('Packet Data Serialization', () => {
     it('should handle primitive data types in packets', () => {
-      const testData = [
-        null,
-        true,
-        false,
-        42,
-        -123.456,
-        'test string',
-        '',
-      ];
+      const testData = [null, true, false, 42, -123.456, 'test string', ''];
 
       for (const data of testData) {
         const packet = new Packet(Packet.nextId());
@@ -209,7 +201,7 @@ describe('Packet Protocol Compatibility', () => {
 
     it('should handle large stream IDs', () => {
       const packet = new Packet(Packet.nextId());
-      const maxUint32 = 0xFFFFFFFF;
+      const maxUint32 = 0xffffffff;
 
       packet.setStreamInfo(maxUint32, 0, false, false);
       expect(packet.streamId).toBe(maxUint32);
@@ -217,7 +209,7 @@ describe('Packet Protocol Compatibility', () => {
 
     it('should handle large stream indices', () => {
       const packet = new Packet(Packet.nextId());
-      const maxUint32 = 0xFFFFFFFF;
+      const maxUint32 = 0xffffffff;
 
       packet.setStreamInfo(1, maxUint32, false, false);
       expect(packet.streamIndex).toBe(maxUint32);
@@ -331,11 +323,7 @@ describe('Custom Type Serialization', () => {
     });
 
     it('should handle multiple references', () => {
-      const refs = [
-        new Reference('service1@1.0.0'),
-        new Reference('service2@2.0.0'),
-        new Reference('service3@3.0.0'),
-      ];
+      const refs = [new Reference('service1@1.0.0'), new Reference('service2@2.0.0'), new Reference('service3@3.0.0')];
 
       const encoded = serializer.encode(refs);
       const decoded = serializer.decode(SmartBuffer.wrap(encoded));
@@ -487,7 +475,7 @@ describe('Protocol Edge Cases', () => {
 
     it('should handle maximum stream values', () => {
       const packet = new Packet(Packet.nextId());
-      const maxUint32 = 0xFFFFFFFF;
+      const maxUint32 = 0xffffffff;
 
       packet.setStreamInfo(maxUint32, maxUint32, true, true);
 

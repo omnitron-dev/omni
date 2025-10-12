@@ -62,10 +62,7 @@ export interface ClientMiddlewareContext {
 /**
  * Middleware function signature
  */
-export type MiddlewareFunction = (
-  ctx: ClientMiddlewareContext,
-  next: () => Promise<void>
-) => Promise<void> | void;
+export type MiddlewareFunction = (ctx: ClientMiddlewareContext, next: () => Promise<void>) => Promise<void> | void;
 
 /**
  * Middleware configuration
@@ -131,11 +128,7 @@ export interface MiddlewareMetrics {
  */
 export interface IMiddlewareManager {
   /** Register middleware globally */
-  use(
-    middleware: MiddlewareFunction,
-    config?: Partial<MiddlewareConfig>,
-    stage?: MiddlewareStage
-  ): void;
+  use(middleware: MiddlewareFunction, config?: Partial<MiddlewareConfig>, stage?: MiddlewareStage): void;
 
   /** Register service-specific middleware */
   useForService(
@@ -155,20 +148,13 @@ export interface IMiddlewareManager {
   ): void;
 
   /** Execute middleware pipeline */
-  execute(
-    ctx: ClientMiddlewareContext,
-    stage: MiddlewareStage
-  ): Promise<void>;
+  execute(ctx: ClientMiddlewareContext, stage: MiddlewareStage): Promise<void>;
 
   /** Clear all middleware */
   clear(): void;
 
   /** Get middleware for specific service/method */
-  getMiddleware(
-    serviceName?: string,
-    methodName?: string,
-    stage?: MiddlewareStage
-  ): MiddlewareRegistration[];
+  getMiddleware(serviceName?: string, methodName?: string, stage?: MiddlewareStage): MiddlewareRegistration[];
 
   /** Get metrics */
   getMetrics(): MiddlewareMetrics;

@@ -8,12 +8,7 @@
 /**
  * CSS property value - string, number, or reactive function
  */
-export type StyleValue =
-  | string
-  | number
-  | (() => string | number)
-  | undefined
-  | null;
+export type StyleValue = string | number | (() => string | number) | undefined | null;
 
 /**
  * Style object with support for reactive values
@@ -148,10 +143,7 @@ function camelToKebab(str: string): string {
  * </div>
  * ```
  */
-export function cssVar(
-  name: string,
-  value: StyleValue
-): CSSProperties {
+export function cssVar(name: string, value: StyleValue): CSSProperties {
   const varName = name.startsWith('--') ? name : `--${name}`;
   return styles({ [varName]: value });
 }
@@ -176,9 +168,7 @@ export function cssVar(
  * </div>
  * ```
  */
-export function cssVars(
-  vars: Record<string, StyleValue>
-): CSSProperties {
+export function cssVars(vars: Record<string, StyleValue>): CSSProperties {
   const result: StyleObject = {};
 
   for (const [name, value] of Object.entries(vars)) {
@@ -216,7 +206,7 @@ export function conditionalStyles(
   falseStyles?: StyleObject
 ): CSSProperties {
   const isTrue = typeof condition === 'function' ? condition() : condition;
-  return styles(isTrue ? trueStyles : (falseStyles || {}));
+  return styles(isTrue ? trueStyles : falseStyles || {});
 }
 
 /**
@@ -238,11 +228,7 @@ export function conditionalStyles(
  * ```
  */
 export function sizeStyles(
-  size:
-    | number
-    | string
-    | { width?: number | string; height?: number | string }
-    | (() => number | string)
+  size: number | string | { width?: number | string; height?: number | string } | (() => number | string)
 ): CSSProperties {
   if (typeof size === 'function') {
     const resolved = size();
@@ -345,12 +331,8 @@ export function gridStyles(grid: {
 }): CSSProperties {
   return styles({
     display: 'grid',
-    gridTemplateColumns:
-      typeof grid.columns === 'number'
-        ? `repeat(${grid.columns}, 1fr)`
-        : grid.columns,
-    gridTemplateRows:
-      typeof grid.rows === 'number' ? `repeat(${grid.rows}, 1fr)` : grid.rows,
+    gridTemplateColumns: typeof grid.columns === 'number' ? `repeat(${grid.columns}, 1fr)` : grid.columns,
+    gridTemplateRows: typeof grid.rows === 'number' ? `repeat(${grid.rows}, 1fr)` : grid.rows,
     gap: grid.gap,
     columnGap: grid.columnGap,
     rowGap: grid.rowGap,

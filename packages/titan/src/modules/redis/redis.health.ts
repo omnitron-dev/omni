@@ -10,11 +10,7 @@ export interface HealthIndicatorResult {
 }
 
 export abstract class HealthIndicator {
-  protected getStatus(
-    key: string,
-    isHealthy: boolean,
-    data?: Record<string, any>,
-  ): HealthIndicatorResult {
+  protected getStatus(key: string, isHealthy: boolean, data?: Record<string, any>): HealthIndicatorResult {
     return {
       [key]: {
         status: isHealthy ? 'up' : 'down',

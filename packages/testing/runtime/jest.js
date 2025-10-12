@@ -11,6 +11,6 @@ if (typeof global !== 'undefined' && global.jest) {
     beforeAll: global.beforeAll,
     beforeEach: global.beforeEach,
     afterEach: global.afterEach,
-    afterAll: global.afterAll
+    afterAll: global.afterAll,
   };
 }

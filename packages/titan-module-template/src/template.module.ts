@@ -9,21 +9,14 @@
  */
 
 import { Container, createToken, IModule } from '@omnitron-dev/titan/nexus';
-import {
-  IApplication,
-  IHealthStatus
-} from '@omnitron-dev/titan';
-import type {
-  TemplateModuleOptions,
-  TemplateModuleAsyncOptions,
-  TemplateOptionsFactory
-} from './types.js';
+import { IApplication, IHealthStatus } from '@omnitron-dev/titan';
+import type { TemplateModuleOptions, TemplateModuleAsyncOptions, TemplateOptionsFactory } from './types.js';
 import {
   TEMPLATE_MODULE_OPTIONS,
   TEMPLATE_SERVICE,
   TEMPLATE_CACHE_SERVICE,
   TEMPLATE_LOGGER,
-  DEFAULT_OPTIONS
+  DEFAULT_OPTIONS,
 } from './constants.js';
 import { TemplateService } from './services/template.service.js';
 import { CacheService } from './services/cache.service.js';
@@ -106,22 +99,22 @@ export class TemplateModule implements IModule {
 
     // Register options
     this.container.register(TEMPLATE_MODULE_OPTIONS, {
-      useValue: this.options
+      useValue: this.options,
     });
 
     // Register logger
     this.container.register(TEMPLATE_LOGGER, {
-      useClass: LoggerService
+      useClass: LoggerService,
     });
 
     // Register cache service
     this.container.register(TEMPLATE_CACHE_SERVICE, {
-      useClass: CacheService
+      useClass: CacheService,
     });
 
     // Register main service
     this.container.register(TEMPLATE_SERVICE, {
-      useClass: TemplateService
+      useClass: TemplateService,
     });
 
     // Get logger instance
@@ -197,14 +190,14 @@ export class TemplateModule implements IModule {
 
       return {
         status: result.status === 'healthy' ? 'healthy' : 'unhealthy',
-        details: result.checks
+        details: result.checks,
       };
     } catch (error) {
       return {
         status: 'unhealthy',
         details: {
-          error: (error as Error).message
-        }
+          error: (error as Error).message,
+        },
       };
     }
   }
@@ -217,14 +210,14 @@ export class TemplateModule implements IModule {
 
     if (asyncOptions.useFactory) {
       const inject = asyncOptions.inject || [];
-      const deps = inject.map(token => this.container.resolve(token));
+      const deps = inject.map((token) => this.container.resolve(token));
       options = await asyncOptions.useFactory(...deps);
     } else if (asyncOptions.useExisting) {
       const factory = this.container.resolve(asyncOptions.useExisting);
       options = await factory.createTemplateOptions();
     } else if (asyncOptions.useClass) {
       this.container.register(createToken<TemplateOptionsFactory>('TEMP_FACTORY'), {
-        useClass: asyncOptions.useClass
+        useClass: asyncOptions.useClass,
       });
       const factory = this.container.resolve<TemplateOptionsFactory>(createToken('TEMP_FACTORY'));
       options = await factory.createTemplateOptions();

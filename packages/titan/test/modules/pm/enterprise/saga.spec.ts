@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import {
   SagaOrchestrator,
   DistributedTransactionManager,
-  type ISagaStep
+  type ISagaStep,
 } from '../../../../src/modules/pm/enterprise/saga.js';
 
 // Mock logger
@@ -15,7 +15,7 @@ const mockLogger = {
   info: jest.fn(),
   error: jest.fn(),
   warn: jest.fn(),
-  debug: jest.fn()
+  debug: jest.fn(),
 } as any;
 
 // Test saga steps
@@ -65,7 +65,7 @@ describe('SagaOrchestrator', () => {
     orchestrator = new SagaOrchestrator(mockLogger as any, {
       mode: 'orchestration',
       timeout: 5000,
-      retries: 2
+      retries: 2,
     });
     OrderSagaSteps.reset();
   });
@@ -76,27 +76,27 @@ describe('SagaOrchestrator', () => {
         {
           name: 'reserve-inventory',
           handler: OrderSagaSteps.reserveInventory,
-          compensate: OrderSagaSteps.releaseInventory
+          compensate: OrderSagaSteps.releaseInventory,
         },
         {
           name: 'charge-payment',
           handler: OrderSagaSteps.chargePayment,
           compensate: OrderSagaSteps.refundPayment,
-          dependsOn: ['reserve-inventory']
+          dependsOn: ['reserve-inventory'],
         },
         {
           name: 'create-order',
           handler: OrderSagaSteps.createOrder,
           compensate: OrderSagaSteps.cancelOrder,
-          dependsOn: ['charge-payment']
-        }
+          dependsOn: ['charge-payment'],
+        },
       ];
 
       orchestrator.registerSaga('order-saga', steps);
 
       const result = await orchestrator.execute('order-saga', {
         items: ['item1', 'item2'],
-        payment: { amount: 100 }
+        payment: { amount: 100 },
       });
 
       expect(result).toBeDefined();
@@ -112,11 +112,11 @@ describe('SagaOrchestrator', () => {
         {
           name: 'step1',
           handler: async () => {
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
             executionOrder.push('step1');
             return 'result1';
           },
-          parallel: true
+          parallel: true,
         },
         {
           name: 'step2',
@@ -124,7 +124,7 @@ describe('SagaOrchestrator', () => {
             executionOrder.push('step2');
             return 'result2';
           },
-          parallel: true
+          parallel: true,
         },
         {
           name: 'step3',
@@ -132,8 +132,8 @@ describe('SagaOrchestrator', () => {
             executionOrder.push('step3');
             return 'result3';
           },
-          dependsOn: ['step1', 'step2']
-        }
+          dependsOn: ['step1', 'step2'],
+        },
       ];
 
       orchestrator.registerSaga('parallel-saga', steps);
@@ -152,7 +152,7 @@ describe('SagaOrchestrator', () => {
         {
           name: 'reserve-inventory',
           handler: OrderSagaSteps.reserveInventory,
-          compensate: OrderSagaSteps.releaseInventory
+          compensate: OrderSagaSteps.releaseInventory,
         },
         {
           name: 'charge-payment',
@@ -160,8 +160,8 @@ describe('SagaOrchestrator', () => {
             throw new Error('Payment failed');
           },
           compensate: OrderSagaSteps.refundPayment,
-          dependsOn: ['reserve-inventory']
-        }
+          dependsOn: ['reserve-inventory'],
+        },
       ];
 
       orchestrator.registerSaga('failing-saga', steps);
@@ -181,7 +181,7 @@ describe('SagaOrchestrator', () => {
           handler: async () => 'result1',
           compensate: async () => {
             compensationOrder.push('compensate1');
-          }
+          },
         },
         {
           name: 'step2',
@@ -189,7 +189,7 @@ describe('SagaOrchestrator', () => {
           compensate: async () => {
             compensationOrder.push('compensate2');
           },
-          dependsOn: ['step1']
+          dependsOn: ['step1'],
         },
         {
           name: 'step3',
@@ -199,8 +199,8 @@ describe('SagaOrchestrator', () => {
           compensate: async () => {
             compensationOrder.push('compensate3');
           },
-          dependsOn: ['step2']
-        }
+          dependsOn: ['step2'],
+        },
       ];
 
       orchestrator.registerSaga('compensation-order-saga', steps);
@@ -215,19 +215,19 @@ describe('SagaOrchestrator', () => {
   describe('Choreography Mode', () => {
     it('should execute saga in choreography mode', async () => {
       const choreographyOrchestrator = new SagaOrchestrator(mockLogger as any, {
-        mode: 'choreography'
+        mode: 'choreography',
       });
 
       const steps: ISagaStep[] = [
         {
           name: 'init',
-          handler: async () => ({ initialized: true })
+          handler: async () => ({ initialized: true }),
         },
         {
           name: 'process',
           handler: async (data: any) => ({ ...data, processed: true }),
-          dependsOn: ['init']
-        }
+          dependsOn: ['init'],
+        },
       ];
 
       choreographyOrchestrator.registerSaga('choreography-saga', steps);
@@ -253,8 +253,8 @@ describe('SagaOrchestrator', () => {
             }
             return 'success';
           },
-          retries: 2
-        }
+          retries: 2,
+        },
       ];
 
       orchestrator.registerSaga('retry-saga', steps);
@@ -270,8 +270,8 @@ describe('SagaOrchestrator', () => {
       const steps: ISagaStep[] = [
         {
           name: 'simple-step',
-          handler: async () => 'done'
-        }
+          handler: async () => 'done',
+        },
       ];
 
       orchestrator.registerSaga('status-saga', steps);
@@ -316,7 +316,7 @@ describe('DistributedTransactionManager', () => {
         async rollback(txId: string): Promise<void> {
           this.prepared = false;
           this.committed = false;
-        }
+        },
       };
 
       const participant2 = {
@@ -332,7 +332,7 @@ describe('DistributedTransactionManager', () => {
         async rollback(txId: string): Promise<void> {
           this.prepared = false;
           this.committed = false;
-        }
+        },
       };
 
       // Register participants
@@ -366,7 +366,7 @@ describe('DistributedTransactionManager', () => {
         async commit(txId: string): Promise<void> {},
         async rollback(txId: string): Promise<void> {
           this.prepared = false;
-        }
+        },
       };
 
       const participant2 = {
@@ -378,7 +378,7 @@ describe('DistributedTransactionManager', () => {
         async commit(txId: string): Promise<void> {},
         async rollback(txId: string): Promise<void> {
           this.prepared = false;
-        }
+        },
       };
 
       txManager.registerParticipant('p1', participant1);

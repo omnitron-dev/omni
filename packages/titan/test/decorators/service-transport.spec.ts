@@ -349,10 +349,7 @@ describe('Service Decorator with Transports', () => {
 
   describe('Complex Service Scenarios', () => {
     it('should handle service with methods, properties, and transports', () => {
-      const transports = [
-        new WebSocketTransport({ port: 8080 }),
-        new TcpTransport({ port: 3000 }),
-      ];
+      const transports = [new WebSocketTransport({ port: 8080 }), new TcpTransport({ port: 3000 })];
 
       @Service({
         name: 'complex@1.0.0',
@@ -413,9 +410,9 @@ describe('Service Decorator with Transports', () => {
 
     it('should support dynamic transport creation', () => {
       const createTransports = (basePort: number): ITransport[] => [
-          new WebSocketTransport({ port: basePort }),
-          new TcpTransport({ port: basePort + 1 }),
-        ];
+        new WebSocketTransport({ port: basePort }),
+        new TcpTransport({ port: basePort + 1 }),
+      ];
 
       @Service({
         name: 'dynamic@1.0.0',

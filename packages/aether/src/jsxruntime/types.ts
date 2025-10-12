@@ -67,7 +67,7 @@ export function isRenderable(value: any): boolean {
  */
 export function normalizeChildren(children: JSXChild): JSXChild[] {
   if (Array.isArray(children)) {
-    return children.flat(Infinity).filter(child => child != null);
+    return children.flat(Infinity).filter((child) => child != null);
   }
   return children != null ? [children] : [];
 }

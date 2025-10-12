@@ -40,8 +40,7 @@ import { Dialog } from './Dialog.js';
 // Types
 // ============================================================================
 
-export interface CommandPaletteProps
-   {
+export interface CommandPaletteProps {
   children?: any;
   /** Whether the command palette is open */
   open?: boolean;
@@ -54,35 +53,30 @@ export interface CommandPaletteProps
   [key: string]: any;
 }
 
-export interface CommandPaletteDialogProps
-   {
+export interface CommandPaletteDialogProps {
   children?: any;
   [key: string]: any;
 }
 
-export interface CommandPaletteInputProps
-   {
+export interface CommandPaletteInputProps {
   value?: string;
   onInput?: (event: Event) => void;
   [key: string]: any;
 }
 
-export interface CommandPaletteListProps
-   {
+export interface CommandPaletteListProps {
   children?: any;
   [key: string]: any;
 }
 
-export interface CommandPaletteGroupProps
-   {
+export interface CommandPaletteGroupProps {
   children?: any;
   /** Heading for the group */
   heading?: string;
   [key: string]: any;
 }
 
-export interface CommandPaletteItemProps
-   {
+export interface CommandPaletteItemProps {
   children?: any;
   /** Value for filtering/search */
   value?: string;
@@ -95,17 +89,14 @@ export interface CommandPaletteItemProps
   [key: string]: any;
 }
 
-export interface CommandPaletteSeparatorProps
-   {}
+export interface CommandPaletteSeparatorProps {}
 
-export interface CommandPaletteShortcutProps
-   {
+export interface CommandPaletteShortcutProps {
   children?: any;
   [key: string]: any;
 }
 
-export interface CommandPaletteEmptyProps
-   {
+export interface CommandPaletteEmptyProps {
   children?: any;
   [key: string]: any;
 }
@@ -131,9 +122,7 @@ const CommandPaletteContext = createContext<CommandPaletteContextValue | undefin
 function useCommandPaletteContext(): CommandPaletteContextValue {
   const context = useContext(CommandPaletteContext);
   if (!context) {
-    throw new Error(
-      'CommandPalette components must be used within a CommandPalette component',
-    );
+    throw new Error('CommandPalette components must be used within a CommandPalette component');
   }
   return context;
 }
@@ -153,7 +142,7 @@ export const CommandPalette = defineComponent<CommandPaletteProps>((props) => {
   const itemElements: WritableSignal<HTMLElement[]> = signal<HTMLElement[]>([]);
 
   const isControlled = () => props.open !== undefined;
-  const currentOpen = () => (isControlled() ? props.open ?? false : internalOpen());
+  const currentOpen = () => (isControlled() ? (props.open ?? false) : internalOpen());
 
   const setOpen = (open: boolean) => {
     if (!isControlled()) {
@@ -421,11 +410,12 @@ export const CommandPaletteItem = defineComponent<CommandPaletteItemProps>((prop
  * Visual separator between groups
  */
 export const CommandPaletteSeparator = defineComponent<CommandPaletteSeparatorProps>(
-  (props) => () => jsx('div', {
+  (props) => () =>
+    jsx('div', {
       ...props,
       role: 'separator',
       'data-command-palette-separator': '',
-    }),
+    })
 );
 
 /**

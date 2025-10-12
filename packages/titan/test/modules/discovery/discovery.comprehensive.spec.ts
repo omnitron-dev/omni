@@ -9,23 +9,16 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import { Redis } from 'ioredis';
 import { Container } from '@nexus';
 import { DiscoveryService } from '../../../src/modules/discovery/discovery.service.js';
-import {
-  createDiscoveryModule
-} from '../../../src/modules/discovery/discovery.module.js';
+import { createDiscoveryModule } from '../../../src/modules/discovery/discovery.module.js';
 import {
   REDIS_TOKEN,
   LOGGER_TOKEN,
   DISCOVERY_OPTIONS_TOKEN,
   DISCOVERY_SERVICE_TOKEN,
   type ServiceInfo,
-  type DiscoveryOptions
+  type DiscoveryOptions,
 } from '../../../src/modules/discovery/types.js';
-import {
-  createTestRedisClient,
-  cleanupRedis,
-  createMockLogger,
-  waitFor
-} from './test-utils.js';
+import { createTestRedisClient, cleanupRedis, createMockLogger, waitFor } from './test-utils.js';
 
 describe('Discovery Module - Comprehensive Tests', () => {
   let redis: Redis;
@@ -88,7 +81,7 @@ describe('Discovery Module - Comprehensive Tests', () => {
         pubSubChannel: 'custom:channel',
         redisPrefix: 'custom:prefix',
         maxRetries: 5,
-        retryDelay: 2000
+        retryDelay: 2000,
       };
 
       container.register(REDIS_TOKEN, { useValue: redis });
@@ -115,9 +108,7 @@ describe('Discovery Module - Comprehensive Tests', () => {
       await service.start();
 
       expect(service.isRegistered()).toBe(false);
-      expect(logger.info).toHaveBeenCalledWith(
-        expect.stringContaining('client mode')
-      );
+      expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('client mode'));
     });
 
     it('should throw if Redis is not provided', () => {
@@ -139,7 +130,7 @@ describe('Discovery Module - Comprehensive Tests', () => {
       container.register(REDIS_TOKEN, { useValue: redis });
       container.register(LOGGER_TOKEN, { useValue: logger });
       container.register(DISCOVERY_OPTIONS_TOKEN, {
-        useValue: { heartbeatInterval: 1000, heartbeatTTL: 3000 }
+        useValue: { heartbeatInterval: 1000, heartbeatTTL: 3000 },
       });
       container.register(DiscoveryService, { useClass: DiscoveryService });
       service = container.resolve(DiscoveryService);
@@ -233,7 +224,7 @@ describe('Discovery Module - Comprehensive Tests', () => {
       const heartbeatKey = `titan:discovery:heartbeat:${nodeId}`;
 
       // Wait a bit and check that heartbeat is not renewed
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
       const ttl = await redis.pttl(heartbeatKey);
 
       // Should be expired or very low
@@ -246,7 +237,7 @@ describe('Discovery Module - Comprehensive Tests', () => {
       container.register(REDIS_TOKEN, { useValue: redis });
       container.register(LOGGER_TOKEN, { useValue: logger });
       container.register(DISCOVERY_OPTIONS_TOKEN, {
-        useValue: { heartbeatInterval: 1000 }
+        useValue: { heartbeatInterval: 1000 },
       });
       container.register(DiscoveryService, { useClass: DiscoveryService });
       service = container.resolve(DiscoveryService);
@@ -273,7 +264,7 @@ describe('Discovery Module - Comprehensive Tests', () => {
     it('should register multiple services', async () => {
       const services: ServiceInfo[] = [
         { name: 'Service1', version: '1.0.0' },
-        { name: 'Service2', version: '2.0.0' }
+        { name: 'Service2', version: '2.0.0' },
       ];
 
       for (const svc of services) {
@@ -303,7 +294,7 @@ describe('Discovery Module - Comprehensive Tests', () => {
 
       const newServices: ServiceInfo[] = [
         { name: 'Service2', version: '2.0.0' },
-        { name: 'Service3', version: '3.0.0' }
+        { name: 'Service3', version: '3.0.0' },
       ];
 
       await service.updateServices(newServices);
@@ -332,7 +323,7 @@ describe('Discovery Module - Comprehensive Tests', () => {
       container.register(REDIS_TOKEN, { useValue: redis });
       container.register(LOGGER_TOKEN, { useValue: logger });
       container.register(DISCOVERY_OPTIONS_TOKEN, {
-        useValue: { heartbeatInterval: 1000 }
+        useValue: { heartbeatInterval: 1000 },
       });
       container.register(DiscoveryService, { useClass: DiscoveryService });
       service1 = container.resolve(DiscoveryService);
@@ -342,7 +333,7 @@ describe('Discovery Module - Comprehensive Tests', () => {
       container2.register(REDIS_TOKEN, { useValue: redis });
       container2.register(LOGGER_TOKEN, { useValue: createMockLogger() });
       container2.register(DISCOVERY_OPTIONS_TOKEN, {
-        useValue: { heartbeatInterval: 1000 }
+        useValue: { heartbeatInterval: 1000 },
       });
       container2.register(DiscoveryService, { useClass: DiscoveryService });
       service2 = container2.resolve(DiscoveryService);
@@ -368,7 +359,7 @@ describe('Discovery Module - Comprehensive Tests', () => {
 
       expect(nodes).toHaveLength(2);
 
-      const nodeIds = nodes.map(n => n.nodeId);
+      const nodeIds = nodes.map((n) => n.nodeId);
       expect(nodeIds).toContain(service1.getNodeId());
       expect(nodeIds).toContain(service2.getNodeId());
     });
@@ -414,7 +405,7 @@ describe('Discovery Module - Comprehensive Tests', () => {
       await service2.stop();
 
       // Wait for heartbeat to expire
-      await new Promise(resolve => setTimeout(resolve, 3500));
+      await new Promise((resolve) => setTimeout(resolve, 3500));
 
       const activeNodes = await service1.findNodes();
 
@@ -428,7 +419,7 @@ describe('Discovery Module - Comprehensive Tests', () => {
       container.register(REDIS_TOKEN, { useValue: redis });
       container.register(LOGGER_TOKEN, { useValue: logger });
       container.register(DISCOVERY_OPTIONS_TOKEN, {
-        useValue: { heartbeatInterval: 1000 }
+        useValue: { heartbeatInterval: 1000 },
       });
       container.register(DiscoveryService, { useClass: DiscoveryService });
       service = container.resolve(DiscoveryService);
@@ -452,9 +443,7 @@ describe('Discovery Module - Comprehensive Tests', () => {
 
     it('should update services and address simultaneously', async () => {
       const newAddress = '192.168.1.100:8080';
-      const newServices: ServiceInfo[] = [
-        { name: 'UpdatedService', version: '3.0.0' }
-      ];
+      const newServices: ServiceInfo[] = [{ name: 'UpdatedService', version: '3.0.0' }];
 
       await service.updateAddress(newAddress);
       await service.updateServices(newServices);
@@ -469,7 +458,7 @@ describe('Discovery Module - Comprehensive Tests', () => {
       container.register(REDIS_TOKEN, { useValue: redis });
       container.register(LOGGER_TOKEN, { useValue: logger });
       container.register(DISCOVERY_OPTIONS_TOKEN, {
-        useValue: { heartbeatInterval: 1000 }
+        useValue: { heartbeatInterval: 1000 },
       });
       container.register(DiscoveryService, { useClass: DiscoveryService });
       service = container.resolve(DiscoveryService);
@@ -510,9 +499,7 @@ describe('Discovery Module - Comprehensive Tests', () => {
       await pubSubService.stop();
 
       // Verify logger was called for cleanup
-      expect(logger.debug).toHaveBeenCalledWith(
-        expect.stringContaining('Unsubscribed from PubSub')
-      );
+      expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('Unsubscribed from PubSub'));
     });
   });
 
@@ -521,7 +508,7 @@ describe('Discovery Module - Comprehensive Tests', () => {
       container.register(REDIS_TOKEN, { useValue: redis });
       container.register(LOGGER_TOKEN, { useValue: logger });
       container.register(DISCOVERY_OPTIONS_TOKEN, {
-        useValue: { heartbeatInterval: 1000, maxRetries: 3 }
+        useValue: { heartbeatInterval: 1000, maxRetries: 3 },
       });
       container.register(DiscoveryService, { useClass: DiscoveryService });
       service = container.resolve(DiscoveryService);
@@ -575,14 +562,14 @@ describe('Discovery Module - Comprehensive Tests', () => {
       // Create the discovery module
       const module = createDiscoveryModule({
         heartbeatInterval: 1000,
-        clientMode: false
+        clientMode: false,
       });
 
       // Simulate app registration (normally done by Titan Application)
       const mockApp = {
         resolve: container.resolve.bind(container),
         hasProvider: container.has.bind(container),
-        register: container.register.bind(container)
+        register: container.register.bind(container),
       };
 
       // Register the module
@@ -600,14 +587,14 @@ describe('Discovery Module - Comprehensive Tests', () => {
       await module.onStart(mockApp as any);
 
       // Give it some time to register
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // Check if registered - if not, try manually triggering a heartbeat
       if (!moduleService.isRegistered()) {
         // Force a heartbeat by calling the private method directly
         // @ts-ignore - accessing private method for testing
         await moduleService.publishHeartbeat?.();
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
 
       expect(moduleService.isRegistered()).toBe(true);
@@ -639,13 +626,13 @@ describe('Discovery Module - Comprehensive Tests', () => {
       const mockApp1 = {
         resolve: container1.resolve.bind(container1),
         hasProvider: container1.has.bind(container1),
-        register: container1.register.bind(container1)
+        register: container1.register.bind(container1),
       };
 
       const mockApp2 = {
         resolve: container2.resolve.bind(container2),
         hasProvider: container2.has.bind(container2),
-        register: container2.register.bind(container2)
+        register: container2.register.bind(container2),
       };
 
       // Register modules
@@ -686,7 +673,7 @@ describe('Discovery Module - Comprehensive Tests', () => {
     clientContainer.register(REDIS_TOKEN, { useValue: redis });
     clientContainer.register(LOGGER_TOKEN, { useValue: logger });
     clientContainer.register(DISCOVERY_OPTIONS_TOKEN, {
-      useValue: { clientMode: true }
+      useValue: { clientMode: true },
     });
     clientContainer.register(DiscoveryService, { useClass: DiscoveryService });
     return clientContainer.resolve(DiscoveryService);
@@ -700,8 +687,8 @@ describe('Discovery Module - Comprehensive Tests', () => {
       useValue: {
         heartbeatInterval: 1000,
         pubSubEnabled: true,
-        pubSubChannel: 'test:channel'
-      }
+        pubSubChannel: 'test:channel',
+      },
     });
     pubSubContainer.register(DiscoveryService, { useClass: DiscoveryService });
     return pubSubContainer.resolve(DiscoveryService);

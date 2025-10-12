@@ -36,7 +36,7 @@ console.log('\n--- Async Events ---');
 
 emitter.on('async-task', async (task) => {
   console.log(`Starting ${task}...`);
-  await new Promise(resolve => setTimeout(resolve, 100));
+  await new Promise((resolve) => setTimeout(resolve, 100));
   console.log(`Completed ${task}!`);
 });
 
@@ -82,12 +82,12 @@ console.log('\n--- Metrics ---');
 
 if (enhanced.metrics) {
   enhanced.metrics.enable();
-  
+
   // Generate some events
   for (let i = 0; i < 5; i++) {
     enhanced.emit('metric-test', i);
   }
-  
+
   const summary = enhanced.metrics.getSummary();
   console.log('Event metrics:', summary);
 }

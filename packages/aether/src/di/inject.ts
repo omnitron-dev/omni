@@ -54,10 +54,7 @@ export function inject<T>(token: InjectableToken<T>, options?: InjectOptions): T
  * }
  * ```
  */
-export function Inject<T = any>(
-  token?: InjectableToken<T>,
-  options?: InjectOptions
-): PropertyDecorator {
+export function Inject<T = any>(token?: InjectableToken<T>, options?: InjectOptions): PropertyDecorator {
   return (target: any, propertyKey: string | symbol) => {
     // Store injection metadata
     const injectMetadata = Reflect.getMetadata?.('inject:properties', target.constructor) ?? [];

@@ -704,10 +704,7 @@ export class HttpRemotePeer extends AbstractPeer {
    * // Clear only HTTP cache
    * const count = await peer.invalidateCache(undefined, 'http');
    */
-  async invalidateCache(
-    pattern?: string,
-    cacheType: 'service' | 'http' | 'all' = 'all'
-  ): Promise<number> {
+  async invalidateCache(pattern?: string, cacheType: 'service' | 'http' | 'all' = 'all'): Promise<number> {
     let totalCount = 0;
 
     // Invalidate service definition cache
@@ -727,8 +724,7 @@ export class HttpRemotePeer extends AbstractPeer {
       totalCount += httpCount;
 
       this.logger.info(
-        `Invalidated ${httpCount} HTTP response cache entries` +
-          (pattern ? ` matching pattern: ${pattern}` : '')
+        `Invalidated ${httpCount} HTTP response cache entries` + (pattern ? ` matching pattern: ${pattern}` : '')
       );
     }
 
@@ -759,9 +755,7 @@ export class HttpRemotePeer extends AbstractPeer {
     // Pattern-based invalidation
     if (pattern.includes('*')) {
       // Convert wildcard pattern to regex
-      const regexPattern = pattern
-        .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-        .replace(/\*/g, '.*');
+      const regexPattern = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
       this.cacheManager.invalidate(new RegExp(`^${regexPattern}$`));
     } else {
       // Exact match

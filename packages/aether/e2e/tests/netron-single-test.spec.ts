@@ -8,8 +8,8 @@ test('debug queryInterface with detailed logging', async ({ page }) => {
   await page.goto('/');
 
   // Enable console logging
-  page.on('console', msg => console.log('BROWSER:', msg.text()));
-  page.on('pageerror', err => console.error('PAGE ERROR:', err));
+  page.on('console', (msg) => console.log('BROWSER:', msg.text()));
+  page.on('pageerror', (err) => console.error('PAGE ERROR:', err));
 
   const result = await page.evaluate(async () => {
     try {
@@ -19,7 +19,7 @@ test('debug queryInterface with detailed logging', async ({ page }) => {
       console.log('2. Creating client...');
       const client = new Netron({
         transport: 'http',
-        url: 'http://localhost:3333'
+        url: 'http://localhost:3333',
       });
 
       console.log('3. Connecting...');
@@ -40,14 +40,14 @@ test('debug queryInterface with detailed logging', async ({ page }) => {
       return {
         success: true,
         users,
-        count: users.length
+        count: users.length,
       };
     } catch (error: any) {
       console.error('Error:', error);
       return {
         success: false,
         error: error.message,
-        stack: error.stack
+        stack: error.stack,
       };
     }
   });

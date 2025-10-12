@@ -109,12 +109,7 @@ export { uuid } from './utils/uuid.js';
 export { Uid } from './utils/uid.js';
 
 // Authentication exports
-export {
-  AuthenticationClient,
-  LocalTokenStorage,
-  SessionTokenStorage,
-  MemoryTokenStorage,
-} from './auth/index.js';
+export { AuthenticationClient, LocalTokenStorage, SessionTokenStorage, MemoryTokenStorage } from './auth/index.js';
 
 export type {
   AuthCredentials,

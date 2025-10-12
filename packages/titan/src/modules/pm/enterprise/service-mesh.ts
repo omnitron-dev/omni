@@ -111,8 +111,12 @@ export class ServiceMeshProxy<T> {
     return new Proxy(this.service, {
       get: (target, property: string | symbol) => {
         // Pass through control methods
-        if (property === '__processId' || property === '__destroy' ||
-            property === '__getMetrics' || property === '__getHealth') {
+        if (
+          property === '__processId' ||
+          property === '__destroy' ||
+          property === '__getMetrics' ||
+          property === '__getHealth'
+        ) {
           return target[property];
         }
 
@@ -122,23 +126,16 @@ export class ServiceMeshProxy<T> {
         }
 
         // Wrap method with mesh capabilities
-        return async (...args: any[]) => this.executeWithMesh(
-            property as string,
-            () => (original as ProcessMethod).apply(target, args),
-            args
-          );
-      }
+        return async (...args: any[]) =>
+          this.executeWithMesh(property as string, () => (original as ProcessMethod).apply(target, args), args);
+      },
     }) as ServiceProxy<T>;
   }
 
   /**
    * Execute method with all mesh features
    */
-  private async executeWithMesh(
-    method: string,
-    fn: () => Promise<any>,
-    args: any[]
-  ): Promise<any> {
+  private async executeWithMesh(method: string, fn: () => Promise<any>, args: any[]): Promise<any> {
     const startTime = Date.now();
     const context = { method, args };
 
@@ -151,11 +148,8 @@ export class ServiceMeshProxy<T> {
 
       try {
         // Execute with circuit breaker
-        const result = await this.circuitBreaker.execute(
-          () => this.executeWithTimeout(
-            () => this.executeWithRetry(fn, context),
-            this.config.timeout
-          )
+        const result = await this.circuitBreaker.execute(() =>
+          this.executeWithTimeout(() => this.executeWithRetry(fn, context), this.config.timeout)
         );
 
         // Record success metrics
@@ -183,10 +177,7 @@ export class ServiceMeshProxy<T> {
   /**
    * Execute with timeout
    */
-  private async executeWithTimeout<R>(
-    fn: () => Promise<R>,
-    timeout?: number
-  ): Promise<R> {
+  private async executeWithTimeout<R>(fn: () => Promise<R>, timeout?: number): Promise<R> {
     if (!timeout) {
       return fn();
     }
@@ -194,11 +185,8 @@ export class ServiceMeshProxy<T> {
     return Promise.race([
       fn(),
       new Promise<R>((_, reject) =>
-        setTimeout(
-          () => reject(Errors.timeout('service mesh operation', timeout)),
-          timeout
-        )
-      )
+        setTimeout(() => reject(Errors.timeout('service mesh operation', timeout)), timeout)
+      ),
     ]);
   }
 
@@ -210,7 +198,7 @@ export class ServiceMeshProxy<T> {
       circuitBreaker: this.circuitBreaker.getState(),
       rateLimiter: this.rateLimiter.getMetrics(),
       bulkhead: this.bulkhead.getMetrics(),
-      service: this.metrics.getMetrics()
+      service: this.metrics.getMetrics(),
     };
   }
 }
@@ -305,7 +293,7 @@ class CircuitBreaker {
     return {
       state: this.state,
       failures: this.failures,
-      lastFailTime: this.lastFailTime
+      lastFailTime: this.lastFailTime,
     };
   }
 }
@@ -348,10 +336,7 @@ class RateLimiter {
 
     // Refill tokens
     const tokensToAdd = (timePassed / 1000) * rps;
-    this.tokens = Math.min(
-      this.tokens + tokensToAdd,
-      this.config.burst || rps
-    );
+    this.tokens = Math.min(this.tokens + tokensToAdd, this.config.burst || rps);
     this.lastRefill = now;
 
     // Check if we have tokens
@@ -403,7 +388,7 @@ class RateLimiter {
     return {
       tokens: this.tokens,
       windowRequests: this.windowRequests,
-      rps: this.config.rps
+      rps: this.config.rps,
     };
   }
 }
@@ -435,7 +420,7 @@ class Bulkhead {
         release: () => {
           this.concurrent--;
           this.processQueue();
-        }
+        },
       };
     }
 
@@ -461,7 +446,7 @@ class Bulkhead {
       release: () => {
         this.concurrent--;
         this.processQueue();
-      }
+      },
     }));
   }
 
@@ -477,7 +462,7 @@ class Bulkhead {
     return {
       concurrent: this.concurrent,
       queueSize: this.queue.length,
-      maxConcurrent: this.config.maxConcurrent
+      maxConcurrent: this.config.maxConcurrent,
     };
   }
 }
@@ -510,10 +495,7 @@ class RetryManager {
           const delay = this.calculateDelay(attempt, backoff, maxDelay, factor);
           const jitteredDelay = jitter ? this.addJitter(delay) : delay;
 
-          this.logger.debug(
-            { attempt, delay: jitteredDelay, context },
-            'Retrying after failure'
-          );
+          this.logger.debug({ attempt, delay: jitteredDelay, context }, 'Retrying after failure');
 
           await this.sleep(jitteredDelay);
         }
@@ -523,12 +505,7 @@ class RetryManager {
     throw lastError || Errors.internal('Retry failed');
   }
 
-  private calculateDelay(
-    attempt: number,
-    backoff: string,
-    maxDelay: number,
-    factor: number
-  ): number {
+  private calculateDelay(attempt: number, backoff: string, maxDelay: number, factor: number): number {
     let delay: number;
 
     switch (backoff) {
@@ -552,7 +529,7 @@ class RetryManager {
   }
 
   private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 
@@ -596,12 +573,15 @@ class ServiceMetrics {
       successes: this.successes,
       failures: this.failures,
       successRate: this.requests > 0 ? this.successes / this.requests : 0,
-      latency: len > 0 ? {
-        p50: sorted[Math.floor(len * 0.5)],
-        p90: sorted[Math.floor(len * 0.9)],
-        p99: sorted[Math.floor(len * 0.99)],
-        mean: sorted.reduce((a, b) => a + b, 0) / len
-      } : null
+      latency:
+        len > 0
+          ? {
+              p50: sorted[Math.floor(len * 0.5)],
+              p90: sorted[Math.floor(len * 0.9)],
+              p99: sorted[Math.floor(len * 0.99)],
+              mean: sorted.reduce((a, b) => a + b, 0) / len,
+            }
+          : null,
     };
   }
 }

@@ -71,13 +71,7 @@ class AdvancedUserService {
       .selectFrom('users')
       .innerJoin('profiles', 'users.id', 'profiles.user_id')
       .where('users.active', '=', true)
-      .select([
-        'users.id',
-        'users.email',
-        'users.name',
-        'profiles.bio',
-        'profiles.avatar_url',
-      ])
+      .select(['users.id', 'users.email', 'users.name', 'profiles.bio', 'profiles.avatar_url'])
       .execute();
   }
 
@@ -119,11 +113,13 @@ class AdvancedUserService {
   async batchInsertUsers(users: Partial<User>[]): Promise<void> {
     await this.db
       .insertInto('users')
-      .values(users.map(u => ({
-        ...u,
-        created_at: new Date(),
-        updated_at: new Date(),
-      })))
+      .values(
+        users.map((u) => ({
+          ...u,
+          created_at: new Date(),
+          updated_at: new Date(),
+        }))
+      )
       .execute();
   }
 }
@@ -461,14 +457,12 @@ describe('Advanced Database Features', () => {
       const result = await userService.listUsers({
         page: 1,
         limit: 5,
-        orderBy: [
-          { column: 'name', direction: 'desc' }
-        ],
+        orderBy: [{ column: 'name', direction: 'desc' }],
       });
 
       expect(result.data).toHaveLength(5);
       // Check that results are ordered
-      const names = result.data.map(u => u.name);
+      const names = result.data.map((u) => u.name);
       const sortedNames = [...names].sort((a, b) => b.localeCompare(a));
       expect(names).toEqual(sortedNames);
     });

@@ -3,10 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import {
-  NetronBuiltinMiddleware,
-  type NetronMiddlewareContext
-} from '../../../src/netron/middleware/index.js';
+import { NetronBuiltinMiddleware, type NetronMiddlewareContext } from '../../../src/netron/middleware/index.js';
 import { TitanError } from '../../../src/errors/index.js';
 
 describe('NetronBuiltinMiddleware - Branch Coverage', () => {
@@ -21,8 +18,8 @@ describe('NetronBuiltinMiddleware - Branch Coverage', () => {
       metadata: new Map(),
       timing: {
         start: Date.now(),
-        middlewareTimes: new Map()
-      }
+        middlewareTimes: new Map(),
+      },
     };
     mockNext = jest.fn(async () => {});
   });
@@ -44,7 +41,7 @@ describe('NetronBuiltinMiddleware - Branch Coverage', () => {
     it('should use custom maxRequests and window when provided', async () => {
       const middleware = NetronBuiltinMiddleware.rateLimit({
         maxRequests: 5,
-        window: 1000
+        window: 1000,
       });
       mockContext.metadata.set('clientId', 'test-client');
 
@@ -77,7 +74,7 @@ describe('NetronBuiltinMiddleware - Branch Coverage', () => {
       const middleware = NetronBuiltinMiddleware.circuitBreaker({
         threshold: 2,
         timeout: 1000,
-        resetTimeout: 500
+        resetTimeout: 500,
       });
       const error = new Error('Service error');
       mockNext.mockRejectedValue(error);
@@ -95,7 +92,7 @@ describe('NetronBuiltinMiddleware - Branch Coverage', () => {
   describe('rateLimitMiddleware - retryAfter fallback', () => {
     it('should use default retryAfter value of 60 when not provided', async () => {
       const limiter = {
-        check: jest.fn(async () => ({ allowed: false, retryAfter: undefined }))
+        check: jest.fn(async () => ({ allowed: false, retryAfter: undefined })),
       };
 
       const middleware = NetronBuiltinMiddleware.rateLimitMiddleware(limiter as any);
@@ -111,7 +108,7 @@ describe('NetronBuiltinMiddleware - Branch Coverage', () => {
 
     it('should use provided retryAfter value when available', async () => {
       const limiter = {
-        check: jest.fn(async () => ({ allowed: false, retryAfter: 120 }))
+        check: jest.fn(async () => ({ allowed: false, retryAfter: 120 })),
       };
 
       const middleware = NetronBuiltinMiddleware.rateLimitMiddleware(limiter as any);
@@ -167,7 +164,7 @@ describe('NetronBuiltinMiddleware - Branch Coverage', () => {
   describe('validationMiddleware - errors fallback', () => {
     it('should use empty array when validator returns no errors', async () => {
       const validator = {
-        validate: jest.fn(() => ({ valid: false, errors: undefined }))
+        validate: jest.fn(() => ({ valid: false, errors: undefined })),
       };
 
       const middleware = NetronBuiltinMiddleware.validationMiddleware(validator);
@@ -185,8 +182,8 @@ describe('NetronBuiltinMiddleware - Branch Coverage', () => {
       const validator = {
         validate: jest.fn(() => ({
           valid: false,
-          errors: ['Error 1', 'Error 2']
-        }))
+          errors: ['Error 1', 'Error 2'],
+        })),
       };
 
       const middleware = NetronBuiltinMiddleware.validationMiddleware(validator);

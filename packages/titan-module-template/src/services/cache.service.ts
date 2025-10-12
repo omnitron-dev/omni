@@ -6,11 +6,7 @@
  */
 
 import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
-import {
-  TEMPLATE_MODULE_OPTIONS,
-  TEMPLATE_LOGGER,
-  CACHE_PREFIX
-} from '../constants.js';
+import { TEMPLATE_MODULE_OPTIONS, TEMPLATE_LOGGER, CACHE_PREFIX } from '../constants.js';
 import type { TemplateModuleOptions } from '../types.js';
 import { LoggerService } from './logger.service.js';
 import { createCacheKey, isExpired } from '../utils.js';
@@ -91,7 +87,7 @@ export class CacheService {
     const entry: CacheEntry<T> = {
       value,
       timestamp: Date.now(),
-      ttl: ttl || this.options.cacheTTL
+      ttl: ttl || this.options.cacheTTL,
     };
 
     this.cache.set(fullKey, entry);
@@ -163,19 +159,15 @@ export class CacheService {
     const entries = Array.from(this.cache.entries());
     const now = Date.now();
 
-    const expired = entries.filter(([_, entry]) =>
-      entry.ttl && isExpired(entry.timestamp, entry.ttl)
-    ).length;
+    const expired = entries.filter(([_, entry]) => entry.ttl && isExpired(entry.timestamp, entry.ttl)).length;
 
-    const avgAge = entries.reduce((sum, [_, entry]) =>
-      sum + (now - entry.timestamp), 0
-    ) / (entries.length || 1);
+    const avgAge = entries.reduce((sum, [_, entry]) => sum + (now - entry.timestamp), 0) / (entries.length || 1);
 
     return {
       size: this.cache.size,
       expired,
       avgAge: Math.round(avgAge / 1000), // In seconds
-      enabled: this.options.enableCache
+      enabled: this.options.enableCache,
     };
   }
 

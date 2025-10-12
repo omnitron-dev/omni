@@ -108,16 +108,12 @@ export const Transfer = defineComponent<TransferProps>((props) => {
 
   const toggleSourceSelection = (key: string) => {
     const selected = selectedSource();
-    selectedSource.set(
-      selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key],
-    );
+    selectedSource.set(selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key]);
   };
 
   const toggleTargetSelection = (key: string) => {
     const selected = selectedTarget();
-    selectedTarget.set(
-      selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key],
-    );
+    selectedTarget.set(selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key]);
   };
 
   const contextValue: TransferContextValue = {
@@ -185,7 +181,8 @@ export const TransferList = defineComponent<{ type: 'source' | 'target'; childre
     });
   };
 
-  return () => jsx('div', {
+  return () =>
+    jsx('div', {
       ref: refCallback,
       'data-transfer-list': '',
       'data-type': props.type,

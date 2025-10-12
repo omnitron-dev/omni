@@ -13,9 +13,7 @@ import type { ITransport } from '../src/netron/transport/types.js';
  */
 @Service({
   name: 'chat@1.0.0',
-  transports: [
-    new WebSocketTransport({ port: 8080 })
-  ]
+  transports: [new WebSocketTransport({ port: 8080 })],
 })
 class ChatService {
   @Public()
@@ -26,7 +24,9 @@ class ChatService {
   @Public()
   async getHistory(limit: number = 10): Promise<string[]> {
     // Return mock history
-    return Array(limit).fill(null).map((_, i) => `Message ${i + 1}`);
+    return Array(limit)
+      .fill(null)
+      .map((_, i) => `Message ${i + 1}`);
   }
 }
 
@@ -35,15 +35,12 @@ class ChatService {
  */
 @Service({
   name: 'calculator@2.0.0',
-  transports: [
-    new WebSocketTransport({ port: 8080 }),
-    new TcpTransport({ port: 3000 })
-  ],
+  transports: [new WebSocketTransport({ port: 8080 }), new TcpTransport({ port: 3000 })],
   transportConfig: {
     timeout: 5000,
     compression: true,
-    maxMessageSize: 1024 * 1024 // 1MB
-  }
+    maxMessageSize: 1024 * 1024, // 1MB
+  },
 })
 class CalculatorService {
   @Public()
@@ -91,8 +88,8 @@ function createServiceTransports(config: { useWebSocket?: boolean; useTcp?: bool
   name: 'api@1.0.0',
   transports: createServiceTransports({
     useWebSocket: true,
-    useTcp: process.platform !== 'win32' // Use TCP on non-Windows platforms
-  })
+    useTcp: process.platform !== 'win32', // Use TCP on non-Windows platforms
+  }),
 })
 class ApiService {
   @Public()
@@ -100,7 +97,7 @@ class ApiService {
     return {
       id,
       data: 'Sample data',
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 
@@ -118,23 +115,17 @@ function getPlatformTransports(): ITransport[] {
   if (process.platform === 'win32') {
     // Use Named Pipes on Windows
     const { NamedPipeTransport } = require('../src/netron/transport/unix-transport.js');
-    return [
-      new NamedPipeTransport({ pipeName: 'omnitron-service' }),
-      new WebSocketTransport({ port: 8080 })
-    ];
+    return [new NamedPipeTransport({ pipeName: 'omnitron-service' }), new WebSocketTransport({ port: 8080 })];
   } else {
     // Use Unix sockets on Linux/Mac
     const { UnixSocketTransport } = require('../src/netron/transport/unix-transport.js');
-    return [
-      new UnixSocketTransport({ path: '/tmp/omnitron.sock' }),
-      new WebSocketTransport({ port: 8080 })
-    ];
+    return [new UnixSocketTransport({ path: '/tmp/omnitron.sock' }), new WebSocketTransport({ port: 8080 })];
   }
 }
 
 @Service({
   name: 'platform@1.0.0',
-  transports: getPlatformTransports()
+  transports: getPlatformTransports(),
 })
 class PlatformService {
   @Public()
@@ -148,7 +139,7 @@ class PlatformService {
       platform: process.platform,
       arch: process.arch,
       nodeVersion: process.version,
-      pid: process.pid
+      pid: process.pid,
     };
   }
 }
@@ -166,9 +157,9 @@ async function main() {
         info: console.log,
         debug: console.log,
         error: console.error,
-        warn: console.warn
-      })
-    } as any
+        warn: console.warn,
+      }),
+    } as any,
   });
 
   // Create a local peer
@@ -228,7 +219,6 @@ async function main() {
     console.log('\nAll services exposed successfully!');
     console.log('\nNote: The transports are configured but not automatically started.');
     console.log('The application should decide when and how to use these transports.');
-
   } catch (error) {
     console.error('Error exposing services:', error);
   }
@@ -239,9 +229,4 @@ if (require.main === module) {
   main().catch(console.error);
 }
 
-export {
-  ChatService,
-  CalculatorService,
-  ApiService,
-  PlatformService
-};
+export { ChatService, CalculatorService, ApiService, PlatformService };

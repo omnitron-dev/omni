@@ -8,11 +8,7 @@
 import { HttpTransportClient } from '../client.js';
 import { HttpCacheManager, type CacheOptions } from './cache-manager.js';
 import { RetryManager, type RetryOptions } from './retry-manager.js';
-import type {
-  HttpRequestContext,
-  HttpRequestHints,
-  HttpRequestMessage
-} from '../types.js';
+import type { HttpRequestContext, HttpRequestHints, HttpRequestMessage } from '../types.js';
 import { Errors } from '../../../../errors/index.js';
 
 /**
@@ -259,14 +255,15 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
         // Apply optimistic update immediately
         this.cacheManager.set(cacheKey, optimistic, {
           ...this.options.cache,
-          tags: [...(this.options.cache.tags || []), '__optimistic__']
+          tags: [...(this.options.cache.tags || []), '__optimistic__'],
         });
 
         // Execute the actual request in background
         try {
-          const fetcher = this.options.retry && this.retryManager
-            ? () => this.retryManager!.execute(() => this.executeRequest(), this.options.retry!)
-            : () => this.executeRequest();
+          const fetcher =
+            this.options.retry && this.retryManager
+              ? () => this.retryManager!.execute(() => this.executeRequest(), this.options.retry!)
+              : () => this.executeRequest();
 
           result = await fetcher();
 
@@ -288,15 +285,12 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
           const cacheKey = this.getCacheKey();
 
           // Create fetcher with retry support if both cache and retry are specified
-          const fetcher = this.options.retry && this.retryManager
-            ? () => this.retryManager!.execute(() => this.executeRequest(), this.options.retry!)
-            : () => this.executeRequest();
+          const fetcher =
+            this.options.retry && this.retryManager
+              ? () => this.retryManager!.execute(() => this.executeRequest(), this.options.retry!)
+              : () => this.executeRequest();
 
-          result = await this.cacheManager.get(
-            cacheKey,
-            fetcher,
-            this.options.cache
-          );
+          result = await this.cacheManager.get(cacheKey, fetcher, this.options.cache);
 
           cacheHit = this.cacheManager.isCacheHit(cacheKey);
 
@@ -306,10 +300,7 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
           }
         } else if (this.options.retry && this.retryManager) {
           // Use retry manager
-          result = await this.retryManager.execute(
-            () => this.executeRequest(),
-            this.options.retry
-          );
+          result = await this.retryManager.execute(() => this.executeRequest(), this.options.retry);
 
           // Check if cancelled after retry
           if (this.abortController.signal.aborted) {
@@ -382,7 +373,7 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
       hints.cache = {
         maxAge: this.options.cache.maxAge,
         staleWhileRevalidate: this.options.cache.staleWhileRevalidate,
-        tags: this.options.cache.tags
+        tags: this.options.cache.tags,
       };
     }
 
@@ -392,7 +383,7 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
         attempts: this.options.retry.attempts,
         backoff: this.options.retry.backoff,
         maxDelay: this.options.retry.maxDelay,
-        initialDelay: this.options.retry.initialDelay
+        initialDelay: this.options.retry.initialDelay,
       };
     }
 
@@ -404,12 +395,7 @@ export class QueryBuilder<TService = any, TMethod extends keyof TService = keyof
       hints.timeout = this.options.timeout;
     }
 
-    return this.transport.invoke(
-      this.serviceName,
-      this.methodName as string,
-      [this.methodInput],
-      { context, hints }
-    );
+    return this.transport.invoke(this.serviceName, this.methodName as string, [this.methodInput], { context, hints });
   }
 
   /**

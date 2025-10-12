@@ -5,9 +5,7 @@
 import 'reflect-metadata';
 import { Errors } from '../../errors/index.js';
 
-import {
-  SCHEDULER_METADATA
-} from './scheduler.constants.js';
+import { SCHEDULER_METADATA } from './scheduler.constants.js';
 
 import type {
   ICronOptions,
@@ -15,7 +13,7 @@ import type {
   CronExpression,
   ITimeoutOptions,
   IIntervalOptions,
-  SchedulerJobType
+  SchedulerJobType,
 } from './scheduler.interfaces.js';
 
 /**
@@ -28,32 +26,20 @@ export function Cron(expression: CronExpression, options?: ICronOptions): Method
       pattern: expression.toString(),
       options: options || {},
       target: target.constructor,
-      propertyKey: propertyKey.toString()
+      propertyKey: propertyKey.toString(),
     };
 
-    Reflect.defineMetadata(
-      SCHEDULER_METADATA.CRON_JOB,
-      metadata,
-      target,
-      propertyKey
-    );
+    Reflect.defineMetadata(SCHEDULER_METADATA.CRON_JOB, metadata, target, propertyKey);
 
     // Also store in array for discovery
-    const existingJobs = Reflect.getMetadata(
-      SCHEDULER_METADATA.SCHEDULED_JOB,
-      target.constructor
-    ) || [];
+    const existingJobs = Reflect.getMetadata(SCHEDULER_METADATA.SCHEDULED_JOB, target.constructor) || [];
 
     existingJobs.push({
       propertyKey,
-      metadata
+      metadata,
     });
 
-    Reflect.defineMetadata(
-      SCHEDULER_METADATA.SCHEDULED_JOB,
-      existingJobs,
-      target.constructor
-    );
+    Reflect.defineMetadata(SCHEDULER_METADATA.SCHEDULED_JOB, existingJobs, target.constructor);
 
     return descriptor;
   };
@@ -73,32 +59,20 @@ export function Interval(milliseconds: number, options?: IIntervalOptions): Meth
       pattern: milliseconds,
       options: options || {},
       target: target.constructor,
-      propertyKey: propertyKey.toString()
+      propertyKey: propertyKey.toString(),
     };
 
-    Reflect.defineMetadata(
-      SCHEDULER_METADATA.INTERVAL,
-      metadata,
-      target,
-      propertyKey
-    );
+    Reflect.defineMetadata(SCHEDULER_METADATA.INTERVAL, metadata, target, propertyKey);
 
     // Also store in array for discovery
-    const existingJobs = Reflect.getMetadata(
-      SCHEDULER_METADATA.SCHEDULED_JOB,
-      target.constructor
-    ) || [];
+    const existingJobs = Reflect.getMetadata(SCHEDULER_METADATA.SCHEDULED_JOB, target.constructor) || [];
 
     existingJobs.push({
       propertyKey,
-      metadata
+      metadata,
     });
 
-    Reflect.defineMetadata(
-      SCHEDULER_METADATA.SCHEDULED_JOB,
-      existingJobs,
-      target.constructor
-    );
+    Reflect.defineMetadata(SCHEDULER_METADATA.SCHEDULED_JOB, existingJobs, target.constructor);
 
     return descriptor;
   };
@@ -118,32 +92,20 @@ export function Timeout(milliseconds: number, options?: ITimeoutOptions): Method
       pattern: milliseconds,
       options: options || {},
       target: target.constructor,
-      propertyKey: propertyKey.toString()
+      propertyKey: propertyKey.toString(),
     };
 
-    Reflect.defineMetadata(
-      SCHEDULER_METADATA.TIMEOUT,
-      metadata,
-      target,
-      propertyKey
-    );
+    Reflect.defineMetadata(SCHEDULER_METADATA.TIMEOUT, metadata, target, propertyKey);
 
     // Also store in array for discovery
-    const existingJobs = Reflect.getMetadata(
-      SCHEDULER_METADATA.SCHEDULED_JOB,
-      target.constructor
-    ) || [];
+    const existingJobs = Reflect.getMetadata(SCHEDULER_METADATA.SCHEDULED_JOB, target.constructor) || [];
 
     existingJobs.push({
       propertyKey,
-      metadata
+      metadata,
     });
 
-    Reflect.defineMetadata(
-      SCHEDULER_METADATA.SCHEDULED_JOB,
-      existingJobs,
-      target.constructor
-    );
+    Reflect.defineMetadata(SCHEDULER_METADATA.SCHEDULED_JOB, existingJobs, target.constructor);
 
     return descriptor;
   };

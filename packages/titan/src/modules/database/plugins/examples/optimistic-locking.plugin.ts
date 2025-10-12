@@ -29,9 +29,7 @@ export interface OptimisticLockingOptions {
 /**
  * Create optimistic locking plugin
  */
-export function optimisticLockingPlugin(
-  options: OptimisticLockingOptions = {}
-): ITitanPlugin {
+export function optimisticLockingPlugin(options: OptimisticLockingOptions = {}): ITitanPlugin {
   const versionColumn = options.versionColumn || 'version';
   const strict = options.strict ?? true;
 
@@ -63,11 +61,7 @@ export function optimisticLockingPlugin(
       };
 
       // Override update to check and increment version
-      repository.update = async function (
-        id: number | string,
-        data: any,
-        expectedVersion?: number
-      ) {
+      repository.update = async function (id: number | string, data: any, expectedVersion?: number) {
         // Get current record
         const current = await this.findById(id);
         if (!current) {
@@ -78,9 +72,7 @@ export function optimisticLockingPlugin(
         if (expectedVersion !== undefined) {
           if (current[versionColumn] !== expectedVersion) {
             if (strict) {
-              throw Errors.conflict(
-                `Version mismatch: expected ${expectedVersion}, got ${current[versionColumn]}`
-              );
+              throw Errors.conflict(`Version mismatch: expected ${expectedVersion}, got ${current[versionColumn]}`);
             }
             return null; // Silent failure in non-strict mode
           }
@@ -109,10 +101,7 @@ export function optimisticLockingPlugin(
       };
 
       // Override delete to check version
-      repository.delete = async function (
-        id: number | string,
-        expectedVersion?: number
-      ) {
+      repository.delete = async function (id: number | string, expectedVersion?: number) {
         if (expectedVersion !== undefined) {
           const current = await this.findById(id);
           if (!current) {
@@ -121,9 +110,7 @@ export function optimisticLockingPlugin(
 
           if (current[versionColumn] !== expectedVersion) {
             if (strict) {
-              throw Errors.conflict(
-                `Version mismatch: expected ${expectedVersion}, got ${current[versionColumn]}`
-              );
+              throw Errors.conflict(`Version mismatch: expected ${expectedVersion}, got ${current[versionColumn]}`);
             }
             return; // Silent failure in non-strict mode
           }
@@ -163,9 +150,7 @@ export function optimisticLockingPlugin(
           }
 
           // Wait before retry with exponential backoff
-          await new Promise((resolve) =>
-            setTimeout(resolve, Math.pow(2, attempt) * 100)
-          );
+          await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt) * 100));
         }
       };
 
@@ -174,14 +159,8 @@ export function optimisticLockingPlugin(
 
     extendDatabase(db: Kysely<any>) {
       // Add version check helper to database
-      (db as any).withVersionCheck = function (
-        table: string,
-        id: number | string,
-        version: number
-      ) {
-        return this.updateTable(table)
-          .where('id', '=', id)
-          .where(versionColumn, '=', version);
+      (db as any).withVersionCheck = function (table: string, id: number | string, version: number) {
+        return this.updateTable(table).where('id', '=', id).where(versionColumn, '=', version);
       };
 
       return db;

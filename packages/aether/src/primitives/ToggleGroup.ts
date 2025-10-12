@@ -105,10 +105,7 @@ const defaultContextValue: ToggleGroupContextValue = {
   navigateLast: noop,
 };
 
-const ToggleGroupContext = createContext<ToggleGroupContextValue>(
-  defaultContextValue,
-  'ToggleGroup'
-);
+const ToggleGroupContext = createContext<ToggleGroupContextValue>(defaultContextValue, 'ToggleGroup');
 
 const useToggleGroupContext = (): ToggleGroupContextValue => useContext(ToggleGroupContext);
 
@@ -125,7 +122,7 @@ export const ToggleGroup = defineComponent<ToggleGroupProps>((props) => {
 
   // State
   const internalValue: WritableSignal<string | string[]> = signal<string | string[]>(
-    props.defaultValue ?? (type === 'single' ? '' : []),
+    props.defaultValue ?? (type === 'single' ? '' : [])
   );
 
   // Items registry

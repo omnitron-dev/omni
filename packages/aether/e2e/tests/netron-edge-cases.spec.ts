@@ -17,7 +17,7 @@ test.describe('Netron Edge Cases - HTTP Transport', () => {
 
         const client = new Netron({
           transport: 'http',
-          url: 'http://localhost:9999' // Invalid port
+          url: 'http://localhost:9999', // Invalid port
         });
 
         // HTTP client connects lazily, error happens on first request
@@ -31,7 +31,7 @@ test.describe('Netron Edge Cases - HTTP Transport', () => {
           return {
             success: true,
             errorCaught: true,
-            errorMessage: error.message
+            errorMessage: error.message,
           };
         }
       } catch (error: any) {
@@ -50,7 +50,7 @@ test.describe('Netron Edge Cases - HTTP Transport', () => {
 
         const client = new Netron({
           transport: 'http',
-          url: 'http://localhost:3333'
+          url: 'http://localhost:3333',
         });
 
         // Don't connect, try to query interface immediately
@@ -61,7 +61,7 @@ test.describe('Netron Edge Cases - HTTP Transport', () => {
           return {
             success: true,
             errorMessage: error.message,
-            hasNotConnectedError: error.message.includes('Not connected') || error.message.includes('connect')
+            hasNotConnectedError: error.message.includes('Not connected') || error.message.includes('connect'),
           };
         }
       } catch (error: any) {
@@ -80,7 +80,7 @@ test.describe('Netron Edge Cases - HTTP Transport', () => {
 
         const client = new Netron({
           transport: 'http',
-          url: 'http://localhost:3333'
+          url: 'http://localhost:3333',
         });
 
         await client.connect();
@@ -91,7 +91,7 @@ test.describe('Netron Edge Cases - HTTP Transport', () => {
 
         return {
           success: true,
-          connected
+          connected,
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -109,7 +109,7 @@ test.describe('Netron Edge Cases - HTTP Transport', () => {
 
         const client = new Netron({
           transport: 'http',
-          url: 'http://localhost:3333'
+          url: 'http://localhost:3333',
         });
 
         // Disconnect without connecting
@@ -117,7 +117,7 @@ test.describe('Netron Edge Cases - HTTP Transport', () => {
 
         return {
           success: true,
-          connected: client.isConnected()
+          connected: client.isConnected(),
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -135,7 +135,7 @@ test.describe('Netron Edge Cases - HTTP Transport', () => {
 
         const client = new Netron({
           transport: 'http',
-          url: 'http://localhost:3333'
+          url: 'http://localhost:3333',
         });
 
         await client.connect();
@@ -152,7 +152,7 @@ test.describe('Netron Edge Cases - HTTP Transport', () => {
           return {
             success: true,
             errorMessage: error.message,
-            hasNotFoundError: error.message.includes('not found') || error.message.includes('404')
+            hasNotFoundError: error.message.includes('not found') || error.message.includes('404'),
           };
         }
       } catch (error: any) {
@@ -172,7 +172,7 @@ test.describe('Netron Edge Cases - HTTP Transport', () => {
         const client = new Netron({
           transport: 'http',
           url: 'http://localhost:3333',
-          timeout: 1 // 1ms timeout - should timeout for any network call
+          timeout: 1, // 1ms timeout - should timeout for any network call
         });
 
         await client.connect();
@@ -186,14 +186,14 @@ test.describe('Netron Edge Cases - HTTP Transport', () => {
           return {
             success: true,
             timedOut: false,
-            successfullyCompleted: true
+            successfullyCompleted: true,
           };
         } catch (error: any) {
           await client.disconnect();
           return {
             success: true,
             timedOut: true,
-            errorMessage: error.message
+            errorMessage: error.message,
           };
         }
       } catch (error: any) {
@@ -212,7 +212,7 @@ test.describe('Netron Edge Cases - HTTP Transport', () => {
 
         const client = new Netron({
           transport: 'http',
-          url: 'http://localhost:3333'
+          url: 'http://localhost:3333',
         });
 
         const transportBefore = client.getTransport();
@@ -223,7 +223,7 @@ test.describe('Netron Edge Cases - HTTP Transport', () => {
         return {
           success: true,
           transportBefore,
-          transportAfter
+          transportAfter,
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -242,7 +242,7 @@ test.describe('Netron Edge Cases - HTTP Transport', () => {
 
         const client = new Netron({
           transport: 'http',
-          url: 'http://localhost:3333'
+          url: 'http://localhost:3333',
         });
 
         await client.connect();
@@ -251,7 +251,7 @@ test.describe('Netron Edge Cases - HTTP Transport', () => {
 
         return {
           success: true,
-          connected: client.isConnected()
+          connected: client.isConnected(),
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -269,7 +269,7 @@ test.describe('Netron Edge Cases - HTTP Transport', () => {
 
         const client = new Netron({
           transport: 'http',
-          url: 'http://localhost:3333'
+          url: 'http://localhost:3333',
         });
 
         await client.connect();
@@ -283,7 +283,7 @@ test.describe('Netron Edge Cases - HTTP Transport', () => {
           return {
             success: true,
             errorMessage: error.message,
-            hasEventsError: error.message.includes('not supported') || error.message.includes('Events')
+            hasEventsError: error.message.includes('not supported') || error.message.includes('Events'),
           };
         }
       } catch (error: any) {
@@ -302,7 +302,7 @@ test.describe('Netron Edge Cases - HTTP Transport', () => {
 
         const client = new Netron({
           transport: 'http',
-          url: 'http://localhost:3333'
+          url: 'http://localhost:3333',
         });
 
         await client.connect();
@@ -316,7 +316,7 @@ test.describe('Netron Edge Cases - HTTP Transport', () => {
           return {
             success: true,
             errorMessage: error.message,
-            hasEventsError: error.message.includes('not supported') || error.message.includes('Events')
+            hasEventsError: error.message.includes('not supported') || error.message.includes('Events'),
           };
         }
       } catch (error: any) {
@@ -341,7 +341,7 @@ test.describe('Netron Edge Cases - WebSocket Transport', () => {
 
         const client = new Netron({
           transport: 'websocket',
-          url: 'ws://localhost:9999' // Invalid port
+          url: 'ws://localhost:9999', // Invalid port
         });
 
         try {
@@ -351,7 +351,7 @@ test.describe('Netron Edge Cases - WebSocket Transport', () => {
           return {
             success: true,
             errorCaught: true,
-            errorMessage: error.message
+            errorMessage: error.message,
           };
         }
       } catch (error: any) {
@@ -370,7 +370,7 @@ test.describe('Netron Edge Cases - WebSocket Transport', () => {
 
         const client = new Netron({
           transport: 'websocket',
-          url: 'ws://localhost:3334'
+          url: 'ws://localhost:3334',
         });
 
         // Don't connect, try to query interface
@@ -381,7 +381,7 @@ test.describe('Netron Edge Cases - WebSocket Transport', () => {
           return {
             success: true,
             errorMessage: error.message,
-            hasNotConnectedError: error.message.includes('Not connected') || error.message.includes('connect')
+            hasNotConnectedError: error.message.includes('Not connected') || error.message.includes('connect'),
           };
         }
       } catch (error: any) {
@@ -400,7 +400,7 @@ test.describe('Netron Edge Cases - WebSocket Transport', () => {
 
         const client = new Netron({
           transport: 'websocket',
-          url: 'ws://localhost:3334'
+          url: 'ws://localhost:3334',
         });
 
         await client.connect();
@@ -411,7 +411,7 @@ test.describe('Netron Edge Cases - WebSocket Transport', () => {
 
         return {
           success: true,
-          connected
+          connected,
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -429,7 +429,7 @@ test.describe('Netron Edge Cases - WebSocket Transport', () => {
 
         const client = new Netron({
           transport: 'websocket',
-          url: 'ws://localhost:3334'
+          url: 'ws://localhost:3334',
         });
 
         await client.connect();
@@ -445,7 +445,7 @@ test.describe('Netron Edge Cases - WebSocket Transport', () => {
 
         return {
           success: true,
-          totalUsers: users1.length + users2.length + users3.length
+          totalUsers: users1.length + users2.length + users3.length,
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -463,7 +463,7 @@ test.describe('Netron Edge Cases - WebSocket Transport', () => {
 
         const client = new Netron({
           transport: 'websocket',
-          url: 'ws://localhost:3334'
+          url: 'ws://localhost:3334',
         });
 
         await client.connect();
@@ -475,7 +475,7 @@ test.describe('Netron Edge Cases - WebSocket Transport', () => {
 
         return {
           success: true,
-          userIsNull: user === null
+          userIsNull: user === null,
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -493,7 +493,7 @@ test.describe('Netron Edge Cases - WebSocket Transport', () => {
 
         const client = new Netron({
           transport: 'websocket',
-          url: 'ws://localhost:3334'
+          url: 'ws://localhost:3334',
         });
 
         // Rapid cycles
@@ -508,7 +508,7 @@ test.describe('Netron Edge Cases - WebSocket Transport', () => {
 
         return {
           success: true,
-          cyclesCompleted: 3
+          cyclesCompleted: 3,
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -526,7 +526,7 @@ test.describe('Netron Edge Cases - WebSocket Transport', () => {
 
         const client = new Netron({
           transport: 'websocket',
-          url: 'ws://localhost:3334'
+          url: 'ws://localhost:3334',
         });
 
         const transportBefore = client.getTransport();
@@ -537,7 +537,7 @@ test.describe('Netron Edge Cases - WebSocket Transport', () => {
         return {
           success: true,
           transportBefore,
-          transportAfter
+          transportAfter,
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -560,13 +560,13 @@ test.describe('Netron Edge Cases - WebSocket Transport', () => {
           info: (...args: any[]) => logs.push('info'),
           warn: (...args: any[]) => logs.push('warn'),
           error: (...args: any[]) => logs.push('error'),
-          child: () => customLogger
+          child: () => customLogger,
         };
 
         const client = new Netron({
           transport: 'websocket',
           url: 'ws://localhost:3334',
-          logger: customLogger as any
+          logger: customLogger as any,
         });
 
         await client.connect();
@@ -577,7 +577,7 @@ test.describe('Netron Edge Cases - WebSocket Transport', () => {
         return {
           success: true,
           logsCount: logs.length,
-          hasLogs: logs.length > 0
+          hasLogs: logs.length > 0,
         };
       } catch (error: any) {
         return { success: false, error: error.message };
@@ -595,7 +595,7 @@ test.describe('Netron Edge Cases - WebSocket Transport', () => {
 
         const client = new Netron({
           transport: 'websocket',
-          url: 'ws://localhost:3334'
+          url: 'ws://localhost:3334',
         });
 
         await client.connect();
@@ -611,7 +611,7 @@ test.describe('Netron Edge Cases - WebSocket Transport', () => {
           return {
             success: true,
             errorMessage: error.message,
-            hasMethodError: error.message.includes('not found') || error.message.includes('METHOD_NOT_FOUND')
+            hasMethodError: error.message.includes('not found') || error.message.includes('METHOD_NOT_FOUND'),
           };
         }
       } catch (error: any) {
@@ -630,7 +630,7 @@ test.describe('Netron Edge Cases - WebSocket Transport', () => {
 
         const client = new Netron({
           transport: 'websocket',
-          url: 'ws://localhost:3334'
+          url: 'ws://localhost:3334',
         });
 
         await client.connect();
@@ -650,7 +650,7 @@ test.describe('Netron Edge Cases - WebSocket Transport', () => {
         return {
           success: true,
           count: results.length,
-          allValid: results.every(r => Array.isArray(r) && r.length > 0)
+          allValid: results.every((r) => Array.isArray(r) && r.length > 0),
         };
       } catch (error: any) {
         return { success: false, error: error.message };

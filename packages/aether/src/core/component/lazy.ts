@@ -102,9 +102,7 @@ export function lazy<P = {}>(loader: ComponentLoader<P>): Component<P> {
  * </Link>
  * ```
  */
-export function preloadComponent<P>(
-  lazyComponent: Component<P>
-): Promise<void> {
+export function preloadComponent<P>(lazyComponent: Component<P>): Promise<void> {
   // Try to trigger component loading by calling it
   // The promise will be thrown, which we catch
   try {

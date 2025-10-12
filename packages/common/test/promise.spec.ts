@@ -130,7 +130,7 @@ describe('timeout', () => {
     const initialMemory = process.memoryUsage().heapUsed;
 
     // Создаем меньше итераций и используем Promise.all для параллельного выполнения
-    const promises = Array.from({ length: 100 }, () => timeout(Promise.resolve(), 10).catch(() => { }));
+    const promises = Array.from({ length: 100 }, () => timeout(Promise.resolve(), 10).catch(() => {}));
 
     await Promise.all(promises);
 

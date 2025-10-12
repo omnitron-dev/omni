@@ -72,7 +72,9 @@ export default class Serializer {
       const result = encoded as any;
 
       // Add toBuffer() - safe, Buffer doesn't have this
-      result.toBuffer = function () { return this; };
+      result.toBuffer = function () {
+        return this;
+      };
 
       // NOTE: Do NOT add .buffer property - it breaks Buffer.slice() internals!
       // Tests that need .buffer should use .toBuffer() instead
@@ -112,7 +114,12 @@ export default class Serializer {
     }
     // Handle SmartBuffer (has toBuffer method AND read method) - for backward compatibility
     // Note: Our enhanced Buffers have toBuffer but NOT read, so they'll skip this
-    if (buf && typeof buf.toBuffer === 'function' && typeof buf.read === 'function' && typeof buf.readUInt8 === 'function') {
+    if (
+      buf &&
+      typeof buf.toBuffer === 'function' &&
+      typeof buf.read === 'function' &&
+      typeof buf.readUInt8 === 'function'
+    ) {
       // This is the old SmartBuffer - need to track position updates
       const startRoffset = buf.roffset || 0;
       try {

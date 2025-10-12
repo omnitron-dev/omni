@@ -340,10 +340,7 @@ describe('Center', () => {
     it('should center multiple child elements', () => {
       const component = () =>
         Center({
-          children: [
-            document.createTextNode('First'),
-            document.createTextNode(' Second'),
-          ],
+          children: [document.createTextNode('First'), document.createTextNode(' Second')],
         });
 
       const { container } = renderComponent(component);

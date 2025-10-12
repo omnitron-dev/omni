@@ -79,12 +79,7 @@ disconnectBtn.addEventListener('click', async () => {
 });
 
 // Test handlers
-async function invokeMethod(
-  service: string,
-  method: string,
-  args: any[],
-  description: string
-) {
+async function invokeMethod(service: string, method: string, args: any[], description: string) {
   if (!client) {
     log('Not connected', 'error');
     return;
@@ -96,10 +91,7 @@ async function invokeMethod(
     const result = await client.invoke(service, method, args);
     const duration = (performance.now() - startTime).toFixed(2);
 
-    log(
-      `${description}\nResult: ${JSON.stringify(result, null, 2)}\nDuration: ${duration}ms`,
-      'success'
-    );
+    log(`${description}\nResult: ${JSON.stringify(result, null, 2)}\nDuration: ${duration}ms`, 'success');
     return result;
   } catch (error: any) {
     log(`Error in ${service}.${method}: ${error.message}`, 'error');
@@ -193,10 +185,7 @@ document.getElementById('perf-sequential')?.addEventListener('click', async () =
 
   const duration = (performance.now() - startTime).toFixed(2);
   const avgLatency = (parseFloat(duration) / 10).toFixed(2);
-  log(
-    `Sequential: 10 calls in ${duration}ms (avg: ${avgLatency}ms per call)`,
-    'success'
-  );
+  log(`Sequential: 10 calls in ${duration}ms (avg: ${avgLatency}ms per call)`, 'success');
 });
 
 document.getElementById('perf-parallel')?.addEventListener('click', async () => {
@@ -205,9 +194,7 @@ document.getElementById('perf-parallel')?.addEventListener('click', async () => 
   log('Running 10 parallel calls...');
   const startTime = performance.now();
 
-  const promises = Array.from({ length: 10 }, (_, i) =>
-    client!.invoke('calculator@1.0.0', 'add', [i, i + 1])
-  );
+  const promises = Array.from({ length: 10 }, (_, i) => client!.invoke('calculator@1.0.0', 'add', [i, i + 1]));
 
   await Promise.all(promises);
 

@@ -242,22 +242,24 @@ export const ContextMenuItem = defineComponent<{
 /**
  * ContextMenu Separator component
  */
-export const ContextMenuSeparator = defineComponent<{ [key: string]: any }>((props) => () =>
+export const ContextMenuSeparator = defineComponent<{ [key: string]: any }>(
+  (props) => () =>
     jsx('div', {
       ...props,
       role: 'separator',
       'aria-orientation': 'horizontal',
-    }));
+    })
+);
 
 /**
  * ContextMenu Label component
  */
 export const ContextMenuLabel = defineComponent<{ children?: any; [key: string]: any }>(
   (props) => () =>
-      jsx('div', {
-        ...props,
-        'data-context-menu-label': '',
-      })
+    jsx('div', {
+      ...props,
+      'data-context-menu-label': '',
+    })
 );
 
 // ============================================================================

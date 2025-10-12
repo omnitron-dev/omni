@@ -29,7 +29,7 @@ export async function waitFor(
  * Delay execution for specified milliseconds
  */
 export function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -70,7 +70,7 @@ export class EventCollector<T = any> {
       this.events.push({
         event: eventName,
         data: args.length === 1 ? args[0] : args,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
     };
 
@@ -102,7 +102,7 @@ export class EventCollector<T = any> {
    */
   getEvents(eventName?: string): Array<{ event: string; data: T; timestamp: number }> {
     if (eventName) {
-      return this.events.filter(e => e.event === eventName);
+      return this.events.filter((e) => e.event === eventName);
     }
     return [...this.events];
   }
@@ -146,7 +146,7 @@ export class EventCollector<T = any> {
    */
   getEventCount(eventName?: string): number {
     if (eventName) {
-      return this.events.filter(e => e.event === eventName).length;
+      return this.events.filter((e) => e.event === eventName).length;
     }
     return this.events.length;
   }
@@ -406,10 +406,7 @@ export interface TestFixture<T> {
   teardown?: (fixture: T) => void | Promise<void>;
 }
 
-export async function withFixture<T, R>(
-  fixture: TestFixture<T>,
-  fn: (fixture: T) => R | Promise<R>
-): Promise<R> {
+export async function withFixture<T, R>(fixture: TestFixture<T>, fn: (fixture: T) => R | Promise<R>): Promise<R> {
   const instance = await fixture.setup();
   try {
     return await fn(instance);

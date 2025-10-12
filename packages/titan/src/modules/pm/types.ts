@@ -148,7 +148,7 @@ export enum ProcessStatus {
   STOPPING = 'stopping',
   STOPPED = 'stopped',
   FAILED = 'failed',
-  CRASHED = 'crashed'
+  CRASHED = 'crashed',
 }
 
 // ============================================================================
@@ -162,8 +162,8 @@ export type ServiceProxy<T> = {
   [K in keyof T]: T[K] extends (...args: infer A) => infer R
     ? (...args: A) => Promise<Awaited<R>>
     : T[K] extends AsyncIterable<infer U>
-    ? AsyncIterable<U>
-    : never;
+      ? AsyncIterable<U>
+      : never;
 } & IServiceProxyControl;
 
 /**
@@ -236,7 +236,7 @@ export enum PoolStrategy {
   WEIGHTED = 'weighted',
   ADAPTIVE = 'adaptive',
   CONSISTENT_HASH = 'consistent-hash',
-  LATENCY = 'latency'
+  LATENCY = 'latency',
 }
 
 /**
@@ -275,7 +275,7 @@ export enum SupervisionStrategy {
   ONE_FOR_ONE = 'one-for-one',
   ONE_FOR_ALL = 'one-for-all',
   REST_FOR_ONE = 'rest-for-one',
-  SIMPLE_ONE_FOR_ONE = 'simple-one-for-one'
+  SIMPLE_ONE_FOR_ONE = 'simple-one-for-one',
 }
 
 /**
@@ -298,7 +298,7 @@ export enum RestartDecision {
   RESTART = 'restart',
   IGNORE = 'ignore',
   ESCALATE = 'escalate',
-  SHUTDOWN = 'shutdown'
+  SHUTDOWN = 'shutdown',
 }
 
 // ============================================================================
@@ -675,10 +675,7 @@ export interface IProcessManager extends EventEmitter {
   workflow<T>(WorkflowPathOrClass: string | (new () => T)): Promise<T>;
 
   /** Create a supervisor tree */
-  supervisor(
-    SupervisorClass: new () => any,
-    options?: ISupervisorOptions
-  ): Promise<any>;
+  supervisor(SupervisorClass: new () => any, options?: ISupervisorOptions): Promise<any>;
 
   /** Get process information */
   getProcess(processId: string): IProcessInfo | undefined;
@@ -707,10 +704,7 @@ export interface IProcessManager extends EventEmitter {
  * Process spawner interface
  */
 export interface IProcessSpawner {
-  spawn<T>(
-    processPathOrClass: string | (new (...args: any[]) => T),
-    options?: ISpawnOptions
-  ): Promise<IWorkerHandle>;
+  spawn<T>(processPathOrClass: string | (new (...args: any[]) => T), options?: ISpawnOptions): Promise<IWorkerHandle>;
   cleanup?(): Promise<void>;
 }
 

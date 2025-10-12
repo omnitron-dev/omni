@@ -16,20 +16,14 @@ import {
   Singleton,
   Transient,
   Scope,
-  CircularDependencyError
+  CircularDependencyError,
 } from '@nexus';
-import {
-  Service,
-  OnInit,
-  OnDestroy,
-  TitanApplication,
-  EnhancedApplicationModule
-} from '../src/index.js';
+import { Service, OnInit, OnDestroy, TitanApplication, EnhancedApplicationModule } from '../src/index.js';
 import { ConfigModule } from '../src/modules/config/config.module.js';
 const CONFIG_SERVICE_TOKEN = createToken('ConfigModule');
 
 // Test utilities
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe('Comprehensive DI System Tests', () => {
   let container: Container;
@@ -56,9 +50,7 @@ describe('Comprehensive DI System Tests', () => {
 
       @Injectable()
       class ApiService {
-        constructor(
-          @Inject(ConfigToken) public config: { apiUrl: string }
-        ) { }
+        constructor(@Inject(ConfigToken) public config: { apiUrl: string }) {}
       }
 
       container.register(ConfigToken, { useValue: { apiUrl: 'http://api.test' } });
@@ -152,12 +144,12 @@ describe('Comprehensive DI System Tests', () => {
 
       @Injectable()
       class A {
-        constructor(@Inject(BToken) public b: any) { }
+        constructor(@Inject(BToken) public b: any) {}
       }
 
       @Injectable()
       class B {
-        constructor(@Inject(AToken) public a: any) { }
+        constructor(@Inject(AToken) public a: any) {}
       }
 
       container.register(AToken, { useClass: A });
@@ -173,17 +165,17 @@ describe('Comprehensive DI System Tests', () => {
 
       @Injectable()
       class A {
-        constructor(@Inject(BToken) public b: any) { }
+        constructor(@Inject(BToken) public b: any) {}
       }
 
       @Injectable()
       class B {
-        constructor(@Inject(CToken) public c: any) { }
+        constructor(@Inject(CToken) public c: any) {}
       }
 
       @Injectable()
       class C {
-        constructor(@Inject(AToken) public a: any) { }
+        constructor(@Inject(AToken) public a: any) {}
       }
 
       container.register(AToken, { useClass: A });
@@ -204,7 +196,7 @@ describe('Comprehensive DI System Tests', () => {
         constructor(
           @Inject(RequiredToken) public required: string,
           @Optional() @Inject(OptionalToken) public optional?: string
-        ) { }
+        ) {}
       }
 
       container.register(RequiredToken, { useValue: 'required' });
@@ -224,7 +216,7 @@ describe('Comprehensive DI System Tests', () => {
         constructor(
           @Inject(RequiredToken) public required: string,
           @Optional() @Inject(OptionalToken) public optional?: string
-        ) { }
+        ) {}
       }
 
       container.register(RequiredToken, { useValue: 'required' });
@@ -245,9 +237,9 @@ describe('Comprehensive DI System Tests', () => {
       container.register(ConfigToken, { useValue: { env: 'production' } });
       container.register(ApiToken, {
         useFactory: (config: { env: string }) => ({
-          getUrl: () => config.env === 'production' ? 'https://api.prod' : 'https://api.dev'
+          getUrl: () => (config.env === 'production' ? 'https://api.prod' : 'https://api.dev'),
         }),
-        inject: [ConfigToken]
+        inject: [ConfigToken],
       });
 
       const api = container.resolve(ApiToken);
@@ -261,9 +253,9 @@ describe('Comprehensive DI System Tests', () => {
         useFactory: async () => {
           await delay(10); // Simulate async connection
           return {
-            query: async (sql: string) => ({ sql, result: 'mock' })
+            query: async (sql: string) => ({ sql, result: 'mock' }),
           };
-        }
+        },
       });
 
       const db = await container.resolveAsync(DbToken);
@@ -325,7 +317,7 @@ describe('Comprehensive DI System Tests', () => {
 
       @Injectable()
       class B implements OnInit {
-        constructor(@Inject(AToken) private a: any) { }
+        constructor(@Inject(AToken) private a: any) {}
 
         async onInit() {
           initOrder.push('B');
@@ -352,15 +344,18 @@ describe('Comprehensive DI System Tests', () => {
             version: '1.0.0',
             dependencies: [CONFIG_SERVICE_TOKEN],
             providers: [
-              ['DB_CONNECTION', {
-                useFactory: (config: ConfigModule) => ({
-                  host: config.get('db.host', 'localhost'),
-                  port: config.get('db.port', 5432)
-                }),
-                inject: [CONFIG_SERVICE_TOKEN]
-              }]
+              [
+                'DB_CONNECTION',
+                {
+                  useFactory: (config: ConfigModule) => ({
+                    host: config.get('db.host', 'localhost'),
+                    port: config.get('db.port', 5432),
+                  }),
+                  inject: [CONFIG_SERVICE_TOKEN],
+                },
+              ],
             ],
-            exports: ['DB_CONNECTION']
+            exports: ['DB_CONNECTION'],
           });
         }
       }
@@ -370,10 +365,10 @@ describe('Comprehensive DI System Tests', () => {
         config: {
           db: {
             host: 'test-db',
-            port: 3306
-          }
+            port: 3306,
+          },
         },
-        modules: [DatabaseModule]
+        modules: [DatabaseModule],
       });
 
       await app.start();
@@ -381,7 +376,7 @@ describe('Comprehensive DI System Tests', () => {
       const dbConnection = app.get('DB_CONNECTION');
       expect(dbConnection).toEqual({
         host: 'test-db',
-        port: 3306
+        port: 3306,
       });
 
       await app.stop();
@@ -394,7 +389,7 @@ describe('Comprehensive DI System Tests', () => {
         constructor() {
           super({
             name: 'async1',
-            version: '1.0.0'
+            version: '1.0.0',
           });
         }
 
@@ -409,7 +404,7 @@ describe('Comprehensive DI System Tests', () => {
           super({
             name: 'async2',
             version: '1.0.0',
-            dependencies: ['async1']  // Use string dependency
+            dependencies: ['async1'], // Use string dependency
           });
         }
 
@@ -421,7 +416,7 @@ describe('Comprehensive DI System Tests', () => {
 
       const app = await TitanApplication.create({
         name: 'TestApp',
-        modules: [AsyncModule2, AsyncModule1] // Order shouldn't matter
+        modules: [AsyncModule2, AsyncModule1], // Order shouldn't matter
       });
 
       await app.start();
@@ -439,14 +434,13 @@ describe('Comprehensive DI System Tests', () => {
 
       @Injectable()
       class ServiceWithMissingDep {
-        constructor(@Inject(MissingToken) private missing: any) { }
+        constructor(@Inject(MissingToken) private missing: any) {}
       }
 
       container.register(ServiceWithMissingDep, { useClass: ServiceWithMissingDep });
 
       // ResolutionError is thrown with detailed error message
-      expect(() => container.resolve(ServiceWithMissingDep))
-        .toThrow(/Failed to resolve|Token not registered/);
+      expect(() => container.resolve(ServiceWithMissingDep)).toThrow(/Failed to resolve|Token not registered/);
     });
 
     it('should handle errors in factory providers gracefully', () => {
@@ -455,11 +449,10 @@ describe('Comprehensive DI System Tests', () => {
       container.register(ErrorToken, {
         useFactory: () => {
           throw new Error('Factory error');
-        }
+        },
       });
 
-      expect(() => container.resolve(ErrorToken))
-        .toThrow('Factory error');
+      expect(() => container.resolve(ErrorToken)).toThrow('Factory error');
     });
 
     it('should handle errors in OnInit gracefully', async () => {
@@ -473,8 +466,7 @@ describe('Comprehensive DI System Tests', () => {
       container.register(ServiceWithFailingInit, { useClass: ServiceWithFailingInit });
       container.resolve(ServiceWithFailingInit);
 
-      await expect(container.initialize())
-        .rejects.toThrow('Init failed');
+      await expect(container.initialize()).rejects.toThrow('Init failed');
     });
   });
 

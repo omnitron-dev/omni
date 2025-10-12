@@ -7,7 +7,7 @@ import {
   MiddlewarePipeline,
   MiddlewareStage,
   type NetronMiddlewareContext,
-  type MiddlewareFunction
+  type MiddlewareFunction,
 } from '../../../src/netron/middleware/index.js';
 
 describe('MiddlewarePipeline Edge Cases', () => {
@@ -23,8 +23,8 @@ describe('MiddlewarePipeline Edge Cases', () => {
       metadata: new Map(),
       timing: {
         start: Date.now(),
-        middlewareTimes: new Map()
-      }
+        middlewareTimes: new Map(),
+      },
     };
   });
 
@@ -39,7 +39,7 @@ describe('MiddlewarePipeline Edge Cases', () => {
 
       pipeline.use(middleware, {
         name: 'method-regex',
-        methods: /^get/
+        methods: /^get/,
       });
 
       // Should not execute for testMethod
@@ -72,7 +72,7 @@ describe('MiddlewarePipeline Edge Cases', () => {
 
       pipeline.use(middleware, {
         name: 'method-regex-undefined',
-        methods: /^get/
+        methods: /^get/,
       });
 
       mockContext.methodName = undefined;
@@ -90,7 +90,7 @@ describe('MiddlewarePipeline Edge Cases', () => {
 
       pipeline.use(middleware, {
         name: 'complex-method-regex',
-        methods: /^(get|list).*(User|Account)$/
+        methods: /^(get|list).*(User|Account)$/,
       });
 
       // Should match
@@ -144,7 +144,7 @@ describe('MiddlewarePipeline Edge Cases', () => {
       pipeline.use(middleware, {
         name: 'combined-regex',
         services: /^User/,
-        methods: /^get/
+        methods: /^get/,
       });
 
       // Both match
@@ -183,7 +183,7 @@ describe('MiddlewarePipeline Edge Cases', () => {
       pipeline.use(middleware, {
         name: 'mixed-filters',
         services: ['UserService', 'AuthService'],
-        methods: /^(get|list)/
+        methods: /^(get|list)/,
       });
 
       // Both match
@@ -217,7 +217,7 @@ describe('MiddlewarePipeline Edge Cases', () => {
 
       pipeline.use(middleware, {
         name: 'method-array-undefined',
-        methods: ['getUser', 'createUser']
+        methods: ['getUser', 'createUser'],
       });
 
       mockContext.methodName = undefined;

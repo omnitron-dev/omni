@@ -62,30 +62,22 @@ type UpdateUser = z.infer<typeof UpdateUserSchema>;
 class UserRepository extends BaseRepository<any, 'users', User, CreateUser, UpdateUser> {
   // Custom methods
   async findByEmail(email: string): Promise<User | null> {
-    const result = await this.query()
-      .where('email', '=', email)
-      .selectAll()
-      .executeTakeFirst();
+    const result = await this.query().where('email', '=', email).selectAll().executeTakeFirst();
 
     return result ? this.mapRow(result) : null;
   }
 
   async findActive(): Promise<User[]> {
-    const results = await this.query()
-      .where('deleted_at', 'is', null)
-      .selectAll()
-      .execute();
+    const results = await this.query().where('deleted_at', 'is', null).selectAll().execute();
 
-    return results.map(row => this.mapRow(row));
+    return results.map((row) => this.mapRow(row));
   }
 }
 
 // Test service using repositories
 @Injectable()
 class UserService {
-  constructor(
-    @InjectRepository(UserRepository) private userRepo: UserRepository,
-  ) {}
+  constructor(@InjectRepository(UserRepository) private userRepo: UserRepository) {}
 
   async createUser(data: CreateUser): Promise<User> {
     return this.userRepo.create(data);
@@ -114,9 +106,7 @@ class UserService {
 
 // Test module
 @Module({
-  imports: [
-    TitanDatabaseModule.forFeature([UserRepository]),
-  ],
+  imports: [TitanDatabaseModule.forFeature([UserRepository])],
   providers: [UserService],
   exports: [UserService],
 })
@@ -237,7 +227,7 @@ describe('Repository Integration', () => {
 
       // User should not appear in active users
       const activeUsers = await userRepo.findActive();
-      expect(activeUsers.find(u => u.id === user.id)).toBeUndefined();
+      expect(activeUsers.find((u) => u.id === user.id)).toBeUndefined();
 
       // But should still exist in database with deleted_at
       const deletedUser = await sql`
@@ -258,7 +248,7 @@ describe('Repository Integration', () => {
         });
       }
 
-      await Promise.all(users.map(u => userRepo.create(u)));
+      await Promise.all(users.map((u) => userRepo.create(u)));
 
       // Test pagination
       const page1 = await userRepo.paginate({ page: 1, limit: 10 });
@@ -306,7 +296,7 @@ describe('Repository Integration', () => {
 
         // Get services
         userService = await app.resolveAsync(UserService);
-        dbManager = await app.resolveAsync(DATABASE_MANAGER) as DatabaseManager;
+        dbManager = (await app.resolveAsync(DATABASE_MANAGER)) as DatabaseManager;
 
         // Create users table
         const db = await dbManager.getConnection();

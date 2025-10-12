@@ -4,11 +4,7 @@
 
 import { describe, it, expect, afterEach } from '@jest/globals';
 import { createServer, Server } from 'node:net';
-import {
-  getAvailablePort,
-  isPortAvailable,
-  waitForPort
-} from '../../src/utils/port-utils.js';
+import { getAvailablePort, isPortAvailable, waitForPort } from '../../src/utils/port-utils.js';
 
 describe('Port Utilities', () => {
   let servers: Server[] = [];
@@ -16,14 +12,15 @@ describe('Port Utilities', () => {
   afterEach(async () => {
     // Clean up all servers
     await Promise.all(
-      servers.map(server =>
-        new Promise<void>(resolve => {
-          if (server.listening) {
-            server.close(() => resolve());
-          } else {
-            resolve();
-          }
-        })
+      servers.map(
+        (server) =>
+          new Promise<void>((resolve) => {
+            if (server.listening) {
+              server.close(() => resolve());
+            } else {
+              resolve();
+            }
+          })
       )
     );
     servers = [];
@@ -46,7 +43,7 @@ describe('Port Utilities', () => {
       const server = createServer();
       servers.push(server);
 
-      await new Promise<void>(resolve => {
+      await new Promise<void>((resolve) => {
         server.listen(15000, () => resolve());
       });
 
@@ -67,7 +64,7 @@ describe('Port Utilities', () => {
       for (let port = startPort; port <= maxPort; port++) {
         const server = createServer();
         servers.push(server);
-        await new Promise<void>(resolve => {
+        await new Promise<void>((resolve) => {
           server.listen(port, () => resolve());
         });
       }
@@ -112,7 +109,7 @@ describe('Port Utilities', () => {
       });
 
       // Give server a moment to fully bind
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       const available = await isPortAvailable(port, '127.0.0.1');
       expect(available).toBe(false);
@@ -136,7 +133,7 @@ describe('Port Utilities', () => {
       const server = createServer();
       servers.push(server);
 
-      const port = await new Promise<number>(resolve => {
+      const port = await new Promise<number>((resolve) => {
         server.listen(0, () => {
           const addr = server.address();
           if (addr && typeof addr === 'object') {
@@ -154,16 +151,16 @@ describe('Port Utilities', () => {
       const port = await getAvailablePort();
 
       // Should timeout since nothing is listening
-      await expect(
-        waitForPort(port, '127.0.0.1', 500, 50)
-      ).rejects.toThrow(/not available after|Timeout waiting for port/);
+      await expect(waitForPort(port, '127.0.0.1', 500, 50)).rejects.toThrow(
+        /not available after|Timeout waiting for port/
+      );
     }, 10000);
 
     it('should work with custom host and interval', async () => {
       const server = createServer();
       servers.push(server);
 
-      const port = await new Promise<number>(resolve => {
+      const port = await new Promise<number>((resolve) => {
         server.listen(0, '127.0.0.1', () => {
           const addr = server.address();
           if (addr && typeof addr === 'object') {
@@ -172,9 +169,7 @@ describe('Port Utilities', () => {
         });
       });
 
-      await expect(
-        waitForPort(port, '127.0.0.1', 2000, 200)
-      ).resolves.toBeUndefined();
+      await expect(waitForPort(port, '127.0.0.1', 2000, 200)).resolves.toBeUndefined();
     });
 
     it('should wait and retry until port is available', async () => {
@@ -188,18 +183,14 @@ describe('Port Utilities', () => {
       }, 200);
 
       // Should eventually connect
-      await expect(
-        waitForPort(port, '127.0.0.1', 2000, 50)
-      ).resolves.toBeUndefined();
+      await expect(waitForPort(port, '127.0.0.1', 2000, 50)).resolves.toBeUndefined();
     }, 10000);
 
     it('should throw timeout error when time exceeded', async () => {
       const port = await getAvailablePort();
 
       // No server listening, should timeout
-      await expect(
-        waitForPort(port, '127.0.0.1', 300, 100)
-      ).rejects.toThrow(/Timeout waiting for port/);
+      await expect(waitForPort(port, '127.0.0.1', 300, 100)).rejects.toThrow(/Timeout waiting for port/);
     }, 10000);
 
     it('should handle connection errors and keep retrying', async () => {
@@ -213,22 +204,16 @@ describe('Port Utilities', () => {
         server.listen(port);
       }, 300);
 
-      await expect(
-        waitForPort(port, '127.0.0.1', 2000, 100)
-      ).resolves.toBeUndefined();
+      await expect(waitForPort(port, '127.0.0.1', 2000, 100)).resolves.toBeUndefined();
     }, 10000);
   });
 
   describe('Edge Cases', () => {
     it('should handle concurrent port requests', async () => {
-      const ports = await Promise.all([
-        getAvailablePort(),
-        getAvailablePort(),
-        getAvailablePort()
-      ]);
+      const ports = await Promise.all([getAvailablePort(), getAvailablePort(), getAvailablePort()]);
 
       // All should be valid ports
-      ports.forEach(port => {
+      ports.forEach((port) => {
         expect(port).toBeGreaterThan(0);
         expect(port).toBeLessThanOrEqual(65535);
       });
@@ -256,7 +241,7 @@ describe('Port Utilities', () => {
       expect(port).toBeGreaterThan(0);
 
       // Give server a moment to fully bind
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       // Check that the assigned port is indeed in use
       const available = await isPortAvailable(port, '127.0.0.1');

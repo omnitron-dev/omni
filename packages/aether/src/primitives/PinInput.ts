@@ -95,19 +95,32 @@ const globalPinInputContextSignal = signal<PinInputContextValue | null>(null);
 // Create context with default implementation that delegates to global signal
 const emptyArray: string[] = [];
 
-const PinInputContext = createContext<PinInputContextValue>({
-  values: () => globalPinInputContextSignal()?.values?.() ?? emptyArray,
-  get length() { return globalPinInputContextSignal()?.length ?? 6; },
-  get type() { return globalPinInputContextSignal()?.type ?? 'numeric'; },
-  get mask() { return globalPinInputContextSignal()?.mask ?? false; },
-  get placeholder() { return globalPinInputContextSignal()?.placeholder ?? '○'; },
-  get disabled() { return globalPinInputContextSignal()?.disabled ?? false; },
-  setValue: (index, value) => globalPinInputContextSignal()?.setValue(index, value),
-  focusInput: (index) => globalPinInputContextSignal()?.focusInput(index),
-  registerInput: (index, element) => globalPinInputContextSignal()?.registerInput(index, element),
-  unregisterInput: (index) => globalPinInputContextSignal()?.unregisterInput(index),
-  handlePaste: (index, value) => globalPinInputContextSignal()?.handlePaste(index, value),
-}, 'PinInput');
+const PinInputContext = createContext<PinInputContextValue>(
+  {
+    values: () => globalPinInputContextSignal()?.values?.() ?? emptyArray,
+    get length() {
+      return globalPinInputContextSignal()?.length ?? 6;
+    },
+    get type() {
+      return globalPinInputContextSignal()?.type ?? 'numeric';
+    },
+    get mask() {
+      return globalPinInputContextSignal()?.mask ?? false;
+    },
+    get placeholder() {
+      return globalPinInputContextSignal()?.placeholder ?? '○';
+    },
+    get disabled() {
+      return globalPinInputContextSignal()?.disabled ?? false;
+    },
+    setValue: (index, value) => globalPinInputContextSignal()?.setValue(index, value),
+    focusInput: (index) => globalPinInputContextSignal()?.focusInput(index),
+    registerInput: (index, element) => globalPinInputContextSignal()?.registerInput(index, element),
+    unregisterInput: (index) => globalPinInputContextSignal()?.unregisterInput(index),
+    handlePaste: (index, value) => globalPinInputContextSignal()?.handlePaste(index, value),
+  },
+  'PinInput'
+);
 
 const usePinInputContext = (): PinInputContextValue => {
   const context = useContext(PinInputContext);
@@ -129,9 +142,7 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
   const autoFocus = props.autoFocus ?? false;
 
   // State
-  const internalValue: WritableSignal<string[]> = signal<string[]>(
-    Array(length).fill(''),
-  );
+  const internalValue: WritableSignal<string[]> = signal<string[]>(Array(length).fill(''));
 
   // Working values for optimistic updates in controlled mode
   const workingValues: WritableSignal<string[] | null> = signal<string[] | null>(null);
@@ -278,10 +289,18 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
     // values function reads props directly each time it's called
     values: () => currentValues(),
     length,
-    get type() { return props.type ?? 'numeric'; },
-    get mask() { return props.mask ?? false; },
-    get placeholder() { return props.placeholder ?? '○'; },
-    get disabled() { return props.disabled ?? false; },
+    get type() {
+      return props.type ?? 'numeric';
+    },
+    get mask() {
+      return props.mask ?? false;
+    },
+    get placeholder() {
+      return props.placeholder ?? '○';
+    },
+    get disabled() {
+      return props.disabled ?? false;
+    },
     setValue,
     focusInput,
     registerInput,

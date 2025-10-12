@@ -9,8 +9,8 @@ import { signal, type WritableSignal } from './signal.js';
 import { ProxyRegistry } from './proxy-registry.js';
 
 export interface StoreOptions {
-  shallow?: string[];  // Paths that should not be deeply reactive
-  lazy?: boolean;      // Lazy initialization of nested objects
+  shallow?: string[]; // Paths that should not be deeply reactive
+  lazy?: boolean; // Lazy initialization of nested objects
   equals?: (a: any, b: any) => boolean; // Custom equality function
 }
 
@@ -84,7 +84,7 @@ export class Store<T extends object> {
   constructor(initial: T, options: StoreOptions = {}) {
     this.options = {
       equals: Object.is,
-      ...options
+      ...options,
     };
     // Use default equality for root signal
     this.root = signal(initial, { equals: this.options.equals });
@@ -112,9 +112,7 @@ export class Store<T extends object> {
       getState: (): T => storeInstance.root(),
       set: (key: string | number | symbol, value: any | ((prev: any) => any)): void => {
         // Calculate new value if it's a function
-        const newValue = typeof value === 'function'
-          ? value((proxy as any)[key])
-          : value;
+        const newValue = typeof value === 'function' ? value((proxy as any)[key]) : value;
 
         // Set through proxy to trigger granular updates
         (proxy as any)[key] = newValue;
@@ -131,7 +129,7 @@ export class Store<T extends object> {
         batch(() => {
           fn(proxy);
         });
-      }
+      },
     };
 
     // Store reference to methods in Store instance
@@ -144,14 +142,13 @@ export class Store<T extends object> {
     return proxy as Store<T> & T;
   }
 
-
   private getOrCreateProxy(obj: object, path: string[]): any {
     const pathStr = path.join('.');
-    
+
     // Try to get existing proxy from registry
     const existingProxy = this.proxyRegistry.get(pathStr);
     if (existingProxy) return existingProxy;
-    
+
     // Create new proxy and register it
     const proxy = this.createProxy(obj, path);
     this.proxyRegistry.register(pathStr, proxy);
@@ -171,7 +168,7 @@ export class Store<T extends object> {
 
     // Handle arrays
     if (Array.isArray(value)) {
-      return value.map(item => this.unproxify(item));
+      return value.map((item) => this.unproxify(item));
     }
 
     // Handle Map
@@ -337,9 +334,9 @@ export class Store<T extends object> {
           const oldValue = Reflect.get(target, prop, receiver);
 
           // Check equality - but arrays/objects are never equal by reference
-          // Skip equality check for arrays and objects  
-          const skipEqualityCheck = Array.isArray(value) ||
-            (typeof value === 'object' && value !== null && !(value instanceof Date));
+          // Skip equality check for arrays and objects
+          const skipEqualityCheck =
+            Array.isArray(value) || (typeof value === 'object' && value !== null && !(value instanceof Date));
 
           if (!skipEqualityCheck && this.options.equals!(oldValue, value)) {
             result = true;
@@ -449,7 +446,7 @@ export class Store<T extends object> {
         return Reflect.ownKeys(target);
       },
 
-      getOwnPropertyDescriptor: (target, prop) => Reflect.getOwnPropertyDescriptor(target, prop)
+      getOwnPropertyDescriptor: (target, prop) => Reflect.getOwnPropertyDescriptor(target, prop),
     });
 
     this.proxies.set(obj, proxy);
@@ -464,17 +461,15 @@ export class Store<T extends object> {
         if (prop === '__path') return path;
 
         // Array methods that mutate
-        const mutatingMethods = [
-          'push', 'pop', 'shift', 'unshift',
-          'splice', 'sort', 'reverse', 'fill', 'copyWithin'
-        ];
+        const mutatingMethods = ['push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse', 'fill', 'copyWithin'];
 
         if (typeof prop === 'string' && mutatingMethods.includes(prop)) {
-          return (...args: any[]) => batch(() => {
-            const result = (target as any)[prop](...args);
-            this.updateArraySignals(path);
-            return result;
-          });
+          return (...args: any[]) =>
+            batch(() => {
+              const result = (target as any)[prop](...args);
+              this.updateArraySignals(path);
+              return result;
+            });
         }
 
         // Handle array indexing
@@ -552,7 +547,7 @@ export class Store<T extends object> {
           this.updateArraySignals(path);
         });
         return result;
-      }
+      },
     });
 
     this.proxies.set(arr, proxy);
@@ -685,7 +680,7 @@ export class Store<T extends object> {
       // Subscribe to specific path
       const subscription: StoreSubscription = {
         path: pathOrCallback,
-        callback: callback!
+        callback: callback!,
       };
 
       this.subscriptions.push(subscription);
@@ -726,10 +721,7 @@ export class Store<T extends object> {
 /**
  * Factory function for creating deep reactive stores
  */
-export function store<T extends object>(
-  initial: T,
-  options?: StoreOptions
-): Store<T> & T {
+export function store<T extends object>(initial: T, options?: StoreOptions): Store<T> & T {
   const storeInstance = new Store(initial, options);
   // Ensure get and set methods are accessible
   if (!(storeInstance as any).get) {
@@ -741,7 +733,7 @@ export function store<T extends object>(
       },
       set<K extends keyof T>(key: K, value: T[K]): void {
         (storeInstance as any)[key] = value;
-      }
+      },
     });
     return wrapper as any;
   }
@@ -804,10 +796,7 @@ export class Transaction<T extends object> {
 /**
  * Create a transaction
  */
-export function transaction<T extends object>(
-  s: Store<T>,
-  fn: (tx: Transaction<T>) => void
-): void {
+export function transaction<T extends object>(s: Store<T>, fn: (tx: Transaction<T>) => void): void {
   const tx = new Transaction(s);
 
   try {

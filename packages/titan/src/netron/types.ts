@@ -78,7 +78,6 @@ export type NetronOptions = {
    * @type {Record<string, any>}
    */
   loggerContext?: Record<string, any>;
-
 };
 
 /**

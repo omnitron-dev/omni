@@ -19,7 +19,7 @@ describe('Coercion Modes Tests', () => {
       const schema = z.object({
         age: z.number(),
         active: z.boolean(),
-        name: z.string()
+        name: z.string(),
       });
 
       const validator = engine.compile(schema, { mode: 'strip', coerce: true });
@@ -29,7 +29,7 @@ describe('Coercion Modes Tests', () => {
         active: 'true',
         name: 'John',
         extra: 'should be stripped',
-        another: 123
+        another: 123,
       };
 
       const result = validator.validate(input);
@@ -52,9 +52,9 @@ describe('Coercion Modes Tests', () => {
       const schema = z.object({
         user: z.object({
           id: z.coerce.number(),
-          active: z.coerce.boolean()
+          active: z.coerce.boolean(),
         }),
-        count: z.number()
+        count: z.number(),
       });
 
       const validator = engine.compile(schema, { mode: 'strip', coerce: true });
@@ -63,10 +63,10 @@ describe('Coercion Modes Tests', () => {
         user: {
           id: '123',
           active: '1',
-          extra: 'field'
+          extra: 'field',
         },
         count: '456',
-        topLevel: 'extra'
+        topLevel: 'extra',
       };
 
       const result = validator.validate(input);
@@ -81,7 +81,7 @@ describe('Coercion Modes Tests', () => {
     it('should strip and coerce with optional fields', () => {
       const schema = z.object({
         required: z.number(),
-        optional: z.boolean().optional()
+        optional: z.boolean().optional(),
       });
 
       const validator = engine.compile(schema, { mode: 'strip', coerce: true });
@@ -90,7 +90,7 @@ describe('Coercion Modes Tests', () => {
       const input1 = {
         required: '100',
         optional: 'true',
-        extra: 'field'
+        extra: 'field',
       };
 
       const result1 = validator.validate(input1);
@@ -101,7 +101,7 @@ describe('Coercion Modes Tests', () => {
       // Without optional field
       const input2 = {
         required: '200',
-        extra: 'field'
+        extra: 'field',
       };
 
       const result2 = validator.validate(input2);
@@ -115,7 +115,7 @@ describe('Coercion Modes Tests', () => {
     it('should reject unknown fields even with coercion', () => {
       const schema = z.object({
         age: z.number(),
-        name: z.string()
+        name: z.string(),
       });
 
       const validator = engine.compile(schema, { mode: 'strict', coerce: true });
@@ -123,7 +123,7 @@ describe('Coercion Modes Tests', () => {
       const input = {
         age: '25',
         name: 'John',
-        extra: 'field'
+        extra: 'field',
       };
 
       // Should fail due to unknown field
@@ -133,7 +133,7 @@ describe('Coercion Modes Tests', () => {
     it('should coerce types but enforce strict schema', () => {
       const schema = z.object({
         count: z.number(),
-        enabled: z.boolean()
+        enabled: z.boolean(),
       });
 
       const validator = engine.compile(schema, { mode: 'strict', coerce: true });
@@ -141,7 +141,7 @@ describe('Coercion Modes Tests', () => {
       // Valid input with coercion
       const validInput = {
         count: '42',
-        enabled: 'true'
+        enabled: 'true',
       };
 
       const result = validator.validate(validInput);
@@ -152,7 +152,7 @@ describe('Coercion Modes Tests', () => {
       const invalidInput = {
         count: '42',
         enabled: 'true',
-        extra: 'not allowed'
+        extra: 'not allowed',
       };
 
       expect(() => validator.validate(invalidInput)).toThrow();
@@ -162,9 +162,9 @@ describe('Coercion Modes Tests', () => {
       const schema = z.object({
         outer: z.object({
           inner: z.object({
-            value: z.number()
-          })
-        })
+            value: z.number(),
+          }),
+        }),
       });
 
       const validator = engine.compile(schema, { mode: 'strict', coerce: true });
@@ -173,9 +173,9 @@ describe('Coercion Modes Tests', () => {
       const validInput = {
         outer: {
           inner: {
-            value: '123'
-          }
-        }
+            value: '123',
+          },
+        },
       };
 
       const result = validator.validate(validInput);
@@ -186,9 +186,9 @@ describe('Coercion Modes Tests', () => {
         outer: {
           inner: {
             value: '123',
-            extra: 'not allowed'
-          }
-        }
+            extra: 'not allowed',
+          },
+        },
       };
 
       expect(() => validator.validate(invalidInput)).toThrow();
@@ -199,7 +199,7 @@ describe('Coercion Modes Tests', () => {
     it('should pass through unknown fields and coerce known fields', () => {
       const schema = z.object({
         age: z.number(),
-        active: z.boolean()
+        active: z.boolean(),
       });
 
       const validator = engine.compile(schema, { mode: 'passthrough', coerce: true });
@@ -209,7 +209,7 @@ describe('Coercion Modes Tests', () => {
         active: 'false',
         extra1: 'value1',
         extra2: 123,
-        extra3: { nested: 'object' }
+        extra3: { nested: 'object' },
       };
 
       const result = validator.validate(input);
@@ -227,8 +227,8 @@ describe('Coercion Modes Tests', () => {
     it('should handle nested passthrough with coercion', () => {
       const schema = z.object({
         data: z.object({
-          count: z.number()
-        })
+          count: z.number(),
+        }),
       });
 
       const validator = engine.compile(schema, { mode: 'passthrough', coerce: true });
@@ -236,9 +236,9 @@ describe('Coercion Modes Tests', () => {
       const input = {
         data: {
           count: '100',
-          extra: 'field'
+          extra: 'field',
         },
-        topLevel: 'value'
+        topLevel: 'value',
       };
 
       const result = validator.validate(input);
@@ -250,7 +250,7 @@ describe('Coercion Modes Tests', () => {
 
     it('should preserve all types with passthrough', () => {
       const schema = z.object({
-        id: z.number()
+        id: z.number(),
       });
 
       const validator = engine.compile(schema, { mode: 'passthrough', coerce: true });
@@ -264,7 +264,7 @@ describe('Coercion Modes Tests', () => {
         array: [1, 2, 3],
         object: { key: 'value' },
         date: new Date('2024-01-01'),
-        buffer: Buffer.from('data')
+        buffer: Buffer.from('data'),
       };
 
       const result = validator.validate(input);
@@ -288,13 +288,13 @@ describe('Coercion Modes Tests', () => {
           id: z.number(),
           profile: z.object({
             age: z.number(),
-            verified: z.boolean()
-          })
+            verified: z.boolean(),
+          }),
         }),
         settings: z.object({
           count: z.number(),
-          enabled: z.boolean()
-        })
+          enabled: z.boolean(),
+        }),
       });
 
       const validator = engine.compile(schema, { mode: 'strip', coerce: true });
@@ -305,16 +305,16 @@ describe('Coercion Modes Tests', () => {
           profile: {
             age: '25',
             verified: '1',
-            extra1: 'strip'
+            extra1: 'strip',
           },
-          extra2: 'strip'
+          extra2: 'strip',
         },
         settings: {
           count: '10',
           enabled: 'true',
-          extra3: 'strip'
+          extra3: 'strip',
         },
-        extra4: 'strip'
+        extra4: 'strip',
       };
 
       const result = validator.validate(input);
@@ -343,21 +343,23 @@ describe('Coercion Modes Tests', () => {
       // IMPORTANT: Zod's z.coerce.boolean() treats any non-empty string as true,
       // so use '0'/'1' or boolean values, not 'true'/'false' strings.
       const schema = z.object({
-        items: z.array(z.object({
-          id: z.coerce.number(),  // Explicit coerce required for arrays
-          active: z.coerce.boolean()
-        }))
+        items: z.array(
+          z.object({
+            id: z.coerce.number(), // Explicit coerce required for arrays
+            active: z.coerce.boolean(),
+          })
+        ),
       });
 
       const validator = engine.compile(schema, { mode: 'strip' }); // coerce:true not needed here
 
       const input = {
         items: [
-          { id: '1', active: 1, extra: 'strip' },      // Use number: 1 = true
-          { id: '2', active: 0, extra: 'strip' },      // Use number: 0 = false
-          { id: '3', active: true, extra: 'strip' }    // Or actual boolean
+          { id: '1', active: 1, extra: 'strip' }, // Use number: 1 = true
+          { id: '2', active: 0, extra: 'strip' }, // Use number: 0 = false
+          { id: '3', active: true, extra: 'strip' }, // Or actual boolean
         ],
-        topExtra: 'strip'
+        topExtra: 'strip',
       };
 
       const result = validator.validate(input);
@@ -382,10 +384,10 @@ describe('Coercion Modes Tests', () => {
           level2: z.object({
             level3: z.object({
               value: z.number(),
-              flag: z.boolean()
-            })
-          })
-        })
+              flag: z.boolean(),
+            }),
+          }),
+        }),
       });
 
       // Strip mode - should remove all extra fields at all levels
@@ -397,13 +399,13 @@ describe('Coercion Modes Tests', () => {
             level3: {
               value: '100',
               flag: 'true',
-              extra3: 'strip'
+              extra3: 'strip',
             },
-            extra2: 'strip'
+            extra2: 'strip',
           },
-          extra1: 'strip'
+          extra1: 'strip',
         },
-        extra0: 'strip'
+        extra0: 'strip',
       };
 
       const result = stripValidator.validate(input);
@@ -421,116 +423,136 @@ describe('Coercion Modes Tests', () => {
     it('should fail when coercion is not possible', () => {
       const schema = z.object({
         age: z.number(),
-        active: z.boolean()
+        active: z.boolean(),
       });
 
       const validator = engine.compile(schema, { coerce: true });
 
       // Invalid number coercion
-      expect(() => validator.validate({
-        age: 'not-a-number',
-        active: 'true'
-      })).toThrow();
+      expect(() =>
+        validator.validate({
+          age: 'not-a-number',
+          active: 'true',
+        })
+      ).toThrow();
 
       // Invalid boolean coercion
-      expect(() => validator.validate({
-        age: '25',
-        active: 'not-a-boolean'
-      })).toThrow();
+      expect(() =>
+        validator.validate({
+          age: '25',
+          active: 'not-a-boolean',
+        })
+      ).toThrow();
     });
 
     it('should handle edge cases in coercion', () => {
       const schema = z.object({
         number: z.number(),
-        boolean: z.boolean()
+        boolean: z.boolean(),
       });
 
       const validator = engine.compile(schema, { coerce: true });
 
       // Valid edge cases
-      expect(validator.validate({
-        number: '0',
-        boolean: 'false'
-      })).toEqual({
+      expect(
+        validator.validate({
+          number: '0',
+          boolean: 'false',
+        })
+      ).toEqual({
         number: 0,
-        boolean: false
+        boolean: false,
       });
 
-      expect(validator.validate({
-        number: '-123.456',
-        boolean: '0'
-      })).toEqual({
+      expect(
+        validator.validate({
+          number: '-123.456',
+          boolean: '0',
+        })
+      ).toEqual({
         number: -123.456,
-        boolean: false
+        boolean: false,
       });
 
       // Empty string number coercion should fail
-      expect(() => validator.validate({
-        number: '',
-        boolean: 'true'
-      })).toThrow();
+      expect(() =>
+        validator.validate({
+          number: '',
+          boolean: 'true',
+        })
+      ).toThrow();
     });
 
     it('should handle coercion with validation constraints', () => {
       const schema = z.object({
         age: z.number().int().min(0).max(150),
-        score: z.number().positive()
+        score: z.number().positive(),
       });
 
       const validator = engine.compile(schema, { coerce: true });
 
       // Valid after coercion
-      expect(validator.validate({
-        age: '25',
-        score: '100.5'
-      })).toEqual({
+      expect(
+        validator.validate({
+          age: '25',
+          score: '100.5',
+        })
+      ).toEqual({
         age: 25,
-        score: 100.5
+        score: 100.5,
       });
 
       // Invalid after coercion - not an integer
-      expect(() => validator.validate({
-        age: '25.5',
-        score: '100'
-      })).toThrow();
+      expect(() =>
+        validator.validate({
+          age: '25.5',
+          score: '100',
+        })
+      ).toThrow();
 
       // Invalid after coercion - out of range
-      expect(() => validator.validate({
-        age: '200',
-        score: '100'
-      })).toThrow();
+      expect(() =>
+        validator.validate({
+          age: '200',
+          score: '100',
+        })
+      ).toThrow();
 
       // Invalid after coercion - not positive
-      expect(() => validator.validate({
-        age: '25',
-        score: '-100'
-      })).toThrow();
+      expect(() =>
+        validator.validate({
+          age: '25',
+          score: '-100',
+        })
+      ).toThrow();
     });
 
     it('should handle date coercion', () => {
       const schema = z.object({
-        timestamp: z.date()
+        timestamp: z.date(),
       });
 
       const validator = engine.compile(schema, { coerce: true });
 
       // Valid date string
       const result1 = validator.validate({
-        timestamp: '2024-01-01T00:00:00.000Z'
+        timestamp: '2024-01-01T00:00:00.000Z',
       });
       expect(result1.timestamp).toBeInstanceOf(Date);
       expect(result1.timestamp.getFullYear()).toBe(2024);
 
       // Valid timestamp number
       const result2 = validator.validate({
-        timestamp: 1704067200000
+        timestamp: 1704067200000,
       });
       expect(result2.timestamp).toBeInstanceOf(Date);
 
       // Invalid date
-      expect(() => validator.validate({
-        timestamp: 'invalid-date'
-      })).toThrow();
+      expect(() =>
+        validator.validate({
+          timestamp: 'invalid-date',
+        })
+      ).toThrow();
     });
   });
 
@@ -538,7 +560,7 @@ describe('Coercion Modes Tests', () => {
     it('should apply defaults before coercion', () => {
       const schema = z.object({
         count: z.number().default(0),
-        enabled: z.boolean().default(false)
+        enabled: z.boolean().default(false),
       });
 
       const validator = engine.compile(schema, { coerce: true });
@@ -551,7 +573,7 @@ describe('Coercion Modes Tests', () => {
       // With values - should coerce
       const result2 = validator.validate({
         count: '42',
-        enabled: 'true'
+        enabled: 'true',
       });
       expect(result2.count).toBe(42);
       expect(result2.enabled).toBe(true);
@@ -561,14 +583,14 @@ describe('Coercion Modes Tests', () => {
       const schema = z.object({
         required: z.string(),
         optional: z.number().default(100),
-        flag: z.boolean().default(true)
+        flag: z.boolean().default(true),
       });
 
       const validator = engine.compile(schema, { mode: 'strip', coerce: true });
 
       const input = {
         required: 'value',
-        extra: 'strip this'
+        extra: 'strip this',
       };
 
       const result = validator.validate(input);
@@ -584,14 +606,14 @@ describe('Coercion Modes Tests', () => {
     it('should coerce types in async validation', async () => {
       const schema = z.object({
         age: z.number(),
-        active: z.boolean()
+        active: z.boolean(),
       });
 
       const validator = engine.compile(schema, { coerce: true });
 
       const input = {
         age: '30',
-        active: 'true'
+        active: 'true',
       };
 
       const result = await validator.validateAsync(input);
@@ -603,13 +625,16 @@ describe('Coercion Modes Tests', () => {
     it('should coerce with async refinements', async () => {
       const schema = z.object({
         id: z.number(),
-        email: z.string().email().refine(
-          async (val) => {
-            await new Promise(resolve => setTimeout(resolve, 10));
-            return !val.endsWith('@blocked.com');
-          },
-          { message: 'Email domain is blocked' }
-        )
+        email: z
+          .string()
+          .email()
+          .refine(
+            async (val) => {
+              await new Promise((resolve) => setTimeout(resolve, 10));
+              return !val.endsWith('@blocked.com');
+            },
+            { message: 'Email domain is blocked' }
+          ),
       });
 
       const validator = engine.compile(schema, { coerce: true });
@@ -617,23 +642,25 @@ describe('Coercion Modes Tests', () => {
       // Valid
       const result = await validator.validateAsync({
         id: '123',
-        email: 'test@example.com'
+        email: 'test@example.com',
       });
       expect(result.id).toBe(123);
       expect(result.email).toBe('test@example.com');
 
       // Invalid - blocked domain
-      await expect(validator.validateAsync({
-        id: '123',
-        email: 'test@blocked.com'
-      })).rejects.toThrow();
+      await expect(
+        validator.validateAsync({
+          id: '123',
+          email: 'test@blocked.com',
+        })
+      ).rejects.toThrow();
     });
   });
 
   describe('Performance with coercion', () => {
     it('should cache coerced validators', () => {
       const schema = z.object({
-        value: z.number()
+        value: z.number(),
       });
 
       const validator1 = engine.compile(schema, { coerce: true });
@@ -646,11 +673,13 @@ describe('Coercion Modes Tests', () => {
     it('should handle large datasets with coercion efficiently (explicit z.coerce)', () => {
       // NOTE: Using explicit z.coerce for array elements due to Zod v4 limitation
       const schema = z.object({
-        items: z.array(z.object({
-          id: z.coerce.number(),
-          value: z.coerce.number(),
-          flag: z.coerce.boolean()
-        }))
+        items: z.array(
+          z.object({
+            id: z.coerce.number(),
+            value: z.coerce.number(),
+            flag: z.coerce.boolean(),
+          })
+        ),
       });
 
       const validator = engine.compile(schema);
@@ -659,8 +688,8 @@ describe('Coercion Modes Tests', () => {
         items: Array.from({ length: 1000 }, (_, i) => ({
           id: String(i),
           value: String(i * 2),
-          flag: i % 2 === 0 ? 'true' : 'false'
-        }))
+          flag: i % 2 === 0 ? 'true' : 'false',
+        })),
       };
 
       const startTime = Date.now();

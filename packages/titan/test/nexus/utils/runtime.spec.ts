@@ -15,7 +15,7 @@ import {
   hasWorkerSupport,
   getGlobalObject,
   PerformanceTimer,
-  getMemoryUsage
+  getMemoryUsage,
 } from '../../../src/nexus/index.js';
 
 describe('Runtime Detection', () => {
@@ -170,7 +170,7 @@ describe('Runtime Detection', () => {
       const timer = new PerformanceTimer();
 
       // Wait a bit
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       const elapsed = timer.elapsed();
 
@@ -181,12 +181,12 @@ describe('Runtime Detection', () => {
     it('should reset timer', async () => {
       const timer = new PerformanceTimer();
 
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
       const elapsed1 = timer.elapsed();
 
       timer.reset();
 
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
       const elapsed2 = timer.elapsed();
 
       expect(elapsed1).toBeGreaterThan(40);
@@ -270,9 +270,9 @@ describe('Runtime Detection', () => {
       if (info.runtime === Runtime.Node || info.runtime === Runtime.Bun) {
         expect(info.platform).toBeDefined();
         expect(typeof info.platform).toBe('string');
-        expect(['darwin', 'linux', 'win32', 'freebsd', 'sunos', 'aix'].some(p =>
-          info.platform?.includes(p)
-        )).toBe(true);
+        expect(['darwin', 'linux', 'win32', 'freebsd', 'sunos', 'aix'].some((p) => info.platform?.includes(p))).toBe(
+          true
+        );
       }
     });
 

@@ -12,7 +12,7 @@ import {
   OnInit,
   OnDestroy,
   type DynamicModule,
-  type Provider
+  type Provider,
 } from '../src/index';
 import { LOGGER_SERVICE_TOKEN } from '../src/modules/logger.module';
 const CONFIG_SERVICE_TOKEN = createToken('ConfigModule');
@@ -36,7 +36,7 @@ class TestService implements OnInit, OnDestroy {
   private initialized = false;
   private destroyed = false;
 
-  constructor(@Inject(TestConfigToken) private config: TestConfig) { }
+  constructor(@Inject(TestConfigToken) private config: TestConfig) {}
 
   async onInit(): Promise<void> {
     this.initialized = true;
@@ -71,7 +71,7 @@ class DependentService implements OnInit {
   constructor(
     @Inject(TestServiceToken) private testService: TestService,
     @Inject(TestConfigToken) private config: TestConfig
-  ) { }
+  ) {}
 
   async onInit(): Promise<void> {
     this.initialized = true;
@@ -101,17 +101,17 @@ class TestModule implements IModule {
         useValue: config || {
           enabled: true,
           value: 'default',
-          count: 0
-        }
+          count: 0,
+        },
       },
       {
         provide: TestServiceToken,
-        useClass: TestService
+        useClass: TestService,
       },
       {
         provide: DependentServiceToken,
-        useClass: DependentService
-      }
+        useClass: DependentService,
+      },
     ];
 
     return {
@@ -120,7 +120,7 @@ class TestModule implements IModule {
       version: '1.0.0',
       providers,
       exports: [TestServiceToken, DependentServiceToken],
-      global: false
+      global: false,
     };
   }
 
@@ -135,16 +135,16 @@ class TestModule implements IModule {
       {
         provide: TestConfigToken,
         useFactory: options.useFactory,
-        inject: options.inject || []
+        inject: options.inject || [],
       },
       {
         provide: TestServiceToken,
-        useClass: TestService
+        useClass: TestService,
       },
       {
         provide: DependentServiceToken,
-        useClass: DependentService
-      }
+        useClass: DependentService,
+      },
     ];
 
     return {
@@ -152,7 +152,7 @@ class TestModule implements IModule {
       name: 'test-module',
       version: '1.0.0',
       providers,
-      exports: [TestServiceToken]
+      exports: [TestServiceToken],
     };
   }
 
@@ -197,14 +197,14 @@ class SimpleModule implements IModule {
         useValue: {
           enabled: false,
           value: 'simple',
-          count: 42
-        }
+          count: 42,
+        },
       });
     }
 
     if (!app.hasProvider(TestServiceToken)) {
       app.register(TestServiceToken, {
-        useClass: TestService
+        useClass: TestService,
       });
 
       const service = app.resolve(TestServiceToken);
@@ -227,7 +227,7 @@ describe('Improved Titan Module API', () => {
       app = await TitanApplication.create({
         name: 'test-app',
         disableGracefulShutdown: true,
-        modules: [SimpleModule] // Pass class, not instance
+        modules: [SimpleModule], // Pass class, not instance
       });
 
       await app.start();
@@ -240,13 +240,13 @@ describe('Improved Titan Module API', () => {
       const config: TestConfig = {
         enabled: true,
         value: 'test-value',
-        count: 123
+        count: 123,
       };
 
       app = await TitanApplication.create({
         name: 'test-app',
         disableGracefulShutdown: true,
-        modules: [TestModule.forRoot(config)]
+        modules: [TestModule.forRoot(config)],
       });
 
       await app.start();
@@ -266,15 +266,15 @@ describe('Improved Titan Module API', () => {
           TestModule.forRootAsync({
             useFactory: async () => {
               // Simulate async config loading
-              await new Promise(resolve => setTimeout(resolve, 10));
+              await new Promise((resolve) => setTimeout(resolve, 10));
               return {
                 enabled: true,
                 value: 'async-loaded',
-                count: 999
+                count: 999,
               };
-            }
-          })
-        ]
+            },
+          }),
+        ],
       });
 
       await app.start();
@@ -289,7 +289,7 @@ describe('Improved Titan Module API', () => {
       app = await TitanApplication.create({
         name: 'test-app',
         disableGracefulShutdown: true,
-        modules: [new SimpleModule()]
+        modules: [new SimpleModule()],
       });
 
       await app.start();
@@ -298,16 +298,17 @@ describe('Improved Titan Module API', () => {
     });
 
     it('should support factory function returning module', async () => {
-      const moduleFactory = () => TestModule.forRoot({
-        enabled: true,
-        value: 'factory',
-        count: 777
-      });
+      const moduleFactory = () =>
+        TestModule.forRoot({
+          enabled: true,
+          value: 'factory',
+          count: 777,
+        });
 
       app = await TitanApplication.create({
         name: 'test-app',
         disableGracefulShutdown: true,
-        modules: [moduleFactory]
+        modules: [moduleFactory],
       });
 
       await app.start();
@@ -319,18 +320,18 @@ describe('Improved Titan Module API', () => {
 
     it('should support async factory function', async () => {
       const asyncModuleFactory = async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         return TestModule.forRoot({
           enabled: true,
           value: 'async-factory',
-          count: 555
+          count: 555,
         });
       };
 
       app = await TitanApplication.create({
         name: 'test-app',
         disableGracefulShutdown: true,
-        modules: [asyncModuleFactory]
+        modules: [asyncModuleFactory],
       });
 
       await app.start();
@@ -344,7 +345,7 @@ describe('Improved Titan Module API', () => {
     beforeEach(async () => {
       app = await TitanApplication.create({
         name: 'test-app',
-        disableGracefulShutdown: true
+        disableGracefulShutdown: true,
       });
     });
 
@@ -358,7 +359,7 @@ describe('Improved Titan Module API', () => {
       const testToken = createToken<{ value: string }>('TestValue');
 
       app.register(testToken, {
-        useValue: { value: 'registered' }
+        useValue: { value: 'registered' },
       });
 
       const resolved = app.resolve(testToken);
@@ -380,7 +381,7 @@ describe('Improved Titan Module API', () => {
       expect(app.hasProvider(testToken)).toBe(false);
 
       app.register(testToken, {
-        useValue: 'test'
+        useValue: 'test',
       });
 
       expect(app.hasProvider(testToken)).toBe(true);
@@ -390,12 +391,16 @@ describe('Improved Titan Module API', () => {
       const testToken = createToken('TestToken');
 
       app.register(testToken, {
-        useValue: 'first'
+        useValue: 'first',
       });
 
-      app.register(testToken, {
-        useValue: 'second'
-      }, { override: true });
+      app.register(
+        testToken,
+        {
+          useValue: 'second',
+        },
+        { override: true }
+      );
 
       expect(app.resolve(testToken)).toBe('second');
     });
@@ -410,9 +415,9 @@ describe('Improved Titan Module API', () => {
           TestModule.forRoot({
             enabled: true,
             value: 'provider-test',
-            count: 100
-          })
-        ]
+            count: 100,
+          }),
+        ],
       });
 
       await app.start();
@@ -437,15 +442,15 @@ describe('Improved Titan Module API', () => {
         providers: [
           {
             provide: factoryToken,
-            useFactory: () => 'factory-created-value'
-          }
-        ]
+            useFactory: () => 'factory-created-value',
+          },
+        ],
       };
 
       app = await TitanApplication.create({
         name: 'test-app',
         disableGracefulShutdown: true,
-        modules: [dynamicModule]
+        modules: [dynamicModule],
       });
 
       await app.start();
@@ -463,15 +468,15 @@ describe('Improved Titan Module API', () => {
           TestModule.forRoot({
             enabled: true,
             value: 'base',
-            count: 50
-          })
-        ]
+            count: 50,
+          }),
+        ],
       });
 
       // Add a factory provider that depends on other services
       app.register(derivedToken, {
         useFactory: (testService: TestService) => `Derived from: ${testService.doSomething()}`,
-        inject: [TestServiceToken]
+        inject: [TestServiceToken],
       });
 
       await app.start();
@@ -484,7 +489,7 @@ describe('Improved Titan Module API', () => {
       const importedModule = TestModule.forRoot({
         enabled: true,
         value: 'imported',
-        count: 10
+        count: 10,
       });
 
       const mainModule: DynamicModule = {
@@ -493,13 +498,13 @@ describe('Improved Titan Module API', () => {
         },
         name: 'main-module',
         imports: [importedModule],
-        providers: []
+        providers: [],
       };
 
       app = await TitanApplication.create({
         name: 'test-app',
         disableGracefulShutdown: true,
-        modules: [mainModule]
+        modules: [mainModule],
       });
 
       await app.start();
@@ -519,9 +524,9 @@ describe('Improved Titan Module API', () => {
           TestModule.forRoot({
             enabled: true,
             value: 'lifecycle',
-            count: 1
-          })
-        ]
+            count: 1,
+          }),
+        ],
       });
 
       await app.start();
@@ -541,9 +546,9 @@ describe('Improved Titan Module API', () => {
           TestModule.forRoot({
             enabled: true,
             value: 'destroy-test',
-            count: 1
-          })
-        ]
+            count: 1,
+          }),
+        ],
       });
 
       await app.start();
@@ -561,7 +566,7 @@ describe('Improved Titan Module API', () => {
     it('should throw error when resolving non-existent provider', () => {
       app = new TitanApplication({
         name: 'test-app',
-        disableGracefulShutdown: true
+        disableGracefulShutdown: true,
       });
 
       const unknownToken = createToken('UnknownService');
@@ -574,13 +579,13 @@ describe('Improved Titan Module API', () => {
         name: 'error-module',
         onStart: async () => {
           throw new Error('Module startup failed');
-        }
+        },
       };
 
       app = await TitanApplication.create({
         name: 'test-app',
         disableGracefulShutdown: true,
-        modules: [errorModule]
+        modules: [errorModule],
       });
 
       await expect(app.start()).rejects.toThrow('Module startup failed');
@@ -592,20 +597,21 @@ describe('Improved Titan Module API', () => {
       const config1: TestConfig = {
         enabled: true,
         value: 'module1',
-        count: 1
+        count: 1,
       };
 
       app = await TitanApplication.create({
         name: 'test-app',
         disableGracefulShutdown: true,
         modules: [
-          TestModule.forRoot(config1),  // Dynamic module with forRoot
-          SimpleModule,                   // Class reference
-          new (class InlineModule implements IModule {  // Anonymous class instance
+          TestModule.forRoot(config1), // Dynamic module with forRoot
+          SimpleModule, // Class reference
+          new (class InlineModule implements IModule {
+            // Anonymous class instance
             readonly name = 'inline-module';
             readonly version = '1.0.0';
-          })()
-        ]
+          })(),
+        ],
       });
 
       await app.start();

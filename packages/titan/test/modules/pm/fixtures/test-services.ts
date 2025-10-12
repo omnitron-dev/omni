@@ -15,7 +15,7 @@ import { EventEmitter } from 'events';
  */
 @Process({
   name: 'calculator-service',
-  version: '1.0.0'
+  version: '1.0.0',
 })
 export class CalculatorService {
   private memory = 0;
@@ -67,11 +67,13 @@ export class CalculatorService {
   async checkHealth() {
     return {
       status: 'healthy' as const,
-      checks: [{
-        name: 'calculator',
-        status: 'pass' as const,
-        data: { callCount: this.callCount }
-      }]
+      checks: [
+        {
+          name: 'calculator',
+          status: 'pass' as const,
+          data: { callCount: this.callCount },
+        },
+      ],
     };
   }
 }
@@ -82,7 +84,7 @@ export class CalculatorService {
  */
 @Process({
   name: 'counter-service',
-  version: '1.0.0'
+  version: '1.0.0',
 })
 export class CounterService {
   private counter = 0;
@@ -131,21 +133,21 @@ export class CounterService {
  */
 @Process({
   name: 'stream-service',
-  version: '1.0.0'
+  version: '1.0.0',
 })
 export class StreamService {
-
   @Public()
   async *streamNumbers(start: number, end: number, delay = 10): AsyncGenerator<number> {
     for (let i = start; i <= end; i++) {
-      await new Promise(resolve => setTimeout(resolve, delay));
+      await new Promise((resolve) => setTimeout(resolve, delay));
       yield i;
     }
   }
 
   @Public()
   async *streamFibonacci(n: number): AsyncGenerator<number> {
-    let a = 0, b = 1;
+    let a = 0,
+      b = 1;
     for (let i = 0; i < n; i++) {
       yield a;
       const temp = a;
@@ -170,7 +172,7 @@ export class StreamService {
  */
 @Process({
   name: 'error-service',
-  version: '1.0.0'
+  version: '1.0.0',
 })
 export class ErrorService {
   private errorCount = 0;
@@ -191,7 +193,7 @@ export class ErrorService {
 
   @Public()
   async throwAfterDelay(delay: number, message: string): Promise<void> {
-    await new Promise(resolve => setTimeout(resolve, delay));
+    await new Promise((resolve) => setTimeout(resolve, delay));
     this.errorCount++;
     throw new Error(message);
   }
@@ -217,7 +219,7 @@ export class ErrorService {
  */
 @Process({
   name: 'rate-limited-service',
-  version: '1.0.0'
+  version: '1.0.0',
 })
 export class RateLimitedService {
   private callTimestamps: number[] = [];
@@ -253,7 +255,7 @@ export class RateLimitedService {
  */
 @Process({
   name: 'event-service',
-  version: '1.0.0'
+  version: '1.0.0',
 })
 export class EventService extends EventEmitter {
   private eventHistory: Array<{ event: string; data: any; timestamp: number }> = [];
@@ -263,7 +265,7 @@ export class EventService extends EventEmitter {
     this.eventHistory.push({
       event: eventName,
       data,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
     this.emit(eventName, data);
   }
@@ -295,10 +297,9 @@ export class EventService extends EventEmitter {
  */
 @Process({
   name: 'cpu-intensive-service',
-  version: '1.0.0'
+  version: '1.0.0',
 })
 export class CpuIntensiveService {
-
   @Public()
   async fibonacci(n: number): Promise<number> {
     if (n <= 1) return n;
@@ -350,7 +351,7 @@ export class CpuIntensiveService {
  */
 @Process({
   name: 'memory-intensive-service',
-  version: '1.0.0'
+  version: '1.0.0',
 })
 export class MemoryIntensiveService {
   private buffers: Buffer[] = [];
@@ -391,7 +392,7 @@ export class MemoryIntensiveService {
  */
 @Process({
   name: 'lifecycle-service',
-  version: '1.0.0'
+  version: '1.0.0',
 })
 export class LifecycleService {
   private initialized = false;
@@ -445,10 +446,9 @@ export class LifecycleService {
  */
 @Process({
   name: 'timeout-service',
-  version: '1.0.0'
+  version: '1.0.0',
 })
 export class TimeoutService {
-
   @Public()
   async quickOperation(): Promise<string> {
     return 'quick';
@@ -456,7 +456,7 @@ export class TimeoutService {
 
   @Public()
   async slowOperation(delay: number): Promise<string> {
-    await new Promise(resolve => setTimeout(resolve, delay));
+    await new Promise((resolve) => setTimeout(resolve, delay));
     return 'slow-complete';
   }
 
@@ -472,7 +472,7 @@ export class TimeoutService {
     if (shouldTimeout) {
       return this.neverComplete();
     }
-    await new Promise(resolve => setTimeout(resolve, delay));
+    await new Promise((resolve) => setTimeout(resolve, delay));
     return 'completed';
   }
 }
@@ -483,13 +483,13 @@ export class TimeoutService {
  */
 @Process({
   name: 'metrics-service',
-  version: '1.0.0'
+  version: '1.0.0',
 })
 export class MetricsService {
   private metrics = {
     requests: 0,
     errors: 0,
-    latencies: [] as number[]
+    latencies: [] as number[],
   };
 
   @Public()
@@ -497,7 +497,7 @@ export class MetricsService {
   async handleRequest(): Promise<void> {
     const start = Date.now();
     this.metrics.requests++;
-    await new Promise(resolve => setTimeout(resolve, Math.random() * 100));
+    await new Promise((resolve) => setTimeout(resolve, Math.random() * 100));
     this.metrics.latencies.push(Date.now() - start);
   }
 
@@ -513,12 +513,10 @@ export class MetricsService {
     const latencies = this.metrics.latencies;
     return {
       ...this.metrics,
-      avgLatency: latencies.length > 0
-        ? latencies.reduce((a, b) => a + b, 0) / latencies.length
-        : 0,
+      avgLatency: latencies.length > 0 ? latencies.reduce((a, b) => a + b, 0) / latencies.length : 0,
       p50: this.percentile(latencies, 0.5),
       p95: this.percentile(latencies, 0.95),
-      p99: this.percentile(latencies, 0.99)
+      p99: this.percentile(latencies, 0.99),
     };
   }
 
@@ -534,7 +532,7 @@ export class MetricsService {
     this.metrics = {
       requests: 0,
       errors: 0,
-      latencies: []
+      latencies: [],
     };
   }
 }

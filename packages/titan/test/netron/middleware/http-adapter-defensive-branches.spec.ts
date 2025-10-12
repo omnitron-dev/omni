@@ -4,10 +4,7 @@
 
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { IncomingMessage, ServerResponse } from 'http';
-import {
-  HttpMiddlewareAdapter,
-  type HttpMiddlewareContext
-} from '../../../src/netron/middleware/index.js';
+import { HttpMiddlewareAdapter, type HttpMiddlewareContext } from '../../../src/netron/middleware/index.js';
 
 describe('HttpMiddlewareAdapter - Defensive Branches', () => {
   let adapter: HttpMiddlewareAdapter;
@@ -37,9 +34,9 @@ describe('HttpMiddlewareAdapter - Defensive Branches', () => {
       const httpCtx = {
         request: {
           method: 'GET',
-          url: '/test'
+          url: '/test',
           // No headers property
-        } as Partial<IncomingMessage>
+        } as Partial<IncomingMessage>,
       };
 
       const netronCtx = adapter.toNetronContext(httpCtx);
@@ -55,8 +52,8 @@ describe('HttpMiddlewareAdapter - Defensive Branches', () => {
         request: {
           method: 'POST',
           url: '/api',
-          headers: null as any
-        } as Partial<IncomingMessage>
+          headers: null as any,
+        } as Partial<IncomingMessage>,
       };
 
       const netronCtx = adapter.toNetronContext(httpCtx);
@@ -71,8 +68,8 @@ describe('HttpMiddlewareAdapter - Defensive Branches', () => {
         request: {
           method: 'PUT',
           url: '/update',
-          headers: undefined as any
-        } as Partial<IncomingMessage>
+          headers: undefined as any,
+        } as Partial<IncomingMessage>,
       };
 
       const netronCtx = adapter.toNetronContext(httpCtx);
@@ -91,10 +88,10 @@ describe('HttpMiddlewareAdapter - Defensive Branches', () => {
         methodName: 'testMethod',
         metadata: new Map([
           ['custom-header', 'value'],
-          ['_internal', 'skip']
+          ['_internal', 'skip'],
         ]),
         timing: { start: Date.now(), middlewareTimes: new Map() },
-        result: { data: 'test' }
+        result: { data: 'test' },
         // No response property
       };
 
@@ -110,7 +107,7 @@ describe('HttpMiddlewareAdapter - Defensive Branches', () => {
       const mockResponse = {
         statusCode: 200,
         setHeader: jest.fn(),
-        end: jest.fn()
+        end: jest.fn(),
       } as Partial<ServerResponse>;
 
       const netronCtx: Partial<HttpMiddlewareContext> = {
@@ -119,7 +116,7 @@ describe('HttpMiddlewareAdapter - Defensive Branches', () => {
         methodName: 'testMethod',
         timing: { start: Date.now(), middlewareTimes: new Map() },
         response: mockResponse as ServerResponse,
-        result: { data: 'test' }
+        result: { data: 'test' },
         // No metadata property
       };
 
@@ -136,7 +133,7 @@ describe('HttpMiddlewareAdapter - Defensive Branches', () => {
       const mockResponse = {
         statusCode: 200,
         setHeader: jest.fn(),
-        end: jest.fn()
+        end: jest.fn(),
       } as Partial<ServerResponse>;
 
       const netronCtx: HttpMiddlewareContext = {
@@ -147,12 +144,12 @@ describe('HttpMiddlewareAdapter - Defensive Branches', () => {
           ['custom-header', 'value1'],
           ['_internalKey', 'internal'],
           ['_skip', 'skip'],
-          ['public-header', 'value2']
+          ['public-header', 'value2'],
         ]),
         timing: { start: Date.now(), middlewareTimes: new Map() },
         response: mockResponse as ServerResponse,
         request: {} as IncomingMessage,
-        input: {}
+        input: {},
       };
 
       const httpCtx = {};
@@ -171,7 +168,7 @@ describe('HttpMiddlewareAdapter - Defensive Branches', () => {
       const mockResponse = {
         statusCode: 200,
         setHeader: jest.fn(),
-        end: jest.fn()
+        end: jest.fn(),
       } as Partial<ServerResponse>;
 
       const netronCtx: HttpMiddlewareContext = {
@@ -180,13 +177,13 @@ describe('HttpMiddlewareAdapter - Defensive Branches', () => {
         methodName: 'testMethod',
         metadata: new Map([
           ['x-request-id', '123'],
-          ['content-type', 'application/json']
+          ['content-type', 'application/json'],
         ]),
         timing: { start: Date.now(), middlewareTimes: new Map() },
         response: mockResponse as ServerResponse,
         request: {} as IncomingMessage,
         input: {},
-        result: { success: true }
+        result: { success: true },
       };
 
       const httpCtx = {};

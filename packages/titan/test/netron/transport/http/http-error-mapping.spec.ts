@@ -33,7 +33,7 @@ describe('HTTP Error Mapping with TitanError', () => {
         requestId: 'req-12345',
         correlationId: 'corr-67890',
         traceId: 'trace-abcde',
-        spanId: 'span-fghij'
+        spanId: 'span-fghij',
       });
     }
 
@@ -42,7 +42,7 @@ describe('HTTP Error Mapping with TitanError', () => {
       throw new TitanError({
         code: ErrorCode.UNAUTHORIZED,
         message: 'Authentication required',
-        requestId: 'req-auth-001'
+        requestId: 'req-auth-001',
       });
     }
 
@@ -53,8 +53,8 @@ describe('HTTP Error Mapping with TitanError', () => {
         message: 'Validation failed',
         details: {
           field: 'email',
-          constraint: 'format'
-        }
+          constraint: 'format',
+        },
       });
     }
 
@@ -63,7 +63,7 @@ describe('HTTP Error Mapping with TitanError', () => {
       throw new TitanError({
         code: ErrorCode.TOO_MANY_REQUESTS,
         message: 'Rate limit exceeded',
-        details: { retryAfter: 60 }
+        details: { retryAfter: 60 },
       });
     }
 
@@ -72,7 +72,7 @@ describe('HTTP Error Mapping with TitanError', () => {
       throw new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
         message: 'Internal server error occurred',
-        correlationId: 'corr-internal-001'
+        correlationId: 'corr-internal-001',
       });
     }
 
@@ -119,8 +119,8 @@ describe('HTTP Error Mapping with TitanError', () => {
           timestamp: Date.now(),
           service: 'errortest',
           method: 'throwNotFound',
-          input: []
-        })
+          input: [],
+        }),
       });
 
       expect(response.status).toBe(404);
@@ -144,8 +144,8 @@ describe('HTTP Error Mapping with TitanError', () => {
           timestamp: Date.now(),
           service: 'errortest',
           method: 'throwUnauthorized',
-          input: []
-        })
+          input: [],
+        }),
       });
 
       expect(response.status).toBe(401);
@@ -166,8 +166,8 @@ describe('HTTP Error Mapping with TitanError', () => {
           timestamp: Date.now(),
           service: 'errortest',
           method: 'throwValidationError',
-          input: []
-        })
+          input: [],
+        }),
       });
 
       expect(response.status).toBe(422);
@@ -177,7 +177,7 @@ describe('HTTP Error Mapping with TitanError', () => {
       expect(data.error.code).toBe(String(ErrorCode.VALIDATION_ERROR));
       expect(data.error.details).toEqual({
         field: 'email',
-        constraint: 'format'
+        constraint: 'format',
       });
     });
 
@@ -191,8 +191,8 @@ describe('HTTP Error Mapping with TitanError', () => {
           timestamp: Date.now(),
           service: 'errortest',
           method: 'throwRateLimitError',
-          input: []
-        })
+          input: [],
+        }),
       });
 
       expect(response.status).toBe(429);
@@ -213,8 +213,8 @@ describe('HTTP Error Mapping with TitanError', () => {
           timestamp: Date.now(),
           service: 'errortest',
           method: 'throwInternalError',
-          input: []
-        })
+          input: [],
+        }),
       });
 
       expect(response.status).toBe(500);
@@ -234,8 +234,8 @@ describe('HTTP Error Mapping with TitanError', () => {
           timestamp: Date.now(),
           service: 'errortest',
           method: 'throwPlainError',
-          input: []
-        })
+          input: [],
+        }),
       });
 
       expect(response.status).toBe(500);
@@ -257,8 +257,8 @@ describe('HTTP Error Mapping with TitanError', () => {
           timestamp: Date.now(),
           service: 'errortest',
           method: 'throwNotFound',
-          input: []
-        })
+          input: [],
+        }),
       });
 
       expect(response.status).toBe(404);
@@ -275,8 +275,8 @@ describe('HTTP Error Mapping with TitanError', () => {
           timestamp: Date.now(),
           service: 'errortest',
           method: 'throwNotFound',
-          input: []
-        })
+          input: [],
+        }),
       });
 
       expect(response.status).toBe(404);
@@ -293,8 +293,8 @@ describe('HTTP Error Mapping with TitanError', () => {
           timestamp: Date.now(),
           service: 'errortest',
           method: 'throwNotFound',
-          input: []
-        })
+          input: [],
+        }),
       });
 
       expect(response.status).toBe(404);
@@ -311,8 +311,8 @@ describe('HTTP Error Mapping with TitanError', () => {
           timestamp: Date.now(),
           service: 'errortest',
           method: 'throwNotFound',
-          input: []
-        })
+          input: [],
+        }),
       });
 
       expect(response.status).toBe(404);
@@ -329,8 +329,8 @@ describe('HTTP Error Mapping with TitanError', () => {
           timestamp: Date.now(),
           service: 'errortest',
           method: 'throwNotFound',
-          input: []
-        })
+          input: [],
+        }),
       });
 
       expect(response.status).toBe(404);
@@ -358,8 +358,8 @@ describe('HTTP Error Mapping with TitanError', () => {
             timestamp: Date.now(),
             service: 'errortest',
             method: 'throwNotFound',
-            input: []
-          })
+            input: [],
+          }),
         });
 
         // Manually parse the error response to verify structure
@@ -390,8 +390,8 @@ describe('HTTP Error Mapping with TitanError', () => {
           timestamp: Date.now(),
           service: 'errortest',
           method: 'throwValidationError',
-          input: []
-        })
+          input: [],
+        }),
       });
 
       expect(response.status).toBe(422);
@@ -413,8 +413,8 @@ describe('HTTP Error Mapping with TitanError', () => {
           timestamp: Date.now(),
           service: 'errortest',
           method: 'throwInternalError',
-          input: []
-        })
+          input: [],
+        }),
       });
 
       expect(response.headers.get('X-Netron-Version')).toBe('2.0');
@@ -428,7 +428,7 @@ describe('HTTP Error Mapping with TitanError', () => {
         throwCustomError(): never {
           const error = new TitanError({
             code: ErrorCode.FORBIDDEN,
-            message: 'Access forbidden'
+            message: 'Access forbidden',
           });
           // Verify httpStatus is set correctly
           expect(error.httpStatus).toBe(403);
@@ -447,8 +447,8 @@ describe('HTTP Error Mapping with TitanError', () => {
           timestamp: Date.now(),
           service: 'customerrortest',
           method: 'throwCustomError',
-          input: []
-        })
+          input: [],
+        }),
       });
 
       expect(response.status).toBe(403);

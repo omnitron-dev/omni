@@ -1258,9 +1258,10 @@ describe('Breadcrumb', () => {
     it('should render many breadcrumb items efficiently', () => {
       const items = Array.from({ length: 20 }, (_, i) => [
         BreadcrumbItem({
-          children: i < 19
-            ? BreadcrumbLink({ href: `/${i}`, children: `Item ${i}` })
-            : BreadcrumbPage({ children: `Item ${i}` }),
+          children:
+            i < 19
+              ? BreadcrumbLink({ href: `/${i}`, children: `Item ${i}` })
+              : BreadcrumbPage({ children: `Item ${i}` }),
           currentPage: i === 19,
         }),
         ...(i < 19 ? [BreadcrumbSeparator({})] : []),

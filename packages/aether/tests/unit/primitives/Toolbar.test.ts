@@ -234,9 +234,7 @@ describe('Toolbar', () => {
       const { container } = renderComponent(component);
 
       const toolbarEl = container.querySelector('[data-toolbar]') as HTMLElement;
-      const buttons = Array.from(container.querySelectorAll('button')).filter(
-        (btn) => !btn.disabled
-      );
+      const buttons = Array.from(container.querySelectorAll('button')).filter((btn) => !btn.disabled);
 
       buttons[0]?.focus();
 
@@ -499,8 +497,7 @@ describe('Toolbar', () => {
 
     it('should not call onClick when disabled', () => {
       const onClick = createSpy();
-      const component = () =>
-        ToolbarButton({ disabled: true, onClick, children: 'Disabled' });
+      const component = () => ToolbarButton({ disabled: true, onClick, children: 'Disabled' });
       const { container } = renderComponent(component);
 
       const buttonEl = container.querySelector('button') as HTMLElement;
@@ -562,8 +559,7 @@ describe('Toolbar', () => {
     });
 
     it('should forward data attributes', () => {
-      const component = () =>
-        ToolbarButton({ 'data-action': 'save', children: 'Save' });
+      const component = () => ToolbarButton({ 'data-action': 'save', children: 'Save' });
       const { container } = renderComponent(component);
 
       const buttonEl = container.querySelector('button') as HTMLElement;
@@ -571,8 +567,7 @@ describe('Toolbar', () => {
     });
 
     it('should forward aria attributes', () => {
-      const component = () =>
-        ToolbarButton({ 'aria-label': 'Bold text', children: 'B' });
+      const component = () => ToolbarButton({ 'aria-label': 'Bold text', children: 'B' });
       const { container } = renderComponent(component);
 
       const buttonEl = container.querySelector('button') as HTMLElement;
@@ -615,8 +610,7 @@ describe('Toolbar', () => {
     });
 
     it('should support target attribute', () => {
-      const component = () =>
-        ToolbarLink({ href: '/page', target: '_blank', children: 'External' });
+      const component = () => ToolbarLink({ href: '/page', target: '_blank', children: 'External' });
       const { container } = renderComponent(component);
 
       const linkEl = container.querySelector('a') as HTMLAnchorElement;
@@ -787,8 +781,7 @@ describe('Toolbar', () => {
 
   describe('ToolbarToggleItem - Disabled State', () => {
     it('should support disabled prop', () => {
-      const component = () =>
-        ToolbarToggleItem({ value: 'bold', disabled: true, children: 'B' });
+      const component = () => ToolbarToggleItem({ value: 'bold', disabled: true, children: 'B' });
       const { container } = renderComponent(component);
 
       const itemEl = container.querySelector('button') as HTMLButtonElement;
@@ -796,8 +789,7 @@ describe('Toolbar', () => {
     });
 
     it('should have data-disabled attribute when disabled', () => {
-      const component = () =>
-        ToolbarToggleItem({ value: 'bold', disabled: true, children: 'B' });
+      const component = () => ToolbarToggleItem({ value: 'bold', disabled: true, children: 'B' });
       const { container } = renderComponent(component);
 
       const itemEl = container.querySelector('button') as HTMLElement;
@@ -805,8 +797,7 @@ describe('Toolbar', () => {
     });
 
     it('should have tabIndex=-1 when disabled', () => {
-      const component = () =>
-        ToolbarToggleItem({ value: 'bold', disabled: true, children: 'B' });
+      const component = () => ToolbarToggleItem({ value: 'bold', disabled: true, children: 'B' });
       const { container } = renderComponent(component);
 
       const itemEl = container.querySelector('button') as HTMLElement;
@@ -877,10 +868,7 @@ describe('Toolbar', () => {
           'aria-label': 'Formatting',
           children: [
             ToolbarGroup({
-              children: [
-                ToolbarButton({ children: 'Bold' }),
-                ToolbarButton({ children: 'Italic' }),
-              ],
+              children: [ToolbarButton({ children: 'Bold' }), ToolbarButton({ children: 'Italic' })],
             }),
             ToolbarSeparator({}),
             ToolbarGroup({
@@ -1071,10 +1059,7 @@ describe('Toolbar', () => {
       const showUndo = false;
       const component = () =>
         Toolbar({
-          children: [
-            ToolbarButton({ children: 'Save' }),
-            showUndo ? ToolbarButton({ children: 'Undo' }) : null,
-          ],
+          children: [ToolbarButton({ children: 'Save' }), showUndo ? ToolbarButton({ children: 'Undo' }) : null],
         });
       const { container } = renderComponent(component);
 

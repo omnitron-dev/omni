@@ -8,11 +8,7 @@
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import {
-  createTestProcessManager,
-  TestProcessManager,
-  ProcessStatus
-} from '../../../src/modules/pm/index.js';
+import { createTestProcessManager, TestProcessManager, ProcessStatus } from '../../../src/modules/pm/index.js';
 
 // Import actual classes for mock spawning
 import PaymentProcessorService from './processes/payment-processor.process.js';
@@ -71,15 +67,9 @@ describe('Real-World Scenarios - E-Commerce Order Processing', () => {
 
   beforeEach(async () => {
     pm = createTestProcessManager({ mock: true });
-    paymentService = await pm.spawn<PaymentProcessorService>(
-      PaymentProcessorService
-    );
-    inventoryService = await pm.spawn<InventoryService>(
-      InventoryService
-    );
-    notificationService = await pm.spawn<NotificationService>(
-      NotificationService
-    );
+    paymentService = await pm.spawn<PaymentProcessorService>(PaymentProcessorService);
+    inventoryService = await pm.spawn<InventoryService>(InventoryService);
+    notificationService = await pm.spawn<NotificationService>(NotificationService);
   });
 
   afterEach(async () => {
@@ -92,21 +82,19 @@ describe('Real-World Scenarios - E-Commerce Order Processing', () => {
       userId: 'user123',
       items: [
         { sku: 'SKU001', quantity: 2, price: 29.99 },
-        { sku: 'SKU002', quantity: 1, price: 49.99 }
+        { sku: 'SKU002', quantity: 1, price: 49.99 },
       ],
       total: 109.97,
-      status: 'pending'
+      status: 'pending',
     };
 
-    const workflow = await pm.workflow<OrderProcessingWorkflow>(
-      OrderProcessingWorkflow
-    );
+    const workflow = await pm.workflow<OrderProcessingWorkflow>(OrderProcessingWorkflow);
 
     // Set dependencies on the workflow
     (workflow as any).setDependencies({
       paymentService,
       inventoryService,
-      notificationService
+      notificationService,
     });
 
     const result = await workflow.run(order);
@@ -146,22 +134,20 @@ describe('Real-World Scenarios - E-Commerce Order Processing', () => {
       userId: 'user456',
       items: [{ sku: 'SKU003', quantity: 5, price: 19.99 }],
       total: 99.95,
-      status: 'pending'
+      status: 'pending',
     };
 
     // Get initial inventory level
     const initialLevel = await inventoryService.getInventoryLevel('SKU003');
 
     // Create workflow with injected services
-    const workflow = await pm.workflow<OrderProcessingWorkflow>(
-      OrderProcessingWorkflow
-    );
+    const workflow = await pm.workflow<OrderProcessingWorkflow>(OrderProcessingWorkflow);
 
     // Set dependencies on the workflow
     (workflow as any).setDependencies({
       paymentService,
       inventoryService,
-      notificationService
+      notificationService,
     });
 
     // The workflow might fail due to circuit breaker or simulated payment failure
@@ -185,18 +171,16 @@ describe('Real-World Scenarios - E-Commerce Order Processing', () => {
       userId: 'user789',
       items: [{ sku: 'SKU002', quantity: 1000, price: 49.99 }], // More than available
       total: 49990,
-      status: 'pending'
+      status: 'pending',
     };
 
-    const workflow = await pm.workflow<OrderProcessingWorkflow>(
-      OrderProcessingWorkflow
-    );
+    const workflow = await pm.workflow<OrderProcessingWorkflow>(OrderProcessingWorkflow);
 
     // Set dependencies on the workflow
     (workflow as any).setDependencies({
       paymentService,
       inventoryService,
-      notificationService
+      notificationService,
     });
 
     await expect(workflow.run(order)).rejects.toThrow('Insufficient inventory');
@@ -226,32 +210,27 @@ describe('Real-World Scenarios - Image Processing Pipeline', () => {
   });
 
   it('should process images in parallel using a pool', async () => {
-    const pool = await pm.pool<ImageProcessorService>(
-      ImageProcessorService,
-      {
-        size: 4,
-        strategy: 'least-loaded' as any,
-        metrics: true
-      }
-    );
+    const pool = await pm.pool<ImageProcessorService>(ImageProcessorService, {
+      size: 4,
+      strategy: 'least-loaded' as any,
+      metrics: true,
+    });
 
     const jobs: ImageJob[] = Array.from({ length: 10 }, (_, i) => ({
       id: `img_${i}`,
       url: `https://example.com/image${i}.jpg`,
       transformations: ['resize', 'compress'],
-      priority: i % 3 === 0 ? 'high' : 'normal'
+      priority: i % 3 === 0 ? 'high' : 'normal',
     }));
 
     // Process all jobs in parallel
     const startTime = Date.now();
-    const results = await Promise.all(
-      jobs.map(job => pool.processImage(job))
-    );
+    const results = await Promise.all(jobs.map((job) => pool.processImage(job)));
     const totalTime = Date.now() - startTime;
 
     // Verify all jobs completed successfully
     expect(results.length).toBe(10);
-    expect(results.every(r => r.success)).toBe(true);
+    expect(results.every((r) => r.success)).toBe(true);
 
     // With 4 workers and 10 jobs, should be faster than sequential
     // Sequential would take ~1000ms (10 jobs * 100ms each)
@@ -265,19 +244,16 @@ describe('Real-World Scenarios - Image Processing Pipeline', () => {
   });
 
   it('should scale pool dynamically based on load', async () => {
-    const pool = await pm.pool<ImageProcessorService>(
-      ImageProcessorService,
-      {
-        size: 2,
-        autoScale: {
-          enabled: true,
-          min: 2,
-          max: 6,
-          scaleUpThreshold: 0.8,
-          scaleDownThreshold: 0.3
-        }
-      }
-    );
+    const pool = await pm.pool<ImageProcessorService>(ImageProcessorService, {
+      size: 2,
+      autoScale: {
+        enabled: true,
+        min: 2,
+        max: 6,
+        scaleUpThreshold: 0.8,
+        scaleDownThreshold: 0.3,
+      },
+    });
 
     expect(pool.size).toBe(2);
 
@@ -291,20 +267,17 @@ describe('Real-World Scenarios - Image Processing Pipeline', () => {
   });
 
   it('should handle worker failures gracefully', async () => {
-    const pool = await pm.pool<ImageProcessorService>(
-      ImageProcessorService,
-      {
-        size: 3,
-        replaceUnhealthy: true
-      }
-    );
+    const pool = await pm.pool<ImageProcessorService>(ImageProcessorService, {
+      size: 3,
+      replaceUnhealthy: true,
+    });
 
     // Process a few jobs successfully
     const job: ImageJob = {
       id: 'img_test',
       url: 'https://example.com/test.jpg',
       transformations: ['resize'],
-      priority: 'normal'
+      priority: 'normal',
     };
 
     const result = await pool.processImage(job);
@@ -327,9 +300,7 @@ describe('Real-World Scenarios - Real-Time Analytics', () => {
   });
 
   it.skip('should process event stream and aggregate statistics [MockSpawner: async generator proxy support]', async () => {
-    const service = await pm.spawn<AnalyticsAggregatorService>(
-      AnalyticsAggregatorService
-    );
+    const service = await pm.spawn<AnalyticsAggregatorService>(AnalyticsAggregatorService);
 
     // Create a stream of events
     async function* generateEvents(): AsyncGenerator<AnalyticsEvent> {
@@ -340,9 +311,9 @@ describe('Real-World Scenarios - Real-Time Analytics', () => {
           userId: `user_${i % 5}`, // 5 unique users
           eventType: eventTypes[i % 4],
           timestamp: Date.now() + i,
-          metadata: { page: `/page${i}` }
+          metadata: { page: `/page${i}` },
         };
-        await new Promise(resolve => setTimeout(resolve, 5));
+        await new Promise((resolve) => setTimeout(resolve, 5));
       }
     }
 
@@ -367,13 +338,10 @@ describe('Real-World Scenarios - Real-Time Analytics', () => {
   });
 
   it('should handle high-throughput event streams', async () => {
-    const pool = await pm.pool<AnalyticsAggregatorService>(
-      AnalyticsAggregatorService,
-      {
-        size: 3,
-        strategy: 'round-robin' as any
-      }
-    );
+    const pool = await pm.pool<AnalyticsAggregatorService>(AnalyticsAggregatorService, {
+      size: 3,
+      strategy: 'round-robin' as any,
+    });
 
     // Get one worker from the pool for streaming
     const stats = await pool.getStats();
@@ -385,9 +353,7 @@ describe('Real-World Scenarios - Real-Time Analytics', () => {
   });
 
   it.skip('should reset statistics [MockSpawner: service dependencies]', async () => {
-    const service = await pm.spawn<AnalyticsAggregatorService>(
-      AnalyticsAggregatorService
-    );
+    const service = await pm.spawn<AnalyticsAggregatorService>(AnalyticsAggregatorService);
 
     // Process some events first
     async function* generateEvents(): AsyncGenerator<AnalyticsEvent> {
@@ -396,7 +362,7 @@ describe('Real-World Scenarios - Real-Time Analytics', () => {
           userId: `user_${i}`,
           eventType: 'page_view',
           timestamp: Date.now(),
-          metadata: {}
+          metadata: {},
         };
       }
     }
@@ -429,56 +395,42 @@ describe('Real-World Scenarios - Service Integration', () => {
   });
 
   it.skip('should handle multiple concurrent workflows [MockSpawner: workflow dependency injection]', async () => {
-    const paymentService = await pm.spawn<PaymentProcessorService>(
-      PaymentProcessorService
-    );
-    const inventoryService = await pm.spawn<InventoryService>(
-      InventoryService
-    );
-    const notificationService = await pm.spawn<NotificationService>(
-      NotificationService
-    );
+    const paymentService = await pm.spawn<PaymentProcessorService>(PaymentProcessorService);
+    const inventoryService = await pm.spawn<InventoryService>(InventoryService);
+    const notificationService = await pm.spawn<NotificationService>(NotificationService);
 
     const orders: Order[] = Array.from({ length: 5 }, (_, i) => ({
       id: `ORD_CONCURRENT_${i}`,
       userId: `user_${i}`,
       items: [{ sku: 'SKU001', quantity: 1, price: 29.99 }],
       total: 29.99,
-      status: 'pending' as const
+      status: 'pending' as const,
     }));
 
     // Process all orders concurrently
     const workflows = await Promise.all(
-      orders.map(() => pm.workflow<OrderProcessingWorkflow>(
-        OrderProcessingWorkflow
-      ))
+      orders.map(() => pm.workflow<OrderProcessingWorkflow>(OrderProcessingWorkflow))
     );
 
     // Set dependencies on each workflow
-    workflows.forEach(workflow => {
+    workflows.forEach((workflow) => {
       (workflow as any).setDependencies({
         paymentService,
         inventoryService,
-        notificationService
+        notificationService,
       });
     });
 
-    const results = await Promise.allSettled(
-      workflows.map((workflow, i) => workflow.run(orders[i]))
-    );
+    const results = await Promise.allSettled(workflows.map((workflow, i) => workflow.run(orders[i])));
 
     // At least some orders should complete successfully
-    const successful = results.filter(r => r.status === 'fulfilled');
+    const successful = results.filter((r) => r.status === 'fulfilled');
     expect(successful.length).toBeGreaterThan(0);
   });
 
   it('should maintain service isolation', async () => {
-    const service1 = await pm.spawn<InventoryService>(
-      InventoryService
-    );
-    const service2 = await pm.spawn<InventoryService>(
-      InventoryService
-    );
+    const service1 = await pm.spawn<InventoryService>(InventoryService);
+    const service2 = await pm.spawn<InventoryService>(InventoryService);
 
     // Services should have independent state
     await service1.reserveItems('order1', [{ sku: 'SKU001', quantity: 5 }]);
@@ -492,23 +444,20 @@ describe('Real-World Scenarios - Service Integration', () => {
   });
 
   it('should handle graceful shutdown with active requests', async () => {
-    const pool = await pm.pool<ImageProcessorService>(
-      ImageProcessorService,
-      { size: 3 }
-    );
+    const pool = await pm.pool<ImageProcessorService>(ImageProcessorService, { size: 3 });
 
     // Start some long-running jobs
     const jobs = Array.from({ length: 5 }, (_, i) => ({
       id: `img_shutdown_${i}`,
       url: `https://example.com/image${i}.jpg`,
       transformations: ['resize', 'compress', 'filter'] as Array<'resize' | 'crop' | 'filter' | 'compress'>,
-      priority: 'normal' as const
+      priority: 'normal' as const,
     }));
 
-    const promises = jobs.map(job => pool.processImage(job));
+    const promises = jobs.map((job) => pool.processImage(job));
 
     // Wait a bit for jobs to start
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     // Trigger graceful shutdown
     const shutdownPromise = pm.shutdown({ timeout: 2000 });
@@ -519,6 +468,6 @@ describe('Real-World Scenarios - Service Integration', () => {
 
     // Verify all processes are stopped
     const processes = pm.listProcesses();
-    expect(processes.every(p => p.status === ProcessStatus.STOPPED)).toBe(true);
+    expect(processes.every((p) => p.status === ProcessStatus.STOPPED)).toBe(true);
   });
 });

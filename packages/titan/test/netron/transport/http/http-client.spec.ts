@@ -27,7 +27,7 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
     delete (global as any).fetch;
 
     // Wait for any pending setImmediate callbacks
-    await new Promise(resolve => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
   });
 
   describe('Connection Interface Implementation', () => {
@@ -82,7 +82,7 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
   describe('Options Handling', () => {
     it('should accept timeout option', () => {
       connection = new HttpConnection(baseUrl, {
-        timeout: 10000
+        timeout: 10000,
       });
 
       expect(connection).toBeDefined();
@@ -91,9 +91,9 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
     it('should accept custom headers', () => {
       connection = new HttpConnection(baseUrl, {
         headers: {
-          'Authorization': 'Bearer token',
-          'X-Custom': 'value'
-        }
+          Authorization: 'Bearer token',
+          'X-Custom': 'value',
+        },
       });
 
       expect(connection).toBeDefined();
@@ -101,7 +101,7 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
 
     it('should accept reconnect option', () => {
       connection = new HttpConnection(baseUrl, {
-        reconnect: false
+        reconnect: false,
       });
 
       expect(connection).toBeDefined();
@@ -134,7 +134,7 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
     it('should transition to DISCONNECTED state on close', async () => {
       connection = new HttpConnection(baseUrl);
 
-      await new Promise(resolve => connection.once('connect', resolve));
+      await new Promise((resolve) => connection.once('connect', resolve));
 
       await connection.close();
 
@@ -199,24 +199,26 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
         ok: true,
         status: 200,
         headers: {
-          get: jest.fn()
+          get: jest.fn(),
         },
         json: jest.fn().mockResolvedValue({
           id: 'msg-1',
           version: '2.0',
           success: true,
-          data: 'processed'
-        })
+          data: 'processed',
+        }),
       });
 
-      const message = Buffer.from(JSON.stringify({
-        id: 'msg-1',
-        version: '2.0',
-        timestamp: Date.now(),
-        service: 'Test@1.0.0',
-        method: 'test',
-        input: {}
-      }));
+      const message = Buffer.from(
+        JSON.stringify({
+          id: 'msg-1',
+          version: '2.0',
+          timestamp: Date.now(),
+          service: 'Test@1.0.0',
+          method: 'test',
+          input: {},
+        })
+      );
 
       await expect(connection.send(message)).resolves.not.toThrow();
     });
@@ -228,24 +230,26 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
         ok: true,
         status: 200,
         headers: {
-          get: jest.fn()
+          get: jest.fn(),
         },
         json: jest.fn().mockResolvedValue({
           id: 'msg-1',
           version: '2.0',
           success: true,
-          data: 'processed'
-        })
+          data: 'processed',
+        }),
       });
 
-      const buffer = new TextEncoder().encode(JSON.stringify({
-        id: 'msg-1',
-        version: '2.0',
-        timestamp: Date.now(),
-        service: 'Test@1.0.0',
-        method: 'test',
-        input: {}
-      }));
+      const buffer = new TextEncoder().encode(
+        JSON.stringify({
+          id: 'msg-1',
+          version: '2.0',
+          timestamp: Date.now(),
+          service: 'Test@1.0.0',
+          method: 'test',
+          input: {},
+        })
+      );
 
       await expect(connection.send(buffer.buffer)).resolves.not.toThrow();
     });
@@ -255,7 +259,7 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
     it('should prevent operations after close', async () => {
       connection = new HttpConnection(baseUrl);
 
-      await new Promise(resolve => connection.once('connect', resolve));
+      await new Promise((resolve) => connection.once('connect', resolve));
       await connection.close();
 
       expect(connection.state).toBe(ConnectionState.DISCONNECTED);
@@ -264,7 +268,7 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
     it('should be idempotent', async () => {
       connection = new HttpConnection(baseUrl);
 
-      await new Promise(resolve => connection.once('connect', resolve));
+      await new Promise((resolve) => connection.once('connect', resolve));
 
       await connection.close();
       await connection.close(); // Should not throw
@@ -289,7 +293,7 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
     it('should transition CONNECTED -> DISCONNECTED on close', async () => {
       connection = new HttpConnection(baseUrl);
 
-      await new Promise(resolve => connection.once('connect', resolve));
+      await new Promise((resolve) => connection.once('connect', resolve));
       expect(connection.state).toBe(ConnectionState.CONNECTED);
 
       await connection.close();
@@ -308,14 +312,14 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
             'Calculator@1.0.0': {
               name: 'Calculator@1.0.0',
               version: '1.0.0',
-              methods: ['add', 'subtract']
-            }
-          }
-        })
+              methods: ['add', 'subtract'],
+            },
+          },
+        }),
       });
 
       connection = new HttpConnection(baseUrl);
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       const service = await connection.queryInterface('Calculator@1.0.0');
 
@@ -329,11 +333,11 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
         ok: true,
         status: 200,
         headers: { get: jest.fn() },
-        json: jest.fn().mockResolvedValue({ services: {} })
+        json: jest.fn().mockResolvedValue({ services: {} }),
       });
 
       connection = new HttpConnection(baseUrl);
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       const service = await connection.queryInterface('UnknownService');
 
@@ -350,7 +354,7 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
       connection = new HttpConnection(baseUrl);
 
       // Wait for initial discovery to fail
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
       // queryInterface should create minimal definition when discovery fails
       const service = await connection.queryInterface('TestService');
@@ -389,13 +393,13 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
     it('should measure round-trip time', async () => {
       connection = new HttpConnection(baseUrl);
 
-      await new Promise(resolve => connection.once('connect', resolve));
+      await new Promise((resolve) => connection.once('connect', resolve));
 
       mockFetch.mockResolvedValue({
         ok: true,
         status: 200,
         headers: { get: jest.fn() },
-        json: jest.fn().mockResolvedValue({})
+        json: jest.fn().mockResolvedValue({}),
       });
 
       const rtt = await connection.ping();
@@ -414,13 +418,13 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
     it('should handle ping failure', async () => {
       connection = new HttpConnection(baseUrl);
 
-      await new Promise(resolve => connection.once('connect', resolve));
+      await new Promise((resolve) => connection.once('connect', resolve));
 
       mockFetch.mockResolvedValue({
         ok: false,
         status: 500,
         statusText: 'Server Error',
-        headers: { get: jest.fn() }
+        headers: { get: jest.fn() },
       });
 
       await expect(connection.ping()).rejects.toThrow();
@@ -429,7 +433,7 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
     it('should handle ping network error', async () => {
       connection = new HttpConnection(baseUrl);
 
-      await new Promise(resolve => connection.once('connect', resolve));
+      await new Promise((resolve) => connection.once('connect', resolve));
 
       mockFetch.mockRejectedValue(new Error('Network error'));
 
@@ -441,7 +445,7 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
     it('should handle close with abort controller', async () => {
       connection = new HttpConnection(baseUrl);
 
-      await new Promise(resolve => connection.once('connect', resolve));
+      await new Promise((resolve) => connection.once('connect', resolve));
 
       // Verify close clears abort controller
       await connection.close();
@@ -452,7 +456,7 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
     it('should handle multiple close calls gracefully', async () => {
       connection = new HttpConnection(baseUrl);
 
-      await new Promise(resolve => connection.once('connect', resolve));
+      await new Promise((resolve) => connection.once('connect', resolve));
 
       await connection.close();
       await connection.close();
@@ -466,7 +470,7 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
     it('should reconnect successfully', async () => {
       connection = new HttpConnection(baseUrl);
 
-      await new Promise(resolve => connection.once('connect', resolve));
+      await new Promise((resolve) => connection.once('connect', resolve));
       await connection.close();
 
       await connection.reconnect();
@@ -477,10 +481,10 @@ describe('HttpConnection (v2.0 Native Protocol)', () => {
     it('should emit connect event on reconnect', async () => {
       connection = new HttpConnection(baseUrl);
 
-      await new Promise(resolve => connection.once('connect', resolve));
+      await new Promise((resolve) => connection.once('connect', resolve));
       await connection.close();
 
-      const connectPromise = new Promise(resolve => connection.once('connect', resolve));
+      const connectPromise = new Promise((resolve) => connection.once('connect', resolve));
 
       await connection.reconnect();
       await connectPromise;

@@ -49,9 +49,7 @@ export class ServiceStub {
     }
 
     // Extract transports from metadata (but don't include in definition)
-    const meta = isServiceDefinition(metaOrDefinition)
-      ? metaOrDefinition.meta
-      : metaOrDefinition;
+    const meta = isServiceDefinition(metaOrDefinition) ? metaOrDefinition.meta : metaOrDefinition;
 
     if ((meta as any).transports) {
       this.transports = (meta as any).transports;

@@ -37,7 +37,7 @@ export function createRetryDelayFn(config: RetryStrategyConfig = {}): (attempt: 
     maxDelay = 60000,
     multiplier = 2,
     jitter = 0.1,
-    customDelayFn
+    customDelayFn,
   } = config;
 
   // If custom function provided, use it
@@ -116,7 +116,7 @@ export const RetryStrategies = {
     baseDelay: 100,
     maxDelay: 10000,
     multiplier: 3,
-    jitter: 0.2
+    jitter: 0.2,
   }),
 
   /**
@@ -127,7 +127,7 @@ export const RetryStrategies = {
     baseDelay: 5000,
     maxDelay: 120000,
     multiplier: 1.5,
-    jitter: 0.1
+    jitter: 0.1,
   }),
 
   /**
@@ -136,7 +136,7 @@ export const RetryStrategies = {
   immediate: (): RetryStrategyConfig => ({
     strategy: 'fixed',
     baseDelay: 100,
-    jitter: 0
+    jitter: 0,
   }),
 
   /**
@@ -146,7 +146,7 @@ export const RetryStrategies = {
     strategy: 'linear',
     baseDelay,
     maxDelay: 30000,
-    jitter: 0.1
+    jitter: 0.1,
   }),
 
   /**
@@ -156,6 +156,6 @@ export const RetryStrategies = {
     strategy: 'fibonacci',
     baseDelay,
     maxDelay: 60000,
-    jitter: 0.15
-  })
+    jitter: 0.15,
+  }),
 };

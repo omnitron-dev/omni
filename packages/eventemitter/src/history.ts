@@ -23,7 +23,7 @@ export class MemoryEventStorage implements EventStorage {
   async load(filter?: EventFilter): Promise<EventRecord[]> {
     if (!filter) return [...this.records];
 
-    return this.records.filter(record => {
+    return this.records.filter((record) => {
       // Filter by event name/pattern
       if (filter.event) {
         if (typeof filter.event === 'string') {
@@ -40,7 +40,7 @@ export class MemoryEventStorage implements EventStorage {
       // Filter by tags
       if (filter.tags && filter.tags.length > 0) {
         const recordTags = record.metadata.tags || [];
-        if (!filter.tags.some(tag => recordTags.includes(tag))) return false;
+        if (!filter.tags.some((tag) => recordTags.includes(tag))) return false;
       }
 
       // Filter by correlation ID
@@ -121,7 +121,7 @@ export class EventHistory {
     // Apply TTL filter if configured
     if (this.options.ttl) {
       const now = Date.now();
-      return records.filter(record => {
+      return records.filter((record) => {
         const age = now - record.timestamp;
         return age <= this.options.ttl!;
       });
@@ -190,7 +190,7 @@ export class EventHistory {
       uniqueEvents: eventCounts.size,
       errorCount,
       avgDuration: durationCount > 0 ? totalDuration / durationCount : 0,
-      eventCounts
+      eventCounts,
     };
   }
 }

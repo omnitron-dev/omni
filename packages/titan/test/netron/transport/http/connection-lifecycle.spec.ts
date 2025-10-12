@@ -15,44 +15,49 @@ describe('HttpConnection - Lifecycle and Communication', () => {
   const baseUrl = 'http://localhost:3000';
 
   // Helper to create mock Response
-  const createMockResponse = (data: any, ok = true, status = 200) => ({
-    ok,
-    status,
-    statusText: ok ? 'OK' : 'Error',
-    json: jest.fn().mockResolvedValue(data),
-    headers: {
-      get: jest.fn((name: string) => {
-        if (name === 'Content-Type') return 'application/json';
-        return null;
-      })
-    }
-  } as any);
+  const createMockResponse = (data: any, ok = true, status = 200) =>
+    ({
+      ok,
+      status,
+      statusText: ok ? 'OK' : 'Error',
+      json: jest.fn().mockResolvedValue(data),
+      headers: {
+        get: jest.fn((name: string) => {
+          if (name === 'Content-Type') return 'application/json';
+          return null;
+        }),
+      },
+    }) as any;
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockFetch.mockClear();
 
     // Mock default successful responses
-    mockFetch.mockImplementation(() => Promise.resolve(createMockResponse({
-        id: '1',
-        version: '2.0',
-        timestamp: Date.now(),
-        success: true,
-        data: { result: 'success' }
-      })));
+    mockFetch.mockImplementation(() =>
+      Promise.resolve(
+        createMockResponse({
+          id: '1',
+          version: '2.0',
+          timestamp: Date.now(),
+          success: true,
+          data: { result: 'success' },
+        })
+      )
+    );
   });
 
   afterEach(async () => {
     if (connection && connection.state !== ConnectionState.DISCONNECTED) {
       await connection.close();
     }
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
   });
 
   describe('Send and SendPacket', () => {
     beforeEach(async () => {
       connection = new HttpConnection(baseUrl);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     it('should send JSON message via send()', async () => {
@@ -60,13 +65,15 @@ describe('HttpConnection - Lifecycle and Communication', () => {
         const urlStr = typeof url === 'string' ? url : url.toString();
 
         if (urlStr.includes('/netron/invoke')) {
-          return Promise.resolve(createMockResponse({
-            id: '1',
-            version: '2.0',
-            timestamp: Date.now(),
-            success: true,
-            data: { result: 'ok' }
-          }));
+          return Promise.resolve(
+            createMockResponse({
+              id: '1',
+              version: '2.0',
+              timestamp: Date.now(),
+              success: true,
+              data: { result: 'ok' },
+            })
+          );
         }
 
         return Promise.resolve(createMockResponse({ success: true }));
@@ -75,7 +82,7 @@ describe('HttpConnection - Lifecycle and Communication', () => {
       const message = {
         service: 'TestService',
         method: 'testMethod',
-        input: { test: 'data' }
+        input: { test: 'data' },
       };
 
       const messagePromise = new Promise<void>((resolve) => {
@@ -96,13 +103,15 @@ describe('HttpConnection - Lifecycle and Communication', () => {
         const urlStr = typeof url === 'string' ? url : url.toString();
 
         if (urlStr.includes('/netron/invoke')) {
-          return Promise.resolve(createMockResponse({
-            id: '1',
-            version: '2.0',
-            timestamp: Date.now(),
-            success: true,
-            data: { result: 'packet-response' }
-          }));
+          return Promise.resolve(
+            createMockResponse({
+              id: '1',
+              version: '2.0',
+              timestamp: Date.now(),
+              success: true,
+              data: { result: 'packet-response' },
+            })
+          );
         }
 
         return Promise.resolve(createMockResponse({ success: true }));
@@ -114,8 +123,8 @@ describe('HttpConnection - Lifecycle and Communication', () => {
         data: {
           service: 'TestService',
           method: 'testMethod',
-          input: { value: 123 }
-        }
+          input: { value: 123 },
+        },
       };
 
       const packetPromise = new Promise<void>((resolve) => {
@@ -133,8 +142,7 @@ describe('HttpConnection - Lifecycle and Communication', () => {
 
     it('should handle malformed JSON in send()', async () => {
       // Should not throw, just ignore
-      await expect(connection.send(Buffer.from('not json')))
-        .resolves.not.toThrow();
+      await expect(connection.send(Buffer.from('not json'))).resolves.not.toThrow();
     });
   });
 
@@ -156,7 +164,7 @@ describe('HttpConnection - Lifecycle and Communication', () => {
   describe('Connection Lifecycle', () => {
     it('should close connection', async () => {
       connection = new HttpConnection(baseUrl);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const disconnectPromise = new Promise<void>((resolve) => {
         connection.on('disconnect', () => {
@@ -172,7 +180,7 @@ describe('HttpConnection - Lifecycle and Communication', () => {
 
     it('should emit disconnect event with code and reason', async () => {
       connection = new HttpConnection(baseUrl);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const disconnectPromise = new Promise<any>((resolve) => {
         connection.on('disconnect', (data: any) => {
@@ -189,7 +197,7 @@ describe('HttpConnection - Lifecycle and Communication', () => {
 
     it('should not close already closed connection', async () => {
       connection = new HttpConnection(baseUrl);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       await connection.close();
 
@@ -199,7 +207,7 @@ describe('HttpConnection - Lifecycle and Communication', () => {
 
     it('should reconnect', async () => {
       connection = new HttpConnection(baseUrl);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       await connection.close();
       expect(connection.state).toBe(ConnectionState.DISCONNECTED);

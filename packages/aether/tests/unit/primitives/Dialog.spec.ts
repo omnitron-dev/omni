@@ -467,10 +467,7 @@ describe('Dialog Primitive', () => {
             defaultOpen: true,
             children: DialogPortal({
               container: customContainer,
-              children: [
-                DialogOverlay({}),
-                DialogContent({ children: 'Content' }),
-              ],
+              children: [DialogOverlay({}), DialogContent({ children: 'Content' })],
             }),
           });
         });

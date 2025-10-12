@@ -377,12 +377,14 @@ export const SelectValue = defineComponent<SelectValueProps>((props) => {
 // Icon
 // ============================================================================
 
-export const SelectIcon = defineComponent<SelectIconProps>((props) => () =>
+export const SelectIcon = defineComponent<SelectIconProps>(
+  (props) => () =>
     jsx('span', {
       ...props,
       'aria-hidden': 'true',
       children: props.children,
-    }));
+    })
+);
 
 // ============================================================================
 // Content
@@ -505,12 +507,7 @@ export const SelectContent = defineComponent<SelectContentProps>((props) => {
     const content = document.getElementById(ctx.contentId);
     const trigger = document.getElementById(ctx.triggerId);
 
-    if (
-      content &&
-      !content.contains(target) &&
-      trigger &&
-      !trigger.contains(target)
-    ) {
+    if (content && !content.contains(target) && trigger && !trigger.contains(target)) {
       ctx.close();
     }
   };
@@ -530,9 +527,7 @@ export const SelectContent = defineComponent<SelectContentProps>((props) => {
 
     // Highlight selected item or first item
     const items = ctx.items().filter((item: HTMLElement) => !item.hasAttribute('data-disabled'));
-    const selectedIndex = items.findIndex(
-      (item: HTMLElement) => item.getAttribute('data-value') === ctx.value()
-    );
+    const selectedIndex = items.findIndex((item: HTMLElement) => item.getAttribute('data-value') === ctx.value());
 
     if (selectedIndex >= 0) {
       ctx.setHighlightedIndex(selectedIndex);
@@ -549,17 +544,8 @@ export const SelectContent = defineComponent<SelectContentProps>((props) => {
     };
   });
 
-  const {
-    side,
-    align,
-    sideOffset,
-    alignOffset,
-    avoidCollisions,
-    collisionPadding,
-    position,
-    children,
-    ...restProps
-  } = props;
+  const { side, align, sideOffset, alignOffset, avoidCollisions, collisionPadding, position, children, ...restProps } =
+    props;
 
   // Use onMount to create and manage content reactively
   onMount(() => {
@@ -625,17 +611,17 @@ export const SelectContent = defineComponent<SelectContentProps>((props) => {
 // ============================================================================
 
 export const SelectViewport = defineComponent<SelectViewportProps>((props) => () => {
-    // Evaluate function children (Pattern 17)
-    const children = typeof props.children === 'function' ? props.children() : props.children;
+  // Evaluate function children (Pattern 17)
+  const children = typeof props.children === 'function' ? props.children() : props.children;
 
-    return jsx('div', {
-      ...props,
-      style: {
-        ...(typeof props.style === 'object' ? props.style : {}),
-      },
-      children,
-    });
+  return jsx('div', {
+    ...props,
+    style: {
+      ...(typeof props.style === 'object' ? props.style : {}),
+    },
+    children,
   });
+});
 
 // ============================================================================
 // Item
@@ -742,22 +728,26 @@ export const SelectItem = defineComponent<SelectItemProps>((props) => {
 // ItemText
 // ============================================================================
 
-export const SelectItemText = defineComponent<SelectItemTextProps>((props) => () =>
+export const SelectItemText = defineComponent<SelectItemTextProps>(
+  (props) => () =>
     jsx('span', {
       ...props,
       children: props.children,
-    }));
+    })
+);
 
 // ============================================================================
 // ItemIndicator
 // ============================================================================
 
-export const SelectItemIndicator = defineComponent<SelectItemIndicatorProps>((props) => () =>
+export const SelectItemIndicator = defineComponent<SelectItemIndicatorProps>(
+  (props) => () =>
     jsx('span', {
       ...props,
       'data-item-indicator': 'true',
       children: props.children,
-    }));
+    })
+);
 
 // ============================================================================
 // Group

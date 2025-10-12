@@ -23,12 +23,12 @@ describe('Validation Decorators', () => {
       const UserContract = contract({
         createUser: {
           input: z.object({ name: z.string() }),
-          output: z.object({ id: z.string(), name: z.string() })
+          output: z.object({ id: z.string(), name: z.string() }),
         },
         getUser: {
           input: z.string(),
-          output: z.object({ id: z.string(), name: z.string() })
-        }
+          output: z.object({ id: z.string(), name: z.string() }),
+        },
       });
 
       @Contract(UserContract)
@@ -49,12 +49,14 @@ describe('Validation Decorators', () => {
 
     it('should store contract metadata on prototype', () => {
       const TestContract = contract({
-        method1: { input: z.string(), output: z.string() }
+        method1: { input: z.string(), output: z.string() },
       });
 
       @Contract(TestContract)
       class TestService {
-        method1(input: string) { return input; }
+        method1(input: string) {
+          return input;
+        }
       }
 
       const service = new TestService();
@@ -68,7 +70,7 @@ describe('Validation Decorators', () => {
       class TestService {
         @Validate({
           input: z.object({ value: z.number() }),
-          output: z.object({ result: z.number() })
+          output: z.object({ result: z.number() }),
         })
         async calculate(input: any) {
           return { result: input.value * 2 };
@@ -89,8 +91,8 @@ describe('Validation Decorators', () => {
           options: {
             mode: 'strip',
             coerce: true,
-            abortEarly: false
-          }
+            abortEarly: false,
+          },
         })
         async process(input: any) {
           return input;
@@ -108,15 +110,15 @@ describe('Validation Decorators', () => {
       const ServiceContract = contract({
         method1: {
           input: z.string(),
-          output: z.string()
-        }
+          output: z.string(),
+        },
       });
 
       @Contract(ServiceContract)
       class TestService {
         @Validate({
           input: z.number(), // Override with number
-          output: z.number()
+          output: z.number(),
         })
         method1(input: any) {
           return input;
@@ -136,7 +138,7 @@ describe('Validation Decorators', () => {
         @Validate({
           input: z.object({ limit: z.number() }),
           output: z.object({ value: z.number() }),
-          stream: true
+          stream: true,
         })
         async *generate(input: any) {
           for (let i = 0; i < input.limit; i++) {
@@ -154,15 +156,19 @@ describe('Validation Decorators', () => {
     it('should disable validation for method', () => {
       const ServiceContract = contract({
         method1: { input: z.string(), output: z.string() },
-        method2: { input: z.string(), output: z.string() }
+        method2: { input: z.string(), output: z.string() },
       });
 
       @Contract(ServiceContract)
       class TestService {
-        method1(input: any) { return input; }
+        method1(input: any) {
+          return input;
+        }
 
         @NoValidation()
-        method2(input: any) { return input; }
+        method2(input: any) {
+          return input;
+        }
       }
 
       const metadata = Reflect.getMetadata('validation:disabled', TestService.prototype, 'method2');
@@ -170,12 +176,14 @@ describe('Validation Decorators', () => {
     });
 
     it('should skip validation when applied', async () => {
-      @Contract(contract({
-        process: {
-          input: z.string().email(),
-          output: z.string()
-        }
-      }))
+      @Contract(
+        contract({
+          process: {
+            input: z.string().email(),
+            output: z.string(),
+          },
+        })
+      )
       class TestService {
         @NoValidation()
         async process(input: any) {
@@ -201,7 +209,7 @@ describe('Validation Decorators', () => {
         stripUnknown: true,
         coerceTypes: true,
         parseAsync: false,
-        abortEarly: true
+        abortEarly: true,
       })
       class OptimizedService {
         async process(input: any) {
@@ -219,13 +227,17 @@ describe('Validation Decorators', () => {
     it('should be inherited by methods', () => {
       @WithValidationOptions({
         mode: 'strip',
-        coerce: true
+        coerce: true,
       })
-      @Contract(contract({
-        method1: { input: z.object({ value: z.number() }) }
-      }))
+      @Contract(
+        contract({
+          method1: { input: z.object({ value: z.number() }) },
+        })
+      )
       class TestService {
-        method1(input: any) { return input; }
+        method1(input: any) {
+          return input;
+        }
       }
 
       const classOptions = Reflect.getMetadata('validation:options', TestService);
@@ -240,14 +252,14 @@ describe('Validation Decorators', () => {
         createUser: {
           input: z.object({
             email: z.string().email(),
-            name: z.string().min(2)
+            name: z.string().min(2),
           }),
           output: z.object({
             id: z.string(),
             email: z.string(),
-            name: z.string()
-          })
-        }
+            name: z.string(),
+          }),
+        },
       });
 
       @Contract(UserContract)
@@ -264,32 +276,34 @@ describe('Validation Decorators', () => {
       // Valid input
       const result = await wrappedService.createUser({
         email: 'test@example.com',
-        name: 'Test User'
+        name: 'Test User',
       });
 
       expect(result.id).toBe('123');
       expect(result.email).toBe('test@example.com');
 
       // Invalid input
-      await expect(wrappedService.createUser({
-        email: 'invalid',
-        name: 'a'
-      })).rejects.toThrow();
+      await expect(
+        wrappedService.createUser({
+          email: 'invalid',
+          name: 'a',
+        })
+      ).rejects.toThrow();
     });
 
     it('should handle method-level validation override', async () => {
       const ServiceContract = contract({
         process: {
           input: z.string(),
-          output: z.string()
-        }
+          output: z.string(),
+        },
       });
 
       @Contract(ServiceContract)
       class TestService {
         @Validate({
           input: z.number(), // Override to number
-          output: z.number()
+          output: z.number(),
         })
         async process(input: any) {
           return input * 2;
@@ -312,16 +326,18 @@ describe('Validation Decorators', () => {
     });
 
     it('should skip validation with @NoValidation', async () => {
-      @Contract(contract({
-        strict: {
-          input: z.string().email(),
-          output: z.string()
-        },
-        noCheck: {
-          input: z.string().email(),
-          output: z.string()
-        }
-      }))
+      @Contract(
+        contract({
+          strict: {
+            input: z.string().email(),
+            output: z.string(),
+          },
+          noCheck: {
+            input: z.string().email(),
+            output: z.string(),
+          },
+        })
+      )
       class TestService {
         async strict(input: any) {
           return input;
@@ -347,26 +363,32 @@ describe('Validation Decorators', () => {
   describe('Complex scenarios', () => {
     it('should handle nested contracts and validations', () => {
       const BaseContract = contract({
-        base: { input: z.string(), output: z.string() }
+        base: { input: z.string(), output: z.string() },
       });
 
       const ExtendedContract = contract({
         ...BaseContract.definition,
-        extended: { input: z.number(), output: z.number() }
+        extended: { input: z.number(), output: z.number() },
       });
 
       @Contract(ExtendedContract)
       class ExtendedService {
         @Validate({
           input: z.boolean(),
-          output: z.boolean()
+          output: z.boolean(),
         })
-        base(input: any) { return !input; }
+        base(input: any) {
+          return !input;
+        }
 
-        extended(input: any) { return input * 2; }
+        extended(input: any) {
+          return input * 2;
+        }
 
         @NoValidation()
-        bypass(input: any) { return input; }
+        bypass(input: any) {
+          return input;
+        }
       }
 
       const contractMeta = Reflect.getMetadata('validation:contract', ExtendedService);
@@ -380,22 +402,26 @@ describe('Validation Decorators', () => {
 
     it('should handle inheritance', () => {
       const BaseContract = contract({
-        method1: { input: z.string(), output: z.string() }
+        method1: { input: z.string(), output: z.string() },
       });
 
       @Contract(BaseContract)
       class BaseService {
-        method1(input: any) { return input; }
+        method1(input: any) {
+          return input;
+        }
       }
 
       const ExtendedContract = contract({
         method1: { input: z.string(), output: z.string() },
-        method2: { input: z.number(), output: z.number() }
+        method2: { input: z.number(), output: z.number() },
       });
 
       @Contract(ExtendedContract)
       class ExtendedService extends BaseService {
-        method2(input: any) { return input * 2; }
+        method2(input: any) {
+          return input * 2;
+        }
       }
 
       const baseMeta = Reflect.getMetadata('validation:contract', BaseService);

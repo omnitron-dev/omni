@@ -94,7 +94,7 @@ export default class OrderProcessingWorkflow {
       orderId: order.id,
       amount: order.total,
       method: 'card',
-      status: 'pending'
+      status: 'pending',
     };
 
     this.paymentResult = await this.paymentService.processPayment(payment);

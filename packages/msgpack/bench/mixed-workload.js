@@ -10,13 +10,15 @@ const testCases = [
   {
     name: 'Nested Object',
     data: {
-      users: Array(100).fill(null).map((_, i) => ({
-        id: i,
-        name: `User ${i}`,
-        email: `user${i}@example.com`,
-        active: i % 2 === 0
-      }))
-    }
+      users: Array(100)
+        .fill(null)
+        .map((_, i) => ({
+          id: i,
+          name: `User ${i}`,
+          email: `user${i}@example.com`,
+          active: i % 2 === 0,
+        })),
+    },
   },
   {
     name: 'Mixed Types',
@@ -29,11 +31,11 @@ const testCases = [
       nested: {
         deep: {
           value: 'nested',
-          array: Array(50).fill('test')
-        }
-      }
-    }
-  }
+          array: Array(50).fill('test'),
+        },
+      },
+    },
+  },
 ];
 
 function measurePerformance(name, operation, iterations = 10000) {
@@ -45,7 +47,7 @@ function measurePerformance(name, operation, iterations = 10000) {
   return {
     name,
     time: end - start,
-    opsPerSec: iterations / ((end - start) / 1000)
+    opsPerSec: iterations / ((end - start) / 1000),
   };
 }
 
@@ -67,7 +69,11 @@ for (const testCase of testCases) {
   const omniSer = measurePerformance('Omnitron Serialize', () => encode(testCase.data), iterations);
   const msgpackrSer = measurePerformance('MessagePackR Serialize', () => msgpackr.pack(testCase.data), iterations);
   const omniDeser = measurePerformance('Omnitron Deserialize', () => decode(encode(testCase.data)), iterations);
-  const msgpackrDeser = measurePerformance('MessagePackR Deserialize', () => msgpackr.unpack(msgpackr.pack(testCase.data)), iterations);
+  const msgpackrDeser = measurePerformance(
+    'MessagePackR Deserialize',
+    () => msgpackr.unpack(msgpackr.pack(testCase.data)),
+    iterations
+  );
 
   console.log(`  Serialize:`);
   console.log(`    Omnitron:    ${omniSer.opsPerSec.toFixed(0)} ops/sec`);

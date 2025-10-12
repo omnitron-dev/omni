@@ -31,7 +31,7 @@ export const PRIORITY_LEVELS = {
   LOW: 'low',
   NORMAL: 'normal',
   HIGH: 'high',
-  URGENT: 'urgent'
+  URGENT: 'urgent',
 } as const;
 
 // Notification types
@@ -40,14 +40,14 @@ export const NOTIFICATION_TYPES = {
   SUCCESS: 'success',
   WARNING: 'warning',
   ERROR: 'error',
-  CRITICAL: 'critical'
+  CRITICAL: 'critical',
 } as const;
 
 // Default configuration values
 export const DEFAULT_RATE_LIMITS = {
   perMinute: 10,
   perHour: 100,
-  perDay: 1000
+  perDay: 1000,
 };
 
 export const DEFAULT_DEDUPLICATION_TTL = 86400; // 24 hours in seconds
@@ -62,5 +62,5 @@ export const REDIS_KEY_PREFIXES = {
   SCHEDULE: 'notifications:schedule:',
   ANALYTICS: 'notifications:analytics:',
   TEMPLATE: 'notifications:template:',
-  WORKFLOW: 'notifications:workflow:'
+  WORKFLOW: 'notifications:workflow:',
 } as const;

@@ -183,11 +183,7 @@ export class WebSocketConnection extends EventEmitter {
 
         // Handle errors
         this.ws.addEventListener('error', () => {
-          const error = NetronErrors.connectionFailed(
-            'websocket',
-            this.url,
-            new Error('WebSocket error')
-          );
+          const error = NetronErrors.connectionFailed('websocket', this.url, new Error('WebSocket error'));
           this._state = ConnectionState.ERROR;
           this.emit('error', error);
 
@@ -221,9 +217,7 @@ export class WebSocketConnection extends EventEmitter {
   private handleMessage(data: ArrayBuffer | string): void {
     try {
       // Convert to Uint8Array
-      const buffer = typeof data === 'string'
-        ? new TextEncoder().encode(data)
-        : new Uint8Array(data);
+      const buffer = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
 
       this.metrics.bytesReceived += buffer.byteLength;
       this.metrics.messagesReceived++;

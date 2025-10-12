@@ -120,9 +120,7 @@ const DateRangePickerContext = createContext<DateRangePickerContextValue | null>
 const useDateRangePickerContext = (): DateRangePickerContextValue => {
   const context = useContext(DateRangePickerContext);
   if (!context) {
-    throw new Error(
-      'DateRangePicker components must be used within a DateRangePicker',
-    );
+    throw new Error('DateRangePicker components must be used within a DateRangePicker');
   }
   return context;
 };
@@ -159,9 +157,7 @@ export const DateRangePicker = defineComponent<DateRangePickerProps>((props) => 
   const disabled = props.disabled ?? false;
 
   // State
-  const internalValue: WritableSignal<DateRange> = signal<DateRange>(
-    props.defaultValue ?? { start: null, end: null },
-  );
+  const internalValue: WritableSignal<DateRange> = signal<DateRange>(props.defaultValue ?? { start: null, end: null });
 
   const selectionMode: WritableSignal<'start' | 'end'> = signal<'start' | 'end'>('start');
   const hoverDate: WritableSignal<Date | null> = signal<Date | null>(null);
@@ -274,103 +270,90 @@ export const DateRangePicker = defineComponent<DateRangePickerProps>((props) => 
 // DateRangePicker Trigger
 // ============================================================================
 
-export const DateRangePickerTrigger = defineComponent<DateRangePickerTriggerProps>(
-  (props) => {
-    const context = useDateRangePickerContext();
+export const DateRangePickerTrigger = defineComponent<DateRangePickerTriggerProps>((props) => {
+  const context = useDateRangePickerContext();
 
-    const formatDate = (date: Date | null): string => {
-      if (!date) return '';
-      return date.toLocaleDateString();
-    };
+  const formatDate = (date: Date | null): string => {
+    if (!date) return '';
+    return date.toLocaleDateString();
+  };
 
-    return () => {
-      const { children, ...rest } = props;
-      const range = context.value();
+  return () => {
+    const { children, ...rest } = props;
+    const range = context.value();
 
-      return jsx('button', {
-        type: 'button',
-        'data-date-range-picker-trigger': '',
-        'aria-label': 'Select date range',
-        disabled: context.disabled,
-        ...rest,
-        children:
-          children ??
-          `${formatDate(range.start)} - ${formatDate(range.end) || 'Select end date'}`,
-      });
-    };
-  },
-);
+    return jsx('button', {
+      type: 'button',
+      'data-date-range-picker-trigger': '',
+      'aria-label': 'Select date range',
+      disabled: context.disabled,
+      ...rest,
+      children: children ?? `${formatDate(range.start)} - ${formatDate(range.end) || 'Select end date'}`,
+    });
+  };
+});
 
 // ============================================================================
 // DateRangePicker Content
 // ============================================================================
 
-export const DateRangePickerContent = defineComponent<DateRangePickerContentProps>(
-  (props) => () => {
-      const { children, ...rest } = props;
+export const DateRangePickerContent = defineComponent<DateRangePickerContentProps>((props) => () => {
+  const { children, ...rest } = props;
 
-      return jsx('div', {
-        'data-date-range-picker-content': '',
-        role: 'dialog',
-        'aria-label': 'Date range picker',
-        ...rest,
-        children,
-      });
-    },
-);
+  return jsx('div', {
+    'data-date-range-picker-content': '',
+    role: 'dialog',
+    'aria-label': 'Date range picker',
+    ...rest,
+    children,
+  });
+});
 
 // ============================================================================
 // DateRangePicker Calendar
 // ============================================================================
 
-export const DateRangePickerCalendar = defineComponent<DateRangePickerCalendarProps>(
-  (props) => {
-    const monthOffset = props.monthOffset ?? 0;
+export const DateRangePickerCalendar = defineComponent<DateRangePickerCalendarProps>((props) => {
+  const monthOffset = props.monthOffset ?? 0;
 
-    // Calculate the month to display
-    const today = new Date();
-    const displayMonth = new Date(
-      today.getFullYear(),
-      today.getMonth() + monthOffset,
-      1,
-    );
+  // Calculate the month to display
+  const today = new Date();
+  const displayMonth = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
 
-    return () => jsx('div', {
-        'data-date-range-picker-calendar': '',
-        'data-month-offset': monthOffset,
-        children: jsx('div', {
-          'data-calendar-placeholder': '',
-          children: `Calendar for ${displayMonth.toLocaleDateString('default', { month: 'long', year: 'numeric' })}`,
-        }),
-      });
-  },
-);
+  return () =>
+    jsx('div', {
+      'data-date-range-picker-calendar': '',
+      'data-month-offset': monthOffset,
+      children: jsx('div', {
+        'data-calendar-placeholder': '',
+        children: `Calendar for ${displayMonth.toLocaleDateString('default', { month: 'long', year: 'numeric' })}`,
+      }),
+    });
+});
 
 // ============================================================================
 // DateRangePicker Preset
 // ============================================================================
 
-export const DateRangePickerPreset = defineComponent<DateRangePickerPresetProps>(
-  (props) => {
-    const context = useDateRangePickerContext();
+export const DateRangePickerPreset = defineComponent<DateRangePickerPresetProps>((props) => {
+  const context = useDateRangePickerContext();
 
-    const handleClick = () => {
-      context.setRange(props.range);
-    };
+  const handleClick = () => {
+    context.setRange(props.range);
+  };
 
-    return () => {
-      const { range, children, ...rest } = props;
+  return () => {
+    const { range, children, ...rest } = props;
 
-      return jsx('button', {
-        type: 'button',
-        'data-date-range-picker-preset': '',
-        onClick: handleClick,
-        ...rest,
-        children,
-      });
-    };
-  },
-);
+    return jsx('button', {
+      type: 'button',
+      'data-date-range-picker-preset': '',
+      onClick: handleClick,
+      ...rest,
+      children,
+    });
+  };
+});
 
 // ============================================================================
 // Attach sub-components

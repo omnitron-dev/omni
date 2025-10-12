@@ -30,8 +30,8 @@ interface DatabaseConfig {
   health: {
     enabled: true,
     interval: 30000,
-    timeout: 5000
-  }
+    timeout: 5000,
+  },
 })
 export default class DatabaseProcess {
   private users = new Map<string, User>();
@@ -50,7 +50,7 @@ export default class DatabaseProcess {
 
   private async connect(): Promise<void> {
     // Simulate database connection
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
     this.isConnected = true;
     console.log(`Connected to database: ${this.config?.host}:${this.config?.port}/${this.config?.database}`);
 
@@ -62,7 +62,7 @@ export default class DatabaseProcess {
     const users: User[] = [
       { id: '1', name: 'Alice', email: 'alice@example.com', createdAt: new Date() },
       { id: '2', name: 'Bob', email: 'bob@example.com', createdAt: new Date() },
-      { id: '3', name: 'Charlie', email: 'charlie@example.com', createdAt: new Date() }
+      { id: '3', name: 'Charlie', email: 'charlie@example.com', createdAt: new Date() },
     ];
 
     for (const user of users) {
@@ -77,7 +77,7 @@ export default class DatabaseProcess {
     this.queryCount++;
 
     // Simulate query latency
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     return this.users.get(id) || null;
   }
@@ -88,7 +88,7 @@ export default class DatabaseProcess {
     this.queryCount++;
 
     // Simulate query latency
-    await new Promise(resolve => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 20));
 
     return Array.from(this.users.values());
   }
@@ -102,7 +102,7 @@ export default class DatabaseProcess {
     const user: User = {
       id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       ...data,
-      createdAt: new Date()
+      createdAt: new Date(),
     };
 
     this.users.set(user.id, user);
@@ -139,9 +139,7 @@ export default class DatabaseProcess {
 
     const lowerQuery = query.toLowerCase();
     return Array.from(this.users.values()).filter(
-      user =>
-        user.name.toLowerCase().includes(lowerQuery) ||
-        user.email.toLowerCase().includes(lowerQuery)
+      (user) => user.name.toLowerCase().includes(lowerQuery) || user.email.toLowerCase().includes(lowerQuery)
     );
   }
 
@@ -156,7 +154,7 @@ export default class DatabaseProcess {
       userCount: this.users.size,
       queryCount: this.queryCount,
       isConnected: this.isConnected,
-      config: this.config
+      config: this.config,
     };
   }
 
@@ -174,7 +172,7 @@ export default class DatabaseProcess {
     checks.push({
       name: 'database-connection',
       status: this.isConnected ? ('pass' as const) : ('fail' as const),
-      message: this.isConnected ? 'Connected' : 'Disconnected'
+      message: this.isConnected ? 'Connected' : 'Disconnected',
     });
 
     // Check performance
@@ -182,18 +180,18 @@ export default class DatabaseProcess {
       checks.push({
         name: 'query-load',
         status: 'warn' as const,
-        message: `High query count: ${this.queryCount}`
+        message: `High query count: ${this.queryCount}`,
       });
     }
 
     // Overall status
-    const hasFailure = checks.some(c => c.status === 'fail');
-    const hasWarning = checks.some(c => c.status === 'warn');
+    const hasFailure = checks.some((c) => c.status === 'fail');
+    const hasWarning = checks.some((c) => c.status === 'warn');
 
     return {
       status: hasFailure ? 'unhealthy' : hasWarning ? 'degraded' : 'healthy',
       checks,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 

@@ -19,7 +19,7 @@ export enum TransactionPhase {
   COMMITTING = 'committing',
   COMMITTED = 'committed',
   ABORTING = 'aborting',
-  ABORTED = 'aborted'
+  ABORTED = 'aborted',
 }
 
 /**
@@ -84,7 +84,7 @@ export class DistributedTransactionCoordinator extends EventEmitter {
     private readonly config: IDistributedTransactionConfig = {}
   ) {
     super();
-    
+
     if (config.recoveryEnabled) {
       this.startRecoveryProcess();
     }
@@ -95,14 +95,14 @@ export class DistributedTransactionCoordinator extends EventEmitter {
    */
   async begin(participants: ITransactionParticipant[], data?: any): Promise<string> {
     const transactionId = uuidv4();
-    
+
     const context: ITransactionContext = {
       id: transactionId,
       phase: TransactionPhase.INITIALIZING,
       participants: new Map(),
       votes: new Map(),
       data,
-      startTime: Date.now()
+      startTime: Date.now(),
     };
 
     // Register participants
@@ -133,15 +133,15 @@ export class DistributedTransactionCoordinator extends EventEmitter {
       await this.preparePhase(context);
 
       // Check votes
-      const allPrepared = Array.from(context.votes.values()).every(vote => vote === true);
+      const allPrepared = Array.from(context.votes.values()).every((vote) => vote === true);
 
       if (allPrepared) {
         // Phase 2: Commit
         await this.commitPhase(context);
-        
+
         context.phase = TransactionPhase.COMMITTED;
         context.endTime = Date.now();
-        
+
         this.logger.info({ transactionId }, 'Transaction committed successfully');
         this.emit('transaction:committed', context);
       } else {
@@ -168,13 +168,11 @@ export class DistributedTransactionCoordinator extends EventEmitter {
     const preparePromises: Promise<void>[] = [];
 
     for (const [participantId, participant] of context.participants) {
-      preparePromises.push(
-        this.prepareParticipant(context, participantId, participant)
-      );
+      preparePromises.push(this.prepareParticipant(context, participantId, participant));
     }
 
     await Promise.all(preparePromises);
-    
+
     context.phase = TransactionPhase.PREPARED;
     this.logTransaction(context);
   }
@@ -196,7 +194,7 @@ export class DistributedTransactionCoordinator extends EventEmitter {
       );
 
       context.votes.set(participantId, vote);
-      
+
       this.logger.debug({ transactionId: context.id, participantId, vote }, 'Participant vote received');
     } catch (error) {
       this.logger.error({ error, participantId }, 'Participant prepare failed');
@@ -214,9 +212,7 @@ export class DistributedTransactionCoordinator extends EventEmitter {
     const commitPromises: Promise<void>[] = [];
 
     for (const [participantId, participant] of context.participants) {
-      commitPromises.push(
-        this.commitParticipant(context, participantId, participant)
-      );
+      commitPromises.push(this.commitParticipant(context, participantId, participant));
     }
 
     await Promise.all(commitPromises);
@@ -232,11 +228,7 @@ export class DistributedTransactionCoordinator extends EventEmitter {
   ): Promise<void> {
     try {
       const timeout = this.config.timeout || 30000;
-      await this.withTimeout(
-        participant.commit(),
-        timeout,
-        `Participant ${participantId} commit timeout`
-      );
+      await this.withTimeout(participant.commit(), timeout, `Participant ${participantId} commit timeout`);
 
       this.logger.debug({ transactionId: context.id, participantId }, 'Participant committed');
     } catch (error) {
@@ -256,16 +248,14 @@ export class DistributedTransactionCoordinator extends EventEmitter {
     const rollbackPromises: Promise<void>[] = [];
 
     for (const [participantId, participant] of context.participants) {
-      rollbackPromises.push(
-        this.rollbackParticipant(context, participantId, participant)
-      );
+      rollbackPromises.push(this.rollbackParticipant(context, participantId, participant));
     }
 
     await Promise.allSettled(rollbackPromises);
-    
+
     context.phase = TransactionPhase.ABORTED;
     context.endTime = Date.now();
-    
+
     this.logger.info({ transactionId: context.id }, 'Transaction aborted');
     this.emit('transaction:aborted', context);
   }
@@ -280,11 +270,7 @@ export class DistributedTransactionCoordinator extends EventEmitter {
   ): Promise<void> {
     try {
       const timeout = this.config.timeout || 30000;
-      await this.withTimeout(
-        participant.rollback(),
-        timeout,
-        `Participant ${participantId} rollback timeout`
-      );
+      await this.withTimeout(participant.rollback(), timeout, `Participant ${participantId} rollback timeout`);
 
       this.logger.debug({ transactionId: context.id, participantId }, 'Participant rolled back');
     } catch (error) {
@@ -320,7 +306,7 @@ export class DistributedTransactionCoordinator extends EventEmitter {
       participants: Array.from(context.participants.keys()),
       votes: context.votes.size > 0 ? new Map(context.votes) : undefined,
       data: context.data,
-      error: context.error
+      error: context.error,
     };
 
     this.transactionLog.push(logEntry);
@@ -347,7 +333,7 @@ export class DistributedTransactionCoordinator extends EventEmitter {
    */
   private async recoverTransaction(recoveryKey: string): Promise<void> {
     const [transactionId, participantId] = recoveryKey.split(':');
-    
+
     this.logger.info({ transactionId, participantId }, 'Attempting transaction recovery');
 
     // Recovery logic would go here
@@ -358,16 +344,12 @@ export class DistributedTransactionCoordinator extends EventEmitter {
   /**
    * Execute with timeout
    */
-  private async withTimeout<T>(
-    promise: Promise<T>,
-    timeout: number,
-    errorMessage: string
-  ): Promise<T> {
+  private async withTimeout<T>(promise: Promise<T>, timeout: number, errorMessage: string): Promise<T> {
     return Promise.race([
       promise,
       new Promise<T>((_, reject) =>
         setTimeout(() => reject(Errors.timeout(`distributed transaction: ${errorMessage}`, timeout)), timeout)
-      )
+      ),
     ]);
   }
 }
@@ -392,12 +374,12 @@ export class TransactionParticipant implements ITransactionParticipant {
     try {
       // Save current state for potential rollback
       this.originalState = { ...this.state };
-      
+
       // Perform validation and lock resources
       // This is where you'd check constraints, acquire locks, etc.
-      
+
       this.preparedState = this.state;
-      
+
       this.logger.debug({ participantId: this.id }, 'Participant prepared');
       return true;
     } catch (error) {
@@ -416,11 +398,11 @@ export class TransactionParticipant implements ITransactionParticipant {
 
     // Apply the prepared state permanently
     this.state = this.preparedState;
-    
+
     // Release any locks
     this.preparedState = null;
     this.originalState = null;
-    
+
     this.logger.debug({ participantId: this.id }, 'Participant committed');
   }
 
@@ -432,11 +414,11 @@ export class TransactionParticipant implements ITransactionParticipant {
       // Restore original state
       this.state = this.originalState;
     }
-    
+
     // Release any locks
     this.preparedState = null;
     this.originalState = null;
-    
+
     this.logger.debug({ participantId: this.id }, 'Participant rolled back');
   }
 

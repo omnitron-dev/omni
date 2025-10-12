@@ -77,7 +77,7 @@ export class RedisFallback {
       const client = new Redis(url, {
         connectTimeout: 1000,
         retryStrategy: () => null,
-        lazyConnect: false
+        lazyConnect: false,
       });
 
       await client.ping();
@@ -89,7 +89,7 @@ export class RedisFallback {
           if (client.status === 'ready') {
             await client.quit();
           }
-        }
+        },
       };
     } catch (error) {
       return null;
@@ -110,7 +110,7 @@ export class RedisFallback {
         const client = new Redis(url, {
           connectTimeout: 500,
           retryStrategy: () => null,
-          lazyConnect: false
+          lazyConnect: false,
         });
 
         await client.ping();
@@ -122,7 +122,7 @@ export class RedisFallback {
             if (client.status === 'ready') {
               await client.quit();
             }
-          }
+          },
         };
       } catch {
         // Try next port

@@ -15,7 +15,7 @@ describe('EventBusService', () => {
       debug: jest.fn(),
       info: jest.fn(),
       warn: jest.fn(),
-      error: jest.fn()
+      error: jest.fn(),
     };
 
     // Create a mock emitter that matches the expected interface
@@ -29,7 +29,7 @@ describe('EventBusService', () => {
       once: jest.fn(),
       listeners: jest.fn().mockReturnValue([]),
       listenerCount: jest.fn().mockReturnValue(0),
-      eventNames: jest.fn().mockReturnValue([])
+      eventNames: jest.fn().mockReturnValue([]),
     };
 
     service = new EventBusService(mockEmitter, mockLogger);
@@ -68,7 +68,7 @@ describe('EventBusService', () => {
         { data: 'test' },
         expect.objectContaining({
           timestamp: expect.any(Number),
-          source: 'test'
+          source: 'test',
         })
       );
     });
@@ -128,7 +128,7 @@ describe('EventBusService', () => {
 
       expect(errorHandler).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Handler error'
+          message: 'Handler error',
         })
       );
       expect(normalHandler).toHaveBeenCalled(); // Other handlers should still run
@@ -146,11 +146,11 @@ describe('EventBusService', () => {
       await service.emit('test.event', { data: 'test' });
 
       // Allow async error to propagate
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(errorHandler).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Async handler error'
+          message: 'Async handler error',
         })
       );
     });
@@ -213,12 +213,12 @@ describe('EventBusService', () => {
       const results: number[] = [];
 
       service.on('test.event', async () => {
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
         results.push(1);
       });
 
       service.on('test.event', async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         results.push(2);
       });
 
@@ -236,12 +236,12 @@ describe('EventBusService', () => {
       const results: number[] = [];
 
       service.on('test.event', async () => {
-        await new Promise(resolve => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 20));
         results.push(1);
       });
 
       service.on('test.event', async () => {
-        await new Promise(resolve => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 20));
         results.push(2);
       });
 
@@ -263,12 +263,7 @@ describe('EventBusService', () => {
       service.on('calculate', (data: any) => data.value * 3);
       service.on('calculate', (data: any) => data.value * 4);
 
-      const result = await service.emitReduce(
-        'calculate',
-        { value: 1 },
-        (acc, curr) => acc + curr,
-        0
-      );
+      const result = await service.emitReduce('calculate', { value: 1 }, (acc, curr) => acc + curr, 0);
 
       expect(result).toBe(9); // 2 + 3 + 4
     });
@@ -276,12 +271,7 @@ describe('EventBusService', () => {
     it('should handle empty reduce', async () => {
       await service.onInit();
 
-      const result = await service.emitReduce(
-        'no.listeners',
-        {},
-        (acc, curr) => acc + curr,
-        10
-      );
+      const result = await service.emitReduce('no.listeners', {}, (acc, curr) => acc + curr, 10);
 
       expect(result).toBe(10); // Initial value
     });
@@ -310,7 +300,7 @@ describe('EventBusService', () => {
       expect(health.status).toBe('healthy');
       expect(health.details).toEqual({
         eventCount: 0,
-        listenerCount: 0
+        listenerCount: 0,
       });
     });
 
@@ -356,13 +346,9 @@ describe('EventBusService', () => {
       await service.emit('user.created', { id: 123 });
 
       // Allow async events to complete
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
-      expect(results).toEqual([
-        'Created user: 123',
-        'Notified user: 123',
-        'Logged: notified for user 123'
-      ]);
+      expect(results).toEqual(['Created user: 123', 'Notified user: 123', 'Logged: notified for user 123']);
     });
   });
 });

@@ -2,18 +2,11 @@
  * Bun-specific tests for Nexus Container
  */
 
-import { expect, test, describe } from "bun:test";
-import {
-  Container,
-  createToken,
-  Scope,
-  isBun,
-  getRuntimeInfo,
-  Runtime
-} from "../../../src/nexus/index.js";
+import { expect, test, describe } from 'bun:test';
+import { Container, createToken, Scope, isBun, getRuntimeInfo, Runtime } from '../../../src/nexus/index.js';
 
-describe("Nexus Container in Bun", () => {
-  test("should detect Bun runtime", () => {
+describe('Nexus Container in Bun', () => {
+  test('should detect Bun runtime', () => {
     const info = getRuntimeInfo();
 
     expect(info.runtime).toBe(Runtime.Bun);
@@ -23,74 +16,73 @@ describe("Nexus Container in Bun", () => {
     expect(isBun()).toBe(true);
   });
 
-  test("should create and use container in Bun", () => {
+  test('should create and use container in Bun', () => {
     const container = new Container();
-    const token = createToken<string>("BunTest");
+    const token = createToken<string>('BunTest');
 
-    container.register(token, { useValue: "Hello from Bun!" });
+    container.register(token, { useValue: 'Hello from Bun!' });
 
     const result = container.resolve(token);
-    expect(result).toBe("Hello from Bun!");
+    expect(result).toBe('Hello from Bun!');
   });
 
-  test("should handle async operations in Bun", async () => {
+  test('should handle async operations in Bun', async () => {
     const container = new Container();
-    const token = createToken<{ data: string }>("AsyncBun");
+    const token = createToken<{ data: string }>('AsyncBun');
 
     container.registerAsync(token, {
       useFactory: async () => {
         // Use Bun's sleep if available, otherwise setTimeout
-        await new Promise(resolve => setTimeout(resolve, 10));
-        return { data: "async-bun-data" };
-      }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return { data: 'async-bun-data' };
+      },
     });
 
     const result = await container.resolveAsync(token);
-    expect(result.data).toBe("async-bun-data");
+    expect(result.data).toBe('async-bun-data');
   });
 
   test("should work with Bun's native features", () => {
     const container = new Container();
-    const fileToken = createToken<string>("FileContent");
+    const fileToken = createToken<string>('FileContent');
 
     // Example of using Bun-specific API
     container.register(fileToken, {
-      useFactory: () => 
+      useFactory: () =>
         // This would use Bun.file() in real scenario
-         "Bun file content"
-      
+        'Bun file content',
     });
 
     const content = container.resolve(fileToken);
-    expect(content).toBe("Bun file content");
+    expect(content).toBe('Bun file content');
   });
 
-  test("should handle dependency injection in Bun", () => {
+  test('should handle dependency injection in Bun', () => {
     const container = new Container();
 
     class Database {
-      name = "BunDB";
+      name = 'BunDB';
     }
 
     class Service {
-      constructor(public db: Database) { }
+      constructor(public db: Database) {}
     }
 
-    const dbToken = createToken<Database>("Database");
-    const serviceToken = createToken<Service>("Service");
+    const dbToken = createToken<Database>('Database');
+    const serviceToken = createToken<Service>('Service');
 
     container.register(dbToken, { useClass: Database });
     container.register(serviceToken, {
       useClass: Service,
-      inject: [dbToken]
+      inject: [dbToken],
     });
 
     const service = container.resolve(serviceToken);
     expect(service.db).toBeInstanceOf(Database);
-    expect(service.db.name).toBe("BunDB");
+    expect(service.db.name).toBe('BunDB');
   });
 
-  test("should manage lifecycle in Bun", () => {
+  test('should manage lifecycle in Bun', () => {
     const container = new Container();
     let instanceCount = 0;
 
@@ -98,10 +90,10 @@ describe("Nexus Container in Bun", () => {
       id = ++instanceCount;
     }
 
-    const token = createToken<SingletonService>("Singleton");
+    const token = createToken<SingletonService>('Singleton');
     container.register(token, {
       useClass: SingletonService,
-      scope: Scope.Singleton
+      scope: Scope.Singleton,
     });
 
     const instance1 = container.resolve(token);
@@ -111,7 +103,7 @@ describe("Nexus Container in Bun", () => {
     expect(instanceCount).toBe(1);
   });
 
-  test("should dispose resources in Bun", async () => {
+  test('should dispose resources in Bun', async () => {
     const container = new Container();
     let disposed = false;
 
@@ -121,10 +113,10 @@ describe("Nexus Container in Bun", () => {
       }
     }
 
-    const token = createToken<DisposableService>("Disposable");
+    const token = createToken<DisposableService>('Disposable');
     container.register(token, {
       useClass: DisposableService,
-      scope: Scope.Singleton
+      scope: Scope.Singleton,
     });
 
     container.resolve(token);
@@ -133,7 +125,7 @@ describe("Nexus Container in Bun", () => {
     expect(disposed).toBe(true);
   });
 
-  test("should support ESM imports in Bun", () => {
+  test('should support ESM imports in Bun', () => {
     // Bun has native ESM support
     const info = getRuntimeInfo();
     expect(info.hasESM).toBe(true);

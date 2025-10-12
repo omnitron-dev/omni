@@ -21,7 +21,7 @@ export class MetricsCollector {
     this.options = {
       slowThreshold: options.slowThreshold || 100,
       sampleRate: options.sampleRate || 1,
-      trackMemory: options.trackMemory !== false
+      trackMemory: options.trackMemory !== false,
     };
   }
 
@@ -126,7 +126,7 @@ export class MetricsCollector {
       slowestEvents: [...this.slowestEvents],
       memoryUsage,
       eventCounts: new Map(this.eventCounts),
-      errorCounts: new Map(this.errorCounts)
+      errorCounts: new Map(this.errorCounts),
     };
   }
 
@@ -137,20 +137,24 @@ export class MetricsCollector {
     const metrics = this.getMetrics();
 
     if (format === 'json') {
-      return JSON.stringify({
-        timestamp: Date.now(),
-        uptime: Date.now() - this.startTime,
-        metrics: {
-          eventsEmitted: metrics.eventsEmitted,
-          eventsFailed: metrics.eventsFailed,
-          listenerCount: Object.fromEntries(metrics.listenerCount),
-          avgProcessingTime: Object.fromEntries(metrics.avgProcessingTime),
-          slowestEvents: metrics.slowestEvents,
-          memoryUsage: metrics.memoryUsage,
-          eventCounts: Object.fromEntries(metrics.eventCounts),
-          errorCounts: Object.fromEntries(metrics.errorCounts)
-        }
-      }, null, 2);
+      return JSON.stringify(
+        {
+          timestamp: Date.now(),
+          uptime: Date.now() - this.startTime,
+          metrics: {
+            eventsEmitted: metrics.eventsEmitted,
+            eventsFailed: metrics.eventsFailed,
+            listenerCount: Object.fromEntries(metrics.listenerCount),
+            avgProcessingTime: Object.fromEntries(metrics.avgProcessingTime),
+            slowestEvents: metrics.slowestEvents,
+            memoryUsage: metrics.memoryUsage,
+            eventCounts: Object.fromEntries(metrics.eventCounts),
+            errorCounts: Object.fromEntries(metrics.errorCounts),
+          },
+        },
+        null,
+        2
+      );
     } else if (format === 'prometheus') {
       // Prometheus format
       const lines: string[] = [];
@@ -222,9 +226,7 @@ export class MetricsCollector {
     const metrics = this.getMetrics();
     const uptime = Date.now() - this.startTime;
     const eventsPerSecond = this.eventsEmitted / (uptime / 1000);
-    const failureRate = this.eventsEmitted > 0
-      ? (this.eventsFailed / this.eventsEmitted * 100).toFixed(2)
-      : '0.00';
+    const failureRate = this.eventsEmitted > 0 ? ((this.eventsFailed / this.eventsEmitted) * 100).toFixed(2) : '0.00';
 
     return `
 EventEmitter Metrics Summary:

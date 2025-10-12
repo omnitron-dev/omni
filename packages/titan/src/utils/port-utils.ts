@@ -80,12 +80,7 @@ export async function isPortAvailable(port: number, host = '127.0.0.1'): Promise
 /**
  * Wait for a port to become available
  */
-export async function waitForPort(
-  port: number,
-  host = '127.0.0.1',
-  timeout = 30000,
-  interval = 100
-): Promise<void> {
+export async function waitForPort(port: number, host = '127.0.0.1', timeout = 30000, interval = 100): Promise<void> {
   const startTime = Date.now();
 
   while (Date.now() - startTime < timeout) {
@@ -110,7 +105,7 @@ export async function waitForPort(
       if (Date.now() - startTime >= timeout) {
         throw new Error(`Port ${port} not available after ${timeout}ms`);
       }
-      await new Promise(r => setTimeout(r, interval));
+      await new Promise((r) => setTimeout(r, interval));
     }
   }
 

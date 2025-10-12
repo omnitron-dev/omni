@@ -125,7 +125,8 @@ export class RetryManager extends EventEmitter {
       initialDelay: options.initialDelay || this.options.defaultOptions?.initialDelay || 1000,
       maxDelay: options.maxDelay || this.options.defaultOptions?.maxDelay || 30000,
       jitter: options.jitter ?? this.options.defaultOptions?.jitter ?? 0.1,
-      shouldRetry: options.shouldRetry || this.options.defaultOptions?.shouldRetry || this.defaultShouldRetry.bind(this),
+      shouldRetry:
+        options.shouldRetry || this.options.defaultOptions?.shouldRetry || this.defaultShouldRetry.bind(this),
       onRetry: options.onRetry || this.options.defaultOptions?.onRetry || (() => {}),
       attemptTimeout: options.attemptTimeout || this.options.defaultOptions?.attemptTimeout || 0,
       factor: options.factor || this.options.defaultOptions?.factor || 2,

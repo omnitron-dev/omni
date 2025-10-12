@@ -6,7 +6,11 @@
 
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import { TransportAdapter, BinaryTransportAdapter, TransportConnectionFactory } from '../../../src/netron/transport/transport-adapter.js';
+import {
+  TransportAdapter,
+  BinaryTransportAdapter,
+  TransportConnectionFactory,
+} from '../../../src/netron/transport/transport-adapter.js';
 import { TransportRegistry } from '../../../src/netron/transport/transport-registry.js';
 import { TcpTransport } from '../../../src/netron/transport/tcp-transport.js';
 import { ConnectionState } from '../../../src/netron/transport/types.js';
@@ -59,7 +63,7 @@ describe('TransportAdapter', () => {
       const tcpTransport = new TcpTransport();
       tcpServer = await tcpTransport.createServer!({
         port: testPort,
-        host: '127.0.0.1'
+        host: '127.0.0.1',
       } as any);
 
       // Set up WebSocket server
@@ -108,8 +112,7 @@ describe('TransportAdapter', () => {
     });
 
     it('should throw error for unsupported protocol', async () => {
-      await expect(adapter.connect('unknown://localhost:8080'))
-        .rejects.toThrow('Transport with id unknown not found');
+      await expect(adapter.connect('unknown://localhost:8080')).rejects.toThrow('Transport with id unknown not found');
     });
 
     it('should pass options to transport', async () => {
@@ -117,8 +120,8 @@ describe('TransportAdapter', () => {
         connectTimeout: 5000,
         keepAlive: {
           enabled: true,
-          interval: 1000
-        }
+          interval: 1000,
+        },
       });
 
       expect(connection.state).toBe(ConnectionState.CONNECTED);
@@ -131,7 +134,7 @@ describe('TransportAdapter', () => {
       const tcpPort = await getFreePort();
       const server = await adapter.createServer('tcp', {
         port: tcpPort,
-        host: '127.0.0.1'
+        host: '127.0.0.1',
       });
 
       expect(server).toBeDefined();
@@ -148,7 +151,7 @@ describe('TransportAdapter', () => {
       const wsPort = await getFreePort();
       const server = await adapter.createServer('websocket', {
         port: wsPort,
-        host: '127.0.0.1'
+        host: '127.0.0.1',
       });
 
       expect(server).toBeDefined();
@@ -162,8 +165,7 @@ describe('TransportAdapter', () => {
     });
 
     it('should handle server creation for non-existent transport', async () => {
-      await expect(adapter.createServer('nonexistent', {}))
-        .rejects.toThrow('Transport with id nonexistent not found');
+      await expect(adapter.createServer('nonexistent', {})).rejects.toThrow('Transport with id nonexistent not found');
     });
 
     it('should handle server creation for transport without server support', async () => {
@@ -171,15 +173,22 @@ describe('TransportAdapter', () => {
       class NoServerTransport {
         name = 'noserver';
         capabilities = { server: false };
-        connect() { return Promise.resolve({} as any); }
-        isValidAddress() { return false; }
-        parseAddress() { return {} as any; }
+        connect() {
+          return Promise.resolve({} as any);
+        }
+        isValidAddress() {
+          return false;
+        }
+        parseAddress() {
+          return {} as any;
+        }
       }
 
       registry.register('noserver', () => new NoServerTransport() as any);
 
-      await expect(adapter.createServer('noserver', {}))
-        .rejects.toThrow('Transport noserver server mode is not implemented');
+      await expect(adapter.createServer('noserver', {})).rejects.toThrow(
+        'Transport noserver server mode is not implemented'
+      );
     });
   });
 
@@ -232,7 +241,7 @@ describe('TransportAdapter', () => {
         protocol: 'tcp',
         host: 'localhost',
         port: 8080,
-        params: {}
+        params: {},
       });
 
       const wsAddr = adapter.parseAddress('ws://example.com:3000/path');
@@ -241,7 +250,7 @@ describe('TransportAdapter', () => {
         host: 'example.com',
         port: 3000,
         path: '/path',
-        params: {}
+        params: {},
       });
     });
 
@@ -258,7 +267,7 @@ describe('TransportAdapter', () => {
       const tcpTransport = new TcpTransport();
       const tcpServer = await tcpTransport.createServer!({
         port: tcpPort,
-        host: '127.0.0.1'
+        host: '127.0.0.1',
       } as any);
 
       // Create WebSocket server
@@ -296,7 +305,7 @@ describe('TransportAdapter', () => {
 
       try {
         await adapter.connect(`tcp://127.0.0.1:${fakePort}`, {
-          connectTimeout: 500
+          connectTimeout: 500,
         });
         fail('Should have thrown error');
       } catch (error: any) {
@@ -308,8 +317,7 @@ describe('TransportAdapter', () => {
       const emptyRegistry = new TransportRegistry(false); // No defaults
       const emptyAdapter = new TransportAdapter(emptyRegistry);
 
-      await expect(emptyAdapter.connect('tcp://localhost:8080'))
-        .rejects.toThrow('Transport with id tcp not found');
+      await expect(emptyAdapter.connect('tcp://localhost:8080')).rejects.toThrow('Transport with id tcp not found');
     });
 
     it('should handle transport registration dynamically', async () => {
@@ -317,8 +325,7 @@ describe('TransportAdapter', () => {
       const dynamicAdapter = new TransportAdapter(dynamicRegistry);
 
       // Initially no TCP transport
-      await expect(dynamicAdapter.connect('tcp://localhost:8080'))
-        .rejects.toThrow('Transport with id tcp not found');
+      await expect(dynamicAdapter.connect('tcp://localhost:8080')).rejects.toThrow('Transport with id tcp not found');
 
       // Register TCP transport
       dynamicRegistry.register('tcp', () => new TcpTransport());
@@ -326,7 +333,7 @@ describe('TransportAdapter', () => {
       // Now it should work (will fail to connect but transport is found)
       try {
         await dynamicAdapter.connect('tcp://localhost:8080', {
-          connectTimeout: 100
+          connectTimeout: 100,
         });
       } catch (error: any) {
         // Connection will fail but transport should be found
@@ -344,7 +351,7 @@ describe('TransportAdapter', () => {
         binary: true,
         reconnection: true,
         multiplexing: false,
-        server: true
+        server: true,
       });
 
       const wsCapabilities = adapter.getTransportCapabilities('websocket');
@@ -354,7 +361,7 @@ describe('TransportAdapter', () => {
         binary: true,
         reconnection: false, // WebSockets don't support reconnection natively
         multiplexing: false,
-        server: true
+        server: true,
       });
     });
 
@@ -370,7 +377,7 @@ describe('TransportAdapter', () => {
       const tcpTransport = new TcpTransport();
       const tcpServer = await tcpTransport.createServer!({
         port: tcpPort,
-        host: '127.0.0.1'
+        host: '127.0.0.1',
       } as any);
 
       const connections: ITransportConnection[] = [];
@@ -382,15 +389,15 @@ describe('TransportAdapter', () => {
       }
 
       // All should be connected
-      connections.forEach(conn => {
+      connections.forEach((conn) => {
         expect(conn.state).toBe(ConnectionState.CONNECTED);
       });
 
       // Close all connections
-      await Promise.all(connections.map(conn => conn.close()));
+      await Promise.all(connections.map((conn) => conn.close()));
 
       // All should be disconnected
-      connections.forEach(conn => {
+      connections.forEach((conn) => {
         expect(conn.state).toBe(ConnectionState.DISCONNECTED);
       });
 
@@ -409,7 +416,7 @@ describe('TransportAdapter', () => {
           binary: true,
           reconnection: false,
           multiplexing: false,
-          server: true
+          server: true,
         };
 
         async connect(address: string) {
@@ -431,7 +438,7 @@ describe('TransportAdapter', () => {
             protocol: 'custom',
             host: 'localhost',
             port: 9999,
-            params: {}
+            params: {},
           };
         }
       }
@@ -441,28 +448,28 @@ describe('TransportAdapter', () => {
         readonly state = ConnectionState.CONNECTED;
 
         async doConnect() {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
         }
 
-        async send() { }
-        async sendPacket() { }
-        async close() { }
+        async send() {}
+        async sendPacket() {}
+        async close() {}
         getMetrics() {
           return {
             bytesSent: 0,
             bytesReceived: 0,
             packetsSent: 0,
             packetsReceived: 0,
-            duration: 0
+            duration: 0,
           };
         }
       }
 
       class CustomServer extends EventEmitter {
         readonly connections = new Map();
-        async listen() { }
-        async close() { }
-        async broadcast() { }
+        async listen() {}
+        async close() {}
+        async broadcast() {}
       }
 
       // Register custom transport
@@ -484,10 +491,10 @@ describe('TransportAdapter', () => {
         'tcp://[::1]:8080',
         'ws://example.com/socket',
         'wss://secure.example.com:443/path',
-        'unix:///var/run/app.sock'
+        'unix:///var/run/app.sock',
       ];
 
-      addresses.forEach(addr => {
+      addresses.forEach((addr) => {
         const isValid = adapter.isValidAddress(addr);
         expect(isValid).toBe(true);
 
@@ -880,7 +887,7 @@ describe('TransportConnectionFactory', () => {
       const tcpTransport = new TcpTransport();
       tcpServer = await tcpTransport.createServer!({
         port: testPort,
-        host: '127.0.0.1'
+        host: '127.0.0.1',
       } as any);
     });
 
@@ -899,15 +906,11 @@ describe('TransportConnectionFactory', () => {
     });
 
     it('should throw error for unknown transport', async () => {
-      await expect(TransportConnectionFactory.connect('unknown://localhost:8080'))
-        .rejects.toThrow('Transport');
+      await expect(TransportConnectionFactory.connect('unknown://localhost:8080')).rejects.toThrow('Transport');
     });
 
     it('should pass options to transport', async () => {
-      const adapter = await TransportConnectionFactory.connect(
-        `tcp://127.0.0.1:${testPort}`,
-        { connectTimeout: 5000 }
-      );
+      const adapter = await TransportConnectionFactory.connect(`tcp://127.0.0.1:${testPort}`, { connectTimeout: 5000 });
 
       expect(adapter).toBeDefined();
       adapter.close();
@@ -940,7 +943,7 @@ describe('TransportConnectionFactory', () => {
       const mockWs = {
         readyState: 1,
         send: jest.fn(),
-        close: jest.fn()
+        close: jest.fn(),
       };
 
       const isNative = TransportConnectionFactory.isNativeWebSocket(mockWs);
@@ -952,7 +955,7 @@ describe('TransportConnectionFactory', () => {
         readyState: 1,
         send: jest.fn(),
         close: jest.fn(),
-        connection: {} // Has connection property - our adapter
+        connection: {}, // Has connection property - our adapter
       };
 
       const isNative = TransportConnectionFactory.isNativeWebSocket(mockAdapter);
@@ -1003,7 +1006,7 @@ describe('NativeWebSocketWrapper', () => {
     mockWs.ping = jest.fn((callback) => callback?.());
     mockWs._socket = {
       remoteAddress: '127.0.0.1',
-      localAddress: '127.0.0.1'
+      localAddress: '127.0.0.1',
     };
 
     // Make it look like a WebSocket

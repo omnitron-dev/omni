@@ -35,7 +35,7 @@ import {
   IProcessMetrics,
   IHealthStatus,
   ConfigValue,
-  ConfigObject
+  ConfigObject,
 } from '../types.js';
 
 /**
@@ -56,7 +56,7 @@ export class Application implements IApplication {
   private _state: ApplicationState = ApplicationState.Created;
   private _container: Container;
   private _config: IApplicationConfig;
-  private _userConfig: ConfigObject;  // Store original user config separately
+  private _userConfig: ConfigObject; // Store original user config separately
   private _name: string;
   private _version: string;
   private _debug: boolean;
@@ -85,14 +85,16 @@ export class Application implements IApplication {
    * Static factory method for creating application instance
    * Supports multiple usage patterns for maximum flexibility
    */
-  static async create(options?: IApplicationOptions & {
-    modules?: ModuleInput[];
-    imports?: Token<IModule>[];  // Support direct imports like AppModule had
-    providers?: Array<[InjectionToken<any>, Provider<any>]>;      // Support direct providers
-    autoDiscovery?: boolean;       // Enable automatic module discovery
-    scanPaths?: string[];         // Paths to scan for modules
-    excludePaths?: string[];      // Paths to exclude from scanning
-  }): Promise<Application> {
+  static async create(
+    options?: IApplicationOptions & {
+      modules?: ModuleInput[];
+      imports?: Token<IModule>[]; // Support direct imports like AppModule had
+      providers?: Array<[InjectionToken<any>, Provider<any>]>; // Support direct providers
+      autoDiscovery?: boolean; // Enable automatic module discovery
+      scanPaths?: string[]; // Paths to scan for modules
+      excludePaths?: string[]; // Paths to exclude from scanning
+    }
+  ): Promise<Application> {
     const app = new Application(options);
 
     // Register core modules properly with forRoot pattern
@@ -134,9 +136,9 @@ export class Application implements IApplication {
       const rootModule = {
         name: 'RootContext',
         providers: options.providers,
-        onRegister: () => { },
-        onStart: () => { },
-        onStop: () => { },
+        onRegister: () => {},
+        onStart: () => {},
+        onStop: () => {},
       };
       const rootToken = createToken<IModule>('RootContext');
       app._modules.set(rootToken, rootModule);
@@ -158,7 +160,7 @@ export class Application implements IApplication {
 
     // Register application itself
     this._container.register(APPLICATION_TOKEN, {
-      useValue: this
+      useValue: this,
     });
 
     // Initialize app metadata
@@ -175,7 +177,7 @@ export class Application implements IApplication {
       version: this._version,
       debug: this._debug,
       environment: process.env['NODE_ENV'] || 'development',
-      ...this._userConfig  // User config overrides app metadata
+      ...this._userConfig, // User config overrides app metadata
     };
 
     // Add specific options to config if provided
@@ -201,7 +203,10 @@ export class Application implements IApplication {
 
     // Setup process lifecycle management
     if (!options.disableGracefulShutdown) {
-      this._disableProcessExit = options['environment'] === 'test' || process.env['NODE_ENV'] === 'test' || process.env['JEST_WORKER_ID'] !== undefined;
+      this._disableProcessExit =
+        options['environment'] === 'test' ||
+        process.env['NODE_ENV'] === 'test' ||
+        process.env['JEST_WORKER_ID'] !== undefined;
       this.setupProcessLifecycle();
     }
   }
@@ -250,7 +255,7 @@ export class Application implements IApplication {
     this._startTime = startBegin;
 
     // Ensure state change is observable before continuing
-    await new Promise(resolve => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
 
     try {
       // Emit starting event
@@ -289,7 +294,6 @@ export class Application implements IApplication {
       // Register and start modules in dependency order
       const sortedModules = this.sortModulesByDependencies();
 
-
       for (const entry of sortedModules) {
         const [, module] = entry;
         this._logger?.debug({ module: module.name }, 'Starting module');
@@ -311,7 +315,7 @@ export class Application implements IApplication {
       // Start Netron if configured and available
       if (this._container.has(NETRON_TOKEN)) {
         try {
-          const netron = await this._container.resolveAsync(NETRON_TOKEN) as Netron;
+          const netron = (await this._container.resolveAsync(NETRON_TOKEN)) as Netron;
           if (netron) {
             await netron.start();
             this._logger?.info({ module: 'Netron' }, 'Netron service started');
@@ -346,7 +350,7 @@ export class Application implements IApplication {
         {
           state: this._state,
           startupTime: this.uptime,
-          modules: Array.from(this._modules.values()).map(m => m.name)
+          modules: Array.from(this._modules.values()).map((m) => m.name),
         },
         'Application started successfully'
       );
@@ -398,7 +402,7 @@ export class Application implements IApplication {
     this._logger?.info({ options }, 'Application stopping');
 
     // Ensure state change is observable before continuing
-    await new Promise(resolve => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
 
     try {
       // Emit stopping event
@@ -432,9 +436,9 @@ export class Application implements IApplication {
       // Execute shutdown tasks (unless being called from shutdown)
       if (!this._isShuttingDown && this._shutdownTasks.size > 0) {
         // Get all tasks and ensure priority is a number
-        const tasksArray = Array.from(this._shutdownTasks.values()).map(task => ({
+        const tasksArray = Array.from(this._shutdownTasks.values()).map((task) => ({
           ...task,
-          priority: Number(task.priority ?? 50)
+          priority: Number(task.priority ?? 50),
         }));
 
         // Sort tasks by priority (lower numbers first), then by ID for stable sorting
@@ -459,7 +463,7 @@ export class Application implements IApplication {
           } catch (error) {
             this._logger?.error({ error, taskName: task.name }, 'Shutdown task failed');
             if (task.critical && !options.force) {
-              throw error;  // Re-throw the original error for critical tasks
+              throw error; // Re-throw the original error for critical tasks
             }
           }
         }
@@ -565,7 +569,7 @@ export class Application implements IApplication {
       }
 
       // Give pino-pretty time to flush output
-      await new Promise(resolve => setImmediate(resolve));
+      await new Promise((resolve) => setImmediate(resolve));
 
       this.setState(ApplicationState.Stopped);
       this._lifecycleState = LifecycleState.Stopped;
@@ -647,9 +651,13 @@ export class Application implements IApplication {
     }
 
     // Register the new module with override option
-    this._container.register(token, {
-      useValue: module
-    }, { override: true });
+    this._container.register(
+      token,
+      {
+        useValue: module,
+      },
+      { override: true }
+    );
     this._modules.set(token, module);
 
     return this;
@@ -679,7 +687,7 @@ export class Application implements IApplication {
         }
       } else {
         // Factory function - execute it
-        const factoryFn = moduleInput as (() => IModule | Promise<IModule> | IDynamicModule | Promise<IDynamicModule>);
+        const factoryFn = moduleInput as () => IModule | Promise<IModule> | IDynamicModule | Promise<IDynamicModule>;
         const result = await factoryFn();
         if (this.isDynamicModule(result)) {
           dynamicModule = result;
@@ -717,7 +725,8 @@ export class Application implements IApplication {
     // Get module metadata from @Module decorator
     // Check on the constructor of the instance first, then fallback to moduleInput
     const moduleConstructor = moduleInstance.constructor;
-    const metadata = Reflect.getMetadata('module', moduleConstructor) ||
+    const metadata =
+      Reflect.getMetadata('module', moduleConstructor) ||
       Reflect.getMetadata('nexus:module', moduleConstructor) ||
       Reflect.getMetadata('module', moduleInput) ||
       Reflect.getMetadata('nexus:module', moduleInput) ||
@@ -746,7 +755,7 @@ export class Application implements IApplication {
       // Create a new module instance with the correct name
       moduleInstance = {
         ...moduleInstance,
-        name: moduleName
+        name: moduleName,
       };
     }
 
@@ -757,7 +766,7 @@ export class Application implements IApplication {
         module: moduleInput as any,
         providers: metadata.providers || [],
         imports: metadata.imports || [],
-        exports: metadata.exports || []
+        exports: metadata.exports || [],
       };
     }
 
@@ -772,7 +781,7 @@ export class Application implements IApplication {
           module: moduleInput as any,
           providers: (moduleInstance as any).providers || [],
           imports: (moduleInstance as any).imports || [],
-          exports: (moduleInstance as any).exports || []
+          exports: (moduleInstance as any).exports || [],
         };
       }
     }
@@ -783,7 +792,7 @@ export class Application implements IApplication {
     // Register module in container
     if (!this._container.has(token)) {
       this._container.register(token, {
-        useValue: moduleInstance
+        useValue: moduleInstance,
       });
     }
 
@@ -839,7 +848,8 @@ export class Application implements IApplication {
 
       // Get module metadata from @Module decorator
       const moduleConstructor = moduleInstance.constructor;
-      const metadata = Reflect.getMetadata('module', moduleConstructor) ||
+      const metadata =
+        Reflect.getMetadata('module', moduleConstructor) ||
         Reflect.getMetadata('nexus:module', moduleConstructor) ||
         (moduleConstructor as any).__titanModuleMetadata;
 
@@ -864,9 +874,10 @@ export class Application implements IApplication {
           for (const exportToken of metadata.exports) {
             if (typeof exportToken === 'string') {
               // Export by string token
-              const provider = metadata.providers?.find((p: any) =>
-                (typeof p === 'function' && p.name === exportToken) ||
-                (typeof p === 'object' && p.provide === exportToken)
+              const provider = metadata.providers?.find(
+                (p: any) =>
+                  (typeof p === 'function' && p.name === exportToken) ||
+                  (typeof p === 'object' && p.provide === exportToken)
               );
               if (provider && !this._container.has(exportToken as any)) {
                 // Register the exported provider in the parent container
@@ -956,7 +967,6 @@ export class Application implements IApplication {
     return this._userConfig[key] !== undefined ? this._userConfig[key] : this._config[key];
   }
 
-
   /**
    * Register event handler
    */
@@ -1020,7 +1030,7 @@ export class Application implements IApplication {
     const meta: IEventMeta = {
       event,
       timestamp: Date.now(),
-      source: 'application'
+      source: 'application',
     };
 
     // Handle error events specially
@@ -1044,18 +1054,14 @@ export class Application implements IApplication {
       const listeners = this._eventEmitter.listeners(event);
 
       // Execute all listeners and wait for them
-      const promises = listeners.map((listener) =>
-        Promise.resolve(listener(data, meta))
-      );
+      const promises = listeners.map((listener) => Promise.resolve(listener(data, meta)));
 
       await Promise.all(promises);
 
       // Also emit to wildcard listeners if event is not already '*'
       if (event !== '*') {
         const wildcardListeners = this._eventEmitter.listeners('*');
-        const wildcardPromises = wildcardListeners.map((listener) =>
-          Promise.resolve(listener(data, meta))
-        );
+        const wildcardPromises = wildcardListeners.map((listener) => Promise.resolve(listener(data, meta)));
         await Promise.all(wildcardPromises);
       }
     } catch (error) {
@@ -1075,7 +1081,7 @@ export class Application implements IApplication {
     const meta: IEventMeta = {
       event,
       timestamp: Date.now(),
-      source: 'application'
+      source: 'application',
     };
 
     // Handle error events specially
@@ -1134,8 +1140,8 @@ export class Application implements IApplication {
     if (typeof hook === 'function') {
       this._startHooks.push({
         handler: hook,
-        priority: priority ?? 100,  // Default priority is 100
-        timeout
+        priority: priority ?? 100, // Default priority is 100
+        timeout,
       });
     } else {
       this._startHooks.push(hook);
@@ -1153,8 +1159,8 @@ export class Application implements IApplication {
     if (typeof hook === 'function') {
       this._stopHooks.push({
         handler: hook,
-        priority: priority ?? 100,  // Default priority is 100
-        timeout
+        priority: priority ?? 100, // Default priority is 100
+        timeout,
       });
     } else {
       this._stopHooks.push(hook);
@@ -1221,8 +1227,14 @@ export class Application implements IApplication {
 
       const result = { ...target };
       for (const key of Object.keys(source)) {
-        if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key]) &&
-            result[key] && typeof result[key] === 'object' && !Array.isArray(result[key])) {
+        if (
+          source[key] &&
+          typeof source[key] === 'object' &&
+          !Array.isArray(source[key]) &&
+          result[key] &&
+          typeof result[key] === 'object' &&
+          !Array.isArray(result[key])
+        ) {
           // Both are objects, merge recursively
           result[key] = deepMerge(result[key], source[key]);
         } else {
@@ -1237,8 +1249,14 @@ export class Application implements IApplication {
     const newConfig = { ...this._config };
 
     for (const key of Object.keys(options)) {
-      if (newConfig[key] && typeof newConfig[key] === 'object' && !Array.isArray(newConfig[key]) &&
-          options[key] && typeof options[key] === 'object' && !Array.isArray(options[key])) {
+      if (
+        newConfig[key] &&
+        typeof newConfig[key] === 'object' &&
+        !Array.isArray(newConfig[key]) &&
+        options[key] &&
+        typeof options[key] === 'object' &&
+        !Array.isArray(options[key])
+      ) {
         // Deep merge objects
         newConfig[key] = deepMerge(newConfig[key], options[key]);
       } else {
@@ -1252,8 +1270,14 @@ export class Application implements IApplication {
 
     // Update user config - deep merge same as main config
     for (const key of Object.keys(options)) {
-      if (this._userConfig[key] && typeof this._userConfig[key] === 'object' && !Array.isArray(this._userConfig[key]) &&
-          options[key] && typeof options[key] === 'object' && !Array.isArray(options[key])) {
+      if (
+        this._userConfig[key] &&
+        typeof this._userConfig[key] === 'object' &&
+        !Array.isArray(this._userConfig[key]) &&
+        options[key] &&
+        typeof options[key] === 'object' &&
+        !Array.isArray(options[key])
+      ) {
         // Deep merge objects
         this._userConfig[key] = deepMerge(this._userConfig[key], options[key]);
       } else {
@@ -1277,9 +1301,9 @@ export class Application implements IApplication {
         this._config = {
           ...this._config,
           events: {
-            ...(this._config['events'] as ConfigObject || {}),
-            maxListeners: eventsConfig['maxListeners']
-          }
+            ...((this._config['events'] as ConfigObject) || {}),
+            maxListeners: eventsConfig['maxListeners'],
+          },
         };
       }
     }
@@ -1363,7 +1387,7 @@ export class Application implements IApplication {
       arch: process.arch,
       hostname: os.hostname(),
       pid: process.pid,
-      ppid: process.ppid
+      ppid: process.ppid,
     };
   }
 
@@ -1376,7 +1400,7 @@ export class Application implements IApplication {
       memoryUsage: process.memoryUsage(),
       cpuUsage: process.cpuUsage(),
       startupTime: this._startupTime,
-      modules: this._modules.size
+      modules: this._modules.size,
     };
   }
 
@@ -1424,7 +1448,7 @@ export class Application implements IApplication {
     if (!module) {
       return {
         status: 'unhealthy',
-        message: `Module ${moduleName} not found`
+        message: `Module ${moduleName} not found`,
       };
     }
 
@@ -1433,8 +1457,8 @@ export class Application implements IApplication {
         status: 'healthy',
         message: `Module ${moduleName} does not have health check`,
         details: {
-          started: this._isStarted
-        }
+          started: this._isStarted,
+        },
       };
     }
 
@@ -1445,8 +1469,8 @@ export class Application implements IApplication {
         status: 'unhealthy',
         message: `Health check failed for module ${moduleName}`,
         details: {
-          error: error instanceof Error ? error.message : 'Unknown error'
-        }
+          error: error instanceof Error ? error.message : 'Unknown error',
+        },
       };
     }
   }
@@ -1478,8 +1502,8 @@ export class Application implements IApplication {
           status: 'unhealthy',
           message: 'Health check failed',
           details: {
-            error: error instanceof Error ? error.message : 'Unknown error'
-          }
+            error: error instanceof Error ? error.message : 'Unknown error',
+          },
         };
         overallStatus = 'unhealthy';
       }
@@ -1488,17 +1512,16 @@ export class Application implements IApplication {
     return {
       status: overallStatus,
       message: `Application is ${overallStatus}`,
-      modules,  // Add modules at top level for easy access
+      modules, // Add modules at top level for easy access
       details: {
         name: this.name,
         version: this.version,
         uptime: this.getMetrics().uptime,
         state: this._state,
-        modules  // Also keep in details for backward compatibility
-      }
+        modules, // Also keep in details for backward compatibility
+      },
     };
   }
-
 
   /**
    * Get application metrics
@@ -1509,7 +1532,7 @@ export class Application implements IApplication {
       memoryUsage: process.memoryUsage(),
       cpuUsage: process.cpuUsage(),
       startupTime: this._startTime ? Date.now() - this._startTime : 0,
-      modules: this._modules.size
+      modules: this._modules.size,
     };
   }
 
@@ -1640,7 +1663,6 @@ export class Application implements IApplication {
     return Array.from(this._modules.values());
   }
 
-
   /**
    * Register a module dynamically at runtime
    */
@@ -1717,8 +1739,8 @@ export class Application implements IApplication {
       const loggerOptions = {
         ...loggerConfig,
         level: loggerConfig.level || (this._config?.debug ? 'debug' : 'info'),
-        prettyPrint: loggerConfig.prettyPrint ?? (this._config?.environment === 'development'),
-        name: this._config?.name || 'titan-app'
+        prettyPrint: loggerConfig.prettyPrint ?? this._config?.environment === 'development',
+        name: this._config?.name || 'titan-app',
       };
 
       // Register Logger module with forRoot pattern
@@ -1727,7 +1749,7 @@ export class Application implements IApplication {
 
       // Get logger service for internal use
       try {
-        const loggerService = await this._container.resolveAsync(LOGGER_SERVICE_TOKEN) as ILoggerModule;
+        const loggerService = (await this._container.resolveAsync(LOGGER_SERVICE_TOKEN)) as ILoggerModule;
         this._logger = loggerService.logger;
         this._logger.info({ module: 'Application' }, 'Logger module initialized');
       } catch (error) {
@@ -1739,10 +1761,7 @@ export class Application implements IApplication {
     if (!this._container.has(CONFIG_SERVICE_TOKEN)) {
       // Register Config module with forRoot pattern
       const configOptions = {
-        sources: [
-          { type: 'object' as const, data: this._config },
-          { type: 'env' as const }
-        ]
+        sources: [{ type: 'object' as const, data: this._config }, { type: 'env' as const }],
       };
 
       const configModuleConfig = ConfigModule.forRoot(configOptions);
@@ -1751,7 +1770,7 @@ export class Application implements IApplication {
       // Initialize ConfigService immediately after registration
       try {
         this._logger?.debug({ module: 'Application' }, 'Attempting to resolve ConfigService...');
-        const configService = await this._container.resolveAsync(CONFIG_SERVICE_TOKEN) as any;
+        const configService = (await this._container.resolveAsync(CONFIG_SERVICE_TOKEN)) as any;
         this._logger?.debug({ module: 'Application', hasService: !!configService }, 'ConfigService resolved');
 
         if (configService && typeof configService.initialize === 'function') {
@@ -1771,7 +1790,7 @@ export class Application implements IApplication {
       const netronOptions: NetronOptions = {
         ...netronConfig,
         // Use application ID as Netron ID if not specified
-        id: netronConfig.id || `${this._name}-netron`
+        id: netronConfig.id || `${this._name}-netron`,
       };
 
       // Create Netron instance directly with logger if available
@@ -1780,7 +1799,7 @@ export class Application implements IApplication {
 
         // Register as singleton instance
         this._container.register(NETRON_TOKEN, {
-          useValue: netron
+          useValue: netron,
         });
 
         this._logger.debug({ module: 'Application' }, 'Netron service registered as singleton instance');
@@ -1802,16 +1821,22 @@ export class Application implements IApplication {
         const [token, providerDef] = provider;
         try {
           this._container.register(token, providerDef);
-          this._logger?.debug({
-            module: 'Application',
-            tokenName: typeof token === 'function' && 'name' in token ? token.name : token?.toString()
-          }, 'Provider registered');
+          this._logger?.debug(
+            {
+              module: 'Application',
+              tokenName: typeof token === 'function' && 'name' in token ? token.name : token?.toString(),
+            },
+            'Provider registered'
+          );
         } catch (error) {
-          this._logger?.error({
-            module: 'Application',
-            tokenName: typeof token === 'function' && 'name' in token ? token.name : token?.toString(),
-            error
-          }, 'Failed to register provider');
+          this._logger?.error(
+            {
+              module: 'Application',
+              tokenName: typeof token === 'function' && 'name' in token ? token.name : token?.toString(),
+              error,
+            },
+            'Failed to register provider'
+          );
           throw error;
         }
       }
@@ -1823,7 +1848,7 @@ export class Application implements IApplication {
       this._logger?.debug({ module: 'Application' }, 'Dynamic module registered', {
         module: ModuleClass.name,
         providers: providers.length,
-        exports: exports.map((t: any) => t.name || t.toString())
+        exports: exports.map((t: any) => t.name || t.toString()),
       });
     }
   }
@@ -1946,7 +1971,7 @@ export class Application implements IApplication {
       this._logger?.fatal({ error }, 'Uncaught exception');
       this.emit(ApplicationEvent.UncaughtException, { error });
 
-      this.shutdown(ShutdownReason.UncaughtException, { error }).catch(err => {
+      this.shutdown(ShutdownReason.UncaughtException, { error }).catch((err) => {
         this._logger?.fatal({ error: err }, 'Failed to handle uncaught exception');
         this.exitProcess(1);
       });
@@ -1962,7 +1987,7 @@ export class Application implements IApplication {
 
       // Only shutdown if not in test environment
       if (!this._disableProcessExit) {
-        this.shutdown(ShutdownReason.UnhandledRejection, { reason, promise }).catch(error => {
+        this.shutdown(ShutdownReason.UnhandledRejection, { reason, promise }).catch((error) => {
           this._logger?.fatal({ error }, 'Failed to handle unhandled rejection');
           this.exitProcess(1);
         });
@@ -1995,7 +2020,7 @@ export class Application implements IApplication {
         reason = ShutdownReason.Signal;
     }
 
-    this.shutdown(reason, { signal }).catch(error => {
+    this.shutdown(reason, { signal }).catch((error) => {
       this._logger?.fatal({ error }, 'Failed to handle signal');
       this.exitProcess(1);
     });
@@ -2027,8 +2052,8 @@ export class Application implements IApplication {
         }
 
         // Also wait a bit to ensure everything is written
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      },
     });
 
     // Close connections
@@ -2038,7 +2063,7 @@ export class Application implements IApplication {
       priority: ShutdownPriority.High,
       handler: async () => {
         this._logger?.info('Closing active connections');
-      }
+      },
     });
 
     // Save state
@@ -2049,23 +2074,28 @@ export class Application implements IApplication {
       handler: async () => {
         this._logger?.info('Saving application state');
         this.emit(ApplicationEvent.StateSave);
-      }
+      },
     });
   }
 
   /**
    * Register a shutdown task
    */
-  registerShutdownTask(taskOrName: IShutdownTask | string, handler?: () => void | Promise<void>, priority?: number, isCritical?: boolean): string {
+  registerShutdownTask(
+    taskOrName: IShutdownTask | string,
+    handler?: () => void | Promise<void>,
+    priority?: number,
+    isCritical?: boolean
+  ): string {
     let task: IShutdownTask;
 
     if (typeof taskOrName === 'string') {
       // Multi-parameter API
       task = {
         name: taskOrName,
-        handler: handler || (() => { }),
+        handler: handler || (() => {}),
         priority: priority ?? ShutdownPriority.Normal,
-        critical: isCritical
+        critical: isCritical,
       };
     } else {
       // Object API
@@ -2111,7 +2141,10 @@ export class Application implements IApplication {
   /**
    * Perform graceful shutdown
    */
-  async shutdown(reason: ShutdownReason, details?: { signal?: string; error?: Error; reason?: unknown; promise?: Promise<unknown> }): Promise<void> {
+  async shutdown(
+    reason: ShutdownReason,
+    details?: { signal?: string; error?: Error; reason?: unknown; promise?: Promise<unknown> }
+  ): Promise<void> {
     // Prevent multiple concurrent shutdowns
     if (this._isShuttingDown) {
       await this._shutdownPromise!;
@@ -2163,9 +2196,9 @@ export class Application implements IApplication {
    */
   private async executeShutdown(reason: ShutdownReason, details?: unknown): Promise<void> {
     // Get all tasks and ensure priority is a number
-    const tasksArray = Array.from(this._shutdownTasks.values()).map(task => ({
+    const tasksArray = Array.from(this._shutdownTasks.values()).map((task) => ({
       ...task,
-      priority: Number(task.priority ?? 50)
+      priority: Number(task.priority ?? 50),
     }));
 
     // Sort tasks by priority (lower numbers first), then by ID for stable sorting
@@ -2201,7 +2234,6 @@ export class Application implements IApplication {
 
         this._logger?.debug({ taskName: task.name }, 'Shutdown task completed');
         this.emit(ApplicationEvent.ShutdownTaskComplete, { task: task.name });
-
       } catch (error) {
         this._logger?.error({ error, taskName: task.name }, 'Shutdown task failed');
         this.emit(ApplicationEvent.ShutdownTaskError, { task: task.name, error });
@@ -2217,7 +2249,7 @@ export class Application implements IApplication {
     // Stop the application
     await this.stop({
       timeout: this._shutdownTimeout,
-      signal: (details as any)?.signal as NodeJS.Signals | undefined
+      signal: (details as any)?.signal as NodeJS.Signals | undefined,
     });
 
     // Run cleanup handlers
@@ -2263,7 +2295,8 @@ export class Application implements IApplication {
    */
   getProcessMetrics(): IProcessMetrics {
     // Ensure startTime is properly set - use process.uptime() as fallback
-    const uptime = this._startTime > 0 ? Math.max(1, Date.now() - this._startTime) : Math.max(1, process.uptime() * 1000);
+    const uptime =
+      this._startTime > 0 ? Math.max(1, Date.now() - this._startTime) : Math.max(1, process.uptime() * 1000);
 
     return {
       uptime,
@@ -2275,7 +2308,7 @@ export class Application implements IApplication {
       nodeVersion: process.version,
       state: this._lifecycleState,
       shutdownTasksCount: this._shutdownTasks.size,
-      cleanupHandlersCount: this._cleanupHandlers.size
+      cleanupHandlersCount: this._cleanupHandlers.size,
     };
   }
 
@@ -2355,7 +2388,7 @@ export class Application implements IApplication {
 
             // Check if file should be excluded
             if (excludePaths && excludePaths.length > 0) {
-              const shouldExclude = excludePaths.some(pattern => {
+              const shouldExclude = excludePaths.some((pattern) => {
                 // Simple pattern matching (supports **/filename.ext patterns)
                 if (pattern.includes('**')) {
                   const filename = pattern.replace('**/', '');
@@ -2385,7 +2418,9 @@ export class Application implements IApplication {
 
                   // Validate that module has required properties
                   if (!moduleInstance.name) {
-                    const error = Errors.badRequest(`Module ${exported.name || exportName} is missing required 'name' property`);
+                    const error = Errors.badRequest(
+                      `Module ${exported.name || exportName} is missing required 'name' property`
+                    );
                     validationErrors.push(error);
                     this._logger?.warn(`Invalid module: ${error.message}`);
                     continue;
@@ -2410,7 +2445,12 @@ export class Application implements IApplication {
           } catch (error) {
             // Treat actual syntax errors in the file content as critical
             const errorMessage = error instanceof Error ? error.message : String(error);
-            if (error instanceof Error && errorMessage && (errorMessage.includes('Unexpected end of input') || (errorMessage.includes('SyntaxError') && !errorMessage.includes("Unexpected token 'export'")))) {
+            if (
+              error instanceof Error &&
+              errorMessage &&
+              (errorMessage.includes('Unexpected end of input') ||
+                (errorMessage.includes('SyntaxError') && !errorMessage.includes("Unexpected token 'export'")))
+            ) {
               criticalErrors.push(error);
               this._logger?.error(`Critical error loading module from ${file}: ${errorMessage}`);
             } else {
@@ -2429,17 +2469,19 @@ export class Application implements IApplication {
     if (validationErrors.length > 0) {
       this._logger?.warn(`Module discovery found ${validationErrors.length} validation error(s)`);
       // If there are validation errors and we found modules with __titanModule metadata, throw
-      const hasInvalidModules = validationErrors.some(e => e.message.includes('missing required'));
+      const hasInvalidModules = validationErrors.some((e) => e.message.includes('missing required'));
       if (hasInvalidModules) {
-        const errorMessages = validationErrors.map(e => e.message).join('; ');
+        const errorMessages = validationErrors.map((e) => e.message).join('; ');
         throw Errors.badRequest(`Module discovery failed: ${errorMessages}`);
       }
     }
 
     // Also throw for critical errors (syntax errors)
     if (criticalErrors.length > 0) {
-      const errorMessages = criticalErrors.map(e => e.message).join('; ');
-      throw Errors.internal(`Module discovery failed with ${criticalErrors.length} critical error(s): ${errorMessages}`);
+      const errorMessages = criticalErrors.map((e) => e.message).join('; ');
+      throw Errors.internal(
+        `Module discovery failed with ${criticalErrors.length} critical error(s): ${errorMessages}`
+      );
     }
 
     return modules;
@@ -2459,7 +2501,13 @@ export class Application implements IApplication {
         // Recursively search subdirectories
         const subFiles = await this.findModuleFiles(fullPath, fs, path);
         files.push(...subFiles);
-      } else if (entry.isFile() && (entry.name.endsWith('.js') || entry.name.endsWith('.ts') || entry.name.endsWith('.cjs') || entry.name.endsWith('.mjs'))) {
+      } else if (
+        entry.isFile() &&
+        (entry.name.endsWith('.js') ||
+          entry.name.endsWith('.ts') ||
+          entry.name.endsWith('.cjs') ||
+          entry.name.endsWith('.mjs'))
+      ) {
         // Include all JS/TS/CJS/MJS files
         files.push(fullPath);
       }
@@ -2523,16 +2571,12 @@ export class Application implements IApplication {
     this.emit(ApplicationEvent.Error, error);
   }
 
-  private async withTimeout<T>(
-    promise: Promise<T>,
-    timeout: number,
-    message: string
-  ): Promise<T> {
+  private async withTimeout<T>(promise: Promise<T>, timeout: number, message: string): Promise<T> {
     return Promise.race([
       promise,
       new Promise<T>((_, reject) => {
         setTimeout(() => reject(Errors.timeout(message, timeout)), timeout);
-      })
+      }),
     ]);
   }
 }

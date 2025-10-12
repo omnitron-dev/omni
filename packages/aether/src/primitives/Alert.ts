@@ -61,16 +61,16 @@ export interface AlertDescriptionProps {
  * Container for alert content.
  */
 export const Alert = defineComponent<AlertProps>((props) => () => {
-    const { variant = 'default', role = 'alert', children, ...restProps } = props;
+  const { variant = 'default', role = 'alert', children, ...restProps } = props;
 
-    return jsx('div', {
-      ...restProps,
-      role,
-      'data-alert': '',
-      'data-variant': variant,
-      children,
-    });
+  return jsx('div', {
+    ...restProps,
+    role,
+    'data-alert': '',
+    'data-variant': variant,
+    children,
   });
+});
 
 /**
  * Alert Icon
@@ -78,15 +78,15 @@ export const Alert = defineComponent<AlertProps>((props) => () => {
  * Icon for the alert (typically placed at the start).
  */
 export const AlertIcon = defineComponent<AlertIconProps>((props) => () => {
-    const { children, ...restProps } = props;
+  const { children, ...restProps } = props;
 
-    return jsx('div', {
-      ...restProps,
-      'data-alert-icon': '',
-      'aria-hidden': 'true',
-      children,
-    });
+  return jsx('div', {
+    ...restProps,
+    'data-alert-icon': '',
+    'aria-hidden': 'true',
+    children,
   });
+});
 
 /**
  * Alert Title
@@ -94,14 +94,14 @@ export const AlertIcon = defineComponent<AlertIconProps>((props) => () => {
  * Alert heading.
  */
 export const AlertTitle = defineComponent<AlertTitleProps>((props) => () => {
-    const { as = 'h5', children, ...restProps } = props;
+  const { as = 'h5', children, ...restProps } = props;
 
-    return jsx(as, {
-      ...restProps,
-      'data-alert-title': '',
-      children,
-    });
+  return jsx(as, {
+    ...restProps,
+    'data-alert-title': '',
+    children,
   });
+});
 
 /**
  * Alert Description
@@ -109,14 +109,14 @@ export const AlertTitle = defineComponent<AlertTitleProps>((props) => () => {
  * Alert description text.
  */
 export const AlertDescription = defineComponent<AlertDescriptionProps>((props) => () => {
-    const { children, ...restProps } = props;
+  const { children, ...restProps } = props;
 
-    return jsx('div', {
-      ...restProps,
-      'data-alert-description': '',
-      children,
-    });
+  return jsx('div', {
+    ...restProps,
+    'data-alert-description': '',
+    children,
   });
+});
 
 // Attach sub-components
 (Alert as any).Icon = AlertIcon;

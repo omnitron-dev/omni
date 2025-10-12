@@ -80,7 +80,9 @@ test.describe('Dialog Primitive', () => {
       await dialog.open();
 
       // Get all focusable elements in dialog
-      const focusableCount = await dialog.dialog.locator('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])').count();
+      const focusableCount = await dialog.dialog
+        .locator('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+        .count();
 
       // Tab through all elements - focus should stay in dialog
       for (let i = 0; i < focusableCount + 2; i++) {
@@ -102,7 +104,7 @@ test.describe('Dialog Primitive', () => {
       await dialog.open();
 
       // Focus should move to dialog
-      const focusInDialog = await dialog.dialog.evaluate(el => {
+      const focusInDialog = await dialog.dialog.evaluate((el) => {
         return el.contains(document.activeElement);
       });
       expect(focusInDialog).toBe(true);

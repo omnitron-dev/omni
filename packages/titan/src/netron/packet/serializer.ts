@@ -73,7 +73,7 @@ serializer
               __errorType: 'Error',
               name: cause.name,
               message: cause.message,
-              stack: cause.stack
+              stack: cause.stack,
             })
           );
         } else {
@@ -135,7 +135,7 @@ serializer
         correlationId,
         spanId,
         traceId,
-        cause
+        cause,
       });
 
       // Restore the error name (for subclass identification)
@@ -316,7 +316,7 @@ export async function ensureStreamReferenceRegistered(): Promise<void> {
 const originalEncode = serializer.encode.bind(serializer);
 const originalDecode = serializer.decode.bind(serializer);
 
-serializer.encode = function(value: any, buffer?: SmartBuffer): any {
+serializer.encode = function (value: any, buffer?: SmartBuffer): any {
   // Check if value is a StreamReference-like object
   if (value && value.constructor && value.constructor.name === 'StreamReference' && !streamReferenceRegistered) {
     // Try to register synchronously using a promise
@@ -325,6 +325,6 @@ serializer.encode = function(value: any, buffer?: SmartBuffer): any {
   return originalEncode(value, buffer);
 };
 
-serializer.decode = function(buffer: SmartBuffer): any {
+serializer.decode = function (buffer: SmartBuffer): any {
   return originalDecode(buffer);
 };

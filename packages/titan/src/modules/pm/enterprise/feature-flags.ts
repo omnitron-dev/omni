@@ -101,10 +101,12 @@ export class FeatureFlagManager extends EventEmitter {
   private evaluationCache = new Map<string, { result: EvaluationResult; expiry: number }>();
   private cacheTTL = 60000; // 1 minute
 
-  constructor(private config: {
-    cacheTTL?: number;
-    defaultEnabled?: boolean;
-  } = {}) {
+  constructor(
+    private config: {
+      cacheTTL?: number;
+      defaultEnabled?: boolean;
+    } = {}
+  ) {
     super();
     this.cacheTTL = config.cacheTTL || 60000;
   }
@@ -120,7 +122,7 @@ export class FeatureFlagManager extends EventEmitter {
       ...flag,
       enabled: flag.enabled ?? existing?.enabled ?? false,
       updatedAt: new Date(),
-      createdAt: existing?.createdAt || new Date()
+      createdAt: existing?.createdAt || new Date(),
     };
 
     this.flags.set(flag.id, fullFlag);
@@ -166,7 +168,7 @@ export class FeatureFlagManager extends EventEmitter {
       return {
         flagId,
         enabled: this.config.defaultEnabled ?? false,
-        reason: 'Flag not found'
+        reason: 'Flag not found',
       };
     }
 
@@ -175,7 +177,7 @@ export class FeatureFlagManager extends EventEmitter {
     // Cache result
     this.evaluationCache.set(cacheKey, {
       result,
-      expiry: Date.now() + this.cacheTTL
+      expiry: Date.now() + this.cacheTTL,
     });
 
     this.emit('flag:evaluated', { flagId, context, result });
@@ -191,7 +193,7 @@ export class FeatureFlagManager extends EventEmitter {
       return {
         flagId: flag.id,
         enabled: false,
-        reason: 'Flag is globally disabled'
+        reason: 'Flag is globally disabled',
       };
     }
 
@@ -202,7 +204,7 @@ export class FeatureFlagManager extends EventEmitter {
         return {
           flagId: flag.id,
           enabled: false,
-          reason: 'Conditions not met'
+          reason: 'Conditions not met',
         };
       }
     }
@@ -214,7 +216,7 @@ export class FeatureFlagManager extends EventEmitter {
         return {
           flagId: flag.id,
           enabled: false,
-          reason: 'Not included in rollout'
+          reason: 'Not included in rollout',
         };
       }
     }
@@ -227,14 +229,14 @@ export class FeatureFlagManager extends EventEmitter {
         enabled: true,
         variant: variant.id,
         value: variant.value,
-        reason: 'Flag enabled with variant'
+        reason: 'Flag enabled with variant',
       };
     }
 
     return {
       flagId: flag.id,
       enabled: true,
-      reason: 'Flag enabled'
+      reason: 'Flag enabled',
     };
   }
 
@@ -242,7 +244,7 @@ export class FeatureFlagManager extends EventEmitter {
    * Evaluate conditions
    */
   private evaluateConditions(conditions: FlagCondition[], context: EvaluationContext): boolean {
-    return conditions.every(condition => this.evaluateCondition(condition, context));
+    return conditions.every((condition) => this.evaluateCondition(condition, context));
   }
 
   /**
@@ -415,7 +417,7 @@ export class FeatureFlagManager extends EventEmitter {
       if (variant.overrides) {
         for (const override of variant.overrides) {
           if (this.evaluateCondition(override.condition, context)) {
-            const overrideVariant = variants.find(v => v.id === override.variantId);
+            const overrideVariant = variants.find((v) => v.id === override.variantId);
             if (overrideVariant) return overrideVariant;
           }
         }
@@ -435,13 +437,15 @@ export class FeatureFlagManager extends EventEmitter {
       }
     }
 
-    return variants[0] || {
-      id: 'default',
-      name: 'Default',
-      value: null,
-      weight: 1,
-      overrides: []
-    };
+    return (
+      variants[0] || {
+        id: 'default',
+        name: 'Default',
+        value: null,
+        weight: 1,
+        overrides: [],
+      }
+    );
   }
 
   /**
@@ -461,7 +465,7 @@ export class FeatureFlagManager extends EventEmitter {
         keysToDelete.push(key);
       }
     }
-    keysToDelete.forEach(key => this.evaluationCache.delete(key));
+    keysToDelete.forEach((key) => this.evaluationCache.delete(key));
   }
 
   /**
@@ -470,7 +474,7 @@ export class FeatureFlagManager extends EventEmitter {
   private hash(str: string): number {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
-      hash = ((hash << 5) - hash) + str.charCodeAt(i);
+      hash = (hash << 5) - hash + str.charCodeAt(i);
       hash = hash & hash;
     }
     return Math.abs(hash);
@@ -504,8 +508,8 @@ export class FeatureFlagManager extends EventEmitter {
       flags: Array.from(this.flags.values()),
       metadata: {
         exportedAt: new Date(),
-        flagCount: this.flags.size
-      }
+        flagCount: this.flags.size,
+      },
     };
   }
 
@@ -538,10 +542,10 @@ export class FeatureFlagManager extends EventEmitter {
  * Feature Flag Decorator
  */
 export function FeatureFlag(flagId: string, options: { fallback?: any } = {}) {
-  return function(target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
     const originalMethod = descriptor.value;
 
-    descriptor.value = async function(...args: any[]) {
+    descriptor.value = async function (...args: any[]) {
       // Get flag manager from context (would be injected)
       const manager = (this as any).featureFlagManager;
       if (!manager) {
@@ -556,9 +560,7 @@ export function FeatureFlag(flagId: string, options: { fallback?: any } = {}) {
 
       if (!result.enabled) {
         if (options.fallback !== undefined) {
-          return typeof options.fallback === 'function'
-            ? options.fallback.apply(this, args)
-            : options.fallback;
+          return typeof options.fallback === 'function' ? options.fallback.apply(this, args) : options.fallback;
         }
         throw Errors.notFound(`Feature ${flagId} is disabled`);
       }
@@ -599,19 +601,19 @@ export class ABTestingFramework {
       id: config.id,
       name: config.name,
       enabled: true,
-      variants: config.variants.map(v => ({
+      variants: config.variants.map((v) => ({
         id: v.id,
         name: v.name,
         value: v.implementation,
         weight: v.weight,
-        overrides: []
-      }))
+        overrides: [],
+      })),
     };
 
     this.manager.upsertFlag(flag as FeatureFlag);
 
     // Initialize metrics collection
-    config.metrics.forEach(metric => {
+    config.metrics.forEach((metric) => {
       if (!this.metrics.has(metric)) {
         this.metrics.set(metric, []);
       }
@@ -634,7 +636,7 @@ export class ABTestingFramework {
     metrics.push({
       ...context,
       value,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
     this.metrics.set(metric, metrics);
   }
@@ -646,19 +648,21 @@ export class ABTestingFramework {
     const results: any = {
       testId,
       variants: {},
-      metrics: {}
+      metrics: {},
     };
 
     // Aggregate metrics by variant
     for (const [metric, values] of this.metrics) {
       const byVariant: any = {};
 
-      values.filter(v => v.testId === testId).forEach(v => {
-        if (!byVariant[v.variant || 'control']) {
-          byVariant[v.variant || 'control'] = [];
-        }
-        byVariant[v.variant || 'control'].push(v.value);
-      });
+      values
+        .filter((v) => v.testId === testId)
+        .forEach((v) => {
+          if (!byVariant[v.variant || 'control']) {
+            byVariant[v.variant || 'control'] = [];
+          }
+          byVariant[v.variant || 'control'].push(v.value);
+        });
 
       // Calculate statistics
       for (const [variant, variantValues] of Object.entries(byVariant)) {
@@ -670,7 +674,7 @@ export class ABTestingFramework {
           count: (variantValues as any[]).length,
           mean: this.mean(variantValues as number[]),
           median: this.median(variantValues as number[]),
-          stdDev: this.stdDev(variantValues as number[])
+          stdDev: this.stdDev(variantValues as number[]),
         };
       }
     }
@@ -686,9 +690,7 @@ export class ABTestingFramework {
     if (values.length === 0) return 0;
     const sorted = [...values].sort((a, b) => a - b);
     const mid = Math.floor(sorted.length / 2);
-    return sorted.length % 2
-      ? sorted[mid] ?? 0
-      : ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
+    return sorted.length % 2 ? (sorted[mid] ?? 0) : ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
   }
 
   private stdDev(values: number[]): number {

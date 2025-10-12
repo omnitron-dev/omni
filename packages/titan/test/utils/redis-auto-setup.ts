@@ -94,15 +94,12 @@ export function setupRedisContainer(options?: {
   });
 
   // Create new container for each test
-  beforeEach(
-    async () => {
-      if (!manager) {
-        throw new Error('RedisTestManager not initialized');
-      }
-      container = await manager.createContainer(options?.name);
-    },
-    options?.timeout || 30000
-  );
+  beforeEach(async () => {
+    if (!manager) {
+      throw new Error('RedisTestManager not initialized');
+    }
+    container = await manager.createContainer(options?.name);
+  }, options?.timeout || 30000);
 
   // Cleanup after each test
   afterEach(async () => {
@@ -116,36 +113,28 @@ export function setupRedisContainer(options?: {
   return {
     getClient() {
       if (!container?.client) {
-        throw new Error(
-          'Redis container not initialized. This method must be called inside a test (it/test block).'
-        );
+        throw new Error('Redis container not initialized. This method must be called inside a test (it/test block).');
       }
       return container.client;
     },
 
     getUrl() {
       if (!container) {
-        throw new Error(
-          'Redis container not initialized. This method must be called inside a test (it/test block).'
-        );
+        throw new Error('Redis container not initialized. This method must be called inside a test (it/test block).');
       }
       return container.url;
     },
 
     getContainer() {
       if (!container) {
-        throw new Error(
-          'Redis container not initialized. This method must be called inside a test (it/test block).'
-        );
+        throw new Error('Redis container not initialized. This method must be called inside a test (it/test block).');
       }
       return container;
     },
 
     getConnection() {
       if (!container) {
-        throw new Error(
-          'Redis container not initialized. This method must be called inside a test (it/test block).'
-        );
+        throw new Error('Redis container not initialized. This method must be called inside a test (it/test block).');
       }
       return {
         host: container.host,
@@ -189,15 +178,12 @@ export function setupSharedRedisContainer(options?: {
   let manager: RedisTestManager | null = null;
 
   // Create container once for the entire suite
-  beforeAll(
-    async () => {
-      manager = RedisTestManager.getInstance({
-        verbose: options?.verbose || process.env.REDIS_VERBOSE === 'true',
-      });
-      container = await manager.createContainer(options?.name);
-    },
-    options?.timeout || 30000
-  );
+  beforeAll(async () => {
+    manager = RedisTestManager.getInstance({
+      verbose: options?.verbose || process.env.REDIS_VERBOSE === 'true',
+    });
+    container = await manager.createContainer(options?.name);
+  }, options?.timeout || 30000);
 
   // Cleanup after all tests
   afterAll(async () => {
@@ -211,36 +197,28 @@ export function setupSharedRedisContainer(options?: {
   return {
     getClient() {
       if (!container?.client) {
-        throw new Error(
-          'Redis container not initialized. Ensure tests run after beforeAll completes.'
-        );
+        throw new Error('Redis container not initialized. Ensure tests run after beforeAll completes.');
       }
       return container.client;
     },
 
     getUrl() {
       if (!container) {
-        throw new Error(
-          'Redis container not initialized. Ensure tests run after beforeAll completes.'
-        );
+        throw new Error('Redis container not initialized. Ensure tests run after beforeAll completes.');
       }
       return container.url;
     },
 
     getContainer() {
       if (!container) {
-        throw new Error(
-          'Redis container not initialized. Ensure tests run after beforeAll completes.'
-        );
+        throw new Error('Redis container not initialized. Ensure tests run after beforeAll completes.');
       }
       return container;
     },
 
     getConnection() {
       if (!container) {
-        throw new Error(
-          'Redis container not initialized. Ensure tests run after beforeAll completes.'
-        );
+        throw new Error('Redis container not initialized. Ensure tests run after beforeAll completes.');
       }
       return {
         host: container.host,
@@ -269,11 +247,7 @@ export function setupSharedRedisContainer(options?: {
  * });
  * ```
  */
-export function setupRedisForTests(options?: {
-  name?: string;
-  verbose?: boolean;
-  timeout?: number;
-}) {
+export function setupRedisForTests(options?: { name?: string; verbose?: boolean; timeout?: number }) {
   const setup = setupRedisContainer(options);
 
   return {

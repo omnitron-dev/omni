@@ -6,12 +6,7 @@
 
 import { Injectable, Optional } from '../../decorators/index.js';
 import type { ILogger } from '../../modules/logger/logger.types.js';
-import type {
-  AuthCredentials,
-  AuthContext,
-  AuthResult,
-  NetronAuthConfig,
-} from './types.js';
+import type { AuthCredentials, AuthContext, AuthResult, NetronAuthConfig } from './types.js';
 import type { AuditLogger } from './audit-logger.js';
 
 /**
@@ -34,7 +29,7 @@ export class AuthenticationManager {
   constructor(
     private logger: ILogger,
     @Optional() config?: NetronAuthConfig,
-    @Optional() auditLogger?: AuditLogger,
+    @Optional() auditLogger?: AuditLogger
   ) {
     this.logger = logger.child({ component: 'AuthenticationManager' });
     this.auditLogger = auditLogger;
@@ -114,11 +109,7 @@ export class AuthenticationManager {
    * @param operation - Operation name for error messages
    * @returns Promise result
    */
-  private async withTimeout<T>(
-    promise: Promise<T>,
-    timeoutMs: number,
-    operation: string,
-  ): Promise<T> {
+  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> {
     return Promise.race([
       promise,
       new Promise<T>((_, reject) => {
@@ -181,18 +172,11 @@ export class AuthenticationManager {
     }
 
     try {
-      this.logger.debug(
-        { username: credentials.username },
-        'Authenticating user...',
-      );
+      this.logger.debug({ username: credentials.username }, 'Authenticating user...');
 
       // Execute authentication with timeout
       const authPromise = Promise.resolve(this.authenticateFn(credentials));
-      const context = await this.withTimeout(
-        authPromise,
-        this.authTimeout,
-        'Authentication',
-      );
+      const context = await this.withTimeout(authPromise, this.authTimeout, 'Authentication');
 
       // Validate that context was returned
       if (!context) {
@@ -223,7 +207,7 @@ export class AuthenticationManager {
           roles: context.roles,
           permissions: context.permissions,
         },
-        'User authenticated successfully',
+        'User authenticated successfully'
       );
 
       // Audit successful authentication
@@ -253,7 +237,7 @@ export class AuthenticationManager {
           error: error.message,
           username: credentials.username,
         },
-        'Authentication failed',
+        'Authentication failed'
       );
 
       // Audit failed authentication
@@ -355,11 +339,7 @@ export class AuthenticationManager {
 
       // Execute token validation with timeout
       const validationPromise = Promise.resolve(this.validateTokenFn(token));
-      const context = await this.withTimeout(
-        validationPromise,
-        this.authTimeout,
-        'Token validation',
-      );
+      const context = await this.withTimeout(validationPromise, this.authTimeout, 'Token validation');
 
       // Validate that context was returned
       if (!context) {
@@ -388,7 +368,7 @@ export class AuthenticationManager {
           userId: context.userId,
           roles: context.roles,
         },
-        'Token validated successfully',
+        'Token validated successfully'
       );
 
       // Audit successful validation
@@ -416,7 +396,7 @@ export class AuthenticationManager {
         {
           error: error.message,
         },
-        'Token validation failed',
+        'Token validation failed'
       );
 
       // Audit failed validation

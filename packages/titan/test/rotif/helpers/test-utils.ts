@@ -19,7 +19,7 @@ export function getTestRedisUrl(db?: number): string {
 export function createTestConfig(db: number = 1, additionalConfig: any = {}) {
   return {
     redis: getTestRedisUrl(db),
-    ...additionalConfig
+    ...additionalConfig,
   };
 }
 

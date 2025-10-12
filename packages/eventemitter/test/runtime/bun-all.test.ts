@@ -4,7 +4,7 @@
  * Note: bun-setup.ts is preloaded via bunfig.toml
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect } from 'bun:test';
 
 // Import all test files
 import '../browser-compat.spec';

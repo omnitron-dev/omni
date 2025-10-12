@@ -19,8 +19,12 @@ describe('Distributed Rotif Instances – Consumer Group Handling', () => {
     const receivedA: any[] = [];
     const receivedB: any[] = [];
 
-    await managerA.subscribe('distributed.same-group', async (msg) => { receivedA.push(msg.payload) });
-    await managerB.subscribe('distributed.same-group', async (msg) => { receivedB.push(msg.payload) });
+    await managerA.subscribe('distributed.same-group', async (msg) => {
+      receivedA.push(msg.payload);
+    });
+    await managerB.subscribe('distributed.same-group', async (msg) => {
+      receivedB.push(msg.payload);
+    });
 
     await delay(200);
     await managerA.publish('distributed.same-group', { data: 'shared' });
@@ -39,11 +43,19 @@ describe('Distributed Rotif Instances – Consumer Group Handling', () => {
     const receivedB1: any[] = [];
     const receivedB2: any[] = [];
 
-    await managerA.subscribe('distributed.roundrobin', async (msg) => { receivedA1.push(msg.payload) });
-    await managerA.subscribe('distributed.roundrobin', async (msg) => { receivedA2.push(msg.payload) });
+    await managerA.subscribe('distributed.roundrobin', async (msg) => {
+      receivedA1.push(msg.payload);
+    });
+    await managerA.subscribe('distributed.roundrobin', async (msg) => {
+      receivedA2.push(msg.payload);
+    });
 
-    await managerB.subscribe('distributed.roundrobin', async (msg) => { receivedB1.push(msg.payload) });
-    await managerB.subscribe('distributed.roundrobin', async (msg) => { receivedB2.push(msg.payload) });
+    await managerB.subscribe('distributed.roundrobin', async (msg) => {
+      receivedB1.push(msg.payload);
+    });
+    await managerB.subscribe('distributed.roundrobin', async (msg) => {
+      receivedB2.push(msg.payload);
+    });
 
     await delay(200);
     await managerA.publish('distributed.roundrobin', { data: 'round-robin' });
@@ -65,8 +77,20 @@ describe('Distributed Rotif Instances – Consumer Group Handling', () => {
     const receivedA: any[] = [];
     const receivedB: any[] = [];
 
-    await managerA.subscribe('distributed.diff-groups', async (msg) => { receivedA.push(msg.payload) }, { groupName: 'groupA' });
-    await managerB.subscribe('distributed.diff-groups', async (msg) => { receivedB.push(msg.payload) }, { groupName: 'groupB' });
+    await managerA.subscribe(
+      'distributed.diff-groups',
+      async (msg) => {
+        receivedA.push(msg.payload);
+      },
+      { groupName: 'groupA' }
+    );
+    await managerB.subscribe(
+      'distributed.diff-groups',
+      async (msg) => {
+        receivedB.push(msg.payload);
+      },
+      { groupName: 'groupB' }
+    );
 
     await delay(200);
     await managerA.publish('distributed.diff-groups', { data: 'different-groups' });
@@ -86,11 +110,35 @@ describe('Distributed Rotif Instances – Consumer Group Handling', () => {
     const receivedB1: any[] = [];
     const receivedB2: any[] = [];
 
-    await managerA.subscribe('distributed.diff-groups-rr', async (msg) => { receivedA1.push(msg.payload) }, { groupName: 'groupA' });
-    await managerA.subscribe('distributed.diff-groups-rr', async (msg) => { receivedA2.push(msg.payload) }, { groupName: 'groupA' });
+    await managerA.subscribe(
+      'distributed.diff-groups-rr',
+      async (msg) => {
+        receivedA1.push(msg.payload);
+      },
+      { groupName: 'groupA' }
+    );
+    await managerA.subscribe(
+      'distributed.diff-groups-rr',
+      async (msg) => {
+        receivedA2.push(msg.payload);
+      },
+      { groupName: 'groupA' }
+    );
 
-    await managerB.subscribe('distributed.diff-groups-rr', async (msg) => { receivedB1.push(msg.payload) }, { groupName: 'groupB' });
-    await managerB.subscribe('distributed.diff-groups-rr', async (msg) => { receivedB2.push(msg.payload) }, { groupName: 'groupB' });
+    await managerB.subscribe(
+      'distributed.diff-groups-rr',
+      async (msg) => {
+        receivedB1.push(msg.payload);
+      },
+      { groupName: 'groupB' }
+    );
+    await managerB.subscribe(
+      'distributed.diff-groups-rr',
+      async (msg) => {
+        receivedB2.push(msg.payload);
+      },
+      { groupName: 'groupB' }
+    );
 
     await delay(200);
     await managerA.publish('distributed.diff-groups-rr', { data: 'diff-groups-rr' });

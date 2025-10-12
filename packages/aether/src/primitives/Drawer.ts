@@ -123,9 +123,7 @@ export const Drawer = defineComponent<DrawerProps>((props) => {
   const closeOnEscape = props.closeOnEscape ?? true;
 
   // State
-  const internalOpen: WritableSignal<boolean> = signal<boolean>(
-    props.defaultOpen ?? false,
-  );
+  const internalOpen: WritableSignal<boolean> = signal<boolean>(props.defaultOpen ?? false);
 
   const isOpen = (): boolean => {
     if (props.open !== undefined) {
@@ -267,28 +265,28 @@ export const DrawerContent = defineComponent<DrawerContentProps>((props) => {
 // ============================================================================
 
 export const DrawerTitle = defineComponent<DrawerTitleProps>((props) => () => {
-    const { children, ...rest } = props;
+  const { children, ...rest } = props;
 
-    return jsx('h2', {
-      'data-drawer-title': '',
-      ...rest,
-      children,
-    });
+  return jsx('h2', {
+    'data-drawer-title': '',
+    ...rest,
+    children,
   });
+});
 
 // ============================================================================
 // Drawer Description
 // ============================================================================
 
 export const DrawerDescription = defineComponent<DrawerDescriptionProps>((props) => () => {
-    const { children, ...rest } = props;
+  const { children, ...rest } = props;
 
-    return jsx('p', {
-      'data-drawer-description': '',
-      ...rest,
-      children,
-    });
+  return jsx('p', {
+    'data-drawer-description': '',
+    ...rest,
+    children,
   });
+});
 
 // ============================================================================
 // Drawer Close

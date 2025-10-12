@@ -235,18 +235,21 @@ export interface HttpBatchResponse {
  */
 export interface HttpDiscoveryResponse {
   /** Available services */
-  services: Record<string, {
-    /** Service name */
-    name: string;
-    /** Service version */
-    version: string;
-    /** Available methods */
-    methods: string[];
-    /** Service description */
-    description?: string;
-    /** Service metadata */
-    metadata?: Record<string, any>;
-  }>;
+  services: Record<
+    string,
+    {
+      /** Service name */
+      name: string;
+      /** Service version */
+      version: string;
+      /** Available methods */
+      methods: string[];
+      /** Service description */
+      description?: string;
+      /** Service metadata */
+      metadata?: Record<string, any>;
+    }
+  >;
 
   /** Service contracts (if available) */
   contracts?: Record<string, any>;
@@ -375,11 +378,9 @@ export function isHttpBatchRequest(value: any): value is HttpBatchRequest {
     value.version === '2.0' &&
     typeof value.timestamp === 'number' &&
     Array.isArray(value.requests) &&
-    value.requests.every((r: any) =>
-      typeof r.id === 'string' &&
-      typeof r.service === 'string' &&
-      typeof r.method === 'string' &&
-      'input' in r
+    value.requests.every(
+      (r: any) =>
+        typeof r.id === 'string' && typeof r.service === 'string' && typeof r.method === 'string' && 'input' in r
     )
   );
 }
@@ -397,10 +398,8 @@ export function isHttpBatchResponse(value: any): value is HttpBatchResponse {
     value.version === '2.0' &&
     typeof value.timestamp === 'number' &&
     Array.isArray(value.responses) &&
-    value.responses.every((r: any) =>
-      typeof r.id === 'string' &&
-      typeof r.success === 'boolean' &&
-      (r.success ? 'data' in r : 'error' in r)
+    value.responses.every(
+      (r: any) => typeof r.id === 'string' && typeof r.success === 'boolean' && (r.success ? 'data' in r : 'error' in r)
     )
   );
 }
@@ -433,25 +432,21 @@ export function createRequestMessage(
     method,
     input,
     context: options?.context,
-    hints: options?.hints
+    hints: options?.hints,
   };
 }
 
 /**
  * Create success response
  */
-export function createSuccessResponse(
-  requestId: string,
-  data: any,
-  hints?: HttpResponseHints
-): HttpResponseMessage {
+export function createSuccessResponse(requestId: string, data: any, hints?: HttpResponseHints): HttpResponseMessage {
   return {
     id: requestId,
     version: '2.0',
     timestamp: Date.now(),
     success: true,
     data,
-    hints
+    hints,
   };
 }
 
@@ -469,6 +464,6 @@ export function createErrorResponse(
     timestamp: Date.now(),
     success: false,
     error,
-    hints
+    hints,
   };
 }

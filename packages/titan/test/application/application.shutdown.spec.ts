@@ -28,7 +28,7 @@ describe('Application Shutdown and Process Lifecycle', () => {
 
       app = await Application.create({
         disableGracefulShutdown: false,
-        environment: 'test' // Ensure process.exit is disabled
+        environment: 'test', // Ensure process.exit is disabled
       });
 
       app.registerShutdownTask({
@@ -36,7 +36,7 @@ describe('Application Shutdown and Process Lifecycle', () => {
         priority: ShutdownPriority.Normal,
         handler: async (reason) => {
           taskExecuted(reason);
-        }
+        },
       });
 
       await app.shutdown(ShutdownReason.Manual);
@@ -49,7 +49,7 @@ describe('Application Shutdown and Process Lifecycle', () => {
 
       app = await Application.create({
         disableGracefulShutdown: false,
-        environment: 'test'
+        environment: 'test',
       });
 
       app.registerShutdownTask({
@@ -57,7 +57,7 @@ describe('Application Shutdown and Process Lifecycle', () => {
         priority: ShutdownPriority.Low,
         handler: async () => {
           executionOrder.push('low');
-        }
+        },
       });
 
       app.registerShutdownTask({
@@ -65,7 +65,7 @@ describe('Application Shutdown and Process Lifecycle', () => {
         priority: ShutdownPriority.High,
         handler: async () => {
           executionOrder.push('high');
-        }
+        },
       });
 
       app.registerShutdownTask({
@@ -73,7 +73,7 @@ describe('Application Shutdown and Process Lifecycle', () => {
         priority: ShutdownPriority.First,
         handler: async () => {
           executionOrder.push('first');
-        }
+        },
       });
 
       await app.shutdown(ShutdownReason.Manual);
@@ -83,7 +83,7 @@ describe('Application Shutdown and Process Lifecycle', () => {
     it('should handle critical shutdown task failures', async () => {
       app = await Application.create({
         disableGracefulShutdown: false,
-        environment: 'test'
+        environment: 'test',
       });
 
       app.registerShutdownTask({
@@ -92,7 +92,7 @@ describe('Application Shutdown and Process Lifecycle', () => {
         critical: true,
         handler: async () => {
           throw new Error('Critical task failed');
-        }
+        },
       });
 
       await expect(app.shutdown(ShutdownReason.Manual)).rejects.toThrow('Critical shutdown task failed');
@@ -103,7 +103,7 @@ describe('Application Shutdown and Process Lifecycle', () => {
 
       app = await Application.create({
         disableGracefulShutdown: false,
-        environment: 'test'
+        environment: 'test',
       });
 
       app.registerShutdownTask({
@@ -112,7 +112,7 @@ describe('Application Shutdown and Process Lifecycle', () => {
         critical: false,
         handler: async () => {
           throw new Error('Non-critical task failed');
-        }
+        },
       });
 
       app.registerShutdownTask({
@@ -120,7 +120,7 @@ describe('Application Shutdown and Process Lifecycle', () => {
         priority: ShutdownPriority.Low,
         handler: async () => {
           secondTaskExecuted();
-        }
+        },
       });
 
       await app.shutdown(ShutdownReason.Manual);
@@ -133,13 +133,13 @@ describe('Application Shutdown and Process Lifecycle', () => {
 
       app = await Application.create({
         disableGracefulShutdown: false,
-        environment: 'test'
+        environment: 'test',
       });
 
       app.registerShutdownTask({
         id: 'test-task',
         name: 'Test Task',
-        handler: taskExecuted
+        handler: taskExecuted,
       });
 
       app.unregisterShutdownTask('test-task');
@@ -156,7 +156,7 @@ describe('Application Shutdown and Process Lifecycle', () => {
 
       app = await Application.create({
         disableGracefulShutdown: false,
-        environment: 'test'
+        environment: 'test',
       });
 
       app.registerCleanup(cleanupExecuted);
@@ -171,7 +171,7 @@ describe('Application Shutdown and Process Lifecycle', () => {
 
       app = await Application.create({
         disableGracefulShutdown: false,
-        environment: 'test'
+        environment: 'test',
       });
 
       app.registerCleanup(async () => {
@@ -190,7 +190,7 @@ describe('Application Shutdown and Process Lifecycle', () => {
     it('should provide process metrics', async () => {
       app = await Application.create({
         disableGracefulShutdown: false,
-        environment: 'test'
+        environment: 'test',
       });
 
       await app.start();
@@ -225,7 +225,7 @@ describe('Application Shutdown and Process Lifecycle', () => {
         // Don't set environment to 'test' to allow process.exit
         environment: 'production',
         // Explicitly enable process exit for this test
-        disableProcessExit: false
+        disableProcessExit: false,
       });
 
       // Manually override the _disableProcessExit flag to ensure process.exit is called
@@ -244,7 +244,7 @@ describe('Application Shutdown and Process Lifecycle', () => {
 
       app = await Application.create({
         disableGracefulShutdown: false,
-        environment: 'test'
+        environment: 'test',
       });
 
       app.on('shutdown:start', () => events.push('shutdown:start'));
@@ -253,7 +253,7 @@ describe('Application Shutdown and Process Lifecycle', () => {
 
       app.registerShutdownTask({
         name: 'Test Task',
-        handler: async () => { }
+        handler: async () => {},
       });
 
       await app.shutdown(ShutdownReason.Manual);
@@ -269,14 +269,16 @@ describe('Application Shutdown and Process Lifecycle', () => {
       const globalTaskExecuted = jest.fn();
 
       // Set up global tasks before creating app
-      global.__titanShutdownTasks = [{
-        name: 'Global Task',
-        handler: globalTaskExecuted
-      }];
+      global.__titanShutdownTasks = [
+        {
+          name: 'Global Task',
+          handler: globalTaskExecuted,
+        },
+      ];
 
       app = await Application.create({
         disableGracefulShutdown: false,
-        environment: 'test'
+        environment: 'test',
       });
 
       await app.start();

@@ -35,7 +35,7 @@ describe('HTTP Transport Integration (v2.0)', () => {
     delete (global as any).fetch;
 
     // Clean up async operations
-    await new Promise(resolve => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
   });
 
   describe('Transport Layer', () => {
@@ -52,17 +52,17 @@ describe('HTTP Transport Integration (v2.0)', () => {
         ok: true,
         status: 200,
         headers: {
-          get: jest.fn((name: string) => name === 'Content-Type' ? 'application/json' : null)
+          get: jest.fn((name: string) => (name === 'Content-Type' ? 'application/json' : null)),
         },
         json: jest.fn().mockResolvedValue({
           server: {
             version: '2.0.0',
             protocol: '2.0',
-            features: []
+            features: [],
           },
           services: {},
-          contracts: {}
-        })
+          contracts: {},
+        }),
       });
 
       connection = await transport.connect(baseUrl);
@@ -108,15 +108,15 @@ describe('HTTP Transport Integration (v2.0)', () => {
             name: 'Test@1.0.0',
             version: '1.0.0',
             methods: {
-              test: { name: 'test' }
-            }
-          }
+              test: { name: 'test' },
+            },
+          },
         },
-        call: jest.fn().mockResolvedValue({ success: true })
+        call: jest.fn().mockResolvedValue({ success: true }),
       };
 
       const mockPeer = {
-        stubs: new Map([['stub-1', mockStub]])
+        stubs: new Map([['stub-1', mockStub]]),
       };
 
       (server as any).setPeer(mockPeer);
@@ -124,7 +124,7 @@ describe('HTTP Transport Integration (v2.0)', () => {
       const request = new Request(`${baseUrl}/netron/invoke`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           id: 'test-1',
@@ -132,14 +132,14 @@ describe('HTTP Transport Integration (v2.0)', () => {
           timestamp: Date.now(),
           service: 'Test@1.0.0',
           method: 'test',
-          input: {}
-        })
+          input: {},
+        }),
       });
 
       const response = await server.handleRequest(request);
 
       expect(response.status).toBe(200);
-      const data = await response.json() as any;
+      const data = (await response.json()) as any;
       expect(data.success).toBe(true);
     });
   });
@@ -150,24 +150,24 @@ describe('HTTP Transport Integration (v2.0)', () => {
         ok: true,
         status: 200,
         headers: {
-          get: jest.fn((name: string) => name === 'Content-Type' ? 'application/json' : null)
+          get: jest.fn((name: string) => (name === 'Content-Type' ? 'application/json' : null)),
         },
         json: jest.fn().mockResolvedValue({
           server: {
             version: '2.0.0',
             protocol: '2.0',
-            features: ['batch', 'discovery']
+            features: ['batch', 'discovery'],
           },
           services: {
             'Calculator@1.0.0': {
               name: 'Calculator@1.0.0',
               version: '1.0.0',
-              methods: ['add', 'subtract']
-            }
+              methods: ['add', 'subtract'],
+            },
           },
           contracts: {},
-          timestamp: Date.now()
-        })
+          timestamp: Date.now(),
+        }),
       });
 
       connection = new HttpConnection(baseUrl);
@@ -178,24 +178,26 @@ describe('HTTP Transport Integration (v2.0)', () => {
         ok: true,
         status: 200,
         headers: {
-          get: jest.fn()
+          get: jest.fn(),
         },
         json: jest.fn().mockResolvedValue({
           id: 'msg-1',
           version: '2.0',
           success: true,
-          data: 'ok'
-        })
+          data: 'ok',
+        }),
       });
 
-      const message = Buffer.from(JSON.stringify({
-        id: 'msg-1',
-        version: '2.0',
-        timestamp: Date.now(),
-        service: 'Test@1.0.0',
-        method: 'test',
-        input: {}
-      }));
+      const message = Buffer.from(
+        JSON.stringify({
+          id: 'msg-1',
+          version: '2.0',
+          timestamp: Date.now(),
+          service: 'Test@1.0.0',
+          method: 'test',
+          input: {},
+        })
+      );
 
       await expect(connection.send(message)).resolves.not.toThrow();
     });
@@ -228,22 +230,22 @@ describe('HTTP Transport Integration (v2.0)', () => {
             name: 'Test@1.0.0',
             version: '1.0.0',
             methods: {
-              test: { name: 'test' }
-            }
-          }
+              test: { name: 'test' },
+            },
+          },
         },
-        call: jest.fn().mockResolvedValue(42)
+        call: jest.fn().mockResolvedValue(42),
       };
 
       (server as any).setPeer({
-        stubs: new Map([['stub-1', mockStub]])
+        stubs: new Map([['stub-1', mockStub]]),
       });
 
       const request = new Request(`${baseUrl}/netron/invoke`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Netron-Version': '2.0'
+          'X-Netron-Version': '2.0',
         },
         body: JSON.stringify({
           id: 'test-1',
@@ -251,12 +253,12 @@ describe('HTTP Transport Integration (v2.0)', () => {
           timestamp: Date.now(),
           service: 'Test@1.0.0',
           method: 'test',
-          input: {}
-        })
+          input: {},
+        }),
       });
 
       const response = await server.handleRequest(request);
-      const data = await response.json() as any;
+      const data = (await response.json()) as any;
 
       expect(data.version).toBe('2.0');
       expect(response.headers.get('X-Netron-Version')).toBe('2.0');
@@ -275,23 +277,21 @@ describe('HTTP Transport Integration (v2.0)', () => {
             name: 'Calculator@1.0.0',
             version: '1.0.0',
             methods: {
-              add: { name: 'add' }
-            }
-          }
+              add: { name: 'add' },
+            },
+          },
         },
-        call: jest.fn()
-          .mockResolvedValueOnce(3)
-          .mockResolvedValueOnce(7)
+        call: jest.fn().mockResolvedValueOnce(3).mockResolvedValueOnce(7),
       };
 
       (server as any).setPeer({
-        stubs: new Map([['stub-1', mockStub]])
+        stubs: new Map([['stub-1', mockStub]]),
       });
 
       const request = new Request(`${baseUrl}/netron/batch`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           id: 'batch-1',
@@ -304,7 +304,7 @@ describe('HTTP Transport Integration (v2.0)', () => {
               timestamp: Date.now(),
               service: 'Calculator@1.0.0',
               method: 'add',
-              input: { a: 1, b: 2 }
+              input: { a: 1, b: 2 },
             },
             {
               id: 'req-2',
@@ -312,14 +312,14 @@ describe('HTTP Transport Integration (v2.0)', () => {
               timestamp: Date.now(),
               service: 'Calculator@1.0.0',
               method: 'add',
-              input: { a: 3, b: 4 }
-            }
-          ]
-        })
+              input: { a: 3, b: 4 },
+            },
+          ],
+        }),
       });
 
       const response = await server.handleRequest(request);
-      const data = await response.json() as any;
+      const data = (await response.json()) as any;
 
       expect(response.status).toBe(200);
       expect(data.responses).toHaveLength(2);
@@ -337,20 +337,20 @@ describe('HTTP Transport Integration (v2.0)', () => {
 
     it('should provide health endpoint', async () => {
       const request = new Request(`${baseUrl}/health`, {
-        method: 'GET'
+        method: 'GET',
       });
 
       const response = await server.handleRequest(request);
 
       expect(response.status).toBeDefined();
-      const data = await response.json() as any;
+      const data = (await response.json()) as any;
       expect(data.status).toBeDefined();
       expect(data.uptime).toBeGreaterThanOrEqual(0);
     });
 
     it('should track metrics', async () => {
       const request = new Request(`${baseUrl}/health`, {
-        method: 'GET'
+        method: 'GET',
       });
 
       await server.handleRequest(request);

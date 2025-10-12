@@ -177,7 +177,7 @@ describe('Database Plugin System', () => {
       expect(product.updated_at).toBeInstanceOf(Date);
 
       // Update and check updated_at changes
-      await new Promise(resolve => setTimeout(resolve, 10)); // Wait a bit
+      await new Promise((resolve) => setTimeout(resolve, 10)); // Wait a bit
       const updated = await productService.updateProduct(product.id, {
         price: 89.99,
       });

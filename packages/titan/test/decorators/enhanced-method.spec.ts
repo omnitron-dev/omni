@@ -17,11 +17,7 @@ describe('Enhanced @Method Decorator', () => {
       }
 
       const isPublic = Reflect.getMetadata('public', TestService.prototype, 'testMethod');
-      const isMethod = Reflect.getMetadata(
-        METADATA_KEYS.METHOD_ANNOTATION,
-        TestService.prototype,
-        'testMethod',
-      );
+      const isMethod = Reflect.getMetadata(METADATA_KEYS.METHOD_ANNOTATION, TestService.prototype, 'testMethod');
 
       expect(isPublic).toBe(true);
       expect(isMethod).toBe(true);
@@ -45,11 +41,7 @@ describe('Enhanced @Method Decorator', () => {
         }
       }
 
-      const transports = Reflect.getMetadata(
-        'method:transports',
-        TestService.prototype,
-        'wsAndTcpMethod',
-      );
+      const transports = Reflect.getMetadata('method:transports', TestService.prototype, 'wsAndTcpMethod');
       expect(transports).toEqual(['ws', 'tcp']);
     });
   });
@@ -63,11 +55,7 @@ describe('Enhanced @Method Decorator', () => {
         }
       }
 
-      const authConfig = Reflect.getMetadata(
-        METADATA_KEYS.METHOD_AUTH,
-        TestService.prototype,
-        'protectedMethod',
-      );
+      const authConfig = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, TestService.prototype, 'protectedMethod');
       expect(authConfig).toBe(true);
     });
 
@@ -83,11 +71,7 @@ describe('Enhanced @Method Decorator', () => {
         }
       }
 
-      const authConfig = Reflect.getMetadata(
-        METADATA_KEYS.METHOD_AUTH,
-        TestService.prototype,
-        'adminMethod',
-      );
+      const authConfig = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, TestService.prototype, 'adminMethod');
       expect(authConfig).toEqual({
         roles: ['admin', 'user'],
       });
@@ -105,11 +89,7 @@ describe('Enhanced @Method Decorator', () => {
         }
       }
 
-      const authConfig = Reflect.getMetadata(
-        METADATA_KEYS.METHOD_AUTH,
-        TestService.prototype,
-        'userMethod',
-      );
+      const authConfig = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, TestService.prototype, 'userMethod');
       expect(authConfig).toEqual({
         permissions: ['user:read', 'user:write'],
       });
@@ -127,11 +107,7 @@ describe('Enhanced @Method Decorator', () => {
         }
       }
 
-      const authConfig = Reflect.getMetadata(
-        METADATA_KEYS.METHOD_AUTH,
-        TestService.prototype,
-        'documentMethod',
-      );
+      const authConfig = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, TestService.prototype, 'documentMethod');
       expect(authConfig).toEqual({
         scopes: ['read:documents', 'write:documents'],
       });
@@ -149,11 +125,7 @@ describe('Enhanced @Method Decorator', () => {
         }
       }
 
-      const authConfig = Reflect.getMetadata(
-        METADATA_KEYS.METHOD_AUTH,
-        TestService.prototype,
-        'policyMethod',
-      );
+      const authConfig = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, TestService.prototype, 'policyMethod');
       expect(authConfig).toEqual({
         policies: ['policy1', 'policy2'],
       });
@@ -171,11 +143,7 @@ describe('Enhanced @Method Decorator', () => {
         }
       }
 
-      const authConfig = Reflect.getMetadata(
-        METADATA_KEYS.METHOD_AUTH,
-        TestService.prototype,
-        'allPoliciesMethod',
-      );
+      const authConfig = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, TestService.prototype, 'allPoliciesMethod');
       expect(authConfig).toEqual({
         policies: { all: ['policy1', 'policy2'] },
       });
@@ -193,11 +161,7 @@ describe('Enhanced @Method Decorator', () => {
         }
       }
 
-      const authConfig = Reflect.getMetadata(
-        METADATA_KEYS.METHOD_AUTH,
-        TestService.prototype,
-        'anyPolicyMethod',
-      );
+      const authConfig = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, TestService.prototype, 'anyPolicyMethod');
       expect(authConfig).toEqual({
         policies: { any: ['resource:owner', 'role:admin'] },
       });
@@ -215,11 +179,7 @@ describe('Enhanced @Method Decorator', () => {
         }
       }
 
-      const authConfig = Reflect.getMetadata(
-        METADATA_KEYS.METHOD_AUTH,
-        TestService.prototype,
-        'publicMethod',
-      );
+      const authConfig = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, TestService.prototype, 'publicMethod');
       expect(authConfig).toEqual({
         allowAnonymous: true,
       });
@@ -248,16 +208,8 @@ describe('Enhanced @Method Decorator', () => {
         }
       }
 
-      const inheritAuth = Reflect.getMetadata(
-        METADATA_KEYS.METHOD_AUTH,
-        TestService.prototype,
-        'inheritMethod',
-      );
-      const overrideAuth = Reflect.getMetadata(
-        METADATA_KEYS.METHOD_AUTH,
-        TestService.prototype,
-        'overrideMethod',
-      );
+      const inheritAuth = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, TestService.prototype, 'inheritMethod');
+      const overrideAuth = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, TestService.prototype, 'overrideMethod');
 
       expect(inheritAuth).toEqual({
         roles: ['user'],
@@ -284,11 +236,7 @@ describe('Enhanced @Method Decorator', () => {
         }
       }
 
-      const authConfig = Reflect.getMetadata(
-        METADATA_KEYS.METHOD_AUTH,
-        TestService.prototype,
-        'complexAuthMethod',
-      );
+      const authConfig = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, TestService.prototype, 'complexAuthMethod');
       expect(authConfig).toEqual({
         roles: ['user'],
         scopes: ['write:documents'],
@@ -315,7 +263,7 @@ describe('Enhanced @Method Decorator', () => {
       const rateLimitConfig = Reflect.getMetadata(
         METADATA_KEYS.METHOD_RATE_LIMIT,
         TestService.prototype,
-        'rateLimitedMethod',
+        'rateLimitedMethod'
       );
       expect(rateLimitConfig).toEqual({
         maxRequests: 100,
@@ -345,7 +293,7 @@ describe('Enhanced @Method Decorator', () => {
       const rateLimitConfig = Reflect.getMetadata(
         METADATA_KEYS.METHOD_RATE_LIMIT,
         TestService.prototype,
-        'tieredRateLimitMethod',
+        'tieredRateLimitMethod'
       );
       expect(rateLimitConfig.defaultTier).toEqual({ name: 'free', limit: 10, burst: 20 });
       expect(rateLimitConfig.tiers.premium).toEqual({
@@ -373,11 +321,7 @@ describe('Enhanced @Method Decorator', () => {
         }
       }
 
-      const cacheConfig = Reflect.getMetadata(
-        METADATA_KEYS.METHOD_CACHE,
-        TestService.prototype,
-        'cachedMethod',
-      );
+      const cacheConfig = Reflect.getMetadata(METADATA_KEYS.METHOD_CACHE, TestService.prototype, 'cachedMethod');
       expect(cacheConfig).toEqual({
         ttl: 30000,
         invalidateOn: ['document:updated', 'document:deleted'],
@@ -400,11 +344,7 @@ describe('Enhanced @Method Decorator', () => {
         }
       }
 
-      const cacheConfig = Reflect.getMetadata(
-        METADATA_KEYS.METHOD_CACHE,
-        TestService.prototype,
-        'customCacheMethod',
-      );
+      const cacheConfig = Reflect.getMetadata(METADATA_KEYS.METHOD_CACHE, TestService.prototype, 'customCacheMethod');
       expect(cacheConfig.ttl).toBe(60000);
       expect(cacheConfig.keyGenerator).toBe(keyGen);
       expect(cacheConfig.maxSize).toBe(1000);
@@ -428,7 +368,7 @@ describe('Enhanced @Method Decorator', () => {
       const prefetchConfig = Reflect.getMetadata(
         METADATA_KEYS.METHOD_PREFETCH,
         TestService.prototype,
-        'prefetchMethod',
+        'prefetchMethod'
       );
       expect(prefetchConfig).toEqual({
         enabled: true,
@@ -455,7 +395,7 @@ describe('Enhanced @Method Decorator', () => {
       const prefetchConfig = Reflect.getMetadata(
         METADATA_KEYS.METHOD_PREFETCH,
         TestService.prototype,
-        'customPrefetchMethod',
+        'customPrefetchMethod'
       );
       expect(prefetchConfig.enabled).toBe(true);
       expect(prefetchConfig.fetcher).toBe(fetcher);
@@ -478,11 +418,7 @@ describe('Enhanced @Method Decorator', () => {
         }
       }
 
-      const auditConfig = Reflect.getMetadata(
-        METADATA_KEYS.METHOD_AUDIT,
-        TestService.prototype,
-        'auditedMethod',
-      );
+      const auditConfig = Reflect.getMetadata(METADATA_KEYS.METHOD_AUDIT, TestService.prototype, 'auditedMethod');
       expect(auditConfig).toEqual({
         includeArgs: true,
         includeResult: true,
@@ -505,11 +441,7 @@ describe('Enhanced @Method Decorator', () => {
         }
       }
 
-      const auditConfig = Reflect.getMetadata(
-        METADATA_KEYS.METHOD_AUDIT,
-        TestService.prototype,
-        'customAuditMethod',
-      );
+      const auditConfig = Reflect.getMetadata(METADATA_KEYS.METHOD_AUDIT, TestService.prototype, 'customAuditMethod');
       expect(auditConfig.includeArgs).toBe(true);
       expect(auditConfig.logger).toBe(customLogger);
     });
@@ -546,40 +478,24 @@ describe('Enhanced @Method Decorator', () => {
         }
       }
 
-      const transports = Reflect.getMetadata(
-        'method:transports',
-        TestService.prototype,
-        'fullFeaturedMethod',
-      );
-      const authConfig = Reflect.getMetadata(
-        METADATA_KEYS.METHOD_AUTH,
-        TestService.prototype,
-        'fullFeaturedMethod',
-      );
+      const transports = Reflect.getMetadata('method:transports', TestService.prototype, 'fullFeaturedMethod');
+      const authConfig = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, TestService.prototype, 'fullFeaturedMethod');
       const rateLimitConfig = Reflect.getMetadata(
         METADATA_KEYS.METHOD_RATE_LIMIT,
         TestService.prototype,
-        'fullFeaturedMethod',
+        'fullFeaturedMethod'
       );
-      const cacheConfig = Reflect.getMetadata(
-        METADATA_KEYS.METHOD_CACHE,
-        TestService.prototype,
-        'fullFeaturedMethod',
-      );
+      const cacheConfig = Reflect.getMetadata(METADATA_KEYS.METHOD_CACHE, TestService.prototype, 'fullFeaturedMethod');
       const prefetchConfig = Reflect.getMetadata(
         METADATA_KEYS.METHOD_PREFETCH,
         TestService.prototype,
-        'fullFeaturedMethod',
+        'fullFeaturedMethod'
       );
-      const auditConfig = Reflect.getMetadata(
-        METADATA_KEYS.METHOD_AUDIT,
-        TestService.prototype,
-        'fullFeaturedMethod',
-      );
+      const auditConfig = Reflect.getMetadata(METADATA_KEYS.METHOD_AUDIT, TestService.prototype, 'fullFeaturedMethod');
       const methodOptions = Reflect.getMetadata(
         METADATA_KEYS.METHOD_OPTIONS,
         TestService.prototype,
-        'fullFeaturedMethod',
+        'fullFeaturedMethod'
       );
 
       expect(transports).toEqual(['ws']);
@@ -616,11 +532,7 @@ describe('Enhanced @Method Decorator', () => {
         }
       }
 
-      const storedOptions = Reflect.getMetadata(
-        METADATA_KEYS.METHOD_OPTIONS,
-        TestService.prototype,
-        'testMethod',
-      );
+      const storedOptions = Reflect.getMetadata(METADATA_KEYS.METHOD_OPTIONS, TestService.prototype, 'testMethod');
 
       expect(storedOptions).toEqual(options);
     });

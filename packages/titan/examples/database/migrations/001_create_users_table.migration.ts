@@ -10,41 +10,33 @@ import { Migration, IMigration } from '@omnitron-dev/titan/module/database';
 
 @Migration({
   version: '001',
-  description: 'Create users table'
+  description: 'Create users table',
 })
 export class CreateUsersTableMigration implements IMigration {
   async up(db: Kysely<any>): Promise<void> {
     // Create users table
     await db.schema
       .createTable('users')
-      .addColumn('id', 'serial', col => col.primaryKey())
-      .addColumn('email', 'varchar(255)', col => col.notNull().unique())
-      .addColumn('username', 'varchar(100)', col => col.notNull().unique())
-      .addColumn('password', 'varchar(255)', col => col.notNull())
+      .addColumn('id', 'serial', (col) => col.primaryKey())
+      .addColumn('email', 'varchar(255)', (col) => col.notNull().unique())
+      .addColumn('username', 'varchar(100)', (col) => col.notNull().unique())
+      .addColumn('password', 'varchar(255)', (col) => col.notNull())
       .addColumn('first_name', 'varchar(100)')
       .addColumn('last_name', 'varchar(100)')
-      .addColumn('is_active', 'boolean', col => col.defaultTo(true).notNull())
-      .addColumn('email_verified', 'boolean', col => col.defaultTo(false).notNull())
+      .addColumn('is_active', 'boolean', (col) => col.defaultTo(true).notNull())
+      .addColumn('email_verified', 'boolean', (col) => col.defaultTo(false).notNull())
       .addColumn('phone', 'varchar(20)')
       .addColumn('avatar_url', 'text')
       .addColumn('last_login_at', 'timestamp')
-      .addColumn('created_at', 'timestamp', col => col.defaultTo(sql`CURRENT_TIMESTAMP`).notNull())
-      .addColumn('updated_at', 'timestamp', col => col.defaultTo(sql`CURRENT_TIMESTAMP`).notNull())
+      .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`).notNull())
+      .addColumn('updated_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`).notNull())
       .addColumn('deleted_at', 'timestamp')
       .execute();
 
     // Create indexes
-    await db.schema
-      .createIndex('idx_users_email')
-      .on('users')
-      .column('email')
-      .execute();
+    await db.schema.createIndex('idx_users_email').on('users').column('email').execute();
 
-    await db.schema
-      .createIndex('idx_users_username')
-      .on('users')
-      .column('username')
-      .execute();
+    await db.schema.createIndex('idx_users_username').on('users').column('username').execute();
 
     await db.schema
       .createIndex('idx_users_is_active')
@@ -53,11 +45,7 @@ export class CreateUsersTableMigration implements IMigration {
       .where('deleted_at', 'is', null)
       .execute();
 
-    await db.schema
-      .createIndex('idx_users_created_at')
-      .on('users')
-      .column('created_at')
-      .execute();
+    await db.schema.createIndex('idx_users_created_at').on('users').column('created_at').execute();
 
     // Create updated_at trigger for PostgreSQL
     if (db.dialect.name === 'postgres') {

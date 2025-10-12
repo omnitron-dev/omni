@@ -328,9 +328,9 @@ describe('Redis Cluster Support', () => {
 
       // Mock failover
       const cluster = client as Cluster;
-      cluster.on('error', () => { });
-      cluster.on('+node', () => { });
-      cluster.on('-node', () => { });
+      cluster.on('error', () => {});
+      cluster.on('+node', () => {});
+      cluster.on('-node', () => {});
 
       await manager.destroy();
     });
@@ -451,7 +451,7 @@ describe('Redis Cluster Support', () => {
         // Simplified CRC16 for testing
         let crc = 0;
         for (const char of key) {
-          crc = (crc + char.charCodeAt(0)) & 0xFFFF;
+          crc = (crc + char.charCodeAt(0)) & 0xffff;
         }
         return crc % 16384;
       };

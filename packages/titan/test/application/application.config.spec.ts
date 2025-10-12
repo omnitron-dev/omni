@@ -9,17 +9,14 @@
  */
 
 import { Application, createApp } from '../../src/application.js';
-import {
-  ApplicationState,
-  ApplicationEvent
-} from '../../src/types.js';
+import { ApplicationState, ApplicationEvent } from '../../src/types.js';
 import {
   SimpleModule,
   DatabaseModule,
   CacheModule,
   HttpServerModule,
   createWebApplication,
-  createFullStackApplication
+  createFullStackApplication,
 } from '../fixtures/test-modules.js';
 
 describe('Application Configuration', () => {
@@ -45,14 +42,14 @@ describe('Application Configuration', () => {
         cache: { ttl: 60000 },
         features: {
           auth: true,
-          analytics: false
-        }
+          analytics: false,
+        },
       };
 
       app = createApp({
         disableGracefulShutdown: true,
         disableCoreModules: true,
-        config: customConfig
+        config: customConfig,
       });
 
       expect(app.getConfig()).toEqual(customConfig);
@@ -66,11 +63,11 @@ describe('Application Configuration', () => {
           level1: {
             level2: {
               level3: {
-                deep: 'value'
-              }
-            }
-          }
-        }
+                deep: 'value',
+              },
+            },
+          },
+        },
       });
 
       const config = app.getConfig();
@@ -84,8 +81,8 @@ describe('Application Configuration', () => {
         config: {
           servers: ['server1', 'server2', 'server3'],
           ports: [3000, 3001, 3002],
-          features: ['feature1', 'feature2']
-        }
+          features: ['feature1', 'feature2'],
+        },
       });
 
       const config = app.getConfig();
@@ -100,7 +97,7 @@ describe('Application Configuration', () => {
       app = createApp({
         disableGracefulShutdown: true,
         disableCoreModules: true,
-        config: { initial: 'value' }
+        config: { initial: 'value' },
       });
 
       expect(app.getConfig()).toEqual({ initial: 'value' });
@@ -109,7 +106,7 @@ describe('Application Configuration', () => {
 
       expect(app.getConfig()).toEqual({
         initial: 'value',
-        additional: 'config'
+        additional: 'config',
       });
     });
 
@@ -119,30 +116,30 @@ describe('Application Configuration', () => {
         disableCoreModules: true,
         config: {
           database: { host: 'localhost', port: 5432 },
-          cache: { ttl: 60000 }
-        }
+          cache: { ttl: 60000 },
+        },
       });
 
       app.configure({
         database: { port: 3306, user: 'admin' },
-        newOption: true
+        newOption: true,
       });
 
       expect(app.getConfig()).toEqual({
         database: {
           host: 'localhost',
           port: 3306,
-          user: 'admin'
+          user: 'admin',
         },
         cache: { ttl: 60000 },
-        newOption: true
+        newOption: true,
       });
     });
 
     it('should emit config:changed event', () => {
       app = createApp({
         disableGracefulShutdown: true,
-        disableCoreModules: true
+        disableCoreModules: true,
       });
 
       const events: any[] = [];
@@ -159,7 +156,7 @@ describe('Application Configuration', () => {
     it('should chain configuration calls', () => {
       app = createApp({
         disableGracefulShutdown: true,
-        disableCoreModules: true
+        disableCoreModules: true,
       });
 
       const result = app
@@ -172,7 +169,7 @@ describe('Application Configuration', () => {
       expect(app.getConfig()).toEqual({
         option1: 'value1',
         option2: 'value2',
-        option3: 'value3'
+        option3: 'value3',
       });
     });
 
@@ -181,17 +178,17 @@ describe('Application Configuration', () => {
         disableGracefulShutdown: true,
         disableCoreModules: true,
         config: {
-          database: { host: 'old-host', port: 5432 }
-        }
+          database: { host: 'old-host', port: 5432 },
+        },
       });
 
       app.configure({
-        database: { host: 'new-host', port: 3306 }
+        database: { host: 'new-host', port: 3306 },
       });
 
       expect(app.getConfig().database).toEqual({
         host: 'new-host',
-        port: 3306
+        port: 3306,
       });
     });
   });
@@ -204,8 +201,8 @@ describe('Application Configuration', () => {
         config: {
           database: { host: 'db-server', port: 5432 },
           cache: { ttl: 30000 },
-          http: { port: 8080 }
-        }
+          http: { port: 8080 },
+        },
       });
 
       const dbModule = new DatabaseModule();
@@ -223,7 +220,7 @@ describe('Application Configuration', () => {
     it('should reconfigure modules when configuration changes', () => {
       app = createApp({
         disableGracefulShutdown: true,
-        disableCoreModules: true
+        disableCoreModules: true,
       });
 
       const module = new SimpleModule();
@@ -248,12 +245,12 @@ describe('Application Configuration', () => {
       app = createApp({
         disableGracefulShutdown: true,
         disableCoreModules: true,
-        config: { test: { value: 'data' } }
+        config: { test: { value: 'data' } },
       });
 
       const module = {
         name: 'test',
-        version: '1.0.0'
+        version: '1.0.0',
         // No configure method
       };
 
@@ -267,8 +264,8 @@ describe('Application Configuration', () => {
         disableCoreModules: true,
         config: {
           module1: { value: 'config1' },
-          module2: { value: 'config2' }
-        }
+          module2: { value: 'config2' },
+        },
       });
 
       const module1 = new SimpleModule();
@@ -296,9 +293,9 @@ describe('Application Configuration', () => {
           database: { host: 'localhost' },
           debug: {
             verbose: true,
-            logLevel: 'debug'
-          }
-        }
+            logLevel: 'debug',
+          },
+        },
       });
 
       const config = app.getConfig();
@@ -318,9 +315,9 @@ describe('Application Configuration', () => {
           cache: { ttl: 86400000 }, // 24 hours
           security: {
             https: true,
-            cors: false
-          }
-        }
+            cors: false,
+          },
+        },
       });
 
       const config = app.getConfig();
@@ -340,9 +337,9 @@ describe('Application Configuration', () => {
             host: 'db.example.com',
             port: 5432,
             poolSize: 20,
-            ssl: true
-          }
-        }
+            ssl: true,
+          },
+        },
       });
 
       await app.start();
@@ -379,7 +376,7 @@ describe('Application Configuration', () => {
     it('should handle configuration validation', () => {
       app = createApp({
         disableGracefulShutdown: true,
-        disableCoreModules: true
+        disableCoreModules: true,
       });
 
       // Configure with invalid values (module should handle)
@@ -387,8 +384,8 @@ describe('Application Configuration', () => {
         database: {
           port: -1, // Invalid port
           host: '', // Empty host
-          poolSize: 0 // Invalid pool size
-        }
+          poolSize: 0, // Invalid pool size
+        },
       });
 
       const dbModule = new DatabaseModule();
@@ -400,13 +397,13 @@ describe('Application Configuration', () => {
     it('should preserve configuration immutability', () => {
       const initialConfig = {
         database: { host: 'localhost', port: 5432 },
-        cache: { ttl: 60000 }
+        cache: { ttl: 60000 },
       };
 
       app = createApp({
         disableGracefulShutdown: true,
         disableCoreModules: true,
-        config: initialConfig
+        config: initialConfig,
       });
 
       const config = app.getConfig();
@@ -433,8 +430,8 @@ describe('Application Configuration', () => {
         disableCoreModules: true,
         config: {
           feature: { enabled: true },
-          limits: { max: 100 }
-        }
+          limits: { max: 100 },
+        },
       });
 
       const config = app.config(); // Using method call without parameters
@@ -447,7 +444,7 @@ describe('Application Configuration', () => {
       app = createApp({
         disableGracefulShutdown: true,
         disableCoreModules: true,
-        config: { existing: 'value' }
+        config: { existing: 'value' },
       });
 
       const config = app.getConfig();
@@ -462,9 +459,9 @@ describe('Application Configuration', () => {
         config: {
           nullValue: null,
           nested: {
-            nullProp: null
-          }
-        }
+            nullProp: null,
+          },
+        },
       });
 
       const config = app.getConfig();
@@ -481,9 +478,9 @@ describe('Application Configuration', () => {
             auth: true,
             analytics: false,
             beta: true,
-            legacy: false
-          }
-        }
+            legacy: false,
+          },
+        },
       });
 
       const config = app.getConfig();
@@ -499,7 +496,7 @@ describe('Application Configuration', () => {
       app = createApp({
         disableGracefulShutdown: true,
         disableCoreModules: true,
-        config: { existing: 'value' }
+        config: { existing: 'value' },
       });
 
       app.configure({});
@@ -515,8 +512,8 @@ describe('Application Configuration', () => {
         disableCoreModules: true,
         config: {
           [symKey]: 'symbol-value',
-          regular: 'value'
-        }
+          regular: 'value',
+        },
       });
 
       const config = app.getConfig();
@@ -533,9 +530,9 @@ describe('Application Configuration', () => {
         config: {
           processor: testFunc,
           options: {
-            formatter: (v: any) => String(v)
-          }
-        }
+            formatter: (v: any) => String(v),
+          },
+        },
       });
 
       const config = app.getConfig();
@@ -548,7 +545,7 @@ describe('Application Configuration', () => {
       const largeConfig: any = {
         databases: {},
         services: {},
-        features: {}
+        features: {},
       };
 
       // Create large nested structure
@@ -558,13 +555,13 @@ describe('Application Configuration', () => {
           port: 5000 + i,
           options: {
             ssl: i % 2 === 0,
-            poolSize: 10 + i
-          }
+            poolSize: 10 + i,
+          },
         };
 
         largeConfig.services[`service${i}`] = {
           enabled: i % 3 !== 0,
-          config: { value: i * 100 }
+          config: { value: i * 100 },
         };
 
         largeConfig.features[`feature${i}`] = i % 2 === 0;
@@ -573,7 +570,7 @@ describe('Application Configuration', () => {
       app = createApp({
         disableGracefulShutdown: true,
         disableCoreModules: true,
-        config: largeConfig
+        config: largeConfig,
       });
 
       const config = app.getConfig();

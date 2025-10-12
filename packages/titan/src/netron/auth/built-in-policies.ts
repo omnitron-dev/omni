@@ -84,14 +84,8 @@ function getUTCMinutes(date: Date, timezone?: string): number {
     });
 
     const parts = formatter.formatToParts(date);
-    const hour = parseInt(
-      parts.find((p) => p.type === 'hour')?.value || '0',
-      10,
-    );
-    const minute = parseInt(
-      parts.find((p) => p.type === 'minute')?.value || '0',
-      10,
-    );
+    const hour = parseInt(parts.find((p) => p.type === 'hour')?.value || '0', 10);
+    const minute = parseInt(parts.find((p) => p.type === 'minute')?.value || '0', 10);
 
     return hour * 60 + minute;
   } catch {
@@ -137,9 +131,7 @@ export const BuiltInPolicies = {
       const hasRole = context.auth?.roles.includes(role);
       return {
         allowed: hasRole ?? false,
-        reason: hasRole
-          ? `Has required role: ${role}`
-          : `Missing role: ${role}`,
+        reason: hasRole ? `Has required role: ${role}` : `Missing role: ${role}`,
       };
     },
   }),
@@ -152,14 +144,10 @@ export const BuiltInPolicies = {
     description: `Requires any of: ${roles.join(', ')}`,
     tags: ['rbac', 'role'],
     evaluate: (context) => {
-      const hasAnyRole = roles.some((role) =>
-        context.auth?.roles.includes(role),
-      );
+      const hasAnyRole = roles.some((role) => context.auth?.roles.includes(role));
       return {
         allowed: hasAnyRole,
-        reason: hasAnyRole
-          ? `Has one of required roles`
-          : `Missing all roles: ${roles.join(', ')}`,
+        reason: hasAnyRole ? `Has one of required roles` : `Missing all roles: ${roles.join(', ')}`,
       };
     },
   }),
@@ -172,17 +160,11 @@ export const BuiltInPolicies = {
     description: `Requires all of: ${roles.join(', ')}`,
     tags: ['rbac', 'role'],
     evaluate: (context) => {
-      const hasAllRoles = roles.every((role) =>
-        context.auth?.roles.includes(role),
-      );
-      const missingRoles = roles.filter(
-        (role) => !context.auth?.roles.includes(role),
-      );
+      const hasAllRoles = roles.every((role) => context.auth?.roles.includes(role));
+      const missingRoles = roles.filter((role) => !context.auth?.roles.includes(role));
       return {
         allowed: hasAllRoles,
-        reason: hasAllRoles
-          ? `Has all required roles`
-          : `Missing roles: ${missingRoles.join(', ')}`,
+        reason: hasAllRoles ? `Has all required roles` : `Missing roles: ${missingRoles.join(', ')}`,
       };
     },
   }),
@@ -198,9 +180,7 @@ export const BuiltInPolicies = {
       const hasPermission = context.auth?.permissions.includes(permission);
       return {
         allowed: hasPermission ?? false,
-        reason: hasPermission
-          ? `Has required permission: ${permission}`
-          : `Missing permission: ${permission}`,
+        reason: hasPermission ? `Has required permission: ${permission}` : `Missing permission: ${permission}`,
       };
     },
   }),
@@ -213,9 +193,7 @@ export const BuiltInPolicies = {
     description: `Requires any of: ${permissions.join(', ')}`,
     tags: ['rbac', 'permission'],
     evaluate: (context) => {
-      const hasAnyPermission = permissions.some((perm) =>
-        context.auth?.permissions.includes(perm),
-      );
+      const hasAnyPermission = permissions.some((perm) => context.auth?.permissions.includes(perm));
       return {
         allowed: hasAnyPermission,
         reason: hasAnyPermission
@@ -246,9 +224,7 @@ export const BuiltInPolicies = {
       const isOwner = userId === ownerId;
       return {
         allowed: isOwner,
-        reason: isOwner
-          ? 'User is resource owner'
-          : 'User is not resource owner',
+        reason: isOwner ? 'User is resource owner' : 'User is not resource owner',
       };
     },
   }),
@@ -265,11 +241,7 @@ export const BuiltInPolicies = {
    * // EST time window
    * requireTimeWindow("09:00", "17:00", "America/New_York")
    */
-  requireTimeWindow: (
-    start: string,
-    end: string,
-    timezone?: string,
-  ): PolicyDefinition => ({
+  requireTimeWindow: (start: string, end: string, timezone?: string): PolicyDefinition => ({
     name: timezone ? `time:${start}-${end}:${timezone}` : `time:${start}-${end}`,
     description: timezone
       ? `Requires access between ${start} and ${end} (${timezone})`
@@ -380,9 +352,7 @@ export const BuiltInPolicies = {
       const hasScope = context.auth?.scopes?.includes(scope);
       return {
         allowed: hasScope ?? false,
-        reason: hasScope
-          ? `Has required scope: ${scope}`
-          : `Missing scope: ${scope}`,
+        reason: hasScope ? `Has required scope: ${scope}` : `Missing scope: ${scope}`,
       };
     },
   }),
@@ -395,14 +365,10 @@ export const BuiltInPolicies = {
     description: `Requires any of scopes: ${scopes.join(', ')}`,
     tags: ['oauth2', 'scope'],
     evaluate: (context) => {
-      const hasAnyScope = scopes.some((scope) =>
-        context.auth?.scopes?.includes(scope),
-      );
+      const hasAnyScope = scopes.some((scope) => context.auth?.scopes?.includes(scope));
       return {
         allowed: hasAnyScope,
-        reason: hasAnyScope
-          ? `Has one of required scopes`
-          : `Missing all scopes: ${scopes.join(', ')}`,
+        reason: hasAnyScope ? `Has one of required scopes` : `Missing all scopes: ${scopes.join(', ')}`,
       };
     },
   }),
@@ -412,10 +378,7 @@ export const BuiltInPolicies = {
    * Uses RateLimiter internally with automatic cleanup
    * For advanced features (tiers, queuing, burst), use requireRateLimit()
    */
-  rateLimit: (
-    maxRequests: number,
-    windowMs: number,
-  ): PolicyDefinition => {
+  rateLimit: (maxRequests: number, windowMs: number): PolicyDefinition => {
     // Create a minimal logger for RateLimiter
     const minimalLogger: any = {
       debug: () => {},
@@ -436,8 +399,7 @@ export const BuiltInPolicies = {
       description: `Max ${maxRequests} requests per ${windowMs}ms`,
       tags: ['ratelimit'],
       evaluate: async (context) => {
-        const userId =
-          context.auth?.userId || context.environment?.ip || 'anonymous';
+        const userId = context.auth?.userId || context.environment?.ip || 'anonymous';
 
         try {
           // Check and consume in one operation
@@ -513,9 +475,7 @@ export const BuiltInPolicies = {
       const allowed = userTenant === resourceTenant;
       return {
         allowed,
-        reason: allowed
-          ? 'User belongs to resource tenant'
-          : 'User does not belong to resource tenant',
+        reason: allowed ? 'User belongs to resource tenant' : 'User does not belong to resource tenant',
       };
     },
   }),
@@ -532,9 +492,7 @@ export const BuiltInPolicies = {
       const allowed = currentEnv === env;
       return {
         allowed,
-        reason: allowed
-          ? `Environment matches: ${env}`
-          : `Environment mismatch: ${currentEnv}, expected ${env}`,
+        reason: allowed ? `Environment matches: ${env}` : `Environment mismatch: ${currentEnv}, expected ${env}`,
       };
     },
   }),
@@ -542,10 +500,7 @@ export const BuiltInPolicies = {
   /**
    * Feature flag check
    */
-  requireFeatureFlag: (
-    flag: string,
-    enabled = true,
-  ): PolicyDefinition => ({
+  requireFeatureFlag: (flag: string, enabled = true): PolicyDefinition => ({
     name: `feature:${flag}:${enabled}`,
     description: `Requires feature flag ${flag} to be ${enabled}`,
     tags: ['abac', 'feature'],
@@ -554,9 +509,7 @@ export const BuiltInPolicies = {
       const allowed = flagValue === enabled;
       return {
         allowed,
-        reason: allowed
-          ? `Feature flag ${flag} is ${enabled}`
-          : `Feature flag ${flag} is not ${enabled}`,
+        reason: allowed ? `Feature flag ${flag} is ${enabled}` : `Feature flag ${flag} is not ${enabled}`,
       };
     },
   }),
@@ -581,15 +534,11 @@ export const BuiltInPolicies = {
     tags: ['rbac', 'permission', 'pattern'],
     evaluate: (context) => {
       const permissions = context.auth?.permissions || [];
-      const hasMatch = permissions.some((perm) =>
-        matchPermissionPattern(pattern, perm),
-      );
+      const hasMatch = permissions.some((perm) => matchPermissionPattern(pattern, perm));
 
       return {
         allowed: hasMatch,
-        reason: hasMatch
-          ? `Has permission matching pattern: ${pattern}`
-          : `No permission matches pattern: ${pattern}`,
+        reason: hasMatch ? `Has permission matching pattern: ${pattern}` : `No permission matches pattern: ${pattern}`,
       };
     },
   }),
@@ -633,9 +582,7 @@ export const BuiltInPolicies = {
 
       return {
         allowed: result.match,
-        reason: result.match
-          ? `IP ${clientIP} is in range ${cidr}`
-          : `IP ${clientIP} is not in range ${cidr}`,
+        reason: result.match ? `IP ${clientIP} is in range ${cidr}` : `IP ${clientIP} is not in range ${cidr}`,
       };
     },
   }),
@@ -676,15 +623,7 @@ export const BuiltInPolicies = {
       // Check day of week
       const currentDay = getDayOfWeek(now, config.timezone);
       if (!config.weekdays.includes(currentDay)) {
-        const dayNames = [
-          'Sunday',
-          'Monday',
-          'Tuesday',
-          'Wednesday',
-          'Thursday',
-          'Friday',
-          'Saturday',
-        ];
+        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         return {
           allowed: false,
           reason: `Not a business day (current: ${dayNames[currentDay]})`,
@@ -702,9 +641,7 @@ export const BuiltInPolicies = {
 
       return {
         allowed: inTimeWindow,
-        reason: inTimeWindow
-          ? 'Within business hours'
-          : 'Outside business hours',
+        reason: inTimeWindow ? 'Within business hours' : 'Outside business hours',
       };
     },
   }),
@@ -737,10 +674,7 @@ export const BuiltInPolicies = {
    *                      ctx.auth?.roles.includes('premium') ? 'premium' : 'free'
    * })
    */
-  requireRateLimit: (
-    logger: any,
-    config: RateLimitConfig
-  ): PolicyDefinition => {
+  requireRateLimit: (logger: any, config: RateLimitConfig): PolicyDefinition => {
     const limiter = new RateLimiter(logger, config);
 
     return {

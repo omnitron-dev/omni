@@ -29,13 +29,10 @@ async function main() {
   // ============================================================================
   console.log('1. Spawning Calculator Process...');
 
-  const calculator = await pm.spawn<CalculatorProcess>(
-    resolve(__dirname, './processes/calculator.process.js'),
-    {
-      name: 'calculator',
-      version: '1.0.0'
-    }
-  );
+  const calculator = await pm.spawn<CalculatorProcess>(resolve(__dirname, './processes/calculator.process.js'), {
+    name: 'calculator',
+    version: '1.0.0',
+  });
 
   // Use the calculator - all calls are type-safe!
   const sum = await calculator.add(5, 3);
@@ -55,25 +52,22 @@ async function main() {
   // ============================================================================
   console.log('2. Spawning Database Process with configuration...');
 
-  const database = await pm.spawn<DatabaseProcess>(
-    resolve(__dirname, './processes/database.process.js'),
-    {
-      name: 'database',
-      version: '2.0.0',
-      dependencies: {
-        config: {
-          host: 'localhost',
-          port: 5432,
-          database: 'example_db'
-        }
-      }
-    }
-  );
+  const database = await pm.spawn<DatabaseProcess>(resolve(__dirname, './processes/database.process.js'), {
+    name: 'database',
+    version: '2.0.0',
+    dependencies: {
+      config: {
+        host: 'localhost',
+        port: 5432,
+        database: 'example_db',
+      },
+    },
+  });
 
   // Create a new user
   const newUser = await database.createUser({
     name: 'John Doe',
-    email: 'john@example.com'
+    email: 'john@example.com',
   });
   console.log(`  Created user: ${newUser.name} (${newUser.id})`);
 
@@ -93,19 +87,16 @@ async function main() {
   // ============================================================================
   console.log('3. Creating Image Processor Pool...');
 
-  const imagePool = await pm.pool<ImageProcessorProcess>(
-    resolve(__dirname, './processes/image-processor.process.js'),
-    {
-      size: 4, // Create 4 worker processes
-      strategy: 'least-loaded' as any,
-      autoScale: {
-        enabled: true,
-        min: 2,
-        max: 8,
-        targetCPU: 0.7
-      }
-    }
-  );
+  const imagePool = await pm.pool<ImageProcessorProcess>(resolve(__dirname, './processes/image-processor.process.js'), {
+    size: 4, // Create 4 worker processes
+    strategy: 'least-loaded' as any,
+    autoScale: {
+      enabled: true,
+      min: 2,
+      max: 8,
+      targetCPU: 0.7,
+    },
+  });
 
   console.log(`  Pool created with ${imagePool.size} workers`);
 
@@ -116,42 +107,32 @@ async function main() {
       url: 'https://example.com/image1.jpg',
       operations: [
         { type: 'resize' as const, params: { width: 800, height: 600 } },
-        { type: 'compress' as const, params: { quality: 85 } }
-      ]
+        { type: 'compress' as const, params: { quality: 85 } },
+      ],
     },
     {
       id: 'img2',
       url: 'https://example.com/image2.jpg',
-      operations: [
-        { type: 'filter' as const, params: { type: 'blur' } }
-      ]
+      operations: [{ type: 'filter' as const, params: { type: 'blur' } }],
     },
     {
       id: 'img3',
       url: 'https://example.com/image3.jpg',
-      operations: [
-        { type: 'rotate' as const, params: { angle: 90 } }
-      ]
-    }
+      operations: [{ type: 'rotate' as const, params: { angle: 90 } }],
+    },
   ];
 
   console.log('  Processing images in parallel...');
   const startTime = Date.now();
 
-  const results = await Promise.all(
-    imageJobs.map(job => imagePool['processImage'](job))
-  );
+  const results = await Promise.all(imageJobs.map((job) => imagePool['processImage'](job)));
 
   const totalTime = Date.now() - startTime;
   console.log(`  Processed ${results.length} images in ${totalTime}ms`);
 
   // Generate thumbnails
   console.log('  Generating thumbnails...');
-  const thumbnail = await imagePool['generateThumbnail'](
-    'https://example.com/large-image.jpg',
-    150,
-    150
-  );
+  const thumbnail = await imagePool['generateThumbnail']('https://example.com/large-image.jpg', 150, 150);
   console.log(`  Thumbnail created: ${thumbnail.processedUrl}`);
 
   // Get pool metrics
@@ -210,7 +191,7 @@ async function main() {
   // Shutdown all processes gracefully
   await pm.shutdown({
     timeout: 5000,
-    force: false
+    force: false,
   });
 
   console.log('All processes shut down successfully!');

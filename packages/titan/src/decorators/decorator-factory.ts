@@ -1,12 +1,12 @@
 /**
  * Custom Decorator Creation API for Nexus DI Container
- * 
+ *
  * @module custom-decorators
  * @packageDocumentation
- * 
+ *
  * This module provides a fluent API for creating custom decorators
  * that integrate with the Nexus DI container system.
- * 
+ *
  * @example
  * ```typescript
  * // Create a custom decorator
@@ -21,7 +21,7 @@
  *     };
  *   })
  *   .build();
- * 
+ *
  * // Use the decorator
  * class Service {
  *   @Cacheable({ ttl: 5000 })
@@ -42,7 +42,7 @@ export enum DecoratorTarget {
   Method = 'method',
   Property = 'property',
   Parameter = 'parameter',
-  Accessor = 'accessor'
+  Accessor = 'accessor',
 }
 
 /**
@@ -68,9 +68,7 @@ export type DecoratorTransform<TOptions = any> = (
 /**
  * Metadata transformer for custom metadata handling
  */
-export type MetadataTransform<TOptions = any> = (
-  context: DecoratorContext<TOptions>
-) => Record<string, any>;
+export type MetadataTransform<TOptions = any> = (context: DecoratorContext<TOptions>) => Record<string, any>;
 
 /**
  * Validation function for decorator options
@@ -80,9 +78,7 @@ export type OptionsValidator<TOptions> = (options: TOptions) => void | string;
 /**
  * Hook that runs when the decorator is applied
  */
-export type DecoratorHook<TOptions = any> = (
-  context: DecoratorContext<TOptions>
-) => void;
+export type DecoratorHook<TOptions = any> = (context: DecoratorContext<TOptions>) => void;
 
 /**
  * Custom decorator builder configuration
@@ -112,7 +108,7 @@ export class CustomDecoratorBuilder<TOptions = any> {
     targets: [],
     inheritable: true,
     stackable: false,
-    priority: 0
+    priority: 0,
   };
 
   /**
@@ -143,14 +139,14 @@ export class CustomDecoratorBuilder<TOptions = any> {
     if (typeof keyOrMetadataOrTransformer === 'string') {
       this.config.metadata = {
         ...(this.config.metadata as Record<string, any>),
-        [keyOrMetadataOrTransformer]: value
+        [keyOrMetadataOrTransformer]: value,
       };
     } else if (typeof keyOrMetadataOrTransformer === 'function') {
       this.config.metadata = keyOrMetadataOrTransformer;
     } else {
       this.config.metadata = {
         ...(this.config.metadata as Record<string, any>),
-        ...keyOrMetadataOrTransformer
+        ...keyOrMetadataOrTransformer,
       };
     }
     return this;
@@ -293,11 +289,11 @@ export class CustomDecoratorBuilder<TOptions = any> {
 
       // Check if this is a decorator factory call with options
       // If we have exactly one argument and it's not a function (constructor), it's likely options
-      const isDecoratorFactory = arguments.length === 0 ||
-        (arguments.length === 1 && (
-          typeof optionsOrTarget !== 'function' ||
-          (optionsOrTarget && typeof optionsOrTarget === 'object' && !optionsOrTarget.prototype)
-        ));
+      const isDecoratorFactory =
+        arguments.length === 0 ||
+        (arguments.length === 1 &&
+          (typeof optionsOrTarget !== 'function' ||
+            (optionsOrTarget && typeof optionsOrTarget === 'object' && !optionsOrTarget.prototype)));
 
       // If called as decorator factory
       if (isDecoratorFactory) {
@@ -320,12 +316,7 @@ export class CustomDecoratorBuilder<TOptions = any> {
       // Direct application without options
       return applyDecorator(optionsOrTarget, propertyKey, descriptorOrIndex, undefined);
 
-      function applyDecorator(
-        target: any,
-        propKey?: string | symbol,
-        descOrIdx?: any,
-        options?: TOptions
-      ) {
+      function applyDecorator(target: any, propKey?: string | symbol, descOrIdx?: any, options?: TOptions) {
         // Determine target type
         let targetType: DecoratorTarget;
         let descriptor: PropertyDescriptor | undefined;
@@ -338,9 +329,8 @@ export class CustomDecoratorBuilder<TOptions = any> {
           targetType = DecoratorTarget.Property;
         } else if (propKey !== undefined && descOrIdx !== undefined) {
           descriptor = descOrIdx;
-          targetType = descriptor && (descriptor.get || descriptor.set)
-            ? DecoratorTarget.Accessor
-            : DecoratorTarget.Method;
+          targetType =
+            descriptor && (descriptor.get || descriptor.set) ? DecoratorTarget.Accessor : DecoratorTarget.Method;
         } else {
           targetType = DecoratorTarget.Class;
         }
@@ -348,8 +338,7 @@ export class CustomDecoratorBuilder<TOptions = any> {
         // Check if decorator can be applied to this target
         if (!config.targets.includes(targetType)) {
           throw new Error(
-            `@${config.name} cannot be applied to ${targetType}. ` +
-            `Allowed targets: ${config.targets.join(', ')}`
+            `@${config.name} cannot be applied to ${targetType}. ` + `Allowed targets: ${config.targets.join(', ')}`
           );
         }
 
@@ -373,7 +362,7 @@ export class CustomDecoratorBuilder<TOptions = any> {
           descriptor,
           parameterIndex,
           options,
-          metadata: new Map()
+          metadata: new Map(),
         };
 
         // Run beforeApply hook
@@ -401,9 +390,7 @@ export class CustomDecoratorBuilder<TOptions = any> {
 
         // Store metadata
         if (config.metadata) {
-          const metadata = typeof config.metadata === 'function'
-            ? config.metadata(context)
-            : config.metadata;
+          const metadata = typeof config.metadata === 'function' ? config.metadata(context) : config.metadata;
 
           for (const [key, value] of Object.entries(metadata)) {
             const metadataKey = `custom:${config.name}:${key}`;
@@ -421,17 +408,17 @@ export class CustomDecoratorBuilder<TOptions = any> {
             applied: true,
             options,
             timestamp: Date.now(),
-            priority: config.priority
+            priority: config.priority,
           };
 
           if (propKey !== undefined) {
             const existing = Reflect.getMetadata(applicationKey, target, propKey);
-            const decoratorMetadata = Array.isArray(existing) ? existing : (existing ? [existing] : []);
+            const decoratorMetadata = Array.isArray(existing) ? existing : existing ? [existing] : [];
             decoratorMetadata.push(applicationData);
             Reflect.defineMetadata(applicationKey, decoratorMetadata, target, propKey);
           } else {
             const existing = Reflect.getMetadata(applicationKey, target);
-            const decoratorMetadata = Array.isArray(existing) ? existing : (existing ? [existing] : []);
+            const decoratorMetadata = Array.isArray(existing) ? existing : existing ? [existing] : [];
             decoratorMetadata.push(applicationData);
             Reflect.defineMetadata(applicationKey, decoratorMetadata, target);
           }
@@ -480,11 +467,7 @@ export function createDecorator<TOptions = any>(): CustomDecoratorBuilder<TOptio
 /**
  * Helper to get custom decorator metadata
  */
-export function getCustomMetadata(
-  decoratorName: string,
-  target: any,
-  propertyKey?: string | symbol
-): any {
+export function getCustomMetadata(decoratorName: string, target: any, propertyKey?: string | symbol): any {
   const applicationKey = `custom:${decoratorName}`;
   return propertyKey
     ? Reflect.getMetadata(applicationKey, target, propertyKey)
@@ -494,20 +477,13 @@ export function getCustomMetadata(
 /**
  * Helper to get all custom metadata for a target
  */
-export function getAllCustomMetadata(
-  target: any,
-  propertyKey?: string | symbol
-): Map<string, any> {
+export function getAllCustomMetadata(target: any, propertyKey?: string | symbol): Map<string, any> {
   const metadata = new Map<string, any>();
-  const metadataKeys = propertyKey
-    ? Reflect.getMetadataKeys(target, propertyKey)
-    : Reflect.getMetadataKeys(target);
+  const metadataKeys = propertyKey ? Reflect.getMetadataKeys(target, propertyKey) : Reflect.getMetadataKeys(target);
 
   for (const key of metadataKeys) {
     if (typeof key === 'string' && key.startsWith('custom:')) {
-      const value = propertyKey
-        ? Reflect.getMetadata(key, target, propertyKey)
-        : Reflect.getMetadata(key, target);
+      const value = propertyKey ? Reflect.getMetadata(key, target, propertyKey) : Reflect.getMetadata(key, target);
       metadata.set(key, value);
     }
   }
@@ -518,11 +494,7 @@ export function getAllCustomMetadata(
 /**
  * Check if a decorator has been applied
  */
-export function hasDecorator(
-  decoratorName: string,
-  target: any,
-  propertyKey?: string | symbol
-): boolean {
+export function hasDecorator(decoratorName: string, target: any, propertyKey?: string | symbol): boolean {
   const metadata = getCustomMetadata(decoratorName, target, propertyKey);
   return metadata && metadata.length > 0;
 }
@@ -542,9 +514,7 @@ export function getDecoratorOptions<TOptions = any>(
 /**
  * Combine multiple decorators into one
  */
-export function combineDecorators(
-  ...decorators: Array<(...args: any[]) => any>
-): (...args: any[]) => any {
+export function combineDecorators(...decorators: Array<(...args: any[]) => any>): (...args: any[]) => any {
   return function (target: any, propertyKey?: string | symbol, descriptor?: any) {
     // Apply decorators in reverse order for proper composition
     for (let i = decorators.length - 1; i >= 0; i--) {
@@ -572,12 +542,7 @@ export function createParameterizedDecorator<TOptions>(
 ): (options?: TOptions) => any {
   return createDecorator<TOptions>()
     .withName(name)
-    .forTargets([
-      DecoratorTarget.Class,
-      DecoratorTarget.Method,
-      DecoratorTarget.Property,
-      DecoratorTarget.Parameter
-    ])
+    .forTargets([DecoratorTarget.Class, DecoratorTarget.Method, DecoratorTarget.Property, DecoratorTarget.Parameter])
     .withMetadata((context: DecoratorContext) => ({ options: context.options }))
     .forClass((context) => handler(context.options!, context))
     .build();
@@ -588,11 +553,7 @@ export function createParameterizedDecorator<TOptions>(
  */
 export function createMethodInterceptor<TOptions = any>(
   name: string,
-  interceptor: (
-    originalMethod: (...args: any[]) => any,
-    args: any[],
-    context: DecoratorContext<TOptions>
-  ) => any
+  interceptor: (originalMethod: (...args: any[]) => any, args: any[], context: DecoratorContext<TOptions>) => any
 ): (options?: TOptions) => MethodDecorator {
   return createDecorator<TOptions>()
     .withName(name)
@@ -632,7 +593,7 @@ export function createPropertyInterceptor<TOptions = any>(
           this[privateKey] = processedValue;
         },
         enumerable: true,
-        configurable: true
+        configurable: true,
       });
     })
     .build() as any;
@@ -645,23 +606,20 @@ export function createPropertyInterceptor<TOptions = any>(
 /**
  * Memoization decorator
  */
-export const Memoize = createMethodInterceptor(
-  'Memoize',
-  (originalMethod, args, context) => {
-    const cacheKey = JSON.stringify(args);
-    const cache = context.metadata.get('cache') || new Map();
+export const Memoize = createMethodInterceptor('Memoize', (originalMethod, args, context) => {
+  const cacheKey = JSON.stringify(args);
+  const cache = context.metadata.get('cache') || new Map();
 
-    if (cache.has(cacheKey)) {
-      return cache.get(cacheKey);
-    }
-
-    const result = originalMethod(...args);
-    cache.set(cacheKey, result);
-    context.metadata.set('cache', cache);
-
-    return result;
+  if (cache.has(cacheKey)) {
+    return cache.get(cacheKey);
   }
-);
+
+  const result = originalMethod(...args);
+  cache.set(cacheKey, result);
+  context.metadata.set('cache', cache);
+
+  return result;
+});
 
 /**
  * Retry decorator
@@ -678,7 +636,7 @@ export const Retry = createMethodInterceptor<{ attempts?: number; delay?: number
       } catch (error) {
         lastError = error;
         if (i < attempts - 1) {
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
     }
@@ -696,16 +654,17 @@ export const Deprecated = createDecorator<{ message?: string; version?: string }
   .withMetadata((context: DecoratorContext<{ message?: string; version?: string }>) => ({
     deprecated: true,
     message: context.options?.message,
-    version: context.options?.version
+    version: context.options?.version,
   }))
   .forMethod((context) => {
     const originalMethod = context.descriptor!.value;
     const { message, version } = context.options || {};
 
     context.descriptor!.value = function (...args: any[]) {
-      const warning = message ||
+      const warning =
+        message ||
         `${context.target.constructor.name}.${String(context.propertyKey)} is deprecated` +
-        (version ? ` since version ${version}` : '');
+          (version ? ` since version ${version}` : '');
       console.warn(warning);
       return originalMethod.apply(this, args);
     };

@@ -62,9 +62,7 @@ export class AuthorizationManager {
    */
   registerACL(acl: ServiceACL): void {
     // Check if ACL for this service already exists
-    const existingIndex = this.acls.findIndex(
-      (existing) => existing.service === acl.service,
-    );
+    const existingIndex = this.acls.findIndex((existing) => existing.service === acl.service);
 
     if (existingIndex >= 0) {
       // Update existing ACL
@@ -115,10 +113,7 @@ export class AuthorizationManager {
   canAccessService(serviceName: string, auth?: AuthContext): boolean {
     // Check for super admin bypass
     if (auth && this.isSuperAdmin(auth)) {
-      this.logger.debug(
-        { serviceName, userId: auth.userId },
-        'Super admin access granted (bypass)',
-      );
+      this.logger.debug({ serviceName, userId: auth.userId }, 'Super admin access granted (bypass)');
       return true;
     }
 
@@ -127,31 +122,23 @@ export class AuthorizationManager {
 
     if (!acl) {
       // No ACL defined - allow access by default
-      this.logger.debug(
-        { serviceName },
-        'No ACL defined for service, allowing access',
-      );
+      this.logger.debug({ serviceName }, 'No ACL defined for service, allowing access');
       return true;
     }
 
     // If ACL exists but no auth context, deny access
     if (!auth) {
-      this.logger.debug(
-        { serviceName },
-        'ACL defined but no auth context, denying access',
-      );
+      this.logger.debug({ serviceName }, 'ACL defined but no auth context, denying access');
       return false;
     }
 
     // Check roles
     if (acl.allowedRoles && acl.allowedRoles.length > 0) {
-      const hasRole = acl.allowedRoles.some((role) =>
-        auth.roles.includes(role),
-      );
+      const hasRole = acl.allowedRoles.some((role) => auth.roles.includes(role));
       if (!hasRole) {
         this.logger.debug(
           { serviceName, requiredRoles: acl.allowedRoles, userRoles: auth.roles },
-          'User lacks required role for service',
+          'User lacks required role for service'
         );
         return false;
       }
@@ -159,9 +146,7 @@ export class AuthorizationManager {
 
     // Check permissions
     if (acl.requiredPermissions && acl.requiredPermissions.length > 0) {
-      const hasAllPermissions = acl.requiredPermissions.every((perm) =>
-        auth.permissions.includes(perm),
-      );
+      const hasAllPermissions = acl.requiredPermissions.every((perm) => auth.permissions.includes(perm));
       if (!hasAllPermissions) {
         this.logger.debug(
           {
@@ -169,7 +154,7 @@ export class AuthorizationManager {
             requiredPermissions: acl.requiredPermissions,
             userPermissions: auth.permissions,
           },
-          'User lacks required permissions for service',
+          'User lacks required permissions for service'
         );
         return false;
       }
@@ -186,17 +171,10 @@ export class AuthorizationManager {
    * @param auth Authentication context
    * @returns True if access is allowed
    */
-  canAccessMethod(
-    serviceName: string,
-    methodName: string,
-    auth?: AuthContext,
-  ): boolean {
+  canAccessMethod(serviceName: string, methodName: string, auth?: AuthContext): boolean {
     // Check for super admin bypass
     if (auth && this.isSuperAdmin(auth)) {
-      this.logger.debug(
-        { serviceName, methodName, userId: auth.userId },
-        'Super admin method access granted (bypass)',
-      );
+      this.logger.debug({ serviceName, methodName, userId: auth.userId }, 'Super admin method access granted (bypass)');
       return true;
     }
 
@@ -205,10 +183,7 @@ export class AuthorizationManager {
 
     if (!acl) {
       // No ACL defined - allow access by default
-      this.logger.debug(
-        { serviceName, methodName },
-        'No ACL defined for service, allowing method access',
-      );
+      this.logger.debug({ serviceName, methodName }, 'No ACL defined for service, allowing method access');
       return true;
     }
 
@@ -217,10 +192,7 @@ export class AuthorizationManager {
 
     // If method ACL exists without auth context, deny access
     if (methodACL && !auth) {
-      this.logger.debug(
-        { serviceName, methodName },
-        'Method ACL defined but no auth context, denying access',
-      );
+      this.logger.debug({ serviceName, methodName }, 'Method ACL defined but no auth context, denying access');
       return false;
     }
 
@@ -245,13 +217,10 @@ export class AuthorizationManager {
     // For method-level ACLs: if method defines roles/permissions, they REPLACE service-level ones (more restrictive)
     // If method doesn't define them, inherit from service level
     // If override is true, completely ignore service-level ACL
-    const effectiveRoles = override || methodACL.allowedRoles
-      ? methodACL.allowedRoles
-      : acl.allowedRoles;
+    const effectiveRoles = override || methodACL.allowedRoles ? methodACL.allowedRoles : acl.allowedRoles;
 
-    const effectivePermissions = override || methodACL.requiredPermissions
-      ? methodACL.requiredPermissions
-      : acl.requiredPermissions;
+    const effectivePermissions =
+      override || methodACL.requiredPermissions ? methodACL.requiredPermissions : acl.requiredPermissions;
 
     // Check effective roles
     if (effectiveRoles && effectiveRoles.length > 0) {
@@ -264,7 +233,7 @@ export class AuthorizationManager {
             requiredRoles: effectiveRoles,
             userRoles: auth.roles,
           },
-          'User lacks required role for method',
+          'User lacks required role for method'
         );
         return false;
       }
@@ -272,9 +241,7 @@ export class AuthorizationManager {
 
     // Check effective permissions
     if (effectivePermissions && effectivePermissions.length > 0) {
-      const hasAllPermissions = effectivePermissions.every((perm) =>
-        auth.permissions.includes(perm),
-      );
+      const hasAllPermissions = effectivePermissions.every((perm) => auth.permissions.includes(perm));
       if (!hasAllPermissions) {
         this.logger.debug(
           {
@@ -283,16 +250,13 @@ export class AuthorizationManager {
             requiredPermissions: effectivePermissions,
             userPermissions: auth.permissions,
           },
-          'User lacks required permissions for method',
+          'User lacks required permissions for method'
         );
         return false;
       }
     }
 
-    this.logger.debug(
-      { serviceName, methodName, userId: auth.userId },
-      'Method access granted',
-    );
+    this.logger.debug({ serviceName, methodName, userId: auth.userId }, 'Method access granted');
     return true;
   }
 
@@ -304,17 +268,10 @@ export class AuthorizationManager {
    * @param auth Authentication context
    * @returns Filtered definition
    */
-  filterDefinition(
-    serviceName: string,
-    definition: any,
-    auth?: AuthContext,
-  ): any {
+  filterDefinition(serviceName: string, definition: any, auth?: AuthContext): any {
     // If user has no access to service at all, return null
     if (!this.canAccessService(serviceName, auth)) {
-      this.logger.debug(
-        { serviceName },
-        'User has no access to service, returning null definition',
-      );
+      this.logger.debug({ serviceName }, 'User has no access to service, returning null definition');
       return null;
     }
 
@@ -337,10 +294,7 @@ export class AuthorizationManager {
         if (this.canAccessMethod(serviceName, methodName, auth)) {
           accessibleMethods[methodName] = methodDef;
         } else {
-          this.logger.debug(
-            { serviceName, methodName },
-            'Method filtered out due to access restrictions',
-          );
+          this.logger.debug({ serviceName, methodName }, 'Method filtered out due to access restrictions');
         }
       }
 
@@ -384,12 +338,8 @@ export class AuthorizationManager {
    */
   private matchesPattern(serviceName: string, pattern: string): boolean {
     // Apply case-insensitive matching if enabled
-    const name = this.patternMatchOptions.caseInsensitive
-      ? serviceName.toLowerCase()
-      : serviceName;
-    const pat = this.patternMatchOptions.caseInsensitive
-      ? pattern.toLowerCase()
-      : pattern;
+    const name = this.patternMatchOptions.caseInsensitive ? serviceName.toLowerCase() : serviceName;
+    const pat = this.patternMatchOptions.caseInsensitive ? pattern.toLowerCase() : pattern;
 
     // Exact match
     if (name === pat) {
@@ -430,11 +380,7 @@ export class AuthorizationManager {
    * Check service access directly without super admin check
    * Used internally by canAccessMethod to avoid duplicate super admin checks
    */
-  private canAccessServiceDirect(
-    serviceName: string,
-    auth: AuthContext | undefined,
-    acl: ServiceACL,
-  ): boolean {
+  private canAccessServiceDirect(serviceName: string, auth: AuthContext | undefined, acl: ServiceACL): boolean {
     // If ACL exists but no auth context, deny access
     if (!auth) {
       return false;
@@ -450,9 +396,7 @@ export class AuthorizationManager {
 
     // Check permissions
     if (acl.requiredPermissions && acl.requiredPermissions.length > 0) {
-      const hasAllPermissions = acl.requiredPermissions.every((perm) =>
-        auth.permissions.includes(perm),
-      );
+      const hasAllPermissions = acl.requiredPermissions.every((perm) => auth.permissions.includes(perm));
       if (!hasAllPermissions) {
         return false;
       }
@@ -465,10 +409,7 @@ export class AuthorizationManager {
    * Merge role arrays for inheritance
    * Method roles are added to service roles (logical OR)
    */
-  private mergeRoles(
-    serviceRoles?: string[],
-    methodRoles?: string[],
-  ): string[] | undefined {
+  private mergeRoles(serviceRoles?: string[], methodRoles?: string[]): string[] | undefined {
     if (!serviceRoles && !methodRoles) {
       return undefined;
     }
@@ -494,10 +435,7 @@ export class AuthorizationManager {
    * Merge permission arrays for inheritance
    * Method permissions are added to service permissions (all required)
    */
-  private mergePermissions(
-    servicePermissions?: string[],
-    methodPermissions?: string[],
-  ): string[] | undefined {
+  private mergePermissions(servicePermissions?: string[], methodPermissions?: string[]): string[] | undefined {
     if (!servicePermissions && !methodPermissions) {
       return undefined;
     }

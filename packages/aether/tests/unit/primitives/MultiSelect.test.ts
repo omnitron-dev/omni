@@ -718,8 +718,11 @@ describe('MultiSelect', () => {
       );
       cleanup = dispose;
 
-      const content = container.querySelector('[data-multi-select-content]');
-      expect(content).toBeNull();
+      const content = container.querySelector('[data-multi-select-content]') as HTMLElement;
+      // With Pattern 18, content exists but is hidden
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('none');
+      expect(content.getAttribute('aria-hidden')).toBe('true');
     });
 
     it('should have role="listbox"', () => {
@@ -877,7 +880,7 @@ describe('MultiSelect', () => {
       expect(search.placeholder).toBe('Filter...');
     });
 
-    it('should filter items based on search query', () => {
+    it('should filter items based on search query', async () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         MultiSelect({
           searchable: true,
@@ -902,9 +905,16 @@ describe('MultiSelect', () => {
       search.value = 'app';
       search.dispatchEvent(new Event('input', { bubbles: true }));
 
-      const items = container.querySelectorAll('[data-multi-select-item]');
-      expect(items.length).toBe(1);
-      expect(items[0]?.textContent).toBe('Apple');
+      // Wait for effects to run (Pattern 18)
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      // With Pattern 18, filter by visible items (not display: none)
+      const visibleItems = Array.from(
+        container.querySelectorAll('[data-multi-select-item]')
+      ).filter(item => (item as HTMLElement).style.display !== 'none');
+
+      expect(visibleItems.length).toBe(1);
+      expect(visibleItems[0]?.textContent).toBe('Apple');
     });
   });
 
@@ -1045,7 +1055,7 @@ describe('MultiSelect', () => {
       expect(item?.textContent).toBe('Test Item');
     });
 
-    it('should filter based on search query', () => {
+    it('should filter based on search query', async () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         MultiSelect({
           searchable: true,
@@ -1070,11 +1080,16 @@ describe('MultiSelect', () => {
       search.value = 'ban';
       search.dispatchEvent(new Event('input', { bubbles: true }));
 
+      // Wait for effects to run (Pattern 18)
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      // With Pattern 18, filter by visible items (not display: none)
       const visibleItems = Array.from(
         container.querySelectorAll('[data-multi-select-item]')
-      ).filter(item => item.textContent);
+      ).filter(item => (item as HTMLElement).style.display !== 'none');
 
       expect(visibleItems.length).toBe(1);
+      expect(visibleItems[0]?.textContent).toBe('Banana');
     });
   });
 

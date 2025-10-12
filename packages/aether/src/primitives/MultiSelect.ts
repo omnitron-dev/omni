@@ -16,6 +16,7 @@ import { defineComponent } from '../core/component/index.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
 import { signal, computed } from '../core/reactivity/index.js';
+import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 
 // ============================================================================
@@ -281,17 +282,24 @@ export const MultiSelectTrigger = defineComponent<MultiSelectTriggerProps>((prop
   return () => {
     const { children, ...rest } = props;
 
-    return jsx('button', {
+    const trigger = jsx('button', {
       type: 'button',
       'data-multi-select-trigger': '',
-      'data-state': context.isOpen() ? 'open' : 'closed',
-      'aria-expanded': context.isOpen(),
       'aria-haspopup': 'listbox',
       disabled: context.disabled,
       onClick: handleClick,
       ...rest,
       children,
+    }) as HTMLButtonElement;
+
+    // Reactively update state attributes (Pattern 18)
+    effect(() => {
+      const open = context.isOpen();
+      trigger.setAttribute('data-state', open ? 'open' : 'closed');
+      trigger.setAttribute('aria-expanded', String(open));
     });
+
+    return trigger;
   };
 });
 
@@ -304,23 +312,40 @@ export const MultiSelectValue = defineComponent<MultiSelectValueProps>((props) =
 
   return () => {
     const { placeholder = 'Select items...', children } = props;
-    const selected = context.value();
 
     if (children) {
       return children;
     }
 
-    if (selected.length === 0) {
-      return jsx('span', {
-        'data-multi-select-placeholder': '',
-        children: placeholder,
-      });
-    }
+    const placeholderSpan = jsx('span', {
+      'data-multi-select-placeholder': '',
+      children: placeholder,
+    }) as HTMLSpanElement;
 
-    return jsx('span', {
+    const valueSpan = jsx('span', {
       'data-multi-select-value': '',
-      children: `${selected.length} selected`,
+    }) as HTMLSpanElement;
+
+    const container = jsx('span', {
+      children: [placeholderSpan, valueSpan],
+    }) as HTMLSpanElement;
+
+    // Reactively toggle between placeholder and value (Pattern 18)
+    effect(() => {
+      const selected = context.value();
+      const hasSelection = selected.length > 0;
+
+      if (hasSelection) {
+        placeholderSpan.style.display = 'none';
+        valueSpan.style.display = 'inline';
+        valueSpan.textContent = `${selected.length} selected`;
+      } else {
+        placeholderSpan.style.display = 'inline';
+        valueSpan.style.display = 'none';
+      }
     });
+
+    return container;
   };
 });
 
@@ -332,17 +357,24 @@ export const MultiSelectContent = defineComponent<MultiSelectContentProps>((prop
   const context = useMultiSelectContext();
 
   return () => {
-    if (!context.isOpen()) return null;
-
     const { children, ...rest } = props;
 
-    return jsx('div', {
+    const content = jsx('div', {
       'data-multi-select-content': '',
       role: 'listbox',
       'aria-multiselectable': 'true',
       ...rest,
       children,
+    }) as HTMLElement;
+
+    // Reactively toggle visibility (Pattern 18)
+    effect(() => {
+      const open = context.isOpen();
+      content.style.display = open ? 'block' : 'none';
+      content.setAttribute('aria-hidden', open ? 'false' : 'true');
     });
+
+    return content;
   };
 });
 
@@ -394,31 +426,58 @@ export const MultiSelectItem = defineComponent<MultiSelectItemProps>((props) => 
 
   const isSelected = computed(() => context.isSelected(props.value));
 
-  const matchesSearch = computed(() => {
-    const query = context.searchQuery().toLowerCase();
-    if (!query) return true;
-
-    const text = (props.children?.toString() || props.value).toLowerCase();
-    return text.includes(query);
-  });
-
   return () => {
-    if (!matchesSearch()) return null;
-
     const { value, disabled, children, ...rest } = props;
 
-    return jsx('div', {
+    const item = jsx('div', {
       'data-multi-select-item': '',
       'data-value': value,
-      'data-selected': isSelected() ? '' : undefined,
-      'data-disabled': disabled ? '' : undefined,
       role: 'option',
-      'aria-selected': isSelected(),
-      'aria-disabled': disabled,
       onClick: handleClick,
       ...rest,
       children,
+    }) as HTMLElement;
+
+    // Reactively update selected state (Pattern 18)
+    effect(() => {
+      const selected = isSelected();
+      if (selected) {
+        item.setAttribute('data-selected', '');
+        item.setAttribute('aria-selected', 'true');
+      } else {
+        item.removeAttribute('data-selected');
+        item.setAttribute('aria-selected', 'false');
+      }
     });
+
+    // Reactively update disabled state (Pattern 18)
+    effect(() => {
+      if (disabled) {
+        item.setAttribute('data-disabled', '');
+        item.setAttribute('aria-disabled', 'true');
+      } else {
+        item.removeAttribute('data-disabled');
+        item.setAttribute('aria-disabled', 'false');
+      }
+    });
+
+    // Reactively toggle visibility based on search (Pattern 18)
+    effect(() => {
+      const query = context.searchQuery().toLowerCase();
+      if (!query) {
+        // No search query - show all items
+        item.style.display = 'block';
+        item.setAttribute('aria-hidden', 'false');
+      } else {
+        // Has search query - filter based on match
+        const text = (props.children?.toString() || props.value).toLowerCase();
+        const matches = text.includes(query);
+        item.style.display = matches ? 'block' : 'none';
+        item.setAttribute('aria-hidden', matches ? 'false' : 'true');
+      }
+    });
+
+    return item;
   };
 });
 
@@ -462,24 +521,32 @@ export const MultiSelectActions = defineComponent<MultiSelectActionsProps>((prop
       });
     }
 
+    const selectAllBtn = jsx('button', {
+      type: 'button',
+      'data-multi-select-action': '',
+      onClick: handleSelectAll,
+      children: 'Select All',
+    }) as HTMLButtonElement;
+
+    const clearAllBtn = jsx('button', {
+      type: 'button',
+      'data-multi-select-action': '',
+      onClick: handleClearAll,
+      children: 'Clear All',
+    }) as HTMLButtonElement;
+
+    // Reactively update disabled states (Pattern 18)
+    effect(() => {
+      selectAllBtn.disabled = context.disabled || !context.canAddMore();
+    });
+
+    effect(() => {
+      clearAllBtn.disabled = context.disabled || context.value().length === 0;
+    });
+
     return jsx('div', {
       'data-multi-select-actions': '',
-      children: [
-        jsx('button', {
-          type: 'button',
-          'data-multi-select-action': '',
-          onClick: handleSelectAll,
-          disabled: context.disabled || !context.canAddMore(),
-          children: 'Select All',
-        }),
-        jsx('button', {
-          type: 'button',
-          'data-multi-select-action': '',
-          onClick: handleClearAll,
-          disabled: context.disabled || context.value().length === 0,
-          children: 'Clear All',
-        }),
-      ],
+      children: [selectAllBtn, clearAllBtn],
     });
   };
 });

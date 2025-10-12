@@ -24,6 +24,7 @@
 import { defineComponent } from '../core/component/index.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal, computed, type WritableSignal, type Signal } from '../core/reactivity/index.js';
+import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 
 // ============================================================================
@@ -215,12 +216,15 @@ export const CarouselViewport = defineComponent<CarouselViewportProps>((props) =
   const context = useCarouselContext();
   const { children, ...restProps } = props;
 
+  // Evaluate function children (Pattern 17)
+  const evaluatedChildren = typeof children === 'function' ? children() : children;
+
   return jsx('div', {
     ...restProps,
     'data-carousel-viewport': '',
     'data-orientation': context.orientation,
     role: 'presentation',
-    children,
+    children: evaluatedChildren,
   });
 });
 
@@ -239,20 +243,32 @@ export const CarouselSlide = defineComponent<CarouselSlideProps>((props) => {
 
   return () => {
     const { children, ...restProps } = props;
-    const isActive = context.currentIndex() === slideIndex;
     const position = slideIndex! + 1;
-    const total = context.totalSlides();
 
-    return jsx('div', {
+    const slide = jsx('div', {
       ...restProps,
       'data-carousel-slide': '',
-      'data-active': isActive ? '' : undefined,
       role: 'group',
       'aria-roledescription': 'slide',
-      'aria-label': `${position} of ${total}`,
-      'aria-hidden': !isActive,
       children,
+    }) as HTMLElement;
+
+    // Reactively update active state and ARIA attributes (Pattern 18)
+    effect(() => {
+      const isActive = context.currentIndex() === slideIndex;
+      const total = context.totalSlides();
+
+      if (isActive) {
+        slide.setAttribute('data-active', '');
+      } else {
+        slide.removeAttribute('data-active');
+      }
+
+      slide.setAttribute('aria-label', `${position} of ${total}`);
+      slide.setAttribute('aria-hidden', String(!isActive));
     });
+
+    return slide;
   };
 });
 
@@ -268,18 +284,23 @@ export const CarouselPrevious = defineComponent<CarouselPreviousProps>((props) =
   };
 
   return () => {
-    const { children, ...restProps } = props;
-    const disabled = !context.canGoPrevious();
+    const { children, onClick, ...restProps } = props;
 
-    return jsx('button', {
+    const button = jsx('button', {
       ...restProps,
       type: 'button',
       'data-carousel-previous': '',
       'aria-label': 'Previous slide',
-      disabled,
       onClick: handleClick,
       children,
+    }) as HTMLButtonElement;
+
+    // Reactively update disabled state (Pattern 18)
+    effect(() => {
+      button.disabled = !context.canGoPrevious();
     });
+
+    return button;
   };
 });
 
@@ -295,18 +316,23 @@ export const CarouselNext = defineComponent<CarouselNextProps>((props) => {
   };
 
   return () => {
-    const { children, ...restProps } = props;
-    const disabled = !context.canGoNext();
+    const { children, onClick, ...restProps } = props;
 
-    return jsx('button', {
+    const button = jsx('button', {
       ...restProps,
       type: 'button',
       'data-carousel-next': '',
       'aria-label': 'Next slide',
-      disabled,
       onClick: handleClick,
       children,
+    }) as HTMLButtonElement;
+
+    // Reactively update disabled state (Pattern 18)
+    effect(() => {
+      button.disabled = !context.canGoNext();
     });
+
+    return button;
   };
 });
 
@@ -320,19 +346,29 @@ export const CarouselIndicators = defineComponent<CarouselIndicatorsProps>((prop
   return () => {
     const { children, ...restProps } = props;
     const total = context.totalSlides();
-    const current = context.currentIndex();
 
     const indicators = Array.from({ length: total }, (_, i) => {
-      const isActive = i === current;
-      return jsx('button', {
+      const button = jsx('button', {
         key: i,
         type: 'button',
         'data-carousel-indicator': '',
-        'data-active': isActive ? '' : undefined,
         'aria-label': `Go to slide ${i + 1}`,
-        'aria-current': isActive ? 'true' : 'false',
         onClick: () => context.goTo(i),
+      }) as HTMLButtonElement;
+
+      // Reactively update active state (Pattern 18)
+      effect(() => {
+        const isActive = i === context.currentIndex();
+        if (isActive) {
+          button.setAttribute('data-active', '');
+          button.setAttribute('aria-current', 'true');
+        } else {
+          button.removeAttribute('data-active');
+          button.setAttribute('aria-current', 'false');
+        }
       });
+
+      return button;
     });
 
     return jsx('div', {
